@@ -547,7 +547,73 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Power Score**
 
-A player's Power Score combines level, gear level, gem levels, gem quality, socket count, gear quality, and resistances into a single comparable number. Dungeons within a close power range provide average exp and loot. Dungeons below the threshold provide less. Dungeons above provide more.
+A player's Power Score combines level, gear quality, gear level, gem quality, socket count, and resistances into a single comparable number, on the same scale as the Enemy Score in section X. Dungeons within a close power range provide average exp and loot. Dungeons below the threshold provide less. Dungeons above provide more.
+
+  
+
+Power Score = (Level Weight × Character Level) + (Gear Weight × Σ over equipped pieces of Rarity × (1 + Upgrade Factor × Gear Level)) + (Gem Weight × Σ over filled sockets of Gem Rarity) + (Resistance Weight × Σ over the eight resistances of Resistance Percent)
+
+  
+
+|  |  |
+| :-: | :-: |
+| \*\*Weight\*\* | \*\*Value\*\* |
+| Level Weight | 6.3270 |
+| Gear Weight | 6.2330 |
+| Upgrade Factor | 0.2525 |
+| Gem Weight | 5.2725 |
+| Resistance Weight | 1.1298 |
+
+  
+
+Rarity is 1 for Everyday through 8 for Cataclysmic, the same eight tiers used for both gear and gems. Gear Level is the +1 to +10 upgrade level from section VI. Gem quality and gem level are the same axis; a gem has one position on the eight-tier rarity scale. Gear has two independent axes, its rarity and its upgrade level.
+
+  
+
+Four rules follow from the formula:
+
+  
+
+  - **Socket count has no weight of its own.** It is the number of terms in the gem sum, so filling a socket is what a socket contributes.
+  - **Gear upgrade level multiplies gear rarity rather than adding to it.** A +10 Cataclysmic piece is worth 3.52 times the same piece at +0, and eight times what a +10 Everyday piece is worth. This is the only place two inputs multiply, and it is what makes the power curve rise faster than the difficulty tier.
+  - **Two one-handed weapons count as one equipped piece**, the same way they give the same six sockets a two-handed weapon gives. Dual wielding must not be worth free Power Score.
+  - **Resistance above the 70% cap adds no Power Score.** Over-capping remains legal and useful, because enemy penetration reduces effective resistance, but it is headroom against penetration rather than power.
+
+  
+
+Eighteen equipped pieces carry a rarity and an upgrade level: seven armor pieces, eight rings, the necklace, the relic, and the weapon. The four potion slots are consumables rather than gear and contribute through their sockets only.
+
+  
+
+At level 100 with eighteen Cataclysmic pieces at +10, forty-five Cataclysmic gems and all eight resistances capped, the four terms contribute 10% from level, 50% from gear, 30% from gems and 10% from resistances.
+
+  
+
+### **Expected Character by Tier**
+
+Power Score is calibrated against the tier ranges in section XII using the reference character below, which is what a player is expected to look like at the **end** of each difficulty tier. It is a calibration reference, not a requirement. Actual leveling is player-driven, because one player may clear a hundred dungeons in a tier where another clears forty.
+
+  
+
+|  |  |  |  |  |  |
+| :-: | :-: | :-: | :-: | :-: | :-: |
+| \*\*Tier\*\* | \*\*Level\*\* | \*\*Gear Rarity\*\* | \*\*Gear Level\*\* | \*\*Gems Filled\*\* | \*\*Each Resistance\*\* |
+| T1 | 12 | Everyday | \\+3 | 6 | 8.8% |
+| T2 | 25 | Quality | \\+4 | 11 | 17.5% |
+| T3 | 38 | Superb | \\+5 | 17 | 26.2% |
+| T4 | 50 | Masterful | \\+6 | 22 | 35.0% |
+| T5 | 62 | Legendary | \\+7 | 28 | 43.8% |
+| T6 | 75 | Mythical | \\+8 | 34 | 52.5% |
+| T7 | 88 | Ascendant | \\+9 | 39 | 61.2% |
+| T8 | 100 | Cataclysmic | \\+10 | 45 | 70.0% |
+
+  
+
+Gear and gem rarity equal the difficulty tier because there are eight of each, and because the best upgrade stone that can drop is capped by the current difficulty tier. Gear level is tier + 2 capped at +10, which clears every rarity gate in section VI and reaches exactly +10 at tier 8.
+
+  
+
+This reference character scores 6,327 at tier 8, landing exactly on the tier 8 anchor, and 384 against the tier 1 anchor of 385. The six tiers in between are within 5.3%, and that residual is not a defect of the formula: tier 5 is 1,107 points wide where the surrounding trend is about 790, and no smoothly progressing character can pass through that kink.
 
   
 
