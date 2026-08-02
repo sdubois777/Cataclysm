@@ -42,10 +42,14 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: sim/requirements-dev.txt
+          cache-dependency-path: |
+            sim/requirements-dev.txt
+            tools/requirements.txt
 
       - name: Install development dependencies
-        run: python -m pip install --disable-pip-version-check -r sim/requirements-dev.txt
+        run: |
+          python -m pip install --disable-pip-version-check -r sim/requirements-dev.txt
+          python -m pip install --disable-pip-version-check -r tools/requirements.txt
 
       # Checks for real defects only: syntax errors, undefined names, unused
       # imports, and bugbear rules. Style and import order are not enforced.
