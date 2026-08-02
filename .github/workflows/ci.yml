@@ -69,6 +69,14 @@ jobs:
       - name: Gameplay tag list is current
         run: python tools/generate_gameplay_tags.py --check --strict
 
+      # game/Data/*.csv are generated from the same workbook and each matches a
+      # USTRUCT in game/Source/Cataclysm/Data/CataclysmDataRows.h. A column whose
+      # name does not match imports as a default value with no error, so this is
+      # checked here and again by an Unreal automation test that loads every CSV
+      # through its struct.
+      - name: DataTable CSVs are current
+        run: python tools/generate_datatables.py --check
+
       # The power model is a port of calculateScores.tsx in the separate
       # DungeonSimulator repository. This reports that it skipped, rather than
       # passing quietly, when that repository is not available.

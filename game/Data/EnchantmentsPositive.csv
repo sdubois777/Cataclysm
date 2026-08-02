@@ -1,0 +1,382 @@
+Name,Effect,EnchantmentType,Weight,Tags,IsNegative
+Positive_This_weapon_has_5_20_more_damage_for_every_100,"This weapon has 5-20% more damage for every 100,000-500,000 kills",Generic,1.0,"Item.Slot.Weapon, Trigger.Progression, Stat.Offense.Global",False
+Positive_Ultimate_has_1_3_additional_charges,Ultimate has 1-3 additional charges,Generic,1.0,Slot.Ultimate,False
+Positive_Additional_100_300_crit_multiplier,Additional 100%-300% crit multiplier,Generic,1.0,Stat.Offense.Crit,False
+Positive_Deal_30_50_more_damage_to_Boss_enemies,Deal 30%-50% more damage to Boss enemies,Generic,1.0,"Scope.BossOnly, Stat.Offense.Global",False
+Positive_Gain_5_10_class_points,Gain 5-10 class points,Generic,1.0,Stat.Progression.ClassPoints,False
+Positive_You_have_10_maximum_resists,You have +10 maximum resists,Generic,1.0,Stat.Defense.Resist,False
+Positive_Double_your_energy_shield,Double your energy shield,Generic,1.0,Stat.Defense.EnergyShield,False
+Positive_Double_your_life_leech,Double your life leech,Generic,1.0,Stat.Recovery.Leech,False
+Positive_Your_skills_deal_10_30_of_your_current_mana_as,Your skills deal 10%-30% of your current mana as more damage,Generic,1.0,Stat.Resource.Mana,False
+Positive_Your_evasiveness_is_increased_by_200_500,Your evasiveness is increased by 200%-500%,Generic,1.0,Stat.Defense.Evasion,False
+Positive_Nearby_enemies_deal_10_30_less_damage_to_you,Nearby enemies deal 10%-30% less damage to you,Generic,1.0,Stat.Defense.Global,False
+Positive_Gain_1_3_additional_charges_for_your_cooldown_ab,Gain 1-3 additional charges for your cooldown abilities,Generic,1.0,Scope.Global,False
+Positive_Your_spells_echo_1_time,Your spells echo +1 time,Generic,1.0,Type.Spell,False
+Positive_Gain_10_30_increased_health,Gain 10%-30% increased health,Generic,1.0,Stat.Defense.Life,False
+Positive_Your_abilities_are_free_when_above_80_95_hp,Your abilities are free when above 80%-95% hp,Generic,1.0,"Stat.Defense.Life, Scope.Global",False
+Positive_Traps_do_not_expire_they_remain_armed_until_tr,Traps do not expire — they remain armed until triggered,Generic,1.0,Type.Trap,False
+Positive_When_a_trap_triggers_it_releases_a_shockwave_tha,When a trap triggers it releases a shockwave that arms all traps within 15 meters instantly,Generic,1.0,Type.Trap,False
+Positive_Traps_deal_100_200_increased_damage_to_the_fir,Traps deal 100%-200% increased damage to the first enemy that triggers them,Generic,1.0,Type.Trap,False
+Positive_Your_gadgets_are_invincible_but_lose_5_of_their,Your gadgets are invincible but lose 5% of their maximum HP per second passively,Generic,1.0,Type.Deployable,False
+Positive_Gadgets_copy_the_last_skill_you_used_and_fire_it,Gadgets copy the last skill you used and fire it at their target once every 2 seconds,Generic,1.0,Type.Deployable,False
+Positive_Each_gadget_on_the_battlefield_doubles_the_damag,Each gadget on the battlefield doubles the damage of all your traps,Generic,1.0,"Type.Deployable, Type.Trap",False
+Positive_For_every_3_traps_triggered_your_nearest_gadget,"For every 3 traps triggered, your nearest gadget fires a massive overcharged shot dealing 200%-400% of its normal damage",Generic,1.0,"Type.Trap, Type.Deployable",False
+Positive_Your_ultimate_ability_is_converted_into_a_placea,"Your ultimate ability is converted into a placeable trap. When triggered, it fires your ultimate ability centered on the triggering enemy. Scales off trap damage. All placed copies share the ultimate cooldown.",Generic,1.0,"Type.Trap, Slot.Ultimate",False
+Positive_Your_ultimate_ability_is_converted_into_a_deploy,"Your ultimate ability is converted into a deployable gadget that fires your ultimate ability once per ultimate cooldown, targeting the nearest enemy within range. Scales off gadget damage.",Generic,1.0,"Type.Deployable, Slot.Ultimate",False
+Positive_Your_ultimate_ability_deals_40_80_increased_da,Your ultimate ability deals 40%-80% increased damage,Generic,1.0,Slot.Ultimate,False
+Positive_Your_ultimate_ability_applies_its_effect_twice,Your ultimate ability applies its effect twice,Generic,1.0,Slot.Ultimate,False
+Positive_Using_your_ultimate_ability_resets_all_other_ski,Using your ultimate ability resets all other skill cooldowns,Generic,1.0,Slot.Ultimate,False
+Positive_While_below_50_HP_all_skills_cost_HP_instead_o,"While below 50% HP, all skills cost HP instead of mana and cost 50% less",Generic,1.0,"Stat.Resource.HP, Stat.Defense.Life, Trigger.LowLife",False
+Positive_Enemies_killed_by_necrosis_rise_as_temporary_min,Enemies killed by necrosis rise as temporary minions for 5-10 seconds,Generic,1.0,"Keyword.DoT.Necrosis, Type.Minion, Trigger.OnDeath",False
+Positive_Retaliation_damage_cannot_be_reduced_or_mitigate,Retaliation damage cannot be reduced or mitigated by the attacker,Generic,1.0,Stat.Defense.Retaliation,False
+Positive_Your_retaliation_damage_scales_with_your_current,Your retaliation damage scales with your current HP percentage — the lower your HP the higher the retaliation,Generic,1.0,"Stat.Defense.Retaliation, Stat.Defense.Life, Trigger.LowLife",False
+Positive_While_below_50_HP_your_skills_cost_no_mana,While below 50% HP your skills cost no mana,Generic,1.0,"Trigger.LowLife, Stat.Resource.Mana",False
+Positive_Every_30_seconds_your_next_skill_is_cast_at_300,Every 30 seconds your next skill is cast at 300%-500% effectiveness,Generic,1.0,"Trigger.Timer, Stat.Offense.Global",False
+Positive_For_every_unique_Cataclysm_boss_defeated_gain_5,"For every unique Cataclysm boss defeated, gain 5%-10% more damage permanently",Generic,1.0,"Trigger.Progression, Stat.Offense.Global",False
+Positive_Deal_40_80_increased_damage_to_Boss_enemies,Deal 40%-80% increased damage to Boss enemies,Generic,1.0,"Scope.BossOnly, Stat.Offense.Global",False
+Positive_You_take_20_40_less_damage_from_Boss_enemies,You take 20%-40% less damage from Boss enemies,Generic,1.0,"Scope.BossOnly, Stat.Defense.Global",False
+Positive_Skills_have_1_2_additional_charges_when_fighting,Skills have 1-2 additional charges when fighting Boss enemies,Generic,1.0,Scope.BossOnly,False
+Positive_Blocking_an_attack_has_a_20_40_chance_to_fully,Blocking an attack has a 20%-40% chance to fully negate all damage,Generic,1.0,Stat.Defense.Block,False
+Positive_You_block_for_65_75_of_damage_instead_of_the_n,You block for 65%-75% of damage instead of the normal 50%,Generic,1.0,Stat.Defense.Block,False
+Positive_Your_block_chance_applies_to_AOE_damage_at_50_e,Your block chance applies to AOE damage at 50% effectiveness,Generic,1.0,Stat.Defense.Block,False
+Positive_Gain_3_8_additional_class_points,Gain 3-8 additional class points,Generic,1.0,Stat.Progression.ClassPoints,False
+Positive_Every_time_you_apply_a_DOT_instead_add_2_4_stac,"Every time you apply a DOT, instead add 2-4 stacks",Generic,2.0,Keyword.DoT.Generic,False
+Positive_Projectiles_ricochet_1_4_times,Projectiles ricochet 1-4 times,Generic,2.0,"Type.Projectile, Type.Ranged",False
+Positive_Enemies_killed_by_you_explode_for_the_overkill_a,Enemies killed by you explode for the overkill amount,Generic,2.0,"Type.AOE.PointBlank, Trigger.OnKill",False
+Positive_Your_armor_is_doubled_against_melee_attacks,Your armor is doubled against melee attacks,Generic,2.0,"Stat.Defense.Armor, Stat.Defense.Melee",False
+Positive_Sockets_on_this_equipment_fit_any_gem_type,Sockets on this equipment fit any gem type,Generic,2.0,Item.Slot.Weapon,False
+Positive_Reflect_20_100_of_damage_blocked_back_at_attac,Reflect 20%-100% of damage blocked back at attackers,Generic,2.0,Stat.Defense.Block,False
+Positive_Nearby_allies_gain_10_20_more_damage,Nearby allies gain 10-20% more damage,Generic,2.0,"Type.Buff, Stat.Offense.Global",False
+Positive_Your_spells_cost_10_20_less_mana,Your spells cost 10%-20% less mana,Generic,2.0,"Type.Spell, Stat.Resource.Mana",False
+Positive_Reflect_20_50_of_damage_taken_back_to_attacker,Reflect 20%-50% of damage taken back to attackers,Generic,2.0,Stat.Defense.Retaliation,False
+Positive_Your_melee_attacks_have_a_12_15_chance_to_trig,Your melee attacks have a 12%-15% chance to trigger twice,Generic,2.0,"Type.Strike, Type.Melee",False
+Positive_Skills_get_1_4_to_projectile_count,Skills get +1-4 to projectile count,Generic,2.0,Type.Projectile,False
+Positive_Your_trap_skills_get_1_6_to_max_trap_count,Your trap skills get +1-6 to max trap count,Generic,2.0,Type.Trap,False
+Positive_Add_1_3_to_your_max_deployable_count,Add +1-3 to your max deployable count,Generic,2.0,Type.Deployable,False
+Positive_Traps_trigger_simultaneously_when_any_one_of_the,"Traps trigger simultaneously when any one of them is triggered, if within 8-12 meters of each other",Generic,2.0,Type.Trap,False
+Positive_Traps_deal_bonus_damage_equal_to_5_10_of_the_t,Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum HP,Generic,2.0,Type.Trap,False
+Positive_Enemies_killed_by_traps_explode_dealing_50_100,"Enemies killed by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters",Generic,2.0,"Type.Trap, Type.AOE.PointBlank, Trigger.OnKill",False
+Positive_Each_trap_triggered_in_the_last_10_seconds_incre,Each trap triggered in the last 10 seconds increases your damage by 8%-15%,Generic,2.0,"Type.Trap, Stat.Offense.Global",False
+Positive_Your_traps_ignore_20_40_of_enemy_armor,Your traps ignore 20%-40% of enemy armor,Generic,2.0,"Type.Trap, Stat.Defense.Armor",False
+Positive_When_a_gadget_kills_an_enemy_it_fires_an_additi,"When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range",Generic,2.0,"Type.Deployable, Trigger.OnKill",False
+Positive_Gadgets_deal_bonus_damage_equal_to_3_6_of_your,Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit,Generic,2.0,"Type.Deployable, Stat.Defense.Life",False
+Positive_Your_gadgets_prioritize_the_highest_HP_enemy_wit,Your gadgets prioritize the highest HP enemy within their range instead of the nearest,Generic,2.0,Type.Deployable,False
+Positive_When_any_of_your_gadgets_is_destroyed_all_remai,"When any of your gadgets is destroyed, all remaining gadgets gain 30%-50% increased damage for 5 seconds",Generic,2.0,Type.Deployable,False
+Positive_Gadgets_fire_at_all_enemies_within_range_simulta,Gadgets fire at all enemies within range simultaneously once every 5-8 seconds,Generic,2.0,Type.Deployable,False
+Positive_When_a_trap_is_triggered_near_an_active_gadget,"When a trap is triggered near an active gadget, the gadget fires an immediate bonus shot at the triggering enemy",Generic,2.0,"Type.Trap, Type.Deployable",False
+Positive_When_a_gadget_is_destroyed_it_arms_all_traps_wit,When a gadget is destroyed it arms all traps within 12 meters instantly,Generic,2.0,"Type.Trap, Type.Deployable",False
+Positive_Your_heavy_attack_is_converted_into_a_placeable,"Your heavy attack is converted into a placeable trap. When triggered, it fires your heavy attack at the nearest enemy. Scales off trap damage. All placed copies share the heavy attack cooldown.",Generic,2.0,"Type.Trap, Slot.Heavy",False
+Positive_Your_heavy_attack_is_converted_into_a_deployable,Your heavy attack is converted into a deployable gadget that fires your heavy attack at the nearest enemy within range once per heavy attack cooldown. Scales off gadget damage.,Generic,2.0,"Type.Deployable, Slot.Heavy",False
+Positive_Your_heavy_attack_deals_30_60_increased_damage,Your heavy attack deals 30%-60% increased damage,Generic,2.0,Slot.Heavy,False
+Positive_Your_heavy_attack_has_1_2_additional_charges,Your heavy attack has 1-2 additional charges,Generic,2.0,Slot.Heavy,False
+Positive_Your_heavy_attack_hits_all_enemies_in_a_180_degr,Your heavy attack hits all enemies in a 180 degree arc in front of you,Generic,2.0,"Slot.Heavy, Type.AOE.PointBlank",False
+Positive_Your_special_ability_cooldown_is_reset_when_you,Your special ability cooldown is reset when you kill an enemy,Generic,2.0,"Slot.Special, Trigger.OnKill",False
+Positive_Your_special_ability_has_1_2_additional_charges,Your special ability has 1-2 additional charges,Generic,2.0,Slot.Special,False
+Positive_Your_support_ability_affects_all_allies_within_1,Your support ability affects all allies within 15 meters instead of just yourself,Generic,2.0,"Slot.Support, Type.Buff",False
+Positive_Your_aura_also_applies_its_effect_to_all_allies,Your aura also applies its effect to all allies within range,Generic,2.0,"Slot.Aura, Type.AOE.Aura, Type.Buff",False
+Positive_Your_movement_ability_deals_50_100_of_your_wea,Your movement ability deals 50%-100% of your weapon damage to all enemies along its path,Generic,2.0,"Slot.Movement, Type.Strike",False
+Positive_Your_movement_ability_has_1_2_additional_charges,Your movement ability has 1-2 additional charges,Generic,2.0,Slot.Movement,False
+Positive_Your_movement_ability_leaves_a_persistent_AOE_zo,Your movement ability leaves a persistent AOE zone at both start and end locations for 3-5 seconds,Generic,2.0,"Slot.Movement, Type.AOE.Persistent",False
+Positive_Your_ultimate_ability_cooldown_is_reduced_by_20,Your ultimate ability cooldown is reduced by 20%-40%,Generic,2.0,Slot.Ultimate,False
+Positive_Every_3_blocks_in_quick_succession_triggers_a_sh,Every 3 blocks in quick succession triggers a shockwave dealing 100%-200% weapon damage to nearby enemies,Generic,2.0,"Trigger.OnBlock, Type.AOE.PointBlank",False
+Positive_Critical_hits_grant_a_stack_of_power_increasing,"Critical hits grant a stack of power increasing all damage by 3%-5% for 5 seconds, up to 5 stacks",Generic,2.0,"Trigger.OnCrit, Stat.Offense.Global",False
+Positive_Your_first_critical_hit_against_each_enemy_deals,Your first critical hit against each enemy deals an additional 50%-100% bonus damage,Generic,2.0,"Trigger.OnCrit, Scope.FirstHit",False
+Positive_When_you_dodge_an_attack_your_next_skill_deals_3,When you dodge an attack your next skill deals 30%-60% increased damage,Generic,2.0,"Trigger.OnDodge, Stat.Offense.Global",False
+Positive_When_you_die_all_your_active_traps_and_gadgets,"When you die, all your active traps and gadgets immediately trigger simultaneously",Generic,2.0,"Trigger.OnDeath, Type.Trap, Type.Deployable",False
+Positive_When_you_die_all_active_DoTs_on_nearby_enemies,"When you die, all active DoTs on nearby enemies instantly deal their remaining damage",Generic,2.0,"Trigger.OnDeath, Keyword.DoT.Generic, Type.AOE.PointBlank",False
+Positive_Every_skill_use_has_a_5_15_chance_to_cast_a_se,Every skill use has a 5%-15% chance to cast a second time for free,Generic,2.0,"Trigger.OnSkillUse, Scope.Global",False
+Positive_When_your_class_resource_is_full_your_next_skil,"When your class resource is full, your next skill deals 30%-60% increased damage",Generic,2.0,"Trigger.OnResourceFull, Stat.Offense.Global",False
+Positive_When_your_class_resource_is_full_critical_hit_c,"When your class resource is full, critical hit chance is increased by 15%-30%",Generic,2.0,"Trigger.OnResourceFull, Stat.Offense.Crit",False
+Positive_When_your_class_resource_hits_zero_gain_20_40,"When your class resource hits zero, gain 20%-40% increased damage for 5 seconds",Generic,2.0,"Trigger.OnResourceEmpty, Stat.Offense.Global",False
+Positive_When_your_class_resource_hits_zero_instantly_re,"When your class resource hits zero, instantly restore 20%-40% of your maximum HP",Generic,2.0,"Trigger.OnResourceEmpty, Stat.Defense.Life",False
+Positive_When_your_class_resource_hits_zero_all_skill_co,"When your class resource hits zero, all skill cooldowns are reduced by 2-4 seconds",Generic,2.0,Trigger.OnResourceEmpty,False
+Positive_Each_unique_debuff_you_apply_to_an_enemy_increas,Each unique debuff you apply to an enemy increases your damage against that enemy by 5%-10%,Generic,2.0,"Trigger.OnStatusApplied, Type.Debuff, Stat.Offense.Global",False
+Positive_Staggered_enemies_take_20_35_increased_damage,Staggered enemies take 20%-35% increased damage from all sources,Generic,2.0,"Keyword.Stagger, Stat.Offense.Global",False
+Positive_Enemies_you_stagger_are_also_briefly_rooted_for,Enemies you stagger are also briefly rooted for 0.5-1.5 seconds,Generic,2.0,"Keyword.Stagger, Keyword.CC",False
+Positive_Charge_skills_deal_30_60_bonus_damage_proporti,Charge skills deal 30%-60% bonus damage proportional to distance traveled,Generic,2.0,"Keyword.Charge, Stat.Offense.Global",False
+Positive_Charge_skills_leave_a_persistent_AOE_zone_at_the,Charge skills leave a persistent AOE zone at the impact point for 3-6 seconds,Generic,2.0,"Keyword.Charge, Type.AOE.Persistent",False
+Positive_Your_energy_shield_absorbs_10_20_of_HP_damage,Your energy shield absorbs 10%-20% of HP damage before your HP is affected,Generic,2.0,"Keyword.Shield, Stat.Defense.EnergyShield",False
+Positive_When_your_energy_shield_fully_recharges_release,"When your energy shield fully recharges, release a nova dealing 50%-100% weapon damage to nearby enemies",Generic,2.0,"Keyword.Shield, Type.AOE.PointBlank",False
+Positive_Damage_absorbed_by_your_energy_shield_is_convert,Damage absorbed by your energy shield is converted to bonus damage on your next attack,Generic,2.0,"Keyword.Shield, Stat.Defense.EnergyShield, Stat.Offense.Global",False
+Positive_Each_summon_reduces_all_your_skill_cooldowns_by,Each summon reduces all your skill cooldowns by 1-2 seconds,Generic,2.0,"Keyword.Summon, Type.Summon",False
+Positive_While_moving_your_damage_is_increased_by_15_30,"While moving, your damage is increased by 15%-30%",Generic,2.0,"Scope.WhileMoving, Stat.Offense.Global",False
+Positive_While_moving_you_take_10_20_less_damage,"While moving, you take 10%-20% less damage",Generic,2.0,"Scope.WhileMoving, Stat.Defense.Global",False
+Positive_While_stationary_your_damage_is_increased_by_20,"While stationary, your damage is increased by 20%-40%",Generic,2.0,"Scope.WhileStationary, Stat.Offense.Global",False
+Positive_While_stationary_you_take_15_30_less_damage,"While stationary, you take 15%-30% less damage",Generic,2.0,"Scope.WhileStationary, Stat.Defense.Global",False
+Positive_While_stationary_for_more_than_3_seconds_your_a,"While stationary for more than 3 seconds, your armor is doubled",Generic,2.0,"Scope.WhileStationary, Stat.Defense.Armor",False
+Positive_Your_first_hit_against_each_enemy_deals_100_300,Your first hit against each enemy deals 100%-300% bonus damage,Generic,2.0,Scope.FirstHit,False
+Positive_Your_first_hit_against_each_enemy_applies_all_yo,Your first hit against each enemy applies all your active DoTs instantly,Generic,2.0,"Scope.FirstHit, Keyword.DoT.Generic",False
+Positive_Your_skills_ignore_10_25_of_enemy_armor,Your skills ignore 10%-25% of enemy armor,Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Armor",False
+Positive_Your_skills_ignore_10_25_of_enemy_resistances,Your skills ignore 10%-25% of enemy resistances,Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Resist",False
+Positive_You_take_20_40_less_damage_from_spells,You take 20%-40% less damage from spells,Generic,2.0,Stat.Defense.Spell,False
+Positive_Spells_that_hit_you_have_a_15_30_chance_to_be,Spells that hit you have a 15%-30% chance to be absorbed dealing no damage,Generic,2.0,Stat.Defense.Spell,False
+Positive_Absorbed_spell_damage_is_converted_to_bonus_dama,Absorbed spell damage is converted to bonus damage on your next attack,Generic,2.0,"Stat.Defense.Spell, Stat.Offense.Global",False
+Positive_Reflect_20_40_of_damage_taken_back_at_attacker,Reflect 20%-40% of damage taken back at attackers as retaliation damage,Generic,2.0,Stat.Defense.Retaliation,False
+Positive_Retaliation_damage_is_increased_by_50_100_whil,Retaliation damage is increased by 50%-100% while your HP is below 50%,Generic,2.0,"Trigger.LowLife, Stat.Defense.Retaliation",False
+Positive_Retaliation_damage_applies_to_all_enemies_within,Retaliation damage applies to all enemies within 3 meters when you are hit,Generic,2.0,"Type.AOE.PointBlank, Stat.Defense.Retaliation",False
+Positive_Regenerate_1_3_of_your_maximum_HP_per_second,Regenerate 1%-3% of your maximum HP per second,Generic,2.0,"Stat.Recovery.Regen, Stat.Defense.Life",False
+Positive_Your_HP_regeneration_continues_at_50_effectiven,Your HP regeneration continues at 50% effectiveness during combat,Generic,2.0,"Stat.Recovery.Regen, Stat.Defense.Life",False
+Positive_Energy_shield_regeneration_begins_immediately_af,Energy shield regeneration begins immediately after taking damage with no delay,Generic,2.0,"Stat.Recovery.Regen, Stat.Defense.EnergyShield, Keyword.Shield",False
+Positive_Skills_can_spend_HP_instead_of_mana_at_a_3_1_rat,Skills can spend HP instead of mana at a 3:1 ratio,Generic,2.0,"Stat.Resource.HP, Stat.Defense.Life, Stat.Resource.Mana",False
+Positive_Skills_that_cost_HP_restore_that_amount_as_mana,Skills that cost HP restore that amount as mana,Generic,2.0,"Stat.Resource.HP, Stat.Resource.Mana",False
+Positive_Your_class_resource_generates_20_40_faster,Your class resource generates 20%-40% faster,Generic,2.0,Stat.Resource.ClassResource,False
+Positive_Your_maximum_class_resource_is_increased_by_20,Your maximum class resource is increased by 20%-40%,Generic,2.0,Stat.Resource.ClassResource,False
+Positive_Your_class_resource_does_not_decay_out_of_combat,Your class resource does not decay out of combat,Generic,2.0,Stat.Resource.ClassResource,False
+Positive_Melee_skills_deal_20_40_increased_damage,Melee skills deal 20%-40% increased damage,Generic,2.0,"Type.Melee, Stat.Offense.Global",False
+Positive_Ranged_skills_deal_20_40_increased_damage,Ranged skills deal 20%-40% increased damage,Generic,2.0,"Type.Ranged, Stat.Offense.Global",False
+Positive_Ranged_skills_deal_10_20_bonus_damage_for_each,Ranged skills deal 10%-20% bonus damage for each meter of distance to the target,Generic,2.0,"Type.Ranged, Stat.Offense.Global",False
+Positive_Buff_effects_you_apply_are_20_40_more_potent,Buff effects you apply are 20%-40% more potent,Generic,2.0,Type.Buff,False
+Positive_Applying_a_buff_to_yourself_also_applies_it_to_a,Applying a buff to yourself also applies it to all allies within 8 meters,Generic,2.0,Type.Buff,False
+Positive_Each_active_buff_on_you_increases_your_damage_by,Each active buff on you increases your damage by 5%-10%,Generic,2.0,"Type.Buff, Stat.Offense.Global",False
+Positive_Debuffed_enemies_take_10_20_increased_damage_f,Debuffed enemies take 10%-20% increased damage from all sources,Generic,2.0,"Type.Debuff, Stat.Offense.Global",False
+Positive_Each_unique_debuff_on_an_enemy_increases_your_cr,Each unique debuff on an enemy increases your crit chance against them by 5%-10%,Generic,2.0,"Type.Debuff, Stat.Offense.Crit",False
+Positive_Healing_skills_restore_30_60_more_HP,Healing skills restore 30%-60% more HP,Generic,2.0,"Type.Heal, Stat.Defense.Life",False
+Positive_Overheal_converts_to_a_temporary_shield_absorbin,Overheal converts to a temporary shield absorbing up to 10%-20% of your max HP,Generic,2.0,"Type.Heal, Keyword.Shield, Stat.Defense.EnergyShield",False
+Positive_Summon_skills_have_30_60_reduced_cooldown,Summon skills have 30%-60% reduced cooldown,Generic,2.0,"Type.Summon, Keyword.Summon",False
+Positive_You_can_have_1_2_additional_minions_active_simul,You can have 1-2 additional minions active simultaneously,Generic,2.0,"Type.Summon, Type.Minion",False
+Positive_When_a_minion_dies_it_automatically_re_summons_a,When a minion dies it automatically re-summons after 3-6 seconds,Generic,2.0,"Type.Summon, Type.Minion",False
+Positive_Burn_effects_you_apply_deal_30_60_increased_da,Burn effects you apply deal 30%-60% increased damage per second,Generic,2.0,Keyword.DoT.Burn,False
+Positive_Burn_effects_you_apply_spread_to_1_2_nearby_enem,Burn effects you apply spread to 1-2 nearby enemies,Generic,2.0,"Keyword.DoT.Burn, Type.AOE.PointBlank",False
+Positive_Your_burn_effects_have_a_20_40_chance_to_explo,Your burn effects have a 20%-40% chance to explode for double their remaining damage when they expire,Generic,2.0,"Keyword.DoT.Burn, Type.AOE.PointBlank",False
+Positive_Poison_effects_you_apply_deal_30_60_increased,Poison effects you apply deal 30%-60% increased damage per second,Generic,2.0,Keyword.DoT.Poison,False
+Positive_Poison_stacks_on_an_enemy_reduce_their_damage_ou,Poison stacks on an enemy reduce their damage output by 2%-4% per stack,Generic,2.0,"Keyword.DoT.Poison, Type.Debuff",False
+Positive_Disease_effects_you_apply_spread_to_1_3_nearby_e,Disease effects you apply spread to 1-3 nearby enemies when the afflicted enemy dies,Generic,2.0,"Keyword.DoT.Disease, Trigger.OnDeath",False
+Positive_Disease_effects_reduce_enemy_healing_by_50_100,Disease effects reduce enemy healing by 50%-100%,Generic,2.0,"Keyword.DoT.Disease, Type.Debuff",False
+Positive_Necrosis_effects_deal_20_40_of_their_remaining,Necrosis effects deal 20%-40% of their remaining damage instantly when you land a critical hit,Generic,2.0,"Keyword.DoT.Necrosis, Trigger.OnCrit",False
+Positive_Necrosis_stacks_reduce_enemy_maximum_HP_by_1_2,Necrosis stacks reduce enemy maximum HP by 1%-2% per stack,Generic,2.0,"Keyword.DoT.Necrosis, Type.Debuff",False
+Positive_Void_splinter_stacks_detonate_for_50_100_incre,Void splinter stacks detonate for 50%-100% increased damage,Generic,2.0,Keyword.DoT.VoidSplinter,False
+Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh,Void splinter stacks spread to nearby enemies when the afflicted enemy dies,Generic,2.0,"Keyword.DoT.VoidSplinter, Trigger.OnDeath, Type.AOE.PointBlank",False
+Positive_Your_retaliation_damage_is_increased_by_50_100,Your retaliation damage is increased by 50%-100%,Generic,2.0,Stat.Defense.Retaliation,False
+Positive_Your_retaliation_damage_is_increased_by_5_10_f,Your retaliation damage is increased by 5%-10% for each point of armor you have,Generic,2.0,"Stat.Defense.Retaliation, Stat.Defense.Armor",False
+Positive_Your_retaliation_damage_is_tripled_while_below_3,Your retaliation damage is tripled while below 30% HP,Generic,2.0,"Stat.Defense.Retaliation, Trigger.LowLife",False
+Positive_Retaliation_damage_hits_all_enemies_within_3_5_m,Retaliation damage hits all enemies within 3-5 meters of you,Generic,2.0,"Stat.Defense.Retaliation, Type.AOE.PointBlank",False
+Positive_Each_hit_you_take_increases_your_retaliation_dam,"Each hit you take increases your retaliation damage by 5%-10% for 5 seconds, stacking up to 10 times",Generic,2.0,"Stat.Defense.Retaliation, Trigger.OnHit",False
+Positive_100_of_your_block_value_is_added_to_your_retali,100% of your block value is added to your retaliation damage,Generic,2.0,"Stat.Defense.Retaliation, Stat.Defense.Block",False
+Positive_Spells_deal_20_40_increased_damage,Spells deal 20%-40% increased damage,Generic,2.0,"Type.Spell, Stat.Offense.Global",False
+Positive_Spells_have_a_10_20_chance_to_cast_a_second_ti,Spells have a 10%-20% chance to cast a second time for free,Generic,2.0,Type.Spell,False
+Positive_Spells_pierce_through_all_enemies_in_their_path,Spells pierce through all enemies in their path,Generic,2.0,"Type.Spell, Type.Projectile",False
+Positive_Spell_critical_hits_deal_50_100_increased_dama,Spell critical hits deal 50%-100% increased damage,Generic,2.0,"Type.Spell, Stat.Offense.Crit",False
+Positive_Spells_ignore_15_30_of_enemy_resistances,Spells ignore 15%-30% of enemy resistances,Generic,2.0,"Type.Spell, Stat.Offense.Penetration",False
+Positive_Your_spells_leave_a_persistent_AOE_zone_at_the_i,Your spells leave a persistent AOE zone at the impact point lasting 2-4 seconds,Generic,2.0,"Type.Spell, Type.AOE.Persistent",False
+Positive_Spells_deal_10_20_bonus_damage_for_each_active,Spells deal 10%-20% bonus damage for each active buff on you,Generic,2.0,"Type.Spell, Type.Buff",False
+Positive_While_below_30_HP_your_attack_speed_is_increase,While below 30% HP your attack speed is increased by 30%-60%,Generic,2.0,"Trigger.LowLife, Stat.Offense.Speed",False
+Positive_While_below_30_HP_you_are_immune_to_crowd_contr,While below 30% HP you are immune to crowd control,Generic,2.0,"Trigger.LowLife, Keyword.CC",False
+Positive_While_below_40_HP_you_deal_30_60_increased_da,While below 40% HP you deal 30%-60% increased damage,Generic,2.0,"Trigger.LowLife, Stat.Offense.Global",False
+Positive_While_below_25_HP_you_take_30_50_less_damage,While below 25% HP you take 30%-50% less damage,Generic,2.0,"Trigger.LowLife, Stat.Defense.Global",False
+Positive_While_below_50_HP_your_leech_is_doubled,While below 50% HP your leech is doubled,Generic,2.0,"Trigger.LowLife, Stat.Recovery.Leech",False
+Positive_Killing_an_enemy_while_below_30_HP_instantly_re,Killing an enemy while below 30% HP instantly restores 15%-25% of your maximum HP,Generic,2.0,"Trigger.LowLife, Trigger.OnKill, Stat.Defense.Life",False
+Positive_Every_20_seconds_all_your_skill_cooldowns_are_in,Every 20 seconds all your skill cooldowns are instantly reset,Generic,2.0,Trigger.Timer,False
+Positive_Every_12_seconds_gain_a_shield_absorbing_15_25,Every 12 seconds gain a shield absorbing 15%-25% of your maximum HP in damage,Generic,2.0,"Trigger.Timer, Keyword.Shield, Stat.Defense.EnergyShield",False
+Positive_Your_damage_is_increased_by_0_01_0_05_permanen,Your damage is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run,Generic,2.0,"Trigger.Progression, Stat.Offense.Global",False
+Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm,Your maximum HP is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run,Generic,2.0,"Trigger.Progression, Stat.Defense.Life",False
+Positive_Your_armor_is_increased_by_1_2_for_every_dunge,Your armor is increased by 1%-2% for every dungeon floor cleared this run,Generic,2.0,"Trigger.Progression, Stat.Defense.Armor",False
+Positive_Your_cooldowns_reset_50_100_faster_when_fighti,Your cooldowns reset 50%-100% faster when fighting Boss enemies,Generic,2.0,Scope.BossOnly,False
+Positive_Critical_hit_chance_is_increased_by_20_40_agai,Critical hit chance is increased by 20%-40% against Boss enemies,Generic,2.0,"Scope.BossOnly, Stat.Offense.Crit",False
+Positive_Your_block_chance_is_increased_by_10_20,Your block chance is increased by 10%-20%,Generic,2.0,Stat.Defense.Block,False
+Positive_Each_successful_block_increases_your_next_attack,"Each successful block increases your next attack's damage by 10%-20%, stacking up to 5 times",Generic,2.0,"Stat.Defense.Block, Stat.Offense.Global",False
+Positive_Consecutive_blocks_within_3_seconds_each_block_5,Consecutive blocks within 3 seconds each block 5%-10% more damage,Generic,2.0,Stat.Defense.Block,False
+Positive_Strike_skills_deal_20_40_increased_damage_agai,Strike skills deal 20%-40% increased damage against enemies affected by a DoT,Generic,2.0,"Type.Strike, Keyword.DoT.Generic",False
+Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi,"Strike skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6 stacks",Generic,2.0,"Type.Strike, Stat.Defense.Armor",False
+Positive_Strike_skills_have_a_10_20_chance_to_execute_e,Strike skills have a 10%-20% chance to execute enemies below 15% HP,Generic,2.0,"Type.Strike, Trigger.LowLife",False
+Positive_Bleed_stacks_you_apply_deal_30_60_increased_da,Bleed stacks you apply deal 30%-60% increased damage,Generic,2.0,Keyword.DoT.Bleed,False
+Positive_Enemies_with_5_or_more_bleed_stacks_take_20_40,Enemies with 5 or more bleed stacks take 20%-40% increased damage from all sources,Generic,2.0,"Keyword.DoT.Bleed, Stat.Offense.Global",False
+Positive_Critical_hits_apply_2_4_additional_bleed_stacks,Critical hits apply 2-4 additional bleed stacks,Generic,2.0,"Keyword.DoT.Bleed, Trigger.OnCrit",False
+Positive_When_an_enemy_dies_with_bleed_stacks_the_stacks,When an enemy dies with bleed stacks the stacks spread to the nearest enemy within 5 meters,Generic,2.0,"Keyword.DoT.Bleed, Trigger.OnDeath, Type.AOE.PointBlank",False
+Positive_Bleed_damage_you_deal_also_leeches_10_20_of_it,Bleed damage you deal also leeches 10%-20% of its value as HP,Generic,2.0,"Keyword.DoT.Bleed, Stat.Recovery.Leech",False
+Positive_Persistent_AOE_zones_deal_10_20_increased_dama,Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them,Generic,2.0,"Type.AOE.Persistent, Stat.Offense.Global",False
+Positive_You_deal_15_30_increased_damage_to_enemies_sta,You deal 15%-30% increased damage to enemies standing in your persistent AOE zones,Generic,2.0,"Type.AOE.Persistent, Stat.Offense.Global",False
+Positive_Your_persistent_AOE_zones_follow_you_as_you_move,Your persistent AOE zones follow you as you move at 50% of your movement speed,Generic,2.0,Type.AOE.Persistent,False
+Positive_You_take_15_30_less_damage_from_melee_attacks,You take 15%-30% less damage from melee attacks,Generic,2.0,Stat.Defense.Melee,False
+Positive_Melee_attacks_that_hit_you_have_a_10_20_chance,Melee attacks that hit you have a 10%-20% chance to be reflected back as retaliation damage,Generic,2.0,"Stat.Defense.Melee, Stat.Defense.Retaliation",False
+Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d,"Each melee hit you take reduces the attacker's damage by 3%-5% for 3 seconds, stacking up to 5 times",Generic,2.0,"Stat.Defense.Melee, Type.Debuff",False
+Positive_Your_critical_hits_ignore_20_40_of_enemy_armor,Your critical hits ignore 20%-40% of enemy armor,Generic,2.0,"Stat.Offense.Penetration, Stat.Offense.Crit, Stat.Defense.Armor",False
+Positive_Your_DoTs_ignore_20_40_of_enemy_resistances,Your DoTs ignore 20%-40% of enemy resistances,Generic,2.0,"Stat.Offense.Penetration, Keyword.DoT.Generic, Stat.Defense.Resist",False
+Positive_Your_first_hit_against_each_enemy_ignores_all_ar,Your first hit against each enemy ignores all armor,Generic,2.0,"Stat.Offense.Penetration, Scope.FirstHit, Stat.Defense.Armor",False
+Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo,"Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking indefinitely",Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Armor",False
+Positive_Each_class_point_spent_above_100_grants_0_5_1,Each class point spent above 100 grants 0.5%-1% increased damage,Generic,2.0,"Stat.Progression.ClassPoints, Stat.Offense.Global",False
+Positive_Class_points_spent_in_your_primary_tree_are_10,Class points spent in your primary tree are 10%-20% more effective,Generic,2.0,Stat.Progression.ClassPoints,False
+Positive_Your_first_hit_against_each_enemy_in_a_combat_ig,Your first hit against each enemy in a combat ignores all resistances,Generic,3.0,"Scope.FirstHit, Stat.Defense.Resist",False
+Positive_This_weapon_has_2_4_damage_types,This weapon has 2-4 damage types,Generic,3.0,"Element.Demonic, Element.Celestial, Element.Void, Element.Death, Element.War, Element.Pestilence, Element.Chaos, Element.Famine, Item.Slot.Weapon",False
+Positive_You_take_5_20_less_damage_from_melee_attacks,You take 5-20% less damage from melee attacks,Generic,3.0,Stat.Defense.Melee,False
+Positive_Unaffected_by_bleeding,Unaffected by bleeding,Generic,3.0,Keyword.DoT.Bleed,False
+Positive_You_are_cleansed_every_5_seconds,You are cleansed every 5 seconds,Generic,3.0,Trigger.Timer,False
+Positive_DoTs_deal_damage_to_your_mana_pool_first,DoTs deal damage to your mana pool first,Generic,3.0,"Keyword.DoT.Generic, Stat.Resource.Mana",False
+Positive_Your_movement_abilities_no_longer_share_a_cooldo,Your movement abilities no longer share a cooldown,Generic,3.0,Slot.Movement,False
+Positive_Gain_5_15_of_your_damage_as_health_leech,Gain 5%-15% of your damage as health leech,Generic,3.0,Stat.Recovery.Leech,False
+Positive_Each_skill_has_a_20_40_chance_to_cast_a_duplic,Each skill has a 20%-40% chance to cast a duplicate at 50% damage,Generic,3.0,Scope.Global,False
+Positive_Blocking_attacks_deals_200_400_of_your_armor_a,Blocking attacks deals 200%-400% of your armor as damage to nearby enemies,Generic,3.0,"Stat.Defense.Armor, Stat.Defense.Block, Type.AOE.PointBlank",False
+Positive_Your_auras_are_20_50_more_effective,Your auras are 20%-50% more effective,Generic,3.0,"Type.AOE.Aura, Slot.Aura",False
+Positive_Gain_30_50_more_armor,Gain 30%-50% more armor,Generic,3.0,Stat.Defense.Armor,False
+Positive_Leech_50_100_more,Leech 50%-100% more,Generic,3.0,Stat.Recovery.Leech,False
+Positive_Your_cooldown_abilities_have_a_5_20_chance_to,Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage,Generic,3.0,Scope.Global,False
+Positive_Gain_20_50_movespeed,Gain 20%-50% movespeed,Generic,3.0,Stat.Utility.Movespeed,False
+Positive_Your_movement_abilities_pull_all_nearby_enemies,Your movement abilities pull all nearby enemies to you on arrival,Generic,3.0,"Slot.Movement, Keyword.CC",False
+Positive_Your_movement_abilities_cause_an_explosion_at_th,Your movement abilities cause an explosion at the starting and end locations,Generic,3.0,"Slot.Movement, Type.AOE.PointBlank",False
+Positive_When_a_trap_is_triggered_the_nearest_unarmed_tr,"When a trap is triggered, the nearest unarmed trap within 10 meters arms instantly",Generic,3.0,Type.Trap,False
+Positive_Traps_deal_15_30_increased_damage_for_each_oth,Traps deal 15%-30% increased damage for each other trap currently active on the battlefield,Generic,3.0,Type.Trap,False
+Positive_Triggered_traps_have_a_25_50_chance_to_reset_a,Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed,Generic,3.0,Type.Trap,False
+Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug,Traps apply 1-2 bleed stacks to all enemies caught in their blast,Generic,3.0,"Type.Trap, Keyword.DoT.Bleed",False
+Positive_When_a_trap_triggers_all_enemies_within_4_6_met,"When a trap triggers, all enemies within 4-6 meters are pulled toward the blast center",Generic,3.0,"Type.Trap, Keyword.CC",False
+Positive_Traps_deal_30_50_of_their_damage_as_a_DoT_over,Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered enemies,Generic,3.0,"Type.Trap, Keyword.DoT.Generic",False
+Positive_Placing_a_trap_generates_a_burst_of_evasion_gra,"Placing a trap generates a burst of evasion, granting 10%-20% evasion chance for 3 seconds",Generic,3.0,"Type.Trap, Stat.Defense.Evasion",False
+Positive_Gadgets_deal_5_10_increased_damage_for_each_se,"Gadgets deal 5%-10% increased damage for each second they have been active, up to 30 seconds",Generic,3.0,Type.Deployable,False
+Positive_When_a_gadget_is_destroyed_the_nearest_active_t,"When a gadget is destroyed, the nearest active trap within 10 meters is triggered immediately",Generic,3.0,"Type.Deployable, Type.Trap",False
+Positive_Gadgets_apply_a_15_25_armor_reduction_to_enemi,Gadgets apply a 15%-25% armor reduction to enemies they hit for 3 seconds,Generic,3.0,"Type.Deployable, Stat.Defense.Armor",False
+Positive_Each_active_gadget_increases_your_evasion_chance,Each active gadget increases your evasion chance by 5%-10%,Generic,3.0,"Type.Deployable, Stat.Defense.Evasion",False
+Positive_Gadgets_that_survive_for_15_seconds_gain_a_perma,Gadgets that survive for 15 seconds gain a permanent 20%-40% damage bonus for the rest of their duration,Generic,3.0,Type.Deployable,False
+Positive_Gadgets_apply_a_1_2_second_stagger_to_enemies_th,"Gadgets apply a 1-2 second stagger to enemies they hit, once every 5 seconds",Generic,3.0,"Type.Deployable, Keyword.CC",False
+Positive_Each_active_gadget_increases_trap_damage_by_10,Each active gadget increases trap damage by 10%-20%,Generic,3.0,"Type.Trap, Type.Deployable",False
+Positive_Your_basic_attack_is_converted_into_a_placeable,"Your basic attack is converted into a placeable trap. When triggered, it fires your basic attack at the nearest enemy. Scales off trap damage. Shares your basic attack cooldown across all placed copies.",Generic,3.0,"Type.Trap, Slot.Basic, Scope.BasicOnly",False
+Positive_Your_basic_attack_is_converted_into_a_deployable,"Your basic attack is converted into a deployable gadget that fires your basic attack at the nearest enemy within range, once per basic attack cooldown. Scales off gadget damage.",Generic,3.0,"Type.Deployable, Slot.Basic, Scope.BasicOnly",False
+Positive_Your_heavy_attack_applies_its_full_effect_twice,Your heavy attack applies its full effect twice if you have not moved in the last 2 seconds,Generic,3.0,"Slot.Heavy, Scope.WhileStationary",False
+Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5,Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a critical hit,Generic,3.0,"Slot.Heavy, Trigger.OnCrit",False
+Positive_Your_special_ability_has_20_40_increased_area,Your special ability has 20%-40% increased area of effect,Generic,3.0,Slot.Special,False
+Positive_Your_special_ability_deals_20_40_increased_dam,Your special ability deals 20%-40% increased damage while you are moving,Generic,3.0,"Slot.Special, Scope.WhileMoving",False
+Positive_Your_support_ability_duration_is_increased_by_50,Your support ability duration is increased by 50%-100%,Generic,3.0,Slot.Support,False
+Positive_Your_support_ability_cooldown_is_reduced_by_20,Your support ability cooldown is reduced by 20%-40%,Generic,3.0,Slot.Support,False
+Positive_Your_aura_affects_a_30_60_larger_area,Your aura affects a 30%-60% larger area,Generic,3.0,"Slot.Aura, Type.AOE.Aura",False
+Positive_Your_aura_costs_30_50_less_mana_per_second,Your aura costs 30%-50% less mana per second,Generic,3.0,"Slot.Aura, Stat.Resource.Mana",False
+Positive_After_using_your_movement_ability_your_next_atta,After using your movement ability your next attack deals 30%-60% increased damage,Generic,3.0,"Slot.Movement, Stat.Offense.Global",False
+Positive_Blocking_an_attack_has_a_20_40_chance_to_reset,Blocking an attack has a 20%-40% chance to reset your heavy attack cooldown,Generic,3.0,"Trigger.OnBlock, Slot.Heavy",False
+Positive_Blocking_an_attack_grants_10_20_increased_dama,Blocking an attack grants 10%-20% increased damage for 3 seconds,Generic,3.0,"Trigger.OnBlock, Stat.Offense.Global",False
+Positive_Blocking_an_attack_restores_3_6_of_your_maximu,Blocking an attack restores 3%-6% of your maximum HP,Generic,3.0,"Trigger.OnBlock, Stat.Defense.Life",False
+Positive_Blocking_an_attack_generates_5_10_of_your_clas,Blocking an attack generates 5%-10% of your class resource,Generic,3.0,"Trigger.OnBlock, Stat.Resource.ClassResource",False
+Positive_Critical_hits_restore_2_4_of_your_maximum_HP,Critical hits restore 2%-4% of your maximum HP,Generic,3.0,"Trigger.OnCrit, Stat.Defense.Life",False
+Positive_Critical_hits_apply_a_random_DoT_to_the_target,Critical hits apply a random DoT to the target,Generic,3.0,"Trigger.OnCrit, Keyword.DoT.Generic",False
+Positive_Critical_hits_have_a_15_30_chance_to_reset_you,Critical hits have a 15%-30% chance to reset your movement ability cooldown,Generic,3.0,"Trigger.OnCrit, Slot.Movement",False
+Positive_When_you_dodge_an_attack_gain_15_30_increased,When you dodge an attack gain 15%-30% increased damage for 3 seconds,Generic,3.0,"Trigger.OnDodge, Stat.Offense.Global",False
+Positive_Dodging_an_attack_restores_5_10_of_your_maximu,Dodging an attack restores 5%-10% of your maximum HP,Generic,3.0,"Trigger.OnDodge, Stat.Defense.Life",False
+Positive_Dodging_an_attack_has_a_20_40_chance_to_reset,Dodging an attack has a 20%-40% chance to reset your movement ability cooldown,Generic,3.0,"Trigger.OnDodge, Slot.Movement",False
+Positive_When_an_enemy_dies_near_you_restore_5_10_of_y,"When an enemy dies near you, restore 5%-10% of your maximum HP",Generic,3.0,"Trigger.OnDeath, Trigger.OnKill, Stat.Defense.Life",False
+Positive_Each_skill_use_generates_1_3_of_your_maximum_c,Each skill use generates 1%-3% of your maximum class resource,Generic,3.0,"Trigger.OnSkillUse, Stat.Resource.ClassResource",False
+Positive_When_your_class_resource_is_full_gain_10_20_d,"When your class resource is full, gain 10%-20% damage reduction for 3 seconds",Generic,3.0,"Trigger.OnResourceFull, Stat.Defense.Global",False
+Positive_When_your_class_resource_is_full_your_movement,"When your class resource is full, your movement speed is increased by 15%-30%",Generic,3.0,"Trigger.OnResourceFull, Stat.Utility.Movespeed",False
+Positive_Applying_a_DoT_to_an_enemy_grants_5_10_increas,"Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds, stacking up to 5 times",Generic,3.0,"Trigger.OnStatusApplied, Keyword.DoT.Generic, Stat.Offense.Global",False
+Positive_Applying_a_CC_effect_grants_10_20_increased_mo,Applying a CC effect grants 10%-20% increased movement speed for 3 seconds,Generic,3.0,"Trigger.OnStatusApplied, Keyword.CC, Stat.Utility.Movespeed",False
+Positive_Stagger_effects_you_apply_last_50_100_longer,Stagger effects you apply last 50%-100% longer,Generic,3.0,"Keyword.Stagger, Keyword.CC",False
+Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta,Hitting a staggered enemy resets your heavy attack cooldown,Generic,3.0,"Keyword.Stagger, Slot.Heavy, Trigger.OnHit",False
+Positive_Charge_skills_knock_down_enemies_they_hit_for_1,Charge skills knock down enemies they hit for 1-2 seconds,Generic,3.0,"Keyword.Charge, Keyword.CC, Keyword.Stagger",False
+Positive_After_using_a_charge_skill_gain_20_40_increase,After using a charge skill gain 20%-40% increased attack speed for 4 seconds,Generic,3.0,"Keyword.Charge, Stat.Offense.Speed",False
+Positive_Your_energy_shield_recharges_30_60_faster,Your energy shield recharges 30%-60% faster,Generic,3.0,"Keyword.Shield, Stat.Defense.EnergyShield, Stat.Recovery.Regen",False
+Positive_Summoned_minions_deal_30_50_increased_damage_f,Summoned minions deal 30%-50% increased damage for the first 5 seconds after being summoned,Generic,3.0,"Keyword.Summon, Type.Minion, Type.Summon",False
+Positive_Summoning_a_minion_grants_you_5_10_increased_d,Summoning a minion grants you 5%-10% increased damage for 5 seconds,Generic,3.0,"Keyword.Summon, Type.Summon, Stat.Offense.Global",False
+Positive_Summoned_minions_inherit_10_25_of_your_armor_a,Summoned minions inherit 10%-25% of your armor and resistances,Generic,3.0,"Keyword.Summon, Type.Minion, Stat.Defense.Armor",False
+Positive_Consuming_a_resource_stack_or_charge_grants_5_1,Consuming a resource stack or charge grants 5%-10% increased damage for 3 seconds,Generic,3.0,"Keyword.Consume, Stat.Offense.Global",False
+Positive_Each_resource_or_charge_consumed_restores_1_3,Each resource or charge consumed restores 1%-3% of your maximum HP,Generic,3.0,"Keyword.Consume, Stat.Defense.Life",False
+Positive_While_moving_your_leech_is_increased_by_20_40,"While moving, your leech is increased by 20%-40%",Generic,3.0,"Scope.WhileMoving, Stat.Recovery.Leech",False
+Positive_While_moving_your_DoTs_deal_20_40_increased_d,"While moving, your DoTs deal 20%-40% increased damage",Generic,3.0,"Scope.WhileMoving, Keyword.DoT.Generic",False
+Positive_While_moving_your_evasion_chance_is_increased_b,"While moving, your evasion chance is increased by 10%-20%",Generic,3.0,"Scope.WhileMoving, Stat.Defense.Evasion",False
+Positive_While_stationary_your_gadgets_deal_20_40_incr,"While stationary, your gadgets deal 20%-40% increased damage",Generic,3.0,"Scope.WhileStationary, Type.Deployable",False
+Positive_While_stationary_your_aura_radius_is_doubled,"While stationary, your aura radius is doubled",Generic,3.0,"Scope.WhileStationary, Slot.Aura, Type.AOE.Aura",False
+Positive_Your_first_hit_against_each_enemy_has_a_50_100,Your first hit against each enemy has a 50%-100% chance to stagger them,Generic,3.0,"Scope.FirstHit, Keyword.Stagger, Keyword.CC",False
+Positive_Your_ranged_skills_have_20_40_increased_range,Your ranged skills have 20%-40% increased range,Generic,3.0,"Stat.Offense.Range, Type.Ranged",False
+Positive_Your_melee_skills_have_20_40_increased_reach,Your melee skills have 20%-40% increased reach,Generic,3.0,"Stat.Offense.Range, Type.Melee",False
+Positive_Your_aura_radius_is_increased_by_30_60,Your aura radius is increased by 30%-60%,Generic,3.0,"Stat.Offense.Range, Slot.Aura, Type.AOE.Aura",False
+Positive_Your_retaliation_damage_also_applies_a_random_Do,Your retaliation damage also applies a random DoT to attackers,Generic,3.0,"Keyword.DoT.Generic, Stat.Defense.Retaliation",False
+Positive_Regenerate_2_5_of_your_maximum_mana_per_second,Regenerate 2%-5% of your maximum mana per second,Generic,3.0,"Stat.Recovery.Regen, Stat.Resource.Mana",False
+Positive_HP_regeneration_is_doubled_while_out_of_combat,HP regeneration is doubled while out of combat,Generic,3.0,"Stat.Recovery.Regen, Stat.Defense.Life",False
+Positive_When_your_class_resource_is_above_75_all_skill,"When your class resource is above 75%, all skills cost 20%-40% less mana",Generic,3.0,"Stat.Resource.ClassResource, Stat.Resource.Mana",False
+Positive_Melee_skills_have_a_10_20_chance_to_hit_all_en,Melee skills have a 10%-20% chance to hit all enemies within 3 meters,Generic,3.0,"Type.Melee, Type.AOE.PointBlank",False
+Positive_Each_consecutive_melee_hit_on_the_same_enemy_inc,Each consecutive melee hit on the same enemy increases damage by 5%-10% up to 8 stacks,Generic,3.0,"Type.Melee, Stat.Offense.Global",False
+Positive_Melee_kills_restore_3_6_of_your_maximum_HP,Melee kills restore 3%-6% of your maximum HP,Generic,3.0,"Type.Melee, Trigger.OnKill, Stat.Defense.Life",False
+Positive_Ranged_skills_have_30_60_increased_projectile,Ranged skills have 30%-60% increased projectile speed,Generic,3.0,"Type.Ranged, Type.Projectile",False
+Positive_Ranged_kills_have_a_20_40_chance_to_refund_the,Ranged kills have a 20%-40% chance to refund the skill cooldown,Generic,3.0,"Type.Ranged, Trigger.OnKill",False
+Positive_Buff_effects_you_apply_last_30_60_longer,Buff effects you apply last 30%-60% longer,Generic,3.0,Type.Buff,False
+Positive_Debuff_effects_you_apply_last_30_60_longer,Debuff effects you apply last 30%-60% longer,Generic,3.0,Type.Debuff,False
+Positive_Applying_a_debuff_to_an_enemy_reduces_their_dama,Applying a debuff to an enemy reduces their damage output by 10%-20%,Generic,3.0,Type.Debuff,False
+Positive_Healing_skills_also_restore_10_20_of_the_heale,Healing skills also restore 10%-20% of the healed amount as energy shield,Generic,3.0,"Type.Heal, Stat.Defense.EnergyShield, Keyword.Shield",False
+Positive_Using_a_healing_skill_grants_10_20_increased_d,Using a healing skill grants 10%-20% increased damage for 5 seconds,Generic,3.0,"Type.Heal, Stat.Offense.Global",False
+Positive_Summoned_minions_have_30_50_increased_HP,Summoned minions have 30%-50% increased HP,Generic,3.0,"Type.Summon, Type.Minion",False
+Positive_Enemies_affected_by_your_burn_effects_have_10_2,Enemies affected by your burn effects have 10%-20% reduced armor,Generic,3.0,"Keyword.DoT.Burn, Stat.Defense.Armor",False
+Positive_Enemies_with_5_or_more_poison_stacks_are_slowed,Enemies with 5 or more poison stacks are slowed by 30%-50%,Generic,3.0,"Keyword.DoT.Poison, Keyword.CC",False
+Positive_Poison_stacks_you_apply_have_30_60_increased_d,Poison stacks you apply have 30%-60% increased duration,Generic,3.0,Keyword.DoT.Poison,False
+Positive_Disease_effects_you_apply_also_reduce_enemy_armo,Disease effects you apply also reduce enemy armor by 5%-15%,Generic,3.0,"Keyword.DoT.Disease, Stat.Defense.Armor",False
+Positive_Each_void_splinter_stack_on_an_enemy_increases_y,Each void splinter stack on an enemy increases your damage against them by 3%-5%,Generic,3.0,"Keyword.DoT.VoidSplinter, Stat.Offense.Global",False
+Positive_Your_retaliation_damage_also_applies_a_bleed_sta,Your retaliation damage also applies a bleed stack to the attacker,Generic,3.0,"Stat.Defense.Retaliation, Keyword.DoT.Bleed",False
+Positive_Retaliation_damage_has_a_20_40_chance_to_stagg,Retaliation damage has a 20%-40% chance to stagger the attacker,Generic,3.0,"Stat.Defense.Retaliation, Keyword.Stagger",False
+Positive_Retaliation_damage_applies_a_2_4_second_slow_to,Retaliation damage applies a 2-4 second slow to the attacker,Generic,3.0,"Stat.Defense.Retaliation, Keyword.CC",False
+Positive_Spells_have_20_40_increased_area_of_effect,Spells have 20%-40% increased area of effect,Generic,3.0,"Type.Spell, Type.AOE.PointBlank",False
+Positive_Each_spell_cast_reduces_your_next_spell_cooldown,Each spell cast reduces your next spell cooldown by 0.5-1.5 seconds,Generic,3.0,Type.Spell,False
+Positive_While_below_35_HP_your_movement_speed_is_increa,While below 35% HP your movement speed is increased by 20%-40%,Generic,3.0,"Trigger.LowLife, Stat.Utility.Movespeed",False
+Positive_Every_10_seconds_gain_a_stack_of_momentum_granti,"Every 10 seconds gain a stack of momentum granting 5%-10% increased damage, up to 5 stacks",Generic,3.0,"Trigger.Timer, Stat.Offense.Global",False
+Positive_Every_8_seconds_your_next_attack_deals_100_200,Every 8 seconds your next attack deals 100%-200% increased damage,Generic,3.0,"Trigger.Timer, Stat.Offense.Global",False
+Positive_Every_15_seconds_regenerate_10_20_of_your_maxi,Every 15 seconds regenerate 10%-20% of your maximum HP instantly,Generic,3.0,"Trigger.Timer, Stat.Defense.Life, Stat.Recovery.Regen",False
+Positive_Blocked_attacks_restore_1_3_of_your_maximum_ma,Blocked attacks restore 1%-3% of your maximum mana,Generic,3.0,"Stat.Defense.Block, Stat.Resource.Mana",False
+Positive_Strike_skills_have_a_15_30_chance_to_apply_a_r,Strike skills have a 15%-30% chance to apply a random debuff on hit,Generic,3.0,"Type.Strike, Type.Debuff",False
+Positive_Strike_skills_generate_5_10_of_your_class_reso,Strike skills generate 5%-10% of your class resource on hit,Generic,3.0,"Type.Strike, Stat.Resource.ClassResource",False
+Positive_Bleed_stacks_you_apply_have_50_100_increased_d,Bleed stacks you apply have 50%-100% increased duration,Generic,3.0,Keyword.DoT.Bleed,False
+Positive_Your_bleed_stacks_also_reduce_enemy_movement_spe,Your bleed stacks also reduce enemy movement speed by 5%-10% per stack,Generic,3.0,"Keyword.DoT.Bleed, Keyword.CC",False
+Positive_Your_persistent_AOE_zones_also_slow_enemies_with,Your persistent AOE zones also slow enemies within them by 20%-35%,Generic,3.0,"Type.AOE.Persistent, Keyword.CC",False
+Positive_Enemies_that_enter_your_persistent_AOE_zones_are,Enemies that enter your persistent AOE zones are briefly staggered,Generic,3.0,"Type.AOE.Persistent, Keyword.Stagger, Keyword.CC",False
+Positive_Persistent_AOE_zones_apply_a_DoT_to_enemies_stan,Persistent AOE zones apply a DoT to enemies standing in them,Generic,3.0,"Type.AOE.Persistent, Keyword.DoT.Generic",False
+Positive_Increase_your_auras_AOE_by_100,Increase your auras AOE by 100%,Generic,4.0,"Type.AOE.Aura, Slot.Aura",False
+Positive_Add_2_4_to_your_maximum_minion_count,Add 2-4 to your maximum minion count,Generic,4.0,Type.Minion,False
+Positive_Your_minions_leave_behind_chaos_pools_when_they,Your minions leave behind chaos pools when they die,Generic,4.0,"Type.Minion, Element.Chaos",False
+Positive_Gain_5_10_attack_speed_on_basic_attack_for_4_s,Gain 5%-10% attack speed on basic attack for 4 seconds,Generic,4.0,"Stat.Offense.Speed, Scope.BasicOnly, Slot.Basic",False
+Positive_Teleport_to_a_random_location_within_4_meters_wh,Teleport to a random location within 4 meters when hit,Generic,4.0,"Slot.Movement, Trigger.OnHit",False
+Positive_Gain_50_100_increased_damage_while_under_the_e,Gain 50%-100% increased damage while under the effect of a DoT,Generic,4.0,Keyword.DoT.Generic,False
+Positive_Regenerate_5_10_of_your_maximum_mana_per_secon,Regenerate 5%-10% of your maximum mana per second,Generic,4.0,"Stat.Resource.Mana, Stat.Recovery.Regen",False
+Positive_Gain_20_50_increased_movespeed_after_taking_da,Gain 20%-50% increased movespeed after taking damage,Generic,4.0,"Stat.Utility.Movespeed, Trigger.OnHit",False
+Positive_When_you_evade_a_ranged_attack_throw_an_attack,"When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at that enemy",Generic,4.0,"Stat.Defense.Evasion, Type.Projectile",False
+Positive_25_50_of_damage_taken_is_dealt_over_4_8_second,25%-50% of damage taken is dealt over 4-8 seconds,Generic,4.0,Keyword.DoT.Generic,False
+Positive_Traps_arm_30_60_faster,Traps arm 30%-60% faster,Generic,4.0,Type.Trap,False
+Positive_Traps_have_30_50_increased_trigger_radius,Traps have 30%-50% increased trigger radius,Generic,4.0,Type.Trap,False
+Positive_Traps_deal_20_40_increased_damage,Traps deal 20%-40% increased damage,Generic,4.0,Type.Trap,False
+Positive_Traps_last_50_100_longer_before_expiring,Traps last 50%-100% longer before expiring,Generic,4.0,Type.Trap,False
+Positive_Traps_apply_a_20_35_slow_to_triggered_enemies,Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds,Generic,4.0,"Type.Trap, Keyword.CC",False
+Positive_Gadgets_fire_20_40_faster,Gadgets fire 20%-40% faster,Generic,4.0,Type.Deployable,False
+Positive_Gadgets_deal_20_40_increased_damage,Gadgets deal 20%-40% increased damage,Generic,4.0,Type.Deployable,False
+Positive_Gadgets_have_40_70_increased_HP,Gadgets have 40%-70% increased HP,Generic,4.0,Type.Deployable,False
+Positive_Gadgets_last_30_60_longer,Gadgets last 30%-60% longer,Generic,4.0,Type.Deployable,False
+Positive_Gadgets_have_20_40_increased_attack_range,Gadgets have 20%-40% increased attack range,Generic,4.0,Type.Deployable,False
+Positive_Your_special_ability_is_converted_into_a_placeab,"Your special ability is converted into a placeable trap. When triggered, it activates your special ability centered on the triggering enemy. Scales off trap damage. All placed copies share the special ability cooldown.",Generic,4.0,"Type.Trap, Slot.Special",False
+Positive_Your_support_ability_is_converted_into_a_placeab,"Your support ability is converted into a placeable trap. When triggered, it activates your support ability centered on the triggering enemy. Scales off trap damage. All placed copies share the support ability cooldown.",Generic,4.0,"Type.Trap, Slot.Support, Type.Buff",False
+Positive_Your_special_ability_is_converted_into_a_deploya,"Your special ability is converted into a deployable gadget that activates your special ability once per special ability cooldown, targeting the nearest enemy within range. Scales off gadget damage.",Generic,4.0,"Type.Deployable, Slot.Special",False
+Positive_Your_support_ability_is_converted_into_a_deploya,"Your support ability is converted into a deployable gadget that activates your support ability once per support ability cooldown, centered on its current location. Scales off gadget damage.",Generic,4.0,"Type.Deployable, Slot.Support, Type.Buff",False
+Positive_Using_your_support_ability_grants_you_10_20_in,Using your support ability grants you 10%-20% increased movement speed for 3 seconds,Generic,4.0,"Slot.Support, Stat.Utility.Movespeed",False
+Positive_Each_skill_use_increases_your_movement_speed_by,"Each skill use increases your movement speed by 3%-5% for 2 seconds, stacking up to 5 times",Generic,4.0,"Trigger.OnSkillUse, Stat.Utility.Movespeed",False
+Positive_Casting_a_spell_grants_5_10_increased_movement,Casting a spell grants 5%-10% increased movement speed for 3 seconds,Generic,4.0,"Type.Spell, Stat.Utility.Movespeed",False
+Positive_Every_10_seconds_your_movement_speed_is_increase,Every 10 seconds your movement speed is increased by 30%-50% for 3 seconds,Generic,4.0,"Trigger.Timer, Stat.Utility.Movespeed",False
+Positive_After_being_hit_by_a_melee_attack_you_gain_10_2,After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds,Generic,4.0,"Stat.Defense.Melee, Stat.Utility.Movespeed, Trigger.OnHit",False
+Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc,Archon's Aegis (2-Piece Bonus): Your block chance is increased by 25%,Set,5.0,Stat.Defense.Block,False
+Positive_Archon_s_Aegis_6_Piece_Bonus_When_you_block_a,"Archon's Aegis (6-Piece Bonus): When you block an attack, you become immune to all damage for 3 seconds. (10s cd)",Set,5.0,Stat.Defense.Block,False
+Positive_Archon_s_Aegis_10_Piece_Bonus_When_your_healt,"Archon's Aegis (10-Piece Bonus): When your health falls below 10%, you are instantly healed to 100% of your maximum health. (10 minute cd)",Set,5.0,Stat.Defense.Life,False
+Positive_Tyrant_s_Chains_2_Piece_Bonus_Your_pets_and_m,Tyrant's Chains (2-Piece Bonus): Your pets and minions deal 50% more damage,Set,6.0,Type.Minion,False
+Positive_Tyrant_s_Chains_6_Piece_Bonus_When_a_pet_or_m,"Tyrant's Chains (6-Piece Bonus): When a pet or minion dies, it explodes, dealing 50% of its maximum health as Death damage to all nearby enemies. Additionally, a new, powerful Tyrant's Minion is summoned to fight for you for a short duration",Set,6.0,"Type.Minion, Element.Death",False
+Positive_Tyrant_s_Chains_10_Piece_Bonus_Your_Tyrant_s,Tyrant's Chains (10-Piece Bonus): Your Tyrant's Minion now casts your ultimate ability every 3 seconds,Set,6.0,"Type.Minion, Slot.Ultimate",False
+Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de,Chronomancer's Time-Lock (2-Piece Bonus): All debuffs you apply to enemies now last 50% longer,Set,7.0,"Type.Debuff, Keyword.CC",False
+Positive_Chronomancer_s_Time_Lock_6_Piece_Bonus_When_a,"Chronomancer's Time-Lock (6-Piece Bonus): When an enemy dies while affected by one of your debuffs, there is a 25% chance for a 'Time-Lock' to occur. This freezes all nearby enemies for 2 seconds",Set,7.0,"Type.Debuff, Keyword.CC, Trigger.OnKill",False
+Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every,"Chronomancer's Time-Lock (10-Piece Bonus): Every 30 seconds, a ""temporal rift"" appears around you. All enemies that enter the rift are frozen in time for 5 seconds and take 500% more damage from all sources. Every enemy caught in it extends the duration by 1s",Set,7.0,"Type.Debuff, Keyword.CC, Type.AOE.Persistent",False
+Positive_Mana_Weaver_2_Piece_Bonus_Your_maximum_mana_i,Mana Weaver (2-Piece Bonus): Your maximum mana is increased by 20%,Set,8.0,Stat.Resource.Mana,False
+Positive_Mana_Weaver_6_Piece_Bonus_You_gain_an_aura_th,"Mana Weaver (6-Piece Bonus): You gain an aura that makes you and nearby allies immune to all mana-draining effects. Additionally, every 5 seconds, you gain a stack of ""Mana Surge"" for every 100 maximum mana. Each stack increases your spell damage by 1% for 5 seconds",Set,8.0,"Type.AOE.Aura, Slot.Aura, Stat.Resource.Mana, Type.Spell",False
+Positive_Mana_Weaver_10_Piece_Bonus_Your_ultimate_abil,"Mana Weaver (10-Piece Bonus): Your ultimate ability no longer has a cooldown. Instead, its mana cost is doubled every time you use it. This cost resets at the beginning of every dungeon",Set,8.0,"Slot.Ultimate, Stat.Resource.Mana",False
+Positive_Brute_s_Heart_2_Piece_Bonus_You_gain_25_incr,Brute's Heart (2-Piece Bonus): You gain 25% increased damage against enemies that are within 5 meters of you,Set,9.0,"Scope.MeleeOnly, Stat.Offense.Global",False
+Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,"Brute's Heart (6-Piece Bonus): When your health falls below 50%, you gain a powerful aura that taunts all nearby enemies and increases your armor and resistances by 50%",Set,9.0,"Stat.Defense.Life, Type.AOE.Aura, Slot.Aura, Stat.Defense.Armor, Stat.Defense.Resist, Trigger.LowLife, Keyword.CC",False
+Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds,"Brute's Heart (10-Piece Bonus): Every 30 seconds, you can unleash a powerful ""Ground Pound"" that deals 500% of your armor as damage to all enemies in a large radius and stuns them for 3 seconds. The cooldown of this ability is reduced by 0.5 seconds per kill",Set,9.0,"Stat.Defense.Armor, Type.AOE.PointBlank, Keyword.CC, Trigger.OnKill",False
+Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at,Spellblade's Will (2-Piece Bonus): Your melee attacks have a 25% chance to trigger an ability with a cooldown,Set,10.0,"Type.Strike, Type.Melee",False
+Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use,"Spellblade's Will (6-Piece Bonus): When you use a melee attack, you gain a stack of Spellslinger which reduces the mana cost of your spells by 10% per stack, and when you use a spell, you gain a stack of Dervish which increases your attack speed for melee attacks by 10% per stack",Set,10.0,"Type.Strike, Stat.Resource.Mana, Type.Spell, Stat.Offense.Speed",False
+Positive_Spellblade_s_Will_10_Piece_Bonus_Your_melee_a,Spellblade's Will (10-Piece Bonus): Your melee attacks have a 25% of triggering one of your spells. This does not put the spell on cooldown but does use it's mana cost,Set,10.0,"Type.Strike, Type.Spell",False
+Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2,Demon King's Regalia (2-Piece Bonus): You deal 25% more damage to enemies that are within 5 meters of you.,Set,11.0,"Scope.MeleeOnly, Stat.Offense.Global",False
+Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your,"Demon King's Regalia (6-Piece Bonus): When your health falls below 25%, you enter a ""Demonic Rage"" becoming immune to all crowd control and dealing 100% more damage for 10 seconds. (5 minute cd)",Set,11.0,"Stat.Defense.Life, Trigger.LowLife, Keyword.CC",False
+Positive_Demon_King_s_Regalia_10_Piece_Bonus_If_you_wo,"Demon King's Regalia (10-Piece Bonus): If you would be killed during Demonic Rage, instead gain 100% crit chance and crit multi and become immune to all damage for 3 seconds. Killing a Rare or higher enemy instanly heals you to full, failing to results in your death",Set,11.0,"Stat.Offense.Crit, Trigger.LowLife, Trigger.OnKill",False
+Positive_Plague_Doctor_2_Piece_Bonus_Your_DoT_effects,Plague Doctor (2-Piece Bonus): Your DoT effects deal 25% more damage,Set,12.0,Keyword.DoT.Generic,False
+Positive_Plague_Doctor_6_Piece_Bonus_When_you_apply_a,"Plague Doctor (6-Piece Bonus): When you apply a DoT to an enemy, all other DoTs you have on that enemy have their duration refreshed",Set,12.0,Keyword.DoT.Generic,False
+Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di,"Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT from you, it explodes and applies all of your DoTs to all nearby enemies",Set,12.0,"Keyword.DoT.Generic, Type.AOE.PointBlank, Trigger.OnKill",False
+Positive_Starvation_2_Piece_Bonus_You_have_5_life_m,"Starvation (2-Piece Bonus): You have +5% life, mana, and es leech.",Set,13.0,"Stat.Recovery.Leech, Stat.Resource.ClassResource",False
+Positive_Starvation_6_Piece_Bonus_You_gain_5_damage_r,Starvation (6-Piece Bonus): You gain 5% damage reduction for each active unique instance of leech,Set,13.0,Stat.Recovery.Leech,False
+Positive_Starvation_10_Piece_Bonus_When_you_kill_an_en,"Starvation (10-Piece Bonus): When you kill an enemy, gain a stack of ""Famished."" Each stack increases all of your leech by 5%. Stacks last 4 seconds",Set,13.0,Stat.Recovery.Leech,False
+Positive_Null_Emperor_2_Piece_Bonus_Your_attacks_have,Null Emperor (2-Piece Bonus): Your attacks have a 25% chance to silence an enemy for 1 second,Set,14.0,"Type.Strike, Type.Melee, Keyword.CC",False
+Positive_Null_Emperor_6_Piece_Bonus_Every_time_you_hit,"Null Emperor (6-Piece Bonus): Every time you hit a silenced enemy, you gain a stack of ""Void."" At 10 stacks, your next ability costs no mana and deals 100% more damage",Set,14.0,"Stat.Resource.Mana, Keyword.Consume",False
+Positive_Null_Emperor_10_Piece_Bonus_While_you_have_at,"Null Emperor (10-Piece Bonus): While you have at least 10 stacks of Void, you gain an aura of void energy that has a 50% chance to consume enemy projectiles",Set,14.0,"Type.AOE.Aura, Slot.Aura, Stat.Defense.Ranged",False
+Positive_Shard_of_Anarchy_2_Piece_Bonus_Every_30_secon,"Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to you",Set,15.0,"Trigger.Timer, Type.Buff, Type.Debuff",False
+Positive_Shard_of_Anarchy_6_Piece_Bonus_When_you_take,"Shard of Anarchy (6-Piece Bonus): When you take damage, you have a 10% chance to become immune to the damage type that hit you for 5 seconds",Set,15.0,,False
+Positive_Shard_of_Anarchy_10_Piece_Bonus_Every_30_seco,"Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Temporal Flux.' When you use a skill, you consume all stacks of 'Temporal Flux' and your skill is cast a random number of times. The bonus is permanent for the rest of the dungeon",Set,15.0,"Keyword.Consume, Scope.Global",False
+Positive_Divine_Retribution_2_Piece_Bonus_Your_energy,Divine Retribution (2-Piece Bonus): Your energy shield is increased by 25%,Set,16.0,Stat.Defense.EnergyShield,False
+Positive_Divine_Retribution_6_Piece_Bonus_When_your_en,"Divine Retribution (6-Piece Bonus): When your energy shield is broken, you smite all nearby enemies",Set,16.0,Stat.Defense.EnergyShield,False
+Positive_Divine_Retribution_10_Piece_Bonus_Every_10_se,"Divine Retribution (10-Piece Bonus): Every 10 seconds, you gain a stack of 'Sanctified Power.' When you block an attack, you consume all stacks of 'Sanctified Power' and all of your skills are instantly refreshed. The bonus is permanent for the rest of the dungeon",Set,16.0,"Stat.Defense.Block, Keyword.Consume, Trigger.OnBlock",False
+Positive_Warlord_s_Will_2_Piece_Bonus_Your_armor_is_in,Warlord's Will (2-Piece Bonus): Your armor is increased by 25%,Set,17.0,Stat.Defense.Armor,False
+Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,"Warlord's Will (6-Piece Bonus): When you take damage, you have a 10% chance to summon a ""Warhound"" to fight for you for a short duration. The Warhound taunts enemies and deals damage based on your armor",Set,17.0,"Type.Minion, Stat.Defense.Armor",False
+Positive_Warlord_s_Will_10_Piece_Bonus_Every_30_second,"Warlord's Will (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Tactical Advantage.' When you use a movement ability, you consume all stacks of 'Tactical Advantage' and gain 100% more movement speed and 50% more damage for 5 seconds. This bonus scales with the number of enemies in the area",Set,17.0,"Stat.Utility.Movespeed, Slot.Movement, Slot.Movement, Keyword.Consume",False
+Positive_Reaper_s_Embrace_2_Piece_Bonus_You_gain_10_m,Reaper's Embrace (2-Piece Bonus): You gain 10% more life from all sources,Set,18.0,Stat.Defense.Life,False
+Positive_Reaper_s_Embrace_6_Piece_Bonus_When_a_minion,"Reaper's Embrace (6-Piece Bonus): When a minion or pet dies, it leaves behind a ""Soul"" that can be picked up. Picking up a Soul grants a stack of Soul Strike that increases your damage by 10% for 5 seconds. Max 10 stacks.",Set,18.0,Type.Minion,False
+Positive_Reaper_s_Embrace_10_Piece_Bonus_For_each_stac,"Reaper's Embrace (10-Piece Bonus): For each stack of Soul Strike you gain 5% cull on hit. Killing an enemy instanly spawns one of your minions, up to your max",Set,18.0,Type.Minion,False

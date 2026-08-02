@@ -1,0 +1,26 @@
+Name,GemName,Effect,GemType,Quality,Superb,Masterful,Legendary,Mythical,Ascendant,Cataclysmic
+Gem_Of_The_Abyss,Of The Abyss,10% chance to apply void splinter,Attack,0.3,0.5,0.75,1.0,1.25,1.5,2.0
+Gem_Of_The_Viper,Of The Viper,20% chance to apply poison,Attack,0.4,0.6,0.8,1.0,1.2,1.4,1.8
+Gem_Of_Rending,Of Rending,10% chance to apply bleed,Attack,0.3,0.5,0.7,0.9,1.1,1.3,1.5
+Gem_Of_Madness,Of Madness,10% chance to apply madness,Attack,0.15,0.2,0.25,0.3,0.35,0.4,0.6
+Gem_Of_Rot,Of Rot,15% chance to apply disease,Attack,0.3,0.45,0.6,0.75,0.9,1.05,1.2
+Gem_Of_Ticking,Of Ticking,Increases DoT Freq by 10%,Attack,0.15,0.2,0.25,0.3,0.35,0.4,0.6
+Gem_Of_Striking,Of Striking,Increases Attack Speed by 10%,Attack,0.15,0.2,0.25,0.3,0.35,0.4,0.6
+Gem_Of_Hatred,Of Hatred,Increases Crit Multi by 5%,Attack,0.1,0.15,0.2,0.25,0.3,0.35,0.55
+Gem_Of_Ferocity,Of Ferocity,Increases Crit by 25%,Attack,0.3,0.35,0.4,0.45,0.5,0.55,0.75
+Gem_Of_Recovery,Of Recovery,Increases hp regen by 10%,Defense,0.15,0.2,0.25,0.3,0.35,0.4,0.6
+Gem_Of_Shielding,Of Shielding,Increases energy shield regen by 5%,Defense,0.1,0.15,0.2,0.25,0.3,0.35,0.55
+Gem_Of_The_Titan,Of The Titan,Increases Armor by 10%,Defense,0.15,0.2,0.25,0.3,0.35,0.4,0.6
+Gem_Of_The_Bulwark,Of The Bulwark,Increases Block by 15%,Defense,0.2,0.25,0.3,0.35,0.4,0.45,0.65
+Gem_Of_The_Wraith,Of The Wraith,Increases Evasiveness by 15%,Defense,0.2,0.25,0.3,0.35,0.4,0.45,0.65
+Gem_Of_The_Mage,Of The Mage,Increases Energy Shield by 5%,Defense,0.1,0.15,0.2,0.25,0.3,0.35,0.55
+Gem_Of_Life,Of Life,Increases HP by 5%,Defense,0.15,0.25,0.35,0.45,0.55,0.65,0.85
+Gem_Of_Maiming,Of Maiming,10% chance to apply cripple,Utility,0.25,0.4,0.55,0.7,0.85,1.0,1.2
+Gem_Of_Withering,Of Withering,10% chance to apply weaken,Utility,0.15,0.2,0.25,0.3,0.35,0.4,0.6
+Gem_Of_Shredding,Of Shredding,10% chance to apply shred,Utility,0.2,0.3,0.4,0.5,0.6,0.7,0.9
+Gem_Of_Rejuvination,Of Rejuvination,Increases mana regen by 5%,Utility,0.1,0.15,0.2,0.25,0.3,0.35,0.55
+Gem_Of_Quickness,Of Quickness,Increases movespeed by 1%,Utility,0.02,0.03,0.04,0.05,0.06,0.07,0.1
+Gem_Of_Area,Of Area,Increases AoE by 10%,Utility,0.2,0.3,0.4,0.5,0.6,0.7,0.9
+Gem_Of_Recovery_1,Of Recovery,Increases CDR by 10%,Utility,0.2,0.3,0.4,0.5,0.6,0.7,0.9
+Gem_Of_Mana,Of Mana,Increases Mana by 5%,Utility,0.1,0.15,0.2,0.25,0.3,0.35,0.55
+Gem_Of_The_Goblin,Of The Goblin,Increases Rarity Find by .5%,Utility,0.01,0.015,0.02,0.025,0.03,0.035,0.05

@@ -1,0 +1,47 @@
+Name,EffectKind,EffectName,Description
+Buff_Mana_Surge,Buff,Mana Surge,Increases spell damage by 1% for 5 seconds for every 100 maximum mana.
+Buff_Warhound,Buff,Warhound,A temporary minion that taunts enemies and deals damage.
+Buff_Tactical_Advantage,Buff,Tactical Advantage,Increases movement speed and damage by 35% after using a movement ability.
+Buff_Plague,Buff,Plague,"At 10 stacks, spreads all DoTs to nearby enemies."
+Buff_Demonic_Rage,Buff,Demonic Rage,"When your health falls below 25%, you become immune to crowd control and deal 100% more damage for 10 seconds."
+Buff_Sanctified_Power,Buff,Sanctified Power,"A stack gained every 10 seconds. When an attack is blocked, all of your skills are instantly refreshed."
+Buff_Temporal_Flux,Buff,Temporal Flux,"A stack gained every 30 seconds. When a skill is used, it is cast a random number of times."
+Buff_Void,Buff,Void,"At 10 stacks, your next ability costs no mana and deals 100% more damage."
+Buff_Death,Buff,Death,"Every 10 seconds, when a skill is used, it has a 25% chance to instantly kill an enemy below 50% health."
+Buff_Spellslinger,Buff,Spellslinger,Each stack reduces the mana cost of your abilities by 10%.
+Buff_Dervish,Buff,Dervish,Increases your attack speed for melee attacks by 10% per stack.
+Buff_Famished,Buff,Famished,Increases all of your leech by 5%.
+Buff_Warzone_Control_Points,Buff,Warzone Control Points,Holding these provides strategic advantages.
+Buff_Divine_Aegis,Buff,Divine Aegis,"Gain a divine shield when below 50% HP, reducing all damage taken by 75%."
+Buff_Commander,Buff,Commander,All nearby allies gain 20% increased stats.
+Buff_Chaotic_Barrier,Buff,Chaotic Barrier,Temporarily grants a random buff when attacked.
+Buff_The_Ascended,Buff,The Ascended,A powerful buff granted to all nearby enemies when this enemy is killed.
+Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feast"" every time it is hit, and for every stack, its attack speed is increased."
+Debuff_Temporal_Debt,Debuff,Temporal Debt,A stacking debuff that freezes all your cooldowns for 5 seconds when it reaches 10 stacks.
+Debuff_Withered_Touch,Debuff,Withered Touch,An effect that reduces player damage output and mana/energy shield for a short duration.
+Debuff_Haunting,Debuff,Haunting,A debuff applied by a spectral copy of an enemy that reduces all of a player's resistances.
+Debuff_Wither,Debuff,Wither,"A debuff that, at 10 stacks, reduces the player's movement and attack speed."
+Debuff_Infernal_Brand,Debuff,Infernal Brand,"A stacking debuff that explodes at 5 stacks, dealing a large amount of fire damage to the player."
+Debuff_Abyssal_Aura,Debuff,Abyssal Aura,A debuff that reduces the player's Demonic and War resistances by 25%.
+Debuff_Starforged,Debuff,Starforged,A stacking debuff that reduces the player's damage and increases the damage they take.
+Debuff_Nullifying,Debuff,Nullifying,"A debuff that removes a single, random buff from the player."
+Debuff_Echoing,Debuff,Echoing,A stacking debuff that reduces the player's damage and movement speed.
+Debuff_Reality_Bender,Debuff,Reality Bender,An effect that inflicts a random debuff on the player.
+Debuff_The_Deceiver,Debuff,The Deceiver,A debuff applied to the player when an illusion is hit.
+Debuff_Manic,Debuff,Manic,An aura of chaos that causes all nearby enemies to deal more damage but also take more damage.
+Debuff_Toxic_Trail,Debuff,Toxic Trail,Enemies leave behind a poison cloud that applies a poison debuff.
+Debuff_Battle_Cry,Debuff,Battle Cry,A terrifying shout that reduces the player's resistances or armor for 5 seconds.
+Debuff_Contagion,Debuff,Contagion,A debuff that mirrors DoTs and debuffs back onto the player.
+Debuff_Starving_Aura,Debuff,Starving Aura,An aura that reduces healing and health regeneration effects by 50%.
+Debuff_Final_Curse,Debuff,Final Curse,"Upon death, this enemy curses the player for 5 seconds, causing them to take damage when using abilities."
+Debuff_Shared_Pain,Debuff,Shared Pain,A debuff that distributes damage taken across nearby allies.
+Debuff_Soul_Tether,Debuff,Soul Tether,A debuff that transfers a portion of damage taken to the player as health degeneration over time.
+Debuff_Touch_of_Nothing,Debuff,Touch of Nothing,"When a player gains a buff, a stack of this debuff is consumed to negate that buff completely."
+DoT_Bleed,DoT,Bleed,Applied by the Primal Instinct enchantment and the Of Rending gem.
+DoT_Poison,DoT,Poison,Applied by the Toxic Trail enemy modifier and the Of The Viper gem.
+DoT_Disease,DoT,Disease,Applied by the Raw Sewage dungeon modifier and the Of Rot gem.
+DoT_Burn,DoT,Burn,Applied by the Infernal Brand and Hellfire Aura enemy modifiers.
+DoT_Necrosis,DoT,Necrosis,A stacking dot that reduces healing by 10% per stack and does damage over time
+DoT_Necrotic_Fog,DoT,Necrotic Fog,A dungeon modifier that deals damage over time.
+DoT_Void_Splinter,DoT,Void Splinter,Deals 1% of current HP per second over 4 seconds. Applied by the Of The Abyss gem.
+DoT_Void_Rift,DoT,Void Rift,Enemies create small void zones that deal heavy damage over time to the player.

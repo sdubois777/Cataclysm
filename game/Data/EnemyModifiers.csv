@@ -1,0 +1,80 @@
+Name,CataclysmType,ModifierName,Description
+Demonic_Hellfire_Aura,Demonic,Hellfire Aura,Emits a burning aura that deals constant fire damage to nearby players
+Demonic_Succubus,Demonic,Succubus,"When taking damage from a player, charm them for 2 seconds. Players cannot deal direct damage to you while charmed."
+Demonic_Infernal_Sacrifice,Demonic,Infernal Sacrifice,Sacrifice nearby allies to heal yourself and gain temporary damage buffs.
+Demonic_Unholy_Sigils,Demonic,Unholy Sigils,Create a large demonic sigil on the ground. Allies in this sigil cannot be killed.
+Demonic_Abyssal_Aura,Demonic,Abyssal Aura,This enemy is surrounded by an aura of pure demonic energy. Players within the aura's radius will have their Demonic resistance reduced by 25%.
+Demonic_Sacrificial_Bond,Demonic,Sacrificial Bond,All damage taken is redirected and divided among nearby allies.
+Demonic_Inferno_Charge,Demonic,Inferno Charge,"Channel for 2 seconds, then dash towards the player at rapid speeds. Deals AoE damage on hit and leave a lingering DoT over the path traveled."
+Demonic_Infernal_Brand,Demonic,Infernal Brand,"Apply a stacking ""Infernal Brand"" debuff on hit to the player. When the brand reaches 5 stacks, it explodes, dealing a large amount of damage to the player and consuming all stacks."
+Death_Haunting,Death,Haunting,A spectral copy of this enemy is created on death
+Death_Grave_Touch,Death,Grave Touch,Deal more damage to players with less than 50% health.
+Death_Undying_Will,Death,Undying Will,Enemies resurrect after death with reduced health but increased damage output.
+Death_Soul_Eater,Death,Soul Eater,Completely ignores player energy shields.
+Death_Shadow_Step,Death,Shadow Step,Become invisible when not attacking.
+Death_Spectral_Shift,Death,Spectral Shift,"Phase in and out of existence, becoming immune to damage."
+Death_Lingering_Decay,Death,Lingering Decay,Enemies leave behind necrotic zones that reduce healing to players standing in them.
+Death_Final_Curse,Death,Final Curse,"Upon death, curse the player for 5 seconds, causing them to take damage when using abilities."
+Death_Funeral_Pyre,Death,Funeral Pyre,Summon deadly bone pyres when hit that explode if not destroyed quickly.
+Death_Soul_Tether,Death,Soul Tether,Transfer a portion damage taken to the player as health degeneration over time.
+Death_Mortal_Reminder,Death,Mortal Reminder,"Attacks apply a debuff that prevents the player from being healed above their current HP for 4 seconds. It caps your ""recovery ceiling."""
+War_Commander,War,Commander,"Inspires allies, increasing their stats by 20%."
+War_Battle_Cry,War,Battle Cry,Emit a terrifying shout that reduces the player's resistances or armor for 5 seconds.
+War_Armored_Juggernaut,War,Armored Juggernaut,Gain 50% armor
+War_Drums_of_War,War,Drums of War,Increases nearby allies move speed and attack speed by 50%.
+War_Shield_Wall,War,Shield Wall,Take 75% less damage from attacks from the front.
+War_Artillery_Barrage,War,Artillery Barrage,Call down explosive projectiles in random areas near the player.
+War_Battle_Scarred,War,Battle Scarred,"Become more dangerous, gaining increased critical hit chance and damage resistance."
+War_1_On_1,War,1 On 1,Summon an arena around you and a nearby player that lasts until one of you is defeated. All allies in the area of the arena are consumed to empower you with 50% of all of their stats.
+War_Phalanx,War,Phalanx,Gains 10% damage reduction for every other enemy within 5 meters. Forces you to pull them apart or use high AoE.
+Pestilence_Contagion,Pestilence,Contagion,DOTs and debuffs are mirrored back onto the player.
+Pestilence_Toxic_Trail,Pestilence,Toxic Trail,Enemies leave behind a poison cloud as they move.
+Pestilence_Poison_Eater,Pestilence,Poison Eater,Healed by all poison damage.
+Pestilence_Toxic_Bond,Pestilence,Toxic Bond,Being hit applies a poison stack to the player.
+Pestilence_Blistering_Rot,Pestilence,Blistering Rot,"Attacks from these enemies cause blisters that burst after 3 seconds, dealing damage and reducing healing."
+Pestilence_Corruptive_Sludge,Pestilence,Corruptive Sludge,Leave behind sludge pools on death that significantly reduce movement speed.
+Pestilence_Parasite_Host,Pestilence,Parasite Host,Spawn parasitic worms on death that burrow into nearby allies and upgrade them to the next rarity.
+Pestilence_Living_Hive,Pestilence,Living Hive,"Every 5 seconds, spawns 3 tiny, fast-moving insects that don't deal much damage but each reduce your armor/resistances by 5% while they are attached to you."
+Pestilence_Virulent_Blood,Pestilence,Virulent Blood,"When hit, sprays acid in a cone toward the attacker. Melee builds have to ""circle-strafe"" this enemy constantly."
+Famine_Starving_Aura,Famine,Starving Aura,Emit an aura that reduces healing and health regeneration effects by 50%.
+Famine_Withering_Touch,Famine,Withering Touch,Attacks reduce player damage output for a short duration.
+Famine_Scavenger,Famine,Scavenger,"Consume corpses, healing yourself and nearby allies."
+Famine_Leeching_Curse,Famine,Leeching Curse,Steal player buffs and gain their effects for 5 seconds.
+Famine_Withering_Curse,Famine,Withering Curse,Apply a stacking debuff that temporarily reduces the player’s total damage output.
+Famine_Sapping_Presence,Famine,Sapping Presence,"Nearby players' mana regen, health regen, and shield regen become yours while they remain in range."
+Famine_Pickpocket,Famine,Pickpocket,Steals a random item from the player's inventory when dealing damage. Run away after stealing 2 or 3 items. Drop all stolen loot on death.
+Celestial_Divine_Aegis,Celestial,Divine Aegis,"Enemy gains a divine shield when below 50% HP, reducing all damage taken by 75%."
+Celestial_When_reduced_to_30_HP_summon_celestial,Celestial,"When reduced to 30% HP, summon celestial","When reduced to 30% HP, summon celestial spirits that provide healing over time and immunity to crowd control"
+Celestial_Lawbringer,Celestial,Lawbringer,Suppress one of the player's active abilities for 10 seconds.
+Celestial_Zealous_Martyr,Celestial,Zealous Martyr,"On death, buff all nearby allies with 50% increased damage, movespeed, and attack speed."
+Celestial_Holy_Binding,Celestial,Holy Binding,"Connect a chain to the player that reduces their movespeed by 50%. If the player moves too far away, they takes massive divine damage as the chain snaps."
+Celestial_Divine_Intervention,Celestial,Divine Intervention,"When dropping below 10% hp, become invulnerable for 5 seconds."
+Celestial_Cleansing_Light,Celestial,Cleansing Light,"Purge one buff from the player every 3 seconds. If there are no buffs to remove, instead deal 10% of the player's max hp in true damage."
+Celestial_Judgment_Loop,Celestial,Judgment Loop,"Places a circle on the ground. If you leave the circle before 4 seconds pass, you are struck by lightning. If you stay, you are safe from the lightning but vulnerable to the enemy's melee."
+Chaos_Randomized_Immunity,Chaos,Randomized Immunity,Randomly switch between damage immunities every 3 seconds.
+Chaos_Chaotic_Barrier,Chaos,Chaotic Barrier,Temporarily gain a random buff when attacked.
+Chaos_Warp_Reflex,Chaos,Warp Reflex,Randomly teleport 4 meters away when hit.
+Chaos_Split_Reality,Chaos,Split Reality,Create duplicate illusions that explode if attacked.
+Chaos_Anarchy_Aura,Chaos,Anarchy Aura,Randomly buff or debuff nearby allies and players alike
+Chaos_Mutating_Form,Chaos,Mutating Form,Gain a random new ability or attack every 5 seconds.
+Chaos_Temporal_Shifter,Chaos,Temporal Shifter,"This enemy's movement, cast, and attack speed will randomly increase or decrease every few seconds"
+Chaos_Mirror_Image,Chaos,Mirror Image,"Every time you hit this enemy, there is a 10% chance it swaps positions with you."
+Void_Voidlings,Void,Voidlings,Split into two copies when taking more than 10% health in damage.
+Void_Void_Rift,Void,Void Rift,Enemies create small void zones that deal heavy damage over time to players who remain in them.
+Void_Nullification_Field,Void,Nullification Field,Nearby players are unable to use non basic attack abilities
+Void_Crawling_Insanity,Void,Crawling Insanity,Attacks inflict madness.
+Void_Echoes_of_the_Void,Void,Echoes of the Void,"After 3 seconds, reflect 25% of damage taken back to the player."
+Void_All_Consuming,Void,All Consuming,Inflict the player with 2 stacks of void splinter when hit.
+Void_Touch_of_Nothing,Void,Touch of Nothing,"Hitting a player applies a stack of Touch of Nothing. Anytime the player would gain any kind of buff, instead a stack is consumed to negate that buff completely."
+Void_Corrupted,Void,Corrupted,The enemy is slowly corrupting the ground around them. Standing in the corrupted ground will deal a small amount of damage over time and will also disable player abilities as long as they are standing in the corruption.
+Void_Event_Horizon,Void,Event Horizon,"When this enemy dies, it leaves a small black hole that lasts 5 seconds. It doesn't deal damage, but it sucks in all nearby loot and gold, destroying it if you don't pick it up fast enough."
+Generic_Unyielding,Generic,Unyielding,Immunity to crowd control effects
+Generic_Bloodthirsty,Generic,Bloodthirsty,Heal for 10% of the damage dealt to the player.
+Generic_Relentless,Generic,Relentless,Regenerate health over time unless damaged in the past 2 seconds.
+Generic_Shielder,Generic,Shielder,"Spawn with an additional shield equal to 50% of maximum health, which regenerates if not damaged within 5 seconds."
+Generic_Horde_Leader,Generic,Horde Leader,"On death, all nearby enemies become enraged, increasing their attack speed and movement speed for 5 seconds."
+Generic_Phasewalker,Generic,Phasewalker,Teleport short distances every few seconds.
+Generic_Titanic_Resolve,Generic,Titanic Resolve,50% more health.
+Generic_Perfect_Aim,Generic,Perfect Aim,Attacks cannot be dodged.
+Generic_Overpowered,Generic,Overpowered,Always crits
+Generic_Thorns_of_Glass,Generic,Thorns of Glass,"Reflects 100% of damage taken, but the enemy only has 1 HP. You have to use a ""chip damage"" source or a DoT to kill it without killing yourself."
