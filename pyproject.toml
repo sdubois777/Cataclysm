@@ -1,0 +1,24 @@
+[tool.ruff]
+# The simulation targets the Python version the tuning rig runs on.
+target-version = "py313"
+line-length = 100
+extend-exclude = ["**/__pycache__"]
+
+[tool.ruff.lint]
+# Deliberately narrow. This project's Python is a tuning rig whose readability
+# comes from its comments and deliberate formatting, so continuous integration
+# checks for real defects only: syntax errors, undefined names, unused imports,
+# and the bugbear rules that catch genuine mistakes.
+#
+# Style and import ordering are NOT enforced. Turning them on would mean
+# reformatting every existing file, which buries real changes in noise. If you
+# want that, do it as its own commit rather than folding it into feature work.
+select = ["E9", "F", "B"]
+ignore = [
+    "B008",  # function call in argument default -- used intentionally in configs
+]
+
+[tool.pytest.ini_options]
+testpaths = ["sim/tests"]
+pythonpath = ["sim"]
+addopts = "-q"

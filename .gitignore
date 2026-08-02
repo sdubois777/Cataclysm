@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Personal Claude Code instructions (not shared with the team)
+CLAUDE.local.md
+
+# Simulation output
+sim/out/
+*.report.txt
+
+# Unreal Engine (for when the project is added)
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+.idea/
+*.VC.db
+*.opensdf
+*.sdf
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db

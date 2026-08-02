@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from . import combat, scoring
 from .config import CityTier, DungeonType, SurgeMode, TuningConfig
