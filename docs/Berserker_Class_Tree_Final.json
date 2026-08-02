@@ -1,0 +1,2541 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Berserker Class Tree",
+    "description": "Fury-based melee class. 2H weapons branch left, dual wield branch right, crit and leech in center. Fury builds on crits, decays out of combat.",
+    "createdAt": "2026-03-07T23:31:41.104Z",
+    "updatedAt": "2026-03-09T22:50:38.835Z",
+    "pointBudget": 230
+  },
+  "viewport": {
+    "x": 1120.323729460817,
+    "y": 384.1375365205097,
+    "zoom": 0.6455580818739853
+  },
+  "nodes": [
+    {
+      "id": "trunk_000",
+      "position": {
+        "x": 0,
+        "y": 770
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fury",
+        "description": "Unlocks the Fury resource. Gain 1 Fury per critical strike. Fury begins decaying at 10 Fury/s after 3 seconds out of combat. Base of 100 Fury.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_001",
+      "position": {
+        "x": 0,
+        "y": 650
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Battle Lust",
+        "description": "+1 Fury gained per point on every critical melee strike.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_002",
+      "position": {
+        "x": -160,
+        "y": 650
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bloodthirst",
+        "description": "+0.3% life leech per point on all melee attacks.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_003",
+      "position": {
+        "x": 160,
+        "y": 650
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Killing Edge",
+        "description": "+3% critical strike chance per point on melee attacks.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_004",
+      "position": {
+        "x": 0,
+        "y": 530
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Unbridled",
+        "description": "+10 maximum Fury per point. At 5 points: Every 20 points of maximum Fury you have also grants 1% damage reduction.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_005",
+      "position": {
+        "x": 160,
+        "y": 530
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Savage Blows",
+        "description": "+5% critical strike damage per point on melee attacks.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_006",
+      "position": {
+        "x": 0,
+        "y": -430
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Open Wounds",
+        "description": "Life leech can overheal you up to 30% above your maximum HP. Bonus HP from overleech decays at 1% per second when you are not leeching. While you have any overleech HP, incoming damage removes overleech before your actual HP.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_007",
+      "position": {
+        "x": 0,
+        "y": 410
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Battle Cry",
+        "description": "Reduce your passive Fury loss by 0.2 per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_008",
+      "position": {
+        "x": -160,
+        "y": 410
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Price",
+        "description": "When your Fury reaches 0 for any reason, your next melee attack within 3 seconds deals bonus damage equal to 5% per point of your maximum Fury.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_009",
+      "position": {
+        "x": 160,
+        "y": 410
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Berserking",
+        "description": "When you reach maximum Fury your next melee attack consumes all Fury. For each point of Fury consumed that attack deals +10% bonus damage per point invested.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_010",
+      "position": {
+        "x": 0,
+        "y": 290
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "War Cry",
+        "description": "+2% melee damage per point for 4 seconds after attacking at maximum Fury.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_011",
+      "position": {
+        "x": -160,
+        "y": 290
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Thick Skin",
+        "description": "You gain 1% damage reduction for every 4% of your maximum Fury you currently hold, up to 25% at maximum Fury.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "trunk_012",
+      "position": {
+        "x": 160,
+        "y": 290
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Bloodied",
+        "description": "While below 30% HP your Fury generation is tripled and Berserking triggers on every melee hit rather than only when Fury is full.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_001",
+      "position": {
+        "x": -320,
+        "y": 410
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Wrath",
+        "description": "Two-handed weapons only. When you reach maximum Fury, enter a state of Wrath. While in Wrath your melee attacks deal +15% damage. Fury drains at 5 per second. Wrath ends when Fury reaches 0.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_002",
+      "position": {
+        "x": -480,
+        "y": 290
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Momentum",
+        "description": "Two-handed weapons only. Each consecutive melee hit on the same target increases your damage by 3% per point up to 5 consecutive hits. While in Wrath, this bonus is gained twice as fast. Switching targets resets the bonus.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_003",
+      "position": {
+        "x": -320,
+        "y": 290
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Skull Splitter",
+        "description": "Two-handed weapons only. +6% critical strike damage per point. While in Wrath, critical strikes drain an additional 3 Fury per hit in exchange for applying a 2-second armor reduction of 10% per point on the target. At 5 points: This armor reduction stacks up to 6 times instead of 4.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_004",
+      "position": {
+        "x": -480,
+        "y": 170
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cleave",
+        "description": "Two-handed weapons only. Your melee attacks hit all enemies in a 180 degree arc in front of you. Arc width increases by 10 degrees per point. Each enemy hit beyond the first costs 5 Fury and generates 3 Fury per point if Fury was available to pay the cost.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_005",
+      "position": {
+        "x": -320,
+        "y": 170
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Crusher",
+        "description": "Two-handed weapons only. +8% chance per point to stagger an enemy on melee hit, interrupting any action they were performing.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_006",
+      "position": {
+        "x": -640,
+        "y": 50
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Brute Force",
+        "description": "Two-handed weapons only. +10% damage per point against staggered enemies.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_007",
+      "position": {
+        "x": -320,
+        "y": 50
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Death Blow",
+        "description": "Two-handed weapons only. +5% critical strike chance per point on melee attacks against enemies below 25% HP.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_008",
+      "position": {
+        "x": -640,
+        "y": -70
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Overwhelming Force",
+        "description": "Two-handed weapons only. When you attack at maximum Fury, the force of the attack releases a shockwave that deals 30% of your attack damage per point to all enemies within 5 meters.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_009",
+      "position": {
+        "x": -480,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Shatter",
+        "description": "Two-handed weapons only. Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_010",
+      "position": {
+        "x": -320,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Juggernaut",
+        "description": "Two-handed weapons only. +3% movement speed per point. At 5 points: You cannot be staggered, stunned, or knocked back while above 50% Fury.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_011",
+      "position": {
+        "x": -640,
+        "y": -190
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Titan's Grip",
+        "description": "Two-handed weapons only. While in Wrath, drain 4 additional Fury per second to increase all melee damage by +10% per point. This bonus is lost immediately if Wrath ends.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_012",
+      "position": {
+        "x": -480,
+        "y": -190
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Seismic Slam",
+        "description": "Two-handed weapons only. When you attack at maximum Fury, the shockwave from the attack travels along the ground dealing 30% per point of the hit's damage to all enemies in a line.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_013",
+      "position": {
+        "x": -320,
+        "y": -190
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Executioner",
+        "description": "Two-handed weapons only. Melee attacks made at maximum Fury deal an additional +1% damage per point for every 1% of HP the target is missing.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_014",
+      "position": {
+        "x": -640,
+        "y": -310
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Wrecking Ball",
+        "description": "Two-handed weapons only. +5% AOE radius per point on all attacks. At 5 points: Enemies killed by AOE damage explode, dealing 20% of their max HP as damage to nearby enemies.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_015",
+      "position": {
+        "x": -480,
+        "y": -310
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Killing Blow",
+        "description": "Two-handed weapons only. +6% critical strike damage per point on melee attacks. At 10 points: when you attack at maximum Fury, all enemies below 25% HP are instantly killed.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_016",
+      "position": {
+        "x": -320,
+        "y": -310
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Warmonger",
+        "description": "Two-handed weapons only. While in Wrath, each enemy within melee range drains 3 additional Fury per second. For each enemy draining Fury this way, your melee damage is increased by +8% per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_ks_001",
+      "position": {
+        "x": -640,
+        "y": -430
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Colossus",
+        "description": "Two-handed weapons only. While in Wrath, using a movement skill triggers your Earthquake skill at your landing location at no cooldown cost. The damage and AOE radius of this Earthquake are scaled by your current Fury at the moment of landing — 100% potency at maximum Fury, scaling down to 25% potency at minimum Fury. All modifiers to your Earthquake skill apply normally.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_ks_002",
+      "position": {
+        "x": -480,
+        "y": -430
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Berserker's Rage",
+        "description": "Two-handed weapons only. Effects that trigger at maximum Fury no longer drain your Fury when they fire.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "twoh_ks_003",
+      "position": {
+        "x": -320,
+        "y": -430
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Apex Predator",
+        "description": "Two-handed weapons only. Killing an enemy with an attack made at maximum Fury instantly reduces all cooldowns by 50%",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_001",
+      "position": {
+        "x": 320,
+        "y": 410
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Frenzy",
+        "description": "Dual wield only. When you reach maximum Fury, enter a state of Frenzy. While in Frenzy your attack speed is increased by 20% and all melee hits generate 2 additional Fury. Fury drains at 8 per second. Frenzy ends when Fury reaches 0.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_002",
+      "position": {
+        "x": 480,
+        "y": 290
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Flurry",
+        "description": "Dual wield only. Every 5th consecutive melee attack triggers an additional offhand strike dealing 50% weapon damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_003",
+      "position": {
+        "x": 320,
+        "y": 290
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Weaving",
+        "description": "Dual wield only. Alternating main hand and offhand attacks increases damage by 2% per point up to 6 stacks. While in Frenzy, each alternating strike costs 3 Fury but the damage bonus per stack is doubled.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_004",
+      "position": {
+        "x": 640,
+        "y": 170
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Rend",
+        "description": "Dual wield only. Each melee hit reduces the target's damage reduction by 1% per point for 3 seconds, stacking up to 5 times. Stacks refresh on each hit. At 5 points: The stack cap is increased to 8.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_005",
+      "position": {
+        "x": 480,
+        "y": 170
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Relentless",
+        "description": "Dual wield only. While in Frenzy, every melee hit that does not crit still generates +1 Fury per point. Reduces the effective drain rate of Frenzy by rewarding consistent aggression.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_006",
+      "position": {
+        "x": 640,
+        "y": 50
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Open Wound",
+        "description": "Dual wield only. Critical melee strikes apply a wound to the target for 2 seconds per point. While wounded, the target takes +3% increased damage per point from all sources. Applying a new wound refreshes the duration.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_007",
+      "position": {
+        "x": 320,
+        "y": 170
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Dancing Blades",
+        "description": "Dual wield only. While in Frenzy, each unique enemy you have hit in the last 3 seconds drains 2 additional Fury per second and grants +6% damage per point against that enemy. Tracking ends if Frenzy ends.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_008",
+      "position": {
+        "x": 480,
+        "y": 50
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Feeding Frenzy",
+        "description": "Dual wield only. +0.3% life leech per point for each melee attack you have landed in the last 2 seconds, up to 10 attacks. While in Frenzy this cap is doubled.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_009",
+      "position": {
+        "x": 320,
+        "y": 50
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Rapid Fire",
+        "description": "Dual wield only. Each time you attack at maximum Fury your melee attack speed increases by 5% per point for 3 seconds, stacking up to 4 times.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_010",
+      "position": {
+        "x": 640,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Flurry of Blows",
+        "description": "Dual wield only. +1% damage per point for each melee attack you have landed in the last 2 seconds, up to 10 attacks. Resets if you go 2 seconds without landing a hit. At 5 points: The tracking window is extended to 3 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_011",
+      "position": {
+        "x": 480,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blur",
+        "description": "Dual wield only. Each melee hit increases your movement speed by 2% per point for 4 seconds. Multiple hits refresh the duration and stack the bonus up to 5 times.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_012",
+      "position": {
+        "x": 320,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Frenetic",
+        "description": "Dual wield only. While in Frenzy, for every 10 Fury drained by the Frenzy state, automatically trigger a bonus strike at 20% weapon damage per point. These strikes can proc leech and critical strikes independently.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_013",
+      "position": {
+        "x": 640,
+        "y": -190
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Death Strike",
+        "description": "Dual wield only. Melee attacks against enemies below 20% HP deal bonus damage equal to +2% per point of the target's missing HP percentage. While in Frenzy this threshold is increased to 35%.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_014",
+      "position": {
+        "x": 712.3459403529026,
+        "y": -247.9865317665414
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hair-Trigger",
+        "description": "Dual wield only. While in Frenzy, your critical strike chance is increased by 2% per point. This bonus is doubled while above 75% Fury.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_015",
+      "position": {
+        "x": 480,
+        "y": -190
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Unrelenting",
+        "description": "Dual wield only. Killing an enemy refunds 20% of your maximum Fury per point up to a maximum of 60%.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_016",
+      "position": {
+        "x": 639.5256446460832,
+        "y": -310.6742619972853
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bloodlust",
+        "description": "Dual wield only. Killing an enemy increases your attack speed by 4% per point for 4 seconds, stacking up to 5 times. While in Frenzy kills also restore 5 Fury.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_017",
+      "position": {
+        "x": 480,
+        "y": -310
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Carnage",
+        "description": "Dual wield only. Killing an enemy while in Frenzy extends the current Frenzy duration by 1 second per point, up to a maximum extension of 6 seconds. This can trigger multiple times per Frenzy.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_018",
+      "position": {
+        "x": 320,
+        "y": -310
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Knife Dance",
+        "description": "Dual wield only. Each automatic strike triggered by Frenetic generates 2 Fury per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_ks_001",
+      "position": {
+        "x": 640,
+        "y": -430
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Whirlwind",
+        "description": "Dual wield only. When you attack at maximum Fury the strike automatically becomes a spinning attack hitting all enemies within melee range. Each enemy hit generates 3 Fury. Enemies hit while you are at maximum Fury are knocked back and take 50% bonus damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_ks_002",
+      "position": {
+        "x": 322.008221770991,
+        "y": -429.75438133884103
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Unstoppable Force",
+        "description": "Dual wield only. Killing an enemy while in Frenzy immediately resets the Frenetic auto-strike timer. Additionally, entering Frenzy instantly triggers three bonus strikes at full damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "dw_ks_003",
+      "position": {
+        "x": 480.4524424742495,
+        "y": -428.46701488081925
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Phantom Blades",
+        "description": "Dual wield only. Each melee strike creates a phantasmal echo that replays the attack 0.75 seconds later at 60% damage. Phantom strikes can trigger leech and critical strikes independently but do not generate Fury.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "crit_001",
+      "position": {
+        "x": 0,
+        "y": 170
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Razor Mind",
+        "description": "+4% critical strike damage per point on melee attacks. Critical strikes also generate +2 Fury per point. At 5 points: Critical strikes made while above 75% Fury generate double Fury from this effect.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "crit_002",
+      "position": {
+        "x": 160,
+        "y": 50
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Precision",
+        "description": "+2% critical strike chance per point on melee attacks. While above 50% Fury, your critical strike chance is additionally increased by 1% per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "crit_003",
+      "position": {
+        "x": 160,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Glass Cannon",
+        "description": "+8% critical strike damage per point on melee attacks. At 4 points: Your critical melee strikes ignore 20% of enemy resistances. Each point of Fury above your normal maximum (from any source) increases your critical strike damage by an additional 0.5% per point invested here.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "crit_004",
+      "position": {
+        "x": 0,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deathmark",
+        "description": "Critical strikes apply a Deathmark for 5 seconds. Applying a Deathmark costs 10 Fury, reduced by 1 per point. Marked enemies take +3% increased damage per point from all sources. If you have no Fury the mark still applies but deals no bonus damage.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "crit_005",
+      "position": {
+        "x": 160,
+        "y": -190
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Killing Rhythm",
+        "description": "+5% critical strike damage per point for each consecutive critical strike, up to 5 stacks. Missing a critical strike or your Fury reaching 0 resets the streak.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "crit_ks_001",
+      "position": {
+        "x": -160,
+        "y": -310
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Coup de Grace",
+        "description": "Your critical strikes deal bonus damage equal to 2% of the target's missing HP. This bonus is tripled on attacks made at maximum Fury.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "crit_ks_002",
+      "position": {
+        "x": 160,
+        "y": -310
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Hair Trigger",
+        "description": "Your critical strike chance is uncapped. Any critical strike chance above 100% is converted to critical strike damage at a 2:1 ratio.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "leech_001",
+      "position": {
+        "x": -160,
+        "y": 170
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Crimson Tide",
+        "description": "+0.5% life leech per point on melee attacks. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fury you spend or drain generates a heal equal to 0.5% per point of your maximum HP.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "leech_002",
+      "position": {
+        "x": -160,
+        "y": 50
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Iron Will",
+        "description": "Your maximum HP bonus from all sources also increases your maximum Fury by 1 point for every 2% maximum HP bonus you have.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "leech_003",
+      "position": {
+        "x": 0,
+        "y": 50
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Vital Strike",
+        "description": "+1% life leech per point on critical melee strikes only. Critical strike leech is not subject to the normal leech cap. Excess leech beyond your HP cap is stored and added as bonus Fury generation on your next hit, up to 10 Fury per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "leech_004",
+      "position": {
+        "x": -160,
+        "y": -190
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Undying",
+        "description": "When you would be reduced to 0 HP, if you have at least 50 Fury, you are instead reduced to 1 HP. All of your Fury is instantly spent, restoring HP equal to 5% of your maximum HP per 10 Fury spent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "leech_005",
+      "position": {
+        "x": -160,
+        "y": -70
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Sanguine",
+        "description": "+1% life leech per point on melee attacks. Each time you leech HP your Fury generation on the next hit is increased by 1 per point, stacking up to 5 times. Stacks reset if you go 2 seconds without leeching. At 4 points: The stack cap is increased to 10.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "leech_006",
+      "position": {
+        "x": 0,
+        "y": -190
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Feast",
+        "description": "+0.3% life leech per point for every 10 Fury you currently have. When your Fury reaches 0 for any reason you instantly leech 1% per point of your maximum HP.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "leech_ks_001",
+      "position": {
+        "x": -320,
+        "y": 530
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Vampiric Fury",
+        "description": "Life leech now also restores Fury at a rate of 1 Fury per 2% of maximum HP leeched. Fury cannot be restored above maximum by this effect.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_25",
+      "position": {
+        "x": -909.4447618621665,
+        "y": 810.8796031781528
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "First Oath",
+        "description": "Unlocks at 25 points spent. Choose one of three oaths.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "options": [
+          {
+            "name": "Warlord",
+            "identity": "2H",
+            "description": "Two-handed weapons only. While above 50% Fury, your melee attacks reduce the armor of all enemies within 5 meters by 15% for 3 seconds. This effect refreshes on each hit."
+          },
+          {
+            "name": "Opportunist",
+            "identity": "Dual Wield",
+            "description": "Dual wield only. Entering Frenzy immediately resets the cooldown of your movement skill."
+          },
+          {
+            "name": "Vital Strikes",
+            "identity": "Crit/Leech",
+            "description": "While above 50% Fury, all incoming damage is reduced by your current life leech percentage."
+          }
+        ],
+        "pointThreshold": 25,
+        "isDecision": true,
+        "threshold": 25,
+        "selectedOption": null
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_50",
+      "position": {
+        "x": -909.4447618621665,
+        "y": 570.8796031781528
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "Second Oath",
+        "description": "Unlocks at 50 points spent. Choose one of three oaths.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "options": [
+          {
+            "name": "Unstoppable",
+            "identity": "2H",
+            "description": "Two-handed weapons only. While above 75% Fury you cannot be slowed, rooted, or knocked back."
+          },
+          {
+            "name": "Cut and Run",
+            "identity": "Dual Wield",
+            "description": "Dual wield only. While in Frenzy, your movement speed is increased by 5% for each enemy within melee range."
+          },
+          {
+            "name": "Thrill of the Hunt",
+            "identity": "Crit/Leech",
+            "description": "Your critical strike damage is increased by 1% for every 1% of HP you are currently missing."
+          }
+        ],
+        "pointThreshold": 50,
+        "isDecision": true,
+        "threshold": 50,
+        "selectedOption": null
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_100",
+      "position": {
+        "x": -909.4447618621665,
+        "y": 330.8796031781528
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "Third Oath",
+        "description": "Unlocks at 100 points spent. Choose one of three oaths.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "options": [
+          {
+            "name": "Titan",
+            "identity": "2H × Leech",
+            "description": "Two-handed weapons only. Your maximum HP is increased by 1% for every 2 points of maximum Fury you have."
+          },
+          {
+            "name": "Pure Carnage",
+            "identity": "DW × Crit",
+            "description": "Dual wield only. While in Frenzy, critical strikes release a nova of force that deals 30% of the hit's damage to all enemies within melee range."
+          },
+          {
+            "name": "Crimson Pact",
+            "identity": "Crit × Leech",
+            "description": "Your critical strike damage bonus is added to your life leech percentage. Your life leech percentage is added to your critical strike damage bonus."
+          }
+        ],
+        "pointThreshold": 100,
+        "isDecision": true,
+        "threshold": 100,
+        "selectedOption": null
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_200",
+      "position": {
+        "x": -909.4447618621665,
+        "y": 90.87960317815282
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "Final Oath",
+        "description": "Unlocks at 200 points spent. Choose one of three oaths.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "options": [
+          {
+            "name": "Ragnarok",
+            "identity": "2H",
+            "description": "Two-handed weapons only. Your maximum Fury is doubled. While in Wrath, your attacks release shockwaves that deal 50% of the hit's damage to all enemies within 6 meters. Wrath no longer drains Fury passively."
+          },
+          {
+            "name": "Thousand Deaths",
+            "identity": "Dual Wield",
+            "description": "Dual wield only. While in Frenzy, your attacks chain to one additional nearby enemy for 60% damage. Each kill during Frenzy permanently adds one additional chain target for the remainder of the Frenzy duration."
+          },
+          {
+            "name": "Eternal Hunger",
+            "identity": "Leech",
+            "description": "Your life leech cap is removed entirely. Any HP restored by life leech beyond your maximum is added as overleech that decays at 1% per second. Life leech effectiveness is increased by 50%."
+          }
+        ],
+        "pointThreshold": 200,
+        "isDecision": true,
+        "threshold": 200,
+        "selectedOption": null
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "uiElements": [
+    {
+      "id": "ui_textLabel_PeFBnyifmL",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -26.0162325066169,
+        "y": 811.2682556440932
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 1,
+        "text": "Berserker",
+        "fontSize": 16
+      },
+      "measured": {
+        "width": 68,
+        "height": 24
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_trunk_000_trunk_001",
+      "source": "trunk_000",
+      "target": "trunk_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_000_trunk_002",
+      "source": "trunk_000",
+      "target": "trunk_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_000_trunk_003",
+      "source": "trunk_000",
+      "target": "trunk_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_001_trunk_004",
+      "source": "trunk_001",
+      "target": "trunk_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_003_trunk_005",
+      "source": "trunk_003",
+      "target": "trunk_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_004_trunk_007",
+      "source": "trunk_004",
+      "target": "trunk_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_004_trunk_008",
+      "source": "trunk_004",
+      "target": "trunk_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_005_trunk_009",
+      "source": "trunk_005",
+      "target": "trunk_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_007_trunk_010",
+      "source": "trunk_007",
+      "target": "trunk_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_008_trunk_011",
+      "source": "trunk_008",
+      "target": "trunk_011",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_009_trunk_012",
+      "source": "trunk_009",
+      "target": "trunk_012",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_001_twoh_002",
+      "source": "twoh_001",
+      "target": "twoh_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_001_twoh_003",
+      "source": "twoh_001",
+      "target": "twoh_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_002_twoh_004",
+      "source": "twoh_002",
+      "target": "twoh_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_003_twoh_005",
+      "source": "twoh_003",
+      "target": "twoh_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_004_twoh_006",
+      "source": "twoh_004",
+      "target": "twoh_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_005_twoh_007",
+      "source": "twoh_005",
+      "target": "twoh_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_006_twoh_008",
+      "source": "twoh_006",
+      "target": "twoh_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_007_twoh_009",
+      "source": "twoh_007",
+      "target": "twoh_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_007_twoh_010",
+      "source": "twoh_007",
+      "target": "twoh_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_009_twoh_012",
+      "source": "twoh_009",
+      "target": "twoh_012",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_010_twoh_013",
+      "source": "twoh_010",
+      "target": "twoh_013",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_011_twoh_014",
+      "source": "twoh_011",
+      "target": "twoh_014",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_012_twoh_015",
+      "source": "twoh_012",
+      "target": "twoh_015",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_013_twoh_016",
+      "source": "twoh_013",
+      "target": "twoh_016",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_014_twoh_ks_001",
+      "source": "twoh_014",
+      "target": "twoh_ks_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_015_twoh_ks_002",
+      "source": "twoh_015",
+      "target": "twoh_ks_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_twoh_016_twoh_ks_003",
+      "source": "twoh_016",
+      "target": "twoh_ks_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_001_dw_002",
+      "source": "dw_001",
+      "target": "dw_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_001_dw_003",
+      "source": "dw_001",
+      "target": "dw_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_002_dw_004",
+      "source": "dw_002",
+      "target": "dw_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_003_dw_007",
+      "source": "dw_003",
+      "target": "dw_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_003_dw_005",
+      "source": "dw_003",
+      "target": "dw_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_004_dw_006",
+      "source": "dw_004",
+      "target": "dw_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_005_dw_008",
+      "source": "dw_005",
+      "target": "dw_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_007_dw_009",
+      "source": "dw_007",
+      "target": "dw_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_006_dw_010",
+      "source": "dw_006",
+      "target": "dw_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_008_dw_011",
+      "source": "dw_008",
+      "target": "dw_011",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_009_dw_012",
+      "source": "dw_009",
+      "target": "dw_012",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_010_dw_013",
+      "source": "dw_010",
+      "target": "dw_013",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_011_dw_015",
+      "source": "dw_011",
+      "target": "dw_015",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_012_dw_018",
+      "source": "dw_012",
+      "target": "dw_018",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_013_dw_016",
+      "source": "dw_013",
+      "target": "dw_016",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_013_dw_014",
+      "source": "dw_013",
+      "target": "dw_014",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_015_dw_017",
+      "source": "dw_015",
+      "target": "dw_017",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_016_dw_ks_001",
+      "source": "dw_016",
+      "target": "dw_ks_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_dw_017_dw_ks_003",
+      "source": "dw_017",
+      "target": "dw_ks_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_crit_001_crit_002",
+      "source": "crit_001",
+      "target": "crit_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_crit_002_crit_003",
+      "source": "crit_002",
+      "target": "crit_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_crit_002_crit_004",
+      "source": "crit_002",
+      "target": "crit_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_crit_003_crit_005",
+      "source": "crit_003",
+      "target": "crit_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_crit_004_crit_ks_001",
+      "source": "crit_004",
+      "target": "crit_ks_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_crit_005_crit_ks_002",
+      "source": "crit_005",
+      "target": "crit_ks_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_leech_001_leech_002",
+      "source": "leech_001",
+      "target": "leech_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_leech_001_leech_003",
+      "source": "leech_001",
+      "target": "leech_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_leech_003_leech_005",
+      "source": "leech_003",
+      "target": "leech_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_leech_005_leech_006",
+      "source": "leech_005",
+      "target": "leech_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_008_twoh_001",
+      "source": "trunk_008",
+      "target": "twoh_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_009_dw_001",
+      "source": "trunk_009",
+      "target": "dw_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_010_leech_001",
+      "source": "trunk_010",
+      "target": "leech_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_leech_005_leech_004",
+      "source": "leech_005",
+      "target": "leech_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      }
+    },
+    {
+      "id": "e_twoh_009_twoh_011",
+      "source": "twoh_009",
+      "target": "twoh_011",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_009_crit_001",
+      "source": "trunk_009",
+      "target": "crit_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_leech_006_trunk_006",
+      "source": "leech_006",
+      "target": "trunk_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_002_leech_ks_001",
+      "source": "trunk_002",
+      "target": "leech_ks_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_003_dw_001_bypass",
+      "source": "trunk_003",
+      "target": "dw_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_trunk_002_trunk_008_bypass",
+      "source": "trunk_002",
+      "target": "trunk_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_yUKcBl_eqZ",
+      "source": "dw_018",
+      "target": "dw_ks_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_NN0VXqm7ok",
+      "source": "dw_014",
+      "target": "dw_016",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_gAEwnMjS_4",
+      "source": "leech_003",
+      "target": "crit_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_uhiMqjSeiW",
+      "source": "trunk_010",
+      "target": "crit_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    }
+  ]
+}
