@@ -1,0 +1,41 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "",
+	"Description": "An ARPG dungeon crawler with real-time empire management and roguelike meta-progression.",
+	"Modules": [
+		{
+			"Name": "Cataclysm",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "CataclysmEmpire",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "CataclysmEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	]
+}

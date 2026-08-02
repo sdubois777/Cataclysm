@@ -1,0 +1,81 @@
+# Git LFS configuration for the Unreal project.
+#
+# Set up BEFORE any content is committed. Retrofitting LFS onto existing history
+# means rewriting it, which is disruptive once anyone else has cloned.
+#
+# Rule of thumb: if a file is binary and the engine or a content tool produced it,
+# it belongs in LFS. Text that a human reads or reviews does not.
+
+# Normalise line endings for text so Windows and Linux agree.
+* text=auto
+
+# --- Unreal assets -----------------------------------------------------------
+*.uasset filter=lfs diff=lfs merge=lfs -text
+*.umap   filter=lfs diff=lfs merge=lfs -text
+*.upk    filter=lfs diff=lfs merge=lfs -text
+*.udk    filter=lfs diff=lfs merge=lfs -text
+
+# --- Textures and images -----------------------------------------------------
+*.png  filter=lfs diff=lfs merge=lfs -text
+*.jpg  filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.tga  filter=lfs diff=lfs merge=lfs -text
+*.bmp  filter=lfs diff=lfs merge=lfs -text
+*.tif  filter=lfs diff=lfs merge=lfs -text
+*.tiff filter=lfs diff=lfs merge=lfs -text
+*.psd  filter=lfs diff=lfs merge=lfs -text
+*.exr  filter=lfs diff=lfs merge=lfs -text
+*.hdr  filter=lfs diff=lfs merge=lfs -text
+
+# --- Models and animation ----------------------------------------------------
+*.fbx   filter=lfs diff=lfs merge=lfs -text
+*.obj   filter=lfs diff=lfs merge=lfs -text
+*.glb   filter=lfs diff=lfs merge=lfs -text
+*.gltf  filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.abc   filter=lfs diff=lfs merge=lfs -text
+*.usd   filter=lfs diff=lfs merge=lfs -text
+*.usda  filter=lfs diff=lfs merge=lfs -text
+*.usdc  filter=lfs diff=lfs merge=lfs -text
+
+# --- Audio -------------------------------------------------------------------
+*.wav  filter=lfs diff=lfs merge=lfs -text
+*.mp3  filter=lfs diff=lfs merge=lfs -text
+*.ogg  filter=lfs diff=lfs merge=lfs -text
+*.flac filter=lfs diff=lfs merge=lfs -text
+*.aif  filter=lfs diff=lfs merge=lfs -text
+*.aiff filter=lfs diff=lfs merge=lfs -text
+
+# --- Video -------------------------------------------------------------------
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+*.avi filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+
+# --- Fonts -------------------------------------------------------------------
+*.ttf filter=lfs diff=lfs merge=lfs -text
+*.otf filter=lfs diff=lfs merge=lfs -text
+
+# --- Archives and libraries --------------------------------------------------
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.7z  filter=lfs diff=lfs merge=lfs -text
+*.dll filter=lfs diff=lfs merge=lfs -text
+*.lib filter=lfs diff=lfs merge=lfs -text
+*.pdb filter=lfs diff=lfs merge=lfs -text
+
+# NOTE: docs/All_Things_Cataclysm.xlsx is deliberately NOT tracked by LFS. It is
+# already committed as an ordinary blob and is only about 200 KB, so moving it
+# would split it across two storage mechanisms in history for no real benefit.
+
+# --- Explicitly NOT in LFS ---------------------------------------------------
+# These are text, and their diffs are the point.
+*.uproject      text
+*.uplugin       text
+*.ini           text
+*.cs            text
+*.cpp           text
+*.h             text
+*.py            text
+*.md            text
+*.json          text
+*.csv           text
