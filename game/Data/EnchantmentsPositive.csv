@@ -38,7 +38,6 @@ Positive_You_take_20_40_less_damage_from_Boss_enemies,You take 20%-40% less dama
 Positive_Skills_have_1_2_additional_charges_when_fighting,Skills have 1-2 additional charges when fighting Boss enemies,Generic,1.0,Scope.BossOnly,False
 Positive_Blocking_an_attack_has_a_20_40_chance_to_fully,Blocking an attack has a 20%-40% chance to fully negate all damage,Generic,1.0,Stat.Defense.Block,False
 Positive_You_block_for_65_75_of_damage_instead_of_the_n,You block for 65%-75% of damage instead of the normal 50%,Generic,1.0,Stat.Defense.Block,False
-Positive_Your_block_chance_applies_to_AOE_damage_at_50_e,Your block chance applies to AOE damage at 50% effectiveness,Generic,1.0,Stat.Defense.Block,False
 Positive_Gain_3_8_additional_class_points,Gain 3-8 additional class points,Generic,1.0,Stat.Progression.ClassPoints,False
 Positive_Every_time_you_apply_a_DOT_instead_add_2_4_stac,"Every time you apply a DOT, instead add 2-4 stacks",Generic,2.0,Keyword.DoT.Generic,False
 Positive_Projectiles_ricochet_1_4_times,Projectiles ricochet 1-4 times,Generic,2.0,"Type.Projectile, Type.Ranged",False

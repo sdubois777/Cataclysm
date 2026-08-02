@@ -98,11 +98,16 @@ stays additive.
 
 **Where the base block value came from.** It is not in `Cataclysm_GDD_v2.md`. It
 is in the generated enchantment tables: `game/Data/EnchantmentsPositive.csv`
-line 40 reads "You block for 65%-75% of damage instead of the normal 50%". Line
-41 of the same file reads "Your block chance applies to AOE damage at 50%
-effectiveness", which is now contradicted by the decision above and is recorded
-as issue #80. Those two rows were carrying combat rules the design document
-never stated.
+line 40 reads "You block for 65%-75% of damage instead of the normal 50%". Those
+rows were carrying combat rules the design document never stated.
+
+**One enchantment was removed as a consequence.** A weight 1 positive
+enchantment read "Your block chance applies to AOE damage at 50% effectiveness".
+Once block applies to area damage by default at full effectiveness, that
+enchantment halved a benefit the player already had, making it strictly harmful
+while sitting in the most powerful weight band. It was deleted from the
+Enchantments sheet of `All_Things_Cataclysm.xlsx` and the generated tables were
+rebuilt, taking the positive enchantment count from 381 to 380. Issue #80.
 
 **Still open.** Luck gives +0.01% rarity find per point, which is +1% at 100
 points and almost nothing next to gear affixes. The value is deferred until loot
