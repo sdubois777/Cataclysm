@@ -1,0 +1,196 @@
+Name,Effect,EnchantmentType,Weight,Tags,IsNegative
+Negative_Can_t_use_a_basic_attack,Can’t use a basic attack,Generic,1.0,Scope.BasicOnly,True
+Negative_80_99_of_your_health_is_reserved,80%-99% of your health is reserved,Generic,1.0,Stat.Defense.Life,True
+Negative_You_lose_1_4_max_resistances_for_every_100_000,"You lose 1-4% max resistances for every 100,000 - 500,000 kills",Generic,1.0,Stat.Defense.Resist,True
+Negative_Ultimate_cooldowns_increased_by_100_500,Ultimate cooldowns increased by 100%-500%,Generic,1.0,"Slot.Ultimate, Slot.Ultimate",True
+Negative_You_have_no_armor,You have no armor,Generic,1.0,Stat.Defense.Armor,True
+Negative_DoTs_deal_double_damage_to_you,DoTs deal double damage to you,Generic,1.0,Keyword.DoT.Generic,True
+Negative_You_lose_15_of_your_max_hp_every_5_seconds,You lose 15% of your max hp every 5 seconds,Generic,1.0,Stat.Defense.Life,True
+Negative_Your_spells_mana_costs_are_quadrupled,Your spells mana costs are quadrupled,Generic,1.0,"Type.Spell, Stat.Resource.Mana",True
+Negative_You_no_longer_regenerate_mana,You no longer regenerate mana,Generic,1.0,Stat.Resource.Mana,True
+Negative_You_have_no_resistances,You have no resistances.,Generic,1.0,Stat.Defense.Resist,True
+Negative_You_have_20_less_hp,You have 20% less hp.,Generic,1.0,Stat.Defense.Life,True
+Negative_All_damage_dealt_is_reduced_by_15_25_for_each,All damage dealt is reduced by 15%-25% for each second you stand still,Generic,1.0,Stat.Offense.Global,True
+Negative_You_take_20_35_more_damage,You take 20%-35% more damage,Generic,1.0,Stat.Defense.Global,True
+Negative_Channel_skills_drain_8_15_of_your_maximum_HP_p,Channel skills drain 8%-15% of your maximum HP per second while active,Generic,1.0,"Type.Channel, Stat.Defense.Life",True
+Negative_You_can_only_have_1_persistent_AOE_effect_active,You can only have 1 persistent AOE effect active at a time,Generic,1.0,Type.AOE.Persistent,True
+Negative_Kills_no_longer_generate_any_experience,Kills no longer generate any experience,Generic,1.0,Trigger.OnKill,True
+Negative_Using_your_ultimate_ability_drains_20_40_of_yo,Using your ultimate ability drains 20%-40% of your maximum HP,Generic,1.0,"Slot.Ultimate, Stat.Defense.Life",True
+Negative_You_cannot_heal_above_60_of_your_maximum_HP,You cannot heal above 60% of your maximum HP,Generic,1.0,Stat.Defense.Life,True
+Negative_Your_maximum_mana_is_reduced_to_zero,Your maximum mana is reduced to zero,Generic,1.0,Stat.Resource.Mana,True
+Negative_You_cannot_regenerate_mana_through_any_means,You cannot regenerate mana through any means,Generic,1.0,Stat.Resource.Mana,True
+Negative_Enemies_that_have_been_alive_for_more_than_15_se,Enemies that have been alive for more than 15 seconds become immune to your damage until you disengage for 3 seconds,Generic,1.0,Stat.Offense.Global,True
+Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor,Your maximum HP cannot exceed 40%-60% of its normal value,,1.0,"Trigger.LowLife, Stat.Defense.Life",True
+Negative_When_you_apply_a_DOT_1_4_stacks_are_applied_to,"When you apply a DOT, 1-4 stacks are applied to you",Generic,2.0,Keyword.DoT.Generic,True
+Negative_Armor_is_halved_against_ranged_attacks,Armor is halved against ranged attacks,Generic,2.0,Stat.Defense.Armor,True
+Negative_Can_t_regen_your_hp,Can't regen your hp,Generic,2.0,Stat.Defense.Life,True
+Negative_Gems_in_this_equipment_are_50_less_effective,Gems in this equipment are 50% less effective,Generic,2.0,,True
+Negative_Healing_effects_are_reduced_by_50_75,Healing effects are reduced by 50%-75%,Generic,2.0,Keyword.DoT.Generic,True
+Negative_DoTs_on_you_tick_twice_as_fast_while_moving,DoTs on you tick twice as fast while moving,Generic,2.0,"Keyword.DoT.Generic, Keyword.DoT.Bleed, Scope.WhileMoving",True
+Negative_You_have_no_health_leech,You have no health leech,Generic,2.0,Stat.Recovery.Leech,True
+Negative_Your_movement_abilities_now_move_you_in_a_random,Your movement abilities now move you in a random direction,Generic,2.0,Slot.Movement,True
+Negative_You_deal_20_35_less_damage,You deal 20%-35% less damage,Generic,2.0,Stat.Offense.Global,True
+Negative_Each_consecutive_hit_against_the_same_enemy_deal,"Each consecutive hit against the same enemy deals 5%-8% less damage, up to 10 stacks",Generic,2.0,Stat.Offense.Global,True
+Negative_You_deal_25_40_less_damage_to_enemies_below_50,You deal 25%-40% less damage to enemies below 50% HP,Generic,2.0,Stat.Offense.Global,True
+Negative_Every_hit_you_take_deals_an_additional_5_10_of,Every hit you take deals an additional 5%-10% of your maximum HP as bonus damage,Generic,2.0,"Stat.Defense.Global, Stat.Defense.Life",True
+Negative_You_take_15_25_more_damage_while_above_50_HP,You take 15%-25% more damage while above 50% HP,Generic,2.0,Stat.Defense.Global,True
+Negative_You_take_10_20_increased_damage_for_each_secon,"You take 10%-20% increased damage for each second you have been in combat, up to 10 stacks",Generic,2.0,Stat.Defense.Global,True
+Negative_You_take_20_35_more_damage_from_melee_attacks,You take 20%-35% more damage from melee attacks,Generic,2.0,Stat.Defense.Melee,True
+Negative_You_cannot_evade_or_block_melee_attacks,You cannot evade or block melee attacks,Generic,2.0,"Stat.Defense.Melee, Stat.Defense.Evasion, Stat.Defense.Block",True
+Negative_Melee_attacks_that_hit_you_reduce_your_armor_by,"Melee attacks that hit you reduce your armor by 3%-5% for 3 seconds, stacking up to 5 times",Generic,2.0,"Stat.Defense.Melee, Stat.Defense.Armor",True
+Negative_Taking_damage_while_channeling_interrupts_the_ch,Taking damage while channeling interrupts the channel immediately,Generic,2.0,Type.Channel,True
+Negative_You_cannot_move_while_channeling_any_skill,You cannot move while channeling any skill,Generic,2.0,"Type.Channel, Stat.Utility.Movespeed",True
+Negative_You_take_10_20_of_the_damage_dealt_by_your_own,You take 10%-20% of the damage dealt by your own point blank AOE skills,Generic,2.0,Type.AOE.PointBlank,True
+Negative_Point_blank_AOE_skills_have_a_0_75_1_5_second_ca,Point blank AOE skills have a 0.75-1.5 second cast delay before firing,Generic,2.0,Type.AOE.PointBlank,True
+Negative_Point_blank_AOE_skills_deal_15_25_less_damage,Point blank AOE skills deal 15%-25% less damage to a single target,Generic,2.0,Type.AOE.PointBlank,True
+Negative_Persistent_AOE_zones_also_damage_you_if_you_stan,Persistent AOE zones also damage you if you stand in them,Generic,2.0,Type.AOE.Persistent,True
+Negative_Persistent_AOE_zones_deal_20_35_less_damage_on,Persistent AOE zones deal 20%-35% less damage on initial placement,Generic,2.0,Type.AOE.Persistent,True
+Negative_Each_kill_reduces_your_damage_by_2_4_for_5_sec,"Each kill reduces your damage by 2%-4% for 5 seconds, stacking up to 5 times",Generic,2.0,"Trigger.OnKill, Stat.Offense.Global",True
+Negative_Killing_an_enemy_triggers_a_1_2_second_global_co,Killing an enemy triggers a 1-2 second global cooldown on all your skills,Generic,2.0,Trigger.OnKill,True
+Negative_Enemies_you_kill_explode_and_deal_5_10_of_thei,Enemies you kill explode and deal 5%-10% of their maximum HP as damage to you,Generic,2.0,"Trigger.OnKill, Stat.Defense.Life",True
+Negative_Taking_a_hit_has_a_15_25_chance_to_trigger_a_r,Taking a hit has a 15%-25% chance to trigger a random negative status effect on you,Generic,2.0,Trigger.OnHit,True
+Negative_Taking_a_hit_interrupts_any_skill_currently_bein,Taking a hit interrupts any skill currently being used,Generic,2.0,Trigger.OnHit,True
+Negative_Every_5th_hit_you_take_deals_50_100_bonus_dama,Every 5th hit you take deals 50%-100% bonus damage,Generic,2.0,Trigger.OnHit,True
+Negative_CC_effects_applied_to_you_last_40_70_longer,CC effects applied to you last 40%-70% longer,Generic,2.0,Keyword.CC,True
+Negative_You_cannot_apply_CC_effects_to_enemies_above_50,You cannot apply CC effects to enemies above 50% HP,Generic,2.0,Keyword.CC,True
+Negative_You_are_permanently_slowed_by_10_20,You are permanently slowed by 10%-20%,Generic,2.0,"Keyword.CC, Stat.Utility.Movespeed",True
+Negative_Strike_skills_have_a_10_20_chance_to_miss_enti,Strike skills have a 10%-20% chance to miss entirely regardless of other stats,Generic,2.0,Type.Strike,True
+Negative_Strike_skills_deal_25_40_less_damage_if_you_ha,Strike skills deal 25%-40% less damage if you have moved in the last 2 seconds,Generic,2.0,"Type.Strike, Stat.Utility.Movespeed",True
+Negative_Your_ultimate_ability_deals_30_50_less_damage,Your ultimate ability deals 30%-50% less damage,Generic,2.0,Slot.Ultimate,True
+Negative_Your_ultimate_ability_cannot_be_used_unless_you,Your ultimate ability cannot be used unless you are below 50% HP,Generic,2.0,"Slot.Ultimate, Trigger.LowLife",True
+Negative_Projectiles_have_a_20_35_chance_to_explode_pre,Projectiles have a 20%-35% chance to explode prematurely dealing no damage,Generic,2.0,Type.Projectile,True
+Negative_Projectiles_deal_20_35_less_damage_on_each_sub,Projectiles deal 20%-35% less damage on each subsequent hit after the first,Generic,2.0,Type.Projectile,True
+Negative_Critical_hits_trigger_a_0_5_1_second_global_cool,Critical hits trigger a 0.5-1 second global cooldown on all your skills,Generic,2.0,Stat.Offense.Crit,True
+Negative_Non_critical_hits_deal_20_35_less_damage,Non-critical hits deal 20%-35% less damage,Generic,2.0,Stat.Offense.Crit,True
+Negative_Your_critical_hit_chance_cannot_exceed_30_50,Your critical hit chance cannot exceed 30%-50%,Generic,2.0,Stat.Offense.Crit,True
+Negative_Your_attack_speed_is_reduced_by_20_35,Your attack speed is reduced by 20%-35%,Generic,2.0,Stat.Offense.Speed,True
+Negative_You_cannot_regenerate_HP_above_50_of_your_maxim,You cannot regenerate HP above 50% of your maximum,Generic,2.0,Stat.Defense.Life,True
+Negative_You_take_20_35_increased_damage_while_above_75,You take 20%-35% increased damage while above 75% HP,Generic,2.0,Stat.Defense.Life,True
+Negative_You_take_3_5_increased_damage_for_every_10_sec,"You take 3%-5% increased damage for every 10 seconds spent in combat, up to 60 seconds",Generic,2.0,Stat.Defense.Global,True
+Negative_After_10_seconds_in_combat_you_begin_losing_2_4,After 10 seconds in combat you begin losing 2%-4% of your maximum HP per second,Generic,2.0,Stat.Defense.Life,True
+Negative_Enemies_that_survive_more_than_5_seconds_after_f,Enemies that survive more than 5 seconds after first being hit gain 20%-40% increased damage,Generic,2.0,Trigger.OnKill,True
+Negative_Your_AOE_skills_deal_50_75_of_their_damage_to,Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies,Generic,2.0,Type.AOE.PointBlank,True
+Negative_Your_deployables_and_traps_deal_full_damage_to_y,Your deployables and traps deal full damage to you if you are within their blast radius,Generic,2.0,"Type.Deployable, Type.Trap",True
+Negative_Your_persistent_AOE_zones_apply_their_effects_to,Your persistent AOE zones apply their effects to you if you stand in them,Generic,2.0,Type.AOE.Persistent,True
+Negative_Your_class_resource_generates_30_50_slower,Your class resource generates 30%-50% slower,Generic,2.0,Stat.Resource.ClassResource,True
+Negative_You_cannot_benefit_from_buffs_applied_by_allies,You cannot benefit from buffs applied by allies,Generic,2.0,Type.Buff,True
+Negative_You_are_immune_to_debuffs_but_also_cannot_apply,You are immune to debuffs but also cannot apply them,Generic,2.0,Type.Debuff,True
+Negative_Healing_effects_on_you_are_reduced_by_30_50,Healing effects on you are reduced by 30%-50%,Generic,2.0,Type.Heal,True
+Negative_You_cannot_be_healed_above_75_of_your_maximum_H,You cannot be healed above 75% of your maximum HP,Generic,2.0,Type.Heal,True
+Negative_Melee_skills_have_a_10_20_chance_to_hit_you_in,Melee skills have a 10%-20% chance to hit you instead of the enemy,Generic,2.0,Type.Melee,True
+Negative_Your_retaliation_damage_also_applies_to_you_at_2,Your retaliation damage also applies to you at 25%-50% effectiveness,Generic,2.0,Stat.Defense.Retaliation,True
+Negative_HP_regeneration_is_disabled_during_combat,HP regeneration is disabled during combat,Generic,2.0,"Stat.Recovery.Regen, Stat.Defense.Life",True
+Negative_You_take_20_35_increased_damage_from_spells,You take 20%-35% increased damage from spells,Generic,2.0,Stat.Defense.Spell,True
+Negative_Spell_damage_ignores_20_40_of_your_armor,Spell damage ignores 20%-40% of your armor,Generic,2.0,"Stat.Defense.Spell, Stat.Defense.Armor",True
+Negative_On_death_all_nearby_enemies_are_healed_for_10_2,On death all nearby enemies are healed for 10%-20% of their maximum HP,Generic,2.0,Trigger.OnDeath,True
+Negative_Each_skill_use_costs_an_additional_2_4_of_your,Each skill use costs an additional 2%-4% of your current HP,Generic,2.0,"Trigger.OnSkillUse, Stat.Resource.HP",True
+Negative_After_using_a_charge_skill_you_are_briefly_stunn,After using a charge skill you are briefly stunned for 0.5-1 second,Generic,2.0,"Keyword.Charge, Keyword.CC",True
+Negative_Your_energy_shield_takes_30_50_increased_damag,Your energy shield takes 30%-50% increased damage,Generic,2.0,"Keyword.Shield, Stat.Defense.EnergyShield",True
+Negative_Your_energy_shield_cannot_recharge_above_50_of,Your energy shield cannot recharge above 50% of its maximum,Generic,2.0,"Keyword.Shield, Stat.Defense.EnergyShield",True
+Negative_Your_retaliation_damage_also_damages_you_at_20,Your retaliation damage also damages you at 20%-40% effectiveness,Generic,2.0,Stat.Defense.Retaliation,True
+Negative_You_deal_no_retaliation_damage,You deal no retaliation damage,Generic,2.0,Stat.Defense.Retaliation,True
+Negative_Spells_have_a_15_25_chance_to_backfire_dealing,Spells have a 15%-25% chance to backfire dealing half damage to you,Generic,2.0,Type.Spell,True
+Negative_You_start_every_dungeon_floor_at_30_50_of_your,You start every dungeon floor at 30%-50% of your maximum HP,Generic,2.0,"Trigger.LowLife, Stat.Defense.Life",True
+Negative_Every_10_seconds_you_lose_5_10_of_your_current,Every 10 seconds you lose 5%-10% of your current HP,Generic,2.0,"Trigger.Timer, Stat.Defense.Life",True
+Negative_Your_skills_deal_5_10_less_damage_for_every_cl,Your skills deal 5%-10% less damage for every class point spent above 100,Generic,2.0,"Trigger.Progression, Stat.Offense.Global",True
+Negative_You_deal_20_35_less_damage_to_non_Boss_enemies,You deal 20%-35% less damage to non-Boss enemies,Generic,2.0,"Scope.BossOnly, Stat.Offense.Global",True
+Negative_You_take_15_25_increased_damage_from_Boss_enem,You take 15%-25% increased damage from Boss enemies,Generic,2.0,"Scope.BossOnly, Stat.Defense.Global",True
+Negative_Bleed_effects_applied_to_you_deal_30_50_increa,Bleed effects applied to you deal 30%-50% increased damage,Generic,2.0,Keyword.DoT.Bleed,True
+Negative_You_cannot_cure_or_reduce_bleed_stacks_on_yourse,You cannot cure or reduce bleed stacks on yourself,Generic,2.0,Keyword.DoT.Bleed,True
+Negative_Melee_damage_you_deal_is_reduced_by_15_30,Melee damage you deal is reduced by 15%-30%,Generic,2.0,"Stat.Defense.Melee, Type.Melee",True
+Negative_Enemies_ignore_10_20_of_your_armor,Enemies ignore 10%-20% of your armor,Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Armor",True
+Negative_Enemies_ignore_10_20_of_your_resistances,Enemies ignore 10%-20% of your resistances,Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Resist",True
+Negative_Each_class_point_above_50_reduces_your_maximum_H,Each class point above 50 reduces your maximum HP by 0.5%-1%,Generic,2.0,"Stat.Progression.ClassPoints, Stat.Defense.Life",True
+Negative_Projectiles_deal_10_30_less_damage,Projectiles deal 10-30% less damage,Generic,3.0,Type.Projectile,True
+Negative_Cannot_block,Cannot block,Generic,3.0,Stat.Defense.Block,True
+Negative_Take_10_20_more_damage_from_Boss_enemies,Take 10%-20% more damage from Boss enemies,Generic,3.0,Scope.BossOnly,True
+Negative_Each_class_point_above_the_max_reduces_your_max,Each class point above the max reduces your max resistances by 2%-5%,Generic,3.0,Stat.Defense.Resist,True
+Negative_Skills_cost_50_75_more_mana,Skills cost 50%-75% more mana,Generic,3.0,Stat.Resource.Mana,True
+Negative_Can_t_leech_mana,Can't leech mana,Generic,3.0,"Stat.Recovery.Leech, Stat.Resource.Mana",True
+Negative_Your_minions_have_20_50_less_hp,Your minions have 20%-50% less hp,Generic,3.0,Type.Minion,True
+Negative_Minus_2_4_to_your_max_minion_count,Minus 2-4 to your max minion count,Generic,3.0,Type.Minion,True
+Negative_Lose_10_20_armor_when_you_use_a_skill,Lose 10%-20% armor when you use a skill,Generic,3.0,Stat.Defense.Armor,True
+Negative_While_leeching_reduce_your_max_resistances_by_1,"While leeching, reduce your max resistances by 1%-3% per second",Generic,3.0,"Stat.Recovery.Leech, Stat.Defense.Resist",True
+Negative_Take_10_40_more_damage_when_on_low_mana,Take 10%-40% more damage when on low mana,Generic,3.0,Stat.Resource.Mana,True
+Negative_Take_5_15_more_damage_per_active_aura,Take 5%-15% more damage per active aura,Generic,3.0,Type.AOE.Aura,True
+Negative_Every_third_cast_of_your_spells_cost_20_80_of,Every third cast of your spells cost 20%-80% of your current mana,Generic,3.0,Stat.Resource.Mana,True
+Negative_You_take_10_30_more_damage_from_ranged_attacks,You take 10%-30% more damage from ranged attacks,Generic,3.0,,True
+Negative_Your_melee_attacks_deal_10_30_less_damage,Your melee attacks deal 10%-30% less damage,Generic,3.0,Type.Strike,True
+Negative_Your_damage_is_reduced_by_3_5_for_every_second,"Your damage is reduced by 3%-5% for every second you spend out of combat, up to 10 stacks",Generic,3.0,Stat.Offense.Global,True
+Negative_You_take_10_20_increased_damage_from_all_sourc,You take 10%-20% increased damage from all sources while your shield is active,Generic,3.0,Stat.Defense.Global,True
+Negative_You_take_15_25_more_damage_from_melee_attacks,You take 15%-25% more damage from melee attacks while moving,Generic,3.0,"Stat.Defense.Melee, Stat.Utility.Movespeed",True
+Negative_Channel_skills_deal_30_50_less_damage_during_t,Channel skills deal 30%-50% less damage during the first 2 seconds of channeling,Generic,3.0,Type.Channel,True
+Negative_Point_blank_AOE_skills_have_30_50_increased_co,Point blank AOE skills have 30%-50% increased cooldown,Generic,3.0,Type.AOE.PointBlank,True
+Negative_Persistent_AOE_effects_expire_40_60_faster,Persistent AOE effects expire 40%-60% faster,Generic,3.0,Type.AOE.Persistent,True
+Negative_Taking_a_hit_reduces_your_damage_by_5_10_for_3,Taking a hit reduces your damage by 5%-10% for 3 seconds,Generic,3.0,"Trigger.OnHit, Stat.Offense.Global",True
+Negative_You_take_15_25_more_damage_from_enemies_that_a,You take 15%-25% more damage from enemies that are currently CC'd,Generic,3.0,Keyword.CC,True
+Negative_Strike_skills_cost_5_10_of_your_current_HP_to,Strike skills cost 5%-10% of your current HP to use,Generic,3.0,"Type.Strike, Stat.Defense.Life",True
+Negative_Projectiles_travel_30_50_slower,Projectiles travel 30%-50% slower,Generic,3.0,Type.Projectile,True
+Negative_Every_10th_attack_deals_no_damage,Every 10th attack deals no damage,Generic,3.0,Stat.Offense.Speed,True
+Negative_Enemies_deal_5_8_increased_damage_for_every_15,Enemies deal 5%-8% increased damage for every 15 seconds spent on the same dungeon floor,Generic,3.0,Stat.Defense.Global,True
+Negative_Your_maximum_class_resource_is_reduced_by_20_40,Your maximum class resource is reduced by 20%-40%,Generic,3.0,Stat.Resource.ClassResource,True
+Negative_Your_class_resource_decays_twice_as_fast,Your class resource decays twice as fast,Generic,3.0,Stat.Resource.ClassResource,True
+Negative_Buff_effects_applied_to_you_last_30_50_less_ti,Buff effects applied to you last 30%-50% less time,Generic,3.0,Type.Buff,True
+Negative_Debuffs_applied_to_you_last_30_50_longer,Debuffs applied to you last 30%-50% longer,Generic,3.0,Type.Debuff,True
+Negative_Melee_skills_cost_5_10_of_your_maximum_HP_to_u,Melee skills cost 5%-10% of your maximum HP to use,Generic,3.0,"Type.Melee, Stat.Resource.HP",True
+Negative_Ranged_skills_deal_15_30_less_damage_at_close,Ranged skills deal 15%-30% less damage at close range,Generic,3.0,Type.Ranged,True
+Negative_While_moving_you_take_15_25_increased_damage,While moving you take 15%-25% increased damage,Generic,3.0,"Scope.WhileMoving, Stat.Defense.Global",True
+Negative_While_moving_your_skills_deal_15_25_less_damag,While moving your skills deal 15%-25% less damage,Generic,3.0,"Scope.WhileMoving, Stat.Offense.Global",True
+Negative_While_stationary_you_take_20_35_increased_dama,While stationary you take 20%-35% increased damage from ranged attacks,Generic,3.0,"Scope.WhileStationary, Stat.Defense.Ranged",True
+Negative_You_cannot_use_movement_abilities_while_stationa,You cannot use movement abilities while stationary for more than 2 seconds,Generic,3.0,"Scope.WhileStationary, Slot.Movement",True
+Negative_Your_retaliation_damage_is_reduced_by_50_75,Your retaliation damage is reduced by 50%-75%,Generic,3.0,Stat.Defense.Retaliation,True
+Negative_Mana_regeneration_is_reduced_by_50_75,Mana regeneration is reduced by 50%-75%,Generic,3.0,"Stat.Recovery.Regen, Stat.Resource.Mana",True
+Negative_Blocking_attacks_reduces_your_class_resource_by,Blocking attacks reduces your class resource by 5%-10%,Generic,3.0,"Trigger.OnBlock, Stat.Resource.ClassResource",True
+Negative_After_blocking_you_cannot_block_again_for_1_2_se,After blocking you cannot block again for 1-2 seconds,Generic,3.0,"Trigger.OnBlock, Stat.Defense.Block",True
+Negative_Critical_hits_drain_3_6_of_your_current_HP,Critical hits drain 3%-6% of your current HP,Generic,3.0,"Trigger.OnCrit, Stat.Defense.Life",True
+Negative_Critical_hits_have_a_20_35_chance_to_trigger_a,Critical hits have a 20%-35% chance to trigger a random debuff on you,Generic,3.0,"Trigger.OnCrit, Type.Debuff",True
+Negative_When_you_die_all_your_buffs_are_removed,When you die all your buffs are removed,Generic,3.0,"Trigger.OnDeath, Type.Buff",True
+Negative_Each_skill_use_reduces_your_armor_by_1_2_for_3,Each skill use reduces your armor by 1%-2% for 3 seconds stacking up to 10 times,Generic,3.0,"Trigger.OnSkillUse, Stat.Defense.Armor",True
+Negative_Dodging_an_attack_drains_5_10_of_your_class_re,Dodging an attack drains 5%-10% of your class resource,Generic,3.0,"Trigger.OnDodge, Stat.Resource.ClassResource",True
+Negative_After_dodging_you_cannot_dodge_again_for_1_2_sec,After dodging you cannot dodge again for 1-2 seconds,Generic,3.0,"Trigger.OnDodge, Stat.Defense.Evasion",True
+Negative_Staggered_enemies_deal_15_30_increased_damage,Staggered enemies deal 15%-30% increased damage to you,Generic,3.0,Keyword.Stagger,True
+Negative_You_cannot_stagger_enemies_above_50_HP,You cannot stagger enemies above 50% HP,Generic,3.0,"Keyword.Stagger, Keyword.CC",True
+Negative_Charge_skills_deal_20_35_less_damage_on_impact,Charge skills deal 20%-35% less damage on impact,Generic,3.0,Keyword.Charge,True
+Negative_Summoned_minions_cost_10_20_of_your_maximum_HP,Summoned minions cost 10%-20% of your maximum HP to summon,Generic,3.0,"Keyword.Summon, Stat.Resource.HP",True
+Negative_Each_active_minion_reduces_your_maximum_HP_by_3,Each active minion reduces your maximum HP by 3%-6%,Generic,3.0,"Keyword.Summon, Type.Minion, Stat.Defense.Life",True
+Negative_Retaliation_damage_is_reduced_by_50_75,Retaliation damage is reduced by 50%-75%,Generic,3.0,Stat.Defense.Retaliation,True
+Negative_Each_spell_cast_reduces_your_armor_by_2_4_for,Each spell cast reduces your armor by 2%-4% for 3 seconds stacking up to 5 times,Generic,3.0,"Type.Spell, Stat.Defense.Armor",True
+Negative_Spells_deal_20_35_less_damage_while_you_are_mo,Spells deal 20%-35% less damage while you are moving,Generic,3.0,"Type.Spell, Scope.WhileMoving",True
+Negative_Every_15_seconds_a_random_debuff_is_applied_to_y,Every 15 seconds a random debuff is applied to you,Generic,3.0,"Trigger.Timer, Type.Debuff",True
+Negative_Every_20_seconds_your_damage_is_halved_for_5_sec,Every 20 seconds your damage is halved for 5 seconds,Generic,3.0,"Trigger.Timer, Stat.Offense.Global",True
+Negative_You_take_20_35_increased_damage_from_melee_att,You take 20%-35% increased damage from melee attacks while your HP is above 75%,Generic,3.0,"Stat.Defense.Melee, Stat.Defense.Life",True
+Negative_Your_auras_cost_100_200_increased_mana_per_sec,Your auras cost 100%-200% increased mana per second,Generic,4.0,"Type.AOE.Aura, Stat.Resource.Mana",True
+Negative_Can_t_inflict_bleeding,Can't inflict bleeding,Generic,4.0,Keyword.DoT.Bleed,True
+Negative_You_have_25_50_less_crit_chance,You have 25%-50% less crit chance,Generic,4.0,Stat.Offense.Crit,True
+Negative_Energy_shield_can_now_be_effected_by_bleed,Energy shield can now be effected by bleed,Generic,4.0,"Stat.Defense.EnergyShield, Keyword.DoT.Bleed",True
+Negative_Cannot_evade_melee_attacks,Cannot evade melee attacks,Generic,4.0,Stat.Defense.Evasion,True
+Negative_Movement_abilities_have_50_increased_cooldown,Movement abilities have 50% increased cooldown,Generic,4.0,"Slot.Movement, Slot.Movement",True
+Negative_Movement_abilities_cost_20_50_of_your_maximum,Movement abilities cost 20%-50% of your maximum mana,Generic,4.0,"Slot.Movement, Stat.Resource.Mana",True
+Negative_Cooldowns_are_increased_by_30_50,Cooldowns are increased by 30%-50%,Generic,4.0,Scope.Global,True
+Negative_You_take_10_20_of_the_damage_you_reflect,You take 10%-20% of the damage you reflect,Generic,4.0,,True
+Negative_Your_block_chance_is_reduced_by_20_40,Your block chance is reduced by 20%-40%,Generic,4.0,Stat.Defense.Block,True
+Negative_DoTs_last_2x_4x_as_long_on_you,DoTs last 2x-4x as long on you,Generic,4.0,Keyword.DoT.Generic,True
+Negative_You_lose_10_20_movespeed,You lose 10%-20% movespeed,Generic,4.0,Stat.Utility.Movespeed,True
+Negative_Each_minion_reserves_100_500_hp,Each minion reserves 100-500 hp,Generic,4.0,Type.Minion,True
+Negative_You_take_5_15_damage_done_to_nearby_allies,You take 5%-15% damage done to nearby allies,Generic,4.0,,True
+Negative_Nearby_enemies_gain_20_40_resistances,Nearby enemies gain 20%-40% resistances,Generic,4.0,,True
+Negative_50_less_tick_rate_for_your_leech_effects,50% less tick rate for your leech effects,Generic,4.0,Stat.Recovery.Leech,True
+Negative_Your_cooldown_abilities_have_a_25_chance_to_dea,Your cooldown abilities have a 25% chance to deal no damage,Generic,4.0,,True
+Negative_Your_cooldowns_are_increased_by_100_200,Your cooldowns are increased by 100%-200%,Generic,4.0,,True
+Negative_Lose_5_15_attack_speed,Lose 5%-15% attack speed,Generic,4.0,Stat.Offense.Speed,True
+Negative_You_have_10_20_less_chance_to_evade,You have 10%-20% less chance to evade,Generic,4.0,Stat.Defense.Evasion,True
+Negative_After_you_use_a_movement_ability_you_lose_50_mo,After you use a movement ability you lose 50% movespeed for 3 seconds,Generic,4.0,"Slot.Movement, Slot.Movement, Stat.Utility.Movespeed",True
+Negative_Ranged_skills_have_20_35_reduced_projectile_sp,Ranged skills have 20%-35% reduced projectile speed,Generic,4.0,"Type.Ranged, Type.Projectile",True
+Negative_Your_movement_speed_is_reduced_by_10,Your movement speed is reduced by 10%,Set,5.0,Stat.Utility.Movespeed,True
+Negative_Minion_maximum_health_is_reduced_by_50,Minion maximum health is reduced by 50%,Set,6.0,Stat.Defense.Life,True
+Negative_All_buffs_you_apply_to_yourself_now_last_25_les,All buffs you apply to yourself now last 25% less time,Set,7.0,Type.Buff,True
+Negative_All_mana_regeneration_effects_are_reduced_by_50,All mana regeneration effects are reduced by 50%,Set,8.0,Stat.Resource.Mana,True
+Negative_You_take_10_more_damage_from_all_sources,You take 10% more damage from all sources,Set,9.0,,True
+Negative_Melee_damage_is_reduced_by_50,Melee damage is reduced by 50%,Set,10.0,Type.Strike,True
+Negative_Ranged_attacks_deal_20_more_damage_to_you,Ranged attacks deal 20% more damage to you,Set,11.0,Type.Projectile,True
+Negative_Your_direct_damage_is_reduced_by_25,Your direct damage is reduced by 25%,Set,12.0,,True
+Negative_You_have_no_health_mana_es_regen,You have no health/mana/es regen,Set,13.0,"Stat.Recovery.Regen, Stat.Resource.Mana, Stat.Defense.EnergyShield",True
+Negative_Your_own_ultimate_ability_is_disabled,Your own ultimate ability is disabled,Set,14.0,"Slot.Ultimate, Slot.Ultimate",True
+Negative_Your_health_is_reduced_by_10,Your health is reduced by 10%,Set,16.0,Stat.Defense.Life,True
+Negative_Your_movement_speed_is_reduced_by_10_1,Your movement speed is reduced by 10%,Set,17.0,Stat.Utility.Movespeed,True
+Negative_All_of_your_life_regeneration_effects_are_reduce,All of your life regeneration effects are reduced by 50%,Set,18.0,,True

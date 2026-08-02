@@ -27,9 +27,13 @@ TAGS_SHEET = "Tags"
 
 # Sheets and zero-based column indexes that contain tag references, checked
 # against the vocabulary so the data cannot reference a tag that does not exist.
+# Zero-based column indexes. The Enchantments sheet holds two tables side by
+# side: positives in columns A-D with tags in D (index 3), negatives in F-I with
+# tags in I (index 8). Index 7 is the negatives WEIGHT column and pointing at it
+# silently skipped every negative enchantment's tags.
 REFERENCE_COLUMNS = {
     "Weapon Skills": [5],
-    "Enchantments": [3, 7],
+    "Enchantments": [3, 8],
 }
 
 # Unreal allows letters, digits and underscores in each segment, separated by dots.
