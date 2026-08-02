@@ -175,6 +175,37 @@ class TestCityUpgradeTiers:
             gen.parse_tier("banana", "effect", "Tier 2", 7)
 
 
+class TestOneTimeUseUpgrades:
+    SHEET = [["Type", "Tier 1", "Tier 2", "Tier 3"],
+             ["Architect", "Increase max defense by 20%", 0.3, 0.4],
+             ["Architect*", "Restore defenses by 50%", 0.75, 1],
+             ["", "A last resort with no tiers", None, None]]
+
+    def _rows(self, tmp_path):
+        book = openpyxl.load_workbook(
+            workbook_with(tmp_path / "w.xlsx", {"City Upgrades": self.SHEET}))
+        return gen.city_upgrades(book)
+
+    def test_the_asterisk_marks_one_time_use(self, tmp_path):
+        rows = self._rows(tmp_path)
+        assert [r["IsOneTimeUse"] for r in rows] == ["False", "True", "True"]
+
+    def test_the_asterisk_is_stripped_from_the_branch(self, tmp_path):
+        """Nothing downstream should have to parse punctuation to know this."""
+        assert self._rows(tmp_path)[1]["Branch"] == "Architect"
+
+    def test_the_unbranched_upgrade_is_kept_and_marked(self, tmp_path):
+        row = self._rows(tmp_path)[2]
+        assert row["Branch"] == ""
+        assert row["BranchUndecided"] == "True"
+        assert row["IsOneTimeUse"] == "True"
+
+    def test_a_normal_upgrade_is_not_marked(self, tmp_path):
+        row = self._rows(tmp_path)[0]
+        assert row["IsOneTimeUse"] == "False"
+        assert row["BranchUndecided"] == "False"
+
+
 class TestGems:
     def test_the_everyday_value_is_read_from_the_effect_text(self, tmp_path):
         book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {

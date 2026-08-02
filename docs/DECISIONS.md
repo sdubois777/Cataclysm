@@ -20,6 +20,55 @@ applied or still pending.
 
 ---
 
+## 2026-08-02 — City upgrades: one-time use, and the unbranched upgrade
+
+**Decision.** A trailing asterisk on a branch name in the City Upgrades sheet
+(`Architect*`) marks a **one-time use** upgrade: it fires once and is spent,
+rather than being a standing improvement. Four upgrades are one-time use.
+
+The one row with no branch is also one-time use. It has **no tiers at all** and is
+a last resort rather than a city improvement:
+
+> Cleanse every player city of half of the dungeons on them excluding Quest and
+> Fallen City dungeons. The cities lose 50% of their remaining defenses and
+> population. Can only purchase once, and will only be available on T3 and above.
+
+**Which branch it belongs to has not been decided.** It is carried with an empty
+branch and marked, not dropped.
+
+**Also decided.** The four tier-value notations in the same sheet mean:
+
+| Notation | Meaning |
+|---|---|
+| `0.3` | A percentage increase, stored as a fraction |
+| `10` | A flat improvement, in whatever unit the effect names |
+| `3x` | A multiplier |
+| `10/10%` | Two values at once: the trigger interval in days, and the magnitude. The effect reads "every X days ... Y%" and the tier improves both. |
+
+**Affects:** the City Upgrades sheet in `All_Things_Cataclysm.xlsx`. **Applied
+2026-08-02:** `tools/generate_datatables.py` strips the asterisk into an
+`IsOneTimeUse` flag and parses the tier notations into a kind, a value and an
+interval. `FCataclysmCityUpgradeRow` carries all of it.
+
+**Still open:** which branch the unbranched upgrade belongs to.
+
+---
+
+## 2026-08-02 — Gems: all eight rarity tiers have a value
+
+**Decision.** The Gems sheet is correct as written. The Everyday value is stated
+inside the effect text — "10% chance to apply void splinter" means Everyday is
+10% — and the seven numeric columns continue the series from there.
+
+Verified across all 25 gems: every one states a percentage in its text, and in
+each case the numeric columns continue from it.
+
+**Affects:** nothing needs changing in the sheet. **Applied 2026-08-02:**
+`tools/generate_datatables.py` extracts the Everyday value so consumers get eight
+numbers rather than seven and a sentence.
+
+---
+
 ## 2026-08-02 — The Belt has 4 gem sockets
 
 **Decision.** Add a Belt row to the socket table with **4 sockets**.

@@ -213,11 +213,25 @@ struct FCataclysmCityUpgradeRow : public FTableRowBase
 {
 	GENERATED_BODY()
 
-	/** Architect, Explorer, Treasurer or Artisan. Some carry a trailing asterisk
-	 *  whose meaning is not recorded anywhere. One row has no branch at all:
-	 *  a one-time empire-wide purchase rather than a city upgrade. */
+	/** Architect, Explorer, Treasurer or Artisan. Empty when undecided; see
+	 *  BranchUndecided. The trailing asterisk used in the source sheet is
+	 *  stripped here and carried as IsOneTimeUse instead. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
 	FString Branch;
+
+	/** True for the one upgrade whose branch has not been chosen yet. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
+	bool BranchUndecided = false;
+
+	/**
+	 * Fires once and is spent, rather than being a standing improvement.
+	 *
+	 * These do not scale, so their tier fields are usually empty. The one
+	 * upgrade with no branch is the extreme case: no tiers at all, and intended
+	 * as a last resort rather than a city improvement.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
+	bool IsOneTimeUse = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
 	FString Effect;

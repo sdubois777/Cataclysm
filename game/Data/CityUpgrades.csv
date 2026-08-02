@@ -1,25 +1,25 @@
-Name,Branch,Effect,Tier2Raw,Tier2Kind,Tier2Value,Tier2IntervalDays,Tier3Raw,Tier3Kind,Tier3Value,Tier3IntervalDays
-Architect_Increase_max_defense_by_20,Architect,Increase max defense by 20%,0.3,Percent,0.3,0.0,0.4,Percent,0.4,0.0
-Architect_Increase_max_population_by_20,Architect,Increase max population by 20%,0.3,Percent,0.3,0.0,0.4,Percent,0.4,0.0
-Architect_Remove_25_of_dungeons_on_this_city,Architect*,Remove 25% of dungeons on this city,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Architect_Restore_city_s_defenses_by_50,Architect*,Restore city’s defenses by 50%,0.75,Percent,0.75,0.0,1,Percent,1.0,0.0
-Architect_Restore_city_s_population_by_50,Architect*,Restore city’s population by 50%,0.75,Percent,0.75,0.0,1,Percent,1.0,0.0
-Architect_This_city_resists_25_of_damage,Architect,This city resists 25% of damage,0.5,Percent,0.5,0.0,0.75,Percent,0.75,0.0
-Architect_This_city_resists_25_of_population_loss,Architect,This city resists 25% of population loss,0.5,Percent,0.5,0.0,0.75,Percent,0.75,0.0
-Architect_Every_20_days_this_city_s_defenses_heal,Architect,Every 20 days this city's defenses heal 5%.,10/10%,IntervalPercent,0.1,10.0,5/15%,IntervalPercent,0.15,5.0
-Architect_Every_20_days_this_city_s_population_rec,Architect,Every 20 days this city’s population recovers 5%.,10/10%,IntervalPercent,0.1,10.0,5/15%,IntervalPercent,0.15,5.0
-Architect_When_you_clear_a_dungeon_the_city_s_Def,Architect,"When you clear a dungeon, the city’s Defense restores by an additional 5%.",0.1,Percent,0.1,0.0,0.15,Percent,0.15,0.0
-Explorer_There_can_be_no_more_than_15_dungeons_on,Explorer,There can be no more than 15 dungeons on this city,10,Flat,10.0,0.0,5,Flat,5.0,0.0
-Explorer_Dungeons_here_take_4_less_days_to_beat,Explorer,"Dungeons here take 4 less days to beat, to a minimum of 1",8,Flat,8.0,0.0,12,Flat,12.0,0.0
-Explorer_Dungeons_here_have_5_more_floors,Explorer,Dungeons here have 5 more floors.,10,Flat,10.0,0.0,15,Flat,15.0,0.0
-Explorer_Dungeons_here_have_5_fewer_floors_to_a,Explorer,"Dungeons here have 5 fewer floors, to a minimum of 1.",10,Flat,10.0,0.0,15,Flat,15.0,0.0
-Explorer_Increases_the_chance_of_dungeons_on_this,Explorer,Increases the chance of dungeons on this city being Horde Dungeons by 25%,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Explorer_Increases_the_chance_of_dungeons_on_this_1,Explorer,Increases the chance of dungeons on this city being Elite dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Explorer_Increases_the_chance_of_dungeons_on_this_2,Explorer,Increases the chance of dungeons on this city being Sacrificial dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Explorer_Increases_the_chance_of_dungeons_on_thie,Explorer,Increases the chance of dungeons on thie city being Volatile dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Treasurer_Dungeons_here_provide_2x_more_experience,Treasurer,Dungeons here provide 2x more experience,3x,Multiplier,3.0,0.0,5x,Multiplier,5.0,0.0
-Treasurer_Dungeons_here_have_10_increased_rarity,Treasurer,Dungeons here have 10% increased rarity find.,0.2,Percent,0.2,0.0,0.5,Percent,0.5,0.0
-Treasurer_Dungeons_here_drop_25_more_gold,Treasurer,Dungeons here drop 25% more gold.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Treasurer_Dungeons_here_drop_25_more_loot,Treasurer,Dungeons here drop 25% more loot.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Artisan_Dungeons_here_drop_25_more_crafting_mat,Artisan,Dungeons here drop 25% more crafting materials.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
-Unbranched_Cleanse_every_player_city_of_half_of_the,,"Cleanse every player city of half of the dungeons on them excluding Quest and Fallen City dungeons. The cities lose 50% of their remaining defenses and population. Can only purchase once, and will only be available on T3 and above.",,,0.0,0.0,,,0.0,0.0
+Name,Branch,BranchUndecided,IsOneTimeUse,Effect,Tier2Raw,Tier2Kind,Tier2Value,Tier2IntervalDays,Tier3Raw,Tier3Kind,Tier3Value,Tier3IntervalDays
+Architect_Increase_max_defense_by_20,Architect,False,False,Increase max defense by 20%,0.3,Percent,0.3,0.0,0.4,Percent,0.4,0.0
+Architect_Increase_max_population_by_20,Architect,False,False,Increase max population by 20%,0.3,Percent,0.3,0.0,0.4,Percent,0.4,0.0
+Architect_Remove_25_of_dungeons_on_this_city,Architect,False,True,Remove 25% of dungeons on this city,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Architect_Restore_city_s_defenses_by_50,Architect,False,True,Restore city’s defenses by 50%,0.75,Percent,0.75,0.0,1,Percent,1.0,0.0
+Architect_Restore_city_s_population_by_50,Architect,False,True,Restore city’s population by 50%,0.75,Percent,0.75,0.0,1,Percent,1.0,0.0
+Architect_This_city_resists_25_of_damage,Architect,False,False,This city resists 25% of damage,0.5,Percent,0.5,0.0,0.75,Percent,0.75,0.0
+Architect_This_city_resists_25_of_population_loss,Architect,False,False,This city resists 25% of population loss,0.5,Percent,0.5,0.0,0.75,Percent,0.75,0.0
+Architect_Every_20_days_this_city_s_defenses_heal,Architect,False,False,Every 20 days this city's defenses heal 5%.,10/10%,IntervalPercent,0.1,10.0,5/15%,IntervalPercent,0.15,5.0
+Architect_Every_20_days_this_city_s_population_rec,Architect,False,False,Every 20 days this city’s population recovers 5%.,10/10%,IntervalPercent,0.1,10.0,5/15%,IntervalPercent,0.15,5.0
+Architect_When_you_clear_a_dungeon_the_city_s_Def,Architect,False,False,"When you clear a dungeon, the city’s Defense restores by an additional 5%.",0.1,Percent,0.1,0.0,0.15,Percent,0.15,0.0
+Explorer_There_can_be_no_more_than_15_dungeons_on,Explorer,False,False,There can be no more than 15 dungeons on this city,10,Flat,10.0,0.0,5,Flat,5.0,0.0
+Explorer_Dungeons_here_take_4_less_days_to_beat,Explorer,False,False,"Dungeons here take 4 less days to beat, to a minimum of 1",8,Flat,8.0,0.0,12,Flat,12.0,0.0
+Explorer_Dungeons_here_have_5_more_floors,Explorer,False,False,Dungeons here have 5 more floors.,10,Flat,10.0,0.0,15,Flat,15.0,0.0
+Explorer_Dungeons_here_have_5_fewer_floors_to_a,Explorer,False,False,"Dungeons here have 5 fewer floors, to a minimum of 1.",10,Flat,10.0,0.0,15,Flat,15.0,0.0
+Explorer_Increases_the_chance_of_dungeons_on_this,Explorer,False,False,Increases the chance of dungeons on this city being Horde Dungeons by 25%,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Explorer_Increases_the_chance_of_dungeons_on_this_1,Explorer,False,False,Increases the chance of dungeons on this city being Elite dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Explorer_Increases_the_chance_of_dungeons_on_this_2,Explorer,False,False,Increases the chance of dungeons on this city being Sacrificial dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Explorer_Increases_the_chance_of_dungeons_on_thie,Explorer,False,False,Increases the chance of dungeons on thie city being Volatile dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Treasurer_Dungeons_here_provide_2x_more_experience,Treasurer,False,False,Dungeons here provide 2x more experience,3x,Multiplier,3.0,0.0,5x,Multiplier,5.0,0.0
+Treasurer_Dungeons_here_have_10_increased_rarity,Treasurer,False,False,Dungeons here have 10% increased rarity find.,0.2,Percent,0.2,0.0,0.5,Percent,0.5,0.0
+Treasurer_Dungeons_here_drop_25_more_gold,Treasurer,False,False,Dungeons here drop 25% more gold.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Treasurer_Dungeons_here_drop_25_more_loot,Treasurer,False,False,Dungeons here drop 25% more loot.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Artisan_Dungeons_here_drop_25_more_crafting_mat,Artisan,False,False,Dungeons here drop 25% more crafting materials.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
+Unbranched_Cleanse_every_player_city_of_half_of_the,,True,True,"Cleanse every player city of half of the dungeons on them excluding Quest and Fallen City dungeons. The cities lose 50% of their remaining defenses and population. Can only purchase once, and will only be available on T3 and above.",,,0.0,0.0,,,0.0,0.0

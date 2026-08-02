@@ -310,8 +310,14 @@ def parse_tier(value, effect: str, field: str, row: int) -> tuple[str, float, fl
 def city_upgrades(book) -> list[dict]:
     """City upgrades and their tier 2 and tier 3 scaling.
 
-    Some branch names carry a trailing asterisk (`Architect*`). Its meaning is
-    not recorded anywhere; it is preserved rather than stripped.
+    A trailing asterisk on the branch name marks a ONE-TIME USE upgrade: it fires
+    once and is spent, rather than being a standing improvement. The asterisk is
+    turned into a flag here and stripped from the branch name, so nothing has to
+    parse punctuation to know how an upgrade behaves.
+
+    One row has no branch. It is also one-time use, has no tiers, and is a last
+    resort rather than a city improvement. Which branch it belongs to has not
+    been decided, so Branch is left empty and BranchUndecided marks it.
     """
     out = []
     for index, raw in enumerate(book["City Upgrades"].iter_rows(values_only=True), 1):
@@ -321,15 +327,18 @@ def city_upgrades(book) -> list[dict]:
         if not effect:
             continue
 
+        one_time = branch.endswith("*") or not branch
+        branch = branch.rstrip("*").strip()
+
         t2_kind, t2_value, t2_interval = parse_tier(
             raw[2] if len(raw) > 2 else "", effect, "Tier 2", index)
         t3_kind, t3_value, t3_interval = parse_tier(
             raw[3] if len(raw) > 3 else "", effect, "Tier 3", index)
 
-        # One row has no branch: a one-time empire-wide purchase, not a city
-        # upgrade at all. Kept, and marked, rather than dropped silently.
         out.append({"Name": row_name(branch or "Unbranched", effect[:40]),
                     "Branch": branch,
+                    "BranchUndecided": "True" if not branch else "False",
+                    "IsOneTimeUse": "True" if one_time else "False",
                     "Effect": effect,
                     # The raw cell is kept alongside the parsed values so nothing
                     # is lost if the inference above is ever wrong.
