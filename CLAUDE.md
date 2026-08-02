@@ -107,11 +107,15 @@ gh issue close 12 --comment "Fixed in #34"
 
 ## Repository conventions
 
-- Branch from `main`. Name branches `fix/`, `feat/`, `docs/`, `setup/`, or
-  `chore/` followed by a short description.
-- Never commit directly to `main`. Open a pull request.
-- Continuous integration runs lint and the fast tests on every pull request. Do
-  not open one you know is failing; run `pytest` and `ruff check .` first.
+- **`development` is the working branch. `main` is production.** Branch from
+  `development` and open pull requests back into `development`. `main` only
+  receives release merges from `development`.
+- Name branches `fix/`, `feat/`, `docs/`, `setup/`, or `chore/` followed by a
+  short description.
+- Never commit directly to `development` or `main`. Open a pull request.
+- Continuous integration runs lint and the fast tests on every pull request into
+  either branch. Do not open one you know is failing; run `pytest` and
+  `ruff check .` first.
 - Explain in the pull request body what changed and why, and include the
   evidence that it works.
 - Do not commit compiled Python, build output, or engine intermediates. See

@@ -1,15 +1,17 @@
 name: CI
 
-# Runs on every pull request into main, and on main itself. Nothing here takes
-# more than about two minutes, so it can gate merges without being annoying.
-# The full balance sweep is a separate, manually triggered job further down,
-# because it takes roughly 18 minutes.
+# Runs on every pull request into development or main, and on those branches
+# themselves. `development` is the working branch; `main` is production and only
+# receives release merges from development. Nothing here takes more than about
+# two minutes, so it can gate merges without being annoying. The full balance
+# sweep is a separate, manually triggered job further down, because it takes
+# roughly 18 minutes.
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, development]
   push:
-    branches: [main]
+    branches: [main, development]
   workflow_dispatch:
 
 concurrency:

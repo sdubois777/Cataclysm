@@ -39,8 +39,11 @@ outcome, not a failure.
 
 ## 3. Branch and implement
 
+Branch from `development`, which is the working branch. `main` is production and
+only receives release merges.
+
 ```bash
-git checkout main && git pull
+git checkout development && git pull
 git checkout -b fix/short-description    # or feat/, chore/
 ```
 
@@ -88,7 +91,7 @@ per concern.
 
 ```bash
 git push -u origin <branch>
-gh pr create --base main --title "..." --body "..."
+gh pr create --base development --title "..." --body "..."
 ```
 
 The body states what changed, why, and the evidence it works — the commands you
