@@ -55,6 +55,18 @@ DUNGEON_SCORE_MIX = (
 )
 
 
+def _js_round(x: float) -> int:
+    """Round the way JavaScript's Math.round does: halves go up, toward +inf.
+
+    Python's built-in round() is banker's rounding -- round(390.5) is 390, but
+    Math.round(390.5) is 391. The reference model rounds every score it returns,
+    and exact .5 values are common here because the formula is built from halves
+    (`currentFloor * 0.5`) and fifths. Using round() made this port disagree with
+    calculateScores.tsx on roughly 2% of inputs, always by exactly 1.
+    """
+    return math.floor(x + 0.5)
+
+
 def tier_bounds(tier: int) -> tuple[float, float]:
     p_max = PLAYER_MAX_SCORES.get(tier, 4584)
     p_min = PLAYER_MAX_SCORES.get(tier - 1, 0)
@@ -87,7 +99,7 @@ def enemy_scores(tier: int, dungeon_type: str, subtype: str,
     for rarity, w in RARITY_WEIGHTS.items():
         score = (baseline + type_bonus + sub_bonus + width * w
                  + procedural + depth_tension + modifier_score)
-        out[rarity] = round(score)
+        out[rarity] = _js_round(score)
     return out
 
 
@@ -96,7 +108,7 @@ def dungeon_score(tier: int, dungeon_type: str, subtype: str,
     """The dungeon's expected difficulty: its middle floor, rarity-weighted."""
     middle = math.ceil(total_floors / 2)
     s = enemy_scores(tier, dungeon_type, subtype, total_floors, middle, modifier_score)
-    return round(sum(s[r] * w for r, w in DUNGEON_SCORE_MIX))
+    return _js_round(sum(s[r] * w for r, w in DUNGEON_SCORE_MIX))
 
 
 def final_boss_score(tier: int, dungeon_type: str, subtype: str,
