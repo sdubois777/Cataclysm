@@ -20,6 +20,89 @@ applied or still pending.
 
 ---
 
+## 2026-08-02 — The Power Score formula
+
+**Decision.** Power Score is four additive terms:
+
+```
+Power Score = LevelWeight      * character level
+            + GearWeight       * sum over 18 equipped pieces of rarity * (1 + UpgradeFactor * gear level)
+            + GemWeight        * sum over filled sockets of gem rarity
+            + ResistanceWeight * sum over 8 resistances of percent, each counted only to 70
+```
+
+| Weight | Value |
+|---|---|
+| LevelWeight | 6.3270 |
+| GearWeight | 6.2330 |
+| UpgradeFactor | 0.2525 |
+| GemWeight | 5.2725 |
+| ResistanceWeight | 1.1298 |
+
+**Gem quality and gem level are the same axis.** The design document sentence
+named seven inputs; there are six. A gem has one position on the eight-tier
+rarity scale. Gear alone has two independent axes, its rarity and its +1 to +10
+upgrade level.
+
+**Why gear upgrade multiplies rarity instead of adding to it.** A fully upgraded
+Cataclysmic piece has to be worth far more than a fully upgraded Everyday one.
+It is also the only place in the formula where two inputs multiply, and it is
+what makes the player's power curve rise with the square of the difficulty tier
+rather than in a straight line. The fixed tier anchors already have that shape.
+
+**The weights are derived, not chosen.** Given the reference character below,
+they follow from the tier 1 and tier 8 anchors. The only free decision was what
+share of a finished character's score comes from each source, set to 50% gear,
+30% gems, 10% level, 10% resistances.
+
+That share allocation does **not** affect how well the formula matches the
+anchors. Worst-case error stays between 5.29% and 5.35% across allocations as
+different as 8/60/24/8 and 18/50/22/10. What it does control is what one gear
+upgrade is worth: at the chosen shares a +10 piece is 3.5 times a +0 piece,
+where giving level an 18% share would force it to 11.9 times.
+
+**Three rules settled at the same time:**
+
+| Rule | Reason |
+|---|---|
+| Socket count gets no weight of its own | It is the number of terms in the gem sum |
+| Two one-handed weapons count as one equipped piece | They already give the same 6 sockets as a two-handed weapon; dual wielding must not be worth free Power Score |
+| Resistance above 70% adds no Power Score | Over-capping stays legal and useful against penetration, but it is headroom rather than power |
+
+**The reference character.** The formula cannot be checked against the anchors
+without saying what character is being scored, so the expected character at the
+end of each tier is part of this decision. Gear and gem rarity equal the tier;
+gear level is tier + 2 capped at +10; level, filled sockets and resistances rise
+evenly to their maximums at tier 8.
+
+It is a calibration reference, not a requirement. Leveling is player-driven —
+one player may clear a hundred dungeons in a tier where another clears forty —
+but it should be smooth across the tiers, which is what the reference assumes.
+
+**What does not fit, and why it is not this formula's fault.** The reference
+character lands on 6,327 exactly at tier 8 and 384 against 385 at tier 1. The six
+tiers in between are within 5.3%, and the entire residual sits at the tier 4 to
+tier 5 boundary, where tier 5 is 1,107 points wide against a surrounding trend of
+about 790. A character progressing smoothly produces a smooth curve, and a smooth
+curve cannot pass through a kink.
+
+Issue #7 records the same anomaly from the enemy side. A hypothesis that the
+jump was deliberate — tier 5 being the first tier a player wears Legendary gear,
+the first rarity carrying enchantments — was tested and rejected: adding that
+step made the fit worse, 11.3% against 5.3%, and no step at any other tier helped
+either.
+
+**Power Score does not read class base stats.** Its inputs contain no health,
+mana or energy shield, so this decision did not have to wait for the class base
+values in issue #77, and #77 does not have to wait for it.
+
+**Affects:** `Cataclysm_GDD_v2.md` section IV. **Applied 2026-08-02:** the Power
+Score section now carries the formula, the weights, the four rules and the
+reference character table. The working model is
+`sim/cataclysm_sim/player_power.py`, covered by `sim/tests/test_player_power.py`.
+
+---
+
 ## 2026-08-02 — City upgrades: one-time use, and the unbranched upgrade
 
 **Decision.** A trailing asterisk on a branch name in the City Upgrades sheet
