@@ -144,6 +144,63 @@ class TestReshapedSheets:
         assert any(r["EffectName"] == "Mana Surge" for r in rows)
 
 
+class TestCityUpgradeTiers:
+    """The tier cells use four notations and the sheet has no kind column."""
+
+    @pytest.mark.parametrize("cell,effect,kind,value,days", [
+        ("0.3",    "Increase max defense by 20%",         "Percent",         0.30, 0),
+        ("1",      "Remove 25% of dungeons",              "Percent",         1.00, 0),
+        ("10",     "no more than 15 dungeons",            "Flat",           10.00, 0),
+        ("8",      "take 4 less days to beat",            "Flat",            8.00, 0),
+        ("3x",     "provide 2x more experience",          "Multiplier",      3.00, 0),
+        ("10/10%", "Every 20 days ... heal 5%.",          "IntervalPercent", 0.10, 10),
+        ("5/15%",  "Every 20 days ... heal 5%.",          "IntervalPercent", 0.15, 5),
+        ("",       "anything",                            "",                0.00, 0),
+    ])
+    def test_each_notation_parses(self, cell, effect, kind, value, days):
+        assert gen.parse_tier(cell, effect, "Tier 2", 1) == (kind, value, days)
+
+    def test_the_days_half_of_the_pair_is_not_lost(self):
+        """Regression: this notation was once flattened to just the percentage,
+        which discarded the change to the trigger interval."""
+        _, value, days = gen.parse_tier("5/15%", "Every 20 days ... 5%", "T", 1)
+        assert (value, days) == (0.15, 5)
+
+    def test_a_bare_number_is_a_percentage_only_when_the_effect_says_so(self):
+        assert gen.parse_tier("10", "increase by 5%", "T", 1)[0] == "Percent"
+        assert gen.parse_tier("10", "5 more floors", "T", 1)[0] == "Flat"
+
+    def test_an_unreadable_cell_is_an_error(self):
+        with pytest.raises(gen.DataError, match="none of a percentage"):
+            gen.parse_tier("banana", "effect", "Tier 2", 7)
+
+
+class TestGems:
+    def test_the_everyday_value_is_read_from_the_effect_text(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of The Abyss", "10% chance to apply void splinter",
+                      0.3, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, "Attack"]]}))
+        row = gen.gems(book)[0]
+        assert row["Everyday"] == pytest.approx(0.10)
+        assert row["Quality"] == pytest.approx(0.30)
+        assert row["Cataclysmic"] == pytest.approx(2.0)
+
+    def test_a_gem_with_no_percentage_in_its_text_is_an_error(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of Nothing", "does a thing", 0.3, 0.5, 0.75, 1.0, 1.25,
+                      1.5, 2.0, "Attack"]]}))
+        with pytest.raises(gen.DataError, match="states no percentage"):
+            gen.gems(book)
+
+
 class TestValidation:
     def test_an_undefined_tag_is_reported(self):
         tables = {"T": [{"Name": "row", "Tags": "Element.War, Type.Nonexistent"}]}

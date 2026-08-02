@@ -214,12 +214,17 @@ def status_effects(book) -> list[dict]:
 
 
 def gems(book) -> list[dict]:
-    """Gem effects and their per-rarity values.
+    """Gem effects and their value at each of the eight rarity tiers.
 
-    NOTE: the header lists eight rarities but each row holds the effect text in
-    the first of those columns followed by seven numbers. So the values run
-    Quality through Cataclysmic and Everyday has none. Recorded as-is rather
-    than guessed at; see the open issue.
+    The sheet's "Everyday Gemstone" column holds the effect description, and that
+    description STATES the Everyday value: "10% chance to apply void splinter"
+    means Everyday is 10%. The seven numeric columns that follow are Quality
+    through Cataclysmic, and the series continues from the value in the text --
+    10%, then 30, 50, 75, 100, 125, 150, 200.
+
+    So all eight tiers have a value; only the first is written in prose. It is
+    extracted here so consumers get eight numbers rather than seven and a
+    sentence. Every one of the 25 gems states a percentage, which is checked.
     """
     rows = list(book["Gems"].iter_rows(values_only=True))
     tiers = ["Quality", "Superb", "Masterful", "Legendary",
@@ -228,23 +233,82 @@ def gems(book) -> list[dict]:
     for index, raw in enumerate(rows[1:], start=2):
         if not raw or not clean(raw[0]):
             continue
-        name = clean(raw[0])
+        name, effect = clean(raw[0]), clean(raw[1])
+
+        match = re.search(r"(\d+(?:\.\d+)?)\s*%", effect)
+        if not match:
+            raise DataError(f"Gems row {index}: {name!r} states no percentage in "
+                            f"its effect text, so the Everyday value cannot be "
+                            f"read: {effect!r}")
+        everyday = float(match.group(1)) / 100.0
+
         entry = {"Name": row_name("Gem", name), "GemName": name,
-                 "Effect": clean(raw[1]),
-                 "GemType": clean(raw[9]) if len(raw) > 9 else ""}
+                 "Effect": effect,
+                 "GemType": clean(raw[9]) if len(raw) > 9 else "",
+                 "Everyday": everyday}
         for offset, tier in enumerate(tiers, start=2):
             entry[tier] = number(raw[offset], tier, index) if offset < len(raw) else 0.0
         out.append(entry)
     return unique(out, "Gems")
 
 
+def parse_tier(value, effect: str, field: str, row: int) -> tuple[str, float, float]:
+    """Read one city-upgrade tier cell as (kind, value, interval).
+
+    The sheet has no column saying which kind a cell is, so it is inferred from
+    the cell's own notation and the effect text. The four kinds, as stated by the
+    project owner:
+
+      "10/10%"  IntervalPercent  two values at once. The effect reads "every X
+                                 days ... Y%", and the tier improves BOTH: the
+                                 interval drops and the magnitude rises. Here
+                                 interval 10 days, magnitude 10%.
+      "3x"      Multiplier       multiplies the effect.
+      "0.3"     Percent          a percentage increase, stored as a fraction.
+      "10"      Flat             a flat improvement, in whatever unit the effect
+                                 names -- days, floors, a count of dungeons.
+
+    Percent and Flat are told apart by whether the effect text mentions a
+    percentage, because both are bare numbers. That is a heuristic on prose, and
+    it is why an explicit kind column in the sheet would be better.
+    """
+    text = clean(value)
+    if not text:
+        return "", 0.0, 0.0
+
+    # Must be tested before the others: this cell contains a percent sign AND a
+    # bare number, so either of the later branches would match it and lose half
+    # the value.
+    if "/" in text:
+        interval_text, _, magnitude_text = text.partition("/")
+        magnitude_text = magnitude_text.strip().rstrip("%")
+        try:
+            interval = float(interval_text.strip())
+            magnitude = float(magnitude_text) / 100.0
+        except ValueError as error:
+            raise DataError(f"City Upgrades row {row}: {field} is {text!r}, which "
+                            f"is not 'days/percent'") from error
+        return "IntervalPercent", magnitude, interval
+
+    if text.lower().endswith("x"):
+        try:
+            return "Multiplier", float(text[:-1]), 0.0
+        except ValueError as error:
+            raise DataError(f"City Upgrades row {row}: {field} is {text!r}, which "
+                            f"is not a multiplier") from error
+
+    try:
+        amount = float(text)
+    except ValueError as error:
+        raise DataError(f"City Upgrades row {row}: {field} is {text!r}, which is "
+                        f"none of a percentage, a flat number, a multiplier or "
+                        f"a days/percent pair") from error
+
+    return ("Percent" if "%" in effect else "Flat"), amount, 0.0
+
+
 def city_upgrades(book) -> list[dict]:
     """City upgrades and their tier 2 and tier 3 scaling.
-
-    The tier columns are NOT numbers. They hold mixed notation -- "0.3", "10",
-    "3x", "10/10%" -- which means different things in different rows and has no
-    stated convention. They are carried through as text rather than coerced into
-    a number that would be wrong for several rows. See the open issue.
 
     Some branch names carry a trailing asterisk (`Architect*`). Its meaning is
     not recorded anywhere; it is preserved rather than stripped.
@@ -256,13 +320,27 @@ def city_upgrades(book) -> list[dict]:
         branch, effect = clean(raw[0]), clean(raw[1])
         if not effect:
             continue
+
+        t2_kind, t2_value, t2_interval = parse_tier(
+            raw[2] if len(raw) > 2 else "", effect, "Tier 2", index)
+        t3_kind, t3_value, t3_interval = parse_tier(
+            raw[3] if len(raw) > 3 else "", effect, "Tier 3", index)
+
         # One row has no branch: a one-time empire-wide purchase, not a city
         # upgrade at all. Kept, and marked, rather than dropped silently.
         out.append({"Name": row_name(branch or "Unbranched", effect[:40]),
                     "Branch": branch,
                     "Effect": effect,
-                    "Tier2": clean(raw[2]) if len(raw) > 2 else "",
-                    "Tier3": clean(raw[3]) if len(raw) > 3 else ""})
+                    # The raw cell is kept alongside the parsed values so nothing
+                    # is lost if the inference above is ever wrong.
+                    "Tier2Raw": clean(raw[2]) if len(raw) > 2 else "",
+                    "Tier2Kind": t2_kind,
+                    "Tier2Value": t2_value,
+                    "Tier2IntervalDays": t2_interval,
+                    "Tier3Raw": clean(raw[3]) if len(raw) > 3 else "",
+                    "Tier3Kind": t3_kind,
+                    "Tier3Value": t3_value,
+                    "Tier3IntervalDays": t3_interval})
     return unique(out, "City Upgrades")
 
 

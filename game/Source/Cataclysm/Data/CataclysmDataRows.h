@@ -139,12 +139,14 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 };
 
 /**
- * A gem and its value at each rarity. Source: Gems.
+ * A gem and its value at each of the eight rarity tiers. Source: Gems.
  *
- * There is no Everyday value. The sheet's header lists eight rarities, but each
- * row holds the effect text in the first of those columns followed by seven
- * numbers, so the values run Quality through Cataclysmic. Recorded as found
- * rather than guessed at; tracked as an open question.
+ * All eight tiers have a value. In the sheet the Everyday value is written into
+ * the effect text -- "10% chance to apply void splinter" means Everyday is 10%
+ * -- and the seven numeric columns continue the series from there. The generator
+ * extracts it, so all eight arrive here as numbers.
+ *
+ * Values are fractions: 0.3 is 30%.
  */
 USTRUCT(BlueprintType)
 struct FCataclysmGemRow : public FTableRowBase
@@ -154,6 +156,7 @@ struct FCataclysmGemRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem")
 	FString GemName;
 
+	/** States the Everyday value in prose; also carried as Everyday below. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem")
 	FString Effect;
 
@@ -161,6 +164,7 @@ struct FCataclysmGemRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem")
 	FString GemType;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem") float Everyday = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem") float Quality = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem") float Superb = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem") float Masterful = 0.0f;
@@ -171,11 +175,38 @@ struct FCataclysmGemRow : public FTableRowBase
 };
 
 /**
- * One city upgrade. Source: City Upgrades.
+ * How a city upgrade tier value should be read.
  *
- * Tier2 and Tier3 are FString, not float. The source column holds mixed notation
- * -- "0.3", "10", "3x", "10/10%" -- with no stated convention, and coercing it
- * would produce a wrong number for several rows. Tracked as an open question.
+ * The source sheet has no column saying which kind a cell is; the generator
+ * infers it from the cell's notation and the effect text. See parse_tier in
+ * tools/generate_datatables.py.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmTierValueKind : uint8
+{
+	/** Empty cell: the upgrade has no value at this tier. */
+	None			UMETA(DisplayName = "None"),
+
+	/** A percentage increase, stored as a fraction. 0.3 means 30%. */
+	Percent			UMETA(DisplayName = "Percent"),
+
+	/** A flat improvement in whatever unit the effect names: days, floors,
+	 *  a count of dungeons. */
+	Flat			UMETA(DisplayName = "Flat"),
+
+	/** Multiplies the effect. 3 means three times. */
+	Multiplier		UMETA(DisplayName = "Multiplier"),
+
+	/** Two values at once. The effect reads "every X days ... Y%", and the tier
+	 *  improves both: IntervalDays falls and Value rises. */
+	IntervalPercent	UMETA(DisplayName = "Interval and Percent"),
+};
+
+/**
+ * One city upgrade and its tier 2 and tier 3 scaling. Source: City Upgrades.
+ *
+ * Each tier carries the raw cell text alongside the parsed values, so nothing is
+ * lost if the generator's inference is ever wrong for a row.
  */
 USTRUCT(BlueprintType)
 struct FCataclysmCityUpgradeRow : public FTableRowBase
@@ -183,18 +214,39 @@ struct FCataclysmCityUpgradeRow : public FTableRowBase
 	GENERATED_BODY()
 
 	/** Architect, Explorer, Treasurer or Artisan. Some carry a trailing asterisk
-	 *  whose meaning is not recorded anywhere. One row has no branch at all. */
+	 *  whose meaning is not recorded anywhere. One row has no branch at all:
+	 *  a one-time empire-wide purchase rather than a city upgrade. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
 	FString Branch;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
 	FString Effect;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
-	FString Tier2;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 2")
+	FString Tier2Raw;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
-	FString Tier3;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 2")
+	FString Tier2Kind;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 2")
+	float Tier2Value = 0.0f;
+
+	/** Only meaningful when Tier2Kind is IntervalPercent. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 2")
+	float Tier2IntervalDays = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 3")
+	FString Tier3Raw;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 3")
+	FString Tier3Kind;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 3")
+	float Tier3Value = 0.0f;
+
+	/** Only meaningful when Tier3Kind is IntervalPercent. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 3")
+	float Tier3IntervalDays = 0.0f;
 };
 
 /** A crafting material. Source: Crafting. */
