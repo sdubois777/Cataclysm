@@ -56,6 +56,13 @@ jobs:
       - name: Tests
         run: python -m pytest
 
+      # game/Config/Tags/CataclysmTags.ini is generated from the Tags sheet of
+      # the design workbook. If someone edits the sheet and forgets to
+      # regenerate, the ability and enchantment systems silently reference tags
+      # the engine does not have. This fails the build instead.
+      - name: Gameplay tag list is current
+        run: python tools/generate_gameplay_tags.py --check
+
       # The power model is a port of calculateScores.tsx in the separate
       # DungeonSimulator repository. This reports that it skipped, rather than
       # passing quietly, when that repository is not available.
