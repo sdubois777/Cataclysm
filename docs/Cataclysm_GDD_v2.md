@@ -328,6 +328,14 @@ Each run begins with a randomly selected Cataclysm. Every time a Cataclysm is de
 
   
 
+**The active Cataclysm determines the player's damage type.** Loot is biased toward weapons tuned to the Cataclysm being fought, and because weapon damage type determines both the available skills and the available class trees, this is what shapes the build a run produces. Fighting the Demonic Cataclysm means mostly Demonic weapons drop, which unlocks the Demonic classes.
+
+  
+
+This is the loop the run is built around: the threat chosen at run start decides what the player can become by the end of it. With several Cataclysms active at once, drops are biased across all of them, which is how a player accumulates the multiple damage types that make multiclassing possible.
+
+  
+
 ### **The Surge**
 
 A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
@@ -362,7 +370,15 @@ Combat is real-time top-down action. Players must read and dodge telegraphed ene
 
 ### **Skill Slots**
 
-Each player has six skill slots. The skills available in each slot are determined by the combination of weapon type and damage type on their equipped weapon(s). Basic attacks are handled automatically and are enhanced by all damage types present.
+Each player has six skill slots. Basic attacks are handled automatically and are enhanced by all damage types present.
+
+  
+
+The equipped weapons determine the **pool** of skills a player can draw from, not the contents of each slot. Every combination of an equipped weapon type and an available damage type contributes its skills to that pool. The player then chooses which skills to use and assigns them to slots.
+
+  
+
+A player carrying several damage types will have far more skills available than slots to hold them. Choosing which six to take is part of building a character, and it is why gear that widens the pool is valuable even when its raw statistics are no better.
 
   
 
@@ -573,7 +589,25 @@ Skills in Cataclysm are not learned or leveled independently. They are determine
 
   - One-Handed: Sword, Dagger, Axe, Fist, Wand, Whip, Shield, Crossbow
   - Two-Handed: Greatsword, Greataxe, Spear, Staff, 2H Crossbow, Warhammer
-  - Offhands: Quivers (pair with crossbows)
+
+There are no offhand items. A player equips either one two-handed weapon or two
+one-handed weapons; both configurations give the same 6 gem sockets.
+
+### **Dual Wielding and Damage Types**
+
+A single weapon can carry more than one damage type. What the player has access to
+is determined by the set of damage types across **all** equipped weapons, not by
+either weapon alone.
+
+  - Every damage type present unlocks that type's three class passive trees. Four
+    damage types across the player's weapons unlocks 12 classes.
+  - Every damage type present also unlocks every skill matching an equipped weapon
+    type paired with that damage type.
+  - The player does not receive a button for every available skill. They choose
+    from the available pool and assign chosen skills to slots.
+
+This is why dual wielding matters beyond raw damage: it is the primary route to
+multiclassing, because it is how a player carries more damage types at once.
 
   
 
@@ -587,13 +621,25 @@ Not all damage types are available on all weapons. Damage type availability is t
 | :-: | :-: |
 | \*\*Damage Type\*\* | \*\*Available Weapon Types\*\* |
 | War | Sword, 2H Sword, Dagger, Axe, 2H Axe, Spear, Fist, Shield, Crossbow, 2H Crossbow, 2H Warhammer, Whip |
-| Demonic | TBD — fire and rage themed weapons |
-| Death | TBD — necrotic and shadow themed weapons |
-| Pestilence | TBD — poison and disease themed weapons |
-| Famine | TBD — drain and leech themed weapons |
-| Celestial | TBD — holy and light themed weapons |
+| Demonic | Sword, 2H Sword, Dagger, Axe, 2H Axe, Fist, Whip, 2H Warhammer, Wand, Staff |
+| Death | Sword, 2H Sword, Dagger, 2H Axe, Spear, Fist, Whip, Wand, Staff |
+| Pestilence | Sword, Dagger, Spear, Fist, Whip, Crossbow, 2H Crossbow, Wand, Staff |
+| Famine | Sword, Dagger, Axe, Fist, Whip, 2H Warhammer, Wand, Staff |
+| Celestial | Sword, 2H Sword, Spear, Shield, Crossbow, 2H Warhammer, Wand, Staff |
 | Chaos | All weapon types (chaos is unpredictable) |
-| Void | TBD — gravity and erasure themed weapons |
+| Void | 2H Sword, Dagger, Spear, Fist, Whip, 2H Warhammer, Wand, Staff |
+
+  
+
+Each list is set by what the damage type's three classes need to function. Void is
+the most restricted at 8 weapons because it is the least physical type; Chaos is
+unrestricted because the Chaos Shaper changes form based on weapon type. Wand and
+Staff are excluded from War, which has no caster build.
+
+  
+
+Every one of the 24 classes has at least two weapons available to it under this
+table, and no weapon is unused by every damage type.
 
   
 
@@ -749,13 +795,13 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
 | Gloves | 2 |   |
 | Pants | 4 |   |
 | Boots | 2 |   |
+| Belt | 4 |   |
 | Rings (x8) | 1 each | 8 total |
 | Necklace | 1 |   |
 | Relic | 4 |   |
-| 1H Weapons | 3 |   |
+| 1H Weapons | 3 | Two of these give 6, matching a 2H weapon |
 | 2H Weapons | 6 |   |
-| Offhands | 3 |   |
-| Potion slots | 1 each | Gem potions |
+| Potion slots | 1 each | Gem potions, 4 slots |
 
   
 
@@ -1114,8 +1160,8 @@ All cosmetics are purely visual — no pay-to-win, ever.
   - Implement one full Cataclysm (Demonic) with 5-7 enemy types and a complete boss.
   - Build and validate the core combat loop with one weapon type and one damage type.
   - Implement the basic empire map with Surge mechanics and city loss.
-  - Implement the passive class tree system with one fully designed tree (War / Bulwark).
-  - Implement the skill system with War skills across 3 weapon types.
+  - Implement the passive class tree system with one fully designed tree (Demonic / Masochist).
+  - Implement the skill system with Demonic skills across 3 weapon types.
 
   
 

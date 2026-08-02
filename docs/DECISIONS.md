@@ -10,9 +10,13 @@ This log records the *reasoning* behind decisions, which the design documents
 themselves do not carry. Each entry names which document it affects, so the
 change can be applied there.
 
-Entries below dated 2026-08-02 were written before that switch and say they still
-need folding into Drive. Ignore that wording. They do still need applying to the
-files in this folder.
+Entries below dated 2026-08-02 were written before that switch and carry wording
+about folding changes into Drive. Ignore that wording; it is obsolete.
+
+**All six of those decisions have now been applied** to
+`Cataclysm_GDD_v2.md` and `All_Things_Cataclysm.xlsx`. The "Affects" line on each
+entry records where the change landed. Later entries should say whether they are
+applied or still pending.
 
 ---
 
@@ -43,7 +47,8 @@ Socket count after this decision and the quiver removal below:
 | Weapons | 6 (a two-handed weapon, or two one-handed weapons at 3 each) |
 | **Total** | **45** |
 
-**Affects:** `Cataclysm_GDD_v2.md` section VI socket table.
+**Affects:** `Cataclysm_GDD_v2.md` section VI socket table. **Applied 2026-08-02:**
+Belt row added with 4 sockets, total confirmed at 45.
 
 ---
 
@@ -55,8 +60,9 @@ Quivers were never really weapons; they were an extra gear piece providing relat
 stats and gem sockets. Ranged two-handed weapons now behave like every other
 two-handed weapon and carry **6 gem sockets**.
 
-**Affects:** `Cataclysm_GDD_v2.md` section VI, both the weapon type list ("Offhands:
-Quivers (pair with crossbows)") and the socket table row "Offhands | 3".
+**Affects:** `Cataclysm_GDD_v2.md` section VI. **Applied 2026-08-02:** the
+"Offhands: Quivers" line and the "Offhands | 3" socket row are both removed, and
+the weapon type list now states there are no offhand items.
 
 **Consequence for socket totals.** With the offhand row gone, a two-handed weapon
 gives 6 sockets and two one-handed weapons give 3 + 3 = 6, so the weapon
@@ -79,7 +85,10 @@ contribution is 6 either way. See the open question on the Belt below.
 - **The player does not get a button for every available skill.** They choose
   which skills to use from the available pool and assign them to hotkeys.
 
-**Affects:** `Cataclysm_GDD_v2.md` sections IV and V.
+**Affects:** `Cataclysm_GDD_v2.md` sections IV and V. **Applied 2026-08-02:** a
+"Dual Wielding and Damage Types" subsection was added to section VI, and the
+Skill Slots text in section IV was rewritten to say the weapons determine the
+pool rather than the contents of each slot.
 
 This is a meaningful clarification of the skill slot system. The design document
 says "Each player has six skill slots. The skills available in each slot are
@@ -128,7 +137,9 @@ reduction. The animation count is unaffected at 71 shared sets, because animatio
 follows weapon and slot rather than damage type.
 
 **Affects:** `Cataclysm_GDD_v2.md` section V, and the Weapon Skills sheet in
-`All_Things_Cataclysm.xlsx`.
+`All_Things_Cataclysm.xlsx`. **Applied 2026-08-02:** the six TBD rows are filled
+in, and the Weapon Skills sheet is pruned from 558 rows to 398. No row carrying a
+designed skill was removed; all 61 War skills survive.
 
 ---
 
@@ -165,7 +176,9 @@ classes.
 **Consequence.** The Phase 1 vertical slice targets the Demonic Cataclysm, so it
 needs Demonic player content, not the War content the roadmap currently names.
 
-**Affects:** `Cataclysm_GDD_v2.md` sections IV, VI and XV.
+**Affects:** `Cataclysm_GDD_v2.md` sections IV, VI and XV. **Applied 2026-08-02:**
+the rule is stated in the Game Start section, and the Phase 1 roadmap now names
+Demonic / Masochist and Demonic skills rather than War / Bulwark and War skills.
 
 ---
 
