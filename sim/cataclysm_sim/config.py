@@ -1,0 +1,407 @@
+"""All tunable numbers in one place.
+
+Anything tagged UNKNOWN is a number the design documents do not currently
+specify. Deriving good values for these is the entire point of the rig.
+
+Naming follows the canonical scheme: Outpost / Bulwark / Sanctuary / Pillar.
+(GDD v0.3 still calls these Village / City / Metropolis / Capital. The JSON
+trees use the newer names, and the newer names win.)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from enum import Enum
+
+
+class CityTier(str, Enum):
+    OUTPOST = "Outpost"
+    BULWARK = "Bulwark"
+    SANCTUARY = "Sanctuary"
+    PILLAR = "Pillar"
+
+
+class DungeonType(str, Enum):
+    BASIC = "Basic"
+    QUEST = "Quest"
+    FALLEN_CITY = "FallenCity"
+    CATACLYSM = "Cataclysm"
+
+
+class SurgeMode(str, Enum):
+    """How the Cataclysm escalates surge over surge.
+
+    STATIC       fixed gap, fixed dungeon count (no escalation)
+    ACCELERATING gap shrinks each surge, count fixed
+    SWELLING     gap fixed, count grows each surge
+    BOTH         gap shrinks and count grows
+    """
+    STATIC = "static"
+    ACCELERATING = "accelerating"
+    SWELLING = "swelling"
+    BOTH = "both"
+
+
+# Ordered weakest -> strongest. Used for "distance to the Pillar" reasoning.
+TIER_ORDER = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY, CityTier.PILLAR]
+
+
+@dataclass(frozen=True)
+class TierStats:
+    count: int
+    max_defense: float
+    max_population: float
+    # UNKNOWN #4 -- base city defense / population per tier.
+    # Anchored loosely to the Bulwark class tree, which gates nodes at
+    # 5k/8k/10k/15k/20k/25k player Max HP, implying a 5-digit HP scale.
+
+
+@dataclass(frozen=True)
+class DungeonSpec:
+    """Floor and timer ranges for one (DungeonType, CityTier) pair."""
+    floors: tuple[int, int]
+    resolve_days: tuple[int, int]
+    # Fraction of the host city's MAX defense/population destroyed each time
+    # this dungeon resolves undefeated, before scaling by relative floor count.
+    defense_bite: float
+    population_bite: float
+
+
+@dataclass
+class EmpireTree:
+    """The empire passive tree, collapsed to the handful of effects that
+    actually touch the strategy layer.
+
+    Every field is the *net* effect of a whole investment pattern, so we can
+    compare "no tree" against "Explorer maxed" against a proposed fix without
+    simulating 1,248 individual nodes.
+    """
+    name: str = "None"
+
+    # --- dungeon run time -------------------------------------------------
+    run_days_flat: float = 0.0      # total flat days removed (the current design)
+    run_days_mult: float = 1.0      # multiplicative scalar
+
+    # Floors added/removed. Because one floor costs one day, this changes run
+    # time AND reward together -- you cannot buy speed without paying loot.
+    floor_delta: float = 0.0
+
+    # --- city survivability ----------------------------------------------
+    city_damage_mult: float = 1.0   # product of every damage-reduction node
+
+    # --- timers -----------------------------------------------------------
+    resolve_bonus_days: float = 0.0
+    surge_bonus_days: float = 0.0
+
+    def describe(self) -> str:
+        return (f"{self.name}: run -{self.run_days_flat:g}d x{self.run_days_mult:.2f}, "
+                f"floors {self.floor_delta:+g}, city dmg x{self.city_damage_mult:.3f}, "
+                f"resolve +{self.resolve_bonus_days:g}d, surge +{self.surge_bonus_days:g}d")
+
+
+@dataclass
+class TuningConfig:
+    # =====================================================================
+    # THE FIVE UNKNOWNS
+    # =====================================================================
+
+    # RESOLVED (was UNKNOWN #1) -- one floor costs one day. Always.
+    # This is a much stronger rule than a tunable rate: it makes depth and
+    # time the same axis, so a dungeon can never be made cheaper without also
+    # being made poorer. Every floor-count node in the Explorer branch is
+    # therefore also a time node, and vice versa.
+    days_per_floor: float = 1.0
+    run_days_min: int = 1
+    run_days_max: int = 400
+
+    # UNKNOWN #2 -- surge cadence, and how it escalates.
+    surge_mode: SurgeMode = SurgeMode.STATIC
+    surge_interval_days: float = 120.0
+    surge_dungeon_count: int = 4
+
+    # ACCELERATING / BOTH: each surge multiplies the gap by this and floors it.
+    surge_interval_decay: float = 0.88
+    surge_interval_min: float = 25.0
+
+    # SWELLING / BOTH: each surge adds this many dungeons, capped.
+    surge_count_growth: float = 0.5
+    surge_count_max: int = 14
+
+    # Wave volume across multiple Cataclysms. Each one brings its own pattern's
+    # count_mult, and the totals are SUMMED (not averaged -- averaging meant a
+    # fourth Cataclysm could dilute the wave and make the run easier) then
+    # raised to this exponent so eight simultaneous threats are brutal without
+    # being arithmetically impossible.
+    cataclysm_volume_exponent: float = 0.7
+
+    # A surge also fires immediately when a city falls.
+    surge_on_city_fall: bool = True
+    # Does a fall-triggered surge also advance the escalation counter? If it
+    # does, losing a city permanently speeds the game up -- a death spiral.
+    city_fall_advances_escalation: bool = True
+
+    # UNKNOWN #3 -- resolve timers.
+    # Now that one floor costs one day, a flat timer table cannot work: a
+    # 40-floor dungeon with a 30-day timer is unsavable no matter how well the
+    # player plays. The timer has to scale with depth alongside the run time.
+    #
+    #     resolve_days = resolve_base_days + floors * resolve_floor_ratio
+    #
+    # The ratio is the single most important number in the strategy layer. At
+    # 1.0 every dungeon is exactly barely savable and nothing else can be. Above
+    # roughly 1.5 the player can save any ONE dungeon comfortably but still
+    # cannot save all of them -- which is where triage lives.
+    resolve_base_days: float = 10.0
+    resolve_floor_ratio: float = 1.6
+    resolve_jitter: float = 0.15    # +/- fraction, rolled per dungeon
+
+    # UNKNOWN #4 -- base city defense / population. Held in TIER_STATS.
+
+    # UNKNOWN #5 -- empire points earned per dungeon cleared.
+    # Not consumed by the strategy sim; recorded so the meta-progression
+    # curve can be fitted from the same runs.
+    empire_points_per_dungeon: dict[DungeonType, float] = field(default_factory=lambda: {
+        DungeonType.BASIC: 1.0,
+        DungeonType.QUEST: 3.0,
+        DungeonType.FALLEN_CITY: 5.0,
+        DungeonType.CATACLYSM: 25.0,
+    })
+
+    # =====================================================================
+    # Structural rules
+    # =====================================================================
+
+    # The dungeon you are standing in has its timer PAUSED -- its residents are
+    # busy fighting you rather than marching on the city. Every other dungeon
+    # in the world keeps ticking.
+    #
+    # This makes entering a dungeon a guaranteed save rather than a gamble, so
+    # the decision is pure opportunity cost: 30 days in here is 30 days the
+    # other timers advance without you.
+    timer_ticks_while_running: bool = False
+
+    # After resolving undefeated, does the dungeon stay (with a refreshed
+    # timer) or disappear? Staying is what lets an ignored city actually die.
+    dungeon_persists_after_resolve: bool = True
+
+    # =====================================================================
+    # Power and the forge
+    # =====================================================================
+    # Time and floors are separate currencies. A floor costs a day, but a day
+    # can also be spent at the forge instead -- and the forge does not defend
+    # anything. That is the decision the whole game is built on: make the item
+    # and let a city burn, or keep slogging with the gear you have.
+
+    # Which difficulty tier this run is played at. Sets the whole power scale
+    # via scoring.PLAYER_MAX_SCORES.
+    tier: int = 1
+    # Moving up a tier adds a Cataclysm, and dungeons then draw from the
+    # combined modifier pool of every ACTIVE Cataclysm. Two active types means
+    # ~26 modifiers to roll from, which is what stops deep tiers running dry.
+    CATACLYSM_ROSTER: tuple[str, ...] = ("Demonic", "Death", "War", "Pestilence",
+                                         "Famine", "Celestial", "Chaos", "Void")
+
+    # A dungeon carries one modifier per tier. Sacrificial dungeons start with
+    # double that -- the player may sacrifice materials to shed the extra ones,
+    # or keep them for bonus rewards.
+    modifiers_per_tier: int = 1
+    sacrificial_modifier_multiplier: int = 2
+
+    # Spawn distribution over dungeon subtypes.
+    SUBTYPE_SPAWN_WEIGHTS: dict[str, float] = field(default_factory=lambda: {
+        "None": 34.0, "Timed": 12.0, "Horde": 12.0, "Elite": 10.0,
+        "Volatile": 10.0, "Siege": 10.0, "Sacrificial": 8.0, "Cow Level": 4.0,
+    })
+
+    # Overwhelm -- see combat.py.
+    overwhelm_rate: float = 0.25
+    overwhelm_cap: float = 0.50
+    # Per-floor death risk at 2x incoming damage. Small; it compounds by depth.
+    per_floor_risk: float = 0.010
+    boss_risk_multiplier: float = 6.0
+
+    # Player power, expressed as fractions of the tier's power gap so the same
+    # numbers work at every tier. Dungeon difficulty comes from scoring.py.
+    power_start_frac: float = 0.35
+
+    # The Cataclysm gets stronger as the run goes on. Without this, power is
+    # never scarce, looting alone always suffices, and the forge is a trap that
+    # only ever costs you cities. This is the treadmill that makes gear matter.
+    #
+    # Deliberately keyed to ELAPSED DAYS, not surge count. Keyed to surges, any
+    # change to surge cadence silently rescales difficulty -- accelerating
+    # surges would multiply the treadmill as well as the pressure, and the two
+    # escalation modes stop being comparable.
+    dungeon_power_escalation_per_100_days: float = 0.22
+
+    # Power gained from equipping what drops, as a fraction of tier width per
+    # floor. Deliberately NOT enough on its own to stay ahead of the treadmill.
+    power_gain_per_floor_frac: float = 0.00032
+    # Crafting materials banked per floor cleared.
+    material_per_floor: float = 1.0
+
+    # The forge. Far better power-per-day than looting, but it defends nothing
+    # and it burns materials that only dungeon time can supply.
+    craft_days: int = 12
+    craft_material_cost: float = 40.0
+    craft_power_gain_frac: float = 0.05
+
+    # Dying costs days and the dungeon is not cleared.
+    death_day_cost: int = 5
+    # Policies refuse dungeons riskier than this.
+    death_risk_tolerance: float = 0.35
+
+    # Number of simultaneous Cataclysms this run.
+    active_cataclysms: int = 1
+
+    # The win condition. Every Cataclysm quest mechanic in GDD XI reduces to
+    # "clear N quest dungeons, then the enemy capital opens": 10 Rifts, 5 Seeds
+    # of Undeath, 10 Essences of War, 8 Pillars of Order. 8 is the midpoint.
+    quest_objectives_required: int = 8
+    # A quest dungeon that reaches the end of its timer relocates instead of
+    # detonating (GDD VIII: "does not resolve -- refreshes and may move").
+    quest_relocates: bool = True
+
+    # The Last Stand. When a Sanctuary falls the Cataclysm can reach the Pillar
+    # and comes to you: a stronger Cataclysm dungeon that absorbs every dungeon
+    # still standing on the map as extra floors. There is no escaping it --
+    # either you beat the Cataclysm or the run is over.
+    last_stand_floor_bonus: int = 25
+    last_stand_floors_per_absorbed: int = 5
+    # The Last Stand is as strong as the ruin it grew out of. Arriving there
+    # having thrown away sixteen cities should be a materially worse fight than
+    # arriving having lost two -- otherwise the Last Stand launders bad play.
+    last_stand_power_per_fallen_city: float = 0.05
+    last_stand_floors_per_fallen_city: int = 4
+
+    # Runs are long now that a 40-floor dungeon costs 40 days.
+    max_days: int = 2500
+
+    # =====================================================================
+    # Tables
+    # =====================================================================
+
+    TIER_STATS: dict[CityTier, TierStats] = field(default_factory=lambda: {
+        CityTier.OUTPOST:   TierStats(count=12, max_defense=1_000,  max_population=5_000),
+        CityTier.BULWARK:   TierStats(count=8,  max_defense=3_000,  max_population=20_000),
+        CityTier.SANCTUARY: TierStats(count=4,  max_defense=8_000,  max_population=60_000),
+        CityTier.PILLAR:    TierStats(count=1,  max_defense=20_000, max_population=150_000),
+    })
+
+    # Floor ranges follow the stated intent: randomised within a range that
+    # depends on both dungeon type and the tier of the host city.
+    DUNGEON_SPECS: dict[tuple[DungeonType, CityTier], DungeonSpec] = field(
+        default_factory=lambda: {
+            (DungeonType.BASIC, CityTier.OUTPOST):
+                DungeonSpec((8, 15),   (10, 20), 0.10, 0.05),
+            (DungeonType.BASIC, CityTier.BULWARK):
+                DungeonSpec((15, 25),  (14, 26), 0.09, 0.05),
+            (DungeonType.BASIC, CityTier.SANCTUARY):
+                DungeonSpec((25, 40),  (20, 34), 0.08, 0.04),
+            (DungeonType.BASIC, CityTier.PILLAR):
+                DungeonSpec((40, 60),  (30, 50), 0.06, 0.03),
+
+            # Quest dungeons never resolve (GDD VIII) -- they refresh and may
+            # move. Bites are zero; the timer is a relocation clock.
+            (DungeonType.QUEST, CityTier.OUTPOST):
+                DungeonSpec((20, 30),  (25, 40), 0.0, 0.0),
+            (DungeonType.QUEST, CityTier.BULWARK):
+                DungeonSpec((30, 45),  (25, 40), 0.0, 0.0),
+            (DungeonType.QUEST, CityTier.SANCTUARY):
+                DungeonSpec((30, 50),  (25, 40), 0.0, 0.0),
+            (DungeonType.QUEST, CityTier.PILLAR):
+                DungeonSpec((50, 70),  (25, 40), 0.0, 0.0),
+
+            # Fallen City floor minimums come straight from the GDD: 20/40/60.
+            (DungeonType.FALLEN_CITY, CityTier.OUTPOST):
+                DungeonSpec((20, 35),  (999, 999), 0.0, 0.0),
+            (DungeonType.FALLEN_CITY, CityTier.BULWARK):
+                DungeonSpec((40, 60),  (999, 999), 0.0, 0.0),
+            (DungeonType.FALLEN_CITY, CityTier.SANCTUARY):
+                DungeonSpec((60, 85),  (999, 999), 0.0, 0.0),
+            (DungeonType.FALLEN_CITY, CityTier.PILLAR):
+                DungeonSpec((80, 120), (999, 999), 0.0, 0.0),
+
+            (DungeonType.CATACLYSM, CityTier.PILLAR):
+                DungeonSpec((100, 150), (999, 999), 0.0, 0.0),
+        })
+
+    # Which tier a surge prefers to hit. Higher weight = more likely.
+    SURGE_TARGET_WEIGHT: dict[CityTier, float] = field(default_factory=lambda: {
+        CityTier.OUTPOST: 5.0,
+        CityTier.BULWARK: 3.0,
+        CityTier.SANCTUARY: 1.5,
+        CityTier.PILLAR: 0.0,   # the Pillar is only attacked in the Last Stand
+    })
+
+    # Chance a surge-spawned dungeon is a Quest rather than a Basic.
+    quest_dungeon_chance: float = 0.12
+
+    tree: EmpireTree = field(default_factory=EmpireTree)
+
+    # ---------------------------------------------------------------------
+
+    def spec(self, dtype: DungeonType, tier: CityTier) -> DungeonSpec:
+        return self.DUNGEON_SPECS[(dtype, tier)]
+
+    def with_tree(self, tree: EmpireTree) -> "TuningConfig":
+        return replace(self, tree=tree)
+
+
+# =========================================================================
+# Empire tree presets
+# =========================================================================
+
+TREE_NONE = EmpireTree(name="No tree")
+
+# Every unconditional flat run-time reduction in Empire_Development_Tree_Final:
+#   Pacing 10 + Overclock 20 + Temporal Mastery 25 + Opportunist 5
+#   + Fleet Footed 5 + The Delver 5  = 70 days
+# (Rapid Descent and Sovereign's Haste are excluded -- they scale with floors
+#  and active Cataclysm count and would only make this worse.)
+TREE_EXPLORER_AS_DESIGNED = EmpireTree(
+    name="Explorer maxed (as designed)",
+    run_days_flat=70.0,
+)
+
+# Every multiplicative city damage-reduction node in the Architect branch,
+# multiplied out for a Sanctuary next to the Pillar holding 2+ upgrades:
+#   0.860 x 0.818 x 0.778 x 0.819 x 0.860 x 0.850 x 0.542 x 0.60 x 0.860 x 0.25
+TREE_ARCHITECT_AS_DESIGNED = EmpireTree(
+    name="Architect maxed (as designed)",
+    city_damage_mult=0.023,
+    resolve_bonus_days=13.0,
+)
+
+# Alternative: delete every flat day-reduction node and move that power onto
+# floor count instead. Because one floor is one day, this still speeds runs up
+# -- but it costs reward, so it cannot be a free win.
+TREE_EXPLORER_VIA_FLOORS = EmpireTree(
+    name="Explorer via floors (-25 floors)",
+    floor_delta=-25.0,
+)
+
+# The same branch pushed the other way: buy depth, pay time.
+TREE_EXPLORER_DEEP = EmpireTree(
+    name="Explorer via floors (+30 floors)",
+    floor_delta=+30.0,
+)
+
+# A conservative whole-tree budget: modest multiplicative speed, clamped city
+# damage reduction, small timer padding.
+TREE_PROPOSED_FIX = EmpireTree(
+    name="Proposed budget (x0.85 time, x0.55 dmg)",
+    run_days_mult=0.85,
+    city_damage_mult=0.55,
+    resolve_bonus_days=5.0,
+    surge_bonus_days=10.0,
+)
+
+TREE_PRESETS = [
+    TREE_NONE,
+    TREE_EXPLORER_AS_DESIGNED,
+    TREE_EXPLORER_VIA_FLOORS,
+    TREE_EXPLORER_DEEP,
+    TREE_ARCHITECT_AS_DESIGNED,
+    TREE_PROPOSED_FIX,
+]
