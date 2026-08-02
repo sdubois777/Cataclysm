@@ -4,16 +4,19 @@ using UnrealBuildTool;
 
 /// <summary>
 /// The primary game module: the player, combat, abilities, items and dungeons.
-///
-/// The Gameplay Ability System dependencies are deliberately NOT added here yet.
-/// They arrive with the GAS setup work, so that the first compile proves the
-/// project skeleton alone.
 /// </summary>
 public class Cataclysm : ModuleRules
 {
 	public Cataclysm(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+
+		// This module uses a flat layout (AbilitySystem/, Character/, Player/)
+		// rather than the Public/Private split. Without adding the module root
+		// here, includes such as "AbilitySystem/CataclysmAttributeSet.h" do not
+		// resolve, because UnrealBuildTool only adds Public and Private
+		// automatically.
+		PublicIncludePaths.Add(ModuleDirectory);
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
@@ -22,10 +25,18 @@ public class Cataclysm : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
+
+			// The Gameplay Ability System. GameplayTags is public because
+			// attribute sets, abilities and item data all expose tags in their
+			// headers; GameplayTasks is a hard dependency of GameplayAbilities.
+			"GameplayAbilities",
+			"GameplayTags",
+			"GameplayTasks",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"NetCore",
 		});
 	}
 }
