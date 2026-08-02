@@ -143,6 +143,27 @@ class TestCommandLine:
         assert gen.main(["--workbook", str(book), "--output", str(out), "--check"]) == 1
         assert "out of date" in capsys.readouterr().err
 
+    def test_strict_fails_on_an_undefined_reference(self, tmp_path, capsys):
+        book = make_workbook(tmp_path / "w.xlsx",
+                             [("Slot.Ultimate", "d")],
+                             references=["Type.Ultimate"])
+        out = tmp_path / "Tags.ini"
+        # Without --strict this is only a warning, so the run still succeeds.
+        assert gen.main(["--workbook", str(book), "--output", str(out)]) == 0
+        assert "WARNING" in capsys.readouterr().err
+
+        assert gen.main(["--workbook", str(book), "--output", str(out),
+                         "--strict"]) == 1
+        assert "FAIL" in capsys.readouterr().err
+
+    def test_strict_passes_when_every_reference_resolves(self, tmp_path):
+        book = make_workbook(tmp_path / "w.xlsx",
+                             [("Slot.Ultimate", "d")],
+                             references=["Slot.Ultimate"])
+        out = tmp_path / "Tags.ini"
+        assert gen.main(["--workbook", str(book), "--output", str(out),
+                         "--strict"]) == 0
+
     def test_check_fails_when_the_file_is_missing(self, tmp_path, capsys):
         book = make_workbook(tmp_path / "w.xlsx", [("A.B", "d")])
         missing = tmp_path / "nope.ini"
