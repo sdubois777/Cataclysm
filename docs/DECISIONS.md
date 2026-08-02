@@ -9,6 +9,37 @@ the Drive originals. Each entry names which document it affects.
 
 ---
 
+## 2026-08-02 — The Belt has 4 gem sockets
+
+**Decision.** Add a Belt row to the socket table with **4 sockets**.
+
+**Why.** The socket table in `Cataclysm_GDD_v2.md` section VI sums to 41, but the
+same section states the total is 45. The Belt appears in the item slot list
+(Head, Chest, Shoulders, Gloves, Pants, Boots, Belt) and has no row in the socket
+table. Four sockets on the Belt makes the total exactly 45.
+
+The 45 figure is the one to preserve, because the expected player Power Score
+maths — including the per-tier anchors in `sim/cataclysm_sim/scoring.py` — was
+derived assuming 45 sockets. Changing the total would invalidate those anchors.
+
+Socket count after this decision and the quiver removal below:
+
+| Slot | Sockets |
+|---|---|
+| Chest | 6 |
+| Pants | 4 |
+| Relic | 4 |
+| **Belt** | **4** |
+| Helmet, Shoulders, Gloves, Boots | 2 each |
+| Rings (×8), Necklace | 1 each |
+| Potion slots (×4) | 1 each |
+| Weapons | 6 (a two-handed weapon, or two one-handed weapons at 3 each) |
+| **Total** | **45** |
+
+**Affects:** `Cataclysm_GDD_v2.md` section VI socket table.
+
+---
+
 ## 2026-08-02 — Quivers and offhands are removed
 
 **Decision.** Quivers are removed from the game. There is no offhand slot.
