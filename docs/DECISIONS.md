@@ -20,6 +20,104 @@ applied or still pending.
 
 ---
 
+## 2026-08-02 — Attribute scaling, caps, and how avoidance works
+
+**Decision.** The attribute table gave every attribute as a percentage per point
+without saying what the percentage applied to or how sources combined. These are
+the rules.
+
+**Attributes scale, they do not create.** Health, mana and energy shield come
+from class base values, per-level scaling, and flat values from gear. Vitality's
++2% HP multiplies that result. Those base values are still undesigned; see
+issue #77.
+
+**Increases are additive within one bucket per stat, applied once:**
+
+```
+Final Value = Base Value * (1 + Sum of Increases) * Product of More Multipliers
+```
+
+Attribute points and gear affixes worded "increased" share one bucket. Only
+"more" and "less" multiply separately, and that wording stays reserved for
+enchantments and keystones.
+
+**Why additive rather than compounding.** At 2% per point compounding, 100
+points of Vitality is 7.2 times health. Additive it is 3 times. The Power Score
+ranges per tier rise about 16 times in total from tier 1 to tier 8, so a single
+attribute producing 7 times on its own leaves no room for gear.
+
+**Regeneration percentages are increases to a base rate, not percentages of the
+maximum.** `Final Regeneration = Base Regeneration * (1 + Sum of Increases)`.
+Read literally, 50 points of Vitality would return half a character's health
+every second.
+
+**Cooldown reduction divides rather than subtracts:**
+
+```
+Final Cooldown = Base Cooldown / (1 + Sum of Increases)
+```
+
+The skill supplies the base cooldown. The interface shows the effective
+reduction, `Increases / (1 + Increases)`, so a character shown at 25% reduction
+turns a 4-second skill into a 3-second one.
+
+**Why division.** Efficacy gives +1% per point, so subtracting would reach zero
+cooldowns at 100 points. Dividing, 100 points halves every cooldown, gear pushes
+further with each point worth progressively less, and zero is unreachable. The
+alternative considered was subtraction with a lower per-point value and a hard
+cap; it was rejected because it creates a dead zone where every further Efficacy
+point and every cooldown affix is worth nothing.
+
+Damage-over-time frequency uses the same form, being a rate. Area of effect
+stays additive.
+
+**Caps:**
+
+| Stat | Cap | Hard or soft |
+|---|---|---|
+| Resistances | 70% | Soft — affixes may raise the cap |
+| Evasion | 60% | Soft — gear enchantments may exceed it |
+| Crit chance | 100% | Hard |
+| Block chance | none | No cap |
+| Cooldown reduction | none | No cap needed; the formula cannot reach zero |
+
+**Avoidance works two different ways, and the design document did not say so.**
+
+- Evasion avoids an attack completely but applies only to direct attacks. Area
+  damage lands regardless. This is why its cap can be soft: even at 100%
+  evasion a character is not immune.
+- Block reduces a blocked hit's damage by 50% rather than preventing it. Block
+  chance is the chance that reduction applies.
+- Block applies to area damage as well as direct attacks; evasion does not. The
+  reasoning is thematic — a raised shield helps against an explosion in a way
+  that dodging does not.
+- Block chance therefore needs no cap. At 100% block chance a character has 50%
+  damage reduction, which is strong but is not immunity. An earlier proposal of
+  a 75% block cap was rejected once it was established that a block is not a
+  full avoid.
+
+**Where the base block value came from.** It is not in `Cataclysm_GDD_v2.md`. It
+is in the generated enchantment tables: `game/Data/EnchantmentsPositive.csv`
+line 40 reads "You block for 65%-75% of damage instead of the normal 50%". Line
+41 of the same file reads "Your block chance applies to AOE damage at 50%
+effectiveness", which is now contradicted by the decision above and is recorded
+as issue #80. Those two rows were carrying combat rules the design document
+never stated.
+
+**Still open.** Luck gives +0.01% rarity find per point, which is +1% at 100
+points and almost nothing next to gear affixes. The value is deferred until loot
+tables and gear quality drop rates exist, at which point it can be set to
+whatever makes the attribute competitive. Recorded as issue #81.
+
+**Affects:** `Cataclysm_GDD_v2.md` section IV. **Applied 2026-08-02:** a Stat
+Calculation subsection was added covering all of the above, and the attribute
+table's per-point column was reworded where the meaning changed — the three
+regeneration entries now read "increased regeneration" rather than "per second",
+and the evasion entry no longer carries an inline cap now that the cap is soft
+and listed with the others.
+
+---
+
 ## 2026-08-02 — The Power Score formula
 
 **Decision.** Power Score is four additive terms:

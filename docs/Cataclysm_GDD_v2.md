@@ -626,14 +626,112 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 |  |  |  |
 | :-: | :-: | :-: |
 | \*\*Attribute\*\* | \*\*Stats\*\* | \*\*Per Point\*\* |
-| Agility | Move Speed / Evasion | \\+2% move speed / +0.5% evasion (cap 60%) |
+| Agility | Move Speed / Evasion | \\+2% move speed / +0.5% evasion |
 | Ferocity | Crit Chance / Crit Multiplier | \\+0.5% crit chance / +5% crit multiplier |
 | Constitution | Armor / Block Chance | \\+2% armor / +1% block chance |
-| Vitality | Max HP / HP Regen | \\+2% HP / +1% HP regen per second |
-| Mind | Max Mana / Mana Regen | \\+2% mana / +1% mana regen per second |
-| Spirit | Energy Shield / Shield Regen | \\+2% energy shield / +1% shield regen per second |
-| Efficacy | CDR / AOE / DoT Frequency | \\+1% CDR / +2% AOE / +1% DoT frequency |
+| Vitality | Max HP / HP Regen | \\+2% HP / +1% increased HP regeneration |
+| Mind | Max Mana / Mana Regen | \\+2% mana / +1% increased mana regeneration |
+| Spirit | Energy Shield / Shield Regen | \\+2% energy shield / +1% increased shield regeneration |
+| Efficacy | CDR / AOE / DoT Frequency | \\+1% cooldown increase / +2% AOE / +1% increased DoT frequency |
 | Luck | Magic Find / Loot Quantity | \\+0.01% rarity find / +1% loot quantity |
+
+  
+
+### **Stat Calculation**
+
+Every percentage in the attribute table needs a base to apply to and a rule for combining with other sources. These are those rules, and they apply to gear affixes as well as attribute points.
+
+  
+
+**Attributes scale values, they do not create them.** Health, mana and energy shield come from three places: the class's base value, its per-level scaling, and flat values from gear. Vitality's +2% HP multiplies the result those three produce. It does not generate health on its own. The same holds for Mind and mana, and Spirit and energy shield.
+
+  
+
+**One bucket per stat, one multiplication.**
+
+  
+
+Final Value = Base Value × (1 + Sum of Increases) × Product of More Multipliers
+
+  
+
+Attribute points and every gear affix worded "increased" add together into one bucket per stat, and that bucket multiplies the base once. Only sources worded "more" or "less" multiply separately, and that wording is reserved for enchantments and keystones, where the design already wants outsized effects.
+
+  
+
+So 50 points of Vitality is +100% health, not 2.7 times health. Compounding 2% per point would give 7.2 times at 100 points, which leaves no room for gear inside the Power Score ranges in section XII.
+
+  
+
+**Regeneration percentages are increases to a base rate, not percentages of the maximum.**
+
+  
+
+Final Regeneration = Base Regeneration × (1 + Sum of Increases)
+
+  
+
+Read literally as 1% of maximum health per second, 50 points of Vitality would return half the character's health every second. The base regeneration rate is a small flat value per second, supplied the same way base health is. This applies to health, mana and energy shield regeneration alike.
+
+  
+
+**Cooldown reduction divides rather than subtracts.**
+
+  
+
+Final Cooldown = Base Cooldown / (1 + Sum of Increases)
+
+  
+
+The skill supplies the base cooldown and the character's accumulated increases apply on top of it. What the interface shows the player is the effective reduction, which is Increases / (1 + Increases), so a character shown as having 25% cooldown reduction turns a 4-second skill into a 3-second one.
+
+  
+
+|  |  |  |
+| :-: | :-: | :-: |
+| \*\*Efficacy Points\*\* | \*\*4-Second Skill Becomes\*\* | \*\*Shown As\*\* |
+| 25 | 3.20s | 20.0% |
+| 50 | 2.67s | 33.3% |
+| 100 | 2.00s | 50.0% |
+| 100, plus gear worth another 3.00 | 0.80s | 80.0% |
+
+  
+
+Dividing rather than subtracting is what keeps this from breaking. Subtracting 1% per point would reach zero cooldowns at 100 points of Efficacy. Dividing, all 100 points halve every cooldown, gear pushes further with each point worth progressively less, and zero is unreachable. No cap is needed, and no point is ever wasted.
+
+  
+
+Damage-over-time frequency uses the same form, because it is also a rate. Area of effect at +2% per point stays additive, because a larger radius has no runaway.
+
+  
+
+**Caps.**
+
+  
+
+|  |  |  |
+| :-: | :-: | :-: |
+| \*\*Stat\*\* | \*\*Cap\*\* | \*\*Hard or Soft\*\* |
+| Resistances | 70% | Soft. Affixes may raise the cap itself. |
+| Evasion | 60% | Soft. Gear enchantments may exceed it. |
+| Crit chance | 100% | Hard. Above 100% it means nothing. |
+| Block chance | none | No cap. A block is not a full avoid. |
+| Cooldown reduction | none | No cap needed. The formula cannot reach zero. |
+
+  
+
+Over-capping resistance matters because enemy penetration reduces effective resistance, so the headroom is what keeps a character at the cap in practice. Over-capped resistance contributes no Power Score, as section IV states.
+
+  
+
+**Avoidance.** Evasion and block behave differently and are not interchangeable.
+
+  
+
+  - **Evasion avoids an attack completely, but applies only to direct attacks.** Area damage lands regardless of evasion. This is why evasion's cap can be soft: even at 100% evasion a character is not immune.
+  - **Block reduces the damage of a blocked hit by 50%, it does not prevent it.** Block chance is the chance that reduction applies.
+  - **Block applies to area damage as well as direct attacks.** A raised shield helps against an explosion in a way that dodging does not.
+  - Because a block removes half the damage rather than all of it, block chance needs no cap. A character at 100% block chance has 50% damage reduction, which is strong but is not immunity.
 
   
 
