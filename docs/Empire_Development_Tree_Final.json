@@ -1,0 +1,5913 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Empire Development Tree",
+    "description": "Four-branch radial empire passive tree. Central axis: tier milestone decision capstones. Branches: Architect (NE), Explorer (SE), Treasury (SW), Artisan (NW).",
+    "createdAt": "2026-03-03T07:25:12.729Z",
+    "updatedAt": "2026-03-05T18:16:13.768Z",
+    "pointBudget": 0
+  },
+  "viewport": {
+    "x": 1288.6335946346815,
+    "y": 602.7750361159527,
+    "zoom": 0.8967757275667629
+  },
+  "nodes": [
+    {
+      "id": "capstone_0000000m",
+      "position": {
+        "x": -3.473777993585176,
+        "y": -281.05481985032077
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "Foundations of the Empire",
+        "description": "Choose one empire-wide capstone as you enter Tier 1.",
+        "currentPoints": 0,
+        "color": "#e2e8f0",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "The Aegis of Hope",
+            "description": "Your Outposts have 50% increased defenses."
+          },
+          {
+            "name": "The Delver",
+            "description": "Reduces the number of days to clear a dungeon by 5, to a minimum of 1."
+          },
+          {
+            "name": "The Hoarder",
+            "description": "Loot rarity increased by 25% and quantity by 100%."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 25
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_0000000n",
+      "position": {
+        "x": -3.473777993585177,
+        "y": -411.4761538310763
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "Edicts of Power",
+        "description": "Choose one empire-wide capstone as you enter Tier 2.",
+        "currentPoints": 0,
+        "color": "#e2e8f0",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "The Sentinel",
+            "description": "All cities gain 10% damage reduction against the Cataclysm type with the most dungeons in that city."
+          },
+          {
+            "name": "The Collector's Decree",
+            "description": "Add 10 floors to all dungeons."
+          },
+          {
+            "name": "The Soul Forge",
+            "description": "When improving an item level, 15% chance to increase by 2 instead of 1, up to max of 10."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 50
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_0000000o",
+      "position": {
+        "x": -3.473777993585177,
+        "y": -541.4761538310763
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "The Imperial Vanguard",
+        "description": "Choose one empire-wide capstone as you enter Tier 3.",
+        "currentPoints": 0,
+        "color": "#e2e8f0",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "The Warlord",
+            "description": "When you clear a dungeon, 15% chance to instantly remove another dungeon in the same city."
+          },
+          {
+            "name": "The Master Tinkerer",
+            "description": "When enchanting, 5% chance to hit a critical success, doubling the rolls and completing the craft instantly."
+          },
+          {
+            "name": "The Midas Touch",
+            "description": "All enemies drop 50% more gold."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 100
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_0000000p",
+      "position": {
+        "x": -4.631703991446903,
+        "y": -742.6886026995724
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "The Imperial Zenith",
+        "description": "Choose one empire-wide capstone as you enter Tier 4.",
+        "currentPoints": 0,
+        "color": "#e2e8f0",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Imperial Prowess",
+            "description": "You can now take an additional keystone from any of the previous tiers."
+          },
+          {
+            "name": "The Last Stand",
+            "description": "When you enter a dungeon in a city within 7 days of falling, run time is reduced to one day."
+          },
+          {
+            "name": "The Flood Barrier",
+            "description": "Add 20 days to the surge timer. This applies to every surge."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 200
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000000v",
+      "position": {
+        "x": 193.029902667205,
+        "y": -124.30739553106366
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Foundation",
+        "description": "+5% city Defense per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000000w",
+      "position": {
+        "x": 45.77900084115997,
+        "y": -188.48800048066283
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Structural Integrity",
+        "description": "-1.5% damage taken by cities from dungeons per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000000x",
+      "position": {
+        "x": 150.95939281035137,
+        "y": -124.16899412296256
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Urban Planning",
+        "description": "+5% Base Outpost Population per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t1d",
+      "position": {
+        "x": 67.49100036049715,
+        "y": -223.25533245211813
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Fortified Gates",
+        "description": "+8% Defense for Outposts per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t1e",
+      "position": {
+        "x": 99.5960140731238,
+        "y": -141.80847179971167
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Enduring Foundations",
+        "description": "City upgrades that have been active for 10+ days grant +2% to their base effect per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t1f",
+      "position": {
+        "x": 194.5579581311824,
+        "y": -92.8447447663978
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Civil Order",
+        "description": "Outposts regenerate 3% of their current defense every 30 days per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t1g",
+      "position": {
+        "x": 160.7901158790416,
+        "y": -53.39946122595939
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Border Patrol",
+        "description": "+1 day to Resolution Timer for Outposts per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000000y",
+      "position": {
+        "x": 238.37853187263073,
+        "y": -63.98403762985317
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Emergency Shelters",
+        "description": "+3 Days to Resolution Timers for Outposts.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000000z",
+      "position": {
+        "x": 217.9387855007676,
+        "y": -150.87623352554232
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Scaffolding",
+        "description": "City upgrades cost 50% less gold, but take 2x longer to build.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000010",
+      "position": {
+        "x": 146.31333413443787,
+        "y": -266.88200072099426
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Masonry Techniques",
+        "description": "+10% max city defense for Bulwarks and Sanctuaries per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000011",
+      "position": {
+        "x": 107.01692041160814,
+        "y": -346.66841083885276
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Urban Fortification",
+        "description": "-4% Damage from Surge Events per point. (Multiplicative)",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000012",
+      "position": {
+        "x": 100.99107213058736,
+        "y": -305.07173987812604
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Imperial Census",
+        "description": "+10% Base Population for Bulwarks per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t2d",
+      "position": {
+        "x": 292.58220225318445,
+        "y": -108.2747505366253
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Civil Defense",
+        "description": "City populations take -1.5% damage from Surge events per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t2e",
+      "position": {
+        "x": 350.04244000850673,
+        "y": -102.93170651910462
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Supply Lines",
+        "description": "-1.5% damage taken by cities adjacent to the Capital per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t2f",
+      "position": {
+        "x": 201.35533245211798,
+        "y": -297.9643320916211
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Reinforced Walls",
+        "description": "+8% Max Health for all Cities per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t2g",
+      "position": {
+        "x": 258.6360809962493,
+        "y": -203.2767166621443
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Rapid Renovation",
+        "description": "-1 Day to city upgrade construction time (Min 1 day).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 3
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000013",
+      "position": {
+        "x": 329.54630505390304,
+        "y": -185.6876042033548
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Public Works",
+        "description": "-20% Gold cost for all City Upgrades.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000014",
+      "position": {
+        "x": 155.89999999999984,
+        "y": -347
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "The Mason's Guild",
+        "description": "Every 20 days, the Outpost or Bulwark with the lowest defense restores 20% of its Max Defense and 15% of its Max Population.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000015",
+      "position": {
+        "x": 107.50667788792401,
+        "y": -427.5777023720404
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Global Vigilance",
+        "description": "-1% damage taken by cities for each dungeon cleared in the current Surge cycle (multiplicative). Resets on new Surge. 15% cap.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000016",
+      "position": {
+        "x": 294.71348811820894,
+        "y": -247.3084227597625
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Metropolitan Growth",
+        "description": "+15% Base City Population per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t3c",
+      "position": {
+        "x": 238.1,
+        "y": -388.50000000000006
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Siege Resistance",
+        "description": "-1.33% damage taken by cities from dungeon resolutions per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t3d",
+      "position": {
+        "x": 139.91965091366612,
+        "y": -457.8565180776524
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Imperial Roads",
+        "description": "Reduces time to run Fallen City dungeons by 1 day per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t3e",
+      "position": {
+        "x": 376.5629172106094,
+        "y": -273.0462544258437
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Monument Building",
+        "description": "+10% Max Health for Metropolises per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t3f",
+      "position": {
+        "x": 445.1060336287621,
+        "y": -134.92060768008938
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Strategic Reserve",
+        "description": "+1 Day to all dungeon Resolution Timers per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000017",
+      "position": {
+        "x": 390.60689077110175,
+        "y": -324.5697369414577
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Martial Law",
+        "description": "At <10% City Health, Dungeon Resolution Timer extended by +5 Days.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000018",
+      "position": {
+        "x": 302.7817253711399,
+        "y": -369.2273044236314
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Imperial Decree",
+        "description": "+20% City Health, -10% to population.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000019",
+      "position": {
+        "x": 196.08002013684447,
+        "y": -480.06851861464435
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Scorched Earth",
+        "description": "Destroy a city upgrade to instantly reset a dungeon resolution timer to max.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000001a",
+      "position": {
+        "x": 620.2494134567853,
+        "y": -193.24163235843503
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Bastion Spirit",
+        "description": "+1 Day to all dungeon Resolution Timers per 20 points spent in the Explorer tree.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000001b",
+      "position": {
+        "x": 323.0999999999998,
+        "y": -473.10000000000014
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Sovereign's Might",
+        "description": "-1% damage taken by all cities per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 25
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000001c",
+      "position": {
+        "x": 444.0347203969115,
+        "y": -414.5427123755546
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Manifest Destiny",
+        "description": "+2% Total Empire Population per point (Multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 20
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t4d",
+      "position": {
+        "x": 350.3935764153417,
+        "y": -522.0317355454652
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Unyielding Defense",
+        "description": "-0.5% damage taken by cities per active Cataclysm type per point (multiplicative). Stacks once per active type.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t4e",
+      "position": {
+        "x": 552.0917954313095,
+        "y": -201.04713799139606
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Iron Will",
+        "description": "-1% damage taken by cities per point, reduced proportionally as Empire population falls below maximum (multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t4f",
+      "position": {
+        "x": 522.1307303083906,
+        "y": -305.41233689935353
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Fortified Capital",
+        "description": "-2% Population loss from dungeon resolutions for all cities within 2 hexes of the Capital per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_t4g",
+      "position": {
+        "x": 191.70667788792397,
+        "y": -540.3777023720405
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Reclaimer's Resolve",
+        "description": "Each reclaimed city permanently grants +1% Global Damage Reduction.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000001d",
+      "position": {
+        "x": 492.27390578059845,
+        "y": -440.8580546212283
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Imperial Command",
+        "description": "Cities with 2+ upgrades take 40% less Surge damage.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000001e",
+      "position": {
+        "x": 585.1776083966611,
+        "y": -334.83534256095135
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Beacon of Hope",
+        "description": "Cities within 2 hexes of The Capital have +50% Max Health.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000001f",
+      "position": {
+        "x": 283.91073727088263,
+        "y": -532.6508151105269
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Last Stand Protocols",
+        "description": "Sanctuary defenses survive at 1 on first fatal dungeon resolution. Resets every tier.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000001g",
+      "position": {
+        "x": 152.00667788792398,
+        "y": -585.0777023720404
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "The Architect's Legacy",
+        "description": "Reclaiming a fallen city restores it to 75% of its original Population/Defense.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_0000001i",
+      "position": {
+        "x": 592.5999999999996,
+        "y": -558.8000000000001
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "The Royal Engineer's Blessing",
+        "description": "For every city with a defensive upgrade, all cities gain a 2% passive defense bonus.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 1
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000029",
+      "position": {
+        "x": 143.21567659194287,
+        "y": 97.81029874210695
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Pacing",
+        "description": "-1 days from dungeon run time per point (Min 1).",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002a",
+      "position": {
+        "x": 90.8799911724965,
+        "y": 138.29293988090927
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Eyes of the Empire",
+        "description": "+5% Loot Rarity per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t1c",
+      "position": {
+        "x": 48.4,
+        "y": 194.1
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Opportunistic Looting",
+        "description": "+3% chance per point for elite enemies to drop an additional item.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_expl_t1d",
+      "position": {
+        "x": 33.298640370507975,
+        "y": 164.3108902290256
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Veteran's Edge",
+        "description": "+3% Empire XP gained from dungeon clears per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t1e",
+      "position": {
+        "x": 148.1245604807501,
+        "y": 138.0257325320832
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Opportunist",
+        "description": "Dungeons in cities with no other active dungeons cost -1 day to run per point (Min 1).",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t1f",
+      "position": {
+        "x": 103,
+        "y": 171.4
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Supply Caches",
+        "description": "+5% chance per point for a floor to contain a loot chest.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_expl_t1g",
+      "position": {
+        "x": 205.24265598613283,
+        "y": 299.36378018117125
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Pathfinding",
+        "description": "+2% Movement Speed in dungeons per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002b",
+      "position": {
+        "x": 174.53375410315456,
+        "y": 117.21144513348368
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Fleet Footed",
+        "description": "-5 days from dungeon run time.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002c",
+      "position": {
+        "x": 235.74912096150018,
+        "y": 36.93596168262531
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Field Depot I",
+        "description": "A Stash appears every 30 floors in dungeons.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002d",
+      "position": {
+        "x": 165.09833533204355,
+        "y": 183.97826691305525
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Tactical Entry",
+        "description": "If a dungeon has more than 50 floors, the days it takes to run are halved.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002e",
+      "position": {
+        "x": 259.3142381974524,
+        "y": 158.42814377707163
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Bounty",
+        "description": "+5% Loot Quantity per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002f",
+      "position": {
+        "x": 294.03084710735425,
+        "y": 91.8176878284794
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Exclusionary Mapping",
+        "description": "-1 floors to dungeons per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002g",
+      "position": {
+        "x": 177.45339324044653,
+        "y": 48.20322693152992
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Deep Boring",
+        "description": "+1 floors to dungeons per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002h",
+      "position": {
+        "x": 327.83424638163956,
+        "y": 128.85669938197623
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Gamble",
+        "description": "Every 20 days get one dungeon modifier reroll per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 3
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t2e",
+      "position": {
+        "x": 248.7,
+        "y": 201.4
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Scout Parties",
+        "description": "+10% chance per point to discover a bonus dungeon after clearing one.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_expl_t2f",
+      "position": {
+        "x": 180.29769891265394,
+        "y": 254.41447739036948
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Dungeon Mastery",
+        "description": "+3% damage in dungeons for each unique dungeon type you have defeated.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t2g",
+      "position": {
+        "x": 182.7,
+        "y": 81.3
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Architectural Insight",
+        "description": "Dungeons gain +1 floor for every 10 points invested in the Architect branch per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "keystone_0000002i",
+      "position": {
+        "x": 310.2569527898096,
+        "y": 197.9750831544583
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Efficiency Premium",
+        "description": "+5% Loot Quantity for every Day removed from default run time (cap 50%).",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002j",
+      "position": {
+        "x": 363.9,
+        "y": 90.7
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Quality over Quantity",
+        "description": "+2% Loot Rarity for every Floor removed from default dungeon depth.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "keystone_0000002n",
+      "position": {
+        "x": 344.0181303646487,
+        "y": 174.13915504299413
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Field Depot II",
+        "description": "A Stash appears every 15 floors.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002l",
+      "position": {
+        "x": 433.2068726522707,
+        "y": 134.4988279486669
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Architect of Greed",
+        "description": "+1 floors to dungeons per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 20
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002m",
+      "position": {
+        "x": 332.38509656688126,
+        "y": 251.13559549363106
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Overclock",
+        "description": "-1 day from dungeon run time per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 20
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t3c",
+      "position": {
+        "x": 283.8682966735653,
+        "y": 341.43882242516094
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Relentless Pursuit",
+        "description": "+5% Loot Quantity for each dungeon cleared without dying per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t3d",
+      "position": {
+        "x": 253.3896539697439,
+        "y": 385.0035595493631
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Dungeon Expertise",
+        "description": "+4% Loot Rarity for each unique dungeon modifier active per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t3e",
+      "position": {
+        "x": 365.7181303646487,
+        "y": 283.2
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Rapid Descent",
+        "description": "Each floor cleared reduces the remaining run time by 0.1 days per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t3f",
+      "position": {
+        "x": 139.1,
+        "y": 428
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Spoils of War",
+        "description": "+2% Loot Quantity for each active Cataclysm type per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "keystone_0000002o",
+      "position": {
+        "x": 151.21684951671688,
+        "y": 486.62750335310574
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Temporal Efficiency",
+        "description": "Every 5 points in the Artisan branch increases loot quantity by 10%.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002p",
+      "position": {
+        "x": 446.13791736799527,
+        "y": 224.70447092605576
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "The High Roller",
+        "description": "For every 10 floors added to a dungeon, 5% chance Boss drops an extra Legendary+ item.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002t",
+      "position": {
+        "x": 494.1125732532083,
+        "y": 101.07368144225028
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Field Depot III",
+        "description": "A Stash appears every 5 floors.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002r",
+      "position": {
+        "x": 466.47712749699645,
+        "y": 307.36210192264207
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Temporal Mastery",
+        "description": "-1 Day from dungeon run time per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 25
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000002s",
+      "position": {
+        "x": 622.0555672438322,
+        "y": 274.7023441026662
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Manifest Wealth",
+        "description": "+1% Loot Rarity per floor cleared in the current dungeon.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 25
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t4c",
+      "position": {
+        "x": 545,
+        "y": 198.4
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Infinite Depths",
+        "description": "+2 floors per active Cataclysm type per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_expl_t4d",
+      "position": {
+        "x": 474.3789753216546,
+        "y": 354.55339324044655
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Speed Runner",
+        "description": "+5% bonus Loot Quantity per 2 days under default run time per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t4e",
+      "position": {
+        "x": 339.9754395192499,
+        "y": 515.7212039824788
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Dungeon Legend",
+        "description": "+1% Loot Rarity per 5 unique dungeons cleared this run per point.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_expl_t4g",
+      "position": {
+        "x": 258.4730954165837,
+        "y": 504.11885987981253
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Plunderer's Eye",
+        "description": "+2% chance per point for any enemy to drop a crafting material.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002u",
+      "position": {
+        "x": 379.19982501090493,
+        "y": 403.270144454842
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Auto-Loot",
+        "description": "Pick between selling or scrapping loot hidden by your loot filter.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Auto-Seller",
+            "description": "Items hidden by loot filter automatically sold for 25% gold value."
+          },
+          {
+            "name": "Auto-Shatter",
+            "description": "Items hidden by loot filter automatically converted into crafting materials upon drop."
+          }
+        ],
+        "selectedOption": null
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002w",
+      "position": {
+        "x": 549.1265303113066,
+        "y": 347.8702427571634
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "One-Day Specialist",
+        "description": "If run time reduced to 1-Day minimum, all Explorer Loot modifiers doubled for that dungeon.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000002x",
+      "position": {
+        "x": 132.67940251578608,
+        "y": 305.8834094929275
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Sovereign's Haste",
+        "description": "-1 day from dungeon run time per point for each active Cataclysm type in your empire. (Max of -30 floors)",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": true,
+      "dragging": false
+    },
+    {
+      "id": "capstone_0000002y",
+      "position": {
+        "x": 586.8377505897934,
+        "y": 543.0300879521333
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "The Cartographer's Blessing",
+        "description": "For every city with an Explorer city upgrade, loot quantity and rarity are increased by 5%.",
+        "currentPoints": 0,
+        "color": "#22c55e",
+        "maxPoints": 1
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000003q",
+      "position": {
+        "x": -110.9,
+        "y": 150.41548145524456
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Coinage",
+        "description": "+5% Gold found per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000003r",
+      "position": {
+        "x": -229.4367957504786,
+        "y": 89.1465640117918
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Master Trader",
+        "description": "+5% Gold gained when selling items in the Market per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000003s",
+      "position": {
+        "x": -56.01185953549571,
+        "y": 170.97915195061466
+      },
+      "data": {
+        "kind": "basic",
+        "name": "War Funding",
+        "description": "-2% cost for the first upgrade in a city per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t1d",
+      "position": {
+        "x": -187.03599368693745,
+        "y": 70.46641641396266
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Tax Collection",
+        "description": "Every 10 days, gain Gold equal to 2% of your total City Population per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t1e",
+      "position": {
+        "x": -152.4,
+        "y": 172.89999999999998
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Merchant Guild",
+        "description": "+8% Gold from selling items in the market per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t1f",
+      "position": {
+        "x": -148.13386801620408,
+        "y": 112.50881334041522
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Minting Rights",
+        "description": "+3% Gold dropped by all enemies per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t1g",
+      "position": {
+        "x": -193.0502930128333,
+        "y": 132.7722962059478
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Trade Routes",
+        "description": "Each city with a Treasury upgrade generates +50 Gold every 20 days per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000003t",
+      "position": {
+        "x": -128.96840272814023,
+        "y": 209.28940954849077
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Cleanup Crew",
+        "description": "When a dungeon is cleared, 10% of Gold not picked up is sent to your stash automatically.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000003v",
+      "position": {
+        "x": -80.1,
+        "y": 200.7
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Municipal Bonds",
+        "description": "-3% Gold cost for City Upgrades per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000003w",
+      "position": {
+        "x": -109.4,
+        "y": 300.7
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Global Credit",
+        "description": "Start a city upgrade even if short by up to 5% of the gold cost. Debt repaid from next gold drops.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_tres_t2c",
+      "position": {
+        "x": -161.9029859331417,
+        "y": 257.9400193810883
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Investment Funds",
+        "description": "+10% Gold gained from completing dungeons per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t2d",
+      "position": {
+        "x": -207,
+        "y": 275.6
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Economic Zones",
+        "description": "Cities with Treasury upgrades generate +5% more Gold from all sources per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t2e",
+      "position": {
+        "x": -306.18940954849074,
+        "y": 202.6613424271341
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Surplus Storage",
+        "description": "Increases Gold cap before overflow penalties by 10,000 per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t2f",
+      "position": {
+        "x": -129.43983104255977,
+        "y": 348.4668756537832
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Price Controls",
+        "description": "-4% cost for City Upgrades in Cities that have taken Surge damage per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t2g",
+      "position": {
+        "x": -251.95731095954775,
+        "y": 207.92100682035056
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Fiscal Policy",
+        "description": "+3% Gold from all sources for every 5 active City upgrades per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000003x",
+      "position": {
+        "x": -257.584436361443,
+        "y": 292.86617246683676
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Commercial Hubs",
+        "description": "Running a dungeon in a city with a Treasury Upgrade increases Gold drops by 20%.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000003y",
+      "position": {
+        "x": -55.5,
+        "y": 334.3
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Rapid Funding",
+        "description": "Pay 150% of upgrade cost to reduce its construction time by 2 days (Min 1 day).",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000003z",
+      "position": {
+        "x": -191.37132483359824,
+        "y": 572.7004485757825
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Salvage Rights",
+        "description": "Gain 50 Gold for every Floor cleared in a dungeon upon completion.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 20
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000040",
+      "position": {
+        "x": -293.75490767651405,
+        "y": 110.21088433899577
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Thrifty",
+        "description": "Items in the Market cost 1% less gold per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 25
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000041",
+      "position": {
+        "x": -97.65091290407709,
+        "y": 466.14849601274244
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Wealth Interest",
+        "description": "Every 20 days, gain 0.5% interest on total Gold Treasury, capped at 5,000 gold per tick.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t3d",
+      "position": {
+        "x": -341.9327240565802,
+        "y": 284.91704746463733
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Wartime Economy",
+        "description": "+10% Gold from dungeons for each active Cataclysm type threatening your empire per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t3e",
+      "position": {
+        "x": -245.1,
+        "y": 377.4
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Profiteering",
+        "description": "+5% Gold from dungeons for every fallen city you have not yet reclaimed per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_tres_t3f",
+      "position": {
+        "x": -350.7694849549481,
+        "y": 121.6931001026587
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Venture Capital",
+        "description": "Every 50,000 Gold stored grants +1% Loot Rarity (cap 20%) per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000042",
+      "position": {
+        "x": -375.66208263200474,
+        "y": 344.2650537489887
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Bribery",
+        "description": "Once per Surge, spend a large Gold fee to reset a single dungeon resolution timer to its maximum value.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000043",
+      "position": {
+        "x": -230.6,
+        "y": 452.6
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Black Market",
+        "description": "A special Market tab lets you buy high-tier Artisan materials directly for Gold.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "keystone_00000044",
+      "position": {
+        "x": -448.89327642259354,
+        "y": 266.4764202943841
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Reinvestment",
+        "description": "Every 25,000 Gold spent on City Upgrades grants 1% permanent Empire XP modifier boost (Capped).",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000045",
+      "position": {
+        "x": -551.8453075865114,
+        "y": 276.74130060936994
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Imperial Reserve",
+        "description": "+1% damage reduction for all cities per 100,000 Gold in Treasury (multiplicative). 25% cap.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 25
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000046",
+      "position": {
+        "x": -99.76478749200376,
+        "y": 407.530854693467
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Golden Age",
+        "description": "+1% Total Empire Population per point, for every 20 points invested in the Architect branch.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t4c",
+      "position": {
+        "x": -392.39803821301996,
+        "y": 251.35881431145378
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Untouchable Wealth",
+        "description": "+2% Gold from all sources for every city that has NOT fallen per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t4d",
+      "position": {
+        "x": -406.83375994728095,
+        "y": 507.10122560722374
+      },
+      "data": {
+        "kind": "basic",
+        "name": "War Chest",
+        "description": "Increases Gold cap by 10,000 and reduces gold loss on death by 50% per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 20
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t4e",
+      "position": {
+        "x": -566.3453075865114,
+        "y": 238.94130060936996
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Treasury Guard",
+        "description": "+1% damage reduction per 50,000 Gold currently held (multiplicative). 20% cap.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t4f",
+      "position": {
+        "x": -135.05998087516238,
+        "y": 542.5273027039705
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Sovereign Loans",
+        "description": "Deficit-spend up to 20% of an upgrade's cost, repaid automatically over 10 days per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_tres_t4g",
+      "position": {
+        "x": -388.99397861561107,
+        "y": 454.8962763722743
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Prosperity Index",
+        "description": "+1% to all Gold generation for every 10,000 citizens alive in your empire per point.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000047",
+      "position": {
+        "x": -221.13766799926663,
+        "y": 630.0599311173498
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Economic Bailout",
+        "description": "If a City's health hits 0, pay a massive Gold fee to prevent it becoming a Fallen City. Once per city per Tier.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000048",
+      "position": {
+        "x": -634.7453075865113,
+        "y": 238.74130060936994
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "The Gilded Path",
+        "description": "+1% Loot Rarity per 10,000 Gold currently held.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000049",
+      "position": {
+        "x": -43.86339483228813,
+        "y": 455.0420540032676
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Stimulus Package",
+        "description": "If Empire Population falls below 50% of max, Gold drops doubled until you reclaim a city.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000004a",
+      "position": {
+        "x": -376.58831741237606,
+        "y": 557.636661524769
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Pax Imperialis",
+        "description": "For every 1,000 surviving citizens, generate 5 Gold every 1 day.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_0000004b",
+      "position": {
+        "x": -516.8263185577498,
+        "y": 543.5029301283328
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "The Golden Touch",
+        "description": "For every city with an economic upgrade, all gold and crafting materials dropped from dungeons are increased by 10%.",
+        "currentPoints": 0,
+        "color": "#eab308",
+        "maxPoints": 1
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000004y",
+      "position": {
+        "x": -208.56235505114867,
+        "y": -100.8287170794388
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Apprentice Smith",
+        "description": "1% chance per point to upgrade a random affix to next tier when using the smith.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000004z",
+      "position": {
+        "x": -109.52294717096517,
+        "y": -158.47000969054412
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Scavenger",
+        "description": "+5% drop quantity of T3 and below crafting materials per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000050",
+      "position": {
+        "x": -131.39309620663155,
+        "y": -202.67508196383645
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Material Conservation",
+        "description": "2% chance per point to not consume T2 and below crafting materials.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t1d",
+      "position": {
+        "x": -159.80000000000004,
+        "y": -114.3
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Rough Draft",
+        "description": "+5% chance per point for a crafted item to roll one additional affix.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t1e",
+      "position": {
+        "x": -56.71140120187532,
+        "y": -181.1559936137709
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Tool Maintenance",
+        "description": "-5% CR gained from all crafting actions per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t1f",
+      "position": {
+        "x": -182.77631826024628,
+        "y": -66.79884945632696
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Workshop Upgrades",
+        "description": "-1.5% Gold cost for all crafting actions per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 8
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t1g",
+      "position": {
+        "x": -65.78820564190167,
+        "y": -232.00789654014525
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Limited Knowledge",
+        "description": "-2.5% CR gained from crafting actions on items below +6 per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000051",
+      "position": {
+        "x": -247.4,
+        "y": -61.7
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Apprentice Oversight",
+        "description": "Reduces the Gold cost of all Tier 1 and Tier 2 crafts by 20%.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_00000053",
+      "position": {
+        "x": -293.09416908862636,
+        "y": -115.31564626440174
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Industrial Speed",
+        "description": "-1% of Days required for any crafting project per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000054",
+      "position": {
+        "x": -164.72780316430914,
+        "y": -158.29015821545786
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Refining Techniques",
+        "description": "+5% chance for a crafted item to roll with a Higher Tier base stat.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000055",
+      "position": {
+        "x": -210.54530758651134,
+        "y": -243.4605272208894
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Salvage Protocol",
+        "description": "Dismantling items now yields 25% more crafting materials.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t2d",
+      "position": {
+        "x": -280.57311075082055,
+        "y": -214.64038669424028
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Quality Materials",
+        "description": "+10% chance per point for a craft to roll maximum values on one random affix.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t2e",
+      "position": {
+        "x": -347.62166600728665,
+        "y": -129.87815638638835
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Forge Upgrades",
+        "description": "1% chance per point to reduce the cost of a craft in the forge by 10%.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t2f",
+      "position": {
+        "x": -119.9,
+        "y": -296.7
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Stable Compounds",
+        "description": "Chaos Stabilizer reduces CR gain by an additional 2.5% per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_arts_t2g",
+      "position": {
+        "x": -187.78154954295675,
+        "y": -300.67088056778243
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Explorer Synergy",
+        "description": "+0.5% Double Craft chance per 10 points invested in the Explorer branch per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_00000056",
+      "position": {
+        "x": -246,
+        "y": -283
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Disassembly Expert",
+        "description": "+20% crafting materials returned when dismantling Rare and above items.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_00000057",
+      "position": {
+        "x": -414.6293718440213,
+        "y": -139.19666105603795
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Master Craftsman",
+        "description": "-1 Day to crafting time per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_00000058",
+      "position": {
+        "x": -270.8,
+        "y": -359.4
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Resource Management",
+        "description": "+1% chance per point to not consume Rare materials when crafting.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 20
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_00000059",
+      "position": {
+        "x": -471.73685999802785,
+        "y": -194.19993237922327
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Expanded Station (Jeweler)",
+        "description": "Adds +1 Worker to the Jeweler station.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 3
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000005a",
+      "position": {
+        "x": -447.3988680179063,
+        "y": -167.83718171403916
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Expanded Station (Smith)",
+        "description": "Adds +1 Worker to the Smith station.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 3
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000005b",
+      "position": {
+        "x": -487.44980005030607,
+        "y": -220.44778568973112
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Expanded Station (Enchantress)",
+        "description": "Adds +1 Worker to the Enchantress station.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 3
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t3f",
+      "position": {
+        "x": -367.45571196956035,
+        "y": -284.79289996084685
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Precision Crafting",
+        "description": "+3% chance per point for affixes to roll in the top 25% of their range.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t3g",
+      "position": {
+        "x": -113.71593237311839,
+        "y": -343.4543776088945
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Architectural Synergy",
+        "description": "-1% crafting Gold cost per 10 points invested in the Treasury branch per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000005c",
+      "position": {
+        "x": -237.1388809382929,
+        "y": -588.4610121218942
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Master's Touch",
+        "description": "1% chance per 100 CR on an item to reset CR to 0 when crafting.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000005d",
+      "position": {
+        "x": -492.9,
+        "y": -122.9
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Sovereign's Assembly",
+        "description": "Reduce total crafting time required by 50%.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_0000005f",
+      "position": {
+        "x": -137.50355001957658,
+        "y": -453.4286114384968
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Heat Shielding",
+        "description": "-2.5% CR gained from crafting actions using T3+ materials per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 5
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000005g",
+      "position": {
+        "x": -548.2004859815355,
+        "y": -248.82458689401852
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Flawless Production",
+        "description": "+1% chance per point for a crafted item to become Exalted.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 25
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_0000005h",
+      "position": {
+        "x": -237.30745867793723,
+        "y": -539.0125732532083
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Residue Protocols",
+        "description": "Every 4th consecutive crafting action on the same item gains -2.5% CR reduction per point (multiplicative).",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t4d",
+      "position": {
+        "x": -479.0506852248678,
+        "y": -325.7897497871885
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Grand Forge",
+        "description": "+2% chance per point that a craft produces a result one item tier higher.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t4e",
+      "position": {
+        "x": -545,
+        "y": -198.4
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Ancient Techniques",
+        "description": "-1 Day crafting time per point for crafts with 5 or more affixes.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "basic_arts_t4f",
+      "position": {
+        "x": -500.41550338154093,
+        "y": -366.8188598798125
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Master's Workshop",
+        "description": "+2% to the minimum roll range of all affixes on a crafted item per point.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 15
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arts_t4g",
+      "position": {
+        "x": -364.86345229170814,
+        "y": -475.93201915868735
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Residue Mastery",
+        "description": "Every 500 total CR on your equipment grants a permanent +0.5% Exalted chance (Cap 20%).",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000005i",
+      "position": {
+        "x": -510.077783621916,
+        "y": -436.580554094521
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "The Hidden Stash",
+        "description": "5% chance when a crafting project finishes to duplicate the item.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000005j",
+      "position": {
+        "x": -263.36144321988536,
+        "y": -433.175753713452
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Treasury Synergy",
+        "description": "For every 50,000 Gold spent on crafting, gain a permanent 1% discount on all future projects (Cap 30%).",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_0000005k",
+      "position": {
+        "x": -607.679527399686,
+        "y": -269.1832596265766
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Assembly Line",
+        "description": "You can now queue crafting projects sequentially.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_0000005l",
+      "position": {
+        "x": -526.6681898585495,
+        "y": -559.3919860457172
+      },
+      "data": {
+        "kind": "capstone",
+        "name": "The Alchemist's Transmutation",
+        "description": "Increase the stats of a crafted affix on an item by 1% per passive point allocated in the Artisan branch.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "capstone",
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_arch_civic_pride",
+      "position": {
+        "x": 328.03522171399504,
+        "y": -297.2228822720383
+      },
+      "data": {
+        "kind": "basic",
+        "name": "Civic Pride",
+        "description": "+5% Population growth rate for all Cities per point.",
+        "currentPoints": 0,
+        "color": "#6366f1",
+        "maxPoints": 10
+      },
+      "type": "basic",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_gALCYbB4Yr",
+      "position": {
+        "x": -70.03156119359372,
+        "y": -363.29094096839725
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Steady Hands",
+        "description": "Crafting actions that would push the CR above 300 instead split the excess CR evenly across your next 3 actions.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "keystone_cLiRR6p7B7",
+      "position": {
+        "x": -106.51504483455864,
+        "y": -493.04514832382563
+      },
+      "data": {
+        "kind": "keystone",
+        "name": "Tempting Fate",
+        "description": "While your item's CR is above 500, all crafting actions on that item have a 15% chance to return all crafting materials used.",
+        "currentPoints": 0,
+        "color": "#f97316",
+        "maxPoints": 1
+      },
+      "type": "keystone",
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "uiElements": [
+    {
+      "id": "ui_circle_00000001",
+      "type": "ui_circle",
+      "position": {
+        "x": -160,
+        "y": -160
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_circle",
+        "color": "#5d97ea",
+        "opacity": 0.5,
+        "radius": 160
+      },
+      "measured": {
+        "width": 320,
+        "height": 320
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_circle_00000002",
+      "type": "ui_circle",
+      "position": {
+        "x": -280,
+        "y": -280
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_circle",
+        "color": "#5699f5",
+        "opacity": 0.5,
+        "radius": 280
+      },
+      "measured": {
+        "width": 560,
+        "height": 560
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_circle_00000003",
+      "type": "ui_circle",
+      "position": {
+        "x": -410,
+        "y": -410
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_circle",
+        "color": "#6ea7f7",
+        "opacity": 0.5,
+        "radius": 410
+      },
+      "measured": {
+        "width": 820,
+        "height": 820
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_circle_00000004",
+      "type": "ui_circle",
+      "position": {
+        "x": -540,
+        "y": -540
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_circle",
+        "color": "#70a7f5",
+        "opacity": 0.5,
+        "radius": 540
+      },
+      "measured": {
+        "width": 1080,
+        "height": 1080
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_circle_00000005",
+      "type": "ui_circle",
+      "position": {
+        "x": -740,
+        "y": -740
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_circle",
+        "color": "#6ba4f5",
+        "opacity": 0.5,
+        "radius": 740
+      },
+      "measured": {
+        "width": 1480,
+        "height": 1480
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_circle_00000006",
+      "type": "ui_circle",
+      "position": {
+        "x": -60,
+        "y": -60
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_circle",
+        "color": "#5d99f8",
+        "opacity": 0.5,
+        "radius": 60
+      },
+      "measured": {
+        "width": 120,
+        "height": 120
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_textLabel_00000007",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -42,
+        "y": -14
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 1,
+        "text": "EMPIRE",
+        "fontSize": 15
+      },
+      "measured": {
+        "width": 52,
+        "height": 23
+      }
+    },
+    {
+      "id": "ui_textLabel_00000008",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -28,
+        "y": 4
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 1,
+        "text": "TREE",
+        "fontSize": 15
+      },
+      "measured": {
+        "width": 33,
+        "height": 23
+      }
+    },
+    {
+      "id": "ui_line_00000009",
+      "type": "ui_line",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_line",
+        "color": "#66a6ff",
+        "opacity": 0.5,
+        "width": 1,
+        "length": 800,
+        "angle": -90
+      },
+      "measured": {
+        "width": 800,
+        "height": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_line_0000000a",
+      "type": "ui_line",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_line",
+        "color": "#60a0fb",
+        "opacity": 0.5,
+        "width": 1,
+        "length": 800,
+        "angle": 0
+      },
+      "measured": {
+        "width": 800,
+        "height": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_line_0000000b",
+      "type": "ui_line",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_line",
+        "color": "#5498f8",
+        "opacity": 0.5,
+        "width": 1,
+        "length": 800,
+        "angle": 90
+      },
+      "measured": {
+        "width": 800,
+        "height": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_line_0000000c",
+      "type": "ui_line",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_line",
+        "color": "#5899f3",
+        "opacity": 0.5,
+        "width": 1,
+        "length": 800,
+        "angle": 180
+      },
+      "measured": {
+        "width": 800,
+        "height": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "ui_textLabel_0000000d",
+      "type": "ui_textLabel",
+      "position": {
+        "x": 511.5,
+        "y": -561.5
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#6366f1",
+        "opacity": 1,
+        "text": "ARCHITECT",
+        "fontSize": 15
+      },
+      "measured": {
+        "width": 78,
+        "height": 23
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000e",
+      "type": "ui_textLabel",
+      "position": {
+        "x": 511.5,
+        "y": 541.5
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#22c55e",
+        "opacity": 1,
+        "text": "EXPLORER",
+        "fontSize": 15
+      },
+      "measured": {
+        "width": 71,
+        "height": 23
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000f",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -591.5,
+        "y": 541.5
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#eab308",
+        "opacity": 1,
+        "text": "TREASURY",
+        "fontSize": 15
+      },
+      "measured": {
+        "width": 72,
+        "height": 23
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000g",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -591.5,
+        "y": -561.5
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#f97316",
+        "opacity": 1,
+        "text": "ARTISAN",
+        "fontSize": 15
+      },
+      "measured": {
+        "width": 61,
+        "height": 23
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000h",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -34.97,
+        "y": -244.24
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#64748b",
+        "opacity": 1,
+        "text": "TIER 1",
+        "fontSize": 11
+      },
+      "measured": {
+        "width": 29,
+        "height": 17
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000i",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -36.32,
+        "y": -353.5
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#64748b",
+        "opacity": 1,
+        "text": "TIER 2",
+        "fontSize": 11
+      },
+      "measured": {
+        "width": 31,
+        "height": 17
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000j",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -34.97,
+        "y": -486.18
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#64748b",
+        "opacity": 1,
+        "text": "TIER 3",
+        "fontSize": 11
+      },
+      "measured": {
+        "width": 31,
+        "height": 17
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000k",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -36.32,
+        "y": -645.71
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#64748b",
+        "opacity": 1,
+        "text": "TIER 4",
+        "fontSize": 11
+      },
+      "measured": {
+        "width": 31,
+        "height": 17
+      }
+    },
+    {
+      "id": "ui_textLabel_0000000t",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -23.759612729575686,
+        "y": -781.7334767068653
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#94a3b8",
+        "opacity": 1,
+        "text": "EMPIRE",
+        "fontSize": 11
+      },
+      "measured": {
+        "width": 38,
+        "height": 17
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "ui_textLabel_0000000u",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -23.759612729575686,
+        "y": -769.8714156495267
+      },
+      "zIndex": 1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#94a3b8",
+        "opacity": 1,
+        "text": "MILESTONES",
+        "fontSize": 11
+      },
+      "measured": {
+        "width": 64,
+        "height": 17
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_000000006b",
+      "source": "capstone_0000000m",
+      "target": "capstone_0000000n",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 0
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_000000006c",
+      "source": "capstone_0000000n",
+      "target": "capstone_0000000o",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 0
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_000000006d",
+      "source": "capstone_0000000o",
+      "target": "capstone_0000000p",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 0
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000c3",
+      "source": "basic_00000011",
+      "target": "basic_00000015",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000c6",
+      "source": "basic_arch_t3d",
+      "target": "basic_arch_t4g",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000c9",
+      "source": "basic_arch_t1d",
+      "target": "basic_00000010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000ca",
+      "source": "basic_00000010",
+      "target": "basic_arch_t2f",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000cc",
+      "source": "basic_arch_t2f",
+      "target": "basic_arch_t3c",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000cd",
+      "source": "basic_arch_t3c",
+      "target": "basic_0000001b",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000d3",
+      "source": "basic_arch_t1e",
+      "target": "basic_arch_t2g",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000de",
+      "source": "basic_arch_t1g",
+      "target": "basic_arch_t1f",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000e0",
+      "source": "basic_arch_t1f",
+      "target": "basic_arch_t2d",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000e2",
+      "source": "basic_arch_t2e",
+      "target": "basic_arch_t3f",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000e3",
+      "source": "basic_arch_t3f",
+      "target": "basic_arch_t4e",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000e5",
+      "source": "basic_arch_t1e",
+      "target": "basic_00000010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000e7",
+      "source": "basic_arch_t3c",
+      "target": "basic_00000015",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arch_000000e9",
+      "source": "basic_0000001c",
+      "target": "basic_0000001b",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_639uUaihMv",
+      "source": "basic_arch_t2d",
+      "target": "basic_arch_t2e",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_3oyu0RWLXz",
+      "source": "basic_0000000w",
+      "target": "basic_arch_t1d",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_c7tJHiKNal",
+      "source": "basic_0000001b",
+      "target": "basic_arch_t4d",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_4fx1IESZR5",
+      "source": "basic_0000001c",
+      "target": "keystone_0000001d",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_jVtWBLGRaK",
+      "source": "basic_arch_t4f",
+      "target": "keystone_0000001e",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_iamq9YBDdf",
+      "source": "basic_arch_t4g",
+      "target": "keystone_0000001g",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_W-0TWtN1IL",
+      "source": "basic_arch_t2f",
+      "target": "keystone_00000014",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 15
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_LhRsOos1_G",
+      "source": "basic_arch_t3e",
+      "target": "keystone_00000017",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_kojuEsKP4H",
+      "source": "basic_arch_t4e",
+      "target": "basic_arch_t4f",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_xJf9S3WshW",
+      "source": "basic_00000010",
+      "target": "basic_00000012",
+      "sourceHandle": "w",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_vAhEKfPQgF",
+      "source": "basic_00000012",
+      "target": "basic_00000011",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Q4CJmlOK8N",
+      "source": "basic_arch_t2g",
+      "target": "basic_00000016",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_pBxEyJq7SM",
+      "source": "basic_arch_t4e",
+      "target": "basic_0000001a",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_S-RyL6FrR-",
+      "source": "basic_arch_t2g",
+      "target": "keystone_00000013",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Vbm2lF5jpf",
+      "source": "basic_00000016",
+      "target": "basic_arch_civic_pride",
+      "sourceHandle": "n",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Te0A61nOOu",
+      "source": "basic_arch_t3e",
+      "target": "basic_0000001c",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_expl_000000d2",
+      "source": "basic_0000002g",
+      "target": "basic_expl_t2g",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_expl_000000d3",
+      "source": "basic_expl_t2g",
+      "target": "basic_0000002f",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_expl_000000d5",
+      "source": "basic_0000002f",
+      "target": "basic_0000002h",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_expl_000000d7",
+      "source": "basic_0000002h",
+      "target": "basic_0000002l",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_expl_000000db",
+      "source": "basic_expl_t4c",
+      "target": "basic_0000002s",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_expl_000000dd",
+      "source": "basic_00000029",
+      "target": "basic_expl_t1e",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_expl_000000df",
+      "source": "basic_expl_t1e",
+      "target": "basic_0000002e",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      }
+    },
+    {
+      "id": "edge_expl_000000e0",
+      "source": "basic_0000002e",
+      "target": "keystone_0000002i",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 15
+      }
+    },
+    {
+      "id": "edge_expl_000000e1",
+      "source": "basic_0000002e",
+      "target": "basic_expl_t2e",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      }
+    },
+    {
+      "id": "edge_expl_000000e2",
+      "source": "basic_expl_t2e",
+      "target": "basic_0000002m",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      }
+    },
+    {
+      "id": "edge_expl_000000e3",
+      "source": "basic_0000002m",
+      "target": "basic_expl_t3e",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      }
+    },
+    {
+      "id": "edge_expl_000000e4",
+      "source": "basic_expl_t3e",
+      "target": "basic_0000002r",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_expl_000000e5",
+      "source": "basic_0000002r",
+      "target": "basic_expl_t4d",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      }
+    },
+    {
+      "id": "edge_expl_000000e6",
+      "source": "basic_expl_t4d",
+      "target": "keystone_0000002w",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      }
+    },
+    {
+      "id": "edge_expl_000000e9",
+      "source": "basic_expl_t1f",
+      "target": "basic_expl_t2f",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      }
+    },
+    {
+      "id": "edge_expl_000000eb",
+      "source": "basic_expl_t1g",
+      "target": "basic_expl_t3c",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_expl_000000f0",
+      "source": "basic_expl_t4e",
+      "target": "basic_expl_t4g",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_expl_000000f2",
+      "source": "basic_expl_t1c",
+      "target": "keystone_0000002x",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      }
+    },
+    {
+      "id": "edge_expl_000000f3",
+      "source": "keystone_0000002x",
+      "target": "basic_expl_t4g",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_expl_000000f4",
+      "source": "basic_expl_t1c",
+      "target": "basic_expl_t3f",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      }
+    },
+    {
+      "id": "edge_expl_000000f6",
+      "source": "basic_expl_t2g",
+      "target": "basic_0000002e",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_expl_000000f7",
+      "source": "basic_0000002m",
+      "target": "basic_expl_t3c",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_JxnDxU-jin",
+      "source": "basic_0000002s",
+      "target": "basic_expl_t4e",
+      "sourceHandle": "s",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_MVD9XvdBVd",
+      "source": "basic_00000029",
+      "target": "keystone_0000002b",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      }
+    },
+    {
+      "id": "edge_U5kE8A34FN",
+      "source": "basic_0000002g",
+      "target": "keystone_0000002c",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      }
+    },
+    {
+      "id": "edge_xH3UJxD-Y-",
+      "source": "basic_0000002f",
+      "target": "keystone_0000002j",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      }
+    },
+    {
+      "id": "edge_Aq7XbUzgOk",
+      "source": "basic_0000002h",
+      "target": "keystone_0000002n",
+      "sourceHandle": "s",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      }
+    },
+    {
+      "id": "edge_vm05-1FRw0",
+      "source": "basic_0000002l",
+      "target": "keystone_0000002t",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      }
+    },
+    {
+      "id": "edge__QqQbcBfq0",
+      "source": "basic_0000002l",
+      "target": "basic_expl_t4c",
+      "sourceHandle": "e",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 16
+      }
+    },
+    {
+      "id": "edge_tceyOhTd-2",
+      "source": "basic_0000002l",
+      "target": "keystone_0000002p",
+      "sourceHandle": "s",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      }
+    },
+    {
+      "id": "edge_G_CTBHhpSz",
+      "source": "basic_expl_t1e",
+      "target": "keystone_0000002d",
+      "sourceHandle": "s",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      }
+    },
+    {
+      "id": "edge_CcUtZbFTZe",
+      "source": "basic_0000002a",
+      "target": "basic_expl_t1f",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_dbDB6GWdYI",
+      "source": "basic_expl_t2f",
+      "target": "basic_expl_t1g",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_T-95n7P_u3",
+      "source": "basic_expl_t3c",
+      "target": "basic_expl_t3d",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_AlHw0VIqmi",
+      "source": "basic_expl_t3f",
+      "target": "keystone_0000002o",
+      "sourceHandle": "s",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_tres_000000e2",
+      "source": "basic_0000003v",
+      "target": "keystone_0000003y",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 15
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000e3",
+      "source": "basic_0000003v",
+      "target": "basic_0000003w",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000eb",
+      "source": "basic_0000003q",
+      "target": "basic_tres_t1e",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000ec",
+      "source": "basic_tres_t1e",
+      "target": "basic_tres_t2c",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000ed",
+      "source": "basic_tres_t2c",
+      "target": "basic_tres_t2d",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000ef",
+      "source": "basic_tres_t2d",
+      "target": "basic_tres_t3e",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000f0",
+      "source": "basic_tres_t3e",
+      "target": "keystone_00000043",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000f1",
+      "source": "basic_tres_t3e",
+      "target": "basic_tres_t4g",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000f5",
+      "source": "basic_tres_t1g",
+      "target": "basic_tres_t2g",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000f7",
+      "source": "basic_tres_t2e",
+      "target": "basic_tres_t3d",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000f8",
+      "source": "basic_tres_t3d",
+      "target": "keystone_00000042",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000fd",
+      "source": "basic_0000003r",
+      "target": "basic_00000040",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_000000ff",
+      "source": "basic_tres_t3f",
+      "target": "basic_00000045",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_00000100",
+      "source": "basic_00000045",
+      "target": "basic_tres_t4e",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_00000101",
+      "source": "basic_tres_t4e",
+      "target": "keystone_00000048",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_00000102",
+      "source": "basic_0000003v",
+      "target": "basic_tres_t2c",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_00000104",
+      "source": "basic_tres_t2e",
+      "target": "basic_tres_t3f",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_00000105",
+      "source": "basic_tres_t3e",
+      "target": "basic_tres_t3d",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_tres_00000106",
+      "source": "basic_tres_t4g",
+      "target": "basic_00000045",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Ky_Zf9MD6g",
+      "source": "basic_tres_t1f",
+      "target": "basic_tres_t1g",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_slsEBlsJae",
+      "source": "basic_00000040",
+      "target": "basic_tres_t3f",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_JKdu-Dghm-",
+      "source": "basic_tres_t2g",
+      "target": "basic_tres_t2e",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_z4z-X43376",
+      "source": "basic_tres_t2d",
+      "target": "keystone_0000003x",
+      "sourceHandle": "w",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_WfdlGuQs2E",
+      "source": "basic_tres_t4c",
+      "target": "keystone_00000044",
+      "sourceHandle": "w",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_vgKQIwmQSb",
+      "source": "basic_tres_t4d",
+      "target": "keystone_0000004a",
+      "sourceHandle": "s",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_000000f2",
+      "source": "basic_arts_t1f",
+      "target": "basic_0000004y",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_000000f3",
+      "source": "basic_0000004y",
+      "target": "basic_00000053",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_000000f5",
+      "source": "basic_arts_t2e",
+      "target": "basic_00000057",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_000000fa",
+      "source": "basic_0000005b",
+      "target": "basic_arts_t4e",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_000000fd",
+      "source": "basic_arts_t1d",
+      "target": "basic_00000054",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_000000fe",
+      "source": "basic_00000054",
+      "target": "basic_arts_t2d",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_00000105",
+      "source": "basic_00000055",
+      "target": "keystone_00000056",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_00000108",
+      "source": "basic_00000058",
+      "target": "basic_arts_t4g",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_0000010b",
+      "source": "basic_arts_t1g",
+      "target": "basic_arts_t2f",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_0000010d",
+      "source": "basic_arts_t3g",
+      "target": "basic_0000005f",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_0000010e",
+      "source": "basic_0000005f",
+      "target": "basic_0000005h",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_00000111",
+      "source": "basic_00000054",
+      "target": "basic_00000055",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_00000113",
+      "source": "basic_arts_t2d",
+      "target": "basic_00000058",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_arts_00000115",
+      "source": "basic_arts_t4g",
+      "target": "basic_0000005h",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_86IWG2izcL",
+      "source": "basic_00000058",
+      "target": "keystone_0000005j",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Bic0HZPMA2",
+      "source": "basic_arts_t1f",
+      "target": "keystone_00000051",
+      "sourceHandle": "w",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_hn49LcWDcr",
+      "source": "basic_arts_t1d",
+      "target": "basic_0000004y",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_EF7GZrS69_",
+      "source": "basic_00000053",
+      "target": "basic_arts_t2e",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_zVZs7ESl_L",
+      "source": "basic_00000057",
+      "target": "basic_0000005a",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_7rWpWWdhWB",
+      "source": "basic_0000005a",
+      "target": "basic_00000059",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Yti8dMpuYT",
+      "source": "basic_00000059",
+      "target": "basic_0000005b",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_ZnSoglcQz_",
+      "source": "basic_00000057",
+      "target": "keystone_0000005d",
+      "sourceHandle": "w",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_eEQJunAr-i",
+      "source": "basic_arts_t1e",
+      "target": "basic_arts_t1g",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_uVtGWwtxWz",
+      "source": "basic_arts_t2f",
+      "target": "basic_arts_t3g",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_JMjUMfFsZT",
+      "source": "basic_0000005h",
+      "target": "keystone_0000005c",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_TdUC2DMTR0",
+      "source": "basic_arts_t4f",
+      "target": "keystone_0000005i",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 15
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_LX7Jqt7JIE",
+      "source": "basic_arts_t2g",
+      "target": "basic_00000058",
+      "sourceHandle": "n",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_S9FSNzQtwc",
+      "source": "basic_0000003q",
+      "target": "keystone_0000003t",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_N8Z9fnfcSr",
+      "source": "basic_expl_t3d",
+      "target": "basic_expl_t4e",
+      "sourceHandle": "e",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_1n1dbsLng7",
+      "source": "basic_tres_t3d",
+      "target": "basic_tres_t4c",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Cu6nMWiE3J",
+      "source": "basic_arch_t1f",
+      "target": "keystone_0000000y",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_APUcb7nrtV",
+      "source": "basic_arch_t1e",
+      "target": "basic_0000000x",
+      "sourceHandle": "s",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_ehvChP2aSt",
+      "source": "basic_tres_t4g",
+      "target": "basic_tres_t4d",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_KyfP12Iyph",
+      "source": "basic_expl_t1d",
+      "target": "basic_expl_t1c",
+      "sourceHandle": "e",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      }
+    },
+    {
+      "id": "edge_WXvDrZuGur",
+      "source": "basic_00000015",
+      "target": "basic_arch_t3d",
+      "sourceHandle": "n",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_ya0RIDYhdA",
+      "source": "basic_arch_t3d",
+      "target": "keystone_00000019",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Lq9t5dNusf",
+      "source": "basic_expl_t3d",
+      "target": "keystone_0000002u",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      }
+    },
+    {
+      "id": "edge_gOS1uwImte",
+      "source": "basic_00000055",
+      "target": "basic_arts_t2g",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Iry09lH40v",
+      "source": "basic_arts_t2d",
+      "target": "basic_arts_t3f",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_LZL58YiZg7",
+      "source": "basic_arch_civic_pride",
+      "target": "basic_arch_t3e",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_LqOrD_a9C6",
+      "source": "basic_0000000x",
+      "target": "basic_0000000v",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_pU4MX6W4g4",
+      "source": "basic_0000000v",
+      "target": "keystone_0000000z",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_yWHPzBZE3u",
+      "source": "basic_arch_t3c",
+      "target": "keystone_00000018",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 15
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_QZtIqNOXC4",
+      "source": "basic_0000001b",
+      "target": "keystone_0000001f",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 25
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_0WxzWwqyR_",
+      "source": "basic_00000050",
+      "target": "basic_00000055",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_K-7aDqzgcn",
+      "source": "basic_0000004z",
+      "target": "basic_00000050",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_IeCqJkpsgk",
+      "source": "basic_arts_t3f",
+      "target": "basic_arts_t4d",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_sE--IPYDGP",
+      "source": "basic_arts_t4d",
+      "target": "basic_arts_t4f",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Owo01vhQpD",
+      "source": "basic_arts_t4e",
+      "target": "basic_0000005g",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_DU3NbIMnXI",
+      "source": "basic_0000005g",
+      "target": "keystone_0000005k",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 25
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_dgGxOo6wkE",
+      "source": "basic_arts_t3g",
+      "target": "keystone_gALCYbB4Yr",
+      "sourceHandle": "e",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_qQ8PfX5jt2",
+      "source": "basic_0000005f",
+      "target": "keystone_cLiRR6p7B7",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_SRaErYw2GU",
+      "source": "basic_0000005g",
+      "target": "basic_arts_t4d",
+      "sourceHandle": "n",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_8JCX7KBnya",
+      "source": "basic_0000003s",
+      "target": "basic_0000003v",
+      "sourceHandle": "s",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_sFqFsNv5N7",
+      "source": "basic_tres_t1d",
+      "target": "basic_0000003r",
+      "sourceHandle": "w",
+      "targetHandle": "e",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_NsMHPTgJ5T",
+      "source": "basic_tres_t2f",
+      "target": "basic_00000046",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_-rClCXme9B",
+      "source": "basic_00000046",
+      "target": "basic_00000041",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_vywesZBmKB",
+      "source": "basic_00000041",
+      "target": "basic_tres_t4f",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      }
+    },
+    {
+      "id": "edge_k-CsyGRrjX",
+      "source": "basic_tres_t4f",
+      "target": "basic_0000003z",
+      "sourceHandle": "w",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      }
+    },
+    {
+      "id": "edge_Vx1J_qy7xD",
+      "source": "basic_0000003z",
+      "target": "keystone_00000047",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 20
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_Jq82fAn8fN",
+      "source": "basic_00000046",
+      "target": "keystone_00000049",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 15
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_wHP5FFZKo6",
+      "source": "basic_0000003w",
+      "target": "basic_tres_t2f",
+      "sourceHandle": "s",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_pfkRXQQ7BQ",
+      "source": "basic_tres_t2d",
+      "target": "basic_tres_t2g",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_mgJUVW6MLO",
+      "source": "basic_0000001c",
+      "target": "basic_arch_t4f",
+      "sourceHandle": "e",
+      "targetHandle": "n",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 16
+      },
+      "selected": false
+    },
+    {
+      "id": "edge_5L82HzZn-X",
+      "source": "basic_tres_t3e",
+      "target": "basic_00000041",
+      "sourceHandle": "e",
+      "targetHandle": "w",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    }
+  ]
+}
