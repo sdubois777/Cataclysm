@@ -42,10 +42,14 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: sim/requirements-dev.txt
+          cache-dependency-path: |
+            sim/requirements-dev.txt
+            tools/requirements.txt
 
       - name: Install development dependencies
-        run: python -m pip install --disable-pip-version-check -r sim/requirements-dev.txt
+        run: |
+          python -m pip install --disable-pip-version-check -r sim/requirements-dev.txt
+          python -m pip install --disable-pip-version-check -r tools/requirements.txt
 
       # Checks for real defects only: syntax errors, undefined names, unused
       # imports, and bugbear rules. Style and import order are not enforced.
@@ -55,6 +59,13 @@ jobs:
 
       - name: Tests
         run: python -m pytest
+
+      # game/Config/Tags/CataclysmTags.ini is generated from the Tags sheet of
+      # the design workbook. If someone edits the sheet and forgets to
+      # regenerate, the ability and enchantment systems silently reference tags
+      # the engine does not have. This fails the build instead.
+      - name: Gameplay tag list is current
+        run: python tools/generate_gameplay_tags.py --check
 
       # The power model is a port of calculateScores.tsx in the separate
       # DungeonSimulator repository. This reports that it skipped, rather than

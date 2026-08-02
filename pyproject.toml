@@ -19,6 +19,6 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["sim/tests"]
-pythonpath = ["sim"]
+testpaths = ["sim/tests", "tools/tests"]
+pythonpath = ["sim", "tools"]
 addopts = "-q"
