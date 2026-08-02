@@ -110,8 +110,15 @@ def main() -> int:
           f"= {len(cases) * (1 + len(RARITIES))} values.")
 
     expected = run_reference(ref, cases)
+    if len(expected) != len(cases):
+        # strict=True below would raise, but this says what actually went wrong.
+        print(f"\nFAIL: the reference returned {len(expected)} results "
+              f"for {len(cases)} inputs.")
+        return 1
+
     mismatches = []
-    for (tier, dtype, subtype, total, cur, mod), want in zip(cases, expected):
+    for (tier, dtype, subtype, total, cur, mod), want in zip(cases, expected,
+                                                             strict=True):
         scores = scoring.enemy_scores(tier, dtype, subtype, total, cur, mod)
         got = ([scoring.dungeon_score(tier, dtype, subtype, total, mod)]
                + [scores[r] for r in RARITIES])
@@ -129,7 +136,7 @@ def main() -> int:
         print(f"\n  T{tier} {dtype}/{subtype} {total} floors, floor {cur}, modifier {mod}")
         print(f"    reference : {want}")
         print(f"    scoring.py: {got}")
-        print(f"    delta     : {[g - w for g, w in zip(got, want)]}")
+        print(f"    delta     : {[g - w for g, w in zip(got, want, strict=True)]}")
     if len(mismatches) > 20:
         print(f"\n  ... and {len(mismatches) - 20} more.")
     return 1

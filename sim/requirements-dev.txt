@@ -1,0 +1,5 @@
+# Development and continuous integration dependencies for the tuning rig.
+# The simulation itself has no runtime dependencies -- it is pure standard
+# library Python, and it should stay that way.
+pytest==9.1.1
+ruff==0.16.1

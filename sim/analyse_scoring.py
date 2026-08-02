@@ -35,9 +35,9 @@ print(f"  depth      (125-63) * 1 * 1.2  = {(125 - 63) * 1.2:>8.1f}")
 print(f"  {'-' * 40}")
 print(f"  total                          = "
       f"{0.9 * w + 0.2 * w + 0.5 * w + 400 / 20 + 125 * 0.5 + (125 - 63) * 1.2:>8.1f}")
-print(f"\n  The weighted terms alone sum to 1.60 x tier width, but a player can")
-print(f"  only gain 1.00 x tier width across the entire tier. The gap is")
-print(f"  structural, not a tuning accident.")
+print("\n  The weighted terms alone sum to 1.60 x tier width, but a player can")
+print("  only gain 1.00 x tier width across the entire tier. The gap is")
+print("  structural, not a tuning accident.")
 
 hdr("C. Tier width -- the master scalar in every single term")
 prev = None
