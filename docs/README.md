@@ -36,6 +36,13 @@ trying to model without needing Drive access. Re-export when Drive changes.
 
 The **Tags** sheet is the intended source for the Unreal `GameplayTag` table.
 
+## Decisions made outside Drive
+
+`DECISIONS.md` records design decisions taken in this repository or in GitHub
+issues that are **not yet reflected in the Drive documents**. Read it alongside
+the GDD; where the two disagree, DECISIONS.md is newer. Each entry names which
+Drive document still needs updating.
+
 ## Not exported
 
 - **`Empire Diagram.pdf`** — a Lucidchart export from 2023-01-12. It predates the
