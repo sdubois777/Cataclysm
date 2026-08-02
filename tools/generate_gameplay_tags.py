@@ -150,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
                         help="verify without writing; exit 1 if out of date")
+    parser.add_argument("--strict", action="store_true",
+                        help="treat undefined tag references as an error, not a "
+                             "warning")
     parser.add_argument("--workbook", type=pathlib.Path, default=WORKBOOK)
     parser.add_argument("--output", type=pathlib.Path, default=OUTPUT)
     args = parser.parse_args(argv)
@@ -162,15 +165,20 @@ def main(argv: list[str] | None = None) -> int:
 
     contents = render(tags)
 
-    # Undefined references are a warning, not a failure. The data sheets are
-    # still being written and blocking a build on an unfinished row helps nobody
-    # -- but the drift must be visible.
+    # Every tag reference in the design data currently resolves. --strict keeps it
+    # that way; continuous integration uses it. Without the flag this is only a
+    # warning, which is the right behaviour while a sheet is mid-edit locally.
     unknown = check_references(tags, find_references(args.workbook))
     if unknown:
-        print(f"WARNING: {len(unknown)} tag reference(s) are not defined in the "
+        label = "FAIL" if args.strict else "WARNING"
+        print(f"{label}: {len(unknown)} tag reference(s) are not defined in the "
               f"Tags sheet:", file=sys.stderr)
         for line in unknown:
             print(f"  {line}", file=sys.stderr)
+        if args.strict:
+            print("  Either add the tag to the Tags sheet or correct the "
+                  "reference.", file=sys.stderr)
+            return 1
 
     if args.check:
         if not args.output.is_file():
