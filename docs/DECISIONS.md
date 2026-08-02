@@ -2,10 +2,17 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-**These are not yet reflected in the Drive documents.** `docs/Cataclysm_GDD_v2.md`
-and `docs/All_Things_Cataclysm.xlsx` are snapshots exported from Drive, and Drive
-is where they are edited. Anything recorded here still needs folding back into
-the Drive originals. Each entry names which document it affects.
+**The files in this folder are authoritative.** Edit them directly. They began as
+exports from Google Drive, but as of 2026-08-02 the repository copies are the
+source of truth and are not synced back; treat the Drive originals as historical.
+
+This log records the *reasoning* behind decisions, which the design documents
+themselves do not carry. Each entry names which document it affects, so the
+change can be applied there.
+
+Entries below dated 2026-08-02 were written before that switch and say they still
+need folding into Drive. Ignore that wording. They do still need applying to the
+files in this folder.
 
 ---
 

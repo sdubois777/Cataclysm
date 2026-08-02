@@ -1,12 +1,13 @@
 # Design documents
 
-Snapshots of the design documents, exported from the Google Drive folder
-"Cataclysm" (owner `iamstephen777@gmail.com`) on 2026-08-02.
+The design documents. **These files are authoritative — edit them directly.**
 
-**Drive is still the place these are edited.** These copies exist so that the
-simulation and the eventual Unreal data pipeline can be diffed against a fixed
-version of the design, and so a reader of this repo can see the rules the sim is
-trying to model without needing Drive access. Re-export when Drive changes.
+They began as exports from the Google Drive folder "Cataclysm" (owner
+`iamstephen777@gmail.com`) on 2026-08-02. As of that date the repository copies
+became the source of truth and are **not** synced back to Drive. Treat the Drive
+originals as historical.
+
+A design decision is not real until it is in this folder.
 
 | File | Source in Drive | Format note |
 |---|---|---|
@@ -38,10 +39,13 @@ The **Tags** sheet is the intended source for the Unreal `GameplayTag` table.
 
 ## Decisions made outside Drive
 
-`DECISIONS.md` records design decisions taken in this repository or in GitHub
-issues that are **not yet reflected in the Drive documents**. Read it alongside
-the GDD; where the two disagree, DECISIONS.md is newer. Each entry names which
-Drive document still needs updating.
+`DECISIONS.md` is the dated log of design decisions and the reasoning behind
+them. Decisions are applied directly to the documents in this folder; the log
+records *why* a thing is the way it is, which the documents themselves do not.
+
+Entries dated 2026-08-02 predate the switch to editing these files directly, and
+say they still need folding into Drive. They do not — that instruction is
+obsolete. Those decisions still need applying to the files in this folder.
 
 ## Not exported
 
