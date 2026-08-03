@@ -18,12 +18,21 @@ so every number below is driven by the weapon alone.
     two-handed    1 piece,  4 affix slots, each worth M times a one-handed one
     dual wield    2 pieces, 8 affix slots, each worth one
 
-ONE THING THE DESIGN DOES NOT SAY, and it decides the answer. When a character
-holds two weapons, is the base damage of both SUMMED, or is one attack made with
-one weapon so the effective figure is the AVERAGE? `docs/Cataclysm_GDD_v2.md`
-covers dual wielding only in terms of damage types; it never says what happens
-to the damage number. Both readings are measured here and they give very
-different answers, so this has to be decided before a multiplier is chosen.
+THE BASE DAMAGE OF TWO WEAPONS IS SUMMED. Decided by the project owner
+2026-08-03, answering a question `docs/Cataclysm_GDD_v2.md` does not address:
+it covers dual wielding only in terms of damage types and never says what
+happens to the damage number. Both readings are still measured below, because
+the averaged one is what the current weapon base damages were set against and
+the comparison is what shows they no longer fit.
+
+WHAT SUMMING CHANGES, and it is not small. Two one-handed bases sum to more than
+any two-handed base: an Axe and a Sword give 86 against a Greatsword's 78. The
+five two-handed bases average 1.03 times two one-handed ones, which is parity,
+so a two-handed weapon has no base damage advantage at all. Section VI states
+that the two-hander stays ahead on raw damage, and under summing it is not.
+
+The affix multiplier cannot fix that on its own without breaking a different
+rule. See `why_two_point_zero_is_still_right` at the end.
 
 A SECOND RULE ALREADY IN THE DESIGN constrains this. Section VII states:
 
@@ -308,6 +317,52 @@ def why_it_is_not_two() -> None:
               f"{at_two:.2f}x the dual wielder")
 
 
+def why_two_point_zero_is_still_right() -> None:
+    header("UNDER SUMMING: RAISE THE WEAPON BASES, NOT THE MULTIPLIER")
+    print("With base damage summed, a two-hander at today's numbers is behind on")
+    print("damage as well as holding one fewer damage type, which makes it")
+    print("strictly worse. There are two levers and they are not equally good.\n")
+
+    dual = average_damage(sum_bases=True, multiplier=1.0, two_handed=False)
+
+    print("  LEVER A -- raise the affix multiplier")
+    print(f"  {'multiplier':>10}  {'2H vs dual wield':>17}  {'2H affix budget':>16}  "
+          f"{'vs dual wield 76':>17}")
+    print("  " + "-" * 68)
+    for candidate in (2.0, 2.25, 2.5, 2.75, 3.0):
+        ratio = average_damage(True, candidate, two_handed=True) / dual
+        budget = 68 + af.AFFIX_SLOTS_PER_PIECE * candidate
+        print(f"  {candidate:>10.2f}  {ratio:>17.3f}  {budget:>16.1f}  "
+              f"{budget - 76:>+17.1f}")
+    print()
+    print("  Reaching a 20% edge needs about 2.75, which hands the two-hander")
+    print("  three affix slots the dual wielder does not have. That is the same")
+    print("  free power section VII forbids, pointed the other way: the Power")
+    print("  Score model rates both loadouts identically, so whichever side has")
+    print("  the larger affix budget carries power its rating does not count.\n")
+
+    print("  LEVER B -- raise two-handed base damage, multiplier stays at 2.0")
+    print(f"  {'2H base':>10}  {'2H vs dual wield':>17}  {'change from 78':>15}")
+    print("  " + "-" * 48)
+    for candidate_base in (78, 100, 120, 128, 150):
+        value = damage_per_hit(float(candidate_base), 1, 1, 2.0) * crit_factor(
+            SUFFIXES_PER_WEAPON * 2, 2.0)
+        print(f"  {candidate_base:>10}  {value / dual:>17.3f}  "
+              f"{candidate_base / 78:>14.2f}x")
+    print()
+    print("  Lever B keeps the affix budgets equal and puts the advantage exactly")
+    print("  where section VI says it is: raw damage. It is the weaker lever per")
+    print("  point -- a weapon base is only 38% of the base bracket once affixes")
+    print("  are counted -- which is why the change needed is large.")
+    print()
+    print("  The two-handed base damages have no recorded rationale in")
+    print("  sim/cataclysm_sim/affixes.py. They were set at roughly 1.8 times a")
+    print("  one-hander, which is right if one attack uses one weapon and wrong")
+    print("  if two weapons sum, so raising them corrects a number set against a")
+    print("  question that had not been answered rather than overriding a")
+    print("  decision.")
+
+
 def what_two_point_zero_actually_does() -> None:
     header("WHAT A MULTIPLIER OF 2.0 DOES, EXACTLY")
     print("At 2.0 the affix contributions are not merely close, they are")
@@ -350,6 +405,7 @@ def main() -> None:
     crit_table()
     why_it_is_not_two()
     what_two_point_zero_actually_does()
+    why_two_point_zero_is_still_right()
 
 
 if __name__ == "__main__":
