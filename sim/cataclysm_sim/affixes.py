@@ -29,7 +29,8 @@ TIER VALUES. The crafting system levels an affix up to T7 -- see the Potency
 Crystal in `game/Data/CraftingMaterials.csv` -- so every family needs seven
 values. One shared curve produces them from a family's top value, so that the
 whole affix pool stays consistent as it grows rather than each family inventing
-its own progression.
+its own progression. The curve is linear, and the reason is a design pressure
+rather than a convenience; see TIER_FRACTIONS.
 """
 
 from __future__ import annotations
@@ -46,12 +47,21 @@ AFFIX_TIERS = (1, 2, 3, 4, 5, 6, 7)
 
 #: What share of its top-tier value an affix has at each tier.
 #:
-#: Front-loaded rather than linear: an affix reaches half its final value by T3,
-#: so a mid-tier roll is useful rather than filler, and the last two tiers are
-#: worth chasing without being the only ones that matter.
-TIER_FRACTIONS: dict[int, float] = {
-    1: 0.20, 2: 0.35, 3: 0.50, 4: 0.65, 5: 0.80, 6: 0.90, 7: 1.00,
-}
+#: LINEAR, and deliberately so. Every step up is worth the same as every other,
+#: which means the value of one more upgrade never falls off.
+#:
+#: This is a pressure point rather than a neutral choice. The game's central
+#: tension is that a day spent at the forge is a day not spent defending the
+#: empire, so the decision to upgrade gear rather than run a dungeon has to stay
+#: uncomfortable for the whole run. A front-loaded curve, which an earlier
+#: version used, hands over most of an affix's value in the first few tiers and
+#: makes the later ones easy to skip -- which relieves exactly the pressure the
+#: design wants to keep applying.
+#:
+#: The cost side already curves: gear upgrade levels cost 2^N - 1 stones, so
+#: diminishing returns arrive through rising cost rather than through falling
+#: value.
+TIER_FRACTIONS: dict[int, float] = {tier: tier / 7.0 for tier in range(1, 8)}
 
 #: The character sheet's resistance cap. Reaching it on every active damage type
 #: is what a build is trying to do.

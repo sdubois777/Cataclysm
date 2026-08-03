@@ -154,12 +154,34 @@ def test_affix_value_rises_with_every_tier():
         assert len(set(values)) == len(values)
 
 
-def test_the_tier_curve_is_front_loaded_not_linear():
-    """An affix should be half its final value by the middle tier, so a mid-tier
-    roll is useful rather than filler. A linear curve would put T3 at 0.43."""
-    assert af.TIER_FRACTIONS[3] == pytest.approx(0.50)
-    linear_at_three = 3 / 7
-    assert af.TIER_FRACTIONS[3] > linear_at_three
+def test_the_tier_curve_is_linear():
+    """Every step up is worth the same as every other, so the value of one more
+    upgrade never falls off.
+
+    This is a deliberate pressure point. The game's central tension is that a day
+    at the forge is a day not defending the empire, so choosing to upgrade rather
+    than run a dungeon has to stay uncomfortable for the whole run. A
+    front-loaded curve, which an earlier version used, hands over most of an
+    affix's value early and makes the later tiers easy to skip.
+    """
+    for tier in af.AFFIX_TIERS:
+        assert af.TIER_FRACTIONS[tier] == pytest.approx(tier / 7.0)
+
+
+def test_every_tier_step_is_worth_the_same():
+    """The property that keeps the upgrade decision uncomfortable. Stated
+    separately from the formula above, because a future curve could satisfy the
+    endpoints and still sag in the middle."""
+    steps = [af.TIER_FRACTIONS[t + 1] - af.TIER_FRACTIONS[t]
+             for t in range(1, 7)]
+    assert max(steps) == pytest.approx(min(steps)), f"uneven steps: {steps}"
+
+
+def test_no_single_tier_step_hands_over_most_of_an_affix():
+    """A front-loaded curve would. At seven even steps each is about 14%."""
+    steps = [af.TIER_FRACTIONS[t + 1] - af.TIER_FRACTIONS[t]
+             for t in range(1, 7)]
+    assert max(steps) < 0.20
 
 
 def test_an_affix_tier_outside_one_to_seven_is_rejected():
