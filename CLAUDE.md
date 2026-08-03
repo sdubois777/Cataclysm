@@ -84,6 +84,29 @@ guessing why it is the way it is. State what you found before proposing a change
 Use plan mode or subagents for anything that spans more than a couple of files,
 so the reading does not crowd out the work.
 
+**Research the genre before proposing any formula, affix or mechanic.** When the
+question is how something *should* work — how attack speed combines, what an
+affix is worth, how dual wielding resolves — look up how shipped games in the
+genre do it before answering. Path of Exile, Last Epoch, Torchlight Infinite and
+Diablo have all solved these problems in public, and a shape that survived
+contact with real players is evidence in a way an invented one is not. Name the
+sources in the proposal and record them in `docs/DECISIONS.md` alongside the
+decision, so the next person can see why the shape was chosen and not only what
+was chosen.
+
+Do not invent a formula on the fly. The best structural decision in this project
+came from exactly this route: the three-bucket damage pipeline
+`(base + flat) x (1 + increases) x more1 x more2` was adopted after research
+showed all three of those games use the same skeleton under different names.
+
+Say plainly which parts the research settles and which are genuinely specific to
+this game and cannot be read off another. Those still need a judgement, and it
+should be labelled as one rather than presented as derived. **Always state the
+single recommendation you landed on**, not only the options.
+
+This governs structure and formula shape. The constants inside them are still
+tuned against real play rather than argued to death first.
+
 **After the work, test it thoroughly.** Not only that the change runs, but that
 it does what it was supposed to do, and that neighbouring behaviour still holds.
 Write tests for the feature you just built. Run `pytest` and `ruff`. Fix bugs you
