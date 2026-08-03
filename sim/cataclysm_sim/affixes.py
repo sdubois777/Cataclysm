@@ -113,6 +113,24 @@ AFFIX_SLOTS_PER_PIECE = 4
 TOTAL_AFFIX_SLOTS = GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
 
 
+def tier_band(top_value: float, tier: int) -> tuple[float, float]:
+    """The lowest and highest an affix can roll at a tier.
+
+    Shared by every affix family so the whole pool uses one curve and one band
+    width. A family that computed its own would drift from the rest the moment
+    either constant changed.
+    """
+    if tier not in TIER_FRACTIONS:
+        raise ValueError(f"affix tier {tier} outside {sorted(TIER_FRACTIONS)}")
+    high = top_value * TIER_FRACTIONS[tier]
+    return (high * (1.0 - ROLL_BAND_FRACTION), high)
+
+
+def roll_within(low: float, high: float, roll: float) -> float:
+    """Place a roll inside a band. Clamped, so a bad caller cannot leave it."""
+    return low + (high - low) * min(max(roll, 0.0), 1.0)
+
+
 @dataclass(frozen=True)
 class AffixFamily:
     """One family of affixes: what it grants, to how many things, and how much.
@@ -133,10 +151,7 @@ class AffixFamily:
         down by a fraction of that value, not of the gap to the tier below, which
         is what makes the roll worth caring about. See ROLL_BAND_FRACTION.
         """
-        if tier not in TIER_FRACTIONS:
-            raise ValueError(f"affix tier {tier} outside {sorted(TIER_FRACTIONS)}")
-        high = self.top_value * TIER_FRACTIONS[tier]
-        return (high * (1.0 - ROLL_BAND_FRACTION), high)
+        return tier_band(self.top_value, tier)
 
     def value_at(self, tier: int, roll: float = 1.0) -> float:
         """Percentage granted to each covered resistance.
@@ -147,7 +162,7 @@ class AffixFamily:
         cap -- are about what a finished, crafted character can achieve.
         """
         low, high = self.range_at(tier)
-        return low + (high - low) * min(max(roll, 0.0), 1.0)
+        return roll_within(low, high, roll)
 
     def average_at(self, tier: int) -> float:
         """The middle of the band. What an uncrafted drop is worth on average."""
@@ -181,6 +196,119 @@ HYBRID_RESISTANCE = AffixFamily("Two resistances", breadth=2, top_value=14.0)
 ALL_RESISTANCE = AffixFamily("All resistances", breadth=8, top_value=6.0)
 
 RESISTANCE_FAMILIES = (SINGLE_RESISTANCE, HYBRID_RESISTANCE, ALL_RESISTANCE)
+
+
+# --------------------------------------------------------------------------
+# Health and damage, which have no breadth but do have two kinds
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class StatAffix:
+    """An affix granting one ordinary stat, either flat or as an increase.
+
+    Resistance needed three families because it has a breadth axis -- one type,
+    two, or all eight. Health and damage have no such axis. What they have
+    instead is the two ends of the stat pipeline:
+
+        Final = (class base + per-level + FLAT from gear) * (1 + INCREASES)
+
+    A flat affix enters the first bracket and an increased affix the second, and
+    which is worth more depends on how large the first bracket already is. That
+    produces a crossover of the same shape as the resistance one, and for the
+    same reason: neither kind is strictly better, so the choice is real.
+    """
+
+    name: str
+    stat: str
+    kind: str          # "flat" or "increased"
+    top_value: float
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("flat", "increased"):
+            raise ValueError(
+                f"{self.name}: kind must be 'flat' or 'increased', "
+                f"got {self.kind!r}")
+
+    def range_at(self, tier: int) -> tuple[float, float]:
+        return tier_band(self.top_value, tier)
+
+    def value_at(self, tier: int, roll: float = 1.0) -> float:
+        low, high = self.range_at(tier)
+        return roll_within(low, high, roll)
+
+    def added_value(self, base_before_increases: float, existing_increases: float,
+                    tier: int = 7, roll: float = 1.0) -> float:
+        """How much final stat one more of this affix actually adds.
+
+        This is the only fair way to compare the two kinds, because each is
+        worth more in the presence of the other. A flat affix is multiplied by
+        every increase already on the character; an increased affix multiplies
+        every flat point already there.
+        """
+        v = self.value_at(tier, roll)
+        if self.kind == "flat":
+            return v * (1.0 + existing_increases)
+        return base_before_increases * (v / 100.0)
+
+
+#: Health. A flat affix adds points before scaling; an increased one scales
+#: everything already there.
+#:
+#: The two are set so the crossover lands mid-build rather than at either end. A
+#: level 100 Ravager has 2,110 base health, and with every attribute point in
+#: Vitality carries +200% increases before any gear. Under those conditions the
+#: two kinds are worth the same at about 3,000 points of base, which a character
+#: reaches after roughly seven flat affixes. Before that flat wins, after it
+#: increased does.
+FLAT_HEALTH = StatAffix("Flat maximum health", "max_health", "flat", 120.0)
+INCREASED_HEALTH = StatAffix("Increased maximum health", "max_health",
+                             "increased", 12.0)
+
+#: Damage. Same structure, and the numbers are pinned to a target rather than
+#: chosen: `enemy_stats.PLAYER_DAMAGE_FACTOR` says a player hits for 25% of their
+#: Power Score, which is 1,582 at tier 8, and that is what makes the "player
+#: kills a common enemy in 1 to 3 hits" target hold. Gear has to deliver it.
+FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 60.0)
+INCREASED_DAMAGE = StatAffix("Increased damage", "attack_damage",
+                             "increased", 15.0)
+
+HEALTH_AFFIXES = (FLAT_HEALTH, INCREASED_HEALTH)
+DAMAGE_AFFIXES = (FLAT_DAMAGE, INCREASED_DAMAGE)
+
+
+def better_kind(pair: tuple[StatAffix, StatAffix], base_before_increases: float,
+                existing_increases: float, tier: int = 7) -> StatAffix:
+    """Which of a flat and increased pair adds more, given what is already there."""
+    return max(pair, key=lambda a: a.added_value(
+        base_before_increases, existing_increases, tier))
+
+
+def crossover_base(pair: tuple[StatAffix, StatAffix], existing_increases: float,
+                   tier: int = 7) -> float:
+    """The base value at which the two kinds are worth the same.
+
+    Below it the flat affix adds more; above it the increased one does.
+    """
+    flat = next(a for a in pair if a.kind == "flat")
+    increased = next(a for a in pair if a.kind == "increased")
+    per_cent = increased.value_at(tier) / 100.0
+    if per_cent <= 0:
+        return float("inf")
+    return flat.value_at(tier) * (1.0 + existing_increases) / per_cent
+
+
+def weapon_base_damage_needed(target_damage: float, flat_slots: int,
+                              increased_slots: int, tier: int = 7,
+                              roll: float = 1.0) -> float:
+    """What a weapon must contribute for a build to reach a damage target.
+
+    Solves the pipeline backwards. There are no weapon damage numbers anywhere in
+    the project, so this is how the affix values imply one rather than the other
+    way round.
+    """
+    flat = FLAT_DAMAGE.value_at(tier, roll) * flat_slots
+    increases = INCREASED_DAMAGE.value_at(tier, roll) / 100.0 * increased_slots
+    return target_damage / (1.0 + increases) - flat
 
 
 def slots_to_cap(family: AffixFamily, tier: int, active_cataclysms: int,
@@ -277,3 +405,53 @@ if __name__ == "__main__":
     print("    point of having three. A single-resistance affix is the best use")
     print("    of a slot when one Cataclysm is active and nearly worthless when")
     print("    eight are; an all-resistance affix is the reverse.")
+    print()
+
+    # ---------------------------------------------------------------
+    from .character import Attributes, Character
+    from .classes import DEMONIC_CLASSES
+    from .enemy_stats import PLAYER_DAMAGE_FACTOR
+
+    print("=" * 72)
+    print("Health and damage affixes")
+    print()
+    print("These have no breadth axis. What they have is the two ends of the")
+    print("stat pipeline: a flat affix enters the base, an increased affix")
+    print("scales it. Which is worth more depends on how much base is there.")
+    print()
+    for pair in (HEALTH_AFFIXES, DAMAGE_AFFIXES):
+        for a in pair:
+            low, high = a.range_at(7)
+            unit = "" if a.kind == "flat" else "%"
+            print(f"    {a.name:<28} T7 {low:>6.1f}{unit} to {high:>6.1f}{unit}")
+    print()
+
+    rav = Character(DEMONIC_CLASSES["Ravager"], level=100,
+                    attributes=Attributes(vitality=100))
+    base = DEMONIC_CLASSES["Ravager"].base_at("max_health", 100)
+    vitality_increases = 100 * 0.02
+    over = crossover_base(HEALTH_AFFIXES, vitality_increases)
+    print(f"    A level 100 Ravager has {base:,.0f} base health and, with every")
+    print(f"    point in Vitality, {vitality_increases:.0%} of increases before gear.")
+    print(f"    Its health is {rav.stat('max_health'):,.0f}.")
+    print()
+    print(f"    Flat and increased health are worth the same at {over:,.0f} base.")
+    flat_slots_to_reach = (over - base) / FLAT_HEALTH.value_at(7)
+    print(f"    That is about {flat_slots_to_reach:.0f} flat affixes away, so flat")
+    print("    wins early in a build and increased wins after it.")
+    print()
+
+    print("    Damage affixes are pinned to a target rather than chosen. A")
+    print(f"    player hits for {PLAYER_DAMAGE_FACTOR:.0%} of their Power Score, which is")
+    target = 6327 * PLAYER_DAMAGE_FACTOR
+    print(f"    {target:,.0f} at tier 8. Solving the pipeline backwards gives what a")
+    print("    weapon has to supply, which is a number the project does not have:")
+    print()
+    print(f"      {'flat slots':>11} {'increased slots':>16} {'weapon base needed':>20}")
+    for flat_slots, inc_slots in ((4, 4), (6, 6), (8, 8), (12, 0), (0, 12)):
+        need = weapon_base_damage_needed(target, flat_slots, inc_slots)
+        print(f"      {flat_slots:>11} {inc_slots:>16} {need:>20,.0f}")
+    print()
+    print("    Spending nothing on damage affixes would need a weapon supplying")
+    print(f"    the whole {target:,.0f}, and spending 12 slots on increases alone")
+    print("    still needs a large one. That is the shape of the trade.")

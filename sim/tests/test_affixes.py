@@ -287,3 +287,112 @@ def test_there_is_one_resistance_per_damage_type():
 def test_the_cap_matches_the_character_sheet():
     from cataclysm_sim.character import SOFT_CAPS
     assert af.RESISTANCE_CAP == SOFT_CAPS["resistance_war"] == 70.0
+
+
+# --------------------------------------------------------------------------
+# Health and damage affixes
+# --------------------------------------------------------------------------
+
+def test_health_and_damage_come_in_a_flat_and_an_increased_kind():
+    for pair in (af.HEALTH_AFFIXES, af.DAMAGE_AFFIXES):
+        kinds = {a.kind for a in pair}
+        assert kinds == {"flat", "increased"}
+        assert len({a.stat for a in pair}) == 1, "a pair must target one stat"
+
+
+def test_an_unknown_affix_kind_is_rejected():
+    with pytest.raises(ValueError, match="flat.*increased"):
+        af.StatAffix("Bad", "max_health", "multiplicative", 10.0)
+
+
+def test_stat_affixes_use_the_same_curve_and_band_as_resistance_affixes():
+    """One shared curve across the whole pool. A family computing its own would
+    drift the moment either constant changed."""
+    for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
+        for tier in af.AFFIX_TIERS:
+            assert affix.range_at(tier) == af.tier_band(affix.top_value, tier)
+            low, high = affix.range_at(tier)
+            assert low / high == pytest.approx(1.0 - af.ROLL_BAND_FRACTION)
+
+
+def test_a_flat_affix_is_worth_more_when_the_character_has_more_increases():
+    """Flat points are multiplied by every increase already on the character,
+    which is why the two kinds cannot be compared by their face values."""
+    flat = af.FLAT_HEALTH
+    assert (flat.added_value(base_before_increases=2000, existing_increases=2.0)
+            > flat.added_value(base_before_increases=2000, existing_increases=0.0))
+
+
+def test_an_increased_affix_is_worth_more_when_the_character_has_more_base():
+    inc = af.INCREASED_HEALTH
+    assert (inc.added_value(base_before_increases=6000, existing_increases=2.0)
+            > inc.added_value(base_before_increases=2000, existing_increases=2.0))
+
+
+def test_an_increased_affix_is_worth_nothing_with_no_base_to_scale():
+    """The same rule the character sheet already states: attributes and
+    increases scale a value that came from somewhere else."""
+    assert af.INCREASED_HEALTH.added_value(0.0, 2.0) == 0.0
+    assert af.FLAT_HEALTH.added_value(0.0, 2.0) > 0.0
+
+
+def test_flat_wins_early_and_increased_wins_late():
+    """The crossover is the whole reason for having two kinds. If one always
+    won, the other would be dead content."""
+    for pair in (af.HEALTH_AFFIXES, af.DAMAGE_AFFIXES):
+        crossover = af.crossover_base(pair, existing_increases=2.0)
+        below = af.better_kind(pair, crossover * 0.5, 2.0)
+        above = af.better_kind(pair, crossover * 2.0, 2.0)
+        assert below.kind == "flat"
+        assert above.kind == "increased"
+
+
+def test_the_health_crossover_lands_inside_a_real_build():
+    """Not at either end. A level 100 Ravager has 2,110 base health, so a
+    crossover far below that would make flat health pointless, and one far above
+    it would make increased health pointless."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+    base = DEMONIC_CLASSES["Ravager"].base_at("max_health", 100)
+    crossover = af.crossover_base(af.HEALTH_AFFIXES, existing_increases=2.0)
+    assert base < crossover < base * 3
+
+
+def test_the_crossover_moves_with_the_increases_already_on_the_character():
+    """A character deep in Vitality wants flat health for longer, because its
+    increases multiply every flat point. That is the interaction working."""
+    low = af.crossover_base(af.HEALTH_AFFIXES, existing_increases=0.0)
+    high = af.crossover_base(af.HEALTH_AFFIXES, existing_increases=2.0)
+    assert high > low
+
+
+# --------------------------------------------------------------------------
+# Damage affixes are pinned to the target that makes the enemy numbers work
+# --------------------------------------------------------------------------
+
+def test_the_damage_target_comes_from_the_enemy_derivation():
+    from cataclysm_sim.enemy_stats import PLAYER_DAMAGE_FACTOR
+    assert PLAYER_DAMAGE_FACTOR == 0.25
+
+
+def test_a_reasonable_slot_split_needs_a_plausible_weapon():
+    """Solving the pipeline backwards gives what a weapon has to supply, which
+    is a number the project does not have. It must not come out negative, which
+    would mean affixes alone already exceed the target and weapons are
+    pointless."""
+    target = 6327 * 0.25
+    for flat_slots, inc_slots in ((4, 4), (6, 6), (8, 8)):
+        need = af.weapon_base_damage_needed(target, flat_slots, inc_slots)
+        assert 0 < need < target, (
+            f"{flat_slots} flat and {inc_slots} increased slots need {need:.0f}")
+
+
+def test_spending_no_slots_on_damage_needs_the_weapon_to_supply_everything():
+    target = 6327 * 0.25
+    assert af.weapon_base_damage_needed(target, 0, 0) == pytest.approx(target)
+
+
+def test_more_damage_affixes_always_reduce_what_the_weapon_must_supply():
+    target = 6327 * 0.25
+    needs = [af.weapon_base_damage_needed(target, n, n) for n in range(0, 9)]
+    assert needs == sorted(needs, reverse=True)
+    assert len(set(needs)) == len(needs)
