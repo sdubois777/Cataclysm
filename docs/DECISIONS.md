@@ -48,13 +48,42 @@ progressing at exactly the point it was coming together.
 at all, and it keeps a screen full of enemies readable: one enemy is bleeding or
 it is not, with no stacks to count.
 
-**A conflict found in the existing data, not resolved here.**
-`game/Data/StatusEffects.csv` describes Necrosis as "a stacking dot that reduces
-healing by 10% per stack". Every other stacking entry in that file is either a
-buff on the player or a debuff an enemy applies to the player, and this rule
-governs neither. Necrosis is the only entry that is both a damage-over-time
-effect and stacking, and its row does not say who applies it. Recorded on #112,
-which already covers gaps in that file.
+**WHAT MAGNITUDE SCALES DEPENDS ON THE EFFECT, and it is never wasted.** An
+effect with uncapped damage takes it as damage. An effect whose strength has a
+cap, such as a slow, takes it as strength up to that cap and then as duration. An
+effect with no strength axis at all takes it as duration.
+
+**Three effects were defined**, all of which were already applied by a gem and
+by an affix while saying nothing about what they did. The project owner gave the
+shape of each; the numbers below were chosen and are expected to move.
+
+| Effect | What it does | Magnitude scales |
+|---|---|---|
+| Madness | The enemy attacks anything nearby, friend or foe, for 3 seconds | The duration |
+| Cripple | Reduces the enemy's movement and attack speed by 30% for 4 seconds | The reduction, to a cap of 80%, then the duration |
+| Shred | Reduces the enemy's resistance by 10 for 6 seconds | The reduction, until that resistance reaches zero, then the duration |
+
+Cripple's slow caps below total because a full stop is a stun, and stunning is a
+separate mechanic with its own counter in Crowd Control Resistance. Shred stops
+at zero resistance for the same reason armour penetration does: reducing a
+defence below nothing grants no bonus.
+
+**Necrosis was changed to fit the rule.** `game/Data/StatusEffects.csv` described
+it as "a stacking dot that reduces healing by 10% per stack", which the
+single-stack rule rules out. It now reduces healing by 25% and deals damage over
+time for 5 seconds, in one application, with magnitude scaling both.
+
+**These rows are generated, not hand-written.** `game/Data/StatusEffects.csv`
+comes from `docs/All_Things_Cataclysm.xlsx` via `tools/generate_datatables.py`,
+so the workbook was edited and the CSVs regenerated. The other eight CSVs came
+out byte-identical, which is the evidence that reading and rewriting the workbook
+damaged nothing. The row count assertion in
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` moved from 46 to 49.
+
+**Still undefined: Weaken.** The Of Withering gem applies "weaken", and the data
+has a "Wither" debuff that enemies apply to the player. Whether those are one
+effect under two names is a question only the project owner can answer, so it
+stays on #112.
 
 **Tuning expected.** The project owner: "That might need tuning later, but I
 think that's how I want it to work."

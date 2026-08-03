@@ -88,7 +88,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsPositive.csv",  380)
 	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsNegative.csv",  195)
 	CHECK_TABLE(FCataclysmEnemyModifierRow,     "EnemyModifiers.csv",         79)
-	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          46)
+	// 49, not 46. Three player-applied debuffs were defined: Madness, Cripple
+	// and Shred. All three were already applied by gems and by affixes, and none
+	// of them said what they did.
+	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          49)
 	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   25)
 	CHECK_TABLE(FCataclysmCityUpgradeRow,       "CityUpgrades.csv",           24)
 	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      37)

@@ -1033,7 +1033,42 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-**One existing effect contradicts the single-stack rule and needs resolving.** The status effect data describes Necrosis as a stacking effect that reduces healing by 10% per stack. Every other stacking entry is either a buff on the player or a debuff an enemy applies to the player, neither of which this rule governs. Necrosis is the only one listed as a damage-over-time effect and as stacking, and its entry does not say who applies it. Tracked in issue 112.
+**What magnitude scales depends on the effect, and it is never wasted.**
+
+  
+
+|  |  |
+| :-- | :-- |
+| \*\*The effect has\*\* | \*\*Magnitude scales\*\* |
+| Damage over time, with no cap on it | The damage |
+| A strength with a cap, such as a slow | The strength up to that cap, then the duration instead |
+| No strength axis at all, such as Madness | The duration |
+
+  
+
+**The effects a player can apply**
+
+  
+
+|  |  |  |
+| :-- | :-- | :-- |
+| \*\*Effect\*\* | \*\*What it does\*\* | \*\*Magnitude scales\*\* |
+| Bleed | Damage over time | The damage |
+| Poison | Damage over time | The damage |
+| Disease | Damage over time | The damage |
+| Void Splinter | 1% of current health per second over 4 seconds | The damage |
+| Necrosis | Reduces the target's healing by 25% and deals damage over time, for 5 seconds | The damage and the healing reduction, to a cap of 100%, then the duration |
+| Madness | The enemy attacks anything nearby, friend or foe, for 3 seconds | The duration |
+| Cripple | Reduces the enemy's movement and attack speed by 30% for 4 seconds | The reduction, to a cap of 80%, then the duration |
+| Shred | Reduces the enemy's resistance by 10 for 6 seconds | The reduction, until that resistance reaches zero, then the duration |
+
+  
+
+**Cripple's slow caps below total** because a full stop is a stun, and stunning is a separate mechanic with its own counter in Crowd Control Resistance. **Shred stops at zero resistance** for the same reason armor penetration does: reducing a defence below nothing grants no bonus.
+
+  
+
+**Necrosis no longer stacks.** Its earlier description had it stacking and reducing healing by 10% per stack, which the single-stack rule above rules out. It now carries the whole reduction in one application and scales with magnitude like everything else.
 
   
 
