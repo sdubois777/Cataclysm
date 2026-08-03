@@ -22,19 +22,38 @@ failing.
 WHERE EACH BASE VALUE COMES FROM. Three places, recorded per stat in BASE_SOURCE:
 
     the class    the character's own numbers: vitals, recovery, defences,
-                 resistances, movement speed
+                 resistances, movement speed, and the percentages that modify
+                 what skills do, such as area of effect
     the weapon   what the equipped weapon is: attack speed, and off this sheet,
                  attack range and attack damage
-    the skill    what the ability being used is: critical strike chance, area of
-                 effect, damage-over-time frequency, and off this sheet, the base
-                 cooldown, projectile count, charges and duration
+    the skill    what the ability being used is: critical strike chance, and off
+                 this sheet, the base cooldown, projectile count and duration
 
 Critical strike chance is the example the project owner gave: each skill carries
 its own base, and gear and attributes scale that. It is not a class number.
 
-A class still customises weapon-supplied and skill-supplied stats, but with an
-increase joining the same sum gear and attributes use, never by replacing the
-weapon's or the skill's own value.
+Area of effect is not the same case, even though it also concerns a skill. The
+character holds a single area of effect percentage that applies to every skill
+tagged for area of effect. Its baseline is 100%, not zero, because it is a
+percentage of whatever the skill itself does.
+
+INCREASES ARE SCOPED BY TAG. Stated by the project owner 2026-08-02:
+
+    All of our skills have tags, so we know which enchantments and effects apply
+    to which skills. If I'm using an AOE skill and I find equipment that
+    increases my AOE, that increase should still apply to the skill. But it
+    should be a global stat that applies to anything tagged with AOE. The player
+    holds all of its own increases, and those increases apply to things with
+    matching tags.
+
+So a Modifier carries the tags it requires, a Skill carries the tags it has, and
+an increase reaches a skill only when they match. Matching is hierarchical, as
+the tag names imply: a modifier requiring `Type.AOE` applies to a skill tagged
+`Type.AOE.PointBlank`. The design's tag list already contains `Scope.Global` for
+modifiers that should apply to everything.
+
+The Weapon Skills sheet already tags every skill this way, and the enchantment
+tables already tag every enchantment.
 
 THE DEFAULT LINE AND OVERRIDES. There are 33 class-supplied stats, each needing a
 level 1 base and a per-level gain. Across 24 classes that would be 1,584 numbers.
@@ -86,8 +105,6 @@ ALL_STATS: tuple[str, ...] = tuple(s for g in STAT_GROUPS.values() for s in g)
 _NON_CLASS_BASE: dict[str, str] = {
     "attack_speed": "weapon",
     "crit_chance": "skill",
-    "area_of_effect": "skill",
-    "dot_frequency": "skill",
 }
 
 BASE_SOURCE: dict[str, str] = {
@@ -199,14 +216,16 @@ DEFAULT_STAT_LINE: dict[str, Scaling] = {
     "retaliation": Scaling(),
     "crowd_control_resistance": Scaling(),
     **{s: Scaling() for s in RESISTANCE_STATS},
-    # Offence. Critical strike chance, area of effect and damage-over-time
-    # frequency have no class entry that matters: their base comes from the
-    # skill. The zeroes here are placeholders the pipeline never reads.
+    # Offence. Critical strike chance has no class entry that matters: its base
+    # comes from the skill. The zero here is a placeholder never read.
     "crit_chance": Scaling(),
     "crit_multiplier": Scaling(base=150.0),
     "attack_speed": Scaling(),
-    "area_of_effect": Scaling(),
-    "dot_frequency": Scaling(),
+    # Area of effect and damage-over-time frequency are percentages of whatever
+    # the skill itself does, so their baseline is 100%, not zero. A class that
+    # is naturally better at either starts above 100.
+    "area_of_effect": Scaling(base=100.0),
+    "dot_frequency": Scaling(base=100.0),
     "penetration": Scaling(),
     "spell_damage": Scaling(),
     # Utility. Movement speed is in metres per second, following the project
@@ -277,18 +296,64 @@ class Attributes:
                    if stat in effects)
 
 
+#: A modifier requiring this tag applies to everything. The design's tag list
+#: already carries it.
+GLOBAL_SCOPE_TAG = "Scope.Global"
+
+
+def tag_matches(required: str, tags: frozenset[str]) -> bool:
+    """Whether a required tag is satisfied by a set of tags.
+
+    Hierarchical, the way the design's tag names are built: a modifier requiring
+    `Type.AOE` is satisfied by a skill tagged `Type.AOE.PointBlank`. A modifier
+    requiring `Scope.Global` is satisfied by anything.
+    """
+    if required == GLOBAL_SCOPE_TAG:
+        return True
+    return any(t == required or t.startswith(required + ".") for t in tags)
+
+
+@dataclass(frozen=True)
+class Modifier:
+    """One increase the character carries, and what it applies to.
+
+    Stated by the project owner 2026-08-02:
+
+        The player holds all of its own increases, and those increases apply to
+        things with matching tags.
+
+    So an item granting increased area of effect is not a property of any one
+    skill. The character holds it, and it applies to every skill tagged for area
+    of effect. `requires` empty means it applies to everything.
+    """
+
+    stat: str
+    increase: float
+    requires: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        if self.stat not in ALL_STATS:
+            raise ValueError(
+                f"modifier names {self.stat}, which is not on the character sheet")
+
+    def applies_to(self, tags: frozenset[str]) -> bool:
+        return all(tag_matches(r, tags) for r in self.requires)
+
+
 @dataclass(frozen=True)
 class Gear:
     """What equipment contributes, by where it enters the pipeline.
 
     `flat` is added to the class base before scaling. `increased` joins the same
-    sum the attribute points do. `weapon_base` supplies the base for the stats
-    the weapon owns rather than the class.
+    sum the attribute points do and applies to everything. `modifiers` are
+    increases scoped to a tag, applying only to skills that carry it.
+    `weapon_base` supplies the base for the stats the weapon owns.
     """
 
     flat: dict[str, float] = field(default_factory=dict)
     increased: dict[str, float] = field(default_factory=dict)
     weapon_base: dict[str, float] = field(default_factory=dict)
+    modifiers: tuple[Modifier, ...] = ()
 
     def __post_init__(self) -> None:
         for label, table in (("flat", self.flat), ("increased", self.increased),
@@ -314,6 +379,10 @@ class Skill:
     base: dict[str, float] = field(default_factory=dict)
     #: Seconds before increases are applied.
     cooldown: float = 0.0
+    #: The skill's gameplay tags, as the Weapon Skills sheet already carries
+    #: them, for example "Type.AOE.PointBlank" or "Item.Weapon.Dagger". These
+    #: decide which of the character's tag-scoped modifiers reach this skill.
+    tags: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         unknown = set(self.base) - set(ALL_STATS)
@@ -358,8 +427,17 @@ class Character:
         return start + self.gear.flat.get(stat, 0.0)
 
     def increases(self, stat: str) -> float:
-        return (self.attributes.increases_for(stat)
-                + self.gear.increased.get(stat, 0.0))
+        """Every increase that reaches this stat for the skill in hand.
+
+        Attribute points and unscoped gear increases always count. A tag-scoped
+        modifier counts only when the skill being used carries a matching tag.
+        """
+        total = (self.attributes.increases_for(stat)
+                 + self.gear.increased.get(stat, 0.0))
+        for m in self.gear.modifiers:
+            if m.stat == stat and m.applies_to(self.skill.tags):
+                total += m.increase
+        return total
 
     def stat(self, stat: str) -> float:
         """The final value, through the pipeline in the design document."""
@@ -513,3 +591,21 @@ if __name__ == "__main__":
           f"{Character(GENERIC, level=100).stat('crit_chance'):.0f}. A character")
     print("  has no critical strike chance in the abstract; it has whatever the")
     print("  skill it is using provides.")
+    print()
+
+    print("  Tag-scoped increases. One piece of equipment granting +40% area of")
+    print("  effect, restricted to skills tagged Type.AOE, against two skills:")
+    boots = Gear(modifiers=(Modifier("area_of_effect", 0.40,
+                                     frozenset({"Type.AOE"})),))
+    for skill in (Skill(name="Smoke Bomb", tags=frozenset(
+                      {"Item.Weapon.Dagger", "Type.AOE.PointBlank"})),
+                  Skill(name="Thrust", tags=frozenset(
+                      {"Item.Weapon.Spear", "Type.Strike"}))):
+        c = Character(GENERIC, level=100, gear=boots, skill=skill)
+        tags = ", ".join(sorted(skill.tags))
+        print(f"    {skill.name:<12} {c.stat('area_of_effect'):>6.0f}%   {tags}")
+    print()
+    print("    The first is tagged Type.AOE.PointBlank, which matches the")
+    print("    requirement of Type.AOE, so the increase reaches it. The second")
+    print("    is not tagged for area at all, so the same equipment does")
+    print("    nothing for it. The character holds the increase either way.")

@@ -120,6 +120,109 @@ def test_a_skill_may_not_supply_a_base_for_a_stat_it_does_not_own():
         ch.Skill(name="Wrong", base={"max_health": 500.0})
 
 
+def test_area_of_effect_and_dot_frequency_belong_to_the_class():
+    """The character holds one area of effect percentage that applies to every
+    skill tagged for it. They are not per-skill numbers."""
+    assert ch.BASE_SOURCE["area_of_effect"] == "class"
+    assert ch.BASE_SOURCE["dot_frequency"] == "class"
+    with pytest.raises(ValueError, match="whose base does not come from"):
+        ch.Skill(name="Wrong", base={"area_of_effect": 5.0})
+
+
+def test_area_of_effect_baselines_at_one_hundred_percent_not_zero():
+    """It is a percentage of whatever the skill does, so 100% is 'unchanged'.
+    A baseline of zero would leave Efficacy with nothing to scale."""
+    c = ch.Character(ch.GENERIC, level=100)
+    assert c.stat("area_of_effect") == pytest.approx(100.0)
+    assert c.stat("dot_frequency") == pytest.approx(100.0)
+    boosted = ch.Character(ch.GENERIC, level=100,
+                           attributes=ch.Attributes(efficacy=50))
+    assert boosted.stat("area_of_effect") == pytest.approx(200.0)
+
+
+# --------------------------------------------------------------------------
+# Increases are scoped by tag
+# --------------------------------------------------------------------------
+
+def test_tag_matching_is_hierarchical():
+    tags = frozenset({"Type.AOE.PointBlank", "Item.Weapon.Dagger"})
+    assert ch.tag_matches("Type.AOE", tags)
+    assert ch.tag_matches("Type.AOE.PointBlank", tags)
+    assert ch.tag_matches("Item.Weapon", tags)
+    assert not ch.tag_matches("Type.AOE.Aura", tags)
+    assert not ch.tag_matches("Type.Projectile", tags)
+    # A partial name must not match a longer tag by accident.
+    assert not ch.tag_matches("Type.A", tags)
+
+
+def test_the_global_scope_tag_matches_anything():
+    assert ch.GLOBAL_SCOPE_TAG == "Scope.Global"
+    assert ch.tag_matches(ch.GLOBAL_SCOPE_TAG, frozenset())
+    assert ch.tag_matches(ch.GLOBAL_SCOPE_TAG, frozenset({"Type.Strike"}))
+
+
+def test_a_tag_scoped_increase_reaches_only_matching_skills():
+    """The project owner's example: equipment granting increased area of effect
+    applies to anything tagged for area, and to nothing else."""
+    boots = ch.Gear(modifiers=(ch.Modifier("area_of_effect", 0.40,
+                                           frozenset({"Type.AOE"})),))
+    area_skill = ch.Skill(name="Smoke Bomb",
+                          tags=frozenset({"Type.AOE.PointBlank"}))
+    strike_skill = ch.Skill(name="Thrust", tags=frozenset({"Type.Strike"}))
+
+    assert ch.Character(ch.GENERIC, level=100, gear=boots,
+                        skill=area_skill).stat("area_of_effect") == pytest.approx(140.0)
+    assert ch.Character(ch.GENERIC, level=100, gear=boots,
+                        skill=strike_skill).stat("area_of_effect") == pytest.approx(100.0)
+
+
+def test_an_unscoped_modifier_applies_to_every_skill():
+    everywhere = ch.Gear(modifiers=(ch.Modifier("area_of_effect", 0.25),))
+    for tags in (frozenset(), frozenset({"Type.Strike"}),
+                 frozenset({"Type.AOE.Aura"})):
+        c = ch.Character(ch.GENERIC, level=100, gear=everywhere,
+                         skill=ch.Skill(tags=tags))
+        assert c.stat("area_of_effect") == pytest.approx(125.0)
+
+
+def test_a_modifier_requiring_several_tags_needs_all_of_them():
+    picky = ch.Gear(modifiers=(ch.Modifier(
+        "area_of_effect", 1.0,
+        frozenset({"Type.AOE", "Item.Weapon.Dagger"})),))
+    both = ch.Skill(tags=frozenset({"Type.AOE.Aura", "Item.Weapon.Dagger"}))
+    one = ch.Skill(tags=frozenset({"Type.AOE.Aura", "Item.Weapon.Spear"}))
+    assert ch.Character(ch.GENERIC, level=100, gear=picky,
+                        skill=both).stat("area_of_effect") == pytest.approx(200.0)
+    assert ch.Character(ch.GENERIC, level=100, gear=picky,
+                        skill=one).stat("area_of_effect") == pytest.approx(100.0)
+
+
+def test_attribute_increases_are_never_tag_scoped():
+    """Attribute points apply to the character, not to a tagged subset."""
+    for tags in (frozenset(), frozenset({"Type.Strike"})):
+        c = ch.Character(ch.GENERIC, level=100,
+                         attributes=ch.Attributes(efficacy=100),
+                         skill=ch.Skill(tags=tags))
+        assert c.stat("area_of_effect") == pytest.approx(300.0)
+
+
+def test_a_modifier_naming_a_stat_off_the_sheet_is_rejected():
+    with pytest.raises(ValueError, match="not on the character sheet"):
+        ch.Modifier("thorns_aura", 0.5)
+
+
+def test_the_tags_used_in_these_tests_exist_in_the_generated_tag_list():
+    """Guards against inventing tags. The list is generated from the design
+    workbook by tools/generate_gameplay_tags.py."""
+    import pathlib
+    ini = (pathlib.Path(__file__).resolve().parents[2]
+           / "game" / "Config" / "Tags" / "CataclysmTags.ini").read_text(
+               encoding="utf-8")
+    for tag in ("Type.AOE.PointBlank", "Type.AOE.Aura", "Type.Strike",
+                "Item.Weapon.Dagger", "Item.Weapon.Spear", "Scope.Global"):
+        assert f'"{tag}"' in ini, f"{tag} is not a generated gameplay tag"
+
+
 def test_a_skill_may_not_name_a_stat_that_is_not_on_the_sheet():
     with pytest.raises(ValueError, match="not on the character sheet"):
         ch.Skill(name="Wrong", base={"thorns_aura": 1.0})
@@ -336,14 +439,14 @@ def test_damage_over_time_frequency_rises_with_efficacy():
     """Frequency is ticks per second, so more Efficacy must mean MORE ticks. If
     frequency were treated as an interval and divided, this would fall.
 
-    The base comes from the skill: a skill has a tick rate, a character does not
-    have one in the abstract."""
-    poison = ch.Skill(name="Poison", base={"dot_frequency": 2.0})
-    none = ch.Character(ch.GENERIC, level=100, skill=poison)
-    lots = ch.Character(ch.GENERIC, level=100, skill=poison,
+    The character holds one percentage, baselined at 100, which applies to the
+    skills it uses. It is not a per-skill number."""
+    none = ch.Character(ch.GENERIC, level=100)
+    lots = ch.Character(ch.GENERIC, level=100,
                         attributes=ch.Attributes(efficacy=100))
     assert lots.stat("dot_frequency") > none.stat("dot_frequency")
-    assert lots.stat("dot_frequency") == pytest.approx(4.0)
+    assert none.stat("dot_frequency") == pytest.approx(100.0)
+    assert lots.stat("dot_frequency") == pytest.approx(200.0)
 
 
 def test_only_cooldown_reduction_divides():
