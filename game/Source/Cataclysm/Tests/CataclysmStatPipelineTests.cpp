@@ -1,0 +1,525 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "GameplayEffectAggregator.h"
+#include "GameplayEffectTypes.h"
+#include "GameplayTagsManager.h"
+
+/**
+ * Tests for the three-bucket stat pipeline.
+ *
+ *     Final = (base + flat) x (1 + sum of increases) x more1 x more2 x ...
+ *
+ * These mirror `sim/tests/test_character.py`. The two implementations have to
+ * agree and the Python one is where the numbers were argued out, so several
+ * cases here are pinned to values printed by that model rather than to values
+ * computed by hand.
+ *
+ * ONE TEST IS DIFFERENT IN KIND from the rest. AgreesWithTheAbilitySystem
+ * builds a real FAggregator and asserts the engine produces the same number.
+ * That matters because gear will eventually be applied as ordinary Gameplay
+ * Effects, at which point the engine does the arithmetic rather than this
+ * class, and the two silently disagreeing would be very hard to notice.
+ */
+
+namespace CataclysmStatTest
+{
+	using FPipeline = UCataclysmStatPipeline;
+
+	FCataclysmStatModifier Make(ECataclysmStatBucket Bucket,
+								ECataclysmModifierSource Source,
+								float Value,
+								const TCHAR* RequiredTag = nullptr)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = Bucket;
+		Modifier.Source = Source;
+		Modifier.Value = Value;
+		if (RequiredTag)
+		{
+			const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+				FName(RequiredTag), /*ErrorIfNotFound=*/false);
+			Modifier.RequiredTags.AddTag(Tag);
+		}
+		return Modifier;
+	}
+
+	FCataclysmStatModifier Flat(float Value)
+	{
+		return Make(ECataclysmStatBucket::Flat,
+					ECataclysmModifierSource::GearAffix, Value);
+	}
+
+	FCataclysmStatModifier Increased(float Value, const TCHAR* RequiredTag = nullptr)
+	{
+		return Make(ECataclysmStatBucket::Increased,
+					ECataclysmModifierSource::GearAffix, Value, RequiredTag);
+	}
+
+	FCataclysmStatModifier MoreFromGem(float Value, const TCHAR* RequiredTag = nullptr)
+	{
+		return Make(ECataclysmStatBucket::More,
+					ECataclysmModifierSource::Gem, Value, RequiredTag);
+	}
+
+	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
+	{
+		FGameplayTagContainer Container;
+		for (const TCHAR* Name : Names)
+		{
+			Container.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+				FName(Name), /*ErrorIfNotFound=*/false));
+		}
+		return Container;
+	}
+
+	/** No skill in hand. Only unscoped modifiers apply. */
+	const FGameplayTagContainer NoTags;
+}
+
+// ---------------------------------------------------------------------------
+// The order of the three buckets
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineOrderTest,
+	"Cataclysm.StatPipeline.ThreeBucketsCombineInTheDesignedOrder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineOrderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// Pinned to sim/cataclysm_sim/character.py. A level 100 character on the
+	// default stat line has 1,585 maximum health before anything applies.
+	// Adding 1,200 flat, 340% and 55% increased, and two more multipliers of
+	// 50% and 30% gives, in that model:
+	//
+	//   base + flat      2,785
+	//   sum of increases 395%
+	//   more multiplier  1.95   (1.50 x 1.30, not 1.80)
+	//   final            26,882.2125
+	TArray<FCataclysmStatModifier> Modifiers = {
+		Flat(1200.0f),
+		Increased(340.0f),
+		Increased(55.0f),
+		MoreFromGem(50.0f),
+		Make(ECataclysmStatBucket::More,
+			 ECataclysmModifierSource::PassiveKeystone, 30.0f),
+	};
+
+	const FCataclysmStatBreakdown Result =
+		FPipeline::Evaluate(1585.0f, Modifiers, NoTags);
+
+	TestTrue(TEXT("flat adds up to 1,200"),
+		FMath::IsNearlyEqual(Result.Flat, 1200.0f, 0.001f));
+	TestTrue(TEXT("increases sum to 395 percentage points"),
+		FMath::IsNearlyEqual(Result.SumOfIncreases, 395.0f, 0.001f));
+	TestTrue(TEXT("the two more multipliers give 1.95, not 1.80"),
+		FMath::IsNearlyEqual(Result.MoreMultiplier, 1.95f, 0.0001f));
+	TestEqual(TEXT("two more sources applied"), Result.MoreSourceCount, 2);
+	TestTrue(TEXT("final matches the Python model's 26,882.2125"),
+		FMath::IsNearlyEqual(Result.Final, 26882.2125f, 0.05f));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Why there are three buckets and not two
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineDiminishingTest,
+	"Cataclysm.StatPipeline.IncreasedDiminishesAndMoreDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineDiminishingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// The comparison recorded in docs/DECISIONS.md, which is the entire reason
+	// the two multiplicative buckets are kept apart. A character already at
+	// +800% increased who adds another 60% increased gains 6.7%. The same
+	// character adding a 60% more multiplier gains 60%.
+	const float Base = 100.0f;
+
+	TArray<FCataclysmStatModifier> Starting = { Increased(800.0f) };
+	const float Before = FPipeline::Evaluate(Base, Starting, NoTags).Final;
+	TestTrue(TEXT("+800% increased gives 9x"),
+		FMath::IsNearlyEqual(Before, 900.0f, 0.01f));
+
+	TArray<FCataclysmStatModifier> PlusIncreased = { Increased(800.0f), Increased(60.0f) };
+	const float WithIncreased = FPipeline::Evaluate(Base, PlusIncreased, NoTags).Final;
+
+	TArray<FCataclysmStatModifier> PlusMore = { Increased(800.0f), MoreFromGem(60.0f) };
+	const float WithMore = FPipeline::Evaluate(Base, PlusMore, NoTags).Final;
+
+	const float IncreasedGain = 100.0f * (WithIncreased / Before - 1.0f);
+	const float MoreGain = 100.0f * (WithMore / Before - 1.0f);
+
+	TestTrue(FString::Printf(TEXT("another 60%% increased gains 6.7%%, got %.2f%%"),
+			 IncreasedGain),
+		FMath::IsNearlyEqual(IncreasedGain, 6.667f, 0.01f));
+	TestTrue(FString::Printf(TEXT("a 60%% more multiplier gains 60%%, got %.2f%%"),
+			 MoreGain),
+		FMath::IsNearlyEqual(MoreGain, 60.0f, 0.01f));
+
+	// Stated the other way round, which is the shape a player actually meets:
+	// two 50% sources are worth 2.0x in one bucket and 2.25x in the other.
+	TArray<FCataclysmStatModifier> TwoIncreases = { Increased(50.0f), Increased(50.0f) };
+	TArray<FCataclysmStatModifier> TwoMores = { MoreFromGem(50.0f), MoreFromGem(50.0f) };
+
+	TestTrue(TEXT("two 50% increases give 2.0x"),
+		FMath::IsNearlyEqual(FPipeline::Evaluate(100.0f, TwoIncreases, NoTags).Final,
+							 200.0f, 0.01f));
+	TestTrue(TEXT("two 50% more multipliers give 2.25x"),
+		FMath::IsNearlyEqual(FPipeline::Evaluate(100.0f, TwoMores, NoTags).Final,
+							 225.0f, 0.01f));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Agreement with the engine's own aggregator
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineAggregatorTest,
+	"Cataclysm.StatPipeline.AgreesWithTheAbilitySystemAggregator",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineAggregatorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// The engine computes
+	//   ((Base + AddBase) * MultiplyAdditive / DivideAdditive * MultiplyCompound)
+	//       + AddFinal
+	// where MultiplyAdditive sums its modifiers with a bias of 1.0 and
+	// MultiplyCompound multiplies each separately. So the design's three buckets
+	// are AddBase, MultiplyAdditive and MultiplyCompound, and this asserts it
+	// rather than assuming it.
+	//
+	// The engine stores a percentage as a factor: +50% is 1.5. This pipeline
+	// stores percentage points, so the conversion is done here in the open,
+	// which is also what documents the boundary.
+	const float Base = 1585.0f;
+	const float FlatPoints = 1200.0f;
+	const float IncreasedA = 340.0f;
+	const float IncreasedB = 55.0f;
+	const float MoreA = 50.0f;
+	const float MoreB = 30.0f;
+
+	FAggregator Aggregator(Base);
+	Aggregator.AddAggregatorMod(FlatPoints, EGameplayModOp::AddBase,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	Aggregator.AddAggregatorMod(1.0f + IncreasedA / 100.0f, EGameplayModOp::MultiplyAdditive,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	Aggregator.AddAggregatorMod(1.0f + IncreasedB / 100.0f, EGameplayModOp::MultiplyAdditive,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	Aggregator.AddAggregatorMod(1.0f + MoreA / 100.0f, EGameplayModOp::MultiplyCompound,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	Aggregator.AddAggregatorMod(1.0f + MoreB / 100.0f, EGameplayModOp::MultiplyCompound,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+
+	FAggregatorEvaluateParameters EvaluateParameters;
+	const float EngineValue = Aggregator.Evaluate(EvaluateParameters);
+
+	TArray<FCataclysmStatModifier> Modifiers = {
+		Flat(FlatPoints),
+		Increased(IncreasedA),
+		Increased(IncreasedB),
+		MoreFromGem(MoreA),
+		MoreFromGem(MoreB),
+	};
+	const float OurValue = FPipeline::Evaluate(Base, Modifiers, NoTags).Final;
+
+	TestTrue(FString::Printf(
+			TEXT("the engine gives %.4f and this pipeline gives %.4f"),
+			EngineValue, OurValue),
+		FMath::IsNearlyEqual(EngineValue, OurValue, 0.05f));
+
+	// Guards the comparison. If the two happened to agree because both were
+	// zero, or because the aggregator ignored every modifier, the assertion
+	// above would pass while proving nothing.
+	TestTrue(TEXT("the aggregator actually applied the modifiers"),
+		EngineValue > Base * 2.0f);
+
+	// The engine's own separation of the two multiplicative buckets, checked
+	// directly: two compound modifiers must not sum.
+	FAggregator Compound(100.0f);
+	Compound.AddAggregatorMod(1.5f, EGameplayModOp::MultiplyCompound,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	Compound.AddAggregatorMod(1.5f, EGameplayModOp::MultiplyCompound,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	TestTrue(TEXT("the engine compounds MultiplyCompound to 2.25x"),
+		FMath::IsNearlyEqual(Compound.Evaluate(EvaluateParameters), 225.0f, 0.01f));
+
+	FAggregator Additive(100.0f);
+	Additive.AddAggregatorMod(1.5f, EGameplayModOp::MultiplyAdditive,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	Additive.AddAggregatorMod(1.5f, EGameplayModOp::MultiplyAdditive,
+		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
+	TestTrue(TEXT("the engine sums MultiplyAdditive to 2.0x"),
+		FMath::IsNearlyEqual(Additive.Evaluate(EvaluateParameters), 200.0f, 0.01f));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Tag scoping
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineScopingTest,
+	"Cataclysm.StatPipeline.IncreasesAreScopedByTheSkillInHand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineScopingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// Pinned to sim/cataclysm_sim/character.py: area of effect baselines at 100
+	// because it is a percentage of whatever the skill does, and a 40% increase
+	// scoped to Type.AOE takes an area skill to 140 and leaves a single-target
+	// skill at 100.
+	TArray<FCataclysmStatModifier> Modifiers = { Increased(40.0f, TEXT("Type.AOE")) };
+
+	const FGameplayTagContainer AreaSkill = Tags({ TEXT("Type.AOE.PointBlank") });
+	const FGameplayTagContainer SingleTarget = Tags({ TEXT("Type.Strike") });
+
+	TestTrue(TEXT("an area skill gets the increase, reaching 140"),
+		FMath::IsNearlyEqual(FPipeline::Evaluate(100.0f, Modifiers, AreaSkill).Final,
+							 140.0f, 0.01f));
+	TestTrue(TEXT("a single-target skill does not, staying at 100"),
+		FMath::IsNearlyEqual(FPipeline::Evaluate(100.0f, Modifiers, SingleTarget).Final,
+							 100.0f, 0.01f));
+
+	// The hierarchy is the point of the dotted names: a requirement of Type.AOE
+	// is satisfied by the more specific Type.AOE.PointBlank, so an affix does
+	// not have to enumerate every sub-kind of area skill that exists.
+	TestTrue(TEXT("Type.AOE.PointBlank satisfies a requirement of Type.AOE"),
+		FPipeline::ModifierApplies(Modifiers[0], AreaSkill));
+
+	// And not the other way round. A modifier that requires the specific tag is
+	// not satisfied by the general one, or scoping would be meaningless.
+	TArray<FCataclysmStatModifier> Specific = {
+		Increased(40.0f, TEXT("Type.AOE.PointBlank")) };
+	TestFalse(TEXT("Type.AOE does not satisfy a requirement of Type.AOE.PointBlank"),
+		FPipeline::ModifierApplies(Specific[0], Tags({ TEXT("Type.AOE") })));
+
+	// Scope.Global is the design's way of saying "everything".
+	TArray<FCataclysmStatModifier> Global = { Increased(40.0f, TEXT("Scope.Global")) };
+	TestTrue(TEXT("Scope.Global applies to a skill with no tags at all"),
+		FPipeline::ModifierApplies(Global[0], NoTags));
+	TestTrue(TEXT("Scope.Global applies to a single-target skill"),
+		FPipeline::ModifierApplies(Global[0], SingleTarget));
+
+	// An unscoped modifier applies to everything as well.
+	TestTrue(TEXT("a modifier requiring nothing applies to everything"),
+		FPipeline::ModifierApplies(Increased(40.0f), SingleTarget));
+
+	// Every required tag must be matched, not just one of them.
+	FCataclysmStatModifier Both = Increased(40.0f, TEXT("Type.AOE"));
+	Both.RequiredTags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false));
+	TestFalse(TEXT("matching one of two required tags is not enough"),
+		FPipeline::ModifierApplies(Both, AreaSkill));
+	TestTrue(TEXT("matching both required tags is"),
+		FPipeline::ModifierApplies(Both, Tags({ TEXT("Type.AOE"), TEXT("Type.Melee") })));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The rules the engine has no opinion on
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineMoreSourceTest,
+	"Cataclysm.StatPipeline.OnlySomeSourcesMayGrantAMoreMultiplier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineMoreSourceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	TestTrue(TEXT("a gem may grant more"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::Gem));
+	TestTrue(TEXT("a passive keystone may grant more"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::PassiveKeystone));
+	TestTrue(TEXT("an enchantment may grant more"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::Enchantment));
+
+	TestFalse(TEXT("a gear affix may not"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::GearAffix));
+	TestFalse(TEXT("a gear implicit may not"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::GearImplicit));
+	TestFalse(TEXT("an attribute point may not"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::Attribute));
+
+	// An affix that claims a more multiplier is ignored rather than clamped:
+	// honouring it would break the rule the three-bucket split rests on.
+	TArray<FCataclysmStatModifier> Illegal = {
+		Make(ECataclysmStatBucket::More, ECataclysmModifierSource::GearAffix, 50.0f) };
+
+	AddExpectedError(TEXT("ignored a More multiplier"),
+		EAutomationExpectedErrorFlags::Contains, 1);
+
+	const FCataclysmStatBreakdown Result = FPipeline::Evaluate(100.0f, Illegal, NoTags);
+	TestTrue(TEXT("the stat is unchanged at 100"),
+		FMath::IsNearlyEqual(Result.Final, 100.0f, 0.01f));
+	TestEqual(TEXT("no more source applied"), Result.MoreSourceCount, 0);
+	TestEqual(TEXT("and the refusal was counted"), Result.RejectedMoreCount, 1);
+
+	// Data import gets a reason it can print, rather than silence.
+	TestFalse(TEXT("validation reports the illegal source"),
+		FPipeline::ValidateModifier(Illegal[0]).IsEmpty());
+	TestTrue(TEXT("a legal modifier validates clean"),
+		FPipeline::ValidateModifier(MoreFromGem(50.0f)).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineLessFloorTest,
+	"Cataclysm.StatPipeline.ALessMultiplierCannotZeroOrInvertAStat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineLessFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// A "less" multiplier is an ordinary more multiplier with a negative value,
+	// and it is legal. What is not legal is one reaching -100%, because a single
+	// source could then zero a stat outright or turn it negative.
+	TArray<FCataclysmStatModifier> Less = { MoreFromGem(-40.0f) };
+	TestTrue(TEXT("a 40% less multiplier takes 100 to 60"),
+		FMath::IsNearlyEqual(FPipeline::Evaluate(100.0f, Less, NoTags).Final,
+							 60.0f, 0.01f));
+
+	AddExpectedError(TEXT("clamped a Less multiplier"),
+		EAutomationExpectedErrorFlags::Contains, 2);
+
+	// Exactly -100% would zero it.
+	TArray<FCataclysmStatModifier> Zeroing = { MoreFromGem(-100.0f) };
+	const FCataclysmStatBreakdown AtZero = FPipeline::Evaluate(100.0f, Zeroing, NoTags);
+	TestTrue(TEXT("a -100% less multiplier does not reach zero"), AtZero.Final > 0.0f);
+	TestEqual(TEXT("and the clamp was counted"), AtZero.ClampedLessCount, 1);
+
+	// Worse than -100% would invert it.
+	TArray<FCataclysmStatModifier> Inverting = { MoreFromGem(-250.0f) };
+	const FCataclysmStatBreakdown Inverted =
+		FPipeline::Evaluate(100.0f, Inverting, NoTags);
+	TestTrue(TEXT("a -250% less multiplier does not turn the stat negative"),
+		Inverted.Final > 0.0f);
+
+	// Stacking several never gets there either, which is the property that
+	// matters: the floor is on each source, and a product of positive factors
+	// is positive however many there are.
+	TArray<FCataclysmStatModifier> Many;
+	for (int32 Index = 0; Index < 20; ++Index)
+	{
+		Many.Add(MoreFromGem(-90.0f));
+	}
+	TestTrue(TEXT("twenty 90% less multipliers still leave the stat above zero"),
+		FPipeline::Evaluate(100.0f, Many, NoTags).Final > 0.0f);
+
+	// Validation refuses it outright, which is what data import should do
+	// instead of relying on the runtime clamp.
+	TestFalse(TEXT("validation reports a -100% more multiplier"),
+		FPipeline::ValidateModifier(MoreFromGem(-100.0f)).IsEmpty());
+	TestTrue(TEXT("a -99% more multiplier is legal"),
+		FPipeline::ValidateModifier(MoreFromGem(-99.0f)).IsEmpty());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Rates
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineRateTest,
+	"Cataclysm.StatPipeline.ARateDividesByBothBucketsAndNeverReachesZero",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineRateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// Pinned to sim/cataclysm_sim/character.py: a 4 second cooldown with
+	// 33.333% of increases and one 20% more gem comes out at 2.5 seconds, and
+	// the character is shown 37.5%.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		Increased(100.0f / 3.0f),
+		MoreFromGem(20.0f),
+	};
+
+	const FCataclysmStatBreakdown Result =
+		FPipeline::EvaluateRate(4.0f, Modifiers, NoTags);
+
+	TestTrue(FString::Printf(TEXT("a 4 second cooldown becomes 2.5, got %.4f"),
+			 Result.Final),
+		FMath::IsNearlyEqual(Result.Final, 2.5f, 0.001f));
+	TestTrue(FString::Printf(TEXT("the player is shown 37.5%%, got %.4f"),
+			 FPipeline::DisplayedRateReduction(Result)),
+		FMath::IsNearlyEqual(FPipeline::DisplayedRateReduction(Result), 37.5f, 0.01f));
+
+	// A more multiplier on a rate must make the interval SHORTER. If it
+	// multiplied the way it does for a quantity, a cooldown reduction gem would
+	// lengthen the cooldown, which is the bug this rule exists to prevent.
+	TArray<FCataclysmStatModifier> GemOnly = { MoreFromGem(20.0f) };
+	const float WithGem = FPipeline::EvaluateRate(4.0f, GemOnly, NoTags).Final;
+	TestTrue(FString::Printf(TEXT("a 20%% more gem shortens 4s, got %.4f"), WithGem),
+		WithGem < 4.0f);
+
+	// However much is stacked, division cannot reach zero. That is why the stat
+	// needs no cap, and it is checked rather than asserted.
+	TArray<FCataclysmStatModifier> Enormous = { Increased(100000.0f) };
+	for (int32 Index = 0; Index < 30; ++Index)
+	{
+		Enormous.Add(MoreFromGem(200.0f));
+	}
+	const FCataclysmStatBreakdown Extreme =
+		FPipeline::EvaluateRate(4.0f, Enormous, NoTags);
+	TestTrue(TEXT("an absurd build still has a cooldown above zero"),
+		Extreme.Final > 0.0f);
+
+	// The DISPLAYED figure is a different claim from the mechanical one, and it
+	// has a limit the cooldown itself does not.
+	//
+	// Displayed reduction is (divisor - 1) / divisor. Once the divisor passes
+	// about 8.4 million, that expression rounds to exactly 1.0 in single
+	// precision and the player is shown 100% while the cooldown is still above
+	// zero. Double precision moves the threshold but does not remove it. The
+	// case above has a divisor near 2x10^17 and does display 100%.
+	//
+	// This is not reachable in a real build. Getting there needs roughly 34
+	// compounding 50% sources on one stat, against six gem sockets. So the
+	// mechanical property is asserted at the absurd magnitude and the display is
+	// asserted at a large but attainable one: +100,000 percentage points of
+	// increases is a divisor of 1,001 and shows 99.9%.
+	TArray<FCataclysmStatModifier> LargeButRepresentable = { Increased(100000.0f) };
+	const FCataclysmStatBreakdown Large =
+		FPipeline::EvaluateRate(4.0f, LargeButRepresentable, NoTags);
+	TestTrue(TEXT("a very large build still has a cooldown above zero"),
+		Large.Final > 0.0f);
+	TestTrue(FString::Printf(TEXT("and is shown a reduction below 100%%, got %.4f"),
+			 FPipeline::DisplayedRateReduction(Large)),
+		FPipeline::DisplayedRateReduction(Large) < 100.0f);
+
+	// The attribute set's own cooldown helpers use the same divisor, so the two
+	// cannot disagree. Its increases are fractions, not percentage points.
+	using FCombat = UCataclysmCombatAttributeSet;
+	TestTrue(TEXT("the attribute set agrees: 4s at +1/3 with a 1.2 more is 2.5s"),
+		FMath::IsNearlyEqual(FCombat::FinalCooldown(4.0f, 1.0f / 3.0f, 1.2f),
+							 2.5f, 0.001f));
+	TestTrue(TEXT("the attribute set shows 37.5% for the same character"),
+		FMath::IsNearlyEqual(FCombat::DisplayedCooldownReduction(1.0f / 3.0f, 1.2f),
+							 37.5f, 0.01f));
+	TestTrue(TEXT("with no more sources it is unchanged from before"),
+		FMath::IsNearlyEqual(FCombat::FinalCooldown(4.0f, 1.0f / 3.0f), 3.0f, 0.001f));
+
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

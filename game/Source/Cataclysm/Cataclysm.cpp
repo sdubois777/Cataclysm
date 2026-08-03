@@ -3,4 +3,6 @@
 #include "Cataclysm.h"
 #include "Modules/ModuleManager.h"
 
+DEFINE_LOG_CATEGORY(LogCataclysm);
+
 IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Cataclysm, "Cataclysm");

@@ -139,11 +139,24 @@ public:
 
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
-	/** A skill's cooldown after this character's accumulated increases. */
-	static float FinalCooldown(float BaseCooldown, float CooldownIncreases);
+	/**
+	 * A skill's cooldown after this character's accumulated increases.
+	 *
+	 * `MoreMultiplier` is the product of every "more" cooldown source reaching
+	 * this skill, as UCataclysmStatPipeline computes it. It DIVIDES rather than
+	 * multiplying, because a cooldown is a rate: a source that makes the
+	 * interval shorter has to divide, or a cooldown reduction gem would make the
+	 * cooldown longer. Pass 1.0 when there are none.
+	 */
+	static float FinalCooldown(float BaseCooldown, float CooldownIncreases,
+							   float MoreMultiplier = 1.0f);
 
 	/** What the interface shows the player, as a percentage. Never reaches 100. */
-	static float DisplayedCooldownReduction(float CooldownIncreases);
+	static float DisplayedCooldownReduction(float CooldownIncreases,
+											float MoreMultiplier = 1.0f);
+
+	/** What a base cooldown is divided by. Never zero, so a cooldown never is. */
+	static float CooldownDivisor(float CooldownIncreases, float MoreMultiplier);
 
 protected:
 	UFUNCTION() void OnRep_Armor(const FGameplayAttributeData& OldValue);
