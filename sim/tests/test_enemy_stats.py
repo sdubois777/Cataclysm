@@ -143,19 +143,29 @@ def test_no_two_archetypes_are_the_same_creature():
 # The rarest things are frightening
 # --------------------------------------------------------------------------
 
-def test_damage_grows_enough_that_the_rarest_enemies_are_dangerous():
-    """The project owner's correction: at 1.21 per step a Cataclysm Boss hit was
-    2.8x a Common enemy's, which is not frightening. Nine is."""
+def test_the_damage_ladder_does_not_flatten():
+    """A cheap guard that rarity still separates enemies at all.
+
+    THIS IS NOT THE MEASURE OF WHETHER THE RAREST ENEMIES ARE FRIGHTENING, and
+    it used to claim to be, at a threshold of 6. That was wrong. When issue #108
+    fitted enemy damage to what a geared character survives, this ratio FELL
+    from 9.7 to 5.8 while the danger rose sharply: the Cataclysm Boss went from
+    killing the reference build in 8 hits to killing it in 3. A raw damage ratio
+    says nothing about that, because mitigation and health sit between the two.
+
+    `sim/tests/test_survivability.py` measures the real thing. This only catches
+    the ladder collapsing.
+    """
     common, boss = at_tier_eight("Common"), at_tier_eight("Cataclysm Boss")
-    assert boss.damage_per_hit / common.damage_per_hit > 6.0
+    assert boss.damage_per_hit / common.damage_per_hit > 4.0
 
 
-def test_damage_per_second_rises_with_rarity_now():
+def test_damage_per_second_rises_with_rarity_too():
     """It used to rise only 1.2x across the whole ladder, because attack interval
     rose with rarity and cancelled the damage growth out. Attack interval is the
     archetype's now, so nothing cancels it."""
     common, boss = at_tier_eight("Common"), at_tier_eight("Cataclysm Boss")
-    assert boss.damage_per_second / common.damage_per_second > 6.0
+    assert boss.damage_per_second / common.damage_per_second > 4.0
 
 
 def test_health_still_grows_faster_than_damage():

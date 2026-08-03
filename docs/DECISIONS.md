@@ -20,6 +20,70 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — Enemy damage fitted to what a geared character actually survives
+
+**The problem.** Issue #108. Enemy damage had been set on the enemy's own terms,
+like everything else in `enemy_stats.py`, and never checked against a player.
+Every figure that claimed to check it assumed a flat "70% mitigation" rather
+than computing one.
+
+**The measurement.** A reference character was assembled from the real affix
+pool — a level 100 Ravager spending all 36 prefix and all 36 suffix slots, half
+on staying alive and half on killing things, on chosen bases at top tier and full
+upgrade level. It reaches 11,023 health, 7,299 armour, 28% block chance, 15.9%
+damage reduction and capped resistance.
+
+| Layer | What it removes |
+|---|---|
+| Armour against the tier 8 curve | 53.3% |
+| Resistance, at the cap | 70.0% |
+| Block chance, removing half a hit | 14.0% on average |
+| Damage reduction | 15.9% |
+| **All four** | **89.9%** |
+
+So a hit lands for about a tenth of itself. Against that, an average Common enemy
+needed **176 hits** where the project owner had asked for 8 to 10, and the
+Cataclysm Boss needed 8. Trash and elites did nothing at all.
+
+**The fix.** `DAMAGE_AT_COMMON` went from 0.09 to 0.65 and `DAMAGE_PER_STEP` from
+1.55 to 1.40. The floor rose because it was twenty times too low; the slope fell
+because raising the floor alone would have made the boss a guaranteed one-shot.
+
+| Enemy at tier 8 | Hits to kill the reference build | Seconds |
+|---|---|---|
+| Common Imp | 54 | 48.6 |
+| Common Hellhound | 24 | 26.4 |
+| Elite Brute | 10 | 28.0 |
+| Herald Abyssal Warden | 5 | 12.0 |
+| Cataclysm Boss Gatekeeper | 2 | 6.0 |
+
+**The 8-to-10 target was a PACK target, and could never have been a solo one.**
+One Imp cannot be both trivial alone and lethal in a group of twenty. One takes
+48 seconds to kill a geared character; ten take 4.9 seconds and twenty take 2.4.
+That is what makes the design's own "weak individually, overwhelming in packs"
+mechanical rather than flavour.
+
+**This reverses the direction for one number and only one.** Enemy health is
+still set freely with player damage following from it. Enemy damage cannot be,
+because it only means something against mitigation. That is written into
+`enemy_stats.py` so the next person to change those two constants knows what they
+were fitted against, and `tests/test_survivability.py` measures it so they cannot
+drift.
+
+**A bug found while doing this.** `damage.hits_to_kill` reported one hit too many
+on every count. `resolve` clamps a hit to the health remaining, which is right
+when reporting what one hit dealt, but `hits_to_kill` was feeding it a shrinking
+health value and averaging the clamped figures, so the running total crept toward
+zero instead of crossing it. A Cataclysm Boss landing 6,635 on 11,023 health
+reported 3 hits when the answer is 2. Every survivability figure produced before
+this was one hit too generous.
+
+**Affects:** `Cataclysm_GDD_v2.md` section X. **Applied 2026-08-03:** a How Long
+a Geared Character Survives subsection was added. The reference character is
+`sim/cataclysm_sim/reference_build.py`.
+
+---
+
 ## 2026-08-03 — Chance to apply an effect caps at 100% and overflows into magnitude
 
 **Decision, stated by the project owner:**

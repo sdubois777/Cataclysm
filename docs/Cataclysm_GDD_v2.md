@@ -1793,7 +1793,57 @@ Enemy Score is a power rating. It says what an encounter is worth, not how much 
 
   
 
-**Health grows faster than damage.** Across the six rarities a Cataclysm Boss ends up with roughly 23 times a Common enemy's health and hits about 9 times as hard. Growing both together would produce something both unkillable and instantly lethal, which is a wall rather than a fight.
+**Health grows faster than damage.** Across the six rarities a Cataclysm Boss ends up with roughly 23 times a Common enemy's health and hits about 6 times as hard. Growing both together would produce something both unkillable and instantly lethal, which is a wall rather than a fight.
+
+  
+
+### **How Long a Geared Character Survives**
+
+Enemy damage is the one enemy figure fitted to the player rather than set on its own terms. It has to be: it only means something against what a character can survive, and a geared character's mitigation is four layers deep and they multiply.
+
+  
+
+A reference character at difficulty tier 8 — a level 100 Ravager spending every affix slot, half on staying alive and half on killing things — reaches these:
+
+  
+
+|  |  |
+| :-- | :-: |
+| \*\*Layer\*\* | \*\*What it removes\*\* |
+| Armor, 7,299 points against the tier 8 curve | 53.3% |
+| Resistance, at the cap | 70.0% |
+| Block chance 28%, removing half a hit each time | 14.0% on average |
+| Damage reduction | 15.9% |
+| **All four together** | **89.9%** |
+
+  
+
+So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen without reference to that is chosen against nothing, which is what happened before: an average Common enemy needed 176 hits to kill that character.
+
+  
+
+**What the enemies do to it now**
+
+  
+
+|  |  |  |
+| :-- | :-: | :-: |
+| \*\*Enemy at tier 8\*\* | \*\*Hits to kill it\*\* | \*\*Seconds\*\* |
+| Common Imp | 54 | 48.6 |
+| Common Hellhound | 24 | 26.4 |
+| Elite Succubus | 11 | 28.6 |
+| Elite Brute | 10 | 28.0 |
+| Legendary Corrupted Sentinel | 12 | 24.0 |
+| Herald Abyssal Warden | 5 | 12.0 |
+| Cataclysm Boss Gatekeeper | 2 | 6.0 |
+
+  
+
+**A single Common enemy is not the threat. A pack is.** One Imp takes 48 seconds to kill a geared character; ten take 4.9 seconds and twenty take 2.4. That is what makes the design's own description of the Imp — weak individually, overwhelming in packs — a mechanical fact rather than flavour.
+
+  
+
+**A geared character is never one-shot, and a gearless one still is.** Nothing in the table above kills in a single hit. The Gatekeeper's hit is several times a level 100 character's health before any gear, which is what the design intends for a character who arrives unequipped.
 
   
 

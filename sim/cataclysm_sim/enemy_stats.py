@@ -61,6 +61,13 @@ Over-capping resistance keeps its purpose under Overwhelm, and gets a cleaner
 one: resistance above the 70% cap is exactly the headroom that Overwhelm eats
 into. The player's own offensive Penetration stat is untouched by any of this.
 
+ONE THING HERE IS FITTED TO THE PLAYER: ENEMY DAMAGE. Issue #108. Everything
+else is set on the enemy's own terms and the player follows, which is the
+ordering the project owner asked for. Damage cannot be, because it only means
+something against what a character can survive, and that is four multiplying
+mitigation layers deep. `reference_build.py` assembles a real geared character
+and `tests/test_survivability.py` measures the two damage constants against it.
+
 WHAT THIS DOES NOT COVER. Enemy abilities. The Hellhound's fire trail, the
 Brute's stomp stun, the Gatekeeper's phases and the Abyssal Warden's positional
 weak points are behaviour, not statistics. They belong with the enemy design work
@@ -100,16 +107,38 @@ def rarity_step(rarity: str) -> int:
 HEALTH_AT_COMMON = 0.50
 HEALTH_PER_STEP = 1.85
 
-#: Damage. 1.55 per step makes one Cataclysm Boss hit worth about nine Common
-#: enemy hits.
+#: Damage. These two are the ONE PLACE in this file fitted to the player rather
+#: than set on the enemy's own terms, and that is deliberate. Issue #108.
 #:
-#: This used to be 1.21, which put a Cataclysm Boss at 2.8 times a Common enemy's
-#: hit and -- because attack interval then rose with rarity too -- at only 1.2
-#: times its damage per second. The rarest things in the game were therefore not
-#: frightening, which the project owner flagged. Damage now grows faster and
-#: attack interval no longer rises with rarity at all, so the danger is real.
-DAMAGE_AT_COMMON = 0.09
-DAMAGE_PER_STEP = 1.55
+#: WHY THIS ONE IS DIFFERENT. Enemy health is set freely and the damage a player
+#: needs follows from it, which is the ordering the project owner asked for.
+#: Enemy damage has no such freedom: it only means anything against what a player
+#: can survive, and a player's survivability is four mitigation layers deep. A
+#: geared character at tier 8 takes about a tenth of what is thrown at them --
+#: 53% off from armour, 70% resistance, 28% block chance, 16% flat reduction --
+#: so a figure chosen without reference to that is a figure chosen against
+#: nothing.
+#:
+#: WHAT THEY WERE, AND WHY THEY MOVED. 0.09 and 1.55. Measured against the
+#: reference build in `reference_build.py`, that left an average Common enemy
+#: needing 176 hits to kill a geared character where the project owner had asked
+#: for 8 to 10, while the Cataclysm Boss needed 8. Trash and elites did nothing
+#: at all.
+#:
+#: 0.65 and 1.40 were solved for two targets against that same build: an average
+#: Common enemy is a threat in a pack rather than alone, and the Gatekeeper kills
+#: in a couple of hits. The growth per step falls from 1.55 to 1.40 because
+#: raising the floor without lowering the slope would have made the boss a
+#: guaranteed one-shot.
+#:
+#: The rarest enemies are MORE frightening than before, not less, even though the
+#: growth rate fell: what a player feels is hits survived, and the Gatekeeper went
+#: from 8 to about 2 while a Common enemy went from 176 to about 25.
+#:
+#: `sim/tests/test_survivability.py` measures all of this, so these two numbers
+#: cannot drift from the mitigation they were fitted against.
+DAMAGE_AT_COMMON = 0.65
+DAMAGE_PER_STEP = 1.40
 
 #: Armour. Unlike the two above, an average enemy carries a little of this and a
 #: Common enemy is no longer automatically unarmoured -- a Common Brute is
