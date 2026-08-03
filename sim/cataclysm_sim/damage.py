@@ -72,10 +72,31 @@ BLOCK_DAMAGE_REDUCTION = 50.0
 # --------------------------------------------------------------------------
 
 #: From the Weapon Sub-Types table: piercing ignores 20% of enemy armor,
-#: slashing does 10% more damage versus HP, blunt 10% more versus armor, and
-#: magic 10% more versus shields.
+#: slashing does 10% more damage versus HP, and magic 10% more versus shields.
 PIERCING_ARMOR_IGNORED = 20.0
 SUBTYPE_BONUS = 10.0
+
+# --------------------------------------------------------------------------
+# Blunt
+# --------------------------------------------------------------------------
+
+#: Blunt no longer does "10% more damage versus armor". That reading put it in
+#: direct competition with piercing, which already beats armor and has a whole
+#: family of affixes scaling it -- ignoring armor appears at least six times
+#: across the enchantment tables, while nothing anywhere scales damage against
+#: armored targets. Blunt was a flat 10% with nowhere to go.
+#:
+#: Instead it stuns. Stun is already a designed mechanic rather than a new one:
+#: `Keyword.CC` is a generated gameplay tag, several War skills stun for between
+#: 0.75 and 3 seconds, one ultimate grants immunity to it, and the character
+#: sheet already carries crowd control resistance to defend against it.
+BLUNT_STUN_CHANCE = 10.0
+
+#: Deliberately the shortest duration any designed skill uses, matching the
+#: Lunge skill's 0.75 seconds. A weapon sub-type applying stun on every hit must
+#: not outclass the skills whose entire purpose is stunning, which run to 3
+#: seconds.
+BLUNT_STUN_SECONDS = 0.75
 
 WEAPON_SUBTYPES = ("Piercing", "Slashing", "Blunt", "Magic", "None")
 
@@ -104,6 +125,15 @@ class Attacker:
     #: Damage over time -- bleed, poison, burn and the rest. Routed differently
     #: from a hit: see the energy shield and mana notes on Defender.
     is_damage_over_time: bool = False
+    #: Percentage points of stun chance added by gear, on top of whatever the
+    #: weapon sub-type provides. This is the affix family blunt needs in order to
+    #: scale, and it does not exist yet: see issue #79.
+    bonus_stun_chance: float = 0.0
+
+    def stun_chance(self) -> float:
+        """Chance to stun before the target's crowd control resistance."""
+        base = BLUNT_STUN_CHANCE if self.subtype == "Blunt" else 0.0
+        return max(0.0, min(100.0, base + self.bonus_stun_chance))
 
     def __post_init__(self) -> None:
         if self.subtype not in WEAPON_SUBTYPES:
@@ -132,6 +162,8 @@ class Defender:
     resistances: dict[str, float] = field(default_factory=dict)
     tier: int = 1
     mana: float = 0.0
+    #: Reduces the chance of being stunned, as a percentage of that chance.
+    crowd_control_resistance: float = 0.0
 
     # -- What makes energy shield a distinct defence rather than extra health --
     #
@@ -167,6 +199,8 @@ class Resolution:
     absorbed_by_shield: float
     dealt_to_health: float
     absorbed_by_mana: float = 0.0
+    stunned: bool = False
+    stun_seconds: float = 0.0
 
     @property
     def total_mitigated(self) -> float:
@@ -196,14 +230,26 @@ def effective_resistance(resistance: float, penetration: float) -> float:
                min(RESISTANCE_CAP, resistance - penetration))
 
 
+def effective_stun_chance(attacker: Attacker, defender: Defender) -> float:
+    """Chance to stun after the defender's crowd control resistance.
+
+    Resistance reduces the chance proportionally rather than subtracting from
+    it, so a character at 100 resistance cannot be stunned at all and one at 50
+    is stunned half as often, whatever the incoming chance.
+    """
+    reduction = max(0.0, min(100.0, defender.crowd_control_resistance))
+    return attacker.stun_chance() * (1.0 - reduction / 100.0)
+
+
 def resolve(attacker: Attacker, defender: Defender,
             rng: random.Random | None = None,
             force_evade: bool | None = None,
-            force_block: bool | None = None) -> Resolution:
+            force_block: bool | None = None,
+            force_stun: bool | None = None) -> Resolution:
     """Run one hit through the whole order.
 
-    `force_evade` and `force_block` exist so tests can pin the two random rolls
-    and check the arithmetic rather than the dice.
+    `force_evade`, `force_block` and `force_stun` exist so tests can pin the
+    three random rolls and check the arithmetic rather than the dice.
     """
     rng = rng or random.Random()
 
@@ -232,11 +278,6 @@ def resolve(attacker: Attacker, defender: Defender,
     # 3. Armor, after whatever share of it the attacker ignores.
     armor = defender.armor * (1.0 - attacker.total_armor_ignored() / 100.0)
     damage *= 1.0 - armor_reduction(armor, defender.tier) / 100.0
-    # Blunt is "10% more damage versus armor", read as a bonus that only applies
-    # when there is armor to beat. See the module note on the overlap with
-    # piercing.
-    if attacker.subtype == "Blunt" and defender.armor > 0:
-        damage *= 1.0 + SUBTYPE_BONUS / 100.0
     after_armor = damage
 
     # 4. Resistance, penetrated first and capped second.
@@ -275,12 +316,21 @@ def resolve(attacker: Attacker, defender: Defender,
     if attacker.subtype == "Slashing":
         to_health *= 1.0 + SUBTYPE_BONUS / 100.0
 
+    # 8. Stun, rolled separately from damage. A hit that is evaded never gets
+    # here; a hit that is blocked still can, because a block reduces damage
+    # rather than preventing contact.
+    stun_chance = effective_stun_chance(attacker, defender)
+    stunned = (force_stun if force_stun is not None
+               else rng.uniform(0, 100) < stun_chance)
+
     return Resolution(
         evaded=False, blocked=blocked, incoming=attacker.damage,
         after_block=after_block, after_armor=after_armor,
         after_resistance=after_resistance, after_reduction=after_reduction,
         absorbed_by_shield=absorbed, absorbed_by_mana=absorbed_by_mana,
         dealt_to_health=min(to_health, defender.health),
+        stunned=stunned,
+        stun_seconds=BLUNT_STUN_SECONDS if stunned else 0.0,
     )
 
 

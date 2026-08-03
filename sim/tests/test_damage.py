@@ -205,11 +205,97 @@ def test_magic_does_not_destroy_more_raw_damage_than_the_hit_contained():
     assert r.dealt_to_health == pytest.approx(1000.0 - consumed_raw)
 
 
-def test_blunt_is_better_against_an_armoured_target_only():
+def test_blunt_deals_no_bonus_damage_at_all():
+    """Blunt used to do 10% more damage versus armor, which put it in direct
+    competition with piercing while having no affix family to scale it. It now
+    stuns instead, and does ordinary damage."""
     armoured = plain(armor=2000.0, tier=1)
     bare = plain(armor=0.0)
-    assert taken(hit(subtype="Blunt"), armoured) > taken(hit(), armoured)
+    assert taken(hit(subtype="Blunt"), armoured) == pytest.approx(taken(hit(), armoured))
     assert taken(hit(subtype="Blunt"), bare) == pytest.approx(taken(hit(), bare))
+
+
+def test_only_blunt_carries_a_stun_chance():
+    assert hit(subtype="Blunt").stun_chance() == pytest.approx(dm.BLUNT_STUN_CHANCE)
+    for subtype in ("Piercing", "Slashing", "Magic", "None"):
+        assert hit(subtype=subtype).stun_chance() == 0.0
+
+
+def test_a_blunt_stun_uses_the_shortest_designed_duration():
+    """Several War skills stun, for between 0.75 and 3 seconds. A weapon
+    sub-type stunning on every hit must not outclass the skills whose entire
+    purpose is stunning, so it uses the shortest of those durations."""
+    assert dm.BLUNT_STUN_SECONDS == 0.75
+    r = dm.resolve(hit(subtype="Blunt"), plain(),
+                   force_evade=False, force_block=False, force_stun=True)
+    assert r.stunned
+    assert r.stun_seconds == pytest.approx(0.75)
+
+
+def test_a_hit_that_does_not_stun_records_no_duration():
+    r = dm.resolve(hit(subtype="Blunt"), plain(),
+                   force_evade=False, force_block=False, force_stun=False)
+    assert not r.stunned
+    assert r.stun_seconds == 0.0
+
+
+def test_crowd_control_resistance_reduces_the_stun_chance_proportionally():
+    """Proportionally rather than by subtraction, so a character at 100
+    resistance cannot be stunned at all whatever the incoming chance."""
+    blunt = hit(subtype="Blunt")
+    assert dm.effective_stun_chance(blunt, plain()) == pytest.approx(10.0)
+    assert dm.effective_stun_chance(
+        blunt, plain(crowd_control_resistance=50.0)) == pytest.approx(5.0)
+    assert dm.effective_stun_chance(
+        blunt, plain(crowd_control_resistance=100.0)) == 0.0
+
+
+def test_stun_chance_scales_with_gear():
+    """The affix family blunt needs in order to scale. It does not exist yet;
+    this is the hook for it. See issue #79."""
+    assert hit(subtype="Blunt",
+               bonus_stun_chance=15.0).stun_chance() == pytest.approx(25.0)
+    # And gear alone can grant it to a weapon that is not blunt.
+    assert hit(subtype="Slashing",
+               bonus_stun_chance=15.0).stun_chance() == pytest.approx(15.0)
+
+
+def test_stun_chance_cannot_exceed_certainty():
+    assert hit(subtype="Blunt",
+               bonus_stun_chance=500.0).stun_chance() == pytest.approx(100.0)
+
+
+def test_an_evaded_hit_cannot_stun():
+    """Nothing made contact."""
+    r = dm.resolve(hit(subtype="Blunt"), plain(evasion=100.0), force_block=False)
+    assert r.evaded
+    assert not r.stunned
+
+
+def test_a_blocked_hit_can_still_stun():
+    """A block reduces damage rather than preventing contact, so the impact is
+    still delivered.
+
+    Deliberately does NOT pin the stun roll: forcing it would bypass the chance
+    calculation and the test could not tell whether blocking suppresses stun.
+    A certain stun chance is used instead, so the roll must succeed on its own.
+    """
+    certain = hit(subtype="Blunt", bonus_stun_chance=100.0)
+    r = dm.resolve(certain, plain(), force_evade=False, force_block=True)
+    assert r.blocked
+    assert r.stunned
+
+
+def test_the_stun_roll_respects_the_chance_without_being_forced():
+    """Guards the same gap the other way round: a zero chance must never stun,
+    and a certain one must always stun, with no roll pinned."""
+    always = hit(subtype="Blunt", bonus_stun_chance=100.0)
+    never = hit(subtype="Slashing")
+    for _ in range(50):
+        assert dm.resolve(always, plain(), force_evade=False,
+                          force_block=False).stunned
+        assert not dm.resolve(never, plain(), force_evade=False,
+                              force_block=False).stunned
 
 
 def test_an_unknown_weapon_subtype_is_rejected():
