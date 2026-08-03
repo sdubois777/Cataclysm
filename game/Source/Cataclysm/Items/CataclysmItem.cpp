@@ -169,15 +169,41 @@ bool UCataclysmItemModifiers::IsTwoHanded(const FCataclysmItem& Item,
 	return Row && Row->Hands == 2;
 }
 
-TArray<FCataclysmStatModifier> UCataclysmItemModifiers::ModifiersFor(
+const TArray<FName>& UCataclysmItemModifiers::DamageTypeNames()
+{
+	// The order sim/cataclysm_sim/character.py lists them in.
+	static const TArray<FName> Names = {
+		TEXT("War"), TEXT("Demonic"), TEXT("Death"), TEXT("Pestilence"),
+		TEXT("Famine"), TEXT("Celestial"), TEXT("Chaos"), TEXT("Void"),
+	};
+	return Names;
+}
+
+FName UCataclysmItemModifiers::ResistanceStatFor(FName DamageType)
+{
+	return FName(*FString::Printf(TEXT("resistance_%s"),
+								  *DamageType.ToString().ToLower()));
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmItemModifiers::ModifiersFor(
 	const FCataclysmItem& Item,
 	const UDataTable* BaseTable,
 	const UDataTable* AffixTable)
 {
-	TArray<FCataclysmStatModifier> Out;
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	AccumulateInto(Out, Item, BaseTable, AffixTable);
+	return Out;
+}
+
+void UCataclysmItemModifiers::AccumulateInto(
+	TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+	const FCataclysmItem& Item,
+	const UDataTable* BaseTable,
+	const UDataTable* AffixTable)
+{
 	if (!BaseTable || !AffixTable)
 	{
-		return Out;
+		return;
 	}
 
 	const FCataclysmItemBaseRow* Base =
@@ -188,10 +214,20 @@ TArray<FCataclysmStatModifier> UCataclysmItemModifiers::ModifiersFor(
 		UE_LOG(LogCataclysm, Warning,
 			   TEXT("Item names base %s, which is not in the base table"),
 			   *Item.Base.ToString());
-		return Out;
+		return;
 	}
 
 	const bool bTwoHanded = Base->Hands == 2;
+
+	auto Add = [&Totals](FName Stat, ECataclysmStatBucket Bucket,
+						 ECataclysmModifierSource Source, float Value)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = Bucket;
+		Modifier.Source = Source;
+		Modifier.Value = Value;
+		Totals.FindOrAdd(Stat).Add(Modifier);
+	};
 
 	// The base's implicits. What the item IS, before any roll.
 	const FString ImplicitStats[] = { Base->Implicit1Stat, Base->Implicit2Stat };
@@ -212,13 +248,10 @@ TArray<FCataclysmStatModifier> UCataclysmItemModifiers::ModifiersFor(
 				   *Item.Base.ToString(), Index + 1, *ImplicitKinds[Index]);
 			continue;
 		}
-
-		FCataclysmStatModifier Modifier;
-		Modifier.Bucket = Bucket;
-		Modifier.Source = ECataclysmModifierSource::GearImplicit;
-		Modifier.Value = UCataclysmItemValues::ImplicitValue(
-			ImplicitValues[Index], Item.GearLevel, bTwoHanded);
-		Out.Add(Modifier);
+		Add(FName(*ImplicitStats[Index]), Bucket,
+			ECataclysmModifierSource::GearImplicit,
+			UCataclysmItemValues::ImplicitValue(ImplicitValues[Index],
+												Item.GearLevel, bTwoHanded));
 	}
 
 	// The rolled affixes.
@@ -239,21 +272,47 @@ TArray<FCataclysmStatModifier> UCataclysmItemModifiers::ModifiersFor(
 		ECataclysmStatBucket Bucket;
 		if (!BucketFromKind(Affix->ValueKind, Bucket))
 		{
-			// Resistance families and ailment chances carry no flat/increased
-			// kind: a resistance family grants a percentage to several damage
-			// types, and an ailment grants a chance to apply an effect. Neither
-			// is a single stat on the character sheet, so neither becomes one
-			// modifier here. Both are handled where they are applied.
+			// An ailment affix grants a chance to apply an effect rather than a
+			// stat, so it is not a modifier at all. It is applied where the hit
+			// is resolved.
 			continue;
 		}
 
-		FCataclysmStatModifier Modifier;
-		Modifier.Bucket = Bucket;
-		Modifier.Source = ECataclysmModifierSource::GearAffix;
-		Modifier.Value = UCataclysmItemValues::AffixValue(
+		const float Value = UCataclysmItemValues::AffixValue(
 			Affix->TopValue, Rolled.Tier, Rolled.Roll, Item.GearLevel, bTwoHanded);
-		Out.Add(Modifier);
-	}
 
-	return Out;
+		if (Affix->AffixKind == TEXT("Resistance"))
+		{
+			// The affix says how many damage types it covers; the item says
+			// which. A family covering all eight has no choice to make, so an
+			// empty list means all of them.
+			TArray<FName> Types = Rolled.DamageTypes;
+			if (Types.Num() == 0 && Affix->Breadth == DamageTypeNames().Num())
+			{
+				Types = DamageTypeNames();
+			}
+			if (Types.Num() != Affix->Breadth)
+			{
+				UE_LOG(LogCataclysm, Warning,
+					   TEXT("%s covers %d damage types but the item names %d"),
+					   *Rolled.Affix.ToString(), Affix->Breadth, Types.Num());
+				continue;
+			}
+			for (const FName& Type : Types)
+			{
+				Add(ResistanceStatFor(Type), Bucket,
+					ECataclysmModifierSource::GearAffix, Value);
+			}
+			continue;
+		}
+
+		if (Affix->Stat.IsEmpty())
+		{
+			UE_LOG(LogCataclysm, Warning,
+				   TEXT("%s grants no stat and is not a resistance family"),
+				   *Rolled.Affix.ToString());
+			continue;
+		}
+		Add(FName(*Affix->Stat), Bucket, ECataclysmModifierSource::GearAffix, Value);
+	}
 }

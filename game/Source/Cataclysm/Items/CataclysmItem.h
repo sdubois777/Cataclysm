@@ -61,6 +61,18 @@ struct CATACLYSM_API FCataclysmRolledAffix
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
 	float Roll = 1.0f;
+
+	/**
+	 * Which damage types a resistance affix covers. Empty for every other kind.
+	 *
+	 * A resistance family says how MANY types it covers and not which: the
+	 * single-resistance family covers one, and which one is decided when the
+	 * item drops. So the choice belongs to the item rather than to the affix.
+	 * Left empty on a family covering all eight, since there is no choice to
+	 * make.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	TArray<FName> DamageTypes;
 };
 
 /**
@@ -240,18 +252,42 @@ class CATACLYSM_API UCataclysmItemModifiers : public UObject
 
 public:
 	/**
-	 * Every modifier one item contributes: its base's implicits and its rolled
-	 * affixes, in the form UCataclysmStatPipeline evaluates.
+	 * Every modifier one item contributes, KEYED BY THE STAT IT AFFECTS.
+	 *
+	 * Keyed rather than returned as one flat list because
+	 * UCataclysmStatPipeline::Evaluate answers "what is this ONE stat worth",
+	 * so it needs the modifiers for that stat and no others. A flat list would
+	 * have to be filtered by something the modifier does not carry.
+	 *
+	 * Stat names are the character sheet's own, matching
+	 * `sim/cataclysm_sim/character.py`: `max_health`, `armor`,
+	 * `resistance_demonic` and so on.
+	 *
+	 * A RESISTANCE FAMILY BECOMES ONE MODIFIER PER DAMAGE TYPE. The affix says
+	 * how many types it covers; the item says which. A family covering all eight
+	 * needs no choice, so an empty list on the item means all of them.
 	 *
 	 * AN ITEM NEVER PRODUCES A "MORE" MULTIPLIER. Affixes and implicits are
 	 * flat or increased; the multiplicative bucket belongs to gems, passive
 	 * keystones and enchantments. The pipeline enforces that too, but producing
 	 * one here would be caught only as a warning at evaluation time.
 	 */
-	static TArray<FCataclysmStatModifier> ModifiersFor(
+	static TMap<FName, TArray<FCataclysmStatModifier>> ModifiersFor(
 		const FCataclysmItem& Item,
 		const UDataTable* BaseTable,
 		const UDataTable* AffixTable);
+
+	/** Merge one item's modifiers into a character's running totals. */
+	static void AccumulateInto(TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+							   const FCataclysmItem& Item,
+							   const UDataTable* BaseTable,
+							   const UDataTable* AffixTable);
+
+	/** The eight damage types, in the order the design document lists them. */
+	static const TArray<FName>& DamageTypeNames();
+
+	/** The character sheet stat holding resistance to a damage type. */
+	static FName ResistanceStatFor(FName DamageType);
 
 	/** The rarity an item is, from what fills its slots. */
 	static bool RarityOfItem(const FCataclysmItem& Item,
