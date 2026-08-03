@@ -20,6 +20,68 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The Power Score anchors describe the ceiling, and do not move
+
+**The question.** Issue #125. Rarity became a label for what fills an item's four
+slots, which means a Cataclysmic item spends all four on enchantments and carries
+no regular affixes at all. The Expected Character by Tier table says a difficulty
+tier 8 character is Cataclysmic on all eighteen pieces, so that character has 72
+enchantments and no ordinary stats — while every affix value in the project was
+fitted against 72 regular affix slots, which is a full set of Masterful gear.
+
+Three ways out were put to the project owner: move the expected character, treat
+rarity as a ceiling rather than a count, or refit the affix values against a
+character whose power is all enchantments.
+
+**The decision, stated by the project owner:**
+
+> I would argue against refitting the power score anchors. All cataclysmic gear
+> is what pushes you towards the max power score. I think it's fine as long as we
+> keep that in mind.
+
+**So nothing moves.** The anchors stay, the affix values stay, and the Expected
+Character by Tier table stays. What changes is what the table is understood to
+describe: the **ceiling** a tier can produce, not a typical build.
+
+**The measurement, which is why this is worth recording.** A level 100 character
+with eighteen pieces at +10, 45 Cataclysmic gems and all eight resistances
+capped, scored by `sim/cataclysm_sim/player_power.py`:
+
+| Gear on every piece | Power Score | Against the tier 8 anchor |
+|---|---|---|
+| Cataclysmic | 6,327 | 100% |
+| Ascendant | 5,932 | 94% |
+| Mythical | 5,536 | 88% |
+| Legendary | 5,141 | 81% |
+| Masterful | 4,745 | 75% |
+| A mix of 4 Cataclysmic, 4 Ascendant, 5 Mythical, 5 Legendary | 5,690 | 90% |
+
+**A real build sits below the anchor and that is the design working.** Every gear
+rarity is a trade rather than a straight upgrade: a Legendary gives up a regular
+affix for an enchantment, and an enchantment carries a drawback as well as a
+benefit. A character that keeps some ordinary stats scores less than one that
+gave them all away, and chasing Cataclysmic gear is what pushes toward the
+maximum.
+
+**WHAT TO KEEP IN MIND, which is the whole of the risk here.** Two figures now
+describe different characters, and neither is wrong:
+
+| Figure | The character it describes |
+|---|---|
+| The tier 8 anchor of 6,327 Power Score | Eighteen Cataclysmic pieces, 72 enchantments, no regular affixes |
+| The 72 regular affix slots every affix value was fitted against | Eighteen Masterful pieces, no enchantments |
+
+Anything that reads one and assumes the other will be wrong. The reference
+character in `sim/cataclysm_sim/reference_build.py` is the second of the two and
+says so in its docstring.
+
+**Affects:** `Cataclysm_GDD_v2.md` section VII. **Applied 2026-08-03:** the
+Expected Character by Tier paragraph now says the table is the ceiling rather
+than what a player is expected to look like, and the measurement above was added
+beneath it.
+
+---
+
 ## 2026-08-03 — Class stat lines and attribute effects become data
 
 **The decision.** The three Demonic class stat lines and the eight attribute
