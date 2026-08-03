@@ -20,6 +20,85 @@ applied or still pending.
 
 ---
 
+## 2026-08-02 — Stat lines for the three Demonic classes
+
+**Decision.** Ravager, Ritualist and Masochist each get a stat line. The vertical
+slice needs all three, because a damage type unlocks all three of its class
+trees, so shipping one would leave two of the three classes a player can select
+visibly empty.
+
+The design document gave one sentence per class. Everything else here was
+proposed and reviewed.
+
+**The method, taken from the three War trees that exist as data.** Each of them
+commits to three or four stats and ignores the rest: the Bulwark to health, armor,
+block and retaliation; the Berserker to resource, damage, critical strikes and
+leech, with almost no armor and no evasion at all; the Saboteur to deployables
+and evasion, with no armor, no crit and no leech. A class is defined as much by
+what it refuses as by what it takes. Each Demonic class leaves most of the 33
+stats at the default line deliberately.
+
+**Ravager: the consistent fighter, not a second Berserker.** The Berserker
+already occupies angry melee and wins through critical strikes and leech while
+being deliberately fragile. Making the Ravager a bigger version of that would
+make one of them redundant.
+
+So the Ravager is the one that cannot be stopped rather than the one that hits
+hardest. In the project owner's words: where the Berserker is a shock troop, the
+Ravager is the more consistent fighter. It takes the most armor of the three,
+flat damage reduction, enough leech to hold a line, crowd control resistance, and
+the fastest movement so it is always in contact. It refuses evasion and energy
+shield entirely.
+
+**Ritualist: the caster, and the only one with an energy shield.** The Saboteur
+already covers deployables, but it deploys objects that sit where they are put.
+The Ritualist commands things that were alive, and in the case of possession
+things that still belong to the enemy.
+
+It has the frailest health of the three at 1,060 before gear, roughly half the
+Ravager. That is deliberate and was queried during review: attributes, gear and
+multiclassing all scale it, so the low base is a starting position rather than a
+ceiling. It is the class the energy shield rule points at — give it to classes
+that thematically warrant it, such as casters.
+
+**Masochist: wants to be hit, which makes the usual defences work against it.**
+It has the largest health pool and by far the largest regeneration, because for
+this class health regeneration is resource regeneration. It takes retaliation and
+low armor and refuses evasion and energy shield: evading is missing out, and a
+shield absorbs the damage the class needs to convert.
+
+It keeps a normal mana pool. "Uses HP instead of mana" is delivered by a passive
+tree node converting mana into health, so the conversion is a build choice rather
+than a starting condition.
+
+**Class resource behaviour is deliberately not decided here.** Only pool size is
+set. What a resource does, how it builds and how it decays belongs with the
+passive trees in issue #63, and naming them was left to that work as well.
+Suggested shapes were carried into that issue: the Ravager building while in
+melee contact and decaying out of it, the Ritualist reserving rather than
+spending so its ceiling is how much it can hold under control, and the Masochist
+building from damage taken. Each differs from all three War resources, which
+build up and are spent.
+
+**Nothing here is calibrated against the Bulwark.** Its tree is written against
+Maximum HP thresholds up to 25,000, and it is a dedicated tank at full
+investment. None of these three approaches that from base values, and a test in
+`sim/tests/test_classes.py` asserts it stays that way.
+
+**Not validated against combat.** There are still no damage numbers anywhere in
+the project, so none of these values has been checked against what an enemy
+actually does. They are internally consistent starting values for testing.
+
+**The remaining 21 classes have no stat line** and use the shared default until
+they are designed.
+
+**Affects:** `Cataclysm_GDD_v2.md` section IV. **Applied 2026-08-02:** a Demonic
+class stat line table and the reasoning for each class were added to the Class
+Stat Lines area. The working model is `sim/cataclysm_sim/classes.py`, covered by
+`sim/tests/test_classes.py`.
+
+---
+
 ## 2026-08-02 — The character sheet, where bases come from, and tag scoping
 
 **Decision.** A character has **33 stats** in five groups, matching the Stat tag

@@ -207,3 +207,59 @@ def test_no_class_here_approaches_the_bulwark_tree_thresholds():
     for name in cl.DEMONIC_CLASSES:
         c = _at_100(name, attributes=ch.Attributes(vitality=100))
         assert c.stat("max_health") < 10_000
+
+
+# --------------------------------------------------------------------------
+# The design document and the model must not drift apart
+# --------------------------------------------------------------------------
+
+def test_the_design_document_table_matches_the_model():
+    """`docs/Cataclysm_GDD_v2.md` carries the three stat lines as a table, typed
+    out by hand from this model. Hand-copied numbers drift: the power model in
+    `sim/cataclysm_sim/scoring.py` silently drifted from its source twice before
+    a check like this existed. This reads the table back and compares it.
+    """
+    import pathlib
+    import re
+
+    gdd = (pathlib.Path(__file__).resolve().parents[2]
+           / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+
+    marker = "The Three Demonic Class Stat Lines"
+    assert marker in gdd, "the stat line section is gone from the design document"
+
+    # Map the document's display names onto the model's stat names.
+    LABELS = {
+        "Maximum Health": "max_health",
+        "Maximum Mana": "max_mana",
+        "Maximum Energy Shield": "max_energy_shield",
+        "Health Regeneration": "health_regen",
+        "Mana Regeneration": "mana_regen",
+        "Armor": "armor",
+        "Evasion": "evasion",
+        "Damage Reduction": "damage_reduction",
+        "Retaliation": "retaliation",
+        "Life Leech": "life_leech",
+        "Movement Speed": "movement_speed",
+        "Spell Damage": "spell_damage",
+        "Crowd Control Resistance": "crowd_control_resistance",
+        "Class Resource": "class_resource",
+    }
+
+    section = gdd[gdd.index(marker):]
+    checked = 0
+    for label, stat in LABELS.items():
+        row = re.search(rf"^\| {re.escape(label)} \| (.+?) \|$",
+                        section, re.MULTILINE)
+        assert row, f"{label} has no row in the design document table"
+        cells = [c.strip() for c in row.group(1).split("|")]
+        assert len(cells) == 3, f"{label} does not have three class columns"
+        for name, cell in zip(("Ravager", "Ritualist", "Masochist"), cells,
+                              strict=True):
+            written = float(cell.replace(",", "").rstrip("%"))
+            actual = ch.Character(cl.DEMONIC_CLASSES[name], level=100).stat(stat)
+            assert abs(written - actual) <= 1.0, (
+                f"design document says {name} has {written} {stat}, "
+                f"the model produces {actual:.1f}")
+            checked += 1
+    assert checked == len(LABELS) * 3 == 42
