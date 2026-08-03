@@ -422,12 +422,25 @@ def hits_to_kill(attacker: Attacker, defender: Defender,
     Regeneration is deliberately not modelled here. Between hits a character
     does regain shield, but how much depends on the interval between hits, and
     there are no attack speed numbers to supply it.
+
+    THE HEALTH PASSED TO `resolve` IS THE FULL POOL, NOT WHAT IS LEFT. `resolve`
+    clamps a hit to the health remaining, because it reports what one hit
+    actually dealt and a hit cannot deal more damage than there was health. That
+    clamp is wrong to apply inside this loop: it makes the last hits look
+    smaller than they are, and `average_damage_taken` then averages the clamped
+    figures, so the running total creeps toward zero instead of crossing it.
+
+    The effect was a phantom extra hit on every count. Against the reference
+    build a Cataclysm Boss landing 6,635 on 11,023 health reported 3 hits when
+    the answer is 2. The shield state below is still tracked hit by hit, because
+    a shield genuinely is spent once and that is the whole reason this function
+    is a loop rather than a division.
     """
     shield = defender.energy_shield
     health = defender.health
     for hit in range(1, max_hits + 1):
         state = Defender(
-            health=health, energy_shield=shield, armor=defender.armor,
+            health=defender.health, energy_shield=shield, armor=defender.armor,
             evasion=defender.evasion, block_chance=defender.block_chance,
             damage_reduction=defender.damage_reduction,
             resistances=defender.resistances, tier=defender.tier)
