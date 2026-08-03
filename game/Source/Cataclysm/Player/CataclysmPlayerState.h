@@ -8,7 +8,11 @@
 #include "CataclysmPlayerState.generated.h"
 
 class UCataclysmAbilitySystemComponent;
-class UCataclysmAttributeSet;
+class UCataclysmVitalAttributeSet;
+class UCataclysmPrimaryAttributeSet;
+class UCataclysmCombatAttributeSet;
+class UCataclysmResistanceAttributeSet;
+class UCataclysmClassResourceAttributeSet;
 
 /**
  * Owns the player's ability system component and attribute sets.
@@ -40,12 +44,35 @@ public:
 	//~ End IAbilitySystemInterface
 
 	UCataclysmAbilitySystemComponent* GetCataclysmAbilitySystemComponent() const { return AbilitySystemComponent; }
-	const UCataclysmAttributeSet* GetAttributeSet() const { return AttributeSet; }
+
+	const UCataclysmVitalAttributeSet* GetVitalAttributes() const { return VitalAttributes; }
+	const UCataclysmPrimaryAttributeSet* GetPrimaryAttributes() const { return PrimaryAttributes; }
+	const UCataclysmCombatAttributeSet* GetCombatAttributes() const { return CombatAttributes; }
+	const UCataclysmResistanceAttributeSet* GetResistanceAttributes() const { return ResistanceAttributes; }
+	const UCataclysmClassResourceAttributeSet* GetClassResourceAttributes() const { return ClassResourceAttributes; }
 
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;
 
+	/**
+	 * A player carries all five sets. Enemies carry only the three that describe
+	 * a combatant: they have no attribute points to spend and no class tree, so
+	 * giving them the primary or class resource sets would be dead weight on
+	 * every spawn.
+	 */
 	UPROPERTY()
-	TObjectPtr<UCataclysmAttributeSet> AttributeSet;
+	TObjectPtr<UCataclysmVitalAttributeSet> VitalAttributes;
+
+	UPROPERTY()
+	TObjectPtr<UCataclysmPrimaryAttributeSet> PrimaryAttributes;
+
+	UPROPERTY()
+	TObjectPtr<UCataclysmCombatAttributeSet> CombatAttributes;
+
+	UPROPERTY()
+	TObjectPtr<UCataclysmResistanceAttributeSet> ResistanceAttributes;
+
+	UPROPERTY()
+	TObjectPtr<UCataclysmClassResourceAttributeSet> ClassResourceAttributes;
 };

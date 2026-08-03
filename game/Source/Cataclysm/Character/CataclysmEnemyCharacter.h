@@ -8,7 +8,9 @@
 #include "CataclysmEnemyCharacter.generated.h"
 
 class UCataclysmAbilitySystemComponent;
-class UCataclysmAttributeSet;
+class UCataclysmVitalAttributeSet;
+class UCataclysmCombatAttributeSet;
+class UCataclysmResistanceAttributeSet;
 
 /**
  * Base for every enemy.
@@ -34,8 +36,15 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;
 
+	/** Three sets, not the player's five. See the constructor for why. */
 	UPROPERTY()
-	TObjectPtr<UCataclysmAttributeSet> AttributeSet;
+	TObjectPtr<UCataclysmVitalAttributeSet> VitalAttributes;
+
+	UPROPERTY()
+	TObjectPtr<UCataclysmCombatAttributeSet> CombatAttributes;
+
+	UPROPERTY()
+	TObjectPtr<UCataclysmResistanceAttributeSet> ResistanceAttributes;
 
 private:
 	FCataclysmAbilitySetHandles GrantedHandles;

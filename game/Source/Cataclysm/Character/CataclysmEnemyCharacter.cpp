@@ -2,7 +2,9 @@
 
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
-#include "AbilitySystem/CataclysmAttributeSet.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 
 ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 {
@@ -15,7 +17,13 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 	// bandwidth goes if it is set wrong.
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 
-	AttributeSet = CreateDefaultSubobject<UCataclysmAttributeSet>(TEXT("AttributeSet"));
+	// Three sets, not five. An enemy has no attribute points to spend and no
+	// class tree, so the primary attribute set and the class resource set would
+	// be dead weight replicated on every spawn, and a dungeon floor can hold a
+	// great many enemies.
+	VitalAttributes = CreateDefaultSubobject<UCataclysmVitalAttributeSet>(TEXT("VitalAttributes"));
+	CombatAttributes = CreateDefaultSubobject<UCataclysmCombatAttributeSet>(TEXT("CombatAttributes"));
+	ResistanceAttributes = CreateDefaultSubobject<UCataclysmResistanceAttributeSet>(TEXT("ResistanceAttributes"));
 }
 
 UAbilitySystemComponent* ACataclysmEnemyCharacter::GetAbilitySystemComponent() const
