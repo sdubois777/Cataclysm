@@ -37,11 +37,14 @@ Debuff_Final_Curse,Debuff,Final Curse,"Upon death, this enemy curses the player 
 Debuff_Shared_Pain,Debuff,Shared Pain,A debuff that distributes damage taken across nearby allies.
 Debuff_Soul_Tether,Debuff,Soul Tether,A debuff that transfers a portion of damage taken to the player as health degeneration over time.
 Debuff_Touch_of_Nothing,Debuff,Touch of Nothing,"When a player gains a buff, a stack of this debuff is consumed to negate that buff completely."
+Debuff_Madness,Debuff,Madness,"A player-applied debuff. The affected enemy attacks anything nearby, friend or foe, for 3 seconds. Magnitude extends the duration. Applied by the Of Madness gem and the chance to madden affix."
+Debuff_Cripple,Debuff,Cripple,"A player-applied debuff. Reduces the affected enemy's movement and attack speed by 30% for 4 seconds. Magnitude raises the reduction to a cap of 80%, then extends the duration instead. Applied by the Of Maiming gem and the chance to cripple affix."
+Debuff_Shred,Debuff,Shred,"A player-applied debuff. Reduces the affected enemy's resistance by 10 for 6 seconds. Magnitude raises the reduction until that resistance reaches zero, then extends the duration instead. Applied by the Of Shredding gem and the chance to shred affix."
 DoT_Bleed,DoT,Bleed,Applied by the Primal Instinct enchantment and the Of Rending gem.
 DoT_Poison,DoT,Poison,Applied by the Toxic Trail enemy modifier and the Of The Viper gem.
 DoT_Disease,DoT,Disease,Applied by the Raw Sewage dungeon modifier and the Of Rot gem.
 DoT_Burn,DoT,Burn,Applied by the Infernal Brand and Hellfire Aura enemy modifiers.
-DoT_Necrosis,DoT,Necrosis,A stacking dot that reduces healing by 10% per stack and does damage over time
+DoT_Necrosis,DoT,Necrosis,A player-applied effect. Reduces the affected enemy's healing by 25% and deals damage over time for 5 seconds. One stack only. Magnitude scales the damage and the healing reduction; once that reduction reaches 100% it extends the duration instead.
 DoT_Necrotic_Fog,DoT,Necrotic Fog,A dungeon modifier that deals damage over time.
 DoT_Void_Splinter,DoT,Void Splinter,Deals 1% of current HP per second over 4 seconds. Applied by the Of The Abyss gem.
 DoT_Void_Rift,DoT,Void Rift,Enemies create small void zones that deal heavy damage over time to the player.
