@@ -622,7 +622,27 @@ At level 100 with eighteen Cataclysmic pieces at +10, forty-five Cataclysmic gem
 
 ### **Expected Character by Tier**
 
-Power Score is calibrated against the tier ranges in section XII using the reference character below, which is what a player is expected to look like at the **end** of each difficulty tier. It is a calibration reference, not a requirement. Actual leveling is player-driven, because one player may clear a hundred dungeons in a tier where another clears forty.
+Power Score is calibrated against the tier ranges in section XII using the reference character below, which is the **ceiling** at the end of each difficulty tier: the best gear that tier can produce, fully upgraded, with every socket filled. It is a calibration reference, not a requirement. Actual leveling is player-driven, because one player may clear a hundred dungeons in a tier where another clears forty.
+
+  
+
+**A real character sits below the anchor, and that is intended.** At tier 8 the reference character is Cataclysmic on all eighteen pieces, and a Cataclysmic piece spends all four of its slots on enchantments, so that character carries 72 enchantments and no regular affixes at all. Every gear rarity is a trade rather than a straight upgrade, so a build that keeps some ordinary stats is Masterful or Legendary on some pieces and scores less. Measured against the tier 8 anchor of 6,327:
+
+  
+
+|  |  |  |
+| :-- | :-: | :-: |
+| \*\*Gear on every piece at tier 8\*\* | \*\*Power Score\*\* | \*\*Against the anchor\*\* |
+| Cataclysmic | 6,327 | 100% |
+| Ascendant | 5,932 | 94% |
+| Mythical | 5,536 | 88% |
+| Legendary | 5,141 | 81% |
+| Masterful | 4,745 | 75% |
+| A mix of 4 Cataclysmic, 4 Ascendant, 5 Mythical and 5 Legendary | 5,690 | 90% |
+
+  
+
+So chasing Cataclysmic gear is what pushes a character toward the maximum Power Score, and the anchors describe that ceiling rather than a typical build. **This matters when reading any statement about what a tier 8 character has.** The affix values in section VI were fitted against 72 regular affix slots, which is a full set of Masterful gear; the character sitting exactly on the tier 8 anchor has none of them.
 
   
 
