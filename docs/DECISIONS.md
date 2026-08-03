@@ -20,6 +20,51 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — Chance to apply an effect caps at 100% and overflows into magnitude
+
+**Decision, stated by the project owner:**
+
+> DoT chance caps at 100%, anything beyond 100% applies to the magnitude of the
+> DoT's effect. So you can only ever have 1 stack of something on an enemy,
+> however if you have 800% chance to apply it, it gets a 700% multiplier.
+
+So an enemy carries at most one stack of any effect the player applies, and
+chance past 100% multiplies the effect instead of being wasted.
+
+| Chance from all sources | What happens |
+|---|---|
+| 60% | Applies on 60% of hits, at normal magnitude |
+| 100% | Applies on every hit, at normal magnitude |
+| 250% | Applies on every hit, at 2.5x magnitude |
+| 800% | Applies on every hit, at 8x magnitude, a 700% increase |
+
+**Why the overflow is not wasted.** Ailment chance comes from two sources that
+both scale hard: gear affixes, and gems, where the gem applying bleed reaches
+150% chance on its own at Cataclysmic rarity. Without this rule a build would hit
+the cap and every point past it would be dead, so an ailment build would stop
+progressing at exactly the point it was coming together.
+
+**Why one stack rather than many.** It is what makes the overflow rule possible
+at all, and it keeps a screen full of enemies readable: one enemy is bleeding or
+it is not, with no stacks to count.
+
+**A conflict found in the existing data, not resolved here.**
+`game/Data/StatusEffects.csv` describes Necrosis as "a stacking dot that reduces
+healing by 10% per stack". Every other stacking entry in that file is either a
+buff on the player or a debuff an enemy applies to the player, and this rule
+governs neither. Necrosis is the only entry that is both a damage-over-time
+effect and stacking, and its row does not say who applies it. Recorded on #112,
+which already covers gaps in that file.
+
+**Tuning expected.** The project owner: "That might need tuning later, but I
+think that's how I want it to work."
+
+**Affects:** `Cataclysm_GDD_v2.md` section IV. **Applied 2026-08-03:** an
+Applying Damage Over Time and Other Effects subsection was added after Overwhelm.
+The working model is `ailment_application` in `sim/cataclysm_sim/affixes.py`.
+
+---
+
 ## 2026-08-03 — The affix pool: prefixes, suffixes and implicits
 
 **Decision.** The affix pool grows from 7 entries to 35 stat affixes plus the

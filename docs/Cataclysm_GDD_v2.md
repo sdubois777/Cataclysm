@@ -1001,6 +1001,46 @@ Tier Width is the difference between the maximum Power Score of the current diff
 
   
 
+### **Applying Damage Over Time and Other Effects**
+
+Bleed, poison, disease, void splinter and the other effects a player can inflict are applied by chance on hit. Gems grant that chance, and so do affixes.
+
+  
+
+**An enemy carries at most one stack of any effect the player applies.** One enemy is bleeding or it is not. There is no counting stacks on a screen full of enemies.
+
+  
+
+**Chance to apply caps at 100%. Everything above it becomes magnitude instead.**
+
+  
+
+|  |  |
+| :-- | :-- |
+| \*\*Chance from all sources\*\* | \*\*What happens\*\* |
+| 60% | Applies on 60% of hits, at its normal magnitude |
+| 100% | Applies on every hit, at its normal magnitude |
+| 250% | Applies on every hit, at 2.5 times its magnitude |
+| 800% | Applies on every hit, at 8 times its magnitude — a 700% increase |
+
+  
+
+**Why the overflow is not simply wasted.** Ailment chance comes from two sources that both scale hard: affixes, and gems, where the gem applying bleed reaches 150% chance on its own at Cataclysmic rarity. Without this rule a build would hit the cap and every point past it would be dead, so an ailment build would stop progressing at exactly the point it was coming together.
+
+  
+
+The chance summed is the total across every source: affixes, gems, keystones and enchantments alike.
+
+  
+
+**One existing effect contradicts the single-stack rule and needs resolving.** The status effect data describes Necrosis as a stacking effect that reduces healing by 10% per stack. Every other stacking entry is either a buff on the player or a debuff an enemy applies to the player, neither of which this rule governs. Necrosis is the only one listed as a damage-over-time effect and as stacking, and its entry does not say who applies it. Tracked in issue 112.
+
+  
+
+These figures may need tuning once the game is playable.
+
+  
+
 # **V. Skill System**
 
 ## **Skill Acquisition**

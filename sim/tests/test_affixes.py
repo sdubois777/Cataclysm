@@ -1039,6 +1039,67 @@ def test_the_gem_stays_the_stronger_source_of_any_ailment():
 
 
 # --------------------------------------------------------------------------
+# Chance above 100% becomes magnitude
+# --------------------------------------------------------------------------
+
+def test_chance_to_apply_caps_at_one_hundred_percent():
+    for chance in (100.0, 150.0, 800.0, 5000.0):
+        applied, _ = af.ailment_application(chance)
+        assert applied == pytest.approx(100.0), chance
+
+
+def test_below_the_cap_chance_is_just_chance_and_magnitude_is_unchanged():
+    for chance in (0.0, 15.0, 60.0, 99.9):
+        applied, magnitude = af.ailment_application(chance)
+        assert applied == pytest.approx(chance)
+        assert magnitude == pytest.approx(1.0)
+
+
+def test_the_project_owners_own_example_holds():
+    """Stated 2026-08-03: at 800% chance the effect gets a 700% multiplier."""
+    applied, magnitude = af.ailment_application(800.0)
+    assert applied == pytest.approx(100.0)
+    assert magnitude == pytest.approx(8.0)
+    assert magnitude - 1.0 == pytest.approx(7.0)
+
+
+def test_every_point_of_chance_past_the_cap_is_worth_the_same():
+    """The whole reason for the rule. Without it an ailment build would stop
+    progressing at exactly the point it was coming together, because every point
+    past 100% would be dead."""
+    def magnitude(chance: float) -> float:
+        return af.ailment_application(chance)[1]
+
+    first_hundred = magnitude(200.0) - magnitude(100.0)
+    seventh_hundred = magnitude(800.0) - magnitude(700.0)
+    assert first_hundred == pytest.approx(seventh_hundred)
+    assert first_hundred == pytest.approx(1.0)
+
+
+def test_an_enemy_carries_at_most_one_stack():
+    """Which is what makes chance above the cap mean something rather than
+    stacking, and keeps a screen full of enemies readable."""
+    assert af.MAX_STACKS_ON_AN_ENEMY == 1
+
+
+def test_a_negative_chance_is_rejected():
+    with pytest.raises(ValueError, match="is not a chance"):
+        af.ailment_application(-10.0)
+
+
+def test_a_full_set_of_ailment_affixes_does_not_waste_itself():
+    """Read against the real pool rather than in the abstract. There are 48
+    slots an ailment affix can occupy, so a build that commits to one reaches
+    well past the cap, and the rule is what stops that being wasted."""
+    slots = af.BLEED.slots_available()
+    total = af.BLEED.chance_at(7) * slots
+    applied, magnitude = af.ailment_application(total)
+    assert applied == pytest.approx(100.0)
+    assert magnitude > 2.0, (
+        f"{slots} slots of bleed reach {total:.0f}% and only {magnitude:.1f}x")
+
+
+# --------------------------------------------------------------------------
 # Hybrid affixes
 # --------------------------------------------------------------------------
 

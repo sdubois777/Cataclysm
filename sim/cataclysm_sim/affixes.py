@@ -1086,6 +1086,51 @@ def ailments_for(slot: str) -> tuple[AilmentAffix, ...]:
 
 
 # --------------------------------------------------------------------------
+# What happens above 100% chance to apply
+# --------------------------------------------------------------------------
+
+#: An enemy carries at most one stack of any effect the player applies.
+#:
+#: Stated by the project owner 2026-08-03. It is what makes chance above 100%
+#: mean something instead of being wasted, and it keeps a screen full of enemies
+#: readable: one enemy has bleeding or it does not.
+MAX_STACKS_ON_AN_ENEMY = 1
+
+#: Chance to apply caps here. Everything past it becomes magnitude.
+AILMENT_CHANCE_CAP = 100.0
+
+
+def ailment_application(total_chance: float) -> tuple[float, float]:
+    """Chance to apply an effect, and the multiplier on its magnitude.
+
+    Stated by the project owner 2026-08-03:
+
+        DoT chance caps at 100%, anything beyond 100% applies to the magnitude
+        of the DoT's effect. So you can only ever have 1 stack of something on
+        an enemy, however if you have 800% chance to apply it, it gets a 700%
+        multiplier.
+
+    So 800% chance applies the effect every hit at eight times its magnitude,
+    which is a 700% increase over the one time it would otherwise be worth.
+
+    WHY IT MATTERS. Ailment chance comes from two sources that both scale hard:
+    affixes here and gems in `game/Data/Gems.csv`, where the gem applying bleed
+    reaches 150% chance on its own at Cataclysmic rarity. Without this rule a
+    build stacking both would hit a ceiling and every point past it would be
+    dead, which would make an ailment build stop progressing at exactly the
+    point it should be coming together.
+
+    `total_chance` is the sum across every source: affixes, gems, keystones and
+    enchantments alike.
+    """
+    if total_chance < 0.0:
+        raise ValueError(f"a chance to apply of {total_chance}% is not a chance")
+    applied = min(AILMENT_CHANCE_CAP, total_chance)
+    magnitude = max(1.0, total_chance / AILMENT_CHANCE_CAP)
+    return applied, magnitude
+
+
+# --------------------------------------------------------------------------
 # Hybrid affixes: two stats on one roll, less of each
 # --------------------------------------------------------------------------
 #
