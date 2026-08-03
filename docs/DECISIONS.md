@@ -20,6 +20,65 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — What a skill is worth, in weapon damage
+
+**The problem.** Issue #107. The design said every weapon type paired with every
+damage type produces a set of skills, and never said what any of them was worth.
+So every weapon damage figure in the project was really weapon-and-skill
+together, and the two differed by however much a skill multiplied.
+
+**The concept was already in the data, unsystematically.** Four of the 61
+designed skills in `game/Data/WeaponSkills.csv` state a multiplier in prose:
+
+| Skill | States |
+|---|---|
+| Skull Splitter | 500% weapon damage to a single target |
+| Annihilator | The final hit deals 300% weapon damage |
+| Bulwark | Stored damage capped at 200% weapon damage |
+| Haymaker | An additional 100% weapon damage on wall impact |
+
+So skills multiply weapon damage and the design already says so. This was not
+invented, only made systematic.
+
+**The Basic Attack is 100% by definition, and that is what makes settling this
+cost nothing.** Every damage figure fitted so far — the tier 8 target of 1,681,
+the affix values, what a weapon must supply — was fitted to an ordinary hit, and
+an ordinary hit is the basic attack. Anchoring the scale there leaves all of it
+standing and lets the other six slots multiply from it.
+
+| Slot | Typical | Range |
+|---|---|---|
+| Basic Attack | 100% | fixed |
+| Movement | 100% | 75-150% |
+| Support | 0% | 0-100% |
+| Aura | 25% per second | 15-40% |
+| Special | 150% | 100-250% |
+| Heavy Attack | 250% | 175-350% |
+| Ultimate | 400% | 300-500% |
+
+**The Ultimate range is derived, not chosen.** It is exactly the two designed
+Ultimates: Annihilator at 300% and Skull Splitter at 500%. A test reads them out
+of the data and asserts the band matches, so the two cannot drift apart.
+
+**Weapon damage means the whole base bracket**, the weapon plus flat added damage
+from gear. That is what a player reads "500% weapon damage" to mean, and it is
+why flat added damage affixes are worth taking at all.
+
+**Support's typical value is zero, not its maximum.** Most buffs, shields,
+stances, curses and banners deal no damage; the range goes to 100% because a
+support skill is not forbidden from dealing any, and Bulwark already does.
+
+**What this settles elsewhere.** `weapon_base_damage_needed` in
+`sim/cataclysm_sim/affixes.py` returned the weapon and the skill together and
+could not separate them. It now returns the weapon, because the hit it is solving
+for is a basic attack.
+
+**Affects:** `Cataclysm_GDD_v2.md` section V. **Applied 2026-08-03:** a What a
+Skill Is Worth subsection was added before Skill Acquisition. The working model
+is `SKILL_SLOTS` in `sim/cataclysm_sim/character.py`.
+
+---
+
 ## 2026-08-03 — Enemy damage fitted to what a geared character actually survives
 
 **The problem.** Issue #108. Enemy damage had been set on the enemy's own terms,
