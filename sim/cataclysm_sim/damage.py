@@ -88,16 +88,35 @@ class Attacker:
     #: Which of the eight resistances applies.
     damage_type: str = "Demonic"
     #: Percentage points subtracted from the defender's resistance.
+    #: Enchantments already grant this: "Your skills ignore 10%-25% of enemy
+    #: resistances", "Your DoTs ignore 20%-40% of enemy resistances".
     penetration: float = 0.0
+    #: Percentage of the defender's ARMOR ignored. A separate stat from
+    #: resistance penetration, and the enchantment tables treat it separately
+    #: too: "Your skills ignore 10%-25% of enemy armor", "Your critical hits
+    #: ignore 20%-40% of enemy armor", "Your first hit against each enemy
+    #: ignores all armor". Piercing adds its own 20% on top of whatever gear
+    #: provides.
+    armor_penetration: float = 0.0
     subtype: str = "None"
     #: Area damage cannot be evaded. It can still be blocked.
     is_area: bool = False
+    #: Damage over time -- bleed, poison, burn and the rest. Routed differently
+    #: from a hit: see the energy shield and mana notes on Defender.
+    is_damage_over_time: bool = False
 
     def __post_init__(self) -> None:
         if self.subtype not in WEAPON_SUBTYPES:
             raise ValueError(f"unknown weapon sub-type {self.subtype!r}")
         if self.damage < 0:
             raise ValueError("damage cannot be negative")
+
+    def total_armor_ignored(self) -> float:
+        """Armor bypassed, from the weapon sub-type and from gear together."""
+        ignored = self.armor_penetration
+        if self.subtype == "Piercing":
+            ignored += PIERCING_ARMOR_IGNORED
+        return min(100.0, max(0.0, ignored))
 
 
 @dataclass(frozen=True)
@@ -112,6 +131,23 @@ class Defender:
     damage_reduction: float = 0.0
     resistances: dict[str, float] = field(default_factory=dict)
     tier: int = 1
+    mana: float = 0.0
+
+    # -- What makes energy shield a distinct defence rather than extra health --
+    #
+    # These defaults are not invented. They are read out of the enchantment
+    # tables, where an enchantment that REMOVES a property proves the property
+    # exists by default.
+    #
+    #: Energy shield ignores damage over time. Proven by a NEGATIVE enchantment,
+    #: `EnchantmentsNegative.csv` line 165, "Energy shield can now be effected by
+    #: bleed" -- which is only a drawback if the shield normally is not.
+    shield_absorbs_damage_over_time: bool = False
+
+    #: Damage over time hits mana before health. From a POSITIVE enchantment,
+    #: `EnchantmentsPositive.csv` line 202, "DoTs deal damage to your mana pool
+    #: first" -- so this is off by default and is a mana-stacking build choice.
+    mana_absorbs_damage_over_time: bool = False
 
     def resistance_to(self, damage_type: str) -> float:
         return self.resistances.get(damage_type, 0.0)
@@ -130,6 +166,7 @@ class Resolution:
     after_reduction: float
     absorbed_by_shield: float
     dealt_to_health: float
+    absorbed_by_mana: float = 0.0
 
     @property
     def total_mitigated(self) -> float:
@@ -192,10 +229,8 @@ def resolve(attacker: Attacker, defender: Defender,
         damage *= 1.0 - BLOCK_DAMAGE_REDUCTION / 100.0
     after_block = damage
 
-    # 3. Armor. Piercing ignores a share of it before the conversion.
-    armor = defender.armor
-    if attacker.subtype == "Piercing":
-        armor *= 1.0 - PIERCING_ARMOR_IGNORED / 100.0
+    # 3. Armor, after whatever share of it the attacker ignores.
+    armor = defender.armor * (1.0 - attacker.total_armor_ignored() / 100.0)
     damage *= 1.0 - armor_reduction(armor, defender.tier) / 100.0
     # Blunt is "10% more damage versus armor", read as a bonus that only applies
     # when there is armor to beat. See the module note on the overlap with
@@ -214,15 +249,28 @@ def resolve(attacker: Attacker, defender: Defender,
     damage *= 1.0 - defender.damage_reduction / 100.0
     after_reduction = damage
 
-    # 6. Energy shield absorbs before health. Magic weapons are better against
-    # the shield, slashing weapons better against what gets past it.
-    shield_damage = damage * (1.0 + SUBTYPE_BONUS / 100.0
-                              if attacker.subtype == "Magic" else 1.0)
-    absorbed = min(defender.energy_shield, shield_damage)
-    # Convert what the shield actually stopped back into raw damage, so a magic
-    # bonus does not destroy more raw damage than the hit contained.
-    consumed = absorbed / (1.0 + SUBTYPE_BONUS / 100.0
-                           if attacker.subtype == "Magic" else 1.0)
+    # 6. Mana, but only for damage over time and only if the character has built
+    # for it. From "DoTs deal damage to your mana pool first".
+    absorbed_by_mana = 0.0
+    if attacker.is_damage_over_time and defender.mana_absorbs_damage_over_time:
+        absorbed_by_mana = min(defender.mana, damage)
+        damage -= absorbed_by_mana
+
+    # 7. Energy shield. It ignores damage over time unless an enchantment has
+    # taken that immunity away, which is what makes it a distinct defence rather
+    # than a second health bar. Magic weapons strip more of it per hit.
+    shield_applies = (not attacker.is_damage_over_time
+                      or defender.shield_absorbs_damage_over_time)
+    magic = 1.0 + SUBTYPE_BONUS / 100.0 if attacker.subtype == "Magic" else 1.0
+
+    absorbed = 0.0
+    consumed = 0.0
+    if shield_applies:
+        absorbed = min(defender.energy_shield, damage * magic)
+        # Convert what the shield actually stopped back into raw damage, so a
+        # magic bonus does not destroy more raw damage than the hit contained.
+        consumed = absorbed / magic
+
     to_health = max(0.0, damage - consumed)
     if attacker.subtype == "Slashing":
         to_health *= 1.0 + SUBTYPE_BONUS / 100.0
@@ -231,7 +279,8 @@ def resolve(attacker: Attacker, defender: Defender,
         evaded=False, blocked=blocked, incoming=attacker.damage,
         after_block=after_block, after_armor=after_armor,
         after_resistance=after_resistance, after_reduction=after_reduction,
-        absorbed_by_shield=absorbed, dealt_to_health=min(to_health, defender.health),
+        absorbed_by_shield=absorbed, absorbed_by_mana=absorbed_by_mana,
+        dealt_to_health=min(to_health, defender.health),
     )
 
 

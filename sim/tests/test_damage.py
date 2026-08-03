@@ -297,3 +297,121 @@ def test_armor_and_energy_shield_both_change_the_outcome():
     shielded = plain(energy_shield=500.0)
     assert taken(hit(), armoured) < taken(hit(), bare)
     assert taken(hit(), shielded) < taken(hit(), bare)
+
+
+# --------------------------------------------------------------------------
+# What makes energy shield a distinct defence, read out of the enchantment data
+# --------------------------------------------------------------------------
+
+def test_energy_shield_ignores_damage_over_time_by_default():
+    """`EnchantmentsNegative.csv` line 165 is "Energy shield can now be effected
+    by bleed". It is a NEGATIVE enchantment, which is only a drawback if the
+    shield normally is not affected. That proves the default."""
+    d = plain(energy_shield=5000.0)
+    r = dm.resolve(hit(is_damage_over_time=True), d,
+                   force_evade=False, force_block=False)
+    assert r.absorbed_by_shield == 0.0
+    assert r.dealt_to_health == pytest.approx(1000.0)
+
+
+def test_an_enchantment_can_take_that_immunity_away():
+    d = plain(energy_shield=5000.0, shield_absorbs_damage_over_time=True)
+    r = dm.resolve(hit(is_damage_over_time=True), d,
+                   force_evade=False, force_block=False)
+    assert r.absorbed_by_shield == pytest.approx(1000.0)
+    assert r.dealt_to_health == 0.0
+
+
+def test_energy_shield_still_absorbs_ordinary_hits():
+    """The immunity is specific to damage over time, not to everything."""
+    d = plain(energy_shield=5000.0)
+    r = dm.resolve(hit(is_damage_over_time=False), d,
+                   force_evade=False, force_block=False)
+    assert r.absorbed_by_shield == pytest.approx(1000.0)
+
+
+def test_energy_shield_is_not_simply_extra_health():
+    """The point of the whole rule. A shielded character and one with the same
+    total in health alone must behave differently against damage over time."""
+    shielded = dm.Defender(health=1000.0, energy_shield=1000.0)
+    healthy = dm.Defender(health=2000.0)
+    dot = hit(damage=500.0, is_damage_over_time=True)
+    assert dm.hits_to_kill(dot, shielded) < dm.hits_to_kill(dot, healthy)
+
+
+# --------------------------------------------------------------------------
+# Mana as a damage pool, which is a build choice rather than a default
+# --------------------------------------------------------------------------
+
+def test_mana_does_not_absorb_damage_by_default():
+    d = plain(mana=5000.0)
+    r = dm.resolve(hit(is_damage_over_time=True), d,
+                   force_evade=False, force_block=False)
+    assert r.absorbed_by_mana == 0.0
+    assert r.dealt_to_health == pytest.approx(1000.0)
+
+
+def test_mana_absorbs_damage_over_time_when_the_character_has_built_for_it():
+    """`EnchantmentsPositive.csv` line 202: "DoTs deal damage to your mana pool
+    first". A positive enchantment, so it is off by default."""
+    d = plain(mana=5000.0, mana_absorbs_damage_over_time=True)
+    r = dm.resolve(hit(is_damage_over_time=True), d,
+                   force_evade=False, force_block=False)
+    assert r.absorbed_by_mana == pytest.approx(1000.0)
+    assert r.dealt_to_health == 0.0
+
+
+def test_mana_only_absorbs_damage_over_time_not_ordinary_hits():
+    """The enchantment names damage over time specifically."""
+    d = plain(mana=5000.0, mana_absorbs_damage_over_time=True)
+    r = dm.resolve(hit(is_damage_over_time=False), d,
+                   force_evade=False, force_block=False)
+    assert r.absorbed_by_mana == 0.0
+    assert r.dealt_to_health == pytest.approx(1000.0)
+
+
+def test_mana_absorbs_before_energy_shield():
+    """Both can be active at once. Mana is the earlier step, so it takes the
+    damage over time first and the shield only sees what is left."""
+    d = plain(mana=400.0, energy_shield=5000.0,
+              mana_absorbs_damage_over_time=True,
+              shield_absorbs_damage_over_time=True)
+    r = dm.resolve(hit(is_damage_over_time=True), d,
+                   force_evade=False, force_block=False)
+    assert r.absorbed_by_mana == pytest.approx(400.0)
+    assert r.absorbed_by_shield == pytest.approx(600.0)
+    assert r.dealt_to_health == 0.0
+
+
+# --------------------------------------------------------------------------
+# Armor penetration is a stat, separate from the weapon sub-type
+# --------------------------------------------------------------------------
+
+def test_armor_penetration_from_gear_stacks_with_piercing():
+    """The enchantment tables treat ignoring armor and ignoring resistances as
+    two different things, and grant armor-ignoring on skills, critical hits,
+    traps and first hits. Piercing adds its 20% on top of whatever gear gives."""
+    assert hit(armor_penetration=25.0).total_armor_ignored() == pytest.approx(25.0)
+    assert hit(subtype="Piercing").total_armor_ignored() == pytest.approx(20.0)
+    assert hit(subtype="Piercing",
+               armor_penetration=25.0).total_armor_ignored() == pytest.approx(45.0)
+
+
+def test_armor_penetration_cannot_exceed_all_of_the_armor():
+    """"Your first hit against each enemy ignores all armor" is 100%, not more."""
+    assert hit(subtype="Piercing",
+               armor_penetration=200.0).total_armor_ignored() == pytest.approx(100.0)
+    d = plain(armor=5000.0, tier=1)
+    full = taken(hit(armor_penetration=100.0), d)
+    bare = taken(hit(), plain(armor=0.0))
+    assert full == pytest.approx(bare)
+
+
+def test_armor_penetration_and_resistance_penetration_are_separate():
+    """An attacker that ignores armor must not thereby ignore resistance."""
+    d = plain(armor=3000.0, resistances={"Demonic": 70.0}, tier=1)
+    r = dm.resolve(hit(armor_penetration=100.0), d,
+                   force_evade=False, force_block=False)
+    # Armor did nothing, but resistance still removed 70%.
+    assert r.after_armor == pytest.approx(1000.0)
+    assert r.after_resistance == pytest.approx(300.0)
