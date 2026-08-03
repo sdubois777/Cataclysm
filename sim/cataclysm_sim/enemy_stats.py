@@ -1,219 +1,512 @@
-"""Turning an Enemy Score into health, damage per hit, and how often it hits.
+"""A full stat block for every enemy, from its rarity and its archetype.
 
 WHAT THIS IS FOR. `scoring.py` gives every enemy a Power Score, and that score is
-authoritative and verified. It is a power RATING. Nothing anywhere in the project
-said how much damage an enemy deals or how much health it has, so nothing could
-actually be played or balanced. Issue #97.
+authoritative and verified. It is a power RATING: nothing in it says how much
+health an enemy has, how hard it hits, how often, or what it resists. Issue #97.
 
-I checked the separate DungeonSimulator repository, which is where the scoring
-model lives, across its whole history. It has never contained a damage or health
-number in any commit. There was nothing to port.
+I checked the separate DungeonSimulator repository, where the scoring model
+lives, across its whole history. It has never contained a damage or health number
+in any commit, so there was nothing to port.
 
-THE TARGETS THIS IS SOLVED FROM, set by the project owner:
+TWO LAYERS, AND THEY OWN DIFFERENT THINGS.
 
-    A common enemy of equal score takes 8 to 10 non-critical hits to kill the
-    player. The player kills that enemy in 1 to 3 non-critical hits.
+    RARITY scales magnitude, and nothing else.
+        health, damage, armor, energy shield
+        A Legendary Imp is a bigger Imp. It is not a different creature: it does
+        not start critting more, resisting more, or moving differently.
 
-THE ANCHOR THAT MADE IT SOLVABLE. Those targets fix ratios, not numbers: the
-second one is enemy health divided by player damage, and player damage per hit
-did not exist either. What closed it is that a mid-durability character's
-effective health turns out to track the Power Score anchors within a few percent
-at every tier -- 434 against 385 at tier 1, 6,330 against 6,327 at tier 8, for
-the Ravager. That was not designed; the class stat lines in `classes.py` and the
-Power Score formula in `player_power.py` were calibrated separately and against
-different things.
+    ARCHETYPE supplies the profile, and it does not change with rarity.
+        attack interval, critical strike chance and multiplier, movement speed,
+        evasion, energy shield as a fraction of health, resistances, and the
+        multipliers that say how big this kind of thing is relative to average
+        The Imp is fast whether it is Common or Legendary. The Corrupted
+        Sentinel never moves. The Brute is always heavily armoured.
 
-So player effective health is approximately the player's Power Score, and
-everything else can be expressed as a fraction of a score.
+RESISTANCE SAYS WHAT A CREATURE IS MADE OF, AND NEVER WHICH CATACLYSM IT IS
+FROM. See `_check_no_archetype_mentions_its_own_cataclysms_damage_type` for the
+full reasoning. The short version: the design hands the player the damage type of
+the Cataclysm they are fighting, so an enemy resisting that type is an
+unavoidable tax and an enemy weak to it is an unmissable bonus. Neither is a
+decision. A construct resists what kills living things; armoured flesh resists
+blades; a creature of the mind resists madness.
 
-WHY THE FACTORS VARY BY RARITY. Rarity should change the SHAPE of a fight, not
-only its size. Under a single pair of factors, a boss is a common enemy with more
-health -- it hits for the same amount at the same rate and simply takes longer to
-remove, which is a damage sponge rather than a different fight. So common enemies
-hit often for little and die fast, and bosses hit rarely for a great deal and
-take a long time to kill.
+An earlier version of this file put attack interval, criticals, movement and
+resistance on the RARITY, which said a Cataclysm Boss winds up more slowly than
+a Common enemy purely because it is rarer. That is a statement about what kind of
+creature it is, so it belongs to the archetype. The project owner pointed this
+out and it is now the other way round.
 
-That argument stands on its own. It is worth noting what it deliberately does NOT
-rest on: a Bulwark passive tree keystone triggers on absorbing "a single hit
-exceeding 5,000 flat damage", which is the only absolute damage figure anywhere
-in the project. It is tempting to treat that as an anchor. It is not one. The
-project owner's direction is that passive tree content can change and the engine
-takes precedence, so a tree node is evidence of intent at most, and the numbers
-here are not fitted to it.
+WHY THERE IS NO ENEMY PENETRATION HERE. An earlier version gave each rarity a
+penetration figure so that over-capping resistance would be worth something.
+`combat.py` already does that job, through Overwhelm: an enemy above the player's
+Power Score strips the player's mitigation in proportion to the gap, and because
+`scoring.RARITY_WEIGHTS` already spaces the rarities apart in score, that
+produces a rarity ladder by itself. Measured at tier 8 against a player at the
+tier's maximum score, Overwhelm strips 8.9% from a Common enemy and 21.4% from a
+Cataclysm Boss. The hard-coded figures were a second copy of the same mechanic at
+roughly double the size.
 
-WHAT THESE COMPARISONS ASSUME, AND WHERE THAT BREAKS DOWN. Every player figure
-below is a character with NO GEAR AT ALL, because flat health and mitigation from
-gear have no values anywhere yet. That is fine against common enemies, where the
-targets are met. It is misleading against bosses: a gearless character at tier 8
-is not a real tier 8 character, and the boss rows show it being killed in very
-few hits. Read those rows as "this is what gear has to close", not as a balance
-result.
+Overwhelm is the better of the two for two reasons. It responds to the player's
+own power, so out-gearing the content shrinks it, where a fixed per-rarity number
+punishes forever. And it strips ALL mitigation rather than only resistance, so an
+armour or block or evasion build cannot sidestep it.
+
+Over-capping resistance keeps its purpose under Overwhelm, and gets a cleaner
+one: resistance above the 70% cap is exactly the headroom that Overwhelm eats
+into. The player's own offensive Penetration stat is untouched by any of this.
+
+WHAT THIS DOES NOT COVER. Enemy abilities. The Hellhound's fire trail, the
+Brute's stomp stun, the Gatekeeper's phases and the Abyssal Warden's positional
+weak points are behaviour, not statistics. They belong with the enemy design work
+in issues #29 and #39. This is the stat block each of them stands on.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from . import scoring
+from .character import DAMAGE_TYPES
 
 # --------------------------------------------------------------------------
-# The player side
+# The rarity ladder: magnitude only
 # --------------------------------------------------------------------------
 
-#: A player's damage per non-critical hit, as a fraction of their Power Score.
+#: In order, and matching `scoring.RARITY_WEIGHTS`, which is the authoritative
+#: list. Note it has Herald and Cataclysm Boss and no Rare; the design document's
+#: list is the superseded one. See issue #30.
+RARITY_ORDER = ("Common", "Elite", "Legendary", "Herald", "Boss",
+                "Cataclysm Boss")
+
+
+def rarity_step(rarity: str) -> int:
+    """How far above Common a rarity sits. Common is 0, Cataclysm Boss is 5."""
+    if rarity not in RARITY_ORDER:
+        raise ValueError(
+            f"unknown rarity {rarity!r}; expected one of {list(RARITY_ORDER)}")
+    return RARITY_ORDER.index(rarity)
+
+
+#: Health as a fraction of score for an average Common enemy, multiplied per step
+#: of rarity. 1.85 per step takes a Cataclysm Boss to roughly 21 times a Common
+#: enemy's health, which is what makes a boss fight last rather than a boss
+#: simply hit harder.
+HEALTH_AT_COMMON = 0.50
+HEALTH_PER_STEP = 1.85
+
+#: Damage. 1.55 per step makes one Cataclysm Boss hit worth about nine Common
+#: enemy hits.
 #:
-#: Solved from the target of 1 to 3 hits to kill a common enemy, together with
-#: the common health factor below: 0.5 / 0.25 is 2 hits, the middle of the range.
-#:
-#: Sanity check against the one other source of player damage figures: the
-#: Bulwark tree grants 50, 100, 200 and 500 flat damage per passive point. At
-#: tier 8 this puts a base hit at about 1,580, so those nodes are meaningful
-#: additions rather than the whole of a character's damage, which is right.
-PLAYER_DAMAGE_FACTOR = 0.25
+#: This used to be 1.21, which put a Cataclysm Boss at 2.8 times a Common enemy's
+#: hit and -- because attack interval then rose with rarity too -- at only 1.2
+#: times its damage per second. The rarest things in the game were therefore not
+#: frightening, which the project owner flagged. Damage now grows faster and
+#: attack interval no longer rises with rarity at all, so the danger is real.
+DAMAGE_AT_COMMON = 0.09
+DAMAGE_PER_STEP = 1.55
 
-
-def player_damage_per_hit(player_power: float) -> float:
-    return player_power * PLAYER_DAMAGE_FACTOR
+#: Armour. Unlike the two above, an average enemy carries a little of this and a
+#: Common enemy is no longer automatically unarmoured -- a Common Brute is
+#: described in the design as heavily armoured, and that is the archetype's call
+#: to make, not the rarity's. An archetype with no armour sets its share to zero.
+ARMOR_AT_COMMON = 0.10
+ARMOR_PER_STEP = 1.35
 
 
 # --------------------------------------------------------------------------
-# The enemy side
+# Archetypes: what KIND of thing the enemy is
 # --------------------------------------------------------------------------
 
 @dataclass(frozen=True)
-class RarityProfile:
-    """How one rarity converts its score into a fight.
+class Archetype:
+    """One kind of enemy. Rarity scales this; it does not reshape it."""
 
-    `health` and `damage` are fractions of the enemy's own score.
-    `attack_interval` is seconds between its attacks.
-    """
+    name: str
+    role: str
 
-    health: float
-    damage: float
-    attack_interval: float
+    #: Which Cataclysm this enemy belongs to. Also the damage type it deals: the
+    #: design gives each Cataclysm one damage type and its enemies use it.
+    cataclysm: str = "Demonic"
+
+    # How big this kind of thing is, relative to an average enemy of its rarity.
+    health_share: float = 1.0
+    damage_share: float = 1.0
+    armor_share: float = 1.0
+
+    # The profile. Fixed: the same at every rarity.
+    attack_interval: float = 1.5      # seconds between attacks
+    crit_chance: float = 5.0          # percent
+    crit_multiplier: float = 150.0    # percent
+    move_speed: float = 4.5           # metres per second
+    evasion: float = 0.0              # percent, direct attacks only
+    energy_shield_fraction: float = 0.0   # of this enemy's health
+
+    #: What this creature is made of and how it fights, expressed as percentages
+    #: by damage type. Negative means it takes extra damage. See
+    #: `_check_no_archetype_mentions_its_own_cataclysms_damage_type` below for
+    #: the one hard rule these must obey.
+    resistances: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def damage_type(self) -> str:
+        """What this enemy deals. The same as its Cataclysm, by design."""
+        return self.cataclysm
+
+    def resistance_to(self, damage_type: str) -> float:
+        """Percent resisted. Negative means this enemy takes extra damage."""
+        if damage_type not in DAMAGE_TYPES:
+            raise ValueError(
+                f"unknown damage type {damage_type!r}; "
+                f"expected one of {list(DAMAGE_TYPES)}")
+        return self.resistances.get(damage_type, 0.0)
 
 
-#: Common is SOLVED from the two targets. Everything above it is proposed.
-#:
-#: The rarer profiles are deliberately less extreme than a first pass produced.
-#: Pushing boss damage high enough to make a gearless character die in one hit
-#: says nothing useful, because a gearless character is not a real tier 8
-#: character. These are set so that even with no gear at all a boss takes several
-#: hits to kill the player, which leaves gear room to make the fight longer
-#: rather than room to make it survivable at all.
-#:
-#: Rarity names match `scoring.RARITY_WEIGHTS`, which is the authoritative list.
-#: Note it has Herald and Cataclysm Boss and no Rare; the design document's list
-#: is the superseded one. See issue #30.
-RARITY_PROFILES: dict[str, RarityProfile] = {
-    "Common":         RarityProfile(health=0.50, damage=0.11, attack_interval=1.5),
-    "Elite":          RarityProfile(health=1.20, damage=0.14, attack_interval=1.8),
-    "Legendary":      RarityProfile(health=2.50, damage=0.17, attack_interval=2.0),
-    "Herald":         RarityProfile(health=4.00, damage=0.20, attack_interval=2.5),
-    "Boss":           RarityProfile(health=7.00, damage=0.24, attack_interval=3.0),
-    "Cataclysm Boss": RarityProfile(health=10.0, damage=0.28, attack_interval=3.5),
+#: The abstract average enemy. Not a creature anyone fights: it exists so the
+#: rarity ladder can be read on its own, with every archetype multiplier at 1 and
+#: no thematic resistances. Every table in this file that shows "the rarity base
+#: class" is showing this archetype at each rarity.
+BASELINE = Archetype(name="Baseline", role="The average enemy, for reading the "
+                                           "rarity ladder on its own")
+
+#: The seven Demonic Cataclysm enemies the design document names for the vertical
+#: slice. Their roles are quoted from it; the numbers are this file's.
+ARCHETYPES: dict[str, Archetype] = {
+    a.name: a for a in (
+        BASELINE,
+        Archetype(
+            name="Imp",
+            role="Fast, swarming melee. Weak individually",
+            health_share=0.35, damage_share=0.45, armor_share=0.0,
+            attack_interval=0.9, move_speed=6.5, evasion=25.0,
+            # Nothing. Swarm fodder should die to whatever the player brought.
+            resistances={},
+        ),
+        Archetype(
+            name="Succubus",
+            role="Ranged caster. Slow but powerful attacks",
+            health_share=0.60, damage_share=1.60, armor_share=0.20,
+            attack_interval=2.6, crit_chance=10.0, crit_multiplier=200.0,
+            move_speed=3.5, evasion=10.0, energy_shield_fraction=0.50,
+            # A creature whose whole power is over the mind is hard to unhinge,
+            # and is fragile the moment something reaches it.
+            resistances={"Chaos": 30.0, "War": -25.0},
+        ),
+        Archetype(
+            name="Hellhound",
+            role="Aggressive charger that leaves fire trails",
+            health_share=0.75, damage_share=0.95, armor_share=0.30,
+            attack_interval=1.1, crit_chance=15.0, crit_multiplier=175.0,
+            move_speed=7.5, evasion=20.0,
+            # A beast that already lives in filth, and one that burns through
+            # its own reserves to move that fast.
+            resistances={"Pestilence": 30.0, "Famine": -25.0},
+        ),
+        Archetype(
+            name="Brute",
+            role="Heavily armored slow melee. Can be outmaneuvered",
+            health_share=2.20, damage_share=1.75, armor_share=3.00,
+            attack_interval=2.8, crit_multiplier=200.0, move_speed=2.5,
+            # The exact inverse of the Succubus, deliberately: armour turns
+            # blades, and a slow mind is the thing that breaks. Two enemies in
+            # the same Cataclysm that want opposite weapons.
+            resistances={"War": 30.0, "Chaos": -25.0},
+        ),
+        Archetype(
+            name="Corrupted Sentinel",
+            role="Stationary ranged. Forces the player to stay mobile",
+            health_share=1.30, damage_share=1.10, armor_share=2.20,
+            attack_interval=2.0, move_speed=0.0, energy_shield_fraction=0.35,
+            # It is not alive, so nothing that kills or sickens a living thing
+            # does much. Force still breaks it.
+            resistances={"Death": 40.0, "Pestilence": 40.0, "War": -25.0},
+        ),
+        Archetype(
+            name="Abyssal Warden",
+            role="Massive stone and lava demon. High damage resistance",
+            health_share=3.50, damage_share=1.90, armor_share=3.50,
+            attack_interval=2.4, crit_chance=10.0, crit_multiplier=200.0,
+            move_speed=2.8,
+            # The design says high damage resistance, so it resists broadly:
+            # stone shrugs off force, and lava is neither alive nor starvable.
+            # Unmaking is what gets through sheer mass.
+            resistances={"War": 30.0, "Death": 30.0, "Pestilence": 30.0,
+                         "Famine": 30.0, "Void": -25.0},
+        ),
+        Archetype(
+            name="Gatekeeper",
+            role="Multi-phase towering demon",
+            health_share=5.00, damage_share=2.10, armor_share=2.50,
+            attack_interval=3.0, crit_chance=15.0, crit_multiplier=250.0,
+            move_speed=3.0,
+            # Resists everything it can and has no weakness at all, so there is
+            # no cheap answer to the last fight. The player's own resistance
+            # penetration is the counter, and this is the one enemy in the
+            # vertical slice that gives that stat a target.
+            resistances={t: 25.0 for t in DAMAGE_TYPES if t != "Demonic"},
+        ),
+    )
 }
 
 
-def profile_for(rarity: str) -> RarityProfile:
-    if rarity not in RARITY_PROFILES:
-        raise ValueError(
-            f"unknown rarity {rarity!r}; expected one of "
-            f"{sorted(RARITY_PROFILES)}")
-    return RARITY_PROFILES[rarity]
+def _check_no_archetype_mentions_its_own_cataclysms_damage_type() -> None:
+    """THE ONE HARD RULE, and the reason this file was rewritten.
 
+    An enemy's resistance profile must not mention its own Cataclysm's damage
+    type, in either direction.
 
-def enemy_health(score: float, rarity: str) -> float:
-    return max(1.0, score * profile_for(rarity).health)
+    The design gives the player the damage type of the Cataclysm they are
+    fighting: `Cataclysm_GDD_v2.md` says loot is biased toward weapons tuned to
+    it, and weapon damage type is what unlocks skills and class trees. So in the
+    first run a player has exactly one damage type and cannot obtain another
+    until they have already beaten a Cataclysm.
 
+    An earlier version had every Demonic enemy resist Demonic damage by 40%.
+    That is a flat 40% damage loss against 100% of enemies in the first run,
+    with no counterplay available, easing off only as later runs add Cataclysms
+    and the player gains other damage types. It made the game hardest exactly
+    where the player has the fewest options.
 
-def enemy_damage_per_hit(score: float, rarity: str) -> float:
-    return max(0.0, score * profile_for(rarity).damage)
-
-
-def enemy_damage_per_second(score: float, rarity: str) -> float:
-    p = profile_for(rarity)
-    return score * p.damage / p.attack_interval
-
-
-def hits_to_kill_enemy(score: float, rarity: str, player_power: float) -> float:
-    """How many non-critical player hits an enemy of this score survives."""
-    damage = player_damage_per_hit(player_power)
-    return enemy_health(score, rarity) / max(damage, 1e-9)
-
-
-def hits_to_kill_player(score: float, rarity: str,
-                        player_effective_health: float,
-                        mitigation_fraction: float = 0.0) -> float:
-    """How many of this enemy's hits the player survives.
-
-    `mitigation_fraction` is everything the damage calculation removes, from 0
-    for a character with no armor, resistance or shield up to just under 1.
+    Resisting it is a tax the player cannot avoid; being weak to it is a bonus
+    they cannot miss. Neither is a decision, so neither belongs here. What an
+    enemy resists says what it is made of and how it fights.
     """
-    per_hit = enemy_damage_per_hit(score, rarity) * (1.0 - mitigation_fraction)
+    for kind in ARCHETYPES.values():
+        assert kind.cataclysm not in kind.resistances, (
+            f"{kind.name} has a {kind.cataclysm} resistance of "
+            f"{kind.resistances[kind.cataclysm]}, but {kind.cataclysm} is its "
+            "own Cataclysm's damage type, which is the one the player is given.")
+
+
+def _check_every_resistance_names_a_real_damage_type() -> None:
+    for kind in ARCHETYPES.values():
+        for damage_type in kind.resistances:
+            assert damage_type in DAMAGE_TYPES, (
+                f"{kind.name} resists {damage_type!r}, which is not one of the "
+                f"eight damage types: {list(DAMAGE_TYPES)}")
+
+
+_check_no_archetype_mentions_its_own_cataclysms_damage_type()
+_check_every_resistance_names_a_real_damage_type()
+
+
+def archetype(name: str) -> Archetype:
+    if name not in ARCHETYPES:
+        raise ValueError(
+            f"unknown archetype {name!r}; expected one of {sorted(ARCHETYPES)}")
+    return ARCHETYPES[name]
+
+
+# --------------------------------------------------------------------------
+# The stat block
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class EnemyStats:
+    """One enemy's complete stat block."""
+
+    archetype: Archetype
+    rarity: str
+    score: float
+
+    # Scaled by rarity.
+    health: float
+    damage_per_hit: float
+    armor: float
+    energy_shield: float
+
+    # Taken unchanged from the archetype.
+    attack_interval: float
+    crit_chance: float
+    crit_multiplier: float
+    move_speed: float
+    evasion: float
+
+    @property
+    def name(self) -> str:
+        if self.archetype is BASELINE:
+            return self.rarity
+        return f"{self.rarity} {self.archetype.name}"
+
+    @property
+    def effective_health(self) -> float:
+        """Health plus shield. What the player's damage has to chew through."""
+        return self.health + self.energy_shield
+
+    @property
+    def damage_per_second(self) -> float:
+        return self.damage_per_hit / self.attack_interval
+
+    @property
+    def average_damage_per_hit(self) -> float:
+        """Including critical strikes, over many hits."""
+        chance = self.crit_chance / 100.0
+        multiplier = self.crit_multiplier / 100.0
+        return self.damage_per_hit * (1.0 - chance + chance * multiplier)
+
+    def resistance_to(self, damage_type: str) -> float:
+        return self.archetype.resistance_to(damage_type)
+
+
+def stats_for(rarity: str, score: float,
+              kind: Archetype | str = BASELINE) -> EnemyStats:
+    """The whole stat block for one enemy.
+
+    `rarity` sets how big it is, `kind` sets what it is, `score` is what
+    `scoring.py` says the encounter is worth.
+    """
+    kind = archetype(kind) if isinstance(kind, str) else kind
+    n = rarity_step(rarity)
+    score = max(0.0, score)
+
+    health = max(1.0, score * HEALTH_AT_COMMON * HEALTH_PER_STEP ** n
+                 * kind.health_share)
+
+    return EnemyStats(
+        archetype=kind,
+        rarity=rarity,
+        score=score,
+        health=health,
+        damage_per_hit=(score * DAMAGE_AT_COMMON * DAMAGE_PER_STEP ** n
+                        * kind.damage_share),
+        armor=(score * ARMOR_AT_COMMON * ARMOR_PER_STEP ** n
+               * kind.armor_share),
+        energy_shield=health * kind.energy_shield_fraction,
+        attack_interval=kind.attack_interval,
+        crit_chance=kind.crit_chance,
+        crit_multiplier=kind.crit_multiplier,
+        move_speed=kind.move_speed,
+        evasion=kind.evasion,
+    )
+
+
+def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
+                   subtype: str = "None", total_floors: int = 50,
+                   floor: int | None = None,
+                   modifier_score: float = 0.0,
+                   kind: Archetype | str = BASELINE) -> EnemyStats:
+    """The stat block for an enemy standing on a particular dungeon floor."""
+    floor = total_floors if floor is None else floor
+    scores = scoring.enemy_scores(tier, dungeon_type, subtype, total_floors,
+                                  floor, modifier_score)
+    return stats_for(rarity, scores[rarity], kind)
+
+
+# --------------------------------------------------------------------------
+# Reported, not asserted: what this implies for a player
+# --------------------------------------------------------------------------
+#
+# The enemy side is set on its own terms and gear will be fitted to it, so these
+# two functions answer questions and enforce nothing. An earlier version of the
+# test file asserted player survival targets directly, which is what kept
+# producing conflicts with the gear work.
+
+def hits_to_kill_player(enemy: EnemyStats, player_effective_health: float,
+                        mitigation_fraction: float = 0.0) -> float:
+    """How many of this enemy's hits a player survives, counting criticals."""
+    per_hit = enemy.average_damage_per_hit * (1.0 - mitigation_fraction)
     return player_effective_health / max(per_hit, 1e-9)
 
 
+def player_damage_to_kill_in(enemy: EnemyStats, hits: float,
+                             damage_type: str | None = None) -> float:
+    """The damage per hit a player needs to kill this enemy in so many hits.
+
+    This is the number gear has to produce, and it is now an OUTPUT of the enemy
+    design rather than an input to it. Resistance is counted, so the damage type
+    matters. The default is the Cataclysm's own type, because that is what the
+    design gives the player for fighting it.
+    """
+    damage_type = enemy.archetype.cataclysm if damage_type is None else damage_type
+    resisted = 1.0 - enemy.resistance_to(damage_type) / 100.0
+    return enemy.effective_health / (max(hits, 1e-9) * max(resisted, 1e-9))
+
+
 if __name__ == "__main__":
+    TIER = 8
+    print("Enemy stat blocks. Issue #97.")
+    print()
+    print("Rarity scales magnitude. Archetype supplies the profile.")
+    print()
+
+    print(f"The rarity ladder on its own, tier {TIER}, last floor of a 50-floor")
+    print("Cataclysm dungeon. This is the baseline archetype, every multiplier")
+    print("at 1, so it shows what rarity alone does:")
+    print()
+    print(f"    {'rarity':<15} {'score':>6} {'health':>9} {'hit':>8} {'armor':>7}")
+    print("    " + "-" * 50)
+    for rarity in RARITY_ORDER:
+        e = stats_on_floor(rarity, TIER, "Cataclysm")
+        print(f"    {rarity:<15} {e.score:>6,.0f} {e.health:>9,.0f} "
+              f"{e.damage_per_hit:>8,.0f} {e.armor:>7,.0f}")
+    print()
+
+    common = stats_on_floor("Common", TIER, "Cataclysm")
+    cb = stats_on_floor("Cataclysm Boss", TIER, "Cataclysm")
+    print(f"    A Cataclysm Boss has {cb.health / common.health:.0f}x a Common enemy's health "
+          f"and hits {cb.damage_per_hit / common.damage_per_hit:.1f}x as hard.")
+    print("    Health still grows faster, so the rarest things are long fights")
+    print("    AND dangerous, rather than only one or the other.")
+    print()
+
+    print("=" * 78)
+    print("The seven Demonic Cataclysm enemies, each at the rarity it is")
+    print(f"normally met at, tier {TIER}:")
+    print()
+    AT = (("Imp", "Common"), ("Hellhound", "Common"), ("Succubus", "Elite"),
+          ("Brute", "Elite"), ("Corrupted Sentinel", "Legendary"),
+          ("Abyssal Warden", "Herald"), ("Gatekeeper", "Cataclysm Boss"))
+    print(f"    {'enemy':<28} {'health':>9} {'shield':>8} {'hit':>9} "
+          f"{'every':>6} {'armor':>8} {'speed':>6} {'evade':>6}")
+    print("    " + "-" * 86)
+    for name, rarity in AT:
+        e = stats_on_floor(rarity, TIER, "Cataclysm", kind=name)
+        print(f"    {e.name:<28} {e.health:>9,.0f} {e.energy_shield:>8,.0f} "
+              f"{e.damage_per_hit:>9,.0f} {e.attack_interval:>5.1f}s "
+              f"{e.armor:>8,.0f} {e.move_speed:>6.1f} {e.evasion:>5.0f}%")
+    print()
+    print("    Same rarity, different creature: an Elite Succubus and an Elite")
+    print("    Brute share a score and share nothing else.")
+    print()
+
+    print("    Resistance says what a creature is made of. No enemy resists or")
+    print("    is weak to its own Cataclysm's damage type, because that is the")
+    print("    one the design hands the player:")
+    print()
+    print(f"    {'enemy':<20} " + " ".join(f"{d[:4]:>5}" for d in DAMAGE_TYPES))
+    print("    " + "-" * 68)
+    for name, _ in AT:
+        k = archetype(name)
+        cells = []
+        for dt in DAMAGE_TYPES:
+            r = k.resistance_to(dt)
+            cells.append("    ." if r == 0 else f"{r:>5.0f}")
+        print(f"    {name:<20} " + " ".join(cells))
+    print()
+    print("    The Demonic column is empty for every one of them. Negative means")
+    print("    extra damage taken. The Brute and the Succubus are deliberate")
+    print("    opposites: armour turns blades, and a slow mind is what breaks.")
+    print()
+
+    print("=" * 78)
+    print("What this implies for the player. REPORTED, NOT ASSERTED.")
+    print()
     from .character import Attributes, Character
     from .classes import DEMONIC_CLASSES
-    from .player_power import reference_character
 
-    print("Enemy health and damage, derived from Enemy Score. Issue #97.")
-    print()
-    print("Targets set by the project owner:")
-    print("  a common enemy of equal score kills the player in 8-10 hits")
-    print("  the player kills that enemy in 1-3 hits")
-    print()
-
-    print("Check against the Ravager, which is the middle of the three classes")
-    print("for durability, on the last floor of a 50-floor Basic dungeon:")
-    print()
-    print(f"    {'tier':>5} {'enemy':>7} {'its hp':>8} {'its hit':>8} "
-          f"{'player hp':>10} {'player hit':>11} {'hits to':>8} {'hits to':>8}")
-    print(f"    {'':>5} {'score':>7} {'':>8} {'':>8} {'':>10} {'':>11} "
-          f"{'kill it':>8} {'kill you':>8}")
-    print("    " + "-" * 76)
-    for tier in (1, 4, 8):
-        ref = reference_character(tier)
-        c = Character(DEMONIC_CLASSES["Ravager"], level=ref.level,
-                      attributes=Attributes(vitality=ref.level))
-        pool = c.stat("max_health") + c.stat("max_energy_shield")
-        score = scoring.enemy_scores(tier, "Basic", "None", 50, 50)["Common"]
-        power = scoring.PLAYER_MAX_SCORES[tier]
-        print(f"    {tier:>5} {score:>7,} {enemy_health(score, 'Common'):>8,.0f} "
-              f"{enemy_damage_per_hit(score, 'Common'):>8,.0f} {pool:>10,.0f} "
-              f"{player_damage_per_hit(power):>11,.0f} "
-              f"{hits_to_kill_enemy(score, 'Common', power):>8.1f} "
-              f"{hits_to_kill_player(score, 'Common', pool):>8.1f}")
-    print()
-
-    print("Rarity changes the shape of a fight, not only its size. Tier 8,")
-    print("Cataclysm dungeon, last floor, against a Ravager:")
-    print()
-    ref = reference_character(8)
     rav = Character(DEMONIC_CLASSES["Ravager"], level=100,
                     attributes=Attributes(vitality=100))
-    pool8 = rav.stat("max_health") + rav.stat("max_energy_shield")
-    scores8 = scoring.enemy_scores(8, "Cataclysm", "None", 50, 50)
-    print(f"    {'rarity':<15} {'score':>7} {'its hp':>9} {'its hit':>8} "
-          f"{'every':>7} {'hits to':>8} {'hits to':>8}")
-    print(f"    {'':<15} {'':>7} {'':>9} {'':>8} {'':>7} {'kill it':>8} "
-          f"{'kill you':>8}")
-    print("    " + "-" * 70)
-    for rarity in RARITY_PROFILES:
-        s = scores8[rarity]
-        p = profile_for(rarity)
-        print(f"    {rarity:<15} {s:>7,} {enemy_health(s, rarity):>9,.0f} "
-              f"{enemy_damage_per_hit(s, rarity):>8,.0f} "
-              f"{p.attack_interval:>6.1f}s "
-              f"{hits_to_kill_enemy(s, rarity, 6327):>8.0f} "
-              f"{hits_to_kill_player(s, rarity, pool8):>8.1f}")
+    pool = rav.stat("max_health") + rav.stat("max_energy_shield")
+    print(f"    A level 100 Ravager with no gear has {pool:,.0f} effective health,")
+    print("    and no gear is not a real state at tier 8. It is a floor.")
     print()
-    biggest = enemy_damage_per_hit(scores8["Cataclysm Boss"], "Cataclysm Boss")
-    print(f"    The largest single hit in the game is {biggest:,.0f}.")
+    print(f"    {'enemy':<28} {'its hits you survive':>21} {'per hit to kill it in 30':>26}")
+    print("    " + "-" * 78)
+    for name, rarity in AT:
+        e = stats_on_floor(rarity, TIER, "Cataclysm", kind=name)
+        print(f"    {e.name:<28} {hits_to_kill_player(e, pool):>21.1f} "
+              f"{player_damage_to_kill_in(e, 30.0):>26,.0f}")
     print()
-    print("    Every player figure above is a character with NO GEAR, because")
-    print("    gear has no health or mitigation values anywhere yet. Against")
-    print("    common enemies the targets are met and that is fine. The boss")
-    print("    rows are what gear has to close, not a balance result.")
+    print("    The Gatekeeper one-shots a gearless character several times over,")
+    print("    which is what the project owner asked for. What gear has to")
+    print("    supply is the last column, and it is an output of this file")
+    print("    rather than an input to it.")
