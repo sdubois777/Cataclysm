@@ -45,6 +45,12 @@ def test_every_attribute_scales_at_least_one_stat_on_the_sheet():
                 f"{attribute} scales {stat}, which is not on the sheet")
 
 
+def test_every_attribute_effect_has_a_recorded_original_value():
+    """So the proposal on #86 can always be shown against what it replaced."""
+    named = {s for e in ch.ATTRIBUTE_EFFECTS.values() for s in e}
+    assert named == set(ch.ORIGINAL_ATTRIBUTE_VALUES)
+
+
 # --------------------------------------------------------------------------
 # Where a base value comes from
 # --------------------------------------------------------------------------
@@ -171,19 +177,91 @@ def test_an_attribute_scales_every_stat_it_is_listed_against():
         assert c.increases(stat) > 0, f"efficacy did not reach {stat}"
 
 
-def test_a_stat_with_a_zero_base_gains_nothing_from_its_attribute():
-    """A stated consequence of attributes scaling rather than creating. The
-    default line has no evasion, so Agility has nothing to multiply."""
+def test_a_magnitude_stat_with_a_zero_base_gains_nothing_from_its_attribute():
+    """A consequence of attributes scaling rather than creating, and correct.
+    The default line has no armor, so Constitution has nothing to multiply.
+    A class that gives itself a base does benefit."""
+    c = ch.Character(ch.GENERIC, level=100,
+                     attributes=ch.Attributes(constitution=100))
+    assert c.increases("armor") > 0
+    assert c.stat("armor") == 0.0
+    armoured = ch.ClassDefinition(name="Armoured",
+                                  overrides={"armor": ch.Scaling(base=10.0)})
+    assert ch.Character(armoured, level=100,
+                        attributes=ch.Attributes(constitution=100)
+                        ).stat("armor") == pytest.approx(30.0)
+
+
+# --------------------------------------------------------------------------
+# Flat versus increase, which is issue #86
+# --------------------------------------------------------------------------
+
+def test_a_flat_effect_gives_a_chance_stat_its_first_value():
+    """Evasion has no class base on the default line, but Agility is a flat
+    effect, so it creates a value where an increase could not."""
+    assert ch.ATTRIBUTE_EFFECTS["agility"]["evasion"].kind == "flat"
     c = ch.Character(ch.GENERIC, level=100,
                      attributes=ch.Attributes(agility=100))
-    assert c.increases("evasion") > 0
-    assert c.stat("evasion") == 0.0
-    # And a class that gives itself a base does benefit.
-    nimble = ch.ClassDefinition(name="Nimble",
-                                overrides={"evasion": ch.Scaling(base=10.0)})
-    assert ch.Character(nimble, level=100,
-                        attributes=ch.Attributes(agility=100)
-                        ).stat("evasion") == pytest.approx(15.0)
+    assert c.stat("evasion") == pytest.approx(30.0)
+
+
+def test_flat_contributions_land_in_the_base_so_gear_increases_scale_them():
+    """The alternative would be adding them beside the final value, which would
+    make gear worth less on an attribute-heavy character."""
+    c = ch.Character(ch.GENERIC, level=100,
+                     attributes=ch.Attributes(agility=100),
+                     gear=ch.Gear(increased={"evasion": 1.0}))
+    assert c.base("evasion") == pytest.approx(30.0)
+    assert c.stat("evasion") == pytest.approx(60.0)
+
+
+def test_the_four_chance_stats_are_flat_and_the_magnitudes_are_increases():
+    kinds = {stat: eff.kind
+             for effects in ch.ATTRIBUTE_EFFECTS.values()
+             for stat, eff in effects.items()}
+    for stat in ("evasion", "crit_chance", "block_chance", "magic_find"):
+        assert kinds[stat] == "flat", f"{stat} should be a flat percentage point"
+    for stat in ("max_health", "max_mana", "max_energy_shield", "armor",
+                 "crit_multiplier", "movement_speed", "health_regen",
+                 "area_of_effect", "loot_quantity"):
+        assert kinds[stat] == "increase", f"{stat} should be an increase"
+
+
+def test_reading_crit_chance_as_an_increase_is_what_made_it_worthless():
+    """The measurement issue #86 reports. Under the old reading Ferocity moved
+    critical strike chance from 5% to 7.5% across the entire budget."""
+    base = ch.DEFAULT_STAT_LINE["crit_chance"].base
+    as_increase = base * (1 + 100 * ch.ORIGINAL_ATTRIBUTE_VALUES["crit_chance"])
+    assert as_increase == pytest.approx(7.5)
+    now = ch.Character(ch.GENERIC, level=100,
+                       attributes=ch.Attributes(ferocity=100)).stat("crit_chance")
+    assert now == pytest.approx(35.0)
+    assert now > as_increase * 4
+
+
+def test_movement_speed_is_no_longer_tripled_by_one_attribute():
+    """The design document's +2% per point tripled movement speed at 100 points,
+    which no top-down action game survives."""
+    old = 100 * ch.ORIGINAL_ATTRIBUTE_VALUES["movement_speed"]
+    assert old == pytest.approx(2.0), "old value tripled the stat"
+    c = ch.Character(ch.GENERIC, level=100,
+                     attributes=ch.Attributes(agility=100))
+    base = ch.DEFAULT_STAT_LINE["movement_speed"].base
+    assert c.stat("movement_speed") == pytest.approx(base * 1.30)
+
+
+def test_an_attribute_effect_rejects_an_unknown_kind():
+    with pytest.raises(ValueError, match="increase.*flat"):
+        ch.AttributeEffect(0.1, "multiplicative")
+
+
+def test_no_attribute_gives_both_a_flat_and_an_increase_to_the_same_stat():
+    """Two attributes may both touch a stat, but one attribute giving the same
+    stat both kinds would make the per-point value ambiguous."""
+    for attribute, effects in ch.ATTRIBUTE_EFFECTS.items():
+        kinds = [(s, e.kind) for s, e in effects.items()]
+        assert len(kinds) == len({s for s, _ in kinds}), (
+            f"{attribute} lists a stat twice")
 
 
 # --------------------------------------------------------------------------

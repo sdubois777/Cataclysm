@@ -90,24 +90,75 @@ RATE_STATS = frozenset({"cooldown_reduction"})
 # Which attribute scales which stat
 # --------------------------------------------------------------------------
 
-#: Straight from the attribute table. Each entry is the increase, as a fraction,
-#: that one point of that attribute adds to that stat's sum of increases.
-#:
-#: Every one of these is an INCREASE, not a flat addition, because the design
-#: document says attributes scale values rather than creating them. That has a
-#: consequence worth stating: a class whose base for a stat is zero gets nothing
-#: from the attribute that scales it. A class with no base evasion gains no
-#: evasion from Agility. See the note in the module docstring for issue #77.
-ATTRIBUTE_EFFECTS: dict[str, dict[str, float]] = {
-    "agility":      {"movement_speed": 0.02, "evasion": 0.005},
-    "ferocity":     {"crit_chance": 0.005, "crit_multiplier": 0.05},
-    "constitution": {"armor": 0.02, "block_chance": 0.01},
-    "vitality":     {"max_health": 0.02, "health_regen": 0.01},
-    "mind":         {"max_mana": 0.02, "mana_regen": 0.01},
-    "spirit":       {"max_energy_shield": 0.02, "energy_shield_regen": 0.01},
-    "efficacy":     {"cooldown_reduction": 0.01, "area_of_effect": 0.02,
-                     "dot_frequency": 0.01},
-    "luck":         {"magic_find": 0.0001, "loot_quantity": 0.01},
+@dataclass(frozen=True)
+class AttributeEffect:
+    """What one point of an attribute does to one stat.
+
+    `kind` is the whole of issue #86. An attribute point can act in one of two
+    ways, and reading the design document's per-point values under the wrong one
+    changes them by an order of magnitude:
+
+    INCREASE -- a fraction added to the stat's sum of increases, which multiplies
+    the base. Right for magnitudes: health, mana, armor, a multiplier. Two per
+    cent per point means 100 points triples the stat.
+
+    FLAT -- percentage points added to the base, before increases multiply it.
+    Right for chances: critical strike chance, evasion, block chance, magic find.
+    These have no meaningful base to multiply, and reading them as increases
+    makes the attribute nearly worthless. Ferocity read as an increase moves
+    critical strike chance from 5% to 7.5% across a character's entire budget.
+
+    Flat contributions land in the base, so increases from gear scale them. That
+    also means an attribute can give a stat its first value: a class with no base
+    evasion still gains evasion from Agility.
+    """
+
+    value: float
+    kind: str = "increase"
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("increase", "flat"):
+            raise ValueError(f"kind must be 'increase' or 'flat', got {self.kind!r}")
+
+
+def _inc(v: float) -> AttributeEffect:
+    return AttributeEffect(v, "increase")
+
+
+def _flat(v: float) -> AttributeEffect:
+    return AttributeEffect(v, "flat")
+
+
+#: What one point of each attribute does. Proposed on issue #86; the design
+#: document's original values are recorded in ORIGINAL_ATTRIBUTE_VALUES below so
+#: the two can be compared.
+ATTRIBUTE_EFFECTS: dict[str, dict[str, AttributeEffect]] = {
+    # Movement speed is not a pool. At the design document's +2% per point, 100
+    # points tripled it, which no top-down action game survives.
+    "agility":      {"movement_speed": _inc(0.003), "evasion": _flat(0.3)},
+    "ferocity":     {"crit_chance": _flat(0.3), "crit_multiplier": _inc(0.02)},
+    "constitution": {"armor": _inc(0.02), "block_chance": _flat(0.3)},
+    "vitality":     {"max_health": _inc(0.02), "health_regen": _inc(0.01)},
+    "mind":         {"max_mana": _inc(0.02), "mana_regen": _inc(0.01)},
+    "spirit":       {"max_energy_shield": _inc(0.02),
+                     "energy_shield_regen": _inc(0.01)},
+    "efficacy":     {"cooldown_reduction": _inc(0.01),
+                     "area_of_effect": _inc(0.01), "dot_frequency": _inc(0.01)},
+    "luck":         {"magic_find": _flat(0.5), "loot_quantity": _inc(0.01)},
+}
+
+#: The per-point values as written in `docs/Cataclysm_GDD_v2.md`, kept so the
+#: proposal on #86 can be shown against what it replaces. Seven of seventeen
+#: change; the ten vital, regeneration, armor and Efficacy entries do not.
+ORIGINAL_ATTRIBUTE_VALUES: dict[str, float] = {
+    "movement_speed": 0.02, "evasion": 0.005,
+    "crit_chance": 0.005, "crit_multiplier": 0.05,
+    "armor": 0.02, "block_chance": 0.01,
+    "max_health": 0.02, "health_regen": 0.01,
+    "max_mana": 0.02, "mana_regen": 0.01,
+    "max_energy_shield": 0.02, "energy_shield_regen": 0.01,
+    "cooldown_reduction": 0.01, "area_of_effect": 0.02, "dot_frequency": 0.01,
+    "magic_find": 0.0001, "loot_quantity": 0.01,
 }
 
 ATTRIBUTE_NAMES: tuple[str, ...] = tuple(ATTRIBUTE_EFFECTS)
@@ -228,11 +279,22 @@ class Attributes:
     def total(self) -> int:
         return sum(getattr(self, n) for n in ATTRIBUTE_NAMES)
 
+    def _contribution(self, stat: str, kind: str) -> float:
+        return sum(getattr(self, attribute) * effects[stat].value
+                   for attribute, effects in ATTRIBUTE_EFFECTS.items()
+                   if stat in effects and effects[stat].kind == kind)
+
     def increases_for(self, stat: str) -> float:
         """Sum of increases this allocation contributes to one stat."""
-        return sum(getattr(self, attribute) * effects[stat]
-                   for attribute, effects in ATTRIBUTE_EFFECTS.items()
-                   if stat in effects)
+        return self._contribution(stat, "increase")
+
+    def flat_for(self, stat: str) -> float:
+        """Percentage points this allocation adds to one stat's base.
+
+        Lands in the base rather than beside the final value, so gear increases
+        scale it, and so an attribute can give a stat its first value.
+        """
+        return self._contribution(stat, "flat")
 
 
 @dataclass(frozen=True)
@@ -276,12 +338,17 @@ class Character:
 
     def base(self, stat: str) -> float:
         """Before any scaling. Weapon-based stats take their base from the
-        weapon; everything else takes it from the class and level."""
+        weapon; everything else takes it from the class and level.
+
+        Flat contributions from gear and from attribute points both land here,
+        so that increases scale them.
+        """
         if stat in WEAPON_BASE_STATS:
             start = self.gear.weapon_base.get(stat, 0.0)
         else:
             start = self.definition.base_at(stat, self.level)
-        return start + self.gear.flat.get(stat, 0.0)
+        return (start + self.gear.flat.get(stat, 0.0)
+                + self.attributes.flat_for(stat))
 
     def increases(self, stat: str) -> float:
         return (self.attributes.increases_for(stat)
@@ -363,18 +430,51 @@ if __name__ == "__main__":
     print("  its identity requires.")
     print()
 
-    c = Character(GENERIC, level=100,
-                  attributes=Attributes(vitality=60, efficacy=40))
-    print("  A level 100 character on the default line, 60 Vitality 40 Efficacy:")
-    print(f"    max health           {c.stat('max_health'):>10,.0f}")
-    print(f"    max mana             {c.stat('max_mana'):>10,.0f}")
-    print(f"    health regen         {c.stat('health_regen'):>10,.2f}/s")
-    print(f"    crit chance          {c.stat('crit_chance'):>10,.1f}%")
-    print(f"    movement speed       {c.stat('movement_speed'):>10,.0f}")
-    print(f"    a 4s skill cooldown  {c.cooldown_of(4.0):>10,.2f}s"
-          f"   (shown as {c.displayed_cooldown_reduction():.1f}% reduction)")
+    print("  Every attribute at 100 points, level 100, default stat line.")
+    print("  'was' applies the design document's per-point value as an increase,")
+    print("  which is what issue #86 reports as broken. 'now' applies the")
+    print("  proposal: increases for magnitudes, flat percentage points for")
+    print("  chances.")
     print()
-    print("    evasion              "
-          f"{c.stat('evasion'):>10,.1f}   <- zero: the default line has no base")
-    print("    evasion, so Agility has nothing to scale. A class that wants")
-    print("    evasion must override it. This is issue #77.")
+    header = (f"    {'attribute':<13} {'stat':<21} {'at 0':>9} "
+              f"{'was':>10} {'now':>10}  kind")
+    print(header)
+    print("    " + "-" * (len(header) - 4))
+    for attribute, effects in ATTRIBUTE_EFFECTS.items():
+        for stat, effect in effects.items():
+            none = Character(GENERIC, level=100)
+            full = Character(GENERIC, level=100,
+                             attributes=Attributes(**{attribute: 100}))
+            at_zero = none.stat(stat)
+            now = full.stat(stat)
+            # What the original value would have produced, read as an increase.
+            was_inc = 100 * ORIGINAL_ATTRIBUTE_VALUES[stat]
+            if stat in RATE_STATS:
+                at_zero = 0.0
+                now = full.displayed_cooldown_reduction()
+                was = 100.0 * was_inc / (1.0 + was_inc)
+            else:
+                was = none.base(stat) * (1.0 + was_inc)
+            changed = "" if effect.value == ORIGINAL_ATTRIBUTE_VALUES[stat] \
+                and effect.kind == "increase" else "  <- changed"
+            print(f"    {attribute:<13} {stat:<21} {at_zero:>9.2f} "
+                  f"{was:>10.2f} {now:>10.2f}  {effect.kind}{changed}")
+    print()
+    pairs = [(a, s) for a, e in ATTRIBUTE_EFFECTS.items() for s in e]
+    was_dead, now_dead = [], []
+    for attribute, stat in pairs:
+        none = Character(GENERIC, level=100)
+        full = Character(GENERIC, level=100,
+                         attributes=Attributes(**{attribute: 100}))
+        if none.base(stat) == 0.0 and stat not in RATE_STATS:
+            was_dead.append(stat)
+        if full.stat(stat) == 0.0 and stat not in RATE_STATS:
+            now_dead.append(stat)
+    print(f"  {len(was_dead)} of the {len(pairs)} produced nothing at all under the")
+    print("  old reading, because their base is zero and an increase has nothing")
+    print(f"  to multiply. {len(was_dead) - len(now_dead)} of those are chances and now respond,")
+    print("  because flat contributions land in the base.")
+    print()
+    print(f"  {len(now_dead)} still produce nothing, and correctly so: they are")
+    print("  magnitudes, and no class has given them a base yet. That is #77.")
+    print(f"    {', '.join(sorted(set(now_dead)))}")
