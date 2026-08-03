@@ -20,6 +20,91 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The gear affix pool, and where its numbers come from
+
+**Decision.** The ordinary affix pool now exists. Issue #79 recorded that 961
+enchantments were designed and not one ordinary affix, so gear granted no stats
+at all while the Power Score model assumed gear supplies half a character's
+power.
+
+**Seven tiers, on a linear curve.** Tier N is worth N/7 of the affix's top
+value. Linear rather than front-loaded, because a front-loaded curve hands over
+most of an affix's value in the first few tiers and makes the later ones easy to
+skip — which relieves exactly the pressure the design wants to keep applying,
+that a day at the forge is a day not defending the empire. The cost side already
+curves, since gear upgrade levels cost 2^N − 1 stones, so diminishing returns
+arrive through rising cost rather than falling value.
+
+**Every tier is a range, reaching 25% below its top.** Without ranges two
+crafting materials are dead content: the Corrupted Mote rerolls an affix value
+and the Primal Spark perfects a roll, and neither means anything if a tier has
+one value. A first version measured the band against the gap between tiers
+instead of against the affix's own value, which made a perfect set of resistance
+affixes save about one slot out of 72 — not a difference anyone would craft for.
+
+**Bands overlap by exactly one tier, and that is a choice rather than an
+accident.** A perfect T6 roll can beat a poor T7 one. With seven tiers there is
+no way to have both non-overlapping bands and rolls large enough to change a
+build, because a band worth caring about is necessarily wider than the gap
+between tiers. The bound is provable rather than tuned: a tier's floor is 0.75 of
+its own fraction, so tier N is undercut by tier N−1 only when N is above 4 and by
+tier N−2 only when N is above 8, which seven tiers cannot reach.
+
+**Three resistance families rather than one**, at the project owner's proposal:
+one resistance at 20%, two at 14% each, all eight at 6% each. The efficient
+family changes as a run goes on, because each difficulty tier adds a Cataclysm,
+so the number of resistances that matter grows from one to eight. That
+progression is the whole reason for having three.
+
+**Health and damage come in a flat and an increased kind**, entering the two ends
+of the stat pipeline. Neither is strictly better: a flat affix is multiplied by
+every increase already present, and an increased affix multiplies every flat
+point already there. So flat wins early in a build and increased wins later.
+
+**Flat damage is 18, and it is derived rather than picked.** The project owner
+set increased damage at 125%, which is what forces the flat side to be small: a
+character with six increased damage affixes multiplies by 8.5, so the bracket
+they multiply has to stay near 200 at tier 8. 18 is the value that puts the
+crossover between the two kinds where a real build actually crosses it, after
+about two flat affixes. Both neighbouring values fail that test. At 60, the
+first value tried, the crossover is 528 and no build reaches it, so flat wins
+always. At 12 it is 106, below where a build starts, so increased wins always.
+Either way one of the two kinds is dead content.
+
+**The damage target is read off the enemy statistics, not chosen.** An average
+Common enemy at tier 8 has 3,362 effective health and should take 2 non-critical
+hits to kill, giving 1,681 damage per hit. A Common enemy is the right anchor
+rather than a boss, because the spread between them is 117 times and no single
+hits-to-kill figure suits both; trash is what the player fights almost all of the
+time.
+
+This ordering matters. A first version took a player damage figure that had been
+derived backwards from player-side targets, and under it the 125% increased
+damage affix the project owner wanted was eight times what the target could
+absorb. Setting the enemy side first and reading the target off it resolved that
+rather than deferring it.
+
+**Affixes are restricted by gear slot.** Damage goes on the weapon, rings, relic,
+necklace and gloves; health on head, chest, belt, pants, boots and rings;
+resistance on everything except the weapon. Without restrictions every slot is
+interchangeable and gearing has no puzzle in it. Rings take every kind on
+purpose: there are eight of them, so they are the flexible slots a build uses to
+fix whatever it is short of.
+
+**Two things this exposed and did not settle.** Skills have no damage multiplier
+anywhere in the project, so every weapon damage figure here is really weapon and
+skill together (#107). And enemy damage has never been checked against how much
+health a geared player has: a Common enemy takes 92 hits to kill a fully geared
+Ravager at 70% mitigation, against a target of 8 to 10 stated early in this work
+(#108).
+
+**Affects:** `Cataclysm_GDD_v2.md` section VI. **Applied 2026-08-03:** an Affixes
+subsection was added covering tiers, ranges, the three resistance families, the
+health and damage pairs, the damage target and the slot restrictions. The working
+model is `sim/cataclysm_sim/affixes.py`, covered by `sim/tests/test_affixes.py`.
+
+---
+
 ## 2026-08-03 — Enemy stat blocks: rarity, archetype, and no enemy penetration
 
 **Decision.** Enemy Score is a power rating and says nothing about statistics.

@@ -1107,6 +1107,141 @@ The stun uses the shortest duration any designed skill uses. A weapon sub-type t
 
   
 
+## **Affixes**
+
+Affixes are the ordinary stats on gear, separate from the enchantments below. Every piece has up to 4 affix slots, so a full set of 18 pieces has 72.
+
+  
+
+### **Affix Tiers**
+
+Every affix has seven tiers, T1 to T7, because the crafting material that raises them (the Potency Crystal) levels an affix to T7. One shared curve produces all seven from the affix's top value.
+
+  
+
+**The curve is linear.** Tier N is worth N/7 of the affix's T7 value. Every step up is worth the same as every other, so the value of one more upgrade never falls off.
+
+  
+
+That is a deliberate pressure point rather than a convenience. The game's central tension is that a day at the forge is a day not defending the empire, so the choice to upgrade gear rather than run a dungeon has to stay uncomfortable for a whole run. A front-loaded curve hands over most of an affix's value in the first few tiers and makes the later ones easy to skip. The cost side already curves, because gear upgrade levels cost 2^N − 1 stones, so diminishing returns arrive through rising cost rather than falling value.
+
+  
+
+### **Every Tier Is a Range**
+
+A tier is not a single number. An affix rolls somewhere in a band reaching **25% below** its tier's top value, and where it lands is the difference between a good item and one worth rerolling.
+
+  
+
+Without ranges, two crafting materials do nothing at all. The Corrupted Mote rerolls an affix value, and the Primal Spark perfects a roll. Perfecting is meaningless if a tier has one value, and rerolling is meaningless if the reroll cannot change it.
+
+  
+
+**Bands overlap between adjacent tiers, and that is intended.** A perfect T6 roll can beat a poor T7 one. With seven tiers there is no way to have both non-overlapping bands and rolls large enough to change a build, because a band worth caring about is necessarily wider than the gap between tiers. A roll that matters is worth more than a clean ordering.
+
+  
+
+**The overlap reaches exactly one tier and never two.** A tier's floor is 0.75 of its own fraction, so tier N is undercut by tier N−1 only when N is above 4, and by tier N−2 only when N is above 8, which cannot happen with seven tiers.
+
+  
+
+### **Resistance Affixes**
+
+Three families, differing in how many resistances one roll covers. Per-type value falls as breadth rises; total coverage rises, which is what stops the narrow family being strictly better.
+
+  
+
+|  |  |  |  |
+| :-- | :-: | :-: | :-- |
+| \*\*Family\*\* | \*\*Covers\*\* | \*\*T7 value each\*\* | \*\*Best when\*\* |
+| Single resistance | 1 | 20% | Few Cataclysms are active |
+| Two resistances | 2 | 14% | The middle of a run |
+| All resistances | 8 | 6% | Many Cataclysms are active |
+
+  
+
+The efficient family changes as a run goes on, which is the point of having three. A difficulty tier is a run and each tier adds a Cataclysm, so the number of resistances that matter grows from one to eight. A single-resistance affix is the best use of a slot when one Cataclysm is active and nearly worthless when eight are; an all-resistance affix is the reverse.
+
+  
+
+Capping all eight resistances at tier 8 costs about 12 affix slots out of 72 with perfect rolls, and about 16 with the worst rolls. That difference of roughly 4 slots of gear is what the perfecting and rerolling materials are worth.
+
+  
+
+### **Health and Damage Affixes**
+
+These have no breadth axis. What they have instead is the two ends of the stat pipeline from section IV: a flat affix enters the base bracket, an increased affix joins the multiplier.
+
+  
+
+|  |  |  |
+| :-- | :-: | :-- |
+| \*\*Affix\*\* | \*\*T7 value\*\* | \*\*Rolls between\*\* |
+| Flat maximum health | 120 | 90 and 120 |
+| Increased maximum health | 12% | 9% and 12% |
+| Flat damage | 18 | 13.5 and 18 |
+| Increased damage | 125% | 93.8% and 125% |
+
+  
+
+**Neither kind is strictly better, which is the reason for having both.** A flat affix is multiplied by every increase already on the character; an increased affix multiplies every flat point already there. So flat wins early in a build and increased wins later, and every increase already present pushes that crossover further away.
+
+  
+
+**Increased damage is ten times increased health because damage and health are on different scales**, which is ordinary for the genre. That is also what forces flat damage to be small: a character with six increased damage affixes is already multiplying by 8.5, so the bracket those multiply has to stay around 200 at tier 8.
+
+  
+
+### **The Damage Target**
+
+The damage numbers are not chosen. They are read off the enemy statistics in section X and fitted to them.
+
+  
+
+An average Common enemy at difficulty tier 8 has 3,362 effective health and should take **2 non-critical hits** to kill, so a player needs **1,681 damage per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 198, of which the affixes supply 108. The weapon and its skill together supply the remaining 90.
+
+  
+
+Everything else follows from that one number rather than being set separately:
+
+  
+
+|  |  |
+| :-- | :-: |
+| \*\*Enemy at tier 8\*\* | \*\*Non-critical hits to kill\*\* |
+| Common Imp | 0.7 |
+| Common Hellhound | 1.5 |
+| Elite Succubus | 3.4 |
+| Elite Brute | 8.2 |
+| Legendary Corrupted Sentinel | 12.2 |
+| Herald Abyssal Warden | 45.4 |
+| Cataclysm Boss Gatekeeper | 234.7 |
+
+  
+
+A Common enemy is the right thing to anchor on rather than a boss, because the spread between the two is 117 times and no single hits-to-kill figure suits both. Trash is what the player fights almost all of the time.
+
+  
+
+### **Affixes Are Restricted by Gear Slot**
+
+An affix cannot appear on every piece. Without restrictions every slot is interchangeable and gearing has no puzzle in it.
+
+  
+
+|  |  |  |
+| :-- | :-: | :-- |
+| \*\*Family\*\* | \*\*Slots\*\* | \*\*Where\*\* |
+| Damage | 48 | Weapon, Rings, Relic, Necklace, Gloves |
+| Health | 52 | Head, Chest, Belt, Pants, Boots, Rings |
+| Resistance | 68 | Everything except the Weapon |
+
+  
+
+**Rings are in every list on purpose.** There are eight of them, so they are the flexible slots a build uses to fix whatever it is short of, which is what makes them worth chasing. Capping eight resistances is the hardest defensive requirement, so resistance is the least restricted; damage is the most.
+
+  
+
 ## **Enchantment System**
 
 ### **Overview**

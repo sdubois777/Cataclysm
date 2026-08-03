@@ -1,10 +1,11 @@
-"""Tests for the resistance affix families."""
+"""Tests for the affix pool: resistance, health and damage."""
 
 from __future__ import annotations
 
 import pytest
 
 from cataclysm_sim import affixes as af
+from cataclysm_sim import enemy_stats as es
 
 
 # --------------------------------------------------------------------------
@@ -369,38 +370,113 @@ def test_the_crossover_moves_with_the_increases_already_on_the_character():
 # Damage affixes are pinned to the target that makes the enemy numbers work
 # --------------------------------------------------------------------------
 
-def test_the_damage_target_comes_from_the_enemy_derivation():
-    from cataclysm_sim.enemy_stats import PLAYER_DAMAGE_FACTOR
-    assert PLAYER_DAMAGE_FACTOR == 0.25
+def test_the_damage_target_is_read_off_the_enemy_stats():
+    """It is an OUTPUT of the enemy design, not an input to it.
 
-
-def test_a_small_damage_investment_still_needs_a_weapon():
-    """Solving the pipeline backwards gives what a weapon has to supply.
-
-    Only checked for SMALL investments now. At 125% per increased affix, a
-    character spending six slots each way already overshoots the current damage
-    target and the requirement goes negative, which means affixes alone exceed
-    it and a weapon would be pointless. That conflict is recorded by
-    test_the_damage_affixes_overshoot_the_current_damage_target below rather
-    than being asserted away here.
+    An earlier version imported a player damage figure that had been derived
+    backwards from player-side targets, and that figure is what made the
+    project owner's 125% increased damage affix impossible to fit.
     """
-    target = 6327 * 0.25
-    for flat_slots, inc_slots in ((0, 0), (1, 1), (2, 2)):
+    common = es.stats_on_floor("Common", 8, "Cataclysm")
+    assert af.damage_target(8) == pytest.approx(
+        common.effective_health / af.HITS_TO_KILL_A_COMMON_ENEMY)
+
+
+def test_the_target_tracks_enemy_health_rather_than_being_a_constant():
+    """If the enemy numbers move, this must move with them. A hard-coded figure
+    here is exactly the coupling that produced the conflict before."""
+    assert af.damage_target(8) > 5 * af.damage_target(1)
+
+
+def test_a_common_enemy_dies_in_the_range_the_project_owner_set():
+    """One to three non-critical hits. The named Common enemies are checked as
+    well as the average, because the average is not a creature anyone fights."""
+    target = af.damage_target(8)
+    for kind in ("Imp", "Hellhound"):
+        e = es.stats_on_floor("Common", 8, "Cataclysm", kind=kind)
+        hits = e.effective_health / target
+        assert 0 < hits <= 3.0, f"a Common {kind} takes {hits:.1f} hits"
+
+
+def test_the_rarest_enemy_is_a_long_fight_and_the_commonest_is_not():
+    """Whatever the exact figures, the ordering has to survive."""
+    target = af.damage_target(8)
+    imp = es.stats_on_floor("Common", 8, "Cataclysm", kind="Imp")
+    boss = es.stats_on_floor("Cataclysm Boss", 8, "Cataclysm", kind="Gatekeeper")
+    assert boss.effective_health / target > 50 * (imp.effective_health / target)
+
+
+def test_a_moderate_damage_build_still_needs_a_weapon():
+    """The affixes must not be able to reach the target on their own at ordinary
+    investment, or the weapon is decoration.
+
+    Six slots each way is the reference build. It is not a cap: heavier
+    investment overshoots the target, which is what heavy investment is for.
+    """
+    target = af.damage_target(8)
+    for flat_slots, inc_slots in ((0, 0), (2, 2), (4, 4), (6, 6), (6, 8)):
         need = af.weapon_base_damage_needed(target, flat_slots, inc_slots)
         assert 0 < need <= target, (
             f"{flat_slots} flat and {inc_slots} increased slots need {need:.0f}")
 
 
+def test_the_weapon_supplies_a_real_share_at_the_reference_build():
+    """At six slots each way the weapon and skill together should carry a
+    substantial part of the base, not a rounding error.
+
+    This is what the flat damage value was set to achieve. At its previous value
+    of 60 the flat affixes alone filled the whole base bracket and this fails.
+    """
+    target = af.damage_target(8)
+    from_weapon = af.weapon_base_damage_needed(target, 6, 6)
+    from_flat = af.FLAT_DAMAGE.value_at(7) * 6
+    assert from_weapon > from_flat * 0.5, (
+        f"weapon supplies {from_weapon:.0f} against {from_flat:.0f} from affixes")
+
+
 def test_spending_no_slots_on_damage_needs_the_weapon_to_supply_everything():
-    target = 6327 * 0.25
+    target = af.damage_target(8)
     assert af.weapon_base_damage_needed(target, 0, 0) == pytest.approx(target)
 
 
 def test_more_damage_affixes_always_reduce_what_the_weapon_must_supply():
-    target = 6327 * 0.25
+    target = af.damage_target(8)
     needs = [af.weapon_base_damage_needed(target, n, n) for n in range(0, 9)]
-    assert needs == sorted(needs, reverse=True)
-    assert len(set(needs)) == len(needs)
+    # strict=False is required: the two lists differ in length by one, because
+    # this pairs each investment level with the next.
+    for bigger, smaller in zip(needs, needs[1:], strict=False):
+        assert smaller < bigger, f"not strictly falling: {needs}"
+
+
+def test_a_damage_build_crosses_from_flat_to_increased_partway_through():
+    """Both kinds must get used. If the crossover sat outside the base a real
+    character reaches, one kind would always win and the other would be dead
+    content.
+
+    Walked one flat affix at a time, which is how a build is actually assembled,
+    rather than comparing the crossover to a range. At the previous flat damage
+    value of 60 the crossover is 528 and no build reaches it, so flat wins
+    always; at 12 it is 106, below where a build starts, so increased wins
+    always. Both make this fail.
+    """
+    increases = (af.INCREASED_DAMAGE.value_at(7) / 100.0
+                 * af.REFERENCE_INCREASED_DAMAGE_AFFIXES)
+    # The weapon is a FIXED quantity a player adds affixes on top of. Starting
+    # from the whole base a target implies would put the character at the target
+    # before buying anything, which is not how a build is assembled.
+    weapon = af.reference_weapon_base(8)
+
+    winners = []
+    for flat_affixes in range(0, 9):
+        base = weapon + af.FLAT_DAMAGE.value_at(7) * flat_affixes
+        winners.append(af.better_kind(af.DAMAGE_AFFIXES, base, increases).kind)
+
+    assert winners[0] == "flat", (
+        f"increased already wins with no flat affixes: {winners}")
+    assert winners[-1] == "increased", (
+        f"flat still wins after eight flat affixes: {winners}")
+    # And it must switch exactly once, not oscillate.
+    assert winners == sorted(winners, key=["flat", "increased"].index)
 
 
 # --------------------------------------------------------------------------
@@ -466,33 +542,16 @@ def test_resistance_can_go_almost_anywhere_and_damage_cannot():
         af.OFFENSIVE_SLOTS)
 
 
-# --------------------------------------------------------------------------
-# A known inconsistency, recorded rather than hidden
-# --------------------------------------------------------------------------
-
 def test_increased_damage_is_the_value_the_project_owner_set():
     assert af.INCREASED_DAMAGE.top_value == 125.0
 
 
-def test_the_damage_affixes_overshoot_the_current_damage_target():
-    """RECORDS A CONFLICT rather than asserting a desired state.
-
-    Increased damage at 125% per affix is eight times what the earlier proposal
-    used. `enemy_stats.PLAYER_DAMAGE_FACTOR` still says a player hits for 25% of
-    their Power Score, 1,582 at tier 8, and a character spending only four flat
-    and four increased slots on damage already needs a weapon supplying almost
-    nothing to reach it.
-
-    The two cannot both be right. Either the damage target rises, which means
-    common enemies need more health, or the affix is smaller. The ratio the
-    project owner set -- 1 to 3 player hits to kill a common enemy -- is about
-    relative sizes and survives either choice.
-
-    This test fails as soon as that is resolved, which is intended: it is here so
-    the conflict cannot be forgotten.
-    """
-    target = 6327 * 0.25
-    need = af.weapon_base_damage_needed(target, flat_slots=4, increased_slots=4)
-    assert need < 100, (
-        f"a modest damage build still needs a weapon supplying {need:.0f}, so "
-        "the conflict this test records may have been resolved")
+# A test named test_the_damage_affixes_overshoot_the_current_damage_target used
+# to sit here. It recorded a conflict rather than asserting a desired state: at
+# 125% per increased affix, a build spending four slots each way already exceeded
+# the player damage figure then in use, so a weapon would have contributed
+# nothing. It was written to fail once that was resolved, and it did.
+#
+# It was resolved by setting the enemy stats first and reading the damage target
+# off them, and by lowering flat damage from 60 to 18. The test is deleted rather
+# than adjusted, because the thing it existed to remember has happened.

@@ -37,6 +37,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import enemy_stats
+
 #: The eight damage types, so the eight resistances.
 DAMAGE_TYPES = ("War", "Demonic", "Death", "Pestilence",
                 "Famine", "Celestial", "Chaos", "Void")
@@ -307,19 +309,67 @@ FLAT_HEALTH = StatAffix("Flat maximum health", "max_health", "flat", 120.0,
 INCREASED_HEALTH = StatAffix("Increased maximum health", "max_health",
                              "increased", 12.0, DEFENSIVE_SLOTS)
 
+#: How many non-critical hits an average Common enemy should take to kill. The
+#: project owner set the range 1 to 3; this is the middle of it. It is the only
+#: player-facing number in this file that is chosen rather than derived, and it
+#: is what `damage_target()` turns into a damage figure.
+#:
+#: A Common enemy is the right thing to anchor on rather than a boss, because the
+#: spread between the two is 117 times and no single hits-to-kill figure can suit
+#: both. Trash is what the player fights almost all of the time.
+HITS_TO_KILL_A_COMMON_ENEMY = 2.0
+
+#: The build the damage values are fitted against: how many affix slots a
+#: character is assumed to spend on each kind of damage affix at tier 8.
+#:
+#: NOT A CAP. There are 48 offensive affix slots and nothing stops a player using
+#: more, in which case they exceed the target, which is what heavy investment is
+#: for. This is the ordinary case the numbers are tuned around, and it is stated
+#: here rather than buried in a calculation because every damage figure in this
+#: file moves if it changes.
+REFERENCE_FLAT_DAMAGE_AFFIXES = 6
+REFERENCE_INCREASED_DAMAGE_AFFIXES = 6
+
+
+def damage_target(tier: int = 8) -> float:
+    """Damage per non-critical hit a player needs at a difficulty tier.
+
+    An OUTPUT of the enemy design, not an input to it. `enemy_stats.py` sets
+    enemy health on its own terms; this reads it back and asks what has to get
+    through it. An earlier version of this file went the other way round, taking
+    a player damage figure derived from player-side targets, and that is what
+    made the project owner's 125% increased damage affix impossible to fit.
+
+    Measured against the baseline archetype, which is the average enemy of a
+    rarity rather than any particular creature.
+    """
+    common = enemy_stats.stats_on_floor("Common", tier, "Cataclysm")
+    return common.effective_health / HITS_TO_KILL_A_COMMON_ENEMY
+
+
 #: Damage. Increased damage is 125% at T7, set by the project owner.
 #:
-#: That is eight times the earlier proposal and it changes the shape of the whole
-#: damage side. With increases that large, the base they multiply has to be
-#: small: a character stacking a few of them is already multiplying by five or
-#: more, so a large weapon or large flat affixes would overshoot the damage
-#: target immediately. Increases do the work and the base stays modest, which is
-#: ordinary for the genre.
+#: THE 125% IS WHAT FORCES FLAT DAMAGE TO BE SMALL. A character with eight
+#: increased damage affixes is already multiplying by 11, so the bracket those
+#: multiply has to be around 150 at tier 8 to land on `damage_target()`. Flat
+#: damage was 60, which meant three affixes alone filled the whole bracket and
+#: the weapon had nothing left to contribute.
 #:
-#: The target itself is not chosen here. `enemy_stats.PLAYER_DAMAGE_FACTOR` says
-#: a player hits for 25% of their Power Score, 1,582 at tier 8, and that is what
-#: makes the "player kills a common enemy in 1 to 3 hits" target hold.
-FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 60.0,
+#: 18 IS DERIVED, NOT PICKED. It is set so the choice between the two kinds is
+#: real, which is the entire point of having both. `crossover_base` with eight
+#: increased affixes in place puts them at equal value at 158 points of base, and
+#: a build with a weapon supplying 81 crosses that after four or five flat
+#: affixes. So flat wins early and increased wins later, and a character actually
+#: takes some of each.
+#:
+#: Both neighbouring values fail that. At 60 the crossover is 528, which no build
+#: reaches, so flat wins always. At 12 it is 106, below where a real build starts,
+#: so increased wins always. Either way one of the two kinds is dead content.
+#:
+#: Flat damage being far smaller than flat health is not an inconsistency. The
+#: two stats have different multiplier scales by design: 125% per damage affix
+#: against 12% per health affix.
+FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 18.0,
                         OFFENSIVE_SLOTS)
 INCREASED_DAMAGE = StatAffix("Increased damage", "attack_damage",
                              "increased", 125.0, OFFENSIVE_SLOTS)
@@ -352,15 +402,37 @@ def crossover_base(pair: tuple[StatAffix, StatAffix], existing_increases: float,
 def weapon_base_damage_needed(target_damage: float, flat_slots: int,
                               increased_slots: int, tier: int = 7,
                               roll: float = 1.0) -> float:
-    """What a weapon must contribute for a build to reach a damage target.
+    """What the base bracket must contain for a build to reach a damage target.
 
     Solves the pipeline backwards. There are no weapon damage numbers anywhere in
     the project, so this is how the affix values imply one rather than the other
     way round.
+
+    "Base bracket" rather than "weapon" because a skill's own multiplier is not
+    modelled anywhere yet. The design says skills come from weapon type paired
+    with damage type and never says what any of them are worth, so this figure is
+    the weapon and the skill together. See issue #107.
+
+    A NEGATIVE RESULT IS INFORMATION, NOT A FAULT. It means the affixes alone
+    already exceed the target, so that build overshoots the content, which is
+    what heavy investment is supposed to do.
     """
+
     flat = FLAT_DAMAGE.value_at(tier, roll) * flat_slots
     increases = INCREASED_DAMAGE.value_at(tier, roll) / 100.0 * increased_slots
     return target_damage / (1.0 + increases) - flat
+
+
+def reference_weapon_base(difficulty_tier: int = 8) -> float:
+    """What a weapon and skill together supply at the reference build.
+
+    A fixed quantity that a player then adds affixes on top of, which is why the
+    flat-versus-increased crossover is walked from here rather than from the
+    whole base a target implies.
+    """
+    return weapon_base_damage_needed(damage_target(difficulty_tier),
+                                     REFERENCE_FLAT_DAMAGE_AFFIXES,
+                                     REFERENCE_INCREASED_DAMAGE_AFFIXES)
 
 
 def slots_to_cap(family: AffixFamily, tier: int, active_cataclysms: int,
@@ -416,9 +488,14 @@ if __name__ == "__main__":
             print(f"      T{t}   {low:>5.1f}% to {high:>5.1f}%")
         print()
 
-    print("  Bands do not overlap, so any roll at a higher tier beats any roll")
-    print("  at a lower one. Tier stays the primary axis and the roll the")
-    print("  secondary one.")
+    t6_high = SINGLE_RESISTANCE.range_at(6)[1]
+    t7_low = SINGLE_RESISTANCE.range_at(7)[0]
+    print("  Bands OVERLAP between adjacent tiers, and that is deliberate. A")
+    print(f"  perfect T6 single-resistance roll is {t6_high:.1f}% and the worst T7")
+    print(f"  roll is {t7_low:.1f}%, so a perfect lower-tier item can beat a poor")
+    print("  higher-tier one. With seven tiers there is no way to have both")
+    print("  non-overlapping bands and rolls large enough to change a build.")
+    print("  The overlap reaches exactly one tier and never two.")
     print()
     print("  Total coverage at a perfect T7 roll:")
     for f in RESISTANCE_FAMILIES:
@@ -462,7 +539,6 @@ if __name__ == "__main__":
     # ---------------------------------------------------------------
     from .character import Attributes, Character
     from .classes import DEMONIC_CLASSES
-    from .enemy_stats import PLAYER_DAMAGE_FACTOR
 
     print("=" * 72)
     print("Health and damage affixes")
@@ -487,28 +563,79 @@ if __name__ == "__main__":
     print(f"    point in Vitality, {vitality_increases:.0%} of increases before gear.")
     print(f"    Its health is {rav.stat('max_health'):,.0f}.")
     print()
-    print(f"    Flat and increased health are worth the same at {over:,.0f} base.")
+    print(f"    Flat and increased health are worth the same at {over:,.0f} base,")
     flat_slots_to_reach = (over - base) / FLAT_HEALTH.value_at(7)
-    print(f"    That is about {flat_slots_to_reach:.0f} flat affixes away, so flat")
-    print("    wins early in a build and increased wins after it.")
+    print(f"    which is about {flat_slots_to_reach:.0f} flat affixes away. So flat wins early")
+    print("    in a build and increased wins after it.")
+    print()
+    geared_increases = vitality_increases + 13 * INCREASED_HEALTH.value_at(7) / 100
+    geared_over = crossover_base(HEALTH_AFFIXES, geared_increases)
+    geared_base = base + 13 * FLAT_HEALTH.value_at(7)
+    print(f"    With 13 increased health affixes as well, increases reach "
+          f"{geared_increases:.0%}")
+    print(f"    and the crossover moves out to {geared_over:,.0f} base, against a base of")
+    print(f"    {geared_base:,.0f}. Every increase already on a character pushes the")
+    print("    crossover further away, so flat stays worth taking for longer")
+    print("    than a first look suggests.")
     print()
 
-    print("    Damage affixes are pinned to a target rather than chosen. A")
-    print(f"    player hits for {PLAYER_DAMAGE_FACTOR:.0%} of their Power Score, which is")
-    target = 6327 * PLAYER_DAMAGE_FACTOR
-    print(f"    {target:,.0f} at tier 8. Solving the pipeline backwards gives what a")
-    print("    weapon has to supply, which is a number the project does not have:")
+    print("    The damage target is READ OFF THE ENEMY STATS, not chosen. An")
+    print("    average Common enemy at tier 8 has "
+          f"{enemy_stats.stats_on_floor('Common', 8, 'Cataclysm').effective_health:,.0f} effective")
+    print(f"    health, and should take {HITS_TO_KILL_A_COMMON_ENEMY:.0f} non-critical hits to kill, so a")
+    target = damage_target(8)
+    print(f"    player needs {target:,.0f} damage per hit. Everything else follows:")
     print()
-    print(f"      {'flat slots':>11} {'increased slots':>16} {'weapon base needed':>20}")
-    for flat_slots, inc_slots in ((0, 0), (2, 2), (4, 4), (2, 6), (0, 8)):
+    AT = (("Imp", "Common"), ("Hellhound", "Common"), ("Succubus", "Elite"),
+          ("Brute", "Elite"), ("Corrupted Sentinel", "Legendary"),
+          ("Abyssal Warden", "Herald"), ("Gatekeeper", "Cataclysm Boss"))
+    for name, rarity in AT:
+        e = enemy_stats.stats_on_floor(rarity, 8, "Cataclysm", kind=name)
+        hits = enemy_stats.player_damage_to_kill_in(e, 1.0) / target
+        print(f"      {e.name:<28} {hits:>7.1f} hits")
+    print()
+    print("    Those are non-critical. A geared character critting raises its")
+    print("    average hit well above the target, so the real counts are lower.")
+    print()
+
+    print("    Solving the pipeline backwards gives what the weapon and skill")
+    print("    together have to supply, which is a number the project does not")
+    print("    have anywhere:")
+    print()
+    print(f"      {'flat':>5} {'increased':>10} {'multiplier':>11} "
+          f"{'base needed':>12} {'from flat':>10} {'from weapon':>12}")
+    print("      " + "-" * 66)
+    for flat_slots, inc_slots in ((0, 0), (4, 4), (6, 6), (6, 8), (8, 8),
+                                  (8, 10), (10, 12)):
         need = weapon_base_damage_needed(target, flat_slots, inc_slots)
-        note = "  <- affixes alone overshoot" if need <= 0 else ""
-        print(f"      {flat_slots:>11} {inc_slots:>16} {need:>20,.0f}{note}")
+        mult = 1.0 + INCREASED_DAMAGE.value_at(7) / 100.0 * inc_slots
+        from_flat = FLAT_DAMAGE.value_at(7) * flat_slots
+        note = "  <- overshoots" if need <= 0 else ""
+        print(f"      {flat_slots:>5} {inc_slots:>10} {mult:>10.1f}x "
+              f"{need + from_flat:>12,.0f} {from_flat:>10,.0f} "
+              f"{need:>12,.0f}{note}")
     print()
-    print("    At 125% per increased affix a character multiplies by five or")
-    print("    more after a handful of them, so the base they scale has to stay")
-    print("    small. Past a few slots, affixes alone overshoot the target and")
-    print("    the weapon would have to contribute nothing at all.")
+    weapon = reference_weapon_base(8)
+    print(f"    The reference build is {REFERENCE_FLAT_DAMAGE_AFFIXES} flat and "
+          f"{REFERENCE_INCREASED_DAMAGE_AFFIXES} increased, which needs a weapon")
+    print(f"    and skill supplying {weapon:,.0f} against {FLAT_DAMAGE.value_at(7) * REFERENCE_FLAT_DAMAGE_AFFIXES:,.0f} from the flat affixes, so the")
+    print("    two contribute about equally. Past eight and ten slots the affixes")
+    print("    alone exceed the target, which is what heavy investment is for")
+    print("    rather than a fault in the numbers.")
+    print()
+    print("    Adding flat damage affixes on top of that weapon, one at a time,")
+    print("    with the reference build's increases already in place:")
+    print()
+    increases = (INCREASED_DAMAGE.value_at(7) / 100.0
+                 * REFERENCE_INCREASED_DAMAGE_AFFIXES)
+    for flat_n in range(0, 7):
+        base = weapon + FLAT_DAMAGE.value_at(7) * flat_n
+        winner = better_kind(DAMAGE_AFFIXES, base, increases)
+        print(f"      {flat_n} flat affixes, base {base:>6,.0f}   "
+              f"the better next pick is {winner.kind}")
+    print()
+    print("    So a character takes a few flat damage affixes and then switches.")
+    print("    Both kinds get used, which is the whole reason for having two.")
     print()
 
     print("Slot restrictions. Affixes do not go anywhere.")
