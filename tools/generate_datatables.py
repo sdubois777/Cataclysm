@@ -10,8 +10,8 @@ being discovered when something silently reads nothing.
 
 WHY THIS IS NOT A LOOP OVER SHEETS
 
-Only four of the nine sheets are a plain table with one entity per row. The rest
-need reshaping, so each has its own handler:
+Only six of the eleven tables come from a sheet that is already a plain table
+with one entity per row. The rest need reshaping, so each has its own handler:
 
   Enchantments      two independent tables side by side in one sheet, positives
                     in columns A-D and negatives in F-I
@@ -22,6 +22,12 @@ need reshaping, so each has its own handler:
 
 Row names are derived and must be stable, because a DataTable row name is the key
 everything else references. Renaming one silently breaks every reference to it.
+
+THE ITEM BASES AND AFFIXES SHEETS HAVE A SECOND READER. `sim/cataclysm_sim/
+affixes.py` holds the same pool, because that is where the design rules are
+enforced and where tuning happens. The workbook is authoritative and is what a
+person edits; `tools/tests/test_affix_sheets_match_the_model.py` compares the two
+so they cannot drift apart silently, which a copy in this project has done before.
 """
 
 from __future__ import annotations
@@ -369,6 +375,147 @@ def crafting_materials(book) -> list[dict]:
     return unique(out, "Crafting")
 
 
+IMPLICIT_KINDS = ("flat", "increased")
+AFFIX_KINDS = ("Stat", "Resistance", "Ailment", "Hybrid")
+AFFIX_POSITIONS = ("prefix", "suffix")
+
+
+def _header_index(rows: list, sheet: str) -> dict[str, int]:
+    """Map header text to column index, so a reordered sheet still reads."""
+    if not rows:
+        raise DataError(f"{sheet} is empty")
+    headers = {clean(h): i for i, h in enumerate(rows[0]) if clean(h)}
+    if not headers:
+        raise DataError(f"{sheet} has no header row")
+    return headers
+
+
+def _cell(raw, headers: dict[str, int], name: str) -> str:
+    index = headers.get(name)
+    if index is None or index >= len(raw):
+        return ""
+    return clean(raw[index])
+
+
+def item_bases(book) -> list[dict]:
+    """One item base per row, with up to two implicits in fixed columns.
+
+    An implicit belongs to the BASE rather than to the slot: a chest built for
+    armour and one built for evasion are different bases in the same slot, and
+    choosing between them is a decision made before any affix is involved.
+
+    Values are the STATED ones, meaning the fully upgraded figures the design
+    document quotes. For a two-handed weapon that is the figure BEFORE the
+    two-handed multiplier doubles it, so a Greatsword is 78 here and supplies
+    156 in play.
+    """
+    rows = list(book["Item Bases"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Item Bases")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        name = _cell(raw, headers, "Base Name")
+        if not name:
+            continue
+        slot = _cell(raw, headers, "Slot")
+        if not slot:
+            raise DataError(f"Item Bases row {index}: {name} has no slot")
+
+        hands = _cell(raw, headers, "Hands")
+        if hands and hands not in ("1", "2", "1.0", "2.0"):
+            raise DataError(f"Item Bases row {index}: {name} is "
+                            f"{hands}-handed; a weapon has 1 or 2")
+
+        entry = {
+            "Name": row_name(slot, name),
+            "BaseName": name,
+            "Slot": slot,
+            "Hands": int(float(hands)) if hands else 0,
+            "SubType": _cell(raw, headers, "Sub-Type"),
+            "WeaponType": _cell(raw, headers, "Weapon Type"),
+            "DamageTypeSlots": int(float(_cell(raw, headers, "Damage Types") or 0)),
+        }
+
+        implicits = 0
+        for slot_index in (1, 2):
+            stat = _cell(raw, headers, f"Implicit {slot_index} Stat")
+            kind = _cell(raw, headers, f"Implicit {slot_index} Kind")
+            value = _cell(raw, headers, f"Implicit {slot_index} Value")
+            if stat:
+                if kind not in IMPLICIT_KINDS:
+                    raise DataError(
+                        f"Item Bases row {index}: {name} implicit {slot_index} "
+                        f"kind is {kind!r}, expected one of {list(IMPLICIT_KINDS)}")
+                implicits += 1
+            entry[f"Implicit{slot_index}Stat"] = stat
+            entry[f"Implicit{slot_index}Kind"] = kind
+            entry[f"Implicit{slot_index}Value"] = float(value) if value else 0.0
+
+        if implicits == 0:
+            raise DataError(f"Item Bases row {index}: {name} grants nothing, so "
+                            "it is not a distinct base")
+        out.append(entry)
+
+    return unique(out, "Item Bases")
+
+
+def affixes(book) -> list[dict]:
+    """One rollable affix per row, across four kinds.
+
+    Stat        one stat, flat or increased, with a top value
+    Resistance  a family covering `Breadth` damage types at `Top Value` each
+    Ailment     a chance to apply an effect a gem also applies
+    Hybrid      two stat affixes at a reduced share each
+
+    A stat that appears as a prefix never appears as a suffix, which is what
+    stops one item carrying four of whatever is strongest.
+    """
+    rows = list(book["Affixes"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Affixes")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        name = _cell(raw, headers, "Affix Name")
+        if not name:
+            continue
+
+        kind = _cell(raw, headers, "Affix Kind")
+        if kind not in AFFIX_KINDS:
+            raise DataError(f"Affixes row {index}: {name} has kind {kind!r}, "
+                            f"expected one of {list(AFFIX_KINDS)}")
+
+        position = _cell(raw, headers, "Position")
+        if position not in AFFIX_POSITIONS:
+            raise DataError(f"Affixes row {index}: {name} is a {position!r}, "
+                            f"expected one of {list(AFFIX_POSITIONS)}")
+
+        allowed = _cell(raw, headers, "Allowed Slots")
+        if not allowed:
+            raise DataError(f"Affixes row {index}: {name} can roll on no slot")
+
+        value = _cell(raw, headers, "Top Value")
+        if kind in ("Stat", "Resistance", "Ailment") and not value:
+            raise DataError(f"Affixes row {index}: {name} has no top value")
+
+        out.append({
+            "Name": row_name(kind, name),
+            "AffixName": name,
+            "AffixKind": kind,
+            "Position": position,
+            "Stat": _cell(raw, headers, "Stat"),
+            "ValueKind": _cell(raw, headers, "Value Kind"),
+            "TopValue": float(value) if value else 0.0,
+            "Breadth": int(float(_cell(raw, headers, "Breadth") or 0)),
+            "Ailment": _cell(raw, headers, "Ailment"),
+            "Gem": _cell(raw, headers, "Gem"),
+            "HybridPart1": _cell(raw, headers, "Hybrid Part 1"),
+            "HybridPart2": _cell(raw, headers, "Hybrid Part 2"),
+            "AllowedSlots": allowed,
+        })
+
+    return unique(out, "Affixes")
+
+
 TABLES = {
     "DungeonModifiers": dungeon_modifiers,
     "WeaponSkills": weapon_skills,
@@ -379,6 +526,8 @@ TABLES = {
     "Gems": gems,
     "CityUpgrades": city_upgrades,
     "CraftingMaterials": crafting_materials,
+    "ItemBases": item_bases,
+    "Affixes": affixes,
 }
 
 
@@ -417,6 +566,64 @@ def validate_tags(tables: dict[str, list[dict]], known: set[str]) -> list[str]:
     return problems
 
 
+def validate_affix_slots(tables: dict[str, list[dict]]) -> list[str]:
+    """Every slot an affix allows must be a slot some item base occupies.
+
+    A misspelled slot does not fail: the affix simply never rolls, on any drop,
+    and nothing reports it. Cross-checking the two sheets against each other
+    catches it without either needing a hard-coded list of slots, so adding a
+    slot to the design needs no change here.
+    """
+    bases = tables.get("ItemBases")
+    affix_rows = tables.get("Affixes")
+    if not bases or not affix_rows:
+        return []
+
+    real = {row["Slot"] for row in bases}
+    problems = []
+    for row in affix_rows:
+        for slot in (s.strip() for s in row["AllowedSlots"].split(",")):
+            if slot and slot not in real:
+                problems.append(
+                    f"Affixes/{row['Name']}: allows slot {slot!r}, which no "
+                    f"item base occupies")
+
+    # And the other way: a slot with no affix at all could fill none of its
+    # four slots, which the affix pool is required to avoid.
+    reachable = {s.strip() for row in affix_rows
+                 for s in row["AllowedSlots"].split(",") if s.strip()}
+    for slot in sorted(real - reachable):
+        problems.append(f"ItemBases: slot {slot!r} can roll no affix at all")
+
+    return problems
+
+
+def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
+    """A hybrid affix must name two affixes that exist.
+
+    A hybrid grants two stats at a reduced share each. If a part names nothing,
+    the hybrid grants half of what it says and the shortfall is invisible.
+    """
+    affix_rows = tables.get("Affixes")
+    if not affix_rows:
+        return []
+
+    names = {row["AffixName"] for row in affix_rows}
+    problems = []
+    for row in affix_rows:
+        if row["AffixKind"] != "Hybrid":
+            continue
+        for field in ("HybridPart1", "HybridPart2"):
+            part = row[field]
+            if not part:
+                problems.append(f"Affixes/{row['Name']}: {field} is empty")
+            elif part not in names:
+                problems.append(
+                    f"Affixes/{row['Name']}: {field} names {part!r}, which is "
+                    "not an affix")
+    return problems
+
+
 def validate_weights(tables: dict[str, list[dict]]) -> list[str]:
     problems = []
     for table, rows in tables.items():
@@ -448,7 +655,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     problems = (validate_tags(tables, known_tags(book))
-                + validate_weights(tables))
+                + validate_weights(tables)
+                + validate_affix_slots(tables)
+                + validate_hybrid_parts(tables))
     if problems:
         print(f"FAIL: {len(problems)} validation problem(s):", file=sys.stderr)
         for line in problems[:40]:

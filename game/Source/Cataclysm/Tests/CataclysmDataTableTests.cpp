@@ -97,6 +97,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   26)
 	CHECK_TABLE(FCataclysmCityUpgradeRow,       "CityUpgrades.csv",           24)
 	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      37)
+	// 55 bases across 11 slots, at least three per slot, because one base in a
+	// slot is not a choice.
+	CHECK_TABLE(FCataclysmItemBaseRow,          "ItemBases.csv",              55)
+	// 59: 35 single-stat affixes, 3 resistance families, 9 ailments and 12
+	// hybrids.
+	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                59)
 
 	#undef CHECK_TABLE
 
