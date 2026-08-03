@@ -1,10 +1,11 @@
-"""Tests for the resistance affix families."""
+"""Tests for the affix pool: resistance, health and damage."""
 
 from __future__ import annotations
 
 import pytest
 
 from cataclysm_sim import affixes as af
+from cataclysm_sim import enemy_stats as es
 
 
 # --------------------------------------------------------------------------
@@ -287,3 +288,270 @@ def test_there_is_one_resistance_per_damage_type():
 def test_the_cap_matches_the_character_sheet():
     from cataclysm_sim.character import SOFT_CAPS
     assert af.RESISTANCE_CAP == SOFT_CAPS["resistance_war"] == 70.0
+
+
+# --------------------------------------------------------------------------
+# Health and damage affixes
+# --------------------------------------------------------------------------
+
+def test_health_and_damage_come_in_a_flat_and_an_increased_kind():
+    for pair in (af.HEALTH_AFFIXES, af.DAMAGE_AFFIXES):
+        kinds = {a.kind for a in pair}
+        assert kinds == {"flat", "increased"}
+        assert len({a.stat for a in pair}) == 1, "a pair must target one stat"
+
+
+def test_an_unknown_affix_kind_is_rejected():
+    with pytest.raises(ValueError, match="flat.*increased"):
+        af.StatAffix("Bad", "max_health", "multiplicative", 10.0)
+
+
+def test_stat_affixes_use_the_same_curve_and_band_as_resistance_affixes():
+    """One shared curve across the whole pool. A family computing its own would
+    drift the moment either constant changed."""
+    for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
+        for tier in af.AFFIX_TIERS:
+            assert affix.range_at(tier) == af.tier_band(affix.top_value, tier)
+            low, high = affix.range_at(tier)
+            assert low / high == pytest.approx(1.0 - af.ROLL_BAND_FRACTION)
+
+
+def test_a_flat_affix_is_worth_more_when_the_character_has_more_increases():
+    """Flat points are multiplied by every increase already on the character,
+    which is why the two kinds cannot be compared by their face values."""
+    flat = af.FLAT_HEALTH
+    assert (flat.added_value(base_before_increases=2000, existing_increases=2.0)
+            > flat.added_value(base_before_increases=2000, existing_increases=0.0))
+
+
+def test_an_increased_affix_is_worth_more_when_the_character_has_more_base():
+    inc = af.INCREASED_HEALTH
+    assert (inc.added_value(base_before_increases=6000, existing_increases=2.0)
+            > inc.added_value(base_before_increases=2000, existing_increases=2.0))
+
+
+def test_an_increased_affix_is_worth_nothing_with_no_base_to_scale():
+    """The same rule the character sheet already states: attributes and
+    increases scale a value that came from somewhere else."""
+    assert af.INCREASED_HEALTH.added_value(0.0, 2.0) == 0.0
+    assert af.FLAT_HEALTH.added_value(0.0, 2.0) > 0.0
+
+
+def test_flat_wins_early_and_increased_wins_late():
+    """The crossover is the whole reason for having two kinds. If one always
+    won, the other would be dead content."""
+    for pair in (af.HEALTH_AFFIXES, af.DAMAGE_AFFIXES):
+        crossover = af.crossover_base(pair, existing_increases=2.0)
+        below = af.better_kind(pair, crossover * 0.5, 2.0)
+        above = af.better_kind(pair, crossover * 2.0, 2.0)
+        assert below.kind == "flat"
+        assert above.kind == "increased"
+
+
+def test_the_health_crossover_lands_inside_a_real_build():
+    """Not at either end. A level 100 Ravager has 2,110 base health, so a
+    crossover far below that would make flat health pointless, and one far above
+    it would make increased health pointless."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+    base = DEMONIC_CLASSES["Ravager"].base_at("max_health", 100)
+    crossover = af.crossover_base(af.HEALTH_AFFIXES, existing_increases=2.0)
+    assert base < crossover < base * 3
+
+
+def test_the_crossover_moves_with_the_increases_already_on_the_character():
+    """A character deep in Vitality wants flat health for longer, because its
+    increases multiply every flat point. That is the interaction working."""
+    low = af.crossover_base(af.HEALTH_AFFIXES, existing_increases=0.0)
+    high = af.crossover_base(af.HEALTH_AFFIXES, existing_increases=2.0)
+    assert high > low
+
+
+# --------------------------------------------------------------------------
+# Damage affixes are pinned to the target that makes the enemy numbers work
+# --------------------------------------------------------------------------
+
+def test_the_damage_target_is_read_off_the_enemy_stats():
+    """It is an OUTPUT of the enemy design, not an input to it.
+
+    An earlier version imported a player damage figure that had been derived
+    backwards from player-side targets, and that figure is what made the
+    project owner's 125% increased damage affix impossible to fit.
+    """
+    common = es.stats_on_floor("Common", 8, "Cataclysm")
+    assert af.damage_target(8) == pytest.approx(
+        common.effective_health / af.HITS_TO_KILL_A_COMMON_ENEMY)
+
+
+def test_the_target_tracks_enemy_health_rather_than_being_a_constant():
+    """If the enemy numbers move, this must move with them. A hard-coded figure
+    here is exactly the coupling that produced the conflict before."""
+    assert af.damage_target(8) > 5 * af.damage_target(1)
+
+
+def test_a_common_enemy_dies_in_the_range_the_project_owner_set():
+    """One to three non-critical hits. The named Common enemies are checked as
+    well as the average, because the average is not a creature anyone fights."""
+    target = af.damage_target(8)
+    for kind in ("Imp", "Hellhound"):
+        e = es.stats_on_floor("Common", 8, "Cataclysm", kind=kind)
+        hits = e.effective_health / target
+        assert 0 < hits <= 3.0, f"a Common {kind} takes {hits:.1f} hits"
+
+
+def test_the_rarest_enemy_is_a_long_fight_and_the_commonest_is_not():
+    """Whatever the exact figures, the ordering has to survive."""
+    target = af.damage_target(8)
+    imp = es.stats_on_floor("Common", 8, "Cataclysm", kind="Imp")
+    boss = es.stats_on_floor("Cataclysm Boss", 8, "Cataclysm", kind="Gatekeeper")
+    assert boss.effective_health / target > 50 * (imp.effective_health / target)
+
+
+def test_a_moderate_damage_build_still_needs_a_weapon():
+    """The affixes must not be able to reach the target on their own at ordinary
+    investment, or the weapon is decoration.
+
+    Six slots each way is the reference build. It is not a cap: heavier
+    investment overshoots the target, which is what heavy investment is for.
+    """
+    target = af.damage_target(8)
+    for flat_slots, inc_slots in ((0, 0), (2, 2), (4, 4), (6, 6), (6, 8)):
+        need = af.weapon_base_damage_needed(target, flat_slots, inc_slots)
+        assert 0 < need <= target, (
+            f"{flat_slots} flat and {inc_slots} increased slots need {need:.0f}")
+
+
+def test_the_weapon_supplies_a_real_share_at_the_reference_build():
+    """At six slots each way the weapon and skill together should carry a
+    substantial part of the base, not a rounding error.
+
+    This is what the flat damage value was set to achieve. At its previous value
+    of 60 the flat affixes alone filled the whole base bracket and this fails.
+    """
+    target = af.damage_target(8)
+    from_weapon = af.weapon_base_damage_needed(target, 6, 6)
+    from_flat = af.FLAT_DAMAGE.value_at(7) * 6
+    assert from_weapon > from_flat * 0.5, (
+        f"weapon supplies {from_weapon:.0f} against {from_flat:.0f} from affixes")
+
+
+def test_spending_no_slots_on_damage_needs_the_weapon_to_supply_everything():
+    target = af.damage_target(8)
+    assert af.weapon_base_damage_needed(target, 0, 0) == pytest.approx(target)
+
+
+def test_more_damage_affixes_always_reduce_what_the_weapon_must_supply():
+    target = af.damage_target(8)
+    needs = [af.weapon_base_damage_needed(target, n, n) for n in range(0, 9)]
+    # strict=False is required: the two lists differ in length by one, because
+    # this pairs each investment level with the next.
+    for bigger, smaller in zip(needs, needs[1:], strict=False):
+        assert smaller < bigger, f"not strictly falling: {needs}"
+
+
+def test_a_damage_build_crosses_from_flat_to_increased_partway_through():
+    """Both kinds must get used. If the crossover sat outside the base a real
+    character reaches, one kind would always win and the other would be dead
+    content.
+
+    Walked one flat affix at a time, which is how a build is actually assembled,
+    rather than comparing the crossover to a range. At the previous flat damage
+    value of 60 the crossover is 528 and no build reaches it, so flat wins
+    always; at 12 it is 106, below where a build starts, so increased wins
+    always. Both make this fail.
+    """
+    increases = (af.INCREASED_DAMAGE.value_at(7) / 100.0
+                 * af.REFERENCE_INCREASED_DAMAGE_AFFIXES)
+    # The weapon is a FIXED quantity a player adds affixes on top of. Starting
+    # from the whole base a target implies would put the character at the target
+    # before buying anything, which is not how a build is assembled.
+    weapon = af.reference_weapon_base(8)
+
+    winners = []
+    for flat_affixes in range(0, 9):
+        base = weapon + af.FLAT_DAMAGE.value_at(7) * flat_affixes
+        winners.append(af.better_kind(af.DAMAGE_AFFIXES, base, increases).kind)
+
+    assert winners[0] == "flat", (
+        f"increased already wins with no flat affixes: {winners}")
+    assert winners[-1] == "increased", (
+        f"flat still wins after eight flat affixes: {winners}")
+    # And it must switch exactly once, not oscillate.
+    assert winners == sorted(winners, key=["flat", "increased"].index)
+
+
+# --------------------------------------------------------------------------
+# Slot restrictions
+# --------------------------------------------------------------------------
+
+def test_the_gear_slots_sum_to_the_pieces_the_design_describes():
+    assert sum(af.GEAR_SLOTS.values()) == af.GEAR_PIECES == 18
+
+
+def test_there_are_eight_rings():
+    """Rings are the flexible slots, and there being eight of them is why."""
+    assert af.GEAR_SLOTS["Ring"] == 8
+
+
+def test_every_affix_family_is_restricted_to_some_slots():
+    """Without restrictions every slot is interchangeable and gearing has no
+    puzzle in it: a player fills all 72 with whatever is strongest."""
+    for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
+        assert affix.allowed_slots
+        assert affix.slots_available() < af.TOTAL_AFFIX_SLOTS
+
+
+def test_damage_and_health_go_on_different_pieces():
+    """If the two lists were the same, the restriction would only reduce the
+    total and would not force any trade."""
+    damage = set(af.FLAT_DAMAGE.allowed_slots)
+    health = set(af.FLAT_HEALTH.allowed_slots)
+    assert damage != health
+    assert damage - health, "damage has no slot of its own"
+    assert health - damage, "health has no slot of its own"
+
+
+def test_rings_take_every_kind_of_affix():
+    """The flexible slots a build uses to fix whatever it is short of."""
+    for allowed in (af.OFFENSIVE_SLOTS, af.DEFENSIVE_SLOTS, af.RESISTANCE_SLOTS):
+        assert "Ring" in allowed
+
+
+def test_a_weapon_cannot_carry_health_or_resistance():
+    """Armour and jewellery defend. A weapon does not."""
+    assert "Weapon" not in af.DEFENSIVE_SLOTS
+    assert "Weapon" not in af.RESISTANCE_SLOTS
+    assert "Weapon" in af.OFFENSIVE_SLOTS
+
+
+def test_slots_available_counts_pieces_times_slots_per_piece():
+    assert af.slots_available_to(frozenset({"Ring"})) == 8 * af.AFFIX_SLOTS_PER_PIECE
+    assert af.slots_available_to(frozenset({"Head"})) == af.AFFIX_SLOTS_PER_PIECE
+    assert af.slots_available_to(frozenset()) == 0
+    assert af.slots_available_to(frozenset(af.GEAR_SLOTS)) == af.TOTAL_AFFIX_SLOTS
+
+
+def test_an_affix_allowing_a_slot_that_does_not_exist_is_rejected():
+    with pytest.raises(ValueError, match="slots that do not exist"):
+        af.StatAffix("Bad", "max_health", "flat", 10.0, frozenset({"Cape"}))
+
+
+def test_resistance_can_go_almost_anywhere_and_damage_cannot():
+    """Capping eight resistances is the hardest defensive requirement, so it
+    should not also be the most slot-restricted."""
+    assert af.slots_available_to(af.RESISTANCE_SLOTS) > af.slots_available_to(
+        af.OFFENSIVE_SLOTS)
+
+
+def test_increased_damage_is_the_value_the_project_owner_set():
+    assert af.INCREASED_DAMAGE.top_value == 125.0
+
+
+# A test named test_the_damage_affixes_overshoot_the_current_damage_target used
+# to sit here. It recorded a conflict rather than asserting a desired state: at
+# 125% per increased affix, a build spending four slots each way already exceeded
+# the player damage figure then in use, so a weapon would have contributed
+# nothing. It was written to fail once that was resolved, and it did.
+#
+# It was resolved by setting the enemy stats first and reading the damage target
+# off them, and by lowering flat damage from 60 to 18. The test is deleted rather
+# than adjusted, because the thing it existed to remember has happened.
