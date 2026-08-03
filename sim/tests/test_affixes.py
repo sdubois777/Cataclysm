@@ -142,9 +142,68 @@ def test_there_are_seven_affix_tiers():
     assert set(af.TIER_FRACTIONS) == set(af.AFFIX_TIERS)
 
 
-def test_an_affix_reaches_its_full_value_at_tier_seven():
+def test_a_perfect_roll_at_tier_seven_is_the_family_top_value():
     for family in af.RESISTANCE_FAMILIES:
-        assert family.value_at(7) == pytest.approx(family.top_value)
+        assert family.value_at(7, roll=1.0) == pytest.approx(family.top_value)
+
+
+# --------------------------------------------------------------------------
+# Every tier is a range, which is what the crafting system acts on
+# --------------------------------------------------------------------------
+
+def test_every_tier_is_a_range_not_a_single_value():
+    """Two crafting materials do nothing without this. The Corrupted Mote
+    rerolls an affix value, and the Primal Spark perfects rolls on gear.
+    Perfecting is meaningless if a tier has one value."""
+    for family in af.RESISTANCE_FAMILIES:
+        for tier in af.AFFIX_TIERS:
+            low, high = family.range_at(tier)
+            assert high > low, f"{family.name} T{tier} is a point, not a range"
+
+
+def test_a_roll_moves_the_value_within_its_band():
+    family = af.SINGLE_RESISTANCE
+    low, high = family.range_at(5)
+    assert family.value_at(5, roll=0.0) == pytest.approx(low)
+    assert family.value_at(5, roll=1.0) == pytest.approx(high)
+    assert low < family.average_at(5) < high
+
+
+def test_a_roll_outside_zero_to_one_is_clamped_rather_than_extrapolated():
+    """A bad caller must not produce an affix outside its own tier."""
+    family = af.SINGLE_RESISTANCE
+    low, high = family.range_at(5)
+    assert family.value_at(5, roll=-3.0) == pytest.approx(low)
+    assert family.value_at(5, roll=9.0) == pytest.approx(high)
+
+
+def test_any_roll_at_a_higher_tier_beats_any_roll_at_a_lower_one():
+    """Tier stays the primary axis and the roll the secondary one. If a lucky T4
+    could beat an unlucky T5, tiers would stop meaning anything and the crafting
+    action that raises a tier would compete with the one that rerolls a value."""
+    for family in af.RESISTANCE_FAMILIES:
+        for tier in range(1, 7):
+            _, lower_best = family.range_at(tier)
+            higher_worst, _ = family.range_at(tier + 1)
+            assert higher_worst >= lower_best, (
+                f"{family.name}: a perfect T{tier} ({lower_best:.2f}) beats a "
+                f"worst T{tier + 1} ({higher_worst:.2f})")
+
+
+def test_the_lowest_tier_cannot_roll_to_nothing():
+    """An affix that can roll to zero is a wasted slot rather than a weak one."""
+    for family in af.RESISTANCE_FAMILIES:
+        low, _ = family.range_at(1)
+        assert low > 0.0, f"{family.name} T1 can roll to zero"
+
+
+def test_crafting_a_perfect_set_is_worth_something_measurable():
+    """If perfect and minimum rolls needed the same number of slots, the
+    Primal Spark would be dead content."""
+    perfect = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=1.0)
+    minimum = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=0.0)
+    assert minimum > perfect
+    assert minimum - perfect >= 0.5
 
 
 def test_affix_value_rises_with_every_tier():

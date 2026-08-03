@@ -63,6 +63,28 @@ AFFIX_TIERS = (1, 2, 3, 4, 5, 6, 7)
 #: value.
 TIER_FRACTIONS: dict[int, float] = {tier: tier / 7.0 for tier in range(1, 8)}
 
+#: EVERY AFFIX TIER IS A RANGE, NOT A SINGLE VALUE. A T5 single-resistance affix
+#: rolls somewhere between 11.4% and 13.1%, and where it lands is the difference
+#: between a good item and one worth rerolling.
+#:
+#: This is not decoration. Two crafting materials in
+#: `game/Data/CraftingMaterials.csv` do nothing at all without it:
+#:
+#:     Corrupted Mote   "Affix Reroll Currency. Used for Reroll Affix Value."
+#:     Primal Spark     "The Perfection Material. Used to perfect the rolls on
+#:                       gear."
+#:
+#: Perfecting a roll is meaningless if a tier has one value, and rerolling a
+#: value is meaningless if the reroll cannot change it. Without ranges, an
+#: Extremely Rare crafting material is dead content.
+#:
+#: How wide the band is, as a fraction of the gap between one tier and the next.
+#: Below 1.0 the bands do not overlap, so ANY roll at a higher tier beats ANY
+#: roll at a lower one. That keeps tier the primary axis and the roll the
+#: secondary one: a lucky T4 must never beat an unlucky T5, or tiers stop
+#: meaning anything.
+ROLL_BAND_FRACTION = 0.60
+
 #: The character sheet's resistance cap. Reaching it on every active damage type
 #: is what a build is trying to do.
 RESISTANCE_CAP = 70.0
@@ -86,21 +108,45 @@ class AffixFamily:
     breadth: int
     top_value: float
 
-    def value_at(self, tier: int) -> float:
-        """Percentage granted to each covered resistance, at an affix tier."""
+    def range_at(self, tier: int) -> tuple[float, float]:
+        """The lowest and highest this affix can roll at a tier.
+
+        The top of a tier's band is its share of the family's top value, so a
+        perfect T7 roll is exactly the family's stated maximum. The band reaches
+        down by a fraction of the gap to the tier below, which leaves a gap
+        between tiers so that any higher-tier roll beats any lower-tier one.
+        """
         if tier not in TIER_FRACTIONS:
             raise ValueError(f"affix tier {tier} outside {sorted(TIER_FRACTIONS)}")
-        return self.top_value * TIER_FRACTIONS[tier]
+        high = self.top_value * TIER_FRACTIONS[tier]
+        step = self.top_value / len(AFFIX_TIERS)
+        return (max(0.0, high - step * ROLL_BAND_FRACTION), high)
 
-    def total_coverage(self, tier: int) -> float:
+    def value_at(self, tier: int, roll: float = 1.0) -> float:
+        """Percentage granted to each covered resistance.
+
+        `roll` places the result inside the tier's band: 0.0 is the worst
+        possible roll, 1.0 the best. It defaults to a perfect roll, because the
+        questions this module answers -- how many slots to reach the resistance
+        cap -- are about what a finished, crafted character can achieve.
+        """
+        low, high = self.range_at(tier)
+        return low + (high - low) * min(max(roll, 0.0), 1.0)
+
+    def average_at(self, tier: int) -> float:
+        """The middle of the band. What an uncrafted drop is worth on average."""
+        return self.value_at(tier, roll=0.5)
+
+    def total_coverage(self, tier: int, roll: float = 1.0) -> float:
         """Percentage points granted across everything it covers.
 
         Broader families grant less per type and more in total, which is what
         makes the choice a real one rather than a strict ordering.
         """
-        return self.value_at(tier) * self.breadth
+        return self.value_at(tier, roll) * self.breadth
 
-    def useful_coverage(self, tier: int, active_cataclysms: int) -> float:
+    def useful_coverage(self, tier: int, active_cataclysms: int,
+                        roll: float = 1.0) -> float:
         """Coverage that is not wasted.
 
         An all-resistance affix covers eight damage types. If only two are
@@ -108,7 +154,7 @@ class AffixFamily:
         the efficient family changes as a run goes on.
         """
         used = min(self.breadth, max(0, active_cataclysms))
-        return self.value_at(tier) * used
+        return self.value_at(tier, roll) * used
 
 
 #: Proposed families. Per-type value falls as breadth rises, which the project
@@ -122,20 +168,26 @@ RESISTANCE_FAMILIES = (SINGLE_RESISTANCE, HYBRID_RESISTANCE, ALL_RESISTANCE)
 
 
 def slots_to_cap(family: AffixFamily, tier: int, active_cataclysms: int,
-                 affix_tier: int = 7) -> float:
-    """Affix slots needed to cap every active resistance using one family."""
+                 affix_tier: int = 7, roll: float = 1.0) -> float:
+    """Affix slots needed to cap every active resistance using one family.
+
+    Defaults to perfect rolls, so this is the floor. An average-rolled set needs
+    more slots, which is the gap the Primal Spark and the Corrupted Mote exist
+    to close.
+    """
     needed = RESISTANCE_CAP * max(1, active_cataclysms)
-    per_slot = family.useful_coverage(affix_tier, active_cataclysms)
+    per_slot = family.useful_coverage(affix_tier, active_cataclysms, roll)
     if per_slot <= 0:
         return float("inf")
     return needed / per_slot
 
 
-def best_family(active_cataclysms: int, affix_tier: int = 7) -> AffixFamily:
+def best_family(active_cataclysms: int, affix_tier: int = 7,
+                roll: float = 1.0) -> AffixFamily:
     """Which family caps every active resistance in the fewest slots."""
     return min(RESISTANCE_FAMILIES,
                key=lambda f: slots_to_cap(f, active_cataclysms, active_cataclysms,
-                                          affix_tier))
+                                          affix_tier, roll))
 
 
 def crossover_table(affix_tier: int = 7) -> list[dict[str, object]]:
@@ -157,18 +209,25 @@ def crossover_table(affix_tier: int = 7) -> list[dict[str, object]]:
 if __name__ == "__main__":
     print("Resistance affix families. Issue #79.")
     print()
-    print("Values per covered resistance, by affix tier:")
+    print("Every tier is a RANGE. Where a roll lands inside it is the difference")
+    print("between a good item and one worth rerolling, and it is what the")
+    print("Corrupted Mote and the Primal Spark exist to change.")
     print()
-    header = f"    {'family':<20} " + "".join(f"{'T' + str(t):>7}" for t in AFFIX_TIERS)
-    print(header + f"{'coverage':>11}")
-    print("    " + "-" * (len(header) + 7))
     for f in RESISTANCE_FAMILIES:
-        row = f"    {f.name:<20} " + "".join(f"{f.value_at(t):>6.1f}%" for t in AFFIX_TIERS)
-        print(row + f"{f.total_coverage(7):>10.0f}")
+        print(f"  {f.name} (covers {f.breadth}):")
+        for t in AFFIX_TIERS:
+            low, high = f.range_at(t)
+            print(f"      T{t}   {low:>5.1f}% to {high:>5.1f}%")
+        print()
+
+    print("  Bands do not overlap, so any roll at a higher tier beats any roll")
+    print("  at a lower one. Tier stays the primary axis and the roll the")
+    print("  secondary one.")
     print()
-    print("    'coverage' is percentage points across everything the affix")
-    print("    covers, at T7. Narrower families give more per type; broader")
-    print("    ones give more in total. That is what makes it a choice.")
+    print("  Total coverage at a perfect T7 roll:")
+    for f in RESISTANCE_FAMILIES:
+        print(f"      {f.name:<20} {f.total_coverage(7):>5.0f} points across "
+              f"{f.breadth} resistance{'s' if f.breadth > 1 else ''}")
     print()
 
     print("Slots needed to cap every ACTIVE resistance, using T7 affixes.")
@@ -185,6 +244,18 @@ if __name__ == "__main__":
         print(line + f"  {row['best']}")
     print()
     print(f"    Out of {TOTAL_AFFIX_SLOTS} affix slots on a full set of gear.")
+    print()
+
+    perfect = slots_to_cap(ALL_RESISTANCE, 8, 8, roll=1.0)
+    average = slots_to_cap(ALL_RESISTANCE, 8, 8, roll=0.5)
+    worst = slots_to_cap(ALL_RESISTANCE, 8, 8, roll=0.0)
+    print("    Those figures assume PERFECT rolls. What the roll is worth, at")
+    print("    tier 8 with all-resistance affixes:")
+    print(f"      every roll perfect   {perfect:>5.1f} slots")
+    print(f"      every roll average   {average:>5.1f} slots")
+    print(f"      every roll minimum   {worst:>5.1f} slots")
+    print(f"    So crafting is worth {worst - perfect:.1f} slots of gear, which is")
+    print("    what the Primal Spark and the Corrupted Mote are for.")
     print()
     print("    The efficient family changes as the run goes on, which is the")
     print("    point of having three. A single-resistance affix is the best use")
