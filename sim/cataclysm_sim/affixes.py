@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import enemy_stats, player_power
-from .character import ALL_STATS, RESISTANCE_STATS
+from .character import ALL_STATS, RESISTANCE_STATS, SKILL_SLOTS
 
 #: The eight damage types, so the eight resistances.
 DAMAGE_TYPES = ("War", "Demonic", "Death", "Pestilence",
@@ -1455,10 +1455,14 @@ def weapon_base_damage_needed(target_damage: float, flat_slots: int,
     the project, so this is how the affix values imply one rather than the other
     way round.
 
-    "Base bracket" rather than "weapon" because a skill's own multiplier is not
-    modelled anywhere yet. The design says skills come from weapon type paired
-    with damage type and never says what any of them are worth, so this figure is
-    the weapon and the skill together. See issue #107.
+    THIS IS THE WEAPON, and it used to be the weapon and the skill together
+    because no skill had a damage multiplier anywhere in the project. Issue #107
+    settled that: `character.SKILL_SLOTS` gives each of the seven slots one, and
+    the basic attack is exactly 100% of weapon damage. Since `damage_target()` is
+    what an ordinary hit has to do, and an ordinary hit is a basic attack, this
+    figure is the weapon alone.
+
+    `damage_for_slot` below gives what the other six slots do with it.
 
     A NEGATIVE RESULT IS INFORMATION, NOT A FAULT. It means the affixes alone
     already exceed the target, so that build overshoots the content, which is
@@ -1468,6 +1472,19 @@ def weapon_base_damage_needed(target_damage: float, flat_slots: int,
     flat = FLAT_DAMAGE.value_at(tier, roll) * flat_slots
     increases = INCREASED_DAMAGE.value_at(tier, roll) / 100.0 * increased_slots
     return target_damage / (1.0 + increases) - flat
+
+
+def damage_for_slot(slot: str, tier: int = 8) -> float:
+    """What one use of a skill in this slot deals at a difficulty tier.
+
+    `damage_target()` is what an ordinary hit has to do, and an ordinary hit is
+    the basic attack, so every other slot is that figure times its share of
+    weapon damage.
+    """
+    if slot not in SKILL_SLOTS:
+        raise ValueError(
+            f"unknown skill slot {slot!r}; expected one of {list(SKILL_SLOTS)}")
+    return damage_target(tier) * SKILL_SLOTS[slot].typical_damage / 100.0
 
 
 def reference_weapon_base(difficulty_tier: int = 8) -> float:

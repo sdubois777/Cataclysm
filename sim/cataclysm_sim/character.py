@@ -444,6 +444,127 @@ class Gear:
                     f"sheet: {sorted(unknown)}")
 
 
+# --------------------------------------------------------------------------
+# What a skill is worth, in weapon damage
+# --------------------------------------------------------------------------
+#
+# ISSUE #107. The design says every weapon type paired with every damage type
+# produces a set of skills, and never said what any of them was worth. So every
+# weapon damage figure in this project was really weapon-and-skill together, and
+# the two differed by however much a skill multiplied.
+#
+# THE CONCEPT WAS ALREADY IN THE DATA, unsystematically. Four of the 61 designed
+# skills in `game/Data/WeaponSkills.csv` state a multiplier in prose:
+#
+#     Skull Splitter   "dealing 500% weapon damage to a single target"
+#     Annihilator      "the final hit ... deals 300% weapon damage"
+#     Bulwark          "bonus damage up to a cap of 200% weapon damage"
+#     Haymaker         "they take an additional 100% weapon damage"
+#
+# So skills multiply weapon damage, the design already says so, and the Ultimate
+# band below is set by the two Ultimates among them rather than invented.
+#
+# THE BASIC ATTACK IS 100% BY DEFINITION, and that is what makes this cost
+# nothing. Every damage figure fitted so far -- the tier 8 target of 1,681, the
+# affix values, what a weapon must supply -- was fitted to an ordinary hit, which
+# is the basic attack. Anchoring the scale there leaves all of it standing and
+# lets the other slots multiply from it.
+#
+# WEAPON DAMAGE MEANS THE WHOLE BASE BRACKET: the weapon plus flat added damage
+# from gear. That is what a player reads "500% weapon damage" to mean, and it is
+# why flat added damage affixes are worth taking at all.
+
+BASIC_ATTACK_SLOT = "Basic"
+
+
+@dataclass(frozen=True)
+class SkillSlot:
+    """One of the seven slots, and what a skill in it is typically worth.
+
+    A band rather than a single number, because skills in a slot vary: the design
+    already has one Ultimate at 300% and another at 500%. `typical_damage` is
+    what a skill in this slot deals when it does not state its own.
+    """
+
+    name: str
+    typical_damage: float
+    lowest: float
+    highest: float
+    note: str
+
+    def __post_init__(self) -> None:
+        if not self.lowest <= self.typical_damage <= self.highest:
+            raise ValueError(
+                f"{self.name}: typical {self.typical_damage} is outside its "
+                f"band of {self.lowest} to {self.highest}")
+
+
+#: The seven slots from the design document's Skill Slots table, in the order it
+#: lists them. Six are chosen by the player; the Basic Attack is automatic.
+SKILL_SLOTS: dict[str, SkillSlot] = {
+    s.name: s for s in (
+        SkillSlot(BASIC_ATTACK_SLOT, 100.0, 100.0, 100.0,
+                  "Automatic and free. It IS weapon damage, which is what makes "
+                  "it the anchor every other slot is measured against."),
+        SkillSlot("Heavy", 250.0, 175.0, 350.0,
+                  "The design calls it often the primary damage button, on a "
+                  "moderate cooldown."),
+        SkillSlot("Special", 150.0, 100.0, 250.0,
+                  "Traps, deployables, grenades, pets. The most varied slot, so "
+                  "the widest band below its typical value."),
+        SkillSlot("Support", 0.0, 0.0, 100.0,
+                  "Buffs, shields, stances, curses, banners. Usually no damage "
+                  "at all, which is why its typical value is zero."),
+        SkillSlot("Aura", 25.0, 15.0, 40.0,
+                  "Persistent and toggled, draining resource per second. This "
+                  "is per second rather than per use."),
+        SkillSlot("Ultimate", 400.0, 300.0, 500.0,
+                  "The band is the two designed Ultimates: Annihilator states "
+                  "300% and Skull Splitter states 500%."),
+        SkillSlot("Movement", 100.0, 75.0, 150.0,
+                  "Gap closers and escapes. The design says some also deal "
+                  "damage, so a basic attack's worth is the right middle."),
+    )
+}
+
+#: The six a player chooses between. The Basic Attack is not one of them: the
+#: design says it is handled automatically.
+CHOSEN_SKILL_SLOTS = tuple(s for s in SKILL_SLOTS if s != BASIC_ATTACK_SLOT)
+
+
+def _check_the_slots_match_the_design_document() -> None:
+    """`Cataclysm_GDD_v2.md` lists seven rows in its Skill Slots table and says
+    a player has six slots, the Basic Attack being automatic. Both have to hold,
+    or this table has drifted from the design it came from."""
+    designed = {BASIC_ATTACK_SLOT, "Heavy", "Special", "Support", "Aura",
+                "Ultimate", "Movement"}
+    if set(SKILL_SLOTS) != designed:
+        raise ValueError(
+            f"skill slots have drifted from the design: "
+            f"missing {sorted(designed - set(SKILL_SLOTS))}, "
+            f"unexpected {sorted(set(SKILL_SLOTS) - designed)}")
+    if len(CHOSEN_SKILL_SLOTS) != 6:
+        raise ValueError(
+            f"{len(CHOSEN_SKILL_SLOTS)} slots a player chooses between; the "
+            "design says six")
+
+
+def _check_the_basic_attack_is_the_anchor() -> None:
+    """Every damage figure in this project was fitted to an ordinary hit. If the
+    basic attack stopped being exactly 100% of weapon damage, all of them would
+    silently mean something else."""
+    basic = SKILL_SLOTS[BASIC_ATTACK_SLOT]
+    if not basic.lowest == basic.typical_damage == basic.highest == 100.0:
+        raise ValueError(
+            f"the basic attack is {basic.typical_damage}% of weapon damage and "
+            "must be exactly 100%, because it is what everything else is "
+            "measured against")
+
+
+_check_the_slots_match_the_design_document()
+_check_the_basic_attack_is_the_anchor()
+
+
 @dataclass(frozen=True)
 class Skill:
     """The ability being used, which supplies the base for some stats.
@@ -462,6 +583,13 @@ class Skill:
     #: them, for example "Type.AOE.PointBlank" or "Item.Weapon.Dagger". These
     #: decide which of the character's tag-scoped modifiers reach this skill.
     tags: frozenset[str] = frozenset()
+    #: Which of the seven slots this skill occupies. Decides its damage
+    #: multiplier when the skill does not state one of its own. See SKILL_SLOTS.
+    slot: str = BASIC_ATTACK_SLOT
+    #: Percent of weapon damage this particular skill deals, when it differs
+    #: from what its slot implies. Four designed skills already state one:
+    #: Skull Splitter says 500% and Annihilator says 300%.
+    damage_multiplier: float | None = None
 
     def __post_init__(self) -> None:
         unknown = set(self.base) - set(ALL_STATS)
@@ -475,6 +603,20 @@ class Skill:
                 f"skill {self.name} supplies a base for "
                 f"{sorted(not_skill_based)}, whose base does not come from the "
                 "skill. See BASE_SOURCE.")
+        if self.slot not in SKILL_SLOTS:
+            raise ValueError(
+                f"skill {self.name} is in slot {self.slot!r}; expected one of "
+                f"{list(SKILL_SLOTS)}")
+        if self.damage_multiplier is not None and self.damage_multiplier < 0:
+            raise ValueError(
+                f"skill {self.name} deals {self.damage_multiplier}% of weapon "
+                "damage, which is less than none")
+
+    def weapon_damage_percent(self) -> float:
+        """Percent of weapon damage one use of this skill deals."""
+        if self.damage_multiplier is not None:
+            return self.damage_multiplier
+        return SKILL_SLOTS[self.slot].typical_damage
 
 
 @dataclass(frozen=True)

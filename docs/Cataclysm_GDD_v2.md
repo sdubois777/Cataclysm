@@ -395,6 +395,37 @@ A player carrying several damage types will have far more skills available than 
 
   
 
+### **What a Skill Is Worth**
+
+Every skill deals a percentage of **weapon damage**, which means the weapon's own damage plus any flat added damage from gear. That is what makes flat added damage affixes worth taking.
+
+  
+
+**The Basic Attack is 100% by definition, and every other slot is measured against it.** It is the ordinary hit, so it is the figure the damage target in section VI refers to and the one every affix value was fitted to.
+
+  
+
+|  |  |  |  |
+| :-- | :-: | :-: | :-- |
+| \*\*Slot\*\* | \*\*Typical\*\* | \*\*Range\*\* | \*\*Why\*\* |
+| Basic Attack | 100% | fixed | Automatic and free. It is weapon damage. |
+| Movement | 100% | 75–150% | Some also deal damage, so an ordinary hit is the right middle. |
+| Support | 0% | 0–100% | Buffs, shields, stances, curses and banners usually deal none. |
+| Aura | 25% per second | 15–40% | Persistent and toggled, draining resource while active. |
+| Special | 150% | 100–250% | Traps, deployables, grenades and pets. The most varied slot. |
+| Heavy Attack | 250% | 175–350% | The primary damage button, on a moderate cooldown. |
+| Ultimate | 400% | 300–500% | Long cooldown, reserved for critical moments. |
+
+  
+
+**A skill may state its own figure, and four already do.** Skull Splitter says 500% weapon damage, Annihilator says 300%, Bulwark caps stored damage at 200%, and Haymaker's wall impact adds 100%. **The Ultimate range above is exactly those two Ultimates**, so it is read off the design rather than chosen.
+
+  
+
+At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202 and an Ultimate at 6,724 — the last being more than an average Common enemy's entire health.
+
+  
+
 ### **Skill Acquisition**
 
 Skills are not leveled or unlocked through a skill tree. They are determined entirely by weapon type and damage type. Changing your weapon changes your available skill set. This keeps the skill system tightly coupled to itemization and makes gear drops feel meaningful beyond raw stat comparisons.
