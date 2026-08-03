@@ -85,6 +85,58 @@ bool FCataclysmTagCountTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemSlotTagTest,
+	"Cataclysm.GameplayTags.ItemSlotsMatchTheDesign",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemSlotTagTest::RunTest(const FString& Parameters)
+{
+	// Issue #106. The item slot vocabulary is what every later item system is
+	// written in: an affix names the slots it may roll on, an enchantment names
+	// the slots it may appear on, and equipment names the slot it fills. A tag
+	// that is present but wrong does not fail -- it silently matches nothing.
+	//
+	// Section VI of the design document lists eleven gear slots, plus four
+	// potion slots which are consumables rather than gear.
+	const TCHAR* Slots[] = {
+		TEXT("Item.Slot.Head"),      TEXT("Item.Slot.Chest"),
+		TEXT("Item.Slot.Shoulders"), TEXT("Item.Slot.Gloves"),
+		TEXT("Item.Slot.Pants"),     TEXT("Item.Slot.Boots"),
+		TEXT("Item.Slot.Belt"),      TEXT("Item.Slot.Ring"),
+		TEXT("Item.Slot.Necklace"),  TEXT("Item.Slot.Relic"),
+		TEXT("Item.Slot.Weapon"),    TEXT("Item.Slot.Potion"),
+	};
+
+	for (const TCHAR* Name : Slots)
+	{
+		TestTrue(FString::Printf(TEXT("%s is a registered gameplay tag"), Name),
+			TagExists(Name));
+	}
+
+	// The four that were wrong. Two named slots the design does not have, and
+	// two used a different word for a slot it does. Asserting their absence is
+	// what stops the old names coming back alongside the new ones, which would
+	// leave both spellings live and neither obviously wrong.
+	const TCHAR* Removed[] = {
+		// "There are no offhand items." A shield is a one-handed weapon type
+		// and occupies the weapon slot.
+		TEXT("Item.Slot.OffHand"),
+		// Appears in no design document, in no data sheet, and in no affix.
+		TEXT("Item.Slot.Bracers"),
+		// Renamed to Boots and Necklace, which is what the design calls them.
+		TEXT("Item.Slot.Feet"),
+		TEXT("Item.Slot.Neck"),
+	};
+
+	for (const TCHAR* Name : Removed)
+	{
+		TestFalse(FString::Printf(TEXT("%s was removed and does not resolve"), Name),
+			TagExists(Name));
+	}
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnknownTagTest,
 	"Cataclysm.GameplayTags.UnknownTagsDoNotResolve",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
