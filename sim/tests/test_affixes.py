@@ -142,9 +142,94 @@ def test_there_are_seven_affix_tiers():
     assert set(af.TIER_FRACTIONS) == set(af.AFFIX_TIERS)
 
 
-def test_an_affix_reaches_its_full_value_at_tier_seven():
+def test_a_perfect_roll_at_tier_seven_is_the_family_top_value():
     for family in af.RESISTANCE_FAMILIES:
-        assert family.value_at(7) == pytest.approx(family.top_value)
+        assert family.value_at(7, roll=1.0) == pytest.approx(family.top_value)
+
+
+# --------------------------------------------------------------------------
+# Every tier is a range, which is what the crafting system acts on
+# --------------------------------------------------------------------------
+
+def test_every_tier_is_a_range_not_a_single_value():
+    """Two crafting materials do nothing without this. The Corrupted Mote
+    rerolls an affix value, and the Primal Spark perfects rolls on gear.
+    Perfecting is meaningless if a tier has one value."""
+    for family in af.RESISTANCE_FAMILIES:
+        for tier in af.AFFIX_TIERS:
+            low, high = family.range_at(tier)
+            assert high > low, f"{family.name} T{tier} is a point, not a range"
+
+
+def test_a_roll_moves_the_value_within_its_band():
+    family = af.SINGLE_RESISTANCE
+    low, high = family.range_at(5)
+    assert family.value_at(5, roll=0.0) == pytest.approx(low)
+    assert family.value_at(5, roll=1.0) == pytest.approx(high)
+    assert low < family.average_at(5) < high
+
+
+def test_a_roll_outside_zero_to_one_is_clamped_rather_than_extrapolated():
+    """A bad caller must not produce an affix outside its own tier."""
+    family = af.SINGLE_RESISTANCE
+    low, high = family.range_at(5)
+    assert family.value_at(5, roll=-3.0) == pytest.approx(low)
+    assert family.value_at(5, roll=9.0) == pytest.approx(high)
+
+
+def test_a_perfect_roll_can_beat_the_tier_above_but_never_two_above():
+    """Bands overlap between adjacent tiers deliberately, because that is the
+    only way a roll can matter with seven tiers: a band large enough to change a
+    build is necessarily larger than the gap between tiers.
+
+    The overlap is bounded to one tier, which makes a perfect roll worth chasing
+    without making tier meaningless. If it reached two tiers, a lucky T5 could
+    beat an unlucky T7 and the crafting action that raises a tier would stop
+    being worth using.
+    """
+    for family in af.RESISTANCE_FAMILIES:
+        for tier in range(3, 8):
+            two_below_best, = (family.range_at(tier - 2)[1],)
+            this_worst, _ = family.range_at(tier)
+            assert this_worst > two_below_best, (
+                f"{family.name}: a perfect T{tier - 2} ({two_below_best:.2f}) "
+                f"beats a worst T{tier} ({this_worst:.2f})")
+
+
+def test_the_bands_do_overlap_between_adjacent_tiers():
+    """Asserted rather than merely allowed. If a future change quietly removed
+    the overlap, rolls would go back to being worth about one slot in 72, which
+    is the state this replaced."""
+    family = af.SINGLE_RESISTANCE
+    seventh_worst, _ = family.range_at(7)
+    _, sixth_best = family.range_at(6)
+    assert sixth_best > seventh_worst
+
+
+def test_the_lowest_tier_cannot_roll_to_nothing():
+    """An affix that can roll to zero is a wasted slot rather than a weak one."""
+    for family in af.RESISTANCE_FAMILIES:
+        low, _ = family.range_at(1)
+        assert low > 0.0, f"{family.name} T1 can roll to zero"
+
+
+def test_crafting_a_perfect_set_saves_several_slots_not_a_fraction_of_one():
+    """The project owner's test of whether the range is worth having: a roll has
+    to change how many affixes it takes to cap resistances. An earlier version
+    saved about one slot out of 72, which nobody would craft for."""
+    perfect = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=1.0)
+    minimum = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=0.0)
+    assert minimum - perfect >= 3.0, (
+        f"perfect rolls save only {minimum - perfect:.1f} slots")
+
+
+def test_a_minimum_roll_is_worth_three_quarters_of_a_perfect_one():
+    """States the band width as a property rather than leaving it in a constant,
+    so a change to it is deliberate."""
+    for family in af.RESISTANCE_FAMILIES:
+        for tier in af.AFFIX_TIERS:
+            low, high = family.range_at(tier)
+            assert low / high == pytest.approx(0.75)
 
 
 def test_affix_value_rises_with_every_tier():
@@ -154,12 +239,34 @@ def test_affix_value_rises_with_every_tier():
         assert len(set(values)) == len(values)
 
 
-def test_the_tier_curve_is_front_loaded_not_linear():
-    """An affix should be half its final value by the middle tier, so a mid-tier
-    roll is useful rather than filler. A linear curve would put T3 at 0.43."""
-    assert af.TIER_FRACTIONS[3] == pytest.approx(0.50)
-    linear_at_three = 3 / 7
-    assert af.TIER_FRACTIONS[3] > linear_at_three
+def test_the_tier_curve_is_linear():
+    """Every step up is worth the same as every other, so the value of one more
+    upgrade never falls off.
+
+    This is a deliberate pressure point. The game's central tension is that a day
+    at the forge is a day not defending the empire, so choosing to upgrade rather
+    than run a dungeon has to stay uncomfortable for the whole run. A
+    front-loaded curve, which an earlier version used, hands over most of an
+    affix's value early and makes the later tiers easy to skip.
+    """
+    for tier in af.AFFIX_TIERS:
+        assert af.TIER_FRACTIONS[tier] == pytest.approx(tier / 7.0)
+
+
+def test_every_tier_step_is_worth_the_same():
+    """The property that keeps the upgrade decision uncomfortable. Stated
+    separately from the formula above, because a future curve could satisfy the
+    endpoints and still sag in the middle."""
+    steps = [af.TIER_FRACTIONS[t + 1] - af.TIER_FRACTIONS[t]
+             for t in range(1, 7)]
+    assert max(steps) == pytest.approx(min(steps)), f"uneven steps: {steps}"
+
+
+def test_no_single_tier_step_hands_over_most_of_an_affix():
+    """A front-loaded curve would. At seven even steps each is about 14%."""
+    steps = [af.TIER_FRACTIONS[t + 1] - af.TIER_FRACTIONS[t]
+             for t in range(1, 7)]
+    assert max(steps) < 0.20
 
 
 def test_an_affix_tier_outside_one_to_seven_is_rejected():
