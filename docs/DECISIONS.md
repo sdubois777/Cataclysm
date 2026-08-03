@@ -20,6 +20,84 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The multiplicative bucket, and gear level multiplying affixes
+
+**Background.** The project owner asked for research into how Path of Exile,
+Last Epoch and Torchlight Infinite calculate damage, and their affix pools. All
+three use the same skeleton with different names:
+
+    (Base + Added) x (1 + sum of all increases) x More1 x More2 x ...
+
+The additive bucket has diminishing returns and each multiplicative source does
+not. That gap is what makes gearing a puzzle: the question a player answers is
+which independent multiplier they are missing, not which number is biggest.
+
+**This was already in the design document and was never implemented.** Section
+IV has carried `Final Value = Base Value x (1 + Sum of Increases) x Product of
+More Multipliers` all along, and reserved the "more" wording for enchantments and
+keystones. `sim/cataclysm_sim/character.py` implemented only the first two
+brackets. This entry records the implementation and the decisions made alongside
+it, not the invention of the rule.
+
+**Decisions taken.**
+
+**Terminology is flat, increased and more**, chosen by the project owner, and the
+same words Path of Exile and Last Epoch use.
+
+**Gems join keystones and enchantments as multiplicative sources.** The design
+document named only enchantments and keystones. Ordinary gear affixes are still
+excluded, which `MORE_SOURCES` enforces: an affix is flat or increased and never
+more. That keeps a rare drop readable and gives the 961 designed enchantments a
+job ordinary affixes cannot do.
+
+**A more multiplier is scoped by tag exactly as an increase is**, so a gem
+granting more area damage does not help a single-target skill.
+
+**A more multiplier divides for cooldown reduction rather than multiplying.**
+Cooldown reduction is a rate: an increase makes the interval shorter, so a more
+source has to as well, or a cooldown reduction gem would lengthen the cooldown.
+Because both buckets divide, no number of them reaches zero, which is why the
+stat still needs no cap.
+
+**A less multiplier cannot reach -100%**, or one source could zero a stat
+outright or invert it.
+
+**Damage conversion is not needed and will not be built.** Player damage is
+adaptive: a weapon deals one damage number rather than one pool per damage type.
+See the separate entry on enemy resistance, which follows from the same decision.
+
+**GEAR UPGRADE LEVEL MULTIPLIES EVERY AFFIX ON THE PIECE**, using the factor
+already in the Power Score model rather than a second copy of it. A +10 piece
+gives about 3.52 times what the same piece gives at +0. Affix values stated
+anywhere are therefore the +10 figures.
+
+**A known imbalance, raised and accepted.** Gear level multiplies both brackets
+of the pipeline at once, so its effect on final damage is roughly squared, while
+Power Score counts it once. Measured with everything else held at tier 8
+maximum:
+
+| How gear level applies | Damage growth from +0 to +10 | Power Score growth |
+|---|---|---|
+| Every affix, as chosen | 9.58x | 1.56x |
+| Flat and increased, weapon fixed | 4.46x | 1.56x |
+| The flat bracket only | 1.64x | 1.56x |
+| Every affix, factor cut to 0.0268 | 1.56x | 1.56x |
+
+Hits to kill a Common enemy fall from 19.1 to 2.0 across that range, so gear
+level is over-rewarded relative to what a character is rated at. The project
+owner chose every affix anyway and to tune it against real play: "We'll figure
+out how to make it work, for now let's just continue forward. Numbers and stuff
+can be changed once we have a working prototype and can see how it plays." The
+measurement is recorded here so it is findable when that tuning happens.
+
+**Affects:** `Cataclysm_GDD_v2.md` section IV. **Applied 2026-08-03:** gems added
+to the list of "more" sources, the diminishing-returns comparison table added,
+the cooldown formula corrected to include the more multiplier, and the gear level
+rule stated. The working model is `sim/cataclysm_sim/character.py`, covered by
+`sim/tests/test_character.py`.
+
+---
+
 ## 2026-08-03 — Player damage is adaptive, so an enemy has one resistance
 
 **Decision.** Player damage is **adaptive**: a weapon deals one damage number

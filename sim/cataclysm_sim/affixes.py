@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import enemy_stats
+from . import enemy_stats, player_power
 
 #: The eight damage types, so the eight resistances.
 DAMAGE_TYPES = ("War", "Demonic", "Death", "Pestilence",
@@ -143,6 +143,46 @@ DEFENSIVE_SLOTS = frozenset({"Head", "Chest", "Belt", "Pants", "Boots", "Ring"})
 RESISTANCE_SLOTS = frozenset(GEAR_SLOTS) - {"Weapon"}
 
 
+#: How much one gear upgrade level adds to every affix on that piece, as a
+#: fraction of the affix's unupgraded value. A +10 piece is about 3.52 times a
+#: +0 one. It is not a round number because it is DERIVED from the tier anchors
+#: rather than chosen.
+#:
+#: NOT A SECOND NUMBER. It is read from `player_power.WEIGHTS`, where it is
+#: already used for exactly this: `Cataclysm_GDD_v2.md` says gear upgrade level
+#: MULTIPLIES gear rarity rather than adding to it, and the Power Score model
+#: implements that as `rarity * (1 + factor * level)`. Duplicating the constant
+#: here would let the two drift, which has happened before elsewhere in this
+#: project.
+#:
+#: EVERY affix on the piece, which the project owner chose on 2026-08-03 after
+#: being shown the measurement below.
+#:
+#: A KNOWN IMBALANCE, ACCEPTED AND RECORDED. Gear level multiplies both brackets
+#: of the pipeline at once, so its effect on final damage is roughly squared,
+#: while Power Score counts it once. Measured with everything else held at tier 8
+#: maximum, going from +0 to +10 multiplies damage by 9.58 and Power Score by
+#: only 1.56, so hits-to-kill a Common enemy falls from 19.1 to 2.0. Gear level
+#: is therefore over-rewarded relative to what a character is rated at.
+#:
+#: The project owner's decision was to proceed anyway and tune against real play:
+#: "We'll figure out how to make it work, for now let's just continue forward.
+#: Numbers and stuff can be changed once we have a working prototype and can see
+#: how it plays." The alternatives measured at the time were applying it to the
+#: flat bracket only, which lands at 1.64 against a target of 1.56, or cutting
+#: the factor to 0.0268, which makes a +10 piece only 1.27 times a +0 one.
+GEAR_LEVEL_FACTOR = player_power.WEIGHTS["upgrade_factor"]
+MAX_GEAR_LEVEL = player_power.MAX_UPGRADE
+
+
+def gear_level_multiplier(gear_level: int) -> float:
+    """What a piece at this upgrade level does to every affix it carries."""
+    if not 0 <= gear_level <= MAX_GEAR_LEVEL:
+        raise ValueError(
+            f"gear level {gear_level} outside 0-{MAX_GEAR_LEVEL}")
+    return 1.0 + GEAR_LEVEL_FACTOR * gear_level
+
+
 def slots_available_to(allowed: frozenset[str]) -> int:
     """How many affix slots a family restricted to these pieces can occupy."""
     return sum(count * AFFIX_SLOTS_PER_PIECE
@@ -167,6 +207,19 @@ def roll_within(low: float, high: float, roll: float) -> float:
     return low + (high - low) * min(max(roll, 0.0), 1.0)
 
 
+def affix_value(top_value: float, tier: int, roll: float = 1.0,
+                gear_level: int = MAX_GEAR_LEVEL) -> float:
+    """One affix's value: its tier band, its roll, and the piece's upgrade level.
+
+    Defaults to a fully upgraded piece, because the questions this module answers
+    are about what a finished character reaches. The stated top values are
+    therefore the +10 figures; a +0 piece gives 1/3.525 of them.
+    """
+    low, high = tier_band(top_value, tier)
+    at_zero = roll_within(low, high, roll) / gear_level_multiplier(MAX_GEAR_LEVEL)
+    return at_zero * gear_level_multiplier(gear_level)
+
+
 @dataclass(frozen=True)
 class AffixFamily:
     """One family of affixes: what it grants, to how many things, and how much.
@@ -189,31 +242,34 @@ class AffixFamily:
         """
         return tier_band(self.top_value, tier)
 
-    def value_at(self, tier: int, roll: float = 1.0) -> float:
+    def value_at(self, tier: int, roll: float = 1.0,
+                 gear_level: int = MAX_GEAR_LEVEL) -> float:
         """Percentage granted to each covered resistance.
 
         `roll` places the result inside the tier's band: 0.0 is the worst
-        possible roll, 1.0 the best. It defaults to a perfect roll, because the
+        possible roll, 1.0 the best. `gear_level` is the piece's upgrade level,
+        which multiplies the result. Both default to the best case, because the
         questions this module answers -- how many slots to reach the resistance
         cap -- are about what a finished, crafted character can achieve.
         """
-        low, high = self.range_at(tier)
-        return roll_within(low, high, roll)
+        return affix_value(self.top_value, tier, roll, gear_level)
 
     def average_at(self, tier: int) -> float:
         """The middle of the band. What an uncrafted drop is worth on average."""
         return self.value_at(tier, roll=0.5)
 
-    def total_coverage(self, tier: int, roll: float = 1.0) -> float:
+    def total_coverage(self, tier: int, roll: float = 1.0,
+                       gear_level: int = MAX_GEAR_LEVEL) -> float:
         """Percentage points granted across everything it covers.
 
         Broader families grant less per type and more in total, which is what
         makes the choice a real one rather than a strict ordering.
         """
-        return self.value_at(tier, roll) * self.breadth
+        return self.value_at(tier, roll, gear_level) * self.breadth
 
     def useful_coverage(self, tier: int, active_cataclysms: int,
-                        roll: float = 1.0) -> float:
+                        roll: float = 1.0,
+                        gear_level: int = MAX_GEAR_LEVEL) -> float:
         """Coverage that is not wasted.
 
         An all-resistance affix covers eight damage types. If only two are
@@ -221,7 +277,7 @@ class AffixFamily:
         the efficient family changes as a run goes on.
         """
         used = min(self.breadth, max(0, active_cataclysms))
-        return self.value_at(tier, roll) * used
+        return self.value_at(tier, roll, gear_level) * used
 
 
 #: Proposed families. Per-type value falls as breadth rises, which the project
@@ -276,9 +332,9 @@ class StatAffix:
     def range_at(self, tier: int) -> tuple[float, float]:
         return tier_band(self.top_value, tier)
 
-    def value_at(self, tier: int, roll: float = 1.0) -> float:
-        low, high = self.range_at(tier)
-        return roll_within(low, high, roll)
+    def value_at(self, tier: int, roll: float = 1.0,
+                 gear_level: int = MAX_GEAR_LEVEL) -> float:
+        return affix_value(self.top_value, tier, roll, gear_level)
 
     def added_value(self, base_before_increases: float, existing_increases: float,
                     tier: int = 7, roll: float = 1.0) -> float:

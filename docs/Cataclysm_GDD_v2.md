@@ -793,7 +793,33 @@ Final Value = Base Value × (1 + Sum of Increases) × Product of More Multiplier
 
   
 
-Attribute points and every gear affix worded "increased" add together into one bucket per stat, and that bucket multiplies the base once. Only sources worded "more" or "less" multiply separately, and that wording is reserved for enchantments and keystones, where the design already wants outsized effects.
+Attribute points and every gear affix worded "increased" add together into one bucket per stat, and that bucket multiplies the base once. Only sources worded "more" or "less" multiply separately, and that wording is reserved for **gems, passive tree keystones and enchantments**, where the design already wants outsized effects.
+
+  
+
+**An ordinary gear affix is never a "more" multiplier.** It is flat or it is increased. Keeping the multiplicative sources off gear rolls is what keeps a rare drop readable, and it gives the enchantment library a job that ordinary affixes cannot do.
+
+  
+
+**Everything in the increased bucket has diminishing returns and every "more" multiplier does not.** That is the whole reason for having two buckets rather than one. A character at +800% increased who adds another +60% increased gains 6.7%; the same character adding a 60% "more" multiplier gains 60%. Two independent 50% "more" sources give 2.25 times, not 2.0 times.
+
+  
+
+|  |  |  |
+| :-: | :-: | :-- |
+| \*\*Already held\*\* | \*\*Another +60% increased is worth\*\* | \*\*A 60% "more" is worth\*\* |
+| +0% | 60.0% | 60.0% |
+| +100% | 30.0% | 60.0% |
+| +300% | 15.0% | 60.0% |
+| +800% | 6.7% | 60.0% |
+
+  
+
+So the question a player is answering when they compare two items is which independent multiplier they are missing, not which number is biggest.
+
+  
+
+**Gear upgrade level multiplies every affix on that piece.** A +10 piece gives about 3.52 times what the same piece gives at +0, using the same factor by which upgrade level multiplies gear rarity for Power Score in section IV. Affix values stated anywhere in this document are the +10 figures.
 
   
 
@@ -817,11 +843,15 @@ Read literally as 1% of maximum health per second, 50 points of Vitality would r
 
   
 
-Final Cooldown = Base Cooldown / (1 + Sum of Increases)
+Final Cooldown = Base Cooldown / ((1 + Sum of Increases) × Product of More Multipliers)
 
   
 
-The skill supplies the base cooldown and the character's accumulated increases apply on top of it. What the interface shows the player is the effective reduction, which is Increases / (1 + Increases), so a character shown as having 25% cooldown reduction turns a 4-second skill into a 3-second one.
+The skill supplies the base cooldown and the character's accumulated increases apply on top of it. What the interface shows the player is the effective reduction, which is (Divisor − 1) / Divisor, so a character shown as having 25% cooldown reduction turns a 4-second skill into a 3-second one.
+
+  
+
+**A "more" multiplier divides here as well, rather than multiplying.** Cooldown reduction is a rate: an increase makes the interval shorter, so a "more cooldown reduction" source has to make it shorter too. Multiplying would make a cooldown reduction gem lengthen the cooldown. Because both buckets divide, no number of them brings a cooldown to zero, which is why the stat needs no cap.
 
   
 
