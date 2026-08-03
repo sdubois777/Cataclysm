@@ -501,3 +501,90 @@ def test_armor_penetration_and_resistance_penetration_are_separate():
     # Armor did nothing, but resistance still removed 70%.
     assert r.after_armor == pytest.approx(1000.0)
     assert r.after_resistance == pytest.approx(300.0)
+
+
+# --------------------------------------------------------------------------
+# Energy shield recharge: 3 seconds, restarted by any damage
+# --------------------------------------------------------------------------
+
+def test_the_shield_does_not_recharge_during_the_delay():
+    assert dm.ENERGY_SHIELD_RECHARGE_DELAY == 3.0
+    for elapsed in (0.0, 1.0, 2.9, 3.0):
+        assert dm.shield_after_quiet_period(
+            current_shield=0.0, max_shield=1000.0, regen_per_second=100.0,
+            seconds_since_damage=elapsed) == 0.0
+
+
+def test_the_shield_recharges_once_the_delay_has_passed():
+    """Only the time beyond the delay counts, not the whole quiet period."""
+    after = dm.shield_after_quiet_period(
+        current_shield=0.0, max_shield=1000.0, regen_per_second=100.0,
+        seconds_since_damage=5.0)
+    assert after == pytest.approx(200.0)
+
+
+def test_the_shield_never_recharges_above_its_maximum():
+    assert dm.shield_after_quiet_period(
+        current_shield=900.0, max_shield=1000.0, regen_per_second=100.0,
+        seconds_since_damage=1000.0) == pytest.approx(1000.0)
+
+
+def test_damage_inside_the_window_restarts_the_wait():
+    """The rule that matters. A character hit every 2 seconds never recharges,
+    because the wait restarts before it ever elapses."""
+    steady = [(t, 100.0) for t in (0.0, 2.0, 4.0, 6.0, 8.0)]
+    remaining = dm.shield_over_timeline(
+        max_shield=1000.0, regen_per_second=100.0, events=steady, ends_at=8.0)
+    assert remaining == pytest.approx(500.0)
+
+
+def test_the_same_damage_spaced_out_does_recharge():
+    """Same five hits, same total damage, spaced 4 seconds apart instead of 2.
+    Each gap now clears the 3 second wait with 1 second of recharge left over,
+    which at 100 per second exactly replaces each 100 damage hit."""
+    spaced = [(t, 100.0) for t in (0.0, 4.0, 8.0, 12.0, 16.0)]
+    remaining = dm.shield_over_timeline(
+        max_shield=1000.0, regen_per_second=100.0, events=spaced, ends_at=16.0)
+    steady = [(t, 100.0) for t in (0.0, 2.0, 4.0, 6.0, 8.0)]
+    steady_remaining = dm.shield_over_timeline(
+        max_shield=1000.0, regen_per_second=100.0, events=steady, ends_at=8.0)
+
+    # 900, not 1000: the timeline ends at the instant of the last hit, so there
+    # is no quiet period after it in which to recover that hit.
+    assert remaining == pytest.approx(900.0)
+    assert steady_remaining == pytest.approx(500.0)
+    assert remaining > steady_remaining
+
+
+def test_a_quiet_tail_after_the_last_hit_refills_the_shield():
+    spaced = [(t, 100.0) for t in (0.0, 4.0, 8.0, 12.0, 16.0)]
+    assert dm.shield_over_timeline(
+        max_shield=1000.0, regen_per_second=100.0, events=spaced,
+        ends_at=30.0) == pytest.approx(1000.0)
+
+
+def test_a_single_hit_then_quiet_recharges_fully():
+    remaining = dm.shield_over_timeline(
+        max_shield=1000.0, regen_per_second=100.0,
+        events=[(0.0, 600.0)], ends_at=20.0)
+    assert remaining == pytest.approx(1000.0)
+
+
+def test_damage_over_time_restarts_the_wait_even_though_the_shield_ignores_it():
+    """The two rules together are what makes damage over time the answer to
+    shield stacking: it bypasses the shield's protection and holds it empty.
+
+    Without this, a bleeding character would refill their shield while the bleed
+    ran, and shields would be strongest against exactly the damage they ignore.
+    """
+    assert dm.DAMAGE_OVER_TIME_DELAYS_RECHARGE is True
+    assert dm.restarts_recharge(hit(is_damage_over_time=True))
+    assert dm.restarts_recharge(hit(is_damage_over_time=False))
+
+
+def test_a_shield_that_absorbed_the_whole_hit_still_waits_to_recharge():
+    """Taking damage restarts the wait whether or not any of it reached health."""
+    remaining = dm.shield_over_timeline(
+        max_shield=1000.0, regen_per_second=100.0,
+        events=[(0.0, 50.0), (2.0, 50.0)], ends_at=2.0)
+    assert remaining == pytest.approx(900.0)

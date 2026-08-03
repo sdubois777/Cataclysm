@@ -98,6 +98,31 @@ BLUNT_STUN_CHANCE = 10.0
 #: seconds.
 BLUNT_STUN_SECONDS = 0.75
 
+# --------------------------------------------------------------------------
+# Energy shield recharge
+# --------------------------------------------------------------------------
+
+#: An energy shield starts refilling 3 seconds after the character last took
+#: damage, and taking damage again inside that window restarts the wait.
+#:
+#: The delay itself was not invented here. `EnchantmentsPositive.csv` line 118 is
+#: "Energy shield regeneration begins immediately after taking damage with no
+#: delay", which is only worth an enchantment slot if there is normally a delay.
+#: The 3 second figure is the project owner's.
+ENERGY_SHIELD_RECHARGE_DELAY = 3.0
+
+#: Whether damage over time restarts the wait.
+#:
+#: Proposed as True, and it is the reason damage over time is the answer to
+#: shield stacking. The shield does not absorb damage over time at all, so
+#: without this a bleeding character would keep refilling their shield while the
+#: bleed runs, and the two rules together would make shields very strong against
+#: exactly the damage they ignore.
+#:
+#: With it, damage over time bypasses the shield AND holds it empty, which is a
+#: real counter rather than a stat check.
+DAMAGE_OVER_TIME_DELAYS_RECHARGE = True
+
 WEAPON_SUBTYPES = ("Piercing", "Slashing", "Blunt", "Magic", "None")
 
 
@@ -332,6 +357,56 @@ def resolve(attacker: Attacker, defender: Defender,
         stunned=stunned,
         stun_seconds=BLUNT_STUN_SECONDS if stunned else 0.0,
     )
+
+
+def restarts_recharge(attacker: Attacker) -> bool:
+    """Whether taking this hit restarts the energy shield's wait."""
+    if attacker.is_damage_over_time:
+        return DAMAGE_OVER_TIME_DELAYS_RECHARGE
+    return True
+
+
+def shield_after_quiet_period(current_shield: float, max_shield: float,
+                              regen_per_second: float, seconds_since_damage: float,
+                              delay: float = ENERGY_SHIELD_RECHARGE_DELAY) -> float:
+    """The shield after a stretch of time without taking damage.
+
+    Nothing happens until the delay has fully elapsed. Any damage inside the
+    window means the caller starts this over from zero, which is what "unless
+    you receive damage again in that time" means.
+    """
+    if seconds_since_damage <= delay:
+        return min(current_shield, max_shield)
+    recharging_for = seconds_since_damage - delay
+    return min(max_shield, current_shield + regen_per_second * recharging_for)
+
+
+def shield_over_timeline(max_shield: float, regen_per_second: float,
+                         events: list[tuple[float, float]],
+                         delay: float = ENERGY_SHIELD_RECHARGE_DELAY,
+                         ends_at: float | None = None) -> float:
+    """Shield remaining after a series of (time in seconds, damage) events.
+
+    Exists to prove the restart rule rather than only the delay: a character hit
+    every 2 seconds never recharges at all, while the same total damage spaced 4
+    seconds apart does.
+
+    Events must be in time order. Damage is applied straight to the shield, so
+    this models the shield's own behaviour and not the whole mitigation order.
+    """
+    shield = max_shield
+    last_damage_at = None
+    for at, amount in events:
+        if last_damage_at is not None:
+            shield = shield_after_quiet_period(
+                shield, max_shield, regen_per_second, at - last_damage_at, delay)
+        shield = max(0.0, shield - amount)
+        last_damage_at = at
+
+    if ends_at is not None and last_damage_at is not None:
+        shield = shield_after_quiet_period(
+            shield, max_shield, regen_per_second, ends_at - last_damage_at, delay)
+    return shield
 
 
 def hits_to_kill(attacker: Attacker, defender: Defender,
