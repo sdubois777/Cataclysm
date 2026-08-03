@@ -55,6 +55,26 @@ modifiers that should apply to everything.
 The Weapon Skills sheet already tags every skill this way, and the enchantment
 tables already tag every enchantment.
 
+THREE BUCKETS, NOT TWO.
+
+    Final = (base + flat) * (1 + sum of increases) * more1 * more2 * ...
+
+Everything in the INCREASED bucket adds together first and multiplies once, so
+it has diminishing returns: the hundredth point of increase is worth far less
+than the first. A MORE multiplier is not in that sum, so it is worth its full
+value no matter how much of anything else is already there. A character at +800%
+increased who adds another +60% increased gains 6.7%; the same character adding
+a 60% more multiplier gains 60%.
+
+That gap is what makes gearing a puzzle rather than a sum, and it is the standard
+shape across the genre: Path of Exile and Last Epoch both call these "increased"
+and "more", and Torchlight Infinite calls them non-additional and additional.
+
+WHERE EACH BUCKET COMES FROM. Ordinary gear affixes are flat or increased and
+never more. More multipliers come from gems, passive tree keystones and
+enchantments, which MORE_SOURCES enforces. That keeps a rare drop readable and
+gives the 961 designed enchantments a job they did not previously have.
+
 THE DEFAULT LINE AND OVERRIDES. There are 33 class-supplied stats, each needing a
 level 1 base and a per-level gain. Across 24 classes that would be 1,584 numbers.
 So every class inherits DEFAULT_STAT_LINE and overrides only the stats that
@@ -340,6 +360,65 @@ class Modifier:
         return all(tag_matches(r, tags) for r in self.requires)
 
 
+#: Where a MORE multiplier is allowed to come from. Ordinary gear affixes are
+#: deliberately absent: an affix enters the flat bracket or the increased bucket,
+#: never this one.
+#:
+#: Stated by the project owner 2026-08-03, after looking at how Path of Exile,
+#: Last Epoch and Torchlight Infinite split their damage calculations. Keeping
+#: the multiplicative sources on gems, keystones and enchantments means a rare
+#: drop stays readable, and it gives the 961 designed enchantments a job they did
+#: not previously have.
+MORE_SOURCES = frozenset({"gem", "keystone", "enchantment"})
+
+
+@dataclass(frozen=True)
+class More:
+    """One multiplicative source. Each multiplies on its own.
+
+    This is the bucket that makes gearing a puzzle rather than a sum. Everything
+    in the increased bucket adds together first and then multiplies once, so the
+    hundredth point of increase is worth far less than the first. A more
+    multiplier is not in that sum, so it is worth its full value no matter how
+    much of anything else is already there.
+
+    A character at +800% increased who adds another +60% increased gains 6.7%. A
+    character at +800% increased who adds a 60% more gains 60%. The question a
+    player is answering is therefore "which independent multiplier am I missing",
+    not "what is the biggest number on this item".
+
+    `more` is a fraction: 0.20 is a 20% more multiplier, giving x1.20. Negative
+    values are legal and are the "less" case.
+    """
+
+    source: str
+    stat: str
+    more: float
+    requires: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        if self.source not in MORE_SOURCES:
+            raise ValueError(
+                f"a more multiplier from {self.source!r}; expected one of "
+                f"{sorted(MORE_SOURCES)}. Ordinary gear affixes cannot grant "
+                "one: they are flat or increased.")
+        if self.stat not in ALL_STATS:
+            raise ValueError(
+                f"more multiplier names {self.stat}, which is not on the "
+                "character sheet")
+        if self.more <= -1.0:
+            raise ValueError(
+                f"{self.stat} more multiplier of {self.more} would zero or "
+                "invert the stat; a less multiplier cannot reach -100%")
+
+    @property
+    def factor(self) -> float:
+        return 1.0 + self.more
+
+    def applies_to(self, tags: frozenset[str]) -> bool:
+        return all(tag_matches(r, tags) for r in self.requires)
+
+
 @dataclass(frozen=True)
 class Gear:
     """What equipment contributes, by where it enters the pipeline.
@@ -405,6 +484,11 @@ class Character:
     attributes: Attributes = field(default_factory=Attributes)
     gear: Gear = field(default_factory=Gear)
     skill: Skill = field(default_factory=Skill)
+    #: Multiplicative sources, from gems, passive tree keystones and
+    #: enchantments. Held on the character rather than on Gear because a
+    #: keystone is not a piece of equipment, and because each one multiplies on
+    #: its own rather than joining a sum the way gear increases do.
+    more: tuple[More, ...] = ()
 
     def __post_init__(self) -> None:
         if not 1 <= self.level <= MAX_LEVEL:
@@ -439,18 +523,47 @@ class Character:
                 total += m.increase
         return total
 
+    def more_multiplier(self, stat: str) -> float:
+        """Every more multiplier that reaches this stat, multiplied together.
+
+        Each source is its own factor. They are NOT summed first, which is the
+        entire difference between this bucket and `increases`, and the reason
+        stacking two independent 50% more multipliers gives 2.25x rather than
+        2.0x.
+        """
+        product = 1.0
+        for m in self.more:
+            if m.stat == stat and m.applies_to(self.skill.tags):
+                product *= m.factor
+        return product
+
+    def more_sources_for(self, stat: str) -> tuple[More, ...]:
+        """The individual multipliers reaching a stat, for reporting."""
+        return tuple(m for m in self.more
+                     if m.stat == stat and m.applies_to(self.skill.tags))
+
     def stat(self, stat: str) -> float:
-        """The final value, through the pipeline in the design document."""
+        """The final value, through the pipeline in the design document.
+
+            Final = (base + flat) * (1 + sum of increases) * more1 * more2 * ...
+
+        Three buckets, and which one a modifier lands in is what decides whether
+        it has diminishing returns. Flat and increased come from gear affixes;
+        more comes from gems, keystones and enchantments.
+        """
         if stat not in DEFAULT_STAT_LINE:
             raise KeyError(f"{stat} is not on the character sheet")
         base, inc = self.base(stat), self.increases(stat)
+        more = self.more_multiplier(stat)
 
         if stat in RATE_STATS:
-            # An increase shortens an interval. Dividing means the interval can
-            # never reach zero, which is why cooldown reduction needs no cap.
-            value = base / (1.0 + inc) if base else 0.0
+            # An increase shortens an interval, so it divides. A more multiplier
+            # divides for the same reason: both make the interval shorter, and
+            # dividing means it can never reach zero, which is why cooldown
+            # reduction needs no cap.
+            value = base / ((1.0 + inc) * more) if base else 0.0
         else:
-            value = base * (1.0 + inc)
+            value = base * (1.0 + inc) * more
 
         cap = HARD_CAPS.get(stat)
         return min(value, cap) if cap is not None else value
@@ -460,14 +573,18 @@ class Character:
 
         The skill supplies the base. Displayed reduction is
         increases / (1 + increases), so a character shown at 25% turns a
-        4 second skill into a 3 second one.
+        4 second skill into a 3 second one. A more multiplier divides as well,
+        so it too can never bring a cooldown to zero.
         """
-        inc = self.increases("cooldown_reduction")
-        return base_cooldown / (1.0 + inc)
+        return base_cooldown / self._cooldown_divisor()
 
     def displayed_cooldown_reduction(self) -> float:
-        inc = self.increases("cooldown_reduction")
-        return 100.0 * inc / (1.0 + inc)
+        divisor = self._cooldown_divisor()
+        return 100.0 * (divisor - 1.0) / divisor
+
+    def _cooldown_divisor(self) -> float:
+        return ((1.0 + self.increases("cooldown_reduction"))
+                * self.more_multiplier("cooldown_reduction"))
 
     def sheet(self) -> dict[str, float]:
         """Every stat on the character sheet, in display order."""
@@ -609,3 +726,52 @@ if __name__ == "__main__":
     print("    requirement of Type.AOE, so the increase reaches it. The second")
     print("    is not tagged for area at all, so the same equipment does")
     print("    nothing for it. The character holds the increase either way.")
+    print()
+
+    print("=" * 72)
+    print("  Three buckets: flat, increased, more.")
+    print()
+    print("    Final = (base + flat) * (1 + sum of increases) * more1 * more2...")
+    print()
+    print("  Flat and increased come from gear affixes. More multipliers come")
+    print("  from gems, passive keystones and enchantments, and each one")
+    print("  multiplies on its own rather than joining the sum.")
+    print()
+    probe_line = dict(DEFAULT_STAT_LINE)
+    probe_line["max_health"] = Scaling(base=1000.0, per_level=0.0)
+    probe_class = ClassDefinition(name="Probe", overrides=probe_line)
+
+    print("  What one more 60% is worth, against what one more +60% increased")
+    print("  is worth, to a character who already holds some increases:")
+    print()
+    print(f"    {'already held':>14} {'health':>9} {'+60% increased':>16} "
+          f"{'a 60% more':>13}")
+    print("    " + "-" * 56)
+    for held in (0.0, 1.0, 3.0, 8.0):
+        have = Character(probe_class, level=100,
+                         gear=Gear(increased={"max_health": held}))
+        more_inc = Character(probe_class, level=100,
+                             gear=Gear(increased={"max_health": held + 0.60}))
+        more_mult = Character(probe_class, level=100,
+                              gear=Gear(increased={"max_health": held}),
+                              more=(More("gem", "max_health", 0.60),))
+        now = have.stat("max_health")
+        print(f"    {held:>13.0%} {now:>9,.0f} "
+              f"{more_inc.stat('max_health') / now - 1:>15.1%} "
+              f"{more_mult.stat('max_health') / now - 1:>12.1%}")
+    print()
+    print("  The increased column shrinks as a character stacks more of it.")
+    print("  The more column does not, and that is the whole difference. It is")
+    print("  why the question a player answers is which independent multiplier")
+    print("  they are missing, not which number on an item is biggest.")
+    print()
+
+    print("  More multipliers compound with each other rather than summing:")
+    print()
+    for count in range(0, 5):
+        c = Character(probe_class, level=100,
+                      more=tuple(More("gem", "max_health", 0.50)
+                                 for _ in range(count)))
+        summed = 1.0 + 0.50 * count
+        print(f"    {count} sources of 50% more   multiplied {c.more_multiplier('max_health'):>5.2f}x"
+              f"   if they were summed instead {summed:>5.2f}x")

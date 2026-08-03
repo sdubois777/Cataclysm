@@ -555,3 +555,85 @@ def test_increased_damage_is_the_value_the_project_owner_set():
 # It was resolved by setting the enemy stats first and reading the damage target
 # off them, and by lowering flat damage from 60 to 18. The test is deleted rather
 # than adjusted, because the thing it existed to remember has happened.
+
+
+# --------------------------------------------------------------------------
+# Gear upgrade level multiplies every affix on the piece
+# --------------------------------------------------------------------------
+
+def test_the_gear_level_factor_is_read_from_the_power_score_model():
+    """Not copied. `Cataclysm_GDD_v2.md` says gear upgrade level MULTIPLIES gear
+    rarity rather than adding to it, and `player_power.py` already implements
+    that. A second copy of the constant here could drift from the first, which
+    has happened elsewhere in this project."""
+    from cataclysm_sim import player_power as pp
+    assert af.GEAR_LEVEL_FACTOR is pp.WEIGHTS["upgrade_factor"]
+    assert af.MAX_GEAR_LEVEL == pp.MAX_UPGRADE == 10
+
+
+def test_a_fully_upgraded_piece_is_about_three_and_a_half_times_a_fresh_one():
+    """The exact figure is 3.5246, not a round 3.525: the upgrade factor is
+    DERIVED from the tier anchors in `player_power.py` rather than chosen, so it
+    is not a tidy number. The tolerance here is loose enough to allow that and
+    tight enough to catch a real change to the Power Score model."""
+    assert af.gear_level_multiplier(0) == pytest.approx(1.0)
+    assert af.gear_level_multiplier(10) == pytest.approx(3.525, abs=0.005)
+
+
+def test_a_gear_level_outside_the_designed_range_is_rejected():
+    for bad in (-1, 11, 100):
+        with pytest.raises(ValueError, match="outside 0-10"):
+            af.gear_level_multiplier(bad)
+
+
+def test_the_stated_top_values_are_what_a_fully_upgraded_piece_gives():
+    """So the numbers in this module and in the design document are the ones a
+    finished character reaches, and a fresh piece is a fraction of them."""
+    for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
+        assert affix.value_at(7, gear_level=10) == pytest.approx(affix.top_value)
+        assert affix.value_at(7) == pytest.approx(affix.top_value)
+
+
+def test_an_unupgraded_piece_gives_the_stated_value_divided_by_the_multiplier():
+    for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
+        assert affix.value_at(7, gear_level=0) == pytest.approx(
+            affix.top_value / af.gear_level_multiplier(10))
+
+
+@pytest.mark.parametrize("family", ["SINGLE_RESISTANCE", "HYBRID_RESISTANCE",
+                                    "ALL_RESISTANCE"])
+def test_gear_level_lifts_resistance_affixes_too(family):
+    """EVERY affix on the piece, which is what the project owner chose. Not only
+    the damage ones, and not only the flat ones."""
+    f = getattr(af, family)
+    assert f.value_at(7, gear_level=0) < f.value_at(7, gear_level=5) < \
+        f.value_at(7, gear_level=10)
+
+
+def test_gear_level_lifts_increased_affixes_as_well_as_flat_ones():
+    """The project owner was shown that applying it to the flat bracket alone
+    keeps damage growth in step with Power Score, and chose every affix anyway,
+    to be tuned once the game is playable. This records which was chosen."""
+    assert af.FLAT_DAMAGE.value_at(7, gear_level=0) < \
+        af.FLAT_DAMAGE.value_at(7, gear_level=10)
+    assert af.INCREASED_DAMAGE.value_at(7, gear_level=0) < \
+        af.INCREASED_DAMAGE.value_at(7, gear_level=10)
+
+
+@pytest.mark.parametrize("level", [0, 3, 7, 10])
+def test_gear_level_scales_every_tier_by_the_same_proportion(level):
+    """It multiplies the affix, so it must not distort the tier curve."""
+    expected = af.gear_level_multiplier(level) / af.gear_level_multiplier(10)
+    for tier in af.AFFIX_TIERS:
+        at_level = af.FLAT_HEALTH.value_at(tier, gear_level=level)
+        at_max = af.FLAT_HEALTH.value_at(tier, gear_level=10)
+        assert at_level / at_max == pytest.approx(expected)
+
+
+def test_gear_level_and_the_roll_are_independent():
+    """A poor roll on an upgraded piece and a good roll on a fresh one are
+    different things, and both have to be expressible."""
+    poor_but_upgraded = af.FLAT_HEALTH.value_at(7, roll=0.0, gear_level=10)
+    perfect_but_fresh = af.FLAT_HEALTH.value_at(7, roll=1.0, gear_level=0)
+    assert poor_but_upgraded > perfect_but_fresh
+    assert af.FLAT_HEALTH.value_at(7, roll=0.0, gear_level=0) < perfect_but_fresh

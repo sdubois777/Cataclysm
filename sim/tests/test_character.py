@@ -519,3 +519,195 @@ def test_the_full_sheet_can_be_produced_for_any_character():
     sheet = ch.Character(ch.GENERIC, level=50).sheet()
     assert set(sheet) == set(ch.ALL_STATS)
     assert len(sheet) == 33
+
+
+# --------------------------------------------------------------------------
+# The more bucket, which is multiplicative
+# --------------------------------------------------------------------------
+
+def probe(**kwargs) -> ch.Character:
+    """A level 100 character with a 1,000 point health base and nothing else,
+    so every figure below reads directly against that."""
+    line = dict(ch.DEFAULT_STAT_LINE)
+    line["max_health"] = ch.Scaling(base=1000.0, per_level=0.0)
+    return ch.Character(ch.ClassDefinition(name="Probe", overrides=line),
+                        level=100, **kwargs)
+
+
+def test_a_more_multiplier_multiplies_where_an_increase_adds():
+    """The whole distinction. The same 50%, in a different bucket, gives a
+    different result once anything else is present."""
+    assert probe().stat("max_health") == pytest.approx(1000.0)
+
+    # With nothing else present the two are identical, which is why the
+    # difference is invisible on a bare character.
+    increased = probe(gear=ch.Gear(increased={"max_health": 0.50}))
+    more = probe(more=(ch.More("gem", "max_health", 0.50),))
+    assert increased.stat("max_health") == pytest.approx(1500.0)
+    assert more.stat("max_health") == pytest.approx(1500.0)
+
+    # Put 200% of increases in place first and they part company.
+    all_increased = probe(gear=ch.Gear(increased={"max_health": 2.50}))
+    increase_then_more = probe(
+        gear=ch.Gear(increased={"max_health": 2.00}),
+        more=(ch.More("gem", "max_health", 0.50),))
+    assert all_increased.stat("max_health") == pytest.approx(3500.0)
+    assert increase_then_more.stat("max_health") == pytest.approx(4500.0)
+
+
+def test_two_more_multipliers_multiply_with_each_other():
+    """Not summed. Two independent 50% sources give 2.25x rather than 2.0x, and
+    that compounding is why a player chases them."""
+    c = probe(more=(ch.More("gem", "max_health", 0.50),
+                    ch.More("keystone", "max_health", 0.50)))
+    assert c.more_multiplier("max_health") == pytest.approx(2.25)
+    assert c.stat("max_health") == pytest.approx(2250.0)
+
+
+def test_increases_have_diminishing_returns_and_more_multipliers_do_not():
+    """The reason gearing is a puzzle rather than a sum, measured rather than
+    asserted. Each further point of increase is worth less than the last; each
+    further more multiplier is worth the same proportion as the first."""
+    def gain_from_another_increase(already_held: float) -> float:
+        before = probe(gear=ch.Gear(increased={"max_health": already_held}))
+        after = probe(gear=ch.Gear(increased={"max_health": already_held + 0.60}))
+        return after.stat("max_health") / before.stat("max_health")
+
+    def gain_from_another_more(already_held: int) -> float:
+        pool = tuple(ch.More("gem", "max_health", 0.60)
+                     for _ in range(already_held))
+        gear = ch.Gear(increased={"max_health": 8.0})
+        before = probe(gear=gear, more=pool)
+        after = probe(gear=gear,
+                      more=pool + (ch.More("gem", "max_health", 0.60),))
+        return after.stat("max_health") / before.stat("max_health")
+
+    # 60% more increase, on a character who has none, is worth 60%.
+    assert gain_from_another_increase(0.0) == pytest.approx(1.60)
+    # The same 60% on a character already at +800% is worth 6.7%.
+    assert gain_from_another_increase(8.0) == pytest.approx(1.0667, abs=0.001)
+
+    # A more multiplier is worth its full 60% at every point.
+    for already_held in range(0, 5):
+        assert gain_from_another_more(already_held) == pytest.approx(1.60)
+
+
+def test_a_more_multiplier_is_scoped_by_tag_the_same_way_an_increase_is():
+    """A gem granting more area damage should not help a single-target skill."""
+    boost = (ch.More("gem", "crit_chance", 1.00,
+                     requires=frozenset({"Type.AOE"})),)
+    area = ch.Skill(name="Blast", base={"crit_chance": 10.0},
+                    tags=frozenset({"Type.AOE.PointBlank"}))
+    single = ch.Skill(name="Stab", base={"crit_chance": 10.0},
+                      tags=frozenset({"Type.Melee"}))
+    assert probe(more=boost, skill=area).stat("crit_chance") == pytest.approx(20.0)
+    assert probe(more=boost, skill=single).stat("crit_chance") == pytest.approx(10.0)
+
+
+def test_an_unscoped_more_multiplier_reaches_every_skill():
+    boost = (ch.More("enchantment", "crit_chance", 0.50),)
+    for tags in (frozenset(), frozenset({"Type.Melee"}), frozenset({"Type.AOE"})):
+        c = probe(more=boost,
+                  skill=ch.Skill(name="Any", base={"crit_chance": 10.0},
+                                 tags=tags))
+        assert c.stat("crit_chance") == pytest.approx(15.0)
+
+
+def test_a_more_multiplier_on_a_stat_with_no_base_still_creates_nothing():
+    """The rule that a modifier only ever scales applies to this bucket too. A
+    class with no energy shield gains none from a gem that multiplies it."""
+    c = probe(more=(ch.More("gem", "max_energy_shield", 5.00),))
+    assert c.base("max_energy_shield") == 0.0
+    assert c.stat("max_energy_shield") == 0.0
+
+
+def test_ordinary_gear_affixes_cannot_grant_a_more_multiplier():
+    """The project owner put the multiplicative sources on gems, keystones and
+    enchantments, so that a rare drop stays readable."""
+    assert ch.MORE_SOURCES == {"gem", "keystone", "enchantment"}
+    with pytest.raises(ValueError, match="expected one of"):
+        ch.More("affix", "max_health", 0.5)
+
+
+def test_a_more_multiplier_naming_a_stat_that_does_not_exist_is_rejected():
+    with pytest.raises(ValueError, match="not on the character sheet"):
+        ch.More("gem", "max_stamina", 0.5)
+
+
+def test_a_less_multiplier_is_legal_but_cannot_reach_minus_one_hundred_percent():
+    """Otherwise a single source could zero a stat outright, or invert it."""
+    assert probe(more=(ch.More("keystone", "max_health", -0.30),)
+                 ).stat("max_health") == pytest.approx(700.0)
+    for impossible in (-1.0, -2.0):
+        with pytest.raises(ValueError, match="zero or invert"):
+            ch.More("keystone", "max_health", impossible)
+
+
+def test_a_more_multiplier_shortens_a_cooldown_rather_than_lengthening_it():
+    """Cooldown reduction is a rate stat: increases divide rather than multiply,
+    so a more multiplier has to divide for the same reason. Multiplying would
+    make a cooldown reduction gem lengthen the cooldown."""
+    plain = probe()
+    reduced = probe(more=(ch.More("gem", "cooldown_reduction", 1.00),))
+    assert reduced.cooldown_of(8.0) < plain.cooldown_of(8.0)
+    assert reduced.cooldown_of(8.0) == pytest.approx(4.0)
+
+
+def test_a_more_multiplier_shortens_a_rate_stat_read_off_the_sheet_too():
+    """`Character.stat` has its own branch for rate stats, separate from
+    `cooldown_of`, and a more multiplier has to divide in both.
+
+    Reached only by a class that gives cooldown reduction a nonzero base. The
+    default line gives it zero, so `stat` short-circuits and the branch never
+    runs -- which is why breaking it caught nothing until this test existed.
+    """
+    line = dict(ch.DEFAULT_STAT_LINE)
+    line["cooldown_reduction"] = ch.Scaling(base=8.0, per_level=0.0)
+    hasty = ch.ClassDefinition(name="Hasty", overrides=line)
+
+    plain = ch.Character(hasty, level=100)
+    with_more = ch.Character(hasty, level=100,
+                             more=(ch.More("gem", "cooldown_reduction", 1.00),))
+    assert plain.stat("cooldown_reduction") == pytest.approx(8.0)
+    assert with_more.stat("cooldown_reduction") == pytest.approx(4.0)
+    assert with_more.stat("cooldown_reduction") < plain.stat("cooldown_reduction")
+
+
+def test_a_rate_stat_divides_by_both_buckets_together():
+    """Not by one and then multiplied by the other, which would make a more
+    multiplier lengthen the interval instead of shortening it."""
+    line = dict(ch.DEFAULT_STAT_LINE)
+    line["cooldown_reduction"] = ch.Scaling(base=12.0, per_level=0.0)
+    hasty = ch.ClassDefinition(name="Hasty", overrides=line)
+    c = ch.Character(hasty, level=100,
+                     gear=ch.Gear(increased={"cooldown_reduction": 0.50}),
+                     more=(ch.More("gem", "cooldown_reduction", 0.60),))
+    assert c.stat("cooldown_reduction") == pytest.approx(12.0 / (1.5 * 1.6))
+
+
+def test_no_number_of_more_multipliers_brings_a_cooldown_to_zero():
+    """The design says the cooldown formula cannot reach zero, which is why the
+    stat needs no cap. A second bucket must not break that."""
+    heavy = probe(more=tuple(ch.More("gem", "cooldown_reduction", 4.00)
+                             for _ in range(20)))
+    assert heavy.cooldown_of(8.0) > 0.0
+    assert heavy.displayed_cooldown_reduction() < 100.0
+
+
+def test_hard_caps_still_apply_after_the_more_bucket():
+    """Critical strike chance caps at 100%. A more multiplier must not slip past
+    it by being applied after the cap."""
+    c = probe(more=(ch.More("gem", "crit_chance", 20.0),),
+              skill=ch.Skill(name="Probe", base={"crit_chance": 30.0}))
+    assert c.stat("crit_chance") == pytest.approx(100.0)
+
+
+def test_the_individual_sources_reaching_a_stat_can_be_listed():
+    """So a report can show which multipliers a build has rather than only their
+    product, which is the number a player wants to see."""
+    c = probe(more=(ch.More("gem", "max_health", 0.20),
+                    ch.More("keystone", "max_health", 0.30),
+                    ch.More("gem", "crit_chance", 0.50)))
+    reaching = c.more_sources_for("max_health")
+    assert len(reaching) == 2
+    assert {m.source for m in reaching} == {"gem", "keystone"}
