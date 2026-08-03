@@ -82,18 +82,34 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 }
 
 float UCataclysmCombatAttributeSet::FinalCooldown(float BaseCooldown,
-												  float CooldownIncreases)
+												  float CooldownIncreases,
+												  float MoreMultiplier)
 {
 	// Divide, never subtract. Subtracting reaches zero at 100 points of
 	// Efficacy; dividing halves the cooldown there and can never reach zero.
-	return BaseCooldown / (1.0f + FMath::Max(CooldownIncreases, 0.0f));
+	//
+	// The more multiplier divides as well rather than multiplying. A cooldown is
+	// a rate, so a source that makes it shorter has to divide; multiplying would
+	// mean a cooldown reduction gem made the cooldown longer. Because both
+	// buckets divide, no number of sources reaches zero.
+	return BaseCooldown / CooldownDivisor(CooldownIncreases, MoreMultiplier);
 }
 
 float UCataclysmCombatAttributeSet::DisplayedCooldownReduction(
-	float CooldownIncreases)
+	float CooldownIncreases, float MoreMultiplier)
 {
+	const float Divisor = CooldownDivisor(CooldownIncreases, MoreMultiplier);
+	return 100.0f * (Divisor - 1.0f) / Divisor;
+}
+
+float UCataclysmCombatAttributeSet::CooldownDivisor(float CooldownIncreases,
+													float MoreMultiplier)
+{
+	// Both brackets are floored above zero so the division cannot produce a
+	// negative or infinite interval from bad data.
 	const float Increases = FMath::Max(CooldownIncreases, 0.0f);
-	return 100.0f * Increases / (1.0f + Increases);
+	const float More = FMath::Max(MoreMultiplier, UE_SMALL_NUMBER);
+	return (1.0f + Increases) * More;
 }
 
 TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()

@@ -20,6 +20,79 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The three buckets in Unreal, and what the engine already does
+
+**The finding that shaped this.** Unreal's Gameplay Ability System already
+implements the design's stat pipeline. Its attribute aggregator computes
+
+    ((Base + AddBase) * MultiplyAdditive / DivideAdditive * MultiplyCompound)
+        + AddFinal
+
+and in `GameplayEffectAggregator.cpp` the `MultiplyAdditive` modifiers are summed
+with a bias of 1.0 while the `MultiplyCompound` ones are multiplied separately.
+So `AddBase` is the flat bucket, `MultiplyAdditive` is the increased bucket, and
+`MultiplyCompound` is the more bucket. The design's arithmetic and the engine's
+are the same arithmetic.
+
+This was checked rather than assumed, and it was checked because the opposite was
+initially believed. A test builds a real `FAggregator`, feeds it the same
+modifiers, and asserts the two produce the same number. That test matters beyond
+this change: gear will eventually be applied as ordinary gameplay effects, at
+which point the engine does the arithmetic instead, and a silent disagreement
+between the two would be very hard to find.
+
+**What the engine does not do, which is what the new class is for.**
+
+| Rule | Why the engine cannot express it |
+|---|---|
+| An increase is scoped by the tags of the skill being used | An aggregator modifier filters on the source and target actors' tags, not on the ability in hand |
+| Only a gem, keystone or enchantment may grant a more multiplier | The engine has no notion of where a modifier came from |
+| A less multiplier cannot reach −100% | Nothing stops a modifier that zeroes or inverts a stat |
+
+**A TAG-SCOPED STAT HAS NO SINGLE VALUE**, and that is the load-bearing
+consequence. A character's area of effect is 140 with an area skill in hand and
+100 with a single-target one. A plain attribute read has no skill context, so it
+cannot answer the question. `Evaluate` therefore takes the skill's tags, and a
+character sheet showing one number per stat will have to say which skill it is
+showing.
+
+**Percentage points here, fractions in the tuning rig.** The Python model stores
+an increase as 1.25 for +125%; this class stores 125. Everything else in the
+Unreal module already uses points — the resistance cap is 70.0, evasion's soft
+cap is 60.0, the damage calculation divides by 100 throughout — so mixing the two
+conventions inside one module would be worse than differing from the model. The
+conversion happens at the boundary and a test pins a value against the model.
+
+**An illegal modifier is ignored or clamped at runtime, never honoured.** The
+Python model raises an error, which is not available while a game is running. A
+more multiplier from a gear affix is **ignored**, because honouring it would
+break the rule the whole split rests on. A less multiplier below −100% is
+**clamped to −99%**, because ignoring it would make the stat larger than the data
+asked for, while clamping keeps the direction and the invariant. Both are counted
+in the value the caller gets back, so a test can prove one happened and a
+character sheet can tell a player that something on their gear is being ignored.
+`ValidateModifier` gives data import the reason so it can refuse the row instead.
+
+**One limit that is documented rather than hidden.** Displayed cooldown reduction
+is (divisor − 1) / divisor, which rounds to exactly 1.0 in single precision once
+the divisor passes about 8.4 million, showing a player 100% while the cooldown is
+still above zero. The mechanical guarantee is unaffected, because the calculation
+divides. Reaching it needs roughly 34 compounding 50% sources on one stat against
+six gem sockets, so it is not reachable; no display ceiling was invented, because
+that is the interface work's decision.
+
+**A gap this closed.** `FinalCooldown` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.cpp` divided by
+the increases only. The design document has carried the more multiplier in that
+formula since it was corrected earlier today; the code had not caught up.
+
+**Affects:** no design document change. Section IV already carries the three
+buckets and the cooldown formula including the more multiplier. The working model
+is `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`, covered by
+`game/Source/Cataclysm/Tests/CataclysmStatPipelineTests.cpp`.
+
+---
+
 ## 2026-08-03 — The item slot vocabulary, corrected to the design's eleven slots
 
 **The problem.** Issue #106. The Tags sheet declared 14 `Item.Slot` gameplay
