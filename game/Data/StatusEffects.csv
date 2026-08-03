@@ -40,6 +40,7 @@ Debuff_Touch_of_Nothing,Debuff,Touch of Nothing,"When a player gains a buff, a s
 Debuff_Madness,Debuff,Madness,"A player-applied debuff. The affected enemy attacks anything nearby, friend or foe, for 3 seconds. Magnitude extends the duration. Applied by the Of Madness gem and the chance to madden affix."
 Debuff_Cripple,Debuff,Cripple,"A player-applied debuff. Reduces the affected enemy's movement and attack speed by 30% for 4 seconds. Magnitude raises the reduction to a cap of 80%, then extends the duration instead. Applied by the Of Maiming gem and the chance to cripple affix."
 Debuff_Shred,Debuff,Shred,"A player-applied debuff. Reduces the affected enemy's resistance by 10 for 6 seconds. Magnitude raises the reduction until that resistance reaches zero, then extends the duration instead. Applied by the Of Shredding gem and the chance to shred affix."
+Debuff_Weaken,Debuff,Weaken,"A player-applied debuff. Reduces the affected enemy's damage by 20% for 5 seconds. Magnitude raises the reduction to a cap of 80%, then extends the duration instead. Distinct from Wither, which an enemy applies to the player and which reduces speed rather than damage. Applied by the Of Withering gem and the chance to weaken affix."
 DoT_Bleed,DoT,Bleed,Applied by the Primal Instinct enchantment and the Of Rending gem.
 DoT_Poison,DoT,Poison,Applied by the Toxic Trail enemy modifier and the Of The Viper gem.
 DoT_Disease,DoT,Disease,Applied by the Raw Sewage dungeon modifier and the Of Rot gem.

@@ -977,10 +977,14 @@ def test_that_shield_exemption_check_actually_fires():
 # --------------------------------------------------------------------------
 
 def test_every_effect_a_gem_applies_is_reachable_as_an_affix():
-    """`game/Data/Gems.csv` designs eight gems that apply an effect on hit. The
-    project owner asked for the same effects to be reachable as affixes."""
+    """`game/Data/Gems.csv` designs nine gems that apply an effect on hit. The
+    project owner asked for the same effects to be reachable as affixes.
+
+    Nine, not eight: the Of Wasting gem was added because Necrosis was the one
+    effect in `game/Data/StatusEffects.csv` that nothing applied.
+    """
     assert {a.ailment for a in af.AILMENT_AFFIXES} == {
-        "Void Splinter", "Poison", "Bleed", "Madness", "Disease",
+        "Void Splinter", "Poison", "Bleed", "Madness", "Disease", "Necrosis",
         "Cripple", "Weaken", "Shred"}
 
 
@@ -995,7 +999,7 @@ def test_the_damage_over_time_effects_are_marked_as_such():
     Damage over time matters separately because the design says it bypasses
     energy shield and holds it empty."""
     assert af.DAMAGE_OVER_TIME_AILMENTS == {"Bleed", "Poison", "Disease",
-                                            "Void Splinter"}
+                                            "Void Splinter", "Necrosis"}
     assert af.DAMAGE_OVER_TIME_AILMENTS <= {a.ailment
                                             for a in af.AILMENT_AFFIXES}
 

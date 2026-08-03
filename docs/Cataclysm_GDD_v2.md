@@ -1061,10 +1061,15 @@ The chance summed is the total across every source: affixes, gems, keystones and
 | Madness | The enemy attacks anything nearby, friend or foe, for 3 seconds | The duration |
 | Cripple | Reduces the enemy's movement and attack speed by 30% for 4 seconds | The reduction, to a cap of 80%, then the duration |
 | Shred | Reduces the enemy's resistance by 10 for 6 seconds | The reduction, until that resistance reaches zero, then the duration |
+| Weaken | Reduces the enemy's damage by 20% for 5 seconds | The reduction, to a cap of 80%, then the duration |
 
   
 
-**Cripple's slow caps below total** because a full stop is a stun, and stunning is a separate mechanic with its own counter in Crowd Control Resistance. **Shred stops at zero resistance** for the same reason armor penetration does: reducing a defence below nothing grants no bonus.
+**Cripple's slow caps below total** because a full stop is a stun, and stunning is a separate mechanic with its own counter in Crowd Control Resistance. **Weaken's reduction caps for the same reason**: an enemy that deals no damage is harmless, which is a stun by another name. **Shred stops at zero resistance** for the same reason armor penetration does: reducing a defence below nothing grants no bonus.
+
+  
+
+**Weaken and Wither are two different effects.** Weaken is applied by the player and lowers an enemy's damage. Wither is applied by an enemy to the player and lowers the player's movement and attack speed. Neither replaces the other, and Cripple is the player's equivalent of Wither.
 
   
 
