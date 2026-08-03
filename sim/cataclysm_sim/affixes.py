@@ -119,11 +119,61 @@ ROLL_BAND_FRACTION = 0.25
 #: is what a build is trying to do.
 RESISTANCE_CAP = 70.0
 
-#: A character has 18 gear pieces with up to 4 affix slots each, and those slots
-#: are shared with enchantments.
+#: A character holding a two-handed weapon has 18 gear pieces with up to 4 affix
+#: slots each, and those slots are shared with enchantments. A dual wielder has
+#: 19 and 76; see DUAL_WIELD_GEAR_PIECES below.
 GEAR_PIECES = 18
 AFFIX_SLOTS_PER_PIECE = 4
 TOTAL_AFFIX_SLOTS = GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
+
+#: A dual wielder carries a second weapon, so 19 pieces and 76 affix slots.
+#:
+#: Settled by the project owner 2026-08-03. The second weapon is a real piece
+#: with its own four affix slots; it is not exempt.
+DUAL_WIELD_GEAR_PIECES = GEAR_PIECES + 1
+DUAL_WIELD_TOTAL_AFFIX_SLOTS = DUAL_WIELD_GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
+
+#: What a two-handed weapon multiplies its own implicits AND its own affixes by.
+#:
+#: The project owner's decision, 2026-08-03: "yes dual wielding is a thing. This
+#: is compensated for by 2h affixes having more value than 1h affixes."
+#:
+#: THE VALUE IS DERIVED, NOT CHOSEN. Two one-handed weapons hold eight affix
+#: slots against a two-hander's four, so 2.0 is the figure that makes the two
+#: loadouts worth the same in affixes. That is not a preference: section VII of
+#: the design document already requires it, stating that two one-handed weapons
+#: count as one equipped piece for Power Score so that dual wielding is not worth
+#: free power. The rating model deliberately scores the two loadouts the same, so
+#: whichever side had the larger affix budget would carry power its rating does
+#: not count. `_check_the_two_loadouts_have_equal_affix_value` asserts the
+#: equality rather than trusting the arithmetic.
+#:
+#: IT APPLIES TO IMPLICITS AS WELL AS AFFIXES, and that is the part that came
+#: from research rather than from measurement. Last Epoch balances two-handed
+#: weapons by giving them an inherent bonus to their affixes *and* their implicit
+#: stats. A weapon's base damage is an implicit here, so one multiplier covers
+#: both, and no weapon base damage number needs changing.
+#:
+#: Without the implicit half the two-hander is strictly worse. Two one-handed
+#: bases sum to more than any two-handed base -- an Axe and a Sword give 86
+#: against a Greatsword's 78 -- so with only the affix half it loses on damage
+#: while also holding one fewer damage type. Reaching a damage edge through the
+#: affix half alone needs a multiplier near 2.75, which hands the two-hander three
+#: affix slots the dual wielder does not have: the same free power section VII
+#: forbids, pointed the other way.
+#:
+#: What it produces, measured in `sim/analyse_two_handed_multiplier.py`: the
+#: two-hander deals 1.33x per hit and about 1.26x per second, the dual wielder
+#: holds a fourth damage type and a wider spread of affixes, and the affix
+#: budgets are exactly equal.
+TWO_HANDED_MULTIPLIER = 2.0
+
+
+def two_handed_multiplier(hands: int) -> float:
+    """What a weapon of this many hands multiplies its own values by."""
+    if hands not in (1, 2):
+        raise ValueError(f"a weapon has 1 or 2 hands, not {hands}")
+    return TWO_HANDED_MULTIPLIER if hands == 2 else 1.0
 
 #: An affix is a prefix or a suffix, and the two draw from separate pools.
 #:
@@ -388,8 +438,16 @@ class StatAffix:
         return tier_band(self.top_value, tier)
 
     def value_at(self, tier: int, roll: float = 1.0,
-                 gear_level: int = MAX_GEAR_LEVEL) -> float:
-        return affix_value(self.top_value, tier, roll, gear_level)
+                 gear_level: int = MAX_GEAR_LEVEL,
+                 two_handed: bool = False) -> float:
+        """This affix's value on a piece.
+
+        `two_handed` applies TWO_HANDED_MULTIPLIER, which is what balances four
+        affix slots on a two-handed weapon against eight across two one-handed
+        ones. It is only ever true for an affix rolled on a two-handed weapon.
+        """
+        value = affix_value(self.top_value, tier, roll, gear_level)
+        return value * (TWO_HANDED_MULTIPLIER if two_handed else 1.0)
 
     def added_value(self, base_before_increases: float, existing_increases: float,
                     tier: int = 7, roll: float = 1.0) -> float:
@@ -752,9 +810,17 @@ class Implicit:
                 f"implicit grants {self.stat!r}, which is neither on the "
                 "character sheet nor an off-sheet stat")
 
-    def value_at(self, gear_level: int = MAX_GEAR_LEVEL) -> float:
+    def value_at(self, gear_level: int = MAX_GEAR_LEVEL,
+                 two_handed: bool = False) -> float:
+        """This implicit's value at an upgrade level.
+
+        `two_handed` applies TWO_HANDED_MULTIPLIER. Pass a weapon base's
+        `value_multiplier` rather than deciding here, so the rule lives in one
+        place. An armour base is never two-handed.
+        """
         at_zero = self.value / gear_level_multiplier(MAX_GEAR_LEVEL)
-        return at_zero * gear_level_multiplier(gear_level)
+        multiplier = TWO_HANDED_MULTIPLIER if two_handed else 1.0
+        return at_zero * gear_level_multiplier(gear_level) * multiplier
 
 
 # --------------------------------------------------------------------------
@@ -800,9 +866,31 @@ class ItemBase:
                 f"{self.name} has {len(self.implicits)} implicits; a base "
                 "carries one to three")
 
+    @property
+    def value_multiplier(self) -> float:
+        """What this base multiplies its own implicits and affixes by.
+
+        One for everything except a two-handed weapon, which overrides it. Held
+        on the base rather than checked at each call site so that adding a piece
+        of gear cannot forget the rule.
+        """
+        return 1.0
+
     def implicit_values(self, gear_level: int = MAX_GEAR_LEVEL
                         ) -> dict[str, float]:
-        return {i.stat: i.value_at(gear_level) for i in self.implicits}
+        two_handed = self.value_multiplier != 1.0
+        return {i.stat: i.value_at(gear_level, two_handed=two_handed)
+                for i in self.implicits}
+
+    def affix_value(self, affix: "StatAffix", tier: int = 7, roll: float = 1.0,
+                    gear_level: int = MAX_GEAR_LEVEL) -> float:
+        """What one affix is worth when it is rolled on THIS base.
+
+        The only place that should be asked. Reading `affix.value_at` directly
+        gives the one-handed figure and silently loses the two-handed bonus.
+        """
+        return affix.value_at(tier, roll, gear_level,
+                              two_handed=self.value_multiplier != 1.0)
 
 
 @dataclass(frozen=True)
@@ -822,6 +910,15 @@ class WeaponBase(ItemBase):
     sub_type: str = "Slashing"
     weapon_type: str = "Sword"
     damage_type_slots: int = 2
+
+    @property
+    def value_multiplier(self) -> float:
+        """A two-hander is worth double per implicit and per affix.
+
+        Four affix slots at double value equals eight at single value, which is
+        what a dual wielder holds across two weapons. See TWO_HANDED_MULTIPLIER.
+        """
+        return two_handed_multiplier(self.hands)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -1411,6 +1508,52 @@ def _check_ailments_only_appear_where_a_hit_comes_from() -> None:
                 "from")
 
 
+def _check_the_two_loadouts_have_equal_affix_value() -> None:
+    """A two-hander and two one-handers must be worth the same in affixes.
+
+    This is the reason TWO_HANDED_MULTIPLIER is 2.0 rather than anything else,
+    and section VII of the design document requires it: two one-handed weapons
+    count as one equipped piece for Power Score so that dual wielding is not
+    worth free power. The rating model scores both loadouts the same, so
+    whichever side had the larger affix budget would carry power its rating does
+    not count.
+
+    Asserted rather than trusted, because the equality only holds while a weapon
+    has exactly AFFIX_SLOTS_PER_PIECE slots and a dual wielder exactly two
+    weapons. Change either and this fails, which is the point.
+    """
+    two_handed = AFFIX_SLOTS_PER_PIECE * TWO_HANDED_MULTIPLIER
+    dual_wield = AFFIX_SLOTS_PER_PIECE * 2
+    if abs(two_handed - dual_wield) > 1e-9:
+        raise ValueError(
+            f"a two-handed weapon is worth {two_handed} one-handed affix slots "
+            f"and two one-handed weapons are worth {dual_wield}. Dual wielding "
+            "must not be worth free power; see section VII.")
+
+    pieces = DUAL_WIELD_GEAR_PIECES - GEAR_PIECES
+    if pieces != 1:
+        raise ValueError(
+            f"a dual wielder carries {pieces} more pieces than a two-handed "
+            "character; it should be exactly the one extra weapon")
+
+
+def _check_only_a_two_handed_weapon_multiplies_its_values() -> None:
+    """Nothing but a two-handed weapon may be worth more than face value.
+
+    An armour base or a one-handed weapon quietly gaining a multiplier would
+    break the equality above without any of the counts changing, so it would not
+    be caught by the check before this one.
+    """
+    for base in ITEM_BASES:
+        expected = (TWO_HANDED_MULTIPLIER
+                    if isinstance(base, WeaponBase) and base.hands == 2
+                    else 1.0)
+        if abs(base.value_multiplier - expected) > 1e-9:
+            raise ValueError(
+                f"{base.name} multiplies its values by "
+                f"{base.value_multiplier}, expected {expected}")
+
+
 _check_every_slot_can_fill_all_four_of_its_affixes()
 _check_the_two_positions_are_separate_pools()
 _check_no_two_affixes_are_the_same_thing()
@@ -1423,6 +1566,8 @@ _check_no_weapon_rolls_a_defensive_affix()
 _check_only_the_shield_defends_among_weapon_bases()
 _check_every_gem_applied_effect_is_reachable_as_an_affix()
 _check_ailments_only_appear_where_a_hit_comes_from()
+_check_the_two_loadouts_have_equal_affix_value()
+_check_only_a_two_handed_weapon_multiplies_its_values()
 
 
 def better_kind(pair: tuple[StatAffix, StatAffix], base_before_increases: float,

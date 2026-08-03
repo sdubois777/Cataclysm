@@ -20,6 +20,105 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — Dual wielding, and what a two-handed weapon is worth
+
+**This is the first decision made under the rule that formulas are researched
+rather than invented**, which `CLAUDE.md` now carries. It is worth saying what
+that changed, because two answers reached by reasoning alone were wrong and the
+research replaced both.
+
+**What the project owner decided.** Dual wielding gives a real second weapon
+piece, so 19 equipped pieces and 76 affix slots against a two-handed character's
+18 and 72. The balance comes from a two-handed weapon's affixes being worth more
+per affix rather than from equalising the slot count: "yes dual wielding is a
+thing. This is compensated for by 2h affixes having more value than 1h affixes."
+Two weapons **sum** their base damage.
+
+**Last Epoch already does exactly this**, which is the strongest evidence the
+shape is sound. It gives a dual wielder the stats of both weapons combined,
+averages their attack speed, and balances two-handed weapons by giving them an
+inherent bonus to their affixes **and their implicit stats**. The decision was
+reached independently and then found to be a shipped design.
+
+**THE MULTIPLIER IS 2.0 AND IT IS DERIVED.** Two one-handed weapons hold eight
+affix slots against a two-hander's four, so 2.0 is the value that makes the two
+loadouts worth the same in affixes. Section VII of the game design document
+already requires that equality: it states that two one-handed weapons count as
+one equipped piece for Power Score so dual wielding is not worth free power. The
+rating model scores both loadouts the same, so whichever side had the larger
+affix budget would carry power its rating does not count.
+
+**IT APPLIES TO IMPLICITS AS WELL AS AFFIXES, and that is the part research
+supplied.** Two rounds of measurement had framed this as a choice between two
+levers, and both were wrong:
+
+| Lever considered | Why it fails |
+|---|---|
+| Raise the affix multiplier alone | Reaching a damage edge needs about 2.75, handing the two-hander three affix slots the dual wielder does not have — the free power section VII forbids, pointed the other way |
+| Raise the five two-handed base damage numbers | Reaches the same place but changes numbers that did not need changing, by about 1.64 times |
+
+Last Epoch's answer is neither: one multiplier on both. A weapon's base damage is
+an implicit here, so the 2.0 already derived covers it, and **no weapon base
+damage number changes at all**.
+
+**Why the implicit half is load-bearing.** Two one-handed bases sum to more than
+any two-handed base — an Axe and a Sword give 86 against a Greatsword's 78, and
+across the family the five two-handed bases average 1.03 times two one-handed
+ones. With the affix half alone the two-hander loses on damage while holding one
+fewer damage type, which makes it strictly worse than dual wielding at
+everything. Doubling the implicit is what reverses that.
+
+| Measured at affix tier 7 on +10 gear | Result |
+|---|---|
+| Damage per hit | Two-hander 1.33x |
+| Damage per second | Two-hander 1.26x |
+| Damage types | Dual wield 4, two-hander 3 |
+| Affix budget | Exactly equal |
+
+**Attack speed is the average of the two weapons.** Both Last Epoch and Path of
+Exile do this; Path of Exile reaches it by alternating hands, which produces the
+average. It is what stops summed damage becoming a strict advantage: a dual
+wielder deals more per swing than either weapon alone but does not also swing at
+the faster weapon's rate. Summing the damage does not settle output on its own,
+because output is damage times rate — at a one-handed rate, summed damage makes
+dual wielding 1.43 times a two-hander before any affix.
+
+**No defensive penalty for dual wielding.** Last Epoch charges 8% more damage
+taken, reduced from 9%. Rejected by the project owner, and its own forums carry
+threads asking for the removal, so the reception is evidence rather than only
+taste.
+
+**A wrong number this corrected.** Weapon attack rates had been derived on the
+assumption that base damage per second should be even within a hand class, giving
+1.25 attacks per second for one-handed weapons against 0.85 for two-handed, a 32%
+gap. Path of Exile's actual base rates are 1.15 to 1.55 one-handed and 1.15 to
+1.45 two-handed. The ranges overlap; a two-hander is only slightly slower and
+earns its advantage through much larger base damage. The per-weapon numbers are
+still open on issue #120.
+
+**What is guarded.** `_check_the_two_loadouts_have_equal_affix_value` in
+`sim/cataclysm_sim/affixes.py` asserts the equality rather than trusting the
+arithmetic, and `_check_only_a_two_handed_weapon_multiplies_its_values` asserts
+that nothing else quietly gains a multiplier, which would break the equality
+without changing any count. Both were confirmed to fail when broken.
+
+**Sources.**
+
+- Last Epoch dual wield mechanics, developer commentary: https://devtrackers.gg/last-epoch/p/8bcd18da-dual-wield-mechanics
+- Last Epoch gear walkthrough: https://maxroll.gg/last-epoch/resources/gear-walkthrough
+- Last Epoch Season 3 patch notes, the dual wield penalty: https://maxroll.gg/last-epoch/news/season-3-patch-notes
+- Path of Exile dual wielding: https://pathofexile.fandom.com/wiki/Dual_wielding
+- Path of Exile base weapon table: https://www.incendar.com/poe_weapons.php
+
+**Affects:** `Cataclysm_GDD_v2.md` section VI. **Applied 2026-08-03:** a Two-Handed
+Weapon Is Worth Double subsection and a What a Dual Wielder Has subsection were
+added after the weapon base table, and the affix slot count sentence was
+corrected to mention the dual wielder's 76. The working model is
+`TWO_HANDED_MULTIPLIER` in `sim/cataclysm_sim/affixes.py`, measured by
+`sim/analyse_two_handed_multiplier.py`.
+
+---
+
 ## 2026-08-03 — The three buckets in Unreal, and what the engine already does
 
 **The finding that shaped this.** Unreal's Gameplay Ability System already
