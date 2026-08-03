@@ -190,3 +190,34 @@ class TestAgainstTheRealWorkbook:
         roots = {tag.split(".")[0] for tag, _ in tags}
         assert {"Element", "Type", "Slot", "Item", "Stat",
                 "Keyword", "Scope", "Trigger"} <= roots
+
+    def test_item_slot_tags_are_exactly_the_design_document_s_slots(self):
+        """Issue #106. The tag list had 14 item slots; the design has 11 plus
+        potions.
+
+        It carried an Item.Slot.OffHand for a slot the design explicitly removes
+        -- "There are no offhand items" -- an Item.Slot.Bracers for a piece that
+        appears nowhere, and Feet and Neck where the design says Boots and
+        Necklace. Nothing compared the two, so the disagreement sat there.
+
+        GEAR_SLOTS is the simulation's reading of the Item Slots list in section
+        VI, so comparing against it means the vocabulary cannot drift from the
+        design without one of the two being changed deliberately. Potion is
+        added here because the design lists four potion slots but they are
+        consumables rather than gear, which is why the simulation's gear list
+        leaves them out.
+        """
+        from cataclysm_sim.affixes import GEAR_SLOTS
+
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+
+        declared = {tag for tag, _ in gen.read_tags(gen.WORKBOOK)
+                    if tag.startswith("Item.Slot.")}
+        expected = {f"Item.Slot.{slot}" for slot in GEAR_SLOTS} | {"Item.Slot.Potion"}
+
+        assert declared == expected, (
+            f"the Tags sheet and the design's item slots disagree.\n"
+            f"  only in the Tags sheet: {sorted(declared - expected)}\n"
+            f"  only in the design:     {sorted(expected - declared)}"
+        )

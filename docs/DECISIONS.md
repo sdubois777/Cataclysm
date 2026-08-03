@@ -20,6 +20,57 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The item slot vocabulary, corrected to the design's eleven slots
+
+**The problem.** Issue #106. The Tags sheet declared 14 `Item.Slot` gameplay
+tags. Section VI lists eleven gear slots plus the potion slots. Nothing compared
+the two, so the disagreement sat there from the moment the tag list was first
+generated.
+
+| Tag | What was wrong |
+|---|---|
+| `Item.Slot.OffHand` | Section V states plainly there are no offhand items |
+| `Item.Slot.Bracers` | Appears in no design document, no data sheet and no affix |
+| `Item.Slot.Feet` | The design calls the slot Boots |
+| `Item.Slot.Neck` | The design calls the slot Necklace |
+
+**Nothing referenced them, which is why this was cheap.** Every cell of every
+sheet was searched for `Item.Slot` references. Only the Tags sheet declares
+these four, and only `Item.Slot.Weapon` is used anywhere else, by three
+enchantments. So the two renames and two deletions broke no existing data.
+
+**`Item.Slot.Potion` stays and is not part of the mismatch.** Section VI lists
+four potion slots. They are consumables rather than gear and carry no affixes,
+which is why `GEAR_SLOTS` in `sim/cataclysm_sim/affixes.py` leaves them out and
+sums to 18 pieces rather than 22. A tag for them is still needed, because they
+hold gems.
+
+**Why a wrong tag is worse than a missing one.** A tag that does not exist fails
+loudly: the generator's `--strict` mode rejects a reference to it. A tag that
+exists but names the wrong thing fails silently — an affix restricted to
+`Item.Slot.Feet` simply matches nothing, and no error is produced. That is the
+same silent-mismatch failure the generated data tables were built to prevent.
+
+**Two guards, because either half can drift alone.** A Python test compares the
+sheet's `Item.Slot` tags against `GEAR_SLOTS`, so the vocabulary cannot diverge
+from the design's slot list. An Unreal automation test names all twelve tags and
+asserts the four wrong ones do not resolve, so the engine is proved to have
+loaded the corrected list rather than a stale one. Both were confirmed to fail
+when the condition they guard against was reintroduced.
+
+**What this exposed and did not settle.** The design says eighteen equipped
+pieces including one weapon, and also that a player may equip two one-handed
+weapons, which would be nineteen. Filed as #117, because it changes the affix
+budget every value in the pool was fitted against.
+
+**Affects:** no design document change. `Cataclysm_GDD_v2.md` section VI already
+lists Boots and Necklace and already states there are no offhand items; the
+generated tag list was what disagreed with it. **Applied 2026-08-03** to the Tags
+sheet of `All_Things_Cataclysm.xlsx`, which regenerates
+`game/Config/Tags/CataclysmTags.ini` from 117 tags to 115.
+
+---
+
 ## 2026-08-03 — What a skill is worth, in weapon damage
 
 **The problem.** Issue #107. The design said every weapon type paired with every
