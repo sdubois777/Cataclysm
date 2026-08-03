@@ -55,15 +55,74 @@ def test_class_supplied_stats_take_their_base_from_the_class_and_level():
     assert c.base("max_health") == expected
 
 
+def test_every_stat_has_exactly_one_recorded_base_source():
+    assert set(ch.BASE_SOURCE) == set(ch.ALL_STATS)
+    assert set(ch.BASE_SOURCE.values()) <= {"class", "weapon", "skill"}
+    groups = (ch.CLASS_BASE_STATS, ch.WEAPON_BASE_STATS, ch.SKILL_BASE_STATS)
+    assert sum(len(g) for g in groups) == len(ch.ALL_STATS)
+    for a, b in ((0, 1), (0, 2), (1, 2)):
+        assert not (groups[a] & groups[b]), "a stat is in two source groups"
+
+
+def test_the_base_source_check_rejects_a_missing_or_unknown_source(monkeypatch):
+    monkeypatch.setattr(ch, "BASE_SOURCE", {"max_health": "class"})
+    with pytest.raises(ValueError, match="no recorded base source"):
+        ch._check_every_stat_has_a_base_source()
+    monkeypatch.setattr(ch, "BASE_SOURCE",
+                        dict.fromkeys(ch.ALL_STATS, "somewhere_else"))
+    with pytest.raises(ValueError, match="unknown base sources"):
+        ch._check_every_stat_has_a_base_source()
+
+
 def test_weapon_supplied_stats_ignore_the_class_and_take_the_weapon_base():
     """Attack speed's base belongs to the weapon. A class contributes only an
     increase, so that a dagger stays faster than a two-handed axe."""
-    assert "attack_speed" in ch.WEAPON_BASE_STATS
+    assert ch.BASE_SOURCE["attack_speed"] == "weapon"
     unarmed = ch.Character(ch.GENERIC, level=100)
     armed = ch.Character(ch.GENERIC, level=100,
                          gear=ch.Gear(weapon_base={"attack_speed": 1.4}))
     assert unarmed.stat("attack_speed") == 0.0
     assert armed.stat("attack_speed") == pytest.approx(1.4)
+
+
+# --------------------------------------------------------------------------
+# Skill-supplied bases
+# --------------------------------------------------------------------------
+
+def test_critical_strike_chance_comes_from_the_skill_not_the_class():
+    """Stated by the project owner: each skill carries its own base critical
+    strike chance, and gear and attributes scale that."""
+    assert ch.BASE_SOURCE["crit_chance"] == "skill"
+    no_skill = ch.Character(ch.GENERIC, level=100,
+                            attributes=ch.Attributes(ferocity=100))
+    assert no_skill.stat("crit_chance") == 0.0
+
+
+def test_a_skill_base_is_scaled_by_attributes_and_gear():
+    c = ch.Character(ch.GENERIC, level=100,
+                     attributes=ch.Attributes(ferocity=100),
+                     skill=ch.Skill(name="Cleave", base={"crit_chance": 20.0}))
+    # 100 Ferocity is +50% increased, so 20% becomes 30%.
+    assert c.stat("crit_chance") == pytest.approx(30.0)
+
+
+def test_a_class_cannot_give_itself_a_skill_supplied_base():
+    """An override for a skill-based stat is ignored, because the class is not
+    where that base lives. This is what keeps the sources from overlapping."""
+    pretender = ch.ClassDefinition(name="Pretender",
+                                   overrides={"crit_chance": ch.Scaling(base=90.0)})
+    c = ch.Character(pretender, level=100)
+    assert c.stat("crit_chance") == 0.0
+
+
+def test_a_skill_may_not_supply_a_base_for_a_stat_it_does_not_own():
+    with pytest.raises(ValueError, match="whose base does not come from"):
+        ch.Skill(name="Wrong", base={"max_health": 500.0})
+
+
+def test_a_skill_may_not_name_a_stat_that_is_not_on_the_sheet():
+    with pytest.raises(ValueError, match="not on the character sheet"):
+        ch.Skill(name="Wrong", base={"thorns_aura": 1.0})
 
 
 def test_a_class_increase_scales_the_weapon_base_rather_than_replacing_it():
@@ -172,13 +231,13 @@ def test_an_attribute_scales_every_stat_it_is_listed_against():
 
 
 def test_a_stat_with_a_zero_base_gains_nothing_from_its_attribute():
-    """A stated consequence of attributes scaling rather than creating. The
-    default line has no evasion, so Agility has nothing to multiply."""
+    """The design working, not failing. An attribute only ever scales, so with
+    no base there is nothing to scale. The default line has no evasion, so
+    Agility does nothing until a class gives evasion a base."""
     c = ch.Character(ch.GENERIC, level=100,
                      attributes=ch.Attributes(agility=100))
     assert c.increases("evasion") > 0
     assert c.stat("evasion") == 0.0
-    # And a class that gives itself a base does benefit.
     nimble = ch.ClassDefinition(name="Nimble",
                                 overrides={"evasion": ch.Scaling(base=10.0)})
     assert ch.Character(nimble, level=100,
@@ -186,16 +245,47 @@ def test_a_stat_with_a_zero_base_gains_nothing_from_its_attribute():
                         ).stat("evasion") == pytest.approx(15.0)
 
 
+def test_an_attribute_effect_is_only_ever_an_increase():
+    """There is one way an attribute acts. A second kind was proposed and
+    rejected by the project owner; this locks the single kind in."""
+    for attribute, effects in ch.ATTRIBUTE_EFFECTS.items():
+        for stat, value in effects.items():
+            assert isinstance(value, float), (
+                f"{attribute} -> {stat} is not a plain increase fraction")
+    ch._check_attributes_only_scale()
+
+
+def test_the_attributes_only_scale_check_rejects_anything_else(monkeypatch):
+    class NotAnIncrease:
+        pass
+
+    monkeypatch.setattr(ch, "ATTRIBUTE_EFFECTS",
+                        {"agility": {"movement_speed": NotAnIncrease()}})
+    with pytest.raises(TypeError, match="plain increase fraction"):
+        ch._check_attributes_only_scale()
+
+
+def test_movement_speed_is_measured_in_metres_per_second():
+    """The project owner's example: a tank around 3 metres per second, scaled by
+    the attribute as 3 * (1 + increases)."""
+    assert 1.0 <= ch.DEFAULT_STAT_LINE["movement_speed"].base <= 10.0
+    tank = ch.ClassDefinition(name="Tank",
+                              overrides={"movement_speed": ch.Scaling(base=3.0)})
+    c = ch.Character(tank, level=50, attributes=ch.Attributes(agility=50))
+    assert c.stat("movement_speed") == pytest.approx(3.0 * 2.0)
+
+
 # --------------------------------------------------------------------------
 # Caps
 # --------------------------------------------------------------------------
 
 def test_a_hard_cap_is_applied():
+    """Critical strike chance's base comes from the skill, so the cap is tested
+    against a skill that already has a high one."""
     assert ch.HARD_CAPS["crit_chance"] == 100.0
-    crit = ch.ClassDefinition(name="Crit",
-                              overrides={"crit_chance": ch.Scaling(base=80.0)})
-    c = ch.Character(crit, level=100,
-                     gear=ch.Gear(increased={"crit_chance": 5.0}))
+    c = ch.Character(ch.GENERIC, level=100,
+                     gear=ch.Gear(increased={"crit_chance": 5.0}),
+                     skill=ch.Skill(name="Sharp", base={"crit_chance": 80.0}))
     assert c.stat("crit_chance") == 100.0
 
 
@@ -244,11 +334,13 @@ def test_cooldown_can_never_reach_zero():
 
 def test_damage_over_time_frequency_rises_with_efficacy():
     """Frequency is ticks per second, so more Efficacy must mean MORE ticks. If
-    frequency were treated as an interval and divided, this would fall."""
-    dotter = ch.ClassDefinition(name="Dotter",
-                                overrides={"dot_frequency": ch.Scaling(base=2.0)})
-    none = ch.Character(dotter, level=100)
-    lots = ch.Character(dotter, level=100,
+    frequency were treated as an interval and divided, this would fall.
+
+    The base comes from the skill: a skill has a tick rate, a character does not
+    have one in the abstract."""
+    poison = ch.Skill(name="Poison", base={"dot_frequency": 2.0})
+    none = ch.Character(ch.GENERIC, level=100, skill=poison)
+    lots = ch.Character(ch.GENERIC, level=100, skill=poison,
                         attributes=ch.Attributes(efficacy=100))
     assert lots.stat("dot_frequency") > none.stat("dot_frequency")
     assert lots.stat("dot_frequency") == pytest.approx(4.0)
