@@ -31,8 +31,11 @@ five two-handed bases average 1.03 times two one-handed ones, which is parity,
 so a two-handed weapon has no base damage advantage at all. Section VI states
 that the two-hander stays ahead on raw damage, and under summing it is not.
 
-The affix multiplier cannot fix that on its own without breaking a different
-rule. See `why_two_point_zero_is_still_right` at the end.
+Raising the affix multiplier alone cannot fix that without breaking a different
+rule. The answer came from research rather than from measurement: Last Epoch
+applies its two-handed bonus to implicits as well as affixes, and a weapon's
+base damage is an implicit here. See `why_the_multiplier_applies_to_implicits_too`
+at the end.
 
 A SECOND RULE ALREADY IN THE DESIGN constrains this. Section VII states:
 
@@ -317,50 +320,70 @@ def why_it_is_not_two() -> None:
               f"{at_two:.2f}x the dual wielder")
 
 
-def why_two_point_zero_is_still_right() -> None:
-    header("UNDER SUMMING: RAISE THE WEAPON BASES, NOT THE MULTIPLIER")
-    print("With base damage summed, a two-hander at today's numbers is behind on")
-    print("damage as well as holding one fewer damage type, which makes it")
-    print("strictly worse. There are two levers and they are not equally good.\n")
+#: Attacks per second, read off Path of Exile's base weapon table rather than
+#: derived. One-handed weapons run 1.15 to 1.55 and two-handed 1.15 to 1.45, so
+#: the two classes OVERLAP and a two-hander is only slightly slower.
+#:
+#: An earlier version of this file derived rates instead, on the assumption that
+#: base damage per second should be even within a hand class. That produced 1.25
+#: against 0.85, a 32% gap, which is nothing like what a shipped game uses. A
+#: two-hander earns its advantage through much larger base damage, not through
+#: swinging much more slowly.
+ONE_HANDED_RATE = 1.35
+TWO_HANDED_RATE = 1.28
 
-    dual = average_damage(sum_bases=True, multiplier=1.0, two_handed=False)
 
-    print("  LEVER A -- raise the affix multiplier")
-    print(f"  {'multiplier':>10}  {'2H vs dual wield':>17}  {'2H affix budget':>16}  "
-          f"{'vs dual wield 76':>17}")
-    print("  " + "-" * 68)
-    for candidate in (2.0, 2.25, 2.5, 2.75, 3.0):
-        ratio = average_damage(True, candidate, two_handed=True) / dual
-        budget = 68 + af.AFFIX_SLOTS_PER_PIECE * candidate
-        print(f"  {candidate:>10.2f}  {ratio:>17.3f}  {budget:>16.1f}  "
-              f"{budget - 76:>+17.1f}")
+def why_the_multiplier_applies_to_implicits_too() -> None:
+    header("THE ANSWER: THE MULTIPLIER APPLIES TO IMPLICITS AS WELL AS AFFIXES")
+    print("Last Epoch balances two-handed weapons by giving them an inherent")
+    print("bonus to their affixes AND their implicit stats. In this project a")
+    print("weapon's base damage IS an implicit, so one multiplier covers both.")
     print()
-    print("  Reaching a 20% edge needs about 2.75, which hands the two-hander")
-    print("  three affix slots the dual wielder does not have. That is the same")
-    print("  free power section VII forbids, pointed the other way: the Power")
-    print("  Score model rates both loadouts identically, so whichever side has")
-    print("  the larger affix budget carries power its rating does not count.\n")
+    print("That removes a choice this file previously presented as open. Raising")
+    print("the affix multiplier alone to reach a damage edge needs about 2.75,")
+    print("which hands the two-hander three affix slots the dual wielder does")
+    print("not have -- the free power section VII forbids, pointed the other")
+    print("way. Raising the five two-handed base damages by hand reaches the")
+    print("same place but changes numbers that did not need changing. Applying")
+    print("the multiplier already chosen to both does it with neither.\n")
 
-    print("  LEVER B -- raise two-handed base damage, multiplier stays at 2.0")
-    print(f"  {'2H base':>10}  {'2H vs dual wield':>17}  {'change from 78':>15}")
-    print("  " + "-" * 48)
-    for candidate_base in (78, 100, 120, 128, 150):
-        value = damage_per_hit(float(candidate_base), 1, 1, 2.0) * crit_factor(
-            SUFFIXES_PER_WEAPON * 2, 2.0)
-        print(f"  {candidate_base:>10}  {value / dual:>17.3f}  "
-              f"{candidate_base / 78:>14.2f}x")
+    two_bracket = (base_damage(TWO_HANDED) * 2.0
+                   + flat_damage_value() * NON_WEAPON_FLAT_DAMAGE_AFFIXES
+                   + flat_damage_value(2.0))
+    dual_base = sum(base_damage(n) for n in ONE_HANDED)
+    dual_bracket = (dual_base
+                    + flat_damage_value() * NON_WEAPON_FLAT_DAMAGE_AFFIXES
+                    + flat_damage_value() * 2)
+
+    print(f"  two-handed {TWO_HANDED}: base {base_damage(TWO_HANDED):.0f} "
+          f"doubled to {base_damage(TWO_HANDED) * 2:.0f}, "
+          f"full bracket {two_bracket:.0f}")
+    print(f"  dual wield {' and '.join(ONE_HANDED)}: base {dual_base:.0f} summed, "
+          f"full bracket {dual_bracket:.0f}")
     print()
-    print("  Lever B keeps the affix budgets equal and puts the advantage exactly")
-    print("  where section VI says it is: raw damage. It is the weaker lever per")
-    print("  point -- a weapon base is only 38% of the base bracket once affixes")
-    print("  are counted -- which is why the change needed is large.")
+    print("  The increased bucket is identical both ways at a multiplier of 2.0,")
+    print("  so it cancels and the per-hit ratio is the brackets alone:")
+    print(f"    damage per hit          {two_bracket / dual_bracket:.3f}x "
+          f"to the two-hander")
+
+    # Dual wielding averages the two weapons' rates. Both Path of Exile and Last
+    # Epoch do this: Path of Exile alternates hands, which produces the average,
+    # and Last Epoch states it as the arithmetic mean of the two implicits.
+    per_second = ((two_bracket * TWO_HANDED_RATE)
+                  / (dual_bracket * ONE_HANDED_RATE))
+    print(f"    damage per second       {per_second:.3f}x  "
+          f"(two-hander {TWO_HANDED_RATE}/s against a dual-wield average "
+          f"of {ONE_HANDED_RATE}/s)")
     print()
-    print("  The two-handed base damages have no recorded rationale in")
-    print("  sim/cataclysm_sim/affixes.py. They were set at roughly 1.8 times a")
-    print("  one-hander, which is right if one attack uses one weapon and wrong")
-    print("  if two weapons sum, so raising them corrects a number set against a")
-    print("  question that had not been answered rather than overriding a")
-    print("  decision.")
+    print("  So the two-hander hits considerably harder per swing and is modestly")
+    print("  ahead per second, and the dual wielder holds a fourth damage type")
+    print("  and a wider spread of affixes. No weapon base damage changes, and")
+    print("  the affix budgets stay exactly equal at 76 slots-worth each.")
+    print()
+    print("  NO DEFENSIVE PENALTY ON DUAL WIELDING. Last Epoch charges 8% more")
+    print("  damage taken, reduced from 9%. Rejected by the project owner")
+    print("  2026-08-03, and its own forums carry threads asking for it to be")
+    print("  removed, so the reception is evidence rather than only taste.")
 
 
 def what_two_point_zero_actually_does() -> None:
@@ -405,7 +428,7 @@ def main() -> None:
     crit_table()
     why_it_is_not_two()
     what_two_point_zero_actually_does()
-    why_two_point_zero_is_still_right()
+    why_the_multiplier_applies_to_implicits_too()
 
 
 if __name__ == "__main__":
