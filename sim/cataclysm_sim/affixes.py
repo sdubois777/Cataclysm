@@ -78,12 +78,29 @@ TIER_FRACTIONS: dict[int, float] = {tier: tier / 7.0 for tier in range(1, 8)}
 #: value is meaningless if the reroll cannot change it. Without ranges, an
 #: Extremely Rare crafting material is dead content.
 #:
-#: How wide the band is, as a fraction of the gap between one tier and the next.
-#: Below 1.0 the bands do not overlap, so ANY roll at a higher tier beats ANY
-#: roll at a lower one. That keeps tier the primary axis and the roll the
-#: secondary one: a lucky T4 must never beat an unlucky T5, or tiers stop
-#: meaning anything.
-ROLL_BAND_FRACTION = 0.60
+#: How far a band reaches below its top, as a fraction of THE AFFIX'S OWN VALUE
+#: at that tier. A T7 affix rolls between 75% and 100% of its stated maximum.
+#:
+#: An earlier version measured this against the gap between tiers instead, which
+#: made rolls almost worthless: with seven tiers spanning zero to the maximum,
+#: each gap is a seventh of the affix, so the band could never be more than a few
+#: percent of its value. A perfect set of resistance affixes saved about one slot
+#: out of 72, which is not a difference anyone would craft for.
+#:
+#: BANDS NOW OVERLAP BETWEEN ADJACENT TIERS, AND THAT IS THE POINT. A perfect T6
+#: roll can beat a poor T7 one. With seven tiers there is no way to have both
+#: non-overlapping bands and rolls that change a build: a band large enough to
+#: matter is necessarily larger than the gap between tiers. Given the choice, a
+#: roll that matters is worth more than a clean ordering, because it is what
+#: makes a drop worth looking at and what the reroll and perfect crafting actions
+#: exist to act on.
+#:
+#: The overlap is bounded to ONE tier and that is provable rather than tuned. A
+#: tier's floor is 0.75 of its own fraction, so tier n is undercut by tier n-1
+#: only when n > 4, and by tier n-2 only when n > 8, which cannot happen with
+#: seven tiers. So a perfect roll can beat the tier above and never the one above
+#: that.
+ROLL_BAND_FRACTION = 0.25
 
 #: The character sheet's resistance cap. Reaching it on every active damage type
 #: is what a build is trying to do.
@@ -113,14 +130,13 @@ class AffixFamily:
 
         The top of a tier's band is its share of the family's top value, so a
         perfect T7 roll is exactly the family's stated maximum. The band reaches
-        down by a fraction of the gap to the tier below, which leaves a gap
-        between tiers so that any higher-tier roll beats any lower-tier one.
+        down by a fraction of that value, not of the gap to the tier below, which
+        is what makes the roll worth caring about. See ROLL_BAND_FRACTION.
         """
         if tier not in TIER_FRACTIONS:
             raise ValueError(f"affix tier {tier} outside {sorted(TIER_FRACTIONS)}")
         high = self.top_value * TIER_FRACTIONS[tier]
-        step = self.top_value / len(AFFIX_TIERS)
-        return (max(0.0, high - step * ROLL_BAND_FRACTION), high)
+        return (high * (1.0 - ROLL_BAND_FRACTION), high)
 
     def value_at(self, tier: int, roll: float = 1.0) -> float:
         """Percentage granted to each covered resistance.

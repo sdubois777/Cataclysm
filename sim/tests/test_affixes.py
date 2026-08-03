@@ -177,17 +177,33 @@ def test_a_roll_outside_zero_to_one_is_clamped_rather_than_extrapolated():
     assert family.value_at(5, roll=9.0) == pytest.approx(high)
 
 
-def test_any_roll_at_a_higher_tier_beats_any_roll_at_a_lower_one():
-    """Tier stays the primary axis and the roll the secondary one. If a lucky T4
-    could beat an unlucky T5, tiers would stop meaning anything and the crafting
-    action that raises a tier would compete with the one that rerolls a value."""
+def test_a_perfect_roll_can_beat_the_tier_above_but_never_two_above():
+    """Bands overlap between adjacent tiers deliberately, because that is the
+    only way a roll can matter with seven tiers: a band large enough to change a
+    build is necessarily larger than the gap between tiers.
+
+    The overlap is bounded to one tier, which makes a perfect roll worth chasing
+    without making tier meaningless. If it reached two tiers, a lucky T5 could
+    beat an unlucky T7 and the crafting action that raises a tier would stop
+    being worth using.
+    """
     for family in af.RESISTANCE_FAMILIES:
-        for tier in range(1, 7):
-            _, lower_best = family.range_at(tier)
-            higher_worst, _ = family.range_at(tier + 1)
-            assert higher_worst >= lower_best, (
-                f"{family.name}: a perfect T{tier} ({lower_best:.2f}) beats a "
-                f"worst T{tier + 1} ({higher_worst:.2f})")
+        for tier in range(3, 8):
+            two_below_best, = (family.range_at(tier - 2)[1],)
+            this_worst, _ = family.range_at(tier)
+            assert this_worst > two_below_best, (
+                f"{family.name}: a perfect T{tier - 2} ({two_below_best:.2f}) "
+                f"beats a worst T{tier} ({this_worst:.2f})")
+
+
+def test_the_bands_do_overlap_between_adjacent_tiers():
+    """Asserted rather than merely allowed. If a future change quietly removed
+    the overlap, rolls would go back to being worth about one slot in 72, which
+    is the state this replaced."""
+    family = af.SINGLE_RESISTANCE
+    seventh_worst, _ = family.range_at(7)
+    _, sixth_best = family.range_at(6)
+    assert sixth_best > seventh_worst
 
 
 def test_the_lowest_tier_cannot_roll_to_nothing():
@@ -197,13 +213,23 @@ def test_the_lowest_tier_cannot_roll_to_nothing():
         assert low > 0.0, f"{family.name} T1 can roll to zero"
 
 
-def test_crafting_a_perfect_set_is_worth_something_measurable():
-    """If perfect and minimum rolls needed the same number of slots, the
-    Primal Spark would be dead content."""
+def test_crafting_a_perfect_set_saves_several_slots_not_a_fraction_of_one():
+    """The project owner's test of whether the range is worth having: a roll has
+    to change how many affixes it takes to cap resistances. An earlier version
+    saved about one slot out of 72, which nobody would craft for."""
     perfect = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=1.0)
     minimum = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=0.0)
-    assert minimum > perfect
-    assert minimum - perfect >= 0.5
+    assert minimum - perfect >= 3.0, (
+        f"perfect rolls save only {minimum - perfect:.1f} slots")
+
+
+def test_a_minimum_roll_is_worth_three_quarters_of_a_perfect_one():
+    """States the band width as a property rather than leaving it in a constant,
+    so a change to it is deliberate."""
+    for family in af.RESISTANCE_FAMILIES:
+        for tier in af.AFFIX_TIERS:
+            low, high = family.range_at(tier)
+            assert low / high == pytest.approx(0.75)
 
 
 def test_affix_value_rises_with_every_tier():
