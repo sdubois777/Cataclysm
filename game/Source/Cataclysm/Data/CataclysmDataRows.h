@@ -385,6 +385,71 @@ struct FCataclysmAffixRow : public FTableRowBase
 	FString AllowedSlots;
 };
 
+/**
+ * One class's value for one stat: its level 1 base and its per-level gain.
+ * Source: Class Stats.
+ *
+ * THE DEFAULT LINE IS A ROW SET, NOT A SPECIAL CASE. A class named "Default"
+ * carries the stat line every class inherits, and each real class overrides only
+ * the stats that express its identity. There are 33 stats and 24 classes
+ * planned, so writing every class out in full would be 792 rows of which almost
+ * all would repeat.
+ *
+ * That shape is also what the design means by a class: the three War trees each
+ * commit to three or four stats and ignore the rest, so a class is defined as
+ * much by what it refuses as by what it takes.
+ *
+ * Resolve a class's value for a stat by looking for that class's row, then the
+ * Default row, then zero. UCataclysmClassStats does it.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmClassStatRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "Default", or a class name such as "Ravager". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Class Stats")
+	FString ClassName;
+
+	/** A character sheet stat name, such as "max_health". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Class Stats")
+	FString Stat;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Class Stats")
+	float Base = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Class Stats")
+	float PerLevel = 0.0f;
+};
+
+/**
+ * What one point of an attribute is worth. Source: Attributes.
+ *
+ * ATTRIBUTES ONLY EVER SCALE. A point adds to a stat's sum of increases and the
+ * sum multiplies the base, so a point does nothing on a stat with no base. That
+ * is the design working rather than failing: it is why a class that wants to
+ * scale a stat with attributes has to be given a base for it first.
+ *
+ * Values are PERCENT PER POINT, matching the stat pipeline: Vitality reads 2,
+ * meaning 60 points of it contribute 120 percentage points of increase.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmAttributeEffectRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** One of the eight: Agility, Ferocity, Constitution, Vitality, Mind,
+	 *  Spirit, Efficacy or Luck. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attributes")
+	FString Attribute;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attributes")
+	FString Stat;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attributes")
+	float PercentPerPoint = 0.0f;
+};
+
 /** A crafting material. Source: Crafting. */
 USTRUCT(BlueprintType)
 struct FCataclysmCraftingMaterialRow : public FTableRowBase

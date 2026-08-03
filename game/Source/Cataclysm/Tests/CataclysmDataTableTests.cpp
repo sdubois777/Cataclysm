@@ -103,6 +103,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 59: 35 single-stat affixes, 3 resistance families, 9 ailments and 12
 	// hybrids.
 	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                59)
+	// 30: nine stats on the shared default line, plus what the Ravager,
+	// Ritualist and Masochist each override.
+	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             30)
+	// 17: eight attributes, each raising two stats, except Efficacy raising
+	// three.
+	CHECK_TABLE(FCataclysmAttributeEffectRow,   "Attributes.csv",             17)
 
 	#undef CHECK_TABLE
 
