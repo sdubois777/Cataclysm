@@ -263,6 +263,128 @@ struct FCataclysmCityUpgradeRow : public FTableRowBase
 	float Tier3IntervalDays = 0.0f;
 };
 
+/**
+ * One item base within a slot, and what it inherently grants. Source: Item Bases.
+ *
+ * THE IMPLICIT BELONGS TO THE BASE, NOT THE SLOT. A chest built for armour and
+ * one built for evasion are different bases in the same slot, and choosing
+ * between them is a defensive layer committed to before any affix is involved.
+ *
+ * VALUES ARE THE STATED ONES: the fully upgraded (+10) figures the design
+ * document quotes. For a two-handed weapon that is the figure BEFORE the
+ * two-handed multiplier doubles it, so a Greatsword reads 78 here and supplies
+ * 156 in play. Anything reading these must apply ValueMultiplier itself; see
+ * TWO_HANDED_MULTIPLIER in sim/cataclysm_sim/affixes.py for why it is 2.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmItemBaseRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base")
+	FString BaseName;
+
+	/** Head, Chest, Shoulders, Gloves, Pants, Boots, Belt, Ring, Necklace,
+	 *  Relic or Weapon. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base")
+	FString Slot;
+
+	/** 1 or 2 for a weapon, 0 for anything else. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
+	int32 Hands = 0;
+
+	/** Piercing, Slashing, Blunt or Magic. Empty for anything but a weapon. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
+	FString SubType;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
+	FString WeaponType;
+
+	/** How many damage types the weapon holds. Two for a one-hander, three for
+	 *  a two-hander. WHICH types is decided when the item drops, not here. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
+	int32 DamageTypeSlots = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit1Stat;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit1Kind;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") float Implicit1Value = 0.0f;
+
+	/** Empty when the base grants only one implicit, which most do. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit2Stat;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit2Kind;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") float Implicit2Value = 0.0f;
+};
+
+/**
+ * One rollable affix. Source: Affixes.
+ *
+ * FOUR KINDS SHARE ONE TABLE, distinguished by AffixKind, because they are one
+ * pool as far as a drop is concerned:
+ *
+ *   Stat        one stat, flat or increased, worth TopValue at tier 7
+ *   Resistance  a family covering Breadth damage types at TopValue each
+ *   Ailment     a TopValue% chance to apply Ailment, which Gem also applies
+ *   Hybrid      HybridPart1 and HybridPart2 at a reduced share each
+ *
+ * Fields that do not apply to a kind are empty or zero. That is deliberate
+ * rather than untidy: splitting into four tables would mean a drop had to roll
+ * against four pools and know their relative weights.
+ *
+ * PREFIXES AND SUFFIXES ARE SEPARATE POOLS, two of each per piece. A stat that
+ * appears as a prefix never appears as a suffix, which is what stops one item
+ * carrying four of whatever is strongest.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmAffixRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString AffixName;
+
+	/** "Stat", "Resistance", "Ailment" or "Hybrid". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString AffixKind;
+
+	/** "prefix" or "suffix". Two of each per piece, from separate pools. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString Position;
+
+	/** The character sheet stat this grants. Empty for Resistance and Hybrid. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString Stat;
+
+	/** "flat" or "increased", deciding which bucket of the stat pipeline this
+	 *  enters. An affix is never a "more" multiplier. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString ValueKind;
+
+	/** The tier 7 value at gear level +10. Lower tiers are N/7 of it, and every
+	 *  tier is a range reaching 25% below its top. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	float TopValue = 0.0f;
+
+	/** How many damage types a Resistance family covers: 1, 2 or all 8. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	int32 Breadth = 0;
+
+	/** Which effect an Ailment affix applies. Empty for the other kinds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString Ailment;
+
+	/** The gem that applies the same effect, and more strongly. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString Gem;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix") FString HybridPart1;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix") FString HybridPart2;
+
+	/** Comma-separated slot names. Every one is checked at generation time
+	 *  against the slots the item bases actually occupy. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString AllowedSlots;
+};
+
 /** A crafting material. Source: Crafting. */
 USTRUCT(BlueprintType)
 struct FCataclysmCraftingMaterialRow : public FTableRowBase

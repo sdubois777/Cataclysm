@@ -20,6 +20,54 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The affix pool moves into the workbook, and the workbook wins
+
+**The decision.** The 55 item bases and 59 rollable affixes now live in two new
+sheets of `All_Things_Cataclysm.xlsx`, generated into `game/Data/ItemBases.csv`
+and `game/Data/Affixes.csv` like the nine tables before them. **The workbook is
+authoritative.** It is what a person edits, and it is what Unreal loads.
+
+Chosen by the project owner over the two alternatives. Generating the sheets
+from `sim/cataclysm_sim/affixes.py` would have made Python authoritative and put
+a dependency from the game's build tooling onto the simulation, which the layout
+rules keep separate. Authoring the tables by hand in the Unreal editor would have
+created a second source of truth with no way to compare the two.
+
+**THE SIMULATION KEEPS ITS COPY, AND THAT IS THE RISK.** `affixes.py` still holds
+the same pool, because that is where the design rules are enforced — a stat
+cannot be both a prefix and a suffix, every slot must be able to fill all four of
+its affix slots, no weapon may roll a defensive affix — and where tuning happens.
+Two copies of the same numbers drift. This project has already been bitten by
+exactly that: `scoring.py` is a copy of a file in another repository and drifted
+silently twice, which is why `verify_scoring_port.py` exists.
+
+So `tools/tests/test_affix_sheets_match_the_model.py` compares them, one test per
+kind of thing that can disagree. It was confirmed to fail when a value was
+changed in the sheet and the tables regenerated, which is the case that gets past
+the staleness check.
+
+**Only stored values are compared.** The seven-tier curve, the roll band, the
+gear level multiplier and the two-handed multiplier are formulas in `affixes.py`
+and appear in no sheet, so they are checked by their own tests instead.
+
+**Four affix kinds share one table**, distinguished by a column: a single stat, a
+resistance family covering one, two or eight damage types, an ailment chance, and
+a hybrid granting two stats at a reduced share. Splitting them into four tables
+would mean a drop had to roll against four pools and know their relative weights.
+
+**Two cross-checks the generator now runs**, both of which fail silently without
+it. An affix naming a slot no item base occupies simply never rolls, on any drop.
+A hybrid naming a part that is not an affix grants half of what it says. Neither
+produces an error anywhere. Both are checked by comparing the two sheets against
+each other rather than against a hard-coded list, so adding a slot to the design
+needs no change to the generator.
+
+**Affects:** no design document change. Section VI already describes the affix
+pool, the tiers and the slot restrictions; this is that design becoming data the
+game can load.
+
+---
+
 ## 2026-08-03 — Dual wielding, and what a two-handed weapon is worth
 
 **This is the first decision made under the rule that formulas are researched
