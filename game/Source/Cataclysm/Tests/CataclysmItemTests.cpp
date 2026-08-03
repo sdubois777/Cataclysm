@@ -270,39 +270,64 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// Reads one stat's single modifier, so a test says which stat it means
+	// rather than relying on the order they came back in.
+	const auto Only = [this](const TMap<FName, TArray<FCataclysmStatModifier>>& Map,
+							 const TCHAR* Stat, FCataclysmStatModifier& Out) -> bool
+	{
+		const TArray<FCataclysmStatModifier>* Found = Map.Find(FName(Stat));
+		if (!Found || Found->Num() != 1)
+		{
+			AddError(FString::Printf(TEXT("expected exactly one modifier for %s"), Stat));
+			return false;
+		}
+		Out = (*Found)[0];
+		return true;
+	};
+
 	// A Helm gives 200 flat armor at +10, from game/Data/ItemBases.csv.
 	FCataclysmItem Helm;
 	Helm.Base = TEXT("Head_Helm");
 	Helm.GearLevel = 10;
 	Helm.Affixes.Add(Rolled(TEXT("Stat_Flat_maximum_health"), 7, 1.0f));
 
-	TArray<FCataclysmStatModifier> Modifiers =
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
 		UCataclysmItemModifiers::ModifiersFor(Helm, Bases, Affixes);
 
-	TestEqual(TEXT("a Helm with one affix gives two modifiers"), Modifiers.Num(), 2);
-	if (Modifiers.Num() == 2)
+	TestEqual(TEXT("a Helm with one health affix touches two stats"),
+		Modifiers.Num(), 2);
+
+	FCataclysmStatModifier Armor;
+	if (Only(Modifiers, TEXT("armor"), Armor))
 	{
 		TestTrue(TEXT("the implicit is 200 armor"),
-			FMath::IsNearlyEqual(Modifiers[0].Value, 200.0f, 0.05f));
+			FMath::IsNearlyEqual(Armor.Value, 200.0f, 0.05f));
 		TestEqual(TEXT("and it comes from the base"),
-			static_cast<int32>(Modifiers[0].Source),
+			static_cast<int32>(Armor.Source),
 			static_cast<int32>(ECataclysmModifierSource::GearImplicit));
+	}
 
+	FCataclysmStatModifier Life;
+	if (Only(Modifiers, TEXT("max_health"), Life))
+	{
 		TestTrue(TEXT("the affix is a perfect T7 120 health"),
-			FMath::IsNearlyEqual(Modifiers[1].Value, 120.0f, 0.05f));
+			FMath::IsNearlyEqual(Life.Value, 120.0f, 0.05f));
 		TestEqual(TEXT("and it comes from an affix"),
-			static_cast<int32>(Modifiers[1].Source),
+			static_cast<int32>(Life.Source),
 			static_cast<int32>(ECataclysmModifierSource::GearAffix));
 	}
 
 	// NOTHING AN ITEM PRODUCES IS EVER A MORE MULTIPLIER. That bucket belongs to
 	// gems, passive keystones and enchantments.
-	for (const FCataclysmStatModifier& Modifier : Modifiers)
+	for (const TPair<FName, TArray<FCataclysmStatModifier>>& Pair : Modifiers)
 	{
-		TestTrue(TEXT("an item never produces a more multiplier"),
-			Modifier.Bucket != ECataclysmStatBucket::More);
-		TestFalse(TEXT("and its source could not grant one anyway"),
-			UCataclysmStatPipeline::CanGrantMore(Modifier.Source));
+		for (const FCataclysmStatModifier& Modifier : Pair.Value)
+		{
+			TestTrue(TEXT("an item never produces a more multiplier"),
+				Modifier.Bucket != ECataclysmStatBucket::More);
+			TestFalse(TEXT("and its source could not grant one anyway"),
+				UCataclysmStatPipeline::CanGrantMore(Modifier.Source));
+		}
 	}
 
 	// A two-handed weapon doubles both its implicit and its affixes. Quoted from
@@ -313,20 +338,27 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 	Greatsword.GearLevel = 10;
 	Greatsword.Affixes.Add(Rolled(TEXT("Stat_Flat_damage"), 7, 1.0f));
 
-	TArray<FCataclysmStatModifier> WeaponModifiers =
+	const TMap<FName, TArray<FCataclysmStatModifier>> WeaponModifiers =
 		UCataclysmItemModifiers::ModifiersFor(Greatsword, Bases, Affixes);
 
 	TestTrue(TEXT("the Greatsword is recognised as two-handed"),
 		UCataclysmItemModifiers::IsTwoHanded(Greatsword, Bases));
-	TestEqual(TEXT("it gives two modifiers"), WeaponModifiers.Num(), 2);
-	if (WeaponModifiers.Num() == 2)
+
+	// Its implicit and its affix are the same stat, so both land together.
+	const TArray<FCataclysmStatModifier>* WeaponDamage =
+		WeaponModifiers.Find(FName(TEXT("attack_damage")));
+	if (WeaponDamage && WeaponDamage->Num() == 2)
 	{
 		TestTrue(FString::Printf(TEXT("its 78 implicit doubles to 156, got %.2f"),
-				 WeaponModifiers[0].Value),
-			FMath::IsNearlyEqual(WeaponModifiers[0].Value, 156.0f, 0.05f));
+				 (*WeaponDamage)[0].Value),
+			FMath::IsNearlyEqual((*WeaponDamage)[0].Value, 156.0f, 0.05f));
 		TestTrue(FString::Printf(TEXT("its 18 affix doubles to 36, got %.2f"),
-				 WeaponModifiers[1].Value),
-			FMath::IsNearlyEqual(WeaponModifiers[1].Value, 36.0f, 0.05f));
+				 (*WeaponDamage)[1].Value),
+			FMath::IsNearlyEqual((*WeaponDamage)[1].Value, 36.0f, 0.05f));
+	}
+	else
+	{
+		AddError(TEXT("expected two attack_damage modifiers on the Greatsword"));
 	}
 
 	// The same affix on a one-handed weapon is not doubled.
@@ -335,18 +367,25 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 	Axe.GearLevel = 10;
 	Axe.Affixes.Add(Rolled(TEXT("Stat_Flat_damage"), 7, 1.0f));
 
-	TArray<FCataclysmStatModifier> AxeModifiers =
+	const TMap<FName, TArray<FCataclysmStatModifier>> AxeModifiers =
 		UCataclysmItemModifiers::ModifiersFor(Axe, Bases, Affixes);
 	TestFalse(TEXT("an Axe is not two-handed"),
 		UCataclysmItemModifiers::IsTwoHanded(Axe, Bases));
-	if (AxeModifiers.Num() == 2)
+
+	const TArray<FCataclysmStatModifier>* AxeDamage =
+		AxeModifiers.Find(FName(TEXT("attack_damage")));
+	if (AxeDamage && AxeDamage->Num() == 2)
 	{
 		TestTrue(FString::Printf(TEXT("its 46 implicit stays 46, got %.2f"),
-				 AxeModifiers[0].Value),
-			FMath::IsNearlyEqual(AxeModifiers[0].Value, 46.0f, 0.05f));
+				 (*AxeDamage)[0].Value),
+			FMath::IsNearlyEqual((*AxeDamage)[0].Value, 46.0f, 0.05f));
 		TestTrue(FString::Printf(TEXT("its affix stays 18, got %.2f"),
-				 AxeModifiers[1].Value),
-			FMath::IsNearlyEqual(AxeModifiers[1].Value, 18.0f, 0.05f));
+				 (*AxeDamage)[1].Value),
+			FMath::IsNearlyEqual((*AxeDamage)[1].Value, 18.0f, 0.05f));
+	}
+	else
+	{
+		AddError(TEXT("expected two attack_damage modifiers on the Axe"));
 	}
 
 	// An affix the table does not have is reported and skipped, not guessed at.
@@ -357,9 +396,92 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 
 	AddExpectedError(TEXT("not in the affix table"),
 		EAutomationExpectedErrorFlags::Contains, 1);
-	TArray<FCataclysmStatModifier> Partial =
+	const TMap<FName, TArray<FCataclysmStatModifier>> Partial =
 		UCataclysmItemModifiers::ModifiersFor(Broken, Bases, Affixes);
 	TestEqual(TEXT("only the implicit survives an unknown affix"), Partial.Num(), 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemResistanceTest,
+	"Cataclysm.Item.AResistanceFamilyBecomesOneModifierPerDamageType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemResistanceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!Bases || !Affixes)
+	{
+		AddError(TEXT("could not load ItemBases.csv or Affixes.csv"));
+		return false;
+	}
+
+	// An all-resistance affix covers all eight damage types, so it produces
+	// eight modifiers rather than one. The affix says HOW MANY types; the item
+	// says which, and a family covering all eight has no choice to make.
+	FCataclysmItem Belt;
+	Belt.Base = TEXT("Belt_Girdle");
+	Belt.GearLevel = 10;
+	Belt.Affixes.Add(Rolled(TEXT("Resistance_All_resistances"), 7, 1.0f));
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmItemModifiers::ModifiersFor(Belt, Bases, Affixes);
+
+	for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(Type);
+		const TArray<FCataclysmStatModifier>* Found = Modifiers.Find(Stat);
+		TestTrue(FString::Printf(TEXT("%s got a modifier"), *Stat.ToString()),
+			Found != nullptr && Found->Num() == 1);
+		if (Found && Found->Num() == 1)
+		{
+			// 6% per resistance at tier 7 on +10 gear.
+			TestTrue(FString::Printf(TEXT("%s is 6 points, got %.2f"),
+					 *Stat.ToString(), (*Found)[0].Value),
+				FMath::IsNearlyEqual((*Found)[0].Value, 6.0f, 0.05f));
+		}
+	}
+
+	TestEqual(TEXT("the stat name is built from the damage type"),
+		UCataclysmItemModifiers::ResistanceStatFor(TEXT("Demonic")),
+		FName(TEXT("resistance_demonic")));
+
+	// A narrower family must name its damage types, because which ones it covers
+	// is decided when the item drops rather than by the affix.
+	FCataclysmItem Ring;
+	Ring.Base = TEXT("Ring_Loop");
+	Ring.GearLevel = 10;
+	FCataclysmRolledAffix Single = Rolled(TEXT("Resistance_Single_resistance"), 7, 1.0f);
+	Ring.Affixes.Add(Single);
+
+	AddExpectedError(TEXT("damage types but the item names"),
+		EAutomationExpectedErrorFlags::Contains, 1);
+	const TMap<FName, TArray<FCataclysmStatModifier>> Unnamed =
+		UCataclysmItemModifiers::ModifiersFor(Ring, Bases, Affixes);
+	TestFalse(TEXT("an unnamed single resistance grants nothing"),
+		Unnamed.Contains(FName(TEXT("resistance_demonic"))));
+
+	Single.DamageTypes.Add(TEXT("Demonic"));
+	Ring.Affixes.Empty();
+	Ring.Affixes.Add(Single);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Named =
+		UCataclysmItemModifiers::ModifiersFor(Ring, Bases, Affixes);
+	const TArray<FCataclysmStatModifier>* Demonic =
+		Named.Find(FName(TEXT("resistance_demonic")));
+	TestTrue(TEXT("naming the type makes it apply"),
+		Demonic != nullptr && Demonic->Num() == 1);
+	if (Demonic && Demonic->Num() == 1)
+	{
+		// 20 points for a single resistance at tier 7 on +10 gear, against 6 for
+		// the family covering all eight. Concentration is worth more per type.
+		TestTrue(FString::Printf(TEXT("a single resistance is 20 points, got %.2f"),
+				 (*Demonic)[0].Value),
+			FMath::IsNearlyEqual((*Demonic)[0].Value, 20.0f, 0.05f));
+	}
 
 	return true;
 }
