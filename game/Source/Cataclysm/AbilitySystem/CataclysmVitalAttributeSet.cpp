@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
 
@@ -88,18 +89,34 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 
 		if (LocalDamage > 0.0f)
 		{
-			// INCOMPLETE ON PURPOSE. The full order -- evasion, block, armor,
-			// resistance, penetration, energy shield, and the weapon sub-type
-			// modifiers -- is not implemented here, because several steps of it
-			// are not yet designed. There is no formula converting armor into
-			// damage reduction, no formula for penetration, and no rule saying
-			// whether energy shield absorbs before health.
+			// The whole order lives in UCataclysmDamageCalculation, so it can be
+			// tested by passing numbers in rather than by building an effect
+			// spec for every case.
 			//
-			// Applying damage straight to health is the honest placeholder: it
-			// is obviously incomplete rather than quietly wrong. Energy shield
-			// currently absorbs nothing, which is why the Ritualist's shield
-			// does not defend it yet.
-			SetHealth(FMath::Clamp(GetHealth() - LocalDamage, 0.0f, GetMaxHealth()));
+			// The hit's own properties -- its damage type, its penetration,
+			// whether it is area damage or damage over time, and its weapon
+			// sub-type -- are not yet carried on the effect that delivers the
+			// damage. Until they are, every hit resolves as an untyped direct
+			// hit, which means resistances and the sub-type bonuses do nothing.
+			// Armor, evasion, block, flat reduction and energy shield all work.
+			FCataclysmIncomingHit Hit;
+			Hit.Damage = LocalDamage;
+
+			const FCataclysmDamageResult Outcome =
+				UCataclysmDamageCalculation::Resolve(
+					Hit, GetOwningAbilitySystemComponent(), /*Tier=*/1);
+
+			if (Outcome.AbsorbedByShield > 0.0f)
+			{
+				SetEnergyShield(FMath::Clamp(
+					GetEnergyShield() - Outcome.AbsorbedByShield,
+					0.0f, GetMaxEnergyShield()));
+			}
+			if (Outcome.DealtToHealth > 0.0f)
+			{
+				SetHealth(FMath::Clamp(GetHealth() - Outcome.DealtToHealth,
+									   0.0f, GetMaxHealth()));
+			}
 		}
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealthAttribute())

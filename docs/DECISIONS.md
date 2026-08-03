@@ -20,6 +20,87 @@ applied or still pending.
 
 ---
 
+## 2026-08-02 — The damage calculation
+
+**Decision.** One incoming hit resolves in this order: evasion, block, armor,
+resistance, flat damage reduction, mana, energy shield, health.
+
+The design named every defensive stat and never said how any combined. The
+consequence was concrete: the Ritualist's 832 energy shield and the Ravager's
+371 armor were both declared, replicated, and completely inert, because nothing
+read them.
+
+**Armor uses a curve, not a subtraction.** `armor / (armor + K)`, K being 800
+times the difficulty tier, capped at 75%. The curve never reaches 100%, so no
+amount of armor is immunity, and it has natural diminishing returns. K rising
+with tier is what stops armor earned early from keeping its value forever: 371
+armor is worth 32% at tier 1 and 5% at tier 8, so a class identity built on armor
+holds early and gear has to carry it later.
+
+**Penetration is applied before the 70% resistance cap, not after.** The most
+load-bearing choice in the whole calculation. Against 30 penetration a character
+at 100 resistance still sits at the cap, while one at exactly 70 drops to 40.
+Capping first would make every point above 70 worthless and would contradict the
+design's own allowance for over-capping via affixes. This is the reason the cap
+is soft rather than hard.
+
+**Armor penetration and resistance penetration are separate stats.** The
+enchantment tables already treat them separately, granting armor-ignoring on
+skills, on critical hits, on traps and on first hits. Piercing adds its 20% on
+top of whatever gear provides, up to all of a target's armor.
+
+**Blunt stuns instead of doing bonus damage against armor.** Its original
+property put it in direct competition with piercing, which already beats armor
+and has at least six affixes scaling it, while nothing anywhere scales damage
+against armored targets — blunt was a flat 10% with nowhere to grow. It now has
+a 10% chance to stun for 0.75 seconds, deliberately the shortest duration any
+designed skill uses, so a sub-type that stuns on every hit does not outclass
+skills whose whole purpose is stunning. Crowd control resistance reduces the
+chance proportionally. An evaded hit never stuns; a blocked hit still can,
+because a block reduces damage rather than preventing contact.
+
+Stun was already a designed mechanic rather than a new one: `Keyword.CC` is a
+generated gameplay tag, several War skills stun for 0.75 to 3 seconds, and one
+ultimate grants immunity to it.
+
+**Energy shield is a distinct defence, not a second health bar.** Four of its
+rules were already designed and sitting only in the generated enchantment tables,
+stated in no design document. An enchantment that removes a property proves the
+property exists by default, which is how they were found:
+
+| Rule | Where it was hiding |
+|---|---|
+| Does not absorb damage over time | `EnchantmentsNegative.csv` line 165, "Energy shield can now be effected by bleed" — only a drawback if it normally is not |
+| Has a recharge delay | `EnchantmentsPositive.csv` line 118, "regeneration begins immediately after taking damage with no delay" |
+| Recharges toward a maximum that can be capped below full | `EnchantmentsNegative.csv` line 89 |
+| Being broken is a distinct event | A set bonus that triggers on it |
+
+The recharge delay is **3 seconds after the character last took damage, restarted
+by taking damage again inside that window**. Damage over time restarts it too.
+That last part matters: the shield already absorbs no damage over time, so
+without it a bleeding character would keep refilling their shield and energy
+shield would be strongest against exactly the damage it ignores. With it, damage
+over time bypasses the shield and holds it empty, which is a counter rather than
+a stat check.
+
+**Damage over time can be routed to mana before health**, from a positive
+enchantment, so it is off by default and is a mana-stacking build choice. Mana is
+applied before the shield, so a character with both sees mana take it first.
+
+**No combination of layers reaches immunity.** Every one has either a cap or a
+curve that cannot reach zero damage. A test asserts it.
+
+**Still absent, and not blocked by this.** There are no enemy damage numbers
+anywhere in the project. The whole calculation answers "of a hit of X, how much
+reaches health" and never "how big is a hit".
+
+**Affects:** `Cataclysm_GDD_v2.md` sections IV and VI. **Applied 2026-08-02:** a
+Damage Calculation subsection and an Energy Shield subsection were added, and the
+Weapon Sub-Types table entry for Blunt was changed. The working model is
+`sim/cataclysm_sim/damage.py`, covered by `sim/tests/test_damage.py`.
+
+---
+
 ## 2026-08-02 — Stat lines for the three Demonic classes
 
 **Decision.** Ravager, Ritualist and Masochist each get a stat line. The vertical
