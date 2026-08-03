@@ -637,3 +637,528 @@ def test_gear_level_and_the_roll_are_independent():
     perfect_but_fresh = af.FLAT_HEALTH.value_at(7, roll=1.0, gear_level=0)
     assert poor_but_upgraded > perfect_but_fresh
     assert af.FLAT_HEALTH.value_at(7, roll=0.0, gear_level=0) < perfect_but_fresh
+
+
+# --------------------------------------------------------------------------
+# The pool, and the prefix and suffix split
+# --------------------------------------------------------------------------
+
+def test_the_pool_covers_most_of_the_character_sheet():
+    """A pool of seven affixes is not a choice. This checks the pool actually
+    reaches the sheet rather than only counting itself."""
+    from cataclysm_sim.character import ALL_STATS
+    covered = {a.stat for a in af.AFFIX_POOL} | set(af.RESISTANCE_STATS)
+    assert len(af.AFFIX_POOL) >= 30
+    assert len(covered & set(ALL_STATS)) / len(ALL_STATS) > 0.85
+
+
+def test_no_stat_is_both_a_prefix_and_a_suffix():
+    """The two are separate pools. A stat in both would let one item carry four
+    of it, which is exactly what the split exists to prevent."""
+    by_stat: dict[str, set[str]] = {}
+    for affix in af.AFFIX_POOL:
+        by_stat.setdefault(affix.stat, set()).add(affix.position)
+    assert all(len(p) == 1 for p in by_stat.values()), by_stat
+
+
+def test_that_separation_check_actually_fires():
+    real = af.AFFIX_POOL
+    af.AFFIX_POOL = real + (af.StatAffix("Straddler", "max_health", "flat",
+                                         1.0, af.DEFENSIVE_SLOTS, af.SUFFIX),)
+    try:
+        with pytest.raises(ValueError, match="both a prefix and a suffix"):
+            af._check_the_two_positions_are_separate_pools()
+    finally:
+        af.AFFIX_POOL = real
+
+
+@pytest.mark.parametrize("slot", sorted(af.GEAR_SLOTS))
+def test_every_slot_can_fill_all_four_of_its_affix_slots(slot):
+    """Two prefixes and two suffixes. A slot short of either would roll
+    duplicates or blanks. This is what caught Shoulders being left out of the
+    defensive slot list, where it could roll nothing but resistance and shield.
+    """
+    assert len(af.pool_for(slot, af.PREFIX)) >= af.PREFIXES_PER_PIECE
+    assert len(af.pool_for(slot, af.SUFFIX)) >= af.SUFFIXES_PER_PIECE
+
+
+def test_that_coverage_check_actually_fires():
+    real = af.AFFIX_POOL
+    af.AFFIX_POOL = tuple(a for a in real if "Boots" not in a.allowed_slots)
+    try:
+        with pytest.raises(ValueError, match="slots to fill"):
+            af._check_every_slot_can_fill_all_four_of_its_affixes()
+    finally:
+        af.AFFIX_POOL = real
+
+
+def test_the_four_slots_per_piece_are_two_of_each():
+    assert af.PREFIXES_PER_PIECE + af.SUFFIXES_PER_PIECE == \
+        af.AFFIX_SLOTS_PER_PIECE == 4
+
+
+def test_prefixes_carry_magnitude_and_suffixes_carry_rates():
+    """Spot-checked against the convention, not asserted in the abstract. How
+    big a number is goes in one pool; how often, how fast and how much gets
+    through goes in the other."""
+    positions = {a.stat: a.position for a in af.AFFIX_POOL}
+    for magnitude in ("max_health", "max_mana", "max_energy_shield", "armor",
+                      "evasion", "attack_damage", "spell_damage"):
+        assert positions[magnitude] == af.PREFIX, magnitude
+    for rate in ("attack_speed", "crit_chance", "movement_speed", "penetration",
+                 "cooldown_reduction", "life_leech", "block_chance"):
+        assert positions[rate] == af.SUFFIX, rate
+    assert af.SINGLE_RESISTANCE.position == af.SUFFIX
+
+
+def test_no_two_affixes_grant_the_same_thing():
+    pairs = [(a.stat, a.kind) for a in af.AFFIX_POOL]
+    assert len(pairs) == len(set(pairs))
+
+
+def test_every_affix_names_a_stat_that_something_reads():
+    """A typo would otherwise grant a stat nothing on the character sheet reads,
+    and it would silently do nothing."""
+    from cataclysm_sim.character import ALL_STATS
+    for affix in af.AFFIX_POOL:
+        assert affix.stat in set(ALL_STATS) | af.OFF_SHEET_STATS, affix.name
+    with pytest.raises(ValueError, match="neither on the character sheet"):
+        af.StatAffix("Bad", "max_stamina", "flat", 1.0)
+
+
+def test_attack_damage_is_the_only_stat_allowed_off_the_character_sheet():
+    """`character.py` says attack damage belongs to the weapon rather than the
+    sheet. Anything else off-sheet would be a stat nobody had designed."""
+    assert af.OFF_SHEET_STATS == {"attack_damage"}
+
+
+def test_there_are_no_attribute_affixes():
+    """Deliberate rather than an omission. The design gives one attribute point
+    per level, plus the Maw which consumes items for them. Gear granting
+    attribute points appears nowhere, so an affix for it would be a new
+    mechanic rather than a filled gap."""
+    from cataclysm_sim.character import ATTRIBUTE_NAMES
+    assert not {a.stat for a in af.AFFIX_POOL} & set(ATTRIBUTE_NAMES)
+
+
+def test_an_unknown_position_is_rejected():
+    with pytest.raises(ValueError, match="position must be one of"):
+        af.StatAffix("Bad", "max_health", "flat", 1.0, af.DEFENSIVE_SLOTS, "infix")
+
+
+def test_an_affix_that_can_appear_nowhere_is_rejected():
+    with pytest.raises(ValueError, match="no slot at all"):
+        af.StatAffix("Bad", "max_health", "flat", 1.0, frozenset())
+
+
+def test_pool_for_filters_by_slot_and_by_position():
+    weapon_prefixes = af.pool_for("Weapon", af.PREFIX)
+    assert all(a.position == af.PREFIX for a in weapon_prefixes)
+    assert all("Weapon" in a.allowed_slots for a in weapon_prefixes)
+    assert set(af.pool_for("Weapon")) == set(weapon_prefixes) | \
+        set(af.pool_for("Weapon", af.SUFFIX))
+    with pytest.raises(ValueError, match="unknown gear slot"):
+        af.pool_for("Cape")
+    with pytest.raises(ValueError, match="unknown position"):
+        af.pool_for("Ring", "infix")
+
+
+def test_that_weapon_affix_check_actually_fires():
+    real = af.AFFIX_POOL
+    af.AFFIX_POOL = real + (af.StatAffix("Warding blade", "max_health", "flat",
+                                         1.0, frozenset({"Weapon"})),)
+    try:
+        with pytest.raises(ValueError, match="and it defends"):
+            af._check_no_weapon_rolls_a_defensive_affix()
+    finally:
+        af.AFFIX_POOL = real
+
+
+def test_rings_take_the_widest_pool_of_any_slot():
+    """The flexible slots a build uses to fix whatever it is short of, and there
+    are eight of them."""
+    widest = max(af.GEAR_SLOTS, key=lambda s: len(af.pool_for(s)))
+    assert widest == "Ring"
+
+
+# --------------------------------------------------------------------------
+# Item bases, and the implicits that belong to them
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("slot", sorted(af.GEAR_SLOTS))
+def test_every_slot_offers_at_least_three_bases(slot):
+    """The implicit belongs to the BASE, not to the slot. One base in a slot is
+    not a choice: the point is that picking one commits a character to a
+    defensive layer or an offensive property before any affix is involved."""
+    assert len(af.bases_for(slot)) >= 3
+
+
+def test_that_base_choice_check_actually_fires():
+    real = af.ITEM_BASES
+    af.ITEM_BASES = tuple(b for b in real if b.slot != "Belt")[:1] + \
+        tuple(b for b in real if b.slot == "Belt")[:1]
+    af.BASES_BY_SLOT = {s: tuple(b for b in af.ITEM_BASES if b.slot == s)
+                        for s in af.GEAR_SLOTS}
+    try:
+        with pytest.raises(ValueError, match="at least three"):
+            af._check_every_slot_offers_a_real_choice_of_base()
+    finally:
+        af.ITEM_BASES = real
+        af.BASES_BY_SLOT = {s: tuple(b for b in real if b.slot == s)
+                            for s in af.GEAR_SLOTS}
+
+
+@pytest.mark.parametrize("slot", sorted(af.GEAR_SLOTS))
+def test_no_two_bases_in_a_slot_grant_the_same_thing(slot):
+    """Two identical bases are one base written twice."""
+    keys = [tuple(sorted((i.stat, i.kind, i.value) for i in b.implicits))
+            for b in af.bases_for(slot)]
+    assert len(keys) == len(set(keys))
+
+
+def test_the_defensive_layers_each_have_a_base_to_come_from():
+    """Armour, evasion and energy shield are the three defensive layers the
+    design has, and a build committing to one should be able to find bases for
+    it rather than waiting on affix rolls."""
+    for layer in ("armor", "evasion", "max_energy_shield"):
+        slots = {b.slot for b in af.ITEM_BASES
+                 if any(i.stat == layer for i in b.implicits)}
+        assert len(slots) >= 3, f"{layer} appears on only {sorted(slots)}"
+
+
+def test_a_base_carries_one_to_three_implicits():
+    for base in af.ITEM_BASES:
+        assert 1 <= len(base.implicits) <= 3, base.name
+    with pytest.raises(ValueError, match="one to three"):
+        af.ItemBase("Empty", "Belt", ())
+
+
+def test_a_base_in_a_slot_that_does_not_exist_is_rejected():
+    with pytest.raises(ValueError, match="does not exist"):
+        af.ItemBase("Cape", "Back", (af.Implicit("armor", "flat", 1.0),))
+
+
+def test_an_implicit_does_not_roll():
+    """It is fixed to the base. A tier and a roll are what an affix has and an
+    implicit deliberately does not."""
+    girdle = af.base_named("Girdle").implicits[0]
+    assert not hasattr(girdle, "range_at")
+    assert not hasattr(girdle, "top_value")
+    assert girdle.value_at() == girdle.value
+
+
+def test_gear_level_multiplies_an_implicit_the_same_way_it_does_an_affix():
+    for base in af.ITEM_BASES:
+        for implicit in base.implicits:
+            assert implicit.value_at(10) == pytest.approx(implicit.value)
+            assert implicit.value_at(0) == pytest.approx(
+                implicit.value / af.gear_level_multiplier(10))
+
+
+def test_bases_in_one_slot_pull_in_different_directions():
+    """Spot-checked. A chest built for armour and a chest built for evasion are
+    the same slot and different decisions, which is the whole point."""
+    assert af.base_named("Cuirass").implicit_values().keys() == {"armor"}
+    assert af.base_named("Jerkin").implicit_values().keys() == {"evasion"}
+    assert af.base_named("Vestment").implicit_values().keys() == \
+        {"max_energy_shield"}
+    assert af.base_named("Hauberk").implicit_values().keys() == {"max_health"}
+
+
+def test_an_implicit_naming_a_stat_that_does_not_exist_is_rejected():
+    with pytest.raises(ValueError, match="neither on the character sheet"):
+        af.Implicit("max_stamina", "flat", 1.0)
+    with pytest.raises(ValueError, match="flat"):
+        af.Implicit("max_health", "multiplicative", 1.0)
+
+
+def test_an_unknown_base_name_is_rejected():
+    with pytest.raises(ValueError, match="no item base named"):
+        af.base_named("Bootstraps")
+
+
+# --------------------------------------------------------------------------
+# Weapon bases, which carry more than an armour base does
+# --------------------------------------------------------------------------
+
+def test_there_is_a_base_for_every_weapon_type_the_design_lists():
+    """Eight one-handed and six two-handed, from section V."""
+    one_handed = {b.weapon_type for b in af.WEAPON_BASES if b.hands == 1}
+    two_handed = {b.weapon_type for b in af.WEAPON_BASES if b.hands == 2}
+    assert one_handed == {"Sword", "Dagger", "Axe", "Fist", "Wand", "Whip",
+                          "Shield", "Crossbow"}
+    assert two_handed == {"Greatsword", "Greataxe", "Spear", "Staff",
+                          "2H Crossbow", "Warhammer"}
+    assert len(af.WEAPON_BASES) == 14
+
+
+def test_that_weapon_type_check_actually_fires():
+    real = af.WEAPON_BASES
+    af.WEAPON_BASES = tuple(b for b in real if b.weapon_type != "Whip")
+    try:
+        with pytest.raises(ValueError, match="do not match the design"):
+            af._check_the_weapon_types_match_the_design()
+    finally:
+        af.WEAPON_BASES = real
+
+
+def test_every_weapon_has_one_of_the_four_sub_types():
+    """The design's Weapon Sub-Types table: Piercing ignores armour, Slashing
+    beats health, Blunt stuns, Magic strips energy shield."""
+    assert set(af.WEAPON_SUB_TYPES) == {"Piercing", "Slashing", "Blunt", "Magic"}
+    for base in af.WEAPON_BASES:
+        assert base.sub_type in af.WEAPON_SUB_TYPES, base.name
+    # And every sub-type is reachable, or one of the four would be dead.
+    assert {b.sub_type for b in af.WEAPON_BASES} == set(af.WEAPON_SUB_TYPES)
+
+
+def test_a_weapon_holds_damage_types_and_a_two_hander_holds_more():
+    for base in af.WEAPON_BASES:
+        expected = (af.DAMAGE_TYPES_ON_ONE_HANDED if base.hands == 1
+                    else af.DAMAGE_TYPES_ON_TWO_HANDED)
+        assert base.damage_type_slots == expected, base.name
+
+
+def test_dual_wielding_carries_more_damage_types_than_a_two_hander():
+    """The design says dual wielding is the primary route to multiclassing
+    BECAUSE it is how a player carries more damage types at once. If a
+    two-hander matched two one-handers, that sentence would stop being true."""
+    assert af.DAMAGE_TYPES_ON_ONE_HANDED * 2 > af.DAMAGE_TYPES_ON_TWO_HANDED
+
+
+def test_that_multiclassing_check_actually_fires(monkeypatch):
+    monkeypatch.setattr(af, "DAMAGE_TYPES_ON_TWO_HANDED", 4)
+    with pytest.raises(ValueError, match="route to multiclassing"):
+        af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
+
+
+def test_a_weapon_base_naming_a_sub_type_that_does_not_exist_is_rejected():
+    with pytest.raises(ValueError, match="expected one of"):
+        af.WeaponBase("Odd", "Weapon",
+                      (af.Implicit("attack_damage", "flat", 1.0),),
+                      sub_type="Explosive")
+
+
+def test_no_weapon_can_roll_a_defensive_affix():
+    """AFFIXES only. What a drop happened to roll on a weapon may not defend."""
+    defensive = {"max_health", "max_energy_shield", "armor", "evasion",
+                 "block_chance", "damage_reduction"}
+    assert not {a.stat for a in af.pool_for("Weapon")} & defensive
+
+
+def test_the_shield_is_the_one_weapon_whose_base_defends():
+    """The design lists Shield among the one-handed weapon types and says there
+    are no offhand items, so it is a weapon with nowhere else to be. Its block
+    and armour are what the base IS, not something a drop rolled."""
+    shield = af.base_named("Shield")
+    assert shield.implicit_values().keys() == {"block_chance", "armor"}
+    defensive = {"max_health", "max_energy_shield", "armor", "evasion",
+                 "block_chance", "damage_reduction"}
+    for base in af.WEAPON_BASES:
+        if base.weapon_type == "Shield":
+            continue
+        assert not set(base.implicit_values()) & defensive, base.name
+
+
+def test_that_shield_exemption_check_actually_fires():
+    real = af.WEAPON_BASES
+    af.WEAPON_BASES = real + (af.WeaponBase(
+        "Bulwark Blade", "Weapon", (af.Implicit("armor", "flat", 10.0),),
+        weapon_type="Sword"),)
+    try:
+        with pytest.raises(ValueError, match="only the Shield may defend"):
+            af._check_only_the_shield_defends_among_weapon_bases()
+    finally:
+        af.WEAPON_BASES = real
+
+
+# --------------------------------------------------------------------------
+# Ailment affixes, from the effects the gems already apply
+# --------------------------------------------------------------------------
+
+def test_every_effect_a_gem_applies_is_reachable_as_an_affix():
+    """`game/Data/Gems.csv` designs eight gems that apply an effect on hit. The
+    project owner asked for the same effects to be reachable as affixes."""
+    assert {a.ailment for a in af.AILMENT_AFFIXES} == {
+        "Void Splinter", "Poison", "Bleed", "Madness", "Disease",
+        "Cripple", "Weaken", "Shred"}
+
+
+def test_every_ailment_affix_names_the_gem_that_shares_its_effect():
+    """So the two stay findable from each other when either is edited."""
+    for affix in af.AILMENT_AFFIXES:
+        assert affix.gem.startswith("Of "), affix.name
+
+
+def test_the_damage_over_time_effects_are_marked_as_such():
+    """`game/Data/StatusEffects.csv` lists these four with EffectKind DoT.
+    Damage over time matters separately because the design says it bypasses
+    energy shield and holds it empty."""
+    assert af.DAMAGE_OVER_TIME_AILMENTS == {"Bleed", "Poison", "Disease",
+                                            "Void Splinter"}
+    assert af.DAMAGE_OVER_TIME_AILMENTS <= {a.ailment
+                                            for a in af.AILMENT_AFFIXES}
+
+
+def test_every_ailment_can_be_found_on_a_weapon():
+    """What the project owner asked for: on weapons at least."""
+    assert set(af.ailments_for("Weapon")) == set(af.AILMENT_AFFIXES)
+
+
+def test_no_ailment_rolls_on_armour():
+    """They only make sense where a hit comes from."""
+    for slot in ("Head", "Chest", "Shoulders", "Gloves", "Pants", "Boots",
+                 "Belt"):
+        assert af.ailments_for(slot) == ()
+
+
+def test_that_ailment_placement_check_actually_fires():
+    real = af.AILMENT_AFFIXES
+    af.AILMENT_AFFIXES = real[:-1] + (
+        af.AilmentAffix("Bad", "Bleed", 10.0, frozenset({"Boots", "Weapon"})),)
+    try:
+        with pytest.raises(ValueError, match="no hit comes from"):
+            af._check_ailments_only_appear_where_a_hit_comes_from()
+    finally:
+        af.AILMENT_AFFIXES = real
+
+
+def test_an_ailment_affix_uses_the_same_tier_curve_and_band_as_the_rest():
+    for affix in af.AILMENT_AFFIXES:
+        assert affix.range_at(7) == af.tier_band(affix.top_chance, 7)
+        assert affix.chance_at(7) == pytest.approx(affix.top_chance)
+        assert affix.chance_at(7, gear_level=0) < affix.chance_at(7)
+
+
+def test_the_gem_stays_the_stronger_source_of_any_ailment():
+    """A socket is a commitment and an affix is a roll. If the affix matched the
+    gem, an ailment build would have no reason to spend a socket."""
+    # The Of Rending gem reaches 150% chance at Cataclysmic rarity.
+    assert af.BLEED.chance_at(7) < 150.0
+    assert af.POISON.chance_at(7) < 180.0
+
+
+# --------------------------------------------------------------------------
+# Chance above 100% becomes magnitude
+# --------------------------------------------------------------------------
+
+def test_chance_to_apply_caps_at_one_hundred_percent():
+    for chance in (100.0, 150.0, 800.0, 5000.0):
+        applied, _ = af.ailment_application(chance)
+        assert applied == pytest.approx(100.0), chance
+
+
+def test_below_the_cap_chance_is_just_chance_and_magnitude_is_unchanged():
+    for chance in (0.0, 15.0, 60.0, 99.9):
+        applied, magnitude = af.ailment_application(chance)
+        assert applied == pytest.approx(chance)
+        assert magnitude == pytest.approx(1.0)
+
+
+def test_the_project_owners_own_example_holds():
+    """Stated 2026-08-03: at 800% chance the effect gets a 700% multiplier."""
+    applied, magnitude = af.ailment_application(800.0)
+    assert applied == pytest.approx(100.0)
+    assert magnitude == pytest.approx(8.0)
+    assert magnitude - 1.0 == pytest.approx(7.0)
+
+
+def test_every_point_of_chance_past_the_cap_is_worth_the_same():
+    """The whole reason for the rule. Without it an ailment build would stop
+    progressing at exactly the point it was coming together, because every point
+    past 100% would be dead."""
+    def magnitude(chance: float) -> float:
+        return af.ailment_application(chance)[1]
+
+    first_hundred = magnitude(200.0) - magnitude(100.0)
+    seventh_hundred = magnitude(800.0) - magnitude(700.0)
+    assert first_hundred == pytest.approx(seventh_hundred)
+    assert first_hundred == pytest.approx(1.0)
+
+
+def test_an_enemy_carries_at_most_one_stack():
+    """Which is what makes chance above the cap mean something rather than
+    stacking, and keeps a screen full of enemies readable."""
+    assert af.MAX_STACKS_ON_AN_ENEMY == 1
+
+
+def test_a_negative_chance_is_rejected():
+    with pytest.raises(ValueError, match="is not a chance"):
+        af.ailment_application(-10.0)
+
+
+def test_a_full_set_of_ailment_affixes_does_not_waste_itself():
+    """Read against the real pool rather than in the abstract. There are 48
+    slots an ailment affix can occupy, so a build that commits to one reaches
+    well past the cap, and the rule is what stops that being wasted."""
+    slots = af.BLEED.slots_available()
+    total = af.BLEED.chance_at(7) * slots
+    applied, magnitude = af.ailment_application(total)
+    assert applied == pytest.approx(100.0)
+    assert magnitude > 2.0, (
+        f"{slots} slots of bleed reach {total:.0f}% and only {magnitude:.1f}x")
+
+
+# --------------------------------------------------------------------------
+# Hybrid affixes
+# --------------------------------------------------------------------------
+
+def test_a_hybrid_grants_less_of_each_stat_than_the_single_affix_does():
+    for hybrid in af.HYBRID_AFFIXES:
+        for part in hybrid.parts:
+            assert hybrid.value_of(part) < part.value_at(7)
+
+
+def test_a_hybrid_is_worth_more_than_one_affix_spread_over_two_stats():
+    """What stops the single affix being strictly better.
+
+    Measured as a SHARE of each part's own value, not as a sum of the two
+    numbers. Summing them would be meaningless: the health and energy shield
+    hybrid grants 84 and 35, and adding those treats a point of health and a
+    point of shield as the same unit. An earlier version of this test did
+    exactly that and failed, because 84 plus 35 is less than flat health's 120.
+    """
+    for hybrid in af.HYBRID_AFFIXES:
+        share = sum(hybrid.value_of(p) / p.value_at(7) for p in hybrid.parts)
+        assert share == pytest.approx(2 * af.HYBRID_FRACTION)
+        assert share > 1.0, hybrid.name
+
+
+def test_the_hybrid_reduction_is_read_off_the_resistance_families():
+    """Not written twice. It is the ratio already set between the two-resistance
+    affix and the single-resistance one, so the whole pool moves together."""
+    assert af.HYBRID_FRACTION == pytest.approx(
+        af.HYBRID_RESISTANCE.top_value / af.SINGLE_RESISTANCE.top_value)
+    assert af.HYBRID_FRACTION == pytest.approx(0.70)
+
+
+def test_a_hybrid_cannot_reach_a_slot_one_of_its_halves_could_not():
+    for hybrid in af.HYBRID_AFFIXES:
+        for part in hybrid.parts:
+            assert hybrid.allowed_slots <= part.allowed_slots, hybrid.name
+
+
+def test_a_hybrid_sits_in_one_pool():
+    for hybrid in af.HYBRID_AFFIXES:
+        assert all(p.position == hybrid.position for p in hybrid.parts)
+    with pytest.raises(ValueError, match="one pool"):
+        af.HybridAffix("Mixed", (af.FLAT_HEALTH, af.FLAT_PENETRATION),
+                       frozenset({"Ring"}), af.PREFIX)
+
+
+def test_a_hybrid_combining_a_stat_with_itself_is_rejected():
+    with pytest.raises(ValueError, match="with itself"):
+        af.HybridAffix("Doubled", (af.FLAT_HEALTH, af.FLAT_HEALTH),
+                       frozenset({"Ring"}), af.PREFIX)
+
+
+def test_asking_a_hybrid_for_a_stat_it_does_not_grant_is_rejected():
+    with pytest.raises(ValueError, match="is not part of"):
+        af.HYBRID_AFFIXES[0].value_of(af.FLAT_PENETRATION)
+
+
+def test_the_pool_is_bigger_than_it_was():
+    """The project owner called the first pass small. This counts everything a
+    drop could roll, with each resistance family counted once."""
+    assert af.total_pool_size() >= 55
+    assert len(af.HYBRID_AFFIXES) >= 10

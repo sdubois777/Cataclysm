@@ -1001,6 +1001,46 @@ Tier Width is the difference between the maximum Power Score of the current diff
 
   
 
+### **Applying Damage Over Time and Other Effects**
+
+Bleed, poison, disease, void splinter and the other effects a player can inflict are applied by chance on hit. Gems grant that chance, and so do affixes.
+
+  
+
+**An enemy carries at most one stack of any effect the player applies.** One enemy is bleeding or it is not. There is no counting stacks on a screen full of enemies.
+
+  
+
+**Chance to apply caps at 100%. Everything above it becomes magnitude instead.**
+
+  
+
+|  |  |
+| :-- | :-- |
+| \*\*Chance from all sources\*\* | \*\*What happens\*\* |
+| 60% | Applies on 60% of hits, at its normal magnitude |
+| 100% | Applies on every hit, at its normal magnitude |
+| 250% | Applies on every hit, at 2.5 times its magnitude |
+| 800% | Applies on every hit, at 8 times its magnitude — a 700% increase |
+
+  
+
+**Why the overflow is not simply wasted.** Ailment chance comes from two sources that both scale hard: affixes, and gems, where the gem applying bleed reaches 150% chance on its own at Cataclysmic rarity. Without this rule a build would hit the cap and every point past it would be dead, so an ailment build would stop progressing at exactly the point it was coming together.
+
+  
+
+The chance summed is the total across every source: affixes, gems, keystones and enchantments alike.
+
+  
+
+**One existing effect contradicts the single-stack rule and needs resolving.** The status effect data describes Necrosis as a stacking effect that reduces healing by 10% per stack. Every other stacking entry is either a buff on the player or a debuff an enemy applies to the player, neither of which this rule governs. Necrosis is the only one listed as a damage-over-time effect and as stacking, and its entry does not say who applies it. Tracked in issue 112.
+
+  
+
+These figures may need tuning once the game is playable.
+
+  
+
 # **V. Skill System**
 
 ## **Skill Acquisition**
@@ -1253,6 +1293,171 @@ A Common enemy is the right thing to anchor on rather than a boss, because the s
 
   
 
+### **Prefixes and Suffixes**
+
+Every piece has four affix slots, and they are **two prefixes and two suffixes**, drawn from separate pools. A stat that appears as a prefix never appears as a suffix.
+
+  
+
+**What this buys.** Without the split, four slots means four of whatever is strongest, and one item can carry a whole build. With it, every piece has to give something up, which is the trade that makes reading a drop interesting rather than arithmetic.
+
+  
+
+|  |  |  |
+| :-- | :-- | :-- |
+| \*\*Position\*\* | \*\*What it carries\*\* | \*\*Examples\*\* |
+| Prefix | How big a character's numbers are | Health, mana, energy shield, armor, evasion, damage, spell damage, class resource |
+| Suffix | How often, how fast, and how much gets through | Resistances, attack speed, critical strikes, penetration, regeneration, leech, block, movement speed, cooldown reduction, area of effect, magic find |
+
+  
+
+### **Item Bases and Implicits**
+
+Every slot is a **category**, not a single item. Each category contains several **bases**, and each base carries one to three **implicit** stats. An implicit does not roll and cannot be changed. It is what the item **is**, so picking a base commits a character to a defensive layer or an offensive property before any affix is involved.
+
+  
+
+There are 55 bases across the 11 slots. Gear upgrade level multiplies an implicit exactly as it multiplies an affix, so the values below are the fully upgraded ones.
+
+  
+
+#### **Armor and Jewelry Bases**
+
+|  |  |
+| :-- | :-- |
+| \*\*Base\*\* | \*\*Implicit\*\* |
+| **Head** — Helm | 200 armor |
+| Hood | 4 evasion |
+| Circlet | 55 maximum energy shield |
+| Visage | 70 maximum health, 4 crowd control resistance |
+| **Chest** — Cuirass | 440 armor |
+| Jerkin | 8 evasion |
+| Vestment | 120 maximum energy shield |
+| Hauberk | 180 maximum health |
+| Carapace | 220 armor, 90 maximum health |
+| **Shoulders** — Pauldrons | 165 armor |
+| Mantle | 3.5 evasion |
+| Epaulets | 1.1 health regeneration |
+| Spaulders | 11 retaliation |
+| **Gloves** — Gauntlets | 130 armor |
+| Grips | 9% increased attack speed |
+| Handwraps | 5 critical strike chance |
+| Vambraces | 12 flat damage |
+| **Pants** — Greaves | 250 armor |
+| Leggings | 5 evasion |
+| Kilt | 130 maximum health |
+| Trousers | 65 maximum energy shield |
+| **Boots** — Sabatons | 145 armor, 5% increased movement speed |
+| Treads | 12% increased movement speed |
+| Striders | 3 evasion, 8% increased movement speed |
+| Sollerets | 80 maximum health, 6% increased movement speed |
+| **Belt** — Girdle | 130 maximum health |
+| Sash | 60 maximum mana |
+| Cord | 1.3 health regeneration |
+| Cinch | 150 armor |
+| **Ring** — Band | 10 flat damage |
+| Signet | 16 critical strike multiplier |
+| Loop | 60 maximum health |
+| Circle | 30 maximum mana, 0.5 mana regeneration |
+| **Necklace** — Amulet | 60 maximum mana |
+| Pendant | 6 critical strike chance |
+| Torc | 95 maximum health |
+| Locket | 55 maximum energy shield |
+| **Relic** — Idol | 28 critical strike multiplier |
+| Fetish | 10% increased area of effect |
+| Reliquary | 10% increased cooldown reduction |
+| Effigy | 10% increased damage over time frequency |
+
+  
+
+**Every slot offers at least three bases**, or picking one would not be a choice.
+
+  
+
+#### **Weapon Bases**
+
+A weapon carries two things no other item has: a physical **sub-type**, and a number of **damage type slots**.
+
+  
+
+|  |  |  |  |  |
+| :-- | :-: | :-: | :-: | :-- |
+| \*\*Base\*\* | \*\*Hands\*\* | \*\*Sub-Type\*\* | \*\*Damage Types\*\* | \*\*Implicit\*\* |
+| Sword | 1 | Slashing | 2 | 40 flat damage, 5% increased attack speed |
+| Dagger | 1 | Piercing | 2 | 26 flat damage, 8 critical strike chance |
+| Axe | 1 | Slashing | 2 | 46 flat damage |
+| Fist | 1 | Blunt | 2 | 30 flat damage, 10% increased attack speed |
+| Wand | 1 | Magic | 2 | 18% increased spell damage |
+| Whip | 1 | Slashing | 2 | 32 flat damage, 12% increased area of effect |
+| Shield | 1 | Blunt | 2 | 12 block chance, 260 armor |
+| Crossbow | 1 | Piercing | 2 | 38 flat damage, 20 critical strike multiplier |
+| Greatsword | 2 | Slashing | 3 | 78 flat damage |
+| Greataxe | 2 | Slashing | 3 | 72 flat damage, 22 critical strike multiplier |
+| Spear | 2 | Piercing | 3 | 64 flat damage, 6 penetration |
+| Staff | 2 | Magic | 3 | 32% increased spell damage |
+| Two-Handed Crossbow | 2 | Piercing | 3 | 66 flat damage, 7 critical strike chance |
+| Warhammer | 2 | Blunt | 3 | 84 flat damage |
+
+  
+
+**Which damage types fill those slots is not a property of the base.** Section IV says loot is biased toward the Cataclysm being fought, so the types are decided when the item drops. The base says only how many it holds.
+
+  
+
+**Two one-handed weapons hold four damage types against a two-hander's three.** That is what makes dual wielding the primary route to multiclassing that section V describes, since every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage.
+
+  
+
+**The Shield is the one weapon whose base defends.** Section V lists it among the one-handed weapon types and states there are no offhand items, so it is a weapon with nowhere else to be. No other weapon base grants health, energy shield, armor, evasion, block or damage reduction, and no weapon can **roll** any of those as an affix.
+
+  
+
+### **Hybrid Affixes**
+
+One roll granting two stats, each at **70%** of what the single affix for that stat gives. That is the same ratio the two-resistance affix already has against the single-resistance one.
+
+  
+
+A hybrid is worth 1.4 affixes spread across two stats, where a single affix is worth 1.0 concentrated in one. So it wins a slot when a build needs both and loses when it needs one badly.
+
+  
+
+Prefix hybrids pair defensive layers: health and armor, health and energy shield, armor and evasion, evasion and energy shield, mana and energy shield, and increased health and armor. Suffix hybrids pair stats a single build wants together: attack speed and critical strike chance, critical strike chance and multiplier, health and mana regeneration, penetration and critical strike multiplier, block chance and crowd control resistance, and magic find with loot quantity.
+
+  
+
+**A hybrid can never appear on a slot one of its halves could not.**
+
+  
+
+### **Ailment Affixes**
+
+A chance to apply an effect on hit. These grant no number on the character sheet; what they grant is a chance, and the effect is defined in the status effect data.
+
+  
+
+|  |  |  |  |
+| :-- | :-: | :-- | :-- |
+| \*\*Affix\*\* | \*\*T7 Chance\*\* | \*\*Kind\*\* | \*\*Same effect as gem\*\* |
+| Chance to bleed | 15% | Damage over time | Of Rending |
+| Chance to poison | 25% | Damage over time | Of The Viper |
+| Chance to disease | 20% | Damage over time | Of Rot |
+| Chance to apply void splinter | 15% | Damage over time | Of The Abyss |
+| Chance to madden | 15% | Weakening effect | Of Madness |
+| Chance to cripple | 15% | Weakening effect | Of Maiming |
+| Chance to weaken | 15% | Weakening effect | Of Withering |
+| Chance to shred | 15% | Weakening effect | Of Shredding |
+
+  
+
+**These roll on weapons, necklaces, relics and rings only.** An ailment affix only makes sense where a hit comes from, so no armor piece carries one.
+
+  
+
+**The gem stays the stronger source.** A gem applying bleed reaches 150% chance at Cataclysmic rarity against this affix's 15% at top tier, so a socket is still where an ailment build lives. Having both means a build that wants an ailment can chase it two ways, and one that wants it badly can do both.
+
+  
+
 ### **Affixes Are Restricted by Gear Slot**
 
 An affix cannot appear on every piece. Without restrictions every slot is interchangeable and gearing has no puzzle in it.
@@ -1263,12 +1468,30 @@ An affix cannot appear on every piece. Without restrictions every slot is interc
 | :-- | :-: | :-- |
 | \*\*Family\*\* | \*\*Slots\*\* | \*\*Where\*\* |
 | Damage | 48 | Weapon, Rings, Relic, Necklace, Gloves |
-| Health | 52 | Head, Chest, Belt, Pants, Boots, Rings |
+| Health and armor | 56 | Head, Chest, Shoulders, Belt, Pants, Boots, Rings |
 | Resistance | 68 | Everything except the Weapon |
 
   
 
 **Rings are in every list on purpose.** There are eight of them, so they are the flexible slots a build uses to fix whatever it is short of, which is what makes them worth chasing. Capping eight resistances is the hardest defensive requirement, so resistance is the least restricted; damage is the most.
+
+  
+
+**A weapon defends nothing.** No health, energy shield, armor, evasion, block, damage reduction or resistance can appear on it, as an affix or as an implicit.
+
+  
+
+**Every slot can fill all four of its affix slots.** A slot with fewer available prefixes than it has prefix slots would roll duplicates or blanks, so each is checked against both pools separately.
+
+  
+
+### **What Affixes Do Not Grant**
+
+**There are no attribute affixes.** The design gives one attribute point per level, and the Maw consumes items and enemies for more. Gear granting attribute points appears nowhere, so an affix for it would be a new mechanic rather than a filled gap.
+
+  
+
+**No ordinary affix is a "more" multiplier.** An affix is flat or increased. Multiplicative sources come from gems, passive tree keystones and enchantments, as section IV states.
 
   
 

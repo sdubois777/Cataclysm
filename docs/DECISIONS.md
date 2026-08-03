@@ -20,6 +20,156 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — Chance to apply an effect caps at 100% and overflows into magnitude
+
+**Decision, stated by the project owner:**
+
+> DoT chance caps at 100%, anything beyond 100% applies to the magnitude of the
+> DoT's effect. So you can only ever have 1 stack of something on an enemy,
+> however if you have 800% chance to apply it, it gets a 700% multiplier.
+
+So an enemy carries at most one stack of any effect the player applies, and
+chance past 100% multiplies the effect instead of being wasted.
+
+| Chance from all sources | What happens |
+|---|---|
+| 60% | Applies on 60% of hits, at normal magnitude |
+| 100% | Applies on every hit, at normal magnitude |
+| 250% | Applies on every hit, at 2.5x magnitude |
+| 800% | Applies on every hit, at 8x magnitude, a 700% increase |
+
+**Why the overflow is not wasted.** Ailment chance comes from two sources that
+both scale hard: gear affixes, and gems, where the gem applying bleed reaches
+150% chance on its own at Cataclysmic rarity. Without this rule a build would hit
+the cap and every point past it would be dead, so an ailment build would stop
+progressing at exactly the point it was coming together.
+
+**Why one stack rather than many.** It is what makes the overflow rule possible
+at all, and it keeps a screen full of enemies readable: one enemy is bleeding or
+it is not, with no stacks to count.
+
+**A conflict found in the existing data, not resolved here.**
+`game/Data/StatusEffects.csv` describes Necrosis as "a stacking dot that reduces
+healing by 10% per stack". Every other stacking entry in that file is either a
+buff on the player or a debuff an enemy applies to the player, and this rule
+governs neither. Necrosis is the only entry that is both a damage-over-time
+effect and stacking, and its row does not say who applies it. Recorded on #112,
+which already covers gaps in that file.
+
+**Tuning expected.** The project owner: "That might need tuning later, but I
+think that's how I want it to work."
+
+**Affects:** `Cataclysm_GDD_v2.md` section IV. **Applied 2026-08-03:** an
+Applying Damage Over Time and Other Effects subsection was added after Overwhelm.
+The working model is `ailment_application` in `sim/cataclysm_sim/affixes.py`.
+
+---
+
+## 2026-08-03 — The affix pool: prefixes, suffixes and implicits
+
+**Decision.** The affix pool grows from 7 entries to 35 stat affixes plus the
+three resistance families, split into prefixes and suffixes, with an implicit on
+every item base.
+
+**Prefixes and suffixes are separate pools, two of each per piece.** All three
+games surveyed — Path of Exile, Last Epoch and Torchlight Infinite — do this.
+Without it, four affix slots means four of whatever is strongest and one item can
+carry a whole build. With it, every piece gives something up.
+
+Prefixes carry magnitude: how big a character's numbers are. Suffixes carry rates
+and qualifiers: how often, how fast, how much gets through. A stat appearing in
+both would let one item hold four of it, which is what the split exists to
+prevent, so an import-time check rejects that.
+
+**THE IMPLICIT BELONGS TO THE BASE, NOT THE SLOT.** A first version put one
+implicit on each slot. The project owner corrected it: every category of gear has
+several bases, and each base has its own implicit. A chest is not one item with
+one inherent stat, it is a choice between a chest built for armour, one built for
+evasion, one built for health and one built for energy shield.
+
+That is where most of the interest in gearing lives. A player who wants evasion
+is not waiting for an evasion affix to roll; they are looking for an evasion
+base, and every base they pick is a defensive layer committed to before any affix
+is involved.
+
+There are **55 bases across the 11 slots**, at least three per slot, because one
+base in a slot is not a choice. Two bases granting the same implicits would be
+one base written twice, so that is rejected as well.
+
+**A weapon base carries two things no other item has:** a physical sub-type from
+the design's Weapon Sub-Types table, and a number of damage type slots. There is
+a base for each of the fourteen weapon types the design lists, and all four
+sub-types are reachable.
+
+**Which damage types fill those slots is not a property of the base.** Loot is
+biased toward the Cataclysm being fought, so the types are decided when the item
+drops. The base says only how many.
+
+**A one-handed weapon holds two damage types and a two-hander holds three**, so
+two one-handers hold four against a two-hander's three. That is what makes dual
+wielding the primary route to multiclassing the design says it is, since every
+damage type unlocks that type's three class trees, while the two-hander stays
+ahead on raw damage.
+
+**The Shield is the one weapon whose base defends.** The design lists it among
+the one-handed weapon types and states there are no offhand items, so it is a
+weapon with nowhere else to be. The rule that a weapon defends nothing therefore
+applies to AFFIXES only: what a base IS may be defensive, what a drop happened to
+roll on a weapon may not. A check confirms no other weapon base defends, so the
+exemption stays one named exception rather than a hole.
+
+**Hybrid affixes grant two stats at 70% each.** That ratio is read off the
+two-resistance affix against the single-resistance one rather than written twice,
+so the whole pool moves together if it changes. A hybrid is worth 1.4 affixes
+spread over two stats against a single affix's 1.0 concentrated in one, so it
+wins a slot when a build needs both and loses when it needs one badly.
+
+**Ailment affixes apply the effects the gems already grant.** `Gems.csv` designs
+eight gems that apply an effect on hit — bleed, poison, disease, void splinter,
+madness, cripple, weaken and shred — and the project owner asked for the same
+effects to be reachable as affixes, on weapons above all. They roll on weapons,
+necklaces, relics and rings only, because an ailment only makes sense where a hit
+comes from.
+
+The gem stays the stronger source: the gem applying bleed reaches 150% chance at
+Cataclysmic rarity against the affix's 15% at top tier, so a socket is still
+where an ailment build lives. Having both means a build can chase an ailment two
+ways, and one that wants it badly can do both.
+
+**There are no attribute affixes, and that is deliberate.** The design gives one
+attribute point per level, plus the Maw, which consumes items and enemies for
+them. Gear granting attribute points appears nowhere, so an affix for it would be
+adding a mechanic rather than filling the pool.
+
+**How the values were set.** Not one formula, because the stats are not on one
+scale. Three anchors, and each affix records which it used:
+
+| Anchor | Used for | Example |
+|---|---|---|
+| Against the class base | Stats a class already has; top value about 6% of the level 100 figure | Mana, 38 against a base of 644 |
+| Against the requirement | Stats whose class base is near zero but whose endgame requirement is large | Armor, 250 |
+| By convention | Percentages with no base at all, anchored on how many slots should reach a useful figure | Evasion, 4 points a piece so fifteen slots reach the soft cap |
+
+Armor is the one place the first two anchors disagree enough to matter. A Ravager
+has 371 armor, but the armor curve divides by 800 times the difficulty tier, so
+6,400 armor is worth half damage taken at tier 8 and 371 is worth 5%. Six percent
+of the class base would be 22 per affix, which fifteen slots could never turn
+into anything. That is exactly what the design means when it says armor earned
+early does not keep its value and gear has to carry it.
+
+**A gap this work found and fixed.** Shoulders had been left out of the defensive
+slot list. It was an oversight rather than a decision — shoulders are armor — and
+without it the slot could roll nothing but resistance and energy shield, leaving
+it unable to fill its own four affix slots. The check that every slot can fill
+both its prefix and its suffix slots is what found it.
+
+**Affects:** `Cataclysm_GDD_v2.md` section VI. **Applied 2026-08-03:** subsections
+added for prefixes and suffixes, implicits, and what affixes do not grant; the
+slot restriction table corrected for Shoulders. The working model is
+`sim/cataclysm_sim/affixes.py`, covered by `sim/tests/test_affixes.py`.
+
+---
+
 ## 2026-08-03 — The multiplicative bucket, and gear level multiplying affixes
 
 **Background.** The project owner asked for research into how Path of Exile,
