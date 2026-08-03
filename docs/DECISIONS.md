@@ -20,6 +20,87 @@ applied or still pending.
 
 ---
 
+## 2026-08-02 — The character sheet, where bases come from, and tag scoping
+
+**Decision.** A character has **33 stats** in five groups, matching the Stat tag
+categories already generated into `game/Config/Tags/CataclysmTags.ini`. The full
+list is now in `Cataclysm_GDD_v2.md` section IV.
+
+**Attributes only ever scale.** There is one way an attribute point acts: it adds
+to that stat's sum of increases, and the sum multiplies a base. There is no
+second kind of attribute effect.
+
+A proposal to add one was made and rejected. It came from a wrong diagnosis: nine
+of the seventeen attribute effects appeared to produce nothing, and that was read
+as the per-point values being broken. They were not. A stat with no base
+correctly gains nothing from its attribute. The zeroes were in a placeholder stat
+line in the simulation, not in the design.
+
+**Every stat's base comes from one of three places:**
+
+| Source | Stats |
+|---|---|
+| The class | Vitals, recovery, defences, resistances, movement speed, area of effect, damage over time frequency |
+| The equipped weapon | Attack speed, and off the sheet, attack range and attack damage |
+| The skill being used | Critical strike chance, and off the sheet, base cooldown, projectile count and duration |
+
+**A class does not need a base above zero for every stat**, only for every stat
+it wants its attributes to scale. Declining to give a stat a base is how a class
+declines to care about it.
+
+**Critical strike chance belongs to the skill.** Each skill carries its own base
+chance and the character's gear and attributes scale it. A character has no
+critical strike chance in the abstract. This is what makes the attribute worth
+having: read as a class stat with a 5% base, Ferocity moved it only to 7.5%
+across a character's whole budget.
+
+**Area of effect and damage over time frequency belong to the character**, even
+though both concern skills. The character holds one percentage that applies to
+every skill tagged for it. Their baseline is 100%, not zero, because they are
+percentages of whatever the skill itself does.
+
+**Movement speed is in metres per second**, a tank at roughly 3, scaled as
+`3 * (1 + increases)`.
+
+**Increases are scoped by gameplay tag.** Every skill carries tags, which is how
+the game knows which enchantments and effects apply to it. The character holds
+all of its own increases, and an increase reaches a skill when the tags match.
+An item granting increased area of effect is not a property of one skill; the
+character holds it and it applies to everything tagged for area.
+
+Matching is hierarchical: a modifier requiring `Type.AOE` applies to a skill
+tagged `Type.AOE.PointBlank`. `Scope.Global` matches everything. A modifier
+requiring several tags needs all of them.
+
+This uses structure the design already had. The Weapon Skills sheet tags every
+skill and both enchantment tables tag every enchantment.
+
+**Class stat lines share a default.** 24 classes times 33 stats times two numbers
+each is 1,584 values, so every class starts from one shared default line and
+overrides only the stats that express its identity. A class may override any
+stat.
+
+**Per-level scaling is linear, provisionally.** Whether it should stay linear is
+not settled and will be decided by testing rather than argument.
+
+**Movement speed at three times base from full Agility is accepted.** 100 points
+of Agility triples movement speed, reaching 12 metres per second from a base of
+4. Flagged as possibly too large, and accepted: how it feels in game is the real
+test. Recorded so the number is a decision rather than an oversight.
+
+**No attribute per-point value changed.** Every number in the attribute table is
+as originally written.
+
+**Still open.** Luck gives +0.01% rarity find per point, which is +1% across a
+character's entire budget. Issue #81.
+
+**Affects:** `Cataclysm_GDD_v2.md` section IV. **Applied 2026-08-02:** four
+subsections were added covering the sheet, the three base sources, tag scoping
+and class stat lines. The working model is `sim/cataclysm_sim/character.py`,
+covered by `sim/tests/test_character.py`.
+
+---
+
 ## 2026-08-02 — Attribute scaling, caps, and how avoidance works
 
 **Decision.** The attribute table gave every attribute as a percentage per point
