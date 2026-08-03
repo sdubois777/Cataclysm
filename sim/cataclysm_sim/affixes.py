@@ -112,6 +112,40 @@ GEAR_PIECES = 18
 AFFIX_SLOTS_PER_PIECE = 4
 TOTAL_AFFIX_SLOTS = GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
 
+#: The equipped pieces and how many of each, from the Item Slots list in the
+#: design document. Potion slots are consumables rather than gear: they hold
+#: gems and carry no affixes, which is why these sum to 18 and not 22.
+GEAR_SLOTS: dict[str, int] = {
+    "Head": 1, "Chest": 1, "Shoulders": 1, "Gloves": 1, "Pants": 1,
+    "Boots": 1, "Belt": 1, "Ring": 8, "Necklace": 1, "Relic": 1, "Weapon": 1,
+}
+
+#: Which slots each kind of affix can appear on.
+#:
+#: WHY RESTRICT AT ALL. Without it every slot is interchangeable and gearing has
+#: no puzzle in it: a player fills all 72 slots with whatever is strongest and
+#: never has to trade one thing for another. Restrictions are what create the
+#: familiar problem of needing resistance from a helmet because the weapon
+#: cannot provide it.
+#:
+#: This is not a new mechanism. `game/Config/Tags/CataclysmTags.ini` already
+#: generates 14 Item.Slot tags and three enchantments already restrict
+#: themselves with them.
+#:
+#: Rings are deliberately in every list. There are eight of them, so they are
+#: the flexible slots a build uses to fix whatever it is short of, which is what
+#: makes them worth chasing.
+OFFENSIVE_SLOTS = frozenset({"Weapon", "Ring", "Relic", "Necklace", "Gloves"})
+DEFENSIVE_SLOTS = frozenset({"Head", "Chest", "Belt", "Pants", "Boots", "Ring"})
+#: Everything except the weapon. Armour and jewellery defend; a weapon does not.
+RESISTANCE_SLOTS = frozenset(GEAR_SLOTS) - {"Weapon"}
+
+
+def slots_available_to(allowed: frozenset[str]) -> int:
+    """How many affix slots a family restricted to these pieces can occupy."""
+    return sum(count * AFFIX_SLOTS_PER_PIECE
+               for slot, count in GEAR_SLOTS.items() if slot in allowed)
+
 
 def tier_band(top_value: float, tier: int) -> tuple[float, float]:
     """The lowest and highest an affix can roll at a tier.
@@ -222,12 +256,20 @@ class StatAffix:
     stat: str
     kind: str          # "flat" or "increased"
     top_value: float
+    allowed_slots: frozenset[str] = frozenset(GEAR_SLOTS)
 
     def __post_init__(self) -> None:
         if self.kind not in ("flat", "increased"):
             raise ValueError(
                 f"{self.name}: kind must be 'flat' or 'increased', "
                 f"got {self.kind!r}")
+        unknown = set(self.allowed_slots) - set(GEAR_SLOTS)
+        if unknown:
+            raise ValueError(
+                f"{self.name} allows slots that do not exist: {sorted(unknown)}")
+
+    def slots_available(self) -> int:
+        return slots_available_to(self.allowed_slots)
 
     def range_at(self, tier: int) -> tuple[float, float]:
         return tier_band(self.top_value, tier)
@@ -260,17 +302,27 @@ class StatAffix:
 #: two kinds are worth the same at about 3,000 points of base, which a character
 #: reaches after roughly seven flat affixes. Before that flat wins, after it
 #: increased does.
-FLAT_HEALTH = StatAffix("Flat maximum health", "max_health", "flat", 120.0)
+FLAT_HEALTH = StatAffix("Flat maximum health", "max_health", "flat", 120.0,
+                        DEFENSIVE_SLOTS)
 INCREASED_HEALTH = StatAffix("Increased maximum health", "max_health",
-                             "increased", 12.0)
+                             "increased", 12.0, DEFENSIVE_SLOTS)
 
-#: Damage. Same structure, and the numbers are pinned to a target rather than
-#: chosen: `enemy_stats.PLAYER_DAMAGE_FACTOR` says a player hits for 25% of their
-#: Power Score, which is 1,582 at tier 8, and that is what makes the "player
-#: kills a common enemy in 1 to 3 hits" target hold. Gear has to deliver it.
-FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 60.0)
+#: Damage. Increased damage is 125% at T7, set by the project owner.
+#:
+#: That is eight times the earlier proposal and it changes the shape of the whole
+#: damage side. With increases that large, the base they multiply has to be
+#: small: a character stacking a few of them is already multiplying by five or
+#: more, so a large weapon or large flat affixes would overshoot the damage
+#: target immediately. Increases do the work and the base stays modest, which is
+#: ordinary for the genre.
+#:
+#: The target itself is not chosen here. `enemy_stats.PLAYER_DAMAGE_FACTOR` says
+#: a player hits for 25% of their Power Score, 1,582 at tier 8, and that is what
+#: makes the "player kills a common enemy in 1 to 3 hits" target hold.
+FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 60.0,
+                        OFFENSIVE_SLOTS)
 INCREASED_DAMAGE = StatAffix("Increased damage", "attack_damage",
-                             "increased", 15.0)
+                             "increased", 125.0, OFFENSIVE_SLOTS)
 
 HEALTH_AFFIXES = (FLAT_HEALTH, INCREASED_HEALTH)
 DAMAGE_AFFIXES = (FLAT_DAMAGE, INCREASED_DAMAGE)
@@ -448,10 +500,29 @@ if __name__ == "__main__":
     print("    weapon has to supply, which is a number the project does not have:")
     print()
     print(f"      {'flat slots':>11} {'increased slots':>16} {'weapon base needed':>20}")
-    for flat_slots, inc_slots in ((4, 4), (6, 6), (8, 8), (12, 0), (0, 12)):
+    for flat_slots, inc_slots in ((0, 0), (2, 2), (4, 4), (2, 6), (0, 8)):
         need = weapon_base_damage_needed(target, flat_slots, inc_slots)
-        print(f"      {flat_slots:>11} {inc_slots:>16} {need:>20,.0f}")
+        note = "  <- affixes alone overshoot" if need <= 0 else ""
+        print(f"      {flat_slots:>11} {inc_slots:>16} {need:>20,.0f}{note}")
     print()
-    print("    Spending nothing on damage affixes would need a weapon supplying")
-    print(f"    the whole {target:,.0f}, and spending 12 slots on increases alone")
-    print("    still needs a large one. That is the shape of the trade.")
+    print("    At 125% per increased affix a character multiplies by five or")
+    print("    more after a handful of them, so the base they scale has to stay")
+    print("    small. Past a few slots, affixes alone overshoot the target and")
+    print("    the weapon would have to contribute nothing at all.")
+    print()
+
+    print("Slot restrictions. Affixes do not go anywhere.")
+    print()
+    print(f"    {'family':<24} {'pieces':>7} {'slots':>7}   where")
+    print("    " + "-" * 72)
+    for label, allowed in (("Damage", OFFENSIVE_SLOTS),
+                           ("Health", DEFENSIVE_SLOTS),
+                           ("Resistance", RESISTANCE_SLOTS)):
+        pieces = sum(c for s, c in GEAR_SLOTS.items() if s in allowed)
+        print(f"    {label:<24} {pieces:>7} {slots_available_to(allowed):>7}   "
+              f"{', '.join(sorted(allowed))}")
+    print()
+    print(f"    Out of {GEAR_PIECES} pieces and {TOTAL_AFFIX_SLOTS} slots in total.")
+    print("    Rings are in every list on purpose. There are eight of them, so")
+    print("    they are the flexible slots a build uses to fix whatever it is")
+    print("    short of, which is what makes them worth chasing.")

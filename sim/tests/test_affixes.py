@@ -374,15 +374,20 @@ def test_the_damage_target_comes_from_the_enemy_derivation():
     assert PLAYER_DAMAGE_FACTOR == 0.25
 
 
-def test_a_reasonable_slot_split_needs_a_plausible_weapon():
-    """Solving the pipeline backwards gives what a weapon has to supply, which
-    is a number the project does not have. It must not come out negative, which
-    would mean affixes alone already exceed the target and weapons are
-    pointless."""
+def test_a_small_damage_investment_still_needs_a_weapon():
+    """Solving the pipeline backwards gives what a weapon has to supply.
+
+    Only checked for SMALL investments now. At 125% per increased affix, a
+    character spending six slots each way already overshoots the current damage
+    target and the requirement goes negative, which means affixes alone exceed
+    it and a weapon would be pointless. That conflict is recorded by
+    test_the_damage_affixes_overshoot_the_current_damage_target below rather
+    than being asserted away here.
+    """
     target = 6327 * 0.25
-    for flat_slots, inc_slots in ((4, 4), (6, 6), (8, 8)):
+    for flat_slots, inc_slots in ((0, 0), (1, 1), (2, 2)):
         need = af.weapon_base_damage_needed(target, flat_slots, inc_slots)
-        assert 0 < need < target, (
+        assert 0 < need <= target, (
             f"{flat_slots} flat and {inc_slots} increased slots need {need:.0f}")
 
 
@@ -396,3 +401,98 @@ def test_more_damage_affixes_always_reduce_what_the_weapon_must_supply():
     needs = [af.weapon_base_damage_needed(target, n, n) for n in range(0, 9)]
     assert needs == sorted(needs, reverse=True)
     assert len(set(needs)) == len(needs)
+
+
+# --------------------------------------------------------------------------
+# Slot restrictions
+# --------------------------------------------------------------------------
+
+def test_the_gear_slots_sum_to_the_pieces_the_design_describes():
+    assert sum(af.GEAR_SLOTS.values()) == af.GEAR_PIECES == 18
+
+
+def test_there_are_eight_rings():
+    """Rings are the flexible slots, and there being eight of them is why."""
+    assert af.GEAR_SLOTS["Ring"] == 8
+
+
+def test_every_affix_family_is_restricted_to_some_slots():
+    """Without restrictions every slot is interchangeable and gearing has no
+    puzzle in it: a player fills all 72 with whatever is strongest."""
+    for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
+        assert affix.allowed_slots
+        assert affix.slots_available() < af.TOTAL_AFFIX_SLOTS
+
+
+def test_damage_and_health_go_on_different_pieces():
+    """If the two lists were the same, the restriction would only reduce the
+    total and would not force any trade."""
+    damage = set(af.FLAT_DAMAGE.allowed_slots)
+    health = set(af.FLAT_HEALTH.allowed_slots)
+    assert damage != health
+    assert damage - health, "damage has no slot of its own"
+    assert health - damage, "health has no slot of its own"
+
+
+def test_rings_take_every_kind_of_affix():
+    """The flexible slots a build uses to fix whatever it is short of."""
+    for allowed in (af.OFFENSIVE_SLOTS, af.DEFENSIVE_SLOTS, af.RESISTANCE_SLOTS):
+        assert "Ring" in allowed
+
+
+def test_a_weapon_cannot_carry_health_or_resistance():
+    """Armour and jewellery defend. A weapon does not."""
+    assert "Weapon" not in af.DEFENSIVE_SLOTS
+    assert "Weapon" not in af.RESISTANCE_SLOTS
+    assert "Weapon" in af.OFFENSIVE_SLOTS
+
+
+def test_slots_available_counts_pieces_times_slots_per_piece():
+    assert af.slots_available_to(frozenset({"Ring"})) == 8 * af.AFFIX_SLOTS_PER_PIECE
+    assert af.slots_available_to(frozenset({"Head"})) == af.AFFIX_SLOTS_PER_PIECE
+    assert af.slots_available_to(frozenset()) == 0
+    assert af.slots_available_to(frozenset(af.GEAR_SLOTS)) == af.TOTAL_AFFIX_SLOTS
+
+
+def test_an_affix_allowing_a_slot_that_does_not_exist_is_rejected():
+    with pytest.raises(ValueError, match="slots that do not exist"):
+        af.StatAffix("Bad", "max_health", "flat", 10.0, frozenset({"Cape"}))
+
+
+def test_resistance_can_go_almost_anywhere_and_damage_cannot():
+    """Capping eight resistances is the hardest defensive requirement, so it
+    should not also be the most slot-restricted."""
+    assert af.slots_available_to(af.RESISTANCE_SLOTS) > af.slots_available_to(
+        af.OFFENSIVE_SLOTS)
+
+
+# --------------------------------------------------------------------------
+# A known inconsistency, recorded rather than hidden
+# --------------------------------------------------------------------------
+
+def test_increased_damage_is_the_value_the_project_owner_set():
+    assert af.INCREASED_DAMAGE.top_value == 125.0
+
+
+def test_the_damage_affixes_overshoot_the_current_damage_target():
+    """RECORDS A CONFLICT rather than asserting a desired state.
+
+    Increased damage at 125% per affix is eight times what the earlier proposal
+    used. `enemy_stats.PLAYER_DAMAGE_FACTOR` still says a player hits for 25% of
+    their Power Score, 1,582 at tier 8, and a character spending only four flat
+    and four increased slots on damage already needs a weapon supplying almost
+    nothing to reach it.
+
+    The two cannot both be right. Either the damage target rises, which means
+    common enemies need more health, or the affix is smaller. The ratio the
+    project owner set -- 1 to 3 player hits to kill a common enemy -- is about
+    relative sizes and survives either choice.
+
+    This test fails as soon as that is resolved, which is intended: it is here so
+    the conflict cannot be forgotten.
+    """
+    target = 6327 * 0.25
+    need = af.weapon_base_damage_needed(target, flat_slots=4, increased_slots=4)
+    assert need < 100, (
+        f"a modest damage build still needs a weapon supplying {need:.0f}, so "
+        "the conflict this test records may have been resolved")
