@@ -20,6 +20,51 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — Player damage is adaptive, so an enemy has one resistance
+
+**Decision.** Player damage is **adaptive**: a weapon deals one damage number
+rather than one pool per damage type. There is no damage conversion mechanic and
+none is needed. The project owner's reason: a weapon carrying eight damage types
+would be unworkable to calculate damage on.
+
+**The consequence, which the project owner raised themselves.** This contradicts
+the rule recorded the same day that enemies resist and are weak to specific
+damage types. Once player damage adapts, a per-type enemy profile changes no
+outcome, so it is authoring work that buys nothing. Enemies now have **one
+resistance figure applied to all incoming damage**.
+
+| Enemy | Resistance |
+|---|---|
+| Imp | 0% |
+| Hellhound | 10% |
+| Succubus | 10% |
+| Brute | 15% |
+| Corrupted Sentinel | 20% |
+| Abyssal Warden | 35% |
+| Gatekeeper | 30% |
+
+The Abyssal Warden is highest because the design describes that one, and only
+that one, as having high damage resistance.
+
+**The player still has all eight resistances defensively.** Unchanged and
+unrelated: eight Cataclysms attack the player. An enemy still has a damage type
+of its own, which decides which of the player's eight applies when it hits them.
+
+**Enemy resistance is what player resistance penetration works on**, and
+penetration beyond an enemy's resistance grants no bonus, so over-stacking it
+cannot become a damage multiplier against the enemies that need it least.
+
+**A guard replaces the one that is gone.** Enemy resistance is a single unbounded
+number now, so nothing else caps it. An import-time check rejects any archetype
+at or above 70%, which is where the design caps resistance, because the design
+states plainly that no combination of defensive layers reaches immunity.
+
+**Affects:** `Cataclysm_GDD_v2.md` section X. **Applied 2026-08-03:** the
+per-damage-type table was replaced with a single-resistance table and the rule
+above. The working model is `sim/cataclysm_sim/enemy_stats.py`.
+
+---
+
 ## 2026-08-03 — The gear affix pool, and where its numbers come from
 
 **Decision.** The ordinary affix pool now exists. Issue #79 recorded that 961

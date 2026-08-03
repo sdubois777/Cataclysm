@@ -130,8 +130,7 @@ def test_no_two_archetypes_are_the_same_creature():
     def fingerprint(k: es.Archetype) -> tuple:
         return (k.health_share, k.damage_share, k.armor_share,
                 k.energy_shield_fraction, k.attack_interval, k.crit_chance,
-                k.crit_multiplier, k.move_speed, k.evasion,
-                tuple(sorted(k.resistances.items())))
+                k.crit_multiplier, k.move_speed, k.evasion, k.resistance)
 
     seen: dict[tuple, str] = {}
     for kind in es.ARCHETYPES.values():
@@ -251,7 +250,7 @@ def test_the_baseline_is_an_average_enemy_and_not_a_creature():
     assert es.BASELINE.health_share == 1.0
     assert es.BASELINE.damage_share == 1.0
     assert es.BASELINE.armor_share == 1.0
-    assert es.BASELINE.resistances == {}
+    assert es.BASELINE.resistance == 0.0
 
 
 def test_an_enemy_is_named_by_its_rarity_and_its_archetype():
@@ -306,102 +305,111 @@ def test_an_enemy_without_a_shield_has_an_effective_health_of_just_health():
 # Resistances
 # --------------------------------------------------------------------------
 
-def test_every_resistance_names_a_real_damage_type():
-    """A typo would otherwise sit there silently resisting nothing."""
+def test_an_enemy_has_one_resistance_and_not_one_per_damage_type():
+    """Player damage is adaptive: a weapon deals one damage number rather than
+    eight separate pools, so a per-type enemy profile would change no outcome.
+
+    A version of this model gave every enemy eight figures. The project owner
+    removed it for that reason.
+    """
     for kind in es.ARCHETYPES.values():
-        for damage_type in kind.resistances:
-            assert damage_type in DAMAGE_TYPES, f"{kind.name}: {damage_type}"
+        assert isinstance(kind.resistance, float), kind.name
+        assert not hasattr(kind, "resistances"), (
+            f"{kind.name} still carries a per-damage-type profile")
+    assert not hasattr(at_tier_eight("Elite", "Brute"), "resistance_to")
 
 
-def test_an_unknown_damage_type_is_rejected_when_asked_about():
-    with pytest.raises(ValueError, match="unknown damage type"):
-        at_tier_eight("Common", "Imp").resistance_to("Fire")
-
-
-def test_a_damage_type_an_archetype_never_mentions_is_simply_unresisted():
-    assert at_tier_eight("Common", "Imp").resistance_to("Void") == 0.0
+def test_the_player_still_has_all_eight_resistances():
+    """Only the ENEMY side collapsed to one figure. Eight Cataclysms attack the
+    player, so the player's own eight are untouched by this."""
+    from cataclysm_sim.character import RESISTANCE_STATS
+    assert len(RESISTANCE_STATS) == len(DAMAGE_TYPES) == 8
 
 
 @pytest.mark.parametrize("kind", sorted(es.ARCHETYPES))
-def test_no_enemy_resists_or_is_weak_to_its_own_cataclysms_damage_type(kind):
-    """The one hard rule about resistances.
-
-    The design hands the player the damage type of the Cataclysm they are
-    fighting, and in the first run they cannot obtain another. An enemy that
-    resists that type is an unavoidable tax; one that is weak to it is an
-    unmissable bonus. Neither is a decision, so the profile must not mention it
-    in either direction.
-
-    An earlier version gave every Demonic enemy 40% Demonic resistance, which
-    was a flat 40% damage loss against every enemy in the first run.
-    """
-    e = at_tier_eight("Elite", kind)
-    assert e.resistance_to(e.archetype.cataclysm) == 0.0
+def test_an_enemys_own_damage_type_is_one_of_the_eight(kind):
+    """It says which of the player's eight resistances applies when this enemy
+    hits them, so a typo would silently bypass every one of them."""
+    assert es.archetype(kind).damage_type in DAMAGE_TYPES
+    assert at_tier_eight("Elite", kind).damage_type in DAMAGE_TYPES
 
 
-def test_the_import_time_check_on_that_rule_actually_fires():
+def test_the_import_time_check_on_that_actually_fires():
     """A guard nobody has seen fail is a guard nobody should trust."""
-    tainted = es.Archetype(name="Tainted", role="test",
-                           resistances={"Demonic": 40.0})
     real = dict(es.ARCHETYPES)
-    es.ARCHETYPES["Tainted"] = tainted
+    es.ARCHETYPES["Tainted"] = es.Archetype(name="Tainted", role="test",
+                                            cataclysm="Fire")
     try:
-        with pytest.raises(AssertionError, match="own Cataclysm's damage type"):
-            es._check_no_archetype_mentions_its_own_cataclysms_damage_type()
+        with pytest.raises(AssertionError, match="not one of the eight"):
+            es._check_every_archetype_deals_a_real_damage_type()
     finally:
         es.ARCHETYPES.clear()
         es.ARCHETYPES.update(real)
 
 
-def test_what_an_enemy_resists_says_what_it_is_made_of():
-    """The replacement rule. Spot-checked against the design's own descriptions
-    rather than asserted in the abstract."""
-    # Not alive, so what kills and sickens living things does little.
-    sentinel = es.archetype("Corrupted Sentinel")
-    assert sentinel.resistance_to("Death") > 0
-    assert sentinel.resistance_to("Pestilence") > 0
-    # "Heavily armored" turns blades. "Can be outmaneuvered" is a slow mind.
-    brute = es.archetype("Brute")
-    assert brute.resistance_to("War") > 0
-    assert brute.resistance_to("Chaos") < 0
-    # A creature of the mind is the exact inverse of that.
-    succubus = es.archetype("Succubus")
-    assert succubus.resistance_to("Chaos") > 0
-    assert succubus.resistance_to("War") < 0
+def test_no_enemy_can_resist_its_way_to_immunity():
+    """The design says no combination of defensive layers reaches immunity.
+    Enemy resistance is one unbounded number now, so nothing else caps it."""
+    for kind in es.ARCHETYPES.values():
+        assert kind.resistance < 70.0, kind.name
+
+
+def test_that_immunity_check_actually_fires():
+    real = dict(es.ARCHETYPES)
+    es.ARCHETYPES["Tainted"] = es.Archetype(name="Tainted", role="test",
+                                            resistance=95.0)
+    try:
+        with pytest.raises(AssertionError, match="the 70%"):
+            es._check_no_enemy_can_become_immune()
+    finally:
+        es.ARCHETYPES.clear()
+        es.ARCHETYPES.update(real)
 
 
 def test_swarm_fodder_resists_nothing_at_all():
     """The Imp is described as weak individually. It should die to whatever the
     player happens to have brought."""
-    assert es.archetype("Imp").resistances == {}
+    assert es.archetype("Imp").resistance == 0.0
 
 
-def test_the_last_boss_has_no_weakness_so_there_is_no_cheap_answer_to_it():
-    """And it is the one enemy in the vertical slice that gives the player's
-    resistance penetration stat a target, since nothing else resists the damage
-    type the player is given."""
-    gatekeeper = es.archetype("Gatekeeper")
-    assert all(r > 0 for r in gatekeeper.resistances.values())
-    others = [k for k in es.ARCHETYPES.values() if k.name != "Gatekeeper"]
-    assert all("Demonic" not in k.resistances for k in others)
+def test_the_enemy_the_design_calls_highly_resistant_is_the_most_resistant():
+    """The design describes the Abyssal Warden, and only the Abyssal Warden, as
+    having high damage resistance."""
+    warden = es.archetype("Abyssal Warden")
+    others = [k for k in es.ARCHETYPES.values() if k.name != "Abyssal Warden"]
+    assert all(warden.resistance > k.resistance for k in others)
 
 
 def test_resistance_is_counted_when_reporting_what_gear_has_to_deliver():
     """Otherwise the figure would understate what a player needs against
-    everything that resists their damage type."""
-    gk = at_tier_eight("Cataclysm Boss", "Gatekeeper")
-    raw = gk.effective_health / 30.0
-    # The Gatekeeper resists every type except the one the player is given.
-    assert es.player_damage_to_kill_in(gk, 30.0, "Demonic") == pytest.approx(raw)
-    assert es.player_damage_to_kill_in(gk, 30.0, "Celestial") == pytest.approx(
-        raw / 0.75)
-
-
-def test_the_reported_figure_defaults_to_the_damage_type_the_player_is_given():
-    """Rather than to whichever type happens to flatter the number."""
+    anything that resists."""
     warden = at_tier_eight("Herald", "Abyssal Warden")
+    raw = warden.effective_health / 30.0
     assert es.player_damage_to_kill_in(warden, 30.0) == pytest.approx(
-        es.player_damage_to_kill_in(warden, 30.0, "Demonic"))
+        raw / 0.65)
+    unresisted = at_tier_eight("Common", "Imp")
+    assert es.player_damage_to_kill_in(unresisted, 30.0) == pytest.approx(
+        unresisted.effective_health / 30.0)
+
+
+def test_player_penetration_cuts_into_enemy_resistance():
+    """Which is what gives the player's resistance penetration stat a target on
+    the enemy side."""
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    assert warden.damage_taken_fraction(0.0) == pytest.approx(0.65)
+    assert warden.damage_taken_fraction(20.0) == pytest.approx(0.85)
+    assert es.player_damage_to_kill_in(warden, 30.0, penetration=20.0) < \
+        es.player_damage_to_kill_in(warden, 30.0)
+
+
+def test_penetration_beyond_an_enemys_resistance_does_not_grant_bonus_damage():
+    """Otherwise over-stacking penetration would turn into a damage multiplier
+    against the enemies that need it least."""
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    assert warden.damage_taken_fraction(35.0) == pytest.approx(1.0)
+    assert warden.damage_taken_fraction(200.0) == pytest.approx(1.0)
+    imp = at_tier_eight("Common", "Imp")
+    assert imp.damage_taken_fraction(50.0) == pytest.approx(1.0)
 
 
 # --------------------------------------------------------------------------
@@ -458,6 +466,8 @@ def test_killing_an_enemy_faster_needs_proportionally_more_damage():
 
 def test_a_shielded_enemy_takes_more_damage_to_kill_than_its_health_alone():
     sentinel = at_tier_eight("Legendary", "Corrupted Sentinel")
-    needed = es.player_damage_to_kill_in(sentinel, 30.0, "Celestial")
-    ignoring_shield = sentinel.health / 30.0 / 1.25
+    assert sentinel.energy_shield > 0
+    needed = es.player_damage_to_kill_in(sentinel, 30.0)
+    # What the same enemy would need if its shield absorbed nothing.
+    ignoring_shield = sentinel.health / 30.0 / sentinel.damage_taken_fraction()
     assert needed > ignoring_shield

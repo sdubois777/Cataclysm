@@ -1516,32 +1516,36 @@ Enemy Score is a power rating. It says what an encounter is worth, not how much 
 
   
 
-**An enemy's resistances say what it is made of and how it fights.** A construct resists what kills and sickens living things. Armored flesh turns blades. A creature whose power is over the mind is hard to unhinge and fragile once something reaches it. Negative resistance is legal and means damage taken is increased.
+**An enemy has one resistance, applied to all incoming damage.** Not eight figures, one per damage type.
 
   
 
-**No enemy resists or is weak to the damage type of its own Cataclysm.** Section IV states that the active Cataclysm determines the player's damage type, and in the first run a player has only that one and cannot obtain another until a Cataclysm has been defeated. An enemy resisting that type would be a tax the player cannot avoid; one weak to it would be a bonus they cannot miss. Neither is a decision, so neither is allowed.
+The reason is that player damage is **adaptive**: a weapon deals one damage number rather than eight separate pools, because a weapon carrying eight damage types would be unworkable to calculate. Once player damage adapts, a per-type enemy profile stops changing any outcome, so it would be authoring work that buys nothing.
 
   
 
-The vertical slice enemies, in percent. A dot means the type is not mentioned. Note that the Demonic column is empty throughout, and that the Brute and the Succubus are deliberate opposites:
+**The player still has all eight resistances defensively.** That is unchanged and unrelated. Eight Cataclysms attack the player, so the player needs eight. It is only the enemy side that collapses to one figure.
 
   
 
-|  |  |  |  |  |  |  |  |  |
-| :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| \*\*Enemy\*\* | \*\*War\*\* | \*\*Demonic\*\* | \*\*Death\*\* | \*\*Pestilence\*\* | \*\*Famine\*\* | \*\*Celestial\*\* | \*\*Chaos\*\* | \*\*Void\*\* |
-| Imp | . | . | . | . | . | . | . | . |
-| Hellhound | . | . | . | 30 | \-25 | . | . | . |
-| Succubus | \-25 | . | . | . | . | . | 30 | . |
-| Brute | 30 | . | . | . | . | . | \-25 | . |
-| Corrupted Sentinel | \-25 | . | 40 | 40 | . | . | . | . |
-| Abyssal Warden | 30 | . | 30 | 30 | 30 | . | . | \-25 |
-| Gatekeeper | 25 | . | 25 | 25 | 25 | 25 | 25 | 25 |
+|  |  |  |
+| :-- | :-: | :-- |
+| \*\*Enemy\*\* | \*\*Resistance\*\* | \*\*Why\*\* |
+| Imp | 0% | Swarm fodder should die to whatever the player has |
+| Hellhound | 10% | A beast, relying on speed rather than soaking hits |
+| Succubus | 10% | Little of its own; the energy shield is what keeps it alive |
+| Brute | 15% | Thick hide on top of its armor, which is its main defence |
+| Corrupted Sentinel | 20% | A construct rather than a living thing, and it cannot retreat |
+| Abyssal Warden | 35% | The design describes this one, and only this one, as having high damage resistance |
+| Gatekeeper | 30% | High, but its real threat is its phases |
 
   
 
-**The Gatekeeper resists everything it is allowed to and has no weakness**, so there is no cheap answer to the last fight. It is also the only enemy in the vertical slice that gives the player's resistance penetration stat anything to work on, since nothing else resists the damage type the player is given.
+**An enemy still has a damage type of its own**, which is its Cataclysm's. That is what decides which of the player's eight resistances applies when it hits them.
+
+  
+
+**Enemy resistance is what the player's resistance penetration works on.** Against an Abyssal Warden at 35%, a player with no penetration lands 65% of a hit and one with 20 penetration lands 85%. Penetration beyond an enemy's resistance grants no bonus, so over-stacking it does not become a damage multiplier against the enemies that need it least.
 
   
 
