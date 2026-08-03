@@ -80,10 +80,26 @@ out byte-identical, which is the evidence that reading and rewriting the workboo
 damaged nothing. The row count assertion in
 `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` moved from 46 to 49.
 
-**Still undefined: Weaken.** The Of Withering gem applies "weaken", and the data
-has a "Wither" debuff that enemies apply to the player. Whether those are one
-effect under two names is a question only the project owner can answer, so it
-stays on #112.
+**Weaken and Wither are two different effects**, decided by the project owner
+2026-08-03. Weaken is applied by the player and reduces an enemy's damage by 20%
+for 5 seconds; magnitude raises the reduction to a cap of 80% and then extends
+the duration. Wither is applied by an enemy to the player and reduces the
+player's movement and attack speed, which is unchanged. Cripple is the player's
+equivalent of Wither, so Weaken taking damage rather than speed keeps the two
+from overlapping.
+
+Weaken's cap has the same reason Cripple's does: an enemy that deals no damage is
+harmless, which is a stun by another name, and stunning is a separate mechanic
+with its own counter.
+
+**Necrosis was given a gem.** It was the one effect in
+`game/Data/StatusEffects.csv` that nothing applied, while every other named a
+gem, an enchantment, an enemy modifier or a dungeon modifier. The project owner's
+reading was that the gems sheet was simply incomplete, so the Of Wasting gem was
+added with a 10% chance to apply necrosis, on the same rarity curve as Of
+Rending, the other 10% damage-over-time gem, so a new gem does not arrive
+stronger than its peers. A matching affix was added, because an import-time check
+requires every gem-applied effect to be reachable as an affix as well.
 
 **Tuning expected.** The project owner: "That might need tuning later, but I
 think that's how I want it to work."

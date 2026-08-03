@@ -1061,12 +1061,14 @@ DISEASE = AilmentAffix("Chance to disease", "Disease", 20.0, gem="Of Rot")
 VOID_SPLINTER = AilmentAffix("Chance to apply void splinter", "Void Splinter",
                              15.0, gem="Of The Abyss")
 MADNESS = AilmentAffix("Chance to madden", "Madness", 15.0, gem="Of Madness")
+NECROSIS = AilmentAffix("Chance to necrose", "Necrosis", 15.0, gem="Of Wasting")
 CRIPPLE = AilmentAffix("Chance to cripple", "Cripple", 15.0, gem="Of Maiming")
 WEAKEN = AilmentAffix("Chance to weaken", "Weaken", 15.0, gem="Of Withering")
 SHRED = AilmentAffix("Chance to shred", "Shred", 15.0, gem="Of Shredding")
 
 AILMENT_AFFIXES: tuple[AilmentAffix, ...] = (
-    BLEED, POISON, DISEASE, VOID_SPLINTER, MADNESS, CRIPPLE, WEAKEN, SHRED,
+    BLEED, POISON, DISEASE, VOID_SPLINTER, NECROSIS, MADNESS, CRIPPLE, WEAKEN,
+    SHRED,
 )
 
 #: The effects among those that are damage over time rather than a weakening.
@@ -1075,7 +1077,7 @@ AILMENT_AFFIXES: tuple[AilmentAffix, ...] = (
 #: energy shield and holds it empty, which is what makes it the answer to shield
 #: stacking rather than a stat check.
 DAMAGE_OVER_TIME_AILMENTS = frozenset({"Bleed", "Poison", "Disease",
-                                       "Void Splinter"})
+                                       "Void Splinter", "Necrosis"})
 
 
 def ailments_for(slot: str) -> tuple[AilmentAffix, ...]:
@@ -1389,7 +1391,7 @@ def _check_every_gem_applied_effect_is_reachable_as_an_affix() -> None:
     project owner asked for the same effects to be reachable as affixes, so a
     gem effect with no affix would be one the request missed."""
     from_gems = {"Void Splinter", "Poison", "Bleed", "Madness", "Disease",
-                 "Cripple", "Weaken", "Shred"}
+                 "Necrosis", "Cripple", "Weaken", "Shred"}
     covered = {a.ailment for a in AILMENT_AFFIXES}
     if covered != from_gems:
         raise ValueError(
