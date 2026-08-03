@@ -1250,7 +1250,7 @@ The stun uses the shortest duration any designed skill uses. A weapon sub-type t
 
 ## **Affixes**
 
-Affixes are the ordinary stats on gear, separate from the enchantments below. Every piece has up to 4 affix slots, so a full set of 18 pieces has 72.
+Affixes are the ordinary stats on gear, separate from the enchantments below. Every piece has up to 4 affix slots, so a full set of 18 pieces has 72. A dual wielder carries a nineteenth piece and has 76; see A Two-Handed Weapon Is Worth Double below for why the two come out equal in affix value regardless.
 
   
 
@@ -1476,6 +1476,52 @@ A weapon carries two things no other item has: a physical **sub-type**, and a nu
   
 
 **Two one-handed weapons hold four damage types against a two-hander's three.** That is what makes dual wielding the primary route to multiclassing that section V describes, since every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage.
+
+  
+
+### **A Two-Handed Weapon Is Worth Double, Per Implicit and Per Affix**
+
+A two-handed weapon multiplies **both** its implicit values and every affix rolled on it by **2**. The values in the table above are the stated ones; a Greatsword therefore supplies 156 flat damage, and a flat damage affix on it is worth twice what the same affix is worth on an Axe.
+
+  
+
+**The figure is derived, not chosen.** A dual wielder carries two weapons with four affix slots each, so eight against a two-hander's four. Two is the multiplier that makes the two loadouts worth the same in affixes.
+
+  
+
+**Section VII already requires that equality.** It states that two one-handed weapons count as one equipped piece for Power Score so that dual wielding is not worth free Power Score. The rating model deliberately scores both loadouts the same, so whichever side had the larger affix budget would be carrying power its rating does not count.
+
+  
+
+**It has to reach the implicits, not only the affixes.** Two one-handed weapons **sum** their base damage, so an Axe and a Sword give 86 against a Greatsword's stated 78. With the affix half alone the two-hander would lose on damage while also holding one fewer damage type, which makes it strictly worse. Reaching a damage advantage through the affix half alone would need a multiplier near 2.75, which would hand the two-hander three affix slots the dual wielder does not have — the same free power the rule above forbids, pointed the other way.
+
+  
+
+With the multiplier applied to both, a two-handed weapon deals about **1.33 times** the damage per hit and about **1.26 times** the damage per second, and the dual wielder holds a fourth damage type and a wider spread of affixes.
+
+  
+
+### **What a Dual Wielder Has**
+
+|  |  |  |
+| :-- | :-: | :-: |
+| \*\*\*\* | \*\*Two-handed\*\* | \*\*Dual wielding\*\* |
+| Equipped pieces | 18 | 19 |
+| Affix slots | 72 | 76 |
+| Damage types | 3 | 4 |
+| Weapon affix slots, in one-handed terms | 8 | 8 |
+
+  
+
+**Both weapons' base damage is summed.** One attack deals the damage of both.
+
+  
+
+**Attack speed is the average of the two weapons.** Not the sum, and not the slower. This is what stops summed damage becoming a strict advantage: a dual wielder deals more per swing than either weapon alone but does not also swing at the faster weapon's rate.
+
+  
+
+**There is no defensive penalty for dual wielding.** Some games in the genre charge one; this design does not.
 
   
 

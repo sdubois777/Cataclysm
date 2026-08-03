@@ -1166,3 +1166,77 @@ def test_the_pool_is_bigger_than_it_was():
     drop could roll, with each resistance family counted once."""
     assert af.total_pool_size() >= 55
     assert len(af.HYBRID_AFFIXES) >= 10
+
+
+# --------------------------------------------------------------------------
+# The two-handed multiplier, and what balances it against dual wielding
+# --------------------------------------------------------------------------
+
+def test_a_two_handed_weapon_doubles_its_own_implicits():
+    greatsword = af.base_named("Greatsword")
+    assert greatsword.value_multiplier == af.TWO_HANDED_MULTIPLIER
+    # The stated base damage is 78. What the base actually supplies is double.
+    assert greatsword.implicit_values()["attack_damage"] == pytest.approx(156.0)
+
+
+def test_a_one_handed_weapon_and_armour_do_not():
+    axe = af.base_named("Axe")
+    helm = af.base_named("Helm")
+    assert axe.value_multiplier == 1.0
+    assert helm.value_multiplier == 1.0
+    assert axe.implicit_values()["attack_damage"] == pytest.approx(46.0)
+
+
+def test_an_affix_on_a_two_handed_weapon_is_worth_double():
+    greatsword = af.base_named("Greatsword")
+    axe = af.base_named("Axe")
+    assert (greatsword.affix_value(af.FLAT_DAMAGE)
+            == pytest.approx(2.0 * axe.affix_value(af.FLAT_DAMAGE)))
+
+
+def test_the_two_loadouts_are_worth_the_same_in_affixes():
+    """The reason the multiplier is 2.0 and not something else.
+
+    Section VII requires it: two one-handed weapons count as one equipped piece
+    for Power Score, so if the affix budgets differed, one side would carry
+    power its rating does not count.
+    """
+    two_handed = af.AFFIX_SLOTS_PER_PIECE * af.TWO_HANDED_MULTIPLIER
+    dual_wield = af.AFFIX_SLOTS_PER_PIECE * 2
+    assert two_handed == pytest.approx(dual_wield)
+
+
+def test_a_dual_wielder_carries_one_more_piece_and_four_more_slots():
+    assert af.DUAL_WIELD_GEAR_PIECES == af.GEAR_PIECES + 1
+    assert af.DUAL_WIELD_TOTAL_AFFIX_SLOTS == af.TOTAL_AFFIX_SLOTS + 4
+
+
+def test_only_a_two_handed_weapon_multiplies_anything():
+    for base in af.ITEM_BASES:
+        two_handed = isinstance(base, af.WeaponBase) and base.hands == 2
+        expected = af.TWO_HANDED_MULTIPLIER if two_handed else 1.0
+        assert base.value_multiplier == expected, base.name
+
+
+def test_the_multiplier_helper_rejects_an_impossible_hand_count():
+    assert af.two_handed_multiplier(1) == 1.0
+    assert af.two_handed_multiplier(2) == af.TWO_HANDED_MULTIPLIER
+    with pytest.raises(ValueError, match="1 or 2 hands"):
+        af.two_handed_multiplier(3)
+
+
+def test_the_two_handed_bonus_beats_summed_one_handed_base_damage():
+    """The reason the multiplier has to reach the implicits and not only the
+    affixes.
+
+    Two one-handed bases SUM, which the project owner settled on 2026-08-03. An
+    Axe and a Sword give 86 against a Greatsword's stated 78, so with the affix
+    half alone the two-hander loses on damage while also holding one fewer
+    damage type. Doubling the implicit is what reverses it.
+    """
+    summed_one_handed = sum(af.base_named(n).implicit_values()["attack_damage"]
+                            for n in ("Axe", "Sword"))
+    two_handed = af.base_named("Greatsword").implicit_values()["attack_damage"]
+
+    assert summed_one_handed == pytest.approx(86.0)
+    assert two_handed > summed_one_handed

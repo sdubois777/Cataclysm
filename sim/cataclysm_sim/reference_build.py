@@ -22,6 +22,18 @@ what players will do. It is one honestly-assembled character, stated in full, so
 that a statement like "a Common enemy takes 25 hits to kill you" has something
 concrete behind it. A build that spent its slots differently would get different
 numbers, which is the point of having slots.
+
+IT IS A TWO-HANDED BUILD, and it does not model which piece each affix sits on.
+`BASES` ends in a Greatsword, so this is the 18-piece, 72-affix-slot loadout
+rather than the dual wielder's 19 and 76. `PREFIX_SPEND` and `SUFFIX_SPEND` are
+totals across all eighteen pieces and never say which piece carries which affix,
+so the two-handed multiplier that a weapon applies to its own four affixes is
+not applied here. That understates this character's damage and changes none of
+its defences, because every affix a weapon can roll is offensive. Since what
+this module exists to measure is survivability, and the enemy damage constants in
+`enemy_stats.py` are fitted against that, the omission does not touch anything
+those constants depend on. It would have to be fixed before this build is used
+to measure damage.
 """
 
 from __future__ import annotations
@@ -96,8 +108,15 @@ def gear(affix_tier: int = 7, gear_level: int = af.MAX_GEAR_LEVEL) -> Gear:
             increased[affix.stat] += value / 100.0
 
     for base_name in BASES:
-        for implicit in af.base_named(base_name).implicits:
-            value = implicit.value_at(gear_level)
+        base = af.base_named(base_name)
+        # Asked of the BASE rather than of each implicit, because a two-handed
+        # weapon doubles its own implicits and reading them directly loses that
+        # silently. It changes no number here today -- the Greatsword's only
+        # implicit is attack damage, which is popped below -- but it would the
+        # moment a two-handed base gained anything else.
+        for implicit in base.implicits:
+            value = implicit.value_at(gear_level,
+                                      two_handed=base.value_multiplier != 1.0)
             if implicit.kind == "flat":
                 flat[implicit.stat] += value
             else:
