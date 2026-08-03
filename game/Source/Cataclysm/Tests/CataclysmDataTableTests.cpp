@@ -81,7 +81,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 
 	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      116)
 	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          398)
-	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsPositive.csv",  381)
+	// 380, not 381. One weight 1 positive enchantment was removed: it read "Your
+	// block chance applies to AOE damage at 50% effectiveness", which became
+	// strictly harmful once block was decided to apply to area damage by
+	// default at full effectiveness.
+	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsPositive.csv",  380)
 	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsNegative.csv",  195)
 	CHECK_TABLE(FCataclysmEnemyModifierRow,     "EnemyModifiers.csv",         79)
 	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          46)

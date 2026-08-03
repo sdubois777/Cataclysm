@@ -2,7 +2,11 @@
 
 #include "Player/CataclysmPlayerState.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
-#include "AbilitySystem/CataclysmAttributeSet.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 
 ACataclysmPlayerState::ACataclysmPlayerState()
 {
@@ -15,7 +19,15 @@ ACataclysmPlayerState::ACataclysmPlayerState()
 	// own interface needs.
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 
-	AttributeSet = CreateDefaultSubobject<UCataclysmAttributeSet>(TEXT("AttributeSet"));
+	// Created as default subobjects rather than granted at runtime, because a
+	// player has all five for its whole lifetime. An attribute set added later
+	// does not retroactively replicate to clients that already have the
+	// component, so the ones every player always carries are created here.
+	VitalAttributes = CreateDefaultSubobject<UCataclysmVitalAttributeSet>(TEXT("VitalAttributes"));
+	PrimaryAttributes = CreateDefaultSubobject<UCataclysmPrimaryAttributeSet>(TEXT("PrimaryAttributes"));
+	CombatAttributes = CreateDefaultSubobject<UCataclysmCombatAttributeSet>(TEXT("CombatAttributes"));
+	ResistanceAttributes = CreateDefaultSubobject<UCataclysmResistanceAttributeSet>(TEXT("ResistanceAttributes"));
+	ClassResourceAttributes = CreateDefaultSubobject<UCataclysmClassResourceAttributeSet>(TEXT("ClassResourceAttributes"));
 
 	// APlayerState replicates at 1 Hz by default, which is fine for a score but
 	// far too slow for health bars and cooldowns driven off attributes.
