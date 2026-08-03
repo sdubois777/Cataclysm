@@ -322,29 +322,86 @@ def test_a_damage_type_an_archetype_never_mentions_is_simply_unresisted():
     assert at_tier_eight("Common", "Imp").resistance_to("Void") == 0.0
 
 
-@pytest.mark.parametrize("kind", ["Imp", "Succubus", "Hellhound", "Brute",
-                                  "Corrupted Sentinel", "Abyssal Warden",
-                                  "Gatekeeper"])
-def test_demonic_enemies_resist_demonic_damage_and_are_weak_to_celestial(kind):
-    """A Cataclysm's own damage type should be the worst thing to bring to it,
-    and its opposite the best. This is what makes the damage type on a weapon a
-    decision rather than a number."""
+@pytest.mark.parametrize("kind", sorted(es.ARCHETYPES))
+def test_no_enemy_resists_or_is_weak_to_its_own_cataclysms_damage_type(kind):
+    """The one hard rule about resistances.
+
+    The design hands the player the damage type of the Cataclysm they are
+    fighting, and in the first run they cannot obtain another. An enemy that
+    resists that type is an unavoidable tax; one that is weak to it is an
+    unmissable bonus. Neither is a decision, so the profile must not mention it
+    in either direction.
+
+    An earlier version gave every Demonic enemy 40% Demonic resistance, which
+    was a flat 40% damage loss against every enemy in the first run.
+    """
     e = at_tier_eight("Elite", kind)
-    assert e.resistance_to("Demonic") > 0
-    assert e.resistance_to("Celestial") < 0
+    assert e.resistance_to(e.archetype.cataclysm) == 0.0
+
+
+def test_the_import_time_check_on_that_rule_actually_fires():
+    """A guard nobody has seen fail is a guard nobody should trust."""
+    tainted = es.Archetype(name="Tainted", role="test",
+                           resistances={"Demonic": 40.0})
+    real = dict(es.ARCHETYPES)
+    es.ARCHETYPES["Tainted"] = tainted
+    try:
+        with pytest.raises(AssertionError, match="own Cataclysm's damage type"):
+            es._check_no_archetype_mentions_its_own_cataclysms_damage_type()
+    finally:
+        es.ARCHETYPES.clear()
+        es.ARCHETYPES.update(real)
+
+
+def test_what_an_enemy_resists_says_what_it_is_made_of():
+    """The replacement rule. Spot-checked against the design's own descriptions
+    rather than asserted in the abstract."""
+    # Not alive, so what kills and sickens living things does little.
+    sentinel = es.archetype("Corrupted Sentinel")
+    assert sentinel.resistance_to("Death") > 0
+    assert sentinel.resistance_to("Pestilence") > 0
+    # "Heavily armored" turns blades. "Can be outmaneuvered" is a slow mind.
+    brute = es.archetype("Brute")
+    assert brute.resistance_to("War") > 0
+    assert brute.resistance_to("Chaos") < 0
+    # A creature of the mind is the exact inverse of that.
+    succubus = es.archetype("Succubus")
+    assert succubus.resistance_to("Chaos") > 0
+    assert succubus.resistance_to("War") < 0
+
+
+def test_swarm_fodder_resists_nothing_at_all():
+    """The Imp is described as weak individually. It should die to whatever the
+    player happens to have brought."""
+    assert es.archetype("Imp").resistances == {}
+
+
+def test_the_last_boss_has_no_weakness_so_there_is_no_cheap_answer_to_it():
+    """And it is the one enemy in the vertical slice that gives the player's
+    resistance penetration stat a target, since nothing else resists the damage
+    type the player is given."""
+    gatekeeper = es.archetype("Gatekeeper")
+    assert all(r > 0 for r in gatekeeper.resistances.values())
+    others = [k for k in es.ARCHETYPES.values() if k.name != "Gatekeeper"]
+    assert all("Demonic" not in k.resistances for k in others)
 
 
 def test_resistance_is_counted_when_reporting_what_gear_has_to_deliver():
     """Otherwise the figure would understate what a player needs against
     everything that resists their damage type."""
     gk = at_tier_eight("Cataclysm Boss", "Gatekeeper")
-    weak = es.player_damage_to_kill_in(gk, 30.0, "Celestial")
-    resisted = es.player_damage_to_kill_in(gk, 30.0, "Demonic")
-    assert resisted > weak
-    # 50% resisted means twice the damage; -20% means less than the raw figure.
     raw = gk.effective_health / 30.0
-    assert resisted == pytest.approx(raw / 0.50)
-    assert weak == pytest.approx(raw / 1.20)
+    # The Gatekeeper resists every type except the one the player is given.
+    assert es.player_damage_to_kill_in(gk, 30.0, "Demonic") == pytest.approx(raw)
+    assert es.player_damage_to_kill_in(gk, 30.0, "Celestial") == pytest.approx(
+        raw / 0.75)
+
+
+def test_the_reported_figure_defaults_to_the_damage_type_the_player_is_given():
+    """Rather than to whichever type happens to flatter the number."""
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    assert es.player_damage_to_kill_in(warden, 30.0) == pytest.approx(
+        es.player_damage_to_kill_in(warden, 30.0, "Demonic"))
 
 
 # --------------------------------------------------------------------------

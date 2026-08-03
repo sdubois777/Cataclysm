@@ -1381,7 +1381,32 @@ Enemy Score is a power rating. It says what an encounter is worth, not how much 
 
   
 
-**Every enemy of a Cataclysm resists its damage type and is weak to the opposing one.** Demonic enemies resist Demonic damage and take extra Celestial damage. Negative resistance is legal and means exactly that: damage taken is increased. This is what makes the damage type on a weapon a decision rather than a number.
+**An enemy's resistances say what it is made of and how it fights.** A construct resists what kills and sickens living things. Armored flesh turns blades. A creature whose power is over the mind is hard to unhinge and fragile once something reaches it. Negative resistance is legal and means damage taken is increased.
+
+  
+
+**No enemy resists or is weak to the damage type of its own Cataclysm.** Section IV states that the active Cataclysm determines the player's damage type, and in the first run a player has only that one and cannot obtain another until a Cataclysm has been defeated. An enemy resisting that type would be a tax the player cannot avoid; one weak to it would be a bonus they cannot miss. Neither is a decision, so neither is allowed.
+
+  
+
+The vertical slice enemies, in percent. A dot means the type is not mentioned. Note that the Demonic column is empty throughout, and that the Brute and the Succubus are deliberate opposites:
+
+  
+
+|  |  |  |  |  |  |  |  |  |
+| :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| \*\*Enemy\*\* | \*\*War\*\* | \*\*Demonic\*\* | \*\*Death\*\* | \*\*Pestilence\*\* | \*\*Famine\*\* | \*\*Celestial\*\* | \*\*Chaos\*\* | \*\*Void\*\* |
+| Imp | . | . | . | . | . | . | . | . |
+| Hellhound | . | . | . | 30 | \-25 | . | . | . |
+| Succubus | \-25 | . | . | . | . | . | 30 | . |
+| Brute | 30 | . | . | . | . | . | \-25 | . |
+| Corrupted Sentinel | \-25 | . | 40 | 40 | . | . | . | . |
+| Abyssal Warden | 30 | . | 30 | 30 | 30 | . | . | \-25 |
+| Gatekeeper | 25 | . | 25 | 25 | 25 | 25 | 25 | 25 |
+
+  
+
+**The Gatekeeper resists everything it is allowed to and has no weakness**, so there is no cheap answer to the last fight. It is also the only enemy in the vertical slice that gives the player's resistance penetration stat anything to work on, since nothing else resists the damage type the player is given.
 
   
 

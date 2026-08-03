@@ -22,6 +22,14 @@ TWO LAYERS, AND THEY OWN DIFFERENT THINGS.
         The Imp is fast whether it is Common or Legendary. The Corrupted
         Sentinel never moves. The Brute is always heavily armoured.
 
+RESISTANCE SAYS WHAT A CREATURE IS MADE OF, AND NEVER WHICH CATACLYSM IT IS
+FROM. See `_check_no_archetype_mentions_its_own_cataclysms_damage_type` for the
+full reasoning. The short version: the design hands the player the damage type of
+the Cataclysm they are fighting, so an enemy resisting that type is an
+unavoidable tax and an enemy weak to it is an unmissable bonus. Neither is a
+decision. A construct resists what kills living things; armoured flesh resists
+blades; a creature of the mind resists madness.
+
 An earlier version of this file put attack interval, criticals, movement and
 resistance on the RARITY, which said a Cataclysm Boss winds up more slowly than
 a Common enemy purely because it is rarer. That is a statement about what kind of
@@ -109,18 +117,16 @@ ARMOR_PER_STEP = 1.35
 # Archetypes: what KIND of thing the enemy is
 # --------------------------------------------------------------------------
 
-#: Every enemy of a Cataclysm shares its damage type and a resistance to it, and
-#: is vulnerable to Celestial. Merged into each archetype below rather than being
-#: a third layer, so that one archetype can still override any of it.
-DEMONIC_PROFILE: dict[str, float] = {"Demonic": 40.0, "Celestial": -25.0}
-
-
 @dataclass(frozen=True)
 class Archetype:
     """One kind of enemy. Rarity scales this; it does not reshape it."""
 
     name: str
     role: str
+
+    #: Which Cataclysm this enemy belongs to. Also the damage type it deals: the
+    #: design gives each Cataclysm one damage type and its enemies use it.
+    cataclysm: str = "Demonic"
 
     # How big this kind of thing is, relative to an average enemy of its rarity.
     health_share: float = 1.0
@@ -134,8 +140,17 @@ class Archetype:
     move_speed: float = 4.5           # metres per second
     evasion: float = 0.0              # percent, direct attacks only
     energy_shield_fraction: float = 0.0   # of this enemy's health
-    damage_type: str = "Demonic"
+
+    #: What this creature is made of and how it fights, expressed as percentages
+    #: by damage type. Negative means it takes extra damage. See
+    #: `_check_no_archetype_mentions_its_own_cataclysms_damage_type` below for
+    #: the one hard rule these must obey.
     resistances: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def damage_type(self) -> str:
+        """What this enemy deals. The same as its Cataclysm, by design."""
+        return self.cataclysm
 
     def resistance_to(self, damage_type: str) -> float:
         """Percent resisted. Negative means this enemy takes extra damage."""
@@ -144,10 +159,6 @@ class Archetype:
                 f"unknown damage type {damage_type!r}; "
                 f"expected one of {list(DAMAGE_TYPES)}")
         return self.resistances.get(damage_type, 0.0)
-
-
-def _demonic(**overrides: float) -> dict[str, float]:
-    return {**DEMONIC_PROFILE, **overrides}
 
 
 #: The abstract average enemy. Not a creature anyone fights: it exists so the
@@ -167,7 +178,8 @@ ARCHETYPES: dict[str, Archetype] = {
             role="Fast, swarming melee. Weak individually",
             health_share=0.35, damage_share=0.45, armor_share=0.0,
             attack_interval=0.9, move_speed=6.5, evasion=25.0,
-            resistances=_demonic(),
+            # Nothing. Swarm fodder should die to whatever the player brought.
+            resistances={},
         ),
         Archetype(
             name="Succubus",
@@ -175,7 +187,9 @@ ARCHETYPES: dict[str, Archetype] = {
             health_share=0.60, damage_share=1.60, armor_share=0.20,
             attack_interval=2.6, crit_chance=10.0, crit_multiplier=200.0,
             move_speed=3.5, evasion=10.0, energy_shield_fraction=0.50,
-            resistances=_demonic(Chaos=25.0),
+            # A creature whose whole power is over the mind is hard to unhinge,
+            # and is fragile the moment something reaches it.
+            resistances={"Chaos": 30.0, "War": -25.0},
         ),
         Archetype(
             name="Hellhound",
@@ -183,21 +197,28 @@ ARCHETYPES: dict[str, Archetype] = {
             health_share=0.75, damage_share=0.95, armor_share=0.30,
             attack_interval=1.1, crit_chance=15.0, crit_multiplier=175.0,
             move_speed=7.5, evasion=20.0,
-            resistances=_demonic(),
+            # A beast that already lives in filth, and one that burns through
+            # its own reserves to move that fast.
+            resistances={"Pestilence": 30.0, "Famine": -25.0},
         ),
         Archetype(
             name="Brute",
             role="Heavily armored slow melee. Can be outmaneuvered",
             health_share=2.20, damage_share=1.75, armor_share=3.00,
             attack_interval=2.8, crit_multiplier=200.0, move_speed=2.5,
-            resistances=_demonic(War=25.0),
+            # The exact inverse of the Succubus, deliberately: armour turns
+            # blades, and a slow mind is the thing that breaks. Two enemies in
+            # the same Cataclysm that want opposite weapons.
+            resistances={"War": 30.0, "Chaos": -25.0},
         ),
         Archetype(
             name="Corrupted Sentinel",
             role="Stationary ranged. Forces the player to stay mobile",
             health_share=1.30, damage_share=1.10, armor_share=2.20,
             attack_interval=2.0, move_speed=0.0, energy_shield_fraction=0.35,
-            resistances=_demonic(Void=30.0),
+            # It is not alive, so nothing that kills or sickens a living thing
+            # does much. Force still breaks it.
+            resistances={"Death": 40.0, "Pestilence": 40.0, "War": -25.0},
         ),
         Archetype(
             name="Abyssal Warden",
@@ -205,8 +226,11 @@ ARCHETYPES: dict[str, Archetype] = {
             health_share=3.50, damage_share=1.90, armor_share=3.50,
             attack_interval=2.4, crit_chance=10.0, crit_multiplier=200.0,
             move_speed=2.8,
-            resistances=_demonic(Demonic=50.0, Celestial=-20.0,
-                                 War=30.0, Chaos=30.0),
+            # The design says high damage resistance, so it resists broadly:
+            # stone shrugs off force, and lava is neither alive nor starvable.
+            # Unmaking is what gets through sheer mass.
+            resistances={"War": 30.0, "Death": 30.0, "Pestilence": 30.0,
+                         "Famine": 30.0, "Void": -25.0},
         ),
         Archetype(
             name="Gatekeeper",
@@ -214,12 +238,55 @@ ARCHETYPES: dict[str, Archetype] = {
             health_share=5.00, damage_share=2.10, armor_share=2.50,
             attack_interval=3.0, crit_chance=15.0, crit_multiplier=250.0,
             move_speed=3.0,
-            resistances=_demonic(Demonic=50.0, Celestial=-20.0,
-                                 **{t: 20.0 for t in DAMAGE_TYPES
-                                    if t not in ("Demonic", "Celestial")}),
+            # Resists everything it can and has no weakness at all, so there is
+            # no cheap answer to the last fight. The player's own resistance
+            # penetration is the counter, and this is the one enemy in the
+            # vertical slice that gives that stat a target.
+            resistances={t: 25.0 for t in DAMAGE_TYPES if t != "Demonic"},
         ),
     )
 }
+
+
+def _check_no_archetype_mentions_its_own_cataclysms_damage_type() -> None:
+    """THE ONE HARD RULE, and the reason this file was rewritten.
+
+    An enemy's resistance profile must not mention its own Cataclysm's damage
+    type, in either direction.
+
+    The design gives the player the damage type of the Cataclysm they are
+    fighting: `Cataclysm_GDD_v2.md` says loot is biased toward weapons tuned to
+    it, and weapon damage type is what unlocks skills and class trees. So in the
+    first run a player has exactly one damage type and cannot obtain another
+    until they have already beaten a Cataclysm.
+
+    An earlier version had every Demonic enemy resist Demonic damage by 40%.
+    That is a flat 40% damage loss against 100% of enemies in the first run,
+    with no counterplay available, easing off only as later runs add Cataclysms
+    and the player gains other damage types. It made the game hardest exactly
+    where the player has the fewest options.
+
+    Resisting it is a tax the player cannot avoid; being weak to it is a bonus
+    they cannot miss. Neither is a decision, so neither belongs here. What an
+    enemy resists says what it is made of and how it fights.
+    """
+    for kind in ARCHETYPES.values():
+        assert kind.cataclysm not in kind.resistances, (
+            f"{kind.name} has a {kind.cataclysm} resistance of "
+            f"{kind.resistances[kind.cataclysm]}, but {kind.cataclysm} is its "
+            "own Cataclysm's damage type, which is the one the player is given.")
+
+
+def _check_every_resistance_names_a_real_damage_type() -> None:
+    for kind in ARCHETYPES.values():
+        for damage_type in kind.resistances:
+            assert damage_type in DAMAGE_TYPES, (
+                f"{kind.name} resists {damage_type!r}, which is not one of the "
+                f"eight damage types: {list(DAMAGE_TYPES)}")
+
+
+_check_no_archetype_mentions_its_own_cataclysms_damage_type()
+_check_every_resistance_names_a_real_damage_type()
 
 
 def archetype(name: str) -> Archetype:
@@ -341,13 +408,15 @@ def hits_to_kill_player(enemy: EnemyStats, player_effective_health: float,
 
 
 def player_damage_to_kill_in(enemy: EnemyStats, hits: float,
-                             damage_type: str = "Celestial") -> float:
+                             damage_type: str | None = None) -> float:
     """The damage per hit a player needs to kill this enemy in so many hits.
 
     This is the number gear has to produce, and it is now an OUTPUT of the enemy
     design rather than an input to it. Resistance is counted, so the damage type
-    matters: the default is the one Demonic enemies are weak to.
+    matters. The default is the Cataclysm's own type, because that is what the
+    design gives the player for fighting it.
     """
+    damage_type = enemy.archetype.cataclysm if damage_type is None else damage_type
     resisted = 1.0 - enemy.resistance_to(damage_type) / 100.0
     return enemy.effective_health / (max(hits, 1e-9) * max(resisted, 1e-9))
 
@@ -399,12 +468,23 @@ if __name__ == "__main__":
     print("    Brute share a score and share nothing else.")
     print()
 
-    print("    Resistances are the archetype's too. Against the Gatekeeper:")
-    gk = stats_on_floor("Cataclysm Boss", TIER, "Cataclysm", kind="Gatekeeper")
-    for dt in DAMAGE_TYPES:
-        r = gk.resistance_to(dt)
-        note = "  <- weak to this" if r < 0 else ""
-        print(f"      {dt:<12} {r:>6.0f}%{note}")
+    print("    Resistance says what a creature is made of. No enemy resists or")
+    print("    is weak to its own Cataclysm's damage type, because that is the")
+    print("    one the design hands the player:")
+    print()
+    print(f"    {'enemy':<20} " + " ".join(f"{d[:4]:>5}" for d in DAMAGE_TYPES))
+    print("    " + "-" * 68)
+    for name, _ in AT:
+        k = archetype(name)
+        cells = []
+        for dt in DAMAGE_TYPES:
+            r = k.resistance_to(dt)
+            cells.append("    ." if r == 0 else f"{r:>5.0f}")
+        print(f"    {name:<20} " + " ".join(cells))
+    print()
+    print("    The Demonic column is empty for every one of them. Negative means")
+    print("    extra damage taken. The Brute and the Succubus are deliberate")
+    print("    opposites: armour turns blades, and a slow mind is what breaks.")
     print()
 
     print("=" * 78)

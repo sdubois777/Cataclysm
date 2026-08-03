@@ -80,10 +80,44 @@ as a specific effect.
 simulation, and the game design document still described enemy penetration
 scaling instead. That is why the duplicate was written in the first place.
 
-**Negative resistance is legal and means damage taken is increased.** Every enemy
-of a Cataclysm resists its own damage type and is weak to the opposing one, so
-Demonic enemies resist Demonic and take extra Celestial damage. This is what
-makes the damage type on a weapon a decision rather than a number.
+**Negative resistance is legal and means damage taken is increased.**
+
+**An enemy's resistances say what it is made of and how it fights, and never
+which Cataclysm it belongs to.** A first version had every enemy of a Cataclysm
+resist its own damage type by 40% and take extra damage from the opposing one.
+The project owner rejected it, and the objection is structural rather than a
+matter of tuning.
+
+Section IV of the game design document states that the active Cataclysm
+determines the player's damage type: loot is biased toward weapons tuned to it,
+and weapon damage type is what unlocks skills and class trees. A run also begins
+with one Cataclysm and adds another each time one is defeated. So:
+
+| | Cataclysms active | Damage types the player can hold | Enemies resisting their damage |
+|---|---|---|---|
+| First run | 1 | 1 | 100% |
+| Eighth run | 8 | up to 8 | 1 in 8 |
+
+That is a flat 40% damage loss against every enemy in the game in the first run,
+with no counterplay available, because a second damage type cannot be obtained
+until a Cataclysm has already been beaten. It then eases off as the player gets
+stronger. The rule made the game hardest exactly where the player has the fewest
+options, which is the difficulty curve running backwards.
+
+**The rule that replaced it:** an enemy's resistance profile must not mention its
+own Cataclysm's damage type in either direction. Resisting it is a tax the player
+cannot avoid; being weak to it is a bonus they cannot miss. Neither is a
+decision. What is left is material and role: a construct resists what kills and
+sickens living things, armored flesh turns blades, a creature of the mind resists
+madness and is fragile in melee. Two enemies in the same Cataclysm can then want
+opposite weapons, which the Brute and the Succubus deliberately do.
+
+**The known cost, accepted.** Nothing in the vertical slice resists Demonic
+damage except the Gatekeeper, so the player's resistance penetration stat has
+exactly one target in the first run. It grows into relevance as later runs add
+Cataclysms and the player carries more damage types. The Gatekeeper resists
+everything it is allowed to and has no weakness at all, so the last fight has no
+cheap answer and penetration is the counter.
 
 **Enemy evasion is answered by area damage**, which the design already says
 evasion cannot avoid. So an evasive enemy is a reason to bring area damage rather
