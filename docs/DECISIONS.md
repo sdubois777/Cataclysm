@@ -20,6 +20,88 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — Enemy stat blocks: rarity, archetype, and no enemy penetration
+
+**Decision.** Enemy Score is a power rating and says nothing about statistics.
+Two layers turn it into a stat block, and they own different things.
+
+| Layer | What it sets |
+|---|---|
+| Rarity | Magnitude only: health, damage, armor, energy shield |
+| Archetype | Attack interval, criticals, movement, evasion, shield fraction, resistances, and how big this kind of creature is relative to average |
+
+**Rarity scales magnitude and nothing else.** An earlier version of this model
+put attack interval, criticals, movement and resistance on the rarity, which
+said a Cataclysm Boss winds up more slowly than a Common enemy purely because it
+is rarer. Winding up slowly is a statement about what kind of creature something
+is, not about how large it is, so it belongs to the archetype. Under the split, a
+Legendary Imp is a bigger Imp rather than a different animal, and an Elite
+Succubus and an Elite Brute share a score and share nothing else.
+
+**Armor is not forced to zero at Common.** The earlier model gave Common enemies
+no armor as a rarity rule, which contradicts the design's own Brute, described as
+heavily armored. Whether a creature has armor is the archetype's call; the Imp's
+share is zero and the Brute's is high, at every rarity.
+
+**Health grows faster than damage: 1.85 per rarity step against 1.55.** Across
+the six rarities that is roughly 23 times the health and 9 times the hit. Growing
+both at the same rate produces something unkillable and instantly lethal at once,
+which is a wall rather than a fight.
+
+**Damage growth was raised from 1.21, and attack interval no longer rises with
+rarity.** At 1.21 a Cataclysm Boss hit was 2.8 times a Common enemy's, and
+because attack interval also rose with rarity the two nearly cancelled: damage
+per second across the whole ladder grew only 1.2 times. The rarest enemies in the
+game were therefore not frightening. Attack interval is the archetype's now, so
+nothing cancels the damage growth.
+
+**Enemies carry no Penetration stat. Overwhelm already does that job.** Giving
+each rarity a penetration figure was the same mechanic written twice, at roughly
+double the size and disagreeing with the original. Measured at tier 8 against a
+player at that tier's maximum Power Score:
+
+| Rarity | Per-rarity penetration, now removed | Overwhelm, already present |
+|---|---|---|
+| Common | 0% | 8.9% |
+| Herald | 15% | 12.6% |
+| Cataclysm Boss | 25% | 21.4% |
+
+Overwhelm is the better of the two copies for two reasons. It shrinks to nothing
+as the player out-powers the content, where a fixed per-rarity number punishes
+forever no matter how well geared. And it strips every kind of mitigation rather
+than only resistance, so an armor or block or evasion build cannot sidestep it.
+Over-capping resistance keeps its purpose and gets a cleaner one: the headroom
+above 70% is exactly what Overwhelm eats into. The player's own offensive
+Penetration stat is unaffected, and an enemy modifier may still grant penetration
+as a specific effect.
+
+**Overwhelm was in no design document.** It existed only in
+`sim/cataclysm_sim/combat.py`, where it has been since the first commit of the
+simulation, and the game design document still described enemy penetration
+scaling instead. That is why the duplicate was written in the first place.
+
+**Negative resistance is legal and means damage taken is increased.** Every enemy
+of a Cataclysm resists its own damage type and is weak to the opposing one, so
+Demonic enemies resist Demonic and take extra Celestial damage. This is what
+makes the damage type on a weapon a decision rather than a number.
+
+**Enemy evasion is answered by area damage**, which the design already says
+evasion cannot avoid. So an evasive enemy is a reason to bring area damage rather
+than a flat tax on the player's output, and no accuracy stat is needed.
+
+**What this does not settle.** Enemy abilities: the Hellhound's fire trail, the
+Brute's stomp stun, the Gatekeeper's phases and the Abyssal Warden's positional
+weak points are behaviour rather than statistics, and belong with the enemy
+design work in issues #29 and #39.
+
+**Affects:** `Cataclysm_GDD_v2.md` sections IV and X. **Applied 2026-08-03:** an
+Overwhelm subsection was added to section IV, an Enemy Stat Blocks subsection to
+section X, and the three places that described enemy penetration were corrected.
+The working model is `sim/cataclysm_sim/enemy_stats.py`, covered by
+`sim/tests/test_enemy_stats.py`.
+
+---
+
 ## 2026-08-02 — Enemy modifiers versus dungeon modifiers
 
 **Decision.** The two are separate systems and behave differently.

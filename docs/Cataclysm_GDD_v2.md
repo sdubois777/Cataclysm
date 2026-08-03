@@ -858,7 +858,7 @@ Damage-over-time frequency uses the same form, because it is also a rate. Area o
 
   
 
-Over-capping resistance matters because enemy penetration reduces effective resistance, so the headroom is what keeps a character at the cap in practice. Over-capped resistance contributes no Power Score, as section IV states.
+Over-capping resistance matters because Overwhelm reduces effective resistance whenever the player fights above their Power Score, so the headroom is what keeps a character at the cap in practice. Over-capped resistance contributes no Power Score, as section IV states.
 
   
 
@@ -885,7 +885,7 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 | 1. Evasion | Direct attacks only. An evaded hit stops here and does nothing. |
 | 2. Block | Removes 50% of what remains. Applies to area damage as well. |
 | 3. Armor | Reduces damage by `armor / (armor + K)`, where K is 800 × the difficulty tier, capped at 75%. |
-| 4. Resistance | Penetration is subtracted first, then the result is capped at 70%. |
+| 4. Resistance | The attacker's Penetration and any Overwhelm are subtracted first, then the result is capped at 70%. |
 | 5. Damage reduction | The flat percentage stat. |
 | 6. Mana | Only for damage over time, and only if an enchantment grants it. |
 | 7. Energy shield | Absorbs before health, one for one. Does not absorb damage over time. |
@@ -897,7 +897,11 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 
   
 
-**Penetration is applied before the 70% cap, not after.** This is the rule that makes over-capping worth anything, and it is the reason the cap is described as soft. Against 30 penetration, a character at 100 resistance still sits at the 70% cap, while one at exactly 70 drops to 40%. Capping first would make every point above 70 worthless and contradict the design's own allowance for over-capping via affixes.
+**Penetration is applied before the 70% cap, not after.** This is the rule that makes over-capping worth anything, and it is the reason the cap is described as soft. Against 30 penetration, a character at 100 resistance still sits at the 70% cap, while one at exactly 70 drops to 40%. Capping first would make every point above 70 worthless and contradict the design's own allowance for over-capping via affixes. Overwhelm is subtracted at the same point and for the same reason.
+
+  
+
+**Penetration is a player stat. Enemies reduce resistance through Overwhelm instead.** Ordinary enemies carry no Penetration value of their own; what cuts into a player's resistance is the Power Score gap, described below. An enemy modifier may still grant penetration as a specific effect, in the same way it grants a burning aura.
 
   
 
@@ -929,7 +933,41 @@ Most classes have no energy shield at all. It is given to classes that thematica
 
 ### **Resistances**
 
-There are eight resistances, one per damage type. Each caps at 70%. Resistance is reduced by enemy penetration scaling. Over-capping resistance is possible via certain affixes.
+There are eight resistances, one per damage type. Each caps at 70%. Resistance is reduced by Overwhelm when the player fights above their Power Score. Over-capping resistance is possible via certain affixes.
+
+  
+
+### **Overwhelm**
+
+There is no hard gate on difficulty. A player may enter any dungeon at any time. What stops a character walking into content far above them is Overwhelm: an enemy above the player's Power Score strips the player's mitigation in proportion to the gap.
+
+  
+
+Overwhelm = min(50%, 25% × (Enemy Score − Player Power Score) ÷ Tier Width)
+
+  
+
+Tier Width is the difference between the maximum Power Score of the current difficulty tier and that of the tier below it.
+
+  
+
+**Overwhelm strips every kind of mitigation, not only resistance.** Armor, block, evasion and resistance are all reduced. This is what stops a character sidestepping the mechanic by choosing a different defensive layer.
+
+  
+
+**It is rated against tier width rather than a flat number of points.** A flat step is worth 17% of a tier 1 tier width but only 6% of a tier 8 one, which made a fully geared tier 1 player lose 13% of their mitigation at their own final boss while a fully geared tier 8 player lost 47% at theirs. Rating against tier width makes the same relative shortfall cost the same everywhere.
+
+  
+
+**It shrinks to nothing as the player out-powers the content.** A player whose Power Score meets or exceeds an enemy's loses nothing at all. This is the difference between Overwhelm and a fixed penalty: gearing up is what removes it, so it pushes the player toward progression rather than taxing them permanently.
+
+  
+
+**Enemy rarity produces an Overwhelm ladder by itself**, because rarity already raises Enemy Score. At tier 8, a player at that tier's maximum Power Score loses 8.9% of their mitigation to a Common enemy and 21.4% to a Cataclysm Boss, with no per-rarity number written anywhere.
+
+  
+
+**This is the reason to over-cap resistance.** Resistance above 70% is the headroom Overwhelm eats into. A character at exactly 70% loses mitigation the moment they fight above their score; one at 95% stays at the cap until the gap is wide.
 
   
 
@@ -1308,6 +1346,48 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
   
 
 # **X. Enemy System**
+
+## **Enemy Stat Blocks**
+
+Enemy Score is a power rating. It says what an encounter is worth, not how much health the enemy has, how hard it hits, how often, or what it resists. Those come from two layers that own different things.
+
+  
+
+|  |  |
+| :-: | :-- |
+| \*\*Layer\*\* | \*\*What it sets\*\* |
+| Rarity | Magnitude only: health, damage, armor, energy shield |
+| Archetype | Everything else: attack interval, critical strike chance and multiplier, movement speed, evasion, energy shield as a fraction of health, resistances, and how big this kind of creature is relative to average |
+
+  
+
+**Rarity scales magnitude and nothing else.** A Legendary Imp is a bigger Imp. It does not start critting more often, resisting more, or moving differently, because none of those describe how large something is. Per step of rarity above Common, health is multiplied by 1.85, damage by 1.55 and armor by 1.35.
+
+  
+
+**Health grows faster than damage.** Across the six rarities a Cataclysm Boss ends up with roughly 23 times a Common enemy's health and hits about 9 times as hard. Growing both together would produce something both unkillable and instantly lethal, which is a wall rather than a fight.
+
+  
+
+**The archetype decides everything about how a creature behaves.** The Imp is fast at every rarity. The Corrupted Sentinel never moves at any rarity. The Brute is heavily armored even as a Common enemy, which is why armor is not forced to zero at Common; an archetype with no armor simply has none.
+
+  
+
+**Only some archetypes have an energy shield**, on the same principle as the classes: it is given where it thematically fits. Among the vertical slice enemies the Succubus and the Corrupted Sentinel have one and the rest do not.
+
+  
+
+**Enemy evasion is answered by area damage.** Evasion avoids direct attacks only, so an evasive enemy is a reason to bring area damage rather than a flat reduction in the player's output.
+
+  
+
+**Every enemy of a Cataclysm resists its damage type and is weak to the opposing one.** Demonic enemies resist Demonic damage and take extra Celestial damage. Negative resistance is legal and means exactly that: damage taken is increased. This is what makes the damage type on a weapon a decision rather than a number.
+
+  
+
+**Enemies carry no Penetration stat.** Overwhelm, in section IV, already reduces the player's mitigation in proportion to the Power Score gap, and rarity already raises Enemy Score. Giving enemies a penetration value as well would be the same mechanic written twice.
+
+  
 
 ## **Enemy Modifiers**
 

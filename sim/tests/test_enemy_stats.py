@@ -203,6 +203,21 @@ def test_overwhelm_produces_a_rarity_ladder_by_itself():
         assert higher > lower, f"Overwhelm does not rise with rarity: {stripped}"
 
 
+def test_the_overwhelm_figures_quoted_in_the_design_documents_are_still_true():
+    """`Cataclysm_GDD_v2.md` section IV and the 2026-08-03 entry in
+    `DECISIONS.md` both quote these two numbers as the argument for why no
+    per-rarity enemy penetration is needed. If `OVERWHELM_RATE` moved, that
+    argument would quietly stop holding and the documents would be wrong."""
+    width = scoring.tier_width(8)
+    player = scoring.PLAYER_MAX_SCORES[8]
+
+    def stripped(rarity: str) -> float:
+        return combat.overwhelm(player, at_tier_eight(rarity).score, width) * 100
+
+    assert stripped("Common") == pytest.approx(8.9, abs=0.05)
+    assert stripped("Cataclysm Boss") == pytest.approx(21.4, abs=0.05)
+
+
 def test_overwhelm_shrinks_as_the_player_out_powers_the_enemy():
     """The reason it is better than a fixed per-rarity figure, which punished a
     player forever no matter how well geared."""
