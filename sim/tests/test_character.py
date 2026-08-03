@@ -1,0 +1,326 @@
+"""Tests for the character sheet and the stat pipeline."""
+
+from __future__ import annotations
+
+import pytest
+
+from cataclysm_sim import character as ch
+
+
+# --------------------------------------------------------------------------
+# The sheet is complete and self-consistent
+# --------------------------------------------------------------------------
+
+def test_the_sheet_has_thirty_three_stats():
+    assert len(ch.ALL_STATS) == 33
+    assert len(set(ch.ALL_STATS)) == 33, "a stat is listed in two groups"
+
+
+def test_every_stat_has_a_default_and_every_default_is_a_stat():
+    assert set(ch.DEFAULT_STAT_LINE) == set(ch.ALL_STATS)
+
+
+def test_there_is_one_resistance_per_damage_type():
+    assert len(ch.DAMAGE_TYPES) == 8
+    assert len(ch.RESISTANCE_STATS) == 8
+    assert set(ch.RESISTANCE_STATS) <= set(ch.ALL_STATS)
+
+
+def test_the_completeness_check_actually_rejects_a_gap(monkeypatch):
+    """The module runs `_check_stat_line_is_complete` at import. Prove it can
+    fail, or it is decoration."""
+    trimmed = dict(ch.DEFAULT_STAT_LINE)
+    trimmed.pop("armor")
+    monkeypatch.setattr(ch, "DEFAULT_STAT_LINE", trimmed)
+    with pytest.raises(ValueError, match="does not match the character sheet"):
+        ch._check_stat_line_is_complete()
+
+
+def test_every_attribute_scales_at_least_one_stat_on_the_sheet():
+    assert len(ch.ATTRIBUTE_EFFECTS) == 8
+    for attribute, effects in ch.ATTRIBUTE_EFFECTS.items():
+        assert effects, f"{attribute} scales nothing"
+        for stat in effects:
+            assert stat in ch.ALL_STATS, (
+                f"{attribute} scales {stat}, which is not on the sheet")
+
+
+# --------------------------------------------------------------------------
+# Where a base value comes from
+# --------------------------------------------------------------------------
+
+def test_class_supplied_stats_take_their_base_from_the_class_and_level():
+    c = ch.Character(ch.GENERIC, level=10)
+    expected = ch.DEFAULT_STAT_LINE["max_health"].at(10)
+    assert c.base("max_health") == expected
+
+
+def test_weapon_supplied_stats_ignore_the_class_and_take_the_weapon_base():
+    """Attack speed's base belongs to the weapon. A class contributes only an
+    increase, so that a dagger stays faster than a two-handed axe."""
+    assert "attack_speed" in ch.WEAPON_BASE_STATS
+    unarmed = ch.Character(ch.GENERIC, level=100)
+    armed = ch.Character(ch.GENERIC, level=100,
+                         gear=ch.Gear(weapon_base={"attack_speed": 1.4}))
+    assert unarmed.stat("attack_speed") == 0.0
+    assert armed.stat("attack_speed") == pytest.approx(1.4)
+
+
+def test_a_class_increase_scales_the_weapon_base_rather_than_replacing_it():
+    fast = ch.ClassDefinition(name="Fast",
+                              overrides={"attack_speed": ch.Scaling()})
+    c = ch.Character(fast, level=100,
+                     gear=ch.Gear(weapon_base={"attack_speed": 1.0},
+                                  increased={"attack_speed": 0.30}))
+    assert c.stat("attack_speed") == pytest.approx(1.30)
+
+
+def test_gear_flat_is_added_before_scaling_for_weapon_stats_too():
+    c = ch.Character(ch.GENERIC, level=1,
+                     gear=ch.Gear(weapon_base={"attack_speed": 1.0},
+                                  flat={"attack_speed": 0.5},
+                                  increased={"attack_speed": 1.0}))
+    assert c.stat("attack_speed") == pytest.approx(3.0)
+
+
+# --------------------------------------------------------------------------
+# The default line and overrides
+# --------------------------------------------------------------------------
+
+def test_a_class_with_no_overrides_is_exactly_the_default_line():
+    for stat in ch.ALL_STATS:
+        assert ch.GENERIC.scaling(stat) is ch.DEFAULT_STAT_LINE[stat]
+
+
+def test_an_override_replaces_only_the_stat_it_names():
+    tank = ch.ClassDefinition(name="Tank",
+                              overrides={"armor": ch.Scaling(base=50, per_level=5)})
+    assert tank.base_at("armor", 11) == pytest.approx(100.0)
+    assert tank.scaling("max_health") is ch.DEFAULT_STAT_LINE["max_health"]
+
+
+def test_a_class_may_override_any_stat_on_the_sheet():
+    everything = ch.ClassDefinition(
+        name="Everything",
+        overrides={s: ch.Scaling(base=1.0) for s in ch.ALL_STATS})
+    for stat in ch.ALL_STATS:
+        assert everything.base_at(stat, 1) == 1.0
+
+
+def test_overriding_a_stat_that_is_not_on_the_sheet_is_rejected():
+    with pytest.raises(ValueError, match="not on the character sheet"):
+        ch.ClassDefinition(name="Bad",
+                           overrides={"thorns_aura": ch.Scaling(base=1)})
+
+
+def test_gear_naming_a_stat_that_is_not_on_the_sheet_is_rejected():
+    for kwargs in ({"flat": {"nonsense": 1.0}},
+                   {"increased": {"nonsense": 1.0}},
+                   {"weapon_base": {"nonsense": 1.0}}):
+        with pytest.raises(ValueError, match="not on the character sheet"):
+            ch.Gear(**kwargs)
+
+
+def test_asking_for_a_stat_that_is_not_on_the_sheet_is_rejected():
+    c = ch.Character(ch.GENERIC, level=1)
+    with pytest.raises(KeyError):
+        c.stat("thorns_aura")
+
+
+# --------------------------------------------------------------------------
+# The pipeline
+# --------------------------------------------------------------------------
+
+def test_attributes_multiply_the_base_rather_than_adding_to_it():
+    base = ch.DEFAULT_STAT_LINE["max_health"].at(50)
+    c = ch.Character(ch.GENERIC, level=50,
+                     attributes=ch.Attributes(vitality=50))
+    assert c.stat("max_health") == pytest.approx(base * 2.0)
+
+
+def test_gear_flat_enters_before_the_multiplication():
+    level, flat = 50, 1000.0
+    base = ch.DEFAULT_STAT_LINE["max_health"].at(level)
+    c = ch.Character(ch.GENERIC, level=level,
+                     attributes=ch.Attributes(vitality=50),
+                     gear=ch.Gear(flat={"max_health": flat}))
+    assert c.stat("max_health") == pytest.approx((base + flat) * 2.0)
+    assert c.stat("max_health") > base * 2.0 + flat
+
+
+def test_gear_increases_and_attribute_points_share_one_bucket():
+    base = ch.DEFAULT_STAT_LINE["max_health"].at(50)
+    c = ch.Character(ch.GENERIC, level=50,
+                     attributes=ch.Attributes(vitality=25),
+                     gear=ch.Gear(increased={"max_health": 0.50}))
+    assert c.stat("max_health") == pytest.approx(base * 2.0)
+
+
+def test_per_level_scaling_is_linear():
+    sc = ch.DEFAULT_STAT_LINE["max_health"]
+    steps = [sc.at(lv) for lv in range(1, 101)]
+    gaps = {round(b - a, 9) for a, b in zip(steps, steps[1:], strict=False)}
+    assert gaps == {sc.per_level}
+
+
+def test_an_attribute_scales_every_stat_it_is_listed_against():
+    """Efficacy is listed against three stats. All three must respond."""
+    c = ch.Character(ch.GENERIC, level=100,
+                     attributes=ch.Attributes(efficacy=100))
+    for stat in ch.ATTRIBUTE_EFFECTS["efficacy"]:
+        assert c.increases(stat) > 0, f"efficacy did not reach {stat}"
+
+
+def test_a_stat_with_a_zero_base_gains_nothing_from_its_attribute():
+    """A stated consequence of attributes scaling rather than creating. The
+    default line has no evasion, so Agility has nothing to multiply."""
+    c = ch.Character(ch.GENERIC, level=100,
+                     attributes=ch.Attributes(agility=100))
+    assert c.increases("evasion") > 0
+    assert c.stat("evasion") == 0.0
+    # And a class that gives itself a base does benefit.
+    nimble = ch.ClassDefinition(name="Nimble",
+                                overrides={"evasion": ch.Scaling(base=10.0)})
+    assert ch.Character(nimble, level=100,
+                        attributes=ch.Attributes(agility=100)
+                        ).stat("evasion") == pytest.approx(15.0)
+
+
+# --------------------------------------------------------------------------
+# Caps
+# --------------------------------------------------------------------------
+
+def test_a_hard_cap_is_applied():
+    assert ch.HARD_CAPS["crit_chance"] == 100.0
+    crit = ch.ClassDefinition(name="Crit",
+                              overrides={"crit_chance": ch.Scaling(base=80.0)})
+    c = ch.Character(crit, level=100,
+                     gear=ch.Gear(increased={"crit_chance": 5.0}))
+    assert c.stat("crit_chance") == 100.0
+
+
+def test_soft_caps_are_recorded_but_deliberately_not_applied():
+    """Resistances and evasion are exceedable by design, so the model must not
+    clamp them. Clamping would silently delete over-capping."""
+    assert ch.SOFT_CAPS["evasion"] == 60.0
+    assert all(ch.SOFT_CAPS[s] == 70.0 for s in ch.RESISTANCE_STATS)
+    assert not (set(ch.SOFT_CAPS) & set(ch.HARD_CAPS))
+
+    resistant = ch.ClassDefinition(
+        name="Resistant",
+        overrides={"resistance_demonic": ch.Scaling(base=50.0)})
+    c = ch.Character(resistant, level=100,
+                     gear=ch.Gear(increased={"resistance_demonic": 2.0}))
+    assert c.stat("resistance_demonic") == pytest.approx(150.0)
+
+
+# --------------------------------------------------------------------------
+# Intervals divide, frequencies do not
+# --------------------------------------------------------------------------
+
+def test_cooldown_reduction_divides_and_matches_the_worked_example():
+    """The design document's example: a character shown at 25% reduction turns a
+    4 second skill into a 3 second one."""
+    c = ch.Character(ch.GENERIC, level=100,
+                     gear=ch.Gear(increased={"cooldown_reduction": 1.0 / 3.0}))
+    assert c.displayed_cooldown_reduction() == pytest.approx(25.0)
+    assert c.cooldown_of(4.0) == pytest.approx(3.0)
+
+
+def test_one_hundred_efficacy_halves_every_cooldown():
+    c = ch.Character(ch.GENERIC, level=100,
+                     attributes=ch.Attributes(efficacy=100))
+    assert c.cooldown_of(4.0) == pytest.approx(2.0)
+    assert c.displayed_cooldown_reduction() == pytest.approx(50.0)
+
+
+def test_cooldown_can_never_reach_zero():
+    for increased in (1.0, 10.0, 100.0, 10_000.0):
+        c = ch.Character(ch.GENERIC, level=100,
+                         gear=ch.Gear(increased={"cooldown_reduction": increased}))
+        assert c.cooldown_of(4.0) > 0.0
+        assert c.displayed_cooldown_reduction() < 100.0
+
+
+def test_damage_over_time_frequency_rises_with_efficacy():
+    """Frequency is ticks per second, so more Efficacy must mean MORE ticks. If
+    frequency were treated as an interval and divided, this would fall."""
+    dotter = ch.ClassDefinition(name="Dotter",
+                                overrides={"dot_frequency": ch.Scaling(base=2.0)})
+    none = ch.Character(dotter, level=100)
+    lots = ch.Character(dotter, level=100,
+                        attributes=ch.Attributes(efficacy=100))
+    assert lots.stat("dot_frequency") > none.stat("dot_frequency")
+    assert lots.stat("dot_frequency") == pytest.approx(4.0)
+
+
+def test_only_cooldown_reduction_divides():
+    assert ch.RATE_STATS == frozenset({"cooldown_reduction"})
+
+
+# --------------------------------------------------------------------------
+# Validation
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("level", [0, 101, -1])
+def test_level_outside_one_to_one_hundred_is_rejected(level):
+    with pytest.raises(ValueError):
+        ch.Character(ch.GENERIC, level=level)
+
+
+@pytest.mark.parametrize("level", [0, 101])
+def test_scaling_rejects_levels_outside_the_range(level):
+    with pytest.raises(ValueError):
+        ch.Scaling(base=1.0).at(level)
+
+
+def test_spending_more_attribute_points_than_levels_is_rejected():
+    with pytest.raises(ValueError, match="one point per level"):
+        ch.Character(ch.GENERIC, level=10,
+                     attributes=ch.Attributes(vitality=50))
+
+
+def test_points_spread_across_all_eight_attributes_still_counts():
+    with pytest.raises(ValueError, match="one point per level"):
+        ch.Character(ch.GENERIC, level=7,
+                     attributes=ch.Attributes(agility=1, ferocity=1,
+                                              constitution=1, vitality=1,
+                                              mind=1, spirit=1, efficacy=1,
+                                              luck=1))
+
+
+def test_spending_exactly_the_level_in_points_is_allowed():
+    c = ch.Character(ch.GENERIC, level=8,
+                     attributes=ch.Attributes(agility=1, ferocity=1,
+                                              constitution=1, vitality=1,
+                                              mind=1, spirit=1, efficacy=1,
+                                              luck=1))
+    assert c.attributes.total() == 8
+
+
+# --------------------------------------------------------------------------
+# What this module deliberately does not contain
+# --------------------------------------------------------------------------
+
+def test_no_per_class_definitions_are_shipped_here():
+    """Ravager, Ritualist and Masochist are issue #77. Their values need
+    reviewing on their own terms, not arriving with the structure."""
+    defined = [v for v in vars(ch).values()
+               if isinstance(v, ch.ClassDefinition)]
+    assert [d.name for d in defined] == ["Generic"]
+    assert ch.GENERIC.overrides == {}
+
+
+def test_spends_health_does_not_mean_the_class_has_no_mana():
+    """The Masochist pays for abilities with health, but keeps a mana pool until
+    a passive tree node converts it. The flag must not zero the pool."""
+    masochist_like = ch.ClassDefinition(name="Health Spender", spends_health=True)
+    c = ch.Character(masochist_like, level=100,
+                     attributes=ch.Attributes(mind=100))
+    assert c.stat("max_mana") > 0
+
+
+def test_the_full_sheet_can_be_produced_for_any_character():
+    sheet = ch.Character(ch.GENERIC, level=50).sheet()
+    assert set(sheet) == set(ch.ALL_STATS)
+    assert len(sheet) == 33
