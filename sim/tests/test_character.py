@@ -653,6 +653,38 @@ def test_a_more_multiplier_shortens_a_cooldown_rather_than_lengthening_it():
     assert reduced.cooldown_of(8.0) == pytest.approx(4.0)
 
 
+def test_a_more_multiplier_shortens_a_rate_stat_read_off_the_sheet_too():
+    """`Character.stat` has its own branch for rate stats, separate from
+    `cooldown_of`, and a more multiplier has to divide in both.
+
+    Reached only by a class that gives cooldown reduction a nonzero base. The
+    default line gives it zero, so `stat` short-circuits and the branch never
+    runs -- which is why breaking it caught nothing until this test existed.
+    """
+    line = dict(ch.DEFAULT_STAT_LINE)
+    line["cooldown_reduction"] = ch.Scaling(base=8.0, per_level=0.0)
+    hasty = ch.ClassDefinition(name="Hasty", overrides=line)
+
+    plain = ch.Character(hasty, level=100)
+    with_more = ch.Character(hasty, level=100,
+                             more=(ch.More("gem", "cooldown_reduction", 1.00),))
+    assert plain.stat("cooldown_reduction") == pytest.approx(8.0)
+    assert with_more.stat("cooldown_reduction") == pytest.approx(4.0)
+    assert with_more.stat("cooldown_reduction") < plain.stat("cooldown_reduction")
+
+
+def test_a_rate_stat_divides_by_both_buckets_together():
+    """Not by one and then multiplied by the other, which would make a more
+    multiplier lengthen the interval instead of shortening it."""
+    line = dict(ch.DEFAULT_STAT_LINE)
+    line["cooldown_reduction"] = ch.Scaling(base=12.0, per_level=0.0)
+    hasty = ch.ClassDefinition(name="Hasty", overrides=line)
+    c = ch.Character(hasty, level=100,
+                     gear=ch.Gear(increased={"cooldown_reduction": 0.50}),
+                     more=(ch.More("gem", "cooldown_reduction", 0.60),))
+    assert c.stat("cooldown_reduction") == pytest.approx(12.0 / (1.5 * 1.6))
+
+
 def test_no_number_of_more_multipliers_brings_a_cooldown_to_zero():
     """The design says the cooldown formula cannot reach zero, which is why the
     stat needs no cap. A second bucket must not break that."""
