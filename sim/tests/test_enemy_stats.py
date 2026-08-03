@@ -118,15 +118,28 @@ def test_a_boss_deals_less_damage_per_second_than_its_per_hit_suggests():
     assert per_second < per_hit
 
 
-def test_even_with_no_gear_a_boss_does_not_one_shot_the_player():
-    """A gearless character is not a real tier 8 character, so this is a floor
-    rather than a balance target. But a boss removing a whole health bar in one
-    hit would leave gear no room to make the fight longer -- only room to make
-    it survivable at all."""
+def test_boss_survival_is_not_asserted_against_a_gearless_character():
+    """Records a REJECTED assumption so it is not reintroduced.
+
+    An earlier version of this file asserted that a gearless character survives
+    at least two Cataclysm Boss hits. The project owner rejected that: without
+    gear a character has no resistances and no mitigation at all, so being one
+    shot is the correct outcome rather than a failure. A gearless character is
+    not a useful metric for anything above a common enemy.
+
+    So there is deliberately NO assertion here about how long a gearless
+    character survives a boss. The number is recorded rather than constrained,
+    and the real target has to be set against a GEARED character once gear
+    values exist. See the affix work in issue #79.
+
+    The common enemy targets elsewhere in this file are unaffected: those were
+    set at equal score and do not depend on gear.
+    """
     scores = scoring.enemy_scores(8, "Cataclysm", "None", 50, 50)
     hits = es.hits_to_kill_player(scores["Cataclysm Boss"], "Cataclysm Boss",
                                   ravager_at(8))
-    assert hits >= 2.0, f"a gearless Ravager survives only {hits:.1f} boss hits"
+    # Only that the arithmetic runs and produces a finite, positive number.
+    assert 0.0 < hits < float("inf")
 
 
 def test_a_boss_takes_a_long_time_to_kill():
