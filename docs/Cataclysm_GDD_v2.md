@@ -637,6 +637,94 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
   
 
+### **The Character Sheet**
+
+A character has 33 stats, grouped the way the gameplay tag list groups its Stat tags.
+
+  
+
+|  |  |
+| :-: | :-- |
+| \*\*Group\*\* | \*\*Stats\*\* |
+| Resource | Maximum Health, Maximum Mana, Maximum Energy Shield, Class Resource |
+| Recovery | Health Regeneration, Mana Regeneration, Energy Shield Regeneration, Life Leech |
+| Defence | Armor, Evasion, Block Chance, Damage Reduction, Retaliation, Crowd Control Resistance, and the eight Resistances |
+| Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time Frequency, Penetration, Spell Damage |
+| Utility | Movement Speed, Cooldown Reduction, Magic Find, Loot Quantity |
+
+  
+
+The tag list also has entries for defence against melee, ranged and spell damage. Those are **scopes that modifiers target**, not separate lines on the sheet. An enchantment reading "you cannot evade or block melee attacks" targets a scope; it does not describe a stat a character has.
+
+  
+
+### **Where Each Stat's Base Comes From**
+
+Attributes only scale. A stat therefore needs a base value before any attribute can do anything with it, and that base comes from one of three places.
+
+  
+
+|  |  |
+| :-: | :-- |
+| \*\*Source\*\* | \*\*Stats\*\* |
+| The class | Vitals, recovery, defences, resistances, movement speed, area of effect, damage over time frequency |
+| The equipped weapon | Attack speed, and off this sheet, attack range and attack damage |
+| The skill being used | Critical strike chance, and off this sheet, the base cooldown, projectile count and duration |
+
+  
+
+**A class does not need a base above zero for every stat.** It needs one for every stat it wants its attributes to scale. A class with no base evasion gains no evasion from Agility, and that is the system working rather than failing — it is how a class declines to care about a stat.
+
+  
+
+**Critical strike chance belongs to the skill, not the character.** Each skill carries its own base chance, and the character's gear and attributes scale it. A character has no critical strike chance in the abstract.
+
+  
+
+**Area of effect and damage over time frequency belong to the character, not the skill.** They are percentages of whatever the skill itself does, so their baseline is 100% rather than zero. A class naturally better at either starts above 100.
+
+  
+
+**Movement speed is measured in metres per second.** A tank sits at roughly 3. Agility scales that value, so a tank with points invested moves at 3 × (1 + increases).
+
+  
+
+### **Increases Are Scoped by Tag**
+
+Every skill carries gameplay tags, which is how the game knows which enchantments and effects apply to it. The character holds all of its own increases, and an increase reaches a skill when the tags match.
+
+  
+
+An item granting increased area of effect is not a property of any one skill. The character holds it, and it applies to every skill tagged for area of effect.
+
+  
+
+Matching is hierarchical, following the tag names. A modifier requiring `Type.AOE` applies to a skill tagged `Type.AOE.PointBlank`. A modifier requiring `Scope.Global` applies to everything. A modifier requiring several tags needs all of them.
+
+  
+
+|  |  |  |
+| :-: | :-: | :-- |
+| \*\*Skill\*\* | \*\*Area of Effect\*\* | \*\*Its Tags\*\* |
+| Smoke Bomb | 140% | Item.Weapon.Dagger, Type.AOE.PointBlank |
+| Thrust | 100% | Item.Weapon.Spear, Type.Strike |
+
+  
+
+Both characters wear the same item, granting +40% area of effect restricted to `Type.AOE`. It reaches the first skill and not the second. The character holds the increase either way.
+
+  
+
+### **Class Stat Lines**
+
+A class supplies a level 1 base and a per-level gain for each stat it wants to scale. Across 24 classes and 33 stats that is 1,584 numbers, so every class starts from a shared default stat line and overrides only the stats that express its identity. A class may override any stat; the default is a starting point, not a floor.
+
+  
+
+Per-level scaling is linear. Whether it should stay linear is not settled and will be decided by testing rather than argument.
+
+  
+
 ### **Stat Calculation**
 
 Every percentage in the attribute table needs a base to apply to and a rule for combining with other sources. These are those rules, and they apply to gear affixes as well as attribute points.
