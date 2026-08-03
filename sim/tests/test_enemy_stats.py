@@ -1,21 +1,34 @@
-"""Tests for the enemy rarity base classes."""
+"""Tests for the enemy stat blocks.
+
+The structural rule this file is mostly guarding: RARITY scales magnitude and
+ARCHETYPE supplies the profile. If those two layers ever start reaching into each
+other, a Legendary Imp stops being a bigger Imp and starts being a different
+creature, which is the thing the split exists to prevent.
+"""
 
 from __future__ import annotations
 
 import pytest
 
-from cataclysm_sim import enemy_stats as es
-from cataclysm_sim import scoring
+from cataclysm_sim import combat, enemy_stats as es, scoring
+from cataclysm_sim.character import DAMAGE_TYPES
 
 ORDER = es.RARITY_ORDER
 
+#: Stats that rarity is allowed to change.
+MAGNITUDE = ("health", "damage_per_hit", "armor", "energy_shield")
 
-def at_tier_eight(rarity: str) -> es.EnemyStats:
-    return es.stats_on_floor(rarity, 8, "Cataclysm")
+#: Stats that rarity must NOT change. These come from the archetype.
+PROFILE = ("attack_interval", "crit_chance", "crit_multiplier", "move_speed",
+           "evasion")
+
+
+def at_tier_eight(rarity: str, kind: str = "Baseline") -> es.EnemyStats:
+    return es.stats_on_floor(rarity, 8, "Cataclysm", kind=kind)
 
 
 # --------------------------------------------------------------------------
-# One formula, six rarities
+# The rarity ladder
 # --------------------------------------------------------------------------
 
 def test_the_rarity_list_matches_the_authoritative_one():
@@ -41,36 +54,28 @@ def test_the_superseded_rare_tier_is_not_present():
     assert "Rare" not in ORDER
 
 
-def test_every_rarity_produces_a_complete_stat_block():
-    for rarity in ORDER:
-        e = es.stats_for(rarity, 1000.0)
-        for field in ("health", "damage_per_hit", "armor", "attack_interval",
-                      "resistance", "penetration", "crit_chance",
-                      "crit_multiplier", "move_speed"):
-            assert getattr(e, field) is not None, f"{rarity} has no {field}"
+def test_magnitude_scales_with_the_score():
+    small = es.stats_for("Boss", 1000.0, "Succubus")
+    big = es.stats_for("Boss", 2000.0, "Succubus")
+    for stat in MAGNITUDE:
+        assert getattr(big, stat) == pytest.approx(2 * getattr(small, stat)), stat
 
 
-# --------------------------------------------------------------------------
-# Score-scaled stats say how BIG an enemy is
-# --------------------------------------------------------------------------
+@pytest.mark.parametrize("stat", MAGNITUDE)
+def test_every_magnitude_stat_rises_strictly_with_rarity(stat):
+    """Checked as a STRICT change between every neighbouring pair.
 
-def test_health_damage_and_armor_scale_with_the_score():
-    small = es.stats_for("Boss", 1000.0)
-    big = es.stats_for("Boss", 2000.0)
-    assert big.health == pytest.approx(2 * small.health)
-    assert big.damage_per_hit == pytest.approx(2 * small.damage_per_hit)
-    assert big.armor == pytest.approx(2 * small.armor)
-
-
-def test_rarity_traits_do_not_scale_with_the_score():
-    """The whole distinction. A big Common enemy is still a Common enemy: it
-    does not start critting more or resisting more because the floor is deeper.
+    Comparing against a sorted list allows ties, so a stat flattened to the same
+    value at every rarity would pass a test named 'rises with rarity' -- and a
+    flat stat is one that stopped distinguishing the rarities at all, which is
+    exactly the failure worth catching.
     """
-    small = es.stats_for("Elite", 100.0)
-    big = es.stats_for("Elite", 10_000.0)
-    for field in ("attack_interval", "resistance", "penetration",
-                  "crit_chance", "crit_multiplier", "move_speed"):
-        assert getattr(small, field) == getattr(big, field), field
+    # The baseline archetype has no shield, so use one that does.
+    values = [getattr(at_tier_eight(r, "Succubus"), stat) for r in ORDER]
+    # strict=False is required: the two lists differ in length by one, because
+    # this pairs each rarity with the next.
+    for lower, higher in zip(values, values[1:], strict=False):
+        assert higher > lower, f"{stat} does not rise: {values}"
 
 
 def test_an_enemy_always_has_at_least_one_health():
@@ -83,102 +88,248 @@ def test_a_negative_score_is_treated_as_zero():
 
 
 # --------------------------------------------------------------------------
-# A boss is not a large common enemy
+# Rarity scales magnitude AND NOTHING ELSE
 # --------------------------------------------------------------------------
 
-def test_health_grows_much_faster_than_damage_across_rarities():
-    """If both grew together a boss would be unkillable and lethal at once."""
+@pytest.mark.parametrize("stat", PROFILE)
+@pytest.mark.parametrize("kind", sorted(es.ARCHETYPES))
+def test_rarity_does_not_touch_the_profile(stat, kind):
+    """The whole point of the split. A Legendary Imp is a bigger Imp: it does
+    not start critting more or moving differently because it is rarer."""
+    values = {r: getattr(at_tier_eight(r, kind), stat) for r in ORDER}
+    assert len(set(values.values())) == 1, f"{kind}'s {stat} varies: {values}"
+
+
+@pytest.mark.parametrize("stat", PROFILE)
+def test_the_profile_does_not_scale_with_the_score_either(stat):
+    small = es.stats_for("Elite", 100.0, "Hellhound")
+    big = es.stats_for("Elite", 10_000.0, "Hellhound")
+    assert getattr(small, stat) == getattr(big, stat)
+
+
+def test_a_caster_and_a_brawler_of_the_same_rarity_share_only_their_score():
+    """The other half of the split: if archetype stopped mattering, every Elite
+    enemy would be the same thing wearing a different name.
+
+    Crit multiplier is deliberately not in this list. Two archetypes are allowed
+    to agree on any single value -- the Succubus and the Brute both hit for 200%
+    on a critical -- and demanding they differ everywhere would be testing an
+    accident rather than the design.
+    """
+    succubus = at_tier_eight("Elite", "Succubus")
+    brute = at_tier_eight("Elite", "Brute")
+    assert succubus.score == brute.score
+    for stat in MAGNITUDE + ("attack_interval", "crit_chance", "move_speed",
+                             "evasion"):
+        assert getattr(succubus, stat) != getattr(brute, stat), stat
+
+
+def test_no_two_archetypes_are_the_same_creature():
+    """The anti-collapse guard. Individual values may coincide; whole archetypes
+    may not, or one of them is a duplicate nobody noticed."""
+    def fingerprint(k: es.Archetype) -> tuple:
+        return (k.health_share, k.damage_share, k.armor_share,
+                k.energy_shield_fraction, k.attack_interval, k.crit_chance,
+                k.crit_multiplier, k.move_speed, k.evasion,
+                tuple(sorted(k.resistances.items())))
+
+    seen: dict[tuple, str] = {}
+    for kind in es.ARCHETYPES.values():
+        key = fingerprint(kind)
+        assert key not in seen, f"{kind.name} is identical to {seen.get(key)}"
+        seen[key] = kind.name
+
+
+# --------------------------------------------------------------------------
+# The rarest things are frightening
+# --------------------------------------------------------------------------
+
+def test_damage_grows_enough_that_the_rarest_enemies_are_dangerous():
+    """The project owner's correction: at 1.21 per step a Cataclysm Boss hit was
+    2.8x a Common enemy's, which is not frightening. Nine is."""
+    common, boss = at_tier_eight("Common"), at_tier_eight("Cataclysm Boss")
+    assert boss.damage_per_hit / common.damage_per_hit > 6.0
+
+
+def test_damage_per_second_rises_with_rarity_now():
+    """It used to rise only 1.2x across the whole ladder, because attack interval
+    rose with rarity and cancelled the damage growth out. Attack interval is the
+    archetype's now, so nothing cancels it."""
+    common, boss = at_tier_eight("Common"), at_tier_eight("Cataclysm Boss")
+    assert boss.damage_per_second / common.damage_per_second > 6.0
+
+
+def test_health_still_grows_faster_than_damage():
+    """If both grew together the rarest enemies would be unkillable and lethal at
+    once, which is a wall rather than a fight."""
     common, boss = at_tier_eight("Common"), at_tier_eight("Cataclysm Boss")
     health_ratio = boss.health / common.health
     damage_ratio = boss.damage_per_hit / common.damage_per_hit
-    assert health_ratio > 10
-    assert damage_ratio < 5
-    assert health_ratio > 4 * damage_ratio
+    assert health_ratio > 2 * damage_ratio
 
-
-def test_damage_per_second_grows_far_less_than_damage_per_hit():
-    """Rarer enemies wind up more slowly, so hitting harder is paid for."""
-    common, boss = at_tier_eight("Common"), at_tier_eight("Cataclysm Boss")
-    per_hit = boss.damage_per_hit / common.damage_per_hit
-    per_second = boss.damage_per_second / common.damage_per_second
-    assert per_second < per_hit
-
-
-@pytest.mark.parametrize("field, rises", [
-    ("health", True), ("damage_per_hit", True), ("armor", True),
-    ("attack_interval", True), ("resistance", True), ("penetration", True),
-    ("crit_chance", True), ("crit_multiplier", True), ("move_speed", False),
-])
-def test_every_stat_moves_strictly_in_one_direction_across_the_ladder(field, rises):
-    """No stat should peak in the middle, and none should be flat either.
-
-    Checked as a STRICT change between every neighbouring pair. Comparing
-    against a sorted list allows ties, so a stat flattened to the same value at
-    every rarity would pass a test named 'moves in one direction' -- and a flat
-    stat is one that stopped distinguishing the rarities at all, which is
-    exactly the failure worth catching.
-    """
-    values = [getattr(at_tier_eight(r), field) for r in ORDER]
-    # strict=False is required: the two lists differ in length by one, because
-    # this pairs each rarity with the next.
-    for lower, higher in zip(values, values[1:], strict=False):
-        if rises:
-            assert higher > lower, f"{field} does not rise: {values}"
-        else:
-            assert higher < lower, f"{field} does not fall: {values}"
-
-
-def test_a_common_enemy_has_no_armor_resistance_or_penetration():
-    """Swarm fodder should die to anything and punish nothing."""
-    common = at_tier_eight("Common")
-    assert common.armor == 0.0
-    assert common.resistance == 0.0
-    assert common.penetration == 0.0
-
-
-def test_move_speed_never_goes_negative():
-    for rarity in ORDER:
-        assert at_tier_eight(rarity).move_speed > 0.0
-
-
-# --------------------------------------------------------------------------
-# Penetration, which is what makes over-capping worth anything
-# --------------------------------------------------------------------------
-
-def test_penetration_rises_with_rarity_so_over_capping_has_a_purpose():
-    """The design says resistance is reduced by enemy penetration scaling and
-    never says by how much. Without a number, a player at exactly the cap and
-    one over-capped would be identical and over-capping would be pointless."""
-    boss = at_tier_eight("Cataclysm Boss")
-    assert boss.penetration > 0
-    at_cap = 70.0 - boss.penetration
-    over_capped = min(70.0, 95.0 - boss.penetration)
-    assert over_capped > at_cap
-
-
-def test_penetration_does_nothing_against_a_common_enemy():
-    """So resistance headroom matters against the things that punish it, and a
-    player is not taxed for the whole game by the hardest case."""
-    common = at_tier_eight("Common")
-    assert 70.0 - common.penetration == 70.0
-
-
-# --------------------------------------------------------------------------
-# Critical strikes
-# --------------------------------------------------------------------------
 
 def test_criticals_raise_average_damage_above_the_per_hit_figure():
+    assert at_tier_eight("Boss", "Gatekeeper").average_damage_per_hit > \
+        at_tier_eight("Boss", "Gatekeeper").damage_per_hit
+
+
+def test_an_archetype_with_no_criticals_configured_still_crits_sometimes():
+    """Every archetype carries a nonzero base, so `average_damage_per_hit` is
+    never just `damage_per_hit` in disguise."""
+    for kind in es.ARCHETYPES.values():
+        assert kind.crit_chance > 0.0, kind.name
+        assert kind.crit_multiplier > 100.0, kind.name
+
+
+# --------------------------------------------------------------------------
+# Overwhelm replaces the per-rarity penetration this file used to carry
+# --------------------------------------------------------------------------
+
+def test_the_stat_block_carries_no_penetration_of_its_own():
+    """It used to. `combat.overwhelm` already strips the player's mitigation, so
+    a second per-rarity number was the same mechanic written twice, at roughly
+    double the size and disagreeing with the first."""
+    assert not hasattr(at_tier_eight("Boss"), "penetration")
+
+
+def test_overwhelm_produces_a_rarity_ladder_by_itself():
+    """Which is why no per-rarity penetration is needed: `RARITY_WEIGHTS` already
+    spaces the rarities apart in score, and Overwhelm reads the score gap."""
+    width = scoring.tier_width(8)
+    player = scoring.PLAYER_MAX_SCORES[8]
+    stripped = [combat.overwhelm(player, at_tier_eight(r).score, width)
+                for r in ORDER]
+    for lower, higher in zip(stripped, stripped[1:], strict=False):
+        assert higher > lower, f"Overwhelm does not rise with rarity: {stripped}"
+
+
+def test_overwhelm_shrinks_as_the_player_out_powers_the_enemy():
+    """The reason it is better than a fixed per-rarity figure, which punished a
+    player forever no matter how well geared."""
     boss = at_tier_eight("Cataclysm Boss")
-    assert boss.average_damage_per_hit > boss.damage_per_hit
+    width = scoring.tier_width(8)
+    under = combat.overwhelm(boss.score - 500, boss.score, width)
+    over = combat.overwhelm(boss.score + 500, boss.score, width)
+    assert under > 0
+    assert over == 0
 
 
-def test_a_rarer_enemy_gets_more_of_its_damage_from_criticals():
-    """What makes a boss hit feel like a spike rather than a metronome."""
-    def crit_share(e: es.EnemyStats) -> float:
-        return e.average_damage_per_hit / e.damage_per_hit
+# --------------------------------------------------------------------------
+# Archetypes
+# --------------------------------------------------------------------------
 
-    assert crit_share(at_tier_eight("Cataclysm Boss")) > crit_share(
-        at_tier_eight("Common"))
+def test_every_enemy_the_design_document_names_is_here():
+    """The vertical slice list in the game design document, section X."""
+    named = {"Imp", "Succubus", "Hellhound", "Brute", "Corrupted Sentinel",
+             "Abyssal Warden", "Gatekeeper"}
+    assert named <= set(es.ARCHETYPES)
+
+
+def test_an_unknown_archetype_is_rejected():
+    with pytest.raises(ValueError, match="unknown archetype"):
+        es.stats_for("Common", 1000.0, "Skeleton")
+
+
+def test_the_baseline_is_an_average_enemy_and_not_a_creature():
+    """It exists so the rarity ladder can be read on its own. If any multiplier
+    drifted off 1 it would stop showing what rarity alone does."""
+    assert es.BASELINE.health_share == 1.0
+    assert es.BASELINE.damage_share == 1.0
+    assert es.BASELINE.armor_share == 1.0
+    assert es.BASELINE.resistances == {}
+
+
+def test_an_enemy_is_named_by_its_rarity_and_its_archetype():
+    assert at_tier_eight("Elite", "Brute").name == "Elite Brute"
+    assert at_tier_eight("Elite").name == "Elite"
+
+
+@pytest.mark.parametrize("faster, slower", [
+    ("Hellhound", "Brute"), ("Imp", "Succubus"), ("Imp", "Brute"),
+])
+def test_the_design_documents_movement_descriptions_hold(faster, slower):
+    """The design calls the Imp and the Hellhound fast and the Brute slow."""
+    assert es.archetype(faster).move_speed > es.archetype(slower).move_speed
+
+
+def test_the_corrupted_sentinel_does_not_move_at_all():
+    """The design calls it stationary, which is a real stat and not flavour."""
+    assert es.archetype("Corrupted Sentinel").move_speed == 0.0
+
+
+def test_the_brute_is_the_armoured_one_and_the_imp_is_not():
+    """The design calls the Brute heavily armored and the Imp weak."""
+    brute = at_tier_eight("Elite", "Brute")
+    imp = at_tier_eight("Elite", "Imp")
+    assert brute.armor > imp.armor
+    assert imp.armor == 0.0
+
+
+def test_only_the_archetypes_meant_to_have_a_shield_have_one():
+    """The design says most classes have no energy shield and it is given to
+    those that thematically warrant it. The same applies to enemies: the caster
+    and the construct have one, the animals and the brawlers do not."""
+    with_shield = {k.name for k in es.ARCHETYPES.values()
+                   if k.energy_shield_fraction > 0}
+    assert with_shield == {"Succubus", "Corrupted Sentinel"}
+
+
+def test_the_shield_is_a_fraction_of_that_enemys_own_health():
+    succubus = at_tier_eight("Elite", "Succubus")
+    assert succubus.energy_shield == pytest.approx(succubus.health * 0.50)
+    assert succubus.effective_health == pytest.approx(
+        succubus.health + succubus.energy_shield)
+
+
+def test_an_enemy_without_a_shield_has_an_effective_health_of_just_health():
+    brute = at_tier_eight("Elite", "Brute")
+    assert brute.energy_shield == 0.0
+    assert brute.effective_health == brute.health
+
+
+# --------------------------------------------------------------------------
+# Resistances
+# --------------------------------------------------------------------------
+
+def test_every_resistance_names_a_real_damage_type():
+    """A typo would otherwise sit there silently resisting nothing."""
+    for kind in es.ARCHETYPES.values():
+        for damage_type in kind.resistances:
+            assert damage_type in DAMAGE_TYPES, f"{kind.name}: {damage_type}"
+
+
+def test_an_unknown_damage_type_is_rejected_when_asked_about():
+    with pytest.raises(ValueError, match="unknown damage type"):
+        at_tier_eight("Common", "Imp").resistance_to("Fire")
+
+
+def test_a_damage_type_an_archetype_never_mentions_is_simply_unresisted():
+    assert at_tier_eight("Common", "Imp").resistance_to("Void") == 0.0
+
+
+@pytest.mark.parametrize("kind", ["Imp", "Succubus", "Hellhound", "Brute",
+                                  "Corrupted Sentinel", "Abyssal Warden",
+                                  "Gatekeeper"])
+def test_demonic_enemies_resist_demonic_damage_and_are_weak_to_celestial(kind):
+    """A Cataclysm's own damage type should be the worst thing to bring to it,
+    and its opposite the best. This is what makes the damage type on a weapon a
+    decision rather than a number."""
+    e = at_tier_eight("Elite", kind)
+    assert e.resistance_to("Demonic") > 0
+    assert e.resistance_to("Celestial") < 0
+
+
+def test_resistance_is_counted_when_reporting_what_gear_has_to_deliver():
+    """Otherwise the figure would understate what a player needs against
+    everything that resists their damage type."""
+    gk = at_tier_eight("Cataclysm Boss", "Gatekeeper")
+    weak = es.player_damage_to_kill_in(gk, 30.0, "Celestial")
+    resisted = es.player_damage_to_kill_in(gk, 30.0, "Demonic")
+    assert resisted > weak
+    # 50% resisted means twice the damage; -20% means less than the raw figure.
+    raw = gk.effective_health / 30.0
+    assert resisted == pytest.approx(raw / 0.50)
+    assert weak == pytest.approx(raw / 1.20)
 
 
 # --------------------------------------------------------------------------
@@ -210,27 +361,31 @@ def test_dungeon_modifiers_make_an_enemy_harder():
 # --------------------------------------------------------------------------
 
 def test_the_player_helpers_are_reporting_tools_with_no_targets_baked_in():
-    """The enemy side is now set on its own terms and gear is fitted to it, so
-    nothing here should constrain a player number. These two functions exist to
-    answer questions about the enemy stats, not to enforce anything.
-
-    An earlier version of this file asserted player survival targets directly,
-    which is what kept producing conflicts with the gear work.
+    """The enemy side is set on its own terms and gear is fitted to it, so
+    nothing here should constrain a player number. An earlier version of this
+    file asserted player survival targets directly, which is what kept producing
+    conflicts with the gear work.
     """
-    boss = at_tier_eight("Cataclysm Boss")
+    boss = at_tier_eight("Cataclysm Boss", "Gatekeeper")
     assert es.hits_to_kill_player(boss, 6330.0) > 0
-    assert es.player_damage_to_kill_in(boss, 30.0) == pytest.approx(
-        boss.health / 30.0)
+    assert es.player_damage_to_kill_in(boss, 30.0) > 0
 
 
 def test_mitigation_reduces_how_hard_an_enemy_hits_a_player():
-    boss = at_tier_eight("Cataclysm Boss")
+    boss = at_tier_eight("Cataclysm Boss", "Gatekeeper")
     bare = es.hits_to_kill_player(boss, 6330.0, mitigation_fraction=0.0)
     armoured = es.hits_to_kill_player(boss, 6330.0, mitigation_fraction=0.5)
     assert armoured == pytest.approx(2 * bare)
 
 
 def test_killing_an_enemy_faster_needs_proportionally_more_damage():
-    boss = at_tier_eight("Cataclysm Boss")
+    boss = at_tier_eight("Cataclysm Boss", "Gatekeeper")
     assert es.player_damage_to_kill_in(boss, 10.0) == pytest.approx(
         3 * es.player_damage_to_kill_in(boss, 30.0))
+
+
+def test_a_shielded_enemy_takes_more_damage_to_kill_than_its_health_alone():
+    sentinel = at_tier_eight("Legendary", "Corrupted Sentinel")
+    needed = es.player_damage_to_kill_in(sentinel, 30.0, "Celestial")
+    ignoring_shield = sentinel.health / 30.0 / 1.25
+    assert needed > ignoring_shield
