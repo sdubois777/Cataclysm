@@ -6,18 +6,54 @@ per point and says attributes scale values rather than creating them. It never
 says what the full stat set is, nor where each stat's starting value comes from.
 This module is that structure.
 
-WHERE EACH BASE VALUE COMES FROM. Decided by the project owner 2026-08-02:
+ATTRIBUTES ONLY EVER SCALE. Stated by the project owner 2026-08-02:
 
-    the class    everything on the character sheet except the two rows below
-    the weapon   attack range, attack damage, base attack speed
-    the skill    projectile count, charges, skill duration
+    Attributes exist to scale stats you get elsewhere. Somewhere other than
+    attributes, every stat is given a base value. This doesn't mean every class
+    needs a base above 0 for every stat, just that if you want to scale it using
+    attributes, you need a base value first.
 
-A class still customises the weapon-supplied and skill-supplied stats, but with
-an *increase* that joins the same sum gear and attributes use, rather than by
-replacing the weapon's own value. So a class that should attack quickly carries
-an attack speed increase applying to whatever weapon it holds. That is why
-ATTACK_SPEED appears below as a class stat: the class supplies the increase, the
-weapon supplies the base.
+So there is exactly one way an attribute point acts: it adds to that stat's sum
+of increases, and the sum multiplies the base. `movement_speed` on a class with a
+base of 3 metres per second becomes 3 * (1 + increases). A stat with no base
+gains nothing from its attribute, and that is the design working rather than
+failing.
+
+WHERE EACH BASE VALUE COMES FROM. Three places, recorded per stat in BASE_SOURCE:
+
+    the class    the character's own numbers: vitals, recovery, defences,
+                 resistances, movement speed, and the percentages that modify
+                 what skills do, such as area of effect
+    the weapon   what the equipped weapon is: attack speed, and off this sheet,
+                 attack range and attack damage
+    the skill    what the ability being used is: critical strike chance, and off
+                 this sheet, the base cooldown, projectile count and duration
+
+Critical strike chance is the example the project owner gave: each skill carries
+its own base, and gear and attributes scale that. It is not a class number.
+
+Area of effect is not the same case, even though it also concerns a skill. The
+character holds a single area of effect percentage that applies to every skill
+tagged for area of effect. Its baseline is 100%, not zero, because it is a
+percentage of whatever the skill itself does.
+
+INCREASES ARE SCOPED BY TAG. Stated by the project owner 2026-08-02:
+
+    All of our skills have tags, so we know which enchantments and effects apply
+    to which skills. If I'm using an AOE skill and I find equipment that
+    increases my AOE, that increase should still apply to the skill. But it
+    should be a global stat that applies to anything tagged with AOE. The player
+    holds all of its own increases, and those increases apply to things with
+    matching tags.
+
+So a Modifier carries the tags it requires, a Skill carries the tags it has, and
+an increase reaches a skill only when they match. Matching is hierarchical, as
+the tag names imply: a modifier requiring `Type.AOE` applies to a skill tagged
+`Type.AOE.PointBlank`. The design's tag list already contains `Scope.Global` for
+modifiers that should apply to everything.
+
+The Weapon Skills sheet already tags every skill this way, and the enchantment
+tables already tag every enchantment.
 
 THE DEFAULT LINE AND OVERRIDES. There are 33 class-supplied stats, each needing a
 level 1 base and a per-level gain. Across 24 classes that would be 1,584 numbers.
@@ -58,9 +94,29 @@ STAT_GROUPS: dict[str, tuple[str, ...]] = {
 
 ALL_STATS: tuple[str, ...] = tuple(s for g in STAT_GROUPS.values() for s in g)
 
-#: Stats whose base comes from the equipped weapon, not the class. The class
-#: value for these is an increase applied to the weapon's base.
-WEAPON_BASE_STATS = frozenset({"attack_speed"})
+#: Where each stat's base value comes from. Every stat on the sheet has exactly
+#: one source. Anything not named here comes from the class.
+#:
+#: The weapon and skill entries are a proposal and are the part of this most
+#: likely to be wrong. Critical strike chance is certain -- the project owner
+#: stated it. Area of effect and damage-over-time frequency are placed with the
+#: skill by the same reasoning: a skill has a radius and a tick rate, and a
+#: character does not have those in the abstract.
+_NON_CLASS_BASE: dict[str, str] = {
+    "attack_speed": "weapon",
+    "crit_chance": "skill",
+}
+
+BASE_SOURCE: dict[str, str] = {
+    stat: _NON_CLASS_BASE.get(stat, "class") for stat in ALL_STATS
+}
+
+WEAPON_BASE_STATS = frozenset(
+    s for s, src in BASE_SOURCE.items() if src == "weapon")
+SKILL_BASE_STATS = frozenset(
+    s for s, src in BASE_SOURCE.items() if src == "skill")
+CLASS_BASE_STATS = frozenset(
+    s for s, src in BASE_SOURCE.items() if src == "class")
 
 #: Stats that are counted as a percentage and cannot exceed their cap no matter
 #: what. Only hard caps appear here; soft caps are exceedable by design and so
@@ -160,16 +216,21 @@ DEFAULT_STAT_LINE: dict[str, Scaling] = {
     "retaliation": Scaling(),
     "crowd_control_resistance": Scaling(),
     **{s: Scaling() for s in RESISTANCE_STATS},
-    # Offence
-    "crit_chance": Scaling(base=5.0),
+    # Offence. Critical strike chance has no class entry that matters: its base
+    # comes from the skill. The zero here is a placeholder never read.
+    "crit_chance": Scaling(),
     "crit_multiplier": Scaling(base=150.0),
     "attack_speed": Scaling(),
-    "area_of_effect": Scaling(),
-    "dot_frequency": Scaling(),
+    # Area of effect and damage-over-time frequency are percentages of whatever
+    # the skill itself does, so their baseline is 100%, not zero. A class that
+    # is naturally better at either starts above 100.
+    "area_of_effect": Scaling(base=100.0),
+    "dot_frequency": Scaling(base=100.0),
     "penetration": Scaling(),
     "spell_damage": Scaling(),
-    # Utility
-    "movement_speed": Scaling(base=100.0),
+    # Utility. Movement speed is in metres per second, following the project
+    # owner's example of a tank at about 3.
+    "movement_speed": Scaling(base=4.0),
     "cooldown_reduction": Scaling(),
     "magic_find": Scaling(),
     "loot_quantity": Scaling(),
@@ -235,18 +296,64 @@ class Attributes:
                    if stat in effects)
 
 
+#: A modifier requiring this tag applies to everything. The design's tag list
+#: already carries it.
+GLOBAL_SCOPE_TAG = "Scope.Global"
+
+
+def tag_matches(required: str, tags: frozenset[str]) -> bool:
+    """Whether a required tag is satisfied by a set of tags.
+
+    Hierarchical, the way the design's tag names are built: a modifier requiring
+    `Type.AOE` is satisfied by a skill tagged `Type.AOE.PointBlank`. A modifier
+    requiring `Scope.Global` is satisfied by anything.
+    """
+    if required == GLOBAL_SCOPE_TAG:
+        return True
+    return any(t == required or t.startswith(required + ".") for t in tags)
+
+
+@dataclass(frozen=True)
+class Modifier:
+    """One increase the character carries, and what it applies to.
+
+    Stated by the project owner 2026-08-02:
+
+        The player holds all of its own increases, and those increases apply to
+        things with matching tags.
+
+    So an item granting increased area of effect is not a property of any one
+    skill. The character holds it, and it applies to every skill tagged for area
+    of effect. `requires` empty means it applies to everything.
+    """
+
+    stat: str
+    increase: float
+    requires: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        if self.stat not in ALL_STATS:
+            raise ValueError(
+                f"modifier names {self.stat}, which is not on the character sheet")
+
+    def applies_to(self, tags: frozenset[str]) -> bool:
+        return all(tag_matches(r, tags) for r in self.requires)
+
+
 @dataclass(frozen=True)
 class Gear:
     """What equipment contributes, by where it enters the pipeline.
 
     `flat` is added to the class base before scaling. `increased` joins the same
-    sum the attribute points do. `weapon_base` supplies the base for the stats
-    the weapon owns rather than the class.
+    sum the attribute points do and applies to everything. `modifiers` are
+    increases scoped to a tag, applying only to skills that carry it.
+    `weapon_base` supplies the base for the stats the weapon owns.
     """
 
     flat: dict[str, float] = field(default_factory=dict)
     increased: dict[str, float] = field(default_factory=dict)
     weapon_base: dict[str, float] = field(default_factory=dict)
+    modifiers: tuple[Modifier, ...] = ()
 
     def __post_init__(self) -> None:
         for label, table in (("flat", self.flat), ("increased", self.increased),
@@ -259,11 +366,45 @@ class Gear:
 
 
 @dataclass(frozen=True)
+class Skill:
+    """The ability being used, which supplies the base for some stats.
+
+    A character has no critical strike chance in the abstract. It has whatever
+    the skill it is using provides, scaled by gear and attributes. Asking for a
+    skill-based stat with no skill in hand gives zero, which is correct: there is
+    nothing being used.
+    """
+
+    name: str = "None"
+    base: dict[str, float] = field(default_factory=dict)
+    #: Seconds before increases are applied.
+    cooldown: float = 0.0
+    #: The skill's gameplay tags, as the Weapon Skills sheet already carries
+    #: them, for example "Type.AOE.PointBlank" or "Item.Weapon.Dagger". These
+    #: decide which of the character's tag-scoped modifiers reach this skill.
+    tags: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        unknown = set(self.base) - set(ALL_STATS)
+        if unknown:
+            raise ValueError(
+                f"skill {self.name} names stats that are not on the character "
+                f"sheet: {sorted(unknown)}")
+        not_skill_based = set(self.base) - SKILL_BASE_STATS
+        if not_skill_based:
+            raise ValueError(
+                f"skill {self.name} supplies a base for "
+                f"{sorted(not_skill_based)}, whose base does not come from the "
+                "skill. See BASE_SOURCE.")
+
+
+@dataclass(frozen=True)
 class Character:
     definition: ClassDefinition
     level: int
     attributes: Attributes = field(default_factory=Attributes)
     gear: Gear = field(default_factory=Gear)
+    skill: Skill = field(default_factory=Skill)
 
     def __post_init__(self) -> None:
         if not 1 <= self.level <= MAX_LEVEL:
@@ -275,17 +416,28 @@ class Character:
                 "character gains one point per level")
 
     def base(self, stat: str) -> float:
-        """Before any scaling. Weapon-based stats take their base from the
-        weapon; everything else takes it from the class and level."""
-        if stat in WEAPON_BASE_STATS:
+        """Before any scaling, from whichever source BASE_SOURCE names."""
+        source = BASE_SOURCE[stat]
+        if source == "weapon":
             start = self.gear.weapon_base.get(stat, 0.0)
+        elif source == "skill":
+            start = self.skill.base.get(stat, 0.0)
         else:
             start = self.definition.base_at(stat, self.level)
         return start + self.gear.flat.get(stat, 0.0)
 
     def increases(self, stat: str) -> float:
-        return (self.attributes.increases_for(stat)
-                + self.gear.increased.get(stat, 0.0))
+        """Every increase that reaches this stat for the skill in hand.
+
+        Attribute points and unscoped gear increases always count. A tag-scoped
+        modifier counts only when the skill being used carries a matching tag.
+        """
+        total = (self.attributes.increases_for(stat)
+                 + self.gear.increased.get(stat, 0.0))
+        for m in self.gear.modifiers:
+            if m.stat == stat and m.applies_to(self.skill.tags):
+                total += m.increase
+        return total
 
     def stat(self, stat: str) -> float:
         """The final value, through the pipeline in the design document."""
@@ -333,7 +485,33 @@ def _check_stat_line_is_complete() -> None:
             f"missing={sorted(missing)} extra={sorted(extra)}")
 
 
+def _check_every_stat_has_a_base_source() -> None:
+    missing = set(ALL_STATS) - set(BASE_SOURCE)
+    if missing:
+        raise ValueError(
+            f"stats with no recorded base source: {sorted(missing)}")
+    bad = {s: v for s, v in BASE_SOURCE.items()
+           if v not in ("class", "weapon", "skill")}
+    if bad:
+        raise ValueError(f"unknown base sources: {bad}")
+
+
+def _check_attributes_only_scale() -> None:
+    """Attributes may only ever be increases. There is no second kind."""
+    for attribute, effects in ATTRIBUTE_EFFECTS.items():
+        for stat, value in effects.items():
+            if not isinstance(value, float):
+                raise TypeError(
+                    f"{attribute} -> {stat} is {type(value).__name__}; an "
+                    "attribute effect is a plain increase fraction")
+            if stat not in ALL_STATS:
+                raise ValueError(
+                    f"{attribute} scales {stat}, which is not on the sheet")
+
+
 _check_stat_line_is_complete()
+_check_every_stat_has_a_base_source()
+_check_attributes_only_scale()
 
 
 if __name__ == "__main__":
@@ -363,18 +541,71 @@ if __name__ == "__main__":
     print("  its identity requires.")
     print()
 
+    print("  Attributes only ever scale. Every effect below is an increase")
+    print("  multiplying a base that came from somewhere else.")
+    print()
+    print("  Each attribute at 100 points, against a probe base supplied by")
+    print("  whichever source that stat uses, so the multiplier is visible.")
+    print("  Hard-capped stats use a probe base of 10 so the cap does not")
+    print("  distort the reading.")
+    print()
+    print(f"    {'attribute':<13} {'stat':<21} {'source':<7} {'base':>6} "
+          f"{'at 100 pts':>11}  multiplier")
+    print("    " + "-" * 70)
+    for attribute, effects in ATTRIBUTE_EFFECTS.items():
+        for stat in effects:
+            src = BASE_SOURCE[stat]
+            probe_base = 10.0 if stat in HARD_CAPS else 100.0
+            probe = ClassDefinition(name="Probe",
+                                    overrides={stat: Scaling(base=probe_base)})
+            kwargs = {}
+            if src == "weapon":
+                kwargs["gear"] = Gear(weapon_base={stat: probe_base})
+            elif src == "skill":
+                kwargs["skill"] = Skill(name="Probe", base={stat: probe_base})
+            full = Character(probe, level=100,
+                             attributes=Attributes(**{attribute: 100}), **kwargs)
+            value = full.stat(stat)
+            note = (f"{full.displayed_cooldown_reduction():.0f}% shown"
+                    if stat in RATE_STATS else f"{value / probe_base:.2f}x")
+            print(f"    {attribute:<13} {stat:<21} {src:<7} {probe_base:>6.0f} "
+                  f"{value:>11.2f}  {note}")
+    print()
+
+    print("  A level 100 character on the default line, 60 Vitality 40 Efficacy,")
+    print("  using a skill with a 20% base critical strike chance:")
     c = Character(GENERIC, level=100,
-                  attributes=Attributes(vitality=60, efficacy=40))
-    print("  A level 100 character on the default line, 60 Vitality 40 Efficacy:")
+                  attributes=Attributes(vitality=60, efficacy=40),
+                  skill=Skill(name="Example", base={"crit_chance": 20.0},
+                              cooldown=4.0))
     print(f"    max health           {c.stat('max_health'):>10,.0f}")
     print(f"    max mana             {c.stat('max_mana'):>10,.0f}")
     print(f"    health regen         {c.stat('health_regen'):>10,.2f}/s")
-    print(f"    crit chance          {c.stat('crit_chance'):>10,.1f}%")
-    print(f"    movement speed       {c.stat('movement_speed'):>10,.0f}")
-    print(f"    a 4s skill cooldown  {c.cooldown_of(4.0):>10,.2f}s"
+    print(f"    movement speed       {c.stat('movement_speed'):>10,.2f} m/s")
+    print(f"    crit chance          {c.stat('crit_chance'):>10,.1f}%"
+          "   <- from the skill, scaled")
+    print(f"    that skill's cooldown{c.cooldown_of(c.skill.cooldown):>10,.2f}s"
           f"   (shown as {c.displayed_cooldown_reduction():.1f}% reduction)")
     print()
-    print("    evasion              "
-          f"{c.stat('evasion'):>10,.1f}   <- zero: the default line has no base")
-    print("    evasion, so Agility has nothing to scale. A class that wants")
-    print("    evasion must override it. This is issue #77.")
+    print("  With no skill in hand, critical strike chance is "
+          f"{Character(GENERIC, level=100).stat('crit_chance'):.0f}. A character")
+    print("  has no critical strike chance in the abstract; it has whatever the")
+    print("  skill it is using provides.")
+    print()
+
+    print("  Tag-scoped increases. One piece of equipment granting +40% area of")
+    print("  effect, restricted to skills tagged Type.AOE, against two skills:")
+    boots = Gear(modifiers=(Modifier("area_of_effect", 0.40,
+                                     frozenset({"Type.AOE"})),))
+    for skill in (Skill(name="Smoke Bomb", tags=frozenset(
+                      {"Item.Weapon.Dagger", "Type.AOE.PointBlank"})),
+                  Skill(name="Thrust", tags=frozenset(
+                      {"Item.Weapon.Spear", "Type.Strike"}))):
+        c = Character(GENERIC, level=100, gear=boots, skill=skill)
+        tags = ", ".join(sorted(skill.tags))
+        print(f"    {skill.name:<12} {c.stat('area_of_effect'):>6.0f}%   {tags}")
+    print()
+    print("    The first is tagged Type.AOE.PointBlank, which matches the")
+    print("    requirement of Type.AOE, so the increase reaches it. The second")
+    print("    is not tagged for area at all, so the same equipment does")
+    print("    nothing for it. The character holds the increase either way.")
