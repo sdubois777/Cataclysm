@@ -20,6 +20,73 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — Class stat lines and attribute effects become data
+
+**The decision.** The three Demonic class stat lines and the eight attribute
+effects now live in two new sheets of `All_Things_Cataclysm.xlsx`, generated into
+`game/Data/ClassStats.csv` and `game/Data/Attributes.csv`. Same arrangement as
+the affix pool: the workbook is authoritative, and a test compares it against
+`sim/cataclysm_sim/classes.py` and `character.py`.
+
+**Why it was needed.** Issue #130. The Unreal project had the eight attributes as
+Gameplay Ability System attributes and nothing that said what a point of one was
+worth, and no class stat line at all. The test that builds the reference geared
+character had to quote both from the Python model as literals, so a change to the
+Ravager's stat line would not have failed anything on the game side. It now reads
+both from the generated tables and still reaches 11,023 maximum health.
+
+**THE DEFAULT LINE IS A ROW SET, NOT A SPECIAL CASE.** A class named "Default"
+carries the stat line every class inherits, and each real class overrides only
+what expresses its identity. Anything reading it resolves a value by looking for
+the class's row, then Default, then zero.
+
+That shape is not a storage trick. There are 33 stats and 24 classes planned, so
+writing every class out in full would be 792 rows of which almost all would
+repeat — but more importantly it is what the design means by a class. The three
+War trees each commit to three or four stats and ignore the rest, so a class is
+defined as much by what it refuses as by what it takes. The Ravager overrides 7
+of the 33, the Ritualist 9 and the Masochist 5.
+
+**Attribute effects are stored as percent per point.** Vitality reads 2, meaning
+2% maximum health per point. The model stores the same figure as a fraction. The
+sheet uses percent because that is what a designer editing it means, and it
+matches the percentage-point convention the Unreal stat pipeline already uses;
+the drift test converts in the open rather than either side hiding it.
+
+**Attributes only ever scale, and the generator now says when that costs
+something.** A point adds to a stat's sum of increases and the sum multiplies a
+base, so a point does nothing until something supplies that base. The class is
+not the only thing that can — gear implicits and affixes supply block chance,
+critical strike chance and evasion — so this is reported as a note rather than
+treated as an error. Five stats currently have no class base:
+
+| Stat | Where its base has to come from |
+|---|---|
+| block chance | gear implicits and affixes |
+| critical strike chance | gear implicits and affixes, and the skill |
+| evasion | gear implicits and affixes |
+| magic find | nothing yet; see issue #81 |
+| loot quantity | nothing yet |
+
+The note exists because attack speed had no base anywhere at all for some time,
+which made every attack speed affix on every item worth exactly nothing, and
+nothing reported it. That is issue #120. Cooldown reduction is excluded from the
+note: it is the accumulated sum of increases rather than a value, so a base of
+zero is correct for it.
+
+**`ClassDefinition.spends_health` was not ported.** It is declared in
+`character.py` and read nowhere. The Masochist's "uses health instead of mana" is
+delivered by a passive tree node converting mana into health, which is a build
+choice rather than a class property, so the field appears to be a superseded
+first attempt.
+
+**Affects:** no design document change. Section VI already describes attributes
+as scaling rather than creating, and the class stat lines were recorded in the
+2026-08-02 entry on the three Demonic classes; this is that design becoming data
+the game can load.
+
+---
+
 ## 2026-08-03 — The affix pool moves into the workbook, and the workbook wins
 
 **The decision.** The 55 item bases and 59 rollable affixes now live in two new

@@ -516,6 +516,104 @@ def affixes(book) -> list[dict]:
     return unique(out, "Affixes")
 
 
+#: The row name carrying the stat line every class inherits.
+DEFAULT_CLASS_ROW = "Default"
+
+
+def class_stats(book) -> list[dict]:
+    """One (class, stat) pair per row: its level 1 base and its per-level gain.
+
+    THE DEFAULT LINE IS A ROW SET, NOT A SPECIAL CASE. There are 33 stats and 24
+    classes planned, so writing every class out in full would be 792 rows of
+    which almost all would repeat the same values. A class named "Default"
+    carries the shared line and each real class overrides only the stats that
+    express its identity, which is also how the design describes a class: as
+    much by what it refuses as by what it takes.
+
+    Anything reading this resolves a class's value for a stat by looking for
+    that class's row, then the Default row, then zero.
+    """
+    rows = list(book["Class Stats"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Class Stats")
+
+    out = []
+    seen: set[tuple[str, str]] = set()
+    for index, raw in enumerate(rows[1:], start=2):
+        class_name = _cell(raw, headers, "Class")
+        if not class_name:
+            continue
+        stat = _cell(raw, headers, "Stat")
+        if not stat:
+            raise DataError(f"Class Stats row {index}: {class_name} names no stat")
+
+        key = (class_name, stat)
+        if key in seen:
+            raise DataError(
+                f"Class Stats row {index}: {class_name} sets {stat} twice, so "
+                "one of the two is silently ignored")
+        seen.add(key)
+
+        out.append({
+            "Name": row_name(class_name, stat),
+            "ClassName": class_name,
+            "Stat": stat,
+            "Base": number(_cell(raw, headers, "Base") or 0, "Base", index),
+            "PerLevel": number(_cell(raw, headers, "Per Level") or 0,
+                               "Per Level", index),
+        })
+
+    if not any(r["ClassName"] == DEFAULT_CLASS_ROW for r in out):
+        raise DataError(
+            f"Class Stats has no {DEFAULT_CLASS_ROW!r} rows, so every class "
+            "would start from nothing")
+    return unique(out, "Class Stats")
+
+
+def attributes(book) -> list[dict]:
+    """What one point of an attribute is worth, one stat per row.
+
+    ATTRIBUTES ONLY EVER SCALE. A point adds to a stat's sum of increases and
+    the sum multiplies the base, so an attribute grants nothing on a stat with
+    no base. That is the design working rather than failing.
+
+    Values are PERCENT PER POINT: Vitality reads 2, meaning 2% maximum health
+    per point. The simulation stores the same figure as a fraction.
+    """
+    rows = list(book["Attributes"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Attributes")
+
+    out = []
+    seen: set[tuple[str, str]] = set()
+    for index, raw in enumerate(rows[1:], start=2):
+        attribute = _cell(raw, headers, "Attribute")
+        if not attribute:
+            continue
+        stat = _cell(raw, headers, "Stat")
+        if not stat:
+            raise DataError(f"Attributes row {index}: {attribute} names no stat")
+
+        key = (attribute, stat)
+        if key in seen:
+            raise DataError(
+                f"Attributes row {index}: {attribute} sets {stat} twice")
+        seen.add(key)
+
+        value = number(_cell(raw, headers, "Percent Per Point"),
+                       "Percent Per Point", index)
+        if value <= 0:
+            raise DataError(
+                f"Attributes row {index}: {attribute} gives {value} percent of "
+                f"{stat} per point, so the point is wasted")
+
+        out.append({
+            "Name": row_name(attribute, stat),
+            "Attribute": attribute,
+            "Stat": stat,
+            "PercentPerPoint": value,
+        })
+    return unique(out, "Attributes")
+
+
 TABLES = {
     "DungeonModifiers": dungeon_modifiers,
     "WeaponSkills": weapon_skills,
@@ -528,6 +626,8 @@ TABLES = {
     "CraftingMaterials": crafting_materials,
     "ItemBases": item_bases,
     "Affixes": affixes,
+    "ClassStats": class_stats,
+    "Attributes": attributes,
 }
 
 
@@ -624,6 +724,44 @@ def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+#: Stats whose base is not a quantity a class holds.
+#:
+#: Cooldown reduction is the accumulated sum of increases rather than a value:
+#: a skill's cooldown is its own base divided by one plus this. A class base of
+#: zero is correct for it, so it is not worth reporting.
+RATE_STATS = frozenset({"cooldown_reduction"})
+
+
+def validate_stat_names(tables: dict[str, list[dict]]) -> list[str]:
+    """Report attribute effects whose stat no class supplies a base for.
+
+    ATTRIBUTES ONLY EVER SCALE. A point adds to a stat's sum of increases and
+    the sum multiplies a base, so a point does nothing until something supplies
+    that base. The class is not the only thing that can: gear implicits and
+    affixes supply block chance, critical strike chance and evasion, and a
+    weapon supplies attack speed. So this is information rather than an error.
+
+    It is worth printing because the alternative is nobody noticing. Attack
+    speed had no base anywhere at all for some time, which made every attack
+    speed affix on every item worth exactly nothing; see issue #120.
+
+    The two sheets are checked against each other rather than against a
+    hard-coded list of the 33 stats, so adding a stat to the character sheet
+    needs no change here.
+    """
+    class_rows = tables.get("ClassStats")
+    attribute_rows = tables.get("Attributes")
+    if not class_rows or not attribute_rows:
+        return []
+
+    from_classes = {row["Stat"] for row in class_rows}
+    from_attributes = {row["Stat"] for row in attribute_rows}
+
+    return [f"{stat!r} is scaled by an attribute, and no class supplies its "
+            f"base. It does nothing until gear, a weapon or a skill does."
+            for stat in sorted(from_attributes - from_classes - RATE_STATS)]
+
+
 def validate_weights(tables: dict[str, list[dict]]) -> list[str]:
     problems = []
     for table, rows in tables.items():
@@ -653,6 +791,17 @@ def main(argv: list[str] | None = None) -> int:
     except KeyError as error:
         print(f"FAIL: the workbook is missing sheet {error}", file=sys.stderr)
         return 1
+
+    # Reported and not fatal. An attribute scaling a stat no class supplies a
+    # base for is the design's own stated case: attributes only ever scale, so
+    # a point does nothing until gear, a weapon or a skill supplies the base.
+    # Worth printing, because the alternative is nobody noticing.
+    notes = validate_stat_names(tables)
+    if notes:
+        print(f"NOTE: {len(notes)} attribute effect(s) scale a stat no class "
+              f"supplies:", file=sys.stderr)
+        for line in notes:
+            print(f"  {line}", file=sys.stderr)
 
     problems = (validate_tags(tables, known_tags(book))
                 + validate_weights(tables)

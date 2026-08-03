@@ -8,6 +8,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "Character/CataclysmClassStats.h"
 #include "Engine/DataTable.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -31,12 +32,13 @@
  * full set of MASTERFUL gear: four regular affixes on every piece and no
  * enchantments.
  *
- * WHAT IS QUOTED RATHER THAN COMPUTED. The Ravager's class base values and what
- * its attribute points are worth. Neither exists in the Unreal project yet --
- * there are no class stat lines and no attribute effect table -- so they are
- * test inputs taken from the model. That is a real gap, filed separately, and it
- * means this test proves the ITEM, PIPELINE and DAMAGE arithmetic agree, not
- * that the class data has been ported.
+ * NOTHING IS QUOTED ANY MORE. The Ravager's class base values and what its
+ * attribute points are worth used to be literals copied from the Python model,
+ * because the Unreal project had neither. Both are now read from
+ * game/Data/ClassStats.csv and game/Data/Attributes.csv, so a change to the
+ * Ravager's stat line in the design workbook fails this test rather than
+ * passing unnoticed. Only the FINAL figures are still stated, which is the
+ * point: they are what the model says the character reaches.
  *
  * WHERE THE AFFIXES SIT. The Python model spends 72 affix slots without saying
  * which piece each is on. The assignment below was solved so that the totals
@@ -144,30 +146,38 @@ namespace CataclysmReferenceTest
 		return Totals;
 	}
 
+	/** The character the model describes: a level 100 Ravager. */
+	const TCHAR* ClassName = TEXT("Ravager");
+	constexpr int32 Level = 100;
+
+	/** 60 into Vitality for health, 40 into Constitution for armour and block. */
+	FCataclysmAttributePoints ReferenceAttributes()
+	{
+		FCataclysmAttributePoints Points;
+		Points.Vitality = 60;
+		Points.Constitution = 40;
+		return Points;
+	}
+
 	/**
-	 * The Ravager's class base at level 100, and what 60 Vitality and 40
-	 * Constitution add, quoted from `sim/cataclysm_sim/classes.py` and
-	 * `character.py`. Neither exists in the Unreal project yet.
+	 * What `sim/cataclysm_sim/reference_build.py` reports the character reaches.
 	 *
-	 * Attribute values are percentage points of increase, matching the stat
-	 * pipeline's units: Vitality gives 2% maximum health per point, so 60 points
-	 * is +120.
+	 * Only the FINAL figures are stated. The class base and the attribute
+	 * contribution are read from the generated tables, so this test fails if
+	 * either changes rather than silently agreeing with a stale copy.
 	 */
-	struct FClassStat
+	struct FExpectation
 	{
 		const TCHAR* Stat;
-		float ClassBase;
-		float AttributeIncrease;
 		float Expected;
 	};
 
-	const FClassStat ExpectedStats[] = {
-		//  stat                          class base   attributes   final
-		{ TEXT("max_health"),                 2110.0f,     120.0f, 11023.00f },
-		{ TEXT("armor"),                       371.5f,      80.0f,  7299.42f },
-		{ TEXT("block_chance"),                  0.0f,      40.0f,    28.00f },
-		{ TEXT("damage_reduction"),              7.95f,      0.0f,    15.95f },
-		{ TEXT("resistance_demonic"),            0.0f,       0.0f,    72.00f },
+	const FExpectation ExpectedStats[] = {
+		{ TEXT("max_health"),         11023.00f },
+		{ TEXT("armor"),               7299.42f },
+		{ TEXT("block_chance"),          28.00f },
+		{ TEXT("damage_reduction"),      15.95f },
+		{ TEXT("resistance_demonic"),    72.00f },
 	};
 }
 
@@ -204,11 +214,30 @@ bool FCataclysmReferenceBuildStatsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("so every piece is Masterful"),
 		static_cast<int32>(Rarity), static_cast<int32>(ECataclysmRarity::Masterful));
 
+	UDataTable* Classes = LoadTable<FCataclysmClassStatRow>(TEXT("ClassStats.csv"));
+	UDataTable* AttributeEffects =
+		LoadTable<FCataclysmAttributeEffectRow>(TEXT("Attributes.csv"));
+	if (!Classes || !AttributeEffects)
+	{
+		AddError(TEXT("could not load ClassStats.csv or Attributes.csv"));
+		return false;
+	}
+
+	const FCataclysmAttributePoints Points = ReferenceAttributes();
+	TestEqual(TEXT("the character spends 100 attribute points at level 100"),
+		Points.Total(), Level);
+
 	const FGameplayTagContainer NoSkill;
 
-	for (const FClassStat& Case : ExpectedStats)
+	for (const FExpectation& Case : ExpectedStats)
 	{
 		const FName Stat(Case.Stat);
+		const FString StatName(Case.Stat);
+
+		// The class base, read from the generated table rather than quoted.
+		const float ClassBase =
+			UCataclysmClassStats::BaseFor(Classes, ClassName, StatName, Level);
+
 		TArray<FCataclysmStatModifier> Modifiers;
 		if (const TArray<FCataclysmStatModifier>* Found = Gear.Find(Stat))
 		{
@@ -217,17 +246,15 @@ bool FCataclysmReferenceBuildStatsTest::RunTest(const FString& Parameters)
 
 		// Attribute points enter the increased bucket, exactly as gear
 		// increases do. The pipeline does not care where an increase came from.
-		if (Case.AttributeIncrease != 0.0f)
+		FCataclysmStatModifier FromAttributes;
+		if (UCataclysmClassStats::AttributeModifierFor(
+				AttributeEffects, Points, StatName, FromAttributes))
 		{
-			FCataclysmStatModifier Attribute;
-			Attribute.Bucket = ECataclysmStatBucket::Increased;
-			Attribute.Source = ECataclysmModifierSource::Attribute;
-			Attribute.Value = Case.AttributeIncrease;
-			Modifiers.Add(Attribute);
+			Modifiers.Add(FromAttributes);
 		}
 
 		const FCataclysmStatBreakdown Result =
-			UCataclysmStatPipeline::Evaluate(Case.ClassBase, Modifiers, NoSkill);
+			UCataclysmStatPipeline::Evaluate(ClassBase, Modifiers, NoSkill);
 
 		TestTrue(FString::Printf(
 				TEXT("%s: the model says %.2f, the game says %.2f"),
@@ -238,6 +265,30 @@ bool FCataclysmReferenceBuildStatsTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("%s took no more multiplier"), Case.Stat),
 			FMath::IsNearlyEqual(Result.MoreMultiplier, 1.0f, 0.0001f));
 	}
+
+	// The two numbers the class table supplies, checked directly as well, so a
+	// failure says which half is wrong rather than only that the total is.
+	TestTrue(TEXT("the Ravager has 2,110 maximum health at level 100"),
+		FMath::IsNearlyEqual(
+			UCataclysmClassStats::BaseFor(Classes, ClassName,
+										  TEXT("max_health"), Level),
+			2110.0f, 0.01f));
+	TestTrue(TEXT("and 371.5 armour"),
+		FMath::IsNearlyEqual(
+			UCataclysmClassStats::BaseFor(Classes, ClassName,
+										  TEXT("armor"), Level),
+			371.5f, 0.01f));
+
+	// 60 Vitality at 2% each is 120 percentage points of increased health.
+	FCataclysmStatModifier Vitality;
+	TestTrue(TEXT("Vitality touches maximum health"),
+		UCataclysmClassStats::AttributeModifierFor(
+			AttributeEffects, Points, TEXT("max_health"), Vitality));
+	TestTrue(TEXT("60 Vitality gives 120 percentage points"),
+		FMath::IsNearlyEqual(Vitality.Value, 120.0f, 0.01f));
+	TestEqual(TEXT("and it lands in the increased bucket, never flat"),
+		static_cast<int32>(Vitality.Bucket),
+		static_cast<int32>(ECataclysmStatBucket::Increased));
 
 	return true;
 }
