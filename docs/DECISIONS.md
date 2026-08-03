@@ -20,6 +20,70 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The affix pool: prefixes, suffixes and implicits
+
+**Decision.** The affix pool grows from 7 entries to 35 stat affixes plus the
+three resistance families, split into prefixes and suffixes, with an implicit on
+every item base.
+
+**Prefixes and suffixes are separate pools, two of each per piece.** All three
+games surveyed — Path of Exile, Last Epoch and Torchlight Infinite — do this.
+Without it, four affix slots means four of whatever is strongest and one item can
+carry a whole build. With it, every piece gives something up.
+
+Prefixes carry magnitude: how big a character's numbers are. Suffixes carry rates
+and qualifiers: how often, how fast, how much gets through. A stat appearing in
+both would let one item hold four of it, which is what the split exists to
+prevent, so an import-time check rejects that.
+
+**Every item base carries one or two implicits**, requested by the project owner.
+An implicit does not roll and cannot be changed, so choosing which slot to build
+around is a decision made before any loot is involved. This fills a real gap: the
+design listed slots and rarities but gave no slot an inherent stat, so a Chest
+and a Belt differed only in how many gem sockets they held.
+
+**No implicit grants evasion.** Stated as a decision rather than left as an
+accident: evasion is the one defensive layer that has to be bought with prefix
+slots, which is what makes those slots worth reading.
+
+**Implicits are per slot, not per item base within a slot.** Path of Exile varies
+them between bases so one body armour is not another. The design names no bases
+within a slot, so this is the finest granularity it supports today.
+
+**There are no attribute affixes, and that is deliberate.** The design gives one
+attribute point per level, plus the Maw, which consumes items and enemies for
+them. Gear granting attribute points appears nowhere, so an affix for it would be
+adding a mechanic rather than filling the pool.
+
+**How the values were set.** Not one formula, because the stats are not on one
+scale. Three anchors, and each affix records which it used:
+
+| Anchor | Used for | Example |
+|---|---|---|
+| Against the class base | Stats a class already has; top value about 6% of the level 100 figure | Mana, 38 against a base of 644 |
+| Against the requirement | Stats whose class base is near zero but whose endgame requirement is large | Armor, 250 |
+| By convention | Percentages with no base at all, anchored on how many slots should reach a useful figure | Evasion, 4 points a piece so fifteen slots reach the soft cap |
+
+Armor is the one place the first two anchors disagree enough to matter. A Ravager
+has 371 armor, but the armor curve divides by 800 times the difficulty tier, so
+6,400 armor is worth half damage taken at tier 8 and 371 is worth 5%. Six percent
+of the class base would be 22 per affix, which fifteen slots could never turn
+into anything. That is exactly what the design means when it says armor earned
+early does not keep its value and gear has to carry it.
+
+**A gap this work found and fixed.** Shoulders had been left out of the defensive
+slot list. It was an oversight rather than a decision — shoulders are armor — and
+without it the slot could roll nothing but resistance and energy shield, leaving
+it unable to fill its own four affix slots. The check that every slot can fill
+both its prefix and its suffix slots is what found it.
+
+**Affects:** `Cataclysm_GDD_v2.md` section VI. **Applied 2026-08-03:** subsections
+added for prefixes and suffixes, implicits, and what affixes do not grant; the
+slot restriction table corrected for Shoulders. The working model is
+`sim/cataclysm_sim/affixes.py`, covered by `sim/tests/test_affixes.py`.
+
+---
+
 ## 2026-08-03 — The multiplicative bucket, and gear level multiplying affixes
 
 **Background.** The project owner asked for research into how Path of Exile,

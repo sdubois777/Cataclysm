@@ -637,3 +637,237 @@ def test_gear_level_and_the_roll_are_independent():
     perfect_but_fresh = af.FLAT_HEALTH.value_at(7, roll=1.0, gear_level=0)
     assert poor_but_upgraded > perfect_but_fresh
     assert af.FLAT_HEALTH.value_at(7, roll=0.0, gear_level=0) < perfect_but_fresh
+
+
+# --------------------------------------------------------------------------
+# The pool, and the prefix and suffix split
+# --------------------------------------------------------------------------
+
+def test_the_pool_covers_most_of_the_character_sheet():
+    """A pool of seven affixes is not a choice. This checks the pool actually
+    reaches the sheet rather than only counting itself."""
+    from cataclysm_sim.character import ALL_STATS
+    covered = {a.stat for a in af.AFFIX_POOL} | set(af.RESISTANCE_STATS)
+    assert len(af.AFFIX_POOL) >= 30
+    assert len(covered & set(ALL_STATS)) / len(ALL_STATS) > 0.85
+
+
+def test_no_stat_is_both_a_prefix_and_a_suffix():
+    """The two are separate pools. A stat in both would let one item carry four
+    of it, which is exactly what the split exists to prevent."""
+    by_stat: dict[str, set[str]] = {}
+    for affix in af.AFFIX_POOL:
+        by_stat.setdefault(affix.stat, set()).add(affix.position)
+    assert all(len(p) == 1 for p in by_stat.values()), by_stat
+
+
+def test_that_separation_check_actually_fires():
+    real = af.AFFIX_POOL
+    af.AFFIX_POOL = real + (af.StatAffix("Straddler", "max_health", "flat",
+                                         1.0, af.DEFENSIVE_SLOTS, af.SUFFIX),)
+    try:
+        with pytest.raises(ValueError, match="both a prefix and a suffix"):
+            af._check_the_two_positions_are_separate_pools()
+    finally:
+        af.AFFIX_POOL = real
+
+
+@pytest.mark.parametrize("slot", sorted(af.GEAR_SLOTS))
+def test_every_slot_can_fill_all_four_of_its_affix_slots(slot):
+    """Two prefixes and two suffixes. A slot short of either would roll
+    duplicates or blanks. This is what caught Shoulders being left out of the
+    defensive slot list, where it could roll nothing but resistance and shield.
+    """
+    assert len(af.pool_for(slot, af.PREFIX)) >= af.PREFIXES_PER_PIECE
+    assert len(af.pool_for(slot, af.SUFFIX)) >= af.SUFFIXES_PER_PIECE
+
+
+def test_that_coverage_check_actually_fires():
+    real = af.AFFIX_POOL
+    af.AFFIX_POOL = tuple(a for a in real if "Boots" not in a.allowed_slots)
+    try:
+        with pytest.raises(ValueError, match="slots to fill"):
+            af._check_every_slot_can_fill_all_four_of_its_affixes()
+    finally:
+        af.AFFIX_POOL = real
+
+
+def test_the_four_slots_per_piece_are_two_of_each():
+    assert af.PREFIXES_PER_PIECE + af.SUFFIXES_PER_PIECE == \
+        af.AFFIX_SLOTS_PER_PIECE == 4
+
+
+def test_prefixes_carry_magnitude_and_suffixes_carry_rates():
+    """Spot-checked against the convention, not asserted in the abstract. How
+    big a number is goes in one pool; how often, how fast and how much gets
+    through goes in the other."""
+    positions = {a.stat: a.position for a in af.AFFIX_POOL}
+    for magnitude in ("max_health", "max_mana", "max_energy_shield", "armor",
+                      "evasion", "attack_damage", "spell_damage"):
+        assert positions[magnitude] == af.PREFIX, magnitude
+    for rate in ("attack_speed", "crit_chance", "movement_speed", "penetration",
+                 "cooldown_reduction", "life_leech", "block_chance"):
+        assert positions[rate] == af.SUFFIX, rate
+    assert af.SINGLE_RESISTANCE.position == af.SUFFIX
+
+
+def test_no_two_affixes_grant_the_same_thing():
+    pairs = [(a.stat, a.kind) for a in af.AFFIX_POOL]
+    assert len(pairs) == len(set(pairs))
+
+
+def test_every_affix_names_a_stat_that_something_reads():
+    """A typo would otherwise grant a stat nothing on the character sheet reads,
+    and it would silently do nothing."""
+    from cataclysm_sim.character import ALL_STATS
+    for affix in af.AFFIX_POOL:
+        assert affix.stat in set(ALL_STATS) | af.OFF_SHEET_STATS, affix.name
+    with pytest.raises(ValueError, match="neither on the character sheet"):
+        af.StatAffix("Bad", "max_stamina", "flat", 1.0)
+
+
+def test_attack_damage_is_the_only_stat_allowed_off_the_character_sheet():
+    """`character.py` says attack damage belongs to the weapon rather than the
+    sheet. Anything else off-sheet would be a stat nobody had designed."""
+    assert af.OFF_SHEET_STATS == {"attack_damage"}
+
+
+def test_there_are_no_attribute_affixes():
+    """Deliberate rather than an omission. The design gives one attribute point
+    per level, plus the Maw which consumes items for them. Gear granting
+    attribute points appears nowhere, so an affix for it would be a new
+    mechanic rather than a filled gap."""
+    from cataclysm_sim.character import ATTRIBUTE_NAMES
+    assert not {a.stat for a in af.AFFIX_POOL} & set(ATTRIBUTE_NAMES)
+
+
+def test_an_unknown_position_is_rejected():
+    with pytest.raises(ValueError, match="position must be one of"):
+        af.StatAffix("Bad", "max_health", "flat", 1.0, af.DEFENSIVE_SLOTS, "infix")
+
+
+def test_an_affix_that_can_appear_nowhere_is_rejected():
+    with pytest.raises(ValueError, match="no slot at all"):
+        af.StatAffix("Bad", "max_health", "flat", 1.0, frozenset())
+
+
+def test_pool_for_filters_by_slot_and_by_position():
+    weapon_prefixes = af.pool_for("Weapon", af.PREFIX)
+    assert all(a.position == af.PREFIX for a in weapon_prefixes)
+    assert all("Weapon" in a.allowed_slots for a in weapon_prefixes)
+    assert set(af.pool_for("Weapon")) == set(weapon_prefixes) | \
+        set(af.pool_for("Weapon", af.SUFFIX))
+    with pytest.raises(ValueError, match="unknown gear slot"):
+        af.pool_for("Cape")
+    with pytest.raises(ValueError, match="unknown position"):
+        af.pool_for("Ring", "infix")
+
+
+def test_a_weapon_still_defends_nothing():
+    """Armour and jewellery defend; a weapon does not. An implicit could break
+    that as easily as an affix could."""
+    defensive = {"max_health", "max_energy_shield", "armor", "evasion",
+                 "block_chance", "damage_reduction"}
+    assert not {a.stat for a in af.pool_for("Weapon")} & defensive
+    assert not {i.stat for i in af.implicits_for("Weapon")} & defensive
+
+
+def test_that_weapon_check_actually_fires():
+    real = dict(af.IMPLICITS)
+    af.IMPLICITS["Weapon"] = (af.Implicit("armor", "flat", 100.0),)
+    try:
+        with pytest.raises(ValueError, match="which defends"):
+            af._check_a_weapon_defends_nothing()
+    finally:
+        af.IMPLICITS.clear()
+        af.IMPLICITS.update(real)
+
+
+def test_rings_take_the_widest_pool_of_any_slot():
+    """The flexible slots a build uses to fix whatever it is short of, and there
+    are eight of them."""
+    widest = max(af.GEAR_SLOTS, key=lambda s: len(af.pool_for(s)))
+    assert widest == "Ring"
+
+
+# --------------------------------------------------------------------------
+# Implicits
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("slot", sorted(af.GEAR_SLOTS))
+def test_every_slot_has_one_or_two_implicits(slot):
+    """What a slot IS, before any loot is involved. Without them a Chest and a
+    Belt differ only in how many gem sockets they hold."""
+    assert 1 <= len(af.implicits_for(slot)) <= 2
+
+
+def test_that_implicit_check_actually_fires():
+    real = dict(af.IMPLICITS)
+    af.IMPLICITS["Belt"] = ()
+    try:
+        with pytest.raises(ValueError, match="one or two"):
+            af._check_every_slot_has_an_implicit()
+    finally:
+        af.IMPLICITS.clear()
+        af.IMPLICITS.update(real)
+    af.IMPLICITS.pop("Belt")
+    try:
+        with pytest.raises(ValueError, match="slots with no implicit"):
+            af._check_every_slot_has_an_implicit()
+    finally:
+        af.IMPLICITS.clear()
+        af.IMPLICITS.update(real)
+
+
+def test_an_implicit_does_not_roll():
+    """It is fixed to the base. A tier and a roll are what an affix has and an
+    implicit deliberately does not."""
+    belt = af.implicits_for("Belt")[0]
+    assert not hasattr(belt, "range_at")
+    assert not hasattr(belt, "top_value")
+    assert belt.value_at() == belt.value
+
+
+def test_gear_level_multiplies_an_implicit_the_same_way_it_does_an_affix():
+    for slot in af.GEAR_SLOTS:
+        for implicit in af.implicits_for(slot):
+            assert implicit.value_at(10) == pytest.approx(implicit.value)
+            assert implicit.value_at(0) == pytest.approx(
+                implicit.value / af.gear_level_multiplier(10))
+
+
+def test_an_implicit_says_what_the_slot_is_for():
+    """Spot-checked against the design's own descriptions of the slots."""
+    def stats(slot: str) -> set[str]:
+        return {i.stat for i in af.implicits_for(slot)}
+
+    assert "movement_speed" in stats("Boots")
+    assert "attack_speed" in stats("Gloves")
+    assert "attack_damage" in stats("Weapon")
+    assert "armor" in stats("Chest")
+    assert stats("Chest") != stats("Belt")
+
+
+def test_the_chest_carries_the_most_armour_of_any_implicit():
+    """The design gives the chest the most gem sockets of any armour piece, so
+    it should be the piece a defensive build is built around."""
+    armour = {slot: sum(i.value for i in af.implicits_for(slot)
+                        if i.stat == "armor")
+              for slot in af.GEAR_SLOTS}
+    assert max(armour, key=armour.get) == "Chest"
+
+
+def test_an_implicit_naming_a_stat_that_does_not_exist_is_rejected():
+    with pytest.raises(ValueError, match="neither on the character sheet"):
+        af.Implicit("max_stamina", "flat", 1.0)
+    with pytest.raises(ValueError, match="flat"):
+        af.Implicit("max_health", "multiplicative", 1.0)
+
+
+def test_no_implicit_grants_evasion():
+    """Stated so it is a decision rather than an accident. Evasion is the one
+    defensive layer a player has to buy with prefix slots, which is what makes
+    those slots worth reading."""
+    granted = {i.stat for slot in af.GEAR_SLOTS
+               for i in af.implicits_for(slot)}
+    assert "evasion" not in granted

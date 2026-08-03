@@ -1253,6 +1253,55 @@ A Common enemy is the right thing to anchor on rather than a boss, because the s
 
   
 
+### **Prefixes and Suffixes**
+
+Every piece has four affix slots, and they are **two prefixes and two suffixes**, drawn from separate pools. A stat that appears as a prefix never appears as a suffix.
+
+  
+
+**What this buys.** Without the split, four slots means four of whatever is strongest, and one item can carry a whole build. With it, every piece has to give something up, which is the trade that makes reading a drop interesting rather than arithmetic.
+
+  
+
+|  |  |  |
+| :-- | :-- | :-- |
+| \*\*Position\*\* | \*\*What it carries\*\* | \*\*Examples\*\* |
+| Prefix | How big a character's numbers are | Health, mana, energy shield, armor, evasion, damage, spell damage, class resource |
+| Suffix | How often, how fast, and how much gets through | Resistances, attack speed, critical strikes, penetration, regeneration, leech, block, movement speed, cooldown reduction, area of effect, magic find |
+
+  
+
+### **Implicits**
+
+Every item base carries **one or two implicit stats** above its rolled affixes. An implicit does not roll and cannot be changed. It is what a slot **is** rather than what a particular drop happened to get, so choosing which slot to build a character around is a decision made before any loot is involved.
+
+  
+
+|  |  |
+| :-- | :-- |
+| \*\*Slot\*\* | \*\*Implicit\*\* |
+| Head | 180 armor |
+| Chest | 400 armor, 90 maximum health |
+| Shoulders | 150 armor |
+| Gloves | 8% increased attack speed |
+| Pants | 220 armor |
+| Boots | 10% increased movement speed |
+| Belt | 110 maximum health |
+| Ring | 9 flat damage |
+| Necklace | 55 maximum mana |
+| Relic | 25 critical strike multiplier |
+| Weapon | 45 flat damage |
+
+  
+
+**No implicit grants evasion.** That one defensive layer has to be bought with prefix slots, which is what makes those slots worth reading rather than automatic.
+
+  
+
+Gear upgrade level multiplies an implicit exactly as it multiplies an affix, so the values above are the fully upgraded ones. Implicits are stated per slot; the design names no item bases within a slot, and varying implicits between bases would be the natural next step.
+
+  
+
 ### **Affixes Are Restricted by Gear Slot**
 
 An affix cannot appear on every piece. Without restrictions every slot is interchangeable and gearing has no puzzle in it.
@@ -1263,12 +1312,30 @@ An affix cannot appear on every piece. Without restrictions every slot is interc
 | :-- | :-: | :-- |
 | \*\*Family\*\* | \*\*Slots\*\* | \*\*Where\*\* |
 | Damage | 48 | Weapon, Rings, Relic, Necklace, Gloves |
-| Health | 52 | Head, Chest, Belt, Pants, Boots, Rings |
+| Health and armor | 56 | Head, Chest, Shoulders, Belt, Pants, Boots, Rings |
 | Resistance | 68 | Everything except the Weapon |
 
   
 
 **Rings are in every list on purpose.** There are eight of them, so they are the flexible slots a build uses to fix whatever it is short of, which is what makes them worth chasing. Capping eight resistances is the hardest defensive requirement, so resistance is the least restricted; damage is the most.
+
+  
+
+**A weapon defends nothing.** No health, energy shield, armor, evasion, block, damage reduction or resistance can appear on it, as an affix or as an implicit.
+
+  
+
+**Every slot can fill all four of its affix slots.** A slot with fewer available prefixes than it has prefix slots would roll duplicates or blanks, so each is checked against both pools separately.
+
+  
+
+### **What Affixes Do Not Grant**
+
+**There are no attribute affixes.** The design gives one attribute point per level, and the Maw consumes items and enemies for more. Gear granting attribute points appears nowhere, so an affix for it would be a new mechanic rather than a filled gap.
+
+  
+
+**No ordinary affix is a "more" multiplier.** An affix is flat or increased. Multiplicative sources come from gems, passive tree keystones and enchantments, as section IV states.
 
   
 
