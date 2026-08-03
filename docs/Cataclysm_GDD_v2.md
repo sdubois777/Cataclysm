@@ -725,6 +725,56 @@ Per-level scaling is linear. Whether it should stay linear is not settled and wi
 
   
 
+**A class is defined as much by what it refuses as by what it takes.** The Berserker tree has almost no armor and no evasion at all. The Saboteur has no armor, no critical strike investment and no leech. Leaving a stat at the default is how a class declines to care about it, and it is what makes classes feel different before a single point is spent.
+
+  
+
+### **The Three Demonic Class Stat Lines**
+
+These are the three classes the vertical slice needs, because a damage type unlocks all three of its class trees. Values are at level 100 with no gear and no attribute points spent. Only the stats any of the three overrides are listed; the remaining 19 are identical across all three.
+
+  
+
+|  |  |  |  |
+| :-- | :-: | :-: | :-: |
+| \*\*Stat\*\* | \*\*Ravager\*\* | \*\*Ritualist\*\* | \*\*Masochist\*\* |
+| Maximum Health | 2,110 | 1,060 | 2,526 |
+| Maximum Mana | 436 | 1,278 | 644 |
+| Maximum Energy Shield | 0 | 832 | 0 |
+| Health Regeneration | 15.8 | 15.8 | 37.6 |
+| Mana Regeneration | 10.9 | 26.8 | 10.9 |
+| Armor | 371 | 0 | 55 |
+| Evasion | 0 | 0 | 0 |
+| Damage Reduction | 8% | 0 | 0 |
+| Retaliation | 0 | 0 | 158 |
+| Life Leech | 3% | 0 | 0 |
+| Movement Speed | 4.6 | 3.5 | 4.0 |
+| Spell Damage | 0 | 158 | 0 |
+| Crowd Control Resistance | 19.9 | 0 | 29.8 |
+| Class Resource | 100 | 150 | 100 |
+
+  
+
+**Ravager.** A frontline aggressor that is hard to stop rather than one that hits hardest. Where the Berserker is a shock troop, the Ravager is the consistent fighter: the most armor of the three, flat damage reduction, enough leech to hold a line, crowd control resistance, and the fastest movement so it is always in contact. It takes no evasion and no energy shield. A frontline aggressor that cannot close is not one, which is why movement speed matters as much as armor here.
+
+  
+
+**Ritualist.** The caster of the three and the only one with an energy shield. The Saboteur deploys objects that sit where they are put; the Ritualist commands things that were alive, and in the case of possession, things that still belong to the enemy. Frailest health, largest mana pool, the only meaningful mana regeneration, slowest on foot, no armor and no evasion. It survives at range and behind what it summons rather than by being hard to hit. Its health is low deliberately: attributes, gear and multiclassing all scale it.
+
+  
+
+**Masochist.** The largest health pool and by far the largest regeneration, because for this class health regeneration is resource regeneration — a Masochist that cannot regain health cannot act. It takes retaliation and low armor, and refuses evasion and energy shield: evading is missing out, and a shield absorbs the damage the class needs to convert.
+
+  
+
+The Masochist keeps a normal mana pool. "Uses HP instead of mana" is delivered by a keystone or capstone in its passive tree that converts all mana into added health, so the conversion is a build choice rather than a starting condition.
+
+  
+
+Class resource **behaviour** is not set here, only the pool size. What each resource does, how it builds and how it decays belongs with the passive trees.
+
+  
+
 ### **Stat Calculation**
 
 Every percentage in the attribute table needs a base to apply to and a rule for combining with other sources. These are those rules, and they apply to gear affixes as well as attribute points.
