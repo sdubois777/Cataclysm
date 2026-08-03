@@ -873,6 +873,60 @@ Over-capping resistance matters because enemy penetration reduces effective resi
 
   
 
+### **The Damage Calculation**
+
+One incoming hit is resolved in this order. Each step operates on what the previous step left.
+
+  
+
+|  |  |
+| :-: | :-- |
+| \*\*Step\*\* | \*\*What happens\*\* |
+| 1. Evasion | Direct attacks only. An evaded hit stops here and does nothing. |
+| 2. Block | Removes 50% of what remains. Applies to area damage as well. |
+| 3. Armor | Reduces damage by `armor / (armor + K)`, where K is 800 × the difficulty tier, capped at 75%. |
+| 4. Resistance | Penetration is subtracted first, then the result is capped at 70%. |
+| 5. Damage reduction | The flat percentage stat. |
+| 6. Mana | Only for damage over time, and only if an enchantment grants it. |
+| 7. Energy shield | Absorbs before health, one for one. Does not absorb damage over time. |
+| 8. Health | Takes whatever is left. |
+
+  
+
+**Armor uses a curve, not a subtraction.** `armor / (armor + K)` never reaches 100%, so no amount of armor is immunity, and it has natural diminishing returns so the first points matter most. K rising with the difficulty tier is what stops armor earned early from keeping its value forever: 371 armor is worth 32% at tier 1 and 5% at tier 8.
+
+  
+
+**Penetration is applied before the 70% cap, not after.** This is the rule that makes over-capping worth anything, and it is the reason the cap is described as soft. Against 30 penetration, a character at 100 resistance still sits at the 70% cap, while one at exactly 70 drops to 40%. Capping first would make every point above 70 worthless and contradict the design's own allowance for over-capping via affixes.
+
+  
+
+**Armor penetration and resistance penetration are separate stats.** Affixes grant them separately — ignoring armor and ignoring resistances appear as different modifiers throughout the enchantment tables. Piercing weapons add their 20% on top of whatever gear provides, up to all of a target's armor.
+
+  
+
+**No combination of these layers reaches immunity.** Each has either a cap or a curve that cannot reach zero damage.
+
+  
+
+### **Energy Shield**
+
+Energy shield is a distinct defence with its own rules, not a second health bar.
+
+  
+
+  - **It does not absorb damage over time.** Bleed, poison, burn and the rest pass straight through it to health.
+  - **It refills 3 seconds after the character last took damage.** Taking damage again inside that window restarts the wait.
+  - **Damage over time restarts that wait as well.** So damage over time both bypasses the shield and holds it empty, which is what makes it the answer to shield stacking rather than a stat check.
+  - **Magic weapons strip 10% more of it** per hit than other sub-types.
+  - Breaking the shield is a distinct event that other effects can trigger on.
+
+  
+
+Most classes have no energy shield at all. It is given to classes that thematically warrant it, such as casters.
+
+  
+
 ### **Resistances**
 
 There are eight resistances, one per damage type. Each caps at 70%. Resistance is reduced by enemy penetration scaling. Over-capping resistance is possible via certain affixes.
@@ -985,8 +1039,16 @@ Weapons have a physical sub-type that determines baseline combat properties:
 | \*\*Sub-Type\*\* | \*\*Property\*\* |
 | Piercing | Ignores 20% of enemy armor |
 | Slashing | 10% more damage vs. HP |
-| Blunt | 10% more damage vs. armor |
+| Blunt | 10% chance to stun for 0.75 seconds |
 | Magic | 10% more damage vs. shields |
+
+  
+
+**Blunt stuns rather than doing bonus damage against armor.** Its original property put it in direct competition with Piercing, which already beats armor and has a whole family of affixes that scale it — ignoring armor appears on skills, on critical hits, on traps and on first hits. Nothing anywhere scales damage against armored targets, so Blunt was a flat bonus with nowhere to grow.
+
+  
+
+The stun uses the shortest duration any designed skill uses. A weapon sub-type that can stun on every hit must not outclass the skills whose entire purpose is stunning, which run to 3 seconds. Crowd control resistance reduces the chance proportionally, so a character at 100% cannot be stunned at all. An evaded hit never stuns, because nothing made contact; a blocked hit still can, because a block reduces damage rather than preventing contact.
 
   
 
