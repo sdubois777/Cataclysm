@@ -1240,3 +1240,119 @@ def test_the_two_handed_bonus_beats_summed_one_handed_base_damage():
 
     assert summed_one_handed == pytest.approx(86.0)
     assert two_handed > summed_one_handed
+
+
+# --------------------------------------------------------------------------
+# Rarity is a label for what fills an item's four slots
+# --------------------------------------------------------------------------
+
+def test_rarity_is_decided_by_what_the_item_carries():
+    """Stated by the project owner 2026-08-03: an item that drops with an
+    enchantment is a Legendary; one that drops with three regular affixes is a
+    Superb. Rarity is not a property the item carries."""
+    assert af.rarity_of(0, 1) == "Everyday"
+    assert af.rarity_of(0, 2) == "Quality"
+    assert af.rarity_of(0, 3) == "Superb"
+    assert af.rarity_of(0, 4) == "Masterful"
+    assert af.rarity_of(1, 3) == "Legendary"
+    assert af.rarity_of(2, 2) == "Mythical"
+    assert af.rarity_of(3, 1) == "Ascendant"
+    assert af.rarity_of(4, 0) == "Cataclysmic"
+
+
+def test_every_rarity_is_produced_by_exactly_one_combination():
+    combinations = [(af.enchantments_for(r), af.affix_slots_for(r))
+                    for r in af.RARITIES]
+    assert len(set(combinations)) == len(af.RARITIES)
+    for rarity, combination in zip(af.RARITIES, combinations, strict=True):
+        assert af.rarity_of(*combination) == rarity
+
+
+def test_adding_an_affix_promotes_the_piece():
+    """An Everyday item with an affix added becomes a Quality piece."""
+    assert af.rarity_for_affix_count(1) == "Everyday"
+    assert af.rarity_for_affix_count(2) == "Quality"
+    assert af.rarity_for_affix_count(3) == "Superb"
+    assert af.rarity_for_affix_count(4) == "Masterful"
+    for count in range(1, af.AFFIX_SLOTS_PER_PIECE + 1):
+        rarity = af.rarity_for_affix_count(count)
+        assert af.affix_slots_for(rarity) == count
+        assert af.enchantments_for(rarity) == 0
+
+
+def test_an_enchantment_takes_an_affix_slot_rather_than_adding_one():
+    """Applying an enchantment to a Masterful piece makes it Legendary, and it
+    gives up a regular affix to do so. That is the trade the design describes."""
+    assert af.affix_slots_for("Masterful") == 4
+    assert af.affix_slots_for("Legendary") == 3
+    assert af.enchantments_for("Legendary") == 1
+    for rarity in af.RARITIES[4:]:
+        filled = af.enchantments_for(rarity) + af.affix_slots_for(rarity)
+        assert filled == af.AFFIX_SLOTS_PER_PIECE, rarity
+
+
+def test_a_cataclysmic_item_has_no_regular_affixes():
+    """All four of its slots hold enchantments. This is why the 72 affix budget
+    belongs to Masterful gear and not to Cataclysmic gear. See issue #125."""
+    assert af.enchantments_for("Cataclysmic") == af.AFFIX_SLOTS_PER_PIECE
+    assert af.affix_slots_for("Cataclysmic") == 0
+
+
+def test_the_affix_budget_belongs_to_masterful():
+    best = max(af.affix_slots_for(r) for r in af.RARITIES)
+    assert af.GEAR_PIECES * best == af.TOTAL_AFFIX_SLOTS == 72
+    assert [r for r in af.RARITIES if af.affix_slots_for(r) == best] == ["Masterful"]
+
+
+def test_enchantments_climb_as_rarity_rises():
+    counts = [af.enchantments_for(r) for r in af.RARITIES]
+    assert counts == sorted(counts)
+    assert counts[:4] == [0, 0, 0, 0], "enchantments start at Legendary"
+    assert counts[-1] == af.AFFIX_SLOTS_PER_PIECE
+
+
+def test_an_unknown_rarity_is_rejected_rather_than_defaulting():
+    with pytest.raises(ValueError, match="is not a rarity"):
+        af.affix_slots_for("Uncommon")
+    with pytest.raises(ValueError, match="is not a rarity"):
+        af.enchantments_for("Uncommon")
+
+
+def test_a_combination_that_names_no_rarity_is_rejected():
+    """Below Legendary a piece fills only as many slots as it has affixes; from
+    there it fills all four. Anything else is not an item this design makes."""
+    with pytest.raises(ValueError, match="not a rarity"):
+        af.rarity_of(1, 1)          # an enchantment with two slots empty
+    with pytest.raises(ValueError, match="1 to 4 filled"):
+        af.rarity_of(0, 0)          # nothing at all
+    with pytest.raises(ValueError, match="1 to 4 filled"):
+        af.rarity_of(3, 3)          # six slots
+    with pytest.raises(ValueError, match="neither can be negative"):
+        af.rarity_of(-1, 2)
+
+
+def test_there_is_no_fifth_affix_to_add():
+    with pytest.raises(ValueError, match="no fifth slot"):
+        af.rarity_for_affix_count(af.AFFIX_SLOTS_PER_PIECE + 1)
+    with pytest.raises(ValueError, match="not an item"):
+        af.rarity_for_affix_count(0)
+
+
+def test_a_split_adds_back_to_the_slot_count_and_respects_both_caps():
+    for slots in range(af.AFFIX_SLOTS_PER_PIECE + 1):
+        prefixes, suffixes = af.prefix_suffix_split(slots)
+        assert prefixes + suffixes == slots
+        assert prefixes <= af.PREFIXES_PER_PIECE
+        assert suffixes <= af.SUFFIXES_PER_PIECE
+
+
+def test_the_split_at_each_slot_count():
+    assert af.prefix_suffix_split(1) == (1, 0)
+    assert af.prefix_suffix_split(2) == (1, 1)
+    assert af.prefix_suffix_split(3) == (2, 1)
+    assert af.prefix_suffix_split(4) == (2, 2)
+
+
+def test_a_split_beyond_the_ceiling_is_rejected():
+    with pytest.raises(ValueError, match="outside"):
+        af.prefix_suffix_split(af.AFFIX_SLOTS_PER_PIECE + 1)

@@ -1233,18 +1233,46 @@ The stun uses the shortest duration any designed skill uses. A weapon sub-type t
 
 ## **Item Rarities**
 
-|  |  |
-| :-: | :-: |
-| \*\*Rarity\*\* | \*\*Notes\*\* |
-| Everyday | Common drops, basic affixes |
-| Quality | Slightly improved base stats |
-| Superb | Better affix rolls |
-| Masterful | Strong affixes, good base |
-| Legendary | Minimum 1 enchantment slot. Requires gear level 4+. |
-| Mythic | Up to 2 enchantment slots. Requires gear level 6+. |
-| Ascendant | Up to 3 enchantment slots. Requires gear level 8+. |
-| Cataclysmic | Up to 4 enchantment slots. Requires gear level 10. |
-| Sets | Legendary and above can be part of a named set with 2/6/10 piece bonuses. |
+**Rarity is not a property an item carries. It is a label for what fills its four slots.** An item that drops with an enchantment is a Legendary; one that drops with three regular affixes is a Superb. Every piece has four slots, and each holds either a regular affix or an enchantment.
+
+  
+
+|  |  |  |  |
+| :-: | :-: | :-: | :-- |
+| \*\*Rarity\*\* | \*\*Enchantments\*\* | \*\*Regular affixes\*\* | \*\*Notes\*\* |
+| Everyday | 0 | 1 | Common drops, basic affixes |
+| Quality | 0 | 2 | Slightly improved base stats |
+| Superb | 0 | 3 | Better affix rolls |
+| Masterful | 0 | 4 | Strong affixes, good base |
+| Legendary | 1 | 3 | Requires gear level 4+. |
+| Mythic | 2 | 2 | Requires gear level 6+. |
+| Ascendant | 3 | 1 | Requires gear level 8+. |
+| Cataclysmic | 4 | 0 | Requires gear level 10. |
+| Sets | — | — | Legendary and above can be part of a named set with 2/6/10 piece bonuses. |
+
+  
+
+**Adding an affix promotes the piece.** An Everyday item with an affix added becomes a Quality item, and a Superb item with a fourth becomes Masterful. That is not a special crafting rule; it follows from rarity being the name for the contents.
+
+  
+
+**An enchantment takes an affix's slot rather than adding one.** Applying an enchantment to a Masterful piece makes it Legendary, and the piece gives up a regular affix to do it. That is the choice the enchantment section describes, made concrete: a player stacking enchantments is trading away ordinary stats for high-power modifiers that carry drawbacks.
+
+  
+
+**Enchantments arrive either way.** One can roll when the item drops, and a player can also apply one afterwards.
+
+  
+
+**A CATACLYSMIC ITEM HAS NO REGULAR AFFIXES.** All four of its slots hold enchantments. So the 72 regular affix slots across a set is what eighteen **Masterful** pieces reach, not eighteen Cataclysmic ones, and every affix value in this document was fitted against that figure. A top build is expected to be a mix of the two rather than all of either.
+
+  
+
+**A higher rarity is not automatically a better item.** It is a different item, weighted further toward enchantments and away from ordinary stats.
+
+  
+
+**A piece with fewer than 4 regular affixes splits them between prefixes and suffixes.** Two prefixes and two suffixes remain the caps, so one affix is a prefix or a suffix, two are one of each, and three are two of one and one of the other.
 
   
 

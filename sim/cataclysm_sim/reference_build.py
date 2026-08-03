@@ -23,6 +23,19 @@ that a statement like "a Common enemy takes 25 hits to kill you" has something
 concrete behind it. A build that spent its slots differently would get different
 numbers, which is the point of having slots.
 
+IT IS A MASTERFUL, NO-ENCHANTMENT BUILD. That used to go without saying and no
+longer does. Rarity is a label for what fills a piece's four slots: a Masterful
+piece has four regular affixes and no enchantment, and a Cataclysmic one has four
+enchantments and no regular affix at all. Spending 36 prefixes and 36 suffixes
+across eighteen pieces therefore describes a full set of Masterful gear.
+
+The design document still says a difficulty tier 8 character is fully
+Cataclysmic, which describes a different character entirely -- one with 72
+enchantments and no ordinary stats. That disagreement is issue #125, and the
+project owner's reading is that a real top build is a mix of the two. It does not
+affect what this module measures, because a mix has ordinary stats too and this
+build is a concrete, statable one rather than a claim about what players do.
+
 IT IS A TWO-HANDED BUILD, and it does not model which piece each affix sits on.
 `BASES` ends in a Greatsword, so this is the 18-piece, 72-affix-slot loadout
 rather than the dual wielder's 19 and 76. `PREFIX_SPEND` and `SUFFIX_SPEND` are
