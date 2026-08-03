@@ -175,6 +175,146 @@ def two_handed_multiplier(hands: int) -> float:
         raise ValueError(f"a weapon has 1 or 2 hands, not {hands}")
     return TWO_HANDED_MULTIPLIER if hands == 2 else 1.0
 
+#: The eight item rarities, weakest first. Index + 1 is the rarity number the
+#: Power Score model uses, so Everyday is 1 and Cataclysmic is 8.
+#:
+#: Spelled as `player_power.RARITIES` spells them, which is also how the Gems
+#: sheet spells its eight columns. The design document writes "Mythic" for the
+#: sixth; the data writes "Mythical". That disagreement is filed rather than
+#: quietly resolved here.
+RARITIES: tuple[str, ...] = ("Everyday", "Quality", "Superb", "Masterful",
+                             "Legendary", "Mythical", "Ascendant", "Cataclysmic")
+
+#: What each rarity IS: how many of its four slots hold an enchantment, and how
+#: many hold a regular affix.
+#:
+#: RARITY IS NOT A PROPERTY AN ITEM CARRIES. It is a label computed from what
+#: fills the slots, stated by the project owner 2026-08-03: an item that drops
+#: with an enchantment is a Legendary; one that drops with three regular affixes
+#: is a Superb. So `rarity_of` is the definition and this table is its inverse.
+#:
+#: Two consequences follow, and both are the design working rather than an
+#: accident.
+#:
+#: ADDING AN AFFIX PROMOTES THE PIECE. An Everyday item with an affix added
+#: becomes a Quality item. Applying an enchantment to a Masterful item makes it
+#: Legendary, and the enchantment takes an affix's slot, which is the trade the
+#: design describes -- "players must choose between stacking powerful
+#: enchantments or filling slots with standard affixes".
+#:
+#: A CATACLYSMIC ITEM HAS NO REGULAR AFFIXES. All four of its slots hold
+#: enchantments. So the 72-slot affix budget is what eighteen MASTERFUL pieces
+#: reach, not eighteen Cataclysmic ones. The Expected Character by Tier table in
+#: the design document still says a tier 8 character is fully Cataclysmic, which
+#: no longer describes the character every affix value was fitted against; that
+#: is issue #125, and the project owner's reading is that a top build is a mix
+#: of regular affixes and enchantments rather than all of either.
+#:
+#: The genre puts affix count on rarity the same way. Path of Exile gives a
+#: normal item no affixes, a magic item at most one prefix and one suffix, and a
+#: rare item three to six; Diablo 4 gives a magic item one or two and a rare item
+#: three. What is particular here is that enchantments share the same four slots,
+#: so the top four rarities trade affixes away rather than adding capacity.
+RARITY_COMPOSITION: dict[str, tuple[int, int]] = {
+    #             enchantments, regular affixes
+    "Everyday":    (0, 1),
+    "Quality":     (0, 2),
+    "Superb":      (0, 3),
+    "Masterful":   (0, 4),
+    "Legendary":   (1, 3),
+    "Mythical":    (2, 2),
+    "Ascendant":   (3, 1),
+    "Cataclysmic": (4, 0),
+}
+
+#: The four rarities reachable by adding regular affixes, weakest first. Index
+#: + 1 is the affix count, so one affix is Everyday and four is Masterful.
+CRAFTABLE_RARITIES: tuple[str, ...] = RARITIES[:4]
+
+#: The lowest rarity carrying an enchantment. Below it a piece has none.
+FIRST_ENCHANTABLE_RARITY = RARITIES[4]
+
+
+def affix_slots_for(rarity: str) -> int:
+    """How many REGULAR affixes a piece of this rarity carries.
+
+    Four at Masterful and falling from there, because the top four rarities
+    spend slots on enchantments instead. A Cataclysmic piece carries none.
+    """
+    return _composition(rarity)[1]
+
+
+def enchantments_for(rarity: str) -> int:
+    """How many of the four slots hold an enchantment."""
+    return _composition(rarity)[0]
+
+
+def _composition(rarity: str) -> tuple[int, int]:
+    if rarity not in RARITY_COMPOSITION:
+        raise ValueError(f"{rarity!r} is not a rarity; expected one of "
+                         f"{list(RARITIES)}")
+    return RARITY_COMPOSITION[rarity]
+
+
+def rarity_of(enchantments: int, affixes: int) -> str:
+    """What a piece carrying this many enchantments and affixes IS.
+
+    THE DEFINITION, not a lookup. Stated by the project owner 2026-08-03: an
+    item that drops with an enchantment is a Legendary; one that drops with
+    three regular affixes is a Superb. Rarity is a label for the contents rather
+    than a property the item carries, which is why adding an affix promotes the
+    piece and applying an enchantment promotes it further.
+    """
+    if enchantments < 0 or affixes < 0:
+        raise ValueError(
+            f"{enchantments} enchantments and {affixes} affixes; neither can "
+            "be negative")
+    total = enchantments + affixes
+    if not 1 <= total <= AFFIX_SLOTS_PER_PIECE:
+        raise ValueError(
+            f"{enchantments} enchantments and {affixes} affixes fill {total} "
+            f"slots; a piece has 1 to {AFFIX_SLOTS_PER_PIECE} filled")
+
+    for rarity, composition in RARITY_COMPOSITION.items():
+        if composition == (enchantments, affixes):
+            return rarity
+    raise ValueError(
+        f"{enchantments} enchantments and {affixes} affixes is not a rarity. "
+        f"Below {FIRST_ENCHANTABLE_RARITY} a piece fills only as many slots as "
+        "it has affixes; from there it fills all four.")
+
+
+def rarity_for_affix_count(count: int) -> str:
+    """The rarity a piece with this many affixes and NO enchantments is.
+
+    The crafting path: adding an affix promotes the piece, so an Everyday item
+    with an affix added becomes a Quality one. It stops at Masterful, because a
+    Masterful piece already fills all four slots and there is no fifth. Reaching
+    Legendary means applying an enchantment, which takes an affix's slot rather
+    than adding one.
+    """
+    if not 1 <= count <= AFFIX_SLOTS_PER_PIECE:
+        raise ValueError(
+            f"{count} affixes is outside 1-{AFFIX_SLOTS_PER_PIECE}; a piece "
+            "with none is not an item and there is no fifth slot")
+    return rarity_of(0, count)
+
+
+def prefix_suffix_split(slots: int) -> tuple[int, int]:
+    """How a slot count divides into prefixes and suffixes, at its most even.
+
+    Two of each remain the caps. One slot is a prefix, two are one of each, and
+    three are two prefixes and one suffix. A drop may legitimately go the other
+    way with three -- one prefix and two suffixes -- so this returns the shape
+    rather than a rule; what it fixes is that neither side exceeds its cap and
+    that the two sum to the slot count.
+    """
+    if not 0 <= slots <= AFFIX_SLOTS_PER_PIECE:
+        raise ValueError(f"{slots} slots is outside 0-{AFFIX_SLOTS_PER_PIECE}")
+    prefixes = min(PREFIXES_PER_PIECE, (slots + 1) // 2)
+    return prefixes, slots - prefixes
+
+
 #: An affix is a prefix or a suffix, and the two draw from separate pools.
 #:
 #: WHAT THIS BUYS. Without the split, four slots means four of whatever is
@@ -1508,6 +1648,113 @@ def _check_ailments_only_appear_where_a_hit_comes_from() -> None:
                 "from")
 
 
+def _check_every_rarity_has_a_composition() -> None:
+    """The eight rarities, what fills their slots, and the shape of the curve.
+
+    A rarity missing from the table would raise on every lookup, which is loud.
+    What this really guards is the SHAPE: enchantments must climb as rarity
+    rises, regular affixes must not climb once enchantments start taking slots,
+    and no rarity may fill more slots than a piece has.
+    """
+    missing = set(RARITIES) - set(RARITY_COMPOSITION)
+    extra = set(RARITY_COMPOSITION) - set(RARITIES)
+    if missing or extra:
+        raise ValueError(
+            f"the rarity composition table does not cover the rarities: "
+            f"missing {sorted(missing)}, unknown {sorted(extra)}")
+
+    enchantments = [enchantments_for(r) for r in RARITIES]
+    if enchantments != sorted(enchantments):
+        raise ValueError(f"enchantments fall as rarity rises: {enchantments}")
+
+    for rarity in RARITIES:
+        filled = enchantments_for(rarity) + affix_slots_for(rarity)
+        if filled > AFFIX_SLOTS_PER_PIECE:
+            raise ValueError(
+                f"{rarity} fills {filled} slots but a piece has "
+                f"{AFFIX_SLOTS_PER_PIECE}")
+        if filled < 1:
+            raise ValueError(f"{rarity} fills no slots at all")
+
+    # Below the first enchantable rarity a piece fills only as many slots as it
+    # has affixes; from there it fills all four. Anything else would leave a
+    # rarity that no combination of contents can produce.
+    for rarity in CRAFTABLE_RARITIES:
+        if enchantments_for(rarity) != 0:
+            raise ValueError(f"{rarity} carries an enchantment, so it is not "
+                             "reachable by adding affixes")
+    for rarity in RARITIES[len(CRAFTABLE_RARITIES):]:
+        filled = enchantments_for(rarity) + affix_slots_for(rarity)
+        if filled != AFFIX_SLOTS_PER_PIECE:
+            raise ValueError(
+                f"{rarity} fills {filled} of {AFFIX_SLOTS_PER_PIECE} slots; "
+                "an enchantment takes an affix's slot rather than adding one")
+
+
+def _check_the_affix_budget_is_the_best_rarity_on_every_piece() -> None:
+    """72 is what eighteen MASTERFUL pieces reach, not eighteen Cataclysmic ones.
+
+    Every affix value in the pool was fitted against 72 regular affix slots. A
+    Cataclysmic piece has none, because all four of its slots hold enchantments,
+    so the budget belongs to the best rarity that spends nothing on them. Stating
+    it here means the two cannot part company.
+    """
+    best = max(affix_slots_for(r) for r in RARITIES)
+    if GEAR_PIECES * best != TOTAL_AFFIX_SLOTS:
+        raise ValueError(
+            f"{GEAR_PIECES} pieces at {best} regular affixes is "
+            f"{GEAR_PIECES * best}, but the affix budget is {TOTAL_AFFIX_SLOTS}")
+
+    richest = [r for r in RARITIES if affix_slots_for(r) == best]
+    if CRAFTABLE_RARITIES[-1] not in richest:
+        raise ValueError(
+            f"{CRAFTABLE_RARITIES[-1]} does not carry the most regular affixes; "
+            f"{richest} do")
+
+
+def _check_rarity_is_decided_by_what_fills_the_slots() -> None:
+    """`rarity_of` and the composition table must be inverses.
+
+    Rarity is a label for the contents rather than a property the item carries,
+    so every rarity must be produced by exactly one combination and every legal
+    combination must name a rarity. If they disagreed, adding an affix to an
+    Everyday item could produce something that is not a Quality item, and the
+    promotion rule would silently stop working.
+    """
+    seen: dict[tuple[int, int], str] = {}
+    for rarity, composition in RARITY_COMPOSITION.items():
+        if composition in seen:
+            raise ValueError(
+                f"{rarity} and {seen[composition]} are both {composition[0]} "
+                f"enchantments and {composition[1]} affixes")
+        seen[composition] = rarity
+        if rarity_of(*composition) != rarity:
+            raise ValueError(
+                f"{composition} names {rarity_of(*composition)}, not {rarity}")
+
+    for count in range(1, AFFIX_SLOTS_PER_PIECE + 1):
+        rarity = rarity_for_affix_count(count)
+        if affix_slots_for(rarity) != count or enchantments_for(rarity) != 0:
+            raise ValueError(
+                f"{count} affixes and no enchantment makes a {rarity}, which "
+                f"carries {affix_slots_for(rarity)} affixes and "
+                f"{enchantments_for(rarity)} enchantments")
+
+
+def _check_a_split_never_exceeds_either_cap() -> None:
+    """Neither side of a prefix and suffix split may pass its own cap, and the
+    two must always add back to the slot count."""
+    for slots in range(AFFIX_SLOTS_PER_PIECE + 1):
+        prefixes, suffixes = prefix_suffix_split(slots)
+        if prefixes + suffixes != slots:
+            raise ValueError(f"{slots} slots split into {prefixes}+{suffixes}")
+        if prefixes > PREFIXES_PER_PIECE or suffixes > SUFFIXES_PER_PIECE:
+            raise ValueError(
+                f"{slots} slots split into {prefixes} prefixes and {suffixes} "
+                f"suffixes, past the caps of {PREFIXES_PER_PIECE} and "
+                f"{SUFFIXES_PER_PIECE}")
+
+
 def _check_the_two_loadouts_have_equal_affix_value() -> None:
     """A two-hander and two one-handers must be worth the same in affixes.
 
@@ -1568,6 +1815,10 @@ _check_every_gem_applied_effect_is_reachable_as_an_affix()
 _check_ailments_only_appear_where_a_hit_comes_from()
 _check_the_two_loadouts_have_equal_affix_value()
 _check_only_a_two_handed_weapon_multiplies_its_values()
+_check_every_rarity_has_a_composition()
+_check_the_affix_budget_is_the_best_rarity_on_every_piece()
+_check_a_split_never_exceeds_either_cap()
+_check_rarity_is_decided_by_what_fills_the_slots()
 
 
 def better_kind(pair: tuple[StatAffix, StatAffix], base_before_increases: float,
