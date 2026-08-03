@@ -20,6 +20,49 @@ applied or still pending.
 
 ---
 
+## 2026-08-02 — Enemy modifiers versus dungeon modifiers
+
+**Decision.** The two are separate systems and behave differently.
+
+| | Dungeon modifiers | Enemy modifiers |
+|---|---|---|
+| Applies to | A whole dungeon | One individual enemy |
+| How many | One per difficulty tier, doubled for Sacrificial | One per rarity above Common |
+| Carries a score | **Yes** | **No** |
+| Source table | `DungeonModifiers.csv`, 116 rows | `EnemyModifiers.csv`, 79 rows |
+
+**Common enemies carry no modifiers at all**, because the count is one per rarity
+*above* Common.
+
+**Enemy modifiers deliberately do not change an enemy's score.** They are
+mechanical effects rather than stat increases: a burning aura deals its own
+damage, and a charm stops the player dealing damage for a few seconds. Scoring
+them as well would count the same difficulty twice, once in the effect and once
+in the larger health and damage pool a higher score produces after the conversion
+recorded in issue #97.
+
+Dungeon modifiers are the opposite case and do carry a score. An environmental
+effect applies to everything inside the dungeon, so a score is the only way its
+difficulty is expressed at all.
+
+**The two data tables already reflect this.** `DungeonModifiers.csv` has a Weight
+column on all 116 rows, taking values of 5, 10, 15 or 20, and the simulation
+already sums the weights of a dungeon's modifiers into the Modifier Score.
+`EnemyModifiers.csv` has no weight column. That asymmetry was first read as a
+gap in the enemy table and filed as issue #99; it is the design.
+
+**Why this was written down.** Neither rule was in the design document. The
+dungeon rule was only visible in `sim/cataclysm_sim/engine.py`, which implements
+it, and the enemy rule was nowhere at all — it was stated by the project owner
+after a wrong inference from the dungeon rule was applied to enemies.
+
+**Affects:** `Cataclysm_GDD_v2.md` sections VIII and X. **Applied 2026-08-02:** a
+Dungeon Modifiers subsection was added to section VIII and an Enemy Modifiers
+subsection to section X, each stating the count, the scoring behaviour, and why
+the two differ.
+
+---
+
 ## 2026-08-02 — The damage calculation
 
 **Decision.** One incoming hit resolves in this order: evasion, block, armor,

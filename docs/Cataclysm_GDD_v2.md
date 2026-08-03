@@ -1239,6 +1239,20 @@ Every modification made to an item adds Cataclysmic Residue (CR). This residue r
 
   
 
+## **Dungeon Modifiers**
+
+Dungeon modifiers apply to a **whole dungeon**, and are separate from the enemy modifiers in section X, which apply to an individual enemy.
+
+  
+
+A dungeon carries **one modifier per difficulty tier**, so a tier 8 dungeon carries eight. A Sacrificial dungeon carries double that, which the player may either shed by sacrificing materials or keep for bonus rewards.
+
+  
+
+**Each dungeon modifier carries a weight**, and the sum of the weights on a dungeon is the Modifier Score in the Enemy Score formula in section X. This is how a dungeon modifier makes the enemies inside it harder, and it is why dungeon modifiers are scored where enemy modifiers are not: an environmental effect applies to everything in the dungeon, so a score is the only way its difficulty is expressed.
+
+  
+
 ## **Dungeon Score Formula**
 
 Dungeon Score = (Common Enemy Score × 0.6) + (Elite Enemy Score × 0.2) + (Rare Enemy Score × 0.15) + (Legendary Enemy Score × 0.04) + (Boss Enemy Score × 0.01)
@@ -1294,6 +1308,40 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
   
 
 # **X. Enemy System**
+
+## **Enemy Modifiers**
+
+Enemy modifiers apply to an **individual enemy**, and are separate from the dungeon modifiers in section VIII, which apply to a whole dungeon.
+
+  
+
+An enemy carries **one modifier per rarity above Common**:
+
+  
+
+|  |  |
+| :-: | :-: |
+| \*\*Rarity\*\* | \*\*Enemy Modifiers\*\* |
+| Common | 0 |
+| Elite | 1 |
+| Legendary | 2 |
+| Herald | 3 |
+| Boss | 4 |
+| Cataclysm Boss | 5 |
+
+  
+
+**Common enemies carry no modifiers at all.**
+
+  
+
+**Enemy modifiers do not change an enemy's score.** They are mechanical effects rather than stat increases: a burning aura deals its own damage, and a charm stops the player dealing damage for a few seconds. Scoring them as well would count the same difficulty twice, once in the effect and once in the larger health and damage pool that a higher score produces.
+
+  
+
+This is the opposite of dungeon modifiers, which do carry a score. That difference is deliberate. A dungeon modifier is environmental and applies to everything inside the dungeon, so a score is the only way its difficulty is expressed at all. An enemy modifier is already expressed by what it does.
+
+  
 
 ## **Enemy Score Formula**
 
