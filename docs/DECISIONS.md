@@ -36,19 +36,60 @@ and qualifiers: how often, how fast, how much gets through. A stat appearing in
 both would let one item hold four of it, which is what the split exists to
 prevent, so an import-time check rejects that.
 
-**Every item base carries one or two implicits**, requested by the project owner.
-An implicit does not roll and cannot be changed, so choosing which slot to build
-around is a decision made before any loot is involved. This fills a real gap: the
-design listed slots and rarities but gave no slot an inherent stat, so a Chest
-and a Belt differed only in how many gem sockets they held.
+**THE IMPLICIT BELONGS TO THE BASE, NOT THE SLOT.** A first version put one
+implicit on each slot. The project owner corrected it: every category of gear has
+several bases, and each base has its own implicit. A chest is not one item with
+one inherent stat, it is a choice between a chest built for armour, one built for
+evasion, one built for health and one built for energy shield.
 
-**No implicit grants evasion.** Stated as a decision rather than left as an
-accident: evasion is the one defensive layer that has to be bought with prefix
-slots, which is what makes those slots worth reading.
+That is where most of the interest in gearing lives. A player who wants evasion
+is not waiting for an evasion affix to roll; they are looking for an evasion
+base, and every base they pick is a defensive layer committed to before any affix
+is involved.
 
-**Implicits are per slot, not per item base within a slot.** Path of Exile varies
-them between bases so one body armour is not another. The design names no bases
-within a slot, so this is the finest granularity it supports today.
+There are **55 bases across the 11 slots**, at least three per slot, because one
+base in a slot is not a choice. Two bases granting the same implicits would be
+one base written twice, so that is rejected as well.
+
+**A weapon base carries two things no other item has:** a physical sub-type from
+the design's Weapon Sub-Types table, and a number of damage type slots. There is
+a base for each of the fourteen weapon types the design lists, and all four
+sub-types are reachable.
+
+**Which damage types fill those slots is not a property of the base.** Loot is
+biased toward the Cataclysm being fought, so the types are decided when the item
+drops. The base says only how many.
+
+**A one-handed weapon holds two damage types and a two-hander holds three**, so
+two one-handers hold four against a two-hander's three. That is what makes dual
+wielding the primary route to multiclassing the design says it is, since every
+damage type unlocks that type's three class trees, while the two-hander stays
+ahead on raw damage.
+
+**The Shield is the one weapon whose base defends.** The design lists it among
+the one-handed weapon types and states there are no offhand items, so it is a
+weapon with nowhere else to be. The rule that a weapon defends nothing therefore
+applies to AFFIXES only: what a base IS may be defensive, what a drop happened to
+roll on a weapon may not. A check confirms no other weapon base defends, so the
+exemption stays one named exception rather than a hole.
+
+**Hybrid affixes grant two stats at 70% each.** That ratio is read off the
+two-resistance affix against the single-resistance one rather than written twice,
+so the whole pool moves together if it changes. A hybrid is worth 1.4 affixes
+spread over two stats against a single affix's 1.0 concentrated in one, so it
+wins a slot when a build needs both and loses when it needs one badly.
+
+**Ailment affixes apply the effects the gems already grant.** `Gems.csv` designs
+eight gems that apply an effect on hit — bleed, poison, disease, void splinter,
+madness, cripple, weaken and shred — and the project owner asked for the same
+effects to be reachable as affixes, on weapons above all. They roll on weapons,
+necklaces, relics and rings only, because an ailment only makes sense where a hit
+comes from.
+
+The gem stays the stronger source: the gem applying bleed reaches 150% chance at
+Cataclysmic rarity against the affix's 15% at top tier, so a socket is still
+where an ailment build lives. Having both means a build can chase an ailment two
+ways, and one that wants it badly can do both.
 
 **There are no attribute affixes, and that is deliberate.** The design gives one
 attribute point per level, plus the Maw, which consumes items and enemies for

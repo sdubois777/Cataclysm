@@ -757,38 +757,450 @@ class Implicit:
         return at_zero * gear_level_multiplier(gear_level)
 
 
-#: What each slot inherently is, before any affix rolls.
+# --------------------------------------------------------------------------
+# Item bases: a slot is a category, and the bases inside it differ
+# --------------------------------------------------------------------------
+#
+# THE IMPLICIT BELONGS TO THE BASE, NOT THE SLOT. Corrected by the project owner
+# 2026-08-03: every category of gear has several bases, and each base has its own
+# implicit. A chest is not one item with one inherent stat -- it is a choice
+# between a chest built for armour, one built for evasion, one built for health
+# regeneration, and so on.
+#
+# That is where most of the interest in gearing lives. A player who wants evasion
+# is not waiting for an evasion affix to roll; they are looking for an evasion
+# base, and every base they pick is a defensive layer they are committing to
+# before any affix is involved.
+
+#: The weapon sub-types, from the Weapon Sub-Types table in the design document.
+#: Each carries a baseline combat property: Piercing ignores 20% of enemy armour,
+#: Slashing deals 10% more damage against health, Blunt has a 10% chance to stun
+#: for 0.75 seconds, and Magic strips 10% more energy shield.
+WEAPON_SUB_TYPES = ("Piercing", "Slashing", "Blunt", "Magic")
+
+
+@dataclass(frozen=True)
+class ItemBase:
+    """One item base within a slot, and what it inherently grants.
+
+    `implicits` do not roll and cannot be changed. Two bases in the same slot are
+    the same size and take the same affixes; what separates them is this.
+    """
+
+    name: str
+    slot: str
+    implicits: tuple[Implicit, ...]
+
+    def __post_init__(self) -> None:
+        if self.slot not in GEAR_SLOTS:
+            raise ValueError(
+                f"{self.name} is in slot {self.slot!r}, which does not exist")
+        if not 1 <= len(self.implicits) <= 3:
+            raise ValueError(
+                f"{self.name} has {len(self.implicits)} implicits; a base "
+                "carries one to three")
+
+    def implicit_values(self, gear_level: int = MAX_GEAR_LEVEL
+                        ) -> dict[str, float]:
+        return {i.stat: i.value_at(gear_level) for i in self.implicits}
+
+
+@dataclass(frozen=True)
+class WeaponBase(ItemBase):
+    """A weapon base, which carries more than an armour base does.
+
+    On top of its implicit stats a weapon has a physical sub-type and a number of
+    damage type slots, both of which the design already establishes and neither
+    of which any other item has.
+
+    WHICH damage types fill those slots is not a property of the base. Section IV
+    says loot is biased toward the Cataclysm being fought, so the types are
+    decided when the item drops. The base says only how many it can hold.
+    """
+
+    hands: int = 1
+    sub_type: str = "Slashing"
+    weapon_type: str = "Sword"
+    damage_type_slots: int = 2
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.sub_type not in WEAPON_SUB_TYPES:
+            raise ValueError(
+                f"{self.name} has sub-type {self.sub_type!r}; expected one of "
+                f"{list(WEAPON_SUB_TYPES)}")
+        if self.hands not in (1, 2):
+            raise ValueError(f"{self.name} is {self.hands}-handed")
+        if not 1 <= self.damage_type_slots <= len(DAMAGE_TYPES):
+            raise ValueError(
+                f"{self.name} holds {self.damage_type_slots} damage types; "
+                f"there are only {len(DAMAGE_TYPES)}")
+
+
+#: A one-handed weapon holds two damage types and a two-hander holds three.
 #:
-#: One or two per slot, and each says what the piece is FOR. Armour pieces carry
-#: armour; boots carry movement; a weapon carries damage. A player who wants
-#: evasion cannot get it from an implicit at all, which is what makes the
-#: prefix pool worth reading.
+#: That is what makes dual wielding the primary route to multiclassing, which
+#: the design states outright: two one-handers hold four types against a
+#: two-hander's three, so dual wielding unlocks one more class tree, while the
+#: two-hander stays ahead on raw damage. Every damage type present unlocks that
+#: type's three class trees.
+DAMAGE_TYPES_ON_ONE_HANDED = 2
+DAMAGE_TYPES_ON_TWO_HANDED = 3
+
+
+def _weapon(name: str, weapon_type: str, hands: int, sub_type: str,
+            *implicits: Implicit) -> WeaponBase:
+    return WeaponBase(
+        name=name, slot="Weapon", implicits=implicits, hands=hands,
+        sub_type=sub_type, weapon_type=weapon_type,
+        damage_type_slots=(DAMAGE_TYPES_ON_ONE_HANDED if hands == 1
+                           else DAMAGE_TYPES_ON_TWO_HANDED))
+
+
+#: Every base in the game, grouped by slot. Names follow the ordinary conventions
+#: of the genre, because a base name has to say what the item is at a glance.
 #:
-#: PER SLOT, NOT PER BASE. Path of Exile varies implicits between item bases
-#: within a slot, so one body armour is not another. `Cataclysm_GDD_v2.md` names
-#: no bases within a slot, so this is the finest granularity the design supports
-#: today. Bases within a slot are the natural next step and would hang off this.
-IMPLICITS: dict[str, tuple[Implicit, ...]] = {
-    "Head": (Implicit("armor", "flat", 180.0),),
-    "Chest": (Implicit("armor", "flat", 400.0),
-              Implicit("max_health", "flat", 90.0)),
-    "Shoulders": (Implicit("armor", "flat", 150.0),),
-    "Gloves": (Implicit("attack_speed", "increased", 8.0),),
-    "Pants": (Implicit("armor", "flat", 220.0),),
-    "Boots": (Implicit("movement_speed", "increased", 10.0),),
-    "Belt": (Implicit("max_health", "flat", 110.0),),
-    "Ring": (Implicit("attack_damage", "flat", 9.0),),
-    "Necklace": (Implicit("max_mana", "flat", 55.0),),
-    "Relic": (Implicit("crit_multiplier", "flat", 25.0),),
-    "Weapon": (Implicit("attack_damage", "flat", 45.0),),
+#: Each slot's bases split along the axis that matters for that slot: armour
+#: pieces along the three defensive layers the design has -- armour, evasion,
+#: energy shield -- plus health or recovery; jewellery along what a build is
+#: short of; weapons along the fourteen weapon types the design lists.
+ITEM_BASES: tuple[ItemBase, ...] = (
+    # -- Head ------------------------------------------------------------
+    ItemBase("Helm", "Head", (Implicit("armor", "flat", 200.0),)),
+    ItemBase("Hood", "Head", (Implicit("evasion", "flat", 4.0),)),
+    ItemBase("Circlet", "Head", (Implicit("max_energy_shield", "flat", 55.0),)),
+    ItemBase("Visage", "Head", (Implicit("max_health", "flat", 70.0),
+                                Implicit("crowd_control_resistance", "flat", 4.0))),
+    # -- Chest -----------------------------------------------------------
+    ItemBase("Cuirass", "Chest", (Implicit("armor", "flat", 440.0),)),
+    ItemBase("Jerkin", "Chest", (Implicit("evasion", "flat", 8.0),)),
+    ItemBase("Vestment", "Chest", (Implicit("max_energy_shield", "flat", 120.0),)),
+    ItemBase("Hauberk", "Chest", (Implicit("max_health", "flat", 180.0),)),
+    ItemBase("Carapace", "Chest", (Implicit("armor", "flat", 220.0),
+                                   Implicit("max_health", "flat", 90.0))),
+    # -- Shoulders -------------------------------------------------------
+    ItemBase("Pauldrons", "Shoulders", (Implicit("armor", "flat", 165.0),)),
+    ItemBase("Mantle", "Shoulders", (Implicit("evasion", "flat", 3.5),)),
+    ItemBase("Epaulets", "Shoulders",
+             (Implicit("health_regen", "flat", 1.1),)),
+    ItemBase("Spaulders", "Shoulders", (Implicit("retaliation", "flat", 11.0),)),
+    # -- Gloves ----------------------------------------------------------
+    ItemBase("Gauntlets", "Gloves", (Implicit("armor", "flat", 130.0),)),
+    ItemBase("Grips", "Gloves", (Implicit("attack_speed", "increased", 9.0),)),
+    ItemBase("Handwraps", "Gloves", (Implicit("crit_chance", "flat", 5.0),)),
+    ItemBase("Vambraces", "Gloves", (Implicit("attack_damage", "flat", 12.0),)),
+    # -- Pants -----------------------------------------------------------
+    ItemBase("Greaves", "Pants", (Implicit("armor", "flat", 250.0),)),
+    ItemBase("Leggings", "Pants", (Implicit("evasion", "flat", 5.0),)),
+    ItemBase("Kilt", "Pants", (Implicit("max_health", "flat", 130.0),)),
+    ItemBase("Trousers", "Pants", (Implicit("max_energy_shield", "flat", 65.0),)),
+    # -- Boots -----------------------------------------------------------
+    ItemBase("Sabatons", "Boots", (Implicit("armor", "flat", 145.0),
+                                   Implicit("movement_speed", "increased", 5.0))),
+    ItemBase("Treads", "Boots", (Implicit("movement_speed", "increased", 12.0),)),
+    ItemBase("Striders", "Boots", (Implicit("evasion", "flat", 3.0),
+                                   Implicit("movement_speed", "increased", 8.0))),
+    ItemBase("Sollerets", "Boots", (Implicit("max_health", "flat", 80.0),
+                                    Implicit("movement_speed", "increased", 6.0))),
+    # -- Belt ------------------------------------------------------------
+    ItemBase("Girdle", "Belt", (Implicit("max_health", "flat", 130.0),)),
+    ItemBase("Sash", "Belt", (Implicit("max_mana", "flat", 60.0),)),
+    ItemBase("Cord", "Belt", (Implicit("health_regen", "flat", 1.3),)),
+    ItemBase("Cinch", "Belt", (Implicit("armor", "flat", 150.0),)),
+    # -- Ring ------------------------------------------------------------
+    ItemBase("Band", "Ring", (Implicit("attack_damage", "flat", 10.0),)),
+    ItemBase("Signet", "Ring", (Implicit("crit_multiplier", "flat", 16.0),)),
+    ItemBase("Loop", "Ring", (Implicit("max_health", "flat", 60.0),)),
+    ItemBase("Circle", "Ring", (Implicit("max_mana", "flat", 30.0),
+                                Implicit("mana_regen", "flat", 0.5))),
+    # -- Necklace --------------------------------------------------------
+    ItemBase("Amulet", "Necklace", (Implicit("max_mana", "flat", 60.0),)),
+    ItemBase("Pendant", "Necklace", (Implicit("crit_chance", "flat", 6.0),)),
+    ItemBase("Torc", "Necklace", (Implicit("max_health", "flat", 95.0),)),
+    ItemBase("Locket", "Necklace",
+             (Implicit("max_energy_shield", "flat", 55.0),)),
+    # -- Relic -----------------------------------------------------------
+    ItemBase("Idol", "Relic", (Implicit("crit_multiplier", "flat", 28.0),)),
+    ItemBase("Fetish", "Relic", (Implicit("area_of_effect", "increased", 10.0),)),
+    ItemBase("Reliquary", "Relic",
+             (Implicit("cooldown_reduction", "increased", 10.0),)),
+    ItemBase("Effigy", "Relic", (Implicit("dot_frequency", "increased", 10.0),)),
+    # -- Weapon, one-handed ----------------------------------------------
+    _weapon("Sword", "Sword", 1, "Slashing",
+            Implicit("attack_damage", "flat", 40.0),
+            Implicit("attack_speed", "increased", 5.0)),
+    _weapon("Dagger", "Dagger", 1, "Piercing",
+            Implicit("attack_damage", "flat", 26.0),
+            Implicit("crit_chance", "flat", 8.0)),
+    _weapon("Axe", "Axe", 1, "Slashing",
+            Implicit("attack_damage", "flat", 46.0)),
+    _weapon("Fist", "Fist", 1, "Blunt",
+            Implicit("attack_damage", "flat", 30.0),
+            Implicit("attack_speed", "increased", 10.0)),
+    _weapon("Wand", "Wand", 1, "Magic",
+            Implicit("spell_damage", "increased", 18.0)),
+    _weapon("Whip", "Whip", 1, "Slashing",
+            Implicit("attack_damage", "flat", 32.0),
+            Implicit("area_of_effect", "increased", 12.0)),
+    # A shield is a one-handed WEAPON in this design, not an offhand: section V
+    # lists it among the one-handed weapon types and states there are no offhand
+    # items. It is the one weapon whose implicit is defensive, and that is what
+    # the base IS rather than something a drop happened to roll.
+    _weapon("Shield", "Shield", 1, "Blunt",
+            Implicit("block_chance", "flat", 12.0),
+            Implicit("armor", "flat", 260.0)),
+    _weapon("Crossbow", "Crossbow", 1, "Piercing",
+            Implicit("attack_damage", "flat", 38.0),
+            Implicit("crit_multiplier", "flat", 20.0)),
+    # -- Weapon, two-handed ----------------------------------------------
+    _weapon("Greatsword", "Greatsword", 2, "Slashing",
+            Implicit("attack_damage", "flat", 78.0)),
+    _weapon("Greataxe", "Greataxe", 2, "Slashing",
+            Implicit("attack_damage", "flat", 72.0),
+            Implicit("crit_multiplier", "flat", 22.0)),
+    _weapon("Spear", "Spear", 2, "Piercing",
+            Implicit("attack_damage", "flat", 64.0),
+            Implicit("penetration", "flat", 6.0)),
+    _weapon("Staff", "Staff", 2, "Magic",
+            Implicit("spell_damage", "increased", 32.0)),
+    _weapon("Two-Handed Crossbow", "2H Crossbow", 2, "Piercing",
+            Implicit("attack_damage", "flat", 66.0),
+            Implicit("crit_chance", "flat", 7.0)),
+    _weapon("Warhammer", "Warhammer", 2, "Blunt",
+            Implicit("attack_damage", "flat", 84.0)),
+)
+
+BASES_BY_SLOT: dict[str, tuple[ItemBase, ...]] = {
+    slot: tuple(b for b in ITEM_BASES if b.slot == slot) for slot in GEAR_SLOTS
 }
 
+WEAPON_BASES: tuple[WeaponBase, ...] = tuple(
+    b for b in ITEM_BASES if isinstance(b, WeaponBase))
 
-def implicits_for(slot: str) -> tuple[Implicit, ...]:
+
+def bases_for(slot: str) -> tuple[ItemBase, ...]:
     if slot not in GEAR_SLOTS:
         raise ValueError(f"unknown gear slot {slot!r}; "
                          f"expected one of {sorted(GEAR_SLOTS)}")
-    return IMPLICITS[slot]
+    return BASES_BY_SLOT[slot]
+
+
+def base_named(name: str) -> ItemBase:
+    for base in ITEM_BASES:
+        if base.name == name:
+            return base
+    raise ValueError(f"no item base named {name!r}")
+
+
+# --------------------------------------------------------------------------
+# Ailment affixes: chance to apply the effects the gems already grant
+# --------------------------------------------------------------------------
+#
+# WHERE THESE CAME FROM. `game/Data/Gems.csv` already designs eight gems that
+# apply an effect on hit, and `game/Data/StatusEffects.csv` defines what most of
+# them do. The project owner asked for the same effects to be reachable as
+# affixes, on weapons above all.
+#
+# WHY AN AFFIX AND A GEM BOTH. A gem is a socket and a socket is a commitment;
+# an affix is a roll. Having both means a build that wants an ailment can chase
+# it two ways, and one that wants it badly can do both. The gem stays the
+# stronger source: an Of Rending gem reaches 150% chance at Cataclysmic against
+# this affix's 15% at T7, so a socket is still where an ailment build lives.
+#
+# NOT ON ARMOUR. These only make sense where a hit comes from. The project owner
+# named weapons, with necklace and relic as maybes; rings are in because rings
+# take everything, being the flexible slot.
+
+AILMENT_SLOTS = frozenset({"Weapon", "Necklace", "Relic", "Ring"})
+
+
+@dataclass(frozen=True)
+class AilmentAffix:
+    """A chance to apply a named effect on hit.
+
+    Not a stat affix: it grants no number on the character sheet. What it grants
+    is a chance, and the effect it applies is defined in
+    `game/Data/StatusEffects.csv` rather than here.
+    """
+
+    name: str
+    ailment: str
+    #: Percent chance to apply, at T7 on a fully upgraded piece.
+    top_chance: float
+    allowed_slots: frozenset[str] = AILMENT_SLOTS
+    position: str = SUFFIX
+    #: Which gem in `game/Data/Gems.csv` already applies the same effect.
+    gem: str = ""
+
+    def __post_init__(self) -> None:
+        if self.position not in AFFIX_POSITIONS:
+            raise ValueError(f"{self.name}: unknown position {self.position!r}")
+        unknown = set(self.allowed_slots) - set(GEAR_SLOTS)
+        if unknown:
+            raise ValueError(
+                f"{self.name} allows slots that do not exist: {sorted(unknown)}")
+
+    def range_at(self, tier: int) -> tuple[float, float]:
+        return tier_band(self.top_chance, tier)
+
+    def chance_at(self, tier: int, roll: float = 1.0,
+                  gear_level: int = MAX_GEAR_LEVEL) -> float:
+        return affix_value(self.top_chance, tier, roll, gear_level)
+
+    def slots_available(self) -> int:
+        return slots_available_to(self.allowed_slots)
+
+
+#: The five gems that apply damage over time, and the three that apply a
+#: weakening effect. Values track the gem's own starting chance: the gem that
+#: applies poison starts at 20% and the one that applies bleed at 10%, so the
+#: poison affix is the larger of the two here as well.
+BLEED = AilmentAffix("Chance to bleed", "Bleed", 15.0, gem="Of Rending")
+POISON = AilmentAffix("Chance to poison", "Poison", 25.0, gem="Of The Viper")
+DISEASE = AilmentAffix("Chance to disease", "Disease", 20.0, gem="Of Rot")
+VOID_SPLINTER = AilmentAffix("Chance to apply void splinter", "Void Splinter",
+                             15.0, gem="Of The Abyss")
+MADNESS = AilmentAffix("Chance to madden", "Madness", 15.0, gem="Of Madness")
+CRIPPLE = AilmentAffix("Chance to cripple", "Cripple", 15.0, gem="Of Maiming")
+WEAKEN = AilmentAffix("Chance to weaken", "Weaken", 15.0, gem="Of Withering")
+SHRED = AilmentAffix("Chance to shred", "Shred", 15.0, gem="Of Shredding")
+
+AILMENT_AFFIXES: tuple[AilmentAffix, ...] = (
+    BLEED, POISON, DISEASE, VOID_SPLINTER, MADNESS, CRIPPLE, WEAKEN, SHRED,
+)
+
+#: The effects among those that are damage over time rather than a weakening.
+#: Taken from `game/Data/StatusEffects.csv`, where each is listed with EffectKind
+#: "DoT". Damage over time matters separately because the design says it bypasses
+#: energy shield and holds it empty, which is what makes it the answer to shield
+#: stacking rather than a stat check.
+DAMAGE_OVER_TIME_AILMENTS = frozenset({"Bleed", "Poison", "Disease",
+                                       "Void Splinter"})
+
+
+def ailments_for(slot: str) -> tuple[AilmentAffix, ...]:
+    if slot not in GEAR_SLOTS:
+        raise ValueError(f"unknown gear slot {slot!r}; "
+                         f"expected one of {sorted(GEAR_SLOTS)}")
+    return tuple(a for a in AILMENT_AFFIXES if slot in a.allowed_slots)
+
+
+# --------------------------------------------------------------------------
+# Hybrid affixes: two stats on one roll, less of each
+# --------------------------------------------------------------------------
+#
+# The same trade the resistance families already make, applied to the rest of the
+# pool. A hybrid is worth more in total than either single affix and less of
+# either stat, so it wins a slot when a build needs both and loses when it needs
+# one badly.
+#
+# THE REDUCTION IS DERIVED, NOT PICKED. It is the ratio the project owner already
+# set between the two-resistance affix and the single-resistance one, 14 against
+# 20. Reading it off those two rather than writing 0.7 here means the whole pool
+# moves together if that ratio ever changes.
+
+HYBRID_FRACTION = HYBRID_RESISTANCE.top_value / SINGLE_RESISTANCE.top_value
+
+
+@dataclass(frozen=True)
+class HybridAffix:
+    """One roll granting two stats, each at `HYBRID_FRACTION` of its own affix.
+
+    Defined in terms of the single affixes it combines rather than by copying
+    their numbers, so it cannot drift from them.
+    """
+
+    name: str
+    parts: tuple[StatAffix, StatAffix]
+    allowed_slots: frozenset[str] = frozenset()
+    position: str = PREFIX
+
+    def __post_init__(self) -> None:
+        first, second = self.parts
+        if first.position != second.position:
+            raise ValueError(
+                f"{self.name} combines a {first.position} with a "
+                f"{second.position}; a hybrid has to sit in one pool")
+        if first.stat == second.stat:
+            raise ValueError(f"{self.name} combines a stat with itself")
+        if self.position != first.position:
+            raise ValueError(
+                f"{self.name} is a {self.position} but its parts are "
+                f"{first.position}es")
+        unknown = set(self.allowed_slots) - set(GEAR_SLOTS)
+        if unknown:
+            raise ValueError(
+                f"{self.name} allows slots that do not exist: {sorted(unknown)}")
+        if not self.allowed_slots:
+            raise ValueError(f"{self.name} can appear on no slot at all")
+        for part in self.parts:
+            outside = set(self.allowed_slots) - set(part.allowed_slots)
+            if outside:
+                raise ValueError(
+                    f"{self.name} can roll on {sorted(outside)}, where "
+                    f"{part.name} cannot")
+
+    def value_of(self, part: StatAffix, tier: int = 7, roll: float = 1.0,
+                 gear_level: int = MAX_GEAR_LEVEL) -> float:
+        if part not in self.parts:
+            raise ValueError(f"{part.name} is not part of {self.name}")
+        return part.value_at(tier, roll, gear_level) * HYBRID_FRACTION
+
+    def values_at(self, tier: int = 7, roll: float = 1.0,
+                  gear_level: int = MAX_GEAR_LEVEL) -> dict[str, float]:
+        return {p.stat: self.value_of(p, tier, roll, gear_level)
+                for p in self.parts}
+
+
+def _hybrid(name: str, first: StatAffix, second: StatAffix) -> HybridAffix:
+    """Slots are the intersection of the two parts', so a hybrid can never reach
+    a slot one of its halves could not."""
+    return HybridAffix(
+        name=name, parts=(first, second),
+        allowed_slots=first.allowed_slots & second.allowed_slots,
+        position=first.position)
+
+
+HYBRID_AFFIXES: tuple[HybridAffix, ...] = (
+    # Prefixes: pairs of defensive layers, so a hybrid is a build committing to
+    # two at once rather than going deep on one.
+    _hybrid("Health and armor", FLAT_HEALTH, FLAT_ARMOR),
+    _hybrid("Health and energy shield", FLAT_HEALTH, FLAT_ENERGY_SHIELD),
+    _hybrid("Armor and evasion", FLAT_ARMOR, FLAT_EVASION),
+    _hybrid("Evasion and energy shield", FLAT_EVASION, FLAT_ENERGY_SHIELD),
+    _hybrid("Mana and energy shield", FLAT_MANA, FLAT_ENERGY_SHIELD),
+    _hybrid("Increased health and armor", INCREASED_HEALTH, INCREASED_ARMOR),
+    # Suffixes: pairs that a single build wants together, which is what makes
+    # giving up 30% of each worth doing.
+    _hybrid("Attack speed and critical strike chance",
+            INCREASED_ATTACK_SPEED, INCREASED_CRIT_CHANCE),
+    _hybrid("Critical strike chance and multiplier",
+            FLAT_CRIT_CHANCE, FLAT_CRIT_MULTIPLIER),
+    _hybrid("Health and mana regeneration",
+            FLAT_HEALTH_REGEN, FLAT_MANA_REGEN),
+    _hybrid("Penetration and critical strike multiplier",
+            FLAT_PENETRATION, FLAT_CRIT_MULTIPLIER),
+    _hybrid("Block chance and crowd control resistance",
+            FLAT_BLOCK_CHANCE, FLAT_CROWD_CONTROL_RESISTANCE),
+    _hybrid("Magic find and loot quantity",
+            FLAT_MAGIC_FIND, INCREASED_LOOT_QUANTITY),
+)
+
+
+def hybrids_for(slot: str, position: str | None = None
+                ) -> tuple[HybridAffix, ...]:
+    if slot not in GEAR_SLOTS:
+        raise ValueError(f"unknown gear slot {slot!r}; "
+                         f"expected one of {sorted(GEAR_SLOTS)}")
+    return tuple(h for h in HYBRID_AFFIXES
+                 if slot in h.allowed_slots
+                 and (position is None or h.position == position))
+
+
+def total_pool_size() -> int:
+    """Everything a drop could roll, counting each resistance family once."""
+    return (len(AFFIX_POOL) + len(RESISTANCE_FAMILIES) + len(AILMENT_AFFIXES)
+            + len(HYBRID_AFFIXES))
 
 
 # --------------------------------------------------------------------------
@@ -832,40 +1244,138 @@ def _check_no_two_affixes_are_the_same_thing() -> None:
         seen[key] = affix.name
 
 
-def _check_every_slot_has_an_implicit() -> None:
-    missing = set(GEAR_SLOTS) - set(IMPLICITS)
-    if missing:
-        raise ValueError(f"slots with no implicit: {sorted(missing)}")
-    extra = set(IMPLICITS) - set(GEAR_SLOTS)
-    if extra:
-        raise ValueError(f"implicits for slots that do not exist: {sorted(extra)}")
-    for slot, implicits in IMPLICITS.items():
-        if not 1 <= len(implicits) <= 2:
+def _check_every_slot_offers_a_real_choice_of_base() -> None:
+    """One base in a slot is not a choice. The point of bases is that picking one
+    commits a character to a defensive layer or an offensive property before any
+    affix is involved, and that only exists if there is something to pick."""
+    for slot in GEAR_SLOTS:
+        bases = bases_for(slot)
+        if len(bases) < 3:
             raise ValueError(
-                f"{slot} has {len(implicits)} implicits; the design allows one "
-                "or two")
+                f"{slot} has {len(bases)} bases; a slot needs at least three "
+                "for the choice to mean anything")
+        names = [b.name for b in bases]
+        if len(names) != len(set(names)):
+            raise ValueError(f"{slot} has two bases with the same name")
 
 
-def _check_a_weapon_defends_nothing() -> None:
-    """Armour and jewellery defend; a weapon does not. Stated when the slot
-    restrictions were written, and an implicit could quietly break it."""
+def _check_bases_in_a_slot_are_actually_different() -> None:
+    """Two bases granting the same thing are one base written twice."""
+    for slot in GEAR_SLOTS:
+        seen: dict[tuple, str] = {}
+        for base in bases_for(slot):
+            key = tuple(sorted((i.stat, i.kind, i.value)
+                               for i in base.implicits))
+            if key in seen:
+                raise ValueError(
+                    f"{base.name} and {seen[key]} grant the same implicits")
+            seen[key] = base.name
+
+
+def _check_every_base_grants_a_stat_something_reads() -> None:
+    for base in ITEM_BASES:
+        for implicit in base.implicits:
+            if implicit.stat not in AFFIXABLE_STATS:
+                raise ValueError(
+                    f"{base.name} grants {implicit.stat!r}, which is neither on "
+                    "the character sheet nor an off-sheet stat")
+
+
+def _check_the_weapon_types_match_the_design() -> None:
+    """`Cataclysm_GDD_v2.md` section V lists eight one-handed and six two-handed
+    weapon types. A base for a weapon the design does not have, or a design
+    weapon with no base, would both be wrong."""
+    designed_one_handed = {"Sword", "Dagger", "Axe", "Fist", "Wand", "Whip",
+                           "Shield", "Crossbow"}
+    designed_two_handed = {"Greatsword", "Greataxe", "Spear", "Staff",
+                           "2H Crossbow", "Warhammer"}
+    for hands, designed in ((1, designed_one_handed), (2, designed_two_handed)):
+        present = {b.weapon_type for b in WEAPON_BASES if b.hands == hands}
+        if present != designed:
+            raise ValueError(
+                f"{hands}-handed weapon bases do not match the design: "
+                f"missing {sorted(designed - present)}, "
+                f"unexpected {sorted(present - designed)}")
+
+
+def _check_dual_wielding_carries_more_damage_types_than_a_two_hander() -> None:
+    """The design says dual wielding is the primary route to multiclassing
+    because it is how a player carries more damage types at once. If a two-hander
+    matched two one-handers, that sentence would stop being true."""
+    if DAMAGE_TYPES_ON_ONE_HANDED * 2 <= DAMAGE_TYPES_ON_TWO_HANDED:
+        raise ValueError(
+            f"two one-handers hold {DAMAGE_TYPES_ON_ONE_HANDED * 2} damage "
+            f"types and a two-hander holds {DAMAGE_TYPES_ON_TWO_HANDED}, so "
+            "dual wielding is not the route to multiclassing the design says")
+
+
+def _check_no_weapon_rolls_a_defensive_affix() -> None:
+    """Armour and jewellery defend; a weapon does not.
+
+    AFFIXES ONLY. A shield's block chance and armour are implicits, and the
+    design lists Shield among the one-handed weapon types with no offhand slot
+    to put it in. What a base IS may be defensive; what a drop happened to roll
+    on a weapon may not.
+    """
     defensive = {"max_health", "max_energy_shield", "armor", "evasion",
                  "block_chance", "damage_reduction"} | set(RESISTANCE_STATS)
-    for implicit in IMPLICITS["Weapon"]:
-        if implicit.stat in defensive:
-            raise ValueError(
-                f"the weapon implicit grants {implicit.stat}, which defends")
     for affix in pool_for("Weapon"):
         if affix.stat in defensive:
             raise ValueError(
                 f"{affix.name} can roll on a weapon, and it defends")
 
 
+def _check_only_the_shield_defends_among_weapon_bases() -> None:
+    """So the exemption above stays one named exception rather than a hole."""
+    defensive = {"max_health", "max_energy_shield", "armor", "evasion",
+                 "block_chance", "damage_reduction"} | set(RESISTANCE_STATS)
+    for base in WEAPON_BASES:
+        if base.weapon_type == "Shield":
+            continue
+        granted = {i.stat for i in base.implicits}
+        if granted & defensive:
+            raise ValueError(
+                f"the {base.name} base grants {sorted(granted & defensive)}, "
+                "and only the Shield may defend among weapons")
+
+
+def _check_every_gem_applied_effect_is_reachable_as_an_affix() -> None:
+    """`game/Data/Gems.csv` designs eight gems that apply an effect on hit. The
+    project owner asked for the same effects to be reachable as affixes, so a
+    gem effect with no affix would be one the request missed."""
+    from_gems = {"Void Splinter", "Poison", "Bleed", "Madness", "Disease",
+                 "Cripple", "Weaken", "Shred"}
+    covered = {a.ailment for a in AILMENT_AFFIXES}
+    if covered != from_gems:
+        raise ValueError(
+            f"gem effects with no affix: {sorted(from_gems - covered)}; "
+            f"affixes with no gem: {sorted(covered - from_gems)}")
+
+
+def _check_ailments_only_appear_where_a_hit_comes_from() -> None:
+    for affix in AILMENT_AFFIXES:
+        if "Weapon" not in affix.allowed_slots:
+            raise ValueError(f"{affix.name} cannot appear on a weapon")
+        armour = set(affix.allowed_slots) & {
+            "Head", "Chest", "Shoulders", "Gloves", "Pants", "Boots", "Belt"}
+        if armour:
+            raise ValueError(
+                f"{affix.name} can roll on {sorted(armour)}, which no hit comes "
+                "from")
+
+
 _check_every_slot_can_fill_all_four_of_its_affixes()
 _check_the_two_positions_are_separate_pools()
 _check_no_two_affixes_are_the_same_thing()
-_check_every_slot_has_an_implicit()
-_check_a_weapon_defends_nothing()
+_check_every_slot_offers_a_real_choice_of_base()
+_check_bases_in_a_slot_are_actually_different()
+_check_every_base_grants_a_stat_something_reads()
+_check_the_weapon_types_match_the_design()
+_check_dual_wielding_carries_more_damage_types_than_a_two_hander()
+_check_no_weapon_rolls_a_defensive_affix()
+_check_only_the_shield_defends_among_weapon_bases()
+_check_every_gem_applied_effect_is_reachable_as_an_affix()
+_check_ailments_only_appear_where_a_hit_comes_from()
 
 
 def better_kind(pair: tuple[StatAffix, StatAffix], base_before_increases: float,
@@ -1171,24 +1681,82 @@ if __name__ == "__main__":
     print(f"  Plus the three resistance families above, which are {SUFFIX}es.")
     print()
 
-    print("  What can roll where, per slot:")
+    print("  Hybrid affixes: two stats on one roll, each at "
+          f"{HYBRID_FRACTION:.0%} of the single")
+    print("  affix's value. That ratio is read off the two-resistance affix")
+    print("  against the single-resistance one rather than written twice.")
     print()
-    print(f"    {'slot':<12} {'prefixes':>9} {'suffixes':>9}   implicit")
-    print("    " + "-" * 72)
+    for hybrid in HYBRID_AFFIXES:
+        parts = ", ".join(f"{v:,.1f} {s}" for s, v in hybrid.values_at().items())
+        print(f"    {hybrid.name:<44} {hybrid.position:<7} {parts}")
+    print()
+
+    print("  Ailment affixes, applying the effects the gems already grant:")
+    print()
+    print(f"    {'affix':<34} {'T7':>6} {'kind':<20} same effect as")
+    print("    " + "-" * 84)
+    for a in AILMENT_AFFIXES:
+        kind = ("damage over time" if a.ailment in DAMAGE_OVER_TIME_AILMENTS
+                else "weakening effect")
+        print(f"    {a.name:<34} {a.chance_at(7):>5.0f}% {kind:<20} {a.gem}")
+    print()
+    print("    On weapons, necklaces, relics and rings only: an ailment affix")
+    print("    only makes sense where a hit comes from. The gem stays the")
+    print("    stronger source, so a socket is still where an ailment build")
+    print("    lives.")
+    print()
+
+    print("=" * 72)
+    print("Item bases")
+    print()
+    print("The implicit belongs to the BASE, not the slot. Every category of")
+    print("gear has several bases, and picking one commits a character to a")
+    print("defensive layer or an offensive property before any affix is")
+    print("involved. That is where most of the interest in gearing lives.")
+    print()
     for slot in GEAR_SLOTS:
+        if slot == "Weapon":
+            continue
+        print(f"  {slot}  ({len(pool_for(slot, PREFIX))} prefixes, "
+              f"{len(pool_for(slot, SUFFIX))} suffixes available)")
+        for base in bases_for(slot):
+            marks = ", ".join(
+                f"{i.value:,.1f} {i.stat}" if i.kind == "flat"
+                else f"{i.value:,.0f}% increased {i.stat}"
+                for i in base.implicits)
+            print(f"    {base.name:<14} {marks}")
+        print()
+
+    print("  Weapon")
+    print(f"    {'base':<20} {'hands':>5} {'sub-type':<9} {'types':>5}  implicit")
+    print("    " + "-" * 84)
+    for base in WEAPON_BASES:
         marks = ", ".join(
             f"{i.value:,.0f} {i.stat}" if i.kind == "flat"
             else f"{i.value:,.0f}% increased {i.stat}"
-            for i in implicits_for(slot))
-        print(f"    {slot:<12} {len(pool_for(slot, PREFIX)):>9} "
-              f"{len(pool_for(slot, SUFFIX)):>9}   {marks}")
+            for i in base.implicits)
+        print(f"    {base.name:<20} {base.hands:>5} {base.sub_type:<9} "
+              f"{base.damage_type_slots:>5}  {marks}")
     print()
-    print("  The implicit is fixed to the base. It does not roll and it cannot")
-    print("  be changed, so choosing which slot to build around is a decision")
-    print("  made before any loot is involved. No implicit grants evasion:")
-    print("  that one has to be bought with prefix slots.")
+    print("    A weapon carries a physical sub-type and a number of damage type")
+    print("    slots, neither of which any other item has. WHICH types fill")
+    print("    those slots is decided when the item drops, biased toward the")
+    print("    Cataclysm being fought, so the base says only how many.")
     print()
-    print(f"  {len(AFFIX_POOL)} stat affixes and {len(RESISTANCE_FAMILIES)} resistance families. "
-          "There are no attribute")
-    print("  affixes, which is deliberate: the design gives attribute points per")
-    print("  level and from the Maw, and nowhere from gear.")
+    print(f"    Two one-handers hold {DAMAGE_TYPES_ON_ONE_HANDED * 2} damage types against a "
+          f"two-hander's {DAMAGE_TYPES_ON_TWO_HANDED},")
+    print("    which is what makes dual wielding the primary route to")
+    print("    multiclassing that the design says it is, while the two-hander")
+    print("    stays ahead on raw damage.")
+    print()
+    print("    The Shield is the one weapon whose base defends. The design lists")
+    print("    it among the one-handed weapon types and says there are no")
+    print("    offhand items, so it is a weapon with nowhere else to be.")
+    print()
+
+    print(f"  {len(ITEM_BASES)} bases across {len(GEAR_SLOTS)} slots. "
+          f"{total_pool_size()} things a drop could roll:")
+    print(f"    {len(AFFIX_POOL)} stat affixes, {len(RESISTANCE_FAMILIES)} resistance families, "
+          f"{len(HYBRID_AFFIXES)} hybrids, {len(AILMENT_AFFIXES)} ailments.")
+    print("  There are no attribute affixes, which is deliberate: the design")
+    print("  gives attribute points per level and from the Maw, never from gear.")
