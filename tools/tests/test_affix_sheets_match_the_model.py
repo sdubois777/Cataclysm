@@ -216,7 +216,7 @@ class TestTheCountsThatAreAssertedInUnreal:
         assert len(base_sheet) == 55 == len(model.ITEM_BASES)
 
     def test_the_affix_count(self, affix_sheet, model):
-        assert len(affix_sheet) == 60 == model.total_pool_size()
+        assert len(affix_sheet) == 68 == model.total_pool_size()
 
     def test_the_gem_count(self, model):
         """The Gems sheet count the Unreal test pins by hand.

@@ -38,7 +38,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import enemy_stats, player_power
-from .character import ALL_STATS, RESISTANCE_STATS, SKILL_SLOTS
+from .character import (ALL_STATS, ATTRIBUTE_NAMES, RESISTANCE_STATS,
+                        SKILL_SLOTS)
 
 #: The eight damage types, so the eight resistances.
 DAMAGE_TYPES = ("War", "Demonic", "Death", "Pestilence",
@@ -52,7 +53,19 @@ DAMAGE_TYPES = ("War", "Demonic", "Death", "Pestilence",
 #: here and nowhere else. Every other name an affix uses must be a real stat, or
 #: an affix could silently grant something nothing reads.
 OFF_SHEET_STATS = frozenset({"attack_damage"})
-AFFIXABLE_STATS = frozenset(ALL_STATS) | OFF_SHEET_STATS
+
+#: AN ATTRIBUTE IS NOT A STAT, and an affix may still name one.
+#:
+#: `character.py` keeps the eight attributes in `ATTRIBUTE_EFFECTS`, apart from
+#: the stat groups, because an attribute does not hold a value of its own — it
+#: turns each point into increases on the two or three stats it drives. So an
+#: attribute name fails the "is this a real stat" test while being read by more
+#: of the model than most stats are.
+#:
+#: They are allowed here by name rather than by widening the test, so the guard
+#: still refuses anything nothing reads, which is the whole reason it exists.
+AFFIXABLE_STATS = (frozenset(ALL_STATS) | OFF_SHEET_STATS
+                   | frozenset(ATTRIBUTE_NAMES))
 
 #: Affixes level from T1 to T7. Seven tiers, from the crafting material that
 #: raises them.
@@ -879,6 +892,79 @@ INCREASED_LOOT_QUANTITY = StatAffix("Increased loot quantity", "loot_quantity",
                                     "increased", 8.0, UTILITY_SLOTS, SUFFIX)
 
 
+# -- Suffixes: the eight primary attributes -------------------------------
+
+#: PERCENTAGE ONLY, NEVER FLAT, AND THAT IS THE POINT. Gear grants a percentage
+#: increase to an attribute the character already has, not extra points. So the
+#: affix is worth little to a character spread thin and a great deal to one
+#: specialised, which makes it reward a decision the player already made rather
+#: than handing out the same value to everyone.
+#:
+#: WHERE THE 12% COMES FROM. It is the house figure every other "increased"
+#: affix uses, and the arithmetic lands in a sensible place. An attribute grants
+#: 2% of its main stat per point, so +12% of an attribute held at V points is
+#: worth 0.12 x V x 2% of that stat. That equals a dedicated 12% single-stat
+#: affix at exactly V = 50, which is heavy specialisation out of the 100 points a
+#: character gets from levels. Below 50 it is worse than the dedicated affix;
+#: above it, better. It also drives the attribute's second stat for free, which
+#: is why it sits on suffixes where the dedicated prefixes do not compete.
+#:
+#: NO HYBRIDS, and no flat version. Both decided by the project owner.
+ATTRIBUTE_AFFIX_TOP_VALUE = 12.0
+
+#: WHICH SLOTS EACH ONE ROLLS ON IS DERIVED, NOT CHOSEN. An attribute affix rolls
+#: wherever the stats that attribute drives already roll, taken from
+#: `game/Data/Attributes.csv` and the pool above. That is what keeps weapons
+#: offensive without needing a new rule: Ferocity drives critical strike and
+#: Efficacy drives area of effect, both of which already roll on a weapon, while
+#: Vitality drives health and Constitution drives armour, which do not.
+AGILITY_SLOTS = frozenset({"Belt", "Boots", "Chest", "Gloves", "Head", "Pants",
+                           "Ring", "Shoulders"})
+CONSTITUTION_SLOTS = frozenset({"Belt", "Boots", "Chest", "Head", "Pants",
+                                "Ring", "Shoulders"})
+VITALITY_SLOTS = frozenset({"Belt", "Boots", "Chest", "Head", "Necklace",
+                            "Pants", "Ring", "Shoulders"})
+MIND_SLOTS = frozenset({"Belt", "Boots", "Chest", "Head", "Necklace", "Relic",
+                        "Ring"})
+SPIRIT_SLOTS = frozenset({"Chest", "Head", "Relic", "Ring", "Shoulders"})
+EFFICACY_SLOTS = frozenset({"Belt", "Boots", "Gloves", "Necklace", "Relic",
+                            "Ring", "Weapon"})
+LUCK_SLOTS = frozenset({"Belt", "Boots", "Necklace", "Relic", "Ring"})
+
+INCREASED_AGILITY = StatAffix("Increased agility", "agility", "increased",
+                              ATTRIBUTE_AFFIX_TOP_VALUE, AGILITY_SLOTS, SUFFIX)
+INCREASED_FEROCITY = StatAffix("Increased ferocity", "ferocity", "increased",
+                               ATTRIBUTE_AFFIX_TOP_VALUE, OFFENSIVE_SLOTS,
+                               SUFFIX)
+INCREASED_CONSTITUTION = StatAffix("Increased constitution", "constitution",
+                                   "increased", ATTRIBUTE_AFFIX_TOP_VALUE,
+                                   CONSTITUTION_SLOTS, SUFFIX)
+INCREASED_VITALITY = StatAffix("Increased vitality", "vitality", "increased",
+                               ATTRIBUTE_AFFIX_TOP_VALUE, VITALITY_SLOTS,
+                               SUFFIX)
+INCREASED_MIND = StatAffix("Increased mind", "mind", "increased",
+                           ATTRIBUTE_AFFIX_TOP_VALUE, MIND_SLOTS, SUFFIX)
+INCREASED_SPIRIT = StatAffix("Increased spirit", "spirit", "increased",
+                             ATTRIBUTE_AFFIX_TOP_VALUE, SPIRIT_SLOTS, SUFFIX)
+INCREASED_EFFICACY = StatAffix("Increased efficacy", "efficacy", "increased",
+                               ATTRIBUTE_AFFIX_TOP_VALUE, EFFICACY_SLOTS,
+                               SUFFIX)
+INCREASED_LUCK = StatAffix("Increased luck", "luck", "increased",
+                           ATTRIBUTE_AFFIX_TOP_VALUE, LUCK_SLOTS, SUFFIX)
+
+#: The eight, in the order `game/Data/Attributes.csv` lists them.
+ATTRIBUTE_AFFIXES: tuple[StatAffix, ...] = (
+    INCREASED_AGILITY, INCREASED_FEROCITY, INCREASED_CONSTITUTION,
+    INCREASED_VITALITY, INCREASED_MIND, INCREASED_SPIRIT, INCREASED_EFFICACY,
+    INCREASED_LUCK,
+)
+
+#: The stat name each one grants, which is the attribute's own name. Kept as a
+#: set so the checks below can ask "is this an attribute affix" without matching
+#: on the display name.
+ATTRIBUTE_STATS = frozenset(a.stat for a in ATTRIBUTE_AFFIXES)
+
+
 #: Every stat affix in the pool. Resistance families are separate, because they
 #: have a breadth axis the others do not.
 AFFIX_POOL: tuple[StatAffix, ...] = (
@@ -908,7 +994,7 @@ AFFIX_POOL: tuple[StatAffix, ...] = (
     INCREASED_COOLDOWN_REDUCTION,
     FLAT_MAGIC_FIND,
     INCREASED_LOOT_QUANTITY,
-)
+) + ATTRIBUTE_AFFIXES
 
 
 def pool_for(slot: str, position: str | None = None) -> tuple[StatAffix, ...]:

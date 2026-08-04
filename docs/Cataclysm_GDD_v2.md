@@ -1878,7 +1878,19 @@ An affix cannot appear on every piece. Without restrictions every slot is interc
 
   
 
-**No attribute affix exists yet.** The affixes themselves are still to be designed — flat or increased, prefix or suffix, which slots, and whether a hybrid grants two attributes at a reduced share, as the twelve existing hybrids do. Issue #204 carries that work.
+**Each of the eight primary attributes has exactly one affix, and it is a percentage increase.** Gear does not grant attribute points. It increases the attribute the character already has.
+
+  
+
+That is the whole point of the design. An attribute affix is worth little to a character spread across several attributes and a great deal to one that has specialised, so it rewards a decision the player already made rather than handing everyone the same value. A flat version would do the opposite, which is why there is none.
+
+  
+
+**They are suffixes, and no hybrid grants one.** One attribute per affix, never two.
+
+  
+
+**Which slots each one rolls on follows the stats it drives**, rather than being chosen separately. Ferocity drives critical strike and Efficacy drives area of effect, both of which already roll on a weapon, so those two can appear on a weapon. Vitality drives health and Constitution drives armour, which do not roll on weapons, so those two cannot. That keeps a weapon offensive without needing a rule of its own.
 
   
 
