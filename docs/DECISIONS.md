@@ -147,10 +147,31 @@ Support buff has more than full uptime. The slot becomes a permanent stat rather
 than something used at a moment, and its 25 mana is then the only real limit on
 it. This is a constant rather than a structure, so it is left for play to settle.
 
-**A tension also left standing.** The basic attack is automatic, deals 100%
-weapon damage and fires about 1.3 times a second, so it out-damages a Heavy
-Attack even at a 1.5 second cooldown. The design calls the Heavy "often the
-primary damage button". Both cannot be true at these numbers.
+**A TENSION THE SHORTER COOLDOWN RESOLVED, which the longer one did not.** The
+design calls the Heavy Attack "often the primary damage button". At the 6 second
+cooldown first proposed it was not: 250% every 6 seconds is 41.7% of weapon
+damage per second, against 130% per second from an automatic basic attack dealing
+100% at 1.3 attacks per second. The basic attack out-damaged it three times over
+and the design's own words were false.
+
+At 1.5 seconds the Heavy Attack deals 166.7% per second and is the larger source
+for every weapon in the game, from 1.11 times the basic attack with the fastest
+weapon to 1.39 times with the slowest:
+
+| Weapon rate | Basic attack | Heavy Attack is |
+|---|---|---|
+| Dagger, 1.50/s | 150%/s | 1.11x |
+| Fist, 1.45/s | 145%/s | 1.15x |
+| Crossbow, Wand, Spear, 1.35/s | 135%/s | 1.23x |
+| Greataxe, 1.28/s | 128%/s | 1.30x |
+| Shield, Warhammer, 1.20/s | 120%/s | 1.39x |
+
+The margin is deliberately not large. The basic attack is meant to be a real part
+of a character's damage rather than a formality, and it is also the mana income.
+The Heavy Attack stops being the larger source above 1.67 attacks per second, and
+the fastest weapon in the game is the Dagger at 1.50, so there is room but not
+much. A test holds it, because raising the Heavy Attack's cooldown or a weapon's
+rate could quietly reverse it again.
 
 **Sources.** The Diablo 4 forums and a widely cited write-up of its resource
 problem, for the generator ratio and the complaint against it; Maxroll and Icy

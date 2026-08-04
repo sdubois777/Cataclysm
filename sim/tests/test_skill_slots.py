@@ -403,6 +403,53 @@ def test_a_character_with_no_weapon_earns_nothing_from_hits():
 
 
 # --------------------------------------------------------------------------
+# The Heavy Attack has to actually be the primary damage button
+# --------------------------------------------------------------------------
+
+#: Every weapon rate in the game, from the attack speed decision of 2026-08-04.
+#: The Dagger at 1.50 is the fastest, which is what makes the check below tight.
+WEAPON_RATES = (1.50, 1.45, 1.40, 1.35, 1.30, 1.28, 1.25, 1.20)
+
+
+def test_the_heavy_attack_out_damages_the_automatic_basic_attack():
+    """The design calls the Heavy Attack often the primary damage button, and
+    that has to be arithmetically true rather than only stated.
+
+    It was false at the 6 second cooldown first proposed: 250% every 6 seconds
+    is 41.7% per second against 130% per second from a basic attack at 1.3
+    attacks per second. Shortening the cooldown to 1.5 seconds is what made the
+    design's own words hold. Raising it again, or adding a faster weapon, would
+    quietly reverse it.
+    """
+    heavy = ch.SKILL_SLOTS["Heavy"]
+    basic = ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT]
+    heavy_per_second = heavy.typical_damage / heavy.typical_cooldown
+
+    for rate in WEAPON_RATES:
+        basic_per_second = basic.typical_damage * rate
+        assert heavy_per_second > basic_per_second, (
+            f"at {rate} attacks per second the basic attack deals "
+            f"{basic_per_second:.0f}% of weapon damage per second and the Heavy "
+            f"Attack only {heavy_per_second:.0f}%, so the slot the design calls "
+            "the primary damage button is not one")
+
+
+def test_the_margin_over_the_basic_attack_is_deliberately_narrow():
+    """The basic attack is meant to be a real part of a character's damage
+    rather than a formality, and it is also the mana income. The Heavy Attack
+    should lead it, not eclipse it."""
+    heavy = ch.SKILL_SLOTS["Heavy"]
+    basic = ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT]
+    heavy_per_second = heavy.typical_damage / heavy.typical_cooldown
+
+    slowest = basic.typical_damage * min(WEAPON_RATES)
+    assert heavy_per_second < 2.0 * slowest, (
+        f"the Heavy Attack deals {heavy_per_second / slowest:.1f} times the "
+        "basic attack even with the slowest weapon, which makes the basic "
+        "attack a formality")
+
+
+# --------------------------------------------------------------------------
 # The rule that keeps mana on hit from becoming a generator
 # --------------------------------------------------------------------------
 
