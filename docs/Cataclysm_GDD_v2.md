@@ -1082,7 +1082,7 @@ Damage-over-time frequency uses the same form, because it is also a rate. Area o
 |  |  |  |
 | :-: | :-: | :-: |
 | \*\*Stat\*\* | \*\*Cap\*\* | \*\*Hard or Soft\*\* |
-| Resistances | 70% | Soft. Affixes may raise the cap itself. |
+| Resistances | 70% | Soft. Resistance above it is worth having; one enchantment raises the cap itself, to a ceiling of 90%. |
 | Evasion | 60% | Soft. Gear enchantments may exceed it. |
 | Crit chance | 100% | Hard. Above 100% it means nothing. |
 | Block chance | none | No cap. A block is not a full avoid. |
@@ -1165,7 +1165,7 @@ Most classes have no energy shield at all. It is given to classes that thematica
 
 ### **Resistances**
 
-There are eight resistances, one per damage type. Each caps at 70%. Resistance is reduced by Overwhelm when the player fights above their Power Score. Over-capping resistance is possible via certain affixes.
+There are eight resistances, one per damage type. Each caps at 70%. Resistance is reduced by Overwhelm when the player fights above their Power Score. Over-capping resistance is possible via any resistance affix, and raising the 70% itself is possible only via enchantments; see Maximum Resistance below.
 
   
 
@@ -1200,6 +1200,38 @@ Tier Width is the difference between the maximum Power Score of the current diff
   
 
 **This is the reason to over-cap resistance.** Resistance above 70% is the headroom Overwhelm eats into. A character at exactly 70% loses mitigation the moment they fight above their score; one at 95% stays at the cap until the gap is wide.
+
+  
+
+### **Maximum Resistance**
+
+Over-capping and raising the maximum are two different things and are easy to confuse. **Over-capping** is having more than 70% resistance, which any resistance affix does and which is worth having because penetration and Overwhelm are subtracted before the cap. **Raising the maximum** moves the 70% itself, so more of a hit is actually stopped.
+
+  
+
+**Only enchantments raise the maximum. No affix may.** One positive enchantment does it, "You have +10 maximum resists", and three negative enchantments lower it. That placement is not incidental: every affix has seven tiers and can appear on several pieces, and maximum resistance does not tolerate that range. Enchantments have one value rather than seven, carry a weight from 1 to 4 controlling how rare they are, appear only on Legendary items and above, and take one of the four slots a regular affix would have used. The maximum resistance enchantment is weight 1, which is the rarest and most powerful tier.
+
+  
+
+**The maximum is hard capped at 90%.** Two of that enchantment reach it and a third is wasted.
+
+  
+
+|  |  |  |
+| :-- | :-: | :-- |
+| \*\*Figure\*\* | \*\*Value\*\* | \*\*What it is\*\* |
+| Base cap | 70% | Where a resistance caps with nothing done about it |
+| Ceiling on the cap | 90% | Hard. No stacking goes past it |
+| Damage taken at the base cap | 30% | |
+| Damage taken at the ceiling | 10% | Three times less than at the base cap |
+
+  
+
+**Why there is a ceiling at all.** Damage taken is proportional to 100% minus resistance, so the last points are worth far more than the first. Going from 70% to 80% removes a third of what still gets through; 80% to 90% removes half of what is left; 100% removes all of it. A modifier that is worth more the more of it you take needs a hard stop rather than careful pricing.
+
+  
+
+**Where 90% comes from.** Path of Exile caps resistances at 75% and hard caps maximum resistance at 90%, reached in 1% steps from rare modifiers, and it exists there for this reason. It is the only figure available from a shipped game and the ratio it produces carries over: 75% to 90% is a 2.5 times reduction in damage taken there, and 70% to 90% is 3 times here.
 
   
 

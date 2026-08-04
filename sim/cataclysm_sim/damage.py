@@ -57,6 +57,36 @@ ARMOR_REDUCTION_CAP = 75.0
 
 RESISTANCE_CAP = 70.0
 
+#: How high the cap itself can be raised, and the reason there is a limit.
+#:
+#: The 70 above is where a resistance caps for a character who has done nothing
+#: about it. It is a SOFT cap in the sense that resistance above it is worth
+#: having, because penetration is subtracted before the cap is applied. It is
+#: not soft in the sense of being exceeded: 70 is still all the mitigation the
+#: character gets.
+#:
+#: MAXIMUM RESISTANCE RAISES THE CAP. One enchantment does it -- "You have +10
+#: maximum resists" in `game/Data/EnchantmentsPositive.csv`, at weight 1, the
+#: rarest and most powerful tier -- and three negative enchantments lower it.
+#: Nothing else does, and no affix may; see the Maximum Resistance subsection of
+#: `Cataclysm_GDD_v2.md`.
+#:
+#: WITHOUT A CEILING, STACKING REACHES IMMUNITY. Damage taken is proportional to
+#: (100 - resistance), so the last few points are worth far more than the first
+#: few: 70 to 80 removes a third of what still gets through, 80 to 90 removes
+#: half of that again, and 100 removes all of it. A modifier whose value rises
+#: as you take more of it needs a hard stop rather than a tuning pass.
+#:
+#: 90 IS PATH OF EXILE'S NUMBER, taken because it is the only figure available
+#: from a shipped game and it exists for this exact reason. Its resistances cap
+#: at 75 and its maximum resistance is hard capped at 90, reached in 1% steps
+#: from rare modifiers. Here the base is 70 and one enchantment gives 10, so two
+#: of them reach the ceiling and a third is wasted. That is the property the
+#: ceiling is for: no amount of stacking reaches immunity.
+#:
+#: Issue #215.
+MAX_RESISTANCE_CEILING = 90.0
+
 #: Negative resistance means taking extra damage, which several enchantments
 #: inflict deliberately. This bounds how bad it can get.
 RESISTANCE_FLOOR = -100.0

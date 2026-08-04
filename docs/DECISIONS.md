@@ -109,6 +109,74 @@ attributes.
 
 ---
 
+## 2026-08-04 — Maximum resistance stays an enchantment, and the cap it raises is hard capped at 90%
+
+**The question.** Issue #215. The project owner raised that maximum resistance is
+worth having and cannot be an ordinary affix: every affix has seven tiers and can
+appear on several of the ten equipment slots, and that range is far too wide for a
+modifier multiplicative with every other defensive stat. Four things needed
+deciding — the placement, whether it covers one damage type or all eight, the
+value, and whether there is a ceiling.
+
+**Three of the four were already answered by the data, which the audit that
+produced #215 did not read.** `game/Data/EnchantmentsPositive.csv` already holds
+"You have +10 maximum resists" at weight 1, and `game/Data/EnchantmentsNegative.csv`
+holds three enchantments that lower the maximum. So:
+
+| Question | Answer | Where it came from |
+|---|---|---|
+| Affix or enchantment? | Enchantment | Already is one |
+| One damage type or all eight? | All eight, in one enchantment | Already is |
+| What value? | +10 | Already is, and weight 1 is the rarest and most powerful tier |
+| Is there a ceiling? | **No, and that was the real gap** | Nothing anywhere stated one |
+
+**The decision: the maximum is hard capped at 90%.** `MAX_RESISTANCE_CEILING` in
+`sim/cataclysm_sim/damage.py`, stated in the design document's new Maximum
+Resistance subsection.
+
+**Why a ceiling and not a tuning pass.** Damage taken is proportional to 100%
+minus resistance, so the last points are worth far more than the first. 70 to 80
+removes a third of what still gets through; 80 to 90 removes half of what is left;
+100 removes all of it. A modifier that is worth more the more of it you take needs
+a hard stop, not careful pricing, because no price is right at every quantity.
+
+**Where 90 comes from.** Path of Exile caps resistances at 75% and hard caps
+maximum resistance at 90%, reached in 1% steps from rare modifiers, and it exists
+there for this reason. It is the only figure available from a shipped game. The
+ratio carries over: 75% to 90% is 2.5 times less damage taken there, and 70% to
+90% is 3 times here. With one enchantment worth +10, two reach the ceiling and a
+third is wasted, which is the property the ceiling is for.
+
+**A second decision, smaller and needed to stop this recurring: no affix may raise
+the maximum.** The Caps table in `Cataclysm_GDD_v2.md` read "Soft. Affixes may
+raise the cap itself", which is wrong twice over. No affix raises the cap, and the
+sentence conflates two different things that the new subsection now separates:
+
+    over-capping         having more than 70% resistance. Any resistance affix
+                         does it, and it is worth having because penetration and
+                         Overwhelm are subtracted before the cap is applied.
+    raising the maximum  moving the 70% itself, so more of a hit is stopped.
+
+`tools/tests/test_maximum_resistance.py` holds the rule against all three copies
+of the affix pool and against both enchantment tables.
+
+**What was not done, and why.** No per-damage-type maximum resistance enchantment
+was added. The design's ordinary resistance affixes come in breadths of one, two
+and eight, so a per-type version would be consistent, but the +10 value was set
+for an enchantment covering all eight, and eight narrower ones would each need a
+value, a weight and a tag set. That is a design of its own rather than part of
+answering this issue.
+
+**Affects:** `Cataclysm_GDD_v2.md` gains a Maximum Resistance subsection after
+Overwhelm; its Caps table row for resistances is corrected; its Resistances
+paragraph now says which sources do which thing. `sim/cataclysm_sim/damage.py`
+gains `MAX_RESISTANCE_CEILING`. `tools/tests/test_maximum_resistance.py` is new.
+No data changed: the enchantment and its three negative counterparts already
+existed. Source:
+[Resistance, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Resistance).
+
+---
+
 ## 2026-08-04 — Leech is defined, and gains mana and energy shield alongside life
 
 **The question.** Issue #214. `game/Data/Affixes.csv` had exactly one leech
