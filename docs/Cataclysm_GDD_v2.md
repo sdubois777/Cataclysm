@@ -1868,7 +1868,15 @@ An affix cannot appear on every piece. Without restrictions every slot is interc
 
   
 
-### **Attribute Affixes**
+### **What Affixes Do Not Grant**
+
+**Gear can grant primary attributes.** An earlier version of this section said it could not, on the grounds that the design gives one attribute point per level and the Maw consumes items and enemies for more, so gear granting them would be a new mechanic rather than a filled gap. That was reversed on 2026-08-04: attributes must be slottable on gear.
+
+  
+
+**The Maw is still a source, so an attribute affix is priced against both.** A character's attribute points come from levelling, from the Maw, and now from gear. An attribute affix competes with what the Maw already gives, not only with the hundred points a character earns by reaching level 100.
+
+  
 
 **Each of the eight primary attributes has exactly one affix, and it is a percentage increase.** Gear does not grant attribute points. It increases the attribute the character already has.
 
@@ -1885,12 +1893,6 @@ That is the whole point of the design. An attribute affix is worth little to a c
 **Which slots each one rolls on follows the stats it drives**, rather than being chosen separately. Ferocity drives critical strike and Efficacy drives area of effect, both of which already roll on a weapon, so those two can appear on a weapon. Vitality drives health and Constitution drives armour, which do not roll on weapons, so those two cannot. That keeps a weapon offensive without needing a rule of its own.
 
   
-
-Attribute points themselves still come from levelling, one per level, and from the Maw, which consumes items and enemies for more. An attribute affix multiplies whatever those two have produced, so its worth is decided by them.
-
-  
-
-### **What Affixes Do Not Grant**
 
 **No ordinary affix is a "more" multiplier.** An affix is flat or increased. Multiplicative sources come from gems, passive tree keystones and enchantments, as section IV states.
 

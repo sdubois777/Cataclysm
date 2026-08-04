@@ -1,71 +1,61 @@
-"""The two things the design says an affix must never be.
+"""The one thing the design says an ordinary affix must never be.
 
-WHY THIS EXISTS. Issue #204 reported that none of the eight primary attributes
-can be found on gear, and read that as an omission. It is not: the design
-document already decides it. `docs/Cataclysm_GDD_v2.md` has a section headed
-"What Affixes Do Not Grant" holding exactly two rules, and `docs/DECISIONS.md`
-records the reasoning behind the first of them.
-
-    There are no attribute affixes. The design gives one attribute point per
-    level, and the Maw consumes items and enemies for more. Gear granting
-    attribute points appears nowhere, so an affix for it would be a new mechanic
-    rather than a filled gap.
+WHY THIS EXISTS. `docs/Cataclysm_GDD_v2.md` has a section headed "What Affixes Do
+Not Grant". It held two rules. One of them has been reversed and one stands.
 
     No ordinary affix is a "more" multiplier. An affix is flat or increased.
     Multiplicative sources come from gems, passive tree keystones and
     enchantments, as section IV states.
 
-THE POINT IS DISCOVERABILITY. Both rules were already written down in prose when
-#204 was filed. The audit that produced #204 cross-referenced the attribute sets
-against the `Stat` column of `game/Data/Affixes.csv`, which is a data-level
-reading that never touches the design document, so it found a hole where the
-design had put a decision. A rule that lives only in prose gets re-reported. This
-turns both rules into something a data-level reading trips over.
+THE RULE THAT WAS REVERSED, recorded here because this file used to pin it and
+someone will wonder where it went. The section also said "There are no attribute
+affixes". Issue #204 reported the absence of attribute affixes as a hole; the
+first version of this file closed that report by pinning the rule, which was
+correct at the time and wrong within the hour: the project owner reversed the
+decision on 2026-08-04, and gear must be able to grant primary attributes. The
+attribute assertions are gone and the design document section now says gear can
+grant them. See "Nine decisions from an audit of the affix pool" in
+`docs/DECISIONS.md`, reversal 1.
 
-IT ALSO GUARDS THE DECISION ITSELF. If either rule is ever reversed, this test
+THE POINT IS DISCOVERABILITY. The remaining rule is written in prose and nothing
+else checks it. An audit reading `game/Data/Affixes.csv` sees only value kinds
+`flat` and `increased` and has no way to know that a third one is forbidden
+rather than merely absent. A rule that lives only in prose gets re-reported, which
+is what happened to the rule that used to sit beside it.
+
+IT ALSO GUARDS THE DECISION ITSELF. If the rule is ever reversed too, this test
 fails, and the fix is to change the design document and this file together rather
 than to let the data and the prose disagree.
 
-WHAT IT CHECKS AND WHERE. Three copies of the affix pool exist and all three are
-checked, because an affix added to one and not the others is the other failure
-mode:
+WHAT IT CHECKS AND WHERE. Both copies of the affix pool that hold a value kind:
 
     docs/All_Things_Cataclysm.xlsx, Affixes sheet   authoritative, hand-edited
     game/Data/Affixes.csv                           generated, what the game loads
-    sim/cataclysm_sim/affixes.py                    the model the tuning uses
 
-WHY THE ATTRIBUTE NAMES ARE READ RATHER THAN LISTED. A hand-written list of the
-eight would keep passing if an attribute were renamed, because the new name would
-appear in no list and so could never be found in an affix. The names come from
-`game/Data/Attributes.csv`, the generated table saying what a point of each
-attribute does, and are cross-checked against
-`game/Source/Cataclysm/AbilitySystem/CataclysmPrimaryAttributeSet.h`, the C++
-attribute set the game actually runs on. A rename in either place fails the
-cross-check instead of silently emptying the guard.
+`sim/cataclysm_sim/affixes.py` is the third copy and needs no check here:
+`StatAffix.__post_init__` already raises on any kind but flat or increased.
+
+The eight primary attribute names used to be pinned here as well. They moved to
+`tools/tests/test_primary_attribute_names.py`, which is where they belong now
+that an affix may name one.
 """
 
 from __future__ import annotations
 
-import collections
 import csv
 import pathlib
-import re
 
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 AFFIX_CSV = REPO_ROOT / "game" / "Data" / "Affixes.csv"
-ATTRIBUTE_CSV = REPO_ROOT / "game" / "Data" / "Attributes.csv"
-ATTRIBUTE_SET_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" /
-                        "AbilitySystem" / "CataclysmPrimaryAttributeSet.h")
 GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 
-#: The section of the design document these rules come from. Named here so a
+#: The section of the design document the rule comes from. Named here so a
 #: failure says where to go, and asserted below so renaming the section does not
 #: leave this file pointing at nothing.
 GDD_SECTION = "What Affixes Do Not Grant"
-ATTRIBUTE_SECTION = "Attribute Affixes"
 
 #: The two value kinds an ordinary affix may have. "more" is deliberately absent.
 ALLOWED_VALUE_KINDS = frozenset({"flat", "increased"})
@@ -112,156 +102,8 @@ def affix_rows():
     return read_csv(AFFIX_CSV)
 
 
-@pytest.fixture(scope="module")
-def primary_attributes() -> frozenset[str]:
-    """The eight primary attributes, lower-cased, read from the data.
-
-    Read rather than listed so that renaming one cannot quietly empty this
-    file's checks. `test_the_attribute_names_come_from_the_game` is what makes
-    that claim hold.
-    """
-    rows = read_csv(ATTRIBUTE_CSV)
-    return frozenset(row["Attribute"].strip().lower() for row in rows)
-
-
-class TestTheAttributeNamesAreReal:
-    """Everything below is worthless if these eight names are wrong."""
-
-    def test_there_are_eight_of_them(self, primary_attributes):
-        assert len(primary_attributes) == 8, sorted(primary_attributes)
-
-    def test_the_attribute_names_come_from_the_game(self, primary_attributes):
-        """The names in the generated table are the ones the C++ runs on.
-
-        `CataclysmPrimaryAttributeSet.h` declares each attribute as an
-        `FGameplayAttributeData`. If the two lists ever disagree, one of them has
-        been renamed and this whole file is checking for names that no longer
-        exist.
-        """
-        if not ATTRIBUTE_SET_HEADER.is_file():
-            pytest.skip("the Unreal attribute set header is not present")
-        declared = {name.lower() for name in re.findall(
-            r"FGameplayAttributeData\s+(\w+);",
-            ATTRIBUTE_SET_HEADER.read_text(encoding="utf-8"))}
-        assert declared == set(primary_attributes), (
-            f"only in {ATTRIBUTE_SET_HEADER.name}: "
-            f"{sorted(declared - primary_attributes)}; "
-            f"only in {ATTRIBUTE_CSV.name}: "
-            f"{sorted(primary_attributes - declared)}")
-
-    def test_no_attribute_shares_a_name_with_a_stat(self, primary_attributes):
-        """An attribute and a stat must not collide.
-
-        `Attributes.csv` maps each attribute to the stats it scales. If an
-        attribute were ever named after one of those stats, an affix granting the
-        stat would look like an affix granting the attribute and the checks below
-        would fail for the wrong reason.
-        """
-        scaled = {row["Stat"].strip().lower() for row in read_csv(ATTRIBUTE_CSV)}
-        assert not (scaled & primary_attributes), sorted(scaled & primary_attributes)
-
-
-class TestEveryAttributeIsGrantedOnceAsAnIncrease:
-    """REVERSED ON 2026-08-04, and these tests reversed with it.
-
-    This class used to assert the opposite: that no affix grants a primary
-    attribute. That was the design document's rule, and the project owner has
-    replaced it. Gear now grants a percentage increase to each of the eight
-    attributes.
-
-    The shape of the check is kept rather than deleted, because the failure mode
-    it guards against has not changed. An affix present in one copy of the pool
-    and missing from the others is still the thing that goes wrong quietly.
-
-    Three rules replace the one that was here, all from the owner on 2026-08-04:
-    percentage increases only and never flat, no hybrid may grant an attribute,
-    and every one of them is a suffix.
-    """
-
-    def test_every_attribute_is_granted_in_the_workbook(self, affix_sheet,
-                                                        primary_attributes):
-        granted = {text(row["Stat"]).lower() for row in affix_sheet
-                   } & primary_attributes
-        assert granted == primary_attributes, (
-            f"the Affixes sheet of {WORKBOOK.name} is missing affixes for "
-            f"{sorted(primary_attributes - granted)}")
-
-    def test_every_attribute_is_granted_in_the_table_the_game_loads(
-            self, affix_rows, primary_attributes):
-        granted = {row["Stat"].strip().lower() for row in affix_rows
-                   } & primary_attributes
-        assert granted == primary_attributes, (
-            f"{AFFIX_CSV.name} is missing affixes for "
-            f"{sorted(primary_attributes - granted)}")
-
-    def test_each_attribute_is_granted_exactly_once(self, affix_rows,
-                                                    primary_attributes):
-        """Two affixes for one attribute would double how much gear can give it
-        without anyone deciding to."""
-        counts = collections.Counter(
-            row["Stat"].strip().lower() for row in affix_rows
-            if row["Stat"].strip().lower() in primary_attributes)
-        repeated = sorted(name for name, n in counts.items() if n > 1)
-        assert not repeated, (
-            f"{AFFIX_CSV.name} grants {repeated} more than once")
-
-    def test_an_attribute_affix_is_always_an_increase_and_a_suffix(
-            self, affix_rows, primary_attributes):
-        for row in affix_rows:
-            if row["Stat"].strip().lower() not in primary_attributes:
-                continue
-            assert row["ValueKind"].strip() == "increased", (
-                f"{row['AffixName']} grants an attribute as "
-                f"{row['ValueKind']!r}. Attribute affixes are percentage "
-                "increases only; a flat one would hand every character the same "
-                "value instead of rewarding specialisation.")
-            assert row["Position"].strip() == "suffix", (
-                f"{row['AffixName']} is a {row['Position']}; attribute affixes "
-                "are suffixes")
-
-    def test_no_hybrid_reaches_an_attribute_through_its_halves(
-            self, affix_rows, primary_attributes):
-        """A hybrid names two other affixes rather than a stat, so checking the
-        `Stat` column alone would miss one reaching an attribute sideways. The
-        owner ruled out hybrid attribute affixes, so this rule survives the
-        reversal unchanged."""
-        by_name = {row["AffixName"].strip(): row for row in affix_rows}
-        for row in affix_rows:
-            for column in ("HybridPart1", "HybridPart2"):
-                part = row[column].strip()
-                if not part:
-                    continue
-                assert part in by_name, (
-                    f"{row['AffixName']} names a half, {part!r}, that is not an "
-                    "affix")
-                stat = by_name[part]["Stat"].strip().lower()
-                assert stat not in primary_attributes, (
-                    f"{row['AffixName']} reaches the primary attribute {stat!r} "
-                    f"through its half {part!r}. Hybrids granting an attribute "
-                    "were ruled out on 2026-08-04.")
-
-    def test_the_model_accepts_an_attribute_and_still_refuses_a_typo(
-            self, primary_attributes):
-        """`affixes.py` validates the stat an affix names on construction.
-
-        The guard still has to refuse a name nothing reads. Widening it to admit
-        attributes must not widen it to admit anything else.
-        """
-        from cataclysm_sim import affixes as af
-
-        assert primary_attributes <= set(af.AFFIXABLE_STATS), (
-            "affixes.AFFIXABLE_STATS does not admit every primary attribute")
-
-        af.StatAffix("Increased agility test", sorted(primary_attributes)[0],
-                     "increased", 12.0, af.DEFENSIVE_SLOTS, af.SUFFIX)
-
-        with pytest.raises(ValueError, match="character sheet"):
-            af.StatAffix("Bad", "max_stamina", "flat", 1.0,
-                         af.DEFENSIVE_SLOTS, af.PREFIX)
-
-
 class TestNoAffixIsAMoreMultiplier:
-    """The second rule. An affix is flat or increased, never multiplicative."""
+    """An affix is flat or increased, never multiplicative."""
 
     def test_every_stat_affix_in_the_workbook_is_flat_or_increased(self, affix_sheet):
         wrong = sorted({text(row["Value Kind"]) for row in affix_sheet
@@ -278,6 +120,18 @@ class TestNoAffixIsAMoreMultiplier:
                        - ALLOWED_VALUE_KINDS)
         assert not wrong, f"{AFFIX_CSV.name} uses value kinds {wrong}"
 
+    def test_the_model_rejects_any_other_kind(self):
+        """`StatAffix` validates the kind on construction.
+
+        The third copy of the pool, and the one the tuning work reads. A stat
+        affix cannot be given a "more" kind even by hand.
+        """
+        from cataclysm_sim import affixes as af
+
+        with pytest.raises(ValueError, match="'flat' or 'increased'"):
+            af.StatAffix("More damage", "attack_damage", "more", 20.0,
+                         af.OFFENSIVE_SLOTS, af.PREFIX)
+
     def test_there_are_stat_affixes_of_both_kinds_to_check(self, affix_rows):
         """A check over an empty set passes and proves nothing."""
         kinds = [row["ValueKind"].strip() for row in affix_rows
@@ -285,28 +139,30 @@ class TestNoAffixIsAMoreMultiplier:
         assert kinds.count("flat") >= 1 and kinds.count("increased") >= 1
 
 
-def test_the_design_document_still_states_both_rules():
-    """The rules this file pins must still be the design.
+class TestTheDesignDocumentStillSaysIt:
+    def test_the_section_and_the_rule_are_still_there(self):
+        """Without this, deleting the section would leave the tests enforcing a
+        rule the design no longer holds."""
+        if not GDD.is_file():
+            pytest.skip("the design document is not present")
+        gdd = GDD.read_text(encoding="utf-8")
+        assert GDD_SECTION in gdd, (
+            f"{GDD.name} no longer has a '{GDD_SECTION}' section")
+        assert 'No ordinary affix is a "more" multiplier.' in gdd
 
-    Without this, deleting the section from `docs/Cataclysm_GDD_v2.md` would
-    leave the tests enforcing a rule the design no longer holds, which is the
-    same disagreement between prose and data that produced issue #204.
-    """
-    if not GDD.is_file():
-        pytest.skip("the design document is not present")
-    gdd = GDD.read_text(encoding="utf-8")
-    assert GDD_SECTION in gdd, (
-        f"{GDD.name} no longer has a '{GDD_SECTION}' section")
-    assert 'No ordinary affix is a "more" multiplier.' in gdd
+    def test_the_reversed_rule_is_gone(self):
+        """The design document must not still forbid attribute affixes.
 
-    # The rule this file used to pin, reversed on 2026-08-04. Asserted in both
-    # directions: the old sentence must be gone, and the new one present, so
-    # that reinstating either without the other fails here.
-    assert "There are no attribute affixes." not in gdd, (
-        f"{GDD.name} still says there are no attribute affixes. That rule was "
-        "reversed; the tests above now require every attribute to have one.")
-    assert ATTRIBUTE_SECTION in gdd, (
-        f"{GDD.name} no longer has an '{ATTRIBUTE_SECTION}' section saying what "
-        "an attribute affix is")
-    assert ("Each of the eight primary attributes has exactly one affix, and it "
-            "is a percentage increase.") in gdd
+        The reversal is only real if the document stops saying the old thing.
+        This is what stops the two halves of #204 drifting apart: the sentence
+        being deleted here and an attribute affix being added there are the same
+        decision, and a document that still forbids it would make the affix look
+        like a mistake.
+        """
+        if not GDD.is_file():
+            pytest.skip("the design document is not present")
+        gdd = GDD.read_text(encoding="utf-8")
+        assert "**There are no attribute affixes.**" not in gdd, (
+            f"{GDD.name} still forbids attribute affixes. The project owner "
+            "reversed that on 2026-08-04; see reversal 1 of 'Nine decisions "
+            "from an audit of the affix pool' in DECISIONS.md.")
