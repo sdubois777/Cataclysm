@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -28,6 +29,10 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// glide is running, so a character nobody is zooming costs nothing.
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = false;
+
+	// A second player in a co-operative session is this same class, so both are
+	// on the Players side and neither is a legal target for the other's skills.
+	TeamId = UCataclysmTeams::IdFor(ECataclysmTeam::Players);
 
 	GetCapsuleComponent()->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
 

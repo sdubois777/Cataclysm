@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Engine/OverlapResult.h"
@@ -96,52 +97,47 @@ UAbilitySystemComponent* UCataclysmTargeting::AbilitySystemOf(const AActor* Acto
 	return UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor);
 }
 
-bool UCataclysmTargeting::IsHostileTo(const AActor* Actor, const AActor* Instigator)
+bool UCataclysmTargeting::MatchesAttitude(const AActor* Actor, const AActor* Instigator,
+										  ETeamAttitude::Type Wanted)
 {
 	if (!IsValid(Actor) || Actor == Instigator)
 	{
 		return false;
 	}
 
-	// It must be something that can hold damage at all. See the class comment:
-	// this project has no faction concept, so having an ability system is most
-	// of what makes something a target. Issue #162.
+	// It must be something that can hold damage at all, whichever side it is on.
+	// This is what keeps scenery out of both searches: a wall is not an enemy,
+	// and it is not an ally an aura can buff either.
 	if (!AbilitySystemOf(Actor))
 	{
 		return false;
 	}
 
+	// No instigator means no side to compare against. A hostile search then
+	// returns everything, which is what a hazard belonging to nobody should do;
+	// a friendly search returns nothing, because nothing can be an ally of no
+	// one.
 	if (!Instigator)
 	{
-		return true;
+		return Wanted == ETeamAttitude::Hostile;
 	}
 
-	// OWNERSHIP STANDS IN FOR A SIDE, because there is nothing better to ask
-	// yet. Without this a Ritualist's own imps are enemies to their own skills:
-	// a summoned minion has an ability system and is not the caster, which is
-	// the whole of the test above. Checked in both directions so that a minion's
-	// own attack does not target the character that summoned it either.
-	for (const AActor* Owner = Actor->GetOwner(); Owner; Owner = Owner->GetOwner())
-	{
-		if (Owner == Instigator)
-		{
-			return false;
-		}
-	}
-	for (const AActor* Owner = Instigator->GetOwner(); Owner; Owner = Owner->GetOwner())
-	{
-		if (Owner == Actor)
-		{
-			return false;
-		}
-	}
+	return UCataclysmTeams::AttitudeBetween(Instigator, Actor) == Wanted;
+}
 
-	return true;
+bool UCataclysmTargeting::IsHostileTo(const AActor* Actor, const AActor* Instigator)
+{
+	return MatchesAttitude(Actor, Instigator, ETeamAttitude::Hostile);
+}
+
+bool UCataclysmTargeting::IsFriendlyTo(const AActor* Actor, const AActor* Instigator)
+{
+	return MatchesAttitude(Actor, Instigator, ETeamAttitude::Friendly);
 }
 
 TArray<AActor*> UCataclysmTargeting::Gather(
 	const UWorld* World, const AActor* Instigator, const FVector& Origin,
-	float SearchRadiusCm, int32 MaxTargets,
+	float SearchRadiusCm, int32 MaxTargets, ETeamAttitude::Type Wanted,
 	TFunctionRef<bool(const FVector&)> Predicate)
 {
 	TArray<AActor*> Found;
@@ -168,7 +164,7 @@ TArray<AActor*> UCataclysmTargeting::Gather(
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		AActor* Actor = Overlap.GetActor();
-		if (!IsHostileTo(Actor, Instigator) || Seen.Contains(Actor))
+		if (!MatchesAttitude(Actor, Instigator, Wanted) || Seen.Contains(Actor))
 		{
 			continue;
 		}
@@ -200,7 +196,15 @@ TArray<AActor*> UCataclysmTargeting::FindEnemiesInSphere(
 {
 	// The overlap has already applied the radius, so the predicate accepts
 	// everything it returns.
-	return Gather(World, Instigator, Origin, RadiusCm, MaxTargets,
+	return Gather(World, Instigator, Origin, RadiusCm, MaxTargets, ETeamAttitude::Hostile,
+				  [](const FVector&) { return true; });
+}
+
+TArray<AActor*> UCataclysmTargeting::FindAlliesInSphere(
+	const UWorld* World, const AActor* Instigator, const FVector& Origin,
+	float RadiusCm, int32 MaxTargets)
+{
+	return Gather(World, Instigator, Origin, RadiusCm, MaxTargets, ETeamAttitude::Friendly,
 				  [](const FVector&) { return true; });
 }
 
@@ -208,7 +212,7 @@ TArray<AActor*> UCataclysmTargeting::FindEnemiesInCone(
 	const UWorld* World, const AActor* Instigator, const FVector& Origin,
 	const FVector& Forward, float RadiusCm, float AngleDegrees, int32 MaxTargets)
 {
-	return Gather(World, Instigator, Origin, RadiusCm, MaxTargets,
+	return Gather(World, Instigator, Origin, RadiusCm, MaxTargets, ETeamAttitude::Hostile,
 		[&](const FVector& Point)
 		{
 			return IsInCone(Origin, Forward, Point, RadiusCm, AngleDegrees);
@@ -226,6 +230,7 @@ TArray<AActor*> UCataclysmTargeting::FindEnemiesInLine(
 	const float SearchRadius = FVector::Dist(Start, End) * 0.5f + HalfWidthCm;
 
 	TArray<AActor*> Found = Gather(World, Instigator, Middle, SearchRadius, /*MaxTargets=*/0,
+		ETeamAttitude::Hostile,
 		[&](const FVector& Point)
 		{
 			return IsInLine(Start, End, Point, HalfWidthCm);

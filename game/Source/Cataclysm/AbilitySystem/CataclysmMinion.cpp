@@ -4,6 +4,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Engine/World.h"
@@ -27,6 +28,16 @@ ACataclysmMinion::ACataclysmMinion()
 UAbilitySystemComponent* ACataclysmMinion::GetAbilitySystemComponent() const
 {
 	return AbilitySystemComponent;
+}
+
+void ACataclysmMinion::SetGenericTeamId(const FGenericTeamId& NewTeamId)
+{
+	TeamId = NewTeamId;
+}
+
+FGenericTeamId ACataclysmMinion::GetGenericTeamId() const
+{
+	return TeamId;
 }
 
 void ACataclysmMinion::BeginPlay()
@@ -62,9 +73,10 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	}
 
 	FActorSpawnParameters SpawnParams;
-	// OWNED BY THE SUMMONER, and that is load-bearing rather than tidiness:
-	// UCataclysmTargeting::IsHostileTo uses ownership to decide sides, so a
-	// minion with no owner would be a target for the character that made it.
+	// OWNED BY THE SUMMONER, and that is load-bearing rather than tidiness.
+	// UCataclysmTeams::TeamOf follows the owner chain, so ownership is what
+	// keeps a summon on its summoner's side on a client, where the team assigned
+	// below is a server-side value that is not itself replicated.
 	SpawnParams.Owner = InSummoner;
 	SpawnParams.SpawnCollisionHandlingOverride =
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -78,6 +90,12 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 
 	Minion->Summoner = InSummoner;
 	Minion->bBurnsWhatItHits = bBurns;
+
+	// The summoner's side, not one of its own. A Ritualist's imps must be
+	// friendly to a second player in the party, not merely to the Ritualist,
+	// and ownership alone cannot say that.
+	Minion->SetGenericTeamId(UCataclysmTeams::TeamOf(InSummoner));
+
 	Minion->SetLifeSpan(Lifetime);
 
 	return Minion;

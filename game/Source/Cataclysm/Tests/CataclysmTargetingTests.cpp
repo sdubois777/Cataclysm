@@ -272,9 +272,12 @@ bool FCataclysmOwnMinionsAreNotEnemiesTest::RunTest(const FString&)
 	FScopedTarget Minion(World, FVector(1 * M, 0, 0));
 	FScopedTarget Enemy(World, FVector(2 * M, 0, 0));
 
-	// WITHOUT OWNERSHIP THIS TEST FAILS, and it is the whole reason ownership is
-	// consulted. "Has an ability system and is not me" makes a Ritualist's own
-	// imps into targets for their own Conflagration.
+	// OWNERSHIP ALONE, WITH NO SIDE ANYWHERE. None of these three actors is a
+	// character, so none of them has a side, and this is exactly the case
+	// UCataclysmTeams::AttitudeBetween checks ownership first for: a thing a
+	// caster put into the world is on that caster's side whether or not anything
+	// gave it a team. Cataclysm.Teams.ASummonFightsForWhoeverMadeIt covers the
+	// real minion, which is given its summoner's side as well.
 	Minion.Actor->SetOwner(Caster.Actor);
 
 	const TArray<AActor*> Found = UCataclysmTargeting::FindEnemiesInSphere(

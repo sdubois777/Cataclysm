@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GenericTeamAgentInterface.h"
 #include "CataclysmTargeting.generated.h"
 
 class UAbilitySystemComponent;
@@ -23,11 +24,12 @@ class UWorld;
  * is the same split as UCataclysmDamageCalculation, and for the same reason: the
  * part most likely to be subtly wrong is the arithmetic.
  *
- * WHAT COUNTS AS AN ENEMY IS CURRENTLY CRUDE. Any actor that has an ability
- * system component and is not the instigator. This project has no faction or
- * team concept yet, so there is nothing better to ask. It is right for the
- * vertical slice, where the only actors with an ability system are the player
- * and enemies, and it will be wrong the moment an ally exists. Issue #162.
+ * WHAT COUNTS AS AN ENEMY IS TWO SEPARATE QUESTIONS, and keeping them apart is
+ * the point. First, can this actor hold damage at all -- does it have an ability
+ * system component? That is what makes scenery not a target. Second, which side
+ * is it on? `UCataclysmTeams` answers the second and nothing here duplicates it,
+ * so an ally is found by asking for a different attitude rather than by a second
+ * copy of the search.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmTargeting : public UObject
@@ -91,16 +93,58 @@ public:
 											 float HalfWidthCm,
 											 int32 MaxTargets = 0);
 
+	/**
+	 * Every ally within RadiusCm of Origin, nearest first. Excludes the
+	 * instigator itself.
+	 *
+	 * FOR THE ALLY HALF OF AN AURA. Conflagration and Blood and Iron both state
+	 * a benefit for allies standing in them -- "allies within it deal 8%
+	 * increased fire damage" -- and before there were sides there was no way to
+	 * ask who those were. The benefit itself is a buff magnitude, which is issue
+	 * #166 and is still not applied; this is the half that finds who to apply it
+	 * to.
+	 *
+	 * @param MaxTargets  zero means no limit
+	 */
+	static TArray<AActor*> FindAlliesInSphere(const UWorld* World,
+											  const AActor* Instigator,
+											  const FVector& Origin,
+											  float RadiusCm,
+											  int32 MaxTargets = 0);
+
 	/** Whether this actor is something the instigator's skills may hit. */
 	static bool IsHostileTo(const AActor* Actor, const AActor* Instigator);
+
+	/**
+	 * Whether this actor is on the instigator's side and can be helped.
+	 *
+	 * NOT SIMPLY THE OPPOSITE OF IsHostileTo. An actor with no ability system
+	 * is neither: scenery is not an enemy, and it is not an ally that an aura
+	 * can buff either. The instigator is not its own ally, for the same reason
+	 * it is not its own enemy -- a search that returns the caster would make
+	 * "allies within it" include the person casting it, which the design writes
+	 * as a separate clause where it means it.
+	 */
+	static bool IsFriendlyTo(const AActor* Actor, const AActor* Instigator);
 
 	/** The actor's ability system component, or null if it has none. */
 	static UAbilitySystemComponent* AbilitySystemOf(const AActor* Actor);
 
 private:
 	/**
-	 * The shared body of the three Find functions: overlap a sphere, keep what
-	 * Predicate accepts, sort by distance, then cut to MaxTargets.
+	 * Whether an actor is a legal result for a search of the given attitude.
+	 *
+	 * The one place the two questions -- can it hold damage, and which side is
+	 * it on -- are asked together. IsHostileTo and IsFriendlyTo are this with
+	 * the attitude fixed.
+	 */
+	static bool MatchesAttitude(const AActor* Actor, const AActor* Instigator,
+								ETeamAttitude::Type Wanted);
+
+	/**
+	 * The shared body of the four Find functions: overlap a sphere, keep what
+	 * has the wanted attitude and what Predicate accepts, sort by distance, then
+	 * cut to MaxTargets.
 	 *
 	 * SORTED BEFORE CUTTING, and that ordering is the point. A cap applied to
 	 * the raw overlap result would keep whichever actors the physics scene
@@ -109,6 +153,6 @@ private:
 	 */
 	static TArray<AActor*> Gather(const UWorld* World, const AActor* Instigator,
 								  const FVector& Origin, float SearchRadiusCm,
-								  int32 MaxTargets,
+								  int32 MaxTargets, ETeamAttitude::Type Wanted,
 								  TFunctionRef<bool(const FVector&)> Predicate);
 };
