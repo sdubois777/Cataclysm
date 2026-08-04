@@ -183,6 +183,20 @@ identifiers that differ between runs. The automation test
 against the CSV it came from instead, and names the script to run when they
 disagree.
 
+**Two checks tell you the second script was skipped, and they are not the same.**
+
+| Check | Runs where | Proves |
+|---|---|---|
+| `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` | Unreal automation tests, needs the editor | The asset's rows match the CSV |
+| `tools/tests/test_datatable_assets_are_current.py` | `python -m pytest`, needs nothing | The generator was run since the CSV last changed |
+
+The second exists because nothing on a pull request runs the first: continuous
+integration runs the Python tests only. It reads
+`Data/datatable_asset_sources.json`, which the asset generator writes at the end
+of a successful run, holding the SHA-256 of each CSV at the moment its asset was
+built. That file is generated; do not edit it by hand. Issue #226 has the two
+pull requests that merged with stale assets and prompted it.
+
 **The input assets and the sandbox level.**
 
 ```bash
