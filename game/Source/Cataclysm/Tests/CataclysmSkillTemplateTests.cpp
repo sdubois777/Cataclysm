@@ -2185,4 +2185,116 @@ bool FCataclysmReturningProjectileGroundTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSlotScopedModifierTest,
+	"Cataclysm.Skills.AModifierScopedToASlotReachesOnlyTheSkillInThatSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSlotScopedModifierTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// WHAT ISSUE #156 WAS ABOUT. The design says increases are scoped by tag and
+	// lists the ability slot tags among the scopes, so an affix reading
+	// "increased Heavy Attack damage" is a modifier scoped to Slot.Heavy. Only
+	// Slot.Movement and Slot.Ultimate appeared on any skill row, so such a
+	// modifier applied to nothing and nothing reported it. Every row now carries
+	// its own slot tag, derived from the Slot column by the generator.
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter HeavyTarget(World, FVector(2 * M, 0, 0));
+	FScopedFighter SpecialTarget(World, FVector(-2 * M, 0, 0));
+
+	FCataclysmStatModifier Increase;
+	Increase.Bucket = ECataclysmStatBucket::Increased;
+	Increase.Source = ECataclysmModifierSource::GearAffix;
+	Increase.Value = 100.0f;
+	Increase.RequiredTags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Slot.Heavy")), /*ErrorIfNotFound=*/false));
+	TestTrue(TEXT("Slot.Heavy is a registered tag"),
+		Increase.RequiredTags.Num() == 1);
+	Caster.AbilitySystem->AddStatModifier(Increase);
+
+	// Both hit in a full ring, so the only difference between them is the slot
+	// tag each carries.
+	UCataclysmStrikeSkill* Heavy = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("A Heavy Skill"), TEXT("Element.Demonic, Slot.Heavy"));
+	UCataclysmStrikeSkill* Special = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"),
+		TEXT("A Special Skill"), TEXT("Element.Demonic, Slot.Special"));
+
+	// Only the Heavy one runs first, and only the enemy in front of it exists to
+	// be hit, so the two figures can be read apart.
+	SpecialTarget.Actor->SetActorLocation(FVector(0, 50 * M, 0));
+	const float HeavyBefore = HeavyTarget.Health();
+	TestTrue(TEXT("The Heavy skill activates"), Activate(Caster, Heavy));
+	const float HeavyDealt = HeavyBefore - HeavyTarget.Health();
+
+	HeavyTarget.Actor->SetActorLocation(FVector(0, 50 * M, 0));
+	SpecialTarget.Actor->SetActorLocation(FVector(2 * M, 0, 0));
+	const float SpecialBefore = SpecialTarget.Health();
+	TestTrue(TEXT("The Special skill activates"), Activate(Caster, Special));
+	const float SpecialDealt = SpecialBefore - SpecialTarget.Health();
+
+	TestEqual(TEXT("The Heavy skill got the doubled damage"),
+		HeavyDealt, WeaponDamage * Heavy->GetSlotDamagePercent() / 100.0f * 2.0f);
+	TestEqual(TEXT("The Special skill got the plain damage"),
+		SpecialDealt, WeaponDamage * Special->GetSlotDamagePercent() / 100.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShippedSlotTagsTest,
+	"Cataclysm.Data.EverySkillTheTableOffersCarriesItsOwnSlotTag",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShippedSlotTagsTest::RunTest(const FString&)
+{
+	// THE REAL DATA, not a hand-written cell. tools/tests/test_slot_tags.py
+	// checks the generated CSV and
+	// Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt checks the asset
+	// matches that CSV. This is the last link in the chain: a row read out of the
+	// shipped DataTable arrives with its slot tag attached, which is what makes a
+	// modifier scoped to Slot.Heavy reach a Heavy skill. Issue #156.
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!Table)
+	{
+		AddError(TEXT("Could not load the generated weapon skill table."));
+		return false;
+	}
+
+	// One weapon of each kind the Demonic vertical slice uses, so every slot the
+	// design fills is represented.
+	const TCHAR* Weapons[] = { TEXT("Greataxe"), TEXT("Fist"), TEXT("Staff") };
+
+	int32 Checked = 0;
+	for (const TCHAR* Weapon : Weapons)
+	{
+		for (const FCataclysmWeaponSkill& Skill :
+				UCataclysmWeaponSkills::SkillsFor(Table, Weapon, TEXT("Demonic")))
+		{
+			bool bFoundOne = false;
+			for (const FGameplayTag& Tag : Skill.Tags)
+			{
+				if (Tag.ToString().StartsWith(TEXT("Slot.")))
+				{
+					bFoundOne = true;
+					++Checked;
+					break;
+				}
+			}
+			TestTrue(FString::Printf(
+				TEXT("'%s' carries a slot tag"), *Skill.Name), bFoundOne);
+		}
+	}
+
+	// Guards the loop itself. If SkillsFor returned nothing the assertions above
+	// would all pass without testing anything.
+	TestTrue(TEXT("Some skills were actually checked"), Checked >= 10);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
