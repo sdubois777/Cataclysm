@@ -1344,6 +1344,24 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
+**What a summoned minion hits for is one rule for every minion, not a number per skill.** A minion's attack deals **30% of its summoner's weapon damage**, and it attacks **once per second**. It has no damage of its own, so it grows exactly as the character does and never stops mattering. Neither figure is a Shape Param, because neither varies between summoning skills; what varies is how many minions a skill makes and how long they last, and those are already `Count`, `MaxActive` and `Duration`.
+
+  
+
+|  |  |
+| :-: | :-: |
+| \*\*What a minion has\*\* | \*\*Where it comes from\*\* |
+| Damage per attack | 30% of the summoner's weapon damage |
+| Attacks per second | 1 |
+| How many, and for how long | The summoning skill's `Count`, `MaxActive` and `Duration` |
+| What its attacks are worth in total | 3 imps x 30% x 1 per second \= 90% of weapon damage per second |
+
+  
+
+Ninety percent per second sits below an automatic basic attack, which is 128% to 150% per second depending on weapon speed. So a Ritualist holding three imps has added meaningfully to their damage without the minions becoming the whole of it. Diablo IV uses the same shape and very nearly the same number: its Necromancer minions gain 30% of the player's weapon damage and take their attack rate from the player's weapon. Path of Exile does the opposite and gives minions damage entirely their own; that route needs a whole separate family of minion-only stats to scale, which this game does not have and does not want for two skills.
+
+  
+
 **The Shape column is deliberately separate from the Tags column.** The tags already have a job: an increase from gear applies to a skill only if the skill carries the tags that increase requires. Deciding behaviour from them as well would mean adding a tag to make a skill work silently changed which gear applied to it. Path of Exile draws the same line, keeping the internal type list that gates support gems separate from the identifier that names a skill's code.
 
   

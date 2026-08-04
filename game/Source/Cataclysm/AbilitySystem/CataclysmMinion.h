@@ -50,20 +50,30 @@ public:
 	 */
 	static constexpr float NoticeRadiusCm = 1500.0f;
 
-	/** Seconds between its attacks. */
+	/**
+	 * Seconds between its attacks.
+	 *
+	 * FROM THE DESIGN. "How a Skill Behaves: the Seven Shapes" in
+	 * docs/Cataclysm_GDD_v2.md states one attack per second for every minion in
+	 * the game. tools/tests/test_minion_damage.py reads both figures out of that
+	 * document and fails if this file and the design disagree.
+	 */
 	static constexpr float AttackIntervalSeconds = 1.0f;
 
 	/**
 	 * Percent of the summoner's weapon damage one of its hits deals.
 	 *
-	 * A JUDGEMENT, NOT A DESIGN FIGURE. Nothing in the design states what a
-	 * summoned imp hits for. Three of them at 25% each, attacking once a second,
-	 * come to 75% of weapon damage per second, which sits below an automatic
-	 * basic attack at 128% to 150% per second -- so a Ritualist holding three
-	 * imps has added meaningfully to their damage without the minions becoming
-	 * the whole of it. Issue #165 asks the design to state a real figure.
+	 * FROM THE DESIGN, AND IT WAS NOT. This was 25 and was labelled a judgement,
+	 * because nothing in the design said what a summoned imp hit for. Issue #165
+	 * asked for a real figure and the design now states 30, taken from Diablo IV,
+	 * whose Necromancer minions gain 30% of the player's weapon damage.
+	 *
+	 * ONE RULE FOR EVERY MINION, NOT A NUMBER PER SUMMONING SKILL, which is why
+	 * this is a constant here rather than a Shape Param on the skill row. What
+	 * varies between summoning skills is how many minions they make and how long
+	 * those last, and that is already Count, MaxActive and Duration.
 	 */
-	static constexpr float DamagePercentOfSummoner = 25.0f;
+	static constexpr float DamagePercentOfSummoner = 30.0f;
 
 	/**
 	 * Put one in the world.
