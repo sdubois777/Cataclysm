@@ -2112,7 +2112,13 @@ The environment reacts to damage through the physics system, not through authore
 
   
 
-**Why the walkable surface is excluded.** Enemy pathfinding reads a navigation mesh built from collision geometry, and that mesh is known not to update reliably when fractured pieces are removed at runtime. The failure is enemies unable to cross ground that looks passable. Keeping destruction off the walkable plane avoids the problem rather than paying to work around it, and it costs the player nothing they would notice: everything they hit still breaks.
+**Why the walkable surface is excluded.** Not because the engine cannot do it. Unreal Engine 5.8 does update navigation when a fracturable asset breaks. The reasons are latency and cost, and they were read out of the engine source rather than assumed:
+
+  - The automatic update runs on a fixed 256-frame cycle per destructible asset. At 60 frames per second that is up to roughly four seconds between a floor breaking and enemy pathing reflecting it. Enemies would keep walking over a hole that is already there.
+  - Removing that delay means triggering a navigation rebuild explicitly on every destruction event that matters, which puts that rebuild directly in the path of combat.
+  - The project's navigation would also have to change from static generation to fully dynamic, which turns every navigation rebuild into a runtime cost instead of a build-time one.
+
+Keeping destruction off the walkable plane avoids all three, and it costs the player nothing they would notice: everything they hit still breaks.
 
   
 
