@@ -157,9 +157,49 @@ works.
 It clears every `__pycache__` first, runs with bytecode writing off so the run
 cannot poison the next case, and restores every file in a `finally` so a crash
 does not leave the repository broken. Issue #159 has the incident that produced
-it. The same class of problem exists for the Unreal build, where restoring a
-source file with a preserved timestamp leaves the stale binary in place — issue
-#139 — and there the answer is to rebuild.
+it.
+
+**For a C++ guard, use `tools/unreal_build.py` instead.** The same class of
+problem exists for compiled C++ and it is worse, because the build tells you it
+succeeded. Restoring a source file with a tool that preserves its modification
+time — `shutil.copy2`, `cp -p` — leaves it looking older than the object built
+from the broken version, so UnrealBuildTool prints `Result: Succeeded`, compiles
+nothing, and the test runs against the broken binary. Reading the source and
+reading the build output both say everything is fine. Issue #139 has the incident.
+
+```python
+import sys
+sys.path.insert(0, "tools")
+from unreal_build import prove_cpp_guard
+
+result = prove_cpp_guard(
+    {"game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp":
+        lambda t: t.replace("GetWorld(), Firer, Previous, Current, BodyRadiusCm);",
+                            "GetWorld(), Firer, Current, Current, BodyRadiusCm);")},
+    test_prefix="Cataclysm.Skills",
+)
+print(result.summary)   # which tests failed, read from the log
+assert result.failed    # the guard noticed
+```
+
+It breaks the files, builds, refuses to go on unless the build actually compiled
+them, runs the automation tests, restores the files with a modification time
+forced past the break, and rebuilds. Four builds' worth of time, so narrow
+`test_prefix` to the tests that matter.
+
+Three facts about the Unreal build and test commands that will otherwise cost a
+cycle each:
+
+- **`Build.bat` refuses to run while the editor is open.** Live Coding holds the
+  binaries. Close the editor, build, run the tests, reopen it. Closing it also
+  removes the `mcp__unreal__*` tools until it is back.
+- **`Result: Succeeded` is not evidence that anything was built**, and grepping
+  for `Result:` alone hides the reason a build failed. Read the whole tail of the
+  output. `unreal_build.build()` returns which files were compiled.
+- **The automation test command writes nothing useful to standard output.**
+  Redirecting it captures only the software development kit validation banner.
+  The results are in `game/Saved/Logs/Cataclysm.log`.
+  `unreal_build.run_automation_tests()` reads that file.
 
 **Say what did not work.** If a test fails, or you skipped part of the task, or
 the evidence for a result was compromised, say so plainly and first. Do not
