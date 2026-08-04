@@ -92,17 +92,19 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Shred and Weaken. All four were already applied by gems and by affixes,
 	// and none of them said what they did.
 	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          50)
-	// 26, not 25. The Of Wasting gem was added to apply Necrosis, which was the
-	// one status effect in the data that nothing applied.
-	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   26)
+	// 27, not 26. The Of Wasting gem was added to apply Necrosis, which was the
+	// one status effect in the data that nothing applied, and the Of Embers gem
+	// to apply Burn, which every designed Demonic skill applies and which no gem
+	// and no affix could reach.
+	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   27)
 	CHECK_TABLE(FCataclysmCityUpgradeRow,       "CityUpgrades.csv",           24)
 	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      37)
 	// 55 bases across 11 slots, at least three per slot, because one base in a
 	// slot is not a choice.
 	CHECK_TABLE(FCataclysmItemBaseRow,          "ItemBases.csv",              55)
-	// 59: 35 single-stat affixes, 3 resistance families, 9 ailments and 12
+	// 60: 35 single-stat affixes, 3 resistance families, 10 ailments and 12
 	// hybrids.
-	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                59)
+	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                60)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
 	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             30)

@@ -216,4 +216,14 @@ class TestTheCountsThatAreAssertedInUnreal:
         assert len(base_sheet) == 55 == len(model.ITEM_BASES)
 
     def test_the_affix_count(self, affix_sheet, model):
-        assert len(affix_sheet) == 59 == model.total_pool_size()
+        assert len(affix_sheet) == 60 == model.total_pool_size()
+
+    def test_the_gem_count(self, model):
+        """The Gems sheet count the Unreal test pins by hand.
+
+        Not derived from the model: `affixes.py` holds no gem list. Stated here
+        because a gem added to the workbook without the Unreal number being
+        moved fails only in the C++ suite, which nothing on a pull request runs.
+        """
+        gem_rows = read_sheet("Gems")
+        assert len(gem_rows) == 27

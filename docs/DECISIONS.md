@@ -20,6 +20,54 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Burn gets the Of Embers gem and the chance to burn affix, and an ailment affix is always five points above its gem
+
+**The question.** Issue #152. Burn was the only one of the ten player-applicable
+effects with no gem and no affix behind it. `Cataclysm_GDD_v2.md` says chance to
+apply caps at 100% and everything above becomes magnitude, summed across affixes,
+gems, keystones and enchantments. With neither, a Demonic character's burn chance
+from gear was always zero and its magnitude could never rise above the base —
+while every one of the sixteen designed Demonic skills applies burn. The skills
+worked, because a skill applies its effect outright with no chance roll, which is
+why this was invisible for a month.
+
+**The decision, part one: a gem called Of Embers, at 10% chance, with the same
+quality ladder as Of Rending.** The name follows the shape of the nine that exist
+and ties to vocabulary the damage type already uses — Emberhurl is a designed
+Demonic skill. The numbers are copied from Of Rending, the gem that applies
+bleed, rather than from Of The Viper, which applies poison at twice the chance.
+
+**Why bleed and not poison.** Bleed is War's signature damage over time and burn
+is Demonic's: fifteen War skills apply bleed and sixteen Demonic skills apply
+burn, and the two sit in the same place in their damage types. Making them cost
+the same is the choice that keeps a Demonic ailment build and a War ailment build
+comparable. Copying poison instead would have made burn the cheapest damage over
+time in the game to reach, for no reason other than that it was added last. This
+is a judgement, not a derivation.
+
+**The decision, part two: an ailment affix's Top Value is its gem's stated
+chance plus five.** This was already true of all nine — a 20% gem has a 25 affix,
+a 15% gem a 20, and the seven 10% gems a 15 — but nothing said so, so the value
+for a new ailment was a free choice. It is now written into the design document
+and checked by `tools/tests/test_every_player_applied_effect_can_be_built.py`.
+Elevating an observed regularity to a rule is the decision here; the burn value
+of 15 then follows from it rather than being picked.
+
+**What went wrong that let this happen.** The check that every gem effect is
+reachable as an affix was a hand-written set of names in
+`sim/cataclysm_sim/affixes.py`. Burn was in neither the set nor the sheet, so
+nothing disagreed with anything. The new test reads the workbook instead, and its
+load-bearing rule is the other direction: an effect whose own description calls
+itself player-applied must have both a gem and an affix. That is what would have
+caught burn.
+
+**Affects.** `All_Things_Cataclysm.xlsx` Gems, Affixes and DoTs sheets;
+`Cataclysm_GDD_v2.md`, "Ailment Affixes". Applied. The design document's table
+also gained the chance to necrose row, which had been missing since the Of Wasting
+gem was added.
+
+---
+
 ## 2026-08-04 — Three backlog blockers cleared: Casual mode, rarity tiers, and the Masochist resource
 
 **The question.** A pass over the open backlog looking specifically for issues

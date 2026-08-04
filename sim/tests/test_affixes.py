@@ -1005,15 +1005,18 @@ def test_that_shield_exemption_check_actually_fires():
 # --------------------------------------------------------------------------
 
 def test_every_effect_a_gem_applies_is_reachable_as_an_affix():
-    """`game/Data/Gems.csv` designs nine gems that apply an effect on hit. The
+    """`game/Data/Gems.csv` designs ten gems that apply an effect on hit. The
     project owner asked for the same effects to be reachable as affixes.
 
     Nine, not eight: the Of Wasting gem was added because Necrosis was the one
-    effect in `game/Data/StatusEffects.csv` that nothing applied.
+    effect in `game/Data/StatusEffects.csv` that nothing applied. Ten, not nine:
+    the Of Embers gem was added for issue #152, because burn was the one
+    player-applicable effect with neither a gem nor an affix, which meant a
+    Demonic character's burn chance from gear was always zero.
     """
     assert {a.ailment for a in af.AILMENT_AFFIXES} == {
         "Void Splinter", "Poison", "Bleed", "Madness", "Disease", "Necrosis",
-        "Cripple", "Weaken", "Shred"}
+        "Burn", "Cripple", "Weaken", "Shred"}
 
 
 def test_every_ailment_affix_names_the_gem_that_shares_its_effect():
@@ -1023,11 +1026,11 @@ def test_every_ailment_affix_names_the_gem_that_shares_its_effect():
 
 
 def test_the_damage_over_time_effects_are_marked_as_such():
-    """`game/Data/StatusEffects.csv` lists these four with EffectKind DoT.
+    """`game/Data/StatusEffects.csv` lists these six with EffectKind DoT.
     Damage over time matters separately because the design says it bypasses
     energy shield and holds it empty."""
     assert af.DAMAGE_OVER_TIME_AILMENTS == {"Bleed", "Poison", "Disease",
-                                            "Void Splinter", "Necrosis"}
+                                            "Void Splinter", "Necrosis", "Burn"}
     assert af.DAMAGE_OVER_TIME_AILMENTS <= {a.ailment
                                             for a in af.AILMENT_AFFIXES}
 

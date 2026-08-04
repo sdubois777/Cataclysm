@@ -1798,10 +1798,16 @@ A chance to apply an effect on hit. These grant no number on the character sheet
 | Chance to poison | 25% | Damage over time | Of The Viper |
 | Chance to disease | 20% | Damage over time | Of Rot |
 | Chance to apply void splinter | 15% | Damage over time | Of The Abyss |
+| Chance to necrose | 15% | Damage over time | Of Wasting |
+| Chance to burn | 15% | Damage over time | Of Embers |
 | Chance to madden | 15% | Weakening effect | Of Madness |
 | Chance to cripple | 15% | Weakening effect | Of Maiming |
 | Chance to weaken | 15% | Weakening effect | Of Withering |
 | Chance to shred | 15% | Weakening effect | Of Shredding |
+
+  
+
+**Each of these is five points above the gem that applies the same effect.** A gem states its own starting chance — the one applying poison starts at 20%, the one applying disease at 15%, and the rest at 10% — and the affix is that number plus five. This is what makes the chance on a new ailment a derivation rather than a fresh choice.
 
   
 
