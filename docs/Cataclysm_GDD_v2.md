@@ -306,17 +306,48 @@ The following are default controls. Players with multiple damage types can map m
 
   
 
+**There is no basic attack key.** Basic attacks fire automatically, as the Combat System section states. Nothing the player presses triggers one, and the left mouse button therefore has only one job.
+
+  
+
+**The game ships two control schemes and exactly one is active at a time.** Which one is active is a configuration setting; there is no in-game way to switch yet, because there is no settings screen. The schemes differ only in how the character moves, and in where the Support ability sits as a consequence.
+
+  
+
+**Scheme 1 — mouse movement (default)**
+
 |  |  |
 | :-: | :-: |
 | \*\*Input\*\* | \*\*Action\*\* |
-| LMB | Player movement and basic attack |
+| LMB | Movement, and nothing else. Clicking an enemy walks toward it. |
 | RMB | Heavy ability |
 | Q | Special ability |
 | W | Support ability |
 | E | Aura ability (toggle) |
 | R | Ultimate ability |
 | Spacebar | Movement ability |
-| WASD | Optional directional movement |
+| Shift (held) | Stand still |
+
+  
+
+**Scheme 2 — keyboard movement**
+
+|  |  |
+| :-: | :-: |
+| \*\*Input\*\* | \*\*Action\*\* |
+| WASD | Movement |
+| LMB | Unbound |
+| RMB | Heavy ability |
+| Q | Special ability |
+| 1 | Support ability |
+| E | Aura ability (toggle) |
+| R | Ultimate ability |
+| Spacebar | Movement ability |
+| Shift (held) | Stand still |
+
+  
+
+The Support ability moves from W to 1 under keyboard movement, because W is a movement key there. That is the whole reason two schemes exist rather than one table: a skill cannot sit on a movement key. The gamepad stick moves the character under both schemes.
 
   
 
@@ -2379,14 +2410,23 @@ Enemy Score = (((Base Type Score + Floor Scaling Score) × 0.75 + Floor Scaling 
 
 ### **Rarity Multipliers**
 
+The six rarity tiers below are the ones the power model uses. That model is a port of the authoritative scoring source, so its list of tiers wins over any other. There is no **Rare** tier; it appeared in an earlier version of this table and does not exist.
+
+  
+
 |  |  |
 | :-: | :-: |
 | \*\*Enemy Rarity\*\* | \*\*Multiplier\*\* |
 | Common | 1.0 |
 | Elite | 1.3 |
-| Rare | 1.6 |
 | Legendary | 2.0 |
+| Herald | not set |
 | Boss | 2.5 |
+| Cataclysm Boss | not set |
+
+  
+
+**Two multipliers are deliberately unset rather than guessed.** The multipliers above were fitted to a five-tier list that included Rare and had no Herald or Cataclysm Boss. The power model expresses the same ordering in a different unit — a fraction of tier width rather than a multiplier — so the two cannot be converted into each other without deciding what a multiplier means relative to a weight. Herald sits between Legendary and Boss; Cataclysm Boss sits above Boss. Both numbers need fitting against real play.
 
   
 
@@ -2617,7 +2657,7 @@ All cosmetics are purely visual — no pay-to-win, ever.
 | :-: | :-: |
 | \*\*Risk\*\* | \*\*Mitigation\*\* |
 | Skill matrix scope creep (11 weapons × 8 damage types × 6 slots = 528+ skills) | Launch with one complete damage type per patch. Use tag-based design to maximize re-use and make each skill feel distinct. |
-| Time pressure mechanics frustrating casual players | Difficulty modes (Casual/Standard/HC/Heretic) let players tune the urgency. Permanent meta-progression ensures no run feels wasted. |
+| Time pressure mechanics frustrating casual players | Difficulty modes (Standard/SSF/Hardcore/Heretic) let players tune the urgency. Permanent meta-progression ensures no run feels wasted. |
 | Passive tree complexity overwhelming new players | Strong visual design with clear branching and class fantasy. Beginner preset builds. In-game tooltips on all node interactions. |
 | Enchantment system creating too much variance in loot quality | Weight system ensures common drops are consistently useful. Weight-1 enchantments are rare enough that they feel like jackpots, not baseline expectations. |
 | Multiplayer balance (empire shared vs. individual) | Design empire as shared resource in co-op with individual character builds. Extensive playtesting during Early Access. |

@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Four backlog blockers cleared: controls, Casual mode, rarity tiers, and the Masochist resource
+
+**The question.** A pass over the open backlog looking specifically for issues
+blocked on an operator decision or on a stale design document, so the loop session
+could get on with implementation work that was waiting behind them.
+
+Two implementation issues were blocked, and both by design gaps rather than by
+code: issue #38, implementing a Demonic passive tree, waits on issue #63; and
+issue #39, implementing the seven Demonic enemies, waits on issue #29.
+
+**FIRST, SOMETHING ALREADY DONE.** Issue #61, the rule that the active Cataclysm
+determines the player's damage type, is written into `Cataclysm_GDD_v2.md` and the
+Phase 1 roadmap has already been corrected from War/Bulwark to Demonic/Masochist.
+That issue was checked and closed rather than worked. Worth recording because the
+issue text still described the contradiction as live.
+
+**DECISION 1: the control table is replaced by two tables, one per scheme.**
+
+The table described a scheme that was never built. It gave the left mouse button
+"player movement and basic attack" when the Combat System section of the same
+document says basic attacks are automatic, and it listed W as both the Support
+ability and part of WASD movement.
+
+The 2026-08-03 control scheme decision below settled all of this and deliberately
+left the table stale, with the staleness tracked as issue #138. It is no longer
+stale. The document now states that there is no basic attack key at all, and gives
+two tables: mouse movement, where the left mouse button only moves and Support is
+on W; and keyboard movement, where WASD moves, the left mouse button is unbound,
+and Support moves to 1. Shift holds the character still under both.
+
+Nothing was decided here. The document was made to describe what shipped.
+
+**DECISION 2: Casual is removed rather than defined.**
+
+The risk table referred to a "Casual" difficulty mode that the difficulty table
+never defined. The operator chose removal over definition: four modes stand, and
+the risk table now names the four that exist. Defining a fifth would have added a
+difficulty to tune, balance and support permanently in exchange for a sentence
+nobody had written on purpose.
+
+**Not fixed, and still open in issue #32.** That risk table has three further
+problems this change does not touch: SSF is listed as a lethality mode when it is
+really an orthogonal option that changes loot rules rather than difficulty; three
+modes say "increased loot drops" with no number and Hardcore gives an equipment
+drop chance with no probability; and both Hardcore and Heretic remove the heads-up
+display, which contradicts the accessibility commitments in section XIII. Each of
+those needs a number or a decision that was not asked for here.
+
+**DECISION 3: the enemy rarity tiers follow the power model, and two multipliers
+are left unset rather than invented.**
+
+The design document listed Common, Elite, Rare, Legendary, Boss. The power model
+lists Common, Elite, Legendary, Herald, Boss, Cataclysm Boss. `CLAUDE.md` states
+that the power model is a port of an authoritative source and that the source
+wins, so the model's list of tiers is correct and the document's was not. Rare does
+not exist. Herald sits between Legendary and Boss; Cataclysm Boss sits above Boss.
+
+**The numbers could not be aligned, and that is a finding rather than a shortfall.**
+The two lists are in different units. The document gives a multiplier; the model
+gives a weight expressed as a fraction of tier width. Converting one into the other
+requires deciding what a multiplier means relative to a weight, which is a tuning
+decision nobody has made. The two new tiers are therefore written as "not set",
+with a note saying why. Filling them in by interpolation would have produced two
+numbers that look authoritative and are not.
+
+**DECISION 4: the Masochist resource has two generators, and the passive tree
+decides which one a build leans on.**
+
+Issue #63 records that the Masochist has no class resource. Its prose says
+abilities cost health instead of mana, which is a substitution rather than a
+resource, and the design document requires every class to have one.
+
+Three shapes were put to the operator: a resource built by taking damage, a
+resource built by spending health, or no resource at all with power scaling off
+missing health. The answer was that it is built by **both** spending health and
+taking damage, through nodes in the passive tree that do not exist yet.
+
+That is a direction rather than a specification, and it is recorded as one. It
+settles the part that was genuinely undecided — whether the resource has one
+generator or two, and whether the health-cost rule replaces the resource or sits
+alongside it. It leaves build rate, cap, decay and what spends it to be designed
+with the tree, because the operator's answer makes them properties of tree nodes
+rather than of the class.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change, in three places: the
+Controls and Key Bindings section, the risk table in section XVI, and the Rarity
+Multipliers table in section X. The Masochist resource direction is recorded here
+only, because it is not yet specific enough to state as design.
+
+**Still open.** Issue #32 for the rest of the difficulty table. Issue #30 for the
+two unset multipliers. Issue #63 for the Masochist node graph and resource numbers.
+
+---
+
 ## 2026-08-04 — A projectile is an actor that sweeps each step, and Radius means two different things
 
 **The question.** Issue #164: `UCataclysmProjectileSkill` turned a Speed into a
