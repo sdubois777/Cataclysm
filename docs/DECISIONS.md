@@ -20,6 +20,159 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Nine decisions from an audit of the affix pool, including two reversals
+
+**The question.** The affix pool holds 59 rollable affixes. The project owner
+thought it was missing a great deal, named minion and damage-over-time affixes
+specifically, and asked for an audit.
+
+**How the audit was done, and where it fell short.** Every attribute across the
+five attribute sets in `game/Source/Cataclysm/AbilitySystem/` was cross-referenced
+against the `Stat` column of `game/Data/Affixes.csv`. That found every attribute
+that has no affix, and every mechanic that has neither.
+
+It was a **data-level reading only, and it never searched the design document for
+rules about what affixes deliberately do not do.** That is why it reported the
+absence of attribute affixes as a hole when `Cataclysm_GDD_v2.md` already had a
+section headed "What Affixes Do Not Grant" saying otherwise. An audit that reads
+data and not prose will keep making that mistake. Recorded here so the next one
+reads both.
+
+**REVERSAL 1: gear grants primary attributes after all.**
+
+`Cataclysm_GDD_v2.md` states under "What Affixes Do Not Grant" that there are no
+attribute affixes, because the design gives one point per level and the Maw
+consumes items and enemies for more, so gear granting them would be a new
+mechanic rather than a filled gap. That rule was recorded on 2026-08-03 and pinned
+by a test on 2026-08-04.
+
+**The operator has reversed it: attributes must be slottable on gear.** The
+reasoning that supported the old rule is not disputed; the decision changed.
+
+Two consequences that are easy to miss. `tools/tests/test_what_affixes_do_not_grant.py`
+asserts the old rule against all three copies of the affix pool and will fail on
+the first attribute affix, so it has to be amended rather than worked around. And
+the Maw still grants attribute points, so an attribute affix has to be priced
+against what the Maw already gives, not against level-up points alone.
+
+**REVERSAL 2: minions get stats of their own.**
+
+`Cataclysm_GDD_v2.md` says a minion deals 30% of its summoner's weapon damage,
+attacks once per second, and has no stats of its own, and states outright that a
+minion stat family "is not wanted for two skills".
+
+The operator has reversed this. Each summoning skill gets its own minion stats,
+base scaling comes from an attribute rather than from the summoner's weapon
+damage, and minion affixes exist on gear.
+
+**Moving base scaling off weapon damage is what makes the rest safe.** Under the
+old rule, weapon damage affixes already scaled minions; adding minion damage
+affixes on top would have scaled them twice from one investment. Scaling from an
+attribute instead removes the double count, and makes reversal 1 a prerequisite:
+if minions scale off an attribute and gear cannot grant attributes, the only lever
+left is level-up points, which is worse than what it replaces.
+
+**DECISION 3: damage against a target's damage type, not damage of a type.**
+
+An affix increasing a damage type the player *deals* was proposed and rejected. A
+weapon carries several damage types at once, so such an affix would always be
+diluted, and the player could not concentrate to fix it.
+
+Eight affixes are added instead, keyed to the **target**: increased damage against
+War, Demonic, Death, Pestilence, Famine, Celestial, Chaos and Void enemies. The
+type-agnostic "Increased damage" affix stays, and **the type-specific ones must
+give a larger increase**, or they are a strictly worse roll rather than a choice.
+
+This works because an enemy already has a damage type of its own, which is its
+Cataclysm's, and because it reads the enemy rather than the weapon it does not
+care how many types the weapon carries. It also sharpens over a run: early runs
+face one Cataclysm so the matching affix is reliably strong, and late runs face up
+to eight so the generic increase becomes the safe choice.
+
+**DECISION 4: ailments and damage over time get scaling.**
+
+Nine affixes apply an ailment and exactly one touches damage over time, changing
+only how often it ticks. Nothing makes a damage-over-time effect hit harder or an
+ailment last longer. The operator confirmed this needs flat damage-over-time
+damage, duration, chance, and more sources of tick frequency than the single
+existing affix.
+
+**DECISION 5: leech exists for mana and energy shield, not only life.**
+
+Only "Flat life leech" exists. The design already relies on the others: one class
+drains mana to refill its own pool, another is built on life leech, leech is named
+as a recovery stat group, and the gameplay tag `Stat.Recovery.Leech` exists.
+
+**DECISION 6: maximum resistance is an enchantment, not an affix.**
+
+It is worth having, and it does not survive seven affix tiers. A tier 7 roll worth
++7% maximum resistance, repeatable across ten equipment slots, reaches immunity.
+
+Enchantments solve every part of that: they are not tiered, they are Legendary
+rarity and above only, and they already carry a weight from 1 to 4 and tags
+controlling which items they roll on. The design also already frames choosing
+between an affix and an enchantment as a core build decision, which is exactly
+what a modifier this strong should be.
+
+**DECISION 7: the anti-stun-lock rule comes before any offensive crowd control
+affix.**
+
+Crowd control resistance exists; nothing inflicts crowd control. The operator's
+requirement is that crowd control must not become tedious, with no stun-locking
+and no chance for the smallest hit to stun.
+
+**The ordering is the decision.** Whatever rule stops the player being stun-locked
+is the same rule that stops the player chain-stunning a boss. Building the
+offensive affixes first means retrofitting that rule around numbers already tuned.
+
+**DECISION 8: effectiveness multipliers are wanted, and are folded into the
+skill-behaviour work.**
+
+Armour effectiveness and block effectiveness. Both have the same shape as the rest
+of that gap: the quantity exists as an attribute, and the multiplier governing what
+the quantity does is not modelled. Neither has anything to multiply until the
+damage mitigation formulas for armour and block are written down, which they are
+not.
+
+**DECISION 9, AND THE ONE MOST LIKELY TO BE RE-PROPOSED: no affix may modify a
+discrete action the player takes somewhere safe.**
+
+A family of affixes touching the empire and time layer was proposed — reduced days
+lost on death, reduced crafting time, reduced crafting cost, reduced Cataclysmic
+Residue, reduced travel time, faster city upgrades. The core tension of the game is
+that every action costs days, and no affix engages with it.
+
+**The operator rejected it, and the reason generalises into a rule.** Reduced
+crafting time is free: the player walks to the capital, swaps to crafting gear,
+crafts, and swaps back. Nothing was traded for the benefit.
+
+So: **an affix whose benefit applies to a discrete action performed in a safe place
+is not a cost, because the player can wear it only for that action.** That rules
+out every item in the list above. It also rules out the one candidate the operator
+was willing to consider, reducing a dungeon's floor count on entry, because entry
+is a moment the player controls completely and would gear for.
+
+The only escape is restricting when equipment may change, as Path of Exile does
+inside a map. That is a far larger decision than an affix family and was not taken.
+
+**This rule exists to stop the idea being re-proposed.** It sounds good every time.
+
+**Affects:** no design document yet. Every decision above is filed as its own
+issue with the open questions it still carries: #204 attributes, #205 ailments and
+damage over time, #207 skill behaviour and effectiveness multipliers, #209
+minions, #213 damage against a target type, #214 leech, #215 maximum resistance,
+#216 crowd control ordering. This entry records the reasoning; the issues carry
+the work.
+
+**A process note, because it caused a wrong outcome today.** Two sessions worked
+this backlog at once. A decision made in conversation is invisible to the other
+session until it reaches the repository, and issue #204 was closed against a rule
+the operator had already reversed. Five collisions happened; that was the only one
+that produced a wrong result rather than duplicated effort. Decisions have to reach
+an issue or this log before other work continues.
+
+---
+
 ## 2026-08-04 — A weapon holds 1 to 8 damage types, rolled on drop and capped by tier
 
 **The question.** The project owner stated that a weapon can carry anywhere from
