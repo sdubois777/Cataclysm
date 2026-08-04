@@ -77,12 +77,12 @@ first real content behind the single line "Multiplayer co-op support" in the
 Phase 2 roadmap. It makes a surviving player's escape valuable to the whole party
 and turns a single death into a setback instead of an ending.
 
-**One inference, flagged rather than assumed.** The operator wrote that the death
-penalty "triggers" on a wipe, singular. This has been written as the penalty being
-paid once for the party rather than once per player, because the empire and its
-day clock are shared in co-op and charging five days four times would be a
-different and much larger penalty. If that reading is wrong it is a one-line
-correction, but it should be corrected deliberately.
+**The death penalty is paid once for the party, not once per player.** The empire
+and its day clock are shared in co-op, so charging five days four times would make
+a four-player wipe cost twenty days against a shared clock — a far larger penalty
+than the same wipe costs a solo player, and a penalty that grows with the number
+of friends you play with. Raised as an inference from the operator's wording and
+confirmed by them the same day.
 
 **SIXTH DECISION: every marked player produces a double, and all of them are
 present for the whole party.**
@@ -96,21 +96,40 @@ copied from an over-equipped character arrives scaled for four players. The play
 who ignored residue management is handing the party a party-scaled copy of their
 own build, and the consequences sit with them.
 
-Worth checking during tuning rather than arguing now: four marked players in a
-four-player party produces four doubles, each scaled for four players. That is a
-larger multiplication than any other encounter in the design, and it may not be
-survivable. Whether it should be is a real question, not an obvious bug — it is
-the maximum possible punishment for the maximum possible negligence — but it
-should be a decision rather than an accident.
+Four marked players in a four-player party produces four doubles, each scaled for
+four players. That was raised as a tuning risk, on the grounds that it is a larger
+multiplication than any other encounter in the design and may not be survivable.
+**The operator confirmed it as intended**, and the reasoning behind that is worth
+more than the specific case.
+
+**SEVENTH DECISION, and the one most likely to be argued with later: party play is
+held to the same standard as solo play.**
+
+Co-operative play in this genre is commonly easier than solo play. Scaling is
+applied loosely, groups outpace it, and the result is that a party stops feeling
+consequences a solo player still feels. That is the normal outcome, not an unusual
+failure, and it is what this game is deliberately not doing.
+
+The rule that follows: a consequence a solo player would feel is a consequence a
+party feels too. Party scaling exists to keep that true, not to make group play
+comfortable. A player who chooses to ignore residue management gets to make that
+choice once, whether they are alone or with three friends.
+
+This is a principle rather than a number, and it is recorded because it will decide
+arguments that have not happened yet. Any future proposal to soften a penalty
+"because it is unfair in a party" runs into it. The four-doubles case is simply the
+first place it came up.
 
 **Affects:** `Cataclysm_GDD_v2.md`, applied in this change. Section VII gains an
 "In a party" paragraph under Worn Residue and Consumption. Section VIII gains a
-"Co-operative Play" subsection, and its Destructible Environment subsection is
+"Co-operative Play" subsection carrying both the once-per-party penalty rule and
+the same-standard principle, and its Destructible Environment subsection is
 rewritten to cover impact craters.
 
-**Still open.** Whether the death penalty on a party wipe is paid once or per
-player, as above. The tuning question about four simultaneous party-scaled
-doubles.
+**Nothing from this entry is open.** Both items originally flagged — whether the
+death penalty is paid once or per player, and whether four simultaneous
+party-scaled doubles is intended — were confirmed by the operator on the same day
+and are written above as decisions rather than questions.
 
 ---
 

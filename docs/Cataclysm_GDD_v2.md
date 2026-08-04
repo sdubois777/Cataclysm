@@ -1997,7 +1997,15 @@ Up to four players share a dungeon run. Co-operative multiplayer is a Phase 2 it
 
   
 
-This makes a surviving player's escape worth something to the whole party, and it makes a single death a setback rather than an ending. It also means the death penalty is paid once for the party rather than once per player.
+This makes a surviving player's escape worth something to the whole party, and it makes a single death a setback rather than an ending.
+
+  
+
+**The death penalty is paid once for the party, not once per player.** A four-player wipe costs the same number of days a solo death costs, charged once against the shared empire clock. It is not multiplied by the size of the party.
+
+  
+
+**Party play is held to the same standard as solo play.** Enemy scaling with party size is not a formality. Co-operative play in this genre is commonly easier than solo play, because scaling is applied loosely and a group ends up feeling consequences a solo player does not. This game does not do that. A consequence a solo player would feel is a consequence a party feels too, and party scaling is set to make that true rather than to make group play comfortable.
 
   
 
