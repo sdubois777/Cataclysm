@@ -102,10 +102,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 55 bases across 11 slots, at least three per slot, because one base in a
 	// slot is not a choice.
 	CHECK_TABLE(FCataclysmItemBaseRow,          "ItemBases.csv",              55)
-	// 68: 43 single-stat affixes, 3 resistance families, 10 ailments and 12
-	// hybrids. The single-stat count rose from 35 on 2026-08-04, when gear began
-	// granting a percentage increase to each of the eight primary attributes.
-	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                68)
+	// 70: 45 single-stat affixes, 3 resistance families, 10 ailments and 12
+	// hybrids. The single-stat count rose from 35 on 2026-08-04: eight when
+	// gear began granting a percentage increase to each primary attribute, and
+	// two when mana leech and energy shield leech were added for #214.
+	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                70)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
 	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             30)

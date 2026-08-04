@@ -21,6 +21,8 @@ UCataclysmVitalAttributeSet::UCataclysmVitalAttributeSet()
 	InitManaRegen(1.0f);
 	InitEnergyShieldRegen(0.0f);
 	InitLifeLeech(0.0f);
+	InitManaLeech(0.0f);
+	InitEnergyShieldLeech(0.0f);
 	InitDamage(0.0f);
 }
 
@@ -39,6 +41,8 @@ void UCataclysmVitalAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaRegen);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, EnergyShieldRegen);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, LifeLeech);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaLeech);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, EnergyShieldLeech);
 	// Damage is a meta attribute. It is never replicated.
 }
 
@@ -69,7 +73,9 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		|| Attribute == GetHealthRegenAttribute()
 		|| Attribute == GetManaRegenAttribute()
 		|| Attribute == GetEnergyShieldRegenAttribute()
-		|| Attribute == GetLifeLeechAttribute())
+		|| Attribute == GetLifeLeechAttribute()
+		|| Attribute == GetManaLeechAttribute()
+		|| Attribute == GetEnergyShieldLeechAttribute())
 	{
 		// Zero is a legitimate value for all of these. A class with no energy
 		// shield is a design position, not an error state.
@@ -141,6 +147,7 @@ TArray<FGameplayAttribute> UCataclysmVitalAttributeSet::GetAllAttributes()
 		GetEnergyShieldAttribute(), GetMaxEnergyShieldAttribute(),
 		GetHealthRegenAttribute(), GetManaRegenAttribute(),
 		GetEnergyShieldRegenAttribute(), GetLifeLeechAttribute(),
+		GetManaLeechAttribute(), GetEnergyShieldLeechAttribute(),
 		GetDamageAttribute(),
 	};
 }
@@ -155,3 +162,5 @@ CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, HealthRegen)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaRegen)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, EnergyShieldRegen)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, LifeLeech)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaLeech)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, EnergyShieldLeech)

@@ -109,6 +109,85 @@ attributes.
 
 ---
 
+## 2026-08-04 — Leech is defined, and gains mana and energy shield alongside life
+
+**The question.** Issue #214. `game/Data/Affixes.csv` had exactly one leech
+affix, flat life leech, while the design already relied on two more:
+`Cataclysm_GDD_v2.md` describes the Energy Leech class as draining enemy mana to
+refill its own pool, names leech as a recovery stat group, and lists it as a
+suffix category. Neither mana leech nor energy shield leech existed as a stat, so
+nothing could grant them and the class could not be geared for.
+
+**A second gap sat underneath it, and had to be closed first.** Nothing anywhere
+said what leech DOES. The stat existed, the Ravager had 3% of it, an enchantment
+doubled it, and no document said whether it was a share of damage or a flat
+amount, whether it arrived at once or over time, or whether overkill counted.
+Adding two more undefined stats would have made that worse.
+
+**The definition, now in the "Leech" section of `Cataclysm_GDD_v2.md`.**
+
+| Rule | Value |
+|---|---|
+| What is leeched | A percentage of damage actually dealt |
+| Damage counted | After the target's mitigation, capped at the target's remaining health |
+| Payout period | 3 seconds from the hit |
+| Concurrent payouts | Unlimited; each hit pays out separately |
+
+**Where the shape came from.** Both games surveyed treat leech the same way and
+neither makes it instant. Last Epoch pays a leeched amount out over a fixed
+3-second period, excludes overkill, and calculates from the damage the target
+really took after its resistances and block. Path of Exile instead caps each leech
+instance at 10% of maximum life and the total recovery rate at 20% of maximum life
+per second. Last Epoch's shape was taken because it is one rule rather than a
+system of caps, which matches how this design already handles ailments: one stack
+per enemy, and chance above 100% becoming magnitude.
+
+**Why it is not instant, which is the part worth keeping.** Instant leech makes a
+character that is winning unkillable and does nothing for one that is losing,
+because the recovery only arrives as fast as the damage does. Spreading it over
+3 seconds means a burst of damage is not a burst of health, and that is what makes
+leech a sustain stat rather than a second health pool.
+
+**Why overkill is excluded.** Without the rule, the killing blow on every trash
+enemy is the largest heal in the game, which rewards overkilling rather than
+fighting.
+
+**Two new stats, two new affixes.** The character sheet goes from 33 stats to 35:
+`mana_leech` and `energy_shield_leech` join `life_leech` in the Recovery group.
+Flat mana leech and flat energy shield leech join flat life leech in the affix
+pool, as suffixes on the offensive slots, which is where a hit comes from.
+
+**ALL THREE HAVE THE SAME TOP VALUE, 0.5, AND THAT IS A JUDGEMENT RATHER THAN A
+DERIVATION.** Leech is a percentage of the same damage number in every case, so
+the same percentage returns the same absolute amount; what differs is only which
+pool it fills, and choosing between the pools should be the player's decision
+rather than one the numbers make for them. Path of Exile prices mana leech below
+life leech, and the reason does not carry over: its mana pools are an order of
+magnitude smaller than its life pools, where here they are comparable for the
+class that wants each. At level 100 the Ritualist, the caster, has 1,278 mana
+against 1,060 health and 832 energy shield.
+
+**Energy shield is leechable even though the Vampire class cannot use one.** That
+is a restriction on one class rather than on the stat. The Ritualist is the class
+with an energy shield and it is the one this is for.
+
+**Both numbers are expected to move.** The 3-second period and the 0.5 top value
+are starting points to be tuned against real play, in the way this project tunes
+every constant.
+
+**Affects:** `Cataclysm_GDD_v2.md` gains a "Leech" section under Stat
+Calculation, its Character Sheet section now says 35 stats and lists the two new
+ones. `All_Things_Cataclysm.xlsx` gains two rows in the Affixes sheet.
+`game/Data/Affixes.csv` and `game/Content/Data/DT_Affixes.uasset` are regenerated.
+`sim/cataclysm_sim/character.py` and `sim/cataclysm_sim/affixes.py` carry the
+model. `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h` and
+`.cpp` gain `ManaLeech` and `EnergyShieldLeech`; nothing reads any of the three
+yet. `tools/tests/test_leech.py` holds the rules to the document. Sources:
+[Health Leech, Last Epoch Support](https://support.lastepoch.com/hc/en-us/articles/46361876598555-Health-Leech),
+[Leech, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Leech).
+
+---
+
 ## 2026-08-04 — Nine decisions from an audit of the affix pool, including two reversals
 
 **The question.** The affix pool holds 59 rollable affixes. The project owner

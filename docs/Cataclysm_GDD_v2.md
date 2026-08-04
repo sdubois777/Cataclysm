@@ -801,7 +801,7 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
 ### **The Character Sheet**
 
-A character has 33 stats, grouped the way the gameplay tag list groups its Stat tags.
+A character has 35 stats, grouped the way the gameplay tag list groups its Stat tags.
 
   
 
@@ -809,7 +809,7 @@ A character has 33 stats, grouped the way the gameplay tag list groups its Stat 
 | :-: | :-- |
 | \*\*Group\*\* | \*\*Stats\*\* |
 | Resource | Maximum Health, Maximum Mana, Maximum Energy Shield, Class Resource |
-| Recovery | Health Regeneration, Mana Regeneration, Energy Shield Regeneration, Life Leech |
+| Recovery | Health Regeneration, Mana Regeneration, Energy Shield Regeneration, Life Leech, Mana Leech, Energy Shield Leech |
 | Defence | Armor, Evasion, Block Chance, Damage Reduction, Retaliation, Crowd Control Resistance, and the eight Resistances |
 | Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time Frequency, Penetration, Spell Damage |
 | Utility | Movement Speed, Cooldown Reduction, Magic Find, Loot Quantity |
@@ -851,6 +851,46 @@ Attributes only scale. A stat therefore needs a base value before any attribute 
 
   
 
+### **Leech**
+
+There are three leech stats, and all three work the same way. Life leech fills health, mana leech fills mana, energy shield leech fills the energy shield.
+
+  
+
+**Leech is a percentage of the damage actually dealt.** A character with 3% life leech who lands a hit for 400 damage leeches 12 health. It is the damage the target really took, after its resistances, armour and block, not the damage the attack would have done to nothing.
+
+  
+
+**Overkill does not count.** An enemy with 25 health left, hit for 400, contributes 25 to the leech calculation and not 400. Without this rule the last hit on every trash enemy is the largest heal in the game, which rewards overkilling rather than fighting.
+
+  
+
+**Leech arrives over 3 seconds, not instantly.** The amount is worked out on the hit and then paid out across the next 3 seconds. Instant leech makes a character that is winning unkillable and does nothing for one that is losing, because the recovery arrives only as fast as the damage does. Spreading it means a burst of damage is not a burst of health, and it is what makes leech a sustain stat rather than a second health pool.
+
+  
+
+**Leech from several hits runs at the same time.** Each hit starts its own 3-second payout. A character hitting continuously therefore reaches a steady state of roughly three hits' worth of leech in flight.
+
+  
+
+|  |  |
+| :-- | :-- |
+| \*\*Rule\*\* | \*\*Value\*\* |
+| What is leeched | A percentage of damage actually dealt |
+| Damage counted | After the target's mitigation, capped at the target's remaining health |
+| Payout period | 3 seconds from the hit |
+| Concurrent payouts | Unlimited; each hit pays out separately |
+
+  
+
+**Both numbers are a starting point and expected to move.** The 3-second period and the affix values are tuned against real play; see the affix pool section for the values gear supplies.
+
+  
+
+**Where this shape comes from.** Last Epoch pays leech out over a fixed 3-second period and excludes overkill damage, which is the model above. Path of Exile instead caps each leech instance at 10% of maximum life and the total recovery rate at 20% of maximum life per second. Both exist to stop leech being instant. The simpler of the two was taken because this design already prefers one readable rule over a system of caps, in the same way an enemy carries one stack of an effect rather than many.
+
+  
+
 ### **Increases Are Scoped by Tag**
 
 Every skill carries gameplay tags, which is how the game knows which enchantments and effects apply to it. The character holds all of its own increases, and an increase reaches a skill when the tags match.
@@ -879,7 +919,7 @@ Both characters wear the same item, granting +40% area of effect restricted to `
 
 ### **Class Stat Lines**
 
-A class supplies a level 1 base and a per-level gain for each stat it wants to scale. Across 24 classes and 33 stats that is 1,584 numbers, so every class starts from a shared default stat line and overrides only the stats that express its identity. A class may override any stat; the default is a starting point, not a floor.
+A class supplies a level 1 base and a per-level gain for each stat it wants to scale. Across 24 classes and the 33 stats a class supplies — every stat but attack speed, which comes from the weapon, and critical strike chance, which comes from the skill — that is 1,584 numbers, so every class starts from a shared default stat line and overrides only the stats that express its identity. A class may override any stat; the default is a starting point, not a floor.
 
   
 
