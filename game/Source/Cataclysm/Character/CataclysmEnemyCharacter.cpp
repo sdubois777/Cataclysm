@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -20,6 +21,12 @@ namespace
 
 ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 {
+	// Every enemy is on the Monsters side, so no skill of one enemy's can hit
+	// another. The exception the design asks for -- Madness, where "the enemy
+	// attacks anything nearby, friend or foe" -- is a change of attitude for a
+	// tagged actor and not a change of side. Issue #163 builds it.
+	TeamId = UCataclysmTeams::IdFor(ECataclysmTeam::Monsters);
+
 	AbilitySystemComponent = CreateDefaultSubobject<UCataclysmAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
 

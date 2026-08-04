@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
+#include "GenericTeamAgentInterface.h"
 #include "CataclysmCharacterBase.generated.h"
 
 class UAttributeSet;
@@ -18,9 +19,16 @@ class UCataclysmAbilitySystemComponent;
  * between the player (player state, survives respawn) and enemies (the pawn
  * itself), so ownership is decided by the subclass and reached through
  * GetAbilitySystemComponent().
+ *
+ * DOES carry the side it is on, and here rather than in the subclasses, because
+ * both need one and a character with no side is hostile to everything including
+ * its own kind. Each subclass sets the value in its constructor; see
+ * `ECataclysmTeam`.
  */
 UCLASS(Abstract)
-class CATACLYSM_API ACataclysmCharacterBase : public ACharacter, public IAbilitySystemInterface
+class CATACLYSM_API ACataclysmCharacterBase : public ACharacter,
+											  public IAbilitySystemInterface,
+											  public IGenericTeamAgentInterface
 {
 	GENERATED_BODY()
 
@@ -49,7 +57,26 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	//~ End IAbilitySystemInterface
 
+	//~ IGenericTeamAgentInterface
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamId) override;
+	virtual FGenericTeamId GetGenericTeamId() const override;
+	//~ End IGenericTeamAgentInterface
+
 protected:
+	/**
+	 * Which side this character is on. Set in the subclass constructor.
+	 *
+	 * NOT REPLICATED, AND IT DOES NOT NEED TO BE. Both subclasses set it in
+	 * their constructor, so it is part of the class default object and a client
+	 * spawning the class already has the right value before any property could
+	 * arrive over the network. A summon does have its side assigned at spawn
+	 * time rather than in a constructor, and it stays correct on a client for a
+	 * different reason: `UCataclysmTeams::TeamOf` follows the owner chain, and
+	 * ownership is replicated. Anything that changes a character's side at
+	 * runtime would need this replicated, and nothing does.
+	 */
+	FGenericTeamId TeamId = FGenericTeamId::NoTeam;
+
 	/**
 	 * Points the ability system at this pawn and grants the starting kit.
 	 * Must run on both server and client; where it is called from differs, which
