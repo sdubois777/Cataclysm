@@ -715,6 +715,46 @@ def validate_affix_slots(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+#: The one weapon type in the Weapon Skills sheet that is not a weapon. It marks
+#: a skill that does not depend on which weapon is held, which is how the single
+#: Aura skill is written: one aura per damage type rather than one per weapon.
+WEAPON_INDEPENDENT_SKILL = "All"
+
+
+def validate_weapon_skill_types(tables: dict[str, list[dict]]) -> list[str]:
+    """Every weapon type in the Weapon Skills sheet must be a real weapon base.
+
+    The two sheets held different names for the same three weapons: the skills
+    sheet said "2H Axe", "2h Sword" and "2H Warhammer" where the item bases sheet
+    and the design document's weapon table said Greataxe, Greatsword and
+    Warhammer. Nothing reported it, and a lookup keyed on weapon type would have
+    found no skills at all for five of the fourteen bases.
+
+    Cross-checked against the other sheet rather than a list written here, so
+    adding a weapon to the design needs no change in this file.
+    """
+    bases = tables.get("ItemBases")
+    skills = tables.get("WeaponSkills")
+    if not bases or not skills:
+        return []
+
+    real = {row["WeaponType"] for row in bases if row["WeaponType"]}
+    problems = []
+    for name in sorted({row["WeaponType"] for row in skills if row["WeaponType"]}):
+        if name != WEAPON_INDEPENDENT_SKILL and name not in real:
+            problems.append(
+                f"WeaponSkills: weapon type {name!r} is not a weapon base. The "
+                f"bases are {sorted(real)}.")
+
+    # And the other way. A weapon with no rows at all can never have a skill in
+    # any slot, which is a hole rather than a design choice.
+    covered = {row["WeaponType"] for row in skills}
+    for name in sorted(real - covered):
+        problems.append(f"WeaponSkills: the {name} has no rows at all")
+
+    return problems
+
+
 def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
     """A hybrid affix must name two affixes that exist.
 
@@ -823,6 +863,7 @@ def main(argv: list[str] | None = None) -> int:
     problems = (validate_tags(tables, known_tags(book))
                 + validate_weights(tables)
                 + validate_affix_slots(tables)
+                + validate_weapon_skill_types(tables)
                 + validate_hybrid_parts(tables))
     if problems:
         print(f"FAIL: {len(problems)} validation problem(s):", file=sys.stderr)
