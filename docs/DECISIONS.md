@@ -20,6 +20,93 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — The environment reacts through physics, and nothing about a crater is authored
+
+**This supersedes the fourth decision in the entry below.** That entry recommended
+pre-authored crater assets: a decal, a prepared depression mesh and debris, spawned
+on impact. That was an answer to the wrong question.
+
+**What the question actually was.** The operator's example was a meteor leaving a
+crater. It was read as a request for craters, and the resulting recommendation was
+to hand-make them. The operator corrected it: the meteor was an example, and what
+is wanted is an environment that reacts through the physics system generally, so
+that nothing has to be custom-made per event. They suggested Chaos already does
+this and had not researched it. They were right.
+
+**DECISION: Chaos Destruction, applied generically, with the walkable surface
+excluded.**
+
+**Why this answers it and the earlier recommendation did not.** A Geometry
+Collection is a mesh fractured once, in the editor. After that, damage from any
+source breaks it according to physics and its own material: projectile hits,
+radial explosions and melee all go through the same path. Chaos Fields apply force
+and strain over a volume at runtime, and the engine ships a prebuilt field,
+`FS_MasterField`, that applies external strain to fracture a Geometry Collection.
+Nanite can be enabled on Geometry Collections.
+
+The authoring is therefore **per asset, once** — fracture the wall — and never per
+event. A new skill, enemy attack or hazard needs no destruction work at all; it
+deals damage and things break. That is exactly the property the operator asked for,
+and it is the property the pre-authored crater recommendation destroyed.
+
+One implementation note worth recording because it has already changed once:
+applying damage to Geometry Collections through the older Apply Damage path is
+deprecated. Radial impulse with strain is the current route.
+
+**The cost model is the reason this is affordable.** Cost scales with pieces
+actively simulating, not with pieces that exist. A level can hold a large number of
+fracturable assets cheaply so long as few are moving at any moment. The controls
+are a cap on simultaneously simulating pieces, and putting debris to rest or
+removing it once it settles.
+
+Numbers from one studio's published write-up, **not from Epic and not measured on
+this project**: a level with 50 Geometry Collections of 100 pieces each running
+well with only a handful simulating; a global cap of 200 simultaneous active
+bodies; roughly 4ms of physics cost for roughly 2 seconds before debris settles;
+and authoring a full building interior taking about 4 hours by hand or under 45
+minutes with automation. Treat all of those as the right order of magnitude to plan
+against and none of them as verified here.
+
+**THE CONSTRAINT THAT DECIDES THE BOUNDARY: the navigation mesh does not update
+reliably when Geometry Collections are destroyed.** This is a reported problem, not
+a theoretical one: destroying Geometry Collections leaves the dynamic navigation
+mesh stale, and enemies end up unable to path across ground that looks passable.
+Working around it means custom navigation-relevance work per destructible asset.
+
+So the walkable surface is excluded from destruction. Walls, pillars, statues,
+railings, furniture, fixtures, ceiling sections and decorative layers on top of the
+floor are all fully destructible and fully reactive. The ground characters stand on
+keeps its shape. Scorching, cracking and rubble appear on it; holes do not.
+
+This costs the player almost nothing they would notice, because everything they hit
+still breaks. It removes the entire class of pathfinding failure, and it is the
+same boundary that ruled out deformable terrain, arrived at from a different
+direction.
+
+**What is still out.** Actual landscape terrain deformation. Chaos does not deform a
+landscape heightmap; a landscape is not a Geometry Collection. Nothing in this
+decision changes that.
+
+**Sources.** Chaos Fields user guide, Unreal Engine 5.8 documentation. Chaos
+Destruction overview, Epic documentation. Nanite virtualized geometry, Unreal 5.8
+documentation. Performance and authoring figures: StraySpark, "Chaos Destruction in
+UE5: Building Destructible Environments That Don't Tank Your Frame Rate". Navigation
+mesh staleness with destroyed Geometry Collections: Epic Developer Community forum
+reports, "GeometryCollection, updating the NavMesh" and "Does NavMesh work with
+Chaos physics?".
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change. The Destructible
+Environment subsection of section VIII is rewritten: the split between "objects that
+break" and "surfaces that are marked" is removed, because that split was the
+too-literal reading, and replaced with one physics-driven rule plus the walkable
+surface exclusion.
+
+**Still open.** None of the performance figures above have been measured on this
+project. The technical spike is tracked separately and has been rewritten to ask
+this question instead of the crater question it originally asked.
+
+---
+
 ## 2026-08-04 — Craters are seen and not walked around, and a party is rescued by whoever gets out
 
 **The question.** Two follow-ups from the operator on the same day. First, that
@@ -29,6 +116,10 @@ co-operative party, which turned out to settle the general rule for dying in
 co-op as well.
 
 **FOURTH DECISION: craters are visual, and never change navigation.**
+**(SUPERSEDED the same day by the entry above. The conclusion that destruction must
+not change the walkable surface survives. The recommendation of pre-authored crater
+assets does not: it answered a request for craters, when the request was for an
+environment that reacts through physics without per-event authoring.)**
 
 The distinction that decides this is not how a crater is made. It is whether the
 crater changes where anything can walk. A crater that only changes what the
