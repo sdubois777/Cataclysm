@@ -20,6 +20,213 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — How a skill behaves: a shape column, a parameter bag, and seven shared templates
+
+**The question.** Issue #37: build the sixteen Demonic skill behaviours. The
+issue asks for shared templates rather than sixteen one-off implementations,
+because the full weapon-and-damage-type matrix is 398 rows and bespoke work on
+the first sixteen would make the other 382 unaffordable. It also asks one
+question first: the Weapon Skills sheet carries no column naming which shape a
+skill uses, nor its radius or duration, and whether those become columns had to
+be settled before any code was written.
+
+**RECONNAISSANCE CHANGED WHAT THE WORK WAS, AND BY MORE THAN THE LAST TWO
+TIMES.** The issue reads as though the machinery is finished and sixteen
+`ActivateAbility` bodies are missing. It is not. **Nothing in the project could
+find a target or damage one.** A search of `game/Source/` for a sphere overlap,
+a line trace or a gameplay effect applied to another actor returned nothing at
+all. `UCataclysmDamageCalculation::Resolve` — the whole eight-step mitigation
+order — was reachable from exactly one place, the defender's own attribute set
+when its `Damage` meta attribute changed, and nothing in the project ever
+changed it. There was also no attribute holding a character's weapon damage, so
+every "250% weapon damage" in the design was a percentage of nothing.
+
+So the first part of this work is not sixteen skills. It is the layer all
+sixteen stand on, and building it once is what makes the templates shared.
+
+**FIRST DECISION: the shape becomes a column, and it is NOT read off the Tags
+column.**
+
+The temptation is real, because the Tags column already carries
+`Type.Projectile`, `Type.AOE.PointBlank`, `Type.Strike` and the rest. Two
+reasons not to, and the second is the one that would have caused a bug:
+
+  - **The tags do not decide it.** Molten Cleave carries `Type.AOE.PointBlank`,
+    `Type.Strike` AND `Type.AOE.Persistent` at once, and nothing says which is
+    the primary behaviour. Infernal Plunge is a leap and carries no tag saying
+    so. Cinder Rush's only clue is `Keyword.Charge`, in a different namespace.
+  - **The tags already have a job.** `UCataclysmStatPipeline::ModifierApplies`
+    scopes every gear increase by the tags of the skill in hand — that is what
+    lets increased area of effect apply to area skills and nothing else.
+    Dispatching on them too would mean adding a tag to make a skill's shape work
+    silently changed which gear applied to it.
+
+Path of Exile draws exactly this line in its shipped data. Its `gems.json`
+carries `types` — the internal list whose stated purpose is deciding which
+support gems may support a skill — separately from the `ActiveSkills.dat`
+identifier that names the skill's behaviour, and separately again from the
+player-facing gem `tags`. Three lists, three jobs.
+
+**SECOND DECISION: the numbers are a `Key=Value` bag, not a column each.**
+
+Path of Exile stores per-skill numbers as named stat entries (`stats`: an array
+of id and value pairs) rather than as columns, and the reason transfers directly:
+different shapes read different numbers. The union across the seven shapes here
+is sixteen parameters, of which a typical row fills three. Sixteen columns of
+which thirteen are blank on every row is worse to read and worse to edit than one
+cell saying `Radius=4; Angle=120; Burn=1`.
+
+The cost of a bag is that a misspelling reads as nothing. That is paid for by
+refusing it at generation time: `tools/generate_datatables.py` rejects an unknown
+shape, a parameter the shape does not read, a repeated parameter, a non-numeric
+value, and an `Effect` naming a status effect that does not exist. **This matters
+more here than anywhere else, because a radius of zero produces a skill that
+activates, spends mana, starts its cooldown and hits nothing — which is
+indistinguishable from a skill somebody forgot to finish.** It is the same shape
+of failure as issue #155's cooldown of zero, which went unnoticed across all 77
+designed skills.
+
+**THIRD DECISION: seven shapes, and the burning ground is not one of them.**
+
+| Shape | The slice skills it runs |
+|---|---|
+| Strike | Molten Cleave, Searing Hook, Pyroclasm |
+| Projectile | Emberhurl, Blood Pyre, Infernal Lance |
+| SelfBuff | Burning Wrath, Martyr's Ember |
+| Movement | Infernal Plunge, Cinder Rush, Emberstep |
+| Summon | Summon Imp, Open the Rift |
+| Aura | Conflagration, Living Pyre |
+| Debuff | Subjugate |
+
+The list is not invented. Path of Exile's own `active_skill_types` list, which
+ships in its data files, carves the same joints: `Projectile`, `Melee`,
+`MeleeSingleTarget`, `Movement`, `Blink`, `Travel`, `Aura`, `Buff`, `Minion`,
+`CreatesMinion`, `Channel` and `AppliesCurse` are separate entries in it. Seven
+is that list collapsed to what the sixteen designed skills actually need.
+
+**Issue #37 listed the persistent ground zone as a seventh shape. It is a
+rider.** Eight of the sixteen leave one behind on top of whatever else they are:
+Molten Cleave is a strike that also drags slag, Emberhurl is a projectile that
+also leaves its path burning. The issue's own table hints at it — every other
+entry names skills and that one says "used by most of the above". So any shape
+may carry `GroundRadius` and `GroundDuration`, and four other riders work the
+same way.
+
+**FOURTH DECISION: burn lasts 4 seconds and is worth 20% of the hit that caused
+it.**
+
+Burn had neither number anywhere. Fifteen of the sixteen designed Demonic skills
+apply it, the design document says "every Demonic skill applies burn", and
+`game/Data/StatusEffects.csv` gave it no duration and no damage — so every one of
+those skills applied an effect made of nothing. Necrosis states 5 seconds and
+Void Splinter states 1% of current health per second over 4 seconds; burn stated
+neither.
+
+**The duration is settled by research. The damage share is not.** Path of Exile
+and Path of Exile 2 both give Ignite a base duration of 4 seconds. They disagree
+completely on what it is worth: Path of Exile 1 deals 50% of the hit per second
+for those 4 seconds, which is 200% of the hit in total, and Path of Exile 2 gives
+the ignite 20% of the hit spread across the same 4 seconds. 20% is taken here,
+and it is a judgement rather than a derivation. The reason for the conservative
+end: burn rides on *every* Demonic skill, so at Path of Exile 1's ratio the rider
+would be twice the hit it rides on and the skills themselves would stop
+mattering. Expect it to move once the game is playable.
+
+Both numbers live in columns B and C of the DoTs sheet, so they are a workbook
+edit rather than a rebuild. An effect stating zero for either applies nothing at
+all, which is the honest answer for an effect nobody has designed yet.
+
+**TWO BUGS IN WHAT SHIPPED LAST SESSION, both found by building on it, and the
+second one hid the first.** Issue #155 built `CheckCost`, `ApplyCost`,
+`CheckCooldown` and `ApplyCooldown` on `UCataclysmGameplayAbility`, and issue #36
+built the slot table they read from. Neither worked in play:
+
+  - **Nothing called `CommitAbility`**, which is what the engine runs the two
+    `Apply` halves from. So mana was checked and never spent, and cooldowns were
+    checked and never started.
+  - **`GiveAbilityInSlot` never set the ability's `Slot`.** It added the slot
+    *tag*, which is what lets a key press find the ability, and left the slot
+    *property* at `None` — which is what the ability reads to find its own
+    cooldown, mana cost and damage multiplier. All three came back zero.
+
+Nothing reported either, because the only ability that existed was the
+placeholder that ends immediately: it spends nothing and waits for nothing, so
+both faults were invisible. Both are fixed, and
+`Cataclysm.Skills.UsingASkillSpendsManaAndStartsItsCooldown` fails if either is
+reverted — confirmed by reverting each and watching it fail.
+
+**WHAT IS REAL AND WHAT IS NOT.** Said plainly, because "the sixteen skills are
+implemented" would overstate it. Real: target finding, damage through the full
+mitigation order, burn, burning ground that re-tests who is standing in it,
+knockback, minion summoning and its cap and the explosion when the cap is
+exceeded, movement, the aura's drain and its switching off when the mana runs
+out, and the doubling of Madness against a burning target. Not real: the
+magnitude of any buff or debuff (#166), minions moving and Madness changing who
+an enemy attacks (#163), a projectile occupying space while it flies (#164), a
+burning trail following a path rather than sitting at its end (#167), and what a
+summoned minion should hit for (#165). None of those is a skill that was skipped;
+each is a system underneath that does not exist yet.
+
+**Sources.** The RePoE export of Path of Exile's own data files, for
+`gems.json`'s separation of `types`, `tags` and the active skill identifier, for
+per-skill numbers being named stats rather than columns, and for the
+`active_skill_types` list; the Path of Exile wiki on Ignite for the 4 second base
+duration and the 50% per second figure; the Path of Exile 2 wiki on Ignite for
+the 20% figure.
+
+**What the research does not settle.** Which seven shapes this game needs, as
+opposed to which shapes exist in the genre — that is a judgement about these
+sixteen skills. And every number in the parameter cells, which were read off the
+written descriptions where the description states one and chosen where it does
+not.
+
+**Affects:** `Cataclysm_GDD_v2.md`, which gains a "How a Skill Behaves: the Seven
+Shapes" subsection in section V. `All_Things_Cataclysm.xlsx`, whose Weapon Skills
+sheet gains Shape and Shape Params columns and whose DoTs sheet gains a duration
+and a share of the hit. **Applied.**
+
+---
+
+## 2026-08-04 — The remaining 35 Demonic skills, completing all ten of its weapon types
+
+**The question.** Issue #62 designed sixteen Demonic skills for the vertical
+slice's three weapon types and left the other seven undesigned: Sword,
+Greatsword, Dagger, Axe, Wand, Whip and Warhammer, five slots each.
+
+**All 51 Demonic rows are now designed.** The 35 new ones follow the sixteen
+rather than reopening anything: every one applies burn, none counts stacks, and
+none is named after a class.
+
+**Each weapon keeps the character its speed and its damage sub-type give it.**
+The Dagger is the fastest weapon in the game at 1.50 attacks a second, so its
+Ultimate strikes four times a second for four seconds and its Movement is a
+blink. The Warhammer is the slowest at 1.20, so its Heavy knocks back and its
+Ultimate lands one enormous blow a second. The Whip's Heavy reaches five metres,
+which is further than any other one-handed heavy blow, because reach is what a
+whip is for. The Wand is the only one-handed caster, so its Special summons and
+its Support is the only Demonic skill that applies Shred.
+
+**Three rules were followed that the tests now hold.** Every designed row names a
+shape and states at least one number, or it is a skill that runs and does
+nothing. Every row that touches an enemy carries `Burn=1`, checked on the data
+rather than on the prose, because a description saying "setting each one alight"
+with no parameter beside it would read correctly and do nothing. And
+`FinalHitPercent` appears only on a skill that repeats, because the Strike
+template lands its closing hit from the timer that ends a repeating swing, so a
+non-repeating skill would carry a number nothing reads.
+
+**Two tag names were wrong and generation refused them.** `Stat.Defense.Reduction`
+and `Stat.Offense.AttackSpeed` do not exist; the real names are
+`Stat.Defense.Global` and `Stat.Offense.Speed`. This is the tag validator doing
+its job: an undefined tag on a skill row means every gear increase scoped to it
+silently stops applying.
+
+**Affects:** `All_Things_Cataclysm.xlsx`, Weapon Skills sheet, 35 rows.
+`Cataclysm_GDD_v2.md`, whose Demonic Skill Examples section now says all ten
+weapon types are designed. **Applied.** Issue #62 is closed by this.
+
+---
+
 ## 2026-08-04 — What a skill costs: a cooldown per slot, a flat mana cost, and mana back from the automatic basic attack
 
 **The question.** Issue #155. No skill in the project stated a cooldown or a

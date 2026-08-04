@@ -4,17 +4,21 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "CataclysmWeaponSkills.generated.h"
 
 class UDataTable;
 
 /**
- * One skill a weapon makes available, and which slot it fills.
+ * One skill a weapon makes available, which slot it fills, and how it behaves.
  *
- * A thin reading of a row of game/Data/WeaponSkills.csv. It carries the name and
- * description because those are what a player is shown; it carries no numbers,
- * because the workbook has none yet. A skill here is a design that exists, not
- * behaviour that runs.
+ * A thin reading of a row of game/Data/WeaponSkills.csv. The name and
+ * description are what a player is shown; the shape says which shared template
+ * runs it and the parameters are that template's numbers.
+ *
+ * A ROW WITH NO SHAPE IS A DESIGN THAT EXISTS AND BEHAVIOUR THAT DOES NOT. That
+ * is still true of all 61 War rows, which were written before shapes existed.
+ * They are granted the placeholder, which fills the slot and does nothing.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmWeaponSkill
@@ -29,6 +33,14 @@ struct CATACLYSM_API FCataclysmWeaponSkill
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
 	FString Description;
+
+	/** Which template runs it. None means the row has no behaviour designed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	ECataclysmSkillShape Shape = ECataclysmSkillShape::None;
+
+	/** That template's numbers, already parsed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FCataclysmSkillShapeParams Params;
 };
 
 /**
@@ -78,6 +90,19 @@ public:
 
 	/** The slot named by a Slot column value, or None if it names no slot. */
 	static ECataclysmAbilitySlot SlotFromName(const FString& SlotName);
+
+	/**
+	 * The ability class that runs a shape.
+	 *
+	 * THE ONE PLACE A SHAPE BECOMES CODE. Everything else about a skill travels
+	 * as data; this function is the whole of the mapping from the Shape column
+	 * to a C++ class, which is what makes adding a skill of an existing shape a
+	 * workbook edit.
+	 *
+	 * @return null for None and for a shape with no template, and the caller
+	 *         grants the placeholder instead
+	 */
+	static TSubclassOf<UCataclysmGameplayAbility> TemplateFor(ECataclysmSkillShape Shape);
 
 	/** Where the imported weapon skill matrix lives. */
 	static const TCHAR* TableAssetPath;

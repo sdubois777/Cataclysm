@@ -120,16 +120,29 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	const int32 Resist = UCataclysmResistanceAttributeSet::GetAllAttributes().Num();
 	const int32 Resource = UCataclysmClassResourceAttributeSet::GetAllAttributes().Num();
 
+	/**
+	 * Attributes that exist but are NOT on the character sheet.
+	 *
+	 * Attack damage is the only one. `sim/cataclysm_sim/affixes.py` names it
+	 * explicitly as an off-sheet stat, because it belongs to the equipped weapon
+	 * rather than to the character: a Greataxe supplies 144 and a Fist 30, and
+	 * the character has no value of their own. It has to be an attribute anyway,
+	 * because every skill's damage is a percentage of it and two affixes add to
+	 * it, but it does not make the sheet longer.
+	 */
+	constexpr int32 OffSheetCombatStats = 1;
+
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 	TestEqual(TEXT("Eight resistances, one per damage type"), Resist, 8);
-	TestEqual(TEXT("Seventeen combat and utility stats"), Combat, 17);
+	TestEqual(TEXT("Seventeen combat and utility stats, plus attack damage off the sheet"),
+		Combat, 17 + OffSheetCombatStats);
 	TestEqual(TEXT("Eleven vital attributes including the damage meta"), Vitals, 11);
 	TestEqual(TEXT("Two class resource attributes"), Resource, 2);
 
 	// The 33 sheet stats: 3 maxima + 4 recovery from vitals, 17 combat,
 	// 8 resistances, 1 class resource maximum.
 	TestEqual(TEXT("Thirty-three stats on the character sheet"),
-		(Vitals - 3 - 1) + Combat + Resist + (Resource - 1), 33);
+		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 33);
 	return true;
 }
 

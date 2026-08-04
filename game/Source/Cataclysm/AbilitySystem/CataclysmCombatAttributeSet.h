@@ -79,6 +79,25 @@ public:
 
 	// -- Offence ----------------------------------------------------------
 
+	/**
+	 * What one basic attack deals before any skill multiplier, in points.
+	 *
+	 * THE NUMBER EVERY SKILL IS A PERCENTAGE OF. The Skill Slots sheet quotes a
+	 * Heavy Attack at 250% and an Ultimate at 400%, and the basic attack is
+	 * 100% because it IS weapon damage. Without this attribute all of those were
+	 * percentages of nothing.
+	 *
+	 * ITS BASE COMES FROM THE EQUIPPED WEAPON, like attack speed and unlike most
+	 * stats. The Item Bases sheet carries it as the `attack_damage` implicit: a
+	 * Greataxe reads 72, a Staff 66 and a Fist 30, and a two-handed base doubles
+	 * its implicit so the Greataxe supplies 144 in play. The affix pool adds to
+	 * the same stat, both flat and increased, which is why it has to be one
+	 * attribute rather than a number read off the weapon at the moment of use.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_AttackDamage)
+	FGameplayAttributeData AttackDamage;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, AttackDamage)
+
 	/** Base comes from the skill being used, not from the character. */
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_CritChance)
 	FGameplayAttributeData CritChance;
@@ -165,6 +184,7 @@ protected:
 	UFUNCTION() void OnRep_DamageReduction(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Retaliation(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CrowdControlResistance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_AttackDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CritChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CritMultiplier(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);

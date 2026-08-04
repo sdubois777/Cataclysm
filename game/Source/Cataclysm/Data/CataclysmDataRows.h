@@ -73,6 +73,35 @@ struct FCataclysmWeaponSkillRow : public FTableRowBase
 	/** Comma-separated gameplay tags. Every one is checked at generation time. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
 	FString Tags;
+
+	/**
+	 * Which shared template runs this skill: Strike, Projectile, SelfBuff,
+	 * Movement, Summon, Aura or Debuff. Empty means the skill has a name and a
+	 * description but no behaviour yet.
+	 *
+	 * DELIBERATELY NOT READ OFF Tags, which already carries Type.Projectile and
+	 * the rest. Two reasons. The tags do not decide it -- Molten Cleave carries
+	 * Type.AOE.PointBlank, Type.Strike and Type.AOE.Persistent at once, and
+	 * Infernal Plunge is a leap and carries no tag saying so. And the tags have
+	 * a job already: UCataclysmStatPipeline::ModifierApplies scopes every gear
+	 * increase by the tags of the skill in hand, so dispatching on them too
+	 * would mean adding a tag to fix a shape silently changed which gear
+	 * applied to it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
+	FString Shape;
+
+	/**
+	 * The template's numbers, as `Key=Value` separated by semicolons.
+	 *
+	 * A bag rather than a column each, because the seven shapes read different
+	 * numbers and the union of them is over a dozen, of which a row fills two or
+	 * three. Path of Exile stores per-skill numbers the same way, as named stat
+	 * entries rather than columns. The generator refuses a key the shape does
+	 * not read, so a misspelling fails generation instead of reading as zero.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
+	FString ShapeParams;
 };
 
 /**
@@ -136,6 +165,27 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
 	FString Description;
+
+	/**
+	 * Seconds the effect lasts. Zero means the design has not stated one.
+	 *
+	 * Only Burn carries a value today. It was added because every one of the
+	 * sixteen designed Demonic skills applies burn and the design stated neither
+	 * how long it lasts nor what it deals, so "sets each one alight" applied an
+	 * effect made of nothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	float DurationSeconds = 0.0f;
+
+	/**
+	 * What the whole effect is worth, as a percent of the hit that applied it.
+	 *
+	 * Spread evenly across DurationSeconds. Zero means the design has not stated
+	 * one, and an effect worth zero applies nothing rather than applying
+	 * silently for no damage.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	float PercentOfHit = 0.0f;
 };
 
 /**

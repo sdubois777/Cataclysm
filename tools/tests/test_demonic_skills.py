@@ -61,7 +61,9 @@ def skills() -> list[dict[str, str]]:
             continue
         out.append({"weapon": text(raw[0]), "damage": text(raw[1]),
                     "slot": text(raw[2]), "name": text(raw[3]),
-                    "description": text(raw[4]), "tags": text(raw[5])})
+                    "description": text(raw[4]), "tags": text(raw[5]),
+                    "shape": text(raw[6]) if len(raw) > 6 else "",
+                    "params": text(raw[7]) if len(raw) > 7 else ""})
     return out
 
 
@@ -196,6 +198,90 @@ def test_no_description_counts_stacks(designed):
     assert not offenders, (
         "Demonic descriptions counting stacks, which the single-stack rule "
         "forbids:\n" + "\n".join(offenders))
+
+
+def test_every_designed_row_names_a_shape_and_its_numbers(designed):
+    """A skill with no shape has a name and a description and does nothing.
+
+    That was true of all 61 War rows and all 16 Demonic ones until the shape
+    columns arrived: the weapon slots component granted a placeholder, the key
+    reached it, and it ended immediately. A Demonic row without a shape now
+    means somebody wrote a skill and stopped short of making it real.
+    """
+    # Not vacuous: there are 51 Demonic rows in the sheet after issue #23 cut
+    # the matrix from 558 to 398, and all of them are designed. A fixture that
+    # silently returned nothing would pass every assertion below it.
+    assert len(designed) == 51, (
+        f"expected 51 designed Demonic rows, found {len(designed)}")
+
+    missing = [f"{r['weapon']}/{r['slot']} ({r['name']})"
+               for r in designed if not r["shape"]]
+    assert not missing, ("designed Demonic rows with no shape, so no behaviour: "
+                         + ", ".join(missing))
+
+    # A shape with no parameters is a skill with a radius of zero, which hits
+    # nothing. Every shape in use reads at least one number.
+    bare = [f"{r['weapon']}/{r['slot']} ({r['name']})"
+            for r in designed if r["shape"] and not r["params"]]
+    assert not bare, ("designed Demonic rows with a shape but no numbers: "
+                      + ", ".join(bare))
+
+
+def test_every_designed_row_sets_its_target_alight(designed):
+    """The design says every Demonic skill applies burn, as every War skill bleeds.
+
+    Checked on the DATA rather than the prose, because the prose is what a
+    reader sees and the Burn parameter is what the game acts on. A description
+    saying "setting each one alight" with no Burn=1 beside it would read
+    correctly and do nothing.
+
+    The two Support skills that buff the caster rather than touching an enemy
+    are the exception: there is nothing for them to set alight at the moment
+    they are used.
+    """
+    missing = []
+    for row in designed:
+        if row["shape"] in ("SelfBuff", "Debuff"):
+            continue
+        if "Burn=1" not in row["params"]:
+            missing.append(f"{row['weapon']}/{row['slot']} ({row['name']})")
+    assert not missing, ("Demonic skills that do not set their target alight: "
+                         + ", ".join(missing))
+
+
+def test_a_closing_hit_is_only_written_on_a_skill_that_repeats(designed):
+    """FinalHitPercent is landed by the timer that ends a repeating swing.
+
+    A skill that does not repeat never reaches that code, so the number would
+    sit in the data and nothing would read it -- a skill quietly weaker than its
+    own description. See UCataclysmStrikeSkill::Finish.
+    """
+    stranded = []
+    for row in designed:
+        params = row["params"]
+        if "FinalHitPercent" not in params:
+            continue
+        repeats = "Duration=" in params and "Interval=" in params
+        if not repeats:
+            stranded.append(f"{row['weapon']}/{row['slot']} ({row['name']})")
+    assert not stranded, (
+        "skills stating a closing hit that nothing will land, because they do "
+        "not repeat: " + ", ".join(stranded))
+
+
+def test_no_skill_is_named_after_a_class(designed):
+    """Issue #157: a War skill is called Ravager's Cleave, after a Demonic class.
+
+    A skill name that takes a class name implies the skill belongs to that
+    class, and skills come from weapons rather than from classes.
+    """
+    classes = ("Ravager", "Masochist", "Ritualist", "Warlord", "Berserker",
+               "Sentinel")
+    offenders = [f"{r['weapon']}/{r['slot']} ({r['name']})"
+                 for r in designed
+                 if any(name.lower() in r["name"].lower() for name in classes)]
+    assert not offenders, ("Demonic skills named after a class: "
+                           + ", ".join(offenders))
 
 
 def test_burn_is_an_effect_the_player_can_apply():

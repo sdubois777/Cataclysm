@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
@@ -70,6 +71,24 @@ ECataclysmAbilitySlot UCataclysmWeaponSkills::SlotFromName(const FString& SlotNa
 	return ECataclysmAbilitySlot::None;
 }
 
+TSubclassOf<UCataclysmGameplayAbility> UCataclysmWeaponSkills::TemplateFor(
+	ECataclysmSkillShape Shape)
+{
+	switch (Shape)
+	{
+	case ECataclysmSkillShape::Strike:     return UCataclysmStrikeSkill::StaticClass();
+	case ECataclysmSkillShape::Projectile: return UCataclysmProjectileSkill::StaticClass();
+	case ECataclysmSkillShape::SelfBuff:   return UCataclysmSelfBuffSkill::StaticClass();
+	case ECataclysmSkillShape::Movement:   return UCataclysmMovementSkill::StaticClass();
+	case ECataclysmSkillShape::Summon:     return UCataclysmSummonSkill::StaticClass();
+	case ECataclysmSkillShape::Aura:       return UCataclysmAuraSkill::StaticClass();
+	case ECataclysmSkillShape::Debuff:     return UCataclysmDebuffSkill::StaticClass();
+	case ECataclysmSkillShape::None:
+	default:
+		return nullptr;
+	}
+}
+
 TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 	const UDataTable* Table, const FString& WeaponType, const FString& DamageType)
 {
@@ -125,6 +144,27 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 				Skill.Slot = Slot;
 				Skill.Name = Row.SkillName;
 				Skill.Description = Row.SkillDescription;
+				Skill.Shape = UCataclysmSkillShapes::ShapeFromName(Row.Shape);
+
+				// Named in the error so a bad cell says which of the 398 rows it
+				// is. The generator refuses one already, so this only fires for
+				// a table edited in the editor rather than generated.
+				FString Error;
+				Skill.Params = UCataclysmSkillShapes::ParseParams(Row.ShapeParams, &Error);
+				if (!Error.IsEmpty())
+				{
+					UE_LOG(LogCataclysm, Warning,
+						TEXT("'%s' (%s %s) has unreadable shape parameters: %s"),
+						*Row.SkillName, *Row.WeaponType, *Row.Slot, *Error);
+				}
+				if (!Row.Shape.IsEmpty() && Skill.Shape == ECataclysmSkillShape::None)
+				{
+					UE_LOG(LogCataclysm, Warning,
+						TEXT("'%s' names the shape '%s', which no template "
+							 "implements. It will fill its slot and do nothing."),
+						*Row.SkillName, *Row.Shape);
+				}
+
 				Found.Add(MoveTemp(Skill));
 			});
 	};
