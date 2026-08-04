@@ -3,35 +3,33 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AbilitySystemInterface.h"
-#include "GameFramework/Actor.h"
-#include "GenericTeamAgentInterface.h"
+#include "Character/CataclysmCharacterBase.h"
 #include "CataclysmMinion.generated.h"
 
 class UCataclysmAbilitySystemComponent;
 class UCataclysmVitalAttributeSet;
+class UStaticMeshComponent;
 
 /**
- * A summoned imp: it hits the nearest enemy in reach until its time runs out.
+ * A summoned imp: it chases the nearest enemy, hits it, and expires.
  *
- * WHAT IT DOES NOT DO, AND SAYING SO PLAINLY. It does not move. This project has
- * no artificial intelligence of any kind -- no behaviour tree, no navigation
- * mesh built, no controller for anything but the player -- so "it attacks the
- * nearest enemy" is implemented as "it hits the nearest enemy within its reach",
- * and an enemy outside that reach is simply not attacked. Summon Imp's written
- * behaviour is "attacks the nearest enemy, sets what it hits alight, and lasts
- * 20 seconds"; the second and third of those are real and the first is real only
- * within reach. Issue #163.
+ * A CHARACTER, WHICH IT WAS NOT. It used to be a bare AActor with an ability
+ * system component and nothing else, and that had two consequences that were not
+ * obvious from reading it. An AActor whose components are all non-scene
+ * components gets no root component, and an actor with no root component reports
+ * its location as the world origin however it was spawned -- so an imp searched
+ * for targets around (0,0,0) rather than around itself. It also had no collision
+ * of any kind, so nothing could find it: the class comment claimed it was "a
+ * thing the world can damage and kill" and no sphere overlap could return it.
+ * Both are fixed by it being a character, which brings a capsule. Issue #163.
  *
- * It carries an ability system component so that it is a thing the world can
- * damage and kill, rather than an invulnerable timer. It is deliberately not a
- * character: without navigation there is nothing for a character movement
- * component to do, and a character costs considerably more.
+ * IT SHARES ITS BRAIN WITH A MONSTER. ACataclysmEnemyController possesses this
+ * and ACataclysmEnemyCharacter alike; the only difference is which side it is
+ * on and what its attacks are worth. Its side is copied from its summoner, so
+ * everything the summoner is hostile to, it is hostile to.
  */
 UCLASS()
-class CATACLYSM_API ACataclysmMinion : public AActor,
-									   public IAbilitySystemInterface,
-									   public IGenericTeamAgentInterface
+class CATACLYSM_API ACataclysmMinion : public ACataclysmCharacterBase
 {
 	GENERATED_BODY()
 
@@ -40,6 +38,17 @@ public:
 
 	/** How far it can reach, in centimetres. Its own, not the summoning skill's. */
 	static constexpr float ReachCm = 300.0f;
+
+	/**
+	 * How far it notices something to chase, in centimetres.
+	 *
+	 * A JUDGEMENT, NOT A DESIGN FIGURE. Summon Imp says only "it attacks the
+	 * nearest enemy". Fifteen metres is the same distance Subjugate reaches, and
+	 * it is far enough that an imp summoned on one side of a room goes to a fight
+	 * on the other side rather than standing still, which was the whole of what
+	 * issue #163 reported.
+	 */
+	static constexpr float NoticeRadiusCm = 1500.0f;
 
 	/** Seconds between its attacks. */
 	static constexpr float AttackIntervalSeconds = 1.0f;
@@ -59,7 +68,7 @@ public:
 	/**
 	 * Put one in the world.
 	 *
-	 * @param Summoner  whose skill made it; its damage is a share of theirs
+	 * @param Summoner  whose skill made it; its damage and its side are theirs
 	 * @param Location  where it appears
 	 * @param Lifetime  seconds before it goes away on its own
 	 * @param bBurns    whether what it hits is set alight
@@ -79,6 +88,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	int32 AttacksMade = 0;
 
+	/** A stand-in body, so an imp is visible before there is any art. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
+	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
+
 	/**
 	 * Blow up, hurting everything within RadiusCm, then be destroyed.
 	 *
@@ -88,27 +101,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
 	void Explode(float RadiusCm, float DamagePercent);
 
-	/** Hit the nearest enemy in reach. Called on a timer, and by tests. */
+	/** Hit the nearest enemy in reach. Called by tests. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
 	void AttackOnce();
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
-	//~ IGenericTeamAgentInterface
-	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamId) override;
-	virtual FGenericTeamId GetGenericTeamId() const override;
-	//~ End IGenericTeamAgentInterface
+	//~ Driven by ACataclysmEnemyController
+	virtual float AttackReachCm() const override { return ReachCm; }
+	virtual float SightRadiusCm() const override { return NoticeRadiusCm; }
+	virtual float SecondsBetweenAttacks() const override { return AttackIntervalSeconds; }
+	virtual void AttackTarget(AActor* Target) override;
+	//~ End
 
 protected:
-	/**
-	 * Which side it is on. Copied from its summoner in Spawn.
-	 *
-	 * A summon is not a third side. It fights for whoever made it, so it holds
-	 * their team number rather than one of its own, and a second player's imps
-	 * are as friendly to this player as that player is.
-	 */
-	FGenericTeamId TeamId = FGenericTeamId::NoTeam;
-
 	virtual void BeginPlay() override;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Minion")
@@ -116,7 +122,4 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UCataclysmVitalAttributeSet> VitalAttributes;
-
-private:
-	FTimerHandle AttackTimer;
 };

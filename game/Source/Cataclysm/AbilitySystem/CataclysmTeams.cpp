@@ -1,7 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "GameFramework/Actor.h"
+#include "GameplayTagsManager.h"
 
 FGenericTeamId UCataclysmTeams::TeamOf(const AActor* Actor)
 {
@@ -45,6 +47,22 @@ bool UCataclysmTeams::SharesAnOwnerChain(const AActor* A, const AActor* B)
 	return false;
 }
 
+FGameplayTag UCataclysmTeams::MadnessTag()
+{
+	// Requested by name rather than declared as a native tag, matching
+	// UCataclysmSkillEffects::BurnTag and for the same reason: a native
+	// declaration would create the tag whether or not the design workbook still
+	// lists it, hiding exactly the disagreement that matters. The tag itself is
+	// generated into game/Config/Tags/CataclysmTags.ini from the Debuffs sheet.
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Status.Madness")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmTeams::IsMaddened(const AActor* Actor)
+{
+	return UCataclysmSkillEffects::HasTag(Actor, MadnessTag());
+}
+
 ETeamAttitude::Type UCataclysmTeams::AttitudeBetween(const AActor* Actor, const AActor* Other)
 {
 	if (!Actor || !Other)
@@ -55,6 +73,17 @@ ETeamAttitude::Type UCataclysmTeams::AttitudeBetween(const AActor* Actor, const 
 	if (Actor == Other)
 	{
 		return ETeamAttitude::Friendly;
+	}
+
+	// MADNESS OVERRIDES EVERY OTHER RULE, INCLUDING OWNERSHIP. The design says a
+	// maddened enemy "attacks anything nearby, friend or foe", and a thing it
+	// owns is a friend, so ownership cannot be allowed to except itself. Read
+	// symmetrically -- either side being maddened makes the pair hostile -- so
+	// that a maddened enemy's neighbours fight back rather than standing still
+	// while it hits them.
+	if (IsMaddened(Actor) || IsMaddened(Other))
+	{
+		return ETeamAttitude::Hostile;
 	}
 
 	// OWNERSHIP BEATS THE TEAM NUMBER, and it has to come first. A minion takes

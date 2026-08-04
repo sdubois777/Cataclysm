@@ -20,6 +20,96 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Enemy behaviour in C++ rather than a behaviour tree, and Madness as an attitude
+
+**The question.** Issue #163: nothing in the project except the player had a
+controller. A summoned imp stood where it was put for its whole twenty seconds,
+a monster stood where it was spawned, and the Madness debuff — "the enemy
+attacks anything nearby, friend or foe, for 3 seconds" — granted a gameplay tag
+that nothing read. Two questions had to be settled before any of it could be
+built: what a monster's decision-making is written in, and what Madness actually
+changes.
+
+**FIRST DECISION: the behaviour is C++, not a Behaviour Tree.** Unreal's usual
+answer is a Behaviour Tree asset driven by a Blackboard asset, run by a
+`AAIController` that owns a `UBehaviorTreeComponent`. This project uses a plain
+`AAIController` subclass, `ACataclysmEnemyController`, with three states — idle,
+chase, attack — expressed in about twenty lines.
+
+The reason is the same one that put the skill behaviours in C++ rather than in
+Blueprints. A Behaviour Tree and its Blackboard are binary `.uasset` files.
+Every other rule in this project is text that a pull request shows a diff of,
+and every other behaviour is covered by an automation test that runs headless
+with no editor. Three states as a tree would be assets nobody can review and
+nothing can test, to say what twenty lines say directly.
+
+This is a decision with a stated expiry. A Behaviour Tree earns its cost when the
+logic is deep enough that a designer needs to change it without a programmer, and
+when the same subtrees are shared between many different agents. Issue #39's
+seven Demonic enemies — a swarming imp, a ranged caster, a charger, a stomping
+tank, a stationary turret, a mini-boss with a positional weakness, and a
+multi-phase boss — are the point at which that should be reconsidered rather than
+assumed. Recording it here so that the next person knows it was a choice.
+
+**SECOND DECISION: Madness is an attitude override, not a change of side.**
+`UCataclysmTeams::AttitudeBetween` returns Hostile whenever either actor carries
+the `Status.Madness` tag, before any other rule including ownership. Three
+consequences follow, and all three are what the design text says:
+
+- A maddened monster attacks other monsters, because they are no longer friendly
+  to it.
+- Its neighbours attack it back, because the rule is read symmetrically. Without
+  that, a maddened monster hits things that stand there and take it.
+- It would attack its own summons, because a thing it owns is a friend and
+  "friend or foe" does not except them.
+
+The nearest shipped mechanic in the genre is Path of Exile's Conversion Trap,
+which moves a monster onto the caster's side for a duration and makes it fight
+that side's enemies. That is deliberately **not** what Madness is. Conversion
+switches a side; Madness removes one.
+
+**Numbers that are judgements, not design figures.** The design states none of
+these. They are labelled as judgements in the code and are expected to change:
+
+| Number | Value | Why |
+|---|---|---|
+| A monster's reach | 200 cm | A little over twice its capsule radius, which is about where two placeholder cylinders look like they are touching. |
+| A monster's notice radius | 1500 cm | The same distance Subjugate reaches, which is the longest range the designed Demonic skills use. |
+| Seconds between a monster's attacks | 1.5 | Slow enough to walk out of. |
+| An imp's notice radius | 1500 cm | Far enough that an imp summoned across a room goes to a fight rather than standing still, which was the whole of the report. |
+| A training dummy's attack damage | 20 | Five of them at 20 every 1.5 seconds is about 67 a second against a character starting at 100 health, so standing still in the ring is fatal and walking out of it is not. |
+
+Per-monster rather than one constant for all monsters, which is the shape Diablo
+II uses: its `monstats.txt` gives every monster type its own vision distance in
+an `aidist` column. A charging Hellhound and a stationary Corrupted Sentinel
+cannot share one number.
+
+**What was deliberately left out, and should be built when it is needed.**
+
+- **No leash.** A monster that has noticed the player follows for as long as the
+  player stays inside its notice radius, rather than giving up and returning to
+  where it started. Path of Exile monsters do break off and return. It is a real
+  shape and it is not needed to make an imp chase what it is attacking.
+- **No target memory.** The nearest hostile is re-chosen every quarter second, so
+  two equally distant targets can be swapped between.
+- **No telegraphs.** Issue #39 lists wind-up, telegraph shape and cancel rules as
+  core rather than polish, and none of that exists.
+
+**Sources.** The Unreal Engine 5.8 source of `AIController.h` and
+`GenericTeamAgentInterface.h` for the controller and attitude machinery; the Path
+of Exile wiki on Conversion Trap for how a shipped action role-playing game moves
+a monster between sides; the Diablo II modding community's documentation of
+`monstats.txt` for `aidist` being a per-monster vision distance; a 2012 Path of
+Exile forum thread on monster AI for monsters breaking off and returning when the
+player gets far enough, which is the evidence that a leash is a real shape rather
+than an invented one.
+
+**Affects:** no design document yet. Enemy behaviour beyond one-sentence
+descriptions is issue #29, which records that enemy design exists only for the
+Demonic vertical slice.
+
+---
+
 ## 2026-08-04 — The environment reacts through physics, and nothing about a crater is authored
 
 **This supersedes the fourth decision in the entry below.** That entry recommended
