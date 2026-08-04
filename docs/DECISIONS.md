@@ -20,6 +20,85 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — A projectile is an actor that sweeps each step, and Radius means two different things
+
+**The question.** Issue #164: `UCataclysmProjectileSkill` turned a Speed into a
+delay. It worked out `distance / speed`, waited that long on a timer, and then
+resolved the whole hit using positions at the moment of impact. Nothing occupied
+the space in between, so an enemy that stepped into the path after the throw and
+out of it before the landing was never touched, one that stepped in just before
+the landing was hit even though the projectile had already passed behind it, and
+a wall stopped nothing.
+
+**The decision.** A real actor, `ACataclysmProjectile`, that moves in steps.
+
+**It sweeps each step rather than testing where it arrived.** Every step asks who
+is inside the capsule from where the projectile was to where it now is, which is
+the volume it actually passed through. Testing only the end of a step lets
+anything narrower than the gap between two steps fall through it. This is not
+theoretical: a step is capped at a tenth of a second, which at Blood Pyre's 1400
+centimetres per second is 140 centimetres, and the projectile body is 40
+centimetres wide. `Cataclysm.Skills.AProjectileHitsWhatItPassedThroughNotOnlyWhereItLanded`
+fails if the sweep is replaced with a point test.
+
+**A step is capped at a tenth of a second, and a long frame becomes several
+steps.** A swept step is correct however long it is, but ORDER is not: a
+projectile that does not pierce should stop at the first enemy and then not exist
+for the second, and one step long enough to contain both makes that ordering a
+property of the sweep rather than of time.
+
+**Radius means two different things, and Pierce decides which.** For a piercing
+skill it is the half-width of the line it hits along: Emberhurl, Chain of Coals,
+Hellbrand and Infernal Lance are all `Radius=1.5`. For one that does not pierce
+it is the blast where it stops: Blood Pyre is `Radius=3` and Magma Quake
+`Radius=4`, which are the sizes of the pyre and the crater. The old code already
+made this distinction — it searched a line for one and a sphere for the other —
+but nothing said so, and building the projectile revealed why it matters: using
+Blood Pyre's three metres as the width of the thing in the air stopped it three
+metres short of the enemy it was thrown at, and the pyre then went off in front
+of them rather than against them. A flying projectile is therefore 40
+centimetres across unless it pierces, which is a little narrower than an enemy's
+48 centimetre capsule so that a near miss stays a miss.
+
+That 40 is a judgement, not a figure read off anything. The design does not state
+how big a thrown axe is. It is a constant on the class rather than a column in
+the Weapon Skills sheet, because it would otherwise be the same number written
+into 398 rows; it becomes a shape parameter the first time a skill needs its own.
+
+**Geometry stops it, characters do not.** The flight traces against the
+visibility channel, which is the one that answers whether something solid stands
+between two points. Pawns do not block that channel, so one enemy is never cover
+for the enemy behind them: what a projectile passes through is decided by Pierce,
+and what stops it is the world.
+`Cataclysm.Skills.AnEnemyIsNotCoverForTheEnemyBehindThem` guards that, because
+tracing against a channel characters blocked would silently make Pierce mean
+nothing.
+
+**Why not `UProjectileMovementComponent`.** Two reasons, and the second is the
+real one. It moves only when the world ticks, and every automation test in this
+project builds a world with `UWorld::CreateWorld` and never ticks it — which is
+why `SwingOnce`, `Pulse`, `Land` and `SummonOne` are all public. And its collision
+handling is built around blocking hits, whereas everything this project hits
+responds with overlap; the component's `OnProjectileStop` path would never fire.
+What it offers beyond that — gravity, bouncing, homing — is a list of things
+these projectiles must not do.
+
+**Where a projectile stops is now a real place, and the burning ground follows
+it.** A throw halted by a wall burns half the path, not all of it. A throw that
+returns finishes back at the caster, so the ground is measured to the furthest it
+got rather than to where it ended up; measuring to where it ended up leaves a
+patch at the caster's feet, which is what the first version of this change did.
+
+**A Speed of zero is still a beam.** Infernal Lance is written `Speed=0` and its
+description says it arrives at once. No actor is spawned and the skill resolves
+the hit itself, exactly as before. Aiming at your own feet resolves the same way,
+because there is no path to fly along.
+
+**Affects.** No design document. `All_Things_Cataclysm.xlsx` is unchanged; every
+number this uses was already in the Weapon Skills sheet.
+
+---
+
 ## 2026-08-04 — A buff's magnitude is a tag-scoped modifier on the character, not a per-damage-type attribute
 
 **The question.** Issue #166: `UCataclysmSelfBuffSkill` applied a self buff's

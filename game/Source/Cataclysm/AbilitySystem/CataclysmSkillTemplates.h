@@ -7,6 +7,7 @@
 #include "CataclysmSkillTemplates.generated.h"
 
 class ACataclysmMinion;
+class ACataclysmProjectile;
 
 /**
  * The seven shared skill templates.
@@ -73,11 +74,17 @@ private:
  * lands at the aim point and hits in a radius there -- Blood Pyre "ignites on
  * impact, dealing damage in a 3 meter radius".
  *
- * TRAVEL IS A DELAY, NOT AN ACTOR. There is no projectile actor and no mesh to
- * put in one; a Speed resolves the hit after Range/Speed seconds, and a Speed of
- * zero resolves it at once, which is right for a beam like Infernal Lance. What
- * this does not do is let something walk into a projectile's path after it was
- * fired. Issue #164.
+ * A SPEED FIRES A REAL ACTOR THAT OCCUPIES SPACE. `ACataclysmProjectile` moves
+ * in steps, sweeps the capsule between where it was and where it now is, and
+ * stops or passes through according to Pierce. Before issue #164 a Speed was
+ * turned into a delay: the whole hit was resolved after `Range/Speed` seconds
+ * using positions at that moment, so nothing occupied the space in between, an
+ * enemy could cross the path untouched, and a wall stopped nothing.
+ *
+ * A SPEED OF ZERO IS STILL A BEAM, resolved at once by Land without any actor.
+ * Infernal Lance is written that way and its description says it arrives
+ * immediately. Aiming at your own feet resolves the same way, because there is
+ * no path to fly along.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmProjectileSkill : public UCataclysmSkillTemplate
@@ -92,17 +99,33 @@ public:
 								 const FGameplayAbilityActivationInfo ActivationInfo,
 								 const FGameplayEventData* TriggerEventData) override;
 
-	/** Resolve the hit where it lands. Public so a test can skip the delay. */
+	/**
+	 * Resolve the hit as a beam, with no actor and no flight.
+	 *
+	 * ONLY FOR A SPEED OF ZERO now, and for a throw with nowhere to go. A skill
+	 * with a real speed fires an ACataclysmProjectile instead, and that actor
+	 * does its own hitting as it travels.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	int32 Land();
 
-	/** How many times it has landed. Two when it returns. Read by tests. */
+	/** How many times it has landed or a projectile of its has finished. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 Landings = 0;
+
+	/** The projectile in flight, or null when there is none. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	TObjectPtr<ACataclysmProjectile> InFlight;
 
 private:
 	void LandThenFinish();
 	void Return();
+
+	/** Called when a fired projectile stops. Leaves ground and ends the ability. */
+	void OnProjectileFinished(ACataclysmProjectile* Projectile);
+
+	/** Burn the path a projectile took, or the point it stopped at. */
+	void LeaveGroundForFlight(const FVector& From, const FVector& To);
 
 	/** Fixed at activation, so aiming elsewhere mid-flight does not move it. */
 	FVector Origin = FVector::ZeroVector;

@@ -4,6 +4,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -158,21 +159,73 @@ void UCataclysmProjectileSkill::ActivateAbility(
 	Origin = Self->GetActorLocation();
 	Destination = AimedPointWithin(Params.RangeCm);
 
-	const float Flight = Params.SpeedCmPerSecond > 0.0f
-		? FVector::Dist(Origin, Destination) / Params.SpeedCmPerSecond
-		: 0.0f;
+	// A REAL ACTOR WHEN IT HAS A SPEED. It moves in steps and sweeps each one,
+	// so who it hits is decided by where they stood as it went past rather than
+	// by where they stand when it arrives, and a wall stops it. Issue #164.
+	InFlight = ACataclysmProjectile::Fire(
+		Self, Origin, Destination, Params.RadiusCm, Params.SpeedCmPerSecond,
+		Params.Pierce, Params.bReturns, GetSlotDamagePercent(), SkillTags,
+		Params.bBurns);
 
-	UWorld* World = Self->GetWorld();
-	if (Flight <= 0.0f || !World)
+	if (!InFlight)
 	{
-		// A beam. Infernal Lance drives a lance forward and arrives at once.
+		// No speed, or nowhere to fly. A beam: Infernal Lance drives a lance
+		// forward and its description says it arrives at once.
 		LandThenFinish();
 		return;
 	}
 
-	World->GetTimerManager().SetTimer(
-		FlightTimer, this, &UCataclysmProjectileSkill::LandThenFinish,
-		Flight, /*bLoop=*/false);
+	InFlight->OnFinished.AddUObject(
+		this, &UCataclysmProjectileSkill::OnProjectileFinished);
+}
+
+void UCataclysmProjectileSkill::OnProjectileFinished(
+	ACataclysmProjectile* Projectile)
+{
+	InFlight = nullptr;
+
+	if (Projectile)
+	{
+		// One per leg, so a throw that came back reports two the way a beam
+		// that hits twice does.
+		Landings += Projectile->LegsFlown();
+
+		// FROM WHERE IT STARTED TO THE FURTHEST IT GOT, which is not
+		// necessarily where it was aimed and not where it ended up. A throw
+		// stopped by a wall half way burns half the path; one that returns
+		// finishes back at the caster and still burns the whole flight.
+		LeaveGroundForFlight(Projectile->StartedAt, Projectile->FurthestReached);
+	}
+	else
+	{
+		++Landings;
+	}
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmProjectileSkill::LeaveGroundForFlight(const FVector& From,
+													 const FVector& To)
+{
+	if (!Params.LeavesGround())
+	{
+		return;
+	}
+
+	// PIERCE TELLS THE TWO KINDS APART. One that pierces travelled a line and
+	// its text says the line burns: Emberhurl leaves "its flight path burning",
+	// and Chain of Coals and Hellbrand are written the same way. One that does
+	// not pierce stopped somewhere, and Blood Pyre's pyre and Magma Quake's
+	// crater belong at that point and nowhere else.
+	if (Params.Pierce > 0)
+	{
+		LeaveGroundAlong(From, To);
+	}
+	else
+	{
+		LeaveGroundAt(To);
+	}
 }
 
 int32 UCataclysmProjectileSkill::Land()
@@ -208,42 +261,13 @@ int32 UCataclysmProjectileSkill::Land()
 void UCataclysmProjectileSkill::LandThenFinish()
 {
 	Land();
+	LeaveGroundForFlight(Origin, Destination);
 
-	AActor* Self = Avatar();
-	UWorld* World = Self ? Self->GetWorld() : nullptr;
-
-	if (Params.LeavesGround())
+	// Emberhurl hits "once going out and once returning to your hand". A beam
+	// that returns has no flight time either way, so the second hit is
+	// immediate. A real projectile turns round by itself and never reaches here.
+	if (Params.bReturns && Landings < 2)
 	{
-		// PIERCE TELLS THE TWO KINDS APART HERE TOO, exactly as it does in Land.
-		// One that pierces travelled through a line and its text says the line
-		// burns: Emberhurl leaves "its flight path burning", and Chain of Coals
-		// and Hellbrand are written the same way. One that does not pierce landed
-		// somewhere, and Blood Pyre's pyre and Magma Quake's crater belong at
-		// that point and nowhere else.
-		if (Params.Pierce > 0)
-		{
-			LeaveGroundAlong(Origin, Destination);
-		}
-		else
-		{
-			LeaveGroundAt(Destination);
-		}
-	}
-
-	// Emberhurl hits "once going out and once returning to your hand".
-	if (Params.bReturns && Landings < 2 && World)
-	{
-		const float Flight = Params.SpeedCmPerSecond > 0.0f
-			? FVector::Dist(Origin, Destination) / Params.SpeedCmPerSecond
-			: 0.0f;
-		if (Flight > 0.0f)
-		{
-			World->GetTimerManager().SetTimer(
-				FlightTimer, this, &UCataclysmProjectileSkill::Return,
-				Flight, /*bLoop=*/false);
-			return;
-		}
-
 		Return();
 		return;
 	}
