@@ -231,6 +231,46 @@ class TestGems:
         with pytest.raises(gen.DataError, match="states no percentage"):
             gen.gems(book)
 
+    def test_two_gems_cannot_share_a_name(self, tmp_path):
+        """Issue #211. Two different gems were both called Of Recovery.
+
+        One raised health regeneration and one reduced cooldowns. `unique` gave
+        the second the row key `Gem_Of_Recovery_1`, so both imported and both
+        showed the player the same name, with nothing to tell them apart and
+        nothing anywhere reporting a problem. It stood for a month.
+        """
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of Recovery", "Increases hp regen by 10%",
+                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense"],
+                     ["Of Recovery", "Increases CDR by 10%",
+                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility"]]}))
+        with pytest.raises(gen.DataError, match="already the name of the gem"):
+            gen.gems(book)
+
+    def test_two_gems_with_different_names_are_fine(self, tmp_path):
+        """The other side of it: the check must not refuse ordinary rows.
+
+        A guard that rejected two gems sharing an effect, or two gems in the
+        same type, would pass the test above and break the sheet.
+        """
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of Recovery", "Increases hp regen by 10%",
+                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense"],
+                     ["Of Urgency", "Increases CDR by 10%",
+                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility"]]}))
+        names = [row["Name"] for row in gen.gems(book)]
+        assert names == ["Gem_Of_Recovery", "Gem_Of_Urgency"], (
+            "a gem row key must be readable, not a numeric suffix on someone "
+            "else's name")
+
 
 class TestValidation:
     def test_an_undefined_tag_is_reported(self):

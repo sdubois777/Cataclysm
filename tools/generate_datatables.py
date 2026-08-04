@@ -406,6 +406,7 @@ def gems(book) -> list[dict]:
     tiers = ["Quality", "Superb", "Masterful", "Legendary",
              "Mythical", "Ascendant", "Cataclysmic"]
     out = []
+    seen_names: dict[str, int] = {}
     for index, raw in enumerate(rows[1:], start=2):
         if not raw or not clean(raw[0]):
             continue
@@ -417,6 +418,21 @@ def gems(book) -> list[dict]:
                             f"its effect text, so the Everyday value cannot be "
                             f"read: {effect!r}")
         everyday = float(match.group(1)) / 100.0
+
+        # A GEM NAME IS WHAT THE PLAYER READS, so two gems cannot share one.
+        # `unique` below would silently key the second Gem_Of_Recovery_1 and both
+        # rows would import, leaving two different gems on the ground under one
+        # name with no way to tell them apart. That is what happened: one raised
+        # health regeneration and one reduced cooldowns, for a month (issue #211).
+        # Checked here rather than in a test because the generator is the only
+        # place that sees both the sheet and the row key.
+        if name in seen_names:
+            raise DataError(
+                f"Gems row {index}: {name!r} is already the name of the gem on "
+                f"row {seen_names[name]}. Two gems cannot share a name: a player "
+                f"reading it cannot tell which one they picked up, and the row "
+                f"keys differ only by a numeric suffix nothing explains.")
+        seen_names[name] = index
 
         entry = {"Name": row_name("Gem", name), "GemName": name,
                  "Effect": effect,
