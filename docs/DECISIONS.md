@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Craters are seen and not walked around, and a party is rescued by whoever gets out
+
+**The question.** Two follow-ups from the operator on the same day. First, that
+authored breakables alone are not enough: dropping a meteor on something should
+leave a crater. Second, three answers on how over-corruption behaves in a
+co-operative party, which turned out to settle the general rule for dying in
+co-op as well.
+
+**FOURTH DECISION: craters are visual, and never change navigation.**
+
+The distinction that decides this is not how a crater is made. It is whether the
+crater changes where anything can walk. A crater that only changes what the
+surface looks like costs a fixed, known amount and never touches pathfinding. A
+crater that changes collision forces the navigation mesh to rebuild while enemies
+are pathing across it, which is the exact cost that ruled out deformable terrain
+in the decision below. Same objection, same answer.
+
+So: impacts leave visible depressions with scorching, debris and dust, and every
+character walks across them exactly as before.
+
+Three routes were looked at for producing the visual, and the differences matter
+enough to record.
+
+  - **Runtime Virtual Texture deformation.** The standard shipped technique for
+    snow, sand and mud. The displacement exists only on the GPU, so collision does
+    not follow it, which for this decision is a feature rather than a limitation.
+    Two cautions: reading the deformation back to the CPU for collision requires
+    custom global shaders and is not a small job, and there is a reported defect
+    where Runtime Virtual Texture output breaks when a landscape material uses
+    displacement. That report is against 5.6 and has not been checked on 5.8.
+  - **Geometry Script mesh boolean at runtime.** Produces real geometry and real
+    collision. Rejected on cost growth rather than cost: each boolean builds an
+    axis-aligned bounding box tree for both meshes and runs pairwise triangle
+    intersection, and successive booleans accumulate triangles, so the hundredth
+    crater in a dungeon costs far more than the first. That is the wrong shape for
+    a game where a floor is fought over for a long time.
+  - **Pre-authored crater assets.** An impact spawns a decal, a shallow prepared
+    depression mesh and Chaos debris. Fixed cost per crater, no accumulation, no
+    navigation change. This is the recommendation.
+
+None of this has been tested in this project. A technical spike is filed
+separately rather than assumed.
+
+**FIFTH DECISION: dying in co-op moves a player to spectator, and one survivor
+rescues everyone.**
+
+The operator's rule, adopted as stated: a player who dies during a dungeon run
+becomes a spectator for the rest of it, with no penalty applied at that moment.
+If every player is dead, the run has failed and the death penalty applies. If at
+least one player leaves alive, every dead team-mate is recovered and nobody pays
+anything.
+
+This is a general co-op rule rather than an over-corruption rule, and it is the
+first real content behind the single line "Multiplayer co-op support" in the
+Phase 2 roadmap. It makes a surviving player's escape valuable to the whole party
+and turns a single death into a setback instead of an ending.
+
+**One inference, flagged rather than assumed.** The operator wrote that the death
+penalty "triggers" on a wipe, singular. This has been written as the penalty being
+paid once for the party rather than once per player, because the empire and its
+day clock are shared in co-op and charging five days four times would be a
+different and much larger penalty. If that reading is wrong it is a one-line
+correction, but it should be corrected deliberately.
+
+**SIXTH DECISION: every marked player produces a double, and all of them are
+present for the whole party.**
+
+Three marked players in a party of four means three doubles, fought by all four.
+A player who managed their residue still fights their team-mates' doubles.
+
+The operator's reasoning for accepting that this lets a careless player rely on
+the group: enemy health and damage already scale with party size, so a double
+copied from an over-equipped character arrives scaled for four players. The player
+who ignored residue management is handing the party a party-scaled copy of their
+own build, and the consequences sit with them.
+
+Worth checking during tuning rather than arguing now: four marked players in a
+four-player party produces four doubles, each scaled for four players. That is a
+larger multiplication than any other encounter in the design, and it may not be
+survivable. Whether it should be is a real question, not an obvious bug — it is
+the maximum possible punishment for the maximum possible negligence — but it
+should be a decision rather than an accident.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change. Section VII gains an
+"In a party" paragraph under Worn Residue and Consumption. Section VIII gains a
+"Co-operative Play" subsection, and its Destructible Environment subsection is
+rewritten to cover impact craters.
+
+**Still open.** Whether the death penalty on a party wipe is paid once or per
+player, as above. The tuning question about four simultaneous party-scaled
+doubles.
+
+---
+
 ## 2026-08-04 — Destruction is authored not volumetric, and residue can consume a character who ignores it
 
 **The question.** Two design proposals from the operator, raised together. First,

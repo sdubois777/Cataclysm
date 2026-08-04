@@ -1939,6 +1939,18 @@ Worn Residue grants nothing. It is not a resource and it does not make the chara
 
 **This half needs no connection.** The double is built from the player's own character, on the player's own machine. Nothing about crossing the threshold, being hunted, winning or being consumed requires a network connection or the shared table. Only The Corrupted dungeon modifier, which draws a character somebody else lost, needs either.
 
+  
+
+**In a party.** Each marked player produces one double, and every double is present for the whole party. A party of four in which three players are marked enters the next dungeon against three doubles. A player who managed their residue properly still fights their team-mates' doubles.
+
+  
+
+This is deliberate. Party play scales enemy health and damage with the number of players in the session, so a double copied from an over-equipped character arrives scaled for the whole party. A player who ignores residue management is not only risking their own character; they are handing the party a party-scaled copy of their own build. The consequences of that sit with the player who caused it.
+
+  
+
+Whether anyone is actually consumed is decided by the party rule in section VIII: if at least one player leaves the dungeon alive, nobody is consumed. Leaving alive is a reprieve rather than a solution — residue is unchanged and the doubles return on the next dungeon. Only killing the double clears residue.
+
   - **If the player kills the double**, residue is set to zero on every equipped item. The character keeps its equipment and the run continues.
   - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run. Empire progress is kept. A snapshot of the character is written to the shared library of corrupted characters described in section VIII.
 
@@ -1961,6 +1973,35 @@ Worn Residue grants nothing. It is not a resource and it does not make the chara
   - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for village/city/metropolis).
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
   - Every dungeon defeated adds one floor to the Cataclysm boss dungeon.
+
+  
+
+## **Co-operative Play**
+
+Up to four players share a dungeon run. Co-operative multiplayer is a Phase 2 item in the roadmap in section XV; the rules below are the design it is built to.
+
+  
+
+**Enemy scaling.** Enemy health and damage scale with the number of players in the session.
+
+  
+
+**Dying in a dungeon does not end that player's run.** A player who dies during a dungeon run becomes a spectator for the remainder of that run. They are not returned to the capital and no penalty is applied at the moment they die.
+
+  
+
+**The run is decided by the party, not by the individual.**
+
+  - If every player is dead, the run has failed and the death penalty applies.
+  - If at least one player leaves the dungeon alive, every dead team-mate is recovered. No death penalty applies to anyone.
+
+  
+
+This makes a surviving player's escape worth something to the whole party, and it makes a single death a setback rather than an ending. It also means the death penalty is paid once for the party rather than once per player.
+
+  
+
+**Over-corruption in a party.** The doubles produced by Worn Residue, described in section VII, follow the same rule. If the party wipes, every marked player is consumed. If at least one player leaves alive, nobody is consumed, and the marked players keep their residue and face their doubles again on the next dungeon.
 
   
 
@@ -2047,15 +2088,31 @@ Dungeon Score = (Common Enemy Score × 0.6) + (Elite Enemy Score × 0.2) + (Rare
 
 ## **Destructible Environment**
 
-Destruction in dungeons is authored, not free. Dungeons contain breakable objects — props, pillars, walls and sections of floor — placed by hand or by the dungeon generator. Those objects fracture and are removed when damaged. Anything a breakable object reveals, opens or drops is placed deliberately.
+Destruction in dungeons has two parts: objects that break, and surfaces that are marked by impacts.
 
   
 
-The terrain itself is not deformable. The player cannot dig, tunnel, or cut a new path through ground or rock. Level geometry outside the authored breakables is fixed for the duration of a dungeon.
+**Objects that break.** Dungeons contain breakable props, pillars, walls and sections of floor, placed by hand or by the dungeon generator. Those objects fracture and are removed when damaged. Anything a breakable object reveals, opens or drops is placed deliberately.
 
   
 
-This is a deliberate limit rather than a temporary one, and the reasoning is recorded in `DECISIONS.md`.
+**Surfaces that are marked.** A heavy impact leaves a crater. Meteors, heavy slams, a boss landing and similar events deform the surface they hit and leave a visible depression, with scorching, scattered debris and settled dust. A dungeon floor that has been fought over should look like it.
+
+  
+
+**Craters are visual and do not change navigation.** A crater does not block movement, does not change enemy pathing, does not create cover, and does not open a route that did not exist before. The player and every enemy cross it exactly as they crossed the flat surface.
+
+  
+
+This limit is what keeps environmental destruction affordable. The moment a crater changes where something can walk, the navigation mesh has to be rebuilt while it is being walked on, and that cost is the reason deformable terrain was ruled out. A crater that is only seen costs a fixed amount and never touches pathfinding.
+
+  
+
+**Terrain is still not deformable.** The player cannot dig, tunnel, or cut a new path through ground or rock. Level geometry outside the authored breakables is fixed for the duration of a dungeon.
+
+  
+
+These limits are deliberate rather than temporary, and the reasoning is recorded in `DECISIONS.md`.
 
   
 
