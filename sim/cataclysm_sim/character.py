@@ -94,6 +94,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from . import damage
+
 MAX_LEVEL = 100
 
 #: One resistance per damage type, in the order the design document lists them.
@@ -161,8 +163,12 @@ HARD_CAPS: dict[str, float] = {"crit_chance": 100.0}
 
 #: Recorded so the soft caps are not lost, but NOT applied. Affixes may exceed
 #: resistances' 70% and evasion's 60%.
+#:
+#: The resistance figure comes from `damage.py`, which owns it because that is
+#: where it is applied, rather than being written out again here. Issue #228.
 SOFT_CAPS: dict[str, float] = dict(
-    {"evasion": 60.0}, **{s: 70.0 for s in RESISTANCE_STATS})
+    {"evasion": 60.0},
+    **{s: damage.RESISTANCE_CAP for s in RESISTANCE_STATS})
 
 #: Stats that measure an interval, where an increase makes the interval shorter.
 #: These divide rather than multiply: Final = Base / (1 + increases), which is

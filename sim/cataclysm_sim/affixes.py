@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import enemy_stats, player_power
+from . import damage, enemy_stats, player_power
 from .character import (ALL_STATS, ATTRIBUTE_NAMES, RESISTANCE_STATS,
                         SKILL_SLOTS)
 
@@ -130,7 +130,12 @@ ROLL_BAND_FRACTION = 0.25
 
 #: The character sheet's resistance cap. Reaching it on every active damage type
 #: is what a build is trying to do.
-RESISTANCE_CAP = 70.0
+#:
+#: Re-exported from `damage.py`, which owns it because that is where it is
+#: applied, rather than written out again here. Issue #228: it used to be a
+#: separate literal in this file, in `player_power.py` and in `character.py`,
+#: and nothing compared the four.
+RESISTANCE_CAP = damage.RESISTANCE_CAP
 
 #: A character holding a two-handed weapon has 18 gear pieces with up to 4 affix
 #: slots each, and those slots are shared with enchantments. A dual wielder has
