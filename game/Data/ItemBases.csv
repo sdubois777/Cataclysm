@@ -40,17 +40,17 @@ Relic_Idol,Idol,Relic,0,,,0,0.0,crit_multiplier,flat,28.0,,,0.0
 Relic_Fetish,Fetish,Relic,0,,,0,0.0,area_of_effect,increased,10.0,,,0.0
 Relic_Reliquary,Reliquary,Relic,0,,,0,0.0,cooldown_reduction,increased,10.0,,,0.0
 Relic_Effigy,Effigy,Relic,0,,,0,0.0,dot_frequency,increased,10.0,,,0.0
-Weapon_Sword,Sword,Weapon,1,Slashing,Sword,2,1.3,attack_damage,flat,40.0,attack_speed,increased,5.0
-Weapon_Dagger,Dagger,Weapon,1,Piercing,Dagger,2,1.5,attack_damage,flat,26.0,crit_chance,flat,8.0
-Weapon_Axe,Axe,Weapon,1,Slashing,Axe,2,1.25,attack_damage,flat,46.0,,,0.0
-Weapon_Fist,Fist,Weapon,1,Blunt,Fist,2,1.45,attack_damage,flat,30.0,attack_speed,increased,10.0
-Weapon_Wand,Wand,Weapon,1,Magic,Wand,2,1.35,attack_damage,flat,38.0,spell_damage,increased,18.0
-Weapon_Whip,Whip,Weapon,1,Slashing,Whip,2,1.4,attack_damage,flat,32.0,area_of_effect,increased,12.0
-Weapon_Shield,Shield,Weapon,1,Blunt,Shield,2,1.2,block_chance,flat,12.0,armor,flat,260.0
-Weapon_Crossbow,Crossbow,Weapon,1,Piercing,Crossbow,2,1.35,attack_damage,flat,38.0,crit_multiplier,flat,20.0
-Weapon_Greatsword,Greatsword,Weapon,2,Slashing,Greatsword,3,1.25,attack_damage,flat,78.0,,,0.0
-Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,3,1.28,attack_damage,flat,72.0,crit_multiplier,flat,22.0
-Weapon_Spear,Spear,Weapon,2,Piercing,Spear,3,1.35,attack_damage,flat,64.0,penetration,flat,6.0
-Weapon_Staff,Staff,Weapon,2,Magic,Staff,3,1.3,attack_damage,flat,66.0,spell_damage,increased,32.0
-Weapon_Two_Handed_Crossbow,Two-Handed Crossbow,Weapon,2,Piercing,2H Crossbow,3,1.3,attack_damage,flat,66.0,crit_chance,flat,7.0
-Weapon_Warhammer,Warhammer,Weapon,2,Blunt,Warhammer,3,1.2,attack_damage,flat,84.0,,,0.0
+Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,attack_damage,flat,40.0,attack_speed,increased,5.0
+Weapon_Dagger,Dagger,Weapon,1,Piercing,Dagger,4,1.5,attack_damage,flat,26.0,crit_chance,flat,8.0
+Weapon_Axe,Axe,Weapon,1,Slashing,Axe,4,1.25,attack_damage,flat,46.0,,,0.0
+Weapon_Fist,Fist,Weapon,1,Blunt,Fist,4,1.45,attack_damage,flat,30.0,attack_speed,increased,10.0
+Weapon_Wand,Wand,Weapon,1,Magic,Wand,4,1.35,attack_damage,flat,38.0,spell_damage,increased,18.0
+Weapon_Whip,Whip,Weapon,1,Slashing,Whip,4,1.4,attack_damage,flat,32.0,area_of_effect,increased,12.0
+Weapon_Shield,Shield,Weapon,1,Blunt,Shield,4,1.2,block_chance,flat,12.0,armor,flat,260.0
+Weapon_Crossbow,Crossbow,Weapon,1,Piercing,Crossbow,4,1.35,attack_damage,flat,38.0,crit_multiplier,flat,20.0
+Weapon_Greatsword,Greatsword,Weapon,2,Slashing,Greatsword,8,1.25,attack_damage,flat,78.0,,,0.0
+Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,8,1.28,attack_damage,flat,72.0,crit_multiplier,flat,22.0
+Weapon_Spear,Spear,Weapon,2,Piercing,Spear,8,1.35,attack_damage,flat,64.0,penetration,flat,6.0
+Weapon_Staff,Staff,Weapon,2,Magic,Staff,8,1.3,attack_damage,flat,66.0,spell_damage,increased,32.0
+Weapon_Two_Handed_Crossbow,Two-Handed Crossbow,Weapon,2,Piercing,2H Crossbow,8,1.3,attack_damage,flat,66.0,crit_chance,flat,7.0
+Weapon_Warhammer,Warhammer,Weapon,2,Blunt,Warhammer,8,1.2,attack_damage,flat,84.0,,,0.0

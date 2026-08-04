@@ -1685,35 +1685,57 @@ There are 55 bases across the 11 slots. Gear upgrade level multiplies an implici
 
 #### **Weapon Bases**
 
-A weapon carries two things no other item has: a physical **sub-type**, and a number of **damage type slots**.
+A weapon carries two things no other item has: a physical **sub-type**, and a limit on **how many damage types it can hold**.
+
+  
+
+**The Damage Types column below is a limit, not a count.** A one-handed weapon can hold at most four damage types; a two-handed weapon at most eight. How many a particular weapon actually holds is rolled when it drops.
 
   
 
 |  |  |  |  |  |  |
 | :-- | :-: | :-: | :-: | :-: | :-- |
 | \*\*Base\*\* | \*\*Hands\*\* | \*\*Sub-Type\*\* | \*\*Damage Types\*\* | \*\*Attacks/sec\*\* | \*\*Implicit\*\* |
-| Sword | 1 | Slashing | 2 | 1.30 | 40 flat damage, 5% increased attack speed |
-| Dagger | 1 | Piercing | 2 | 1.50 | 26 flat damage, 8 critical strike chance |
-| Axe | 1 | Slashing | 2 | 1.25 | 46 flat damage |
-| Fist | 1 | Blunt | 2 | 1.45 | 30 flat damage, 10% increased attack speed |
-| Wand | 1 | Magic | 2 | 1.35 | 38 flat damage, 18% increased spell damage |
-| Whip | 1 | Slashing | 2 | 1.40 | 32 flat damage, 12% increased area of effect |
-| Shield | 1 | Blunt | 2 | 1.20 | 12 block chance, 260 armor |
-| Crossbow | 1 | Piercing | 2 | 1.35 | 38 flat damage, 20 critical strike multiplier |
-| Greatsword | 2 | Slashing | 3 | 1.25 | 78 flat damage |
-| Greataxe | 2 | Slashing | 3 | 1.28 | 72 flat damage, 22 critical strike multiplier |
-| Spear | 2 | Piercing | 3 | 1.35 | 64 flat damage, 6 penetration |
-| Staff | 2 | Magic | 3 | 1.30 | 66 flat damage, 32% increased spell damage |
-| Two-Handed Crossbow | 2 | Piercing | 3 | 1.30 | 66 flat damage, 7 critical strike chance |
-| Warhammer | 2 | Blunt | 3 | 1.20 | 84 flat damage |
+| Sword | 1 | Slashing | 4 | 1.30 | 40 flat damage, 5% increased attack speed |
+| Dagger | 1 | Piercing | 4 | 1.50 | 26 flat damage, 8 critical strike chance |
+| Axe | 1 | Slashing | 4 | 1.25 | 46 flat damage |
+| Fist | 1 | Blunt | 4 | 1.45 | 30 flat damage, 10% increased attack speed |
+| Wand | 1 | Magic | 4 | 1.35 | 38 flat damage, 18% increased spell damage |
+| Whip | 1 | Slashing | 4 | 1.40 | 32 flat damage, 12% increased area of effect |
+| Shield | 1 | Blunt | 4 | 1.20 | 12 block chance, 260 armor |
+| Crossbow | 1 | Piercing | 4 | 1.35 | 38 flat damage, 20 critical strike multiplier |
+| Greatsword | 2 | Slashing | 8 | 1.25 | 78 flat damage |
+| Greataxe | 2 | Slashing | 8 | 1.28 | 72 flat damage, 22 critical strike multiplier |
+| Spear | 2 | Piercing | 8 | 1.35 | 64 flat damage, 6 penetration |
+| Staff | 2 | Magic | 8 | 1.30 | 66 flat damage, 32% increased spell damage |
+| Two-Handed Crossbow | 2 | Piercing | 8 | 1.30 | 66 flat damage, 7 critical strike chance |
+| Warhammer | 2 | Blunt | 8 | 1.20 | 84 flat damage |
 
   
 
-**Which damage types fill those slots is not a property of the base.** Section IV says loot is biased toward the Cataclysm being fought, so the types are decided when the item drops. The base says only how many it holds.
+**Neither how many damage types a weapon holds, nor which ones, is a property of the base.** Both are decided when the item drops. Section IV says loot is biased toward the Cataclysm being fought, which is what decides *which* types fill them. The base says only the most it could ever hold.
 
   
 
-**Two one-handed weapons hold four damage types against a two-hander's three.** That is what makes dual wielding the primary route to multiclassing that section V describes, since every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage.
+**The difficulty tier caps the count as well, and it is the tighter limit for most of the game.** A weapon rolls from one damage type up to the lower of its own limit and the tier it dropped on. So a two-handed weapon cannot roll five damage types until tier 5, and reaches its full eight only at tier 8. A one-handed weapon is identical to a two-hander up to tier 4, and never rolls more than four however deep the player goes.
+
+  
+
+|  |  |  |  |
+| :-: | :-: | :-: | :-: |
+| \*\*Difficulty tier\*\* | \*\*Most on one one-hander\*\* | \*\*Most on one two-hander\*\* | \*\*Most while dual wielding\*\* |
+| 1 | 1 | 1 | 2 |
+| 2 | 2 | 2 | 4 |
+| 3 | 3 | 3 | 6 |
+| 4 | 4 | 4 | 8 |
+| 5 | 4 | 5 | 8 |
+| 6 | 4 | 6 | 8 |
+| 7 | 4 | 7 | 8 |
+| 8 | 4 | 8 | 8 |
+
+  
+
+**Dual wielding is still the primary route to multiclassing that section V describes, and the tier cap is what makes it so.** The raw limits tie — two one-handers reach eight damage types and so does a single two-hander. What separates them is when. A dual wielder holds all eight from tier 4; a two-hander gains one type per tier and does not catch up until tier 8. So dual wielding leads at every tier from 1 to 7, by the widest margin at tier 4, and is only matched at the very end. Every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage throughout.
 
   
 
