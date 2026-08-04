@@ -251,6 +251,13 @@ and `sim/tests/test_affixes.py`.
 
 ## 2026-08-04 — The rule that gear grants no primary attribute stands, and both rules in "What Affixes Do Not Grant" are now pinned by a test
 
+> **SUPERSEDED THE SAME DAY, in part.** The project owner reversed the rule about
+> attributes within the hour: gear must be able to grant primary attributes. See
+> reversal 1 of "Nine decisions from an audit of the affix pool" above. The
+> attribute half of this entry is history. The other half stands: no ordinary
+> affix is a "more" multiplier, and
+> `tools/tests/test_what_affixes_do_not_grant.py` still pins that.
+
 **The question.** Issue #204 reported that none of the eight primary attributes —
 Agility, Ferocity, Constitution, Vitality, Mind, Spirit, Efficacy, Luck — can be
 found on gear, having cross-referenced every attribute against the `Stat` column

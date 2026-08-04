@@ -1870,7 +1870,15 @@ An affix cannot appear on every piece. Without restrictions every slot is interc
 
 ### **What Affixes Do Not Grant**
 
-**There are no attribute affixes.** The design gives one attribute point per level, and the Maw consumes items and enemies for more. Gear granting attribute points appears nowhere, so an affix for it would be a new mechanic rather than a filled gap.
+**Gear can grant primary attributes.** An earlier version of this section said it could not, on the grounds that the design gives one attribute point per level and the Maw consumes items and enemies for more, so gear granting them would be a new mechanic rather than a filled gap. That was reversed on 2026-08-04: attributes must be slottable on gear.
+
+  
+
+**The Maw is still a source, so an attribute affix is priced against both.** A character's attribute points come from levelling, from the Maw, and now from gear. An attribute affix competes with what the Maw already gives, not only with the hundred points a character earns by reaching level 100.
+
+  
+
+**No attribute affix exists yet.** The affixes themselves are still to be designed — flat or increased, prefix or suffix, which slots, and whether a hybrid grants two attributes at a reduced share, as the twelve existing hybrids do. Issue #204 carries that work.
 
   
 
