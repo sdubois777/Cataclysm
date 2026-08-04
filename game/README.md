@@ -59,9 +59,9 @@ editor tooling can never reach a packaged build.
 
 Two targets:
 
-- `Cataclysm.Target.cs` — the packaged game. Ships `Cataclysm` and
+- `Source/Cataclysm.Target.cs` — the packaged game. Ships `Cataclysm` and
   `CataclysmEmpire` only.
-- `CataclysmEditor.Target.cs` — the editor. Adds `CataclysmEditor` on top.
+- `Source/CataclysmEditor.Target.cs` — the editor. Adds `CataclysmEditor` on top.
 
 ### Why the empire layer is its own module
 
@@ -74,16 +74,77 @@ dependency direction explicit.
 the game module may use the empire layer, never the reverse. `CataclysmEditor`
 depends on both.
 
+## What is here
+
+The Gameplay Ability System is wired up.
+`Source/Cataclysm/Cataclysm.Build.cs` takes `GameplayAbilities`, `GameplayTags`
+and `GameplayTasks` as public dependencies, and `Source/Cataclysm/AbilitySystem/`
+holds an ability system component, five attribute sets (primary attributes,
+vitals, combat, resistances, class resource), the damage calculation, seven
+shared skill templates that the designed skills are configured from, and the
+two-team friend-or-foe model. `game/docs/ability-system.md` explains where the
+component lives and why.
+
+`Content/` holds generated assets, not authored ones:
+
+| Path | What it is |
+|---|---|
+| `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. The five training dummies are not in the map — `ACataclysmGameMode` spawns them in a ring at play time. |
+| `Data/` | Fourteen DataTable assets imported from the workbook. See below. |
+| `Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
+
 ## What is not here yet
 
-The Gameplay Ability System is not wired up. `GameplayAbilities` ships with the
-engine and is present, but it is deliberately absent from the build dependencies
-so that the first compile proved the project skeleton alone. That work is tracked
-separately.
+- **No art assets of any kind.** The player and every enemy are engine primitive
+  meshes from `/Engine/BasicShapes/`. There are no character models, animations,
+  authored materials, particle systems or sounds. The asset and animation
+  pipelines are still being chosen (issues
+  [#17](https://github.com/sdubois777/Cataclysm/issues/17),
+  [#18](https://github.com/sdubois777/Cataclysm/issues/18) and
+  [#19](https://github.com/sdubois777/Cataclysm/issues/19)).
+- **No procedural dungeon generation.** `L_Sandbox` is the only map (issue
+  [#40](https://github.com/sdubois777/Cataclysm/issues/40)).
+- **No heads-up display and no interface screens.** Nothing in the project uses
+  UMG yet, so health, cooldowns and slots are invisible in a play session (issue
+  [#49](https://github.com/sdubois777/Cataclysm/issues/49)).
+- **No save or persistence.** There is no `USaveGame` anywhere, so a play session
+  keeps nothing (issue
+  [#21](https://github.com/sdubois777/Cataclysm/issues/21)).
+- **No empire layer runtime.** `CataclysmEmpire` is a module with a build file
+  and nothing in it; the day clock, cities and surges are still only the Python
+  model in `sim/` (issue
+  [#42](https://github.com/sdubois777/Cataclysm/issues/42)).
 
-`Content/` is empty apart from a placeholder. There are no maps, no Blueprints
-and no assets.
+## Running the tests
 
+The C++ tests are Unreal automation tests, under
+`Source/Cataclysm/Tests/`. They need no play session and no rendering. Run them
+all from this folder:
+
+```bash
+"/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
+  "$PWD/Cataclysm.uproject" \
+  -ExecCmds="Automation RunTests Cataclysm" \
+  -unattended -nopause -nosplash -nullrhi \
+  -testexit="Automation Test Queue Empty" -log
+```
+
+Narrow it by replacing `Cataclysm` with any prefix of a test name, for example
+`Cataclysm.AbilitySystem` or `Cataclysm.Skills`.
+
+**The results are not on standard output.** Redirecting the command captures only
+the SDK validation banner. The run writes to `Saved/Logs/Cataclysm.log`; read the
+counts from there:
+
+```bash
+grep -cE "Test Completed. Result=\{Success\}" Saved/Logs/Cataclysm.log
+grep -E "Test Completed. Result=\{Fail" Saved/Logs/Cataclysm.log
+grep -E "Automation Test Queue Empty" Saved/Logs/Cataclysm.log
+```
+
+**The editor cannot be open while `Build.bat` runs.** Live Coding holds the
+binaries and the build refuses to start. Close the editor, build, run the tests,
+reopen it.
 
 ## Regenerating the content the workbook produces
 
