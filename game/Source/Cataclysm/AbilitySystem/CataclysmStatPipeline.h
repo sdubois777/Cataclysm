@@ -49,6 +49,22 @@ enum class ECataclysmModifierSource : uint8
 
 	/** An enchantment on a Legendary or better item. May grant More. */
 	Enchantment		UMETA(DisplayName = "Enchantment"),
+
+	/**
+	 * A buff a skill put on its own caster, lasting only as long as the skill.
+	 *
+	 * Burning Wrath's "4% increased fire damage for every enemy currently
+	 * burning within 15 meters" is one. Unlike every source above it, this one
+	 * is added and removed at runtime rather than being a property of what the
+	 * character is wearing, which is why UCataclysmAbilitySystemComponent holds
+	 * these in a list a skill can add to and take from.
+	 *
+	 * MAY GRANT MORE. The rule that ordinary gear may not is about a ROLLED
+	 * modifier staying readable on a drop. A skill buff is authored, in the same
+	 * way a gem, a keystone and an enchantment are authored, so it sits with
+	 * those three rather than with the affix pool.
+	 */
+	SkillBuff		UMETA(DisplayName = "Skill Buff"),
 };
 
 /**

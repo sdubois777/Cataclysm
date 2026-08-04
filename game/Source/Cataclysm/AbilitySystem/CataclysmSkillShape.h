@@ -149,6 +149,25 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	int32 MaxActive = 0;
 
+	// --- Self buff --------------------------------------------------------
+
+	/**
+	 * Percentage points of increased damage the buff grants, per burning enemy
+	 * that was inside Radius when it went up.
+	 *
+	 * Burning Wrath is "4% increased fire damage for every enemy currently
+	 * burning within 15 meters", so this is 4 and the count is taken once. Zero
+	 * means the buff grants no increase, which is every other self buff.
+	 *
+	 * WHY PER BURNING ENEMY AND NOT A PLAIN INCREASE. Because that is the only
+	 * form the design uses for a self buff's magnitude, and a plain increase is
+	 * the case where the count happens to be one. A second key for the flat
+	 * case can be added when a skill needs it; inventing it now would be a
+	 * parameter nothing writes.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float IncreasePerBurning = 0.0f;
+
 	// --- Riders every shape may carry -------------------------------------
 
 	/** True when the skill sets what it hits alight. Fifteen of sixteen do. */
@@ -241,4 +260,21 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Shape")
 	static FGameplayTag StatusTagFor(const FString& EffectName);
+
+	/**
+	 * Read a comma-separated Tags cell into a container.
+	 *
+	 * WHAT THE TAGS ARE FOR. Scoping. UCataclysmStatPipeline::ModifierApplies
+	 * asks whether the skill in hand carries every tag a modifier requires, so
+	 * an increase scoped to Element.Demonic reaches a Demonic skill and no
+	 * other.
+	 *
+	 * A NAME THAT IS NOT A REGISTERED TAG IS SKIPPED, not treated as an error.
+	 * tools/generate_datatables.py already checks every tag in every Tags cell
+	 * against the generated tag list and refuses the row otherwise, so a name
+	 * arriving here that the manager does not know means the table was edited
+	 * in the editor rather than generated. Skipping narrows what that skill
+	 * scales with; failing would stop it running at all, which is worse.
+	 */
+	static FGameplayTagContainer TagsFromCell(const FString& Cell);
 };

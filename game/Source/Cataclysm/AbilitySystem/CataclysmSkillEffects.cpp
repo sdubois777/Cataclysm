@@ -1,7 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -79,8 +81,36 @@ float UCataclysmSkillEffects::WeaponDamageOf(const UAbilitySystemComponent* Abil
 		UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
 }
 
+float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Source,
+											 float BaseDamage,
+											 const FGameplayTagContainer& SkillTags)
+{
+	// An ability system component this project did not make carries no modifier
+	// list, which is not a fault: an enemy's plain melee attack goes through
+	// here too and has nothing to scale it.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(Source);
+	if (!Cataclysm || BaseDamage <= 0.0f)
+	{
+		return BaseDamage;
+	}
+
+	const TArray<FCataclysmStatModifier>& Modifiers = Cataclysm->GetStatModifiers();
+	if (Modifiers.IsEmpty())
+	{
+		return BaseDamage;
+	}
+
+	// Base is the skill's damage, not the weapon's. A skill buff's increase is
+	// written against what the skill deals -- Burning Wrath reads "4% increased
+	// fire damage", not "4% increased weapon damage" -- so the skill's own
+	// percentage has already been applied by the time this runs.
+	return UCataclysmStatPipeline::Evaluate(BaseDamage, Modifiers, SkillTags).Final;
+}
+
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
-									   float DamagePercent)
+									   float DamagePercent,
+									   const FGameplayTagContainer& SkillTags)
 {
 	if (DamagePercent <= 0.0f)
 	{
@@ -96,7 +126,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
-	const float Damage = WeaponDamageOf(Source) * DamagePercent / 100.0f;
+	const float Damage = ModifiedDamage(
+		Source, WeaponDamageOf(Source) * DamagePercent / 100.0f, SkillTags);
 	if (Damage <= 0.0f)
 	{
 		// A character with no weapon damage. Expected before a weapon is

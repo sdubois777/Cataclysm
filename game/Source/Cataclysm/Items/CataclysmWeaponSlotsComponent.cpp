@@ -145,6 +145,7 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 			Template->SkillName = Skill.Name;
 			Template->SkillDescription = Skill.Description;
 			Template->Params = Skill.Params;
+			Template->SkillTags = Skill.Tags;
 		}
 		else if (UCataclysmUndesignedSkill* Placeholder =
 					Cast<UCataclysmUndesignedSkill>(Instance))

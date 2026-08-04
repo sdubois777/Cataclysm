@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "GameplayEffectAggregator.h"
@@ -518,6 +519,123 @@ bool FCataclysmPipelineRateTest::RunTest(const FString& Parameters)
 							 37.5f, 0.01f));
 	TestTrue(TEXT("with no more sources it is unchanged from before"),
 		FMath::IsNearlyEqual(FCombat::FinalCooldown(4.0f, 1.0f / 3.0f), 3.0f, 0.001f));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The runtime modifier list. Issue #166: the pipeline was a calculator nothing
+// fed, so a buff had a duration and no magnitude.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBuffMayGrantMoreTest,
+	"Cataclysm.StatPipeline.ASkillsOwnBuffMayGrantAMoreMultiplier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBuffMayGrantMoreTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	// THE RULE THIS IS ABOUT. Only some sources may grant a More multiplier,
+	// because a rolled gear affix that did would make a drop unreadable. A
+	// skill's own buff is authored, the way a gem, a keystone and an
+	// enchantment are authored, so it sits with those three.
+	TestTrue(TEXT("a skill buff may grant More"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::SkillBuff));
+	TestFalse(TEXT("a gear affix still may not"),
+		FPipeline::CanGrantMore(ECataclysmModifierSource::GearAffix));
+
+	const FCataclysmStatModifier More = Make(
+		ECataclysmStatBucket::More, ECataclysmModifierSource::SkillBuff, 30.0f);
+	TestTrue(TEXT("and validation accepts it"),
+		FPipeline::ValidateModifier(More).IsEmpty());
+
+	TArray<FCataclysmStatModifier> Modifiers = { More };
+	const FCataclysmStatBreakdown Result =
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags);
+	TestEqual(TEXT("100 with a 30% more from a skill buff is 130"),
+		Result.Final, 130.0f);
+	TestEqual(TEXT("and it is counted, not rejected"), Result.RejectedMoreCount, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierListTest,
+	"Cataclysm.StatPipeline.TheAbilitySystemHoldsModifiersThatCanBeTakenAway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierListTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>();
+
+	TestEqual(TEXT("it starts empty"), AbilitySystem->GetStatModifiers().Num(), 0);
+
+	const int32 First = AbilitySystem->AddStatModifier(Increased(20.0f));
+	const int32 Second = AbilitySystem->AddStatModifier(Increased(30.0f));
+	TestTrue(TEXT("adding gives a usable handle"), First != 0);
+	TestTrue(TEXT("and the second handle differs from the first"), Second != First);
+	TestEqual(TEXT("both are held"), AbilitySystem->GetStatModifiers().Num(), 2);
+
+	TestEqual(TEXT("a handle reads back its own value"),
+		AbilitySystem->GetStatModifierValue(Second), 30.0f);
+
+	TestTrue(TEXT("a live value can be changed"),
+		AbilitySystem->SetStatModifierValue(Second, 45.0f));
+	TestEqual(TEXT("and reads back changed"),
+		AbilitySystem->GetStatModifierValue(Second), 45.0f);
+
+	// REMOVING THE FIRST MUST NOT DISTURB THE SECOND. The two arrays behind this
+	// are kept aligned by index, so a removal that fixed one and not the other
+	// would silently give somebody else's modifier the wrong handle.
+	TestTrue(TEXT("the first can be removed"),
+		AbilitySystem->RemoveStatModifier(First));
+	TestEqual(TEXT("one is left"), AbilitySystem->GetStatModifiers().Num(), 1);
+	TestEqual(TEXT("and it is still the second one, unchanged"),
+		AbilitySystem->GetStatModifierValue(Second), 45.0f);
+
+	TestFalse(TEXT("removing the same handle twice does nothing"),
+		AbilitySystem->RemoveStatModifier(First));
+	TestFalse(TEXT("an unknown handle removes nothing"),
+		AbilitySystem->RemoveStatModifier(9999));
+	TestEqual(TEXT("an unknown handle reads as zero"),
+		AbilitySystem->GetStatModifierValue(9999), 0.0f);
+
+	// HANDLES ARE NEVER REUSED, so a stale one cannot take away a modifier that
+	// happens to have landed in the same place.
+	const int32 Third = AbilitySystem->AddStatModifier(Increased(10.0f));
+	TestTrue(TEXT("a later handle is not one already handed out"),
+		Third != First && Third != Second);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierListRefusesTest,
+	"Cataclysm.StatPipeline.TheAbilitySystemRefusesAMoreItIsNotAllowed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierListRefusesTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>();
+
+	// Evaluate SKIPS a More from a source that may not grant one and counts it,
+	// which is right for gear a player is wearing: a character sheet can then
+	// say the modifier is doing nothing. Asking for one in code is a mistake in
+	// the code, so this refuses instead, and the invalid handle is what makes
+	// the mistake visible where it was made.
+	AddExpectedError(TEXT("refused a stat modifier"), EAutomationExpectedErrorFlags::Contains, 1);
+
+	const FCataclysmStatModifier Illegal = Make(
+		ECataclysmStatBucket::More, ECataclysmModifierSource::GearAffix, 50.0f);
+	TestEqual(TEXT("a More from a gear affix is refused"),
+		AbilitySystem->AddStatModifier(Illegal), 0);
+	TestEqual(TEXT("and nothing was stored"),
+		AbilitySystem->GetStatModifiers().Num(), 0);
 
 	return true;
 }

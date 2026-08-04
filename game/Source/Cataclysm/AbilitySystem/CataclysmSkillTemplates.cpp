@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -287,8 +288,8 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 
 	// Burning Wrath is "4% increased fire damage for every enemy currently
 	// burning within 15 meters", so the count is taken once, when it goes up,
-	// not continuously. Counted even though nothing can yet apply the increase,
-	// because the count is the part that is genuinely this skill's rule.
+	// not continuously. An enemy that dies or stops burning during the ten
+	// seconds does not lower it, and one that catches fire does not raise it.
 	BurningEnemiesAtCast = 0;
 	if (Params.RadiusCm > 0.0f)
 	{
@@ -303,12 +304,13 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 		}
 	}
 
+	GrantIncrease();
+
 	// GRANTED ONLY IF THE SKILL NAMES AN EFFECT, and neither designed self buff
 	// does: the design gives Burning Wrath and Martyr's Ember a duration and a
 	// magnitude but never names the buff, so there is no status in the Buffs
-	// sheet for either and no tag to grant. The duration is still real -- the
-	// timer below runs and the ability ends when it expires -- and the magnitude
-	// is what is missing. Issue #166.
+	// sheet for either and no tag to grant. The magnitude no longer depends on
+	// this: it is a stat modifier on the caster, not a tag anything reads.
 	UCataclysmSkillEffects::ApplyTagForDuration(
 		Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
 		Params.Duration);
@@ -325,10 +327,100 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	}
 }
 
+void UCataclysmSelfBuffSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// HERE AND NOT IN Finish, because Finish is only the timer's route out. A
+	// buff can also end because the ability was cancelled, because the avatar
+	// died, or because the ability system was cleared, and an increase left
+	// behind by any of those would last until the character was destroyed.
+	RevokeIncrease();
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
 void UCataclysmSelfBuffSkill::Finish()
 {
 	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
 			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmSelfBuffSkill::GrantIncrease()
+{
+	GrantedIncrease = 0.0f;
+	GrantedScope = FGameplayTag();
+
+	if (Params.IncreasePerBurning <= 0.0f || BurningEnemiesAtCast <= 0)
+	{
+		// No increase to grant. Burning Wrath with nothing alight nearby is the
+		// ordinary case, not a fault: the skill is written to be worth using
+		// only after something has been set on fire.
+		return;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	FCataclysmStatModifier Modifier;
+	Modifier.Bucket = ECataclysmStatBucket::Increased;
+	Modifier.Source = ECataclysmModifierSource::SkillBuff;
+	Modifier.Value = Params.IncreasePerBurning * BurningEnemiesAtCast;
+
+	// SCOPED TO THE SKILL'S OWN ELEMENT, so the rule is in the data and not
+	// here. Burning Wrath carries Element.Demonic, which is this project's fire,
+	// so "increased fire damage" is an increase that reaches skills carrying
+	// that tag. A self buff written for another damage type scopes to its own
+	// element with no code changing. A skill carrying no element tag grants an
+	// increase that applies to everything, which is what an unscoped modifier
+	// means throughout the pipeline.
+	GrantedScope = ElementTag();
+	if (GrantedScope.IsValid())
+	{
+		Modifier.RequiredTags.AddTag(GrantedScope);
+	}
+
+	IncreaseHandle = AbilitySystem->AddStatModifier(Modifier);
+	if (IncreaseHandle == 0)
+	{
+		GrantedScope = FGameplayTag();
+		return;
+	}
+
+	GrantedIncrease = Modifier.Value;
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' granted %.0f%% increased damage scoped to %s, from %d "
+			 "burning enemies, for %.1fs."),
+		*SkillName, GrantedIncrease,
+		GrantedScope.IsValid() ? *GrantedScope.ToString() : TEXT("everything"),
+		BurningEnemiesAtCast, Params.Duration);
+}
+
+void UCataclysmSelfBuffSkill::RevokeIncrease()
+{
+	if (IncreaseHandle == 0)
+	{
+		return;
+	}
+
+	if (UCataclysmAbilitySystemComponent* AbilitySystem =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Avatar())))
+	{
+		AbilitySystem->RemoveStatModifier(IncreaseHandle);
+	}
+
+	IncreaseHandle = 0;
+	GrantedIncrease = 0.0f;
+	GrantedScope = FGameplayTag();
 }
 
 // ==========================================================================
