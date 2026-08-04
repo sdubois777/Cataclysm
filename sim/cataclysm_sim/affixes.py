@@ -1069,7 +1069,15 @@ class WeaponBase(ItemBase):
     #: multiplier of 2.0 was derived against. Changing one without the other
     #: moves a multiplier that is already shipped.
     attack_speed: float = 0.0
-    damage_type_slots: int = 2
+
+    #: THE MOST damage types this base can ever hold, not how many it holds. The
+    #: count on a particular weapon is rolled when it drops, from 1 up to
+    #: `max_damage_types(hands, tier)`, which also caps it by difficulty tier.
+    #:
+    #: The name is kept for now because it is the column name in the workbook and
+    #: in `game/Data/ItemBases.csv`; renaming it would touch the sheet header, the
+    #: generator and the Unreal row struct together.
+    damage_type_slots: int = 4
 
     @property
     def value_multiplier(self) -> float:
@@ -1100,15 +1108,44 @@ class WeaponBase(ItemBase):
                 f"there are only {len(DAMAGE_TYPES)}")
 
 
-#: A one-handed weapon holds two damage types and a two-hander holds three.
+#: THE MOST damage types a weapon of each kind can ever hold, not how many it
+#: holds. A one-hander tops out at four and a two-hander at eight.
 #:
-#: That is what makes dual wielding the primary route to multiclassing, which
-#: the design states outright: two one-handers hold four types against a
-#: two-hander's three, so dual wielding unlocks one more class tree, while the
-#: two-hander stays ahead on raw damage. Every damage type present unlocks that
-#: type's three class trees.
-DAMAGE_TYPES_ON_ONE_HANDED = 2
-DAMAGE_TYPES_ON_TWO_HANDED = 3
+#: HOW MANY A PARTICULAR WEAPON HOLDS IS ROLLED WHEN IT DROPS, and the difficulty
+#: tier caps that roll as well. The count is drawn from 1 up to
+#: `max_damage_types(hands, tier)`, which is the lower of the two limits. So a
+#: two-hander cannot roll five damage types until tier 5, and a one-hander never
+#: rolls more than four however deep the player goes.
+#:
+#: DUAL WIELDING IS STILL THE ROUTE TO MULTICLASSING, and the tier cap is what
+#: makes that true rather than the raw maximums, which tie at eight. Two
+#: one-handers reach the full eight types at tier 4; a two-hander cannot reach
+#: eight until tier 8. Dual wielding therefore leads at every tier from 1 to 7
+#: and ties only at the last one, with the gap widest at tier 4. Every damage
+#: type present unlocks that type's three class trees.
+DAMAGE_TYPES_ON_ONE_HANDED = 4
+DAMAGE_TYPES_ON_TWO_HANDED = 8
+
+#: The number of difficulty tiers, which is also the highest damage type count a
+#: two-hander can reach, because the tier caps the roll.
+DIFFICULTY_TIERS = 8
+
+
+def max_damage_types(hands: int, tier: int) -> int:
+    """The most damage types a weapon of this kind can roll at this tier.
+
+    The lower of the weapon's own limit and the difficulty tier. A one-hander is
+    capped at four whatever the tier; a two-hander is capped by the tier until
+    tier 8, where it reaches its own limit of eight.
+    """
+    if hands not in (1, 2):
+        raise ValueError(f"a weapon is one- or two-handed, not {hands}")
+    if not 1 <= tier <= DIFFICULTY_TIERS:
+        raise ValueError(
+            f"tier {tier} is outside 1 to {DIFFICULTY_TIERS}")
+    own_limit = (DAMAGE_TYPES_ON_ONE_HANDED if hands == 1
+                 else DAMAGE_TYPES_ON_TWO_HANDED)
+    return min(own_limit, tier)
 
 
 def _weapon(name: str, weapon_type: str, hands: int, sub_type: str,
@@ -1650,13 +1687,36 @@ def _check_the_weapon_types_match_the_design() -> None:
 
 def _check_dual_wielding_carries_more_damage_types_than_a_two_hander() -> None:
     """The design says dual wielding is the primary route to multiclassing
-    because it is how a player carries more damage types at once. If a two-hander
-    matched two one-handers, that sentence would stop being true."""
-    if DAMAGE_TYPES_ON_ONE_HANDED * 2 <= DAMAGE_TYPES_ON_TWO_HANDED:
-        raise ValueError(
-            f"two one-handers hold {DAMAGE_TYPES_ON_ONE_HANDED * 2} damage "
-            f"types and a two-hander holds {DAMAGE_TYPES_ON_TWO_HANDED}, so "
-            "dual wielding is not the route to multiclassing the design says")
+    because it is how a player carries more damage types at once.
+
+    COMPARING THE RAW MAXIMUMS NO LONGER PROVES THIS, and that is why this check
+    walks the tiers instead. Two one-handers top out at eight types and so does a
+    two-hander, so the maximums tie. What keeps the design's sentence true is the
+    tier cap: a one-hander reaches its limit of four at tier 4, so a dual wielder
+    has all eight from tier 4 onward, while a two-hander gains one type per tier
+    and does not reach eight until tier 8.
+
+    So the claim to hold is: at every tier a dual wielder carries at least as many
+    damage types as a two-hander, and strictly more below the last tier.
+
+    ONE CONDITION, NOT TWO. An earlier version of this check tested "is the dual
+    wielder behind" separately from "have they tied early". The first of those can
+    never fire: a two-hander gains exactly one type per tier, so it cannot
+    overtake a dual wielder without passing through equality first, and the tie
+    test always catches it. A branch that cannot fire is not a check.
+    """
+    for tier in range(1, DIFFICULTY_TIERS + 1):
+        dual = max_damage_types(1, tier) * 2
+        two_handed = max_damage_types(2, tier)
+        last_tier = tier == DIFFICULTY_TIERS
+        held = dual >= two_handed if last_tier else dual > two_handed
+        if not held:
+            raise ValueError(
+                f"at tier {tier} two one-handers hold {dual} damage types and a "
+                f"two-hander holds {two_handed}. A dual wielder must lead at "
+                f"every tier below {DIFFICULTY_TIERS} and may only be caught at "
+                f"{DIFFICULTY_TIERS} itself, or dual wielding is not the route "
+                "to multiclassing the design says")
 
 
 def _check_no_weapon_rolls_a_defensive_affix() -> None:
@@ -2296,16 +2356,27 @@ if __name__ == "__main__":
         print(f"    {base.name:<20} {base.hands:>5} {base.sub_type:<9} "
               f"{base.damage_type_slots:>5}  {marks}")
     print()
-    print("    A weapon carries a physical sub-type and a number of damage type")
-    print("    slots, neither of which any other item has. WHICH types fill")
-    print("    those slots is decided when the item drops, biased toward the")
-    print("    Cataclysm being fought, so the base says only how many.")
+    print("    A weapon carries a physical sub-type and a limit on how many")
+    print("    damage types it can hold, neither of which any other item has.")
+    print("    The column above is that LIMIT, not a count. How many a weapon")
+    print("    actually holds is rolled when it drops, from 1 up to the lower of")
+    print("    that limit and the difficulty tier. WHICH types fill them is also")
+    print("    decided on drop, biased toward the Cataclysm being fought.")
     print()
-    print(f"    Two one-handers hold {DAMAGE_TYPES_ON_ONE_HANDED * 2} damage types against a "
-          f"two-hander's {DAMAGE_TYPES_ON_TWO_HANDED},")
-    print("    which is what makes dual wielding the primary route to")
-    print("    multiclassing that the design says it is, while the two-hander")
-    print("    stays ahead on raw damage.")
+    print("    Dual wielding stays the route to multiclassing, and the tier cap")
+    print("    is what makes that true: the raw limits tie at eight.")
+    print()
+    print("      tier   two one-handers   one two-hander")
+    for tier in range(1, DIFFICULTY_TIERS + 1):
+        dual = max_damage_types(1, tier) * 2
+        two_handed = max_damage_types(2, tier)
+        lead = dual - two_handed
+        print(f"      {tier:>4}   {dual:>15}   {two_handed:>14}   "
+              f"{'+' + str(lead) if lead else 'tie'}")
+    print()
+    print("    A dual wielder leads at every tier from 1 to 7 and ties only at 8,")
+    print("    where the two-hander finally catches up, while staying ahead on")
+    print("    raw damage throughout.")
     print()
     print("    The Shield is the one weapon whose base defends. The design lists")
     print("    it among the one-handed weapon types and says there are no")

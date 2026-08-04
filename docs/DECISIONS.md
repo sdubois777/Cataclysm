@@ -20,6 +20,82 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — A weapon holds 1 to 8 damage types, rolled on drop and capped by tier
+
+**The question.** The project owner stated that a weapon can carry anywhere from
+one damage type to all eight. The data and the design document both said
+otherwise, and had done since they were written.
+
+**What was actually there.** Three sources agreed with each other and disagreed
+with the owner. `game/Data/ItemBases.csv` gave every one-handed weapon 2 damage
+types and every two-hander 3. `sim/cataclysm_sim/affixes.py` hardcoded the same
+two numbers. `Cataclysm_GDD_v2.md` said "the base says only how many it holds"
+and built the whole justification for dual wielding on the 2-versus-3 split:
+"Two one-handed weapons hold four damage types against a two-hander's three."
+
+The owner confirmed the intended rule and asked for the data and documents to be
+corrected rather than the rule.
+
+**THE RULE, as stated by the owner.** A one-handed weapon can hold at most four
+damage types; a two-handed weapon at most eight. The count on a particular weapon
+is **rolled when it drops**, from one up to the lower of that limit and the
+difficulty tier the item dropped on. A one-hander and a two-hander are therefore
+identical up to tier 4, and diverge from tier 5, where a two-hander can begin
+rolling five.
+
+**WHY THE DUAL WIELDING ARGUMENT SURVIVES, AND WHY IT HAD TO BE REWRITTEN.** The
+old sentence compared raw counts: four against three. Under the new rule the raw
+limits tie, because two one-handers reach eight and so does a single two-hander.
+Compared that way, dual wielding would lose its stated reason to exist.
+
+The tier cap is what saves it, and it makes a better argument than the one it
+replaces:
+
+| Tier | Dual wielding | One two-hander | Dual wielder's lead |
+|---|---|---|---|
+| 1 | 2 | 1 | +1 |
+| 2 | 4 | 2 | +2 |
+| 3 | 6 | 3 | +3 |
+| 4 | 8 | 4 | +4 |
+| 5 | 8 | 5 | +3 |
+| 6 | 8 | 6 | +2 |
+| 7 | 8 | 7 | +1 |
+| 8 | 8 | 8 | tie |
+
+A dual wielder leads at every tier from 1 to 7, by the widest margin at tier 4,
+and is matched only at tier 8. Dual wielding is the route to multiclassing for
+seven eighths of the game and the two-hander finally catches up at the end, while
+staying ahead on raw damage throughout. That is a progression curve rather than a
+flat advantage, and nobody designed it deliberately — it falls out of the rule.
+
+**A GUARD THAT COULD NOT FIRE WAS WRITTEN AND THEN REMOVED, WHICH IS WORTH
+RECORDING BECAUSE IT NEARLY SHIPPED.** The check protecting the dual wielding
+claim was first written as two conditions: is the dual wielder behind, and have
+they tied before the last tier. The first can never fire. A two-hander gains
+exactly one damage type per tier, so it cannot overtake a dual wielder without
+passing through equality first, and the tie condition always catches it. The
+branch was dead code that read like a safety net. It is now one condition, and
+`sim/tests/test_affixes.py` proves it fires by lowering the one-handed limit to
+two and watching a two-hander draw level at tier 4.
+
+**What is NOT done, and is filed separately.** The column is still called
+`DamageTypeSlots` in `game/Data/ItemBases.csv` and `Damage Types` in the workbook,
+and both now mean a maximum rather than a count. The name is misleading and should
+be changed, but renaming it touches the workbook sheet header,
+`tools/generate_datatables.py`, the simulation model, its tests and the Unreal row
+struct together, so it was kept out of this change.
+
+**The drop roll itself does not exist yet.** This change records the rule and sets
+the limits. Rolling a count between one and the cap belongs with loot generation.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change: the Weapon Bases
+section's damage type column, the paragraph saying the base decides how many, and
+the dual wielding paragraph. `All_Things_Cataclysm.xlsx`, Item Bases sheet, 14
+weapon rows. `game/Data/ItemBases.csv`, regenerated. `sim/cataclysm_sim/affixes.py`
+and `sim/tests/test_affixes.py`.
+
+---
+
 ## 2026-08-04 — The rule that gear grants no primary attribute stands, and both rules in "What Affixes Do Not Grant" are now pinned by a test
 
 **The question.** Issue #204 reported that none of the eight primary attributes —

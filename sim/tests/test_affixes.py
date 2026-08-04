@@ -912,24 +912,75 @@ def test_every_weapon_has_one_of_the_four_sub_types():
     assert {b.sub_type for b in af.WEAPON_BASES} == set(af.WEAPON_SUB_TYPES)
 
 
-def test_a_weapon_holds_damage_types_and_a_two_hander_holds_more():
+def test_a_weapon_base_carries_a_limit_not_a_count():
+    """The number on the base is the MOST damage types it can ever hold. A
+    one-hander tops out at four and a two-hander at eight."""
     for base in af.WEAPON_BASES:
         expected = (af.DAMAGE_TYPES_ON_ONE_HANDED if base.hands == 1
                     else af.DAMAGE_TYPES_ON_TWO_HANDED)
         assert base.damage_type_slots == expected, base.name
+    assert af.DAMAGE_TYPES_ON_ONE_HANDED == 4
+    assert af.DAMAGE_TYPES_ON_TWO_HANDED == len(af.DAMAGE_TYPES)
+
+
+def test_the_difficulty_tier_caps_how_many_damage_types_a_weapon_rolls():
+    """A two-hander gains one more possible type per tier until it reaches its
+    own limit; a one-hander stops at four however deep the player goes."""
+    assert [af.max_damage_types(2, t) for t in range(1, 9)] == [
+        1, 2, 3, 4, 5, 6, 7, 8]
+    assert [af.max_damage_types(1, t) for t in range(1, 9)] == [
+        1, 2, 3, 4, 4, 4, 4, 4]
+    # The two are identical up to tier 4 and diverge from tier 5, which is the
+    # rule as the project owner stated it.
+    for tier in range(1, 5):
+        assert af.max_damage_types(1, tier) == af.max_damage_types(2, tier)
+    for tier in range(5, 9):
+        assert af.max_damage_types(1, tier) < af.max_damage_types(2, tier)
+
+
+def test_no_weapon_can_roll_more_damage_types_than_exist():
+    for hands in (1, 2):
+        for tier in range(1, af.DIFFICULTY_TIERS + 1):
+            assert 1 <= af.max_damage_types(hands, tier) <= len(af.DAMAGE_TYPES)
+
+
+def test_max_damage_types_rejects_input_that_cannot_happen():
+    with pytest.raises(ValueError, match="one- or two-handed"):
+        af.max_damage_types(3, 1)
+    with pytest.raises(ValueError, match="outside 1 to"):
+        af.max_damage_types(1, 0)
+    with pytest.raises(ValueError, match="outside 1 to"):
+        af.max_damage_types(1, af.DIFFICULTY_TIERS + 1)
 
 
 def test_dual_wielding_carries_more_damage_types_than_a_two_hander():
     """The design says dual wielding is the primary route to multiclassing
-    BECAUSE it is how a player carries more damage types at once. If a
-    two-hander matched two one-handers, that sentence would stop being true."""
-    assert af.DAMAGE_TYPES_ON_ONE_HANDED * 2 > af.DAMAGE_TYPES_ON_TWO_HANDED
+    BECAUSE it is how a player carries more damage types at once.
+
+    COMPARING THE RAW LIMITS NO LONGER PROVES IT: both reach eight. The tier cap
+    is what keeps it true, so this walks the tiers.
+    """
+    af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
+    leads = [af.max_damage_types(1, t) * 2 - af.max_damage_types(2, t)
+             for t in range(1, af.DIFFICULTY_TIERS + 1)]
+    # Ahead at every tier but the last, widest at tier 4, level at tier 8.
+    assert leads == [1, 2, 3, 4, 3, 2, 1, 0]
 
 
-def test_that_multiclassing_check_actually_fires(monkeypatch):
-    monkeypatch.setattr(af, "DAMAGE_TYPES_ON_TWO_HANDED", 4)
+def test_that_the_multiclassing_check_actually_fires(monkeypatch):
+    """Lowering the one-handed limit to two lets a two-hander draw level at tier
+    4, three tiers before it is allowed to."""
+    monkeypatch.setattr(af, "DAMAGE_TYPES_ON_ONE_HANDED", 2)
     with pytest.raises(ValueError, match="route to multiclassing"):
         af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
+
+
+def test_the_multiclassing_check_allows_the_two_hander_to_catch_up_at_the_last_tier():
+    """The shipped numbers tie at tier 8 and that is deliberate, so the check
+    must pass rather than treating the tie as a failure."""
+    assert (af.max_damage_types(1, af.DIFFICULTY_TIERS) * 2
+            == af.max_damage_types(2, af.DIFFICULTY_TIERS))
+    af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
 
 
 def test_a_weapon_base_naming_a_sub_type_that_does_not_exist_is_rejected():
