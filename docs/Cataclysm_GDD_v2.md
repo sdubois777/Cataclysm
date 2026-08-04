@@ -2096,31 +2096,35 @@ Dungeon Score = (Common Enemy Score × 0.6) + (Elite Enemy Score × 0.2) + (Rare
 
 ## **Destructible Environment**
 
-Destruction in dungeons has two parts: objects that break, and surfaces that are marked by impacts.
+The environment reacts to damage through the physics system, not through authored responses to particular events. Anything built as a fracturable asset breaks when it is hit, by whatever hit it, according to the force applied and its own material.
 
   
 
-**Objects that break.** Dungeons contain breakable props, pillars, walls and sections of floor, placed by hand or by the dungeon generator. Those objects fracture and are removed when damaged. Anything a breakable object reveals, opens or drops is placed deliberately.
+**There is no per-event authoring.** A meteor, an explosion, a melee swing and a stray projectile all resolve through the same system. A new skill, a new enemy attack or a new environmental hazard needs no destruction work of its own; it damages things and things break. Each destructible asset is prepared once, and after that it reacts to everything in the game.
 
   
 
-**Surfaces that are marked.** A heavy impact leaves a crater. Meteors, heavy slams, a boss landing and similar events deform the surface they hit and leave a visible depression, with scorching, scattered debris and settled dust. A dungeon floor that has been fought over should look like it.
+**What is destructible.** Walls, pillars, statues, railings, furniture, hanging fixtures, ceiling sections, and decorative layers sitting on top of the floor.
 
   
 
-**Craters are visual and do not change navigation.** A crater does not block movement, does not change enemy pathing, does not create cover, and does not open a route that did not exist before. The player and every enemy cross it exactly as they crossed the flat surface.
+**What is not.** The walkable surface itself. Ground that the player and enemies stand on keeps its shape and stays navigable for the whole dungeon. Scorching, cracking, scattered rubble and settled debris appear on it. Holes, pits and impassable gaps do not.
 
   
 
-This limit is what keeps environmental destruction affordable. The moment a crater changes where something can walk, the navigation mesh has to be rebuilt while it is being walked on, and that cost is the reason deformable terrain was ruled out. A crater that is only seen costs a fixed amount and never touches pathfinding.
+**Why the walkable surface is excluded.** Enemy pathfinding reads a navigation mesh built from collision geometry, and that mesh is known not to update reliably when fractured pieces are removed at runtime. The failure is enemies unable to cross ground that looks passable. Keeping destruction off the walkable plane avoids the problem rather than paying to work around it, and it costs the player nothing they would notice: everything they hit still breaks.
 
   
 
-**Terrain is still not deformable.** The player cannot dig, tunnel, or cut a new path through ground or rock. Level geometry outside the authored breakables is fixed for the duration of a dungeon.
+**Cost is governed by how much is moving, not how much could break.** A dungeon may hold a large number of fracturable assets cheaply, because the expense is in pieces actively simulating rather than pieces that exist. The controls are a cap on how many pieces simulate at once, and putting debris to rest or removing it once it settles.
 
   
 
-These limits are deliberate rather than temporary, and the reasoning is recorded in `DECISIONS.md`.
+**Terrain is not deformable.** The player cannot dig, tunnel, or cut a new path through ground or rock.
+
+  
+
+The reasoning behind these choices, and the measurements still needed to confirm them, are recorded in `DECISIONS.md`.
 
   
 
