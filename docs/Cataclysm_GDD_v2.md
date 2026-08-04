@@ -434,14 +434,14 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 
 |  |  |  |  |
 | :-- | :-: | :-: | :-- |
-| \*\*Slot\*\* | \*\*Cooldown\*\* | \*\*Band\*\* | \*\*Mana cost\*\* |
-| Basic Attack | none | — | none |
-| Movement | 5s | 3–10s | 4% |
-| Heavy Attack | 6s | 4–12s | 5% |
-| Special | 12s | 8–20s | 8% |
-| Support | 20s | 12–30s | 6% |
-| Ultimate | 60s | 40–90s | 15% |
-| Aura | none | — | 5% per second |
+| \*\*Slot\*\* | \*\*Cooldown\*\* | \*\*Band\*\* | \*\*Mana\*\* |
+| Basic Attack | none | — | restores 6 on hit |
+| Heavy Attack | 1.5s | 1–4s | 15 |
+| Support | 4s | 2–10s | 25 |
+| Special | 5s | 3–10s | 40 |
+| Movement | 5s | 3–10s | 20 |
+| Ultimate | 20s | 12–40s | 150 |
+| Aura | none | — | 20 per second |
 
   
 
@@ -449,7 +449,28 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 
   
 
-**Mana cost is a percentage of base maximum mana**, meaning the class's mana at the character's level before attributes, gear and enchantments. It is measured against the class base rather than the final pool on purpose. Mind grants 2% maximum mana per point and only 1% mana regeneration, and two affixes plus a hybrid also raise maximum mana. If the cost scaled with the final pool, every one of those would buy nothing, because the price would rise with the pool. Measured against the class base they all buy what they should: more casts before running dry.
+**Mana costs are flat numbers, and the same number for every class.** That is what makes a large mana pool worth having: it buys more casts of the same skill rather than paying a proportionally larger price for each one. Every source of maximum mana is pure gain for the same reason — the Mind attribute, two affixes and a hybrid.
+
+  
+
+**The numbers above are quoted at level 100, and scale down with character level.** A cost that never moved would be crippling at level 1 and beneath notice at level 100, because a Ravager's mana pool runs from 40 to 436. Costs ride the default mana progression, so a skill takes the same share of a pool at both ends. What the player reads is still a flat quantity of mana.
+
+  
+
+### **The Basic Attack Restores Mana, and This Is Not a Generator**
+
+  
+
+The automatic basic attack returns 6 mana each time it lands. At a typical 1.3 attacks per second that is about 8 mana per second while fighting.
+
+  
+
+**This is deliberately not the generator and spender pattern**, which players of that pattern describe as casting a weak skill about five times to afford one real one. Two things prevent it here.
+
+  
+
+  - **The basic attack is automatic.** There is no button to press and no rotation to perform. It is income for being in a fight rather than a filler action.
+  - **The Heavy Attack is affordable from mana regeneration alone.** Used the moment it returns, it costs 10 mana per second against the 10.9 per second a character regenerates at level 100. It works with no basic attacks landing at all. Mana on hit pays for the other slots, so it is a supplement and never the thing that makes the primary damage button function.
 
   
 
@@ -459,22 +480,18 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 
 |  |  |  |  |  |
 | :-- | :-: | :-: | :-: | :-- |
-| \*\*Class\*\* | \*\*Base mana\*\* | \*\*Regen\*\* | \*\*All five on cooldown\*\* | \*\*Aura alone, from full\*\* |
-| Ravager | 436 | 10.9/s | 12.4/s | 40s |
-| Ritualist | 1,278 | 26.8/s | 36.4/s | 34s |
-| Masochist | 644 | 10.9/s | 18.4/s | 30s |
+| \*\*Class\*\* | \*\*Mana\*\* | \*\*Regen\*\* | \*\*Income while fighting\*\* | \*\*Everything on cooldown lasts\*\* |
+| Ravager | 436 | 10.9/s | 18.6/s | 25s |
+| Ritualist | 1,278 | 26.8/s | 34.6/s | effectively unlimited |
+| Masochist | 644 | 10.9/s | 19.6/s | 40s |
 
   
 
-Using all five cooldown skills the moment each comes back costs slightly more than regeneration supplies, for all three classes. That is the intended place to sit: mana is a real constraint that gear and attributes relieve, rather than one that never binds or one that stops the character acting.
+Using every skill the moment it returns costs 35.75 mana per second, the same for all three because the costs are flat. So a character can spend everything for roughly half a minute and must then choose which skills to keep using. The Ritualist is the exception and is meant to be: sustaining its whole kit is what its mana pool and regeneration are for.
 
   
 
-**The Aura is deliberately unaffordable alongside everything else.** Running it drains a full pool in 30 to 40 seconds with nothing else used. Turning it on is a commitment for a fight rather than something left on, and it is what makes an aura switching off when mana runs out something that actually happens.
-
-  
-
-**The Masochist is the most mana-constrained of the three**, because it carries the default mana regeneration with one and a half times the Ravager's pool. That is consistent with its design: the class converts mana into health through a keystone in its passive tree, so mana pressure is what pushes a Masochist toward that conversion rather than an obstacle to it.
+**The Aura is a commitment rather than something left on.** It drains 20 mana per second, so standing still it empties a Ravager's pool in 48 seconds and a Masochist's in 71. The Ritualist's 26.8 per second regeneration covers the drain, so it alone can hold an aura indefinitely.
 
   
 

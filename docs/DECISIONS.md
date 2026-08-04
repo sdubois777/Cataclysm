@@ -20,7 +20,7 @@ applied or still pending.
 
 ---
 
-## 2026-08-04 — What a skill costs: a cooldown per slot, and a mana cost measured against the class base
+## 2026-08-04 — What a skill costs: a cooldown per slot, a flat mana cost, and mana back from the automatic basic attack
 
 **The question.** Issue #155. No skill in the project stated a cooldown or a
 resource cost. Not one of the 61 War rows and not one of the 16 Demonic rows.
@@ -28,8 +28,8 @@ resource cost. Not one of the 61 War rows and not one of the 16 Demonic rows.
 **THIS IS THE SAME FAILURE AS ISSUE #120, at a larger scale.** Around the missing
 base cooldown the project had already built: a reduction formula
 (`Final Cooldown = Base Cooldown / ((1 + increases) × more)`), the Efficacy
-attribute granting 1% per point, a cooldown reduction affix on five gear slots,
-a Reliquary implicit, and **41 enchantments that mention cooldown**. Every one of
+attribute granting 1% per point, a cooldown reduction affix on five gear slots, a
+Reliquary implicit, and **41 enchantments that mention cooldown**. Every one of
 them divided zero. Mana costs were in the same state: four enchantments change a
 skill's mana cost, including a ten-piece set bonus reading "your ultimate ability
 no longer has a cooldown, instead its mana cost is doubled every time you use
@@ -47,100 +47,130 @@ so a column would be 77 copies of six values, and the damage multiplier already
 solved this exact problem the other way. It lives in the slot table, and a skill
 states its own only when it differs, which is how Skull Splitter says 500%.
 
-**SECOND DECISION: the cooldowns, anchored on Diablo 4 rather than Path of
-Exile.** Diablo 4 is the only one of the three reference games that gates skills
-by cooldown per slot the way this design does. Its ultimates run 30 to 90 seconds
-and cluster at 50 to 60 — Inferno 30, Iron Maelstrom 50, Wrath of the Berserker
-60, Deep Freeze 60, Call of the Ancients 75, Conduit 90. Its defensive skills sit
-near 20: Flame Shield 20, Ice Armor 16 to 20. Most other skills have no cooldown
-or under 30 seconds.
+**SECOND DECISION: the numbers, set by the project owner.** A first set was
+anchored on Diablo 4, whose ultimates cluster at 50 to 60 seconds and whose
+defensive skills sit near 20. The project owner judged those too long to play and
+gave the values below directly. Movement kept its 5 seconds.
 
-Path of Exile is deliberately **not** the anchor. There most skills have no
-cooldown at all and are gated by mana instead. That is a coherent design and it
-is not this one, which names a cooldown in four of its six slot descriptions.
-
-| Slot | Cooldown | Band | Mana |
+| Slot | Cooldown | Band | Mana at level 100 |
 |---|---|---|---|
-| Basic Attack | none | — | none |
-| Movement | 5s | 3–10s | 4% |
-| Heavy Attack | 6s | 4–12s | 5% |
-| Special | 12s | 8–20s | 8% |
-| Support | 20s | 12–30s | 6% |
-| Ultimate | 60s | 40–90s | 15% |
-| Aura | none | — | 5% per second |
+| Basic Attack | none | — | restores 6 on hit |
+| Heavy Attack | 1.5s | 1–4s | 15 |
+| Support | 4s | 2–10s | 25 |
+| Special | 5s | 3–10s | 40 |
+| Movement | 5s | 3–10s | 20 |
+| Ultimate | 20s | 12–40s | 150 |
+| Aura | none | — | 20 per second |
 
-Only two slots have none, for different reasons: the Basic Attack is automatic so
-attack speed sets its rate, and the Aura is a toggle so there is nothing to wait
-for. A guard refuses any other slot reading zero, because a zero cooldown is also
-what a forgotten one looks like — which is exactly how this went unnoticed.
+Diablo 4 still set the shape rather than the values: a cooldown per slot, an
+ultimate that is the longest wait by a wide margin, and a primary damage button
+that returns fastest. Its own numbers assume a resource system this design does
+not use, which is the reason not to take them directly.
 
-**THIRD DECISION, AND THE LOAD-BEARING ONE: mana cost is a percentage of base
-maximum mana**, meaning the class stat line's mana at the character's level,
-before attributes, gear and enchantments.
+Only two slots have no cooldown, for different reasons: the Basic Attack is
+automatic so attack speed sets its rate, and the Aura is a toggle so there is
+nothing to wait for. A guard refuses any other slot reading zero, because a zero
+cooldown is also what a forgotten one looks like — which is exactly how this went
+unnoticed for so long.
 
-It is not a flat number, because nothing in this project raises a skill's cost
-with level the way a gem level does in Path of Exile and Last Epoch. A fixed flat
-cost would stop mattering: a Ravager's pool runs from 44 at level 1 to 436 at
-level 100.
+**THIRD DECISION: mana costs are flat numbers, the same for every class.** An
+earlier version made a cost a percentage of the player's own maximum mana. The
+project owner rejected it: it "just feels bad". It was also wrong on its own
+terms, because it made a large mana pool buy nothing — the pool and the price
+rose together, so the Ritualist's 1,278 mana bought exactly as many casts as the
+Ravager's 436.
 
-It is not a share of the **final** pool either, and that is the half that
-matters. Mind grants 2% maximum mana per point and only 1% mana regeneration, and
-two affixes plus a hybrid also raise maximum mana. If cost scaled with the final
-pool, every one of those would buy nothing, because the price would rise with the
-pool. Measured against the class base they all buy what they should: more casts
-before running dry. A test asserts this directly, by stacking Mind and mana gear
-and checking the cost does not move.
+Flat costs give the opposite and correct result. The same 15 mana Heavy Attack is
+9 casts for a Ravager and 27 for a Ritualist, and every source of maximum mana —
+the Mind attribute, two affixes and a hybrid — is pure gain.
 
-**What the numbers produce at level 100 with no gear and no attributes:**
+**Why the costs still scale with character level.** Nothing in this project
+raises a skill's cost the way a gem level does in Path of Exile, and a Ravager's
+pool runs from 40 at level 1 to 436 at level 100. A number that never moved would
+be crippling at one end and beneath notice at the other. Costs ride the default
+mana progression, so a skill takes the same share of a pool at both ends. On the
+default line that share is exactly constant; a class with its own mana curve
+drifts under 20% across 100 levels, and a test holds it there. What the player
+reads is still a flat quantity of mana.
 
-| Class | Base mana | Regen | All five on cooldown | Aura alone, from full |
+**FOURTH DECISION: the automatic basic attack restores 6 mana on hit, and this
+is deliberately not a generator.**
+
+The project owner raised the concern while asking for it: the generator and
+spender pattern "is often just annoying". The complaint is well documented.
+Diablo 4 players describe generators producing 3 to 4 resource against spenders
+costing 30 to 40, so roughly five filler casts buy one real skill, and describe
+the result as casting boring spells to earn the right to cast interesting ones.
+
+Two things structurally prevent that here, and the second is enforced by a guard
+rather than left to intent.
+
+  - **The basic attack is automatic.** The design document has said so from the
+    start. There is no button to press and no rotation to perform, so there is no
+    filler action to resent. It is income for being in a fight.
+  - **The Heavy Attack is affordable from mana regeneration alone.** Used the
+    moment it returns it costs 10 mana per second against 10.9 per second of
+    default regeneration, so the primary damage button works with no basic
+    attacks landing at all. Mana on hit pays for the other slots. A check refuses
+    any Heavy Attack cost that breaks this, and a second check refuses a
+    mana-on-hit value large enough to become a character's main income.
+
+Path of Exile treats mana on hit as ordinary sustain alongside regeneration and
+leech, and it draws none of the same complaint, because there the skill doing the
+hitting is the one the player wants to use. The same is true here.
+
+**What this produces at level 100, with no gear and no attribute points:**
+
+| Class | Mana | Regen | Income while fighting | Everything on cooldown lasts |
 |---|---|---|---|---|
-| Ravager | 436 | 10.9/s | 12.4/s | 40s |
-| Ritualist | 1,278 | 26.8/s | 36.4/s | 34s |
-| Masochist | 644 | 10.9/s | 18.4/s | 30s |
+| Ravager | 436 | 10.9/s | 18.6/s | 25s |
+| Ritualist | 1,278 | 26.8/s | 34.6/s | effectively unlimited |
+| Masochist | 644 | 10.9/s | 19.6/s | 40s |
 
-Using all five cooldown skills the moment each returns costs slightly more than
-regeneration supplies, for all three. That is the intended place to sit: mana
-binds, and gear and attributes relieve it.
+Using every skill the moment it returns costs 35.75 mana per second, the same for
+all three because the costs are flat. A character can spend everything for about
+half a minute and must then choose what to keep using. The Ritualist is the
+exception and is meant to be: sustaining a whole kit is what its pool and
+regeneration are for.
 
-**The Aura is deliberately unaffordable alongside anything else.** It drains a
-full pool in 30 to 40 seconds with nothing else used. That is what makes issue
-#36's requirement — the aura switches off when the resource is exhausted —
-something that can actually happen. A test asserts the aura runs out for all
-three classes, because if regeneration ever covered the drain that acceptance
-criterion would be unreachable.
+**The Aura runs out for two of the three classes, and that is the right answer
+rather than a gap.** It drains 20 mana per second, emptying a Ravager standing
+still in 48 seconds and a Masochist in 71. The Ritualist's 26.8 per second
+regeneration covers the drain, so it alone can hold an aura indefinitely. Issue
+#36 requires the aura to switch off when the resource is exhausted; that is
+reachable, which is what the requirement needs, and a class being able to avoid
+it is a class difference rather than a missing limit.
 
-**An observation, recorded rather than solved.** The Masochist is the most
-mana-constrained of the three: it carries the default mana regeneration with one
-and a half times the Ravager's pool. That reads as consistent with its design,
-which converts mana into health through a passive tree keystone, so mana pressure
-is what pushes a Masochist toward that conversion. If play says otherwise it is a
-regeneration number, not a structural problem.
+**A consequence of the Support cooldown, recorded and not resolved.** At 4
+seconds, and with the designed Support buffs lasting 8 to 10 seconds, every
+Support buff has more than full uptime. The slot becomes a permanent stat rather
+than something used at a moment, and its 25 mana is then the only real limit on
+it. This is a constant rather than a structure, so it is left for play to settle.
 
-**A tension not resolved here.** The basic attack is automatic, deals 100% weapon
-damage and fires at roughly 1.35 times per second, so it out-damages a Heavy
-Attack on a 6 second cooldown by a wide margin over any span. The design calls
-the Heavy "often the primary damage button". Those two cannot both be true at
-these numbers. It is a constant rather than a structure, and this project tunes
-constants against play, so it is recorded and left.
+**A tension also left standing.** The basic attack is automatic, deals 100%
+weapon damage and fires about 1.3 times a second, so it out-damages a Heavy
+Attack even at a 1.5 second cooldown. The design calls the Heavy "often the
+primary damage button". Both cannot be true at these numbers.
 
-**Sources.** Maxroll and Icy Veins on Diablo 4 cooldown reduction and skill
-cooldowns, and the Diablo 4 Fextralife and PureDiablo wikis for the per-skill
-base cooldowns quoted above; the Path of Exile wiki on cooldown and on mana cost,
-for cooldown and cost being separate limiters and for most skills having no
-cooldown; the Last Epoch wiki on skills and mana, for each skill having a set
-mana cost and cooldown and for some having neither.
+**Sources.** The Diablo 4 forums and a widely cited write-up of its resource
+problem, for the generator ratio and the complaint against it; Maxroll and Icy
+Veins on Diablo 4 cooldown reduction and per-skill cooldowns; the Path of Exile
+wiki on mana and on cooldown, for mana on hit and leech being ordinary sustain
+and for cooldown and cost being separate limiters; the Last Epoch wiki on skills
+and mana, for each skill carrying both a mana cost and a cooldown.
 
 **What the research does not settle.** Every number in the table. No reference
-game has this game's six slots. The research settles the shape — cooldown per
-slot, cost separate from cooldown, ultimates near a minute — and the ordering
-across slots is a judgement made against the design's own words for each slot.
+game has this game's six slots, and the cooldowns were set by the project owner
+against how the game should feel rather than derived. The research settles the
+shape: cooldown per slot, cost separate from cooldown, and the specific rule that
+keeps mana on hit from becoming a generator.
 
 **Affects:** `Cataclysm_GDD_v2.md`, which gains a "What a Skill Costs"
-subsection in section IV beside "What a Skill Is Worth".
-`sim/cataclysm_sim/character.py`, where `SkillSlot` now carries the cooldown band
-and the mana cost. **Applied.** No change to `All_Things_Cataclysm.xlsx`: these
-numbers are per slot, and the sheet holds per-skill rows.
+subsection and a "The Basic Attack Restores Mana, and This Is Not a Generator"
+subsection in section IV. `sim/cataclysm_sim/character.py`, where `SkillSlot`
+carries the cooldown band and the flat mana cost. **Applied.** No change to
+`All_Things_Cataclysm.xlsx`: these numbers are per slot, and the sheet holds
+per-skill rows.
 
 ---
 

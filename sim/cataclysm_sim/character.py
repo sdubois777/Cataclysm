@@ -504,9 +504,10 @@ class SkillSlot:
     differ says so in its own description, which is exactly how Skull Splitter
     differs on damage.
 
-    MANA COST IS A PERCENT OF BASE MAXIMUM MANA, meaning the class stat line's
-    mana at the character's level, before attributes, gear and enchantments.
-    That choice is load-bearing and is explained on MANA_COST note below.
+    MANA COST IS A FLAT NUMBER OF MANA, the same number for every class. It is
+    quoted at level 100, which is the level every other figure in this project
+    is quoted at, and it scales down with character level. See MANA_COST_LEVEL
+    and mana_cost_of.
     """
 
     name: str
@@ -519,9 +520,9 @@ class SkillSlot:
     typical_cooldown: float = 0.0
     cooldown_lowest: float = 0.0
     cooldown_highest: float = 0.0
-    #: Percent of base maximum mana one use costs. For the Aura this is per
-    #: second while the toggle is on, matching how its damage is also per second.
-    mana_cost_percent: float = 0.0
+    #: Mana one use costs at level 100. For the Aura this is per second while
+    #: the toggle is on, matching how its damage is also per second.
+    mana_cost: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.lowest <= self.typical_damage <= self.highest:
@@ -533,9 +534,9 @@ class SkillSlot:
                 f"{self.name}: typical cooldown {self.typical_cooldown}s is "
                 f"outside its band of {self.cooldown_lowest} to "
                 f"{self.cooldown_highest}")
-        if self.mana_cost_percent < 0.0:
+        if self.mana_cost < 0.0:
             raise ValueError(
-                f"{self.name}: mana cost {self.mana_cost_percent}% is negative")
+                f"{self.name}: mana cost {self.mana_cost} is negative")
 
 
 #: The seven slots from the design document's Skill Slots table, in the order it
@@ -554,28 +555,47 @@ class SkillSlot:
 # the base cooldown, projectile count and duration". So this is the design
 # becoming real rather than a change to it.
 #
-# THE COOLDOWN NUMBERS ARE ANCHORED ON DIABLO 4, which is the only one of the
-# three reference games that gates skills by cooldown per slot the way this
-# design does. Its ultimates run 30 to 90 seconds and cluster at 50 to 60; its
-# defensive skills sit near 20; and most other skills have no cooldown at all or
-# under 30 seconds. Path of Exile is deliberately NOT the anchor here: there most
-# skills have no cooldown and are gated by mana instead, which is a different
-# design from this one.
+# THE COOLDOWNS WERE SET BY THE PROJECT OWNER on 2026-08-04, who judged an
+# earlier set anchored on Diablo 4 too long to play. Diablo 4 remains the only
+# reference game that gates skills by cooldown per slot the way this design
+# does, but its numbers assume a resource system this design does not use, so
+# they set the shape and not the values. Movement kept its 5 seconds.
 #
-# MANA COST IS A PERCENT OF BASE MAXIMUM MANA -- the class stat line's mana at
-# the character's level, before attributes, gear and enchantments.
+# MANA COST IS A FLAT NUMBER OF MANA, the same for every class, quoted at level
+# 100 and scaled down with character level. Also the project owner's call: a cost
+# expressed as a share of the player's own pool "just feels bad".
 #
-# It is not a flat number, because nothing in this project raises a skill's cost
-# with level the way a gem level does in Path of Exile. A fixed flat cost would
-# stop mattering: a Ravager's pool goes from 44 at level 1 to 436 at level 100.
+# WHY IT STILL SCALES WITH LEVEL rather than being one fixed number forever.
+# Nothing in this project raises a skill's cost the way a gem level does in Path
+# of Exile, and a mana pool runs from 40 at level 1 to 436 at level 100 for a
+# Ravager. A cost that did not move would be crippling at level 1 and beneath
+# notice at level 100. It rides the default mana progression, so the ratio a
+# player experiences is the same at both ends, and the number on the tooltip is
+# still a flat quantity of mana.
 #
-# It is not a percent of FINAL maximum mana either, and that is the important
-# half. Mind grants 2% maximum mana per point and only 1% mana regeneration, and
-# two affixes plus a hybrid raise maximum mana. If cost scaled with the final
-# pool, every one of those would buy nothing, because the pool and the price
-# would rise together. Measuring against the class base leaves them all working
-# and makes them buy exactly what they should: more casts before running dry.
+# IT IS THE SAME NUMBER FOR EVERY CLASS, which is what makes the Ritualist's
+# large pool and large regeneration worth having: it buys more casts of the same
+# skill rather than paying a proportionally larger price for each one. Every
+# source of maximum mana -- the Mind attribute, two affixes and a hybrid -- is
+# pure gain for the same reason.
+#
+# THE BASIC ATTACK RESTORES MANA ON HIT, AND THIS IS NOT A GENERATOR. What makes
+# the Diablo 4 pattern tiresome, in its players' own words, is casting a weak
+# skill roughly five times to afford one real one. Two things here prevent that.
+# The basic attack is automatic, so there is no button to press and no rotation
+# to perform; it is income for being in a fight. And the Heavy Attack, the
+# primary damage button, is affordable from mana regeneration alone with no hits
+# landing at all -- see the guard below. Mana on hit pays for everything else, so
+# it is a supplement rather than the source. Path of Exile treats mana on hit as
+# ordinary sustain for exactly this reason.
 # --------------------------------------------------------------------------
+
+#: Costs are quoted at this level, as every other figure in this project is.
+MANA_COST_LEVEL = 100
+
+#: Mana the automatic basic attack restores per hit, at level 100. Scales with
+#: level alongside the costs.
+BASIC_ATTACK_MANA_ON_HIT = 6.0
 
 SKILL_SLOTS: dict[str, SkillSlot] = {
     s.name: s for s in (
@@ -583,37 +603,37 @@ SKILL_SLOTS: dict[str, SkillSlot] = {
                   "Automatic and free. It IS weapon damage, which is what makes "
                   "it the anchor every other slot is measured against.",
                   typical_cooldown=0.0, cooldown_lowest=0.0,
-                  cooldown_highest=0.0, mana_cost_percent=0.0),
+                  cooldown_highest=0.0, mana_cost=0.0),
         SkillSlot("Heavy", 250.0, 175.0, 350.0,
                   "The design calls it often the primary damage button, on a "
                   "moderate cooldown.",
-                  typical_cooldown=6.0, cooldown_lowest=4.0,
-                  cooldown_highest=12.0, mana_cost_percent=5.0),
+                  typical_cooldown=1.5, cooldown_lowest=1.0,
+                  cooldown_highest=4.0, mana_cost=15.0),
         SkillSlot("Special", 150.0, 100.0, 250.0,
                   "Traps, deployables, grenades, pets. The most varied slot, so "
                   "the widest band below its typical value.",
-                  typical_cooldown=12.0, cooldown_lowest=8.0,
-                  cooldown_highest=20.0, mana_cost_percent=8.0),
+                  typical_cooldown=5.0, cooldown_lowest=3.0,
+                  cooldown_highest=10.0, mana_cost=40.0),
         SkillSlot("Support", 0.0, 0.0, 100.0,
                   "Buffs, shields, stances, curses, banners. Usually no damage "
                   "at all, which is why its typical value is zero.",
-                  typical_cooldown=20.0, cooldown_lowest=12.0,
-                  cooldown_highest=30.0, mana_cost_percent=6.0),
+                  typical_cooldown=4.0, cooldown_lowest=2.0,
+                  cooldown_highest=10.0, mana_cost=25.0),
         SkillSlot("Aura", 25.0, 15.0, 40.0,
                   "Persistent and toggled, draining resource per second. This "
                   "is per second rather than per use.",
                   typical_cooldown=0.0, cooldown_lowest=0.0,
-                  cooldown_highest=0.0, mana_cost_percent=5.0),
+                  cooldown_highest=0.0, mana_cost=20.0),
         SkillSlot("Ultimate", 400.0, 300.0, 500.0,
                   "The band is the two designed Ultimates: Annihilator states "
                   "300% and Skull Splitter states 500%.",
-                  typical_cooldown=60.0, cooldown_lowest=40.0,
-                  cooldown_highest=90.0, mana_cost_percent=15.0),
+                  typical_cooldown=20.0, cooldown_lowest=12.0,
+                  cooldown_highest=40.0, mana_cost=150.0),
         SkillSlot("Movement", 100.0, 75.0, 150.0,
                   "Gap closers and escapes. The design says some also deal "
                   "damage, so a basic attack's worth is the right middle.",
                   typical_cooldown=5.0, cooldown_lowest=3.0,
-                  cooldown_highest=10.0, mana_cost_percent=4.0),
+                  cooldown_highest=10.0, mana_cost=20.0),
     )
 }
 
@@ -682,17 +702,45 @@ def _check_every_slot_a_player_chooses_costs_something() -> None:
     """
     unlimited = [n for n in CHOSEN_SKILL_SLOTS
                  if SKILL_SLOTS[n].typical_cooldown == 0.0
-                 and SKILL_SLOTS[n].mana_cost_percent == 0.0]
+                 and SKILL_SLOTS[n].mana_cost == 0.0]
     if unlimited:
         raise ValueError(
             f"{sorted(unlimited)} cost nothing and have no cooldown, so "
             "nothing limits how often they are used")
 
 
+def _check_the_primary_damage_button_needs_no_basic_attacks() -> None:
+    """This is what keeps mana on hit from becoming a generator.
+
+    The complaint against the Diablo 4 pattern is having to cast a weak skill
+    about five times to afford one real one. The rule that prevents it here is
+    that the Heavy Attack, which the design calls often the primary damage
+    button, is affordable from mana regeneration alone with no hits landing.
+    Mana on hit then pays for the other slots and is a supplement rather than
+    the source.
+
+    Checked against the WORST case, the class with the smallest regeneration
+    relative to its costs. Costs are the same for every class, so whichever
+    class has the least mana regeneration is the binding one.
+    """
+    heavy = SKILL_SLOTS["Heavy"]
+    if heavy.typical_cooldown <= 0.0:
+        raise ValueError("the Heavy Attack has no cooldown to spend mana over")
+    spend = heavy.mana_cost / heavy.typical_cooldown
+    regen = DEFAULT_STAT_LINE["mana_regen"].at(MANA_COST_LEVEL)
+    if spend > regen:
+        raise ValueError(
+            f"the Heavy Attack costs {spend:.1f} mana/s used on cooldown "
+            f"against {regen:.1f}/s of default regeneration, so the primary "
+            "damage button cannot be sustained without landing basic attacks. "
+            "That is the generator pattern this design avoids.")
+
+
 _check_the_slots_match_the_design_document()
 _check_the_basic_attack_is_the_anchor()
 _check_only_the_toggle_and_the_automatic_slot_lack_a_cooldown()
 _check_every_slot_a_player_chooses_costs_something()
+_check_the_primary_damage_button_needs_no_basic_attacks()
 
 
 @dataclass(frozen=True)
@@ -886,14 +934,19 @@ class Character:
         return self.cooldown_of(self.skill.base_cooldown())
 
     def base_max_mana(self) -> float:
-        """Maximum mana from the class and level alone.
-
-        Deliberately excludes attributes, gear and enchantments. This is what
-        mana costs are measured against, so that every source of maximum mana
-        buys more casts instead of raising the price alongside the pool. See the
-        comment above SKILL_SLOTS.
-        """
+        """Maximum mana from the class and level alone, before gear."""
         return self.definition.base_at("max_mana", self.level)
+
+    def _cost_scale(self) -> float:
+        """How much of a level 100 cost a character of this level pays.
+
+        Costs ride the default mana progression, so the share of a pool one use
+        takes is the same at level 1 as at level 100. The default line is used
+        rather than this character's own class, which is what keeps the cost the
+        same number for every class and makes a larger pool buy more casts.
+        """
+        reference = DEFAULT_STAT_LINE["max_mana"].at(MANA_COST_LEVEL)
+        return DEFAULT_STAT_LINE["max_mana"].at(self.level) / reference
 
     def mana_cost_of(self, slot: str | None = None) -> float:
         """What one use of a skill in this slot costs, in mana.
@@ -904,19 +957,31 @@ class Character:
         name = self.skill.slot if slot is None else slot
         if name not in SKILL_SLOTS:
             raise KeyError(f"{name} is not one of the seven slots")
-        percent = SKILL_SLOTS[name].mana_cost_percent
-        return self.base_max_mana() * percent / 100.0
+        return SKILL_SLOTS[name].mana_cost * self._cost_scale()
+
+    def mana_on_hit(self) -> float:
+        """Mana the automatic basic attack restores each time it lands."""
+        return BASIC_ATTACK_MANA_ON_HIT * self._cost_scale()
+
+    def mana_income(self) -> float:
+        """Mana per second while fighting: regeneration plus basic attacks.
+
+        A character with no weapon has no attack speed and so earns nothing from
+        hits, which is correct rather than a gap.
+        """
+        return (self.stat("mana_regen")
+                + self.stat("attack_speed") * self.mana_on_hit())
 
     def seconds_of_aura(self) -> float:
-        """How long the Aura runs from a full pool with nothing else used.
+        """How long the Aura runs from a full pool while standing still.
 
-        Issue #36 requires the aura to switch off when the resource runs out, so
-        that has to actually be reachable. Regeneration is subtracted from the
-        drain; if it ever covered the drain the aura would run forever and that
-        acceptance criterion could never be met.
+        Standing still, so regeneration is the only income. Issue #36 requires
+        the aura to switch off when the resource runs out, and this is what says
+        whether that is reachable. Infinite means it is not: for a class whose
+        regeneration covers the drain the aura simply stays on, which is true of
+        the Ritualist and is intended.
         """
-        drain = self.mana_cost_of("Aura")
-        net = drain - self.stat("mana_regen")
+        net = self.mana_cost_of("Aura") - self.stat("mana_regen")
         if net <= 0.0:
             return math.inf
         return self.stat("max_mana") / net
