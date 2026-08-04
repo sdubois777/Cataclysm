@@ -77,4 +77,21 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
 	float TrainingDummyHealth = 5000.0f;
+
+	/**
+	 * What one of a dummy's own attacks is worth.
+	 *
+	 * THEY FIGHT BACK NOW, WHICH THEY DID NOT BEFORE. Until issue #163 no pawn
+	 * except the player had a controller, so a dummy stood where it was spawned
+	 * and never acted. It now walks to the player and hits them, which is the
+	 * only way to see in a play session that the behaviour works at all.
+	 *
+	 * A JUDGEMENT, AND DELIBERATELY SMALL. Five of them at 20 damage every 1.5
+	 * seconds come to about 67 damage a second against a character starting at
+	 * 100 health, so standing in the middle of the ring doing nothing is fatal in
+	 * a couple of seconds while walking out of it is not. Set this to zero for a
+	 * ring that only absorbs damage, which is what it used to be.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float TrainingDummyAttackDamage = 20.0f;
 };

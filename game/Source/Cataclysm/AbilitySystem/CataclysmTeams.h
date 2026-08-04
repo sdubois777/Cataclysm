@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "GenericTeamAgentInterface.h"
 #include "CataclysmTeams.generated.h"
 
@@ -48,6 +49,15 @@ enum class ECataclysmTeam : uint8
  * later without every caller changing shape. Nothing in the project is neutral
  * today, and `AttitudeBetween` returns Neutral only when it is asked about a
  * null actor.
+ *
+ * MADNESS IS NOT A THIRD SIDE. The design's Madness debuff says "the enemy
+ * attacks anything nearby, friend or foe, for 3 seconds". That is expressed here
+ * as an attitude override, not as a change of team: while an actor carries
+ * `Status.Madness`, it is hostile to everything except itself, and everything is
+ * hostile to it, so its neighbours fight back. Path of Exile's Conversion Trap
+ * is the nearest shipped mechanic to the alternative -- it moves a monster onto
+ * the caster's side for a duration -- and it is deliberately not what this is.
+ * Madness removes a side rather than switching one.
  *
  * WHAT HAVING NO TEAM MEANS: HOSTILE, NOT NEUTRAL, and that is a deliberate
  * choice of failure mode. An enemy class that forgets to set its team is still
@@ -98,4 +108,10 @@ public:
 	 * minion any more than the minion is to the summoner.
 	 */
 	static bool SharesAnOwnerChain(const AActor* A, const AActor* B);
+
+	/** The `Status.Madness` tag, requested by name. Invalid if the workbook drops it. */
+	static FGameplayTag MadnessTag();
+
+	/** Whether this actor currently carries the Madness tag. */
+	static bool IsMaddened(const AActor* Actor);
 };
