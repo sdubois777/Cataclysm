@@ -23,6 +23,10 @@ public class CataclysmEditor : ModuleRules
 			"UnrealEd",
 			"Cataclysm",
 			"CataclysmEmpire",
+
+			// ANavMeshBoundsVolume, for the level authoring helper that gives the
+			// sandbox level its navigation bounds.
+			"NavigationSystem",
 		});
 	}
 }

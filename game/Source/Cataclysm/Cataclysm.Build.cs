@@ -26,6 +26,14 @@ public class Cataclysm : ModuleRules
 			"InputCore",
 			"EnhancedInput",
 
+			// Click-to-move. SimpleMoveToLocation and the path following
+			// component both live in AIModule, which is what actually walks a
+			// character along a navigation path. Without a NavMeshBoundsVolume in
+			// the level it finds no path and the character does not move, and
+			// nothing reports why -- see the test map the generator builds.
+			"AIModule",
+			"NavigationSystem",
+
 			// The Gameplay Ability System. GameplayTags is public because
 			// attribute sets, abilities and item data all expose tags in their
 			// headers; GameplayTasks is a hard dependency of GameplayAbilities.
