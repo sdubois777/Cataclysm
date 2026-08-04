@@ -222,3 +222,344 @@ def test_an_ultimate_is_worth_several_common_enemies():
     from cataclysm_sim import enemy_stats as es
     common = es.stats_on_floor("Common", 8, "Cataclysm")
     assert af.damage_for_slot("Ultimate") > 1.5 * common.effective_health
+
+
+# --------------------------------------------------------------------------
+# What a skill costs: cooldown and mana. Issue #155.
+#
+# Neither existed. The design document defines a cooldown reduction formula, an
+# attribute that scales it, an affix that grants it and 41 enchantments that
+# mention it, and no skill supplied a base for any of that to divide.
+#
+# The cooldowns and the flat-mana shape were set by the project owner on
+# 2026-08-04, replacing an earlier set anchored on Diablo 4 that played too
+# slowly and a cost expressed as a share of the player's own mana pool.
+# --------------------------------------------------------------------------
+
+def test_only_the_automatic_slot_and_the_toggle_have_no_cooldown():
+    """A cooldown of zero is also what a forgotten cooldown looks like, so the
+    two that legitimately have none are named rather than inferred."""
+    free = {n for n, s in ch.SKILL_SLOTS.items() if s.typical_cooldown == 0.0}
+    assert free == {ch.BASIC_ATTACK_SLOT, "Aura"}
+    assert free == set(ch.SLOTS_WITHOUT_A_COOLDOWN)
+
+
+def test_every_slot_a_player_chooses_is_limited_by_something():
+    """A skill with no cooldown and no cost can be held down."""
+    for name in ch.CHOSEN_SKILL_SLOTS:
+        slot = ch.SKILL_SLOTS[name]
+        assert slot.typical_cooldown > 0 or slot.mana_cost > 0, (
+            f"{name} costs nothing and waits for nothing")
+
+
+def test_the_basic_attack_is_the_only_free_slot():
+    """The design calls it automatic and free. Everything else is paid for."""
+    assert ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT].mana_cost == 0.0
+    for name in ch.CHOSEN_SKILL_SLOTS:
+        assert ch.SKILL_SLOTS[name].mana_cost > 0.0, name
+
+
+def test_a_cooldown_band_that_does_not_contain_its_typical_is_rejected():
+    with pytest.raises(ValueError, match="typical cooldown"):
+        ch.SkillSlot("Bad", 100.0, 100.0, 100.0, "impossible",
+                     typical_cooldown=30.0, cooldown_lowest=1.0,
+                     cooldown_highest=5.0, mana_cost=1.0)
+
+
+def test_a_negative_mana_cost_is_rejected():
+    with pytest.raises(ValueError, match="is negative"):
+        ch.SkillSlot("Bad", 100.0, 100.0, 100.0, "impossible",
+                     typical_cooldown=1.0, cooldown_lowest=1.0,
+                     cooldown_highest=1.0, mana_cost=-5.0)
+
+
+def test_the_ultimate_waits_longest_and_the_heavy_attack_waits_least():
+    """The design calls the Heavy Attack often the primary damage button, so it
+    has to be the one that comes back soonest, and calls the Ultimate long."""
+    waits = {n: s.typical_cooldown for n, s in ch.SKILL_SLOTS.items()
+             if s.typical_cooldown > 0}
+    assert waits["Ultimate"] == max(waits.values())
+    assert waits["Heavy"] == min(waits.values())
+    assert waits["Ultimate"] > waits["Special"] >= waits["Support"] > waits["Heavy"]
+
+
+def test_a_skill_takes_its_slots_cooldown_when_it_states_none():
+    skill = ch.Skill(name="Molten Cleave", slot="Heavy")
+    assert skill.base_cooldown() == ch.SKILL_SLOTS["Heavy"].typical_cooldown
+
+
+def test_a_skill_may_state_its_own_cooldown():
+    skill = ch.Skill(name="Odd", slot="Heavy", cooldown=11.0)
+    assert skill.base_cooldown() == 11.0
+
+
+def test_a_negative_cooldown_is_rejected():
+    with pytest.raises(ValueError, match="less than none"):
+        ch.Skill(name="Impossible", slot="Heavy", cooldown=-1.0)
+
+
+def test_cooldown_reduction_now_has_something_to_divide():
+    """Before this, every point of Efficacy and every cooldown reduction affix
+    divided a base of zero. Set a slot's cooldown back to zero and the
+    reduction stops mattering, because zero divided by anything is still
+    zero."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    plain = ch.Character(DEMONIC_CLASSES["Ravager"], level=100,
+                         skill=ch.Skill(name="Pyroclasm", slot="Ultimate"))
+    invested = ch.Character(DEMONIC_CLASSES["Ravager"], level=100,
+                            attributes=ch.Attributes(efficacy=100),
+                            skill=ch.Skill(name="Pyroclasm", slot="Ultimate"))
+    ultimate = ch.SKILL_SLOTS["Ultimate"].typical_cooldown
+    assert plain.skill_cooldown() == ultimate
+    assert invested.skill_cooldown() == pytest.approx(ultimate / 2.0)
+
+
+# --------------------------------------------------------------------------
+# Mana costs are flat numbers, the same for every class
+# --------------------------------------------------------------------------
+
+def test_a_skill_costs_the_same_mana_for_every_class():
+    """THE POINT OF FLAT COSTS. A larger pool has to buy more casts of the same
+    skill rather than pay a proportionally larger price for each one. If cost
+    were a share of the pool, the Ritualist's 1,278 mana would buy exactly as
+    many casts as the Ravager's 436 and its defining stat would be worthless."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    costs = {name: ch.Character(d, level=100).mana_cost_of("Heavy")
+             for name, d in DEMONIC_CLASSES.items()}
+    assert len(set(costs.values())) == 1, costs
+
+    casts = {name: ch.Character(d, level=100).stat("max_mana") / costs[name]
+             for name, d in DEMONIC_CLASSES.items()}
+    assert casts["Ritualist"] > casts["Masochist"] > casts["Ravager"]
+
+
+def test_every_source_of_maximum_mana_buys_casts_rather_than_raising_the_price():
+    """Mind grants 2% maximum mana per point, and two affixes plus a hybrid
+    raise it as well. A cost that moved with the pool would make all of them
+    buy nothing."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    plain = ch.Character(DEMONIC_CLASSES["Ritualist"], level=100)
+    stacked = ch.Character(DEMONIC_CLASSES["Ritualist"], level=100,
+                           attributes=ch.Attributes(mind=100),
+                           gear=ch.Gear(flat={"max_mana": 200.0},
+                                        increased={"max_mana": 0.5}))
+
+    assert stacked.stat("max_mana") > plain.stat("max_mana")
+    assert stacked.mana_cost_of("Heavy") == plain.mana_cost_of("Heavy")
+
+
+def share_of_pool(definition, level: int, slot: str = "Heavy") -> float:
+    character = ch.Character(definition, level=level)
+    return character.mana_cost_of(slot) / character.stat("max_mana")
+
+
+def test_cost_takes_exactly_the_same_share_of_a_pool_at_every_level():
+    """A cost fixed forever would be crippling at level 1 and beneath notice at
+    level 100, because a Ravager's pool runs from 40 to 436. Costs ride the
+    default mana progression, so on the default line the share is identical at
+    every level."""
+    shares = [share_of_pool(ch.GENERIC, level) for level in (1, 25, 50, 100)]
+    for value in shares[1:]:
+        assert value == pytest.approx(shares[0])
+
+
+def test_a_class_that_overrides_its_mana_line_drifts_only_slightly():
+    """A class with its own mana curve does not track the default one exactly,
+    so its share moves a little across levels. The Ravager gets slightly more
+    constrained as it levels and the Ritualist slightly less, which is the
+    right direction for both. It has to stay small, or a class would find its
+    mana economy changing character as it levels rather than staying itself."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    for name, definition in DEMONIC_CLASSES.items():
+        low = share_of_pool(definition, 1)
+        high = share_of_pool(definition, 100)
+        drift = abs(high - low) / low
+        assert drift < 0.25, (
+            f"one Heavy Attack costs the {name} {low:.2%} of its pool at level "
+            f"1 and {high:.2%} at level 100, a change of {drift:.0%}")
+
+
+def test_the_basic_attack_restores_mana_and_scales_with_level():
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    low = ch.Character(DEMONIC_CLASSES["Ravager"], level=1)
+    high = ch.Character(DEMONIC_CLASSES["Ravager"], level=100)
+    assert high.mana_on_hit() == pytest.approx(ch.BASIC_ATTACK_MANA_ON_HIT)
+    assert 0.0 < low.mana_on_hit() < high.mana_on_hit()
+
+
+def test_a_character_with_no_weapon_earns_nothing_from_hits():
+    """No weapon means no attack speed and so no basic attacks landing. Income
+    falls back to regeneration, which is correct rather than a gap."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    character = ch.Character(DEMONIC_CLASSES["Ravager"], level=100)
+    assert character.stat("attack_speed") == 0.0
+    assert character.mana_income() == character.stat("mana_regen")
+
+
+# --------------------------------------------------------------------------
+# The Heavy Attack has to actually be the primary damage button
+# --------------------------------------------------------------------------
+
+#: Every weapon rate in the game, from the attack speed decision of 2026-08-04.
+#: The Dagger at 1.50 is the fastest, which is what makes the check below tight.
+WEAPON_RATES = (1.50, 1.45, 1.40, 1.35, 1.30, 1.28, 1.25, 1.20)
+
+
+def test_the_heavy_attack_out_damages_the_automatic_basic_attack():
+    """The design calls the Heavy Attack often the primary damage button, and
+    that has to be arithmetically true rather than only stated.
+
+    It was false at the 6 second cooldown first proposed: 250% every 6 seconds
+    is 41.7% per second against 130% per second from a basic attack at 1.3
+    attacks per second. Shortening the cooldown to 1.5 seconds is what made the
+    design's own words hold. Raising it again, or adding a faster weapon, would
+    quietly reverse it.
+    """
+    heavy = ch.SKILL_SLOTS["Heavy"]
+    basic = ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT]
+    heavy_per_second = heavy.typical_damage / heavy.typical_cooldown
+
+    for rate in WEAPON_RATES:
+        basic_per_second = basic.typical_damage * rate
+        assert heavy_per_second > basic_per_second, (
+            f"at {rate} attacks per second the basic attack deals "
+            f"{basic_per_second:.0f}% of weapon damage per second and the Heavy "
+            f"Attack only {heavy_per_second:.0f}%, so the slot the design calls "
+            "the primary damage button is not one")
+
+
+def test_the_margin_over_the_basic_attack_is_deliberately_narrow():
+    """The basic attack is meant to be a real part of a character's damage
+    rather than a formality, and it is also the mana income. The Heavy Attack
+    should lead it, not eclipse it."""
+    heavy = ch.SKILL_SLOTS["Heavy"]
+    basic = ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT]
+    heavy_per_second = heavy.typical_damage / heavy.typical_cooldown
+
+    slowest = basic.typical_damage * min(WEAPON_RATES)
+    assert heavy_per_second < 2.0 * slowest, (
+        f"the Heavy Attack deals {heavy_per_second / slowest:.1f} times the "
+        "basic attack even with the slowest weapon, which makes the basic "
+        "attack a formality")
+
+
+# --------------------------------------------------------------------------
+# The rule that keeps mana on hit from becoming a generator
+# --------------------------------------------------------------------------
+
+def test_the_primary_damage_button_is_affordable_without_landing_a_single_hit():
+    """THE ANTI-GENERATOR RULE. What players object to in Diablo 4 is casting a
+    weak skill about five times to afford one real one. Here the Heavy Attack,
+    used the moment it returns, costs less per second than mana regeneration
+    alone supplies, for every class. Mana on hit pays for the other slots, so
+    it is a supplement and never the thing that makes the main button work."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    heavy = ch.SKILL_SLOTS["Heavy"]
+    for name, definition in DEMONIC_CLASSES.items():
+        character = ch.Character(definition, level=100)
+        spend = character.mana_cost_of("Heavy") / heavy.typical_cooldown
+        assert spend <= character.stat("mana_regen"), (
+            f"the {name} spends {spend:.1f} mana/s on the Heavy Attack against "
+            f"{character.stat('mana_regen'):.1f}/s of regeneration, so it must "
+            "land basic attacks to use its primary damage button")
+
+
+def test_mana_on_hit_is_a_supplement_rather_than_the_main_income():
+    """The Diablo 4 complaint is a ratio: generators give 3 to 4 and spenders
+    cost 30 to 40, so roughly five filler casts buy one real one. Basic attack
+    income here must stay the smaller half of what a character earns."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    for name, definition in DEMONIC_CLASSES.items():
+        character = ch.Character(
+            definition, level=100,
+            gear=ch.Gear(weapon_base={"attack_speed": 1.5}))
+        from_hits = character.stat("attack_speed") * character.mana_on_hit()
+        assert from_hits < character.stat("mana_regen"), (
+            f"the {name} earns {from_hits:.1f} mana/s from basic attacks "
+            f"against {character.stat('mana_regen'):.1f}/s from regeneration, "
+            "so hitting things is its main source of mana")
+
+
+def test_using_every_skill_on_cooldown_outruns_income():
+    """Mana has to bind somewhere, or the cost is decoration and the four mana
+    affixes buy nothing worth having."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    spend = sum(ch.SKILL_SLOTS[s].mana_cost / ch.SKILL_SLOTS[s].typical_cooldown
+                for s in ch.CHOSEN_SKILL_SLOTS
+                if ch.SKILL_SLOTS[s].typical_cooldown > 0)
+    for name, definition in DEMONIC_CLASSES.items():
+        character = ch.Character(
+            definition, level=100,
+            gear=ch.Gear(weapon_base={"attack_speed": 1.3}))
+        assert spend > character.mana_income(), (
+            f"the {name} can use every skill on cooldown forever, so mana "
+            "never constrains it")
+
+
+def test_the_aura_runs_out_for_the_two_classes_on_default_regeneration():
+    """Issue #36 requires the aura to switch off when the resource is
+    exhausted, so that has to be reachable for someone.
+
+    The Ritualist is exempt on purpose: its regeneration exceeds the drain, so
+    it can hold an aura indefinitely. That is what "largest mana pool, the only
+    meaningful mana regeneration" is supposed to buy."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    for name in ("Ravager", "Masochist"):
+        seconds = ch.Character(DEMONIC_CLASSES[name], level=100).seconds_of_aura()
+        assert seconds != float("inf"), (
+            f"the {name} aura never runs out, so it can never switch itself off")
+        assert 20.0 <= seconds <= 90.0, (
+            f"the {name} aura lasts {seconds:.0f}s standing still, outside the "
+            "20 to 90 seconds a toggled commitment should last")
+
+    ritualist = ch.Character(DEMONIC_CLASSES["Ritualist"], level=100)
+    assert ritualist.seconds_of_aura() == float("inf"), (
+        "the Ritualist is meant to sustain an aura from regeneration alone; if "
+        "that has stopped being true, the class's defining stat has moved")
+
+
+def test_the_design_document_cost_table_matches_the_code():
+    """The War skill examples table already drifted from the workbook once.
+    This stops the cost table drifting from the model it describes."""
+    document = (pathlib.Path(__file__).resolve().parents[2]
+                / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+    start = document.find("### **What a Skill Costs**")
+    assert start != -1, "the design document has no What a Skill Costs section"
+    section = document[start:document.find("### **Skill Acquisition**", start)]
+
+    labels = {ch.BASIC_ATTACK_SLOT: "Basic Attack", "Heavy": "Heavy Attack"}
+    checked = 0
+    for name, slot in ch.SKILL_SLOTS.items():
+        label = labels.get(name, name)
+        row = re.search(
+            rf"^\| {re.escape(label)} \| ([^|]+?) \| ([^|]+?) \| ([^|]+?) \|",
+            section, re.MULTILINE)
+        assert row, f"{label} has no row in the cost table"
+        checked += 1
+        cooldown, band, cost = (g.strip() for g in row.groups())
+
+        if slot.typical_cooldown == 0.0:
+            assert cooldown == "none", f"{label} cooldown reads {cooldown!r}"
+        else:
+            assert cooldown == f"{slot.typical_cooldown:g}s", label
+            assert band == (f"{slot.cooldown_lowest:g}–"
+                            f"{slot.cooldown_highest:g}s"), label
+
+        if name == ch.BASIC_ATTACK_SLOT:
+            assert cost.startswith(f"restores {ch.BASIC_ATTACK_MANA_ON_HIT:g}"), (
+                f"the Basic Attack cost cell reads {cost!r}")
+        else:
+            assert cost.startswith(f"{slot.mana_cost:g}"), (
+                f"{label} cost cell reads {cost!r}")
+
+    assert checked == len(ch.SKILL_SLOTS)

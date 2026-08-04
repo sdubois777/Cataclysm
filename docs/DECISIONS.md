@@ -20,6 +20,181 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — What a skill costs: a cooldown per slot, a flat mana cost, and mana back from the automatic basic attack
+
+**The question.** Issue #155. No skill in the project stated a cooldown or a
+resource cost. Not one of the 61 War rows and not one of the 16 Demonic rows.
+
+**THIS IS THE SAME FAILURE AS ISSUE #120, at a larger scale.** Around the missing
+base cooldown the project had already built: a reduction formula
+(`Final Cooldown = Base Cooldown / ((1 + increases) × more)`), the Efficacy
+attribute granting 1% per point, a cooldown reduction affix on five gear slots, a
+Reliquary implicit, and **41 enchantments that mention cooldown**. Every one of
+them divided zero. Mana costs were in the same state: four enchantments change a
+skill's mana cost, including a ten-piece set bonus reading "your ultimate ability
+no longer has a cooldown, instead its mana cost is doubled every time you use
+it", and no skill had a cost for either half of that sentence to act on.
+
+**WHERE THE BASE BELONGS WAS ALREADY SETTLED.** The design document's stat source
+table says the skill being used supplies "off this sheet, the base cooldown,
+projectile count and duration". So this is the design becoming real rather than a
+change to it.
+
+**FIRST DECISION: cooldown and cost belong to the slot, not to a column on the
+skill sheet. This reverses what issue #155 itself recommended.** The issue argued
+for columns. Reconnaissance changed it: no designed skill states either number,
+so a column would be 77 copies of six values, and the damage multiplier already
+solved this exact problem the other way. It lives in the slot table, and a skill
+states its own only when it differs, which is how Skull Splitter says 500%.
+
+**SECOND DECISION: the numbers, set by the project owner.** A first set was
+anchored on Diablo 4, whose ultimates cluster at 50 to 60 seconds and whose
+defensive skills sit near 20. The project owner judged those too long to play and
+gave the values below directly. Movement kept its 5 seconds.
+
+| Slot | Cooldown | Band | Mana at level 100 |
+|---|---|---|---|
+| Basic Attack | none | — | restores 6 on hit |
+| Heavy Attack | 1.5s | 1–4s | 15 |
+| Support | 4s | 2–10s | 25 |
+| Special | 5s | 3–10s | 40 |
+| Movement | 5s | 3–10s | 20 |
+| Ultimate | 20s | 12–40s | 150 |
+| Aura | none | — | 20 per second |
+
+Diablo 4 still set the shape rather than the values: a cooldown per slot, an
+ultimate that is the longest wait by a wide margin, and a primary damage button
+that returns fastest. Its own numbers assume a resource system this design does
+not use, which is the reason not to take them directly.
+
+Only two slots have no cooldown, for different reasons: the Basic Attack is
+automatic so attack speed sets its rate, and the Aura is a toggle so there is
+nothing to wait for. A guard refuses any other slot reading zero, because a zero
+cooldown is also what a forgotten one looks like — which is exactly how this went
+unnoticed for so long.
+
+**THIRD DECISION: mana costs are flat numbers, the same for every class.** An
+earlier version made a cost a percentage of the player's own maximum mana. The
+project owner rejected it: it "just feels bad". It was also wrong on its own
+terms, because it made a large mana pool buy nothing — the pool and the price
+rose together, so the Ritualist's 1,278 mana bought exactly as many casts as the
+Ravager's 436.
+
+Flat costs give the opposite and correct result. The same 15 mana Heavy Attack is
+9 casts for a Ravager and 27 for a Ritualist, and every source of maximum mana —
+the Mind attribute, two affixes and a hybrid — is pure gain.
+
+**Why the costs still scale with character level.** Nothing in this project
+raises a skill's cost the way a gem level does in Path of Exile, and a Ravager's
+pool runs from 40 at level 1 to 436 at level 100. A number that never moved would
+be crippling at one end and beneath notice at the other. Costs ride the default
+mana progression, so a skill takes the same share of a pool at both ends. On the
+default line that share is exactly constant; a class with its own mana curve
+drifts under 20% across 100 levels, and a test holds it there. What the player
+reads is still a flat quantity of mana.
+
+**FOURTH DECISION: the automatic basic attack restores 6 mana on hit, and this
+is deliberately not a generator.**
+
+The project owner raised the concern while asking for it: the generator and
+spender pattern "is often just annoying". The complaint is well documented.
+Diablo 4 players describe generators producing 3 to 4 resource against spenders
+costing 30 to 40, so roughly five filler casts buy one real skill, and describe
+the result as casting boring spells to earn the right to cast interesting ones.
+
+Two things structurally prevent that here, and the second is enforced by a guard
+rather than left to intent.
+
+  - **The basic attack is automatic.** The design document has said so from the
+    start. There is no button to press and no rotation to perform, so there is no
+    filler action to resent. It is income for being in a fight.
+  - **The Heavy Attack is affordable from mana regeneration alone.** Used the
+    moment it returns it costs 10 mana per second against 10.9 per second of
+    default regeneration, so the primary damage button works with no basic
+    attacks landing at all. Mana on hit pays for the other slots. A check refuses
+    any Heavy Attack cost that breaks this, and a second check refuses a
+    mana-on-hit value large enough to become a character's main income.
+
+Path of Exile treats mana on hit as ordinary sustain alongside regeneration and
+leech, and it draws none of the same complaint, because there the skill doing the
+hitting is the one the player wants to use. The same is true here.
+
+**What this produces at level 100, with no gear and no attribute points:**
+
+| Class | Mana | Regen | Income while fighting | Everything on cooldown lasts |
+|---|---|---|---|---|
+| Ravager | 436 | 10.9/s | 18.6/s | 25s |
+| Ritualist | 1,278 | 26.8/s | 34.6/s | effectively unlimited |
+| Masochist | 644 | 10.9/s | 19.6/s | 40s |
+
+Using every skill the moment it returns costs 35.75 mana per second, the same for
+all three because the costs are flat. A character can spend everything for about
+half a minute and must then choose what to keep using. The Ritualist is the
+exception and is meant to be: sustaining a whole kit is what its pool and
+regeneration are for.
+
+**The Aura runs out for two of the three classes, and that is the right answer
+rather than a gap.** It drains 20 mana per second, emptying a Ravager standing
+still in 48 seconds and a Masochist in 71. The Ritualist's 26.8 per second
+regeneration covers the drain, so it alone can hold an aura indefinitely. Issue
+#36 requires the aura to switch off when the resource is exhausted; that is
+reachable, which is what the requirement needs, and a class being able to avoid
+it is a class difference rather than a missing limit.
+
+**A consequence of the Support cooldown, recorded and not resolved.** At 4
+seconds, and with the designed Support buffs lasting 8 to 10 seconds, every
+Support buff has more than full uptime. The slot becomes a permanent stat rather
+than something used at a moment, and its 25 mana is then the only real limit on
+it. This is a constant rather than a structure, so it is left for play to settle.
+
+**A TENSION THE SHORTER COOLDOWN RESOLVED, which the longer one did not.** The
+design calls the Heavy Attack "often the primary damage button". At the 6 second
+cooldown first proposed it was not: 250% every 6 seconds is 41.7% of weapon
+damage per second, against 130% per second from an automatic basic attack dealing
+100% at 1.3 attacks per second. The basic attack out-damaged it three times over
+and the design's own words were false.
+
+At 1.5 seconds the Heavy Attack deals 166.7% per second and is the larger source
+for every weapon in the game, from 1.11 times the basic attack with the fastest
+weapon to 1.39 times with the slowest:
+
+| Weapon rate | Basic attack | Heavy Attack is |
+|---|---|---|
+| Dagger, 1.50/s | 150%/s | 1.11x |
+| Fist, 1.45/s | 145%/s | 1.15x |
+| Crossbow, Wand, Spear, 1.35/s | 135%/s | 1.23x |
+| Greataxe, 1.28/s | 128%/s | 1.30x |
+| Shield, Warhammer, 1.20/s | 120%/s | 1.39x |
+
+The margin is deliberately not large. The basic attack is meant to be a real part
+of a character's damage rather than a formality, and it is also the mana income.
+The Heavy Attack stops being the larger source above 1.67 attacks per second, and
+the fastest weapon in the game is the Dagger at 1.50, so there is room but not
+much. A test holds it, because raising the Heavy Attack's cooldown or a weapon's
+rate could quietly reverse it again.
+
+**Sources.** The Diablo 4 forums and a widely cited write-up of its resource
+problem, for the generator ratio and the complaint against it; Maxroll and Icy
+Veins on Diablo 4 cooldown reduction and per-skill cooldowns; the Path of Exile
+wiki on mana and on cooldown, for mana on hit and leech being ordinary sustain
+and for cooldown and cost being separate limiters; the Last Epoch wiki on skills
+and mana, for each skill carrying both a mana cost and a cooldown.
+
+**What the research does not settle.** Every number in the table. No reference
+game has this game's six slots, and the cooldowns were set by the project owner
+against how the game should feel rather than derived. The research settles the
+shape: cooldown per slot, cost separate from cooldown, and the specific rule that
+keeps mana on hit from becoming a generator.
+
+**Affects:** `Cataclysm_GDD_v2.md`, which gains a "What a Skill Costs"
+subsection and a "The Basic Attack Restores Mana, and This Is Not a Generator"
+subsection in section IV. `sim/cataclysm_sim/character.py`, where `SkillSlot`
+carries the cooldown band and the flat mana cost. **Applied.** No change to
+`All_Things_Cataclysm.xlsx`: these numbers are per slot, and the sheet holds
+per-skill rows.
+
+---
+
 ## 2026-08-04 — The Demonic skills for the vertical slice, and Burn becoming an effect the player can apply
 
 **The question.** Issue #62: design the Demonic skills for the vertical slice's

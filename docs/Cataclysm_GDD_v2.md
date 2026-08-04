@@ -426,6 +426,75 @@ At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202
 
   
 
+### **What a Skill Costs**
+
+Two things limit how often a skill is used: a cooldown in seconds, and a mana cost. Both belong to the slot, and a skill states its own only when it differs, exactly as it does for damage. The stat source table above already says the base cooldown comes from the skill being used.
+
+  
+
+|  |  |  |  |
+| :-- | :-: | :-: | :-- |
+| \*\*Slot\*\* | \*\*Cooldown\*\* | \*\*Band\*\* | \*\*Mana\*\* |
+| Basic Attack | none | — | restores 6 on hit |
+| Heavy Attack | 1.5s | 1–4s | 15 |
+| Support | 4s | 2–10s | 25 |
+| Special | 5s | 3–10s | 40 |
+| Movement | 5s | 3–10s | 20 |
+| Ultimate | 20s | 12–40s | 150 |
+| Aura | none | — | 20 per second |
+
+  
+
+**Only two slots have no cooldown, and each has a different reason.** The Basic Attack is automatic, so the weapon's attack speed sets its rate. The Aura is a toggle, so there is nothing to wait for; it is paid for by draining mana instead. Every other slot waits.
+
+  
+
+**Mana costs are flat numbers, and the same number for every class.** That is what makes a large mana pool worth having: it buys more casts of the same skill rather than paying a proportionally larger price for each one. Every source of maximum mana is pure gain for the same reason — the Mind attribute, two affixes and a hybrid.
+
+  
+
+**The numbers above are quoted at level 100, and scale down with character level.** A cost that never moved would be crippling at level 1 and beneath notice at level 100, because a Ravager's mana pool runs from 40 to 436. Costs ride the default mana progression, so a skill takes the same share of a pool at both ends. What the player reads is still a flat quantity of mana.
+
+  
+
+### **The Basic Attack Restores Mana, and This Is Not a Generator**
+
+  
+
+The automatic basic attack returns 6 mana each time it lands. At a typical 1.3 attacks per second that is about 8 mana per second while fighting.
+
+  
+
+**This is deliberately not the generator and spender pattern**, which players of that pattern describe as casting a weak skill about five times to afford one real one. Two things prevent it here.
+
+  
+
+  - **The basic attack is automatic.** There is no button to press and no rotation to perform. It is income for being in a fight rather than a filler action.
+  - **The Heavy Attack is affordable from mana regeneration alone.** Used the moment it returns, it costs 10 mana per second against the 10.9 per second a character regenerates at level 100. It works with no basic attacks landing at all. Mana on hit pays for the other slots, so it is a supplement and never the thing that makes the primary damage button function.
+
+  
+
+**What this produces at level 100, with no gear and no attribute points:**
+
+  
+
+|  |  |  |  |  |
+| :-- | :-: | :-: | :-: | :-- |
+| \*\*Class\*\* | \*\*Mana\*\* | \*\*Regen\*\* | \*\*Income while fighting\*\* | \*\*Everything on cooldown lasts\*\* |
+| Ravager | 436 | 10.9/s | 18.6/s | 25s |
+| Ritualist | 1,278 | 26.8/s | 34.6/s | effectively unlimited |
+| Masochist | 644 | 10.9/s | 19.6/s | 40s |
+
+  
+
+Using every skill the moment it returns costs 35.75 mana per second, the same for all three because the costs are flat. So a character can spend everything for roughly half a minute and must then choose which skills to keep using. The Ritualist is the exception and is meant to be: sustaining its whole kit is what its mana pool and regeneration are for.
+
+  
+
+**The Aura is a commitment rather than something left on.** It drains 20 mana per second, so standing still it empties a Ravager's pool in 48 seconds and a Masochist's in 71. The Ritualist's 26.8 per second regeneration covers the drain, so it alone can hold an aura indefinitely.
+
+  
+
 ### **Skill Acquisition**
 
 Skills are not leveled or unlocked through a skill tree. They are determined entirely by weapon type and damage type. Changing your weapon changes your available skill set. This keeps the skill system tightly coupled to itemization and makes gear drops feel meaningful beyond raw stat comparisons.
