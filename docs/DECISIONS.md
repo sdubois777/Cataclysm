@@ -20,6 +20,130 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — What a skill costs: a cooldown per slot, and a mana cost measured against the class base
+
+**The question.** Issue #155. No skill in the project stated a cooldown or a
+resource cost. Not one of the 61 War rows and not one of the 16 Demonic rows.
+
+**THIS IS THE SAME FAILURE AS ISSUE #120, at a larger scale.** Around the missing
+base cooldown the project had already built: a reduction formula
+(`Final Cooldown = Base Cooldown / ((1 + increases) × more)`), the Efficacy
+attribute granting 1% per point, a cooldown reduction affix on five gear slots,
+a Reliquary implicit, and **41 enchantments that mention cooldown**. Every one of
+them divided zero. Mana costs were in the same state: four enchantments change a
+skill's mana cost, including a ten-piece set bonus reading "your ultimate ability
+no longer has a cooldown, instead its mana cost is doubled every time you use
+it", and no skill had a cost for either half of that sentence to act on.
+
+**WHERE THE BASE BELONGS WAS ALREADY SETTLED.** The design document's stat source
+table says the skill being used supplies "off this sheet, the base cooldown,
+projectile count and duration". So this is the design becoming real rather than a
+change to it.
+
+**FIRST DECISION: cooldown and cost belong to the slot, not to a column on the
+skill sheet. This reverses what issue #155 itself recommended.** The issue argued
+for columns. Reconnaissance changed it: no designed skill states either number,
+so a column would be 77 copies of six values, and the damage multiplier already
+solved this exact problem the other way. It lives in the slot table, and a skill
+states its own only when it differs, which is how Skull Splitter says 500%.
+
+**SECOND DECISION: the cooldowns, anchored on Diablo 4 rather than Path of
+Exile.** Diablo 4 is the only one of the three reference games that gates skills
+by cooldown per slot the way this design does. Its ultimates run 30 to 90 seconds
+and cluster at 50 to 60 — Inferno 30, Iron Maelstrom 50, Wrath of the Berserker
+60, Deep Freeze 60, Call of the Ancients 75, Conduit 90. Its defensive skills sit
+near 20: Flame Shield 20, Ice Armor 16 to 20. Most other skills have no cooldown
+or under 30 seconds.
+
+Path of Exile is deliberately **not** the anchor. There most skills have no
+cooldown at all and are gated by mana instead. That is a coherent design and it
+is not this one, which names a cooldown in four of its six slot descriptions.
+
+| Slot | Cooldown | Band | Mana |
+|---|---|---|---|
+| Basic Attack | none | — | none |
+| Movement | 5s | 3–10s | 4% |
+| Heavy Attack | 6s | 4–12s | 5% |
+| Special | 12s | 8–20s | 8% |
+| Support | 20s | 12–30s | 6% |
+| Ultimate | 60s | 40–90s | 15% |
+| Aura | none | — | 5% per second |
+
+Only two slots have none, for different reasons: the Basic Attack is automatic so
+attack speed sets its rate, and the Aura is a toggle so there is nothing to wait
+for. A guard refuses any other slot reading zero, because a zero cooldown is also
+what a forgotten one looks like — which is exactly how this went unnoticed.
+
+**THIRD DECISION, AND THE LOAD-BEARING ONE: mana cost is a percentage of base
+maximum mana**, meaning the class stat line's mana at the character's level,
+before attributes, gear and enchantments.
+
+It is not a flat number, because nothing in this project raises a skill's cost
+with level the way a gem level does in Path of Exile and Last Epoch. A fixed flat
+cost would stop mattering: a Ravager's pool runs from 44 at level 1 to 436 at
+level 100.
+
+It is not a share of the **final** pool either, and that is the half that
+matters. Mind grants 2% maximum mana per point and only 1% mana regeneration, and
+two affixes plus a hybrid also raise maximum mana. If cost scaled with the final
+pool, every one of those would buy nothing, because the price would rise with the
+pool. Measured against the class base they all buy what they should: more casts
+before running dry. A test asserts this directly, by stacking Mind and mana gear
+and checking the cost does not move.
+
+**What the numbers produce at level 100 with no gear and no attributes:**
+
+| Class | Base mana | Regen | All five on cooldown | Aura alone, from full |
+|---|---|---|---|---|
+| Ravager | 436 | 10.9/s | 12.4/s | 40s |
+| Ritualist | 1,278 | 26.8/s | 36.4/s | 34s |
+| Masochist | 644 | 10.9/s | 18.4/s | 30s |
+
+Using all five cooldown skills the moment each returns costs slightly more than
+regeneration supplies, for all three. That is the intended place to sit: mana
+binds, and gear and attributes relieve it.
+
+**The Aura is deliberately unaffordable alongside anything else.** It drains a
+full pool in 30 to 40 seconds with nothing else used. That is what makes issue
+#36's requirement — the aura switches off when the resource is exhausted —
+something that can actually happen. A test asserts the aura runs out for all
+three classes, because if regeneration ever covered the drain that acceptance
+criterion would be unreachable.
+
+**An observation, recorded rather than solved.** The Masochist is the most
+mana-constrained of the three: it carries the default mana regeneration with one
+and a half times the Ravager's pool. That reads as consistent with its design,
+which converts mana into health through a passive tree keystone, so mana pressure
+is what pushes a Masochist toward that conversion. If play says otherwise it is a
+regeneration number, not a structural problem.
+
+**A tension not resolved here.** The basic attack is automatic, deals 100% weapon
+damage and fires at roughly 1.35 times per second, so it out-damages a Heavy
+Attack on a 6 second cooldown by a wide margin over any span. The design calls
+the Heavy "often the primary damage button". Those two cannot both be true at
+these numbers. It is a constant rather than a structure, and this project tunes
+constants against play, so it is recorded and left.
+
+**Sources.** Maxroll and Icy Veins on Diablo 4 cooldown reduction and skill
+cooldowns, and the Diablo 4 Fextralife and PureDiablo wikis for the per-skill
+base cooldowns quoted above; the Path of Exile wiki on cooldown and on mana cost,
+for cooldown and cost being separate limiters and for most skills having no
+cooldown; the Last Epoch wiki on skills and mana, for each skill having a set
+mana cost and cooldown and for some having neither.
+
+**What the research does not settle.** Every number in the table. No reference
+game has this game's six slots. The research settles the shape — cooldown per
+slot, cost separate from cooldown, ultimates near a minute — and the ordering
+across slots is a judgement made against the design's own words for each slot.
+
+**Affects:** `Cataclysm_GDD_v2.md`, which gains a "What a Skill Costs"
+subsection in section IV beside "What a Skill Is Worth".
+`sim/cataclysm_sim/character.py`, where `SkillSlot` now carries the cooldown band
+and the mana cost. **Applied.** No change to `All_Things_Cataclysm.xlsx`: these
+numbers are per slot, and the sheet holds per-skill rows.
+
+---
+
 ## 2026-08-04 — The Demonic skills for the vertical slice, and Burn becoming an effect the player can apply
 
 **The question.** Issue #62: design the Demonic skills for the vertical slice's

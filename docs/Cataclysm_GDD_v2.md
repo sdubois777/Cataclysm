@@ -426,6 +426,58 @@ At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202
 
   
 
+### **What a Skill Costs**
+
+Two things limit how often a skill is used: a cooldown in seconds, and a mana cost. Both belong to the slot, and a skill states its own only when it differs, exactly as it does for damage. The stat source table above already says the base cooldown comes from the skill being used.
+
+  
+
+|  |  |  |  |
+| :-- | :-: | :-: | :-- |
+| \*\*Slot\*\* | \*\*Cooldown\*\* | \*\*Band\*\* | \*\*Mana cost\*\* |
+| Basic Attack | none | — | none |
+| Movement | 5s | 3–10s | 4% |
+| Heavy Attack | 6s | 4–12s | 5% |
+| Special | 12s | 8–20s | 8% |
+| Support | 20s | 12–30s | 6% |
+| Ultimate | 60s | 40–90s | 15% |
+| Aura | none | — | 5% per second |
+
+  
+
+**Only two slots have no cooldown, and each has a different reason.** The Basic Attack is automatic, so the weapon's attack speed sets its rate. The Aura is a toggle, so there is nothing to wait for; it is paid for by draining mana instead. Every other slot waits.
+
+  
+
+**Mana cost is a percentage of base maximum mana**, meaning the class's mana at the character's level before attributes, gear and enchantments. It is measured against the class base rather than the final pool on purpose. Mind grants 2% maximum mana per point and only 1% mana regeneration, and two affixes plus a hybrid also raise maximum mana. If the cost scaled with the final pool, every one of those would buy nothing, because the price would rise with the pool. Measured against the class base they all buy what they should: more casts before running dry.
+
+  
+
+**What this produces at level 100, with no gear and no attribute points:**
+
+  
+
+|  |  |  |  |  |
+| :-- | :-: | :-: | :-: | :-- |
+| \*\*Class\*\* | \*\*Base mana\*\* | \*\*Regen\*\* | \*\*All five on cooldown\*\* | \*\*Aura alone, from full\*\* |
+| Ravager | 436 | 10.9/s | 12.4/s | 40s |
+| Ritualist | 1,278 | 26.8/s | 36.4/s | 34s |
+| Masochist | 644 | 10.9/s | 18.4/s | 30s |
+
+  
+
+Using all five cooldown skills the moment each comes back costs slightly more than regeneration supplies, for all three classes. That is the intended place to sit: mana is a real constraint that gear and attributes relieve, rather than one that never binds or one that stops the character acting.
+
+  
+
+**The Aura is deliberately unaffordable alongside everything else.** Running it drains a full pool in 30 to 40 seconds with nothing else used. Turning it on is a commitment for a fight rather than something left on, and it is what makes an aura switching off when mana runs out something that actually happens.
+
+  
+
+**The Masochist is the most mana-constrained of the three**, because it carries the default mana regeneration with one and a half times the Ravager's pool. That is consistent with its design: the class converts mana into health through a keystone in its passive tree, so mana pressure is what pushes a Masochist toward that conversion rather than an obstacle to it.
+
+  
+
 ### **Skill Acquisition**
 
 Skills are not leveled or unlocked through a skill tree. They are determined entirely by weapon type and damage type. Changing your weapon changes your available skill set. This keeps the skill system tightly coupled to itemization and makes gear drops feel meaningful beyond raw stat comparisons.

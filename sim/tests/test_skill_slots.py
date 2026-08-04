@@ -222,3 +222,174 @@ def test_an_ultimate_is_worth_several_common_enemies():
     from cataclysm_sim import enemy_stats as es
     common = es.stats_on_floor("Common", 8, "Cataclysm")
     assert af.damage_for_slot("Ultimate") > 1.5 * common.effective_health
+
+
+# --------------------------------------------------------------------------
+# What a skill costs: cooldown and mana. Issue #155.
+#
+# Neither existed. The design document defines a cooldown reduction formula, an
+# attribute that scales it, an affix that grants it and 41 enchantments that
+# mention it, and no skill supplied a base for any of that to divide.
+# --------------------------------------------------------------------------
+
+def test_only_the_automatic_slot_and_the_toggle_have_no_cooldown():
+    """A cooldown of zero is also what a forgotten cooldown looks like, so the
+    two that legitimately have none are named rather than inferred."""
+    free = {n for n, s in ch.SKILL_SLOTS.items() if s.typical_cooldown == 0.0}
+    assert free == {ch.BASIC_ATTACK_SLOT, "Aura"}
+    assert free == set(ch.SLOTS_WITHOUT_A_COOLDOWN)
+
+
+def test_every_slot_a_player_chooses_is_limited_by_something():
+    """A skill with no cooldown and no cost can be held down."""
+    for name in ch.CHOSEN_SKILL_SLOTS:
+        slot = ch.SKILL_SLOTS[name]
+        assert slot.typical_cooldown > 0 or slot.mana_cost_percent > 0, (
+            f"{name} costs nothing and waits for nothing")
+
+
+def test_the_basic_attack_is_the_only_free_slot():
+    """The design calls it automatic and free. Everything else is paid for."""
+    assert ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT].mana_cost_percent == 0.0
+    for name in ch.CHOSEN_SKILL_SLOTS:
+        assert ch.SKILL_SLOTS[name].mana_cost_percent > 0.0, name
+
+
+def test_a_cooldown_band_that_does_not_contain_its_typical_is_rejected():
+    with pytest.raises(ValueError, match="typical cooldown"):
+        ch.SkillSlot("Bad", 100.0, 100.0, 100.0, "impossible",
+                     typical_cooldown=30.0, cooldown_lowest=1.0,
+                     cooldown_highest=5.0, mana_cost_percent=1.0)
+
+
+def test_the_ultimate_waits_longest_and_movement_waits_least():
+    """The design says the Ultimate is on a long cooldown and calls the Heavy
+    Attack's moderate. Ordering them is what makes those words mean something."""
+    waits = {n: s.typical_cooldown for n, s in ch.SKILL_SLOTS.items()
+             if s.typical_cooldown > 0}
+    assert waits["Ultimate"] == max(waits.values())
+    assert waits["Movement"] == min(waits.values())
+    assert waits["Support"] > waits["Special"] > waits["Heavy"]
+
+
+def test_a_skill_takes_its_slots_cooldown_when_it_states_none():
+    skill = ch.Skill(name="Molten Cleave", slot="Heavy")
+    assert skill.base_cooldown() == ch.SKILL_SLOTS["Heavy"].typical_cooldown
+
+
+def test_a_skill_may_state_its_own_cooldown():
+    skill = ch.Skill(name="Odd", slot="Heavy", cooldown=11.0)
+    assert skill.base_cooldown() == 11.0
+
+
+def test_a_negative_cooldown_is_rejected():
+    with pytest.raises(ValueError, match="less than none"):
+        ch.Skill(name="Impossible", slot="Heavy", cooldown=-1.0)
+
+
+def test_cooldown_reduction_now_has_something_to_divide():
+    """Before this, every point of Efficacy and every cooldown reduction affix
+    divided a base of zero. This is the check that issue #155 is actually
+    fixed: set a slot's cooldown back to zero and the reduction stops
+    mattering, because zero divided by anything is still zero."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    plain = ch.Character(DEMONIC_CLASSES["Ravager"], level=100,
+                         skill=ch.Skill(name="Pyroclasm", slot="Ultimate"))
+    invested = ch.Character(DEMONIC_CLASSES["Ravager"], level=100,
+                            attributes=ch.Attributes(efficacy=100),
+                            skill=ch.Skill(name="Pyroclasm", slot="Ultimate"))
+    assert plain.skill_cooldown() == 60.0
+    assert invested.skill_cooldown() == pytest.approx(30.0)
+    assert invested.skill_cooldown() < plain.skill_cooldown()
+
+
+def test_mana_cost_is_measured_against_the_class_base_not_the_final_pool():
+    """THE LOAD-BEARING ONE. Mind grants 2% maximum mana per point and only 1%
+    mana regeneration, and two affixes raise maximum mana as well. If cost were
+    a share of the final pool, every one of those would buy nothing, because
+    the price would rise with the pool. Measured against the class base, they
+    all buy more casts."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    plain = ch.Character(DEMONIC_CLASSES["Ritualist"], level=100)
+    stacked = ch.Character(DEMONIC_CLASSES["Ritualist"], level=100,
+                           attributes=ch.Attributes(mind=100),
+                           gear=ch.Gear(flat={"max_mana": 200.0},
+                                        increased={"max_mana": 0.5}))
+
+    assert stacked.stat("max_mana") > plain.stat("max_mana")
+    assert stacked.mana_cost_of("Heavy") == plain.mana_cost_of("Heavy")
+
+    casts_plain = plain.stat("max_mana") / plain.mana_cost_of("Heavy")
+    casts_stacked = stacked.stat("max_mana") / stacked.mana_cost_of("Heavy")
+    assert casts_stacked > casts_plain
+
+
+def test_the_aura_actually_runs_out_for_every_demonic_class():
+    """Issue #36 requires the aura to switch off when the resource is
+    exhausted. If regeneration ever covered the drain it would run forever and
+    that acceptance criterion could never be met."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    for name, definition in DEMONIC_CLASSES.items():
+        character = ch.Character(definition, level=100)
+        seconds = character.seconds_of_aura()
+        assert seconds != float("inf"), (
+            f"the {name} aura never runs out, so it can never switch itself off")
+        assert 20.0 <= seconds <= 90.0, (
+            f"the {name} aura lasts {seconds:.0f}s from a full pool, which is "
+            "outside the 20 to 90 seconds a toggled commitment should last")
+
+
+def test_using_everything_on_cooldown_costs_more_than_regeneration_supplies():
+    """Mana has to bind, or the cost is decoration and the four mana affixes
+    buy nothing worth having. It must not bind so hard the character cannot
+    act, so this checks the ratio rather than only the direction."""
+    from cataclysm_sim.classes import DEMONIC_CLASSES
+
+    for name, definition in DEMONIC_CLASSES.items():
+        character = ch.Character(definition, level=100)
+        spend = sum(
+            character.mana_cost_of(s) / ch.SKILL_SLOTS[s].typical_cooldown
+            for s in ch.CHOSEN_SKILL_SLOTS
+            if ch.SKILL_SLOTS[s].typical_cooldown > 0)
+        regen = character.stat("mana_regen")
+        assert regen < spend <= 2.5 * regen, (
+            f"the {name} spends {spend:.1f} mana/s against {regen:.1f}/s of "
+            "regeneration")
+
+
+def test_the_design_document_cost_table_matches_the_code():
+    """The War skill examples table already drifted from the workbook once.
+    This stops the cost table drifting from the model it describes."""
+    document = (pathlib.Path(__file__).resolve().parents[2]
+                / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+    start = document.find("### **What a Skill Costs**")
+    assert start != -1, "the design document has no What a Skill Costs section"
+    section = document[start:document.find("### **Skill Acquisition**", start)]
+
+    labels = {ch.BASIC_ATTACK_SLOT: "Basic Attack", "Heavy": "Heavy Attack"}
+    checked = 0
+    for name, slot in ch.SKILL_SLOTS.items():
+        label = labels.get(name, name)
+        row = re.search(
+            rf"^\| {re.escape(label)} \| ([^|]+?) \| ([^|]+?) \| ([^|]+?) \|",
+            section, re.MULTILINE)
+        assert row, f"{label} has no row in the cost table"
+        checked += 1
+        cooldown, band, cost = (g.strip() for g in row.groups())
+
+        if slot.typical_cooldown == 0.0:
+            assert cooldown == "none", f"{label} cooldown reads {cooldown!r}"
+        else:
+            assert cooldown == f"{slot.typical_cooldown:g}s", label
+            assert band == (f"{slot.cooldown_lowest:g}–"
+                            f"{slot.cooldown_highest:g}s"), label
+
+        if slot.mana_cost_percent == 0.0:
+            assert cost == "none", f"{label} cost reads {cost!r}"
+        else:
+            assert cost.startswith(f"{slot.mana_cost_percent:g}%"), label
+
+    assert checked == len(ch.SKILL_SLOTS)

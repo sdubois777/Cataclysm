@@ -89,6 +89,7 @@ side effect of building the structure.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 MAX_LEVEL = 100
@@ -490,11 +491,22 @@ BASIC_ATTACK_SLOT = "Basic"
 
 @dataclass(frozen=True)
 class SkillSlot:
-    """One of the seven slots, and what a skill in it is typically worth.
+    """One of the seven slots: what a skill in it is worth, and what it costs.
 
     A band rather than a single number, because skills in a slot vary: the design
     already has one Ultimate at 300% and another at 500%. `typical_damage` is
-    what a skill in this slot deals when it does not state its own.
+    what a skill in this slot deals when it does not state its own, and
+    `typical_cooldown` is how long before it can be used again.
+
+    COOLDOWN AND COST LIVE HERE RATHER THAN ON THE SKILL SHEET, for the same
+    reason the damage multiplier does. No designed skill states either one, so a
+    column on the sheet would be 77 copies of six values. A skill that wants to
+    differ says so in its own description, which is exactly how Skull Splitter
+    differs on damage.
+
+    MANA COST IS A PERCENT OF BASE MAXIMUM MANA, meaning the class stat line's
+    mana at the character's level, before attributes, gear and enchantments.
+    That choice is load-bearing and is explained on MANA_COST note below.
     """
 
     name: str
@@ -502,41 +514,113 @@ class SkillSlot:
     lowest: float
     highest: float
     note: str
+    #: Seconds before the skill can be used again, before any reduction. Zero
+    #: means the slot has no cooldown at all rather than an instant one.
+    typical_cooldown: float = 0.0
+    cooldown_lowest: float = 0.0
+    cooldown_highest: float = 0.0
+    #: Percent of base maximum mana one use costs. For the Aura this is per
+    #: second while the toggle is on, matching how its damage is also per second.
+    mana_cost_percent: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.lowest <= self.typical_damage <= self.highest:
             raise ValueError(
                 f"{self.name}: typical {self.typical_damage} is outside its "
                 f"band of {self.lowest} to {self.highest}")
+        if not self.cooldown_lowest <= self.typical_cooldown <= self.cooldown_highest:
+            raise ValueError(
+                f"{self.name}: typical cooldown {self.typical_cooldown}s is "
+                f"outside its band of {self.cooldown_lowest} to "
+                f"{self.cooldown_highest}")
+        if self.mana_cost_percent < 0.0:
+            raise ValueError(
+                f"{self.name}: mana cost {self.mana_cost_percent}% is negative")
 
 
 #: The seven slots from the design document's Skill Slots table, in the order it
 #: lists them. Six are chosen by the player; the Basic Attack is automatic.
+# --------------------------------------------------------------------------
+# COOLDOWNS AND MANA COSTS. Issue #155.
+#
+# Neither existed anywhere. The design document defines a cooldown reduction
+# formula, an attribute that scales it, an affix that grants it and 41
+# enchantments that mention it -- and no skill supplied a base cooldown for any
+# of that to divide. That is the same shape as issue #120, where attack speed
+# and critical strike chance were scaled from a base of zero.
+#
+# WHERE THE BASE BELONGS WAS ALREADY SETTLED. The design document's stat source
+# table says "The skill being used | Critical strike chance, and off this sheet,
+# the base cooldown, projectile count and duration". So this is the design
+# becoming real rather than a change to it.
+#
+# THE COOLDOWN NUMBERS ARE ANCHORED ON DIABLO 4, which is the only one of the
+# three reference games that gates skills by cooldown per slot the way this
+# design does. Its ultimates run 30 to 90 seconds and cluster at 50 to 60; its
+# defensive skills sit near 20; and most other skills have no cooldown at all or
+# under 30 seconds. Path of Exile is deliberately NOT the anchor here: there most
+# skills have no cooldown and are gated by mana instead, which is a different
+# design from this one.
+#
+# MANA COST IS A PERCENT OF BASE MAXIMUM MANA -- the class stat line's mana at
+# the character's level, before attributes, gear and enchantments.
+#
+# It is not a flat number, because nothing in this project raises a skill's cost
+# with level the way a gem level does in Path of Exile. A fixed flat cost would
+# stop mattering: a Ravager's pool goes from 44 at level 1 to 436 at level 100.
+#
+# It is not a percent of FINAL maximum mana either, and that is the important
+# half. Mind grants 2% maximum mana per point and only 1% mana regeneration, and
+# two affixes plus a hybrid raise maximum mana. If cost scaled with the final
+# pool, every one of those would buy nothing, because the pool and the price
+# would rise together. Measuring against the class base leaves them all working
+# and makes them buy exactly what they should: more casts before running dry.
+# --------------------------------------------------------------------------
+
 SKILL_SLOTS: dict[str, SkillSlot] = {
     s.name: s for s in (
         SkillSlot(BASIC_ATTACK_SLOT, 100.0, 100.0, 100.0,
                   "Automatic and free. It IS weapon damage, which is what makes "
-                  "it the anchor every other slot is measured against."),
+                  "it the anchor every other slot is measured against.",
+                  typical_cooldown=0.0, cooldown_lowest=0.0,
+                  cooldown_highest=0.0, mana_cost_percent=0.0),
         SkillSlot("Heavy", 250.0, 175.0, 350.0,
                   "The design calls it often the primary damage button, on a "
-                  "moderate cooldown."),
+                  "moderate cooldown.",
+                  typical_cooldown=6.0, cooldown_lowest=4.0,
+                  cooldown_highest=12.0, mana_cost_percent=5.0),
         SkillSlot("Special", 150.0, 100.0, 250.0,
                   "Traps, deployables, grenades, pets. The most varied slot, so "
-                  "the widest band below its typical value."),
+                  "the widest band below its typical value.",
+                  typical_cooldown=12.0, cooldown_lowest=8.0,
+                  cooldown_highest=20.0, mana_cost_percent=8.0),
         SkillSlot("Support", 0.0, 0.0, 100.0,
                   "Buffs, shields, stances, curses, banners. Usually no damage "
-                  "at all, which is why its typical value is zero."),
+                  "at all, which is why its typical value is zero.",
+                  typical_cooldown=20.0, cooldown_lowest=12.0,
+                  cooldown_highest=30.0, mana_cost_percent=6.0),
         SkillSlot("Aura", 25.0, 15.0, 40.0,
                   "Persistent and toggled, draining resource per second. This "
-                  "is per second rather than per use."),
+                  "is per second rather than per use.",
+                  typical_cooldown=0.0, cooldown_lowest=0.0,
+                  cooldown_highest=0.0, mana_cost_percent=5.0),
         SkillSlot("Ultimate", 400.0, 300.0, 500.0,
                   "The band is the two designed Ultimates: Annihilator states "
-                  "300% and Skull Splitter states 500%."),
+                  "300% and Skull Splitter states 500%.",
+                  typical_cooldown=60.0, cooldown_lowest=40.0,
+                  cooldown_highest=90.0, mana_cost_percent=15.0),
         SkillSlot("Movement", 100.0, 75.0, 150.0,
                   "Gap closers and escapes. The design says some also deal "
-                  "damage, so a basic attack's worth is the right middle."),
+                  "damage, so a basic attack's worth is the right middle.",
+                  typical_cooldown=5.0, cooldown_lowest=3.0,
+                  cooldown_highest=10.0, mana_cost_percent=4.0),
     )
 }
+
+#: The two slots that have no cooldown, and why each has none. The Basic Attack
+#: is automatic, so its rate is the weapon's attack speed. The Aura is a toggle,
+#: so there is nothing to wait for; it is paid for by draining mana instead.
+SLOTS_WITHOUT_A_COOLDOWN = frozenset({BASIC_ATTACK_SLOT, "Aura"})
 
 #: The six a player chooses between. The Basic Attack is not one of them: the
 #: design says it is handled automatically.
@@ -572,8 +656,43 @@ def _check_the_basic_attack_is_the_anchor() -> None:
             "measured against")
 
 
+def _check_only_the_toggle_and_the_automatic_slot_lack_a_cooldown() -> None:
+    """A cooldown of zero has to be deliberate, because it is also what a
+    forgotten one looks like.
+
+    Issue #155 was exactly this failure: every slot read zero, an attribute and
+    41 enchantments scaled a number that did not exist, and nothing reported it.
+    Only the Basic Attack and the Aura may read zero, and both must, or the
+    reason recorded in SLOTS_WITHOUT_A_COOLDOWN no longer matches the table.
+    """
+    free = {n for n, s in SKILL_SLOTS.items() if s.typical_cooldown == 0.0}
+    if free != set(SLOTS_WITHOUT_A_COOLDOWN):
+        raise ValueError(
+            f"slots with no cooldown are {sorted(free)}; the design says only "
+            f"{sorted(SLOTS_WITHOUT_A_COOLDOWN)} have none. The Basic Attack is "
+            "automatic and the Aura is a toggle; every other slot waits.")
+
+
+def _check_every_slot_a_player_chooses_costs_something() -> None:
+    """A skill that costs nothing and waits for nothing is unlimited.
+
+    The Basic Attack is free by design -- the design document calls it
+    "automatic and free". Each of the six a player chooses has to be limited by
+    a cooldown, a mana cost, or both, or there is no reason not to hold it down.
+    """
+    unlimited = [n for n in CHOSEN_SKILL_SLOTS
+                 if SKILL_SLOTS[n].typical_cooldown == 0.0
+                 and SKILL_SLOTS[n].mana_cost_percent == 0.0]
+    if unlimited:
+        raise ValueError(
+            f"{sorted(unlimited)} cost nothing and have no cooldown, so "
+            "nothing limits how often they are used")
+
+
 _check_the_slots_match_the_design_document()
 _check_the_basic_attack_is_the_anchor()
+_check_only_the_toggle_and_the_automatic_slot_lack_a_cooldown()
+_check_every_slot_a_player_chooses_costs_something()
 
 
 @dataclass(frozen=True)
@@ -588,8 +707,10 @@ class Skill:
 
     name: str = "None"
     base: dict[str, float] = field(default_factory=dict)
-    #: Seconds before increases are applied.
-    cooldown: float = 0.0
+    #: Seconds before increases are applied. Left unset, the skill takes its
+    #: slot's typical cooldown, in the same way it takes its slot's damage
+    #: multiplier. No designed skill states one of its own yet.
+    cooldown: float | None = None
     #: The skill's gameplay tags, as the Weapon Skills sheet already carries
     #: them, for example "Type.AOE.PointBlank" or "Item.Weapon.Dagger". These
     #: decide which of the character's tag-scoped modifiers reach this skill.
@@ -637,12 +758,26 @@ class Skill:
             raise ValueError(
                 f"skill {self.name} deals {self.damage_multiplier}% of weapon "
                 "damage, which is less than none")
+        if self.cooldown is not None and self.cooldown < 0:
+            raise ValueError(
+                f"skill {self.name} has a cooldown of {self.cooldown}s, which "
+                "is less than none")
 
     def weapon_damage_percent(self) -> float:
         """Percent of weapon damage one use of this skill deals."""
         if self.damage_multiplier is not None:
             return self.damage_multiplier
         return SKILL_SLOTS[self.slot].typical_damage
+
+    def base_cooldown(self) -> float:
+        """Seconds before this skill can be used again, before any reduction.
+
+        Its slot's typical unless the skill states its own, which is the same
+        rule the damage multiplier follows.
+        """
+        if self.cooldown is not None:
+            return self.cooldown
+        return SKILL_SLOTS[self.slot].typical_cooldown
 
 
 @dataclass(frozen=True)
@@ -745,6 +880,46 @@ class Character:
         so it too can never bring a cooldown to zero.
         """
         return base_cooldown / self._cooldown_divisor()
+
+    def skill_cooldown(self) -> float:
+        """The cooldown of the skill in hand, after this character's reduction."""
+        return self.cooldown_of(self.skill.base_cooldown())
+
+    def base_max_mana(self) -> float:
+        """Maximum mana from the class and level alone.
+
+        Deliberately excludes attributes, gear and enchantments. This is what
+        mana costs are measured against, so that every source of maximum mana
+        buys more casts instead of raising the price alongside the pool. See the
+        comment above SKILL_SLOTS.
+        """
+        return self.definition.base_at("max_mana", self.level)
+
+    def mana_cost_of(self, slot: str | None = None) -> float:
+        """What one use of a skill in this slot costs, in mana.
+
+        For the Aura this is the drain per second while the toggle is on, not a
+        cost per use. Defaults to the slot of the skill in hand.
+        """
+        name = self.skill.slot if slot is None else slot
+        if name not in SKILL_SLOTS:
+            raise KeyError(f"{name} is not one of the seven slots")
+        percent = SKILL_SLOTS[name].mana_cost_percent
+        return self.base_max_mana() * percent / 100.0
+
+    def seconds_of_aura(self) -> float:
+        """How long the Aura runs from a full pool with nothing else used.
+
+        Issue #36 requires the aura to switch off when the resource runs out, so
+        that has to actually be reachable. Regeneration is subtracted from the
+        drain; if it ever covered the drain the aura would run forever and that
+        acceptance criterion could never be met.
+        """
+        drain = self.mana_cost_of("Aura")
+        net = drain - self.stat("mana_regen")
+        if net <= 0.0:
+            return math.inf
+        return self.stat("max_mana") / net
 
     def displayed_cooldown_reduction(self) -> float:
         divisor = self._cooldown_divisor()
