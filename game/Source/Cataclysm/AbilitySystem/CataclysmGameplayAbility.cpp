@@ -1,7 +1,13 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
+#include "GameplayEffect.h"
+#include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
+#include "GameplayEffectTypes.h"
 #include "GameplayTagsManager.h"
 
 namespace CataclysmAbilitySlots
@@ -96,4 +102,193 @@ void UCataclysmGameplayAbility::OnAvatarSet(const FGameplayAbilityActorInfo* Act
 	{
 		ActorInfo->AbilitySystemComponent->TryActivateAbility(Spec.Handle, /*bAllowRemoteActivation=*/false);
 	}
+}
+
+// --------------------------------------------------------------------------
+// What an ability waits and what it costs. Issue #155.
+//
+// Both come from the slot rather than from the ability, because no designed
+// skill states either one. An ability may still override, which is what a skill
+// that differs from its slot would do.
+// --------------------------------------------------------------------------
+
+void UCataclysmGameplayAbility::EnsureSlotNumbersLoaded() const
+{
+	if (bSlotNumbersLoaded)
+	{
+		return;
+	}
+	bSlotNumbersLoaded = true;
+
+	const UDataTable* Table = UCataclysmSkillSlots::LoadGeneratedTable();
+	const FCataclysmSkillSlotNumbers Numbers =
+		UCataclysmSkillSlots::NumbersFor(Table, Slot);
+
+	if (!Numbers.bFound)
+	{
+		// Not fatal, and deliberately not silent. An ability whose slot has no
+		// row costs nothing and waits for nothing, which is exactly the state
+		// issue #155 was about, so it has to be visible.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("%s is in slot %d, which has no row in the skill slot table. "
+				 "It will cost nothing and have no cooldown."),
+			*GetName(), static_cast<int32>(Slot));
+		return;
+	}
+
+	SlotCooldown = Numbers.Cooldown;
+	SlotManaCostAtLevel100 = Numbers.ManaCostAtLevel100;
+}
+
+float UCataclysmGameplayAbility::GetBaseCooldown() const
+{
+	if (CooldownOverride >= 0.0f)
+	{
+		return CooldownOverride;
+	}
+	EnsureSlotNumbersLoaded();
+	return SlotCooldown;
+}
+
+float UCataclysmGameplayAbility::GetManaCost() const
+{
+	const float AtLevel100 = [this]
+	{
+		if (ManaCostOverride >= 0.0f)
+		{
+			return ManaCostOverride;
+		}
+		EnsureSlotNumbersLoaded();
+		return SlotManaCostAtLevel100;
+	}();
+
+	// GAS's ability level is this project's character level: the weapon slots
+	// component grants each skill at the character's level.
+	return UCataclysmSkillSlots::ManaCostAtLevel(AtLevel100, GetAbilityLevel());
+}
+
+bool UCataclysmGameplayAbility::CheckCost(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	const float Cost = GetManaCost();
+	if (Cost <= 0.0f)
+	{
+		return true;
+	}
+
+	const UAbilitySystemComponent* AbilitySystem =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	return AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetManaAttribute()) >= Cost;
+}
+
+void UCataclysmGameplayAbility::ApplyCost(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+	Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
+
+	const float Cost = GetManaCost();
+	if (Cost <= 0.0f)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* AbilitySystem =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// Applied directly rather than through a Gameplay Effect asset. There is no
+	// authored asset per slot to carry a magnitude that comes from a generated
+	// table, and an effect built at runtime for every activation would allocate
+	// on every button press. When enchantments that change a skill's mana cost
+	// are built -- four of them exist in the data -- this is where they hook in.
+	AbilitySystem->ApplyModToAttribute(
+		UCataclysmVitalAttributeSet::GetManaAttribute(),
+		EGameplayModOp::Additive, -Cost);
+}
+
+bool UCataclysmGameplayAbility::CheckCooldown(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	FGameplayTagContainer* OptionalRelevantTags) const
+{
+	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
+	if (!Tag.IsValid() || GetBaseCooldown() <= 0.0f)
+	{
+		// No cooldown at all. True for the Basic Attack, which is automatic, and
+		// the Aura, which is a toggle.
+		return true;
+	}
+
+	const UAbilitySystemComponent* AbilitySystem =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	if (AbilitySystem->HasMatchingGameplayTag(Tag))
+	{
+		if (OptionalRelevantTags)
+		{
+			OptionalRelevantTags->AddTag(Tag);
+		}
+		return false;
+	}
+	return true;
+}
+
+void UCataclysmGameplayAbility::ApplyCooldown(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+	const float Seconds = GetBaseCooldown();
+	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
+	if (Seconds <= 0.0f || !Tag.IsValid())
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* AbilitySystem =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// A duration effect that grants the slot's cooldown tag and nothing else.
+	// Built here rather than authored as an asset for the same reason as the
+	// cost: the duration comes from a generated table, and there is no asset per
+	// slot to put it in.
+	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+		GetTransientPackage(), FName(*FString::Printf(TEXT("Cooldown_%s"), *Tag.ToString())));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(Seconds));
+
+	UTargetTagsGameplayEffectComponent& TagsComponent =
+		Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>();
+	FInheritedTagContainer Granted;
+	Granted.Added.AddTag(Tag);
+	TagsComponent.SetAndApplyTargetTagChanges(Granted);
+
+	AbilitySystem->ApplyGameplayEffectToSelf(
+		Effect, /*Level=*/1.0f, AbilitySystem->MakeEffectContext());
 }

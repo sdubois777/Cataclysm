@@ -57,6 +57,15 @@ namespace CataclysmWeaponSlotsTest
 
 			Slots = NewObject<UCataclysmWeaponSlotsComponent>(Actor);
 			Slots->RegisterComponent();
+
+			// Pinned rather than left to the shipping default, because these
+			// tests are about the MECHANISM -- that changing weapon replaces
+			// every ability -- and not about which damage type the vertical
+			// slice happens to ship. War is used because all twelve of its
+			// weapons are designed, so any two of them can be swapped. The
+			// shipping default is checked separately, by
+			// Cataclysm.WeaponSlots.TheSliceShipsDemonic.
+			Slots->SetDamageType(DesignedDamageType);
 		}
 
 		~FScopedWeaponFixture()
@@ -339,6 +348,73 @@ bool FCataclysmSlotComesFromTheWeaponTest::RunTest(const FString& Parameters)
 		UCataclysmUndesignedSkill::StaticClass(), ECataclysmAbilitySlot::None);
 	TestFalse(TEXT("granting into no slot is refused"), Refused.IsValid());
 
+	return true;
+}
+
+/**
+ * The vertical slice ships Demonic, and its three weapons fill every slot.
+ *
+ * ISSUE #61 SETTLED THIS: the Cataclysm being fought decides the player's damage
+ * type, and the design document's Phase 1 roadmap names the Demonic Cataclysm,
+ * the Demonic Masochist tree and Demonic skills across three weapon types.
+ * Shipping War would drop loot the slice's player content cannot use.
+ *
+ * The fixture above pins War deliberately, because those tests are about the
+ * swap mechanism. This one checks the shipping default, which nothing else does.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSliceShipsDemonicTest,
+	"Cataclysm.WeaponSlots.TheSliceShipsDemonic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSliceShipsDemonicTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_WeaponSkills does not exist. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// Deliberately does NOT call SetDamageType, so this reads whatever the
+	// component ships with. That is the whole point of the test.
+	AActor* Actor = World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	UCataclysmWeaponSlotsComponent* Slots =
+		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+	Slots->RegisterComponent();
+
+	// One weapon per Demonic class: Greataxe for the Ravager, Fist for the
+	// Masochist, Staff for the Ritualist. Named here rather than read from the
+	// matrix, because the point is that these three specifically are the slice.
+	const TCHAR* SliceWeapons[] = { TEXT("Greataxe"), TEXT("Fist"), TEXT("Staff") };
+	for (const TCHAR* Weapon : SliceWeapons)
+	{
+		const int32 Filled = Slots->EquipWeaponType(Weapon);
+		TestEqual(FString::Printf(
+			TEXT("a Demonic %s fills all six slots"), Weapon), Filled, 6);
+	}
+
+	// A Demonic weapon whose skills are not designed grants nothing, and that is
+	// visible rather than hidden. Seven of Demonic's ten weapons are in this
+	// state; it is issue #62's remaining scope.
+	const int32 Undesigned = Slots->EquipWeaponType(TEXT("Dagger"));
+	TestEqual(TEXT("a Demonic Dagger is undesigned, so it grants nothing"),
+		Undesigned, 0);
+
+	Actor->Destroy();
 	return true;
 }
 

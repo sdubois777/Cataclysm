@@ -34,20 +34,35 @@ const UDataTable* UCataclysmWeaponSkills::LoadGeneratedTable()
 
 ECataclysmAbilitySlot UCataclysmWeaponSkills::SlotFromName(const FString& SlotName)
 {
-	// Matched against the enum's own names rather than a list written here, so a
-	// slot added to ECataclysmAbilitySlot needs no change in this function. The
-	// workbook's Slot column already spells them the same way: "Heavy",
-	// "Special", "Support", "Aura", "Ultimate", "Movement".
-	const UEnum* SlotEnum = StaticEnum<ECataclysmAbilitySlot>();
-	if (!SlotEnum)
-	{
-		return ECataclysmAbilitySlot::None;
-	}
-
+	// Matched against the SLOT TAG's leaf rather than a list written here, so a
+	// slot added to ECataclysmAbilitySlot needs no change in this function.
+	//
+	// THE TAG LEAF, NOT THE ENUM NAME, AND THAT DISTINCTION IS LOAD-BEARING. Six
+	// of the seven spell the same both ways, but the basic attack is
+	// ECataclysmAbilitySlot::BasicAttack in C++ and "Basic" everywhere else: in
+	// the Slot.Basic tag, in the Skill Slots sheet, and in the Python model. The
+	// workbook is authoritative, and the tag is generated from it, so the tag is
+	// what the data actually says.
+	//
+	// This went unnoticed until the Skill Slots sheet arrived, because the Weapon
+	// Skills matrix has no basic attack row at all -- basic attacks are
+	// automatic, so nothing ever asked this function about one.
 	for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
 	{
-		const FString Name = SlotEnum->GetNameStringByValue(static_cast<int64>(Slot));
-		if (SlotName.Equals(Name, ESearchCase::IgnoreCase))
+		const FGameplayTag Tag = CataclysmAbilitySlots::Tag(Slot);
+		if (!Tag.IsValid())
+		{
+			continue;
+		}
+
+		FString Leaf = Tag.ToString();
+		int32 Dot = INDEX_NONE;
+		if (Leaf.FindLastChar(TEXT('.'), Dot))
+		{
+			Leaf = Leaf.RightChop(Dot + 1);
+		}
+
+		if (SlotName.Equals(Leaf, ESearchCase::IgnoreCase))
 		{
 			return Slot;
 		}

@@ -80,6 +80,66 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
 	bool bActivateOnGranted = false;
 
+	/**
+	 * Seconds before this ability can be used again. Negative means take the
+	 * slot's figure, which is what every designed skill does.
+	 *
+	 * A skill states its own only when it differs from its slot, exactly as it
+	 * does for the weapon damage multiplier. None of the 77 designed skills
+	 * states one yet.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
+	float CooldownOverride = -1.0f;
+
+	/** Mana this ability costs at level 100. Negative means take the slot's. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
+	float ManaCostOverride = -1.0f;
+
+	/** Seconds this ability waits, before any cooldown reduction. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
+	float GetBaseCooldown() const;
+
+	/** Mana one use costs for the character holding it, at their level. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
+	float GetManaCost() const;
+
 	virtual void OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo,
 							 const FGameplayAbilitySpec& Spec) override;
+
+	// --- Cost and cooldown -------------------------------------------------
+	//
+	// Overridden rather than driven by a Gameplay Effect asset, because the
+	// numbers come from a generated data table and there is no authored asset
+	// per slot to put them in. Both halves of each pair are overridden together:
+	// a Check without its Apply lets an ability fire forever, which is the
+	// failure that leaves no trace.
+
+	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle,
+						   const FGameplayAbilityActorInfo* ActorInfo,
+						   FGameplayTagContainer* OptionalRelevantTags) const override;
+
+	virtual void ApplyCost(const FGameplayAbilitySpecHandle Handle,
+						   const FGameplayAbilityActorInfo* ActorInfo,
+						   const FGameplayAbilityActivationInfo ActivationInfo) const override;
+
+	virtual bool CheckCooldown(const FGameplayAbilitySpecHandle Handle,
+							   const FGameplayAbilityActorInfo* ActorInfo,
+							   FGameplayTagContainer* OptionalRelevantTags) const override;
+
+	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle,
+							   const FGameplayAbilityActorInfo* ActorInfo,
+							   const FGameplayAbilityActivationInfo ActivationInfo) const override;
+
+private:
+	/**
+	 * Reads this ability's slot numbers out of the generated table, once.
+	 *
+	 * Cached because CheckCost runs every time input asks whether an ability can
+	 * fire, which is far more often than it activates.
+	 */
+	void EnsureSlotNumbersLoaded() const;
+
+	mutable bool bSlotNumbersLoaded = false;
+	mutable float SlotCooldown = 0.0f;
+	mutable float SlotManaCostAtLevel100 = 0.0f;
 };

@@ -1,0 +1,8 @@
+Name,Slot,DamagePercent,DamageLowest,DamageHighest,Cooldown,CooldownLowest,CooldownHighest,ManaCost,ManaOnHit,Note
+Basic,Basic,100.0,100.0,100.0,0.0,0.0,0.0,0.0,6.0,"Automatic and free. It IS weapon damage, which is what makes it the anchor every other slot is measured against."
+Heavy,Heavy,250.0,175.0,350.0,1.5,1.0,4.0,15.0,0.0,"The design calls it often the primary damage button, on a moderate cooldown."
+Special,Special,150.0,100.0,250.0,5.0,3.0,10.0,40.0,0.0,"Traps, deployables, grenades, pets. The most varied slot, so the widest band below its typical value."
+Support,Support,0.0,0.0,100.0,4.0,2.0,10.0,25.0,0.0,"Buffs, shields, stances, curses, banners. Usually no damage at all, which is why its typical value is zero."
+Aura,Aura,25.0,15.0,40.0,0.0,0.0,0.0,20.0,0.0,"Persistent and toggled, draining resource per second. This is per second rather than per use."
+Ultimate,Ultimate,400.0,300.0,500.0,20.0,12.0,40.0,150.0,0.0,The band is the two designed Ultimates: Annihilator states 300% and Skull Splitter states 500%.
+Movement,Movement,100.0,75.0,150.0,5.0,3.0,10.0,20.0,0.0,"Gap closers and escapes. The design says some also deal damage, so a basic attack's worth is the right middle."

@@ -90,12 +90,22 @@ protected:
 	 *
 	 * TEMPORARY, AND IT IS THE ONE THING HERE THAT IS NOT DATA-DRIVEN. A weapon's
 	 * damage type is rolled when the item drops, and items do not carry rolled
-	 * damage types yet. War is used because it is the only damage type whose
-	 * skills are designed: all 61 of them. When items carry their rolled type
-	 * this reads it from the equipped item instead.
+	 * damage types yet. When items carry their rolled type this reads it from the
+	 * equipped item instead.
+	 *
+	 * DEMONIC, BECAUSE THAT IS WHAT THE VERTICAL SLICE IS. The design document's
+	 * Phase 1 roadmap names the Demonic Cataclysm, the Demonic Masochist tree and
+	 * Demonic skills across three weapon types, and issue #61 established that
+	 * the Cataclysm being fought decides the player's damage type. Shipping War
+	 * here would drop loot the slice's player content cannot use.
+	 *
+	 * ONLY THREE DEMONIC WEAPONS ARE DESIGNED: Greataxe, Fist and Staff, one for
+	 * each Demonic class. The other seven weapons Demonic can roll on have rows
+	 * in the matrix with no skill on them, so they grant nothing. That is
+	 * visible rather than hidden, and it is issue #62's remaining scope.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon")
-	FString DamageType = TEXT("War");
+	FString DamageType = TEXT("Demonic");
 
 	/** Granted for each filled slot until the real skills have numbers. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon")

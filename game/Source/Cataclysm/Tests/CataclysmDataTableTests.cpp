@@ -109,6 +109,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 17: eight attributes, each raising two stats, except Efficacy raising
 	// three.
 	CHECK_TABLE(FCataclysmAttributeEffectRow,   "Attributes.csv",             17)
+	// 7: the seven skill slots from the design document's Skill Slots table.
+	// Six a player chooses between plus the automatic Basic Attack.
+	CHECK_TABLE(FCataclysmSkillSlotRow,         "SkillSlots.csv",              7)
 
 	#undef CHECK_TABLE
 
@@ -260,6 +263,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_EnemyModifiers"),        TEXT("EnemyModifiers.csv") },
 		{ TEXT("DT_Gems"),                  TEXT("Gems.csv") },
 		{ TEXT("DT_ItemBases"),             TEXT("ItemBases.csv") },
+		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },
 		{ TEXT("DT_StatusEffects"),         TEXT("StatusEffects.csv") },
 		{ TEXT("DT_WeaponSkills"),          TEXT("WeaponSkills.csv") },
 	};
@@ -320,6 +324,49 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 				TEXT("%s is stale. Run tools/generate_datatable_assets.py. ")
 				TEXT("%d row(s) only in the CSV, %d only in the asset."),
 				Pair.Asset, MissingFromAsset.Num(), NotInCsv.Num()));
+			continue;
+		}
+
+		// THE ROW NAMES MATCHING IS NOT ENOUGH, and this half was missing.
+		//
+		// Comparing only the key set says nothing about what is in the rows. It
+		// let a real staleness through: the sixteen Demonic skills landed in the
+		// CSV, the DataTable asset was never regenerated, and every row name
+		// still matched because the rows had always existed -- they were simply
+		// empty. The asset shipped with no Demonic skill in it and this test
+		// passed.
+		//
+		// Both sides are re-exported through the same function so the comparison
+		// is of contents rather than of file formatting.
+		const FString AssetAsCsv = Table->GetTableAsCSV();
+		const FString FileAsCsv = FromCsv->GetTableAsCSV();
+		if (AssetAsCsv != FileAsCsv)
+		{
+			// Name the first row that differs. "Something differs somewhere in
+			// 398 rows" is not actionable.
+			TArray<FString> AssetLines, FileLines;
+			AssetAsCsv.ParseIntoArrayLines(AssetLines);
+			FileAsCsv.ParseIntoArrayLines(FileLines);
+
+			FString FirstDifference = TEXT("(could not isolate a line)");
+			for (int32 Line = 0; Line < FMath::Min(AssetLines.Num(), FileLines.Num()); ++Line)
+			{
+				if (AssetLines[Line] != FileLines[Line])
+				{
+					FirstDifference = FString::Printf(
+						TEXT("line %d:\n    asset: %s\n    csv:   %s"),
+						Line + 1,
+						*AssetLines[Line].Left(200),
+						*FileLines[Line].Left(200));
+					break;
+				}
+			}
+
+			AddError(FString::Printf(
+				TEXT("%s has the right rows but different contents from %s, so ")
+				TEXT("it is stale. Run tools/generate_datatable_assets.py. ")
+				TEXT("First difference at %s"),
+				Pair.Asset, Pair.File, *FirstDifference));
 		}
 	}
 
