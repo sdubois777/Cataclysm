@@ -20,6 +20,85 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — A buff's magnitude is a tag-scoped modifier on the character, not a per-damage-type attribute
+
+**The question.** Issue #166: `UCataclysmSelfBuffSkill` applied a self buff's
+duration and nothing else. Burning Wrath grants "4% increased fire damage for
+every enemy currently burning within 15 meters"; the count was taken and there
+was nothing to multiply by it. The issue named the underlying gap correctly:
+`UCataclysmStatPipeline` is a static calculator over numbers passed in, and
+nothing fed it. It also suggested a fix — "the per-damage-type attributes the
+designed buffs name" — and that suggestion is the part this decision rejects.
+
+**The decision.** No per-damage-type attributes. A character's increases live in
+a list of `FCataclysmStatModifier` on `UCataclysmAbilitySystemComponent`, and a
+skill's own buff adds one and takes it away again. Each modifier is scoped by the
+tags of the SKILL IN HAND, so "increased fire damage" is an increase requiring
+`Element.Demonic`, which is the tag every Demonic row of the Weapon Skills sheet
+already carries.
+
+**Why not eight attributes.** Because increased fire damage is not one number per
+character. It is one number for a skill tagged `Element.Demonic` and a different
+number for one that is not, and a gameplay attribute is a single float per
+character with no way to express that. Adding `IncreasedFireDamage` would work
+for exactly this one case and then fail the first time something scoped an
+increase by anything other than a damage type — by weapon class, by melee against
+ranged, by skill type. The Affixes sheet already contains modifiers scoped that
+way, and `Scope.MeleeOnly`, `Scope.RangedOnly`, `Scope.BasicOnly`,
+`Scope.WhileMoving` and `Scope.WhileStationary` are registered gameplay tags in
+`game/Config/Tags/CataclysmTags.ini`. Eight attributes would also become
+sixty-four when the same scoping is wanted on defence.
+
+`UCataclysmStatPipeline`'s own header already stated the reason, before this
+change and about gear rather than buffs: "A character's area of effect has no
+single value — it is one number for an area skill and another for a
+single-target one — so a plain attribute read cannot express it." A buff is the
+same problem arriving from a different direction.
+
+**Why this is how the genre does it.** Path of Exile's modifiers are stats with
+tag conditions rather than one stat per element: "increased fire damage" is a
+stat whose applicability is decided by the tags of the skill being used, which is
+why a support gem can change what a modifier applies to without any new stat
+existing. Last Epoch's affixes carry the same shape, and its skill trees grant
+modifiers scoped to the skill they sit on. Neither game has an "increased fire
+damage" character attribute that everything reads. The three-bucket pipeline this
+project already ported from those games is only usable this way; scoping by the
+ability in hand is not an extra, it is what makes the buckets mean anything.
+
+**What a skill buff may grant.** A `More` multiplier, unlike a gear affix. The
+rule that ordinary gear may not is about a ROLLED modifier staying readable on a
+drop — the reason an enchantment is worth an item slot an affix could have taken.
+A skill buff is authored, in the same way a gem, a passive keystone and an
+enchantment are authored, so it joins those three rather than the affix pool. No
+designed skill grants one yet; the rule is stated and tested so the first one that
+does not have to argue it.
+
+**Where the magnitude comes from.** The Shape Params cell, like every other
+number a skill template reads. Burning Wrath's is now
+`Duration=10; Radius=15; Burn=1; IncreasePerBurning=4`, and
+`tools/tests/test_buff_magnitudes.py` fails if that 4 stops matching the 4% in
+the skill's own description. The scope comes from the row's Tags cell, so a self
+buff written for another damage type scopes to its own element with no code
+changing.
+
+**One thing is priced early on purpose.** A patch of burning ground works out
+what a tick is worth when it is created and keeps that figure. It now includes
+the caster's modifiers at that moment. The alternative — reading the caster's
+modifiers on every tick — would mean a patch stopped paying part way through when
+the buff that created it expired, and the design says the ground burns for a
+duration, not that it tracks its caster.
+
+**What this does not do.** Martyr's Ember is still only a duration. "Store 40% of
+all damage you take and spend it as bonus fire damage on your hits" needs a
+damage-taken signal and a store that drains as it is spent, and it needs a
+judgement the documents do not make: how much of the store one hit spends. Split
+out as issue #192.
+
+**Affects.** `All_Things_Cataclysm.xlsx`, Weapon Skills sheet, the Burning Wrath
+row's Shape Params cell. Applied.
+
+---
+
 ## 2026-08-04 — A minion deals 30% of its summoner's weapon damage, once a second, and that is one rule for all minions
 
 **The question.** Issue #165: `ACataclysmMinion::DamagePercentOfSummoner` was 25

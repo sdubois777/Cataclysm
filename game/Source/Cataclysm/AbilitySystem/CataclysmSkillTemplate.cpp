@@ -10,6 +10,7 @@
 #include "Cataclysm.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameplayTagsManager.h"
 
 UCataclysmSkillTemplate::UCataclysmSkillTemplate()
 {
@@ -26,6 +27,34 @@ float UCataclysmSkillTemplate::GetSlotDamagePercent() const
 	const FCataclysmSkillSlotNumbers Numbers =
 		UCataclysmSkillSlots::NumbersFor(Table, Slot);
 	return Numbers.bFound ? Numbers.DamagePercent : 0.0f;
+}
+
+FGameplayTag UCataclysmSkillTemplate::ElementTag() const
+{
+	// ASKED OF THE TAG MANAGER RATHER THAN MATCHED BY STRING, so a tag renamed
+	// in the workbook is renamed here too. RequestGameplayTag with
+	// ErrorIfNotFound false returns an invalid tag when Element is not a
+	// registered parent, which cannot happen while the generated tag list has
+	// eight children under it, but costs nothing to allow for.
+	static const FGameplayTag Element =
+		UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Element")), /*ErrorIfNotFound=*/false);
+	if (!Element.IsValid())
+	{
+		return FGameplayTag();
+	}
+
+	// The first, not every one. A row of the Weapon Skills sheet has exactly one
+	// damage type because the sheet is a matrix of weapon against damage type,
+	// and Cataclysm.Data.EverySkillRowCarriesOneElementTag holds that.
+	for (const FGameplayTag& Tag : SkillTags)
+	{
+		if (Tag.MatchesTag(Element) && Tag != Element)
+		{
+			return Tag;
+		}
+	}
+	return FGameplayTag();
 }
 
 bool UCataclysmSkillTemplate::CommitAndBegin(
@@ -149,7 +178,8 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	float Total = 0.0f;
 	for (AActor* Target : Targets)
 	{
-		const float Dealt = UCataclysmSkillEffects::ApplyHit(Self, Target, Percent);
+		const float Dealt = UCataclysmSkillEffects::ApplyHit(Self, Target, Percent,
+															SkillTags);
 		Total += Dealt;
 
 		// The burn is a share of the hit that caused it, so a skill that deals
@@ -201,7 +231,18 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 	const UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Self);
 	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem);
-	const float PerTick = WeaponDamage * GetSlotDamagePercent() / 100.0f
+
+	// PRICED WITH THE CASTER'S MODIFIERS APPLIED, and priced once, when the
+	// ground is created. A patch outlives the skill that left it and can outlive
+	// the buff that was up at the time, so the alternative -- reading the
+	// caster's modifiers on every tick -- would make a buff that has expired
+	// keep paying, or stop paying part way through a patch the player already
+	// earned. The design says the ground burns for a duration, not that it
+	// tracks the caster.
+	const float PerTick = UCataclysmSkillEffects::ModifiedDamage(
+							AbilitySystem,
+							WeaponDamage * GetSlotDamagePercent() / 100.0f,
+							SkillTags)
 						* Burn.PercentOfHit / 100.0f
 						/ FMath::Max(1.0f, Burn.DurationSeconds);
 

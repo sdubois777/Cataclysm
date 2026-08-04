@@ -145,6 +145,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 				Skill.Name = Row.SkillName;
 				Skill.Description = Row.SkillDescription;
 				Skill.Shape = UCataclysmSkillShapes::ShapeFromName(Row.Shape);
+				Skill.Tags = UCataclysmSkillShapes::TagsFromCell(Row.Tags);
 
 				// Named in the error so a bad cell says which of the 398 rows it
 				// is. The generator refuses one already, so this only fires for

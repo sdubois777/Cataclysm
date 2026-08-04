@@ -98,6 +98,42 @@ FGameplayTag UCataclysmSkillShapes::StatusTagFor(const FString& EffectName)
 		/*ErrorIfNotFound=*/false);
 }
 
+FGameplayTagContainer UCataclysmSkillShapes::TagsFromCell(const FString& Cell)
+{
+	FGameplayTagContainer Tags;
+	if (Cell.IsEmpty())
+	{
+		return Tags;
+	}
+
+	TArray<FString> Names;
+	Cell.ParseIntoArray(Names, TEXT(","), /*InCullEmpty=*/true);
+	for (FString& Name : Names)
+	{
+		Name.TrimStartAndEndInline();
+		if (Name.IsEmpty())
+		{
+			continue;
+		}
+
+		const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(*Name), /*ErrorIfNotFound=*/false);
+		if (Tag.IsValid())
+		{
+			Tags.AddTag(Tag);
+		}
+		else
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("'%s' is not a registered gameplay tag, so it scopes "
+					 "nothing. Regenerate the tags with "
+					 "tools/generate_gameplay_tags.py."), *Name);
+		}
+	}
+
+	return Tags;
+}
+
 FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 	const FString& Text, FString* OutError)
 {
@@ -221,6 +257,10 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("HealthCostPercent"), ESearchCase::IgnoreCase))
 		{
 			Params.HealthCostPercent = Number;
+		}
+		else if (Key.Equals(TEXT("IncreasePerBurning"), ESearchCase::IgnoreCase))
+		{
+			Params.IncreasePerBurning = Number;
 		}
 		else if (Key.Equals(TEXT("Effect"), ESearchCase::IgnoreCase))
 		{

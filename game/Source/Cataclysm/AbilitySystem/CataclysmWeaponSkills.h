@@ -41,6 +41,21 @@ struct CATACLYSM_API FCataclysmWeaponSkill
 	/** That template's numbers, already parsed. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
 	FCataclysmSkillShapeParams Params;
+
+	/**
+	 * The row's Tags cell, parsed.
+	 *
+	 * WHAT THEY DECIDE. Which of the character's stat modifiers reach this
+	 * skill. UCataclysmStatPipeline::ModifierApplies asks whether the skill in
+	 * hand carries every tag a modifier requires, so an increase scoped to
+	 * Element.Demonic applies to Burning Wrath, which carries that tag, and not
+	 * to a War skill, which does not.
+	 *
+	 * They deliberately do NOT decide which template runs the skill; the Shape
+	 * column does, for the reason recorded on FCataclysmWeaponSkillRow::Shape.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FGameplayTagContainer Tags;
 };
 
 /**

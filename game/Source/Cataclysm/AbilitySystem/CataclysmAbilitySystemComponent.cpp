@@ -195,3 +195,67 @@ FGameplayAbilitySpecHandle UCataclysmAbilitySystemComponent::GiveAbilityInSlot(
 
 	return Handle;
 }
+
+// ==========================================================================
+// The three-bucket stat pipeline's modifiers
+// ==========================================================================
+
+int32 UCataclysmAbilitySystemComponent::AddStatModifier(
+	const FCataclysmStatModifier& Modifier)
+{
+	// REFUSED HERE RATHER THAN IGNORED AT EVALUATION TIME. Accumulate skips a
+	// More multiplier from a source that may not grant one and counts it in
+	// RejectedMoreCount, which is right for gear the player is wearing: the
+	// character sheet can then say a modifier is doing nothing. A skill asking
+	// for one it is not allowed is a mistake in the skill, and returning an
+	// invalid handle is what makes it visible at the point it is made.
+	const FString Refusal = UCataclysmStatPipeline::ValidateModifier(Modifier);
+	if (!Refusal.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("%s refused a stat modifier: %s"),
+			*GetNameSafe(GetOwner()), *Refusal);
+		return 0;
+	}
+
+	const int32 Handle = NextStatModifierHandle++;
+	StatModifiers.Add(Modifier);
+	StatModifierHandles.Add(Handle);
+	return Handle;
+}
+
+bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)
+{
+	const int32 Index = StatModifierHandles.IndexOfByKey(Handle);
+	if (Index == INDEX_NONE)
+	{
+		return false;
+	}
+
+	// RemoveAt rather than RemoveAtSwap, so the two arrays stay aligned and the
+	// order a character's modifiers were added in is the order they apply in.
+	// Order does not change the arithmetic -- increases sum and More multipliers
+	// commute -- but it does change what a breakdown reads like.
+	StatModifiers.RemoveAt(Index);
+	StatModifierHandles.RemoveAt(Index);
+	return true;
+}
+
+bool UCataclysmAbilitySystemComponent::SetStatModifierValue(int32 Handle,
+															float NewValue)
+{
+	const int32 Index = StatModifierHandles.IndexOfByKey(Handle);
+	if (Index == INDEX_NONE)
+	{
+		return false;
+	}
+
+	StatModifiers[Index].Value = NewValue;
+	return true;
+}
+
+float UCataclysmAbilitySystemComponent::GetStatModifierValue(int32 Handle) const
+{
+	const int32 Index = StatModifierHandles.IndexOfByKey(Handle);
+	return Index == INDEX_NONE ? 0.0f : StatModifiers[Index].Value;
+}

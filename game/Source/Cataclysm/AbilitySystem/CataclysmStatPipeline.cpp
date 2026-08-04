@@ -21,6 +21,10 @@ bool UCataclysmStatPipeline::CanGrantMore(ECataclysmModifierSource Source)
 	case ECataclysmModifierSource::Gem:
 	case ECataclysmModifierSource::PassiveKeystone:
 	case ECataclysmModifierSource::Enchantment:
+
+	// A skill's own buff is authored the way those three are, not rolled, so
+	// the readability rule below does not apply to it.
+	case ECataclysmModifierSource::SkillBuff:
 		return true;
 
 	// An ordinary affix is flat or increased and never more. That is what keeps
@@ -65,9 +69,9 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		if (!CanGrantMore(Modifier.Source))
 		{
 			return FString::Printf(
-				TEXT("a More multiplier from %s. Only a gem, a passive keystone "
-					 "or an enchantment may grant one; everything else is flat "
-					 "or increased."),
+				TEXT("a More multiplier from %s. Only a gem, a passive keystone, "
+					 "an enchantment or a skill's own buff may grant one; "
+					 "everything else is flat or increased."),
 				*UEnum::GetValueAsString(Modifier.Source));
 		}
 		if (Modifier.Value <= -100.0f)

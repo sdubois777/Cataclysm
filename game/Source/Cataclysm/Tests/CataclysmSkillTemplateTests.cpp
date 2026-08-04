@@ -37,8 +37,12 @@
  *   SwingOnce, Land, Pulse, SummonOne are public for exactly this reason -- so
  *   what one repetition DOES is covered and the scheduling of them is not.
  *
- *   The magnitude of a self buff or a debuff. Neither is applied; see the
- *   comments on those two templates and issue #166.
+ *   The magnitude of a DEBUFF. Subjugate applies the Status.Madness tag, which
+ *   is real and is covered, but a debuff that has a number to apply has no
+ *   route to apply it. A self buff now does; see the buff tests at the end.
+ *
+ *   Martyr's Ember's store. It needs a damage-taken hook that does not exist.
+ *   Issue #192.
  */
 
 namespace CataclysmSkillTest
@@ -125,7 +129,8 @@ namespace CataclysmSkillTest
 	 */
 	template <typename T>
 	T* GrantSkill(FScopedFighter& Caster, ECataclysmAbilitySlot Slot,
-				  const FString& ParamText, const FString& Name = TEXT("Test Skill"))
+				  const FString& ParamText, const FString& Name = TEXT("Test Skill"),
+				  const FString& TagCell = FString())
 	{
 		const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
 			T::StaticClass(), Slot, /*Level=*/100, Caster.Actor);
@@ -140,6 +145,10 @@ namespace CataclysmSkillTest
 		{
 			Instance->SkillName = Name;
 			Instance->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+
+			// The Tags cell, read the same way UCataclysmWeaponSkills reads it,
+			// so a test cannot pass with a tag the real path would refuse.
+			Instance->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
 		}
 		return Instance;
 	}
@@ -1236,6 +1245,268 @@ bool FCataclysmShapeDispatchTest::RunTest(const FString&)
 		HeavyName && *HeavyName == TEXT("Molten Cleave"));
 
 	Slots->UnequipWeapon();
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A self buff's magnitude. Issue #166: the duration was real and the magnitude
+// was not, because nothing fed the three-bucket stat pipeline from a skill.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIncreaseAppliesTest,
+	"Cataclysm.Skills.ABuffsIncreaseRaisesTheDamageOfSkillsItScopesTo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffIncreaseAppliesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// Two enemies inside the buff's 15 metre radius, both alight, so Burning
+	// Wrath's count is two and its increase is 4% x 2 = 8%.
+	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
+	FScopedFighter AlsoAlight(World, FVector(4 * M, 0, 0));
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, AlsoAlight.Actor, 100.0f);
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Item.Weapon.2hAxe, Element.Demonic, Type.Buff"));
+	if (!Buff)
+	{
+		AddError(TEXT("Could not grant the buff."));
+		return false;
+	}
+
+	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
+	TestEqual(TEXT("It counted both burning enemies"), Buff->BurningEnemiesAtCast, 2);
+	TestEqual(TEXT("It granted 4% for each of them"), Buff->GrantedIncrease, 8.0f);
+	TestEqual(TEXT("Scoped to the skill's own element"),
+		Buff->GrantedScope.ToString(), FString(TEXT("Element.Demonic")));
+
+	// A Demonic strike carries Element.Demonic, so the increase reaches it.
+	FScopedFighter Demonic(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* DemonicStrike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Item.Weapon.2hAxe, Element.Demonic"));
+
+	const float DemonicBefore = Demonic.Health();
+	TestTrue(TEXT("The Demonic strike activates"), Activate(Caster, DemonicStrike));
+
+	// The Heavy slot is 250% of weapon damage. With 8% increased on top:
+	// 100 x 2.50 x 1.08 = 270.
+	const float Unbuffed = WeaponDamage * 250.0f / 100.0f;
+	TestEqual(TEXT("The Demonic strike dealt 250% raised by 8%"),
+		DemonicBefore - Demonic.Health(), Unbuffed * 1.08f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIncreaseIsScopedTest,
+	"Cataclysm.Skills.ABuffsIncreaseDoesNotReachAnotherDamageType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffIncreaseIsScopedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Element.Demonic, Type.Buff"));
+	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
+	TestEqual(TEXT("One burning enemy, so 4%"), Buff->GrantedIncrease, 4.0f);
+
+	// A War strike carries Element.War, so a Demonic increase must not reach it.
+	// THIS IS THE POINT OF SCOPING BY THE SKILL'S TAGS. A plain attribute could
+	// not express it: the character's increased damage would be one number for
+	// every skill they own.
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* WarStrike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("A War Skill"), TEXT("Item.Weapon.Sword, Element.War"));
+
+	const float Before = Target.Health();
+	TestTrue(TEXT("The War strike activates"), Activate(Caster, WarStrike));
+
+	TestEqual(TEXT("The War strike dealt the plain 250%, unraised"),
+		Before - Target.Health(), WeaponDamage * 250.0f / 100.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIncreaseEndsTest,
+	"Cataclysm.Skills.ABuffsIncreaseIsTakenAwayWhenTheBuffEnds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffIncreaseEndsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Element.Demonic"));
+	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
+	TestEqual(TEXT("The caster carries one modifier while it is up"),
+		Caster.AbilitySystem->GetStatModifiers().Num(), 1);
+
+	// The world is never ticked here, so the ten second timer never fires.
+	// Ending the ability is the same path the timer takes -- Finish calls
+	// EndAbility -- and it is also the path a cancel or a death takes.
+	Buff->EndAbility(Buff->GetCurrentAbilitySpecHandle(), Buff->GetCurrentActorInfo(),
+					 Buff->GetCurrentActivationInfo(), true, false);
+
+	TestEqual(TEXT("The modifier is gone once it ends"),
+		Caster.AbilitySystem->GetStatModifiers().Num(), 0);
+	TestEqual(TEXT("And the buff reports granting nothing"),
+		Buff->GrantedIncrease, 0.0f);
+
+	// So a hit afterwards is back to the plain figure.
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+
+	const float Before = Target.Health();
+	TestTrue(TEXT("The strike activates"), Activate(Caster, Strike));
+	TestEqual(TEXT("It dealt the unbuffed 250% of weapon damage"),
+		Before - Target.Health(), WeaponDamage * 250.0f / 100.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffWithNothingBurningTest,
+	"Cataclysm.Skills.ABuffWithNothingBurningNearbyGrantsNoIncrease",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffWithNothingBurningTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// Present, within the radius, and not on fire. Burning Wrath is written to
+	// be worth using only after something has been set alight, so this is the
+	// ordinary case rather than a fault.
+	FScopedFighter NotAlight(World, FVector(3 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Element.Demonic"));
+	TestTrue(TEXT("The buff still activates"), Activate(Caster, Buff));
+
+	TestEqual(TEXT("Nothing was burning"), Buff->BurningEnemiesAtCast, 0);
+	TestEqual(TEXT("So it granted nothing"), Buff->GrantedIncrease, 0.0f);
+	TestEqual(TEXT("And added no modifier"),
+		Caster.AbilitySystem->GetStatModifiers().Num(), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffLeavesPricedGroundTest,
+	"Cataclysm.Skills.BurningGroundIsPricedWithTheBuffThatWasUpWhenItWasLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffLeavesPricedGroundTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A patch of burning ground works out what one of its ticks is worth when it
+	// is created, and keeps that figure for its whole life. So a buff that was
+	// up at the moment it was left has to be in the price, or the increase would
+	// apply to the skill and not to what the skill leaves behind.
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Element.Demonic"));
+	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
+	TestEqual(TEXT("It granted 4%"), Buff->GrantedIncrease, 4.0f);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4; Angle=360; GroundRadius=3; GroundDuration=6"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+	TestTrue(TEXT("The strike activates"), Activate(Caster, Strike));
+
+	ACataclysmGroundZone* Zone = TheOnlyGroundZone(World);
+	if (!Zone)
+	{
+		AddError(TEXT("Expected exactly one patch of burning ground."));
+		return false;
+	}
+
+	const FCataclysmStatusEffectNumbers Burn = UCataclysmSkillEffects::BurnNumbers();
+	if (!Burn.bUsable)
+	{
+		AddError(TEXT("Burn has no row in the generated status effect table."));
+		return false;
+	}
+
+	const float Unbuffed = WeaponDamage * 250.0f / 100.0f
+						 * Burn.PercentOfHit / 100.0f
+						 / FMath::Max(1.0f, Burn.DurationSeconds);
+	TestEqual(TEXT("A tick is priced with the 4% increase applied"),
+		Zone->DamagePerTick, Unbuffed * 1.04f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillElementTagTest,
+	"Cataclysm.Skills.ASkillKnowsItsOwnDamageTypeFromItsTags",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillElementTagTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Demonic = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4"), TEXT("A Demonic Skill"),
+		TEXT("Item.Weapon.2hAxe, Element.Demonic, Type.Strike"));
+	TestEqual(TEXT("It picks the Element tag out of the row's other tags"),
+		Demonic->ElementTag().ToString(), FString(TEXT("Element.Demonic")));
+
+	UCataclysmStrikeSkill* Untagged = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4"), TEXT("No Tags"));
+	TestFalse(TEXT("A skill with no tags has no element"),
+		Untagged->ElementTag().IsValid());
+
 	return true;
 }
 

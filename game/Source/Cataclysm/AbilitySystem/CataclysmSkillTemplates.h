@@ -117,12 +117,17 @@ private:
  * WHAT THIS DOES AND DOES NOT DO, PLAINLY. It applies a gameplay effect to the
  * caster for the written duration and grants a tag naming the skill, so anything
  * asking whether the buff is up gets a true answer and the duration is real.
- * It does NOT apply the buff's magnitude. Burning Wrath grants "4% increased
- * fire damage for every enemy currently burning within 15 meters" and Martyr's
- * Ember stores "40% of all damage you take": neither has an attribute to modify,
- * because this project has no fire damage attribute and no damage-taken hook,
- * and UCataclysmStatPipeline is a static calculator that nothing feeds from
- * gameplay effects yet. Issue #166.
+ * WHERE THE MAGNITUDE GOES. Into the caster's stat modifier list, held by
+ * UCataclysmAbilitySystemComponent, and taken out again when the duration
+ * expires. Burning Wrath's "4% increased fire damage for every enemy currently
+ * burning within 15 meters" becomes one Increased modifier of 4 times the count,
+ * scoped to the skill's own Element tag so it reaches Demonic skills and no
+ * others. Issue #166.
+ *
+ * MARTYR'S EMBER IS STILL ONLY A DURATION. "Store 40% of all damage you take and
+ * spend it as bonus fire damage on your hits" needs a damage-taken hook and a
+ * store that drains as it is spent, neither of which the stat modifier route
+ * above provides. Issue #192.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmSelfBuffSkill : public UCataclysmSkillTemplate
@@ -137,14 +142,48 @@ public:
 								 const FGameplayAbilityActivationInfo ActivationInfo,
 								 const FGameplayEventData* TriggerEventData) override;
 
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+							const FGameplayAbilityActorInfo* ActorInfo,
+							const FGameplayAbilityActivationInfo ActivationInfo,
+							bool bReplicateEndAbility, bool bWasCancelled) override;
+
 	/** Enemies burning within Radius when the buff went up. Burning Wrath scales on it. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 BurningEnemiesAtCast = 0;
 
+	/**
+	 * Percentage points of increased damage this buff is currently granting.
+	 *
+	 * Zero while the buff is down, and zero for a self buff whose row carries no
+	 * IncreasePerBurning. Read by tests and by anything that shows the player
+	 * what a buff is worth.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float GrantedIncrease = 0.0f;
+
+	/**
+	 * Which tag the granted increase is scoped to, or an invalid tag for none.
+	 *
+	 * The skill's own Element tag. Burning Wrath carries Element.Demonic, so its
+	 * increase reaches Demonic skills; a War self buff written the same way
+	 * would scope to Element.War without any code changing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	FGameplayTag GrantedScope;
+
 private:
 	void Finish();
 
+	/** Put the increase on the caster. Does nothing when there is none to grant. */
+	void GrantIncrease();
+
+	/** Take it off again. Safe to call when nothing was granted. */
+	void RevokeIncrease();
+
 	FTimerHandle FinishTimer;
+
+	/** The caster's handle for the granted modifier. Zero means none is live. */
+	int32 IncreaseHandle = 0;
 };
 
 /**

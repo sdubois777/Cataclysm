@@ -64,10 +64,33 @@ public:
 	/**
 	 * Deal one hit worth DamagePercent of the caster's weapon damage.
 	 *
+	 * THE CASTER'S OWN MODIFIERS APPLY HERE. Weapon damage times the skill's
+	 * percentage is the BASE; the caster's stat modifiers then run over it
+	 * through UCataclysmStatPipeline, which is where a self buff's magnitude
+	 * becomes a number. Which modifiers reach it is decided by SkillTags: an
+	 * increase scoped to Element.Demonic applies to a Demonic skill and to no
+	 * other. Issue #166.
+	 *
+	 * @param SkillTags  the tags of the skill dealing the hit. An empty
+	 *                   container means only unscoped and Scope.Global
+	 *                   modifiers apply, which is the right answer for a hit
+	 *                   that belongs to no skill.
 	 * @return the damage sent, before the defender's mitigation. Zero when
 	 *         either side is missing or the caster has no weapon damage.
 	 */
-	static float ApplyHit(AActor* Instigator, AActor* Target, float DamagePercent);
+	static float ApplyHit(AActor* Instigator, AActor* Target, float DamagePercent,
+						  const FGameplayTagContainer& SkillTags = FGameplayTagContainer());
+
+	/**
+	 * What one hit of this size, from this caster, is worth after the caster's
+	 * own stat modifiers.
+	 *
+	 * Separated from ApplyHit so a test can read the number without a defender,
+	 * and so the burning ground can price a tick the same way a hit is priced.
+	 */
+	static float ModifiedDamage(const UAbilitySystemComponent* Source,
+								float BaseDamage,
+								const FGameplayTagContainer& SkillTags);
 
 	/**
 	 * Deal a hit of an amount already worked out.

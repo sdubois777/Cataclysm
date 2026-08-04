@@ -44,12 +44,35 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FCataclysmSkillShapeParams Params;
 
+	/**
+	 * This skill's own tags, from its Tags cell.
+	 *
+	 * WHICH OF THE CHARACTER'S MODIFIERS REACH THIS SKILL. Every hit is
+	 * evaluated against them: a stat modifier requiring Element.Demonic applies
+	 * to a skill carrying that tag and to no other. Empty means only modifiers
+	 * that require nothing, and those tagged Scope.Global, apply.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	FGameplayTagContainer SkillTags;
+
 	/** Which shape this class implements. Every subclass answers. */
 	virtual ECataclysmSkillShape Shape() const PURE_VIRTUAL(UCataclysmSkillTemplate::Shape, return ECataclysmSkillShape::None;);
 
 	/** Percent of weapon damage one use deals, from this ability's slot. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	float GetSlotDamagePercent() const;
+
+	/**
+	 * This skill's damage type, as its `Element.*` tag, or an invalid tag.
+	 *
+	 * Every row of the Weapon Skills sheet carries exactly one, because the
+	 * sheet is a matrix of weapon type against damage type and the damage type
+	 * is one of its two axes. It is what a self buff scopes its increase to, so
+	 * that "increased fire damage" is expressed as the tag the data already
+	 * carries rather than as a name written in C++.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	FGameplayTag ElementTag() const;
 
 protected:
 	/**
