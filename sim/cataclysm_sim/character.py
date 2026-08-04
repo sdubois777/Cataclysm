@@ -138,6 +138,17 @@ SKILL_BASE_STATS = frozenset(
 CLASS_BASE_STATS = frozenset(
     s for s, src in BASE_SOURCE.items() if src == "class")
 
+#: The base critical strike chance every skill has unless it states its own, as
+#: a percentage. Issue #120.
+#:
+#: 5% is Path of Exile's base for a plain melee weapon; its daggers and staves
+#: sit at 6 to 6.5% and its wands at 7 to 8%, so a skill that wants to crit more
+#: overrides upward from here rather than this being a floor for everything. It
+#: is also the value this project already gives an ordinary enemy, in
+#: `enemy_stats.EnemyStats.crit_chance`, so the player and the enemies start from
+#: the same place.
+DEFAULT_SKILL_CRIT_CHANCE = 5.0
+
 #: Stats that are counted as a percentage and cannot exceed their cap no matter
 #: what. Only hard caps appear here; soft caps are exceedable by design and so
 #: are deliberately not clamped. See the Stat Calculation section of the design
@@ -592,6 +603,21 @@ class Skill:
     damage_multiplier: float | None = None
 
     def __post_init__(self) -> None:
+        # Every skill supplies a base critical strike chance unless it names its
+        # own. Without one, every increased critical strike chance affix in the
+        # game multiplies zero and is worth nothing, which is issue #120. The
+        # design document says this base belongs to the skill rather than to the
+        # weapon or the class, so a default here is what makes that true of every
+        # skill rather than only of the 61 that are designed so far.
+        #
+        # NOT WHAT PATH OF EXILE DOES, deliberately. There, attacks take their
+        # base critical strike chance from the weapon and only spells take it
+        # from the skill. This project applies one rule to both, which is the
+        # design document's stat source table and is simpler.
+        if "crit_chance" not in self.base:
+            object.__setattr__(
+                self, "base", {**self.base, "crit_chance": DEFAULT_SKILL_CRIT_CHANCE})
+
         unknown = set(self.base) - set(ALL_STATS)
         if unknown:
             raise ValueError(

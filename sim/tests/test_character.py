@@ -93,9 +93,25 @@ def test_critical_strike_chance_comes_from_the_skill_not_the_class():
     """Stated by the project owner: each skill carries its own base critical
     strike chance, and gear and attributes scale that."""
     assert ch.BASE_SOURCE["crit_chance"] == "skill"
-    no_skill = ch.Character(ch.GENERIC, level=100,
-                            attributes=ch.Attributes(ferocity=100))
-    assert no_skill.stat("crit_chance") == 0.0
+
+    # Every skill supplies the default base unless it names its own, so a
+    # character always has something for its increases to scale. Before issue
+    # #120 this was zero, and every increased critical strike chance affix in
+    # the game was worth nothing.
+    default_skill = ch.Character(ch.GENERIC, level=100,
+                                 attributes=ch.Attributes(ferocity=100))
+    # 100 Ferocity is +50% increased, so the 5% default becomes 7.5%.
+    assert default_skill.stat("crit_chance") == pytest.approx(
+        ch.DEFAULT_SKILL_CRIT_CHANCE * 1.5)
+
+
+def test_the_default_critical_strike_chance_is_a_default_not_a_floor():
+    """A skill that names its own value gets that value, not the larger of the
+    two. Otherwise no skill could ever be designed to crit less than average."""
+    timid = ch.Character(ch.GENERIC, level=100,
+                         skill=ch.Skill(name="Timid", base={"crit_chance": 1.0}))
+    assert timid.stat("crit_chance") == pytest.approx(1.0)
+    assert ch.DEFAULT_SKILL_CRIT_CHANCE > 1.0
 
 
 def test_a_skill_base_is_scaled_by_attributes_and_gear():
@@ -112,7 +128,9 @@ def test_a_class_cannot_give_itself_a_skill_supplied_base():
     pretender = ch.ClassDefinition(name="Pretender",
                                    overrides={"crit_chance": ch.Scaling(base=90.0)})
     c = ch.Character(pretender, level=100)
-    assert c.stat("crit_chance") == 0.0
+    # The skill's default, not the class's 90. Asserting the number rather than
+    # merely "not 90" so a change to where the base comes from is caught here.
+    assert c.stat("crit_chance") == pytest.approx(ch.DEFAULT_SKILL_CRIT_CHANCE)
 
 
 def test_a_skill_may_not_supply_a_base_for_a_stat_it_does_not_own():

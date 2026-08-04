@@ -20,6 +20,89 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Attack speed comes from the weapon as a rate, not an implicit, and every skill crits 5% by default
+
+**The question.** Issue #120. Attack speed and critical strike chance both had a
+base of zero everywhere in the project. Attributes and affixes only ever scale a
+base, so every increase to either was worth exactly nothing. Eight of the
+reference character's 72 affix slots did nothing at all.
+
+**WHERE THE BASES LIVE WAS ALREADY SETTLED and did not need deciding.** The
+design document's stat source table says the equipped weapon supplies attack
+speed and the skill being used supplies critical strike chance. Nothing supplied
+either. So this is the design becoming real rather than a change to it.
+
+**FIRST DECISION: a weapon's attack speed is a field on the base, not an
+implicit, and that is load-bearing.** A two-handed weapon doubles every implicit
+it carries. That is deliberate and is what balances four affix slots against a
+dual wielder's eight. Applied to a rate it is nonsense: a Greatsword would swing
+twice as fast as a Sword. Path of Exile and Last Epoch both treat a weapon's rate
+as an intrinsic property listed apart from its modifiers, and Last Epoch states
+its formula as skill rate times weapon rate times one plus increases. So the rate
+sits beside the implicits and nothing scales it but increases.
+
+**SECOND DECISION: the numbers, and they were anchored rather than invented.**
+`sim/analyse_two_handed_multiplier.py` already carried the answer, read off Path
+of Exile's base weapon table when the two-handed multiplier was derived: one
+handed weapons average 1.35 attacks per second and two-handed 1.28. That script
+also records an earlier attempt to derive rates instead, which produced 1.25
+against 0.85 and was rejected as nothing like what a shipped game uses.
+
+Those two averages are load-bearing. The two-handed multiplier of 2.0 is already
+shipped and was measured against them, so per-weapon rates that do not average
+back to them would move a multiplier nobody meant to move. The fourteen values
+are ordered inversely to each weapon's flat attack damage and average to exactly
+1.35 and 1.28. A test in `tools/tests/test_affix_sheets_match_the_model.py`
+asserts both averages, so this cannot drift quietly.
+
+| One-handed | Attacks/sec | | Two-handed | Attacks/sec |
+|---|---|---|---|---|
+| Dagger | 1.50 | | Spear | 1.35 |
+| Fist | 1.45 | | Two-Handed Crossbow | 1.30 |
+| Whip | 1.40 | | Staff | 1.30 |
+| Crossbow | 1.35 | | Greataxe | 1.28 |
+| Wand | 1.35 | | Greatsword | 1.25 |
+| Sword | 1.30 | | Warhammer | 1.20 |
+| Axe | 1.25 | | | |
+| Shield | 1.20 | | | |
+
+The spread is narrow on purpose. Path of Exile's whole range is 1.10 to 1.60 and
+its two-handed swords are as fast as its daggers; a two-hander earns its
+advantage through much larger base damage, not through swinging much more slowly.
+
+**THIRD DECISION: every skill supplies 5% base critical strike chance unless it
+names its own.** 5% is Path of Exile's base for a plain melee weapon, and it is
+already what this project gives an ordinary enemy in `enemy_stats.py`, so the
+player and the enemies start from the same place. It is a default and not a
+floor: a skill that states 1% gets 1%, which is what lets a skill be designed to
+crit less than average. Only 61 of 558 skill rows are designed, so a default plus
+per-skill overrides is the only practical shape.
+
+**WHAT RESEARCH SAYS WE ARE DOING DIFFERENTLY, stated rather than hidden.** Path
+of Exile splits critical strike chance by source: weapon attacks take it from the
+weapon and only spells take it from the skill gem. This project applies one rule
+to both. That is the design document's stat source table, it is simpler, and it
+was kept deliberately after the divergence was put to the project owner.
+
+**Sources.** Path of Exile's base weapon table by way of incendar.com, giving
+attacks per second and base critical strike chance per weapon class; the Path of
+Exile wiki on critical strike, for attacks taking base critical strike chance
+from the weapon and spells from the skill gem; Last Epoch's damage calculation as
+written up by Maxroll, for the skill-rate times weapon-rate times increases form
+and for dual wielding averaging the two weapons' rates.
+
+**What the research does not settle.** Which of this game's fourteen bases gets
+which number. Path of Exile's weapon classes do not map onto them. The ordering
+is a judgement: inversely to flat attack damage, constrained to hit the two
+averages already in use.
+
+**Affects:** `Cataclysm_GDD_v2.md`, the weapon base table in section V, which now
+carries an attacks per second column. **Applied.** The base critical strike
+chance default is recorded here and in `character.DEFAULT_SKILL_CRIT_CHANCE`; the
+design document's stat source table already said the skill supplies it and needed
+no change.
+---
+
 ## 2026-08-03 — The control scheme: what the left mouse button does, and why there are two schemes rather than one
 
 **The question.** Issue #16. The design document's control table gives eight
