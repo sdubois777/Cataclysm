@@ -43,3 +43,4 @@ Crashes/
 # OS
 .DS_Store
 Thumbs.db
+.claude/handoff.md

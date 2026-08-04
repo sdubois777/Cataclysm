@@ -149,6 +149,37 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 	return Filled;
 }
 
+int32 UCataclysmWeaponSlotsComponent::EquipStartingWeapon()
+{
+	if (StartingWeaponType.IsEmpty())
+	{
+		// A deliberate choice to begin holding nothing is legitimate, so this is
+		// not a warning. It is also what a character creator would produce
+		// before the player has chosen.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("No starting weapon type is set, so no slot was filled."));
+		return 0;
+	}
+
+	const int32 Filled = EquipWeaponType(StartingWeaponType);
+
+	if (Filled == 0)
+	{
+		// LOUD, BECAUSE THIS IS A CHARACTER WHO CANNOT USE ANY ABILITY. It means
+		// the starting weapon type is one the damage type does not cover, or is
+		// misspelled -- and the symptom is a game that runs normally and does
+		// nothing when a skill key is pressed, which is exactly how issue #169
+		// went unnoticed.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The starting weapon is a %s and the damage type is %s, which "
+				 "grants no skills at all. Check StartingWeaponType against the "
+				 "Weapon Skills sheet of docs/All_Things_Cataclysm.xlsx."),
+			*StartingWeaponType, *DamageType);
+	}
+
+	return Filled;
+}
+
 void UCataclysmWeaponSlotsComponent::UnequipWeapon()
 {
 	if (UCataclysmAbilitySystemComponent* AbilitySystem = GetAbilitySystem())

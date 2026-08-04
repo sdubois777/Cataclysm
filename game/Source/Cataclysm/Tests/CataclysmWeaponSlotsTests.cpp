@@ -362,6 +362,113 @@ bool FCataclysmSlotComesFromTheWeaponTest::RunTest(const FString& Parameters)
  * The fixture above pins War deliberately, because those tests are about the
  * swap mechanism. This one checks the shipping default, which nothing else does.
  */
+/**
+ * The weapon a character begins holding must actually grant them skills.
+ *
+ * WHAT THIS CATCHES, AND IT IS THE FAILURE THAT PRODUCED ISSUE #169. A starting
+ * weapon type the shipping damage type does not cover -- a Crossbow while the
+ * slice ships Demonic, or a misspelling -- fills no slot at all. The game still
+ * runs, the character still walks, and every skill key does nothing. There is no
+ * error and nothing looks wrong.
+ *
+ * Deliberately reads the SHIPPING defaults for both the starting weapon type and
+ * the damage type, and sets neither, because the pairing is what matters and
+ * either one being changed alone can break it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStartingWeaponGrantsSkillsTest,
+	"Cataclysm.WeaponSlots.TheStartingWeaponActuallyGrantsSkills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStartingWeaponGrantsSkillsTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	UCataclysmWeaponSlotsComponent* Slots =
+		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+	Slots->RegisterComponent();
+
+	const FString Starting = Slots->GetStartingWeaponType();
+	TestFalse(TEXT("A starting weapon type is set at all"), Starting.IsEmpty());
+
+	const int32 Filled = Slots->EquipStartingWeapon();
+
+	TestEqual(FString::Printf(
+		TEXT("Beginning with a %s and damage type %s fills all six slots"),
+		*Starting, *Slots->GetDamageType()), Filled, 6);
+
+	// And it really equipped the type it names, rather than filling six slots
+	// from something else.
+	TestEqual(TEXT("The equipped type is the starting type"),
+		Slots->GetEquippedWeaponType(), Starting);
+
+	Actor->Destroy();
+	return true;
+}
+
+/**
+ * A starting weapon the damage type does not cover fills nothing.
+ *
+ * The other half of the guard above: it proves that test can fail. Without this,
+ * a change that made EquipStartingWeapon return 6 for anything would pass the
+ * check above and prove nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBadStartingWeaponGrantsNothingTest,
+	"Cataclysm.WeaponSlots.AStartingWeaponTheDamageTypeDoesNotCoverGrantsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBadStartingWeaponGrantsNothingTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	UCataclysmWeaponSlotsComponent* Slots =
+		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+	Slots->RegisterComponent();
+
+	// The Crossbow is a real weapon base that Demonic does not roll on, so this
+	// is the realistic version of the mistake rather than a nonsense string.
+	Slots->SetStartingWeaponType(TEXT("Crossbow"));
+	TestEqual(TEXT("Beginning with a Demonic Crossbow fills no slot"),
+		Slots->EquipStartingWeapon(), 0);
+
+	// And a name that is not a weapon at all does the same, rather than
+	// erroring or filling something arbitrary.
+	Slots->SetStartingWeaponType(TEXT("Greetaxe"));
+	TestEqual(TEXT("A misspelled starting weapon fills no slot"),
+		Slots->EquipStartingWeapon(), 0);
+
+	// Naming nothing is a legitimate choice and must not crash.
+	Slots->SetStartingWeaponType(FString());
+	TestEqual(TEXT("Naming no starting weapon fills no slot"),
+		Slots->EquipStartingWeapon(), 0);
+
+	Actor->Destroy();
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSliceShipsDemonicTest,
 	"Cataclysm.WeaponSlots.TheSliceShipsDemonic",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

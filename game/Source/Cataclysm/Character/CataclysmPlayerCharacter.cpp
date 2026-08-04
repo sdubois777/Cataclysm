@@ -204,9 +204,31 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	ASC->InitAbilityActorInfo(PS, this);
 
 	// Granting is server-only; the results replicate.
-	if (HasAuthority() && StartingAbilitySet)
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (StartingAbilitySet)
 	{
 		GrantedHandles.TakeFromAbilitySystem(ASC);
 		StartingAbilitySet->GiveToAbilitySystem(ASC, &GrantedHandles, this);
+	}
+
+	// THE SIX WEAPON SLOTS ARE FILLED HERE AND NOWHERE ELSE, and until issue
+	// #169 nothing filled them at all: UCataclysmWeaponSlotsComponent had no
+	// caller outside the automation tests, so a play session granted no skill
+	// and every skill key reached nothing.
+	//
+	// It has to happen here rather than in the component's own BeginPlay,
+	// because the ability system lives on the PLAYER STATE and does not exist
+	// until possession completes. The component says so itself: possession order
+	// is not something it controls.
+	//
+	// Safe to run twice. EquipWeaponType takes back everything it granted before
+	// it grants again, so a second possession refills rather than doubling.
+	if (WeaponSlots)
+	{
+		WeaponSlots->EquipStartingWeapon();
 	}
 }
