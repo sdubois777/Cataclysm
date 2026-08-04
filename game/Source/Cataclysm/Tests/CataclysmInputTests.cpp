@@ -6,10 +6,12 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputConfig.h"
 #include "Abilities/GameplayAbility.h"
 #include "GameplayTagsManager.h"
 #include "InputAction.h"
+#include "Misc/ScopeExit.h"
 #include "InputMappingContext.h"
 #include "EnhancedActionKeyMapping.h"
 #include "Engine/World.h"
@@ -278,11 +280,12 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Three native bindings, found by the names the controller uses.
+	// Four native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
 		CataclysmInputActionNames::StandStill,
+		CataclysmInputActionNames::Zoom,
 	};
 
 	for (const FName& Name : NativeNames)
@@ -359,6 +362,11 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 	RequiredEverywhere.Add(Config->FindNativeAction(CataclysmInputActionNames::Move));
 	RequiredEverywhere.Add(Config->FindNativeAction(CataclysmInputActionNames::StandStill));
 
+	// Zoom is on the mouse wheel in both schemes. The wheel is not used for
+	// anything else in either, so unlike click-to-move there is nothing for the
+	// two schemes to disagree about.
+	RequiredEverywhere.Add(Config->FindNativeAction(CataclysmInputActionNames::Zoom));
+
 	// Click-to-move is the one binding the two schemes disagree about, and the
 	// disagreement is the design rather than an omission. Under keyboard movement
 	// the left mouse button is left free, which is what Diablo 4 does in its
@@ -431,6 +439,97 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("%s binds click-to-move only if its scheme uses it"), Path),
 			Mapped.Contains(MoveToCursor), Expectation.bBindsMoveToCursor);
 	}
+
+	return true;
+}
+
+/**
+ * The mouse wheel cannot push the camera outside its range.
+ *
+ * WHY THE RANGE MATTERS RATHER THAN THE STEP. Zoomed all the way in, the camera
+ * ends up inside the character and the view is useless; zoomed all the way out,
+ * the character is a few pixels. Both are reachable by holding the wheel down
+ * for a second, so the clamp is the only thing standing between a player and
+ * either one. The numbers themselves are expected to change; that a value
+ * outside them cannot be reached is not.
+ *
+ * This checks the distance the camera is moving toward, not the boom's current
+ * length. The camera eases toward a new distance over several frames, so the
+ * boom mid-glide holds an intermediate value and asserting on it would be a
+ * test of the easing rather than of the clamp.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCameraZoomClampTest,
+	"Cataclysm.Input.CameraZoomStaysWithinItsRange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCameraZoomClampTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmInputTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world to spawn the character in."));
+		return false;
+	}
+
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+	};
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>();
+	if (!Character)
+	{
+		AddError(TEXT("Could not spawn a player character."));
+		return false;
+	}
+
+	// BeginPlay is what reads the resting distance off the camera boom. Spawning
+	// alone does not run it in a world that was never begun.
+	Character->DispatchBeginPlay();
+
+	const float Resting = Character->GetTargetCameraDistance();
+
+	// Direction first. A sign error here would zoom out when the wheel is pushed
+	// forward, which is the opposite of what every game in the genre does, and
+	// no clamp test would notice.
+	Character->AddCameraZoom(1.0f);
+	const float AfterOneNotch = Character->GetTargetCameraDistance();
+	TestTrue(TEXT("one notch forward moves the camera nearer, not further"),
+		AfterOneNotch < Resting);
+
+	Character->AddCameraZoom(-1.0f);
+	TestEqual(TEXT("one notch back returns it to exactly where it started"),
+		Character->GetTargetCameraDistance(), Resting);
+
+	// Far more notches than the range holds, then more again. The second helping
+	// is what proves it stopped rather than merely slowed: without a clamp the
+	// value would keep falling.
+	Character->AddCameraZoom(1000.0f);
+	const float Nearest = Character->GetTargetCameraDistance();
+	Character->AddCameraZoom(1000.0f);
+	TestEqual(TEXT("zooming in past the near limit stops, and stays stopped"),
+		Character->GetTargetCameraDistance(), Nearest);
+	TestTrue(TEXT("and the near limit is nearer than where it started"), Nearest < Resting);
+
+	Character->AddCameraZoom(-1000.0f);
+	const float Furthest = Character->GetTargetCameraDistance();
+	Character->AddCameraZoom(-1000.0f);
+	TestEqual(TEXT("zooming out past the far limit stops, and stays stopped"),
+		Character->GetTargetCameraDistance(), Furthest);
+	TestTrue(TEXT("and the far limit is further than where it started"), Furthest > Resting);
+
+	// The range the project asked for. Separate from the clamp checks above,
+	// which hold whatever the numbers are. If the range is changed on purpose,
+	// change these two lines with it.
+	TestEqual(TEXT("the camera comes no nearer than 500 centimetres"), Nearest, 500.0f);
+	TestEqual(TEXT("the camera goes no further than 1200 centimetres"), Furthest, 1200.0f);
+
+	// A wheel that reports nothing must not move the camera. Enhanced Input
+	// sends a Triggered event on every frame the wheel is read, including frames
+	// where it did not turn.
+	Character->AddCameraZoom(0.0f);
+	TestEqual(TEXT("a wheel that did not turn leaves the camera where it was"),
+		Character->GetTargetCameraDistance(), Furthest);
 
 	return true;
 }

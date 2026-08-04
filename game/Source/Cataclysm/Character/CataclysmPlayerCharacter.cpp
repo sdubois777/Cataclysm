@@ -23,6 +23,13 @@ namespace
 
 ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 {
+	// The base class turns ticking off, because most characters have nothing to
+	// do every frame. This one eases the camera toward a new distance after the
+	// wheel moves. Ticking starts disabled and is switched on only while that
+	// glide is running, so a character nobody is zooming costs nothing.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
+
 	GetCapsuleComponent()->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
 
 	// The character faces where it is going, not where the camera points. A
@@ -99,6 +106,52 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	{
 		PlaceholderFacingMarker->SetStaticMesh(ConeMesh.Object);
 	}
+}
+
+void ACataclysmPlayerCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Taken from the boom rather than repeated as a number here. The resting
+	// distance is stated once, in the constructor, and clamping it means a boom
+	// set outside the range cannot leave the first wheel notch jumping.
+	TargetCameraDistance = FMath::Clamp(CameraBoom->TargetArmLength,
+		MinCameraDistance, MaxCameraDistance);
+	CameraBoom->TargetArmLength = TargetCameraDistance;
+}
+
+void ACataclysmPlayerCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	const float Current = CameraBoom->TargetArmLength;
+
+	// Half a centimetre. FInterpTo approaches its target without ever arriving,
+	// so without a threshold the character would tick forever after one notch.
+	if (FMath::IsNearlyEqual(Current, TargetCameraDistance, 0.5f))
+	{
+		CameraBoom->TargetArmLength = TargetCameraDistance;
+		SetActorTickEnabled(false);
+		return;
+	}
+
+	CameraBoom->TargetArmLength = FMath::FInterpTo(Current, TargetCameraDistance,
+		DeltaSeconds, CameraZoomInterpSpeed);
+}
+
+void ACataclysmPlayerCharacter::AddCameraZoom(float Notches)
+{
+	if (FMath::IsNearlyZero(Notches))
+	{
+		return;
+	}
+
+	// Subtracted, because a wheel pushed forward reports a positive value and
+	// means "closer", and closer is a shorter boom.
+	TargetCameraDistance = FMath::Clamp(TargetCameraDistance - Notches * CameraZoomStep,
+		MinCameraDistance, MaxCameraDistance);
+
+	SetActorTickEnabled(true);
 }
 
 UAbilitySystemComponent* ACataclysmPlayerCharacter::GetAbilitySystemComponent() const

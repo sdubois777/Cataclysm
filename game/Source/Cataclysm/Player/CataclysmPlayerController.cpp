@@ -3,6 +3,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputComponent.h"
 #include "Input/CataclysmInputConfig.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
@@ -104,6 +105,9 @@ void ACataclysmPlayerController::SetupInputComponent()
 		this, &ACataclysmPlayerController::Input_StandStillStarted);
 	Input->BindNativeAction(Config, Names::StandStill, ETriggerEvent::Completed,
 		this, &ACataclysmPlayerController::Input_StandStillReleased);
+
+	Input->BindNativeAction(Config, Names::Zoom, ETriggerEvent::Triggered,
+		this, &ACataclysmPlayerController::Input_Zoom);
 
 	TArray<uint32> BindHandles;
 	Input->BindAbilityActions(Config, this,
@@ -220,6 +224,18 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 	}
 
 	FollowTime = 0.0f;
+}
+
+void ACataclysmPlayerController::Input_Zoom(const FInputActionValue& Value)
+{
+	// Only the player character has a camera boom. A pawn possessed for some
+	// other reason, such as a cutscene camera, simply has no zoom.
+	// Not named Character: AController already has a member by that name, and
+	// shadowing it is an error under this project's warning settings.
+	if (ACataclysmPlayerCharacter* PlayerPawn = Cast<ACataclysmPlayerCharacter>(GetPawn()))
+	{
+		PlayerPawn->AddCameraZoom(Value.Get<float>());
+	}
 }
 
 void ACataclysmPlayerController::Input_StandStillStarted()
