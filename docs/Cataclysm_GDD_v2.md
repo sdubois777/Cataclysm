@@ -36,6 +36,10 @@ Version 0.3
 
 [Controls and Key Bindings 5](https://docs.google.com/document/d/1YMuQLR1e4C3q7aDB0bq49isKyEzbqV8mhJ3HdclA8TE/edit#heading=)
 
+[Scheme 1: mouse movement (default) 5](https://docs.google.com/document/d/1YMuQLR1e4C3q7aDB0bq49isKyEzbqV8mhJ3HdclA8TE/edit#heading=)
+
+[Scheme 2: keyboard movement 5](https://docs.google.com/document/d/1YMuQLR1e4C3q7aDB0bq49isKyEzbqV8mhJ3HdclA8TE/edit#heading=)
+
 [Core Gameplay Loop 5](https://docs.google.com/document/d/1YMuQLR1e4C3q7aDB0bq49isKyEzbqV8mhJ3HdclA8TE/edit#heading=)
 
 [Game Start 5](https://docs.google.com/document/d/1YMuQLR1e4C3q7aDB0bq49isKyEzbqV8mhJ3HdclA8TE/edit#heading=)
@@ -306,17 +310,55 @@ The following are default controls. Players with multiple damage types can map m
 
   
 
+**The basic attack is on no key.** It fires automatically, as the Combat System section says. Nothing the player presses triggers it.
+
+  
+
+**There are two schemes and only one is active at a time.** They differ in what moves the character. The Support ability and directional movement both want W, and one key cannot be both, so each scheme gives W to one of them. Mouse movement ships as the default. The scheme is chosen by `DefaultMappingContext` in `game/Config/DefaultGame.ini`; there is no in-game setting for it yet, which needs the interface work in the Core Interface Screens section.
+
+  
+
+### **Scheme 1: mouse movement (default)**
+
 |  |  |
 | :-: | :-: |
 | \*\*Input\*\* | \*\*Action\*\* |
-| LMB | Player movement and basic attack |
+| LMB | Move to the point clicked. Clicking an enemy walks toward it; it does not attack. |
+| Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
 | W | Support ability |
 | E | Aura ability (toggle) |
 | R | Ultimate ability |
 | Spacebar | Movement ability |
-| WASD | Optional directional movement |
+| Mouse wheel | Camera distance |
+| Left stick | Directional movement |
+
+  
+
+### **Scheme 2: keyboard movement**
+
+WASD moves the character, so the Support ability moves off W to 1 and the left mouse button is left unbound. Every other binding is the same as scheme 1.
+
+  
+
+|  |  |
+| :-: | :-: |
+| \*\*Input\*\* | \*\*Action\*\* |
+| WASD | Directional movement |
+| Left Shift | Held: stand still. Abilities fire without the character moving. |
+| RMB | Heavy ability |
+| Q | Special ability |
+| 1 | Support ability |
+| E | Aura ability (toggle) |
+| R | Ultimate ability |
+| Spacebar | Movement ability |
+| Mouse wheel | Camera distance |
+| Left stick | Directional movement |
+
+  
+
+**Gamepad support is partial.** The left stick moves the character in both schemes. The six ability slots are not bound to a gamepad yet.
 
   
 

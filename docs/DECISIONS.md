@@ -1680,9 +1680,13 @@ in the genre differs and the right answer depends on art that does not exist yet
 The starting values are taken from Unreal's own top-down template and are
 expected to change.
 
-**Affects:** `Cataclysm_GDD_v2.md`, "Controls and Key Bindings". **Not applied.**
-The table still says the left mouse button fires the basic attack and still puts
-Support on W without noting the collision.
+**Affects:** `Cataclysm_GDD_v2.md`, "Controls and Key Bindings". **Applied** in
+issue #138. The section now has one table per scheme, says the basic attack is on
+no key, and says which scheme ships as default and where that is set.
+`tools/tests/test_controls_table_matches_the_input_assets.py` compares both tables
+against `MOUSE_MAPPINGS` and `KEYBOARD_MAPPINGS` in
+`tools/generate_input_assets.py`, so the document and the bindings cannot drift
+apart again without a test naming the binding that differs.
 
 ---
 
