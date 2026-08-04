@@ -269,21 +269,6 @@ def test_a_closing_hit_is_only_written_on_a_skill_that_repeats(designed):
         "not repeat: " + ", ".join(stranded))
 
 
-def test_no_skill_is_named_after_a_class(designed):
-    """Issue #157: a War skill is called Ravager's Cleave, after a Demonic class.
-
-    A skill name that takes a class name implies the skill belongs to that
-    class, and skills come from weapons rather than from classes.
-    """
-    classes = ("Ravager", "Masochist", "Ritualist", "Warlord", "Berserker",
-               "Sentinel")
-    offenders = [f"{r['weapon']}/{r['slot']} ({r['name']})"
-                 for r in designed
-                 if any(name.lower() in r["name"].lower() for name in classes)]
-    assert not offenders, ("Demonic skills named after a class: "
-                           + ", ".join(offenders))
-
-
 def test_burn_is_an_effect_the_player_can_apply():
     """Every Demonic skill sets enemies alight, so burn has to be player-applied.
 

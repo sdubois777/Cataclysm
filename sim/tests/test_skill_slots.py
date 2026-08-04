@@ -130,9 +130,14 @@ def test_the_designed_skills_already_state_weapon_damage_multipliers():
     slot bands were derived, so it is the evidence for them. A later damage type
     stating its own figure is not evidence and must not silently widen a band;
     it is checked against the bands by the two tests below instead.
+
+    The Shield Support skill is named Braced Guard. It was called Bulwark until
+    issue #157, which is also the name of a War class, and skills come from
+    weapons rather than from classes. Only the name changed; its 200% is the
+    same figure.
     """
     stated = stated_multipliers("War")
-    assert stated == {"Haymaker": 100.0, "Bulwark": 200.0,
+    assert stated == {"Haymaker": 100.0, "Braced Guard": 200.0,
                       "Annihilator": 300.0, "Skull Splitter": 500.0}
 
 
@@ -179,7 +184,7 @@ def test_a_support_skill_may_still_state_damage_of_its_own():
     because a support skill is forbidden from dealing any."""
     assert ch.SKILL_SLOTS["Support"].typical_damage == 0.0
     assert ch.SKILL_SLOTS["Support"].highest > 0.0
-    stated = ch.Skill(name="Bulwark", slot="Support", damage_multiplier=200.0)
+    stated = ch.Skill(name="Braced Guard", slot="Support", damage_multiplier=200.0)
     assert stated.weapon_damage_percent() == 200.0
 
 

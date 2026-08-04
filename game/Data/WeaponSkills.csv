@@ -9,7 +9,7 @@ Famine_Sword_Support,Sword,Famine,Support,,,"Item.Weapon.Sword, Element.Famine",
 Celestial_Sword_Heavy,Sword,Celestial,Heavy,,,"Item.Weapon.Sword, Element.Celestial",,
 Demonic_Sword_Heavy,Sword,Demonic,Heavy,Cinderslash,"Draw a burning diagonal cut across everything in front of you, setting each one alight. Against an enemy that is already burning the cut deals 30% more damage.","Item.Weapon.Sword, Element.Demonic, Type.Strike, Type.Melee, Stat.Offense.Global, Keyword.DoT.Burn",Strike,Radius=3; Angle=90; Burn=1
 Pestilence_Sword_Heavy,Sword,Pestilence,Heavy,,,"Item.Weapon.Sword, Element.Pestilence",,
-War_Greataxe_Heavy,Greataxe,War,Heavy,Ravager's Cleave,"Swing your greataxe in a brutal horizontal arc that hits all enemies in a wide cone, dealing massive damage and applying a bleed to each target hit. Armored enemies take an additional 20% damage from this attack.","Item.Weapon.2hAxe, Element.War, Type.AOE.PointBlank, Type.Strike, Keyword.DoT.Bleed, Stat.Defense.Armor",,
+War_Greataxe_Heavy,Greataxe,War,Heavy,Sundering Arc,"Swing your greataxe in a brutal horizontal arc that hits all enemies in a wide cone, dealing massive damage and applying a bleed to each target hit. Armored enemies take an additional 20% damage from this attack.","Item.Weapon.2hAxe, Element.War, Type.AOE.PointBlank, Type.Strike, Keyword.DoT.Bleed, Stat.Defense.Armor",,
 Death_Sword_Heavy,Sword,Death,Heavy,,,"Item.Weapon.Sword, Element.Death",,
 Chaos_Sword_Heavy,Sword,Chaos,Heavy,,,"Item.Weapon.Sword, Element.Chaos",,
 Famine_Sword_Heavy,Sword,Famine,Heavy,,,"Item.Weapon.Sword, Element.Famine",,
@@ -108,7 +108,7 @@ War_Warhammer_Movement,Warhammer,War,Movement,Shockwave Leap,"Leap to a target l
 Chaos_Axe_Heavy,Axe,Chaos,Heavy,,,,,
 Famine_Axe_Heavy,Axe,Famine,Heavy,,,,,
 Demonic_Axe_Ultimate,Axe,Demonic,Ultimate,Reap the Ashes,"Swing without stopping for 3 seconds, striking everything within 4 meters twice a second and setting it alight. The ground burns for 6 seconds, and the last swing deals 350% weapon damage.","Item.Weapon.Axe, Element.Demonic, Slot.Ultimate, Type.AOE.PointBlank, Type.Channel, Type.AOE.Persistent, Keyword.DoT.Burn",Strike,Radius=4; Angle=360; Duration=3; Interval=0.5; Burn=1; GroundRadius=4; GroundDuration=6; FinalHitPercent=350
-War_Axe_Movement,Axe,War,Movement,Berserker's Charge,"Charge forward in a straight line, striking any enemy in your path and knocking them aside. The charge deals damage proportional to the distance traveled and applies a bleed to all struck enemies.","Item.Weapon.Axe, Element.War, Slot.Movement, Type.Strike, Keyword.DoT.Bleed",,
+War_Axe_Movement,Axe,War,Movement,Headlong Charge,"Charge forward in a straight line, striking any enemy in your path and knocking them aside. The charge deals damage proportional to the distance traveled and applies a bleed to all struck enemies.","Item.Weapon.Axe, Element.War, Slot.Movement, Type.Strike, Keyword.DoT.Bleed",,
 Chaos_Axe_Ultimate,Axe,Chaos,Ultimate,,,,,
 Famine_Axe_Ultimate,Axe,Famine,Ultimate,,,,,
 Demonic_Axe_Movement,Axe,Demonic,Movement,Cleaving Lunge,"Spring to a point up to 8 meters away and bury the axe on landing, setting alight every enemy within 3 meters. The impact leaves the ground burning for 4 seconds.","Item.Weapon.Axe, Element.Demonic, Slot.Movement, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn",Movement,Mode=Leap; Range=8; Radius=3; Burn=1; GroundRadius=3; GroundDuration=4
@@ -116,7 +116,7 @@ War_Crossbow_Movement,Crossbow,War,Movement,Grapple,"Fire a grappling bolt at a 
 Chaos_Axe_Movement,Axe,Chaos,Movement,,,,,
 Famine_Axe_Movement,Axe,Famine,Movement,,,,,
 Demonic_Axe_Special,Axe,Demonic,Special,Hurl Cinders,"Throw the axe end over end, striking each enemy in its path once on the way out and once on the way back, and setting them alight.","Item.Weapon.Axe, Element.Demonic, Type.Projectile, Keyword.DoT.Burn",Projectile,Range=11; Radius=1.5; Pierce=1; Returns=1; Speed=1900; Burn=1
-War_Dagger_Movement,Dagger,War,Movement,Shadow Step,"Instantly teleport to a target location up to 12 meters away. If you teleport through or past an enemy, a blade trap is left at your departure point that triggers on any enemy that walks over it for 4 seconds. The trap deals physical damage and applies a bleed stack.","Item.Weapon.Dagger, Element.War, Slot.Movement, Keyword.DoT.Bleed, Type.Trap",,
+War_Dagger_Movement,Dagger,War,Movement,Vanishing Trap,"Instantly teleport to a target location up to 12 meters away. If you teleport through or past an enemy, a blade trap is left at your departure point that triggers on any enemy that walks over it for 4 seconds. The trap deals physical damage and applies a bleed stack.","Item.Weapon.Dagger, Element.War, Slot.Movement, Keyword.DoT.Bleed, Type.Trap",,
 Chaos_Axe_Special,Axe,Chaos,Special,,,,,
 Famine_Axe_Special,Axe,Famine,Special,,,,,
 Demonic_Greataxe_Support,Greataxe,Demonic,Support,Burning Wrath,"Stoke your fury into open flame for 10 seconds, gaining 4% increased fire damage for every enemy currently burning within 15 meters. While it lasts, any enemy that strikes you in melee is set alight.","Item.Weapon.2hAxe, Element.Demonic, Type.Buff, Stat.Offense.Global, Keyword.DoT.Burn, Trigger.OnHit",SelfBuff,Duration=10; Radius=15; Burn=1
@@ -287,7 +287,7 @@ Famine_Staff_Special,Staff,Famine,Special,,,,,
 Demonic_Whip_Support,Whip,Demonic,Support,Coil of Embers,"Wind burning coils about yourself for 10 seconds. Enemies that strike you in melee are set alight, and your attack range is increased by 20% while it lasts.","Item.Weapon.Whip, Element.Demonic, Type.Buff, Stat.Defense.Retaliation, Trigger.OnHit, Keyword.DoT.Burn",SelfBuff,Duration=10; Radius=12
 Pestilence_Whip_Support,Whip,Pestilence,Support,,,,,
 Void_Whip_Support,Whip,Void,Support,,,,,
-War_Shield_Support,Shield,War,Support,Bulwark,"Raise your shield and brace for impact, increasing your block chance to 100% for 3 seconds. Damage blocked during this time is stored and added to your next attack as bonus damage up to a cap of 200% weapon damage.","Item.Weapon.Shield, Element.War, Stat.Defense.Block, Stat.Offense.Global",,
+War_Shield_Support,Shield,War,Support,Braced Guard,"Raise your shield and brace for impact, increasing your block chance to 100% for 3 seconds. Damage blocked during this time is stored and added to your next attack as bonus damage up to a cap of 200% weapon damage.","Item.Weapon.Shield, Element.War, Stat.Defense.Block, Stat.Offense.Global",,
 Death_Whip_Support,Whip,Death,Support,,,,,
 Chaos_Whip_Support,Whip,Chaos,Support,,,,,
 Famine_Whip_Support,Whip,Famine,Support,,,,,
