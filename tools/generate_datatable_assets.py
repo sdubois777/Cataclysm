@@ -28,8 +28,17 @@ that differ between runs, so two runs over unchanged input do not produce
 identical bytes. The guarantee comes instead from the automation test
 Cataclysm.Data.EveryGeneratedTableHasAnAsset, which loads every asset and
 compares its contents against the CSV it came from.
+
+AND A RECORD OF WHAT EACH ASSET WAS BUILT FROM, written at the end of a
+successful run. See RECORD_FILE. That automation test is correct and complete
+and needs the engine to run, so nothing on a pull request runs it: continuous
+integration runs the Python tests only. Two pull requests changed a CSV without
+running this script, and both merged. Issue #226 is that gap; the record is the
+part of it a Python test can check.
 """
 
+import hashlib
+import json
 import os
 
 import unreal
@@ -61,6 +70,30 @@ TABLES = [
     ("DT_StatusEffects", "StatusEffects.csv", "CataclysmStatusEffectRow"),
     ("DT_WeaponSkills", "WeaponSkills.csv", "CataclysmWeaponSkillRow"),
 ]
+
+#: Where the record of what each asset was built from is written, relative to
+#: the Data folder beside the .uproject.
+#:
+#: WHAT IT IS FOR. A DataTable asset is a binary Unreal package, so a Python test
+#: with no engine cannot read the rows out of it and compare them with the CSV.
+#: What it can do is check whether this script has been run since the CSV last
+#: changed, which is the failure that actually happens: someone edits the design
+#: workbook, runs tools/generate_datatables.py to rewrite the CSV, and stops
+#: there. The asset then holds the previous numbers, and a packaged build reads
+#: the asset.
+#:
+#: So the record holds one SHA-256 per CSV, taken at the moment its asset was
+#: built. tools/tests/test_datatable_assets_are_current.py recomputes them.
+#:
+#: IT DOES NOT PROVE THE ASSET IS CORRECT, only that it was rebuilt after the CSV
+#: last changed. Proving the contents match is what the automation test
+#: Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt does, and that needs
+#: the engine.
+#:
+#: THE ASSET'S OWN BYTES ARE NOT RECORDED, deliberately. Two runs over unchanged
+#: input produce different bytes, for the reason above, so an asset hash would
+#: fail on every regeneration and teach people to ignore it.
+RECORD_FILE = "datatable_asset_sources.json"
 
 log = unreal.log
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -128,14 +161,69 @@ def import_table(asset_name, csv_file, struct_name):
     return full, rows
 
 
+def csv_digest(csv_file):
+    """The SHA-256 of one CSV, with line endings normalised to LF first.
+
+    NORMALISED, AND IT HAS TO BE. `.gitattributes` sets `* text=auto`, so these
+    CSV files are stored in the repository with LF and checked out with CRLF on
+    Windows, where this script runs. Continuous integration runs on Linux and
+    checks them out with LF. Hashing the bytes as they sit on disk would record
+    a Windows hash that no Linux runner could ever reproduce, and the test
+    reading this record would fail on every pull request.
+
+    Normalising loses nothing this record is for. A line ending change is not a
+    content change, and the DataTable asset built from the file would be
+    identical either way.
+    """
+    with open(os.path.join(csv_dir(), csv_file), "rb") as handle:
+        return hashlib.sha256(
+            handle.read().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def write_record(rows_by_asset):
+    """Record what each asset was just built from. See RECORD_FILE.
+
+    Written only after every import has succeeded, so a run that failed part way
+    through does not leave a record claiming otherwise.
+    """
+    record = {
+        "what_this_is": (
+            "Written by tools/generate_datatable_assets.py. One entry per "
+            "DataTable asset, holding the SHA-256 of the CSV it was built from "
+            "at the time it was built. tools/tests/"
+            "test_datatable_assets_are_current.py fails when a CSV has changed "
+            "since. Regenerate with the command in game/README.md."),
+        "tables": [
+            {
+                "asset": asset_name,
+                "csv": csv_file,
+                "rows": rows_by_asset[asset_name],
+                "csv_sha256": csv_digest(csv_file),
+            }
+            for asset_name, csv_file, _ in TABLES
+        ],
+    }
+
+    path = os.path.join(csv_dir(), RECORD_FILE)
+    # Explicit newline so the file is identical on every platform. Written with
+    # a trailing newline because every other text file here has one.
+    with open(path, "w", newline="\n") as handle:
+        json.dump(record, handle, indent=2, sort_keys=False)
+        handle.write("\n")
+    log("wrote {}".format(path))
+
+
 def main():
     total = 0
+    rows_by_asset = {}
     for asset_name, csv_file, struct_name in TABLES:
         full, rows = import_table(asset_name, csv_file, struct_name)
         log("imported {} from {} with {} rows".format(full, csv_file, rows))
+        rows_by_asset[asset_name] = rows
         total += rows
 
     editor_assets.save_directory(DATA_DIR, recursive=True)
+    write_record(rows_by_asset)
     log("wrote {} DataTable assets to {}, {} rows in total"
         .format(len(TABLES), DATA_DIR, total))
     log("done")
