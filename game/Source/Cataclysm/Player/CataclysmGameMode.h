@@ -17,6 +17,8 @@
  * Set as the project default in Config/DefaultEngine.ini rather than per level,
  * so a level opened directly still gets the real player pawn.
  */
+class ACataclysmEnemyCharacter;
+
 UCLASS()
 class CATACLYSM_API ACataclysmGameMode : public AGameModeBase
 {
@@ -24,4 +26,55 @@ class CATACLYSM_API ACataclysmGameMode : public AGameModeBase
 
 public:
 	ACataclysmGameMode();
+
+	virtual void StartPlay() override;
+
+	/**
+	 * Puts training dummies in a ring around the player start.
+	 *
+	 * Public so a test can call it against a world it built, and so it can be
+	 * called again from the console while playing.
+	 *
+	 * @return how many were spawned
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnTrainingDummies();
+
+	/** The dummies this game mode spawned, oldest first. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<ACataclysmEnemyCharacter>> TrainingDummies;
+
+protected:
+	/**
+	 * How many enemies to put in the level at the start of play.
+	 *
+	 * WHY THE GAME MODE SPAWNS THEM RATHER THAN THE LEVEL HOLDING THEM. Issue
+	 * #170: game/Content/Maps/L_Sandbox.umap contained a floor, a light, a sky,
+	 * a player start and navigation, and no enemy at all, so every skill built
+	 * so far had nothing to act on. Placing actors by hand would put them inside
+	 * a binary .umap, which cannot be reviewed in a diff and which issue #140
+	 * already records as a source of churn every time the editor opens.
+	 *
+	 * SANDBOX SCAFFOLDING, NOT THE REAL SPAWNER. Dungeon population is issue
+	 * #40 and the seven designed Demonic enemies are issue #39. Set this to zero
+	 * to turn it off.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 TrainingDummyCount = 5;
+
+	/** How far from the player start the ring sits, in centimetres. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float TrainingDummyRingRadius = 600.0f;
+
+	/**
+	 * How much health each one has.
+	 *
+	 * HIGH ON PURPOSE. A Heavy Attack with an unupgraded Greataxe deals about
+	 * 102, so at an enemy's default 100 health a dummy dies to one press and
+	 * there is nothing to watch. At this figure it survives long enough to see a
+	 * burn tick, a ground zone, and an Ultimate. Real enemy health comes from
+	 * rarity and difficulty, which is issue #39.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float TrainingDummyHealth = 5000.0f;
 };
