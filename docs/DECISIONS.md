@@ -20,6 +20,271 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Craters are seen and not walked around, and a party is rescued by whoever gets out
+
+**The question.** Two follow-ups from the operator on the same day. First, that
+authored breakables alone are not enough: dropping a meteor on something should
+leave a crater. Second, three answers on how over-corruption behaves in a
+co-operative party, which turned out to settle the general rule for dying in
+co-op as well.
+
+**FOURTH DECISION: craters are visual, and never change navigation.**
+
+The distinction that decides this is not how a crater is made. It is whether the
+crater changes where anything can walk. A crater that only changes what the
+surface looks like costs a fixed, known amount and never touches pathfinding. A
+crater that changes collision forces the navigation mesh to rebuild while enemies
+are pathing across it, which is the exact cost that ruled out deformable terrain
+in the decision below. Same objection, same answer.
+
+So: impacts leave visible depressions with scorching, debris and dust, and every
+character walks across them exactly as before.
+
+Three routes were looked at for producing the visual, and the differences matter
+enough to record.
+
+  - **Runtime Virtual Texture deformation.** The standard shipped technique for
+    snow, sand and mud. The displacement exists only on the GPU, so collision does
+    not follow it, which for this decision is a feature rather than a limitation.
+    Two cautions: reading the deformation back to the CPU for collision requires
+    custom global shaders and is not a small job, and there is a reported defect
+    where Runtime Virtual Texture output breaks when a landscape material uses
+    displacement. That report is against 5.6 and has not been checked on 5.8.
+  - **Geometry Script mesh boolean at runtime.** Produces real geometry and real
+    collision. Rejected on cost growth rather than cost: each boolean builds an
+    axis-aligned bounding box tree for both meshes and runs pairwise triangle
+    intersection, and successive booleans accumulate triangles, so the hundredth
+    crater in a dungeon costs far more than the first. That is the wrong shape for
+    a game where a floor is fought over for a long time.
+  - **Pre-authored crater assets.** An impact spawns a decal, a shallow prepared
+    depression mesh and Chaos debris. Fixed cost per crater, no accumulation, no
+    navigation change. This is the recommendation.
+
+None of this has been tested in this project. A technical spike is filed
+separately rather than assumed.
+
+**FIFTH DECISION: dying in co-op moves a player to spectator, and one survivor
+rescues everyone.**
+
+The operator's rule, adopted as stated: a player who dies during a dungeon run
+becomes a spectator for the rest of it, with no penalty applied at that moment.
+If every player is dead, the run has failed and the death penalty applies. If at
+least one player leaves alive, every dead team-mate is recovered and nobody pays
+anything.
+
+This is a general co-op rule rather than an over-corruption rule, and it is the
+first real content behind the single line "Multiplayer co-op support" in the
+Phase 2 roadmap. It makes a surviving player's escape valuable to the whole party
+and turns a single death into a setback instead of an ending.
+
+**The death penalty is paid once for the party, not once per player.** The empire
+and its day clock are shared in co-op, so charging five days four times would make
+a four-player wipe cost twenty days against a shared clock — a far larger penalty
+than the same wipe costs a solo player, and a penalty that grows with the number
+of friends you play with. Raised as an inference from the operator's wording and
+confirmed by them the same day.
+
+**SIXTH DECISION: every marked player produces a double, and all of them are
+present for the whole party.**
+
+Three marked players in a party of four means three doubles, fought by all four.
+A player who managed their residue still fights their team-mates' doubles.
+
+The operator's reasoning for accepting that this lets a careless player rely on
+the group: enemy health and damage already scale with party size, so a double
+copied from an over-equipped character arrives scaled for four players. The player
+who ignored residue management is handing the party a party-scaled copy of their
+own build, and the consequences sit with them.
+
+Four marked players in a four-player party produces four doubles, each scaled for
+four players. That was raised as a tuning risk, on the grounds that it is a larger
+multiplication than any other encounter in the design and may not be survivable.
+**The operator confirmed it as intended**, and the reasoning behind that is worth
+more than the specific case.
+
+**SEVENTH DECISION, and the one most likely to be argued with later: party play is
+held to the same standard as solo play.**
+
+Co-operative play in this genre is commonly easier than solo play. Scaling is
+applied loosely, groups outpace it, and the result is that a party stops feeling
+consequences a solo player still feels. That is the normal outcome, not an unusual
+failure, and it is what this game is deliberately not doing.
+
+The rule that follows: a consequence a solo player would feel is a consequence a
+party feels too. Party scaling exists to keep that true, not to make group play
+comfortable. A player who chooses to ignore residue management gets to make that
+choice once, whether they are alone or with three friends.
+
+This is a principle rather than a number, and it is recorded because it will decide
+arguments that have not happened yet. Any future proposal to soften a penalty
+"because it is unfair in a party" runs into it. The four-doubles case is simply the
+first place it came up.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change. Section VII gains an
+"In a party" paragraph under Worn Residue and Consumption. Section VIII gains a
+"Co-operative Play" subsection carrying both the once-per-party penalty rule and
+the same-standard principle, and its Destructible Environment subsection is
+rewritten to cover impact craters.
+
+**Nothing from this entry is open.** Both items originally flagged — whether the
+death penalty is paid once or per player, and whether four simultaneous
+party-scaled doubles is intended — were confirmed by the operator on the same day
+and are written above as decisions rather than questions.
+
+---
+
+## 2026-08-04 — Destruction is authored not volumetric, and residue can consume a character who ignores it
+
+**The question.** Two design proposals from the operator, raised together. First,
+that the world should be destructible, possibly using a voxel system. Second,
+that Cataclysmic Residue should have a threshold past which the character is
+consumed by the Cataclysm, and that consumed characters should return as an enemy
+in a dungeon modifier, dropping their own equipment scaled to the tier of the
+fight.
+
+**FIRST DECISION: destruction is authored breakables, using the engine's own
+Chaos Destruction. No voxel terrain.**
+
+The genre is unanimous, and that is the strongest evidence available. Diablo 2, 3
+and 4, Path of Exile 1 and 2, Last Epoch, Grim Dawn and Torchlight all use fixed
+level geometry with authored breakable props. Not one of them lets the player
+reshape terrain. Three reasons hold them all in the same place:
+
+  - Combat in this genre is built on stable geometry. Chokepoints, line of sight
+    and kiting lanes stop being designable if a wall can be removed.
+  - Enemy pathfinding needs a navigation mesh. Rebuilding one continuously, for a
+    procedurally generated dungeon, at the enemy counts this genre uses, is the
+    expensive part, and it scales with exactly the things this game wants more of.
+  - Loot density and encounter pacing assume the player moves through a level
+    rather than tunnelling past it.
+
+Games that do carry full terrain destruction alongside combat — Deep Rock
+Galactic, Teardown, 7 Days to Die, Enshrouded, Astroneer — are ones where digging
+is the primary way the player moves. None is a top-down action role-playing game.
+The shape is proven, but not for this kind of game.
+
+On technology: Chaos Destruction ships inside Unreal Engine 5.8 at no cost, with
+no third-party licence and no dependency risk, and it covers every case the
+design actually needs. Voxel Plugin (voxelplugin.com) states on its product page
+that it supports dynamic navigation mesh generation. That claim has not been
+tested here, and a product page is not evidence it holds at this project's enemy
+counts on the development machine, which has 8GB of video memory and is short on
+disk. Voxel data is heavy on both.
+
+The timing argument is the one that decided it. Procedural dungeon generation
+(#40), loot generation (#44) and the heads-up display (#49) are all still open.
+Choosing a foundational terrain technology before the combat loop exists commits
+the performance budget to a need that has not been demonstrated.
+
+**SECOND DECISION: residue stays a pure cost, and the threshold is a fight rather
+than an instant death.**
+
+The first proposal reviewed was to make high residue grant power, so that
+approaching the threshold would be a gamble in the way Path of Exile's Vaal Orb
+corruption is a gamble. The operator rejected this, and the reasoning is sound:
+residue is a cost that is manageable through crafting technique, and it becomes
+dangerous only if the player ignores the management tools that already exist. It
+is a penalty for negligence, not a temptation. That is a different design from a
+risk-and-reward gamble and it does not need the same justification.
+
+What it does need is a warning, which is why the threshold cannot be crossed
+without a confirmation that states the resulting total and the consequence.
+
+The consequence itself changed during the conversation. The operator ruled out
+deleting the character while the run continues, and the reason is correct: a run
+is played at a fixed tier, so replacing a tier 5 character with a fresh one leaves
+the player at a tier they cannot survive. That is a loss presented as a
+continuation.
+
+Instant permanent death was also rejected, as too extreme for a cost that is
+otherwise about gold and days.
+
+What was adopted is a fight. Crossing the threshold marks the character; a
+corrupted double spawns on the next dungeon floor and hunts them. Winning clears
+residue to zero and the run continues. Losing consumes the character and ends the
+run, with empire progress kept, which is the rule the Last Stand already uses.
+
+Three things make this the right shape rather than a compromise:
+
+  - It gives the player agency at the moment the penalty lands, which an
+    accumulating counter otherwise does not.
+  - It reuses the corrupted-character enemy from the dungeon modifier below. One
+    system, two uses, and the more expensive of the two pays for both.
+  - It invents no new category of death. A run already ends on death in the Last
+    Stand.
+
+**THIRD DECISION: consumed characters go into a shared table, drawn at random by a
+dungeon modifier, and scaled to the tier they appear at.**
+
+This has direct precedent. Rogue Exiles in Path of Exile are randomly placed
+enemies that use player skills and player equipment and drop one item from every
+equipment slot on death; they have run in a live game for years. Diablo 3's
+Nemesis system sent the monster that killed a player into that player's friends'
+games. Dark Souls invaders are the same idea in a third form.
+
+Scaling the rebuilt character to the tier of the dungeon it appears in, rather
+than the tier it was consumed at, closes the obvious exploit: losing a high-tier
+character on purpose and farming its equipment where the fight is trivial. The
+scaling must cover level, item level, affix tiers and residue, not only health and
+damage.
+
+The table is shared across the whole player base, which turns a rare event into a
+usable content source. The game requires a network connection by default.
+Co-operative multiplayer is already a Phase 2 item in the roadmap in section XV of
+`Cataclysm_GDD_v2.md`, so this is not a new commitment, only a use of one already
+made.
+
+**The two halves separate cleanly, and that decides the build order.** The double a
+player fights when they cross their own threshold is built from their own character
+on their own machine. It needs no table, no service and no connection. Only the
+dungeon modifier, which draws a character somebody else lost, needs the shared
+table.
+
+So the consumption fight can be built and shipped before any backend exists, and
+the modifier added once one does. This removes what would otherwise be a hard
+dependency between a combat feature and a service that does not exist yet. If an
+offline mode is ever offered, it keeps the consumption fight and drops the
+modifier.
+
+The server-side requirements the shared table brings are recorded as their own
+issue rather than as design, because they are engineering constraints rather than
+design decisions.
+
+**A patent boundary, recorded so it is not rediscovered later.** Warner Bros holds
+US patent 10,926,179, "Nemesis characters, nemesis forts, social vendettas and
+followers in computer games", granted February 2021 and in force until 2035. Its
+claims cover non-player character hierarchies whose members have individual traits
+and a rank that evolves from events, together with sharing those hierarchies
+between separate players' games.
+
+The design here appears to fall outside those claims: there is no hierarchy, no
+rank that rises, no memory of previous encounters, and no outcome that flows back
+to the original player. What it does share is a read-only snapshot. The distance
+is real but it is not large, and the design should not grow toward a roster of
+corrupted characters that remember the player, gain rank by killing them, and are
+sent into specific other players' games. This is not legal advice and has not been
+reviewed by a lawyer.
+
+**Sources.** Rogue Exiles: the Path of Exile 2 wiki at
+`pathofexile2.wiki.fextralife.com/Rogue+Exiles` and the Path of Exile wiki at
+`pathofexile.fandom.com/wiki/Rogue_exile`. Diablo 3 Nemesis:
+`diablo.fandom.com/wiki/Nemesis_Kills`. Patent:
+`patents.google.com/patent/US10926179B2/en`. Vaal Orb corruption, reviewed and then
+not used: `maxroll.gg/poe/resources/corruption`. Voxel Plugin: `voxelplugin.com`.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change. Section VII gains a
+"Worn Residue and Consumption" subsection, and its opening paragraph is corrected,
+because it previously stated the Forge never destroys anything, which the
+consumption rule contradicts. Section VIII gains "The Corrupted (Dungeon
+Modifier)" and "Destructible Environment".
+
+**Still open.** The consumption threshold number is not set and needs tuning
+against real play. The weight of The Corrupted modifier is not set, because no
+dungeon modifier list exists in either `Cataclysm_GDD_v2.md` or
+`All_Things_Cataclysm.xlsx` yet.
+
+---
+
 ## 2026-08-04 — How a skill behaves: a shape column, a parameter bag, and seven shared templates
 
 **The question.** Issue #37: build the sixteen Demonic skill behaviours. The

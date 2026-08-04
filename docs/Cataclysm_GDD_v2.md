@@ -1892,7 +1892,9 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
 
 # **VII. Crafting — The Cataclysmic Forge**
 
-The Cataclysmic Forge is a high-stakes, deterministic crafting system built around the game's core theme of Time Management. Unlike systems where failure destroys items, the Forge's primary penalty is a strategic setback — crafting expensive items costs the player valuable days needed to manage the Empire and defend against the next Surge.
+The Cataclysmic Forge is a high-stakes, deterministic crafting system built around the game's core theme of Time Management. A craft never destroys the item being crafted. The Forge's primary penalty is a strategic setback — crafting expensive items costs the player valuable days needed to manage the Empire and defend against the next Surge.
+
+There is one exception, and it is the only way the Forge can cost a player anything permanent: residue accumulated across worn equipment can reach a threshold at which the character is hunted, and can be lost. That is described under Worn Residue and Consumption below. It is warned before it can happen, and it is avoidable by managing residue.
 
   
 
@@ -1917,6 +1919,47 @@ Every modification made to an item adds Cataclysmic Residue (CR). This residue r
 
   
 
+## **Worn Residue and Consumption**
+
+Cataclysmic Residue is a property of an item. **Worn Residue** is the sum of the residue on every item the character currently has equipped. It is a property of the character, it changes whenever equipment changes, and it is shown on the character sheet at all times.
+
+  
+
+Worn Residue grants nothing. It is not a resource and it does not make the character stronger. Residue is a cost throughout, and it becomes dangerous only if the player ignores the tools that manage it: Purified Essence, which halves accumulated residue, and the Residue Protocols node on the Empire tree, which ignores 5% of residue per point.
+
+  
+
+**The Consumption Threshold.** A single fixed number, to be tuned. If equipping an item would take Worn Residue to or past the threshold, the game states the resulting total and the consequence, and asks the player to confirm before the equip happens. There is no path across the threshold that does not show the warning first. Crossing it is always a decision the player made on purpose.
+
+  
+
+**What crossing it does.** The character is marked. On entering the next dungeon floor, a corrupted double of the character is placed in the dungeon and hunts the player: same class, same level, same equipment, same skills. It is the same enemy described under The Corrupted in section VIII, aimed at the character it was copied from.
+
+  
+
+**This half needs no connection.** The double is built from the player's own character, on the player's own machine. Nothing about crossing the threshold, being hunted, winning or being consumed requires a network connection or the shared table. Only The Corrupted dungeon modifier, which draws a character somebody else lost, needs either.
+
+  
+
+**In a party.** Each marked player produces one double, and every double is present for the whole party. A party of four in which three players are marked enters the next dungeon against three doubles. A player who managed their residue properly still fights their team-mates' doubles.
+
+  
+
+This is deliberate. Party play scales enemy health and damage with the number of players in the session, so a double copied from an over-equipped character arrives scaled for the whole party. A player who ignores residue management is not only risking their own character; they are handing the party a party-scaled copy of their own build. The consequences of that sit with the player who caused it.
+
+  
+
+Whether anyone is actually consumed is decided by the party rule in section VIII: if at least one player leaves the dungeon alive, nobody is consumed. Leaving alive is a reprieve rather than a solution — residue is unchanged and the doubles return on the next dungeon. Only killing the double clears residue.
+
+  - **If the player kills the double**, residue is set to zero on every equipped item. The character keeps its equipment and the run continues.
+  - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run. Empire progress is kept. A snapshot of the character is written to the shared library of corrupted characters described in section VIII.
+
+  
+
+**Why the run ends rather than the character being replaced mid-run.** A run is played at a fixed tier. Replacing a tier 5 character with a fresh one leaves the player at a tier they cannot survive, which is a loss presented as a continuation. Ending the run states the same penalty honestly, and it reuses a rule the game already has rather than inventing a new category of death.
+
+  
+
 # **VIII. Dungeon System**
 
 ## **Dungeon Basics**
@@ -1930,6 +1973,43 @@ Every modification made to an item adds Cataclysmic Residue (CR). This residue r
   - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for village/city/metropolis).
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
   - Every dungeon defeated adds one floor to the Cataclysm boss dungeon.
+
+  
+
+## **Co-operative Play**
+
+Up to four players share a dungeon run. Co-operative multiplayer is a Phase 2 item in the roadmap in section XV; the rules below are the design it is built to.
+
+  
+
+**Enemy scaling.** Enemy health and damage scale with the number of players in the session.
+
+  
+
+**Dying in a dungeon does not end that player's run.** A player who dies during a dungeon run becomes a spectator for the remainder of that run. They are not returned to the capital and no penalty is applied at the moment they die.
+
+  
+
+**The run is decided by the party, not by the individual.**
+
+  - If every player is dead, the run has failed and the death penalty applies.
+  - If at least one player leaves the dungeon alive, every dead team-mate is recovered. No death penalty applies to anyone.
+
+  
+
+This makes a surviving player's escape worth something to the whole party, and it makes a single death a setback rather than an ending.
+
+  
+
+**The death penalty is paid once for the party, not once per player.** A four-player wipe costs the same number of days a solo death costs, charged once against the shared empire clock. It is not multiplied by the size of the party.
+
+  
+
+**Party play is held to the same standard as solo play.** Enemy scaling with party size is not a formality. Co-operative play in this genre is commonly easier than solo play, because scaling is applied loosely and a group ends up feeling consequences a solo player does not. This game does not do that. A consequence a solo player would feel is a consequence a party feels too, and party scaling is set to make that true rather than to make group play comfortable.
+
+  
+
+**Over-corruption in a party.** The doubles produced by Worn Residue, described in section VII, follow the same rule. If the party wipes, every marked player is consumed. If at least one player leaves alive, nobody is consumed, and the marked players keep their residue and face their doubles again on the next dungeon.
 
   
 
@@ -1974,9 +2054,73 @@ A dungeon carries **one modifier per difficulty tier**, so a tier 8 dungeon carr
 
   
 
+## **The Corrupted (Dungeon Modifier)**
+
+While this modifier is active, one corrupted former player character is placed in the dungeon. It hunts the player across floors rather than waiting to be found.
+
+  
+
+**Where they come from.** Every character consumed by Worn Residue, in any player's game, is snapshotted into a shared table of corrupted characters. A dungeon carrying this modifier draws one entry from that table at random. The snapshot holds class, level, passive tree allocation, equipped items with their rolled affixes, and skill setup — enough to rebuild the character as an enemy that fights with player skills rather than a monster ability list.
+
+  
+
+**Scaling.** The drawn character is rebuilt at the tier of the dungeon it appears in, not the tier it was consumed at. Level, item level, affix tiers and residue all scale to the dungeon's tier. Without this, a player could lose a high-tier character on purpose and then farm its equipment at a tier where the fight is trivial.
+
+  
+
+**Drops.** On death it drops its equipped items, scaled by the same rule. This follows the Rogue Exiles in Path of Exile, which drop one item from every equipment slot and are one of that game's most reliably interesting random encounters.
+
+  
+
+**Network.** The game requires a network connection by default. Co-operative multiplayer is already a Phase 2 item in the roadmap in section XV, so this modifier adds no commitment the game had not already made. The modifier reads the shared table and is therefore online only.
+
+  
+
+If an offline mode is offered, this modifier is excluded from dungeon generation in it. The over-corruption mechanic in section VII still works there in full, because the double a player fights at their own threshold is built locally from their own character.
+
+  
+
+**Seeding.** The shared table is empty until the first character anywhere is consumed. It ships with authored entries so the modifier is not blank at launch.
+
+  
+
+**Weight.** To be set when the dungeon modifier list is entered into the workbook. That list does not exist yet in either document.
+
+  
+
 ## **Dungeon Score Formula**
 
 Dungeon Score = (Common Enemy Score × 0.6) + (Elite Enemy Score × 0.2) + (Rare Enemy Score × 0.15) + (Legendary Enemy Score × 0.04) + (Boss Enemy Score × 0.01)
+
+  
+
+## **Destructible Environment**
+
+Destruction in dungeons has two parts: objects that break, and surfaces that are marked by impacts.
+
+  
+
+**Objects that break.** Dungeons contain breakable props, pillars, walls and sections of floor, placed by hand or by the dungeon generator. Those objects fracture and are removed when damaged. Anything a breakable object reveals, opens or drops is placed deliberately.
+
+  
+
+**Surfaces that are marked.** A heavy impact leaves a crater. Meteors, heavy slams, a boss landing and similar events deform the surface they hit and leave a visible depression, with scorching, scattered debris and settled dust. A dungeon floor that has been fought over should look like it.
+
+  
+
+**Craters are visual and do not change navigation.** A crater does not block movement, does not change enemy pathing, does not create cover, and does not open a route that did not exist before. The player and every enemy cross it exactly as they crossed the flat surface.
+
+  
+
+This limit is what keeps environmental destruction affordable. The moment a crater changes where something can walk, the navigation mesh has to be rebuilt while it is being walked on, and that cost is the reason deformable terrain was ruled out. A crater that is only seen costs a fixed amount and never touches pathfinding.
+
+  
+
+**Terrain is still not deformable.** The player cannot dig, tunnel, or cut a new path through ground or rock. Level geometry outside the authored breakables is fixed for the duration of a dungeon.
+
+  
+
+These limits are deliberate rather than temporary, and the reasoning is recorded in `DECISIONS.md`.
 
   
 
