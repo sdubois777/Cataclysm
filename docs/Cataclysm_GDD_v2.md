@@ -1935,6 +1935,10 @@ Worn Residue grants nothing. It is not a resource and it does not make the chara
 
 **What crossing it does.** The character is marked. On entering the next dungeon floor, a corrupted double of the character is placed in the dungeon and hunts the player: same class, same level, same equipment, same skills. It is the same enemy described under The Corrupted in section VIII, aimed at the character it was copied from.
 
+  
+
+**This half needs no connection.** The double is built from the player's own character, on the player's own machine. Nothing about crossing the threshold, being hunted, winning or being consumed requires a network connection or the shared table. Only The Corrupted dungeon modifier, which draws a character somebody else lost, needs either.
+
   - **If the player kills the double**, residue is set to zero on every equipped item. The character keeps its equipment and the run continues.
   - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run. Empire progress is kept. A snapshot of the character is written to the shared library of corrupted characters described in section VIII.
 
@@ -2019,7 +2023,15 @@ While this modifier is active, one corrupted former player character is placed i
 
   
 
-**Seeding.** The shared table is empty until the first character anywhere is consumed. It ships with authored entries so the modifier works at launch, and so it works at all when the player has no network connection.
+**Network.** The game requires a network connection by default. Co-operative multiplayer is already a Phase 2 item in the roadmap in section XV, so this modifier adds no commitment the game had not already made. The modifier reads the shared table and is therefore online only.
+
+  
+
+If an offline mode is offered, this modifier is excluded from dungeon generation in it. The over-corruption mechanic in section VII still works there in full, because the double a player fights at their own threshold is built locally from their own character.
+
+  
+
+**Seeding.** The shared table is empty until the first character anywhere is consumed. It ships with authored entries so the modifier is not blank at launch.
 
   
 

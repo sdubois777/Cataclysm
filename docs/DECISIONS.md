@@ -116,8 +116,24 @@ scaling must cover level, item level, affix tiers and residue, not only health a
 damage.
 
 The table is shared across the whole player base, which turns a rare event into a
-usable content source. It also makes this an online feature with server-side
-requirements a single-player design does not have. Those are recorded as their own
+usable content source. The game requires a network connection by default.
+Co-operative multiplayer is already a Phase 2 item in the roadmap in section XV of
+`Cataclysm_GDD_v2.md`, so this is not a new commitment, only a use of one already
+made.
+
+**The two halves separate cleanly, and that decides the build order.** The double a
+player fights when they cross their own threshold is built from their own character
+on their own machine. It needs no table, no service and no connection. Only the
+dungeon modifier, which draws a character somebody else lost, needs the shared
+table.
+
+So the consumption fight can be built and shipped before any backend exists, and
+the modifier added once one does. This removes what would otherwise be a hard
+dependency between a combat feature and a service that does not exist yet. If an
+offline mode is ever offered, it keeps the consumption fight and drops the
+modifier.
+
+The server-side requirements the shared table brings are recorded as their own
 issue rather than as design, because they are engineering constraints rather than
 design decisions.
 
