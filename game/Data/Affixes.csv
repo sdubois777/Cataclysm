@@ -58,3 +58,4 @@ Hybrid_Health_and_mana_regeneration,Health and mana regeneration,Hybrid,suffix,,
 Hybrid_Penetration_and_critical_strike_multiplier,Penetration and critical strike multiplier,Hybrid,suffix,,,0.0,0,,,Flat penetration,Flat critical strike multiplier,"Gloves, Necklace, Relic, Ring, Weapon"
 Hybrid_Block_chance_and_crowd_control_resistance,Block chance and crowd control resistance,Hybrid,suffix,,,0.0,0,,,Flat block chance,Flat crowd control resistance,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders"
 Hybrid_Magic_find_and_loot_quantity,Magic find and loot quantity,Hybrid,suffix,,,0.0,0,,,Flat magic find,Increased loot quantity,"Belt, Boots, Necklace, Relic, Ring"
+Ailment_Chance_to_burn,Chance to burn,Ailment,suffix,,,15.0,0,Burn,Of Embers,,,"Necklace, Relic, Ring, Weapon"

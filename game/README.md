@@ -163,8 +163,18 @@ contain them. So they are then imported as DataTable assets under `/Game/Data/`:
 python ../tools/generate_datatables.py
 "/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
   "$PWD/Cataclysm.uproject" -run=pythonscript \
-  -script="../tools/generate_datatable_assets.py" -unattended -nopause -nosplash
+  -script="$PWD/../tools/generate_datatable_assets.py" \
+  -unattended -nopause -nosplash
 ```
+
+**`-script=` must be an absolute path.** A relative one resolves from the engine's
+own binaries directory rather than from this folder, and fails with
+`Could not load Python file 'C:/Program Files/Epic Games/UE_5.8/Engine/Binaries/tools/...'`.
+
+**It rewrites all fourteen assets even when one CSV changed**, because a `.uasset`
+carries generated identifiers that differ between runs. Check
+`git status --short Content/Data/` afterwards and `git restore` every asset whose
+CSV did not change, or each run adds Git LFS storage for nothing.
 
 Run the second whenever the first changes anything. Neither script can compare
 bytes to tell you it is needed, because a `.uasset` carries generated

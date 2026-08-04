@@ -1290,7 +1290,7 @@ def base_named(name: str) -> ItemBase:
 # Ailment affixes: chance to apply the effects the gems already grant
 # --------------------------------------------------------------------------
 #
-# WHERE THESE CAME FROM. `game/Data/Gems.csv` already designs eight gems that
+# WHERE THESE CAME FROM. `game/Data/Gems.csv` already designs ten gems that
 # apply an effect on hit, and `game/Data/StatusEffects.csv` defines what most of
 # them do. The project owner asked for the same effects to be reachable as
 # affixes, on weapons above all.
@@ -1345,10 +1345,11 @@ class AilmentAffix:
         return slots_available_to(self.allowed_slots)
 
 
-#: The five gems that apply damage over time, and the three that apply a
-#: weakening effect. Values track the gem's own starting chance: the gem that
-#: applies poison starts at 20% and the one that applies bleed at 10%, so the
-#: poison affix is the larger of the two here as well.
+#: The six gems that apply damage over time, and the three that apply a
+#: weakening effect. Values track the gem's own starting chance, five points
+#: above it every time: the gem that applies poison starts at 20% and its affix
+#: is 25, the gem that applies disease starts at 15% and its affix is 20, and the
+#: seven gems that start at 10% all have a 15 affix.
 BLEED = AilmentAffix("Chance to bleed", "Bleed", 15.0, gem="Of Rending")
 POISON = AilmentAffix("Chance to poison", "Poison", 25.0, gem="Of The Viper")
 DISEASE = AilmentAffix("Chance to disease", "Disease", 20.0, gem="Of Rot")
@@ -1360,9 +1361,17 @@ CRIPPLE = AilmentAffix("Chance to cripple", "Cripple", 15.0, gem="Of Maiming")
 WEAKEN = AilmentAffix("Chance to weaken", "Weaken", 15.0, gem="Of Withering")
 SHRED = AilmentAffix("Chance to shred", "Shred", 15.0, gem="Of Shredding")
 
+#: Added for issue #152. Burn was the only player-applicable effect with neither
+#: a gem nor an affix, so a Demonic character's burn chance from gear was always
+#: zero and its magnitude could never rise above the base, while every one of the
+#: sixteen designed Demonic skills applies it. Matched to bleed rather than to
+#: poison because bleed is War's signature damage over time and burn is Demonic's:
+#: the two sit in the same place in their damage types and should cost the same.
+BURN = AilmentAffix("Chance to burn", "Burn", 15.0, gem="Of Embers")
+
 AILMENT_AFFIXES: tuple[AilmentAffix, ...] = (
-    BLEED, POISON, DISEASE, VOID_SPLINTER, NECROSIS, MADNESS, CRIPPLE, WEAKEN,
-    SHRED,
+    BLEED, POISON, DISEASE, VOID_SPLINTER, NECROSIS, BURN, MADNESS, CRIPPLE,
+    WEAKEN, SHRED,
 )
 
 #: The effects among those that are damage over time rather than a weakening.
@@ -1371,7 +1380,7 @@ AILMENT_AFFIXES: tuple[AilmentAffix, ...] = (
 #: energy shield and holds it empty, which is what makes it the answer to shield
 #: stacking rather than a stat check.
 DAMAGE_OVER_TIME_AILMENTS = frozenset({"Bleed", "Poison", "Disease",
-                                       "Void Splinter", "Necrosis"})
+                                       "Void Splinter", "Necrosis", "Burn"})
 
 
 def ailments_for(slot: str) -> tuple[AilmentAffix, ...]:
@@ -1708,11 +1717,15 @@ def _check_every_weapon_but_the_shield_supplies_damage() -> None:
 
 
 def _check_every_gem_applied_effect_is_reachable_as_an_affix() -> None:
-    """`game/Data/Gems.csv` designs eight gems that apply an effect on hit. The
+    """`game/Data/Gems.csv` designs ten gems that apply an effect on hit. The
     project owner asked for the same effects to be reachable as affixes, so a
-    gem effect with no affix would be one the request missed."""
+    gem effect with no affix would be one the request missed.
+
+    This set is written out rather than read from the CSV, so it does not
+    protect against a gem being added with no affix; issue #152 was exactly that
+    and went unnoticed because burn was in neither place."""
     from_gems = {"Void Splinter", "Poison", "Bleed", "Madness", "Disease",
-                 "Necrosis", "Cripple", "Weaken", "Shred"}
+                 "Necrosis", "Burn", "Cripple", "Weaken", "Shred"}
     covered = {a.ailment for a in AILMENT_AFFIXES}
     if covered != from_gems:
         raise ValueError(
