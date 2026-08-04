@@ -117,6 +117,50 @@ printed. "Tests pass" is not evidence; the test output is. A check that cannot
 fail is worthless, so when you add a guard, confirm it actually fails when the
 condition it guards against is present.
 
+**Use `tools/prove_guard.py` to do that, rather than a script written on the
+spot.** Breaking a file, running the tests and writing the original bytes back is
+the right procedure and it has a trap in it: Python decides whether a compiled
+copy in `__pycache__` is current from the source's modification time and size,
+and a break-and-restore usually changes neither, because `0.0` is the same length
+as `5.0` and both writes land inside the filesystem's timestamp granularity. The
+run then reads compiled code that does not match the file on disk. It goes wrong
+in both directions and both produce *misleading evidence* rather than an obvious
+error: a failure attributed to the wrong break, or a break the run never saw at
+all, which reads as a guard that does not fire.
+
+```python
+import sys
+sys.path.insert(0, "tools")
+from prove_guard import break_and_run
+
+result = break_and_run(
+    {"sim/cataclysm_sim/character.py":
+        lambda t: t.replace("DEFAULT_SKILL_CRIT_CHANCE = 5.0",
+                            "DEFAULT_SKILL_CRIT_CHANCE = 0.0")},
+    ["python", "-m", "pytest", "sim/tests", "-q"],
+)
+print(result.summary)   # the last line pytest printed
+assert result.failed    # the guard noticed
+```
+
+That prints the name of the test that noticed:
+
+```
+FAILED sim/tests/test_character.py::test_the_default_critical_strike_chance_is_a_default_not_a_floor
+```
+
+Make the edit surgical. A blanket `text.replace("5.0", "0.0")` changes every
+occurrence, and a module that then fails to import gives a collection error
+instead of the failing test name, which says nothing about whether the guard
+works.
+
+It clears every `__pycache__` first, runs with bytecode writing off so the run
+cannot poison the next case, and restores every file in a `finally` so a crash
+does not leave the repository broken. Issue #159 has the incident that produced
+it. The same class of problem exists for the Unreal build, where restoring a
+source file with a preserved timestamp leaves the stale binary in place — issue
+#139 — and there the answer is to rebuild.
+
 **Say what did not work.** If a test fails, or you skipped part of the task, or
 the evidence for a result was compromised, say so plainly and first. Do not
 report partial work as finished.
