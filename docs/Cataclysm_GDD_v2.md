@@ -1283,9 +1283,9 @@ The following is a sample of War damage type skills across weapon types to illus
 | \*\*Weapon\*\* | \*\*Skill\*\* | \*\*Description\*\* |
 | Warhammer / Heavy | Earthquake | Slam into the ground, shockwave in 6m radius, knocks down enemies, reduces armor, leaves damaging fissure. |
 | Dagger / Special | Proximity Mine | Place a concealed mine that arms in 0.5s and detonates on trigger for heavy damage in a 3m blast with bleed. |
-| Spear / Special | Ballista | Deploy a ballista that fires at the furthest enemy in 15m every 2.5 seconds, dealing enormous damage and pinning targets. |
+| Spear / Special | Ballista | Deploy a ballista that fires at the furthest enemy in 15m every 2 seconds, dealing enormous damage and pinning targets. |
 | Crossbow / Special | Bolt Turret | Fire a bolt into the ground that deploys a turret firing at nearby enemies every 1.5s with bleed on each hit. |
-| Shield / Ultimate | Fortress | Become immovable for 5 seconds. 60% damage reduction. Reflect 100% of blocked damage. Allies within 6m take 30% less damage. |
+| Shield / Ultimate | Fortress | Become immovable for 5 seconds. 60% damage reduction. Reflect 500% of blocked damage. Allies within 6m take 30% less damage. |
 | Whip / Ultimate | Whirlwind of Steel | Spin the whip for 4 seconds in a 7m zone. Every enemy in range struck repeatedly. Each hit applies a bleed stack. |
 | Greataxe / Ultimate | Annihilator | Channel spin for 3 seconds dealing rapid hits to all in melee range, stacking bleed and reducing armor each revolution. |
 | All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. Allies: +8% physical damage. Drains mana. |
