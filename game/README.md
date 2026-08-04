@@ -84,6 +84,44 @@ separately.
 `Content/` is empty apart from a placeholder. There are no maps, no Blueprints
 and no assets.
 
+
+## Regenerating the content the workbook produces
+
+Two kinds of asset in `Content/` are generated rather than authored, and both
+need the editor, because they run inside its Python interpreter. Run them from
+this folder.
+
+**The data tables.** `docs/All_Things_Cataclysm.xlsx` is turned into CSV files
+under `Data/` by `tools/generate_datatables.py`, which needs no editor. Those
+CSV files are the reviewable form: they are text, a pull request shows a diff of
+them, and `--check` compares them. They are **not content**. Nothing in the
+engine can reference one, `Data/` is not cooked, and a packaged build does not
+contain them. So they are then imported as DataTable assets under `/Game/Data/`:
+
+```bash
+python ../tools/generate_datatables.py
+"/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
+  "$PWD/Cataclysm.uproject" -run=pythonscript \
+  -script="../tools/generate_datatable_assets.py" -unattended -nopause -nosplash
+```
+
+Run the second whenever the first changes anything. Neither script can compare
+bytes to tell you it is needed, because a `.uasset` carries generated
+identifiers that differ between runs. The automation test
+`Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` compares each asset
+against the CSV it came from instead, and names the script to run when they
+disagree.
+
+**The input assets and the sandbox level.**
+
+```bash
+"/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
+  "$PWD/Cataclysm.uproject" -run=pythonscript \
+  -script="../tools/generate_input_assets.py" -unattended -nopause -nosplash
+```
+
+Both scripts overwrite every property of every asset they own, so an asset
+edited by hand in the editor loses that edit on the next run.
 ## Regenerating after changing modules
 
 Editing any `.Build.cs` or `.Target.cs`, or adding a module to the `.uproject`,

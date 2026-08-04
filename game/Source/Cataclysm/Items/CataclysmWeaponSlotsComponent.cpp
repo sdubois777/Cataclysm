@@ -47,7 +47,7 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 
 	if (!WeaponSkillTable)
 	{
-		WeaponSkillTable = UCataclysmWeaponSkills::LoadGeneratedTable(this);
+		WeaponSkillTable = UCataclysmWeaponSkills::LoadGeneratedTable();
 	}
 
 	if (!WeaponSkillTable)
