@@ -20,6 +20,53 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — The weapon damage type column is named as a maximum, because that is what it holds
+
+**The question.** The column that says how many damage types a weapon can carry
+was called `Damage Types` in the workbook, `DamageTypeSlots` in the generated
+CSV, `damage_type_slots` in the simulation model and `DamageTypeSlots` in the
+Unreal row struct. Since the decision recorded below, the number in it is the
+MOST damage types the weapon can ever hold, rolled down when the item drops and
+capped again by the difficulty tier. A name reading as a count on a value that
+is a limit is a name that will be read wrongly. Issue #218.
+
+**The decision: rename it in all five places.** `Max Damage Types` in
+`docs/All_Things_Cataclysm.xlsx`, `MaxDamageTypes` in `game/Data/ItemBases.csv`
+and in `FCataclysmItemBaseRow` in
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`, and
+`max_damage_types_on_base` in `sim/cataclysm_sim/affixes.py`.
+
+**Why the simulation field is the long one.** `sim/cataclysm_sim/affixes.py`
+already has a module-level function `max_damage_types(hands, tier)` returning the
+effective cap at a difficulty tier, which is a different number: the lower of the
+base's own limit and the tier. A field called `max_damage_types` would read as
+the same thing. The `_on_base` suffix says which of the two limits it is.
+
+**Why it was worth its own change.** The rename had to move the workbook sheet
+header, the header lookup in `tools/generate_datatables.py`, the simulation
+model, two test files and the Unreal row struct together, and the last of those
+needs a C++ rebuild and a DataTable asset rebuild. Doing it inside the change
+that altered the meaning would have buried that decision under mechanical edits.
+
+**A guard was added because the existing ones could not see the whole chain.**
+`Cataclysm.Data.EveryGeneratedTableImports` catches a CSV column with no matching
+struct property, and it fired when tested. But it reads the CSV, not the shipped
+DataTable asset, and `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt`
+compares the asset against the CSV through the same struct, so a column both
+sides fail to match would agree at zero and pass. The new
+`Cataclysm.Data.ItemBasesHoldADamageTypeLimit` in
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` reads the asset and
+checks the numbers are four on a one-hander, eight on a two-hander and zero on
+anything that is not a weapon. Proved by rebuilding the assets from a CSV with
+the old header and watching it fail.
+
+**Affects:** `All_Things_Cataclysm.xlsx`, Item Bases sheet header, applied in this
+change. `Cataclysm_GDD_v2.md`, the Weapon Bases table header and the sentence
+above it, applied. `game/Data/ItemBases.csv` and
+`game/Content/Data/DT_ItemBases.uasset`, both regenerated.
+
+---
+
 ## 2026-08-04 — Attribute affixes are percentage increases, suffixes, and roll where the stats they drive roll
 
 **The question.** Gear granting primary attributes was reversed in the entry
@@ -473,6 +520,10 @@ and both now mean a maximum rather than a count. The name is misleading and shou
 be changed, but renaming it touches the workbook sheet header,
 `tools/generate_datatables.py`, the simulation model, its tests and the Unreal row
 struct together, so it was kept out of this change.
+
+*Done since, on 2026-08-04, by issue #218. The column is now `Max Damage Types`
+in the workbook and `MaxDamageTypes` in the CSV and the Unreal row struct. The
+entry at the top of this file records it.*
 
 **The drop roll itself does not exist yet.** This change records the rule and sets
 the limits. Rolling a count between one and the cap belongs with loot generation.

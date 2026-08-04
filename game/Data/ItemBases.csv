@@ -1,4 +1,4 @@
-Name,BaseName,Slot,Hands,SubType,WeaponType,DamageTypeSlots,AttackSpeed,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value
+Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value
 Head_Helm,Helm,Head,0,,,0,0.0,armor,flat,200.0,,,0.0
 Head_Hood,Hood,Head,0,,,0,0.0,evasion,flat,4.0,,,0.0
 Head_Circlet,Circlet,Head,0,,,0,0.0,max_energy_shield,flat,55.0,,,0.0

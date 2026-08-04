@@ -635,7 +635,8 @@ def item_bases(book) -> list[dict]:
             "Hands": int(float(hands)) if hands else 0,
             "SubType": _cell(raw, headers, "Sub-Type"),
             "WeaponType": _cell(raw, headers, "Weapon Type"),
-            "DamageTypeSlots": int(float(_cell(raw, headers, "Damage Types") or 0)),
+            "MaxDamageTypes": int(float(
+                _cell(raw, headers, "Max Damage Types") or 0)),
             "AttackSpeed": float(attack_speed) if attack_speed else 0.0,
         }
 

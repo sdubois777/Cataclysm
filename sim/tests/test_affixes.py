@@ -969,7 +969,7 @@ def test_a_weapon_base_carries_a_limit_not_a_count():
     for base in af.WEAPON_BASES:
         expected = (af.DAMAGE_TYPES_ON_ONE_HANDED if base.hands == 1
                     else af.DAMAGE_TYPES_ON_TWO_HANDED)
-        assert base.damage_type_slots == expected, base.name
+        assert base.max_damage_types_on_base == expected, base.name
     assert af.DAMAGE_TYPES_ON_ONE_HANDED == 4
     assert af.DAMAGE_TYPES_ON_TWO_HANDED == len(af.DAMAGE_TYPES)
 

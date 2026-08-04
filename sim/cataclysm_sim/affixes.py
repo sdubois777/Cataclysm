@@ -1212,10 +1212,12 @@ class WeaponBase(ItemBase):
     #: count on a particular weapon is rolled when it drops, from 1 up to
     #: `max_damage_types(hands, tier)`, which also caps it by difficulty tier.
     #:
-    #: The name is kept for now because it is the column name in the workbook and
-    #: in `game/Data/ItemBases.csv`; renaming it would touch the sheet header, the
-    #: generator and the Unreal row struct together.
-    damage_type_slots: int = 4
+    #: The name ends in `_on_base` to keep it apart from the module-level
+    #: `max_damage_types(hands, tier)` function, which returns the effective cap
+    #: at a difficulty tier rather than this base's own limit. The workbook calls
+    #: the column `Max Damage Types` and `game/Data/ItemBases.csv` calls it
+    #: `MaxDamageTypes`; see issue #218 for the rename.
+    max_damage_types_on_base: int = 4
 
     @property
     def value_multiplier(self) -> float:
@@ -1240,10 +1242,10 @@ class WeaponBase(ItemBase):
                 "weapon needs one above zero, because the weapon is where that "
                 "base comes from and an increase to zero is worth nothing. "
                 "See issue #120.")
-        if not 1 <= self.damage_type_slots <= len(DAMAGE_TYPES):
+        if not 1 <= self.max_damage_types_on_base <= len(DAMAGE_TYPES):
             raise ValueError(
-                f"{self.name} holds {self.damage_type_slots} damage types; "
-                f"there are only {len(DAMAGE_TYPES)}")
+                f"{self.name} holds at most {self.max_damage_types_on_base} "
+                f"damage types; there are only {len(DAMAGE_TYPES)}")
 
 
 #: THE MOST damage types a weapon of each kind can ever hold, not how many it
@@ -1291,8 +1293,8 @@ def _weapon(name: str, weapon_type: str, hands: int, sub_type: str,
     return WeaponBase(
         name=name, slot="Weapon", implicits=implicits, hands=hands,
         sub_type=sub_type, weapon_type=weapon_type, attack_speed=attack_speed,
-        damage_type_slots=(DAMAGE_TYPES_ON_ONE_HANDED if hands == 1
-                           else DAMAGE_TYPES_ON_TWO_HANDED))
+        max_damage_types_on_base=(DAMAGE_TYPES_ON_ONE_HANDED if hands == 1
+                                  else DAMAGE_TYPES_ON_TWO_HANDED))
 
 
 #: Every base in the game, grouped by slot. Names follow the ordinary conventions
@@ -2492,7 +2494,7 @@ if __name__ == "__main__":
             else f"{i.value:,.0f}% increased {i.stat}"
             for i in base.implicits)
         print(f"    {base.name:<20} {base.hands:>5} {base.sub_type:<9} "
-              f"{base.damage_type_slots:>5}  {marks}")
+              f"{base.max_damage_types_on_base:>5}  {marks}")
     print()
     print("    A weapon carries a physical sub-type and a limit on how many")
     print("    damage types it can hold, neither of which any other item has.")
