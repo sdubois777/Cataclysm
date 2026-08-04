@@ -8,14 +8,18 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameplayTagsManager.h"
 #include "GameFramework/Actor.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
@@ -1506,6 +1510,677 @@ bool FCataclysmSkillElementTagTest::RunTest(const FString&)
 		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4"), TEXT("No Tags"));
 	TestFalse(TEXT("A skill with no tags has no element"),
 		Untagged->ElementTag().IsValid());
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A projectile that occupies space while it flies. Issue #164: a Speed used to
+// be a delay, so who was hit was decided entirely by where everyone stood at
+// the moment of impact.
+// --------------------------------------------------------------------------
+
+namespace CataclysmProjectileTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** One frame at sixty a second, which is what the flight is stepped in. */
+	constexpr float Frame = 1.0f / 60.0f;
+
+	/**
+	 * Step a projectile until it finishes, or until it plainly never will.
+	 *
+	 * The test world is built with UWorld::CreateWorld and is never ticked, so
+	 * nothing moves on its own. ACataclysmProjectile::Step is public for exactly
+	 * this reason, in the same way SwingOnce and Pulse are.
+	 *
+	 * @return how many frames it took
+	 */
+	int32 FlyToCompletion(ACataclysmProjectile* Projectile, int32 MaxFrames = 600)
+	{
+		int32 Frames = 0;
+		while (Projectile && !Projectile->bFinished && Frames < MaxFrames)
+		{
+			Projectile->Step(Frame);
+			++Frames;
+		}
+		return Frames;
+	}
+
+	/** Step it forward by a number of frames, stopping early if it finishes. */
+	void FlyFor(ACataclysmProjectile* Projectile, int32 Frames)
+	{
+		for (int32 Index = 0; Index < Frames && Projectile && !Projectile->bFinished; ++Index)
+		{
+			Projectile->Step(Frame);
+		}
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileIsAnActorTest,
+	"Cataclysm.Skills.AProjectileWithASpeedIsAnActorThatMoves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileIsAnActorTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// Aimed forward. With no player controller AimPoint falls back to the
+	// caster's own position, so AimedPointWithin uses the actor's facing, +X.
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"));
+	if (!Hurl)
+	{
+		AddError(TEXT("Could not grant the throw."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("A skill with a speed should have put a projectile in the world."));
+		return false;
+	}
+
+	// IT HAS NOT ARRIVED YET, which is the whole point. Before this the hit was
+	// resolved on a timer and nothing existed in between.
+	TestEqual(TEXT("It starts at the caster"),
+		Projectile->GetActorLocation(), Caster.Actor->GetActorLocation());
+	TestFalse(TEXT("And has not finished"), Projectile->bFinished);
+
+	// One frame at 1800 centimetres per second is 30 centimetres.
+	Projectile->Step(Frame);
+	const float Moved = FVector::Dist(Projectile->GetActorLocation(),
+									  Caster.Actor->GetActorLocation());
+	TestEqual(TEXT("One frame moves it speed times the frame"), Moved, 1800.0f * Frame, 0.5f);
+	TestFalse(TEXT("It is still flying"), Projectile->bFinished);
+
+	// Twelve metres at 1800 per second is two thirds of a second, or 40 frames.
+	const int32 Frames = FlyToCompletion(Projectile);
+	TestTrue(TEXT("It finished within a reasonable number of frames"), Frames < 100);
+	TestTrue(TEXT("And it finished"), Projectile->bFinished);
+	TestEqual(TEXT("The skill counted the landing"), Hurl->Landings, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileHitsWhoStepsInTest,
+	"Cataclysm.Skills.AProjectileHitsSomeoneWhoStepsIntoItsPathMidFlight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileHitsWhoStepsInTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THIS IS THE CASE ISSUE #164 NAMED FIRST. Someone standing well off the
+	// line when the throw happens, who walks onto it while the projectile is on
+	// its way. Under the old delay there was nothing in the air to touch them.
+	FScopedFighter Wanderer(World, FVector(6 * M, 10 * M, 0));
+
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	// Let it get to about two metres, then put the wanderer at six metres,
+	// which is still ahead of it.
+	FlyFor(Projectile, 7);
+	TestTrue(TEXT("It is still short of the wanderer"),
+		Projectile->GetActorLocation().X < 6 * M);
+
+	Wanderer.Actor->SetActorLocation(FVector(6 * M, 0, 0));
+	const float Before = Wanderer.Health();
+
+	FlyToCompletion(Projectile);
+	TestTrue(TEXT("The wanderer was hit by the projectile passing through"),
+		Wanderer.Health() < Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileMissesWhoStepsOutTest,
+	"Cataclysm.Skills.AProjectileMissesSomeoneWhoLeavesBeforeItArrives",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileMissesWhoStepsOutTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THE OTHER HALF OF THE SAME CASE. Standing on the line when the throw
+	// happens, and gone by the time the projectile gets there. Dodging is only
+	// possible because the projectile occupies space over time.
+	FScopedFighter Dodger(World, FVector(9 * M, 0, 0));
+
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	const float Before = Dodger.Health();
+
+	// Two metres in, still well short of nine.
+	FlyFor(Projectile, 7);
+	TestTrue(TEXT("It has not reached the dodger yet"),
+		Projectile->GetActorLocation().X < 9 * M);
+
+	Dodger.Actor->SetActorLocation(FVector(9 * M, 10 * M, 0));
+
+	FlyToCompletion(Projectile);
+	TestEqual(TEXT("The dodger took nothing, because it had moved"),
+		Dodger.Health(), Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileHitsEachOnceTest,
+	"Cataclysm.Skills.APiercingProjectileHitsEachEnemyOnceAsItPasses",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileHitsEachOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Far(World, FVector(7 * M, 0, 0));
+	FScopedFighter Beside(World, FVector(5 * M, 5 * M, 0));
+
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	const float NearBefore = Near.Health();
+	const float FarBefore = Far.Health();
+	const float BesideBefore = Beside.Health();
+
+	FlyToCompletion(Projectile);
+
+	// ONCE EACH, NOT ONCE PER STEP. A projectile is inside a character for
+	// several frames at these speeds, so without remembering who it has already
+	// touched it would hit them on every one of them. The Special slot deals a
+	// fixed percent of weapon damage, so the exact figure proves the count.
+	const float OneHit = WeaponDamage * Hurl->GetSlotDamagePercent() / 100.0f;
+	TestEqual(TEXT("The near enemy was hit exactly once"),
+		NearBefore - Near.Health(), OneHit);
+	TestEqual(TEXT("So was the far one, because it pierces"),
+		FarBefore - Far.Health(), OneHit);
+	TestEqual(TEXT("One standing beside the line was not hit"),
+		Beside.Health(), BesideBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileStopsAtFirstTest,
+	"Cataclysm.Skills.AProjectileThatDoesNotPierceStopsAtTheFirstEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileStopsAtFirstTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(4 * M, 0, 0));
+	FScopedFighter Behind(World, FVector(10 * M, 0, 0));
+
+	// Blood Pyre. No Pierce, so it is the landing kind: it stops at the first
+	// thing it touches and goes off there.
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Speed=1400"), TEXT("Blood Pyre"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	ACataclysmProjectile* Projectile = Pyre->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	const float FirstBefore = First.Health();
+	const float BehindBefore = Behind.Health();
+
+	FlyToCompletion(Projectile);
+
+	TestTrue(TEXT("The first enemy was hit"), First.Health() < FirstBefore);
+	TestEqual(TEXT("The one further along the line was not, because it stopped"),
+		Behind.Health(), BehindBefore);
+
+	// AND IT STOPPED THERE, not at the twelve metres it was aimed at. That is
+	// what makes the pyre appear against the enemy rather than past them.
+	TestTrue(TEXT("It stopped at roughly the first enemy, not at its aimed range"),
+		FMath::Abs(Projectile->GetActorLocation().X - 4 * M) < 1.5f * M);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileDetonatesTest,
+	"Cataclysm.Skills.AProjectileThatDoesNotPierceHitsEveryoneWhereItStops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileDetonatesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Struck(World, FVector(6 * M, 0, 0));
+
+	// Standing two metres to the side of the one that stops it, which is inside
+	// the three metre blast and not on the line the projectile travelled.
+	FScopedFighter Nearby(World, FVector(6 * M, 2 * M, 0));
+
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Speed=1400"), TEXT("Blood Pyre"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	ACataclysmProjectile* Projectile = Pyre->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	const float StruckBefore = Struck.Health();
+	const float NearbyBefore = Nearby.Health();
+
+	FlyToCompletion(Projectile);
+
+	const float OneHit = WeaponDamage * Pyre->GetSlotDamagePercent() / 100.0f;
+	TestEqual(TEXT("The one it stopped on took exactly one hit, not two"),
+		StruckBefore - Struck.Health(), OneHit);
+	TestEqual(TEXT("And so did the one standing beside them, from the blast"),
+		NearbyBefore - Nearby.Health(), OneHit);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileReturnsTest,
+	"Cataclysm.Skills.AReturningProjectileComesBackAndHitsAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileReturnsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter OnTheLine(World, FVector(5 * M, 0, 0));
+
+	// Emberhurl "hits once going out and once returning to your hand".
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Returns=1; Speed=1800"),
+		TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	const float Before = OnTheLine.Health();
+
+	FlyToCompletion(Projectile);
+
+	TestTrue(TEXT("It turned round"), Projectile->bReturning);
+
+	const float OneHit = WeaponDamage * Hurl->GetSlotDamagePercent() / 100.0f;
+	TestEqual(TEXT("The enemy on the line was hit twice, once each way"),
+		Before - OnTheLine.Health(), OneHit * 2.0f);
+
+	// And it ended up back where it was thrown from.
+	TestTrue(TEXT("It came back to the caster"),
+		FVector::Dist(Projectile->GetActorLocation(), Projectile->StartedAt) < M);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileBurnsRealPathTest,
+	"Cataclysm.Skills.APiercingProjectileBurnsThePathItActuallyTravelled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileBurnsRealPathTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800; Burn=1; "
+			 "GroundRadius=1.5; GroundDuration=4"),
+		TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	FlyToCompletion(Projectile);
+
+	ACataclysmGroundZone* Zone = TheOnlyGroundZone(World);
+	if (!Zone)
+	{
+		AddError(TEXT("Expected exactly one patch of burning ground."));
+		return false;
+	}
+
+	TestTrue(TEXT("The burning ground covers a path, not a point"), Zone->IsLong());
+	TestTrue(TEXT("It starts where the throw did"),
+		FVector::Dist(Zone->GetActorLocation(), Caster.Actor->GetActorLocation()) < M);
+	TestTrue(TEXT("And ends where the projectile actually stopped"),
+		FVector::Dist(Zone->FarEnd, Projectile->GetActorLocation()) < M);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileHitsAreScaledTest,
+	"Cataclysm.Skills.AProjectileInFlightIsStillScaledByTheCastersBuffs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileHitsAreScaledTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A projectile deals its own damage rather than calling back into the
+	// ability, so it has to carry the firing skill's tags with it or the
+	// caster's scoped modifiers would stop applying the moment the shape
+	// changed. Issue #166 built those modifiers; this checks they survive here.
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(5 * M, 0, 0));
+
+	FCataclysmStatModifier Increase;
+	Increase.Bucket = ECataclysmStatBucket::Increased;
+	Increase.Source = ECataclysmModifierSource::SkillBuff;
+	Increase.Value = 50.0f;
+	Increase.RequiredTags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Element.Demonic")), /*ErrorIfNotFound=*/false));
+	Caster.AbilitySystem->AddStatModifier(Increase);
+
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"),
+		TEXT("Item.Weapon.2hAxe, Element.Demonic"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	const float Before = Target.Health();
+	FlyToCompletion(Hurl->InFlight);
+
+	const float Unbuffed = WeaponDamage * Hurl->GetSlotDamagePercent() / 100.0f;
+	TestEqual(TEXT("The hit carried the 50% increase scoped to its element"),
+		Before - Target.Health(), Unbuffed * 1.5f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileBlockedByWallTest,
+	"Cataclysm.Skills.AWallStopsAProjectileBeforeItReachesWhatIsBehindIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileBlockedByWallTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Sheltering(World, FVector(8 * M, 0, 0));
+
+	// A solid wall at five metres, blocking the visibility channel. That is the
+	// channel the flight traces against, because it is the one that answers
+	// whether something solid stands between two points.
+	AActor* Wall = World->SpawnActor<AActor>(FVector(5 * M, 0, 0), FRotator::ZeroRotator);
+	if (!Wall)
+	{
+		AddError(TEXT("Could not spawn the wall."));
+		return false;
+	}
+	UBoxComponent* Solid = NewObject<UBoxComponent>(Wall);
+	Solid->InitBoxExtent(FVector(20.0f, 5 * M, 5 * M));
+	Solid->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Solid->SetCollisionObjectType(ECC_WorldStatic);
+	Solid->SetCollisionResponseToAllChannels(ECR_Block);
+	Wall->SetRootComponent(Solid);
+	Solid->RegisterComponent();
+	Wall->SetActorLocation(FVector(5 * M, 0, 0));
+
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	const float Before = Sheltering.Health();
+	FlyToCompletion(Projectile);
+
+	TestTrue(TEXT("It reports that geometry stopped it"),
+		Projectile->bBlockedByGeometry);
+	TestTrue(TEXT("It stopped at about the wall, not at its aimed range"),
+		FMath::Abs(Projectile->GetActorLocation().X - 5 * M) < 0.5f * M);
+	TestEqual(TEXT("The enemy behind the wall took nothing"),
+		Sheltering.Health(), Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileNotBlockedByPawnsTest,
+	"Cataclysm.Skills.AnEnemyIsNotCoverForTheEnemyBehindThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileNotBlockedByPawnsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// GUARDS THE WALL TEST ABOVE. If the flight traced against a channel that
+	// characters blocked, every piercing projectile would stop at the first
+	// enemy and Pierce would mean nothing. What a projectile passes through is
+	// decided by Pierce; what stops it is geometry.
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter InFront(World, FVector(3 * M, 0, 0));
+	FScopedFighter Behind(World, FVector(7 * M, 0, 0));
+
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	const float BehindBefore = Behind.Health();
+	FlyToCompletion(Hurl->InFlight);
+
+	TestTrue(TEXT("The one behind another enemy was still hit"),
+		Behind.Health() < BehindBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileSweepsTest,
+	"Cataclysm.Skills.AProjectileHitsWhatItPassedThroughNotOnlyWhereItLanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileSweepsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// EXACTLY IN THE MIDDLE OF ONE STEP, AND WIDER THAN THE PROJECTILE IS. A
+	// step is capped at a tenth of a second, which at Blood Pyre's 1400
+	// centimetres per second is 140 centimetres. This enemy sits 70 centimetres
+	// along, which is further than the projectile's 40 centimetre body from both
+	// ends of that step. So a projectile that only asked where it had arrived
+	// would pass straight through them and carry on to twelve metres.
+	//
+	// THIS IS THE CASE THE WHOLE CHANGE IS FOR: what a projectile hits is what it
+	// PASSED THROUGH, not what happens to be standing where it stopped.
+	//
+	// It is written with a skill that does not pierce because that is where the
+	// sweep does real work. A piercing skill is written Radius=1.5, and a body a
+	// metre and a half wide is wider than half of any step it can take, so it
+	// cannot pass over anybody in the first place.
+	FScopedFighter Midstep(World, FVector(0.7f * M, 0, 0));
+
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Speed=1400"), TEXT("Blood Pyre"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	ACataclysmProjectile* Projectile = Pyre->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	TestTrue(TEXT("It starts further from the enemy than its own body"),
+		0.7f * M > ACataclysmProjectile::DefaultBodyRadiusCm);
+
+	const float Before = Midstep.Health();
+
+	// One step of a tenth of a second: 0 to 140 centimetres in a single move.
+	Projectile->Step(0.1f);
+
+	TestTrue(TEXT("It hit the enemy the step passed over"),
+		Midstep.Health() < Before);
+	TestTrue(TEXT("And stopped there rather than flying on to its aimed range"),
+		Projectile->GetActorLocation().X < 2.0f * M);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReturningProjectileGroundTest,
+	"Cataclysm.Skills.AReturningProjectileBurnsItsFlightPathNotTheCastersFeet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReturningProjectileGroundTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmProjectileTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// EMBERHURL ENDS WHERE IT STARTED, because it "returns to your hand". So the
+	// burning ground it leaves cannot be measured from where it was fired to
+	// where it finished: those are the same point, and the result would be a
+	// patch at the caster instead of the flight path the description promises.
+	// It is measured to the furthest the projectile got.
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Returns=1; Speed=1800; Burn=1; "
+			 "GroundRadius=1.5; GroundDuration=4"),
+		TEXT("Emberhurl"));
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmProjectile* Projectile = Hurl->InFlight;
+	if (!Projectile)
+	{
+		AddError(TEXT("No projectile was fired."));
+		return false;
+	}
+
+	FlyToCompletion(Projectile);
+	TestTrue(TEXT("It came back"), Projectile->bReturning);
+	TestEqual(TEXT("And counted as two landings, once each way"), Hurl->Landings, 2);
+
+	ACataclysmGroundZone* Zone = TheOnlyGroundZone(World);
+	if (!Zone)
+	{
+		AddError(TEXT("Expected exactly one patch of burning ground."));
+		return false;
+	}
+
+	TestTrue(TEXT("The burning ground covers a path, not a point"), Zone->IsLong());
+	TestTrue(TEXT("It reaches roughly the twelve metres the throw covered"),
+		FVector::Dist(Zone->GetActorLocation(), Zone->FarEnd) > 11 * M);
 
 	return true;
 }
