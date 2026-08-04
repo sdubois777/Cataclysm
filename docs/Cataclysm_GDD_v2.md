@@ -1058,6 +1058,10 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
+**A skill may also apply an effect outright, with no chance roll.** When a skill's own description says it applies one, it always does. That is the second route into the same effect, and it is how every War skill applies bleed and every Demonic skill applies burn.
+
+  
+
 **An enemy carries at most one stack of any effect the player applies.** One enemy is bleeding or it is not. There is no counting stacks on a screen full of enemies.
 
   
@@ -1107,6 +1111,7 @@ The chance summed is the total across every source: affixes, gems, keystones and
 | Bleed | Damage over time | The damage |
 | Poison | Damage over time | The damage |
 | Disease | Damage over time | The damage |
+| Burn | Damage over time | The damage |
 | Void Splinter | 1% of current health per second over 4 seconds | The damage |
 | Necrosis | Reduces the target's healing by 25% and deals damage over time, for 5 seconds | The damage and the healing reduction, to a cap of 100%, then the duration |
 | Madness | The enemy attacks anything nearby, friend or foe, for 3 seconds | The duration |
@@ -1215,6 +1220,31 @@ The following is a sample of War damage type skills across weapon types to illus
 | Whip / Ultimate | Whirlwind of Steel | Spin the whip for 4 seconds in a 7m zone. Every enemy in range struck repeatedly. Each hit applies a bleed stack. |
 | Greataxe / Ultimate | Annihilator | Channel spin for 3 seconds dealing rapid hits to all in melee range, stacking bleed and reducing armor each revolution. |
 | All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. Allies: +8% physical damage. Drains mana. |
+
+  
+
+## **Demonic Skill Examples**
+
+Demonic is the vertical slice's damage type. Three weapon types are designed for it, one for each of the three Demonic classes: Greataxe for the Ravager, Fist for the Masochist, and Staff for the Ritualist. Greataxe and Fist reuse the War animation sets for the same weapon and slot, so the Staff is the only new set the slice buys.
+
+  
+
+Every skill below applies burn, which is Demonic's damage over time effect in the same way bleed is War's.
+
+  
+
+|  |  |  |
+| :-: | :-: | :-: |
+| \*\*Weapon\*\* | \*\*Skill\*\* | \*\*Description\*\* |
+| Greataxe / Heavy | Molten Cleave | Horizontal arc across a wide cone, setting each enemy alight and dragging a line of molten slag that burns for 6s. |
+| Greataxe / Ultimate | Pyroclasm | Spin 3s hitting all in melee range, setting every enemy alight and leaving 5m of burning ground for 8s. Final hit 300% weapon damage. |
+| Fist / Heavy | Searing Hook | Burning hook, 4m knockback, sets alight. Deals 1% increased damage per 1% of maximum health missing. |
+| Fist / Support | Martyr's Ember | For 10s, store 40% of all damage taken and spend it as bonus fire damage on your hits. Store capped at 200% weapon damage. |
+| Fist / Ultimate | Living Pyre | Burn for 6s, immune to stun, slow and knockback. Enemies within 4m set alight. Each hit taken raises pyre damage 8% and returns 25% of it as health. |
+| Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Up to 3 active; a fourth destroys the oldest, which explodes in 3m. |
+| Staff / Support | Subjugate | Seize an enemy's mind, applying Madness. Lasts twice as long on an enemy that is already burning. |
+| Staff / Ultimate | Open the Rift | Tear a rift for 10s that burns everything within 6m and spawns an imp every 2s to a maximum of 5. Collapses for 400% weapon damage. |
+| All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% fire damage. Drains mana. |
 
   
 
