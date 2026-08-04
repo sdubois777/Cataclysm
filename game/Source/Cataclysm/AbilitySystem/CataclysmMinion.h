@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Actor.h"
+#include "GenericTeamAgentInterface.h"
 #include "CataclysmMinion.generated.h"
 
 class UCataclysmAbilitySystemComponent;
@@ -28,7 +29,9 @@ class UCataclysmVitalAttributeSet;
  * component to do, and a character costs considerably more.
  */
 UCLASS()
-class CATACLYSM_API ACataclysmMinion : public AActor, public IAbilitySystemInterface
+class CATACLYSM_API ACataclysmMinion : public AActor,
+									   public IAbilitySystemInterface,
+									   public IGenericTeamAgentInterface
 {
 	GENERATED_BODY()
 
@@ -91,7 +94,21 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
+	//~ IGenericTeamAgentInterface
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamId) override;
+	virtual FGenericTeamId GetGenericTeamId() const override;
+	//~ End IGenericTeamAgentInterface
+
 protected:
+	/**
+	 * Which side it is on. Copied from its summoner in Spawn.
+	 *
+	 * A summon is not a third side. It fights for whoever made it, so it holds
+	 * their team number rather than one of its own, and a second player's imps
+	 * are as friendly to this player as that player is.
+	 */
+	FGenericTeamId TeamId = FGenericTeamId::NoTeam;
+
 	virtual void BeginPlay() override;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Minion")

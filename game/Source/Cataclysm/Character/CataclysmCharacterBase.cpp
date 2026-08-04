@@ -14,6 +14,16 @@ UAbilitySystemComponent* ACataclysmCharacterBase::GetAbilitySystemComponent() co
 	return nullptr;
 }
 
+void ACataclysmCharacterBase::SetGenericTeamId(const FGenericTeamId& NewTeamId)
+{
+	TeamId = NewTeamId;
+}
+
+FGenericTeamId ACataclysmCharacterBase::GetGenericTeamId() const
+{
+	return TeamId;
+}
+
 void ACataclysmCharacterBase::InitAbilityActorInfo()
 {
 	// Subclasses supply the owner and avatar.

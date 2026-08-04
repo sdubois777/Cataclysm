@@ -20,6 +20,87 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Sides: two teams, three attitudes, and no side means hostile
+
+**The question.** Issue #162: nothing in the project had any concept of which
+side an actor was on. `UCataclysmTargeting::IsHostileTo` decided what a skill
+could hit by asking three things — is it valid and not the caster, does it have
+an ability system component, and does neither actor own the other. That made
+every enemy a legal target for every other enemy's skills, made a second player
+in a co-operative session a legal target for the first, and gave no way at all to
+find an ally, which is why the ally half of Conflagration and Blood and Iron
+("allies within it deal 8% increased fire damage") could not be built.
+
+**The decision.** Use the engine's own `IGenericTeamAgentInterface` and
+`FGenericTeamId`, with two sides: `Players` (0) and `Monsters` (1). A character
+is born onto a side in its constructor. A summon is given its summoner's side
+when it is spawned. Anything else — a patch of burning ground, a projectile —
+takes the side of whatever owns it, found by walking the owner chain.
+
+**Why the engine's mechanism and not a new one.** `IGenericTeamAgentInterface`
+lives in `AIModule`, which this project already depends on for click-to-move, so
+it costs no new dependency. Using it means the AI perception component, the
+`AAIController` base class and the environment query system all understand this
+project's sides without being told. That matters immediately: issue #163, enemy
+and minion behaviour, is the next thing built on top of this.
+
+**Why not Lyra's shape.** Epic's own Lyra sample does *not* use the generic
+interface. It declares `ILyraTeamAgentInterface` and a `ULyraTeamSubsystem` that
+owns team assignment through `ChangeTeamForActor`. That machinery pays for itself
+when a game mode assigns teams at runtime, drives team-based spawn points and
+scores per team. None of that exists here. There are two sides, they are fixed,
+and a character is born onto one; a subsystem would be a layer with nothing in
+it. Lyra also collapses the comparison to same-team or different-team, and this
+project keeps all three of `ETeamAttitude`'s values so that a genuinely neutral
+actor — a shrine, a destructible prop, a town guard — can be added later without
+every caller changing shape.
+
+**Having no side means hostile, not neutral.** This is a choice of failure mode
+and it is the opposite of the engine's own default attitude solver, which treats
+two actors that both have no team as equal and therefore friendly. An enemy class
+that forgets to set its side is still something the player can kill. Treating no
+side as neutral instead would make it silently immune to every skill in the game,
+which is far harder to notice than the reverse. `UCataclysmTeams` therefore does
+not call `FGenericTeamId::GetAttitude`.
+
+**Summons, allied players and neutral actors are not three cases.** They are one
+question — which side — asked of three kinds of thing:
+
+| Kind | How it gets a side |
+|---|---|
+| A player character | Its constructor. `Players`. |
+| An enemy character | Its constructor. `Monsters`. |
+| A summoned minion | Copied from its summoner at spawn. Not a side of its own. |
+| Burning ground, and anything else a skill leaves behind | The owner chain. |
+| Anything else | No side, and therefore hostile to everything. |
+
+Ownership is checked *before* the side numbers are compared, not instead of them.
+In the ordinary case the two agree. Ownership is what still holds when they do
+not: anything a character puts into the world is on that character's side even if
+nothing gave it a team.
+
+**What Madness does is deliberately not part of this.** The design says a
+maddened enemy "attacks anything nearby, friend or foe". That is a change of
+attitude for a tagged actor, not a change of side, and it belongs with the enemy
+behaviour that would let a maddened enemy act on it. Issue #163. Path of Exile's
+Conversion Trap is the nearest shipped shape to the *other* half of this — it
+moves a monster onto the player's side for a duration — and it is not what
+Madness is: Madness removes a side rather than switching one.
+
+**Sources.** Epic's Lyra sample game, via X157's Lyra Team System notes, for the
+`ULyraTeamSubsystem` and `ILyraTeamAgentInterface` shape and for friendly fire
+being filtered at the ability level; the Unreal Engine 5.8 source of
+`GenericTeamAgentInterface.h` and `AIInterfaces.cpp` for `FGenericTeamId`,
+`ETeamAttitude`'s three values, and the default attitude solver being
+`A != B ? Hostile : Friendly`; the Path of Exile wiki on Conversion Trap for how
+a shipped action role-playing game moves a monster between sides temporarily.
+
+**Affects:** no design document. This is an implementation decision that the
+design documents do not describe and do not need to; `Cataclysm_GDD_v2.md` names
+allies in its aura descriptions and says nothing about how they are identified.
+
+---
+
 ## 2026-08-04 — Craters are seen and not walked around, and a party is rescued by whoever gets out
 
 **The question.** Two follow-ups from the operator on the same day. First, that
