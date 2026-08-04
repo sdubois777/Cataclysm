@@ -20,6 +20,62 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — The Wand and the Staff get flat damage, because a spell is a percent of weapon damage too
+
+**The question.** Issue #146, raised by the project owner while reviewing the
+attack speed work: "wand and staff should have flat damage... spells need damage
+too you know."
+
+**Measured, and it was worse than a dead implicit.** Every skill deals a percent
+of weapon damage. `Skill.weapon_damage_percent` in `character.py` returns the
+skill's own multiplier or the typical one for its slot, and there is no separate
+path for spells. Weapon damage comes from a base's flat attack damage implicit
+and nowhere else. The Wand and the Staff had none, giving only INCREASED spell
+damage. So a character holding either dealt exactly zero with every skill: a
+percent of zero is zero. The Ritualist's 160 spell damage at level 100 and the
+Staff's own 32% increased spell damage were both multiplying nothing.
+
+That is the same failure as issue #120, one layer up: a multiplier with nothing
+to multiply.
+
+**THE NUMBERS WERE NOT CHOSEN, THEY WERE READ OFF THE ORDERING ALREADY SET.** The
+fourteen attack speed values decided earlier the same day are ordered inversely
+to each weapon's flat attack damage. A one-handed weapon at 1.35 attacks per
+second sits where the Crossbow does, at 38 damage. A two-handed weapon at 1.30
+sits where the Two-Handed Crossbow does, at 66. The Wand is 1.35 and the Staff is
+1.30, so the ordering gives 38 and 66 with nothing left to decide.
+
+Both weapons therefore tie an existing base on damage and rate and differ only in
+sub-type and second implicit, which is the intended shape: the Crossbow pairs 38
+damage with 20 critical strike multiplier, the Wand pairs it with 18% increased
+spell damage.
+
+**The alternative was considered and rejected.** Putting them at the low end of
+their class instead — the Wand at 26 like the Dagger, the Staff at 64 like the
+Spear — is what the inverse ordering would give if their rates were free. They
+are not free: the one-handed rates average to 1.35 and the two-handed to 1.28, a
+test asserts both, and those averages are what the shipped two-handed multiplier
+of 2.0 was derived against. Moving one weapon's rate has to be paid for by
+another. Chosen by the project owner: take the numbers the existing ordering
+gives and move nothing that is already balanced.
+
+**A risk accepted rather than solved.** A weapon with middling damage that also
+carries the strongest secondary implicit in its class may simply be the best
+pick. That is a tuning question real play answers better than argument, and the
+constants in this project are tuned against play rather than argued to death
+first.
+
+**A guard was added, because nothing had reported this.**
+`_check_every_weapon_but_the_shield_supplies_damage` in `affixes.py` refuses a
+weapon base with no flat attack damage. The Shield is the one exemption, for the
+same reason it is exempt from the check that no weapon base defends: it is not
+there to hit anything.
+
+**Affects:** `Cataclysm_GDD_v2.md`, the weapon base table in section V, whose
+Wand and Staff rows now read "38 flat damage, 18% increased spell damage" and
+"66 flat damage, 32% increased spell damage". **Applied.**
+---
+
 ## 2026-08-04 — Attack speed comes from the weapon as a rate, not an implicit, and every skill crits 5% by default
 
 **The question.** Issue #120. Attack speed and critical strike chance both had a

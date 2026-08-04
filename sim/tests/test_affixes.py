@@ -960,6 +960,34 @@ def test_the_shield_is_the_one_weapon_whose_base_defends():
         assert not set(base.implicit_values()) & defensive, base.name
 
 
+def test_every_weapon_but_the_shield_supplies_flat_attack_damage():
+    """Every skill deals a percent of weapon damage, and spells have no separate
+    path, so a weapon with no flat attack damage is one a character can hold and
+    deal exactly zero with. The Wand and the Staff shipped that way: both gave
+    only INCREASED spell damage, which multiplies a number they did not supply.
+    Issue #146."""
+    for base in af.WEAPON_BASES:
+        supplies = any(i.stat == "attack_damage" and i.kind == "flat"
+                       for i in base.implicits)
+        if base.weapon_type == "Shield":
+            assert not supplies, "the Shield is not meant to hit anything"
+        else:
+            assert supplies, base.name
+
+
+def test_that_the_weapon_damage_check_actually_fires():
+    real = af.WEAPON_BASES
+    af.WEAPON_BASES = real + (af.WeaponBase(
+        "Damageless Rod", "Weapon",
+        (af.Implicit("spell_damage", "increased", 20.0),),
+        weapon_type="Wand", sub_type="Magic", attack_speed=1.35),)
+    try:
+        with pytest.raises(ValueError, match="supplies no flat attack damage"):
+            af._check_every_weapon_but_the_shield_supplies_damage()
+    finally:
+        af.WEAPON_BASES = real
+
+
 def test_that_shield_exemption_check_actually_fires():
     real = af.WEAPON_BASES
     af.WEAPON_BASES = real + (af.WeaponBase(
