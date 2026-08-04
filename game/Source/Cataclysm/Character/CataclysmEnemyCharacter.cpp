@@ -16,8 +16,6 @@ namespace
 	constexpr float EnemyCapsuleRadius = 48.0f;
 	constexpr float EnemyCapsuleHalfHeight = 80.0f;
 
-	/** The engine's basic shapes are 100cm cubes of space, so a scale of 1 is 100cm. */
-	constexpr float BasicShapeSize = 100.0f;
 }
 
 ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
@@ -51,9 +49,9 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 	PlaceholderBody->SetupAttachment(RootComponent);
 	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PlaceholderBody->SetRelativeScale3D(FVector(
-		(EnemyCapsuleRadius * 2.0f) / BasicShapeSize,
-		(EnemyCapsuleRadius * 2.0f) / BasicShapeSize,
-		(EnemyCapsuleHalfHeight * 2.0f) / BasicShapeSize));
+		(EnemyCapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(EnemyCapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(EnemyCapsuleHalfHeight * 2.0f) / ACataclysmCharacterBase::BasicShapeSize));
 
 	// Found by path rather than referenced as an asset, because these are engine
 	// content. A failure here is not fatal: the capsule is still there and still

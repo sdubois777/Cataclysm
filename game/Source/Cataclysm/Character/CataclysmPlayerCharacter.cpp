@@ -18,8 +18,6 @@ namespace
 	constexpr float CapsuleRadius = 42.0f;
 	constexpr float CapsuleHalfHeight = 96.0f;
 
-	/** The engine's basic shapes are 100cm cubes of space, so a scale of 1 is 100cm. */
-	constexpr float BasicShapeSize = 100.0f;
 }
 
 ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
@@ -79,9 +77,9 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	PlaceholderBody->SetupAttachment(RootComponent);
 	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PlaceholderBody->SetRelativeScale3D(FVector(
-		(CapsuleRadius * 2.0f) / BasicShapeSize,
-		(CapsuleRadius * 2.0f) / BasicShapeSize,
-		(CapsuleHalfHeight * 2.0f) / BasicShapeSize));
+		(CapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(CapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(CapsuleHalfHeight * 2.0f) / ACataclysmCharacterBase::BasicShapeSize));
 
 	PlaceholderFacingMarker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderFacingMarker"));
 	PlaceholderFacingMarker->SetupAttachment(RootComponent);
