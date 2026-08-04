@@ -323,14 +323,31 @@ def make_sandbox_level():
     floor.set_actor_scale3d(unreal.Vector(FLOOR_EXTENT / 100.0,
                                           FLOOR_EXTENT / 100.0,
                                           FLOOR_THICKNESS / 100.0))
-    # Static, so it is part of the navigation build rather than a moving
-    # obstacle. Mobility belongs to the component, not the actor.
+    # Static, because the floor never moves and a static mesh is cheaper to
+    # render. Navigation no longer depends on this: the navigation mesh is built
+    # when the game starts, from collision geometry, whatever its mobility. See
+    # RuntimeGeneration in game/Config/DefaultEngine.ini. Mobility belongs to the
+    # component, not the actor.
     floor.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
 
     sun = actor_subsystem.spawn_actor_from_class(
         unreal.DirectionalLight, unreal.Vector(0.0, 0.0, 1000.0),
         unreal.Rotator(0.0, -50.0, 0.0))
     sun.set_actor_label("Sun")
+
+    # Movable, so no lighting build is ever required. ADirectionalLight defaults
+    # to Stationary, and a stationary light above the static floor above is
+    # exactly what makes the editor demand a lighting build and then write
+    # L_Sandbox_BuiltData.uasset next to the map. Nothing here wants baked
+    # lighting: the project already renders with Lumen, and generated dungeon
+    # floors cannot be baked at all because they do not exist until run time.
+    #
+    # Reached by class rather than by an attribute name, for the same reason as
+    # the sky light below.
+    sun_component = sun.get_component_by_class(unreal.DirectionalLightComponent)
+    if sun_component is None:
+        fail("The directional light has no DirectionalLightComponent")
+    sun_component.set_mobility(unreal.ComponentMobility.MOVABLE)
 
     # Sky atmosphere and a sky light together are what stop everything not facing
     # the sun from being pure black. Without them the placeholder character is a
@@ -381,6 +398,30 @@ def make_sandbox_level():
         fail("The navigation bounds volume has extent {}, which is too small to "
              "cover a floor {}cm across. Click-to-move would not work."
              .format(extent, FLOOR_EXTENT))
+
+    # Build the navigation mesh before saving. Creating the bounds volume above
+    # only starts an asynchronous build; saving straight afterwards stores a
+    # navigation mesh with no data in it, and then click-to-move calls
+    # SimpleMoveToLocation, finds no path, and the character turns to face the
+    # point clicked and stops. Holding the button still works, because that
+    # steers directly and never asks for a path, which is what made this hard to
+    # notice. Issue #142.
+    #
+    # Reached through UCataclysmLevelAuthoring because UNavigationSystemV1::Build
+    # is not a UFUNCTION and the editor scripting layer cannot call it.
+    if not unreal.CataclysmLevelAuthoring.build_navigation(world):
+        fail("The navigation build did not run. Without it the level is saved "
+             "with an empty navigation mesh and click-to-move does nothing.")
+
+    # Checked, not assumed, for the same reason as the extent above. This asks
+    # the question that actually breaks: can a point be placed on the navigation
+    # mesh? The failure being guarded against reports "start point not on
+    # navmesh", so anything weaker than this would not have caught it.
+    if not unreal.CataclysmLevelAuthoring.is_point_on_nav_mesh(
+            world, unreal.Vector(0.0, 0.0, 0.0), 200.0):
+        fail("The navigation mesh has no data at the middle of the floor, so "
+             "click-to-move will find no path. The navigation build ran but "
+             "produced nothing.")
 
     if not level_subsystem.save_current_level():
         fail("Could not save the level at {}".format(path))
