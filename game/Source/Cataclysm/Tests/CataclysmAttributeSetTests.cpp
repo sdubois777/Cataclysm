@@ -112,7 +112,7 @@ namespace CataclysmAttributeTest
 CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	"Cataclysm.Attributes.CharacterSheetIsComplete")
 {
-	// 33 stats on the character sheet, plus the four current values that pair
+	// 35 stats on the character sheet, plus the four current values that pair
 	// with a maximum, plus the damage meta attribute.
 	const int32 Vitals = UCataclysmVitalAttributeSet::GetAllAttributes().Num();
 	const int32 Primary = UCataclysmPrimaryAttributeSet::GetAllAttributes().Num();
@@ -136,13 +136,15 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	TestEqual(TEXT("Eight resistances, one per damage type"), Resist, 8);
 	TestEqual(TEXT("Seventeen combat and utility stats, plus attack damage off the sheet"),
 		Combat, 17 + OffSheetCombatStats);
-	TestEqual(TEXT("Eleven vital attributes including the damage meta"), Vitals, 11);
+	// Thirteen since mana leech and energy shield leech were added for #214.
+	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);
 	TestEqual(TEXT("Two class resource attributes"), Resource, 2);
 
-	// The 33 sheet stats: 3 maxima + 4 recovery from vitals, 17 combat,
-	// 8 resistances, 1 class resource maximum.
-	TestEqual(TEXT("Thirty-three stats on the character sheet"),
-		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 33);
+	// The 35 sheet stats: 3 maxima + 6 recovery from vitals, 17 combat,
+	// 8 resistances, 1 class resource maximum. The six recovery stats are the
+	// three regenerations and the three leeches.
+	TestEqual(TEXT("Thirty-five stats on the character sheet"),
+		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 35);
 	return true;
 }
 

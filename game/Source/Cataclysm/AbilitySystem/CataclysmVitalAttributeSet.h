@@ -70,10 +70,27 @@ public:
 	FGameplayAttributeData EnergyShieldRegen;
 	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, EnergyShieldRegen)
 
-	/** Percentage of damage dealt returned as health. */
+	/**
+	 * Percentage of damage dealt returned as health.
+	 *
+	 * The damage counted is what the target really took, after its mitigation
+	 * and capped at the health it had left, and the amount is paid out over
+	 * three seconds rather than at once. See the Leech section of
+	 * docs/Cataclysm_GDD_v2.md. Nothing reads these three yet.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_LifeLeech)
 	FGameplayAttributeData LifeLeech;
 	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, LifeLeech)
+
+	/** Percentage of damage dealt returned as mana. */
+	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_ManaLeech)
+	FGameplayAttributeData ManaLeech;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, ManaLeech)
+
+	/** Percentage of damage dealt returned as energy shield. */
+	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_EnergyShieldLeech)
+	FGameplayAttributeData EnergyShieldLeech;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, EnergyShieldLeech)
 
 	/**
 	 * Meta attribute. Not replicated, and zeroed after every execution.
@@ -98,4 +115,6 @@ protected:
 	UFUNCTION() void OnRep_ManaRegen(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_EnergyShieldRegen(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LifeLeech(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ManaLeech(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_EnergyShieldLeech(const FGameplayAttributeData& OldValue);
 };

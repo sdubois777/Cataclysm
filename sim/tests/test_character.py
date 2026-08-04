@@ -11,9 +11,14 @@ from cataclysm_sim import character as ch
 # The sheet is complete and self-consistent
 # --------------------------------------------------------------------------
 
-def test_the_sheet_has_thirty_three_stats():
-    assert len(ch.ALL_STATS) == 33
-    assert len(set(ch.ALL_STATS)) == 33, "a stat is listed in two groups"
+def test_the_sheet_has_thirty_five_stats():
+    """33 until mana leech and energy shield leech were added for issue #214.
+
+    The design document's Character Sheet section states the same count, and
+    `test_the_design_document_agrees_on_the_stat_count` compares the two.
+    """
+    assert len(ch.ALL_STATS) == 35
+    assert len(set(ch.ALL_STATS)) == 35, "a stat is listed in two groups"
 
 
 def test_every_stat_has_a_default_and_every_default_is_a_stat():
@@ -536,7 +541,7 @@ def test_spends_health_does_not_mean_the_class_has_no_mana():
 def test_the_full_sheet_can_be_produced_for_any_character():
     sheet = ch.Character(ch.GENERIC, level=50).sheet()
     assert set(sheet) == set(ch.ALL_STATS)
-    assert len(sheet) == 33
+    assert len(sheet) == 35
 
 
 # --------------------------------------------------------------------------

@@ -75,8 +75,10 @@ never more. More multipliers come from gems, passive tree keystones and
 enchantments, which MORE_SOURCES enforces. That keeps a rare drop readable and
 gives the 961 designed enchantments a job they did not previously have.
 
-THE DEFAULT LINE AND OVERRIDES. There are 33 class-supplied stats, each needing a
-level 1 base and a per-level gain. Across 24 classes that would be 1,584 numbers.
+THE DEFAULT LINE AND OVERRIDES. 33 of the 35 stats come from the class -- all but
+attack speed, which comes from the weapon, and critical strike chance, which comes
+from the skill. Each needs a level 1 base and a per-level gain, so across 24
+classes that would be 1,584 numbers.
 So every class inherits DEFAULT_STAT_LINE and overrides only the stats that
 express its identity. A class may override any stat; the default is a starting
 point, not a floor.
@@ -104,7 +106,8 @@ RESISTANCE_STATS = tuple(f"resistance_{d.lower()}" for d in DAMAGE_TYPES)
 #: groups its Stat.* tags.
 STAT_GROUPS: dict[str, tuple[str, ...]] = {
     "Resource": ("max_health", "max_mana", "max_energy_shield", "class_resource"),
-    "Recovery": ("health_regen", "mana_regen", "energy_shield_regen", "life_leech"),
+    "Recovery": ("health_regen", "mana_regen", "energy_shield_regen",
+                 "life_leech", "mana_leech", "energy_shield_leech"),
     "Defense": ("armor", "evasion", "block_chance", "damage_reduction",
                 "retaliation", "crowd_control_resistance") + RESISTANCE_STATS,
     "Offense": ("crit_chance", "crit_multiplier", "attack_speed",
@@ -240,6 +243,8 @@ DEFAULT_STAT_LINE: dict[str, Scaling] = {
     "mana_regen": Scaling(base=1.0, per_level=0.10),
     "energy_shield_regen": Scaling(),
     "life_leech": Scaling(),
+    "mana_leech": Scaling(),
+    "energy_shield_leech": Scaling(),
     # Defence
     "armor": Scaling(),
     "evasion": Scaling(),

@@ -810,10 +810,53 @@ INCREASED_ENERGY_SHIELD_REGEN = StatAffix(
     "Increased energy shield regeneration", "energy_shield_regen", "increased",
     12.0, SHIELD_SLOTS, SUFFIX)
 
+#: LEECH IS A PERCENTAGE OF THE DAMAGE ACTUALLY DEALT, paid out over 3 seconds
+#: and not counting overkill. `Cataclysm_GDD_v2.md` has the rule under "Leech".
+#:
 #: By convention: the Ravager's 3% is the only leech any class has, and leech
 #: compounds with every point of damage a character stacks, so it stays small.
 FLAT_LIFE_LEECH = StatAffix("Flat life leech", "life_leech", "flat", 0.5,
                             OFFENSIVE_SLOTS, SUFFIX)
+
+#: Mana and energy shield leech, added for issue #214. The design already relied
+#: on both: the Energy Leech class drains enemy mana to refill its own pool, and
+#: leech is named as a recovery stat group and as a suffix category. Only life
+#: leech existed, so neither class could be geared for.
+#:
+#: ALL THREE HAVE THE SAME TOP VALUE, AND THAT IS A JUDGEMENT RATHER THAN A
+#: DERIVATION. Leech is a percentage of the same damage number in every case, so
+#: the same percentage returns the same absolute amount; what differs is only
+#: which pool it fills, and choosing between the pools is the player's decision
+#: rather than something the numbers should make for them.
+#:
+#: Path of Exile prices mana leech below life leech, and the reason does not
+#: carry over: its mana pools are an order of magnitude smaller than its life
+#: pools. Here they are comparable for the class that wants each. At level 100
+#: the Ritualist, the caster, has 1,278 mana against 1,060 health and 832 energy
+#: shield, so a mana leech priced below life leech would be worth less for no
+#: reason the character sheet supports.
+#:
+#: ON THE SAME SLOTS AS LIFE LEECH. Leech comes from hitting, so it belongs where
+#: a hit comes from, which is what OFFENSIVE_SLOTS is.
+FLAT_MANA_LEECH = StatAffix("Flat mana leech", "mana_leech", "flat", 0.5,
+                            OFFENSIVE_SLOTS, SUFFIX)
+
+#: Energy shield is leechable even though the Vampire class cannot use one. That
+#: is a restriction on one class rather than on the stat: the Ritualist is the
+#: class with an energy shield and it is the one this is for.
+FLAT_ENERGY_SHIELD_LEECH = StatAffix("Flat energy shield leech",
+                                     "energy_shield_leech", "flat", 0.5,
+                                     OFFENSIVE_SLOTS, SUFFIX)
+
+#: The three together, so a rule about leech can be written once.
+LEECH_AFFIXES: tuple[StatAffix, ...] = (FLAT_LIFE_LEECH, FLAT_MANA_LEECH,
+                                        FLAT_ENERGY_SHIELD_LEECH)
+
+#: How long a leeched amount takes to arrive, in seconds. Not instant, which is
+#: what stops a character that is winning being unkillable. Last Epoch's figure;
+#: see the "Leech" section of `Cataclysm_GDD_v2.md` for why that shape was taken
+#: over Path of Exile's per-instance and total rate caps.
+LEECH_PAYOUT_SECONDS = 3.0
 
 #: By convention. Block removes half a hit and needs no cap, so a full defensive
 #: investment reaching a high figure is legal by design rather than a mistake.
@@ -979,7 +1022,7 @@ AFFIX_POOL: tuple[StatAffix, ...] = (
     FLAT_HEALTH_REGEN, INCREASED_HEALTH_REGEN,
     FLAT_MANA_REGEN, INCREASED_MANA_REGEN,
     INCREASED_ENERGY_SHIELD_REGEN,
-    FLAT_LIFE_LEECH,
+    FLAT_LIFE_LEECH, FLAT_MANA_LEECH, FLAT_ENERGY_SHIELD_LEECH,
     FLAT_BLOCK_CHANCE,
     FLAT_DAMAGE_REDUCTION,
     FLAT_RETALIATION,

@@ -67,3 +67,5 @@ Stat_Increased_mind,Increased mind,Stat,suffix,mind,increased,12.0,0,,,,,"Belt, 
 Stat_Increased_spirit,Increased spirit,Stat,suffix,spirit,increased,12.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders"
 Stat_Increased_efficacy,Increased efficacy,Stat,suffix,efficacy,increased,12.0,0,,,,,"Belt, Boots, Gloves, Necklace, Relic, Ring, Weapon"
 Stat_Increased_luck,Increased luck,Stat,suffix,luck,increased,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring"
+Stat_Flat_mana_leech,Flat mana leech,Stat,suffix,mana_leech,flat,0.5,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
+Stat_Flat_energy_shield_leech,Flat energy shield leech,Stat,suffix,energy_shield_leech,flat,0.5,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
