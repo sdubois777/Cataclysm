@@ -66,6 +66,9 @@ namespace CataclysmInputActionNames
 
 	/** Held: cancel movement and stay put. Shift by default. */
 	inline const FName StandStill = FName(TEXT("StandStill"));
+
+	/** Camera distance. A one-axis value; the mouse wheel. Positive zooms in. */
+	inline const FName Zoom = FName(TEXT("Zoom"));
 }
 
 /**

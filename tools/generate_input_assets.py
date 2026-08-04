@@ -42,6 +42,7 @@ SANDBOX_LEVEL = "L_Sandbox"
 # --- what to create ----------------------------------------------------------
 
 BOOLEAN = unreal.InputActionValueType.BOOLEAN
+AXIS1D = unreal.InputActionValueType.AXIS1D
 AXIS2D = unreal.InputActionValueType.AXIS2D
 
 # Native actions: the controller binds these to specific functions by name. The
@@ -51,6 +52,9 @@ NATIVE_ACTIONS = [
     ("IA_Move", "Move", AXIS2D, "Move"),
     ("IA_MoveToCursor", "MoveToCursor", BOOLEAN, "Move To Cursor"),
     ("IA_StandStill", "StandStill", BOOLEAN, "Stand Still"),
+    # One axis, not a boolean: the wheel reports how far it turned, and a notch
+    # forward and a notch back differ only in that value's sign.
+    ("IA_Zoom", "Zoom", AXIS1D, "Zoom Camera"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -91,6 +95,10 @@ MOUSE_MAPPINGS = [
     # Directional movement on the gamepad stick only. Putting it on WASD here
     # would collide with the Support ability on W.
     ("IA_Move", "Gamepad_Left2D", []),
+    # Camera distance. The same key in both schemes, because the wheel is not
+    # used for anything else in either. No gamepad equivalent yet; that belongs
+    # with the rest of the gamepad bindings in issue #137.
+    ("IA_Zoom", "MouseWheelAxis", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -108,6 +116,7 @@ KEYBOARD_MAPPINGS = [
     ("IA_SlotAura", "E", []),
     ("IA_SlotUltimate", "R", []),
     ("IA_SlotMovement", "SpaceBar", []),
+    ("IA_Zoom", "MouseWheelAxis", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

@@ -31,8 +31,61 @@ public:
 	/** Client: the player state has replicated. There is no PossessedBy here. */
 	virtual void OnRep_PlayerState() override;
 
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+
+	/**
+	 * Moves the camera nearer or further by whole wheel notches.
+	 *
+	 * Positive zooms in, which is what a wheel pushed forward reports and what
+	 * every game in the genre does with it. The result is clamped, so a player
+	 * holding the wheel down cannot end up inside the character or looking at the
+	 * whole level.
+	 */
+	void AddCameraZoom(float Notches);
+
+	/**
+	 * The distance the camera is moving toward, in centimetres.
+	 *
+	 * This is not the same as the boom's current length: the camera eases toward
+	 * this over a few frames rather than jumping. Reading the boom mid-glide
+	 * gives an intermediate value, which is why the target is exposed separately.
+	 */
+	float GetTargetCameraDistance() const { return TargetCameraDistance; }
+
 protected:
 	virtual void InitAbilityActorInfo() override;
+
+	/**
+	 * How near and how far the camera may get, in centimetres.
+	 *
+	 * The range is a judgement, not something the genre settles. Path of Exile 2,
+	 * Last Epoch and Diablo 4 all put zoom on the wheel between a fixed minimum
+	 * and maximum, and all three keep the range deliberately narrow, but their
+	 * numbers are in their own units and their own art scale and do not transfer.
+	 * These were chosen by looking at the game and are expected to change.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "1.0"))
+	float MinCameraDistance = 500.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "1.0"))
+	float MaxCameraDistance = 1200.0f;
+
+	/** How far one wheel notch moves the camera, in centimetres. Seven notches
+	 *  cover the whole range, which is a short flick of the wheel. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "1.0"))
+	float CameraZoomStep = 100.0f;
+
+	/**
+	 * How quickly the camera reaches a new distance. Larger is faster.
+	 *
+	 * Eased rather than snapped, which is a judgement. One notch is an eighth of
+	 * the whole range, and moving that far between two frames reads as the view
+	 * cutting rather than the camera moving. At 10 the camera covers most of a
+	 * notch in about a fifth of a second.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "0.1"))
+	float CameraZoomInterpSpeed = 10.0f;
 
 	/** Holds the camera above and behind. Uses absolute rotation, so it does not
 	 *  spin when the character turns. */
@@ -62,4 +115,8 @@ protected:
 private:
 	/** What the starting ability set granted, so it can be removed on unequip. */
 	FCataclysmAbilitySetHandles GrantedHandles;
+
+	/** Where the camera is heading. Set from the boom's own length at BeginPlay,
+	 *  so the resting distance is stated once, in the constructor. */
+	float TargetCameraDistance = 0.0f;
 };

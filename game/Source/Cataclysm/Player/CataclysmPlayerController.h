@@ -76,6 +76,9 @@ private:
 	void Input_StandStillStarted();
 	void Input_StandStillReleased();
 
+	/** Mouse wheel. Handed to the pawn, because the camera boom lives there. */
+	void Input_Zoom(const FInputActionValue& Value);
+
 	/** Puts CachedDestination under the cursor. False if the cursor hit nothing. */
 	bool UpdateCachedDestination();
 
