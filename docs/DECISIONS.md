@@ -20,6 +20,88 @@ applied or still pending.
 
 ---
 
+## 2026-08-03 — The control scheme: what the left mouse button does, and why there are two schemes rather than one
+
+**The question.** Issue #16. The design document's control table gives eight
+bindings, and two of them could not be built as written.
+
+**FIRST PROBLEM: the left mouse button was given two jobs.** The control table
+says it is "Player movement and basic attack". Every game in the genre that
+overloads that button needs a rule for which job a click means, and the issue
+asked for one.
+
+Research first. Path of Exile 2 resolves it by what is under the cursor: a click
+on the ground moves, a click on an enemy attacks, and holding shift attacks
+without moving. Diablo 4 does not resolve it at all — it avoids it, by shipping
+two control presets, and in the keyboard preset the mouse buttons are pure skill
+buttons because the movement has gone to WASD.
+
+**But this game does not have the problem, and that is the decision.** Section
+"Combat System" of `Cataclysm_GDD_v2.md` says basic attacks are handled
+automatically, and `ECataclysmAbilitySlot` in the code agrees — the slot is
+labelled "Basic Attack (automatic)". If the basic attack fires on its own, the
+left mouse button has no second job. **It moves, and only moves.** Clicking an
+enemy walks toward it exactly as clicking the ground does.
+
+This removes the disambiguation rule rather than choosing one, which is worth
+more than picking well between two options.
+
+**A contradiction inside the design document is now visible and is NOT yet
+fixed.** The control table still says the left mouse button fires the basic
+attack; the combat section still says basic attacks are automatic. The
+implementation follows the combat section. The project owner chose to record this
+decision without editing the table, so the table is stale on purpose and is
+tracked separately.
+
+**SECOND PROBLEM: W is listed twice.** The control table puts the Support ability
+on W and also lists WASD as optional directional movement. One key cannot be
+both, and nothing in the document says which wins.
+
+This is exactly why Diablo 4 and Path of Exile 2 ship presets rather than one
+scheme. Under keyboard movement the skills have to move off the movement keys.
+So the game now has two mapping contexts, and only ever one of them is active:
+
+| Context | Movement | The change from the design table |
+|---|---|---|
+| `IMC_MouseMovement` | left mouse button, plus the gamepad stick | none; the table exactly |
+| `IMC_KeyboardMovement` | WASD, plus the gamepad stick | Support moves from W to 1, and the left mouse button is left unbound |
+
+Which one the game starts in is one line in `game/Config/DefaultGame.ini`. There
+is no way for a player to change it yet, because there is no settings screen.
+
+**THIRD DECISION: shift means stand still, not force move.** Last Epoch shipped
+shift as force *move* and has a long-running player complaint asking for the
+opposite; Path of Exile 2 uses shift for attack-in-place. The shape with the
+better evidence is the one that keeps the character still, so that is what it
+does.
+
+**FOURTH DECISION: a key press names a slot, never an ability.** Input is bound
+to the `Slot.*` gameplay tags, and the ability system activates whichever granted
+ability carries the tag. This is the pattern in Epic's own Lyra sample, and it is
+what lets the equipped weapon change all six abilities without a code change,
+which is what issue #36 needs.
+
+Because the slot list is now written down twice — as `ECataclysmAbilitySlot` in
+C++ and as the generated `Slot.*` tags from the workbook — the test
+`Cataclysm.Input.EveryAbilitySlotHasAGeneratedTag` checks both directions. That
+is the same drift risk that produced `verify_scoring_port.py`.
+
+**Sources.** Path of Exile 2 controls, Fextralife wiki and Game8; Diablo 4
+keyboard movement presets, Turtle Beach and Dexerto guides; the Last Epoch forum
+threads asking for force stand still; Epic's Lyra input documentation as written
+up by unrealcode.net and X157's notes.
+
+**What the research does not settle.** The camera distance and angle. Every game
+in the genre differs and the right answer depends on art that does not exist yet.
+The starting values are taken from Unreal's own top-down template and are
+expected to change.
+
+**Affects:** `Cataclysm_GDD_v2.md`, "Controls and Key Bindings". **Not applied.**
+The table still says the left mouse button fires the basic attack and still puts
+Support on W without noting the collision.
+
+---
+
 ## 2026-08-03 — The Power Score anchors describe the ceiling, and do not move
 
 **The question.** Issue #125. Rarity became a label for what fills an item's four

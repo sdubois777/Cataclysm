@@ -103,6 +103,21 @@ void UCataclysmAbilitySet::GiveToAbilitySystem(UCataclysmAbilitySystemComponent*
 		FGameplayAbilitySpec Spec(Entry.Ability, Entry.AbilityLevel);
 		Spec.SourceObject = SourceObject;
 
+		// Stamp the ability's slot onto the granted spec as a tag. This is what
+		// makes input data-driven: the input component knows only "the right
+		// mouse button means Slot.Heavy" and the ability system finds whichever
+		// granted ability carries that tag. No ability is named in any binding,
+		// so swapping the ability in a slot needs no code change.
+		//
+		// A slot of None grants an invalid tag and is left off, which is correct
+		// for passives and for anything the player does not press a key for.
+		const ECataclysmAbilitySlot Slot =
+			Entry.Ability->GetDefaultObject<UCataclysmGameplayAbility>()->Slot;
+		if (const FGameplayTag SlotTag = CataclysmAbilitySlots::Tag(Slot); SlotTag.IsValid())
+		{
+			Spec.GetDynamicSpecSourceTags().AddTag(SlotTag);
+		}
+
 		const FGameplayAbilitySpecHandle Handle = AbilitySystem->GiveAbility(Spec);
 		if (OutHandles)
 		{
