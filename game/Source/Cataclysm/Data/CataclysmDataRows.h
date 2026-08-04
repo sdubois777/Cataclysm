@@ -350,10 +350,12 @@ struct FCataclysmItemBaseRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
 	FString WeaponType;
 
-	/** How many damage types the weapon holds. Two for a one-hander, three for
-	 *  a two-hander. WHICH types is decided when the item drops, not here. */
+	/** THE MOST damage types this weapon can ever hold, not how many it holds.
+	 *  Four for a one-hander, eight for a two-hander. How many a particular
+	 *  weapon holds, and which ones, is rolled when the item drops, from one up
+	 *  to the lower of this number and the difficulty tier. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
-	int32 DamageTypeSlots = 0;
+	int32 MaxDamageTypes = 0;
 
 	/**
 	 * Attacks per second before any increase. Zero on anything that is not a

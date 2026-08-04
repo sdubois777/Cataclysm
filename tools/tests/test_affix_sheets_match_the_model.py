@@ -112,7 +112,8 @@ class TestItemBases:
             assert int(float(row["Hands"])) == base.hands, base.name
             assert text(row["Sub-Type"]) == base.sub_type, base.name
             assert text(row["Weapon Type"]) == base.weapon_type, base.name
-            assert int(float(row["Damage Types"])) == base.damage_type_slots, base.name
+            assert (int(float(row["Max Damage Types"]))
+                    == base.max_damage_types_on_base), base.name
             # Checked for presence before conversion, because a blank cell would
             # otherwise fail as a TypeError about NoneType and say nothing about
             # which weapon is missing what.

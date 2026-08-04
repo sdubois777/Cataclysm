@@ -376,4 +376,75 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 
 	return true;
 }
+
+/**
+ * The DataTable asset holds a damage type LIMIT on every weapon, not a count.
+ *
+ * The column was renamed from DamageTypeSlots to MaxDamageTypes for #218,
+ * because the old name read as a count and the value has meant a maximum since
+ * #217. A rename like that can go wrong in a way nothing else here notices: the
+ * import test above loads the CSV through the struct and would catch a column
+ * with no matching property, but the asset comparison would not, because both
+ * halves would import the same missing column the same way and agree.
+ *
+ * So this reads the shipped asset and checks the numbers are the design's
+ * limits. Four for a one-hander and eight for a two-hander, from the Weapon
+ * Bases table in docs/Cataclysm_GDD_v2.md, and zero on anything that is not a
+ * weapon. Written here rather than read from the table under test.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemBaseMaxDamageTypesTest,
+	"Cataclysm.Data.ItemBasesHoldADamageTypeLimit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemBaseMaxDamageTypesTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table = LoadObject<UDataTable>(
+		nullptr, TEXT("/Game/Data/DT_ItemBases.DT_ItemBases"));
+	if (!Table)
+	{
+		AddError(TEXT("DT_ItemBases does not exist. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	int32 OneHanders = 0;
+	int32 TwoHanders = 0;
+	int32 NotWeapons = 0;
+
+	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+	{
+		const FCataclysmItemBaseRow* Row =
+			reinterpret_cast<const FCataclysmItemBaseRow*>(Pair.Value);
+
+		if (Row->Hands == 1)
+		{
+			++OneHanders;
+			TestEqual(FString::Printf(
+				TEXT("%s is one-handed and tops out at four damage types"),
+				*Row->BaseName), Row->MaxDamageTypes, 4);
+		}
+		else if (Row->Hands == 2)
+		{
+			++TwoHanders;
+			TestEqual(FString::Printf(
+				TEXT("%s is two-handed and tops out at eight damage types"),
+				*Row->BaseName), Row->MaxDamageTypes, 8);
+		}
+		else
+		{
+			++NotWeapons;
+			TestEqual(FString::Printf(
+				TEXT("%s is not a weapon and holds no damage types"),
+				*Row->BaseName), Row->MaxDamageTypes, 0);
+		}
+	}
+
+	// Without these the loop above passes on an empty table, which is the
+	// failure the rename could actually cause.
+	TestTrue(TEXT("the table has one-handed weapons"), OneHanders > 0);
+	TestTrue(TEXT("the table has two-handed weapons"), TwoHanders > 0);
+	TestTrue(TEXT("the table has bases that are not weapons"), NotWeapons > 0);
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

@@ -1761,13 +1761,13 @@ A weapon carries two things no other item has: a physical **sub-type**, and a li
 
   
 
-**The Damage Types column below is a limit, not a count.** A one-handed weapon can hold at most four damage types; a two-handed weapon at most eight. How many a particular weapon actually holds is rolled when it drops.
+**The Max Damage Types column below is a limit, not a count.** A one-handed weapon can hold at most four damage types; a two-handed weapon at most eight. How many a particular weapon actually holds is rolled when it drops.
 
   
 
 |  |  |  |  |  |  |
 | :-- | :-: | :-: | :-: | :-: | :-- |
-| \*\*Base\*\* | \*\*Hands\*\* | \*\*Sub-Type\*\* | \*\*Damage Types\*\* | \*\*Attacks/sec\*\* | \*\*Implicit\*\* |
+| \*\*Base\*\* | \*\*Hands\*\* | \*\*Sub-Type\*\* | \*\*Max Damage Types\*\* | \*\*Attacks/sec\*\* | \*\*Implicit\*\* |
 | Sword | 1 | Slashing | 4 | 1.30 | 40 flat damage, 5% increased attack speed |
 | Dagger | 1 | Piercing | 4 | 1.50 | 26 flat damage, 8 critical strike chance |
 | Axe | 1 | Slashing | 4 | 1.25 | 46 flat damage |
