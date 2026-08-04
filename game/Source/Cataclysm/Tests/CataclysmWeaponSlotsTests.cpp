@@ -407,12 +407,27 @@ bool FCataclysmSliceShipsDemonicTest::RunTest(const FString& Parameters)
 			TEXT("a Demonic %s fills all six slots"), Weapon), Filled, 6);
 	}
 
-	// A Demonic weapon whose skills are not designed grants nothing, and that is
-	// visible rather than hidden. Seven of Demonic's ten weapons are in this
-	// state; it is issue #62's remaining scope.
-	const int32 Undesigned = Slots->EquipWeaponType(TEXT("Dagger"));
-	TestEqual(TEXT("a Demonic Dagger is undesigned, so it grants nothing"),
-		Undesigned, 0);
+	// ALL TEN OF DEMONIC'S WEAPONS ARE NOW DESIGNED. This test used to assert the
+	// opposite -- that a Demonic Dagger granted nothing, because seven of the ten
+	// were still empty. The 35 missing rows were filled, so the assertion is
+	// inverted rather than deleted: the thing worth holding is that every weapon
+	// the design says Demonic covers actually fills its slots.
+	const TCHAR* OtherDemonicWeapons[] = {
+		TEXT("Sword"), TEXT("Greatsword"), TEXT("Dagger"), TEXT("Axe"),
+		TEXT("Wand"), TEXT("Whip"), TEXT("Warhammer"),
+	};
+	for (const TCHAR* Weapon : OtherDemonicWeapons)
+	{
+		const int32 Filled = Slots->EquipWeaponType(Weapon);
+		TestEqual(FString::Printf(
+			TEXT("a Demonic %s fills all six slots"), Weapon), Filled, 6);
+	}
+
+	// A weapon type Demonic does not cover still grants nothing, which is what
+	// keeps the check above from passing for any string at all.
+	const int32 NotCovered = Slots->EquipWeaponType(TEXT("Crossbow"));
+	TestEqual(TEXT("Demonic does not cover the Crossbow, so it grants nothing"),
+		NotCovered, 0);
 
 	Actor->Destroy();
 	return true;

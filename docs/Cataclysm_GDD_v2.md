@@ -1294,7 +1294,7 @@ The following is a sample of War damage type skills across weapon types to illus
 
 ## **Demonic Skill Examples**
 
-Demonic is the vertical slice's damage type. Three weapon types are designed for it, one for each of the three Demonic classes: Greataxe for the Ravager, Fist for the Masochist, and Staff for the Ritualist. Greataxe and Fist reuse the War animation sets for the same weapon and slot, so the Staff is the only new set the slice buys.
+Demonic is the vertical slice's damage type, and **all ten of the weapon types it can roll on are now designed**: Greataxe, Fist and Staff for the three Demonic classes, plus Sword, Greatsword, Dagger, Axe, Wand, Whip and Warhammer. That is 51 rows. The slice ships the first three, one for each class: Greataxe for the Ravager, Fist for the Masochist, and Staff for the Ritualist. Greataxe and Fist reuse the War animation sets for the same weapon and slot, so the Staff is the only new set the slice buys.
 
   
 
@@ -1314,6 +1314,37 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Staff / Support | Subjugate | Seize an enemy's mind, applying Madness. Lasts twice as long on an enemy that is already burning. |
 | Staff / Ultimate | Open the Rift | Tear a rift for 10s that burns everything within 6m and spawns an imp every 2s to a maximum of 5. Collapses for 400% weapon damage. |
 | All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% fire damage. Drains mana. |
+
+  
+
+## **How a Skill Behaves: the Seven Shapes**
+
+A skill is a row in the Weapon Skills sheet, not a piece of code. Two columns decide what it does: **Shape** names which of seven shared behaviours runs it, and **Shape Params** carries that behaviour's numbers as `Key=Value` pairs. Adding a skill of an existing shape is a workbook edit and needs no programming at all.
+
+  
+
+The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand would make the other 382 unaffordable once the first sixteen were done, which is why the shapes are shared.
+
+  
+
+|  |  |  |
+| :-: | :-: | :-: |
+| \*\*Shape\*\* | \*\*What it does\*\* | \*\*Numbers it reads\*\* |
+| Strike | Hits everything in a cone or ring around the caster. An angle of 360 is a ring. With a duration and an interval it repeats, which is what a spin is. | Radius, Angle, MaxTargets, Duration, Interval, Knockback |
+| Projectile | Sends something out toward where the player is aiming. One that pierces travels a line and hits what it passes; one that does not lands and hits in a radius there. | Range, Radius, Pierce, Returns, Speed |
+| Self Buff | Grants the caster an effect for a duration. | Duration, Radius |
+| Movement | Moves the caster. A leap hits where it lands, a charge hits everything on the way, a blink hits at both ends and nothing between. | Mode, Range, Radius |
+| Summon | Spawns minions that fight for the caster. With a duration and an interval it spawns over time and collapses at the end, which is what a rift is. | Range, Radius, Count, MaxActive, Duration, Interval |
+| Aura | A radius around the caster. Held as a toggle when it has no duration, and timed when it has one. | Radius, Duration, Interval |
+| Debuff | Applies a named effect to enemies within range, nearest the cursor first, without necessarily damaging them. | Range, Radius, MaxTargets, Duration |
+
+  
+
+**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius` and `GroundDuration`. Four other riders work the same way: `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+
+  
+
+**The Shape column is deliberately separate from the Tags column.** The tags already have a job: an increase from gear applies to a skill only if the skill carries the tags that increase requires. Deciding behaviour from them as well would mean adding a tag to make a skill work silently changed which gear applied to it. Path of Exile draws the same line, keeping the internal type list that gates support gems separate from the identifier that names a skill's code.
 
   
 

@@ -16,6 +16,7 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitRetaliation(0.0f);
 	InitCrowdControlResistance(0.0f);
 
+	InitAttackDamage(0.0f);      // supplied by the equipped weapon
 	InitCritChance(0.0f);        // supplied by the skill in use
 	InitCritMultiplier(150.0f);  // a critical strike is worth 1.5x by default
 	InitAttackSpeed(0.0f);       // supplied by the equipped weapon
@@ -45,6 +46,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Retaliation);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrowdControlResistance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackDamage);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CritChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CritMultiplier);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackSpeed);
@@ -118,6 +120,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetArmorAttribute(), GetEvasionAttribute(), GetBlockChanceAttribute(),
 		GetDamageReductionAttribute(), GetRetaliationAttribute(),
 		GetCrowdControlResistanceAttribute(),
+		GetAttackDamageAttribute(),
 		GetCritChanceAttribute(), GetCritMultiplierAttribute(),
 		GetAttackSpeedAttribute(), GetAreaOfEffectAttribute(),
 		GetDotFrequencyAttribute(), GetPenetrationAttribute(),
@@ -133,6 +136,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BlockChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Retaliation)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrowdControlResistance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackDamage)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritMultiplier)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackSpeed)

@@ -127,17 +127,138 @@ def dungeon_modifiers(book) -> list[dict]:
     return unique(out, "Dungeon Modifiers")
 
 
+#: Riders any shape may carry, and what each one means.
+#:
+#: Eight of the sixteen designed Demonic skills leave a burning patch of ground
+#: behind whatever else they do, so the ground zone is a RIDER on a shape rather
+#: than a shape of its own. Issue #37's own table hints at this: it lists
+#: "persistent ground zone" against "used by most of the above" instead of
+#: naming skills, where every other entry names skills.
+SHAPE_RIDERS = {
+    "Burn": "1 if the skill sets what it hits alight, 0 or absent if not",
+    "GroundRadius": "metres of burning ground left behind, 0 for none",
+    "GroundDuration": "seconds that ground burns",
+    "FinalHitPercent": "percent of weapon damage a closing hit deals, if any",
+    "HealthCostPercent": "percent of current health one use costs, if any",
+    "Effect": "the named status effect this applies, from the Buffs, Debuffs or "
+              "DoTs sheet",
+}
+
+#: The parameters whose value is a name rather than a number.
+TEXT_PARAMS = frozenset({"Mode", "Effect"})
+
+#: The closed list of shapes, and which parameters each one reads.
+#:
+#: A SHAPE NAMES WHICH TEMPLATE RUNS. It is deliberately NOT read off the Tags
+#: column, even though that column already carries Type.Projectile,
+#: Type.AOE.PointBlank and the rest. Two reasons, and the second is the one that
+#: would have caused a real bug:
+#:
+#:   The tags do not decide it. Molten Cleave carries Type.AOE.PointBlank,
+#:   Type.Strike AND Type.AOE.Persistent, and nothing says which is the primary
+#:   behaviour. Infernal Plunge is a leap and carries no tag saying so.
+#:
+#:   The tags already have a job. UCataclysmStatPipeline::ModifierApplies scopes
+#:   every gear increase by the tags of the skill in hand. Dispatching on them
+#:   too would mean adding a tag to make a skill's shape work silently changed
+#:   which gear modifiers apply to it.
+#:
+#: Path of Exile draws the same line: its gems.json carries `types` (the internal
+#: list, whose stated purpose is deciding which support gems may support a skill)
+#: separately from the behaviour the skill's own ActiveSkills.dat id names.
+SHAPE_PARAMS = {
+    "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval", "Knockback"},
+    "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed"},
+    "SelfBuff": {"Duration", "Radius"},
+    "Movement": {"Mode", "Range", "Radius"},
+    "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval"},
+    "Aura": {"Radius", "Duration", "Interval"},
+    "Debuff": {"Range", "Radius", "MaxTargets", "Duration"},
+}
+
+#: The only non-numeric parameter, and the values it may take.
+MOVEMENT_MODES = {"Leap", "Charge", "Blink"}
+
+
+def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
+    """Read a `Key=Value; Key=Value` cell, refusing anything the shape cannot use.
+
+    REFUSING IS THE POINT. A parameter this returned silently as zero looks
+    exactly like a parameter nobody wrote, which is how a cooldown of zero went
+    unnoticed across 77 skills in issue #155. A radius of zero hits nothing, so
+    a misspelled `Radiuss` would produce a skill that runs and does nothing.
+    """
+    params: dict[str, str] = {}
+    if not text:
+        return params
+
+    allowed = SHAPE_PARAMS[shape] | set(SHAPE_RIDERS)
+    for piece in text.split(";"):
+        piece = piece.strip()
+        if not piece:
+            continue
+        if "=" not in piece:
+            raise DataError(f"{where}: shape parameter {piece!r} is not Key=Value")
+        key, value = (part.strip() for part in piece.split("=", 1))
+        if key not in allowed:
+            raise DataError(
+                f"{where}: {shape} has no parameter {key!r}. It reads "
+                f"{sorted(allowed)}.")
+        if key in params:
+            raise DataError(f"{where}: parameter {key!r} is given twice")
+        if not value:
+            raise DataError(f"{where}: parameter {key!r} has no value")
+        if key == "Mode":
+            if value not in MOVEMENT_MODES:
+                raise DataError(
+                    f"{where}: Mode is {value!r}, not one of "
+                    f"{sorted(MOVEMENT_MODES)}")
+        elif key in TEXT_PARAMS:
+            pass  # checked against the effect list by validate_skill_effects
+        else:
+            try:
+                float(value)
+            except ValueError:
+                raise DataError(
+                    f"{where}: parameter {key!r} is {value!r}, not a number"
+                ) from None
+        params[key] = value
+
+    return params
+
+
 def weapon_skills(book) -> list[dict]:
     out = []
     for index, raw in enumerate(book["Weapon Skills"].iter_rows(values_only=True), 1):
         if index == 1 or not raw or not clean(raw[0]):
             continue
         weapon, damage, slot = clean(raw[0]), clean(raw[1]), clean(raw[2])
+        name = clean(raw[3])
+        shape = clean(raw[6]) if len(raw) > 6 else ""
+        params = clean(raw[7]) if len(raw) > 7 else ""
+        where = f"Weapon Skills row {index} ({damage} {weapon} {slot})"
+
+        if shape and shape not in SHAPE_PARAMS:
+            raise DataError(f"{where}: shape {shape!r} is not one of "
+                            f"{sorted(SHAPE_PARAMS)}")
+        if params and not shape:
+            raise DataError(f"{where}: has shape parameters but no shape")
+        if shape and not name:
+            raise DataError(f"{where}: has a shape but no skill name")
+
+        # Parsed and thrown away. The game parses it again from the CSV; this
+        # call is here so a bad cell fails generation rather than producing a
+        # skill that runs and does nothing.
+        if shape:
+            parse_shape_params(params, shape, where)
+
         out.append({"Name": row_name(damage, weapon, slot),
                     "WeaponType": weapon, "DamageType": damage, "Slot": slot,
-                    "SkillName": clean(raw[3]),
+                    "SkillName": name,
                     "SkillDescription": clean(raw[4]),
-                    "Tags": clean(raw[5])})
+                    "Tags": clean(raw[5]),
+                    "Shape": shape,
+                    "ShapeParams": params})
     return unique(out, "Weapon Skills")
 
 
@@ -198,14 +319,22 @@ def enemy_modifiers(book) -> list[dict]:
 
 
 def status_effects(book) -> list[dict]:
-    """Buffs, Debuffs and DoTs: one column, no header, "Name: Description".
+    """Buffs, Debuffs and DoTs: "Name: Description", then two optional numbers.
 
     The first row is data, not a header. Reading it as a header would silently
     drop one effect from each of the three sheets.
+
+    COLUMNS B AND C ARE HOW LONG AN EFFECT LASTS AND WHAT IT IS WORTH, and both
+    are optional because almost every row states neither. They were added for
+    Burn, which every one of the sixteen designed Demonic skills applies and
+    which stated no duration and no damage anywhere in the design -- so a skill
+    reading "sets each one alight" applied an effect with no numbers in it.
+    A row that leaves them empty reads as zero and applies nothing, which is
+    the honest answer for an effect nobody has designed yet.
     """
     out = []
     for sheet, kind in (("Buffs", "Buff"), ("Debuffs", "Debuff"), ("DoTs", "DoT")):
-        for raw in book[sheet].iter_rows(values_only=True):
+        for index, raw in enumerate(book[sheet].iter_rows(values_only=True), 1):
             if not raw:
                 continue
             text = clean(raw[0])
@@ -214,8 +343,14 @@ def status_effects(book) -> list[dict]:
             name, description = split_named(text)
             if not name:
                 name = text[:40]
+            duration = raw[1] if len(raw) > 1 else None
+            share = raw[2] if len(raw) > 2 else None
             out.append({"Name": row_name(kind, name), "EffectKind": kind,
-                        "EffectName": name, "Description": description})
+                        "EffectName": name, "Description": description,
+                        "DurationSeconds": number(duration, "DurationSeconds", index)
+                            if duration is not None else 0.0,
+                        "PercentOfHit": number(share, "PercentOfHit", index)
+                            if share is not None else 0.0})
     return unique(out, "Status Effects")
 
 
@@ -830,6 +965,35 @@ def validate_weapon_skill_types(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def validate_skill_effects(tables: dict[str, list[dict]]) -> list[str]:
+    """A skill's Effect must name a status effect that exists.
+
+    An Effect nobody defined generates cleanly and grants nothing at runtime,
+    because the tag it would use is never declared: the skill runs, spends its
+    mana, waits its cooldown and applies no debuff. Cross-checked against the
+    Buffs, Debuffs and DoTs sheets rather than a list written here, so adding an
+    effect to the design needs no change in this file.
+    """
+    skills = tables.get("WeaponSkills")
+    effects = tables.get("StatusEffects")
+    if not skills or not effects:
+        return []
+
+    known = {row["EffectName"] for row in effects if row["EffectName"]}
+    problems = []
+    for row in skills:
+        if not row["Shape"] or not row["ShapeParams"]:
+            continue
+        params = parse_shape_params(row["ShapeParams"], row["Shape"],
+                                    f"WeaponSkills/{row['Name']}")
+        named = params.get("Effect")
+        if named and named not in known:
+            problems.append(
+                f"WeaponSkills/{row['Name']}: applies the effect {named!r}, "
+                f"which is not in the Buffs, Debuffs or DoTs sheets")
+    return problems
+
+
 def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
     """A hybrid affix must name two affixes that exist.
 
@@ -939,6 +1103,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weights(tables)
                 + validate_affix_slots(tables)
                 + validate_weapon_skill_types(tables)
+                + validate_skill_effects(tables)
                 + validate_hybrid_parts(tables))
     if problems:
         print(f"FAIL: {len(problems)} validation problem(s):", file=sys.stderr)

@@ -2,6 +2,7 @@
 
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystemInterface.h"
@@ -97,8 +98,21 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 	int32 Filled = 0;
 	for (const FCataclysmWeaponSkill& Skill : AvailableSkills)
 	{
+		// THE ROW DECIDES WHICH CLASS IS GRANTED. A row naming a shape gets that
+		// shape's shared template; a row with no shape still gets the
+		// placeholder, which is all 61 War rows and every undesigned Demonic
+		// one. That is what makes adding a skill of an existing shape a workbook
+		// edit and no C++ at all, which is issue #37's second acceptance
+		// criterion.
+		TSubclassOf<UCataclysmGameplayAbility> AbilityClass =
+			UCataclysmWeaponSkills::TemplateFor(Skill.Shape);
+		if (!AbilityClass)
+		{
+			AbilityClass = UndesignedSkillClass;
+		}
+
 		const FGameplayAbilitySpecHandle Handle = AbilitySystem->GiveAbilityInSlot(
-			UndesignedSkillClass, Skill.Slot, /*Level=*/1, /*SourceObject=*/this);
+			AbilityClass, Skill.Slot, /*Level=*/1, /*SourceObject=*/this);
 
 		if (!Handle.IsValid())
 		{
@@ -108,17 +122,24 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 		GrantedHandles.AddAbility(Handle);
 		++Filled;
 
-		// Named on the granted instance rather than on the class, because one
-		// class stands in for every undesigned skill and the name is what tells
-		// them apart.
-		if (FGameplayAbilitySpec* Spec = AbilitySystem->FindAbilitySpecFromHandle(Handle))
+		// Stamped on the granted INSTANCE rather than on the class, because one
+		// class stands for every skill of that shape. Two characters holding
+		// different Projectile skills share UCataclysmProjectileSkill and differ
+		// only in what is written here.
+		FGameplayAbilitySpec* Spec = AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UGameplayAbility* Instance = Spec ? Spec->GetPrimaryInstance() : nullptr;
+
+		if (UCataclysmSkillTemplate* Template = Cast<UCataclysmSkillTemplate>(Instance))
 		{
-			if (UCataclysmUndesignedSkill* Instance =
-					Cast<UCataclysmUndesignedSkill>(Spec->GetPrimaryInstance()))
-			{
-				Instance->SkillName = Skill.Name;
-				Instance->SkillDescription = Skill.Description;
-			}
+			Template->SkillName = Skill.Name;
+			Template->SkillDescription = Skill.Description;
+			Template->Params = Skill.Params;
+		}
+		else if (UCataclysmUndesignedSkill* Placeholder =
+					Cast<UCataclysmUndesignedSkill>(Instance))
+		{
+			Placeholder->SkillName = Skill.Name;
+			Placeholder->SkillDescription = Skill.Description;
 		}
 	}
 

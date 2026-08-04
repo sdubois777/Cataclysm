@@ -1,0 +1,244 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
+#include "CataclysmSkillShape.generated.h"
+
+/**
+ * Which shared template runs a skill.
+ *
+ * SEVEN SHAPES FOR 398 ROWS. Issue #37 asks for shared templates rather than
+ * sixteen one-off implementations, because the full weapon-and-damage-type
+ * matrix is 398 rows and bespoke work on the first sixteen would make the other
+ * 382 unaffordable.
+ *
+ * THE LIST IS NOT INVENTED. Path of Exile's own `active_skill_types` list, which
+ * ships in its data files, carves the same joints: Projectile, Melee,
+ * MeleeSingleTarget, Movement, Blink, Travel, Aura, Buff, Minion, CreatesMinion,
+ * Channel and AppliesCurse are all separate entries in it. Seven is that list
+ * collapsed to what the sixteen designed Demonic skills actually need.
+ *
+ * WHAT IS NOT A SHAPE: the persistent burning ground zone. Eight of the sixteen
+ * leave one behind whatever else they do -- Molten Cleave is a strike that also
+ * leaves slag, Emberhurl is a projectile that also leaves a burning flight path
+ * -- so it is a rider every shape can carry, not a shape of its own. Issue #37's
+ * own table hints at this: every other entry names skills, and that one says
+ * "used by most of the above".
+ */
+UENUM(BlueprintType)
+enum class ECataclysmSkillShape : uint8
+{
+	/** No behaviour designed yet. The slot is filled and nothing happens. */
+	None			UMETA(DisplayName = "None"),
+
+	/** Hits everything in a cone or ring around the caster, once or repeatedly. */
+	Strike			UMETA(DisplayName = "Strike"),
+
+	/** Travels out from the caster, hitting what it passes or where it lands. */
+	Projectile		UMETA(DisplayName = "Projectile"),
+
+	/** Grants an effect to the caster for a duration. */
+	SelfBuff		UMETA(DisplayName = "Self Buff"),
+
+	/** Moves the caster: a leap, a charge or a blink. */
+	Movement		UMETA(DisplayName = "Movement"),
+
+	/** Spawns minions that fight for the caster. */
+	Summon			UMETA(DisplayName = "Summon"),
+
+	/** A radius around the caster, held as a toggle or for a duration. */
+	Aura			UMETA(DisplayName = "Aura"),
+
+	/** Applies an effect to enemies at range without necessarily damaging them. */
+	Debuff			UMETA(DisplayName = "Debuff"),
+};
+
+/** How a Movement skill travels. */
+UENUM(BlueprintType)
+enum class ECataclysmMovementMode : uint8
+{
+	/** An arc to the destination, hitting on landing. Infernal Plunge. */
+	Leap			UMETA(DisplayName = "Leap"),
+
+	/** A run along the ground, hitting everything on the way. Cinder Rush. */
+	Charge			UMETA(DisplayName = "Charge"),
+
+	/** Instant, hitting at both ends and nothing between. Emberstep. */
+	Blink			UMETA(DisplayName = "Blink"),
+};
+
+/**
+ * One skill's numbers, read from the Shape Params cell of the Weapon Skills sheet.
+ *
+ * DISTANCES ARE HELD IN CENTIMETRES AND THE SHEET WRITES METRES. Unreal's world
+ * unit is the centimetre and every design document in this project speaks in
+ * metres, so a conversion has to happen somewhere. It happens once, here, at the
+ * parse; the fields are named for the unit they hold so that a later reader
+ * cannot mistake which side of the conversion they are on. A skill that hit a
+ * hundredth of its written radius would still run, still spend mana and still
+ * look almost right, which is the kind of failure this project keeps finding.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSkillShapeParams
+{
+	GENERATED_BODY()
+
+	/** Metres per Unreal world unit is 1/100. Written once. */
+	static constexpr float CentimetresPerMetre = 100.0f;
+
+	// --- Reach ------------------------------------------------------------
+
+	/** How wide the effect is, in centimetres. Zero hits nothing. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float RadiusCm = 0.0f;
+
+	/** How far from the caster it reaches, in centimetres. Zero means at self. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float RangeCm = 0.0f;
+
+	/** Full width of a Strike's cone, in degrees. 360 is a ring. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float AngleDegrees = 0.0f;
+
+	/** How many enemies one use may affect. Zero means no limit. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 MaxTargets = 0;
+
+	// --- Time -------------------------------------------------------------
+
+	/** Seconds the skill's own effect lasts. Zero is instant. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float Duration = 0.0f;
+
+	/** Seconds between repeats while it lasts. Zero means it does not repeat. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float Interval = 0.0f;
+
+	// --- Projectile -------------------------------------------------------
+
+	/** How many enemies a projectile passes through. Zero stops at the first. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 Pierce = 0;
+
+	/** True when the projectile comes back, hitting a second time. Emberhurl. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bReturns = false;
+
+	/** Centimetres per second. Zero means it arrives instantly, like a beam. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float SpeedCmPerSecond = 0.0f;
+
+	// --- Movement ---------------------------------------------------------
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	ECataclysmMovementMode MovementMode = ECataclysmMovementMode::Blink;
+
+	/** How far a hit enemy is pushed, in centimetres. Zero pushes nobody. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float KnockbackCm = 0.0f;
+
+	// --- Summon -----------------------------------------------------------
+
+	/** How many minions one use spawns. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 Count = 1;
+
+	/** The cap on minions alive at once. Zero means no cap. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 MaxActive = 0;
+
+	// --- Riders every shape may carry -------------------------------------
+
+	/** True when the skill sets what it hits alight. Fifteen of sixteen do. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bBurns = false;
+
+	/** Radius of the burning ground left behind, in centimetres. Zero leaves none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float GroundRadiusCm = 0.0f;
+
+	/** Seconds that ground burns. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float GroundDuration = 0.0f;
+
+	/** Percent of weapon damage a closing hit deals. Pyroclasm states 300. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float FinalHitPercent = 0.0f;
+
+	/** Percent of current health one use costs. Blood Pyre states 8. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float HealthCostPercent = 0.0f;
+
+	/**
+	 * The named status effect this skill applies, if it applies one.
+	 *
+	 * A name from the Buffs, Debuffs or DoTs sheets, such as "Madness". Empty
+	 * when the skill applies no named effect, which is true of the two designed
+	 * self buffs: the design gives them a duration and a magnitude but never
+	 * names the buff itself.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString Effect;
+
+	/** True when the cell parsed with no unreadable entry. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bValid = true;
+
+	/** Leaves a burning patch of ground behind. Both halves are needed. */
+	bool LeavesGround() const
+	{
+		return GroundRadiusCm > 0.0f && GroundDuration > 0.0f;
+	}
+};
+
+/**
+ * Reading a skill's shape and numbers out of the two generated columns.
+ *
+ * Static functions over strings, like UCataclysmDamageCalculation is static
+ * functions over numbers, so the whole of it can be tested by passing text in
+ * without constructing an ability or a world.
+ *
+ * THE GENERATOR ALREADY REFUSED A BAD CELL. tools/generate_datatables.py rejects
+ * an unknown shape, an unknown parameter, a repeated one and a non-numeric
+ * value, so anything reaching here has been checked once. This parser is
+ * deliberately not a second validator of the same rules -- it is the reader --
+ * but it does record that it failed rather than returning zeros, because a
+ * radius of zero and a radius nobody wrote look identical at the point of use.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmSkillShapes : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** The shape a Shape column value names, or None if it names no shape. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Shape")
+	static ECataclysmSkillShape ShapeFromName(const FString& ShapeName);
+
+	/** The name a shape is written as in the sheet. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Shape")
+	static FString NameOfShape(ECataclysmSkillShape Shape);
+
+	/**
+	 * Read a `Key=Value; Key=Value` cell.
+	 *
+	 * @param Text      the Shape Params cell
+	 * @param OutError  set to the first unreadable entry, empty when all read
+	 */
+	static FCataclysmSkillShapeParams ParseParams(const FString& Text,
+												  FString* OutError = nullptr);
+
+	/**
+	 * The Status.* tag for a named effect, or an invalid tag for none.
+	 *
+	 * The tags are generated from the Buffs, Debuffs and DoTs sheets by
+	 * tools/generate_gameplay_tags.py, so an effect the design lists has a tag
+	 * and one it does not, does not. Punctuation is dropped, because a tag
+	 * segment allows only letters, digits and underscores: "Void Splinter"
+	 * becomes Status.VoidSplinter.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Shape")
+	static FGameplayTag StatusTagFor(const FString& EffectName);
+};

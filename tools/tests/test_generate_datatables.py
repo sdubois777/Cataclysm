@@ -252,6 +252,100 @@ class TestValidation:
         assert gen.validate_weights({"T": [{"Name": "r", "Weight": 20}]}) == []
 
 
+class TestShapeParams:
+    """A skill's shape names which template runs; its params are that template's numbers.
+
+    EVERY ONE OF THESE GUARDS EXISTS BECAUSE THE SILENT FAILURE IS THE BAD ONE.
+    A misspelled parameter would read as zero, and a shape with a radius of zero
+    hits nothing: it activates, spends mana, starts its cooldown, and does
+    nothing. That is the same failure as issue #155's cooldown of zero, which
+    went unnoticed across 77 skills.
+    """
+
+    def test_a_well_formed_cell_parses(self):
+        assert gen.parse_shape_params(
+            "Radius=4; Angle=120; Burn=1", "Strike", "here") == {
+                "Radius": "4", "Angle": "120", "Burn": "1"}
+
+    def test_an_empty_cell_is_no_parameters(self):
+        assert gen.parse_shape_params("", "Strike", "here") == {}
+
+    def test_a_parameter_the_shape_does_not_read_is_refused(self):
+        # Pierce belongs to Projectile. On a Strike it would be ignored, and the
+        # designer would have no way to tell it had been.
+        with pytest.raises(gen.DataError, match="no parameter 'Pierce'"):
+            gen.parse_shape_params("Pierce=3", "Strike", "here")
+
+    def test_a_misspelled_parameter_is_refused(self):
+        with pytest.raises(gen.DataError, match="no parameter 'Radiuss'"):
+            gen.parse_shape_params("Radiuss=4", "Strike", "here")
+
+    def test_a_rider_is_accepted_on_every_shape(self):
+        for shape in gen.SHAPE_PARAMS:
+            assert gen.parse_shape_params(
+                "GroundRadius=3; GroundDuration=6", shape, "here") == {
+                    "GroundRadius": "3", "GroundDuration": "6"}
+
+    def test_a_non_numeric_value_is_refused(self):
+        with pytest.raises(gen.DataError, match="not a number"):
+            gen.parse_shape_params("Radius=wide", "Strike", "here")
+
+    def test_a_missing_equals_is_refused(self):
+        with pytest.raises(gen.DataError, match="not Key=Value"):
+            gen.parse_shape_params("Radius 4", "Strike", "here")
+
+    def test_a_repeated_parameter_is_refused(self):
+        with pytest.raises(gen.DataError, match="given twice"):
+            gen.parse_shape_params("Radius=4; Radius=6", "Strike", "here")
+
+    def test_an_empty_value_is_refused(self):
+        with pytest.raises(gen.DataError, match="has no value"):
+            gen.parse_shape_params("Radius=", "Strike", "here")
+
+    def test_mode_takes_only_the_three_movement_kinds(self):
+        assert gen.parse_shape_params("Mode=Blink", "Movement", "here") == {
+            "Mode": "Blink"}
+        with pytest.raises(gen.DataError, match="not one of"):
+            gen.parse_shape_params("Mode=Teleport", "Movement", "here")
+
+    def test_an_unknown_shape_fails_generation(self, tmp_path):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags", "Shape", "Shape Params"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", "", "Wiggle", ""]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        with pytest.raises(gen.DataError, match="shape 'Wiggle' is not one of"):
+            gen.weapon_skills(book)
+
+    def test_parameters_without_a_shape_fail_generation(self, tmp_path):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags", "Shape", "Shape Params"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", "", "", "Radius=4"]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        with pytest.raises(gen.DataError, match="shape parameters but no shape"):
+            gen.weapon_skills(book)
+
+    def test_a_shape_without_a_skill_name_fails_generation(self, tmp_path):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags", "Shape", "Shape Params"],
+            ["Sword", "War", "Heavy", "", "", "", "Strike", "Radius=4"]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        with pytest.raises(gen.DataError, match="shape but no skill name"):
+            gen.weapon_skills(book)
+
+    def test_a_sheet_without_the_two_columns_still_generates(self, tmp_path):
+        """The 61 War rows predate shapes and must keep generating."""
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", ""]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        rows = gen.weapon_skills(book)
+        assert rows[0]["Shape"] == "" and rows[0]["ShapeParams"] == ""
+
+
 class TestAgainstTheRealWorkbook:
     def test_the_committed_csvs_are_current(self):
         if not gen.WORKBOOK.is_file():

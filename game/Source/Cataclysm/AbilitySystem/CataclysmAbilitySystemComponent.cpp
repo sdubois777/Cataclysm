@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Cataclysm.h"
 #include "GameplayTagContainer.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
@@ -156,5 +157,41 @@ FGameplayAbilitySpecHandle UCataclysmAbilitySystemComponent::GiveAbilityInSlot(
 	Spec.SourceObject = SourceObject;
 	Spec.GetDynamicSpecSourceTags().AddTag(SlotTag);
 
-	return GiveAbility(Spec);
+	const FGameplayAbilitySpecHandle Handle = GiveAbility(Spec);
+
+	// STAMPED ON THE INSTANCE, AND NOTHING DID THIS BEFORE. Adding the slot TAG
+	// is what lets a key press find the ability; setting the slot PROPERTY is
+	// what lets the ability find its own numbers. Issue #155 put the cooldown,
+	// the mana cost and the damage multiplier in a table keyed by slot, and
+	// UCataclysmGameplayAbility reads them from `Slot` -- which stayed at None
+	// on every granted ability, so all three read as zero.
+	//
+	// Nothing reported it because a slot with no row logs a warning at Verbose
+	// and returns zeros, and the only ability that existed was the placeholder,
+	// which spends nothing and waits for nothing anyway.
+	// Cataclysm.Skills.UsingASkillSpendsManaAndStartsItsCooldown fails without
+	// this line.
+	if (FGameplayAbilitySpec* Granted = FindAbilitySpecFromHandle(Handle))
+	{
+		if (UCataclysmGameplayAbility* Instance =
+				Cast<UCataclysmGameplayAbility>(Granted->GetPrimaryInstance()))
+		{
+			Instance->Slot = Slot;
+		}
+		else if (UCataclysmGameplayAbility* Shared =
+					Cast<UCataclysmGameplayAbility>(Granted->Ability))
+		{
+			// A non-instanced ability has no per-grant object to write to, so
+			// this writes the class default and two grants into different slots
+			// would fight. Every ability in this project is InstancedPerActor,
+			// which is why that is a warning rather than a supported path.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("%s is not instanced, so its slot is being written on the "
+					 "class default. Two weapons granting it into different "
+					 "slots will disagree."), *Shared->GetName());
+			Shared->Slot = Slot;
+		}
+	}
+
+	return Handle;
 }

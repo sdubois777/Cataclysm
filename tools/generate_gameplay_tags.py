@@ -98,6 +98,55 @@ def read_tags(workbook: pathlib.Path) -> list[tuple[str, str]]:
     return sorted(tags.items())
 
 
+#: Sheets listing the status effects a skill can apply, and the tag branch each
+#: one produces.
+#:
+#: WHY THESE ARE GENERATED RATHER THAN TYPED INTO THE TAGS SHEET. They are the
+#: same names, written down twice, and the second copy would go stale silently:
+#: a skill applying an effect whose tag nobody added grants nothing, has no
+#: duration a player can see, and reports no error. Generating them means adding
+#: an effect to the design adds its tag in the same edit.
+EFFECT_SHEETS = ("Buffs", "Debuffs", "DoTs")
+
+#: The branch generated effect tags live under.
+STATUS_PREFIX = "Status"
+
+
+def tag_segment(name: str) -> str:
+    """A status effect's name as a legal tag segment.
+
+    Unreal allows letters, digits and underscores, so "Void Splinter" becomes
+    "VoidSplinter" and "Martyr's Ember" would become "MartyrsEmber".
+    """
+    return re.sub(r"[^A-Za-z0-9]", "", name)
+
+
+def read_status_effect_tags(workbook: pathlib.Path) -> list[tuple[str, str]]:
+    """Return a (tag, description) pair for every named status effect."""
+    import openpyxl
+
+    book = openpyxl.load_workbook(workbook, data_only=True, read_only=True)
+    out: dict[str, str] = {}
+    for sheet in EFFECT_SHEETS:
+        if sheet not in book.sheetnames:
+            continue
+        for row in book[sheet].iter_rows(values_only=True):
+            if not row or not row[0]:
+                continue
+            text = str(row[0]).strip()
+            name = text.split(":", 1)[0].strip() if ":" in text else ""
+            if not name:
+                continue
+            segment = tag_segment(name)
+            if not segment:
+                continue
+            tag = f"{STATUS_PREFIX}.{segment}"
+            # First definition wins. A name in two sheets is a design problem
+            # rather than two tags, and the tag sheet check below reports it.
+            out.setdefault(tag, f"The {name} status effect, from the {sheet} sheet.")
+    return sorted(out.items())
+
+
 def implied_tags(tags: list[tuple[str, str]]) -> set[str]:
     """Every tag plus the parents Unreal creates implicitly.
 
@@ -163,9 +212,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         tags = read_tags(args.workbook)
+        effects = read_status_effect_tags(args.workbook)
     except TagError as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
+
+    # The Tags sheet is authoritative for everything else, so a Status.* tag
+    # typed there by hand wins over the generated one rather than colliding.
+    typed = {tag for tag, _ in tags}
+    tags = sorted(tags + [pair for pair in effects if pair[0] not in typed])
 
     contents = render(tags)
 
