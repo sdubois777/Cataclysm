@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
@@ -148,6 +149,20 @@ namespace CataclysmSkillTest
 	{
 		return Ability && Caster.AbilitySystem->TryActivateAbility(
 			Ability->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+	}
+
+	/** The only patch of burning ground in the world, or null if there is not
+	 *  exactly one. */
+	ACataclysmGroundZone* TheOnlyGroundZone(UWorld* World)
+	{
+		ACataclysmGroundZone* Found = nullptr;
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			Found = *It;
+			++Count;
+		}
+		return Count == 1 ? Found : nullptr;
 	}
 }
 
@@ -844,6 +859,305 @@ bool FCataclysmGroundZoneTest::RunTest(const FString&)
 	Zone->Sweep();
 	TestEqual(TEXT("Walking back in starts it again"), Zone->LastSweepCount, 1);
 	TestEqual(TEXT("Three sweeps ran"), Zone->TicksElapsed, 3);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundZoneIsWhereItWasLeftTest,
+	"Cataclysm.Skills.BurningGroundIsWhereItWasLeftNotAtTheWorldOrigin",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundZoneIsWhereItWasLeftTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter NearTheZone(World, FVector(30 * M, 0, 0));
+	FScopedFighter NearTheOrigin(World, FVector(1 * M, 0, 0));
+
+	// WELL AWAY FROM THE ORIGIN, WHICH IS THE POINT OF THIS TEST. The existing
+	// ground zone test spawns at (0,0,0), so it could not tell the difference
+	// between a zone that is where it was put and one that is at the origin. The
+	// class had no components at all, an actor with no scene component gets no
+	// root component, and an actor with no root component reports its location as
+	// the world origin -- so every patch of burning ground in the project swept
+	// around (0,0,0). Issue #167.
+	const FVector Where(30 * M, 0, 0);
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(
+		Caster.Actor, Where, /*RadiusCm=*/5 * M,
+		/*Duration=*/6.0f, /*DamagePerTick=*/10.0f);
+	if (!Zone)
+	{
+		AddError(TEXT("Could not spawn the ground zone."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Zone)) { Zone->Destroy(); } };
+
+	TestEqual(TEXT("The zone reports the position it was spawned at"),
+		Zone->GetActorLocation(), Where);
+	TestFalse(TEXT("A zone spawned at a point is not long"), Zone->IsLong());
+
+	const float FarBefore = NearTheZone.Health();
+	const float OriginBefore = NearTheOrigin.Health();
+
+	Zone->Sweep();
+
+	TestEqual(TEXT("It found the one standing in it"), Zone->LastSweepCount, 1);
+	TestTrue(TEXT("Who took a tick"), NearTheZone.Health() < FarBefore);
+	TestEqual(TEXT("And one standing at the world origin took nothing"),
+		NearTheOrigin.Health(), OriginBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLongGroundZoneTest,
+	"Cataclysm.Skills.BurningGroundCanCoverAPathRatherThanAPoint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLongGroundZoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector(-5 * M, 0, 0));
+	FScopedFighter Halfway(World, FVector(6 * M, 0, 0));
+	FScopedFighter AtTheFarEnd(World, FVector(12 * M, 0, 0));
+	FScopedFighter Beside(World, FVector(6 * M, 5 * M, 0));
+	FScopedFighter Beyond(World, FVector(20 * M, 0, 0));
+
+	const FVector Start(0, 0, 0);
+	const FVector End(12 * M, 0, 0);
+
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
+		Caster.Actor, Start, End, /*HalfWidthCm=*/1.5f * M,
+		/*Duration=*/4.0f, /*DamagePerTick=*/10.0f);
+	if (!Zone)
+	{
+		AddError(TEXT("Could not spawn the long ground zone."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Zone)) { Zone->Destroy(); } };
+
+	TestTrue(TEXT("A zone spawned along a path is long"), Zone->IsLong());
+	TestEqual(TEXT("Its near end is where the path started"),
+		Zone->GetActorLocation(), Start);
+	TestEqual(TEXT("Its far end is where the path ended"), Zone->FarEnd, End);
+
+	Zone->Sweep();
+
+	// THE HALFWAY ONE IS THE WHOLE POINT. With one patch at the far end it stood
+	// on ground that was not burning, which is what issue #167 reported.
+	TestEqual(TEXT("It found the two standing on the path"), Zone->LastSweepCount, 2);
+
+	Zone->Sweep();
+	TestEqual(TEXT("Still two on the second sweep"), Zone->LastSweepCount, 2);
+
+	// Named so a failure says which one is wrong rather than only the count.
+	const float Damage = 10.0f;
+	TestEqual(TEXT("The one halfway along the path is burning"),
+		100000.0f - Halfway.Health(), Damage * 2.0f);
+	TestEqual(TEXT("So is the one at the far end"),
+		100000.0f - AtTheFarEnd.Health(), Damage * 2.0f);
+	TestEqual(TEXT("One five metres to the side took nothing"),
+		Beside.Health(), 100000.0f);
+	TestEqual(TEXT("One beyond the far end took nothing"),
+		Beyond.Health(), 100000.0f);
+
+	// Behind the start is outside too, which is what stops a trail burning
+	// ground the caster ran away from.
+	TestEqual(TEXT("The caster stands behind the start and is unhurt"),
+		Caster.Health(), 100000.0f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Which skills leave a path burning and which leave a patch
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPiercingProjectileTrailTest,
+	"Cataclysm.Skills.APiercingProjectileLeavesItsWholeFlightPathBurning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPiercingProjectileTrailTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Halfway(World, FVector(6 * M, 0, 0));
+	FScopedFighter Beside(World, FVector(6 * M, 5 * M, 0));
+
+	// Emberhurl's own numbers from the Weapon Skills sheet, with Speed set to
+	// zero so it arrives at once and needs no timer, and without Returns so the
+	// test is about the ground rather than the second pass.
+	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=0; Burn=1; "
+			 "GroundRadius=1.5; GroundDuration=4"),
+		TEXT("Emberhurl"));
+	if (!Hurl)
+	{
+		AddError(TEXT("Could not grant the hurl."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
+
+	ACataclysmGroundZone* Zone = TheOnlyGroundZone(World);
+	if (!Zone)
+	{
+		AddError(TEXT("A throw that leaves ground left no zone, or left more "
+					  "than one."));
+		return false;
+	}
+
+	TestTrue(TEXT("The ground it left covers a path"), Zone->IsLong());
+	TestEqual(TEXT("Starting where the throw started"),
+		Zone->GetActorLocation(), FVector::ZeroVector);
+	TestEqual(TEXT("And ending twelve metres away, where it landed"),
+		static_cast<float>(Zone->FarEnd.X), 12.0f * M, 1.0f);
+
+	// Measured from AFTER the throw's own hits, so this is the ground's damage
+	// and not the projectile's.
+	const float HalfwayBefore = Halfway.Health();
+	const float BesideBefore = Beside.Health();
+
+	Zone->Sweep();
+
+	TestTrue(TEXT("An enemy halfway along the flight path is burning"),
+		Halfway.Health() < HalfwayBefore);
+	TestEqual(TEXT("One standing off the path is not"),
+		Beside.Health(), BesideBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLandingProjectileGroundTest,
+	"Cataclysm.Skills.AProjectileThatDoesNotPierceLeavesGroundOnlyWhereItLanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLandingProjectileGroundTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// Blood Pyre. It does not pierce, and its text puts a pyre where it hit, so
+	// its ground must stay a patch even though the change made a path possible.
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Speed=0; Burn=1; GroundRadius=3; "
+			 "GroundDuration=8"),
+		TEXT("Blood Pyre"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	ACataclysmGroundZone* Zone = TheOnlyGroundZone(World);
+	if (!Zone)
+	{
+		AddError(TEXT("A pyre that leaves ground left no zone, or left more "
+					  "than one."));
+		return false;
+	}
+
+	TestFalse(TEXT("The ground it left is a patch, not a path"), Zone->IsLong());
+	TestEqual(TEXT("At the point it landed"),
+		static_cast<float>(Zone->GetActorLocation().X), 12.0f * M, 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeTrailTest,
+	"Cataclysm.Skills.AChargeLeavesFireAlongTheWholeRunAndALeapDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChargeTrailTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	{
+		UWorld* World = MakeWorld();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedFighter Caster(World, FVector::ZeroVector);
+
+		// Cinder Rush "leaves a trail of fire behind you".
+		UCataclysmMovementSkill* Rush = GrantSkill<UCataclysmMovementSkill>(
+			Caster, ECataclysmAbilitySlot::Movement,
+			TEXT("Mode=Charge; Range=10; Radius=2; Burn=1; GroundRadius=2; "
+				 "GroundDuration=5"),
+			TEXT("Cinder Rush"));
+		if (!Rush)
+		{
+			AddError(TEXT("Could not grant the rush."));
+			return false;
+		}
+
+		TestTrue(TEXT("It activates"), Activate(Caster, Rush));
+
+		ACataclysmGroundZone* Zone = TheOnlyGroundZone(World);
+		if (!Zone)
+		{
+			AddError(TEXT("A charge that leaves ground left no zone, or left "
+						  "more than one."));
+			return false;
+		}
+
+		TestTrue(TEXT("A charge leaves ground covering a path"), Zone->IsLong());
+		TestEqual(TEXT("Starting where the run started"),
+			Zone->GetActorLocation(), FVector::ZeroVector);
+		TestEqual(TEXT("And ending where the character arrived"),
+			static_cast<float>(Zone->FarEnd.X),
+			static_cast<float>(Caster.Actor->GetActorLocation().X), 1.0f);
+	}
+
+	{
+		UWorld* World = MakeWorld();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedFighter Caster(World, FVector::ZeroVector);
+
+		// Infernal Plunge leaves "a pool of lava" where it landed, and nothing
+		// under the arc, so a leap must still leave a patch.
+		UCataclysmMovementSkill* Plunge = GrantSkill<UCataclysmMovementSkill>(
+			Caster, ECataclysmAbilitySlot::Movement,
+			TEXT("Mode=Leap; Range=10; Radius=5; Burn=1; GroundRadius=5; "
+				 "GroundDuration=5"),
+			TEXT("Infernal Plunge"));
+		if (!Plunge)
+		{
+			AddError(TEXT("Could not grant the plunge."));
+			return false;
+		}
+
+		TestTrue(TEXT("It activates"), Activate(Caster, Plunge));
+
+		ACataclysmGroundZone* Zone = TheOnlyGroundZone(World);
+		if (!Zone)
+		{
+			AddError(TEXT("A leap that leaves ground left no zone, or left more "
+						  "than one."));
+			return false;
+		}
+
+		TestFalse(TEXT("A leap leaves a patch, not a path"), Zone->IsLong());
+	}
 
 	return true;
 }

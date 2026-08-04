@@ -213,11 +213,20 @@ void UCataclysmProjectileSkill::LandThenFinish()
 
 	if (Params.LeavesGround())
 	{
-		// Where it landed. Emberhurl leaves "its flight path burning" and Blood
-		// Pyre leaves a pyre where it hit; one zone at the far end is the honest
-		// approximation of the first and exactly right for the second. A line of
-		// zones along the path would be closer for Emberhurl. Issue #167.
-		LeaveGroundAt(Destination);
+		// PIERCE TELLS THE TWO KINDS APART HERE TOO, exactly as it does in Land.
+		// One that pierces travelled through a line and its text says the line
+		// burns: Emberhurl leaves "its flight path burning", and Chain of Coals
+		// and Hellbrand are written the same way. One that does not pierce landed
+		// somewhere, and Blood Pyre's pyre and Magma Quake's crater belong at
+		// that point and nowhere else.
+		if (Params.Pierce > 0)
+		{
+			LeaveGroundAlong(Origin, Destination);
+		}
+		else
+		{
+			LeaveGroundAt(Destination);
+		}
 	}
 
 	// Emberhurl hits "once going out and once returning to your hand".
@@ -395,11 +404,19 @@ void UCataclysmMovementSkill::ActivateAbility(
 	EnemiesHit = Targets.Num();
 	HitTargets(Targets);
 
-	// Charge leaves "a trail of fire behind you"; Leap leaves "a pool of lava"
-	// where it landed. Both are put at the far end, which is exactly right for a
-	// leap and an approximation for a charge: the trail should follow the whole
-	// path. Issue #167.
-	LeaveGroundAt(ArrivedAt);
+	// Cinder Rush's charge "leaves a trail of fire behind you", so the ground
+	// burns along the whole run. Infernal Plunge's leap leaves "a pool of lava"
+	// where it landed and Emberstep's blink burns "both points", so for those two
+	// the far end is a point and the ground there is a patch. The blink's other
+	// patch was already left at the start, above.
+	if (Params.MovementMode == ECataclysmMovementMode::Charge)
+	{
+		LeaveGroundAlong(Start, ArrivedAt);
+	}
+	else
+	{
+		LeaveGroundAt(ArrivedAt);
+	}
 
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }

@@ -168,6 +168,13 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Location)
 {
+	// A patch is a path whose two ends are the same point.
+	return LeaveGroundAlong(Location, Location);
+}
+
+ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
+	const FVector& Start, const FVector& End)
+{
 	if (!Params.LeavesGround())
 	{
 		return nullptr;
@@ -198,8 +205,8 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Loca
 						* Burn.PercentOfHit / 100.0f
 						/ FMath::Max(1.0f, Burn.DurationSeconds);
 
-	return ACataclysmGroundZone::Spawn(Self, Location, Params.GroundRadiusCm,
-									   Params.GroundDuration, PerTick);
+	return ACataclysmGroundZone::SpawnAlong(Self, Start, End, Params.GroundRadiusCm,
+											Params.GroundDuration, PerTick);
 }
 
 void UCataclysmSkillTemplate::PayHealthCost()
