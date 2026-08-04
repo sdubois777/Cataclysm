@@ -20,6 +20,82 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — The navigation mesh does update for destroyed geometry; the problem is that it takes four seconds
+
+**What this corrects.** The entry below excluded the walkable surface from
+destruction on the grounds that "the navigation mesh is reported not to update
+reliably when Geometry Collections are destroyed". That came from community forum
+reports. It is wrong for Unreal Engine 5.8. The exclusion still stands, but the
+reason had to be replaced with the real one.
+
+**How this was checked.** By reading the installed engine source at
+`Engine/Source/Runtime/Experimental/GeometryCollectionEngine`, and by querying the
+running editor for this project's own navigation settings. Not by measurement of
+frame cost, which is still outstanding.
+
+**FINDING 1: Geometry Collections are navigation-relevant in 5.8, and they do ask
+for updates.** `UGeometryCollectionComponent` implements `INavRelevantInterface`,
+sets `bHasCustomNavigableGeometry` to `Yes` in its constructor, implements
+`DoCustomNavigableGeometryExport`, and its `bUpdateNavigationInTick` flag defaults
+to true. The flat claim that navigation does not update is false.
+
+**FINDING 2: the update is a blunt 256-frame poll, and that is the real problem.**
+`UpdateNavigationDataIfNeeded` calls `UpdateNavigationData` only on frames where
+`(GFrameCounter + NavmeshInvalidationTimeSliceIndex) & 0xff == 0`. The index is a
+per-component offset taken from a global counter, so components stagger against
+each other, but each one still updates once every 256 frames. At 60 frames per
+second that is up to about 4.3 seconds. Epic's own comment in that function admits
+the cause: "Need way of seeing if the collection is actually changing." There is no
+event, so it polls.
+
+Four seconds is not survivable for a floor. Enemies would walk over a hole that has
+already been there for several seconds. `UpdateNavigationData` can be called
+directly to skip the wait, but that puts a navigation rebuild inside combat, which
+is the cost the exclusion exists to avoid.
+
+**FINDING 3: it only runs in a game world.** The update is gated on
+`MyWorld->IsGameWorld()`. Destruction tested in the editor viewport shows no
+navigation update at all. That likely explains part of why the forum reports say it
+does not work.
+
+**FINDING 4: this project could not update navigation at runtime today anyway.**
+`game/Config/DefaultEngine.ini` contains no navigation settings at all, and the
+`RecastNavMesh-Default` actor in `L_Sandbox` reports `RuntimeGeneration = Static`.
+`ARecastNavMesh::SupportsRuntimeGeneration` returns false for Static, so the
+generator is disabled outright. Any future work that needs runtime navigation
+changes has to change this first, and it is a global cost, not a local one.
+
+**FINDING 5, useful and free: small debris is already excluded from navigation.**
+The console variable `p.GeometryCollectionNavigationSizeThreshold` defaults to 20
+centimetres, measured as the diagonal of a leaf node's bounds, and pieces below it
+are not exported for navigation. Rubble does not pollute the navigation mesh
+without anyone configuring anything.
+
+**FINDING 6, a packaging trap worth knowing before it costs a day.** If a Geometry
+Collection asset has `bStripOnCook` set, its data is gone at cook time and there is
+nothing left to export for navigation. The engine logs a message telling you to use
+`bUseRootProxyForNavigation` instead. This works in the editor and silently
+degrades in a packaged build, which is the worst shape a defect can have.
+
+**DECISION: the walkable surface stays excluded, and the design document's stated
+reason is corrected.** The reason is now latency and cost, both specific: a
+256-frame update cycle, an explicit rebuild landing inside combat if that cycle is
+bypassed, and a project-wide switch from static to dynamic navigation generation.
+
+**What is still unmeasured.** Every frame-cost figure remains unverified. It cannot
+be measured yet for a reason that is worth recording: the project contains no
+Geometry Collection assets and no static meshes of its own. The entire `/Game`
+folder is maps, data tables and input assets. There is nothing to fracture and no
+representative dungeon room to fill. Those measurements are blocked on the project
+having art content, not on tooling.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change. The "Why the walkable
+surface is excluded" paragraph in the Destructible Environment subsection of
+section VIII is replaced, because its stated reason was factually wrong about the
+engine.
+
+---
+
 ## 2026-08-04 — The environment reacts through physics, and nothing about a crater is authored
 
 **This supersedes the fourth decision in the entry below.** That entry recommended
