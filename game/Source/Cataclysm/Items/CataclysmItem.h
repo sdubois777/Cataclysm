@@ -296,4 +296,37 @@ public:
 	/** Whether the base is a two-handed weapon, which doubles its values. */
 	static bool IsTwoHanded(const FCataclysmItem& Item,
 							const UDataTable* BaseTable);
+
+	/** The stat name a weapon's own damage is carried under, in every sheet. */
+	static const TCHAR* AttackDamageStat;
+
+	/** Where the imported item base table lives. */
+	static const TCHAR* BaseTableAssetPath;
+
+	/** The item base table, or null with the reason logged. */
+	static const UDataTable* LoadBaseTable();
+
+	/**
+	 * What a weapon of this TYPE supplies as attack damage.
+	 *
+	 * BY TYPE RATHER THAN BY BASE NAME, because that is what the game currently
+	 * has to ask with. UCataclysmWeaponSlotsComponent equips a weapon TYPE --
+	 * "Greataxe" -- rather than a rolled item, since items that carry a rolled
+	 * damage type and a gear level do not exist yet. Every other function on
+	 * this class takes an FCataclysmItem and should be preferred once they do.
+	 *
+	 * THE TWO-HANDED MULTIPLIER IS APPLIED HERE, and leaving it out would be a
+	 * silent halving. The sheets state a Greataxe at 72 and that is the figure
+	 * BEFORE doubling, so a Greataxe supplies 144 at gear level 10 and about 41
+	 * at gear level 0. FCataclysmItemBaseRow says so, and TwoHandedMultiplier
+	 * explains why two-handers double.
+	 *
+	 * @param GearLevel  0 to 10. The stated values are the +10 figures.
+	 * @return 0 when the table is missing, the type is not a weapon, or the
+	 *         base carries no attack damage implicit
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float WeaponDamageForType(const UDataTable* BaseTable,
+									 const FString& WeaponType,
+									 int32 GearLevel);
 };

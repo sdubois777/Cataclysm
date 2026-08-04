@@ -2,8 +2,10 @@
 
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
+#include "Items/CataclysmItem.h"
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystemInterface.h"
 #include "Cataclysm.h"
@@ -61,6 +63,15 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 
 	AvailableSkills = UCataclysmWeaponSkills::SkillsFor(
 		WeaponSkillTable, EquippedWeaponType, DamageType);
+
+	// THE NUMBER EVERY SKILL IS A PERCENTAGE OF, and until issue #173 nothing
+	// set it: UCataclysmCombatAttributeSet::AttackDamage was initialised to zero
+	// and never changed, so a Heavy Attack at 250% of it dealt nothing and the
+	// burn rider, being a share of the hit, applied nothing either.
+	//
+	// Set before the abilities are granted, so a skill activated on the same
+	// frame as the equip already sees it.
+	ApplyWeaponDamage();
 
 	if (AvailableSkills.IsEmpty())
 	{
@@ -180,6 +191,64 @@ int32 UCataclysmWeaponSlotsComponent::EquipStartingWeapon()
 	return Filled;
 }
 
+void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
+{
+	UCataclysmAbilitySystemComponent* AbilitySystem = GetAbilitySystem();
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// AN ABILITY SYSTEM WITHOUT COMBAT ATTRIBUTES IS A LEGITIMATE ACTOR, and
+	// writing to an attribute it does not have raises an engine ensure --
+	// "Unable to get attribute set for attribute AttackDamage" -- rather than
+	// failing quietly. The player and every enemy carry the combat set; a bare
+	// ability system holder, which several tests build, does not.
+	const FGameplayAttribute Attribute =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Attribute))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("The ability system has no combat attribute set, so the %s's "
+				 "damage was not applied."),
+			EquippedWeaponType.IsEmpty() ? TEXT("weapon") : *EquippedWeaponType);
+		return;
+	}
+
+	if (!ItemBaseTable)
+	{
+		ItemBaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	}
+
+	// SET, NOT ADDED, which is what makes swapping weapons safe. The character
+	// holds one weapon, so its damage replaces whatever the last one supplied
+	// rather than accumulating -- and an empty type sets zero, which is what
+	// holding nothing is worth.
+	const float Damage = EquippedWeaponType.IsEmpty()
+		? 0.0f
+		: UCataclysmItemModifiers::WeaponDamageForType(
+			ItemBaseTable, EquippedWeaponType, WeaponGearLevel);
+
+	AbilitySystem->SetNumericAttributeBase(Attribute, Damage);
+
+	if (Damage <= 0.0f && !EquippedWeaponType.IsEmpty())
+	{
+		// A weapon that supplies no damage makes every skill deal nothing, and
+		// the symptom is a game that runs normally and kills nothing.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The %s supplies no attack damage, so every skill will deal "
+				 "zero. Check its attack_damage implicit in the Item Bases "
+				 "sheet of docs/All_Things_Cataclysm.xlsx."),
+			*EquippedWeaponType);
+	}
+	else
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("The %s supplies %.1f attack damage at gear level %d."),
+			*EquippedWeaponType, Damage, WeaponGearLevel);
+	}
+}
+
 void UCataclysmWeaponSlotsComponent::UnequipWeapon()
 {
 	if (UCataclysmAbilitySystemComponent* AbilitySystem = GetAbilitySystem())
@@ -189,4 +258,9 @@ void UCataclysmWeaponSlotsComponent::UnequipWeapon()
 
 	AvailableSkills.Reset();
 	EquippedWeaponType.Reset();
+
+	// After clearing the type, so it sets zero. A character holding nothing has
+	// no weapon damage; leaving the last weapon's figure behind would mean an
+	// unarmed character kept hitting for whatever they last held.
+	ApplyWeaponDamage();
 }

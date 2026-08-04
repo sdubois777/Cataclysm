@@ -316,3 +316,76 @@ void UCataclysmItemModifiers::AccumulateInto(
 		Add(FName(*Affix->Stat), Bucket, ECataclysmModifierSource::GearAffix, Value);
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The weapon's own damage, looked up by weapon type
+// ---------------------------------------------------------------------------
+
+const TCHAR* UCataclysmItemModifiers::AttackDamageStat = TEXT("attack_damage");
+
+const TCHAR* UCataclysmItemModifiers::BaseTableAssetPath =
+	TEXT("/Game/Data/DT_ItemBases.DT_ItemBases");
+
+const UDataTable* UCataclysmItemModifiers::LoadBaseTable()
+{
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, BaseTableAssetPath);
+	if (!Table)
+	{
+		// Loudly, and naming both scripts, because the two failures look the
+		// same from here: the workbook never produced the CSV, or the CSV was
+		// never imported as an asset.
+		UE_LOG(LogCataclysm, Error,
+			TEXT("Could not load %s. It is produced by "
+				 "tools/generate_datatable_assets.py from game/Data/"
+				 "ItemBases.csv, which tools/generate_datatables.py produces "
+				 "from the Item Bases sheet of "
+				 "docs/All_Things_Cataclysm.xlsx."), BaseTableAssetPath);
+	}
+	return Table;
+}
+
+float UCataclysmItemModifiers::WeaponDamageForType(
+	const UDataTable* BaseTable, const FString& WeaponType, int32 GearLevel)
+{
+	if (!BaseTable || WeaponType.IsEmpty())
+	{
+		return 0.0f;
+	}
+
+	float Found = 0.0f;
+	BaseTable->ForeachRow<FCataclysmItemBaseRow>(
+		TEXT("UCataclysmItemModifiers::WeaponDamageForType"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (Found > 0.0f
+				|| !Row.WeaponType.Equals(WeaponType, ESearchCase::IgnoreCase))
+			{
+				return;
+			}
+
+			// Both implicit slots are searched. Which one carries the damage is
+			// not fixed: a Fist reads attack_damage first and a Staff reads it
+			// first too, but nothing in the sheet promises that, and assuming
+			// slot one would silently return zero the day it moves.
+			const FString ImplicitStats[] = { Row.Implicit1Stat, Row.Implicit2Stat };
+			const float ImplicitValues[] = { Row.Implicit1Value, Row.Implicit2Value };
+
+			for (int32 Index = 0; Index < 2; ++Index)
+			{
+				if (!ImplicitStats[Index].Equals(AttackDamageStat, ESearchCase::IgnoreCase))
+				{
+					continue;
+				}
+
+				// THE STATED FIGURE IS THE +10 ONE and a two-hander doubles it.
+				// Leaving either out is a silent halving or worse, and the
+				// symptom is only that everything hits softly.
+				Found = UCataclysmItemValues::ImplicitValue(
+					ImplicitValues[Index], GearLevel,
+					/*bTwoHanded=*/Row.Hands == 2);
+				return;
+			}
+		});
+
+	return Found;
+}

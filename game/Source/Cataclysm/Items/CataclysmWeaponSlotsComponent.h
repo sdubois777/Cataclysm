@@ -103,6 +103,12 @@ public:
 	/** Which weapon a character begins holding. For tests; see the field below. */
 	void SetStartingWeaponType(const FString& NewType) { StartingWeaponType = NewType; }
 
+	/** Uses this item base table instead of the generated one. For tests. */
+	void SetItemBaseTable(const UDataTable* Table) { ItemBaseTable = Table; }
+
+	/** How upgraded the equipped weapon is. For tests; see the field below. */
+	void SetWeaponGearLevel(int32 Level) { WeaponGearLevel = Level; }
+
 protected:
 	/**
 	 * The weapon skill matrix. Loaded from the generated CSV on first use when
@@ -161,8 +167,34 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon")
 	TSubclassOf<UCataclysmGameplayAbility> UndesignedSkillClass;
 
+	/**
+	 * How upgraded the equipped weapon is, from 0 to 10.
+	 *
+	 * TEMPORARY, for the same reason DamageType is: a real weapon is a dropped
+	 * item that carries its own upgrade level, and dropped items do not exist.
+	 * Zero, because an unupgraded weapon is what a character starts with.
+	 *
+	 * IT CHANGES THE DAMAGE A LOT. The sheets state the +10 figures, so a
+	 * Greataxe supplies about 41 at level 0 and 144 at level 10.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon",
+			  meta = (ClampMin = "0", ClampMax = "10"))
+	int32 WeaponGearLevel = 0;
+
+	/** The item base table, for the equipped weapon's own damage. */
+	UPROPERTY(Transient)
+	TObjectPtr<const UDataTable> ItemBaseTable;
+
 private:
 	UCataclysmAbilitySystemComponent* GetAbilitySystem() const;
+
+	/**
+	 * Puts the equipped weapon's own damage onto the character.
+	 *
+	 * Called on every equip and every unequip, so the attribute always matches
+	 * what is held.
+	 */
+	void ApplyWeaponDamage();
 
 	UPROPERTY() FString EquippedWeaponType;
 	UPROPERTY() TArray<FCataclysmWeaponSkill> AvailableSkills;
