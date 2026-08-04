@@ -35,7 +35,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from . import scoring
+from . import damage, scoring
 
 # --------------------------------------------------------------------------
 # The shape of a character
@@ -71,7 +71,12 @@ RESISTANCE_COUNT = 8
 # push actual resistance above it -- that headroom is real, because enemy
 # penetration eats into it -- but it is headroom against penetration rather
 # than power, so it does not raise the score.
-RESISTANCE_CAP = 70.0
+#
+# Re-exported from damage.py, which owns it, rather than written out again here.
+# It is NOT one of the ported constants: this module is an original, and
+# sim/verify_scoring_port.py checks scoring.py, which does not mention
+# resistance. Issue #228.
+RESISTANCE_CAP = damage.RESISTANCE_CAP
 
 # --------------------------------------------------------------------------
 # The design decision: what share of Power Score each bucket supplies
