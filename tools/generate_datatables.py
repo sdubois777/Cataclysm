@@ -426,6 +426,22 @@ def item_bases(book) -> list[dict]:
             raise DataError(f"Item Bases row {index}: {name} is "
                             f"{hands}-handed; a weapon has 1 or 2")
 
+        # Attacks per second, and only a weapon has one. It is NOT an implicit:
+        # a two-handed weapon doubles every implicit it carries, which is right
+        # for damage and would make a Greatsword swing twice as fast as a Sword.
+        # See issue #120 and WeaponBase.attack_speed in
+        # sim/cataclysm_sim/affixes.py.
+        attack_speed = _cell(raw, headers, "Attack Speed")
+        if hands and not attack_speed:
+            raise DataError(
+                f"Item Bases row {index}: the {name} is a weapon with no attack "
+                "speed. Every weapon needs one, because the weapon is where "
+                "that base comes from and an increase to zero is worth nothing.")
+        if attack_speed and not hands:
+            raise DataError(
+                f"Item Bases row {index}: {name} is not a weapon but has an "
+                "attack speed. Only a weapon supplies that base.")
+
         entry = {
             "Name": row_name(slot, name),
             "BaseName": name,
@@ -434,6 +450,7 @@ def item_bases(book) -> list[dict]:
             "SubType": _cell(raw, headers, "Sub-Type"),
             "WeaponType": _cell(raw, headers, "Weapon Type"),
             "DamageTypeSlots": int(float(_cell(raw, headers, "Damage Types") or 0)),
+            "AttackSpeed": float(attack_speed) if attack_speed else 0.0,
         }
 
         implicits = 0

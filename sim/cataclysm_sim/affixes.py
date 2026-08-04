@@ -1049,6 +1049,26 @@ class WeaponBase(ItemBase):
     hands: int = 1
     sub_type: str = "Slashing"
     weapon_type: str = "Sword"
+
+    #: Attacks per second before any increase. This is the base the design
+    #: document says the equipped weapon supplies, and without it every increased
+    #: attack speed affix in the game multiplies zero and is worth nothing.
+    #: Issue #120.
+    #:
+    #: NOT AN IMPLICIT, AND THAT IS THE POINT. `value_multiplier` doubles every
+    #: implicit on a two-handed weapon, which is correct for damage and would be
+    #: nonsense here: a Greatsword would swing twice as fast as a Sword. Path of
+    #: Exile and Last Epoch both treat a weapon's rate as an intrinsic property
+    #: listed apart from its modifiers, and Last Epoch's own formula is skill
+    #: rate times weapon rate times one plus increases. So it sits beside the
+    #: implicits rather than among them, and nothing scales it but increases.
+    #:
+    #: The numbers are ordered inversely to each weapon's flat attack damage and
+    #: average to ONE_HANDED_RATE and TWO_HANDED_RATE in
+    #: sim/analyse_two_handed_multiplier.py, which is what the two-handed
+    #: multiplier of 2.0 was derived against. Changing one without the other
+    #: moves a multiplier that is already shipped.
+    attack_speed: float = 0.0
     damage_type_slots: int = 2
 
     @property
@@ -1068,6 +1088,12 @@ class WeaponBase(ItemBase):
                 f"{list(WEAPON_SUB_TYPES)}")
         if self.hands not in (1, 2):
             raise ValueError(f"{self.name} is {self.hands}-handed")
+        if self.attack_speed <= 0.0:
+            raise ValueError(
+                f"{self.name} has an attack speed of {self.attack_speed}. Every "
+                "weapon needs one above zero, because the weapon is where that "
+                "base comes from and an increase to zero is worth nothing. "
+                "See issue #120.")
         if not 1 <= self.damage_type_slots <= len(DAMAGE_TYPES):
             raise ValueError(
                 f"{self.name} holds {self.damage_type_slots} damage types; "
@@ -1086,10 +1112,10 @@ DAMAGE_TYPES_ON_TWO_HANDED = 3
 
 
 def _weapon(name: str, weapon_type: str, hands: int, sub_type: str,
-            *implicits: Implicit) -> WeaponBase:
+            attack_speed: float, *implicits: Implicit) -> WeaponBase:
     return WeaponBase(
         name=name, slot="Weapon", implicits=implicits, hands=hands,
-        sub_type=sub_type, weapon_type=weapon_type,
+        sub_type=sub_type, weapon_type=weapon_type, attack_speed=attack_speed,
         damage_type_slots=(DAMAGE_TYPES_ON_ONE_HANDED if hands == 1
                            else DAMAGE_TYPES_ON_TWO_HANDED))
 
@@ -1163,47 +1189,47 @@ ITEM_BASES: tuple[ItemBase, ...] = (
              (Implicit("cooldown_reduction", "increased", 10.0),)),
     ItemBase("Effigy", "Relic", (Implicit("dot_frequency", "increased", 10.0),)),
     # -- Weapon, one-handed ----------------------------------------------
-    _weapon("Sword", "Sword", 1, "Slashing",
+    _weapon("Sword", "Sword", 1, "Slashing", 1.30,
             Implicit("attack_damage", "flat", 40.0),
             Implicit("attack_speed", "increased", 5.0)),
-    _weapon("Dagger", "Dagger", 1, "Piercing",
+    _weapon("Dagger", "Dagger", 1, "Piercing", 1.50,
             Implicit("attack_damage", "flat", 26.0),
             Implicit("crit_chance", "flat", 8.0)),
-    _weapon("Axe", "Axe", 1, "Slashing",
+    _weapon("Axe", "Axe", 1, "Slashing", 1.25,
             Implicit("attack_damage", "flat", 46.0)),
-    _weapon("Fist", "Fist", 1, "Blunt",
+    _weapon("Fist", "Fist", 1, "Blunt", 1.45,
             Implicit("attack_damage", "flat", 30.0),
             Implicit("attack_speed", "increased", 10.0)),
-    _weapon("Wand", "Wand", 1, "Magic",
+    _weapon("Wand", "Wand", 1, "Magic", 1.35,
             Implicit("spell_damage", "increased", 18.0)),
-    _weapon("Whip", "Whip", 1, "Slashing",
+    _weapon("Whip", "Whip", 1, "Slashing", 1.40,
             Implicit("attack_damage", "flat", 32.0),
             Implicit("area_of_effect", "increased", 12.0)),
     # A shield is a one-handed WEAPON in this design, not an offhand: section V
     # lists it among the one-handed weapon types and states there are no offhand
     # items. It is the one weapon whose implicit is defensive, and that is what
     # the base IS rather than something a drop happened to roll.
-    _weapon("Shield", "Shield", 1, "Blunt",
+    _weapon("Shield", "Shield", 1, "Blunt", 1.20,
             Implicit("block_chance", "flat", 12.0),
             Implicit("armor", "flat", 260.0)),
-    _weapon("Crossbow", "Crossbow", 1, "Piercing",
+    _weapon("Crossbow", "Crossbow", 1, "Piercing", 1.35,
             Implicit("attack_damage", "flat", 38.0),
             Implicit("crit_multiplier", "flat", 20.0)),
     # -- Weapon, two-handed ----------------------------------------------
-    _weapon("Greatsword", "Greatsword", 2, "Slashing",
+    _weapon("Greatsword", "Greatsword", 2, "Slashing", 1.25,
             Implicit("attack_damage", "flat", 78.0)),
-    _weapon("Greataxe", "Greataxe", 2, "Slashing",
+    _weapon("Greataxe", "Greataxe", 2, "Slashing", 1.28,
             Implicit("attack_damage", "flat", 72.0),
             Implicit("crit_multiplier", "flat", 22.0)),
-    _weapon("Spear", "Spear", 2, "Piercing",
+    _weapon("Spear", "Spear", 2, "Piercing", 1.35,
             Implicit("attack_damage", "flat", 64.0),
             Implicit("penetration", "flat", 6.0)),
-    _weapon("Staff", "Staff", 2, "Magic",
+    _weapon("Staff", "Staff", 2, "Magic", 1.30,
             Implicit("spell_damage", "increased", 32.0)),
-    _weapon("Two-Handed Crossbow", "2H Crossbow", 2, "Piercing",
+    _weapon("Two-Handed Crossbow", "2H Crossbow", 2, "Piercing", 1.30,
             Implicit("attack_damage", "flat", 66.0),
             Implicit("crit_chance", "flat", 7.0)),
-    _weapon("Warhammer", "Warhammer", 2, "Blunt",
+    _weapon("Warhammer", "Warhammer", 2, "Blunt", 1.20,
             Implicit("attack_damage", "flat", 84.0)),
 )
 
@@ -1213,6 +1239,29 @@ BASES_BY_SLOT: dict[str, tuple[ItemBase, ...]] = {
 
 WEAPON_BASES: tuple[WeaponBase, ...] = tuple(
     b for b in ITEM_BASES if isinstance(b, WeaponBase))
+
+
+def attack_speed_of(*weapons: WeaponBase) -> float:
+    """The attacks per second a loadout supplies, before any increase.
+
+    One weapon supplies its own rate. Two weapons AVERAGE, which is the design
+    decision recorded in docs/DECISIONS.md and what both Last Epoch and Path of
+    Exile do -- Path of Exile reaches the average by alternating hands. It is
+    what stops summed damage becoming a strict advantage: a dual wielder deals
+    more per swing than either weapon alone but does not also swing at the
+    faster weapon's rate.
+
+    Not multiplied by anything. The two-handed multiplier applies to a weapon's
+    implicits and affixes, and a rate is neither.
+    """
+    if not weapons:
+        raise ValueError("a loadout has at least one weapon")
+    if len(weapons) > 2:
+        raise ValueError(f"a character holds one or two weapons, not {len(weapons)}")
+    if len(weapons) == 2 and any(w.hands == 2 for w in weapons):
+        raise ValueError(
+            "a two-handed weapon fills both hands, so it cannot be paired")
+    return sum(w.attack_speed for w in weapons) / len(weapons)
 
 
 def bases_for(slot: str) -> tuple[ItemBase, ...]:

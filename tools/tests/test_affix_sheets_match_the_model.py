@@ -113,6 +113,28 @@ class TestItemBases:
             assert text(row["Sub-Type"]) == base.sub_type, base.name
             assert text(row["Weapon Type"]) == base.weapon_type, base.name
             assert int(float(row["Damage Types"])) == base.damage_type_slots, base.name
+            # Checked for presence before conversion, because a blank cell would
+            # otherwise fail as a TypeError about NoneType and say nothing about
+            # which weapon is missing what.
+            assert row["Attack Speed"] is not None, (
+                f"{base.name} has no attack speed in the sheet")
+            assert float(row["Attack Speed"]) == base.attack_speed, base.name
+
+    def test_the_weapon_rates_still_average_to_what_the_two_handed_multiplier_assumed(
+            self, base_sheet, model):
+        """The two-handed multiplier of 2.0 is already shipped, and it was
+        derived against a one-handed rate of 1.35 and a two-handed rate of 1.28.
+        Per-weapon rates that do not average back to those move a multiplier
+        nobody meant to move. See sim/analyse_two_handed_multiplier.py."""
+        by_hands: dict[int, list[float]] = {1: [], 2: []}
+        for row in base_sheet:
+            base = model.base_named(text(row["Base Name"]))
+            if isinstance(base, model.WeaponBase):
+                by_hands[base.hands].append(base.attack_speed)
+
+        assert by_hands[1] and by_hands[2], "no weapons found in the sheet"
+        assert sum(by_hands[1]) / len(by_hands[1]) == pytest.approx(1.35)
+        assert sum(by_hands[2]) / len(by_hands[2]) == pytest.approx(1.28)
 
 
 class TestAffixes:

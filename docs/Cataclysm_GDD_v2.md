@@ -1499,23 +1499,23 @@ A weapon carries two things no other item has: a physical **sub-type**, and a nu
 
   
 
-|  |  |  |  |  |
-| :-- | :-: | :-: | :-: | :-- |
-| \*\*Base\*\* | \*\*Hands\*\* | \*\*Sub-Type\*\* | \*\*Damage Types\*\* | \*\*Implicit\*\* |
-| Sword | 1 | Slashing | 2 | 40 flat damage, 5% increased attack speed |
-| Dagger | 1 | Piercing | 2 | 26 flat damage, 8 critical strike chance |
-| Axe | 1 | Slashing | 2 | 46 flat damage |
-| Fist | 1 | Blunt | 2 | 30 flat damage, 10% increased attack speed |
-| Wand | 1 | Magic | 2 | 18% increased spell damage |
-| Whip | 1 | Slashing | 2 | 32 flat damage, 12% increased area of effect |
-| Shield | 1 | Blunt | 2 | 12 block chance, 260 armor |
-| Crossbow | 1 | Piercing | 2 | 38 flat damage, 20 critical strike multiplier |
-| Greatsword | 2 | Slashing | 3 | 78 flat damage |
-| Greataxe | 2 | Slashing | 3 | 72 flat damage, 22 critical strike multiplier |
-| Spear | 2 | Piercing | 3 | 64 flat damage, 6 penetration |
-| Staff | 2 | Magic | 3 | 32% increased spell damage |
-| Two-Handed Crossbow | 2 | Piercing | 3 | 66 flat damage, 7 critical strike chance |
-| Warhammer | 2 | Blunt | 3 | 84 flat damage |
+|  |  |  |  |  |  |
+| :-- | :-: | :-: | :-: | :-: | :-- |
+| \*\*Base\*\* | \*\*Hands\*\* | \*\*Sub-Type\*\* | \*\*Damage Types\*\* | \*\*Attacks/sec\*\* | \*\*Implicit\*\* |
+| Sword | 1 | Slashing | 2 | 1.30 | 40 flat damage, 5% increased attack speed |
+| Dagger | 1 | Piercing | 2 | 1.50 | 26 flat damage, 8 critical strike chance |
+| Axe | 1 | Slashing | 2 | 1.25 | 46 flat damage |
+| Fist | 1 | Blunt | 2 | 1.45 | 30 flat damage, 10% increased attack speed |
+| Wand | 1 | Magic | 2 | 1.35 | 18% increased spell damage |
+| Whip | 1 | Slashing | 2 | 1.40 | 32 flat damage, 12% increased area of effect |
+| Shield | 1 | Blunt | 2 | 1.20 | 12 block chance, 260 armor |
+| Crossbow | 1 | Piercing | 2 | 1.35 | 38 flat damage, 20 critical strike multiplier |
+| Greatsword | 2 | Slashing | 3 | 1.25 | 78 flat damage |
+| Greataxe | 2 | Slashing | 3 | 1.28 | 72 flat damage, 22 critical strike multiplier |
+| Spear | 2 | Piercing | 3 | 1.35 | 64 flat damage, 6 penetration |
+| Staff | 2 | Magic | 3 | 1.30 | 32% increased spell damage |
+| Two-Handed Crossbow | 2 | Piercing | 3 | 1.30 | 66 flat damage, 7 critical strike chance |
+| Warhammer | 2 | Blunt | 3 | 1.20 | 84 flat damage |
 
   
 

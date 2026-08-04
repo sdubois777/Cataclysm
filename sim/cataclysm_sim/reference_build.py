@@ -142,7 +142,19 @@ def gear(affix_tier: int = 7, gear_level: int = af.MAX_GEAR_LEVEL) -> Gear:
     # Attack damage is off the character sheet: it belongs to the weapon.
     flat.pop("attack_damage", None)
     increased.pop("attack_damage", None)
-    return Gear(flat=dict(flat), increased=dict(increased))
+
+    # The weapon supplies the attack speed base, which is the whole point of
+    # issue #120: without it this build's four increased attack speed suffixes
+    # multiply zero and are worth nothing. Read off the equipped weapon rather
+    # than stated here, so changing the weapon changes the rate.
+    weapons = [af.base_named(n) for n in BASES
+               if isinstance(af.base_named(n), af.WeaponBase)]
+    if not weapons:
+        raise ValueError("the reference build equips no weapon, so it has no "
+                         "attack speed base")
+
+    return Gear(flat=dict(flat), increased=dict(increased),
+                weapon_base={"attack_speed": af.attack_speed_of(*weapons)})
 
 
 def character(affix_tier: int = 7,

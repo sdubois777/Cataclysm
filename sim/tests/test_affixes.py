@@ -964,7 +964,7 @@ def test_that_shield_exemption_check_actually_fires():
     real = af.WEAPON_BASES
     af.WEAPON_BASES = real + (af.WeaponBase(
         "Bulwark Blade", "Weapon", (af.Implicit("armor", "flat", 10.0),),
-        weapon_type="Sword"),)
+        weapon_type="Sword", attack_speed=1.3),)
     try:
         with pytest.raises(ValueError, match="only the Shield may defend"):
             af._check_only_the_shield_defends_among_weapon_bases()

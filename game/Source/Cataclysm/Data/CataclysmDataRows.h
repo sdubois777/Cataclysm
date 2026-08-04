@@ -305,6 +305,23 @@ struct FCataclysmItemBaseRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
 	int32 DamageTypeSlots = 0;
 
+	/**
+	 * Attacks per second before any increase. Zero on anything that is not a
+	 * weapon.
+	 *
+	 * The design document says the equipped weapon is where this base comes
+	 * from. Without it every increased attack speed affix in the game multiplies
+	 * zero and is worth nothing, which was issue #120.
+	 *
+	 * DELIBERATELY NOT AN IMPLICIT. A two-handed weapon doubles every implicit
+	 * it carries, which is correct for damage and would be nonsense here: a
+	 * Greatsword would swing twice as fast as a Sword. Path of Exile and Last
+	 * Epoch both treat a weapon's rate as an intrinsic property listed apart
+	 * from its modifiers.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
+	float AttackSpeed = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit1Stat;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit1Kind;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") float Implicit1Value = 0.0f;
