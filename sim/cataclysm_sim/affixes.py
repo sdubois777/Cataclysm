@@ -1200,7 +1200,14 @@ ITEM_BASES: tuple[ItemBase, ...] = (
     _weapon("Fist", "Fist", 1, "Blunt", 1.45,
             Implicit("attack_damage", "flat", 30.0),
             Implicit("attack_speed", "increased", 10.0)),
+    # The flat damage comes first here for the same reason it does on every other
+    # weapon: it is what a skill takes its percentage of. A Wand without it deals
+    # nothing at all, because every skill deals a percent of weapon damage and a
+    # percent of zero is zero -- including spells, which have no separate path.
+    # The spell damage increase is a second implicit, not a replacement for the
+    # first. Issue #146.
     _weapon("Wand", "Wand", 1, "Magic", 1.35,
+            Implicit("attack_damage", "flat", 38.0),
             Implicit("spell_damage", "increased", 18.0)),
     _weapon("Whip", "Whip", 1, "Slashing", 1.40,
             Implicit("attack_damage", "flat", 32.0),
@@ -1225,6 +1232,7 @@ ITEM_BASES: tuple[ItemBase, ...] = (
             Implicit("attack_damage", "flat", 64.0),
             Implicit("penetration", "flat", 6.0)),
     _weapon("Staff", "Staff", 2, "Magic", 1.30,
+            Implicit("attack_damage", "flat", 66.0),
             Implicit("spell_damage", "increased", 32.0)),
     _weapon("Two-Handed Crossbow", "2H Crossbow", 2, "Piercing", 1.30,
             Implicit("attack_damage", "flat", 66.0),
@@ -1672,6 +1680,33 @@ def _check_only_the_shield_defends_among_weapon_bases() -> None:
                 "and only the Shield may defend among weapons")
 
 
+def _check_every_weapon_but_the_shield_supplies_damage() -> None:
+    """A weapon with no flat attack damage makes every skill deal nothing.
+
+    Every skill deals a percent of weapon damage -- see
+    `character.Skill.weapon_damage_percent` -- and spells have no separate path.
+    Weapon damage comes from this implicit and nowhere else, so a base without
+    one is a weapon a character can hold and deal exactly zero with, whatever
+    their stats say.
+
+    The Wand and the Staff shipped that way. Both gave only INCREASED spell
+    damage, which multiplies a damage number they did not supply. Issue #146.
+
+    The Shield is the one exemption, and for the same reason it is exempt from
+    the defensive check above: it is not there to hit anything.
+    """
+    for base in WEAPON_BASES:
+        if base.weapon_type == "Shield":
+            continue
+        supplies_damage = any(i.stat == "attack_damage" and i.kind == "flat"
+                              for i in base.implicits)
+        if not supplies_damage:
+            raise ValueError(
+                f"the {base.name} base supplies no flat attack damage, so every "
+                "skill used with it deals a percent of zero. Only the Shield may "
+                "do that.")
+
+
 def _check_every_gem_applied_effect_is_reachable_as_an_affix() -> None:
     """`game/Data/Gems.csv` designs eight gems that apply an effect on hit. The
     project owner asked for the same effects to be reachable as affixes, so a
@@ -1860,6 +1895,7 @@ _check_the_weapon_types_match_the_design()
 _check_dual_wielding_carries_more_damage_types_than_a_two_hander()
 _check_no_weapon_rolls_a_defensive_affix()
 _check_only_the_shield_defends_among_weapon_bases()
+_check_every_weapon_but_the_shield_supplies_damage()
 _check_every_gem_applied_effect_is_reachable_as_an_affix()
 _check_ailments_only_appear_where_a_hit_comes_from()
 _check_the_two_loadouts_have_equal_affix_value()
