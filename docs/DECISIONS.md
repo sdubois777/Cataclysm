@@ -20,6 +20,57 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Built lighting data for a map is not committed, because this project never bakes lighting
+
+**The question.** Issue #140: opening the Unreal editor produced two working-tree
+changes on its own. `game/Content/Maps/L_Sandbox.umap`, the sandbox level, was
+resaved and grew from 26,748 to 35,728 bytes, and
+`game/Content/Maps/L_Sandbox_BuiltData.uasset`, generated lighting and reflection
+data, appeared as a new untracked file of 175,928 bytes. Both go through Git LFS,
+so every resave stores another full copy. The issue asked for a deliberate choice
+between committing built data and ignoring it.
+
+**The decision.** Ignore it. `.gitignore` now has `*_BuiltData.uasset`.
+
+**Why ignoring is right here and would be wrong elsewhere.** Built lighting data
+is normally committed alongside its map, because for a game that bakes lighting
+the bake IS part of the level and a fresh clone without it renders wrong. Three
+facts make this project the other case.
+
+- It renders with Lumen, which computes global illumination at run time. There is
+  no bake to preserve.
+- Dungeon floors are generated at run time, so they do not exist when a bake would
+  have to happen and cannot be baked at all.
+- `tools/generate_input_assets.py`, the script that builds the sandbox level, sets
+  both the directional light and the sky light to Movable specifically so that no
+  lighting build is ever required. That change landed in pull request #143 while
+  fixing a different problem, and it is why no `L_Sandbox_BuiltData.uasset` exists
+  today. The ignore rule is the second line of defence, not the first.
+
+GitHub's own `UnrealEngine.gitignore` template carries the same rule, under the
+comment "Built data for maps". That is a weaker argument than the three above,
+because that template targets projects in general rather than this one, but it
+means the choice is not unusual.
+
+**The escape hatch is per-map, not a deletion.** If some future map does want
+baked lighting, the right change is one exception line for that map
+(`!game/Content/Maps/L_Whatever_BuiltData.uasset`) rather than removing the rule,
+which would let every other map's regenerated data back in. The comment above the
+rule in `.gitignore` says so.
+
+**What this does not fix.** The map being resaved on open is a separate symptom
+with a separate cause and it is not addressed by an ignore rule; ignoring a
+tracked file does nothing. Measured on 2026-08-04: the editor had been running for
+several hours with `/Game/Maps/L_Sandbox` loaded and `L_Sandbox.umap` on disk had
+not been written since 2026-08-03, so the resave no longer happens on open either.
+Whether the in-memory package is marked dirty, which would make the next manual
+save write those bytes, was not measured.
+
+**Affects.** `.gitignore` at the repository root. No design document changes.
+Applied.
+
+---
+
 ## 2026-08-04 — A projectile is an actor that sweeps each step, and Radius means two different things
 
 **The question.** Issue #164: `UCataclysmProjectileSkill` turned a Speed into a

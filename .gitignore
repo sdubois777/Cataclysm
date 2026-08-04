@@ -36,6 +36,20 @@ Build/
 *.sdf
 *.suo
 
+# Built lighting and reflection data for a map, written next to the .umap as
+# <MapName>_BuiltData.uasset. The engine regenerates it from a lighting build, so
+# it is output rather than source. This project never bakes lighting: it renders
+# with Lumen, and dungeon floors are generated at run time so they cannot be baked
+# at all. tools/generate_input_assets.py makes every light in the sandbox level
+# Movable for that reason, so nothing should produce one of these files. The rule
+# is here in case something does, because these files go through Git LFS and each
+# save stores another full copy. Issue #140 has the reasoning; the same rule is in
+# GitHub's own UnrealEngine.gitignore template.
+#
+# If a map ever does need baked lighting, add an exception for that one map rather
+# than deleting this line: !game/Content/Maps/L_Whatever_BuiltData.uasset
+*_BuiltData.uasset
+
 # Unreal crash and log output
 *.log
 Crashes/
