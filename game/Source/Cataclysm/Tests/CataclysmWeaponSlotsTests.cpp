@@ -110,15 +110,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponSkillMatrixTest,
 
 bool FCataclysmWeaponSkillMatrixTest::RunTest(const FString& Parameters)
 {
-	UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable(nullptr);
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
 	if (!Table)
 	{
 		AddError(TEXT("Could not load the weapon skill matrix. Run "
 					  "tools/generate_datatables.py."));
 		return false;
 	}
-	Table->AddToRoot();
-	ON_SCOPE_EXIT { Table->RemoveFromRoot(); };
 
 	for (const TCHAR* Weapon : CataclysmWeaponSlotsTest::WarWeapons)
 	{
@@ -160,14 +158,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponSkillAbsenceTest,
 
 bool FCataclysmWeaponSkillAbsenceTest::RunTest(const FString& Parameters)
 {
-	UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable(nullptr);
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
 	if (!Table)
 	{
 		AddError(TEXT("Could not load the weapon skill matrix."));
 		return false;
 	}
-	Table->AddToRoot();
-	ON_SCOPE_EXIT { Table->RemoveFromRoot(); };
 
 	for (const TCHAR* Magic : {TEXT("Wand"), TEXT("Staff")})
 	{

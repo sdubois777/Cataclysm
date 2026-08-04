@@ -79,22 +79,20 @@ public:
 	/** The slot named by a Slot column value, or None if it names no slot. */
 	static ECataclysmAbilitySlot SlotFromName(const FString& SlotName);
 
+	/** Where the imported weapon skill matrix lives. */
+	static const TCHAR* TableAssetPath;
+
 	/**
-	 * The weapon skill matrix, built from the generated CSV in the project's
-	 * Data folder.
+	 * The weapon skill matrix.
 	 *
-	 * THIS IS AN EDITOR-TIME ARRANGEMENT AND WILL NOT SURVIVE PACKAGING. The
-	 * generated tables live in game/Data/ as CSV files and there is no DataTable
-	 * asset for any of them in Content, so there is nothing to point a soft
-	 * object path at yet. Reading the file works while the project runs from its
-	 * source tree, which is every way it is run today, and stops working the
-	 * moment it is packaged, because that folder is not cooked. The existing
-	 * automation tests in CataclysmDataTableTests.cpp read the same files the
-	 * same way for the same reason. Importing the generated tables as real
-	 * assets is separate work.
+	 * Loads the DataTable ASSET rather than reading the CSV off disk, which is
+	 * what makes this work in a packaged build. The CSV files under game/Data/
+	 * are the reviewable form the workbook generates; they are not content, and
+	 * that folder is not cooked, so a packaged game does not contain them.
+	 * tools/generate_datatable_assets.py imports each one into /Game/Data/.
+	 * Issue #150.
 	 *
-	 * @return a transient table owned by the caller's root set, or null with the
-	 *         reason logged
+	 * @return the table, or null with the reason logged
 	 */
-	static UDataTable* LoadGeneratedTable(UObject* Outer);
+	static const UDataTable* LoadGeneratedTable();
 };

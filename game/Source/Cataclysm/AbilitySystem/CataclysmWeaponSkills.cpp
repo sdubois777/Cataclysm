@@ -4,33 +4,28 @@
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
 
 const TCHAR* UCataclysmWeaponSkills::WeaponIndependent = TEXT("All");
 
-UDataTable* UCataclysmWeaponSkills::LoadGeneratedTable(UObject* Outer)
+const TCHAR* UCataclysmWeaponSkills::TableAssetPath =
+	TEXT("/Game/Data/DT_WeaponSkills.DT_WeaponSkills");
+
+const UDataTable* UCataclysmWeaponSkills::LoadGeneratedTable()
 {
-	const FString Path = FPaths::ProjectDir() / TEXT("Data") / TEXT("WeaponSkills.csv");
+	const UDataTable* Table =
+		LoadObject<UDataTable>(nullptr, TableAssetPath);
 
-	FString Contents;
-	if (!FFileHelper::LoadFileToString(Contents, *Path))
+	if (!Table)
 	{
+		// Loudly, and naming both scripts, because the two failures look the
+		// same from here: the workbook never produced the CSV, or the CSV was
+		// never imported as an asset.
 		UE_LOG(LogCataclysm, Error,
-			TEXT("Could not read %s. It is produced by "
-				 "tools/generate_datatables.py from the Weapon Skills sheet of "
-				 "docs/All_Things_Cataclysm.xlsx."), *Path);
-		return nullptr;
-	}
-
-	UDataTable* Table = NewObject<UDataTable>(Outer ? Outer : GetTransientPackage());
-	Table->RowStruct = FCataclysmWeaponSkillRow::StaticStruct();
-
-	const TArray<FString> Problems = Table->CreateTableFromCSVString(Contents);
-	if (!Problems.IsEmpty())
-	{
-		UE_LOG(LogCataclysm, Error, TEXT("%s did not import: %s"),
-			*Path, *FString::Join(Problems, TEXT(" | ")));
+			TEXT("Could not load %s. It is produced by "
+				 "tools/generate_datatable_assets.py from game/Data/"
+				 "WeaponSkills.csv, which tools/generate_datatables.py produces "
+				 "from the Weapon Skills sheet of "
+				 "docs/All_Things_Cataclysm.xlsx."), TableAssetPath);
 		return nullptr;
 	}
 

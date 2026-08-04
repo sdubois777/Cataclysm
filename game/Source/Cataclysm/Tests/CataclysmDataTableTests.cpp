@@ -220,4 +220,109 @@ bool FCataclysmDataTableTagsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+/**
+ * Every generated CSV has a DataTable asset, and the two agree.
+ *
+ * WHY THIS IS THE ONLY GUARANTEE THERE IS. tools/generate_datatable_assets.py
+ * imports each CSV under game/Data/ into an asset under /Game/Data/. It cannot
+ * offer a --check mode the way tools/generate_datatables.py does, because a
+ * .uasset carries generated identifiers that differ between runs, so two runs
+ * over unchanged input do not produce identical bytes and a byte comparison
+ * would always report a difference.
+ *
+ * So the asset is compared against the CSV it came from instead. An asset that
+ * was never regenerated after a workbook change has the wrong rows, and the
+ * game would load stale data with nothing reporting it -- the CSV in a pull
+ * request would show the change and the game would not have it.
+ *
+ * Row NAMES are compared and not merely counts. A table that gained one row and
+ * lost another has the same count.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDataTableAssetsTest,
+	"Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
+{
+	// Asset name against CSV file. Every table the generator produces is here;
+	// one missing from this list would be one nothing ever checks.
+	struct FPair { const TCHAR* Asset; const TCHAR* File; };
+	const FPair Tables[] = {
+		{ TEXT("DT_Affixes"),               TEXT("Affixes.csv") },
+		{ TEXT("DT_Attributes"),            TEXT("Attributes.csv") },
+		{ TEXT("DT_CityUpgrades"),          TEXT("CityUpgrades.csv") },
+		{ TEXT("DT_ClassStats"),            TEXT("ClassStats.csv") },
+		{ TEXT("DT_CraftingMaterials"),     TEXT("CraftingMaterials.csv") },
+		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
+		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },
+		{ TEXT("DT_EnchantmentsPositive"),  TEXT("EnchantmentsPositive.csv") },
+		{ TEXT("DT_EnemyModifiers"),        TEXT("EnemyModifiers.csv") },
+		{ TEXT("DT_Gems"),                  TEXT("Gems.csv") },
+		{ TEXT("DT_ItemBases"),             TEXT("ItemBases.csv") },
+		{ TEXT("DT_StatusEffects"),         TEXT("StatusEffects.csv") },
+		{ TEXT("DT_WeaponSkills"),          TEXT("WeaponSkills.csv") },
+	};
+
+	for (const FPair& Pair : Tables)
+	{
+		const FString AssetPath =
+			FString::Printf(TEXT("/Game/Data/%s.%s"), Pair.Asset, Pair.Asset);
+
+		const UDataTable* Table = LoadObject<UDataTable>(nullptr, *AssetPath);
+		if (!Table)
+		{
+			AddError(FString::Printf(
+				TEXT("%s does not exist. Run tools/generate_datatable_assets.py."),
+				*AssetPath));
+			continue;
+		}
+
+		// The CSV it should have come from, read the same way the test above
+		// reads it, so the two halves cannot disagree about what the file is.
+		const FString Path = DataDir() / Pair.File;
+		FString Contents;
+		if (!FFileHelper::LoadFileToString(Contents, *Path))
+		{
+			AddError(FString::Printf(TEXT("could not read %s"), *Path));
+			continue;
+		}
+
+		UDataTable* FromCsv = NewObject<UDataTable>();
+		FromCsv->RowStruct = Table->RowStruct;
+		FromCsv->CreateTableFromCSVString(Contents);
+
+		TSet<FName> InAsset;
+		for (const TPair<FName, uint8*>& Row : Table->GetRowMap())
+		{
+			InAsset.Add(Row.Key);
+		}
+
+		TSet<FName> InCsv;
+		for (const TPair<FName, uint8*>& Row : FromCsv->GetRowMap())
+		{
+			InCsv.Add(Row.Key);
+		}
+
+		const TSet<FName> MissingFromAsset = InCsv.Difference(InAsset);
+		const TSet<FName> NotInCsv = InAsset.Difference(InCsv);
+
+		TestEqual(FString::Printf(
+			TEXT("%s has every row %s has"), Pair.Asset, Pair.File),
+			MissingFromAsset.Num(), 0);
+		TestEqual(FString::Printf(
+			TEXT("%s has no row %s does not"), Pair.Asset, Pair.File),
+			NotInCsv.Num(), 0);
+
+		if (MissingFromAsset.Num() > 0 || NotInCsv.Num() > 0)
+		{
+			AddError(FString::Printf(
+				TEXT("%s is stale. Run tools/generate_datatable_assets.py. ")
+				TEXT("%d row(s) only in the CSV, %d only in the asset."),
+				Pair.Asset, MissingFromAsset.Num(), NotInCsv.Num()));
+		}
+	}
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
