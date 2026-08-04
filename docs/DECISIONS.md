@@ -20,6 +20,137 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Three backlog blockers cleared: Casual mode, rarity tiers, and the Masochist resource
+
+**The question.** A pass over the open backlog looking specifically for issues
+blocked on an operator decision or on a stale design document, so the loop session
+could get on with implementation work that was waiting behind them.
+
+Two implementation issues were blocked, and both by design gaps rather than by
+code: issue #38, implementing a Demonic passive tree, waits on issue #63; and
+issue #39, implementing the seven Demonic enemies, waits on issue #29.
+
+**FIRST, SOMETHING ALREADY DONE.** Issue #61, the rule that the active Cataclysm
+determines the player's damage type, is written into `Cataclysm_GDD_v2.md` and the
+Phase 1 roadmap has already been corrected from War/Bulwark to Demonic/Masochist.
+That issue was checked and closed rather than worked. Worth recording because the
+issue text still described the contradiction as live.
+
+**SECOND, SOMETHING DONE BY SOMEONE ELSE WHILE THIS WAS BEING WRITTEN, AND WORTH
+RECORDING AS A PROCESS PROBLEM.** Issue #138, the stale control table, was fixed
+independently and merged as pull request #203 while the same fix was being written
+here. Both versions did the same job. The one on `development` is the better of
+the two, because it names the `DefaultMappingContext` setting in
+`game/Config/DefaultGame.ini` that chooses the scheme, and covers the mouse wheel
+and the gamepad stick. The duplicate written here was discarded rather than merged.
+
+Two sessions working the same backlog at once will keep doing this. The specific
+cost here was small, but the same collision has now happened four times on
+`DECISIONS.md`, where both sessions append a new entry to the top of the file and
+every parallel change conflicts. Nothing about that is hard to resolve; it is
+simply a recurring tax on running two sessions.
+
+**DECISION 2: Casual is removed rather than defined.**
+
+The risk table referred to a "Casual" difficulty mode that the difficulty table
+never defined. The operator chose removal over definition: four modes stand, and
+the risk table now names the four that exist. Defining a fifth would have added a
+difficulty to tune, balance and support permanently in exchange for a sentence
+nobody had written on purpose.
+
+**Not fixed, and still open in issue #32.** That risk table has two further
+problems this change does not touch: SSF is listed as a lethality mode when it is
+really an orthogonal option that changes loot rules rather than difficulty; and
+three modes say "increased loot drops" with no number while Hardcore gives an
+equipment drop chance with no probability. Both need numbers that were not asked
+for here.
+
+**DECISION 2b: what accessibility covers, and what it does not. A claim made in
+issue #32 was wrong and is withdrawn.**
+
+Issue #32 asserted that Hardcore and Heretic hiding the heads-up display
+contradicts the accessibility commitments in section XIII. Checked against what
+section XIII actually lists — multiple language support, colour-blind palettes,
+scalable interface elements, reduced ability effect opacity, and an epilepsy-safe
+mode — there is no contradiction. Not one of those promises a heads-up display.
+"Scalable HUD elements" governs a display when one is present; it does not
+guarantee one exists.
+
+The operator's position, adopted and now written into the design document:
+accessibility means removing barriers that make the game **impossible** to play
+for some people, which is perception, language and physical safety. It does not
+mean removing difficulty, and it does not entitle a player to any particular
+interface element. Hiding the display is a difficulty choice the player opts into.
+
+This is recorded as a scope statement rather than a list item because it decides
+future arguments rather than a single case. Any later proposal to add or keep an
+interface element "for accessibility" has to show it removes a barrier of that
+kind, not that it is helpful.
+
+**DECISION 5: enemy telegraphs are readable, and punishing when ignored.**
+
+Issue #29 leaves the seven Demonic enemies with one sentence each and no telegraph
+specification, which blocks issue #39. The design target is now set: a clear
+wind-up with enough time to react if the player is paying attention, and real
+damage if they are not.
+
+This rules out both a reflex-heavy soulslike shape, which raises the floor for who
+can play and makes the empire layer feel like an interruption, and a forgiving
+shape where build strength alone carries the fight. It also rules out varying the
+target per enemy role, which was offered and not taken.
+
+The reaction windows themselves are not set here. They should be derived from
+shipped games in the genre when the enemy design is written, not invented, and the
+target above is what that research has to hit.
+
+**DECISION 3: the enemy rarity tiers follow the power model, and two multipliers
+are left unset rather than invented.**
+
+The design document listed Common, Elite, Rare, Legendary, Boss. The power model
+lists Common, Elite, Legendary, Herald, Boss, Cataclysm Boss. `CLAUDE.md` states
+that the power model is a port of an authoritative source and that the source
+wins, so the model's list of tiers is correct and the document's was not. Rare does
+not exist. Herald sits between Legendary and Boss; Cataclysm Boss sits above Boss.
+
+**The numbers could not be aligned, and that is a finding rather than a shortfall.**
+The two lists are in different units. The document gives a multiplier; the model
+gives a weight expressed as a fraction of tier width. Converting one into the other
+requires deciding what a multiplier means relative to a weight, which is a tuning
+decision nobody has made. The two new tiers are therefore written as "not set",
+with a note saying why. Filling them in by interpolation would have produced two
+numbers that look authoritative and are not.
+
+**DECISION 4: the Masochist resource has two generators, and the passive tree
+decides which one a build leans on.**
+
+Issue #63 records that the Masochist has no class resource. Its prose says
+abilities cost health instead of mana, which is a substitution rather than a
+resource, and the design document requires every class to have one.
+
+Three shapes were put to the operator: a resource built by taking damage, a
+resource built by spending health, or no resource at all with power scaling off
+missing health. The answer was that it is built by **both** spending health and
+taking damage, through nodes in the passive tree that do not exist yet.
+
+That is a direction rather than a specification, and it is recorded as one. It
+settles the part that was genuinely undecided — whether the resource has one
+generator or two, and whether the health-cost rule replaces the resource or sits
+alongside it. It leaves build rate, cap, decay and what spends it to be designed
+with the tree, because the operator's answer makes them properties of tree nodes
+rather than of the class.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change, in three places: the
+risk table in section XVI, the Rarity Multipliers table in section X, and the
+Accessibility section in section XIII. The Masochist resource direction is recorded
+here only, because it is not yet specific enough to state as design. The Controls
+and Key Bindings section is not touched by this change; pull request #203 rewrote
+it independently and that version stands.
+
+**Still open.** Issue #32 for the rest of the difficulty table. Issue #30 for the
+two unset multipliers. Issue #63 for the Masochist node graph and resource numbers.
+
+---
+
 ## 2026-08-04 — Built lighting data for a map is not committed, because this project never bakes lighting
 
 **The question.** Issue #140: opening the Unreal editor produced two working-tree

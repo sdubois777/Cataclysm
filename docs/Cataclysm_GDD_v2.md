@@ -2426,9 +2426,18 @@ Enemy Score = (((Base Type Score + Floor Scaling Score) × 0.75 + Floor Scaling 
 | \*\*Enemy Rarity\*\* | \*\*Multiplier\*\* |
 | Common | 1.0 |
 | Elite | 1.3 |
-| Rare | 1.6 |
 | Legendary | 2.0 |
+| Herald | not set |
 | Boss | 2.5 |
+| Cataclysm Boss | not set |
+
+  
+
+These six tiers are the ones the power model uses, and that model is a port of the authoritative scoring source, so its list wins. There is no **Rare** tier; it appeared in an earlier version of this table and does not exist.
+
+  
+
+**Two multipliers are deliberately unset rather than guessed.** The multipliers above were fitted to a five-tier list that included Rare and had no Herald or Cataclysm Boss. The power model expresses the same ordering in a different unit — a fraction of tier width rather than a multiplier — so the two cannot be converted into each other without deciding what a multiplier means relative to a weight. Herald sits between Legendary and Boss; Cataclysm Boss sits above Boss. Both numbers need fitting against real play.
 
   
 
@@ -2574,6 +2583,12 @@ Empire upgrade points are earned by defeating dungeons and persist through all r
 
 ## **Accessibility**
 
+**What accessibility means here, and what it does not.** It means removing barriers that make the game impossible to play for some people: perception, language, and physical safety. It does not mean removing difficulty, and it does not guarantee any particular interface element.
+
+  
+
+A mode that hides the heads-up display is a difficulty choice the player opts into. It is not an accessibility failure, and Hardcore and Heretic hiding it is not in conflict with anything below. Where a mode hides the display, the options below apply to whatever remains visible.
+
   - Multiple language support
   - Colorblind-friendly palette options
   - Scalable HUD elements (text size, cursor size)
@@ -2659,7 +2674,7 @@ All cosmetics are purely visual — no pay-to-win, ever.
 | :-: | :-: |
 | \*\*Risk\*\* | \*\*Mitigation\*\* |
 | Skill matrix scope creep (11 weapons × 8 damage types × 6 slots = 528+ skills) | Launch with one complete damage type per patch. Use tag-based design to maximize re-use and make each skill feel distinct. |
-| Time pressure mechanics frustrating casual players | Difficulty modes (Casual/Standard/HC/Heretic) let players tune the urgency. Permanent meta-progression ensures no run feels wasted. |
+| Time pressure mechanics frustrating casual players | Difficulty modes (Standard/SSF/Hardcore/Heretic) let players tune the urgency. Permanent meta-progression ensures no run feels wasted. |
 | Passive tree complexity overwhelming new players | Strong visual design with clear branching and class fantasy. Beginner preset builds. In-game tooltips on all node interactions. |
 | Enchantment system creating too much variance in loot quality | Weight system ensures common drops are consistently useful. Weight-1 enchantments are rare enough that they feel like jackpots, not baseline expectations. |
 | Multiplayer balance (empire shared vs. individual) | Design empire as shared resource in co-op with individual character builds. Extensive playtesting during Early Access. |
