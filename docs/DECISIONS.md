@@ -20,7 +20,7 @@ applied or still pending.
 
 ---
 
-## 2026-08-04 — Four backlog blockers cleared: controls, Casual mode, rarity tiers, and the Masochist resource
+## 2026-08-04 — Three backlog blockers cleared: Casual mode, rarity tiers, and the Masochist resource
 
 **The question.** A pass over the open backlog looking specifically for issues
 blocked on an operator decision or on a stale design document, so the loop session
@@ -36,21 +36,19 @@ Phase 1 roadmap has already been corrected from War/Bulwark to Demonic/Masochist
 That issue was checked and closed rather than worked. Worth recording because the
 issue text still described the contradiction as live.
 
-**DECISION 1: the control table is replaced by two tables, one per scheme.**
+**SECOND, SOMETHING DONE BY SOMEONE ELSE WHILE THIS WAS BEING WRITTEN, AND WORTH
+RECORDING AS A PROCESS PROBLEM.** Issue #138, the stale control table, was fixed
+independently and merged as pull request #203 while the same fix was being written
+here. Both versions did the same job. The one on `development` is the better of
+the two, because it names the `DefaultMappingContext` setting in
+`game/Config/DefaultGame.ini` that chooses the scheme, and covers the mouse wheel
+and the gamepad stick. The duplicate written here was discarded rather than merged.
 
-The table described a scheme that was never built. It gave the left mouse button
-"player movement and basic attack" when the Combat System section of the same
-document says basic attacks are automatic, and it listed W as both the Support
-ability and part of WASD movement.
-
-The 2026-08-03 control scheme decision below settled all of this and deliberately
-left the table stale, with the staleness tracked as issue #138. It is no longer
-stale. The document now states that there is no basic attack key at all, and gives
-two tables: mouse movement, where the left mouse button only moves and Support is
-on W; and keyboard movement, where WASD moves, the left mouse button is unbound,
-and Support moves to 1. Shift holds the character still under both.
-
-Nothing was decided here. The document was made to describe what shipped.
+Two sessions working the same backlog at once will keep doing this. The specific
+cost here was small, but the same collision has now happened four times on
+`DECISIONS.md`, where both sessions append a new entry to the top of the file and
+every parallel change conflicts. Nothing about that is hard to resolve; it is
+simply a recurring tax on running two sessions.
 
 **DECISION 2: Casual is removed rather than defined.**
 
@@ -142,12 +140,65 @@ with the tree, because the operator's answer makes them properties of tree nodes
 rather than of the class.
 
 **Affects:** `Cataclysm_GDD_v2.md`, applied in this change, in three places: the
-Controls and Key Bindings section, the risk table in section XVI, and the Rarity
-Multipliers table in section X. The Masochist resource direction is recorded here
-only, because it is not yet specific enough to state as design.
+risk table in section XVI, the Rarity Multipliers table in section X, and the
+Accessibility section in section XIII. The Masochist resource direction is recorded
+here only, because it is not yet specific enough to state as design. The Controls
+and Key Bindings section is not touched by this change; pull request #203 rewrote
+it independently and that version stands.
 
 **Still open.** Issue #32 for the rest of the difficulty table. Issue #30 for the
 two unset multipliers. Issue #63 for the Masochist node graph and resource numbers.
+
+---
+
+## 2026-08-04 — Built lighting data for a map is not committed, because this project never bakes lighting
+
+**The question.** Issue #140: opening the Unreal editor produced two working-tree
+changes on its own. `game/Content/Maps/L_Sandbox.umap`, the sandbox level, was
+resaved and grew from 26,748 to 35,728 bytes, and
+`game/Content/Maps/L_Sandbox_BuiltData.uasset`, generated lighting and reflection
+data, appeared as a new untracked file of 175,928 bytes. Both go through Git LFS,
+so every resave stores another full copy. The issue asked for a deliberate choice
+between committing built data and ignoring it.
+
+**The decision.** Ignore it. `.gitignore` now has `*_BuiltData.uasset`.
+
+**Why ignoring is right here and would be wrong elsewhere.** Built lighting data
+is normally committed alongside its map, because for a game that bakes lighting
+the bake IS part of the level and a fresh clone without it renders wrong. Three
+facts make this project the other case.
+
+- It renders with Lumen, which computes global illumination at run time. There is
+  no bake to preserve.
+- Dungeon floors are generated at run time, so they do not exist when a bake would
+  have to happen and cannot be baked at all.
+- `tools/generate_input_assets.py`, the script that builds the sandbox level, sets
+  both the directional light and the sky light to Movable specifically so that no
+  lighting build is ever required. That change landed in pull request #143 while
+  fixing a different problem, and it is why no `L_Sandbox_BuiltData.uasset` exists
+  today. The ignore rule is the second line of defence, not the first.
+
+GitHub's own `UnrealEngine.gitignore` template carries the same rule, under the
+comment "Built data for maps". That is a weaker argument than the three above,
+because that template targets projects in general rather than this one, but it
+means the choice is not unusual.
+
+**The escape hatch is per-map, not a deletion.** If some future map does want
+baked lighting, the right change is one exception line for that map
+(`!game/Content/Maps/L_Whatever_BuiltData.uasset`) rather than removing the rule,
+which would let every other map's regenerated data back in. The comment above the
+rule in `.gitignore` says so.
+
+**What this does not fix.** The map being resaved on open is a separate symptom
+with a separate cause and it is not addressed by an ignore rule; ignoring a
+tracked file does nothing. Measured on 2026-08-04: the editor had been running for
+several hours with `/Game/Maps/L_Sandbox` loaded and `L_Sandbox.umap` on disk had
+not been written since 2026-08-03, so the resave no longer happens on open either.
+Whether the in-memory package is marked dirty, which would make the next manual
+save write those bytes, was not measured.
+
+**Affects.** `.gitignore` at the repository root. No design document changes.
+Applied.
 
 ---
 
@@ -1760,9 +1811,13 @@ in the genre differs and the right answer depends on art that does not exist yet
 The starting values are taken from Unreal's own top-down template and are
 expected to change.
 
-**Affects:** `Cataclysm_GDD_v2.md`, "Controls and Key Bindings". **Not applied.**
-The table still says the left mouse button fires the basic attack and still puts
-Support on W without noting the collision.
+**Affects:** `Cataclysm_GDD_v2.md`, "Controls and Key Bindings". **Applied** in
+issue #138. The section now has one table per scheme, says the basic attack is on
+no key, and says which scheme ships as default and where that is set.
+`tools/tests/test_controls_table_matches_the_input_assets.py` compares both tables
+against `MOUSE_MAPPINGS` and `KEYBOARD_MAPPINGS` in
+`tools/generate_input_assets.py`, so the document and the bindings cannot drift
+apart again without a test naming the binding that differs.
 
 ---
 
