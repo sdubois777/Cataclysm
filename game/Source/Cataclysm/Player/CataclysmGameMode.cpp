@@ -80,17 +80,20 @@ int32 ACataclysmGameMode::SpawnTrainingDummies()
 			continue;
 		}
 
-		// After spawning, because BeginPlay is what wires the ability system up
-		// and the attribute cannot be written before that.
+		// Both remembered and applied, so it does not matter whether the ability
+		// system has been wired up yet. See ACataclysmEnemyCharacter::SetHealth.
 		Dummy->SetHealth(TrainingDummyHealth);
+		Dummy->SetAttackDamage(TrainingDummyAttackDamage);
 
 		TrainingDummies.Add(Dummy);
 		++Spawned;
 	}
 
 	UE_LOG(LogCataclysm, Verbose,
-		TEXT("Put %d training dummies in a ring of %.0f cm around %s."),
-		Spawned, TrainingDummyRingRadius, *Centre.ToCompactString());
+		TEXT("Put %d training dummies in a ring of %.0f cm around %s. "
+			 "Each has %.0f health and hits for %.0f."),
+		Spawned, TrainingDummyRingRadius, *Centre.ToCompactString(),
+		TrainingDummyHealth, TrainingDummyAttackDamage);
 
 	return Spawned;
 }

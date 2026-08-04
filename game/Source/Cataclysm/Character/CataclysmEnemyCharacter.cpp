@@ -2,12 +2,15 @@
 
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -26,6 +29,19 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 	// attacks anything nearby, friend or foe" -- is a change of attitude for a
 	// tagged actor and not a change of side. Issue #163 builds it.
 	TeamId = UCataclysmTeams::IdFor(ECataclysmTeam::Monsters);
+
+	// Its own brain, possessed as soon as it exists. Without both of these an
+	// enemy stands where it was spawned for its whole life: nothing else in the
+	// project gives a non-player pawn a controller.
+	AIControllerClass = ACataclysmEnemyController::StaticClass();
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+
+	// It turns to face where it is walking, like the player character does.
+	// Without this the cylinder slides sideways and there is no way to tell from
+	// looking at it which way it thinks it is going.
+	bUseControllerRotationYaw = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 480.0f, 0.0f);
 
 	AbilitySystemComponent = CreateDefaultSubobject<UCataclysmAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
@@ -85,33 +101,60 @@ void ACataclysmEnemyCharacter::SetHealth(float NewMaxHealth)
 	// engine ensure. Storing it means InitAbilityActorInfo applies it when the
 	// ability system is genuinely ready.
 	StartingMaxHealth = NewMaxHealth;
-	ApplyStartingHealth();
+	ApplyStartingAttributes();
 }
 
-void ACataclysmEnemyCharacter::ApplyStartingHealth()
+void ACataclysmEnemyCharacter::SetAttackDamage(float NewAttackDamage)
 {
-	if (!AbilitySystemComponent || StartingMaxHealth <= 0.0f)
+	if (NewAttackDamage < 0.0f)
+	{
+		return;
+	}
+
+	StartingAttackDamage = NewAttackDamage;
+	ApplyStartingAttributes();
+}
+
+void ACataclysmEnemyCharacter::ApplyStartingAttributes()
+{
+	if (!AbilitySystemComponent)
 	{
 		return;
 	}
 
 	// Writing to an attribute the ability system does not hold yet raises an
-	// engine ensure rather than failing quietly, so this is checked rather than
-	// attempted. It is false before the component has been initialised.
+	// engine ensure rather than failing quietly, so each is checked rather than
+	// attempted. HasAttributeSetForAttribute is false before the component has
+	// been initialised.
 	const FGameplayAttribute MaxHealth =
 		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
-	if (!AbilitySystemComponent->HasAttributeSetForAttribute(MaxHealth))
+	if (StartingMaxHealth > 0.0f
+		&& AbilitySystemComponent->HasAttributeSetForAttribute(MaxHealth))
 	{
-		return;
+		// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental. The vital
+		// attribute set clamps health to the maximum in PreAttributeChange, so
+		// raising the current value before the maximum would clamp it straight
+		// back down to whatever the old maximum was.
+		AbilitySystemComponent->SetNumericAttributeBase(MaxHealth, StartingMaxHealth);
+		AbilitySystemComponent->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), StartingMaxHealth);
 	}
 
-	// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental. The vital
-	// attribute set clamps health to the maximum in PreAttributeChange, so
-	// raising the current value before the maximum would clamp it straight back
-	// down to whatever the old maximum was.
-	AbilitySystemComponent->SetNumericAttributeBase(MaxHealth, StartingMaxHealth);
-	AbilitySystemComponent->SetNumericAttributeBase(
-		UCataclysmVitalAttributeSet::GetHealthAttribute(), StartingMaxHealth);
+	const FGameplayAttribute Damage =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	if (StartingAttackDamage > 0.0f
+		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
+	{
+		AbilitySystemComponent->SetNumericAttributeBase(Damage, StartingAttackDamage);
+	}
+}
+
+void ACataclysmEnemyCharacter::AttackTarget(AActor* Target)
+{
+	// The same path a player's skill takes: written into the Damage meta
+	// attribute and resolved through the full mitigation order. An enemy with no
+	// attack damage set deals nothing and says so once, which ApplyHit handles.
+	UCataclysmSkillEffects::ApplyHit(this, Target, AttackPercentOfOwnDamage);
 }
 
 UAbilitySystemComponent* ACataclysmEnemyCharacter::GetAbilitySystemComponent() const
@@ -137,9 +180,9 @@ void ACataclysmEnemyCharacter::InitAbilityActorInfo()
 
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
 
-	// Now that the attribute sets are registered, whatever health a spawner
-	// asked for before this point can finally be written.
-	ApplyStartingHealth();
+	// Now that the attribute sets are registered, whatever health and attack
+	// damage a spawner asked for before this point can finally be written.
+	ApplyStartingAttributes();
 
 	if (HasAuthority() && StartingAbilitySet)
 	{

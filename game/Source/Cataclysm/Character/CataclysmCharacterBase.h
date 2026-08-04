@@ -62,6 +62,30 @@ public:
 	virtual FGenericTeamId GetGenericTeamId() const override;
 	//~ End IGenericTeamAgentInterface
 
+	// ----------------------------------------------------------------------
+	// What ACataclysmEnemyController needs in order to drive this character.
+	//
+	// FOUR VIRTUALS ON THE SHARED BASE RATHER THAN AN INTERFACE, and the reason
+	// is that the controller has to work for two classes that have nothing else
+	// in common -- a monster and a summoned imp -- and both already derive from
+	// here. The defaults make the base inert: a reach of zero means a character
+	// is never in range of anything, and AttackTarget does nothing. The player
+	// character inherits those defaults and is possessed by a player controller
+	// rather than this one, so nothing drives it.
+	// ----------------------------------------------------------------------
+
+	/** How close it must be to hit something, in centimetres. Zero never reaches. */
+	virtual float AttackReachCm() const { return 0.0f; }
+
+	/** How far it notices a target, in centimetres. Zero notices nothing. */
+	virtual float SightRadiusCm() const { return 0.0f; }
+
+	/** Seconds between one of its attacks and the next. */
+	virtual float SecondsBetweenAttacks() const { return 1.0f; }
+
+	/** Hit the given target once. Called by the controller when it is in reach. */
+	virtual void AttackTarget(AActor* Target) {}
+
 protected:
 	/**
 	 * Which side this character is on. Set in the subclass constructor.
