@@ -241,6 +241,13 @@ void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
 				 "sheet of docs/All_Things_Cataclysm.xlsx."),
 			*EquippedWeaponType);
 	}
+	else if (EquippedWeaponType.IsEmpty())
+	{
+		// Every equip clears the previous weapon first, so this runs on the way
+		// through. Named separately because "The  supplies 0.0" reads as a bug.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("Holding nothing, so there is no attack damage."));
+	}
 	else
 	{
 		UE_LOG(LogCataclysm, Verbose,
