@@ -1892,7 +1892,9 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
 
 # **VII. Crafting — The Cataclysmic Forge**
 
-The Cataclysmic Forge is a high-stakes, deterministic crafting system built around the game's core theme of Time Management. Unlike systems where failure destroys items, the Forge's primary penalty is a strategic setback — crafting expensive items costs the player valuable days needed to manage the Empire and defend against the next Surge.
+The Cataclysmic Forge is a high-stakes, deterministic crafting system built around the game's core theme of Time Management. A craft never destroys the item being crafted. The Forge's primary penalty is a strategic setback — crafting expensive items costs the player valuable days needed to manage the Empire and defend against the next Surge.
+
+There is one exception, and it is the only way the Forge can cost a player anything permanent: residue accumulated across worn equipment can reach a threshold at which the character is hunted, and can be lost. That is described under Worn Residue and Consumption below. It is warned before it can happen, and it is avoidable by managing residue.
 
   
 
@@ -1914,6 +1916,31 @@ Every modification made to an item adds Cataclysmic Residue (CR). This residue r
 
   - **Accelerate Craft — reduces crafting time by 1 day per shard. Counters the CR Time Penalty.** Tainted Shard
   - **CR Cleanse — instantly reduces accumulated CR by 50%. Resource-heavy safety valve.** Purified Essence
+
+  
+
+## **Worn Residue and Consumption**
+
+Cataclysmic Residue is a property of an item. **Worn Residue** is the sum of the residue on every item the character currently has equipped. It is a property of the character, it changes whenever equipment changes, and it is shown on the character sheet at all times.
+
+  
+
+Worn Residue grants nothing. It is not a resource and it does not make the character stronger. Residue is a cost throughout, and it becomes dangerous only if the player ignores the tools that manage it: Purified Essence, which halves accumulated residue, and the Residue Protocols node on the Empire tree, which ignores 5% of residue per point.
+
+  
+
+**The Consumption Threshold.** A single fixed number, to be tuned. If equipping an item would take Worn Residue to or past the threshold, the game states the resulting total and the consequence, and asks the player to confirm before the equip happens. There is no path across the threshold that does not show the warning first. Crossing it is always a decision the player made on purpose.
+
+  
+
+**What crossing it does.** The character is marked. On entering the next dungeon floor, a corrupted double of the character is placed in the dungeon and hunts the player: same class, same level, same equipment, same skills. It is the same enemy described under The Corrupted in section VIII, aimed at the character it was copied from.
+
+  - **If the player kills the double**, residue is set to zero on every equipped item. The character keeps its equipment and the run continues.
+  - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run. Empire progress is kept. A snapshot of the character is written to the shared library of corrupted characters described in section VIII.
+
+  
+
+**Why the run ends rather than the character being replaced mid-run.** A run is played at a fixed tier. Replacing a tier 5 character with a fresh one leaves the player at a tier they cannot survive, which is a loss presented as a continuation. Ending the run states the same penalty honestly, and it reuses a rule the game already has rather than inventing a new category of death.
 
   
 
@@ -1974,9 +2001,49 @@ A dungeon carries **one modifier per difficulty tier**, so a tier 8 dungeon carr
 
   
 
+## **The Corrupted (Dungeon Modifier)**
+
+While this modifier is active, one corrupted former player character is placed in the dungeon. It hunts the player across floors rather than waiting to be found.
+
+  
+
+**Where they come from.** Every character consumed by Worn Residue, in any player's game, is snapshotted into a shared table of corrupted characters. A dungeon carrying this modifier draws one entry from that table at random. The snapshot holds class, level, passive tree allocation, equipped items with their rolled affixes, and skill setup — enough to rebuild the character as an enemy that fights with player skills rather than a monster ability list.
+
+  
+
+**Scaling.** The drawn character is rebuilt at the tier of the dungeon it appears in, not the tier it was consumed at. Level, item level, affix tiers and residue all scale to the dungeon's tier. Without this, a player could lose a high-tier character on purpose and then farm its equipment at a tier where the fight is trivial.
+
+  
+
+**Drops.** On death it drops its equipped items, scaled by the same rule. This follows the Rogue Exiles in Path of Exile, which drop one item from every equipment slot and are one of that game's most reliably interesting random encounters.
+
+  
+
+**Seeding.** The shared table is empty until the first character anywhere is consumed. It ships with authored entries so the modifier works at launch, and so it works at all when the player has no network connection.
+
+  
+
+**Weight.** To be set when the dungeon modifier list is entered into the workbook. That list does not exist yet in either document.
+
+  
+
 ## **Dungeon Score Formula**
 
 Dungeon Score = (Common Enemy Score × 0.6) + (Elite Enemy Score × 0.2) + (Rare Enemy Score × 0.15) + (Legendary Enemy Score × 0.04) + (Boss Enemy Score × 0.01)
+
+  
+
+## **Destructible Environment**
+
+Destruction in dungeons is authored, not free. Dungeons contain breakable objects — props, pillars, walls and sections of floor — placed by hand or by the dungeon generator. Those objects fracture and are removed when damaged. Anything a breakable object reveals, opens or drops is placed deliberately.
+
+  
+
+The terrain itself is not deformable. The player cannot dig, tunnel, or cut a new path through ground or rock. Level geometry outside the authored breakables is fixed for the duration of a dungeon.
+
+  
+
+This is a deliberate limit rather than a temporary one, and the reasoning is recorded in `DECISIONS.md`.
 
   
 
