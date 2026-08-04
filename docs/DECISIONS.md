@@ -20,6 +20,95 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Attribute affixes are percentage increases, suffixes, and roll where the stats they drive roll
+
+**The question.** Gear granting primary attributes was reversed in the entry
+below, so the eight affixes had to be designed and built. The project owner set
+three of the four properties and left the rest to be derived.
+
+**STATED BY THE OPERATOR.** Percentage increases only, never flat. No hybrids.
+Suffixes.
+
+**Why percentage only is the interesting choice, and not just a smaller one.** A
+flat "+5 Spirit" is worth the same to every character. A percentage increase is
+worth little to a character spread across several attributes and a great deal to
+one that has specialised. So the affix pays out on a decision the player already
+made rather than handing out the same value regardless. That is the whole design,
+and a flat version would undo it.
+
+**DERIVED, NOT CHOSEN: the value is 12%, matching every other "increased" affix.**
+
+The arithmetic lands somewhere defensible. An attribute grants 2% of its main
+stat per point, so +12% of an attribute held at V points is worth 0.12 x V x 2%
+of that stat. That equals a dedicated 12% single-stat affix at exactly V = 50,
+which is heavy specialisation out of the 100 points levelling gives. Below 50 the
+attribute affix is worse than the dedicated one; above it, better. It also drives
+the attribute's second stat for free, which is affordable because attribute
+affixes are suffixes and the dedicated increases are prefixes, so they never
+compete for the same slot.
+
+This is a first number rather than a tuned one. It should move against real play.
+
+**DERIVED, NOT CHOSEN: which slots each one rolls on.**
+
+An attribute affix rolls wherever the stats that attribute drives already roll,
+read from `game/Data/Attributes.csv` and the existing pool. Nothing was picked by
+hand.
+
+That produces the right answer for weapons without needing a rule about weapons.
+The pool already only puts offensive suffixes on a weapon. Ferocity drives
+critical strike and Efficacy drives area of effect, both of which roll on weapons,
+so those two attributes reach a weapon. Vitality drives health and Constitution
+drives armour, which do not, so those two cannot. **Ferocity and Efficacy are the
+only two of the eight that can appear on a weapon**, and no new rule was written
+to make that true.
+
+**AN ATTRIBUTE IS NOT A STAT, AND THE MODEL HAD TO BE TOLD SO.**
+`sim/cataclysm_sim/affixes.py` refuses any affix naming something outside
+`AFFIXABLE_STATS`, which exists so an affix cannot silently grant something
+nothing reads. Attributes failed that test while being read by more of the model
+than most stats are: `character.py` keeps them in `ATTRIBUTE_EFFECTS` rather than
+in the stat groups, because an attribute holds no value of its own and turns each
+point into increases on the stats it drives.
+
+They are admitted by name rather than by widening the test, so the guard still
+refuses a typo. A test asserts both halves: that an attribute affix constructs,
+and that an invented stat still raises.
+
+**FOUR PLACES PINNED THE OLD RULE AND ALL FOUR HAD TO MOVE TOGETHER.** This is
+the part worth remembering, because missing any one of them would have failed
+somewhere far from the change:
+
+  - `docs/Cataclysm_GDD_v2.md` said "There are no attribute affixes" under a
+    heading "What Affixes Do Not Grant". That rule is replaced by a new
+    "Attribute Affixes" section; the second rule under that heading, that no
+    ordinary affix is a "more" multiplier, is untouched and the heading stays.
+  - `tools/tests/test_what_affixes_do_not_grant.py` asserted the old rule against
+    all three copies of the affix pool. Its own docstring anticipated this:
+    reversing a rule means changing the design document and that file together.
+    The tests are reversed rather than deleted, because the failure they guard
+    against — an affix in one copy of the pool and not the others — has not
+    changed. It now also asserts the old sentence is **gone** from the design
+    document, so reinstating either half without the other fails.
+  - `sim/tests/test_affixes.py` had a test named
+    `test_there_are_no_attribute_affixes`.
+  - `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins the affix row
+    count, which rose from 60 to 68. That one fails only inside Unreal, so a
+    Python-only test run would have missed it entirely.
+
+**Affects:** `All_Things_Cataclysm.xlsx`, Affixes sheet, 8 new rows.
+`game/Data/Affixes.csv`, regenerated, 60 rows to 68. `Cataclysm_GDD_v2.md`, a new
+Attribute Affixes section. `sim/cataclysm_sim/affixes.py`, the eight affixes and
+the widened stat guard. Three test files as above.
+
+**Still open.** Rounding. A percentage of an integer attribute is fractional, and
+nothing says whether attributes carry fractions or round. The simulation treats
+attribute points as numbers and does not care; Unreal's attributes are floats, so
+fractions work there. It needs stating before the interface shows a player their
+attributes.
+
+---
+
 ## 2026-08-04 — Nine decisions from an audit of the affix pool, including two reversals
 
 **The question.** The affix pool holds 59 rollable affixes. The project owner

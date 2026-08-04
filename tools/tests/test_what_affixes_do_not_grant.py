@@ -46,6 +46,7 @@ cross-check instead of silently emptying the guard.
 
 from __future__ import annotations
 
+import collections
 import csv
 import pathlib
 import re
@@ -64,6 +65,7 @@ GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 #: failure says where to go, and asserted below so renaming the section does not
 #: leave this file pointing at nothing.
 GDD_SECTION = "What Affixes Do Not Grant"
+ATTRIBUTE_SECTION = "Attribute Affixes"
 
 #: The two value kinds an ordinary affix may have. "more" is deliberately absent.
 ALLOWED_VALUE_KINDS = frozenset({"flat", "increased"})
@@ -159,31 +161,70 @@ class TestTheAttributeNamesAreReal:
         assert not (scaled & primary_attributes), sorted(scaled & primary_attributes)
 
 
-class TestNoAffixGrantsAPrimaryAttribute:
-    """The first rule. See the module docstring for why it is a decision."""
+class TestEveryAttributeIsGrantedOnceAsAnIncrease:
+    """REVERSED ON 2026-08-04, and these tests reversed with it.
 
-    def test_not_in_the_workbook(self, affix_sheet, primary_attributes):
-        granted = sorted({text(row["Stat"]).lower() for row in affix_sheet}
-                         & primary_attributes)
-        assert not granted, (
-            f"the Affixes sheet of {WORKBOOK.name} grants primary attributes "
-            f"{granted}. The design document forbids that under "
-            f"'{GDD_SECTION}'. Reversing the decision means changing the design "
-            "document and this test together.")
+    This class used to assert the opposite: that no affix grants a primary
+    attribute. That was the design document's rule, and the project owner has
+    replaced it. Gear now grants a percentage increase to each of the eight
+    attributes.
 
-    def test_not_in_the_table_the_game_loads(self, affix_rows, primary_attributes):
-        granted = sorted({row["Stat"].strip().lower() for row in affix_rows}
-                         & primary_attributes)
-        assert not granted, (
-            f"{AFFIX_CSV.name} grants primary attributes {granted}")
+    The shape of the check is kept rather than deleted, because the failure mode
+    it guards against has not changed. An affix present in one copy of the pool
+    and missing from the others is still the thing that goes wrong quietly.
 
-    def test_not_in_the_hybrid_halves_either(self, affix_rows, primary_attributes):
-        """A hybrid names two other affixes rather than a stat.
+    Three rules replace the one that was here, all from the owner on 2026-08-04:
+    percentage increases only and never flat, no hybrid may grant an attribute,
+    and every one of them is a suffix.
+    """
 
-        Checking only the `Stat` column would miss an attribute reaching gear
-        through a hybrid whose halves grant one. The halves are affix names, so
-        this looks for an attribute name inside them.
-        """
+    def test_every_attribute_is_granted_in_the_workbook(self, affix_sheet,
+                                                        primary_attributes):
+        granted = {text(row["Stat"]).lower() for row in affix_sheet
+                   } & primary_attributes
+        assert granted == primary_attributes, (
+            f"the Affixes sheet of {WORKBOOK.name} is missing affixes for "
+            f"{sorted(primary_attributes - granted)}")
+
+    def test_every_attribute_is_granted_in_the_table_the_game_loads(
+            self, affix_rows, primary_attributes):
+        granted = {row["Stat"].strip().lower() for row in affix_rows
+                   } & primary_attributes
+        assert granted == primary_attributes, (
+            f"{AFFIX_CSV.name} is missing affixes for "
+            f"{sorted(primary_attributes - granted)}")
+
+    def test_each_attribute_is_granted_exactly_once(self, affix_rows,
+                                                    primary_attributes):
+        """Two affixes for one attribute would double how much gear can give it
+        without anyone deciding to."""
+        counts = collections.Counter(
+            row["Stat"].strip().lower() for row in affix_rows
+            if row["Stat"].strip().lower() in primary_attributes)
+        repeated = sorted(name for name, n in counts.items() if n > 1)
+        assert not repeated, (
+            f"{AFFIX_CSV.name} grants {repeated} more than once")
+
+    def test_an_attribute_affix_is_always_an_increase_and_a_suffix(
+            self, affix_rows, primary_attributes):
+        for row in affix_rows:
+            if row["Stat"].strip().lower() not in primary_attributes:
+                continue
+            assert row["ValueKind"].strip() == "increased", (
+                f"{row['AffixName']} grants an attribute as "
+                f"{row['ValueKind']!r}. Attribute affixes are percentage "
+                "increases only; a flat one would hand every character the same "
+                "value instead of rewarding specialisation.")
+            assert row["Position"].strip() == "suffix", (
+                f"{row['AffixName']} is a {row['Position']}; attribute affixes "
+                "are suffixes")
+
+    def test_no_hybrid_reaches_an_attribute_through_its_halves(
+            self, affix_rows, primary_attributes):
+        """A hybrid names two other affixes rather than a stat, so checking the
+        `Stat` column alone would miss one reaching an attribute sideways. The
+        owner ruled out hybrid attribute affixes, so this rule survives the
+        reversal unchanged."""
         by_name = {row["AffixName"].strip(): row for row in affix_rows}
         for row in affix_rows:
             for column in ("HybridPart1", "HybridPart2"):
@@ -196,24 +237,27 @@ class TestNoAffixGrantsAPrimaryAttribute:
                 stat = by_name[part]["Stat"].strip().lower()
                 assert stat not in primary_attributes, (
                     f"{row['AffixName']} reaches the primary attribute {stat!r} "
-                    f"through its half {part!r}")
+                    f"through its half {part!r}. Hybrids granting an attribute "
+                    "were ruled out on 2026-08-04.")
 
-    def test_the_model_would_reject_one(self, primary_attributes):
+    def test_the_model_accepts_an_attribute_and_still_refuses_a_typo(
+            self, primary_attributes):
         """`affixes.py` validates the stat an affix names on construction.
 
-        A stat outside `AFFIXABLE_STATS` raises, so the model cannot be given an
-        attribute affix even by hand. That is the third copy of the pool and the
-        one the tuning work reads.
+        The guard still has to refuse a name nothing reads. Widening it to admit
+        attributes must not widen it to admit anything else.
         """
         from cataclysm_sim import affixes as af
 
-        reachable = sorted(set(af.AFFIXABLE_STATS) & primary_attributes)
-        assert not reachable, (
-            f"affixes.AFFIXABLE_STATS admits primary attributes {reachable}")
+        assert primary_attributes <= set(af.AFFIXABLE_STATS), (
+            "affixes.AFFIXABLE_STATS does not admit every primary attribute")
+
+        af.StatAffix("Increased agility test", sorted(primary_attributes)[0],
+                     "increased", 12.0, af.DEFENSIVE_SLOTS, af.SUFFIX)
 
         with pytest.raises(ValueError, match="character sheet"):
-            af.StatAffix("Flat agility", sorted(primary_attributes)[0], "flat",
-                         10.0, af.DEFENSIVE_SLOTS, af.PREFIX)
+            af.StatAffix("Bad", "max_stamina", "flat", 1.0,
+                         af.DEFENSIVE_SLOTS, af.PREFIX)
 
 
 class TestNoAffixIsAMoreMultiplier:
@@ -253,5 +297,16 @@ def test_the_design_document_still_states_both_rules():
     gdd = GDD.read_text(encoding="utf-8")
     assert GDD_SECTION in gdd, (
         f"{GDD.name} no longer has a '{GDD_SECTION}' section")
-    assert "There are no attribute affixes." in gdd
     assert 'No ordinary affix is a "more" multiplier.' in gdd
+
+    # The rule this file used to pin, reversed on 2026-08-04. Asserted in both
+    # directions: the old sentence must be gone, and the new one present, so
+    # that reinstating either without the other fails here.
+    assert "There are no attribute affixes." not in gdd, (
+        f"{GDD.name} still says there are no attribute affixes. That rule was "
+        "reversed; the tests above now require every attribute to have one.")
+    assert ATTRIBUTE_SECTION in gdd, (
+        f"{GDD.name} no longer has an '{ATTRIBUTE_SECTION}' section saying what "
+        "an attribute affix is")
+    assert ("Each of the eight primary attributes has exactly one affix, and it "
+            "is a percentage increase.") in gdd

@@ -718,10 +718,17 @@ def test_no_two_affixes_grant_the_same_thing():
 
 def test_every_affix_names_a_stat_that_something_reads():
     """A typo would otherwise grant a stat nothing on the character sheet reads,
-    and it would silently do nothing."""
-    from cataclysm_sim.character import ALL_STATS
+    and it would silently do nothing.
+
+    AN ATTRIBUTE COUNTS AS READ. `character.py` keeps the eight in
+    ATTRIBUTE_EFFECTS rather than in the stat groups, because an attribute holds
+    no value of its own: it turns each point into increases on the two or three
+    stats it drives. So an attribute name is not a stat and is still read.
+    """
+    from cataclysm_sim.character import ALL_STATS, ATTRIBUTE_NAMES
+    readable = set(ALL_STATS) | af.OFF_SHEET_STATS | set(ATTRIBUTE_NAMES)
     for affix in af.AFFIX_POOL:
-        assert affix.stat in set(ALL_STATS) | af.OFF_SHEET_STATS, affix.name
+        assert affix.stat in readable, affix.name
     with pytest.raises(ValueError, match="neither on the character sheet"):
         af.StatAffix("Bad", "max_stamina", "flat", 1.0)
 
@@ -732,13 +739,57 @@ def test_attack_damage_is_the_only_stat_allowed_off_the_character_sheet():
     assert af.OFF_SHEET_STATS == {"attack_damage"}
 
 
-def test_there_are_no_attribute_affixes():
-    """Deliberate rather than an omission. The design gives one attribute point
-    per level, plus the Maw which consumes items for them. Gear granting
-    attribute points appears nowhere, so an affix for it would be a new
-    mechanic rather than a filled gap."""
+def test_every_attribute_has_exactly_one_affix():
+    """Reversed on 2026-08-04. Gear used to grant no attributes at all; it now
+    grants a percentage increase to each of the eight, and to no other."""
     from cataclysm_sim.character import ATTRIBUTE_NAMES
-    assert not {a.stat for a in af.AFFIX_POOL} & set(ATTRIBUTE_NAMES)
+    granted = [a.stat for a in af.AFFIX_POOL if a.stat in set(ATTRIBUTE_NAMES)]
+    assert sorted(granted) == sorted(ATTRIBUTE_NAMES)
+    assert len(granted) == len(set(granted)), "an attribute has two affixes"
+
+
+def test_an_attribute_affix_is_always_an_increase_and_never_flat():
+    """The point of the design. Gear multiplies the attribute the character
+    already has, so it is worth little when spread thin and a great deal when
+    specialised. A flat version would hand everyone the same value."""
+    for affix in af.ATTRIBUTE_AFFIXES:
+        assert affix.kind == "increased", affix.name
+
+
+def test_an_attribute_affix_is_always_a_suffix():
+    for affix in af.ATTRIBUTE_AFFIXES:
+        assert affix.position == af.SUFFIX, affix.name
+
+
+def test_there_are_no_hybrid_attribute_affixes():
+    """Decided by the project owner: one attribute per affix, never two."""
+    for hybrid in af.HYBRID_AFFIXES:
+        for part in hybrid.parts:
+            assert part.stat not in af.ATTRIBUTE_STATS, hybrid.name
+
+
+def test_an_attribute_affix_rolls_only_where_the_stats_it_drives_roll():
+    """The slot lists are derived rather than chosen, which is what keeps a
+    weapon offensive without needing a new rule. Ferocity drives critical strike
+    and Efficacy drives area of effect, both of which already roll on a weapon.
+    Vitality drives health and Constitution drives armour, which do not."""
+    from cataclysm_sim.character import ATTRIBUTE_EFFECTS
+    by_stat: dict[str, set[str]] = {}
+    for affix in af.AFFIX_POOL:
+        if affix.stat not in af.ATTRIBUTE_STATS:
+            by_stat.setdefault(affix.stat, set()).update(affix.allowed_slots)
+    for affix in af.ATTRIBUTE_AFFIXES:
+        driven = ATTRIBUTE_EFFECTS[affix.stat]
+        allowed = set().union(*(by_stat.get(s, set()) for s in driven))
+        assert affix.allowed_slots == allowed, affix.name
+
+
+def test_only_the_two_offensive_attributes_reach_a_weapon():
+    """A consequence of the rule above, asserted directly because it is the part
+    a reader is most likely to doubt."""
+    on_weapon = {a.stat for a in af.ATTRIBUTE_AFFIXES
+                 if "Weapon" in a.allowed_slots}
+    assert on_weapon == {"ferocity", "efficacy"}
 
 
 def test_an_unknown_position_is_rejected():
