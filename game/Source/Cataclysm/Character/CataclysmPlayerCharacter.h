@@ -8,6 +8,7 @@
 #include "CataclysmPlayerCharacter.generated.h"
 
 class UCameraComponent;
+class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
 
@@ -111,6 +112,16 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
 	TObjectPtr<UStaticMeshComponent> PlaceholderFacingMarker;
+
+	/**
+	 * Fills the six ability slots from the equipped weapon.
+	 *
+	 * On the pawn rather than the player state, unlike the ability system
+	 * component: what is held is a property of the body, and a respawned
+	 * character equips again rather than inheriting what the corpse held.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UCataclysmWeaponSlotsComponent> WeaponSlots;
 
 private:
 	/** What the starting ability set granted, so it can be removed on unequip. */

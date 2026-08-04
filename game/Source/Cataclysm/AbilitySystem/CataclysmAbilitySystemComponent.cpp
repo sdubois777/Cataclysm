@@ -123,3 +123,38 @@ void UCataclysmAbilitySystemComponent::ClearAbilityInput()
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
 }
+
+FGameplayAbilitySpecHandle UCataclysmAbilitySystemComponent::GiveAbilityInSlot(
+	TSubclassOf<UGameplayAbility> AbilityClass,
+	ECataclysmAbilitySlot Slot,
+	int32 Level,
+	UObject* SourceObject)
+{
+	if (!IsValid(AbilityClass))
+	{
+		return FGameplayAbilitySpecHandle();
+	}
+
+	// Granting is server-only, exactly as UCataclysmAbilitySet requires. On a
+	// client this would appear to work and then have no effect, so it returns an
+	// invalid handle the caller can notice instead.
+	if (!IsOwnerActorAuthoritative())
+	{
+		return FGameplayAbilitySpecHandle();
+	}
+
+	const FGameplayTag SlotTag = CataclysmAbilitySlots::Tag(Slot);
+	if (!SlotTag.IsValid())
+	{
+		// A slot of None has no key and no tag, so a granted ability would sit
+		// there unreachable. Refusing is better than granting something no input
+		// can ever reach.
+		return FGameplayAbilitySpecHandle();
+	}
+
+	FGameplayAbilitySpec Spec(AbilityClass, Level);
+	Spec.SourceObject = SourceObject;
+	Spec.GetDynamicSpecSourceTags().AddTag(SlotTag);
+
+	return GiveAbility(Spec);
+}
