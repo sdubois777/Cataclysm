@@ -60,13 +60,50 @@ the risk table now names the four that exist. Defining a fifth would have added 
 difficulty to tune, balance and support permanently in exchange for a sentence
 nobody had written on purpose.
 
-**Not fixed, and still open in issue #32.** That risk table has three further
+**Not fixed, and still open in issue #32.** That risk table has two further
 problems this change does not touch: SSF is listed as a lethality mode when it is
-really an orthogonal option that changes loot rules rather than difficulty; three
-modes say "increased loot drops" with no number and Hardcore gives an equipment
-drop chance with no probability; and both Hardcore and Heretic remove the heads-up
-display, which contradicts the accessibility commitments in section XIII. Each of
-those needs a number or a decision that was not asked for here.
+really an orthogonal option that changes loot rules rather than difficulty; and
+three modes say "increased loot drops" with no number while Hardcore gives an
+equipment drop chance with no probability. Both need numbers that were not asked
+for here.
+
+**DECISION 2b: what accessibility covers, and what it does not. A claim made in
+issue #32 was wrong and is withdrawn.**
+
+Issue #32 asserted that Hardcore and Heretic hiding the heads-up display
+contradicts the accessibility commitments in section XIII. Checked against what
+section XIII actually lists — multiple language support, colour-blind palettes,
+scalable interface elements, reduced ability effect opacity, and an epilepsy-safe
+mode — there is no contradiction. Not one of those promises a heads-up display.
+"Scalable HUD elements" governs a display when one is present; it does not
+guarantee one exists.
+
+The operator's position, adopted and now written into the design document:
+accessibility means removing barriers that make the game **impossible** to play
+for some people, which is perception, language and physical safety. It does not
+mean removing difficulty, and it does not entitle a player to any particular
+interface element. Hiding the display is a difficulty choice the player opts into.
+
+This is recorded as a scope statement rather than a list item because it decides
+future arguments rather than a single case. Any later proposal to add or keep an
+interface element "for accessibility" has to show it removes a barrier of that
+kind, not that it is helpful.
+
+**DECISION 5: enemy telegraphs are readable, and punishing when ignored.**
+
+Issue #29 leaves the seven Demonic enemies with one sentence each and no telegraph
+specification, which blocks issue #39. The design target is now set: a clear
+wind-up with enough time to react if the player is paying attention, and real
+damage if they are not.
+
+This rules out both a reflex-heavy soulslike shape, which raises the floor for who
+can play and makes the empire layer feel like an interruption, and a forgiving
+shape where build strength alone carries the fight. It also rules out varying the
+target per enemy role, which was offered and not taken.
+
+The reaction windows themselves are not set here. They should be derived from
+shipped games in the genre when the enemy design is written, not invented, and the
+target above is what that research has to hit.
 
 **DECISION 3: the enemy rarity tiers follow the power model, and two multipliers
 are left unset rather than invented.**

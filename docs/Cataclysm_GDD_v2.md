@@ -2572,6 +2572,12 @@ Empire upgrade points are earned by defeating dungeons and persist through all r
 
 ## **Accessibility**
 
+**What accessibility means here, and what it does not.** It means removing barriers that make the game impossible to play for some people: perception, language, and physical safety. It does not mean removing difficulty, and it does not guarantee any particular interface element.
+
+  
+
+A mode that hides the heads-up display is a difficulty choice the player opts into. It is not an accessibility failure, and Hardcore and Heretic hiding it is not in conflict with anything below. Where a mode hides the display, the options below apply to whatever remains visible.
+
   - Multiple language support
   - Colorblind-friendly palette options
   - Scalable HUD elements (text size, cursor size)
