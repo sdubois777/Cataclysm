@@ -20,6 +20,69 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — Burning ground is a capsule, and a circle is the case where its two ends meet
+
+**The question.** Issue #167: four skills say the path they took burns, and all
+four left one patch at the far end instead. Emberhurl leaves "its flight path
+burning for 4 seconds", Chain of Coals and Hellbrand are written the same way,
+and Cinder Rush "leaves a trail of fire behind you". An enemy standing halfway
+along took the passing hits and then stood on ground that was not burning. The
+issue named two ways to fix it: a ground zone that can be a line, or a chain of
+overlapping circles laid along the path.
+
+**The decision. One zone, shaped as a capsule.** `ACataclysmGroundZone` gained a
+far end. A round patch is the case where the far end equals the near end, and
+both are swept by the same search, because `UCataclysmTargeting::IsInLine`
+already treats a segment of no length as a circle at its start. There is no
+branch between the two shapes and therefore no branch to get wrong.
+
+**Why not a chain of circles.** It reuses the existing spawn call unchanged,
+which is its only advantage. Against that: it spawns as many actors as the path
+is long divided by the spacing, each with its own timer and its own sweep of the
+world; the spacing is a number nobody can derive, because too wide leaves gaps in
+the trail and too narrow multiplies the cost; and an enemy standing where two
+circles overlap takes two ticks a second instead of one. That last one is not
+hypothetical — Path of Exile's Flame Wall, the shipped ground effect nearest to
+this, is a single line-shaped area, and its own stated rule is that an enemy can
+only be damaged by one Flame Wall at a time. A shipped game that reached for the
+overlap problem solved it by preventing the overlap.
+
+**Which skills get which shape, and the rule that decides it.** For a projectile,
+whether it pierces. A projectile that pierces travelled along a line and hit what
+it passed; one that does not landed at a point. That rule is already how
+`UCataclysmProjectileSkill::Land` chooses between a line search and a sphere
+search, so the ground now follows the same rule as the damage rather than a
+second, separate list of skill names. The Weapon Skills sheet agrees exactly:
+Emberhurl, Chain of Coals and Hellbrand all carry `Pierce=99` and leave ground;
+Blood Pyre and Magma Quake leave ground and carry no `Pierce` at all.
+
+For a movement skill, the mode. A charge leaves a trail along its run; a leap
+leaves a pool where it landed; a blink burns both of its two points and nothing
+between them, which was already true and is unchanged.
+
+**A separate fault found while doing this, and fixed in the same change.**
+`ACataclysmGroundZone` had no components of any kind. An actor whose components
+are all non-scene components gets no root component, and an actor with no root
+component reports its location as the world origin however it was spawned. So
+**every patch of burning ground in the project was sweeping around (0,0,0)**
+rather than around where the skill left it. It went unnoticed because the only
+test of it spawned the zone at the origin. This is the same fault that issue #163
+found in `ACataclysmMinion`, from the same cause, and it is worth stating as a
+general rule: in this project, an actor that needs a position needs a scene
+component, and a test that places something at the origin cannot tell whether it
+is there on purpose.
+
+**Sources.** The Path of Exile wiki on Flame Wall, for a line-shaped ground
+effect being a shape shipped games use, and for its rule that an enemy can only
+be damaged by one Flame Wall at a time; `game/Data/WeaponSkills.csv`, generated
+from the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`, for which
+skills pierce and which leave ground.
+
+**Affects:** no design document. The design already says these paths burn; this
+is the implementation catching up to it.
+
+---
+
 ## 2026-08-04 — The navigation mesh does update for destroyed geometry; the problem is that it takes four seconds
 
 **What this corrects.** The entry below excluded the walkable surface from

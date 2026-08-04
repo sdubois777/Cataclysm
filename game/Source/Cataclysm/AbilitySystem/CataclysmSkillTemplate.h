@@ -109,6 +109,19 @@ protected:
 	 */
 	ACataclysmGroundZone* LeaveGroundAt(const FVector& Location);
 
+	/**
+	 * Leave burning ground along a path rather than at a point.
+	 *
+	 * For the skills whose text says the path itself burns. Emberhurl leaves
+	 * "its flight path burning for 4 seconds"; Cinder Rush "leaves a trail of
+	 * fire behind you". Before this both left one patch at the far end, so an
+	 * enemy standing halfway along stood on ground that was not burning.
+	 * Issue #167.
+	 *
+	 * The skill's GroundRadius becomes the half-width of the path.
+	 */
+	ACataclysmGroundZone* LeaveGroundAlong(const FVector& Start, const FVector& End);
+
 	/** Pay HealthCostPercent of current health. Only Blood Pyre has one. */
 	void PayHealthCost();
 };
