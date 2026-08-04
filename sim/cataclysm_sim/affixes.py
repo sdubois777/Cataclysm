@@ -692,11 +692,20 @@ DAMAGE_AFFIXES = (FLAT_DAMAGE, INCREASED_DAMAGE)
 # --------------------------------------------------------------------------
 #
 # WHY THESE STATS AND NOT OTHERS. Every stat on the character sheet that a piece
-# of equipment could plausibly grant. There are no attribute affixes, and that is
-# deliberate rather than an omission: the design gives one attribute point per
-# level and one other source, the Maw, which consumes items for them. Gear does
-# not grant attribute points anywhere in the design, so inventing that here would
-# be adding a mechanic rather than filling the pool.
+# of equipment could plausibly grant.
+#
+# NO AFFIX HERE GRANTS A PRIMARY ATTRIBUTE, AND THAT IS NOW A GAP RATHER THAN A
+# RULE. This comment used to say the absence was deliberate, because the design
+# gave attribute points from levelling and from the Maw and never from gear. The
+# project owner reversed that on 2026-08-04: attributes must be slottable on
+# gear. Nothing has been added yet -- flat or increased, prefix or suffix, which
+# slots, and whether a hybrid grants two are still open, and an attribute affix
+# has to be priced against what the Maw already gives rather than against the
+# hundred points a character earns by reaching level 100. Issue #204 carries it.
+#
+# `AFFIXABLE_STATS` does not admit an attribute name today, so adding one means
+# widening that set as well; `StatAffix.__post_init__` rejects anything outside
+# it.
 #
 # HOW THE VALUES WERE SET. Not one formula, because the stats are not on one
 # scale. Three anchors, and each affix below says which it used:
@@ -2387,5 +2396,5 @@ if __name__ == "__main__":
           f"{total_pool_size()} things a drop could roll:")
     print(f"    {len(AFFIX_POOL)} stat affixes, {len(RESISTANCE_FAMILIES)} resistance families, "
           f"{len(HYBRID_AFFIXES)} hybrids, {len(AILMENT_AFFIXES)} ailments.")
-    print("  There are no attribute affixes, which is deliberate: the design")
-    print("  gives attribute points per level and from the Maw, never from gear.")
+    print("  No affix grants a primary attribute yet. The project owner")
+    print("  reversed the rule that forbade it on 2026-08-04; issue #204.")
