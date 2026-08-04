@@ -96,6 +96,51 @@ and `sim/tests/test_affixes.py`.
 
 ---
 
+## 2026-08-04 — The rule that gear grants no primary attribute stands, and both rules in "What Affixes Do Not Grant" are now pinned by a test
+
+**The question.** Issue #204 reported that none of the eight primary attributes —
+Agility, Ferocity, Constitution, Vitality, Mind, Spirit, Efficacy, Luck — can be
+found on gear, having cross-referenced every attribute against the `Stat` column
+of `game/Data/Affixes.csv`. It asked whether attribute affixes should exist, and
+said the absence "looks like an omission rather than a decision".
+
+**The decision. Nothing changes in the affix pool.** It was already a decision,
+made when the pool was built out for issue #79 and written in two places:
+`Cataclysm_GDD_v2.md` has a section headed "What Affixes Do Not Grant" saying
+"There are no attribute affixes", and this log's entry of 2026-08-03, "The affix
+pool: prefixes, suffixes and implicits", gives the reasoning. The design gives
+one attribute point per level and one other source,
+the Maw, which consumes items and enemies for them. Gear granting attribute
+points appears nowhere in the design, so an affix for it would add a mechanic
+rather than fill a gap.
+
+**Why it was reported anyway, which is the part worth fixing.** The audit read
+the data and not the prose. A rule that exists only in a design document is
+invisible to anyone checking the generated tables, so it gets re-reported. That
+is what happened here, and it will happen again to the second rule in the same
+section — "No ordinary affix is a 'more' multiplier" — unless the same fix is
+applied to both.
+
+**What was built instead of an affix.**
+`tools/tests/test_what_affixes_do_not_grant.py` asserts both rules against all
+three copies of the affix pool: the Affixes sheet of `All_Things_Cataclysm.xlsx`,
+the generated `game/Data/Affixes.csv`, and `sim/cataclysm_sim/affixes.py`. It
+also checks that the design document still states both rules, so the tests cannot
+outlive the design they enforce, and it reads the eight attribute names from
+`game/Data/Attributes.csv` rather than listing them, cross-checking those names
+against `game/Source/Cataclysm/AbilitySystem/CataclysmPrimaryAttributeSet.h` so a
+rename cannot quietly empty the guard.
+
+**What is not settled by this.** Whether Luck is worth an attribute point at
++0.01% rarity find per point is issue #81 and is unaffected: gear reaches magic
+find directly through the flat magic find affix and the increased loot quantity
+affix, so the affix pool is not what limits Luck.
+
+**Affects:** no design document change; both rules already read as decided. New
+file `tools/tests/test_what_affixes_do_not_grant.py`.
+
+---
+
 ## 2026-08-04 — Burn gets the Of Embers gem and the chance to burn affix, and an ailment affix is always five points above its gem
 
 **The question.** Issue #152. Burn was the only one of the ten player-applicable
