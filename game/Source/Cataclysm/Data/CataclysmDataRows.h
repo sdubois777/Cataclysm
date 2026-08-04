@@ -467,6 +467,71 @@ struct FCataclysmAttributeEffectRow : public FTableRowBase
 	float PercentPerPoint = 0.0f;
 };
 
+/**
+ * What a skill in one of the seven slots is worth, waits, and costs.
+ * Source: Skill Slots.
+ *
+ * PER SLOT RATHER THAN PER SKILL, and that is deliberate. No designed skill
+ * states its own cooldown or mana cost, so a column on the Weapon Skills sheet
+ * would be 77 copies of seven values. A skill states its own figure only when
+ * it differs, which is what Skull Splitter does at 500% weapon damage.
+ *
+ * WHY IT EXISTS AT ALL. These numbers lived only in the Python model, where
+ * nothing in the game could reach them, so no ability could honour a cooldown
+ * or a cost. Meanwhile the design already had a cooldown reduction formula, an
+ * attribute scaling it, an affix granting it and 41 enchantments mentioning it,
+ * all dividing zero. That is issue #155.
+ *
+ * MANA COST IS QUOTED AT LEVEL 100, as every other figure in this project is,
+ * and scales down with character level along the default mana progression. It
+ * is the same number for every class, which is what makes a larger mana pool
+ * buy more casts rather than a proportionally larger price per cast.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmSkillSlotRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** Basic, Heavy, Special, Support, Aura, Ultimate or Movement. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	FString Slot;
+
+	/** Percent of weapon damage one use deals. For the Aura, per second. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float DamagePercent = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float DamageLowest = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float DamageHighest = 0.0f;
+
+	/** Seconds before the skill can be used again, before any reduction.
+	 *  Zero only for the Basic Attack, which is automatic, and the Aura,
+	 *  which is a toggle. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float Cooldown = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float CooldownLowest = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float CooldownHighest = 0.0f;
+
+	/** Mana one use costs at level 100. For the Aura, per second while on. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float ManaCost = 0.0f;
+
+	/** Mana restored per hit, at level 100. Only the Basic Attack has any:
+	 *  it is automatic, so this is income for being in a fight rather than a
+	 *  generator the player has to press. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float ManaOnHit = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	FString Note;
+};
+
 /** A crafting material. Source: Crafting. */
 USTRUCT(BlueprintType)
 struct FCataclysmCraftingMaterialRow : public FTableRowBase

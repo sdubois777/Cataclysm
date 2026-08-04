@@ -533,6 +533,80 @@ def affixes(book) -> list[dict]:
     return unique(out, "Affixes")
 
 
+#: The two slots that are allowed to have no cooldown, and the reason each has
+#: none. The Basic Attack is automatic, so the weapon's attack speed sets its
+#: rate; the Aura is a toggle, so there is nothing to wait for. Any other slot
+#: reading zero is a forgotten number rather than a decision, which is exactly
+#: how issue #155 went unnoticed while 41 enchantments scaled it.
+SLOTS_WITHOUT_A_COOLDOWN = frozenset({"Basic", "Aura"})
+
+
+def skill_slots(book) -> list[dict]:
+    """What a skill in each of the seven slots is worth, waits, and costs.
+
+    WHY THIS SHEET EXISTS. These numbers used to live only in
+    sim/cataclysm_sim/character.py, where Unreal cannot reach them, so no
+    ability could honour a cooldown or a mana cost. They are per slot rather
+    than per skill: no designed skill states its own, and a column on the
+    Weapon Skills sheet would be 77 copies of seven values.
+
+    A skill states its own figure only when it differs, which is what Skull
+    Splitter does at 500% weapon damage.
+    """
+    rows = list(book["Skill Slots"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Skill Slots")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        slot = _cell(raw, headers, "Slot")
+        if not slot:
+            continue
+
+        cooldown = number(_cell(raw, headers, "Cooldown") or 0, "Cooldown", index)
+        lowest = number(_cell(raw, headers, "Cooldown Lowest") or 0,
+                        "Cooldown Lowest", index)
+        highest = number(_cell(raw, headers, "Cooldown Highest") or 0,
+                         "Cooldown Highest", index)
+        if not lowest <= cooldown <= highest:
+            raise DataError(
+                f"Skill Slots row {index}: {slot} has a cooldown of {cooldown}s "
+                f"outside its own band of {lowest} to {highest}")
+        if cooldown == 0.0 and slot not in SLOTS_WITHOUT_A_COOLDOWN:
+            raise DataError(
+                f"Skill Slots row {index}: {slot} has no cooldown. Only "
+                f"{sorted(SLOTS_WITHOUT_A_COOLDOWN)} may have none; the Basic "
+                "Attack is automatic and the Aura is a toggle.")
+
+        damage = number(_cell(raw, headers, "Damage Percent") or 0,
+                        "Damage Percent", index)
+        damage_low = number(_cell(raw, headers, "Damage Lowest") or 0,
+                            "Damage Lowest", index)
+        damage_high = number(_cell(raw, headers, "Damage Highest") or 0,
+                             "Damage Highest", index)
+        if not damage_low <= damage <= damage_high:
+            raise DataError(
+                f"Skill Slots row {index}: {slot} deals {damage}% of weapon "
+                f"damage, outside its own band of {damage_low} to {damage_high}")
+
+        out.append({
+            "Name": slot,
+            "Slot": slot,
+            "DamagePercent": damage,
+            "DamageLowest": damage_low,
+            "DamageHighest": damage_high,
+            "Cooldown": cooldown,
+            "CooldownLowest": lowest,
+            "CooldownHighest": highest,
+            "ManaCost": number(_cell(raw, headers, "Mana Cost") or 0,
+                               "Mana Cost", index),
+            "ManaOnHit": number(_cell(raw, headers, "Mana On Hit") or 0,
+                                "Mana On Hit", index),
+            "Note": _cell(raw, headers, "Note"),
+        })
+
+    return unique(out, "Skill Slots")
+
+
 #: The row name carrying the stat line every class inherits.
 DEFAULT_CLASS_ROW = "Default"
 
@@ -645,6 +719,7 @@ TABLES = {
     "Affixes": affixes,
     "ClassStats": class_stats,
     "Attributes": attributes,
+    "SkillSlots": skill_slots,
 }
 
 
