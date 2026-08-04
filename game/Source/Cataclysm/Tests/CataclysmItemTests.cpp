@@ -528,4 +528,87 @@ bool FCataclysmItemRarityFromContentsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// A weapon's own damage, looked up by weapon TYPE
+// ---------------------------------------------------------------------------
+
+/**
+ * The number every skill's damage is a percentage of.
+ *
+ * WHAT THIS GUARDS. Issue #173: UCataclysmCombatAttributeSet::AttackDamage was
+ * initialised to zero and never set, so a Heavy Attack at 250% of it dealt
+ * nothing and the burn rider, being a share of the hit, applied nothing either.
+ * The game ran normally and killed nothing.
+ *
+ * The two-handed doubling is checked explicitly, because leaving it out is a
+ * silent halving whose only symptom is that everything hits softly.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponDamageByTypeTest,
+	"Cataclysm.Item.AWeaponTypeSuppliesItsOwnAttackDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWeaponDamageByTypeTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!Bases)
+	{
+		AddError(TEXT("DT_ItemBases does not exist. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	// The three weapons the vertical slice designs, and their stated implicits
+	// from the Item Bases sheet. Written here rather than read from the same
+	// table under test, so a table that lost a value fails rather than agreeing
+	// with itself.
+	struct FCase
+	{
+		const TCHAR* Type;
+		float Stated;
+		bool bTwoHanded;
+	};
+	const FCase Cases[] = {
+		{ TEXT("Greataxe"), 72.0f, true  },
+		{ TEXT("Staff"),    66.0f, true  },
+		{ TEXT("Fist"),     30.0f, false },
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		// At gear level 10 the stated figure IS the answer, before doubling.
+		const float Expected = Case.Stated * (Case.bTwoHanded ? 2.0f : 1.0f);
+		const float Actual = UCataclysmItemModifiers::WeaponDamageForType(
+			Bases, Case.Type, /*GearLevel=*/10);
+
+		TestTrue(FString::Printf(
+			TEXT("a +10 %s supplies %.0f attack damage, got %.2f"),
+			Case.Type, Expected, Actual),
+			FMath::IsNearlyEqual(Actual, Expected, 0.05f));
+
+		// And a lower gear level supplies strictly less, which is what makes
+		// upgrading a weapon worth anything.
+		const float AtZero = UCataclysmItemModifiers::WeaponDamageForType(
+			Bases, Case.Type, /*GearLevel=*/0);
+		TestTrue(FString::Printf(
+			TEXT("an unupgraded %s supplies less than a +10 one (%.2f < %.2f)"),
+			Case.Type, AtZero, Actual), AtZero < Actual);
+		TestTrue(FString::Printf(
+			TEXT("and more than nothing (%.2f)"), AtZero), AtZero > 0.0f);
+	}
+
+	// A weapon type that is not a weapon base supplies nothing, rather than
+	// returning an arbitrary row's value.
+	TestEqual(TEXT("a type that is not a weapon supplies nothing"),
+		UCataclysmItemModifiers::WeaponDamageForType(Bases, TEXT("Trombone"), 10),
+		0.0f);
+	TestEqual(TEXT("an empty type supplies nothing"),
+		UCataclysmItemModifiers::WeaponDamageForType(Bases, FString(), 10), 0.0f);
+	TestEqual(TEXT("no table supplies nothing"),
+		UCataclysmItemModifiers::WeaponDamageForType(nullptr, TEXT("Greataxe"), 10),
+		0.0f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

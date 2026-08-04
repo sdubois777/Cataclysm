@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -412,6 +413,77 @@ bool FCataclysmStartingWeaponGrantsSkillsTest::RunTest(const FString& Parameters
 	// from something else.
 	TestEqual(TEXT("The equipped type is the starting type"),
 		Slots->GetEquippedWeaponType(), Starting);
+
+	Actor->Destroy();
+	return true;
+}
+
+/**
+ * Equipping a weapon puts that weapon's own damage onto the character.
+ *
+ * WHAT THIS GUARDS. Issue #173: the attribute every skill's damage is a
+ * percentage of was initialised to zero and never set, so every skill dealt
+ * nothing and nothing burned. Both halves matter -- equipping must set it, and
+ * unequipping must clear it, or an unarmed character keeps hitting for whatever
+ * they last held.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEquippingSetsWeaponDamageTest,
+	"Cataclysm.WeaponSlots.EquippingAWeaponPutsItsDamageOnTheCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEquippingSetsWeaponDamageTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+
+	UCataclysmCombatAttributeSet* Combat =
+		NewObject<UCataclysmCombatAttributeSet>(Actor);
+	AbilitySystem->AddAttributeSetSubobject(Combat);
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	UCataclysmWeaponSlotsComponent* Slots =
+		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+	Slots->RegisterComponent();
+	Slots->SetDamageType(TEXT("Demonic"));
+
+	const auto AttackDamage = [&]
+	{
+		return AbilitySystem->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+	};
+
+	// Zero before anything is held, which is what makes the rest meaningful.
+	TestEqual(TEXT("A character holding nothing has no attack damage"),
+		AttackDamage(), 0.0f);
+
+	// A +10 Greataxe: the sheet states 72 and a two-hander doubles it.
+	Slots->SetWeaponGearLevel(10);
+	Slots->EquipWeaponType(TEXT("Greataxe"));
+
+	TestTrue(FString::Printf(
+		TEXT("A +10 Greataxe supplies 144 attack damage, got %.2f"), AttackDamage()),
+		FMath::IsNearlyEqual(AttackDamage(), 144.0f, 0.05f));
+
+	// SWAPPING REPLACES RATHER THAN ACCUMULATING. A Fist states 30 and is
+	// one-handed, so holding one after a Greataxe is worth 30 and not 174.
+	Slots->EquipWeaponType(TEXT("Fist"));
+	TestTrue(FString::Printf(
+		TEXT("Swapping to a +10 Fist supplies 30, not 174, got %.2f"), AttackDamage()),
+		FMath::IsNearlyEqual(AttackDamage(), 30.0f, 0.05f));
+
+	// And putting it down leaves nothing behind.
+	Slots->UnequipWeapon();
+	TestEqual(TEXT("Unequipping clears the attack damage"), AttackDamage(), 0.0f);
 
 	Actor->Destroy();
 	return true;
