@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "CataclysmAbilitySystemComponent.generated.h"
 
 struct FGameplayTag;
@@ -56,6 +57,28 @@ public:
 	 * an ability waiting on a key release waits for one that will never come.
 	 */
 	void ClearAbilityInput();
+
+	/**
+	 * Grants an ability into a slot the CALLER names, rather than the slot the
+	 * ability class declares.
+	 *
+	 * WHY THIS EXISTS ALONGSIDE UCataclysmAbilitySet. An ability set reads each
+	 * ability's own declared slot, which is right for a starting kit where every
+	 * ability knows where it belongs. It cannot express what a weapon does: the
+	 * equipped weapon decides which skill sits in each of the six slots, so the
+	 * slot is a property of the pairing and not of the ability. It is also what
+	 * lets one placeholder class stand in for six different slots while the real
+	 * skills are undesigned.
+	 *
+	 * @return the granted spec's handle, or an invalid handle if nothing was
+	 *         granted, which happens on a client, with no ability class, or with
+	 *         a slot of None.
+	 */
+	FGameplayAbilitySpecHandle GiveAbilityInSlot(
+		TSubclassOf<UGameplayAbility> AbilityClass,
+		ECataclysmAbilitySlot Slot,
+		int32 Level = 1,
+		UObject* SourceObject = nullptr);
 
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
