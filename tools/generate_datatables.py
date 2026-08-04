@@ -256,10 +256,45 @@ def weapon_skills(book) -> list[dict]:
                     "WeaponType": weapon, "DamageType": damage, "Slot": slot,
                     "SkillName": name,
                     "SkillDescription": clean(raw[4]),
-                    "Tags": clean(raw[5]),
+                    "Tags": tags_with_slot(clean(raw[5]), slot, where),
                     "Shape": shape,
                     "ShapeParams": params})
     return unique(out, "Weapon Skills")
+
+
+def tags_with_slot(written: str, slot: str, where: str) -> str:
+    """Add the row's slot tag to its Tags cell, derived from the Slot column.
+
+    WHY IT IS DERIVED AND NOT WRITTEN. The Tags sheet declares a tag for every
+    ability slot, and the Weapon Skills sheet used to carry two of them by hand:
+    `Slot.Movement` on every Movement row and `Slot.Ultimate` on every Ultimate
+    row, with `Slot.Heavy`, `Slot.Special`, `Slot.Support` and `Slot.Aura` on
+    nothing at all. The design says increases are scoped by tag and lists slot
+    tags among the scopes, so an affix reading "increased Heavy Attack damage"
+    would be a modifier scoped to `Slot.Heavy` -- which would have applied to no
+    skill in the game, and nothing would have reported it. Issue #156.
+
+    Deriving it rather than writing it into 398 rows means the Slot column is the
+    only place a row's slot is stated, so the tag cannot disagree with it. That
+    is the same reason `Cataclysm.Input.EveryAbilitySlotHasAGeneratedTag` exists.
+
+    A SLOT TAG WRITTEN BY HAND IS REFUSED, rather than merged. Allowing both
+    would put the slot in two places again, which is the thing this removes.
+    """
+    tags = [t.strip() for t in written.split(",") if t.strip()]
+
+    hand_written = [t for t in tags if t.startswith("Slot.")]
+    if hand_written:
+        raise DataError(
+            f"{where}: carries the slot tag {hand_written[0]!r} in its Tags "
+            f"cell. Slot tags come from the Slot column and are added by the "
+            f"generator; remove it from the sheet.")
+
+    if not slot:
+        return ", ".join(tags)
+
+    tags.append(f"Slot.{slot}")
+    return ", ".join(tags)
 
 
 def enchantments(book, negative: bool) -> list[dict]:
