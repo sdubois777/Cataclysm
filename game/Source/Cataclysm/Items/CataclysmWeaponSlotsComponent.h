@@ -54,9 +54,32 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Weapon")
 	int32 EquipWeaponType(const FString& NewWeaponType);
 
+	/**
+	 * Equips whatever StartingWeaponType names, and fills every slot from it.
+	 *
+	 * WHY THIS EXISTS SEPARATELY FROM EquipWeaponType. Which weapon a character
+	 * begins with is data on this component; WHEN it can be equipped is the
+	 * pawn's business, because the ability system lives on the player state and
+	 * does not exist until possession completes. So the pawn calls this once it
+	 * has wired the ability system up, and this component does not have to know
+	 * anything about possession order.
+	 *
+	 * @return how many slots were filled, or 0 if no starting weapon is named
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Weapon")
+	int32 EquipStartingWeapon();
+
 	/** Empties every slot this component filled. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Weapon")
 	void UnequipWeapon();
+
+	/** Which weapon type a character begins holding. See the field for why. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Weapon")
+	const FString& GetStartingWeaponType() const { return StartingWeaponType; }
+
+	/** Which damage type's skills are in use. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Weapon")
+	const FString& GetDamageType() const { return DamageType; }
 
 	/** The weapon type currently equipped. Empty when nothing is. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Weapon")
@@ -76,6 +99,9 @@ public:
 
 	/** Which damage type's skills to use. For tests; see the field below. */
 	void SetDamageType(const FString& NewDamageType) { DamageType = NewDamageType; }
+
+	/** Which weapon a character begins holding. For tests; see the field below. */
+	void SetStartingWeaponType(const FString& NewType) { StartingWeaponType = NewType; }
 
 protected:
 	/**
@@ -106,6 +132,30 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon")
 	FString DamageType = TEXT("Demonic");
+
+	/**
+	 * Which weapon type a character begins holding.
+	 *
+	 * TEMPORARY, IN THE SAME WAY DamageType ABOVE IS TEMPORARY, and it stands in
+	 * for a system the design already specifies. The design document says
+	 * "when starting a new character, players choose a starting weapon type and
+	 * damage type, which determines their initial skill set and first available
+	 * passive class tree". That chooser is the character creator, which is issue
+	 * #50 and does not exist. Until it does, every character begins with this.
+	 *
+	 * WITHOUT IT NOTHING EQUIPPED A WEAPON AT ALL. EquipWeaponType had no caller
+	 * outside the automation tests, so a play session filled no ability slot and
+	 * every skill key reached nothing -- however many skills were designed and
+	 * implemented. That was issue #169.
+	 *
+	 * GREATAXE, because the vertical slice is Demonic and the Greataxe is the
+	 * Ravager's weapon, the first of the three the slice designs. Any of the ten
+	 * weapon types Demonic covers would work; a type it does NOT cover would
+	 * grant nothing at all, and
+	 * Cataclysm.WeaponSlots.TheStartingWeaponActuallyGrantsSkills refuses that.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon")
+	FString StartingWeaponType = TEXT("Greataxe");
 
 	/** Granted for each filled slot until the real skills have numbers. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon")
