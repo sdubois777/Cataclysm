@@ -179,24 +179,34 @@ def test_the_aura_row_carries_no_weapon_tag(designed):
             f"{sorted(weapon_tags)}")
 
 
-def test_no_description_counts_stacks(designed):
+def test_no_description_counts_stacks(skills):
     """The design says an enemy carries at most one stack of any effect.
 
-    Fifteen War descriptions predate that rule and still count bleed stacks.
-    This stops the Demonic set repeating it. It deliberately checks only the
-    Demonic rows, because the War rows are a known, separately tracked problem
-    and failing on them here would make this test unfixable by its own change.
+    EVERY DAMAGE TYPE, not only Demonic. This checked the Demonic rows alone
+    until issue #153, because fifteen War descriptions predated the rule and
+    still counted bleed stacks: failing on them here would have made this test
+    unfixable by its own change. Those fifteen were rewritten, so the check now
+    covers the whole sheet and a new row in any damage type is held to the rule.
+
+    MATCHED ON THE WORD, NOT ON A LIST OF EFFECTS. "2 bleed stacks", "stacking
+    up to 4 times" and "for each bleed stack within 15 meters" are three
+    different shapes of the same mistake, and the only thing they share is the
+    word. Anything a description genuinely needs to say can be said without it:
+    a stronger application is magnitude, and counting other enemies is counting
+    bleeding enemies.
     """
     offenders = []
-    for row in designed:
-        found = re.findall(r"[^.]*\bstacks?\b[^.]*\.", row["description"],
-                           re.IGNORECASE)
+    for row in skills:
+        if not row["name"]:
+            continue
+        found = re.findall(r"[^.]*\bstack(?:s|ing|ed)?\b[^.]*\.",
+                           row["description"], re.IGNORECASE)
         for sentence in found:
             offenders.append(
-                f"{row['weapon']}/{row['slot']} ({row['name']}): "
-                f"{sentence.strip()}")
+                f"[{row['damage']}] {row['weapon']}/{row['slot']} "
+                f"({row['name']}): {sentence.strip()}")
     assert not offenders, (
-        "Demonic descriptions counting stacks, which the single-stack rule "
+        "Skill descriptions counting stacks, which the single-stack rule "
         "forbids:\n" + "\n".join(offenders))
 
 
