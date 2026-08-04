@@ -20,6 +20,89 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — A minion deals 30% of its summoner's weapon damage, once a second, and that is one rule for all minions
+
+**The question.** Issue #165: `ACataclysmMinion::DamagePercentOfSummoner` was 25
+and its own comment said the number was a judgement rather than a design figure,
+because nothing in `docs/All_Things_Cataclysm.xlsx` or `Cataclysm_GDD_v2.md`
+stated what a summoned imp hit for. Summon Imp's description gives a lifetime, a
+cap and an explosion radius and no damage at all. The issue asked two questions:
+whether minion damage is a share of the summoner's weapon damage or a number of
+its own, and whether the attack interval belongs to the minion or to the skill.
+
+**RECONNAISSANCE CHANGED WHERE THE ANSWER GOES.** The issue asks for "a figure
+the design states, in the same place the other skill numbers live", which is the
+Shape Params column of the Weapon Skills sheet. Answering the second question
+settles that this is the wrong place. If the interval belongs to the minion
+rather than to the skill, then so does the damage, and neither is a per-skill
+number. Summon Imp, Open the Rift and Cinder Swarm differ in how many minions
+they make and how long those last — already `Count`, `MaxActive` and `Duration` —
+and not in what one minion's swing is worth. A per-skill column would be the same
+figure written three times, with three chances to disagree.
+
+So the figures are stated as a rule in the "How a Skill Behaves: the Seven
+Shapes" section of `Cataclysm_GDD_v2.md`, and the code keeps them as constants on
+`ACataclysmMinion` rather than reading them from a skill row.
+
+**The decision.**
+
+| | |
+|---|---|
+| Damage per attack | 30% of the summoner's weapon damage |
+| Attacks per second | 1 |
+
+**Why a share of the summoner's weapon damage, and not damage of its own. The
+genre is genuinely split on this, and the two answers are not interchangeable.**
+
+- **Path of Exile gives minions damage entirely their own.** Its own rule is that
+  if a modifier does not say "minion", it does not affect them: weapon damage,
+  critical strike and life on the player do nothing for a minion. Minions scale
+  from minion-specific passives, minion support gems, auras and a few uniques.
+- **Diablo IV does the opposite.** Its Necromancer minions gain 30% of the
+  player's weapon damage, and take their attack rate from the player's weapon
+  rather than having one of their own.
+
+Diablo IV's shape is the one taken, for a reason about this game rather than
+about that one: **Path of Exile's route needs a whole separate family of
+minion-only stats to scale, and this game has none.** There is no minion damage
+affix, no minion support gem and no minion passive anywhere in the design. To
+adopt it, all of that would have to be invented, for two skills in the vertical
+slice. Against that, every other number in this design is already expressed as a
+percent of weapon damage, so a share needs nothing new at all.
+
+**Why 30 rather than the 25 that was there.** 25 was invented. 30 is Diablo IV's
+own figure for the same shape, and a figure that survived contact with real
+players is evidence in a way an invented one is not. The budget argument that
+produced 25 still holds at 30: Summon Imp caps at three active, so three at 30%
+attacking once a second is 90% of weapon damage per second, and an automatic
+basic attack is 128% to 150% per second depending on weapon speed. A summoner is
+still better off attacking than not.
+
+`tools/tests/test_minion_damage.py` reads both figures out of the design document
+and out of `CataclysmMinion.h` and fails if they disagree, and separately fails if
+three minions would ever out-damage the slowest basic attack. Confirmed able to
+fail: changing the design to 45% failed both of those and nothing else.
+
+**Not taken from Diablo IV: the attack rate coming from the player's weapon.**
+Diablo IV ties minion attack speed to the weapon's. This game states a flat one
+per second instead, because the `AttackSpeed` attribute exists but nothing reads
+it for the player's own attacks yet either, so tying minions to it would be
+building on something that is not there. When the automatic basic attack starts
+using weapon speed, the minion should follow it, and that is worth revisiting
+then rather than guessing now.
+
+**Sources.** The Path of Exile wiki on Minion and on Minion Damage Support, for
+minions having their own damage and for the "if it does not say minion" rule; the
+Diablo IV community's minion testing threads and the Diablo 4 wiki's "Damage with
+Minions" page, for the 30% of weapon damage figure and for minions sharing the
+weapon's attack speed.
+
+**Affects:** `Cataclysm_GDD_v2.md`, which gains a paragraph and a small table in
+its "How a Skill Behaves: the Seven Shapes" section. Applied. No workbook change,
+for the reason given above.
+
+---
+
 ## 2026-08-04 — Burning ground is a capsule, and a circle is the case where its two ends meet
 
 **The question.** Issue #167: four skills say the path they took burns, and all
