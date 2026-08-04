@@ -20,6 +20,111 @@ applied or still pending.
 
 ---
 
+## 2026-08-04 — The Demonic skills for the vertical slice, and Burn becoming an effect the player can apply
+
+**The question.** Issue #62: design the Demonic skills for the vertical slice's
+three weapon types. The slice targets the Demonic Cataclysm, and no Demonic skill
+existed.
+
+**RECONNAISSANCE CHANGED WHAT THE WORK WAS, twice.**
+
+*The issue was stale on its own premises.* It says there are 71 Demonic rows with
+tags already filled in. There are 51, because the weapon availability table from
+issue #23 was applied and cut the sheet from 558 rows to 398. And the tags are
+not filled in: only 91 of the 398 rows carry any tag at all — all 61 War rows,
+plus a stub pair of weapon-and-element tags on the five Sword rows of six other
+damage types. Void has none. So the work included writing the tags, not only the
+names and descriptions.
+
+*The blocker was not the one the issue named.* Issue #62 said it was blocked on
+#23. That is closed and applied. The real blocker was that **Burn did not exist
+as something a player could do.** The design document's table of effects a player
+can inflict lists nine and Burn is not among them. `game/Data/StatusEffects.csv`
+carried a Burn row reading only "Applied by the Infernal Brand and Hellfire Aura
+enemy modifiers" — both enemy modifiers. No gem applies burn and no affix grants
+chance to burn, where all nine other effects have both.
+
+Demonic is "Fire, Lava, Rage based effects". Its signature damage over time
+effect was something only the enemies could do. Writing sixteen skills that set
+enemies alight would have produced sixteen skills that do nothing, which is the
+same failure as issue #120 and issue #146: a thing referenced everywhere with
+nothing behind it.
+
+**FIRST DECISION: Burn takes the same shape as Bleed, Poison and Disease.** Those
+three are already identical in the design — damage over time, magnitude scales
+the damage — and differ only in what applies them. Burn becomes the fourth. This
+was read off the existing convention rather than chosen.
+
+Research was checked before settling it and it does not point anywhere else that
+this project could follow. Path of Exile's ignite does not stack and only the
+highest-damage one deals damage at a time; Last Epoch's stacks without limit;
+Diablo 4's refreshes from the same source and stacks across different ones. This
+project already decided on 2026-08-03 that an enemy carries at most one stack of
+any effect, which is Path of Exile's answer, so the stacking question was already
+settled and Burn inherits it. The remaining differences between those games are
+in duration and front-loading, and this project has not defined a duration for
+Bleed, Poison or Disease either, so there is nothing to differentiate against
+yet.
+
+**A gap this leaves, deliberately, and it is tracked.** There is still no burn
+gem and no chance-to-burn affix, so a Demonic burn build cannot scale burn
+magnitude the way a War bleed build scales bleed. That is an item system change
+rather than a skill system one and is a separate issue.
+
+**SECOND DECISION: the three weapons are Greataxe, Fist and Staff, one per
+Demonic class.** The design document gives Demonic three classes, and the roadmap
+in section XV names the Masochist as the slice's passive tree. A slice that
+cannot equip one of its three classes does not test the design.
+
+| Weapon | Class it serves | What it exercises |
+|---|---|---|
+| Greataxe | Ravager, the frontline melee aggressor | Two-handed heavy melee, and the two-handed damage multiplier |
+| Fist | Masochist, which converts damage taken | Fast close melee, health as a resource, retaliation |
+| Staff | Ritualist, the summoner | Spells and minions, which nothing else in the slice tests |
+
+Greataxe and Fist reuse the War animation sets for the same weapon and slot,
+under the rule in issue #18 that animation follows weapon and slot rather than
+damage type. So the Staff is the only new animation set the slice buys. That cost
+is worth paying: spells and minions are the largest untested pieces of the combat
+system, and commit `f0f317f` gave the Staff 66 flat damage two days ago
+specifically so spells would deal something. Nothing used it until now.
+
+**THIRD DECISION: the descriptions do not count stacks, and the War ones do.**
+Fifteen of the 61 War descriptions say things like "applies 2 bleed stacks",
+written before the single-stack rule of 2026-08-03. When that rule landed,
+Necrosis was corrected to fit it and the skill sheet was not. The Demonic set
+follows the rule, and a test refuses any Demonic description that counts stacks.
+The War rows are a separate issue.
+
+Where a War skill's shape depended on counting, the Demonic equivalent counts
+burning enemies instead: War's Blood Frenzy gives 5% per bleed stack within 15
+meters, and Demonic's Burning Wrath gives 4% per burning enemy within 15 meters.
+
+**Sources.** The Path of Exile wiki and Mobalytics on ignite, for ignite not
+stacking and only the strongest dealing damage; Maxroll's Diablo 4 damage over
+time write-up and Icy Veins, for burn refreshing from the same source and
+stacking across different ones, and for half-second ticks; Maxroll's Last Epoch
+damage calculation page, for ignite stacking without limit; the Path of Exile
+wiki on Rage, for a melee resource that builds on hits and decays out of combat,
+which is the shape the Ravager's skills assume without naming a resource.
+
+**What the research does not settle.** Which of Demonic's ten weapons the slice
+takes. No other game has this game's weapon list or its damage types. The choice
+above is a judgement, made against the three class identities in section IV and
+the roadmap's choice of the Masochist tree.
+
+Also not settled by research: every radius, duration and percentage below. Those
+are first numbers to be tuned against play, chosen to sit beside the War figures
+for the same slot.
+
+**Affects:** `Cataclysm_GDD_v2.md`, which gains a Burn row in its table of
+effects, a sentence stating that a skill may apply an effect outright with no
+chance roll, and a Demonic Skill Examples section beside the War one.
+`All_Things_Cataclysm.xlsx`, sixteen Weapon Skills rows and the DoTs sheet's Burn
+row. **Applied.**
+
+---
+
 ## 2026-08-04 — The Wand and the Staff get flat damage, because a spell is a percent of weapon damage too
 
 **The question.** Issue #146, raised by the project owner while reviewing the

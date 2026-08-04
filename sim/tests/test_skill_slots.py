@@ -92,13 +92,18 @@ def test_the_ultimate_is_the_biggest_hit_and_support_the_smallest():
 # The numbers came out of the designed skills, not out of nowhere
 # --------------------------------------------------------------------------
 
-def stated_multipliers() -> dict[str, float]:
+def stated_multipliers(damage_type: str | None = None) -> dict[str, float]:
     """Every skill in the data whose description states a weapon multiplier.
 
     THIS READS THE GAME DATA, which the simulation package itself never does and
     should not start doing. It is here because these three tests exist to prove
     the slot values were derived from the designed skills rather than invented,
     and that claim cannot be checked against anything else.
+
+    Pass a damage type to restrict the answer to it. The War set is the evidence
+    the slot bands were read off, so the test below pins that set exactly; every
+    damage type designed afterwards is checked against the bands instead, which
+    is the direction the evidence actually runs.
     """
     if not WEAPON_SKILLS.exists():
         raise AssertionError(
@@ -108,6 +113,8 @@ def stated_multipliers() -> dict[str, float]:
     found = {}
     with WEAPON_SKILLS.open(encoding="utf-8-sig") as handle:
         for row in csv.DictReader(handle):
+            if damage_type is not None and row["DamageType"] != damage_type:
+                continue
             match = re.search(r"(\d+)%\s+weapon damage",
                               row["SkillDescription"] or "", re.I)
             if match:
@@ -117,8 +124,14 @@ def stated_multipliers() -> dict[str, float]:
 
 def test_the_designed_skills_already_state_weapon_damage_multipliers():
     """This is why the concept was not invented here. Four of the 61 designed
-    skills in `game/Data/WeaponSkills.csv` say what they are worth in prose."""
-    stated = stated_multipliers()
+    War skills in `game/Data/WeaponSkills.csv` say what they are worth in prose.
+
+    Pinned to War on purpose. War was the only complete damage type when the
+    slot bands were derived, so it is the evidence for them. A later damage type
+    stating its own figure is not evidence and must not silently widen a band;
+    it is checked against the bands by the two tests below instead.
+    """
+    stated = stated_multipliers("War")
     assert stated == {"Haymaker": 100.0, "Bulwark": 200.0,
                       "Annihilator": 300.0, "Skull Splitter": 500.0}
 
