@@ -84,19 +84,23 @@ same size, so this needs saying rather than guessing. Issue #25.
 | | The node graph | The prose |
 |---|---|---|
 | File | `Empire_Development_Tree_Final.json` | `Empire_Skill_Tree_Keystones.md` |
-| What it holds | 159 nodes, 158 edges, 173 distinct node and capstone-option names | 108 bullets across 4 keystone tiers, 4 branch capstones and 4 quadrants |
+| What it holds | 159 nodes, 158 edges, 173 distinct node and capstone-option names | 105 bullets across 4 keystone tiers, 4 branch capstones and 4 quadrants |
 | Last edited | 2026-03-05, per its own `metadata.updatedAt` | 2026-02-10 |
 | Authoritative for | The tree's structure and every node's name and effect | Nothing the graph also states |
 
-105 of the prose's 108 bullets name a node that is in the graph. The graph has 68
+All 105 of the prose's bullets name a node that is in the graph. The graph has 68
 names the prose does not mention at all, because it is roughly three weeks newer
 and was expanded after the prose was written. **Where the two disagree, the graph
 is right.**
 
-Three prose entries have no counterpart in the graph — Bounties, Weightless
-Spoils, and the Architect quadrant's four decision nodes. Nobody recorded whether
-they were cut or lost. They are listed in the prose file's own header and in issue
-#260.
+**Every prose bullet now names a node in the graph.** Three did not until
+2026-08-05: Bounties, Weightless Spoils, and the Architect quadrant's four
+decision nodes. Issue #260 asked whether they were cut or lost, and the project
+owner answered that this file is brainstorming written before the passive tree
+editor existed — so an idea in the prose that is not in the graph was never built
+rather than lost from it. The three were removed from the prose and recorded in
+full in `DECISIONS.md`. Dropping Weightless Spoils leaves nothing in the design
+granting inventory slots, which is issue #308.
 
 **The quadrant is called Treasury.** The prose called it three things: Treasurer
 in the branch list, Tyrant in the capstone list and Treasury in its section

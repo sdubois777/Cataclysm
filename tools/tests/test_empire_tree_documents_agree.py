@@ -6,7 +6,7 @@ two descriptions are different sizes:
     docs/Empire_Development_Tree_Final.json   159 nodes, 158 edges, the node
                                               graph the passive tree editor
                                               reads and writes
-    docs/Empire_Skill_Tree_Keystones.md       108 bullets of prose covering the
+    docs/Empire_Skill_Tree_Keystones.md       105 bullets of prose covering the
                                               12 keystones, the 4 branch
                                               capstones and the 4 quadrants
 
@@ -16,11 +16,18 @@ models the whole tree as five scalars. You cannot argue about whether a branch i
 worth its points while the list of what is in it is ambiguous.
 
 WHAT THE COMPARISON FOUND. The graph is newer, by its own metadata: 2026-03-05
-against the prose's 2026-02-10. It is also larger. 105 of the prose's 108 bullets
-name a node in the graph; the graph has 68 names the prose never mentions. So the
-prose is an earlier draft of the same tree rather than a rival description of it,
-and the graph is authoritative. That is written into `docs/README.md` and into the
+against the prose's 2026-02-10. It is also larger. The prose's bullets all name a
+node in the graph; the graph has 68 names the prose never mentions. So the prose
+is an earlier draft of the same tree rather than a rival description of it, and
+the graph is authoritative. That is written into `docs/README.md` and into the
 prose file's own header.
+
+THREE PROSE BULLETS USED TO NAME NOTHING IN THE GRAPH, and until 2026-08-05 this
+file exempted them by name. Issue #260 settled all three: the prose is
+brainstorming written before the passive tree editor existed, so an idea in it
+with no node was never built rather than lost. They were deleted from the prose,
+which is why its bullet count went from 108 to 105, and recorded in full in
+`docs/DECISIONS.md`.
 
 THE QUADRANT IS CALLED TREASURY. The prose called it three things -- Treasurer in
 its branch list, Tyrant in its capstone list, Treasury in its section heading. The
@@ -32,8 +39,9 @@ the empire tree files only.
 WHAT IS ASSERTED HERE.
 
     the graph parses, and still has the node and edge counts it had
-    every prose bullet names a node in the graph, except three known ones
-    those three are named individually, so resolving one has to update this file
+    every prose bullet names a node in the graph, with no exemptions left
+    the three that were removed have not come back, in either file
+    what they did is still recorded in docs/DECISIONS.md
     both files use one name for the Treasury quadrant, and it is Treasury
     docs/README.md still says which file is authoritative
     the prose file's own header still says it is the commentary
@@ -63,19 +71,24 @@ DOCS_README = DOCS / "README.md"
 NODE_COUNT = 159
 EDGE_COUNT = 158
 
-#: Prose bullets with no node of that name in the graph. Each is here by name
-#: rather than as a count, so resolving one means editing this list and saying
-#: which way it went. Issue #260.
-PROSE_ONLY = {
-    "bounties":
-        "the graph has a node named Bounty granting +5% loot quantity per "
-        "point, which is a different effect",
-    "weightless spoils":
-        "nothing in the graph mentions inventory at all",
-    "the 4 decision nodes":
-        "the graph has five decision nodes and none of them lets a player pick "
-        "a Cataclysm type for resistance",
-}
+#: Prose bullets with no node of that name in the graph. **Empty since
+#: 2026-08-05, and it should stay empty.** Issue #260 asked whether the three
+#: that used to be here were cut deliberately or lost in the rebuild. The
+#: project owner answered that the prose is brainstorming written before the
+#: passive tree editor existed, so an idea in the prose that is not in the graph
+#: was never built rather than lost from it. All three were removed from the
+#: prose and recorded in `docs/DECISIONS.md`.
+#:
+#: A new entry here is a claim that the prose describes a node the tree does not
+#: have, which after #260 means the prose has been edited wrongly. Prefer fixing
+#: the prose. If something genuinely belongs here, it needs an issue.
+PROSE_ONLY: dict[str, str] = {}
+
+#: The three that were removed on 2026-08-05, so a reader of this file can see
+#: what the exemption list used to hold without opening the git history.
+REMOVED_FROM_PROSE_ON_2026_08_05 = (
+    "Bounties", "Weightless Spoils", "The 4 Decision Nodes",
+)
 
 #: What the quadrant is called, and the two names the prose used for it that the
 #: graph never has.
@@ -178,23 +191,119 @@ def test_every_prose_bullet_names_a_node_in_the_graph(prose_names, graph_names):
     assert not missing, (
         f"{PROSE.name} describes nodes that are not in {TREE_JSON.name}:\n  "
         + "\n  ".join(sorted(missing.values()))
-        + f"\n\nThe graph is authoritative (see {DOCS_README}). Either the "
-          "prose is describing something that was cut, in which case remove it "
-          "there, or a node was lost, in which case add it back with the "
-          "passive tree editor. If it is a known gap, add it to PROSE_ONLY in "
-          "this file with the reason. Issue #25.")
+        + f"\n\nThe graph is authoritative (see {DOCS_README}). Issue #260 "
+          "settled what that means for a prose bullet with no node: the prose "
+          "is brainstorming written before the passive tree editor existed, so "
+          "the idea was never built rather than lost. Remove it from the prose "
+          "and record it in docs/DECISIONS.md. Adding it to PROSE_ONLY in this "
+          "file needs an issue saying why this one is different. Issues #25 "
+          "and #260.")
 
 
-@pytest.mark.parametrize("key", sorted(PROSE_ONLY), ids=lambda k: k)
-def test_each_known_gap_is_still_a_gap(key, prose_names, graph_names):
-    """If one is resolved, this fails and forces the list to be updated rather
-    than leaving a stale exemption behind."""
-    assert key in prose_names, (
-        f"{PROSE.name} no longer describes {key!r}. If it was removed on "
-        f"purpose, delete it from PROSE_ONLY in this file. Issue #260.")
+def test_there_are_no_known_gaps_left(prose_names, graph_names):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-05 this was
+    test_each_known_gap_is_still_a_gap, parametrized over PROSE_ONLY, and it
+    checked that each of the three exemptions was STILL a gap so that resolving
+    one forced the list to be updated. Issue #260 resolved all three at once, so
+    the property to hold is that the list is empty.
+
+    It is also asserted rather than left implicit because an empty parametrize
+    list produces a SKIPPED test, and a skip reads as nothing being wrong."""
+    assert PROSE_ONLY == {}, (
+        "PROSE_ONLY is not empty. It records prose bullets naming nodes the "
+        "tree does not have. Issue #260 settled that such a bullet describes "
+        "something never built, so the fix is to remove it from the prose "
+        f"rather than exempt it here. Currently exempted: {sorted(PROSE_ONLY)}")
+
+
+@pytest.mark.parametrize("name", REMOVED_FROM_PROSE_ON_2026_08_05)
+def test_a_node_removed_by_issue_260_has_not_come_back(name, prose_names,
+                                                       graph_names):
+    """The three the exemption list used to hold. Each was removed from the
+    prose because the tree never had it, and each would have to come back
+    through the passive tree editor at C:\\Projects\\PassiveTreeCreator rather
+    than by being typed back into the prose.
+
+    So there are two ways this fails and they need different fixes. The prose
+    naming it again is a mistake. The GRAPH naming it is not — that is somebody
+    building the idea, and then the prose may say so again and this entry should
+    be dropped from the list above."""
+    key = normalise(name)
+    assert key not in prose_names, (
+        f"{PROSE.name} names {name!r} again. Issue #260 removed it because the "
+        f"tree never had it and the prose predates the passive tree editor. If "
+        f"the node has since been built, check {TREE_JSON.name} first — the "
+        f"prose may follow the graph, never lead it.")
     assert key not in graph_names, (
-        f"{TREE_JSON.name} now has a node named {key!r}, so it is no longer a "
-        f"gap. Delete it from PROSE_ONLY in this file. Issue #260.")
+        f"{TREE_JSON.name} now has a node named {name!r}. That is a real "
+        f"change rather than a mistake: somebody built an idea issue #260 "
+        f"recorded as never built. Remove it from "
+        f"REMOVED_FROM_PROSE_ON_2026_08_05 in this file, and if it is "
+        f"Weightless Spoils then issue #308 about inventory slots is answered.")
+
+
+def test_the_removed_nodes_are_recorded_in_the_decision_log(prose):
+    """Deleting three ideas out of a design document loses them unless they are
+    written down somewhere else. They went into docs/DECISIONS.md in full, so
+    the decision is reversible by someone who never saw the prose file.
+
+    This checks the log rather than the prose on purpose. The prose file is the
+    thing they were deleted FROM, so it is the wrong place to prove they
+    survived.
+
+    IT ALSO CHECKS THE ENTRY, NOT THE WHOLE FILE, AND PROVING THE GUARD IS WHY.
+    The first version searched all of docs/DECISIONS.md. Deleting the three
+    names from the 2026-08-05 entry did not make it fail, because an entry from
+    earlier that day already listed all three while describing them as an open
+    question. Every name would have survived the record of what happened to them
+    being deleted."""
+    log = (REPO_ROOT / "docs" / "DECISIONS.md")
+    assert log.is_file(), "docs/DECISIONS.md is missing"
+    text = log.read_text(encoding="utf-8")
+    heading = ("## 2026-08-05 — Three empire tree ideas in the prose were never "
+               "built, not lost")
+    assert heading in text, (
+        "docs/DECISIONS.md has no entry for issue #260. Three bullets were "
+        "deleted from the prose on 2026-08-05 and this entry is the only "
+        "remaining copy of what they did.")
+    entry = text[text.index(heading):]
+    entry = entry[:entry.index("\n---", 1)] if "\n---" in entry[1:] else entry
+
+    # The table ROW, not the name anywhere in the entry, and proving the guard
+    # is why twice over. Deleting the Weightless Spoils row still left the name
+    # in the entry's closing paragraph about issue #308, so a check for the name
+    # passed while the record of what the node DID was gone. The row is the
+    # record; the paragraph is a cross-reference.
+    rows = {line.split("|")[1].strip().strip("*"): line
+            for line in entry.splitlines()
+            if line.startswith("|") and line.count("|") >= 4}
+    for name in REMOVED_FROM_PROSE_ON_2026_08_05:
+        assert name in rows, (
+            f"the table in the docs/DECISIONS.md entry for issue #260 has no "
+            f"row for {name!r}, which was deleted from {PROSE.name} on "
+            f"2026-08-05. That table is the only remaining copy of what it did. "
+            f"Rows found: {sorted(rows)}")
+    assert "Adds 10 inventory slots" in rows["Weightless Spoils"], (
+        "the Weightless Spoils row records the node but not its effect. That "
+        "effect is the reason issue #308 exists, so the number matters more "
+        "than the name.")
+
+
+def test_the_prose_no_longer_names_a_tier_after_a_node_that_was_never_built(prose):
+    """The Architect quadrant's tier 3 heading read "The Adaptive Bulwark
+    (Decision Tier)". It was named after The 4 Decision Nodes, one of the three
+    ideas issue #260 confirmed was never built, so the parenthetical described a
+    tier that has no decision in it.
+
+    The graph's decision nodes are the four tier capstones and Auto-Loot, none of
+    which sits in the Architect quadrant's third tier. The tier keeps the name
+    The Adaptive Bulwark; only the claim about what kind of tier it is is gone."""
+    assert "Decision Tier" not in prose, (
+        f"{PROSE.name} describes a tier as a Decision Tier again. The heading "
+        "that said so was named after The 4 Decision Nodes, which issue #260 "
+        "confirmed was never built. If a decision node has since been added to "
+        "that tier with the passive tree editor, check "
+        f"{TREE_JSON.name} first and then update this test.")
 
 
 def test_the_graph_has_more_names_than_the_prose(prose_names, graph_names):
