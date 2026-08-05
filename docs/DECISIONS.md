@@ -20,6 +20,91 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Increased damage against a target's damage type is worth 400%, against the generic affix's 125%
+
+**The question.** The project owner approved eight affixes on 2026-08-04, one per
+damage type: increased damage against War, Demonic, Death, Pestilence, Famine,
+Celestial, Chaos or Void enemies, and stated that they must give a larger
+increase than the generic Increased Damage affix. Issue #213 left four things
+open: how much larger, whether a two-type or all-type version exists, prefix or
+suffix, and whether it multiplies or adds.
+
+**STATED BY THE OPERATOR.** Eight affixes, one per damage type. The generic
+Increased Damage affix stays. The type-specific ones must be worth more, so they
+are a real choice and so a player has a reason to change equipment when the
+Cataclysm they are fighting changes.
+
+**DERIVED, NOT CHOSEN: 400% at T7.** It is the ratio this project already pays
+for narrowing a modifier from all eight damage types to one. The resistance
+families give 20% per type at breadth one and 6% per type at breadth eight, so
+narrowing is worth 20/6, about 3.33 times. The generic damage affix is the
+breadth-eight case, because it applies whatever the target is. 125% times 3.33 is
+417%, rounded to 400% because the design document quotes round numbers for the
+resistance ladder too.
+
+**What 400% produces, which is the point of it.** A run starts with one Cataclysm
+active and adds one each time a Cataclysm is defeated, up to eight. The generic
+affix is worth 125% whatever stands in front of the player; a type-specific one
+is worth 400% against its own type and nothing against the other seven, so across
+C active Cataclysms it averages 400/C. The two are equal at C = 3.2. So the
+type-specific affix is the better use of a prefix for the first three Cataclysms
+of a campaign and the generic one from four onward. That is the same crossover
+shape the resistance ladder already has at 3.33, and it is a difficulty curve the
+affix produces on its own with no further tuning.
+
+**A BALANCE RISK RECORDED RATHER THAN ARGUED TO A CONCLUSION.** Resistance is
+capped at 70%, so its 3.33 ratio cannot run away. Damage is not capped. Four
+prefix rolls of this affix give +1600% increases against one type where four
+generic rolls give +500% against everything, and in a one-Cataclysm run that is a
+3.2 times swing on the largest damage bucket. The ratio is defensible; the
+magnitude is a question for real play. Filed separately so it is measured rather
+than debated.
+
+**DERIVED: it adds into the increases bracket rather than becoming a third
+multiplier.** The pipeline is (base + flat) x (1 + increases) x more1 x more2.
+Diablo 4 states the rule outright — a damage bonus with a stated condition is
+additive, not multiplicative — and Last Epoch sums all compatible increased
+damage modifiers. A separate multiplier would be far stronger and much harder to
+balance. Sources: the Maxroll in-depth damage guide for Diablo 4, and the Maxroll
+damage calculations page for Last Epoch.
+
+**DERIVED: prefix, in the same slots as the generic Increased Damage affix.**
+Gloves, Necklace, Relic, Ring and Weapon. The project's own rule is that a prefix
+makes a number bigger and a suffix changes how much of something gets through,
+and this makes a number bigger. Putting the two in the same position and the same
+slots is what makes them compete for one slot on one piece; splitting them across
+positions would let a player take both and remove the choice.
+
+**JUDGEMENT, NOT DERIVED: no two-type or all-type version.** The all-type version
+already exists — it is the generic Increased Damage affix, so a second one would
+be the same affix twice. A two-type version would sit between the two, in the way
+the two-resistance affix sits between single and all resistances, and it is
+deliberately not built: the two ends have to be played before a middle rung can be
+priced, and a Stat-kind affix has no breadth mechanic today, which only
+Resistance-kind affixes have.
+
+**Why this shape works where the weapon-side version did not.** An earlier
+proposal increased a specific damage type the player *deals*, from their weapon.
+It was rejected and closed as #206, because a weapon carries several damage types
+at once, so the affix would always be diluted and the player could not concentrate
+to fix it. This one reads the target's type instead, which the design already
+has: an enemy has a damage type of its own, which is its Cataclysm's, and that is
+already what decides which of the player's eight resistances applies.
+
+**Affects:** `Cataclysm_GDD_v2.md`, applied in this change: a new "Damage Against
+a Target's Type" subsection after Health and Damage Affixes, and the Character
+Sheet section's stat count, which goes from 35 to 43.
+`All_Things_Cataclysm.xlsx`, Affixes sheet, eight new rows, 70 to 78.
+`game/Data/Affixes.csv` and `game/Content/Data/DT_Affixes.uasset`, both
+regenerated. `sim/cataclysm_sim/character.py` gains eight stats in the Offense
+group; `sim/cataclysm_sim/affixes.py` gains the eight affixes;
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp`
+gain eight attributes. Nothing reads them yet: applying a conditional increase
+needs the damage calculation to know the target's type, which belongs with the
+affix system in #44.
+
+---
+
 ## 2026-08-04 — The weapon damage type column is named as a maximum, because that is what it holds
 
 **The question.** The column that says how many damage types a weapon can carry

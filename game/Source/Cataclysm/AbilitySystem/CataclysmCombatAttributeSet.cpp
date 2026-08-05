@@ -29,6 +29,18 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitPenetration(0.0f);
 	InitSpellDamage(0.0f);
 
+	// Increased damage against one type of enemy. Zero for every class: no class
+	// is born better against a Cataclysm, because which Cataclysms a run faces
+	// is drawn at run start and the class is chosen before that.
+	InitDamageVsWar(0.0f);
+	InitDamageVsDemonic(0.0f);
+	InitDamageVsDeath(0.0f);
+	InitDamageVsPestilence(0.0f);
+	InitDamageVsFamine(0.0f);
+	InitDamageVsCelestial(0.0f);
+	InitDamageVsChaos(0.0f);
+	InitDamageVsVoid(0.0f);
+
 	InitMovementSpeed(4.0f);     // metres per second
 	InitCooldownReduction(0.0f);
 	InitMagicFind(0.0f);
@@ -54,6 +66,14 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotFrequency);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Penetration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SpellDamage);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsWar);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsDemonic);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsDeath);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsPestilence);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsFamine);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsCelestial);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsChaos);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsVoid);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MovementSpeed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
@@ -125,6 +145,10 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetAttackSpeedAttribute(), GetAreaOfEffectAttribute(),
 		GetDotFrequencyAttribute(), GetPenetrationAttribute(),
 		GetSpellDamageAttribute(),
+		GetDamageVsWarAttribute(), GetDamageVsDemonicAttribute(),
+		GetDamageVsDeathAttribute(), GetDamageVsPestilenceAttribute(),
+		GetDamageVsFamineAttribute(), GetDamageVsCelestialAttribute(),
+		GetDamageVsChaosAttribute(), GetDamageVsVoidAttribute(),
 		GetMovementSpeedAttribute(), GetCooldownReductionAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
@@ -144,6 +168,14 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AreaOfEffect)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotFrequency)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Penetration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SpellDamage)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsWar)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsDemonic)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsDeath)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsPestilence)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsFamine)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsCelestial)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsChaos)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsVoid)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)

@@ -1013,6 +1013,62 @@ ATTRIBUTE_AFFIXES: tuple[StatAffix, ...] = (
 ATTRIBUTE_STATS = frozenset(a.stat for a in ATTRIBUTE_AFFIXES)
 
 
+# -- Prefixes: increased damage against one type of enemy ------------------
+
+#: 400%, against the generic "Increased damage" affix's 125%. Issue #213.
+#:
+#: WHAT MAKES IT CONDITIONAL. An enemy has a damage type of its own, which is
+#: its Cataclysm's; the design document says so in the enemy section. This affix
+#: applies only when the target's type matches. It reads the TARGET, so how many
+#: damage types the player's weapon carries is irrelevant to it. That is the
+#: difference between this and the weapon-side version, which was rejected and
+#: closed as #206 because a weapon carries several types at once and the player
+#: could not concentrate to fix the dilution.
+#:
+#: WHY IT MUST BE LARGER THAN THE GENERIC ONE. The project owner stated it: a
+#: conditional affix that pays the same as an unconditional one is a strictly
+#: worse roll, and nobody would ever swap gear for it.
+#:
+#: WHERE 400 COMES FROM. Not invented -- it is the ratio this project already
+#: pays for narrowing a modifier from all eight damage types to one. The
+#: resistance families give 20 per type at breadth 1 and 6 per type at breadth 8,
+#: so narrowing is worth 20/6, about 3.33 times. The generic damage affix is the
+#: breadth 8 case because it applies whatever the target is. 125 x 3.33 is 416.7;
+#: 400 is the round number next to it and the design document quotes round
+#: numbers for the resistance ladder too.
+#:
+#: WHAT 400 PRODUCES. The generic affix is worth 125 whatever is in front of the
+#: player. A type-specific affix is worth 400 against its own type and nothing
+#: against the other seven, so across C active Cataclysms it averages 400/C. The
+#: two are equal at C = 3.2. The type-specific affix is therefore the better use
+#: of a prefix for the first three Cataclysms of a campaign and the generic one
+#: from four onward, which is the same crossover shape the resistance ladder has
+#: at 3.33 and is where the reason to change equipment comes from.
+#:
+#: A BALANCE RISK WORTH STATING RATHER THAN HIDING. Resistance is capped at 70%
+#: so its 3.33 ratio cannot run away. Damage is not capped. Four prefix rolls of
+#: this affix give +1600% increases against one type where four generic rolls
+#: give +500% against everything, and in a one-Cataclysm run that is a 3.2 times
+#: swing on the largest damage bucket. The ratio is defensible and the magnitude
+#: is a tuning question for real play. Recorded in docs/DECISIONS.md and filed as
+#: its own issue rather than argued to a conclusion here.
+DAMAGE_VS_TOP_VALUE = 400.0
+
+#: SAME SLOTS AS THE GENERIC DAMAGE AFFIX, and same position, so the two compete
+#: for one prefix slot on one piece. That competition IS the choice; putting them
+#: in different positions would let a player take both and remove it.
+DAMAGE_VS_AFFIXES: tuple[StatAffix, ...] = tuple(
+    StatAffix(f"Increased damage against {damage_type} enemies",
+              f"damage_vs_{damage_type.lower()}", "increased",
+              DAMAGE_VS_TOP_VALUE, OFFENSIVE_SLOTS, PREFIX)
+    for damage_type in DAMAGE_TYPES
+)
+
+#: The stat name each one grants. Kept as a set so the checks below can ask "is
+#: this a damage-against-a-type affix" without matching on the display name.
+DAMAGE_VS_STATS = frozenset(a.stat for a in DAMAGE_VS_AFFIXES)
+
+
 #: Every stat affix in the pool. Resistance families are separate, because they
 #: have a breadth axis the others do not.
 AFFIX_POOL: tuple[StatAffix, ...] = (
@@ -1042,7 +1098,7 @@ AFFIX_POOL: tuple[StatAffix, ...] = (
     INCREASED_COOLDOWN_REDUCTION,
     FLAT_MAGIC_FIND,
     INCREASED_LOOT_QUANTITY,
-) + ATTRIBUTE_AFFIXES
+) + ATTRIBUTE_AFFIXES + DAMAGE_VS_AFFIXES
 
 
 def pool_for(slot: str, position: str | None = None) -> tuple[StatAffix, ...]:

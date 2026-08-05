@@ -130,6 +130,57 @@ public:
 	FGameplayAttributeData SpellDamage;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, SpellDamage)
 
+	// -- Offence against one type of enemy ---------------------------------
+	//
+	// EIGHT FIGURES, ONE PER DAMAGE TYPE, and the offensive mirror of the eight
+	// resistances. Each is a percentage that joins the increases bracket, and it
+	// applies only when the TARGET's own damage type is that one. An enemy has a
+	// damage type of its own, which is its Cataclysm's.
+	//
+	// THEY ARE INCREASES, NOT MULTIPLIERS. The damage pipeline is
+	// (base + flat) x (1 + increases) x more1 x more2, and these add into the
+	// same increases bracket as Increased Damage rather than becoming a third
+	// multiplier. That is what Diablo 4 and Last Epoch both do with conditional
+	// damage: a bonus with a stated condition is additive.
+	//
+	// NOTHING READS THEM YET. The affix that grants them exists in the data,
+	// but applying a conditional increase needs the damage calculation to know
+	// the target's type, which belongs with loot generation and the damage
+	// pipeline. Issue #213 added the stat and the affix; issue #44 implements
+	// the affix system that fills them.
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsWar)
+	FGameplayAttributeData DamageVsWar;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsWar)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsDemonic)
+	FGameplayAttributeData DamageVsDemonic;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsDemonic)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsDeath)
+	FGameplayAttributeData DamageVsDeath;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsDeath)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsPestilence)
+	FGameplayAttributeData DamageVsPestilence;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsPestilence)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsFamine)
+	FGameplayAttributeData DamageVsFamine;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsFamine)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsCelestial)
+	FGameplayAttributeData DamageVsCelestial;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsCelestial)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsChaos)
+	FGameplayAttributeData DamageVsChaos;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsChaos)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsVoid)
+	FGameplayAttributeData DamageVsVoid;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsVoid)
+
 	// -- Utility ----------------------------------------------------------
 
 	/** Metres per second. */
@@ -192,6 +243,14 @@ protected:
 	UFUNCTION() void OnRep_DotFrequency(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Penetration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_SpellDamage(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsWar(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsDemonic(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsDeath(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsPestilence(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsFamine(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsCelestial(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsChaos(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsVoid(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MovementSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CooldownReduction(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);

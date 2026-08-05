@@ -218,8 +218,9 @@ class TestTheCountsThatAreAssertedInUnreal:
 
     def test_the_affix_count(self, affix_sheet, model):
         """68 after eight attribute affixes were added on 2026-08-04, then
-        70 after mana leech and energy shield leech were added for #214."""
-        assert len(affix_sheet) == 70 == model.total_pool_size()
+        70 after mana leech and energy shield leech were added for #214, then
+        78 after the eight increased-damage-against-a-type affixes for #213."""
+        assert len(affix_sheet) == 78 == model.total_pool_size()
 
     def test_the_gem_count(self, model):
         """The Gems sheet count the Unreal test pins by hand.
