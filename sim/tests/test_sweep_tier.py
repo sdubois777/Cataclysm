@@ -149,33 +149,47 @@ class TestNoSectionRelivesTheBug:
 
 
 #: Where the preset ordering starts and stops in `exp_presets` output.
-#: The objectives-cleared block below it also prints one `tier N:` line per
-#: tier, so matching on that prefix alone picks up both. Issue #294.
-_ORDER_HEADING = "PRESET ORDER BY WIN RATE"
-_ORDER_ENDS_AT = "QUEST OBJECTIVES CLEARED"
+#: FOUR blocks below it print one `tier N:` line per tier -- the tolerance
+#: comparison, the win-rate second opinion, and the objectives-cleared block --
+#: so matching on that prefix alone picks up all of them. Issue #294.
+_ORDER_HEADING = "PRESET ORDER BY WIN RATE MINUS LOSS RATE"
+_ORDER_ENDS_AT = "HOW CONSERVATIVE THAT TOLERANCE IS"
+
+#: The same, for the win-rate ordering kept as a second opinion. Issue #294.
+_WIN_ORDER_HEADING = "PRESET ORDER BY WIN RATE ALONE"
+_WIN_ORDER_ENDS_AT = "QUEST OBJECTIVES CLEARED"
+
+
+def _lines_between(printed: str, start: str, end: str) -> list[str]:
+    block = printed[printed.index(start):printed.index(end)]
+    return [line for line in block.splitlines()
+            if line.strip().startswith("tier ") and ":" in line]
 
 
 def _ordering_lines(printed: str) -> list[str]:
     """The `tier N: a > b = c` lines of the preset ranking, and only those."""
-    block = printed[printed.index(_ORDER_HEADING):printed.index(_ORDER_ENDS_AT)]
-    return [line for line in block.splitlines()
-            if line.strip().startswith("tier ") and ":" in line]
+    return _lines_between(printed, _ORDER_HEADING, _ORDER_ENDS_AT)
+
+
+def _win_ordering_lines(printed: str) -> list[str]:
+    """The same for the win-rate ordering printed as a second opinion."""
+    return _lines_between(printed, _WIN_ORDER_HEADING, _WIN_ORDER_ENDS_AT)
 
 
 class TestTheOrderingIsReportedHonestly:
     def test_two_rates_a_sample_cannot_separate_are_shown_tied(self):
         tolerance = experiments.win_rate_noise(150)
-        order = experiments.rank_by_win({"a": 39.0, "b": 38.0, "c": 20.0},
+        order = experiments.rank_by_score({"a": 39.0, "b": 38.0, "c": 20.0},
                                         tolerance)
         assert order == [("a", "b"), ("c",)]
 
     def test_the_best_group_comes_first(self):
-        order = experiments.rank_by_win({"low": 1.0, "high": 90.0}, tolerance=0.0)
+        order = experiments.rank_by_score({"low": 1.0, "high": 90.0}, tolerance=0.0)
         assert order[0] == ("high",)
 
     def test_everything_tied_collapses_to_one_group(self):
         """What tier 8 does: the win rate goes to zero and stops discriminating."""
-        order = experiments.rank_by_win({"a": 0.0, "b": 0.0, "c": 0.0},
+        order = experiments.rank_by_score({"a": 0.0, "b": 0.0, "c": 0.0},
                                         tolerance=1.0)
         assert order == [("a", "b", "c")]
 
@@ -192,7 +206,7 @@ class TestTheOrderingIsReportedHonestly:
         One percentage point apart at 150 campaigns is inside the sampling
         error, so calling one better than the other is reporting the sort.
         """
-        noisy = experiments.rank_by_win({"a": 39.0, "b": 38.0}, tolerance=0.0)
+        noisy = experiments.rank_by_score({"a": 39.0, "b": 38.0}, tolerance=0.0)
         assert noisy == [("a",), ("b",)]
 
 
@@ -207,12 +221,12 @@ class TestAPresetWithNoResultIsNotRanked:
     Architect preset is 0% win, 0% loss, 100% no result, and win minus loss
     puts it FIRST, ahead of the only preset in the table that wins anything.
 
-    So `rank_by_win` takes the names to leave out, and `exp_presets` passes it
+    So `rank_by_score` takes the names to leave out, and `exp_presets` passes it
     what `warn_about_unresolved_campaigns` found.
     """
 
     def test_an_excluded_preset_appears_nowhere_in_the_order(self):
-        order = experiments.rank_by_win(
+        order = experiments.rank_by_score(
             {"good": 40.0, "gone": 0.0, "poor": 2.0}, tolerance=5.8,
             exclude=["gone"])
         assert order == [("good",), ("poor",)]
@@ -220,10 +234,10 @@ class TestAPresetWithNoResultIsNotRanked:
 
     def test_excluding_nothing_leaves_the_ranking_alone(self):
         """The default has to be the old behaviour, or every other caller of
-        rank_by_win changes meaning."""
+        rank_by_score changes meaning."""
         wins = {"a": 39.0, "b": 38.0, "c": 20.0}
-        assert (experiments.rank_by_win(wins, 5.8)
-                == experiments.rank_by_win(wins, 5.8, exclude=[]))
+        assert (experiments.rank_by_score(wins, 5.8)
+                == experiments.rank_by_score(wins, 5.8, exclude=[]))
 
     def test_the_measured_tier_8_table_no_longer_ranks_the_empty_cell(self):
         """The real numbers from the 2026-08-05 run, 150 campaigns per cell.
@@ -241,7 +255,7 @@ class TestAPresetWithNoResultIsNotRanked:
             "Architect maxed (as designed)": 0.0,
             "Proposed budget (x0.85 time, x0.55 dmg)": 1.0,
         }
-        order = experiments.rank_by_win(
+        order = experiments.rank_by_score(
             tier_8, experiments.win_rate_noise(150),
             exclude=["Architect maxed (as designed)"])
         ranked = [name for group in order for name in group]
@@ -262,15 +276,221 @@ class TestAPresetWithNoResultIsNotRanked:
         the grouping of a set that was never ranked.
         """
         wins = {"a": 10.0, "b": 6.0, "c": 2.0}
-        assert experiments.rank_by_win(wins, 5.0) == [("a", "b"), ("c",)]
-        assert experiments.rank_by_win(wins, 5.0, exclude=["a"]) == [("b", "c")]
+        assert experiments.rank_by_score(wins, 5.0) == [("a", "b"), ("c",)]
+        assert experiments.rank_by_score(wins, 5.0, exclude=["a"]) == [("b", "c")]
 
     def test_excluding_everything_gives_an_empty_ranking(self):
         """Not a single empty group, and not a crash. `exp_presets` reads this
         to decide whether it has any ranking to report at all."""
-        assert experiments.rank_by_win({"a": 1.0, "b": 2.0}, 5.0,
+        assert experiments.rank_by_score({"a": 1.0, "b": 2.0}, 5.0,
                                        exclude=["a", "b"]) == []
 
+
+class TestTheMarginNoiseFloor:
+    """Issue #294. Section 7 ranks on win rate minus loss rate, and that metric
+    needs its own tolerance.
+
+    THE MISTAKE THIS PREVENTS. `win_rate_noise` treats a rate as a binomial
+    proportion and doubles its standard error for a difference of two
+    independent rates. Win and loss are not independent: they come from the same
+    campaign, which scores +1 won, -1 lost, 0 no result. So a margin is the
+    sample mean of ONE score, and using the win rate's tolerance on it reports a
+    figure half the size of the right one -- which would call gaps significant
+    that are not.
+
+    THE DERIVATION, restated so a reader of this file can check the tests
+    against it rather than against `margin_noise`'s own docstring. With p the
+    win probability and q the loss probability,
+
+        E[S] = p - q, E[S^2] = p + q, Var(S) = (p + q) - (p - q)^2
+
+    The worst case is Var(S) = 1 at p = q = 0.5, which makes the bound exactly
+    twice the win rate's.
+    """
+
+    def test_the_bound_is_exactly_twice_the_win_rate_bound(self):
+        """The headline of the derivation. The win rate's worst case is
+        sqrt(0.25) and the margin's is sqrt(1), and the two differ by nothing
+        else."""
+        for trials in (10, 60, 150, 600):
+            assert experiments.margin_noise(trials) == pytest.approx(
+                2.0 * experiments.win_rate_noise(trials))
+
+    def test_the_bound_at_the_sample_sizes_actually_used(self):
+        """150 campaigns per cell in the full sweep, 60 in the runs section 7
+        is measured at directly."""
+        assert experiments.margin_noise(150) == pytest.approx(11.55, abs=0.05)
+        assert experiments.margin_noise(60) == pytest.approx(18.26, abs=0.05)
+
+    def test_the_bound_falls_as_the_sample_grows(self):
+        assert experiments.margin_noise(600) < experiments.margin_noise(150)
+
+    def test_one_campaign_varies_most_on_a_coin_flip(self):
+        """Var(S) = 1 at p = q = 0.5, and that is the maximum over every
+        (p, q) with p + q <= 1. Checked over a grid rather than asserted,
+        because the whole bound rests on it."""
+        assert experiments.margin_variance(50.0, 50.0) == pytest.approx(1.0)
+        for win in range(0, 101, 5):
+            for loss in range(0, 101 - win, 5):
+                assert experiments.margin_variance(win, loss) <= 1.0 + 1e-9
+
+    def test_a_cell_that_never_resolves_has_no_spread(self):
+        """0% win and 0% loss is the absence of a result. Its margin is 0 with
+        no variance at all, which is exactly why it must not be ranked --
+        `rank_by_score`'s `exclude` is what keeps it out."""
+        assert experiments.margin_variance(0.0, 0.0) == pytest.approx(0.0)
+
+    def test_a_cell_that_always_loses_has_no_spread_either(self):
+        """Every campaign scores -1, so the margin is -100 with no variance.
+        This is the case the worst-case bound is most conservative about, and
+        it is the common case at tier 8."""
+        assert experiments.margin_variance(0.0, 100.0) == pytest.approx(0.0)
+        assert experiments.margin_variance(100.0, 0.0) == pytest.approx(0.0)
+
+    def test_the_tolerance_for_a_pair_never_exceeds_the_bound(self):
+        """What makes the bound safe to use as one tolerance for a whole
+        table."""
+        for win in range(0, 101, 10):
+            for loss in range(0, 101 - win, 10):
+                observed = experiments.margin_noise_between(
+                    win, loss, 50.0, 50.0, 150)
+                assert observed <= experiments.margin_noise(150) + 1e-9
+
+    def test_the_tolerance_for_two_losing_cells_is_far_below_the_bound(self):
+        """The measured tier 8 case. Both cells lose nearly every campaign, so
+        the pair is separable by a gap the bound would call noise."""
+        observed = experiments.margin_noise_between(2.0, 98.0, 0.0, 97.0, 60)
+        assert observed < experiments.margin_noise(60) / 2.0
+
+    def test_the_win_rate_tolerance_would_be_half_the_right_one(self):
+        """The mistake stated as a test, so that swapping the two back gets
+        caught. Issue #294 named this as the thing to settle before the metric
+        could be adopted."""
+        assert experiments.win_rate_noise(150) < experiments.margin_noise(150)
+        assert (experiments.win_rate_noise(150)
+                == pytest.approx(experiments.margin_noise(150) / 2.0))
+
+
+class TestTheClosestPairIsIdentified:
+    """`closest_ranked_pair` finds the gap that decides whether the tolerance
+    mattered. Every wider gap survives a tolerance this one survives."""
+
+    def test_it_finds_the_smallest_gap(self):
+        assert experiments.closest_ranked_pair(
+            {"a": 10.0, "b": 9.0, "c": 2.0}) == ("b", "a")
+
+    def test_it_ignores_excluded_names(self):
+        """A preset with no result must not be able to look like the closest
+        pair, for the same reason it is not ranked."""
+        assert experiments.closest_ranked_pair(
+            {"a": 10.0, "gone": 9.5, "c": 2.0}, exclude=["gone"]) == ("c", "a")
+
+    def test_fewer_than_two_names_has_no_pair(self):
+        assert experiments.closest_ranked_pair({"a": 1.0}) is None
+        assert experiments.closest_ranked_pair({}) is None
+        assert experiments.closest_ranked_pair(
+            {"a": 1.0, "b": 2.0}, exclude=["a", "b"]) is None
+
+
+class TestTheOrderingUsesWinMinusLoss:
+    """Issue #294. Win rate collapses towards zero above tier 3 and orders
+    nothing; win minus loss keeps varying because the loss rate does."""
+
+    #: The measured tier 8 cell, 60 campaigns each, 2026-08-05, with the
+    #: Architect preset already excluded because its campaigns had no result.
+    TIER_8 = {
+        "Explorer via floors (-25 floors)": (8.0, 67.0),
+        "Proposed budget (x0.85 time, x0.55 dmg)": (3.0, 72.0),
+        "Explorer maxed (as designed)": (2.0, 98.0),
+        "No tree": (0.0, 97.0),
+        "Explorer via floors (+30 floors)": (0.0, 100.0),
+    }
+
+    def test_win_rate_alone_puts_the_measured_tier_8_table_in_one_group(self):
+        """WHAT THE ISSUE WAS ABOUT. Five presets inside 8 points, and 60
+        campaigns per cell cannot separate anything closer than 9.1."""
+        wins = {name: win for name, (win, _) in self.TIER_8.items()}
+        order = experiments.rank_by_score(wins, experiments.win_rate_noise(60))
+        assert len(order) == 1, (
+            f"win rate now separates the measured tier 8 table into "
+            f"{len(order)} groups. It did not when issue #294 was closed, and "
+            f"the reason the metric changed was that it could not.")
+
+    def test_win_minus_loss_separates_the_same_table(self):
+        """THE ANSWER. The same five cells, the same 60 campaigns, ranked on
+        the margin with the margin's own tolerance."""
+        margins = {name: win - loss
+                   for name, (win, loss) in self.TIER_8.items()}
+        order = experiments.rank_by_score(margins,
+                                          experiments.margin_noise(60))
+        assert len(order) > 1, (
+            "win minus loss no longer separates the measured tier 8 table, so "
+            "it is no better than the win rate it replaced. Issue #294.")
+        assert order[0] == ("Explorer via floors (-25 floors)",
+                            "Proposed budget (x0.85 time, x0.55 dmg)"), (
+            f"the two presets that win anything at tier 8 are no longer the "
+            f"leading group. Got {order[0]}.")
+        assert "No tree" in order[-1]
+
+    def test_the_spread_it_gives_is_wider_than_the_win_rate_spread(self):
+        """41 points against 8 on the measured table. This is what "still
+        varies there" means, stated as a number."""
+        wins = [win for win, _ in self.TIER_8.values()]
+        margins = [win - loss for win, loss in self.TIER_8.values()]
+        assert max(margins) - min(margins) > max(wins) - min(wins)
+
+    def test_the_table_prints_the_margin_column(self, capsys):
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert "w-l" in printed, (
+            "the preset table no longer prints the win-minus-loss column, so "
+            "the column the ordering is built on is not visible. Issue #294.")
+
+    def test_the_ordering_is_built_from_the_margins(self):
+        """A source check, because the printed order alone cannot tell which
+        dict it came from when the two metrics happen to agree."""
+        source = pathlib.Path(experiments.__file__).read_text(encoding="utf-8")
+        body = source[source.index("def exp_presets"):]
+        assert "rank_by_score(margins[tier], tolerance" in body, (
+            "exp_presets no longer ranks on the margins. Issue #294.")
+        assert "tolerance = margin_noise(trials)" in body, (
+            "exp_presets no longer uses the margin's own tolerance. Using "
+            "win_rate_noise on a margin reports half the right figure. "
+            "Issue #294.")
+
+    def test_the_win_rate_ordering_is_kept_as_a_second_opinion(self, capsys):
+        """Not deleted. It is the metric the issue was opened about, and
+        keeping it printed is what makes the collapse visible in the report
+        rather than only in the issue."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert _WIN_ORDER_HEADING in printed
+        assert len(_win_ordering_lines(printed)) == 2
+
+    def test_the_report_says_the_tolerance_is_not_the_win_rates(self, capsys):
+        """The one thing a reader of the output could get wrong, given the two
+        orderings now sit next to each other with different tolerances."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = unwrapped(capsys.readouterr().out)
+        assert "ITS TOLERANCE IS NOT THE WIN RATE'S" in printed
+        assert "+1 won, -1 lost, 0 no result" in printed
+        assert "exactly twice the win rate's" in printed
+
+    def test_the_report_shows_how_conservative_the_bound_is(self, capsys):
+        """The bound assumes a cell that wins half its campaigns and loses the
+        rest. At tier 8 nothing does, so the figure used is far wider than the
+        one that pair needs, and the report says so per tier."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert _ORDER_ENDS_AT in printed
+        block = printed[printed.index(_ORDER_ENDS_AT):]
+        for tier in (1, 8):
+            assert (f"tier {tier}: closest gap" in block
+                    or f"tier {tier}: fewer than two presets ranked" in block)
 
 class TestThePresetSectionCoversBothEnds:
     def test_it_runs_at_more_than_one_tier(self):
@@ -333,16 +553,31 @@ class TestThePresetSectionCoversBothEnds:
         win rate does.
 
         A reader who sees a new column added for issue #294 would otherwise
-        reasonably assume it worked. The report says outright that it did not
-        and that the issue is still open."""
+        reasonably assume it worked. The report says outright that it did not,
+        and names the metric that was chosen instead.
+
+        WHAT THIS USED TO ASSERT. That the report says "Issue #294 stays open".
+        It no longer does: the issue chose win rate minus loss rate and is
+        closed. The column stays because it explains the collapse -- at tier 8
+        campaigns are not losing the final fight, they are clearing 1.1 of the 8
+        objectives needed to reach it -- and this test now checks that the
+        report says which metric replaced it rather than leaving the reader to
+        assume this column is the answer.
+        """
         base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
         experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
+        printed = unwrapped(capsys.readouterr().out)
         assert "IT DOES NOT" in printed, (
             "the preset section prints objectives cleared without saying it "
-            "was measured as a replacement for win rate and failed. Issue #294 "
-            "is still open and the report should not imply otherwise.")
-        assert "Issue #294 stays open" in printed
+            "was measured as a replacement for win rate and failed. A reader "
+            "would take a column added for issue #294 as the answer to it.")
+        assert "Win minus loss is the metric issue #294 settled on" in printed, (
+            "the preset section says objectives cleared failed without naming "
+            "what replaced it. The ordering above it is on win minus loss and "
+            "the report has to connect the two.")
+        assert "Issue #294 stays open" not in printed, (
+            "the preset section still says issue #294 is open. It was closed "
+            "when win rate minus loss rate was adopted as the ranking metric.")
 
     def test_the_objectives_spread_is_reported_per_tier(self, capsys):
         """The spread is what decides whether a metric separates anything. One
@@ -565,7 +800,7 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         assert "no_result_at" in body
         assert "exclude=no_result_at" in body, (
             "exp_presets no longer passes its unresolved presets to "
-            "rank_by_win. Issue #294.")
+            "rank_by_score. Issue #294.")
         assert body.count("no_result_at.setdefault") == 1, (
             "the exclusion set is no longer accumulated across every tier, so "
             "the orderings can cover different presets and stop being "
