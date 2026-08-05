@@ -1071,6 +1071,27 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
+**A damage over time effect deals a fixed amount per tick.** It is not a total handed out in instalments. A bleed that deals 20 damage per tick, ticks once per second and lasts 5 seconds deals 100 damage in total, and every one of those three numbers can be raised on its own.
+
+  
+
+|  |  |  |
+| :-- | :-- | :-- |
+| \*\*Metric\*\* | \*\*What raising it does\*\* | \*\*Total damage\*\* |
+| Damage per tick | Each tick hits harder | Rises |
+| Tick rate | More ticks in the same time | Rises |
+| Duration | The effect runs for longer | Rises |
+
+  
+
+**All three multiply.** A character with 48% more of each does not deal 148% of the base total; it deals 1.48 × 1.48 × 1.48, which is 324%. That is deliberate and it is the reason the three are separate stats rather than one. It also means the values on the affixes and attributes that grant them cannot be set one at a time — see "What Affixes Do Not Grant", which forbids an ordinary affix from being a "more" multiplier, and note that three ordinary increases on the same output produce the same curve as one.
+
+  
+
+**This is the opposite of what Path of Exile and Last Epoch do**, and it is a deliberate departure. Both of those define a damage over time effect as a total spread across a duration, so ticking faster delivers the same total sooner and adds nothing. The reasoning for going the other way is in `docs/DECISIONS.md`.
+
+  
+
 **Chance to apply caps at 100%. Everything above it becomes magnitude instead.**
 
   
