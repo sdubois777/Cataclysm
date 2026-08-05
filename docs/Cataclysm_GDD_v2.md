@@ -2699,13 +2699,16 @@ trade in. The rule generalises: **anything the account shares between characters
 is held once per lethality mode, never once for the account.** Anything a
 character holds by itself needs no rule, because a character never changes mode.
 
+**Gold is one of the things the account shares**, so it is held once per
+lethality mode like the rest. Three balances, and nothing moves between them; a
+Standard character cannot fund a Heretic one. The Storage section states it in
+full alongside the stash, because the two are the same rule applied twice.
+
 That is what the genre does. Path of Exile, Diablo III, Diablo IV, Last Epoch and
 Grim Dawn each partition the stash on the same axis as their meta-progression,
-and none of them partitions the two on different axes. `docs/DECISIONS.md`
-records the survey, the cost in auction house liquidity, and the two questions
-this leaves open: the shared stash has no design of its own beyond its name
-(issue #305), and the document does not say whether gold is held by the character
-or by the account (issue #306).
+and none of them partitions the two on different axes. Diablo IV and Last Epoch
+partition gold on that axis as well. `docs/DECISIONS.md` records the survey and
+the cost in auction house liquidity.
 
   
 
@@ -2753,9 +2756,21 @@ out the third possibility: "no stash or storage fees of any kind". A player's
 storage is the same on their first day in a mode as on their last.
 
 **It holds items: gear, gems and crafting materials.** It does not hold gold,
-because gold is a balance rather than an item and is not stored anywhere. Where
-that balance lives — with the character or with the account — is a separate
-question and is issue #306.
+because gold is a balance rather than an item and is not stored anywhere.
+
+**Gold is held by the account, once per lethality mode**, exactly as the stash
+is. Every Standard character spends from one balance, every Hardcore character
+from a second and every Heretic character from a third, and nothing moves between
+them. A Solo Self-Found character is the exception again: its gold is its own and
+is shared with nothing, for the same reason its empire tree and its lack of a
+stash are.
+
+**Why the account rather than the character.** The Empire-Wide Upgrades section
+already says that making another character in a mode already being played "costs
+that character's levels and gear and nothing else". Gold held per character would
+be a third thing lost, and that sentence would be false. It is also what the
+general partition rule was written to cover: anything the account shares between
+characters is held once per lethality mode, and gold is one of those things.
 
 **The auction house lists from the stash, not from the carried inventory.** That
 is why a Solo Self-Found character loses both together and why one market and one
@@ -2765,11 +2780,12 @@ from can hold.
 **Why fixed rather than earned or bought.** 600 slots is close to what Path of
 Exile 2 gives for free, which is four tabs of 144. Diablo IV starts at 50 and
 sells more for gold; Last Epoch sells up to 200 tabs for gold. Selling tabs for
-gold is the common answer and was not taken here, for two reasons. It would rest
-on whether gold belongs to the character or the account, which is not decided
-(issue #306), and this design has no other gold sink written down, so pricing one
-in isolation would be a guess with nothing to calibrate against. `docs/DECISIONS.md`
-records the sources and the case for revisiting it.
+gold is the common answer and was not taken here, because this design has no
+other gold sink written down and pricing the first one in isolation would be a
+guess with nothing to calibrate against. `docs/DECISIONS.md` records the sources
+and the case for revisiting it. It rested on a second reason as well until issue
+#306 removed it: gold is now settled as an account balance held once per
+lethality mode, so a gold price would have a clear owner to charge.
 
 **600 is a tuning value.** The rule is that storage is fixed, free and shared per
 lethality mode; the number is an anchor to the nearest comparable game and should

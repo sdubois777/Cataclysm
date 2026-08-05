@@ -20,6 +20,107 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Gold is held by the account, once per lethality mode
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #306.
+
+### The gap
+
+The design document mentioned gold four times and never said who owns it. Gold is
+earned from dungeons and side quests and spent at the capital on crafting,
+enchanting and socketing, and nothing said whether one character's gold is
+reachable by another character on the same account.
+
+That mattered because issue #285 partitioned the shared stash and the auction
+house by lethality mode so gear cannot pass from a Standard character to a
+Heretic one. Whether that closed the gold route depended entirely on this
+question. The rule written for #285 was phrased to hold under both readings —
+"anything the account shares between characters is held once per lethality mode"
+— so nothing in the document was wrong; what was missing was the fact that
+decides which branch applies.
+
+### What was decided
+
+**Gold is held by the account, once per lethality mode.** Three balances, nothing
+moving between them, and a Solo Self-Found character's gold private to itself
+like its empire tree.
+
+### The argument that settled it came from inside the document
+
+The Empire-Wide Upgrades section already says:
+
+> Making another character in a mode already being played costs that character's
+> levels and gear **and nothing else**, and the meta-progression carries over.
+
+Gold held per character would be a third thing lost, and that sentence would be
+false. The design had already committed to the answer without noticing.
+
+It is also the reading that needs no new rule. The general partition rule was
+written to cover anything the account shares, so account-held gold is partitioned
+by it automatically. Per-character gold would have needed a sentence saying gold
+is the exception to a rule everything else follows.
+
+### The genre survey, re-checked
+
+**This issue's body originally recommended the opposite**, on the grounds that
+three of four surveyed games hold gold per character. That count was wrong, a
+correction was posted to the issue the same day, and both corrected claims were
+re-checked on 2026-08-05 before this decision was made.
+
+| Game | Gold |
+|---|---|
+| Diablo IV | Account-shared, partitioned by Hardcore: hardcore characters share gold only with other hardcore characters |
+| Last Epoch | Account-shared in softcore; hardcore is completely separate, with its own stash and gold |
+| Diablo III | Account-shared from patch 2.0, partitioned by Hardcore and by season |
+| Path of Exile | Per character within a league |
+
+So three of four hold gold on the account and partition it on the same axis as
+the stash, which is exactly the shape decided here. The original recommendation
+had the survey backwards.
+
+**Last Epoch is stricter than this design and the difference is deliberate.** A
+Last Epoch hardcore character shares with nothing, not even another hardcore
+character. Here, characters in the same lethality mode share a tree, a stash and
+a balance, because the tree partition already carries the cost of switching modes
+and doubling it per character would make a second Heretic character start from
+nothing twice over.
+
+### What argues against it
+
+**It is one more thing to partition, and each partition is re-grind.** The entry
+for issue #277 already records that Diablo IV removed the permanent power of
+Altars of Lilith rather than keep making players re-earn it across partitions,
+and that Last Epoch answered the same complaint with catch-up mechanics. Gold
+joins the empire tree and the stash on that list. A first Heretic character now
+starts with no tree, no stash and no gold.
+
+**Per-character gold would have been simpler to build.** One balance on one
+record, no partition key, and no question about what happens to a balance when a
+character is lost. Account gold needs the balance keyed by mode everywhere it is
+read.
+
+**It makes gold a worse sink for the stash question.** Issue #305 decided the
+stash is fixed rather than expandable for gold, partly because gold's owner was
+unknown. That reason is now gone, so a gold-priced stash expansion is available
+if a gold economy is ever designed. The entry for #305 says what would reopen it.
+
+### Sources
+
+Search-result summaries rather than the pages themselves; `WebFetch` cannot reach
+the wiki hosts several of these sit on.
+
+- Diablo IV: gold shared account-wide, hardcore characters excluded from the
+  shared stash and gold except with other hardcore characters.
+  https://segmentnext.com/diablo-4-shared-between-characters/ and
+  https://maxroll.gg/d4/resources/hardcore-guide
+- Last Epoch: gold shared among softcore characters, hardcore completely
+  separate. https://www.vhpg.com/last-epoch-transfer-items-between-characters/
+  and https://forum.lastepoch.com/t/any-way-to-transfer-items-from-sc-to-hc/49680
+- Diablo III: gold account-shared since patch 2.0, split by Hardcore and season.
+  https://www.diablowiki.net/Stash
+
+---
+
 ## 2026-08-05 — The shared stash is 600 fixed slots, free, and holds no gold
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #305.
@@ -56,11 +157,12 @@ that has already ruled out selling storage for money.
 
 Two things stopped it.
 
-**It rests on an undecided question.** A stash shared by the account, bought with
-gold, needs to know whether gold belongs to the account or to the character. That
-is issue #306 and it is open. Under per-character gold, one character funding an
-account-wide expansion is a rule that has to be written; under account gold it
-needs none.
+**It rested on an undecided question, and that reason has since gone.** A stash
+shared by the account, bought with gold, needs to know whether gold belongs to
+the account or to the character. That was issue #306. It was answered the same
+day, later than this entry: gold is an account balance held once per lethality
+mode, which is the reading that needs no extra rule for one character funding an
+account-wide expansion. **So only the second reason below still stands.**
 
 **There is no other gold sink written down.** This design prices every capital
 service in days rather than gold. Gold has sources — side quests, The Midas Touch
@@ -68,11 +170,11 @@ capstone, the auction house — and no stated sink at all. Setting the first one
 isolation would be a number with nothing to calibrate against, and a wrong first
 sink is worse than none because everything after it is priced relative to it.
 
-**What would argue for revisiting it.** If issue #306 settles gold as
-account-held, and a gold economy is designed with more than one sink in it, a
-gold-priced expansion becomes the cheap and genre-normal answer. The rule that
-would change is only "it does not grow"; nothing else in the section depends on
-it.
+**What would argue for revisiting it.** Half of the condition is already met:
+issue #306 settled gold as account-held on 2026-08-05. If a gold economy is
+designed with more than one sink in it, a gold-priced expansion becomes the cheap
+and genre-normal answer. The rule that would change is only "it does not grow";
+nothing else in the section depends on it.
 
 ### The case against a fixed stash
 
