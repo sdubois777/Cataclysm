@@ -200,14 +200,28 @@ class TestTheDesignDocumentAgrees:
         # what the document says today, so a cap that moves has to move this
         # number too and the count cannot silently pass.
         stated = re.findall(r"\b70%", text)
-        # One of them is not the resistance cap: the Hybrid Affixes section says
-        # each of a hybrid's two stats gives 70% of what the single affix for
-        # that stat gives. Same number, unrelated rule.
-        not_the_cap = 1
-        assert len(stated) - not_the_cap == len(DOCUMENT_COPIES), (
+        # Some of them are not the resistance cap at all. Each is named rather
+        # than counted, so a new one has to be identified before the count moves
+        # and cannot be waved through by raising a number.
+        not_the_cap = [
+            # The Hybrid Affixes section: each of a hybrid's two stats gives 70%
+            # of what the single affix for that stat gives. Same number,
+            # unrelated rule.
+            "each at **70%** of what the single affix",
+            # The One Affix Per Group section quotes that same hybrid ratio as
+            # the reason a hybrid cannot sit beside its own half. Issue #128.
+            "A hybrid grants each half at 70%",
+        ]
+        for phrase in not_the_cap:
+            assert phrase in text, (
+                f"{GDD.name} no longer contains {phrase!r}, which this file "
+                "excludes from the count of resistance cap statements. Either "
+                "it was reworded, in which case update this list, or it was "
+                "removed, in which case delete the entry.")
+        assert len(stated) - len(not_the_cap) == len(DOCUMENT_COPIES), (
             f"{GDD.name} states 70% {len(stated)} times, of which "
-            f"{not_the_cap} is the hybrid affix ratio rather than the "
-            f"resistance cap. That leaves {len(stated) - not_the_cap} "
+            f"{len(not_the_cap)} are the hybrid affix ratio rather than the "
+            f"resistance cap. That leaves {len(stated) - len(not_the_cap)} "
             f"statements of the cap against {len(DOCUMENT_COPIES)} entries in "
             "DOCUMENT_COPIES in this file. Add or remove the entry that "
             "changed, so every statement of the cap stays checked.")

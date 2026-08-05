@@ -1785,6 +1785,177 @@ def hybrids_for(slot: str, position: str | None = None
                  and (position is None or h.position == position))
 
 
+# --------------------------------------------------------------------------
+# Affix groups: what stops one item rolling the same thing twice
+# --------------------------------------------------------------------------
+#
+# Issue #128. Slot restrictions stop a weapon rolling health and a chest plate
+# rolling damage, but nothing stopped a four-affix Masterful item rolling "Flat
+# maximum health" four times over. Every affix in the pool was restricted against
+# the slot and against nothing else, least of all itself.
+#
+# THE RULE. An affix occupies one GROUP for every stat it grants, named by the
+# stat and the kind together. An item holds at most one affix from any group.
+#
+# WHERE THE SHAPE COMES FROM. Path of Exile calls this a mod group and it is the
+# only mechanism that makes modifiers on one item mutually exclusive: a group is
+# a string identifier shared by one or more modifiers, and only one modifier from
+# a group may exist on an item at a time. Path of Exile 2 keeps the same rule and
+# the same name. What differs here is that the group is DERIVED from what the
+# affix grants rather than typed onto each modifier by hand, so a new affix
+# cannot be added without a group and two affixes granting the same stat in the
+# same kind cannot be given different groups by mistake.
+#
+# WHAT THE RULE DECIDES, in the three cases the issue raised:
+#
+#   Flat and increased are different groups, so one piece may carry both "Flat
+#   maximum health" and "Increased maximum health". That is deliberate: the
+#   design says neither kind is strictly better and that is the reason for having
+#   both, so an item carrying one of each is the design working rather than a
+#   duplicate slipping through.
+#
+#   A hybrid occupies the group of EACH of its parts, so "Health and armor"
+#   cannot share a piece with "Flat maximum health" or with "Flat armor". A
+#   hybrid grants 70% of each part, so allowing it beside its own part is the
+#   same stat twice on one piece, which is what the rule exists to stop. Path of
+#   Exile 2 goes the other way and gives a hybrid its own group; this project has
+#   two prefix slots per piece against that game's three, so the same allowance
+#   concentrates far more here.
+#
+#   Resistance is grouped BY DAMAGE TYPE, not by family. A single-resistance roll
+#   occupies only the group of the type it rolled, so two of them covering
+#   different types may share a piece; an all-resistance roll occupies all eight
+#   groups and so excludes every other resistance affix. That falls out of the
+#   rule rather than being a separate one, because the eight resistances are
+#   eight stats on the character sheet.
+#
+# Prefixes and suffixes cannot share a group at all, because a stat that appears
+# as a prefix never appears as a suffix. `_check_the_two_positions_are_separate_
+# pools` already holds that, so the two pools are group-disjoint for free.
+
+def stat_group(stat: str, kind: str) -> str:
+    """The group key for granting one stat in one kind."""
+    return f"{stat}.{kind}"
+
+
+def ailment_group(ailment: str) -> str:
+    """The group key for a chance to apply one named effect.
+
+    An ailment affix grants no stat, so it cannot use `stat_group`. What it
+    grants is a chance at one named effect, and two rolls of the same chance on
+    one piece is the same duplicate the rule exists to stop.
+    """
+    return f"ailment.{ailment}"
+
+
+def resistance_group(damage_type: str) -> str:
+    """The group key for resistance to one damage type."""
+    if damage_type not in DAMAGE_TYPES:
+        raise ValueError(f"unknown damage type {damage_type!r}; "
+                         f"expected one of {list(DAMAGE_TYPES)}")
+    return stat_group(f"resistance_{damage_type.lower()}", "flat")
+
+
+def groups_of(affix, covers: tuple[str, ...] = ()) -> frozenset[str]:
+    """Every group `affix` occupies on an item.
+
+    `covers` is which damage types a resistance roll landed on, which is decided
+    when the item drops rather than by the family. It is required for a
+    resistance family and must be empty for everything else.
+    """
+    if isinstance(affix, AffixFamily):
+        if len(set(covers)) != affix.breadth:
+            raise ValueError(
+                f"{affix.name} covers {affix.breadth} damage type"
+                f"{'s' if affix.breadth > 1 else ''}; "
+                f"got {list(covers)}")
+        return frozenset(resistance_group(t) for t in covers)
+    if covers:
+        raise ValueError(
+            f"{affix.name} is not a resistance family, so it covers no damage "
+            f"types of its own; got {list(covers)}")
+    if isinstance(affix, StatAffix):
+        return frozenset({stat_group(affix.stat, affix.kind)})
+    if isinstance(affix, HybridAffix):
+        return frozenset(stat_group(p.stat, p.kind) for p in affix.parts)
+    if isinstance(affix, AilmentAffix):
+        return frozenset({ailment_group(affix.ailment)})
+    raise TypeError(f"{affix!r} is not an affix this pool knows about")
+
+
+def may_join(affix, taken: frozenset[str] | set[str],
+             covers: tuple[str, ...] = ()) -> bool:
+    """Whether `affix` may be added to an item already holding `taken` groups."""
+    return not (groups_of(affix, covers) & set(taken))
+
+
+def draw_without_repeating_a_group(candidates, count: int, rng,
+                                   group_of=groups_of) -> tuple:
+    """Draw `count` affixes at random, never two from one group.
+
+    This is the drop roll's inner step: draw without replacement, and treat a
+    whole group as drawn once any of its members is. `rng` is a `random.Random`.
+    `group_of` is how to read an affix's groups, so a caller that has already
+    decided which damage types a resistance roll covers can pass its own.
+
+    Raises `ValueError` if the candidates cannot supply `count` distinct groups,
+    which is a fault in the pool rather than an unlucky roll.
+    """
+    if count < 0:
+        raise ValueError(f"cannot draw {count} affixes")
+    order = list(candidates)
+    rng.shuffle(order)
+    taken: set[str] = set()
+    drawn: list = []
+    for candidate in order:
+        if len(drawn) == count:
+            break
+        groups = group_of(candidate)
+        if groups & taken:
+            continue
+        taken |= groups
+        drawn.append(candidate)
+    if len(drawn) < count:
+        raise ValueError(
+            f"asked for {count} affixes but the {len(order)} candidates supply "
+            f"only {len(drawn)} distinct groups")
+    return tuple(drawn)
+
+
+def everything_for(slot: str, position: str) -> tuple:
+    """Every affix a drop could roll on one slot in one position.
+
+    `pool_for` returns the stat affixes alone. A drop rolls from the hybrids, the
+    ailment affixes and the resistance families as well, and the group rule has
+    to hold across all four kinds rather than within each one.
+    """
+    if slot not in GEAR_SLOTS:
+        raise ValueError(f"unknown gear slot {slot!r}; "
+                         f"expected one of {sorted(GEAR_SLOTS)}")
+    if position not in AFFIX_POSITIONS:
+        raise ValueError(f"unknown position {position!r}; "
+                         f"expected one of {list(AFFIX_POSITIONS)}")
+    out: list = list(pool_for(slot, position))
+    out.extend(hybrids_for(slot, position))
+    if position == SUFFIX:
+        out.extend(a for a in ailments_for(slot))
+        if slot in RESISTANCE_SLOTS:
+            out.extend(RESISTANCE_FAMILIES)
+    return tuple(out)
+
+
+def distinct_groups_for(slot: str, position: str) -> int:
+    """How many affixes one piece could hold in a position before the group rule
+    stops it. A resistance family counts once per damage type it can reach."""
+    groups: set[str] = set()
+    for affix in everything_for(slot, position):
+        if isinstance(affix, AffixFamily):
+            groups |= {resistance_group(t) for t in DAMAGE_TYPES}
+        else:
+            groups |= groups_of(affix)
+    return len(groups)
+
+
 def total_pool_size() -> int:
     """Everything a drop could roll, counting each resistance family once."""
     return (len(AFFIX_POOL) + len(RESISTANCE_FAMILIES) + len(AILMENT_AFFIXES)
@@ -1807,6 +1978,25 @@ def _check_every_slot_can_fill_all_four_of_its_affixes() -> None:
                 raise ValueError(
                     f"{slot} has {available} {position}es available but "
                     f"{needed} {position} slots to fill")
+
+
+def _check_every_slot_can_fill_its_affixes_without_repeating_a_group() -> None:
+    """The check above counts affixes; this one counts GROUPS.
+
+    A slot could have four prefixes available and only one group between them,
+    in which case the group rule from issue #128 leaves the second prefix slot
+    unfillable. Counting affixes cannot see that, so it is counted separately.
+    """
+    for slot in GEAR_SLOTS:
+        for position, needed in ((PREFIX, PREFIXES_PER_PIECE),
+                                 (SUFFIX, SUFFIXES_PER_PIECE)):
+            available = distinct_groups_for(slot, position)
+            if available < needed:
+                raise ValueError(
+                    f"{slot} offers {available} distinct {position} group"
+                    f"{'s' if available != 1 else ''} but has {needed} "
+                    f"{position} slots to fill, so one of them could not be "
+                    "filled without repeating a group")
 
 
 def _check_the_two_positions_are_separate_pools() -> None:
@@ -2160,6 +2350,7 @@ def _check_only_a_two_handed_weapon_multiplies_its_values() -> None:
 
 
 _check_every_slot_can_fill_all_four_of_its_affixes()
+_check_every_slot_can_fill_its_affixes_without_repeating_a_group()
 _check_the_two_positions_are_separate_pools()
 _check_no_two_affixes_are_the_same_thing()
 _check_every_slot_offers_a_real_choice_of_base()
@@ -2508,6 +2699,24 @@ if __name__ == "__main__":
     for hybrid in HYBRID_AFFIXES:
         parts = ", ".join(f"{v:,.1f} {s}" for s, v in hybrid.values_at().items())
         print(f"    {hybrid.name:<44} {hybrid.position:<7} {parts}")
+    print()
+
+    print("  ONE AFFIX PER GROUP. Issue #128. An affix belongs to a group for")
+    print("  every stat it grants, named by the stat and the kind together, and")
+    print("  one piece holds at most one affix from any group. So a hybrid")
+    print("  cannot sit beside either of its own halves, flat and increased of")
+    print("  one stat can sit together, and two single-resistance rolls can if")
+    print("  they cover different damage types.")
+    print()
+    print(f"    {'slot':<12} {'prefix groups':>14} {'suffix groups':>14}"
+          f"   (needs {PREFIXES_PER_PIECE} and {SUFFIXES_PER_PIECE})")
+    print("    " + "-" * 60)
+    for slot in GEAR_SLOTS:
+        print(f"    {slot:<12} {distinct_groups_for(slot, PREFIX):>14} "
+              f"{distinct_groups_for(slot, SUFFIX):>14}")
+    print()
+    print("    Every slot has room to spare, so the rule constrains which")
+    print("    combinations appear rather than whether a piece can be filled.")
     print()
 
     print("  Ailment affixes, applying the effects the gems already grant:")
