@@ -201,6 +201,70 @@ class TestThePresetSectionCoversBothEnds:
             assert set(wins[tier]) == {tree.name for tree in experiments.PRESETS}
             assert all(0.0 <= rate <= 100.0 for rate in wins[tier].values())
 
+    def test_the_table_reports_quest_objectives_cleared(self, capsys):
+        """Issue #294. Win rate collapses towards zero above tier 3 and stops
+        ranking the presets. Objectives cleared is the same axis measured before
+        it saturates -- a win requires all of them -- and `summarise` already
+        computed it while the table did not print it.
+
+        It is printed whether or not it turned out to separate them, because it
+        is the column that explains the collapse: at tier 8 the campaigns are
+        not failing at the final fight, they are failing to clear the quest
+        objectives at all.
+        """
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert f"obj/{base.quest_objectives_required}" in printed, (
+            "the preset table no longer reports quest objectives cleared. "
+            "Issue #294 added it because win rate stops separating the presets "
+            "above tier 3.")
+
+    def test_the_objectives_column_is_labelled_from_the_config(self, capsys):
+        """The heading says how many objectives a win needs. Reading it from the
+        config rather than writing 8 into a format string means changing
+        `quest_objectives_required` cannot leave the table lying about what the
+        number is out of."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER,
+                       quest_objectives_required=5)
+        experiments.exp_presets(base, tiers=(1,), trials=2)
+        printed = capsys.readouterr().out
+        assert "obj/5" in printed, (
+            "the preset table's objectives heading does not follow "
+            "quest_objectives_required. It is hard-coded, so changing how many "
+            "objectives a win needs would leave the column labelled wrongly.")
+        assert "obj/8" not in printed
+
+    def test_it_records_that_objectives_did_not_solve_the_problem(self, capsys):
+        """CLAUDE.md: say what did not work, plainly and first. Objectives
+        cleared was measured on 2026-08-05 across all eight tiers and does NOT
+        separate the presets -- it saturates at the low tiers, where five of six
+        sit within 0.1 of each other, and collapses at the high tiers exactly as
+        win rate does.
+
+        A reader who sees a new column added for issue #294 would otherwise
+        reasonably assume it worked. The report says outright that it did not
+        and that the issue is still open."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert "IT DOES NOT" in printed, (
+            "the preset section prints objectives cleared without saying it "
+            "was measured as a replacement for win rate and failed. Issue #294 "
+            "is still open and the report should not imply otherwise.")
+        assert "Issue #294 stays open" in printed
+
+    def test_the_objectives_spread_is_reported_per_tier(self, capsys):
+        """The spread is what decides whether a metric separates anything. One
+        number per tier, so a later reader can see at a glance whether the
+        2026-08-05 finding still holds after a tuning change."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert "spread over" in printed, (
+            "the preset section no longer reports the spread of objectives "
+            "cleared per tier, which is the measurement issue #294 turns on.")
+
     def test_the_tier_actually_changes_the_run(self, capsys):
         """Otherwise the second table would be a copy of the first.
 

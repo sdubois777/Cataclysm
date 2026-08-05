@@ -410,20 +410,27 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
           f"{SWEEP_TIER} in sections 0 and 2.")
 
     wins: dict[int, dict[str, float]] = {}
+    #: Mean quest objectives cleared, out of `quest_objectives_required`. Kept
+    #: alongside the win rate because a win requires all of them, so this is the
+    #: same axis measured before it saturates. Issue #294.
+    objectives: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
     for tier in tiers:
         ceiling = scoring.tier_bounds(tier)[1]
         print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}")
-        print(f"{'preset':<42}{'win%':>7}{'loss%':>7}{'stale%':>8}{'cities':>8}"
-              f"{'floors':>9}{'crafts':>8}{'triage%':>9}")
-        print("-" * 100)
+        header = (f"{'preset':<42}{'win%':>7}{'loss%':>7}{'stale%':>8}"
+                  f"{'obj/' + str(base.quest_objectives_required):>7}"
+                  f"{'cities':>8}{'floors':>9}{'crafts':>8}{'triage%':>9}")
+        print(header)
+        print("-" * len(header))
         wins[tier] = {}
         for tree in PRESETS:
             cfg = replace(base, tier=tier).with_tree(tree)
             s = summarise(batch(cfg, policies.triage, trials=trials))
             wins[tier][tree.name] = s["win"]
+            objectives[tier][tree.name] = s["obj"]
             print(f"{tree.name:<42}{s['win']:>7.0f}{s['lost']:>7.0f}"
-                  f"{s['stale']:>8.0f}{s['cities']:>8.1f}{s['floors']:>9.0f}"
-                  f"{s['crafts']:>8.1f}{s['triage']:>9.1f}")
+                  f"{s['stale']:>8.0f}{s['obj']:>7.1f}{s['cities']:>8.1f}"
+                  f"{s['floors']:>9.0f}{s['crafts']:>8.1f}{s['triage']:>9.1f}")
 
     if len(tiers) > 1:
         tolerance = win_rate_noise(trials)
@@ -437,6 +444,25 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             orders[tier] = order
             print(f"    tier {tier}: "
                   + " > ".join(" = ".join(group) for group in order))
+
+        print(f"\n  QUEST OBJECTIVES CLEARED, out of "
+              f"{base.quest_objectives_required}, as a second opinion. Issue "
+              "#294 asked whether")
+        print("  this separates the presets where win rate does not, because a "
+              "win requires")
+        print("  all of them and this is the same axis measured before it "
+              "saturates.")
+        for tier in tiers:
+            values = sorted(objectives[tier].values())
+            print(f"    tier {tier}: {values[-1] - values[0]:>4.1f} spread over "
+                  + ", ".join(f"{v:.1f}" for v in values))
+        print("\n  MEASURED 2026-08-05: IT DOES NOT. It saturates at the low "
+              "tiers, where five")
+        print("  of six presets sit within 0.1 of each other, and at the high "
+              "tiers it")
+        print("  collapses the same way win rate does. The one preset it "
+              "separates is the")
+        print("  one win rate already separates. Issue #294 stays open.")
 
         flat = [t for t, order in orders.items() if len(order) == 1]
         if flat:
