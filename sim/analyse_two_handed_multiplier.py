@@ -27,9 +27,18 @@ the comparison is what shows they no longer fit.
 
 WHAT SUMMING CHANGES, and it is not small. Two one-handed bases sum to more than
 any two-handed base: an Axe and a Sword give 86 against a Greatsword's 78. The
-five two-handed bases average 1.03 times two one-handed ones, which is parity,
-so a two-handed weapon has no base damage advantage at all. Section VI states
-that the two-hander stays ahead on raw damage, and under summing it is not.
+six two-handed bases average 1.00 times two one-handed ones, which is parity, so
+a two-handed weapon has no base damage advantage at all. Section VI states that
+the two-hander stays ahead on raw damage, and under summing it is not.
+
+THAT SENTENCE USED TO READ "the five two-handed bases average 1.03 times two
+one-handed ones", and it was true when it was written. Issue #146 then gave the
+Wand and the Staff flat attack damage, which added a seventh one-handed base and
+a sixth two-handed one, and the figure moved to 1.00 with nobody noticing. That
+is issue #319, and it is why every figure in this report is now computed and
+printed rather than only asserted here: `base_damage_table` prints the counts,
+the two means and the ratio, and `sim/tests/test_analysis_scripts.py` checks the
+printed strings against the model.
 
 Raising the affix multiplier alone cannot fix that without breaking a different
 rule. The answer came from research rather than from measurement: Last Epoch
@@ -170,6 +179,39 @@ def affix_budget_table() -> None:
               f"{total_two:>9.1f}  {total_dual:>9.1f}  {verdict:<28}")
 
 
+def damage_weapon_bases() -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
+    """Every weapon base that supplies flat attack damage, split by hand class.
+
+    A Shield sits in the weapon slot and supplies none, so it is not a weapon
+    for this purpose and is left out. Read off `ITEM_BASES` rather than listed
+    here, so adding a base cannot leave the figures below out of date -- which
+    is exactly what happened once already. See the module docstring.
+    """
+    one_handed: list[tuple[str, float]] = []
+    two_handed: list[tuple[str, float]] = []
+    for base in af.ITEM_BASES:
+        if base.slot != "Weapon":
+            continue
+        damage = base_damage(base.name)
+        if damage <= 0.0:
+            continue
+        target = two_handed if base.value_multiplier != 1.0 else one_handed
+        target.append((base.name, damage))
+    return one_handed, two_handed
+
+
+def fleet_ratio() -> float:
+    """The mean two-handed base against two mean one-handed ones.
+
+    One is parity: a two-handed weapon brings no base damage advantage at all
+    over two one-handers, under the summing rule the project owner settled.
+    """
+    one_handed, two_handed = damage_weapon_bases()
+    mean_one = sum(v for _, v in one_handed) / len(one_handed)
+    mean_two = sum(v for _, v in two_handed) / len(two_handed)
+    return mean_two / (2.0 * mean_one)
+
+
 def base_damage_table() -> None:
     header("WEAPON BASE DAMAGE, before any affix")
     for name in ONE_HANDED:
@@ -181,6 +223,22 @@ def base_damage_table() -> None:
     print()
     print(f"  A two-hander is {base_damage(TWO_HANDED) / (both / 2):.2f}x the average "
           f"one-hander and {base_damage(TWO_HANDED) / both:.2f}x the two together.")
+
+    one_handed, two_handed = damage_weapon_bases()
+    mean_one = sum(v for _, v in one_handed) / len(one_handed)
+    mean_two = sum(v for _, v in two_handed) / len(two_handed)
+    print()
+    print("  ACROSS EVERY WEAPON BASE, not only the three above. A Shield is in")
+    print("  the weapon slot and supplies no attack damage, so it is not counted.\n")
+    print(f"  {len(one_handed)} one-handed bases, mean {mean_one:>5.1f}: "
+          f"{', '.join(name for name, _ in one_handed)}")
+    print(f"  {len(two_handed)} two-handed bases, mean {mean_two:>5.1f}: "
+          f"{', '.join(name for name, _ in two_handed)}")
+    print()
+    print(f"  THE FLEET RATIO IS {fleet_ratio():.2f}: the mean two-handed base is "
+          f"that many")
+    print("  times two mean one-handed ones. One is parity, and parity means a")
+    print("  two-handed weapon has no base damage advantage at all.")
 
 
 def damage_table(sum_bases: bool) -> None:
@@ -333,30 +391,73 @@ ONE_HANDED_RATE = 1.35
 TWO_HANDED_RATE = 1.28
 
 
+def implicit_design_brackets() -> tuple[float, float]:
+    """The flat bracket of each loadout under the design that was chosen, where
+    the multiplier applies to the weapon's base damage as well as its affixes.
+
+    Returned rather than printed so the figure below and the solve underneath it
+    cannot disagree with the table.
+    """
+    two_bracket = (base_damage(TWO_HANDED) * af.TWO_HANDED_MULTIPLIER
+                   + flat_damage_value() * NON_WEAPON_FLAT_DAMAGE_AFFIXES
+                   + flat_damage_value(af.TWO_HANDED_MULTIPLIER))
+    dual_base = sum(base_damage(n) for n in ONE_HANDED)
+    dual_bracket = (dual_base
+                    + flat_damage_value() * NON_WEAPON_FLAT_DAMAGE_AFFIXES
+                    + flat_damage_value() * 2)
+    return two_bracket, dual_bracket
+
+
+def chosen_per_hit_ratio() -> float:
+    """What the chosen design delivers per swing.
+
+    The increased bucket is identical both ways at the chosen multiplier, so it
+    cancels and the ratio is the flat brackets alone.
+    """
+    two_bracket, dual_bracket = implicit_design_brackets()
+    return two_bracket / dual_bracket
+
+
+def solve_affix_only_for_the_same_edge() -> float | None:
+    """The multiplier the AFFIX half alone would need to reach the same edge.
+
+    This number is the whole case for applying the multiplier to implicits. It
+    used to be stated as "about 2.75" and was never computed; the value below is
+    solved from the same functions the tables print, against the summed reading
+    the project owner settled.
+    """
+    target = chosen_per_hit_ratio() * dual_wield_damage(sum_bases=True)
+    low, high = 0.0, 20.0
+    if two_handed_damage(high) < target:
+        return None
+    for _ in range(200):
+        mid = (low + high) / 2.0
+        if two_handed_damage(mid) < target:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2.0
+
+
 def why_the_multiplier_applies_to_implicits_too() -> None:
     header("THE ANSWER: THE MULTIPLIER APPLIES TO IMPLICITS AS WELL AS AFFIXES")
     print("Last Epoch balances two-handed weapons by giving them an inherent")
     print("bonus to their affixes AND their implicit stats. In this project a")
     print("weapon's base damage IS an implicit, so one multiplier covers both.")
     print()
-    print("That removes a choice this file previously presented as open. Raising")
-    print("the affix multiplier alone to reach a damage edge needs about 2.75,")
-    print("which hands the two-hander three affix slots the dual wielder does")
-    print("not have -- the free power section VII forbids, pointed the other")
-    print("way. Raising the five two-handed base damages by hand reaches the")
-    print("same place but changes numbers that did not need changing. Applying")
-    print("the multiplier already chosen to both does it with neither.\n")
+    print("That removes a choice this file previously presented as open. The")
+    print("affix half alone would have to be worth far more to reach the same")
+    print("edge, and doing that hands the two-hander affix slots the dual")
+    print("wielder does not have -- the free power section VII forbids, pointed")
+    print("the other way. Raising the two-handed base damages by hand reaches")
+    print("the same place but changes numbers that did not need changing.")
+    print("Applying the multiplier already chosen to both does it with neither.\n")
 
-    two_bracket = (base_damage(TWO_HANDED) * 2.0
-                   + flat_damage_value() * NON_WEAPON_FLAT_DAMAGE_AFFIXES
-                   + flat_damage_value(2.0))
+    two_bracket, dual_bracket = implicit_design_brackets()
     dual_base = sum(base_damage(n) for n in ONE_HANDED)
-    dual_bracket = (dual_base
-                    + flat_damage_value() * NON_WEAPON_FLAT_DAMAGE_AFFIXES
-                    + flat_damage_value() * 2)
 
     print(f"  two-handed {TWO_HANDED}: base {base_damage(TWO_HANDED):.0f} "
-          f"doubled to {base_damage(TWO_HANDED) * 2:.0f}, "
+          f"multiplied to {base_damage(TWO_HANDED) * af.TWO_HANDED_MULTIPLIER:.0f}, "
           f"full bracket {two_bracket:.0f}")
     print(f"  dual wield {' and '.join(ONE_HANDED)}: base {dual_base:.0f} summed, "
           f"full bracket {dual_bracket:.0f}")
@@ -379,6 +480,24 @@ def why_the_multiplier_applies_to_implicits_too() -> None:
     print("  ahead per second, and the dual wielder holds a fourth damage type")
     print("  and a wider spread of affixes. No weapon base damage changes, and")
     print("  the affix budgets stay exactly equal at 76 slots-worth each.")
+    print()
+
+    affix_only = solve_affix_only_for_the_same_edge()
+    if affix_only is None:
+        print("  THE AFFIX HALF ALONE cannot reach that edge at any multiplier")
+        print("  inside a sensible range, which is the same conclusion in a")
+        print("  stronger form.")
+    else:
+        slots = af.AFFIX_SLOTS_PER_PIECE * affix_only
+        dual_slots = af.AFFIX_SLOTS_PER_PIECE * 2
+        print(f"  THE AFFIX HALF ALONE WOULD NEED A MULTIPLIER OF "
+              f"{affix_only:.2f} to reach")
+        print(f"  the same {chosen_per_hit_ratio():.2f}x per swing, which is "
+              f"{slots:.1f} affix slots-worth on")
+        print(f"  the weapon against the dual wielder's {dual_slots:.0f} -- "
+              f"{slots - dual_slots:.1f} slots of free")
+        print("  power, which is what section VII forbids. That is why the")
+        print("  multiplier covers implicits rather than being raised.")
     print()
     print("  NO DEFENSIVE PENALTY ON DUAL WIELDING. Last Epoch charges 8% more")
     print("  damage taken, reduced from 9%. Rejected by the project owner")

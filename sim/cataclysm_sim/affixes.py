@@ -175,10 +175,16 @@ DUAL_WIELD_TOTAL_AFFIX_SLOTS = DUAL_WIELD_GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
 #: Without the implicit half the two-hander is strictly worse. Two one-handed
 #: bases sum to more than any two-handed base -- an Axe and a Sword give 86
 #: against a Greatsword's 78 -- so with only the affix half it loses on damage
-#: while also holding one fewer damage type. Reaching a damage edge through the
-#: affix half alone needs a multiplier near 2.75, which hands the two-hander three
-#: affix slots the dual wielder does not have: the same free power section VII
-#: forbids, pointed the other way.
+#: while also holding one fewer damage type. Reaching the SAME edge through the
+#: affix half alone needs a multiplier of 3.63, which hands the two-hander 14.5
+#: affix slots-worth on the weapon against the dual wielder's 8: the same free
+#: power section VII forbids, pointed the other way.
+#:
+#: That figure used to read "near 2.75, which hands the two-hander three affix
+#: slots". It was never computed from anything. It is now solved by
+#: `solve_affix_only_for_the_same_edge` in
+#: `sim/analyse_two_handed_multiplier.py`, and checked against this comment by
+#: `sim/tests/test_analysis_scripts.py`. Issue #319.
 #:
 #: What it produces, measured in `sim/analyse_two_handed_multiplier.py`: the
 #: two-hander deals 1.33x per hit and about 1.26x per second, the dual wielder

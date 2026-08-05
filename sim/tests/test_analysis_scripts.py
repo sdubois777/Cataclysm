@@ -39,6 +39,14 @@ recomputed values, and one of them -- that the crossover measured on time to kil
 is LOWER than the ratio of the two affix values, not higher -- is checked by
 direction as well as by figure, because that is the claim a future edit is most
 likely to get backwards.
+
+`sim/analyse_lethality_modes.py` was added for issue #289 and
+`sim/analyse_two_handed_multiplier.py` for issue #117. The second had no
+conclusion checks at all until issue #319, and by then two of its figures had
+already drifted -- the same failure this file was built for, in the one script it
+did not cover. Both are documented in the section that checks it. The drift
+matters more there than elsewhere: that script's conclusion is what the project
+owner's answer on issue #117 was given against.
 """
 
 from __future__ import annotations
@@ -298,6 +306,356 @@ def test_it_does_not_claim_to_settle_the_question(damage_vs_type_run):
     will be closed on the strength of a number that cannot answer it."""
     printed, _ = damage_vs_type_run
     assert "Nothing here says 400% is too high or too low" in printed
+
+
+# --------------------------------------------------------------------------
+# analyse_two_handed_multiplier.py -- issues #117 and #319
+#
+# This script had NO conclusion checks at all until issue #319, and two of its
+# stated figures had already drifted by the time they were written:
+#
+#   "the five two-handed bases average 1.03 times two one-handed ones" was true
+#   when written and is now six bases averaging 1.00, because issue #146 gave
+#   the Wand and the Staff flat attack damage after this file was written.
+#
+#   "reaching a damage edge through the affix half alone needs a multiplier near
+#   2.75" was never computed from anything. Solved, it is 3.63.
+#
+# Both are now printed by the script and checked below. This matters more than
+# for the other scripts: this one's conclusion fed an answer the project owner
+# gave on issue #117, that dual wielding is balanced by two-handed affixes being
+# worth more rather than by equalising slot counts.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def two_handed_run():
+    return run("analyse_two_handed_multiplier.py")
+
+
+def test_the_weapon_bases_it_names_are_the_ones_in_the_model(two_handed_run):
+    """The three bases the whole report is built on. Read out of the model here
+    rather than copied, so a change to a weapon base moves both."""
+    printed, ns = two_handed_run
+    for name in ns["ONE_HANDED"]:
+        assert f"{name:<14} one-handed   {ns['base_damage'](name):>7.1f}" in printed
+    assert (f"{ns['TWO_HANDED']:<14} two-handed   "
+            f"{ns['base_damage'](ns['TWO_HANDED']):>7.1f}") in printed
+
+
+def test_two_one_handed_bases_still_beat_the_best_two_handed_one(two_handed_run):
+    """THE FINDING THE WHOLE FILE RESTS ON, as a direction rather than a figure.
+
+    If a two-handed base ever exceeds two one-handed ones, the argument for
+    applying the multiplier to implicits goes away, because the two-hander no
+    longer starts behind.
+    """
+    _, ns = two_handed_run
+    summed = sum(ns["base_damage"](n) for n in ns["ONE_HANDED"])
+    assert summed > ns["base_damage"](ns["TWO_HANDED"]), (
+        "the two best one-handed bases no longer sum to more than the best "
+        "two-handed one. That reverses the premise of this whole report and of "
+        "the comment on TWO_HANDED_MULTIPLIER in cataclysm_sim/affixes.py.")
+
+
+def test_the_two_base_damage_ratios_are_the_computed_ones(two_handed_run):
+    printed, ns = two_handed_run
+    two = ns["base_damage"](ns["TWO_HANDED"])
+    summed = sum(ns["base_damage"](n) for n in ns["ONE_HANDED"])
+    assert (f"A two-hander is {two / (summed / 2):.2f}x the average one-hander "
+            f"and {two / summed:.2f}x the two together.") in printed
+
+
+def test_the_fleet_counts_are_read_from_the_model(two_handed_run):
+    """The count was written out as "five" and went stale when a sixth
+    two-handed base gained attack damage. Both counts are now printed."""
+    printed, ns = two_handed_run
+    one_handed, two_handed = ns["damage_weapon_bases"]()
+    mean_one = sum(v for _, v in one_handed) / len(one_handed)
+    mean_two = sum(v for _, v in two_handed) / len(two_handed)
+    assert f"{len(one_handed)} one-handed bases, mean {mean_one:>5.1f}" in printed
+    assert f"{len(two_handed)} two-handed bases, mean {mean_two:>5.1f}" in printed
+
+
+def test_the_fleet_ratio_conclusion_is_the_computed_one(two_handed_run):
+    """The figure that drifted. 1.03 when written, 1.00 now."""
+    printed, ns = two_handed_run
+    assert f"THE FLEET RATIO IS {ns['fleet_ratio']():.2f}" in printed
+
+
+def test_the_fleet_ratio_is_parity_rather_than_an_advantage(two_handed_run):
+    """The DIRECTION, which is what the argument uses. A ratio at or below one
+    means a two-handed weapon brings no base damage advantage over two
+    one-handers, which is why the multiplier has to cover implicits."""
+    _, ns = two_handed_run
+    ratio = ns["fleet_ratio"]()
+    assert ratio < 1.1, (
+        f"the mean two-handed base is now {ratio:.2f}x two mean one-handed "
+        f"ones, so a two-handed weapon has a real base damage advantage again. "
+        f"The case for applying TWO_HANDED_MULTIPLIER to implicits rests on "
+        f"there being none. Recheck cataclysm_sim/affixes.py's comment on that "
+        f"constant and section VI of the design document.")
+
+
+def test_the_retired_fleet_figures_are_not_back():
+    """Kept out by their exact phrasing. 1.03 and "five" are ordinary values
+    that could legitimately return if the base list changes again; what must
+    not return is the pair asserted with nothing computing them."""
+    text = source("analyse_two_handed_multiplier.py")
+    body = text[text.index('"""', 3):]
+    assert "five two-handed bases average 1.03" not in body, (
+        "the stale fleet-ratio sentence is back in the body of the script. It "
+        "belongs only in the docstring's record of what it used to say.")
+
+
+def test_the_affix_budget_verdicts_match_the_slot_counts(two_handed_run):
+    """The budget table is the reason 2.0 was chosen. Every row recomputed."""
+    printed, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+    for multiplier in ns["CANDIDATES"]:
+        two_slots = af.AFFIX_SLOTS_PER_PIECE * multiplier
+        dual_slots = af.AFFIX_SLOTS_PER_PIECE * 2
+        assert (f"{multiplier:>10.2f}  {two_slots:>16.1f}  {dual_slots:>11.0f}"
+                in printed)
+
+
+def test_the_budget_table_covers_the_chosen_multiplier(two_handed_run):
+    """The table must contain the row for the value that shipped, or the report
+    argues for a number it never shows.
+
+    IT DOES NOT ALSO ASSERT THAT 2.0 EQUALISES THE BUDGET.
+    `_check_the_two_loadouts_have_equal_affix_value` in
+    `sim/cataclysm_sim/affixes.py` already raises at import time if it does not,
+    so a test here would be a second copy of a guard that already fires first --
+    proved by breaking TWO_HANDED_MULTIPLIER to 2.5, which raised
+    `ValueError: a two-handed weapon is worth 10.0 one-handed affix slots and
+    two one-handed weapons are worth 8` before any test in this file ran.
+    """
+    printed, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+    assert af.TWO_HANDED_MULTIPLIER in ns["CANDIDATES"], (
+        f"the candidate list in analyse_two_handed_multiplier.py does not "
+        f"include {af.TWO_HANDED_MULTIPLIER}, the multiplier that shipped, so "
+        f"the report has no row for the value it is about.")
+    slots = af.AFFIX_SLOTS_PER_PIECE * af.TWO_HANDED_MULTIPLIER
+    dual = af.AFFIX_SLOTS_PER_PIECE * 2
+    assert (f"{af.TWO_HANDED_MULTIPLIER:>10.2f}  {slots:>16.1f}  "
+            f"{dual:>11.0f}  {68 + slots:>9.1f}  {68 + dual:>9.1f}  "
+            f"{'equal':<28}") in printed, (
+        "the affix budget table's row for the chosen multiplier does not read "
+        "'equal'. Section VII of the design document requires the two "
+        "loadouts to be worth the same in affixes.")
+
+
+def test_the_two_crossover_multipliers_are_the_solved_ones(two_handed_run):
+    """One per reading of what dual wielding does to base damage. The summed
+    reading is the one the project owner settled; the averaged one is printed
+    because it is what the current base damages were set against."""
+    printed, ns = two_handed_run
+    for sum_bases in (False, True):
+        crossing = ns["solve_multiplier"](sum_bases)
+        assert crossing is not None, "the two loadouts no longer cross at all"
+        assert f"EQUAL DAMAGE AT A MULTIPLIER OF {crossing:.3f}" in printed
+
+
+def test_the_crossover_is_higher_when_the_bases_are_summed(two_handed_run):
+    """THE DIRECTION, and the one a future edit is most likely to reverse.
+    Summing gives the dual wielder more base damage, so the two-hander needs a
+    larger multiplier to catch up. If that ever flips, the paragraph explaining
+    why summing is the harder case is wrong."""
+    _, ns = two_handed_run
+    averaged = ns["solve_multiplier"](False)
+    summed = ns["solve_multiplier"](True)
+    assert summed > averaged, (
+        f"the crossover with bases summed ({summed:.3f}) is no longer above "
+        f"the crossover with them averaged ({averaged:.3f}). Summing is "
+        f"supposed to be the harder case for the two-hander.")
+
+
+def test_the_crit_crossovers_are_the_solved_ones(two_handed_run):
+    """The dual wielder holds four more suffix slots as well as four more
+    prefixes. Leaving them out overstates the two-hander, so these are the
+    figures that matter."""
+    printed, ns = two_handed_run
+    for sum_bases in (False, True):
+        crossing = ns["solve_with_crit"](sum_bases)
+        assert crossing is not None
+        assert f"EQUAL AT A MULTIPLIER OF {crossing:.3f}" in printed
+
+
+def test_the_crit_factors_are_identical_at_the_chosen_multiplier(two_handed_run):
+    """The section headed WHAT A MULTIPLIER OF 2.0 DOES, EXACTLY claims the two
+    loadouts' critical strike factors are not merely close but identical, and
+    that this is arithmetic rather than luck. Checked, because "identical" is a
+    claim that stops being true the moment anything is added to either side."""
+    printed, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+    two = ns["crit_factor"](ns["SUFFIXES_PER_WEAPON"] * 2,
+                            af.TWO_HANDED_MULTIPLIER)
+    dual = ns["crit_factor"](ns["SUFFIXES_PER_WEAPON"] * 4, 1.0)
+    assert two == pytest.approx(dual), (
+        f"the critical strike factors are no longer identical: {two} against "
+        f"{dual}. The section claiming they are is wrong, and so is the reason "
+        f"it gives for TWO_HANDED_MULTIPLIER being exactly 2.0.")
+    assert f"critical strike factor, two-hander at {af.TWO_HANDED_MULTIPLIER:.1f} : {two:.6f}" in printed
+    assert f"critical strike factor, dual wield        : {dual:.6f}" in printed
+
+
+def test_the_two_ratios_at_the_chosen_multiplier_are_the_computed_ones(
+        two_handed_run):
+    """The pair the section headed WHY THE ANSWER IS NOT SIMPLY 2.0 turns on:
+    the same multiplier that equalises the affix budget does not equalise
+    damage, and which way it lands depends on the base damage reading."""
+    printed, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+    for sum_bases, label in ((True, "summed"), (False, "averaged")):
+        ratio = (ns["two_handed_damage"](af.TWO_HANDED_MULTIPLIER)
+                 / ns["dual_wield_damage"](sum_bases))
+        assert (f"at 2.0 with bases {label:<9}: the two-hander deals "
+                f"{ratio:.2f}x") in printed
+
+
+def test_the_summed_reading_still_leaves_the_two_hander_behind_on_damage(
+        two_handed_run):
+    """THE FINDING THAT MADE THE IMPLICIT HALF NECESSARY, as a direction.
+
+    Section VI of the design document says a two-handed weapon stays ahead on
+    raw damage. With the affix multiplier alone and bases summed it does not,
+    and that gap is the entire reason the multiplier was extended to implicits.
+    """
+    _, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+    affix_only = ns["two_handed_damage"](af.TWO_HANDED_MULTIPLIER)
+    dual = ns["dual_wield_damage"](sum_bases=True)
+    assert affix_only < dual, (
+        f"with the affix multiplier alone the two-hander now deals "
+        f"{affix_only / dual:.3f}x the dual wielder with bases summed, which "
+        f"is no longer behind. The case for applying the multiplier to "
+        f"implicits as well rests on it being behind.")
+
+
+def test_the_chosen_design_ratios_are_the_computed_ones(two_handed_run):
+    """The answer's own two numbers. Both are quoted in the comment on
+    TWO_HANDED_MULTIPLIER in cataclysm_sim/affixes.py, checked below."""
+    printed, ns = two_handed_run
+    per_hit = ns["chosen_per_hit_ratio"]()
+    per_second = per_hit * (ns["TWO_HANDED_RATE"] / ns["ONE_HANDED_RATE"])
+    assert f"damage per hit          {per_hit:.3f}x" in printed
+    assert f"damage per second       {per_second:.3f}x" in printed
+
+
+def test_the_chosen_design_puts_the_two_hander_ahead_on_both(two_handed_run):
+    """THE DIRECTION the whole decision delivers. Per swing and per second."""
+    _, ns = two_handed_run
+    per_hit = ns["chosen_per_hit_ratio"]()
+    per_second = per_hit * (ns["TWO_HANDED_RATE"] / ns["ONE_HANDED_RATE"])
+    assert per_hit > 1.0, (
+        f"the chosen design no longer puts the two-hander ahead per swing "
+        f"({per_hit:.3f}x). Section VI of the design document says it stays "
+        f"ahead on raw damage.")
+    assert per_second > 1.0, (
+        f"the chosen design no longer puts the two-hander ahead per second "
+        f"({per_second:.3f}x).")
+
+
+def test_the_affix_only_multiplier_is_solved_rather_than_asserted(
+        two_handed_run):
+    """WHAT THIS REPLACES. The script used to print "needs about 2.75" with
+    nothing computing it, and cataclysm_sim/affixes.py repeated the figure as
+    the reason the multiplier covers implicits."""
+    printed, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+    solved = ns["solve_affix_only_for_the_same_edge"]()
+    assert solved is not None
+    assert f"WOULD NEED A MULTIPLIER OF {solved:.2f}" in printed
+    slots = af.AFFIX_SLOTS_PER_PIECE * solved
+    assert f"{slots:.1f} affix slots-worth" in printed
+
+
+def test_the_affix_only_route_hands_over_slots_the_dual_wielder_lacks(
+        two_handed_run):
+    """THE DIRECTION, which is the argument. Reaching the same edge through
+    affixes alone must cost more affix slots than the dual wielder holds, or
+    section VII's free-power rule would not be broken by it and there would be
+    no reason to prefer the implicit route."""
+    _, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+    solved = ns["solve_affix_only_for_the_same_edge"]()
+    assert af.AFFIX_SLOTS_PER_PIECE * solved > af.AFFIX_SLOTS_PER_PIECE * 2, (
+        "reaching the same damage edge through the affix half alone no longer "
+        "costs more affix slots than the dual wielder holds. That is the whole "
+        "argument for applying TWO_HANDED_MULTIPLIER to implicits instead.")
+
+
+def test_the_retired_affix_only_figure_is_not_back():
+    """It read "needs about 2.75, which hands the two-hander three affix
+    slots". Kept out of both files by the phrasing it appeared in."""
+    for text in (source("analyse_two_handed_multiplier.py"),
+                 (SIM_ROOT / "cataclysm_sim" / "affixes.py").read_text(
+                     encoding="utf-8")):
+        assert "affix half alone needs a multiplier near 2.75" not in text
+        assert "hands the two-hander three affix slots" not in text
+
+
+def test_the_affixes_comment_quotes_the_current_figures():
+    """The comment on TWO_HANDED_MULTIPLIER in cataclysm_sim/affixes.py is
+    where this measurement is read by anyone using the model, and it carried
+    two figures this script produces. That is the same failure issue #6 found
+    for cataclysm_sim/combat.py."""
+    from cataclysm_sim import affixes as af
+
+    _, ns = run("analyse_two_handed_multiplier.py")
+    source_text = (SIM_ROOT / "cataclysm_sim" / "affixes.py").read_text(
+        encoding="utf-8")
+    # Drop the `#:` marker before collapsing whitespace. Without this a `#:`
+    # lands in the middle of every sentence that wraps, and nothing in a
+    # comment longer than one line can be matched.
+    comment = unwrapped("\n".join(
+        line.lstrip()[2:] if line.lstrip().startswith("#:") else line
+        for line in source_text.splitlines()))
+
+    per_hit = ns["chosen_per_hit_ratio"]()
+    per_second = per_hit * (ns["TWO_HANDED_RATE"] / ns["ONE_HANDED_RATE"])
+    assert f"deals {per_hit:.2f}x per hit" in comment, (
+        f"the comment on TWO_HANDED_MULTIPLIER does not state the current "
+        f"per-hit figure of {per_hit:.2f}x. Issue #319.")
+    assert f"about {per_second:.2f}x per second" in comment
+
+    solved = ns["solve_affix_only_for_the_same_edge"]()
+    slots = af.AFFIX_SLOTS_PER_PIECE * solved
+    assert f"needs a multiplier of {solved:.2f}" in comment, (
+        f"the comment on TWO_HANDED_MULTIPLIER does not state the current "
+        f"affix-only multiplier of {solved:.2f}. Issue #319.")
+    assert f"{slots:.1f} affix slots-worth" in comment
+
+    summed = sum(ns["base_damage"](n) for n in ns["ONE_HANDED"])
+    assert (f"an Axe and a Sword give {summed:.0f} against a Greatsword's "
+            f"{ns['base_damage'](ns['TWO_HANDED']):.0f}") in comment
+
+
+def test_the_script_docstring_quotes_the_current_fleet_figures():
+    """The docstring is the first thing anyone reads and it is where the stale
+    1.03 lived for five months."""
+    _, ns = run("analyse_two_handed_multiplier.py")
+    doc = unwrapped(source("analyse_two_handed_multiplier.py"))
+    _, two_handed = ns["damage_weapon_bases"]()
+    count = {5: "five", 6: "six", 7: "seven", 8: "eight"}.get(len(two_handed))
+    assert count is not None, (
+        f"there are now {len(two_handed)} two-handed damage bases and the "
+        f"docstring spells the count as a word. Add it to the map above.")
+    assert (f"The {count} two-handed bases average "
+            f"{ns['fleet_ratio']():.2f} times two one-handed ones") in doc, (
+        "the docstring of sim/analyse_two_handed_multiplier.py no longer "
+        "states the current base count and fleet ratio. That sentence went "
+        "stale once already, which is issue #319.")
+
+
+def test_the_docstring_records_that_the_figure_drifted():
+    """CLAUDE.md: say what did not work. A reader comparing this file with the
+    decision on issue #117 should find the drift already written down rather
+    than discover it."""
+    doc = unwrapped(source("analyse_two_handed_multiplier.py"))
+    assert "THAT SENTENCE USED TO READ" in doc
+    assert "#319" in doc
 
 
 # --------------------------------------------------------------------------
