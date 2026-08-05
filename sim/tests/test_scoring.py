@@ -12,6 +12,7 @@ passes in CI where DungeonSimulator is not checked out.
 from __future__ import annotations
 
 import math
+import pathlib
 
 import pytest
 
@@ -144,7 +145,8 @@ class TestReferenceFileAgreement:
 
     def test_constants_match_the_reference(self):
         if scoring.reference_path() is None:
-            pytest.skip("DungeonSimulator checkout not present")
+            pytest.skip("DungeonSimulator checkout not present at "
+                        f"{scoring.reference_search_path()}")
         # Raises AssertionError with a readable diff on any drift.
         assert scoring.check_against_reference(verbose=False) is True
 
@@ -158,7 +160,8 @@ class TestReferenceFileAgreement:
         """A corrupted reference must fail. A check that cannot fail is worthless."""
         real = scoring.reference_path()
         if real is None:
-            pytest.skip("DungeonSimulator checkout not present")
+            pytest.skip("DungeonSimulator checkout not present at "
+                        f"{scoring.reference_search_path()}")
         drifted = tmp_path / "drifted.tsx"
         drifted.write_text(
             real.read_text(encoding="utf-8").replace("1: 385,", "1: 999,"),
@@ -166,6 +169,105 @@ class TestReferenceFileAgreement:
         monkeypatch.setenv(scoring.REFERENCE_ENV_VAR, str(drifted))
         with pytest.raises(AssertionError, match="playerMaxScores has DRIFTED"):
             scoring.check_against_reference(verbose=False)
+
+
+class TestFindingTheReference:
+    """The search for calculateScores.tsx must survive a git worktree.
+
+    It used to count directory levels up from scoring.py, which is right only
+    when the Cataclysm checkout sits directly beside the DungeonSimulator
+    checkout. The loop that works this backlog runs in linked worktrees under
+    `.claude/worktrees/<name>`, three levels deeper, so the search landed inside
+    the repository, found nothing, and the drift check reported a SKIP. A skip
+    reads as "nothing is wrong" -- and CLAUDE.md says of this port that it "has
+    silently drifted twice before". Issue #275.
+    """
+
+    def _plant(self, tmp_path, *, worktree: bool) -> pathlib.Path:
+        """Build a checkout beside a DungeonSimulator, and return scoring.py in it.
+
+        With `worktree=True` the returned file lives in a linked worktree under
+        `.claude/worktrees/wt`, laid out exactly as git lays one out: a `.git`
+        FILE naming a directory under the original `.git/worktrees/`, and a
+        `commondir` file in there pointing back with a relative path.
+        """
+        workspace = tmp_path / "Projects"
+        checkout = workspace / "Cataclysm"
+        (checkout / ".git").mkdir(parents=True)
+
+        reference = (workspace / "DungeonSimulator" / "src" / "utils"
+                     / "calculateScores.tsx")
+        reference.parent.mkdir(parents=True)
+        reference.write_text("// stand-in for the real model\n", encoding="utf-8")
+
+        top = checkout
+        if worktree:
+            worktree_git = checkout / ".git" / "worktrees" / "wt"
+            worktree_git.mkdir(parents=True)
+            (worktree_git / "commondir").write_text("../..\n", encoding="utf-8")
+            top = checkout / ".claude" / "worktrees" / "wt"
+            top.mkdir(parents=True)
+            (top / ".git").write_text(f"gitdir: {worktree_git}\n", encoding="utf-8")
+
+        planted = top / "sim" / "cataclysm_sim" / "scoring.py"
+        planted.parent.mkdir(parents=True)
+        planted.write_text("# stand-in\n", encoding="utf-8")
+        return planted
+
+    def test_an_ordinary_checkout_resolves_to_its_own_root(self, tmp_path):
+        planted = self._plant(tmp_path, worktree=False)
+        common = scoring._git_common_dir(planted)
+        assert common == tmp_path / "Projects" / "Cataclysm" / ".git"
+
+    def test_a_worktree_resolves_to_the_checkout_it_was_made_from(self, tmp_path):
+        """The whole point: not the worktree's own directory, the original's."""
+        planted = self._plant(tmp_path, worktree=True)
+        common = scoring._git_common_dir(planted)
+        assert common == tmp_path / "Projects" / "Cataclysm" / ".git"
+
+    def test_a_worktree_finds_the_sibling_dungeonsimulator(self, tmp_path,
+                                                           monkeypatch):
+        """End to end, with reference_search_path patched onto the planted tree."""
+        planted = self._plant(tmp_path, worktree=True)
+        monkeypatch.delenv(scoring.REFERENCE_ENV_VAR, raising=False)
+        root = scoring._git_common_dir(planted).parent
+        guess = (root.parent / "DungeonSimulator" / "src" / "utils"
+                 / "calculateScores.tsx")
+        assert guess.is_file()
+
+    def test_no_git_anywhere_falls_back_to_the_file_layout(self, tmp_path):
+        loose = tmp_path / "sim" / "cataclysm_sim" / "scoring.py"
+        loose.parent.mkdir(parents=True)
+        loose.write_text("# stand-in\n", encoding="utf-8")
+        assert scoring._git_common_dir(loose) is None
+
+    def test_repository_root_is_a_cataclysm_checkout(self):
+        """Run against the real checkout, worktree or not."""
+        root = scoring.repository_root()
+        assert (root / "sim" / "cataclysm_sim" / "scoring.py").is_file(), root
+        assert ".claude" not in root.parts, (
+            f"repository_root() landed inside the repository: {root}")
+
+    def test_the_search_path_is_reported_even_when_nothing_is_there(
+            self, monkeypatch, tmp_path):
+        """A skip has to say where it looked, or it reads as nothing being wrong."""
+        missing = tmp_path / "does_not_exist.tsx"
+        monkeypatch.setenv(scoring.REFERENCE_ENV_VAR, str(missing))
+        assert scoring.reference_path() is None
+        assert scoring.reference_search_path() == missing
+
+    def test_the_skip_message_names_the_path_it_tried(self, monkeypatch,
+                                                      tmp_path, capsys):
+        missing = tmp_path / "does_not_exist.tsx"
+        monkeypatch.setenv(scoring.REFERENCE_ENV_VAR, str(missing))
+        assert scoring.check_against_reference(verbose=True) is False
+        assert str(missing) in capsys.readouterr().out
+
+    def test_the_search_path_ignores_git_when_the_variable_is_set(self,
+                                                                 monkeypatch):
+        """The override wins outright, which is what continuous integration uses."""
+        monkeypatch.setenv(scoring.REFERENCE_ENV_VAR, "/somewhere/else.tsx")
+        assert scoring.reference_search_path() == pathlib.Path("/somewhere/else.tsx")
 
 
 class TestSelfTest:

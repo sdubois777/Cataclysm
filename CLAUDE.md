@@ -60,6 +60,13 @@ hand-edit the constants in `scoring.py` to change balance. To update it: copy
 the values from the reference, then run `verify_scoring_port.py` and confirm it
 reports every value matching. This copy has silently drifted twice before.
 
+The reference is found by locating this checkout's repository root the way git
+does and looking for a `DungeonSimulator` directory beside it, so it resolves
+from a linked git worktree as well as from an ordinary checkout. Set
+`CATACLYSM_SCORING_REFERENCE` to point at a specific file instead. When it is
+not found the checks report a skip that names the path they tried; a skip means
+the drift check did not run, not that it passed.
+
 **`docs/` is the design, and it is authoritative.** Edit those files directly when
 the design changes. They began as exports from a Google Drive folder, but as of
 2026-08-02 the repository copies are the source of truth and are **not** synced
