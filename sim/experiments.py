@@ -382,18 +382,35 @@ def win_rate_noise(trials: int) -> float:
     return 100.0 * math.sqrt(2.0) * math.sqrt(0.25 / max(1, trials))
 
 
-def rank_by_win(wins: dict[str, float], tolerance: float) -> list[tuple[str, ...]]:
+def rank_by_win(wins: dict[str, float], tolerance: float,
+                exclude=()) -> list[tuple[str, ...]]:
     """Preset names grouped by win rate, best group first.
 
     Two presets within `tolerance` of each other go in the same group, so the
     result says only what the sample size can support.
+
+    `exclude` names presets to leave out of the ranking entirely. Issue #294.
+    A preset whose campaigns ran out of days has no win rate to rank: 0% win
+    and 0% loss is the absence of a result, not a poor one. Ranked anyway, the
+    Architect preset at tier 8 comes out FIRST under win minus loss, ahead of
+    the only preset that wins anything. Leaving it out is the fix; putting it
+    anywhere in the order is the bug. `warn_about_unresolved_campaigns` names
+    the cells and is what the caller passes in here.
+
+    The names are dropped BEFORE grouping, not after. Each preset is compared
+    with the FIRST member of the group being built, so which presets are
+    present decides what the rest are measured against. With a tolerance of 5,
+    {a: 10, b: 6, c: 2} is (a, b) then (c), and the same three without a is one
+    group (b, c). Filtering the finished groups would give the grouping of a
+    set that was never ranked.
     """
+    ranked = {name: rate for name, rate in wins.items() if name not in exclude}
     groups: list[list] = []
-    for name in sorted(wins, key=lambda n: (-wins[n], n)):
-        if groups and abs(groups[-1][0] - wins[name]) <= tolerance:
+    for name in sorted(ranked, key=lambda n: (-ranked[n], n)):
+        if groups and abs(groups[-1][0] - ranked[name]) <= tolerance:
             groups[-1][1].append(name)
         else:
-            groups.append([wins[name], [name]])
+            groups.append([ranked[name], [name]])
     return [tuple(names) for _, names in groups]
 
 
@@ -490,6 +507,9 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
     objectives: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
     #: Percentage of campaigns that ended with no result. Issue #293.
     stale: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
+    #: Presets whose campaigns mostly ran out of days, per tier. These are kept
+    #: out of the ranking below rather than placed in it. Issue #294.
+    unresolved: dict[int, list[str]] = {}
     for tier in tiers:
         ceiling = scoring.tier_bounds(tier)[1]
         print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}, "
@@ -509,21 +529,49 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             print(f"{tree.name:<42}{s['win']:>7.0f}{s['lost']:>7.0f}"
                   f"{s['stale']:>8.0f}{s['obj']:>7.1f}{s['cities']:>8.1f}"
                   f"{s['floors']:>9.0f}{s['crafts']:>8.1f}{s['triage']:>9.1f}")
-        warn_about_unresolved_campaigns(wins[tier].keys(), stale[tier],
-                                        base.max_days)
+        unresolved[tier] = warn_about_unresolved_campaigns(
+            wins[tier].keys(), stale[tier], base.max_days)
 
     if len(tiers) > 1:
         tolerance = win_rate_noise(trials)
+        #: {preset name: the tiers where its campaigns mostly had no result}.
+        #: A preset is kept out of EVERY ordering if it failed to resolve at ANY
+        #: tier, so the orderings printed below cover one set of presets and can
+        #: be read against each other. Ranking each tier over whatever resolved
+        #: there would compare a five-preset order against a six-preset one, and
+        #: the grouping is not a projection -- removing the preset that opened a
+        #: tie group changes what the rest are compared against -- so the two
+        #: would not be the same measurement.
+        no_result_at: dict[str, list[int]] = {}
+        for tier in tiers:
+            for name in unresolved[tier]:
+                no_result_at.setdefault(name, []).append(tier)
+
         print(f"\n  PRESET ORDER BY WIN RATE, BEST FIRST. Presets within "
               f"{tolerance:.1f} points of")
         print(f"  each other are shown tied, because {trials} campaigns per cell "
               "cannot separate them.")
+        if no_result_at:
+            print(f"\n  LEFT OUT OF THE ORDER, no result at the "
+                  f"{base.max_days:,} day cap:")
+            for name, bad_tiers in no_result_at.items():
+                print(f"    {name}, at tier "
+                      + ", ".join(str(t) for t in bad_tiers))
+            print("  A preset whose campaigns ran out of days has no win rate "
+                  "to rank -- 0% win and")
+            print("  0% loss is the absence of a result, not a poor one, and "
+                  "win minus loss would")
+            print("  rank it FIRST. It is left out at every tier, not only "
+                  "where it failed to")
+            print("  resolve, so the orderings below cover the same presets. "
+                  "Issue #294.")
         orders = {}
         for tier in tiers:
-            order = rank_by_win(wins[tier], tolerance)
+            order = rank_by_win(wins[tier], tolerance, exclude=no_result_at)
             orders[tier] = order
             print(f"    tier {tier}: "
-                  + " > ".join(" = ".join(group) for group in order))
+                  + (" > ".join(" = ".join(group) for group in order)
+                     if order else "NO PRESET RANKED"))
 
         print(f"\n  QUEST OBJECTIVES CLEARED, out of "
               f"{base.quest_objectives_required}, as a second opinion. Issue "
@@ -545,7 +593,15 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
         print("  one win rate already separates. Issue #294 stays open.")
 
         flat = [t for t, order in orders.items() if len(order) == 1]
-        if flat:
+        if not any(orders.values()):
+            # Every preset was left out. Each order is [], and [] == [] would
+            # otherwise print "the ordering is THE SAME at every tier" -- an
+            # agreement between two rankings of nothing. Issue #294.
+            print("\n  NO RANKING AT ALL. Every preset ran out of days at one "
+                  "or more of the tiers")
+            print("  compared, so no preset has a win rate that can be "
+                  "ordered. Issue #294.")
+        elif flat:
             print("\n  NO CONCLUSION. Every preset ties at tier "
                   + ", ".join(str(t) for t in flat) + ", so there is no ordering")
             print("  to compare. Win rate stops separating the presets once it "

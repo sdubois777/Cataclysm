@@ -148,6 +148,20 @@ class TestNoSectionRelivesTheBug:
         assert replace(TuningConfig(), tier=experiments.SWEEP_TIER) == TuningConfig()
 
 
+#: Where the preset ordering starts and stops in `exp_presets` output.
+#: The objectives-cleared block below it also prints one `tier N:` line per
+#: tier, so matching on that prefix alone picks up both. Issue #294.
+_ORDER_HEADING = "PRESET ORDER BY WIN RATE"
+_ORDER_ENDS_AT = "QUEST OBJECTIVES CLEARED"
+
+
+def _ordering_lines(printed: str) -> list[str]:
+    """The `tier N: a > b = c` lines of the preset ranking, and only those."""
+    block = printed[printed.index(_ORDER_HEADING):printed.index(_ORDER_ENDS_AT)]
+    return [line for line in block.splitlines()
+            if line.strip().startswith("tier ") and ":" in line]
+
+
 class TestTheOrderingIsReportedHonestly:
     def test_two_rates_a_sample_cannot_separate_are_shown_tied(self):
         tolerance = experiments.win_rate_noise(150)
@@ -180,6 +194,82 @@ class TestTheOrderingIsReportedHonestly:
         """
         noisy = experiments.rank_by_win({"a": 39.0, "b": 38.0}, tolerance=0.0)
         assert noisy == [("a",), ("b",)]
+
+
+class TestAPresetWithNoResultIsNotRanked:
+    """Issue #294. A campaign that runs out of days is neither won nor lost, so
+    it has NO outcome. A preset whose campaigns mostly did that has no win rate
+    to rank, and 0% win with 0% loss is the absence of a measurement rather
+    than a poor one.
+
+    Ranked anyway it comes out well, because every proposed metric reads the
+    empty cell as a good score. The measured tier 8 table is the case: the
+    Architect preset is 0% win, 0% loss, 100% no result, and win minus loss
+    puts it FIRST, ahead of the only preset in the table that wins anything.
+
+    So `rank_by_win` takes the names to leave out, and `exp_presets` passes it
+    what `warn_about_unresolved_campaigns` found.
+    """
+
+    def test_an_excluded_preset_appears_nowhere_in_the_order(self):
+        order = experiments.rank_by_win(
+            {"good": 40.0, "gone": 0.0, "poor": 2.0}, tolerance=5.8,
+            exclude=["gone"])
+        assert order == [("good",), ("poor",)]
+        assert all("gone" not in group for group in order)
+
+    def test_excluding_nothing_leaves_the_ranking_alone(self):
+        """The default has to be the old behaviour, or every other caller of
+        rank_by_win changes meaning."""
+        wins = {"a": 39.0, "b": 38.0, "c": 20.0}
+        assert (experiments.rank_by_win(wins, 5.8)
+                == experiments.rank_by_win(wins, 5.8, exclude=[]))
+
+    def test_the_measured_tier_8_table_no_longer_ranks_the_empty_cell(self):
+        """The real numbers from the 2026-08-05 run, 150 campaigns per cell.
+
+        Architect maxed is the 0/0/100 cell. Under win rate alone it lands in
+        the floor tie; under win minus loss it would lead the table. Either way
+        it is being scored on a campaign that never finished, and now it is not
+        in the order at all.
+        """
+        tier_8 = {
+            "No tree": 2.0,
+            "Explorer maxed (as designed)": 1.0,
+            "Explorer via floors (-25 floors)": 10.0,
+            "Explorer via floors (+30 floors)": 0.0,
+            "Architect maxed (as designed)": 0.0,
+            "Proposed budget (x0.85 time, x0.55 dmg)": 1.0,
+        }
+        order = experiments.rank_by_win(
+            tier_8, experiments.win_rate_noise(150),
+            exclude=["Architect maxed (as designed)"])
+        ranked = [name for group in order for name in group]
+        assert "Architect maxed (as designed)" not in ranked
+        assert set(ranked) == set(tier_8) - {"Architect maxed (as designed)"}
+
+    def test_the_name_is_dropped_before_grouping_not_after(self):
+        """This is the reason the exclusion is a parameter rather than a filter
+        the caller applies to the finished groups.
+
+        Each preset is compared with the FIRST member of the group being built,
+        not with its immediate neighbour. So which presets are present decides
+        what the rest are measured against. With a tolerance of 5, 10-6-2 is
+        (10, 6) then (2), because 2 is 8 below the 10 that opened the group.
+        Take the 10 away and 6 and 2 are 4 apart, which is one group.
+
+        Deleting rows from the finished groups would have given (6), (2) --
+        the grouping of a set that was never ranked.
+        """
+        wins = {"a": 10.0, "b": 6.0, "c": 2.0}
+        assert experiments.rank_by_win(wins, 5.0) == [("a", "b"), ("c",)]
+        assert experiments.rank_by_win(wins, 5.0, exclude=["a"]) == [("b", "c")]
+
+    def test_excluding_everything_gives_an_empty_ranking(self):
+        """Not a single empty group, and not a crash. `exp_presets` reads this
+        to decide whether it has any ranking to report at all."""
+        assert experiments.rank_by_win({"a": 1.0, "b": 2.0}, 5.0,
+                                       exclude=["a", "b"]) == []
 
 
 class TestThePresetSectionCoversBothEnds:
@@ -420,6 +510,93 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         assert "self.day < self.cfg.max_days" in body, (
             "engine.Simulation.run no longer bounds its day loop by "
             "cfg.max_days. Issue #293.")
+
+    def test_the_preset_order_leaves_the_unresolved_cells_out(self, capsys):
+        """Issue #294. The warning names the cells; this checks the ranking
+        then acts on it.
+
+        A day cap of 40 so that no campaign can finish and every cell is
+        unresolved, which is the strongest form: not one preset should appear
+        in an ordering line, and the section should say it has no ranking
+        rather than printing six presets tied at zero.
+        """
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER, max_days=40)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert "LEFT OUT OF THE ORDER" in printed, (
+            "the preset section ranks presets whose campaigns ran out of days "
+            "without saying it left any out. Issue #294.")
+        assert "NO PRESET RANKED" in printed
+        assert "NO RANKING AT ALL" in printed, (
+            "every preset was unresolved and the section did not say so. An "
+            "empty ordering at every tier compares equal to an empty ordering "
+            "at every other tier, so without this it would report that the "
+            "ordering is the same at every tier. Issue #294.")
+        assert "the ordering is THE SAME" not in printed.replace(
+            "The ordering is THE SAME", "the ordering is THE SAME")
+
+    def test_no_preset_name_reaches_an_ordering_line_when_none_resolved(self,
+                                                                       capsys):
+        """The previous test checks the words. This checks the data: with every
+        cell unresolved, no preset may appear on a `tier N:` line."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER, max_days=40)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        ordering_lines = _ordering_lines(capsys.readouterr().out)
+        assert ordering_lines, "the section printed no ordering lines at all."
+        for line in ordering_lines:
+            for tree in experiments.PRESETS:
+                assert tree.name not in line, (
+                    f"{tree.name!r} is ranked on {line.strip()!r} even though "
+                    "its campaigns ran out of days and it has no result. "
+                    "Issue #294.")
+
+    def test_a_preset_unresolved_at_one_tier_is_left_out_at_every_tier(self):
+        """Why the exclusion is not per tier.
+
+        The point of printing an order per tier is to compare them, and two
+        orders over different sets of presets are not comparable. Grouping is
+        chained, so an order over five presets is not the six-preset order with
+        a row deleted. `exp_presets` therefore builds one exclusion set across
+        all the tiers it compares, and this checks the source says so rather
+        than filtering per tier.
+        """
+        source = pathlib.Path(experiments.__file__).read_text(encoding="utf-8")
+        body = source[source.index("def exp_presets"):]
+        assert "no_result_at" in body
+        assert "exclude=no_result_at" in body, (
+            "exp_presets no longer passes its unresolved presets to "
+            "rank_by_win. Issue #294.")
+        assert body.count("no_result_at.setdefault") == 1, (
+            "the exclusion set is no longer accumulated across every tier, so "
+            "the orderings can cover different presets and stop being "
+            "comparable. Issue #294.")
+
+    def test_nothing_is_left_out_when_every_cell_resolves(self, capsys):
+        """The other half. At the real day cap the low tiers resolve, so no
+        preset may be dropped -- otherwise the section would quietly rank fewer
+        presets than the table shows on every run.
+
+        Eight campaigns per cell, not the four the neighbouring tests use. The
+        campaigns are seeded from 0 upwards so this is reproducible rather than
+        flaky, but four is too few to estimate a rate that has to come in under
+        50%: at tier 2, Explorer via floors (-25 floors) leaves two of four
+        campaigns unresolved and trips the threshold exactly. At eight the
+        worst cell across tiers 1 and 2 is 38%. Eight costs about 2.8 seconds.
+        """
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 2), trials=8)
+        printed = capsys.readouterr().out
+        assert "LEFT OUT OF THE ORDER" not in printed, (
+            "the preset section drops presets from the ranking on an ordinary "
+            "table where every campaign resolved.")
+        assert "NO PRESET RANKED" not in printed
+        ranked = [line for line in _ordering_lines(printed)
+                  if line.strip().startswith("tier 1:")]
+        assert len(ranked) == 1
+        for tree in experiments.PRESETS:
+            assert tree.name in ranked[0], (
+                f"{tree.name!r} is missing from the tier 1 ordering even "
+                "though its campaigns resolved.")
 
     def test_the_tier_actually_changes_the_run(self, capsys):
         """Otherwise the second table would be a copy of the first.
