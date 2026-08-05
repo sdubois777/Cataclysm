@@ -20,6 +20,44 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The empire tree is the node graph; the keystones document is commentary on it
+
+**Affects** `docs/README.md`, `docs/Empire_Skill_Tree_Keystones.md`. Applied.
+Issue #25.
+
+**`docs/Empire_Development_Tree_Final.json` is the empire passive tree.**
+`docs/Empire_Skill_Tree_Keystones.md` is prose describing the same tree and is
+authoritative for nothing the graph also states. Nothing had said which, and two
+open balance issues, #4 and #5, are arguments about branches of a tree whose
+contents were ambiguous.
+
+**Decided by measuring rather than by preference.** The graph is newer, by its own
+`metadata.updatedAt`: 2026-03-05 against the prose's 2026-02-10. It is also
+larger. 105 of the prose's 108 bullets name a node in the graph, and the graph has
+68 names the prose never mentions. So the prose is an earlier draft of the same
+tree rather than a rival description of it. Only names were compared; the two word
+the same effect differently in many places and reconciling the wording is not what
+the issue asked for.
+
+**Three prose entries have no counterpart in the graph** and nobody recorded
+whether they were cut or lost: Bounties, Weightless Spoils, and the Architect
+quadrant's four decision nodes. The graph has a node named Bounty granting
+something unrelated, mentions inventory nowhere, and has five decision nodes none
+of which is the fourth. Listed in the prose file's own header and in issue #260.
+
+**The quadrant is called Treasury.** The prose used three names within forty
+lines: Treasurer in its branch list, Tyrant in its capstone list and Treasury in
+its section heading. The graph uses Treasury nine times, the other two never, and
+its on-canvas label reads TREASURY. The prose now matches. The **Treasurer** city
+upgrade in `game/Data/CityUpgrades.csv` is a different thing and keeps its name.
+
+**The prose file claimed Google Drive was its source of truth**, which had been
+false since 2026-08-02, when this repository's copies became authoritative. That
+header is replaced.
+
+`tools/tests/test_empire_tree_documents_agree.py` holds the comparison.
+---
+
 ## 2026-08-05 — A damage over time effect deals a fixed amount per tick, not a total spread across a duration
 
 **Affects** the "Applying Damage Over Time and Other Effects" section of
