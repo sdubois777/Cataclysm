@@ -18,7 +18,7 @@ Explorer_Increases_the_chance_of_dungeons_on_this_1,Explorer,False,False,Increas
 Explorer_Increases_the_chance_of_dungeons_on_this_2,Explorer,False,False,Increases the chance of dungeons on this city being Sacrificial dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
 Explorer_Increases_the_chance_of_dungeons_on_thie,Explorer,False,False,Increases the chance of dungeons on thie city being Volatile dungeons by 25%.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
 Treasurer_Dungeons_here_provide_2x_more_experience,Treasurer,False,False,Dungeons here provide 2x more experience,3x,Multiplier,3.0,0.0,5x,Multiplier,5.0,0.0
-Treasurer_Dungeons_here_have_10_increased_rarity,Treasurer,False,False,Dungeons here have 10% increased rarity find.,0.2,Percent,0.2,0.0,0.5,Percent,0.5,0.0
+Treasurer_Dungeons_here_have_10_increased_magic_f,Treasurer,False,False,Dungeons here have 10% increased magic find.,0.2,Percent,0.2,0.0,0.5,Percent,0.5,0.0
 Treasurer_Dungeons_here_drop_25_more_gold,Treasurer,False,False,Dungeons here drop 25% more gold.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
 Treasurer_Dungeons_here_drop_25_more_loot,Treasurer,False,False,Dungeons here drop 25% more loot.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
 Artisan_Dungeons_here_drop_25_more_crafting_mat,Artisan,False,False,Dungeons here drop 25% more crafting materials.,0.5,Percent,0.5,0.0,1,Percent,1.0,0.0
