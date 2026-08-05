@@ -15,7 +15,7 @@ Material_Upgrade_Stone_x,Upgrade Stone (x),Tier 2 (Uncommon).,Item Level Upgrade
 Material_Elemental_Cinder,Elemental Cinder,Tier 2 (Uncommon).,Random Damage Type,Used to add a random damage type to a weapon.,,,
 Material_Prismatic_Catalyst,Prismatic Catalyst,Tier 3 (Rare),Damage Transmutation,Used to change a damage type on a weapon.,,,
 Material_Sovereign_Ingot,Sovereign Ingot,Tier 4 (Very Rare).,Damage Attunement,Used to add a specific damage type to a weapon.,,,
-Material_Potency_Crystal,Potency Crystal,Tier 2 (Uncommon).,Affix Leveling,"Used to increase an affix to the next tier, up to t7 and never above the current difficulty tier.",,,
+Material_Potency_Crystal,Potency Crystal,Tier 2 (Uncommon).,Affix Leveling,"Used to increase an affix to the next tier, up to t7. No difficulty tier gate; cost is the limit.",,,
 Material_Regret_Essence,Regret Essence,Tier 5 (Extremely Rare).,Enchantment Negative Refinement,Used to change the Negative effect of an enchantment.,,,
 Material_Action,Action,Core Materials Used,CR Impact,Base Days,,,
 Material_Imprint_Enchantment,Imprint Enchantment,Aetherial Shard,5 CR,2,,,
