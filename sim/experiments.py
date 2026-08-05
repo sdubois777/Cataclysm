@@ -382,9 +382,92 @@ def win_rate_noise(trials: int) -> float:
     return 100.0 * math.sqrt(2.0) * math.sqrt(0.25 / max(1, trials))
 
 
-def rank_by_win(wins: dict[str, float], tolerance: float,
-                exclude=()) -> list[tuple[str, ...]]:
-    """Preset names grouped by win rate, best group first.
+def margin_variance(win: float, loss: float) -> float:
+    """The variance of one campaign's outcome, scored +1 win, -1 loss, 0 none.
+
+    Both rates are percentages, as `summarise` reports them. The result is in
+    units of the score itself, so 1.0 is the largest it can be.
+    """
+    p, q = win / 100.0, loss / 100.0
+    return max(0.0, (p + q) - (p - q) ** 2)
+
+
+def margin_noise(trials: int) -> float:
+    """How far apart two win-minus-loss margins must be before the gap means
+    anything.
+
+    WHY IT IS NOT `win_rate_noise`. Issue #294. Win and loss are not two
+    independent rates. They come from the same campaign, which scores
+
+        +1  won        -1  lost        0  no result
+
+    so the margin a cell reports is the sample mean of that one score, and its
+    spread is the variance of a single random variable rather than the
+    difference of two independent binomial proportions. Using `win_rate_noise`
+    on a margin reports a tolerance half the size of the right one.
+
+    THE DERIVATION. Write p for the win probability and q for the loss
+    probability, with p + q <= 1. For the score S above,
+
+        E[S]   = p - q
+        E[S^2] = p + q          because S^2 is 1 for a win or a loss and 0
+                                otherwise
+        Var(S) = (p + q) - (p - q)^2
+
+    A cell is `trials` independent campaigns, so the standard error of its
+    margin is sqrt(Var(S) / trials), and comparing two independent cells needs
+    sqrt(Var_a / trials + Var_b / trials).
+
+    THE WORST CASE IS Var(S) = 1. The first term is largest when p + q = 1, no
+    campaign going unresolved, and the second is smallest when p = q. Both hold
+    at p = q = 0.5. So the bound is
+
+        100 * sqrt(2) * sqrt(1 / trials)
+
+    which is exactly twice `win_rate_noise(trials)`, because the win rate's own
+    worst case is sqrt(0.25) and this one is sqrt(1). At 150 campaigns per cell
+    it is 11.5 percentage points; at 60 it is 18.3.
+
+    IT IS A BOUND, NOT AN ESTIMATE, and for these tables a conservative one. A
+    cell where almost every campaign loses has p near 0 and q near 1, giving
+    Var(S) near zero and a true tolerance far below the bound. Measured at 60
+    campaigns per cell on 2026-08-05, the closest pair at tiers 6 and 7 needed
+    2.3 points and this bound gave them 18.3.
+
+    THE GROUPING USES THE BOUND ANYWAY, and that is deliberate. Estimating the
+    variance from the rates a cell observed sends it to exactly zero when the
+    cell won nothing, which would call any non-zero gap significant -- the same
+    failure this guards against, arrived at from the other side. Fixing that
+    needs the rates smoothed away from the boundary first, which is issue #328.
+    `margin_noise_between` computes the observed figure and the sweep prints it
+    beside the bound, so how much is being given away is visible per tier.
+
+    THE BOUND ERRS SAFELY. It can report a real difference as a tie; it cannot
+    report noise as a difference.
+    """
+    return 2.0 * win_rate_noise(trials)
+
+
+def margin_noise_between(win_a: float, loss_a: float,
+                         win_b: float, loss_b: float,
+                         trials: int) -> float:
+    """The tolerance for one pair of cells, from the rates they actually got.
+
+    The same derivation as `margin_noise` without the worst-case substitution,
+    so this is what separates that pair rather than what would separate the
+    hardest possible pair.
+    """
+    variance = margin_variance(win_a, loss_a) + margin_variance(win_b, loss_b)
+    return 100.0 * math.sqrt(variance / max(1, trials))
+
+
+def rank_by_score(scores: dict[str, float], tolerance: float,
+                  exclude=()) -> list[tuple[str, ...]]:
+    """Preset names grouped by score, best group first.
+
+    RENAMED FROM `rank_by_win`, issue #294. The grouping was never specific to
+    a win rate -- it takes any dict of name to number -- and section 7 now ranks
+    on win minus loss, so a name saying "win" would have been wrong.
 
     Two presets within `tolerance` of each other go in the same group, so the
     result says only what the sample size can support.
@@ -404,7 +487,8 @@ def rank_by_win(wins: dict[str, float], tolerance: float,
     group (b, c). Filtering the finished groups would give the grouping of a
     set that was never ranked.
     """
-    ranked = {name: rate for name, rate in wins.items() if name not in exclude}
+    ranked = {name: value for name, value in scores.items()
+              if name not in exclude}
     groups: list[list] = []
     for name in sorted(ranked, key=lambda n: (-ranked[n], n)):
         if groups and abs(groups[-1][0] - ranked[name]) <= tolerance:
@@ -412,6 +496,23 @@ def rank_by_win(wins: dict[str, float], tolerance: float,
         else:
             groups.append([ranked[name], [name]])
     return [tuple(names) for _, names in groups]
+
+
+def closest_ranked_pair(scores: dict[str, float],
+                        exclude=()) -> tuple[str, str] | None:
+    """The two names with the smallest gap between their scores.
+
+    Which pair decides whether the tolerance mattered: every wider gap survives
+    a tolerance that this one survives. Returns None when fewer than two names
+    are left after `exclude`.
+    """
+    ranked = sorted((value, name) for name, value in scores.items()
+                    if name not in exclude)
+    if len(ranked) < 2:
+        return None
+    best = min(zip(ranked, ranked[1:], strict=False),
+               key=lambda pair: pair[1][0] - pair[0][0])
+    return best[0][1], best[1][1]
 
 
 #: Above this share of campaigns ending with no result, a cell's win and loss
@@ -501,6 +602,15 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
           f"{SWEEP_TIER} in sections 0 and 2.")
 
     wins: dict[int, dict[str, float]] = {}
+    #: Win rate minus loss rate, in percentage points. THE METRIC THE ORDERING
+    #: USES since issue #294, because win rate collapses towards zero above tier
+    #: 3 and stops telling the presets apart. A campaign scores +1 won, -1 lost
+    #: and 0 for no result, so this is the mean of that score, and `margin_noise`
+    #: derives its tolerance -- which is not the win rate's.
+    margins: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
+    #: Loss rates, kept so the tolerance for a pair can be computed from the
+    #: rates those two cells actually got rather than from the worst case.
+    losses: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
     #: Mean quest objectives cleared, out of `quest_objectives_required`. Kept
     #: alongside the win rate because a win requires all of them, so this is the
     #: same axis measured before it saturates. Issue #294.
@@ -514,7 +624,8 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
         ceiling = scoring.tier_bounds(tier)[1]
         print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}, "
               f"day cap {base.max_days:,}")
-        header = (f"{'preset':<42}{'win%':>7}{'loss%':>7}{'stale%':>8}"
+        header = (f"{'preset':<42}{'win%':>7}{'loss%':>7}{'w-l':>7}"
+                  f"{'stale%':>8}"
                   f"{'obj/' + str(base.quest_objectives_required):>7}"
                   f"{'cities':>8}{'floors':>9}{'crafts':>8}{'triage%':>9}")
         print(header)
@@ -524,16 +635,20 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             cfg = replace(base, tier=tier).with_tree(tree)
             s = summarise(batch(cfg, policies.triage, trials=trials))
             wins[tier][tree.name] = s["win"]
+            losses[tier][tree.name] = s["lost"]
+            margins[tier][tree.name] = s["win"] - s["lost"]
             objectives[tier][tree.name] = s["obj"]
             stale[tier][tree.name] = s["stale"]
             print(f"{tree.name:<42}{s['win']:>7.0f}{s['lost']:>7.0f}"
+                  f"{s['win'] - s['lost']:>7.0f}"
                   f"{s['stale']:>8.0f}{s['obj']:>7.1f}{s['cities']:>8.1f}"
                   f"{s['floors']:>9.0f}{s['crafts']:>8.1f}{s['triage']:>9.1f}")
         unresolved[tier] = warn_about_unresolved_campaigns(
             wins[tier].keys(), stale[tier], base.max_days)
 
     if len(tiers) > 1:
-        tolerance = win_rate_noise(trials)
+        tolerance = margin_noise(trials)
+        win_tolerance = win_rate_noise(trials)
         #: {preset name: the tiers where its campaigns mostly had no result}.
         #: A preset is kept out of EVERY ordering if it failed to resolve at ANY
         #: tier, so the orderings printed below cover one set of presets and can
@@ -547,10 +662,27 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             for name in unresolved[tier]:
                 no_result_at.setdefault(name, []).append(tier)
 
-        print(f"\n  PRESET ORDER BY WIN RATE, BEST FIRST. Presets within "
-              f"{tolerance:.1f} points of")
-        print(f"  each other are shown tied, because {trials} campaigns per cell "
-              "cannot separate them.")
+        print(f"\n  PRESET ORDER BY WIN RATE MINUS LOSS RATE, BEST FIRST. "
+              f"Presets within {tolerance:.1f}")
+        print(f"  points of each other are shown tied, because {trials} "
+              "campaigns per cell cannot")
+        print("  separate them.")
+        print("\n  WHY THIS METRIC AND NOT WIN RATE. Issue #294. Win rate "
+              "collapses towards zero")
+        print("  above tier 3: at tier 8 five of six presets sit between 0 and "
+              "2, which is a tie")
+        print("  at the floor rather than a tie in the middle, and it orders "
+              "nothing. Win minus")
+        print("  loss keeps varying there because the loss rate does.")
+        print(f"\n  ITS TOLERANCE IS NOT THE WIN RATE'S {win_tolerance:.1f} "
+              "POINTS. Win and loss come from")
+        print("  the same campaign, which scores +1 won, -1 lost, 0 no result, "
+              "so the margin is")
+        print("  the mean of one score rather than the difference of two "
+              "independent rates. Its")
+        print(f"  worst-case spread is exactly twice the win rate's, which is "
+              f"the {tolerance:.1f} points")
+        print("  used above. See margin_noise.")
         if no_result_at:
             print(f"\n  LEFT OUT OF THE ORDER, no result at the "
                   f"{base.max_days:,} day cap:")
@@ -567,8 +699,41 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
                   "Issue #294.")
         orders = {}
         for tier in tiers:
-            order = rank_by_win(wins[tier], tolerance, exclude=no_result_at)
+            order = rank_by_score(margins[tier], tolerance,
+                                  exclude=no_result_at)
             orders[tier] = order
+            print(f"    tier {tier}: "
+                  + (" > ".join(" = ".join(group) for group in order)
+                     if order else "NO PRESET RANKED"))
+
+        print("\n  HOW CONSERVATIVE THAT TOLERANCE IS, for the closest pair "
+              "actually measured at")
+        print("  each tier. The bound above assumes a cell that wins half its "
+              "campaigns and")
+        print("  loses the other half; a cell that loses nearly all of them "
+              "varies far less.")
+        for tier in tiers:
+            pair = closest_ranked_pair(margins[tier], exclude=no_result_at)
+            if pair is None:
+                print(f"    tier {tier}: fewer than two presets ranked")
+                continue
+            first, second = pair
+            observed = margin_noise_between(
+                wins[tier][first], losses[tier][first],
+                wins[tier][second], losses[tier][second], trials)
+            gap = abs(margins[tier][first] - margins[tier][second])
+            print(f"    tier {tier}: closest gap {gap:>5.1f} points, "
+                  f"tolerance for that pair {observed:>5.1f}, bound "
+                  f"{tolerance:>5.1f}")
+
+        print(f"\n  PRESET ORDER BY WIN RATE ALONE, as a second opinion, "
+              f"tolerance {win_tolerance:.1f} points.")
+        print("  This is the metric issue #294 was opened about. Kept so the "
+              "collapse is")
+        print("  visible in the report rather than only in the issue.")
+        for tier in tiers:
+            order = rank_by_score(wins[tier], win_tolerance,
+                                  exclude=no_result_at)
             print(f"    tier {tier}: "
                   + (" > ".join(" = ".join(group) for group in order)
                      if order else "NO PRESET RANKED"))
@@ -590,7 +755,10 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
               "tiers it")
         print("  collapses the same way win rate does. The one preset it "
               "separates is the")
-        print("  one win rate already separates. Issue #294 stays open.")
+        print("  one win rate already separates. Win minus loss is the metric "
+              "issue #294")
+        print("  settled on instead; this column is kept because it explains "
+              "the collapse.")
 
         flat = [t for t, order in orders.items() if len(order) == 1]
         if not any(orders.values()):
@@ -599,15 +767,17 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             # agreement between two rankings of nothing. Issue #294.
             print("\n  NO RANKING AT ALL. Every preset ran out of days at one "
                   "or more of the tiers")
-            print("  compared, so no preset has a win rate that can be "
+            print("  compared, so no preset has an outcome that can be "
                   "ordered. Issue #294.")
         elif flat:
             print("\n  NO CONCLUSION. Every preset ties at tier "
                   + ", ".join(str(t) for t in flat) + ", so there is no ordering")
-            print("  to compare. Win rate stops separating the presets once it "
-                  "collapses towards")
-            print("  zero. Measuring these tiers needs a metric that still "
-                  "varies there.")
+            print("  to compare. Win minus loss is the metric issue #294 chose "
+                  "because it still")
+            print("  varies where win rate does not; a tie under it as well "
+                  "means the presets")
+            print("  really are within the sample's reach of each other at "
+                  "that tier.")
         elif len(set(tuple(o) for o in orders.values())) == 1:
             print("\n  The ordering is THE SAME at every tier measured, so the")
             print("  tier 1 conclusions on issues #4 and #5 probably generalise.")
