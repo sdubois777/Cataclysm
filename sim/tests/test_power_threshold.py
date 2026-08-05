@@ -15,6 +15,8 @@ computed from the model rather than written down.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from cataclysm_sim import combat, scoring
@@ -211,3 +213,149 @@ def test_the_report_key_reads_the_dungeon_depth_from_the_config(cfg):
     deeper.DUNGEON_SPECS[(DungeonType.CATACLYSM, CityTier.PILLAR)] = replace(
         original, floors=(200, 200))
     assert "200 floors" in " ".join(experiments.cataclysm_power_key(deeper))
+
+
+# --------------------------------------------------------------------------
+# The design document states the intent, and every number in it is checked
+# --------------------------------------------------------------------------
+#
+# Issue #250 asked whether a maxed player losing about one Cataclysm dungeon run
+# in five is intended. The project owner answered on 2026-08-05 that it is, and
+# chose to write the intent down rather than change any number.
+#
+# EVERY FIGURE IN THAT SECTION IS RE-DERIVED HERE RATHER THAN RESTATED. The
+# section is a measurement of the current model, so the failure to guard against
+# is the model moving and the prose staying. That has happened before: issue #6
+# was three analysis scripts whose printed conclusions went stale when the player
+# power anchors changed, and issue #253 was a second copy of those anchors that
+# nothing was checking.
+
+
+def unwrapped(text: str) -> str:
+    """Prose wraps. Collapse whitespace before matching a sentence."""
+    return " ".join(text.split())
+
+
+@pytest.fixture(scope="module")
+def gdd_section() -> str:
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    path = root / "docs" / "Cataclysm_GDD_v2.md"
+    if not path.is_file():
+        pytest.skip("the design document is not present")
+    body = path.read_text(encoding="utf-8")
+
+    heading = "### **The Final Fight Is Never Safe, and That Is Deliberate**"
+    assert heading in body, (
+        "the design document no longer has the section stating that a maxed "
+        "player is expected to lose about one Cataclysm dungeon run in five. "
+        "Without it there is no way to tell whether the measured figure is the "
+        "target, twice it, or half of it. Issue #250.")
+    start = body.index(heading)
+    end = body.index("### **Maximum Resistance**", start)
+    return unwrapped(body[start:end])
+
+
+def test_the_section_exists_at_all():
+    """Standalone, and deliberately not using the fixture above.
+
+    The fixture asserts the heading is present, so deleting the section makes
+    every test that depends on it ERROR rather than FAIL. An error is weaker
+    evidence than a named failure -- it does not say which rule was broken. This
+    is the one test that fails by name when the section goes.
+    """
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    path = root / "docs" / "Cataclysm_GDD_v2.md"
+    if not path.is_file():
+        pytest.skip("the design document is not present")
+    assert ("### **The Final Fight Is Never Safe, and That Is Deliberate**"
+            in path.read_text(encoding="utf-8")), (
+        "the design document no longer states that a player at their tier's "
+        "ceiling is expected to lose about one Cataclysm dungeon run in five, "
+        "and that this is deliberate. Issue #250.")
+
+
+def test_it_says_the_risk_is_intended_rather_than_an_accident(gdd_section):
+    """The whole content of the answer. A measured number with no statement of
+    intent beside it is what issue #250 was filed about."""
+    assert "That is intended, not a tuning accident." in gdd_section
+
+
+def test_it_says_the_run_ends_rather_than_the_attempt(gdd_section):
+    """One in five sounds tolerable for an attempt and severe for a run, and it
+    is a run. `Engine._resolve_dungeon` sets `lost` and returns."""
+    assert "It is one run in five, not one attempt in five." in gdd_section
+
+
+def test_the_band_it_states_actually_contains_every_tier(cfg, floors,
+                                                         gdd_section):
+    """The bounds are parsed out of the document, not typed here, so moving
+    either the prose or the model without the other fails."""
+    found = re.search(r"Between (\d+)% and (\d+)% at every tier", gdd_section)
+    assert found, (
+        "the design document no longer states the band of death chances a "
+        "player at their tier ceiling faces at the Cataclysm boss dungeon")
+    low, high = (int(g) / 100 for g in found.groups())
+
+    measured = [risk(scoring.tier_bounds(t)[1], t, cfg, floors)
+                for t in range(1, 9)]
+    for tier, chance in enumerate(measured, start=1):
+        assert low <= chance <= high, (
+            f"tier {tier} measures {chance:.1%}, outside the {low:.0%} to "
+            f"{high:.0%} the design document states. Either the model moved and "
+            "the document is stale, or the document was tightened past what the "
+            "model does.")
+
+    # The band has to be a band, not a claim so loose it could not fail.
+    assert high - low <= 0.10, (
+        f"the stated band {low:.0%} to {high:.0%} is wider than 10 percentage "
+        "points, which is loose enough to survive a real change to the model")
+
+
+def test_the_multiples_of_the_ceiling_it_states_are_the_measured_ones(
+        cfg, floors, gdd_section):
+    """"from 2.0 times at tier 1 down to 1.2 times at tier 8" is the reason the
+    fight cannot be made safe within a tier, so it is the sentence most worth
+    keeping true."""
+    found = re.search(
+        r"from ([\d.]+) times at tier 1 down to ([\d.]+) times at tier 8",
+        gdd_section)
+    assert found, (
+        "the design document no longer says how far the Cataclysm Boss "
+        "out-scores the player ceiling at either end of the tier range")
+    stated_first, stated_last = (float(g) for g in found.groups())
+
+    def multiple(tier: int) -> float:
+        ceiling = scoring.tier_bounds(tier)[1]
+        boss = scoring.enemy_scores(tier, DTYPE, SUBTYPE, floors, floors,
+                                    0.0)[BOSS]
+        return boss / ceiling
+
+    assert multiple(1) == pytest.approx(stated_first, abs=0.05)
+    assert multiple(8) == pytest.approx(stated_last, abs=0.05)
+    assert multiple(1) > multiple(8), (
+        "the gap between the boss and the player ceiling no longer narrows as "
+        "the tier rises, which is what the document says it does")
+
+
+def test_the_floor_count_it_measured_at_is_the_one_the_config_gives(
+        cfg, floors, gdd_section):
+    """A depth typed into prose goes stale the first time the dungeon
+    specification changes."""
+    spec = cfg.DUNGEON_SPECS[(DungeonType.CATACLYSM, CityTier.PILLAR)]
+    low, high = spec.floors
+    assert f"Measured at {floors} floors" in gdd_section
+    assert f"the midpoint of the {low} to {high}" in gdd_section
+
+
+def test_the_guard_it_points_at_is_the_one_that_exists(gdd_section):
+    """The section tells a reader which test fails if the figure moves. If that
+    test is renamed or its band changed, the pointer has to move with it."""
+    assert "sim/tests/test_power_threshold.py" in gdd_section
+    assert "a band of 10% to 30%" in gdd_section, (
+        "the design document names a band that "
+        "test_a_player_at_the_tier_ceiling_still_dies_sometimes no longer "
+        "asserts")
