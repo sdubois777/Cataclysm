@@ -583,9 +583,17 @@ def test_the_decision_log_lists_what_was_deliberately_left_open(decision_entry):
 #
 # THE SAME ANSWER ALSO SAID "you restart the tier you were on while keeping your
 # gear/levels/empire tree", which would mean a run ending never costs the
-# character at all. That contradicts consumption destroying it and would remove
-# the Worn Residue mechanic's entire cost. It was NOT decided here; it is issue
-# #315.
+# character at all. That was NOT decided here; it was issue #315.
+#
+# ISSUE #315 HAS SINCE BEEN ANSWERED, on 2026-08-05, and the answer is that a run
+# ending does not cost the character. Being consumed by Worn Residue puts a
+# snapshot of the character into the corrupted-character pool and ends the run;
+# the character itself is untouched. So NOTHING in the design destroys a
+# character, and the inheritance rule the tests below check is a safeguard with
+# no trigger rather than a live case. The section says so, and issue #325 asks
+# whether a player can delete a character, which would give it one.
+# `tools/tests/test_what_a_run_ending_costs.py` holds the checks for that
+# answer; the tests below are unchanged because the rule they check is.
 # --------------------------------------------------------------------------
 
 #: The section describing what being consumed by Worn Residue costs.
