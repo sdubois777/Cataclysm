@@ -81,13 +81,32 @@ When starting a new character, players choose a starting weapon type and damage 
 
 ### **Difficulty Options**
 
+**There are two independent choices, not one list.** A character has exactly one
+lethality mode, and separately may set the Solo Self-Found flag. Hardcore Solo
+Self-Found and Heretic Solo Self-Found are both real combinations.
+
+**Lethality mode. Choose one.**
+
+|  |  |  |  |  |
+| :-: | :-: | :-: | :-: | :-: |
+| \*\*Mode\*\* | \*\*Dying costs\*\* | \*\*Equipment lost on death\*\* | \*\*Heads-up display\*\* | \*\*Other\*\* |
+| Standard | 5 days | none | shown | — |
+| Hardcore | 10 days | each of the 18 equipped pieces drops with a 10% chance, so 1.8 on average | map overlay only | — |
+| Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons. Cities have 2 upgrade slots instead of 3. |
+
+**Solo Self-Found. Optional. Combines with any lethality mode.**
+
 |  |  |
 | :-: | :-: |
-| \*\*Mode\*\* | \*\*Rules\*\* |
-| Standard | Default experience. Dying costs 5 days. |
-| SSF (Solo Self-Found) | No auction house, no shared stash. Increased loot drops. |
-| Hardcore | Dying costs 10 days and each piece of equipment has a chance to drop on death. No HUD except map overlay. Increased loot drops. |
-| Heretic | Surges spawn 25% more dungeons. Cities have only 2 upgrade slots instead of 3. Dying costs 15 days and drops at least 2 pieces of equipment. No HUD. Increased loot drops. |
+| \*\*Flag\*\* | \*\*Rules\*\* |
+| Solo Self-Found (SSF) | No auction house, no shared stash. Drop rates are unchanged. |
+
+**No mode grants increased loot.** Drop rate belongs to the difficulty tier,
+which is the axis this game already scales content on. That is where every
+shipped game in the genre puts it: Path of Exile's Solo Self-Found league has
+drop rates identical to trade, and Diablo IV attaches drops to the World Tier
+rather than to the Hardcore flag. A player choosing a harder mode is buying the
+challenge, not a reward multiplier. `docs/DECISIONS.md` records the sources.
 
   
 
@@ -2838,7 +2857,7 @@ All cosmetics are purely visual — no pay-to-win, ever.
 | :-: | :-: |
 | \*\*Risk\*\* | \*\*Mitigation\*\* |
 | Skill matrix scope creep (11 weapons × 8 damage types × 6 slots = 528+ skills) | Launch with one complete damage type per patch. Use tag-based design to maximize re-use and make each skill feel distinct. |
-| Time pressure mechanics frustrating casual players | Difficulty modes (Standard/SSF/Hardcore/Heretic) let players tune the urgency. Permanent meta-progression ensures no run feels wasted. |
+| Time pressure mechanics frustrating casual players | The lethality mode (Standard, Hardcore or Heretic) lets players tune the urgency, and Standard is the default. Permanent meta-progression ensures no run feels wasted. |
 | Passive tree complexity overwhelming new players | Strong visual design with clear branching and class fantasy. Beginner preset builds. In-game tooltips on all node interactions. |
 | Enchantment system creating too much variance in loot quality | Weight system ensures common drops are consistently useful. Weight-1 enchantments are rare enough that they feel like jackpots, not baseline expectations. |
 | Multiplayer balance (empire shared vs. individual) | Design empire as shared resource in co-op with individual character builds. Extensive playtesting during Early Access. |
