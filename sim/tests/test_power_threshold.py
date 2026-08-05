@@ -155,14 +155,48 @@ def test_the_report_key_states_the_computed_figures(cfg):
 
 
 def test_the_report_itself_prints_the_computed_key_and_no_typed_range():
-    """Checked against the SOURCE of `sim/experiments.py`, not against
-    `cataclysm_power_key`.
+    """The header the report prints must hold the COMPUTED key, not a typed one.
 
-    Testing the helper alone is not enough and this test exists because that gap
-    was found: replacing the call in `main` with a hard-coded print left every
-    test on the helper passing while the report went back to a stale number.
-    Running `main` instead is not an option -- it is 25,000 simulated campaigns
-    and about eighteen minutes.
+    Testing `cataclysm_power_key` alone is not enough, and this test exists
+    because that gap was found: replacing the call in the report with a
+    hard-coded print left every test on the helper passing while the report went
+    back to a stale number.
+
+    THIS USED TO BE A TEXT CHECK on `main()`'s source, because running `main()`
+    is 25,000 simulated campaigns and about eighteen minutes. Issue #281 moved
+    the header into `experiments.header_lines()`, which is cheap to call, so the
+    check is now behavioural: the lines the report prints are compared against
+    the lines the helper produces. That is stronger -- a hard-coded print would
+    have to reproduce every computed figure exactly to get past it.
+    """
+    import pathlib
+    from dataclasses import replace
+
+    import experiments
+    from cataclysm_sim.config import TuningConfig
+
+    header = experiments.header_lines()
+    computed = experiments.cataclysm_power_key(
+        replace(TuningConfig(), tier=experiments.SWEEP_TIER))
+    for line in computed:
+        assert line in header, (
+            "sim/experiments.py's header no longer prints the computed power "
+            "key, so the report is describing the power column with something "
+            f"else. Missing: {line!r}")
+
+    source = pathlib.Path(experiments.__file__).read_text(encoding="utf-8")
+    assert "cataclysm_power_key" in source
+    assert "320-420" not in source, (
+        "the stale hard-coded power range is back in sim/experiments.py. It was "
+        "derived against the player power anchors issue #2 replaced. See "
+        "issue #8.")
+
+
+def test_the_report_prints_its_header_rather_than_building_one_inline():
+    """`main()` must print `header_lines()`, or the test above checks nothing.
+
+    A text check, and it has to be: `main()` is about eighteen minutes, so
+    nothing can call it to see what it prints.
     """
     import pathlib
 
@@ -170,13 +204,9 @@ def test_the_report_itself_prints_the_computed_key_and_no_typed_range():
 
     source = pathlib.Path(experiments.__file__).read_text(encoding="utf-8")
     body = source[source.index("def main("):]
-    assert "cataclysm_power_key" in body, (
-        "sim/experiments.py's main() no longer prints the computed power key, "
-        "so the report is describing the power column with something else")
-    assert "320-420" not in source, (
-        "the stale hard-coded power range is back in sim/experiments.py. It was "
-        "derived against the player power anchors issue #2 replaced. See "
-        "issue #8.")
+    assert "header_lines()" in body, (
+        "sim/experiments.py's main() no longer prints header_lines(), so the "
+        "report's header is not the one the tests check.")
 
 
 def test_the_report_key_says_whether_the_figure_is_reachable(cfg):
