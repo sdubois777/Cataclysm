@@ -1,10 +1,13 @@
 """Import the generated CSV tables as DataTable assets in the project's content.
 
-Runs inside the Unreal editor's Python interpreter, not the system Python:
+Runs inside the Unreal editor's Python interpreter, not the system Python. Start
+it with the runner, which checks the preconditions and checks afterwards that it
+actually ran:
 
-    "C:/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
-      "$PWD/Cataclysm.uproject" -run=pythonscript \
-      -script="../tools/generate_datatable_assets.py" -unattended -nopause -nosplash
+    python tools/run_editor_python.py tools/generate_datatable_assets.py
+
+Started by hand instead, neither is checked, and a git worktree gets an editor
+that writes nothing and exits without saying why. That is issue #279.
 
 WHY THIS EXISTS. tools/generate_datatables.py turns the design workbook into CSV
 files under game/Data/. Those are text, so they review well and the generator can

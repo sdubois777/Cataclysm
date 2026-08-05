@@ -61,9 +61,11 @@ RECORD = DATA_DIR / "datatable_asset_sources.json"
 #: The command that fixes every failure in this file. Repeated in each message
 #: rather than left to the reader, because the whole point is that the person who
 #: hits this did not know the step existed.
-FIX = ("Run the DataTable asset generator; the command is in game/README.md. "
-       "It rewrites all fourteen assets, so restore the ones whose CSV did not "
-       "change before committing.")
+FIX = ("Run `python tools/run_editor_python.py "
+       "tools/generate_datatable_assets.py`. It rewrites all fourteen assets, so "
+       "restore the ones whose CSV did not change before committing. From a git "
+       "worktree it refuses to start and says why; game/README.md gives the way "
+       "round that.")
 
 
 def generator_tables() -> list[tuple[str, str, str]]:
