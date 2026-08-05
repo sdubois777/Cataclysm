@@ -2,6 +2,11 @@
 
 Every number here comes from one call chain, so nothing is held constant that
 would not be in play. Run: python analyse_dungeons.py
+
+That applies to the prose under each table as well as to the tables. Issue #6:
+the sentence after section B said modifiers were about 4% of a tier width, a
+figure worked out against the player power anchors issue #2 replaced. It is
+computed now, and it is not 4%.
 """
 
 from __future__ import annotations
@@ -57,13 +62,16 @@ hdr("A. Modifier pools now that active Cataclysms combine")
 print(f"{'tier':>6}{'active Cataclysms':>20}{'pool size':>12}"
       f"{'mods rolled':>13}{'sacrificial':>13}{'enough?':>10}")
 print("-" * 112)
-for t in range(1, 9):
+TOP_TIER = 8
+for t in range(1, TOP_TIER + 1):
     pool = pool_for(t)
     sac = t * 2
     ok = "yes" if sac <= len(pool) else "NO"
     print(f"{t:>6}{t:>20}{len(pool):>12}{t:>13}{sac:>13}{ok:>10}")
-print("\n  Pooling fixes the exhaustion completely -- even a T8 Sacrificial")
-print("  wants 16 modifiers against a pool of 116.")
+print(f"\n  Pooling fixes the exhaustion completely -- even a T{TOP_TIER} "
+      f"Sacrificial")
+print(f"  wants {TOP_TIER * 2} modifiers against a pool of "
+      f"{len(pool_for(TOP_TIER))}.")
 
 # ---------------------------------------------------------------------------
 hdr("B. Every term's contribution to one dungeon (T1, 40 floors, player at 70%)")
@@ -75,15 +83,25 @@ ms = statistics.fmean(roll_mods(rng, tier, "None") for _ in range(500))
 print(f"  tier width {w:.0f}   player {p:.0f}   mean modifier score {ms:.1f}\n")
 print(f"{'term':<28}{'value':>10}{'as % of width':>16}")
 print("-" * 112)
-print(f"{'baseline (0.9 x w x 0.5)':<28}{0.9 * w * 0.5:>10.1f}{0.9 * 0.5:>15.0%}")
-print(f"{'type bonus (Basic 0.00)':<28}{0.0:>10.1f}{0.0:>15.0%}")
-print(f"{'subtype bonus (None 0.00)':<28}{0.0:>10.1f}{0.0:>15.0%}")
+base_w = scoring.BASELINE_WEIGHT
+type_w = scoring.TYPE_WEIGHTS["Basic"]
+sub_w = scoring.SUBTYPE_WEIGHTS["None"]
+mid_ratio = 0.5                     # the middle floor of any dungeon
+procedural = (scoring.FLOOR_SCALING_BASES["Basic"] / scoring.PROCEDURAL_DIVISOR
+              * mid_ratio) + (floors // 2 * scoring.PROCEDURAL_PER_FLOOR)
+print(f"{f'baseline ({base_w} x w x {mid_ratio})':<28}"
+      f"{base_w * w * mid_ratio:>10.1f}{base_w * mid_ratio:>15.0%}")
+print(f"{f'type bonus (Basic {type_w:.2f})':<28}{type_w * w:>10.1f}"
+      f"{type_w:>15.0%}")
+print(f"{f'subtype bonus (None {sub_w:.2f})':<28}{sub_w * w:>10.1f}"
+      f"{sub_w:>15.0%}")
 print(f"{'modifiers (1 rolled)':<28}{ms:>10.1f}{ms / w:>15.1%}")
-print(f"{'procedural':<28}{100 / 20 * 0.5 + 20 * 0.5:>10.1f}"
-      f"{(100 / 20 * 0.5 + 20 * 0.5) / w:>15.1%}")
+print(f"{'procedural':<28}{procedural:>10.1f}{procedural / w:>15.1%}")
 print(f"{'depth tension (mid floor)':<28}{0.0:>10.1f}{0.0:>15.0%}")
-print("\n  Modifiers are a real term but a small one at T1 (~4% of tier width).")
-print("  Their weight grows with tier because the count scales 1 -> 8.")
+print(f"\n  Modifiers are a real term but a small one at T{tier} "
+      f"({ms / w:.1%} of tier width).")
+print(f"  Their weight grows with tier because the count scales 1 -> "
+      f"{TOP_TIER}.")
 
 # ---------------------------------------------------------------------------
 hdr("C. COMBINED: full dungeon specs, T1, player at 70% of tier")
