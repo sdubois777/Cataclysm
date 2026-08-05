@@ -11,7 +11,7 @@ A design decision is not real until it is in this folder.
 
 | File | Source in Drive | Format note |
 |---|---|---|
-| `Cataclysm_GDD_v2.md` | Doc "Cataclysm\_GDD\_v2(1)" | Body text says *Version 0.3*. Converted to Markdown so it produces readable diffs. |
+| `Cataclysm_GDD_v2.md` | Doc "Cataclysm\_GDD\_v2(1)" | Converted to Markdown so it produces readable diffs. No version number: see below. |
 | `Empire_Skill_Tree_Keystones.md` | Doc "Empire Skill Tree Keystones" | The 12 keystones plus all four empire quadrants (Architect, Treasury, Explorer, Artisan). Converted to Markdown. |
 | `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 11 sheets. Exported unchanged as `.xlsx`. |
 | `Empire_Development_Tree_Final.json` | Passive Trees/ | Node graph: `version`, `metadata`, `viewport`, `nodes`, `uiElements`, `edges`. |
@@ -36,6 +36,26 @@ A design decision is not real until it is in this folder.
 | Crafting | 1005 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
 
 The **Tags** sheet is the intended source for the Unreal `GameplayTag` table.
+
+## Why these documents carry no version number
+
+`Cataclysm_GDD_v2.md` used to say *Version 0.3* in its body while its filename
+said `_v2` and the Drive document it came from was titled `Cataclysm_GDD_v2(1)`.
+Three identifiers for one document, and none of them was ever advanced when the
+design changed, so none of them said anything true.
+
+**The version of a document in this folder is its git history.** Every change
+arrives through a pull request and `DECISIONS.md` records the reasoning. A
+hand-maintained number would be a fourth thing to keep in step with the other
+three, and this project has already been bitten twice by hand-maintained
+duplicates of a single fact.
+
+The `_v2` in the filename is part of the name inherited from Drive. It is not a
+counter and it does not advance. The file is not renamed because roughly twenty
+test files and several C++ sources name it by path.
+
+Issue #35. The table of contents was removed in the same change: it was 106
+links back into the Google Drive document, all pointing at the same anchor.
 
 ## Decisions made outside Drive
 
