@@ -1065,6 +1065,32 @@ Tier Width is the difference between the maximum Power Score of the current diff
 
   
 
+### **The Final Fight Is Never Safe, and That Is Deliberate**
+
+**A player at the absolute ceiling of their own difficulty tier is expected to lose between one Cataclysm dungeon run in six and one in five.** Between 16% and 21% at every tier. That is intended, not a tuning accident.
+
+  
+
+**It is one run in five, not one attempt in five.** Dying in the Cataclysm boss dungeon ends the run. There is no retry.
+
+  
+
+**The Cataclysm Boss out-scores the maximum player Power Score of its own tier at every tier**, from 2.0 times at tier 1 down to 1.2 times at tier 8. So there is no amount of gear reachable within a tier that makes the fight safe, and the question "what Power Score clears it" has no answer on its own — only "what Power Score brings the death chance down to X", and the answer to that is always above the tier's own ceiling.
+
+  
+
+**Why it is built this way.** Overwhelm has no hard gate: being out-scored strips mitigation in proportion to the gap rather than refusing entry. A Cataclysm Boss the player could out-score would make the final fight of a maxed run a formality. Leaving it above the ceiling means the last fight is decided by the odds, and the empire layer is what the player spends between runs to change those odds.
+
+  
+
+**The 16% to 21% is a measurement of the current model, not a target the model was fitted to.** It falls out of the Overwhelm rate, the per-floor risk, the boss risk multiplier and the enemy score formula, none of which were set with this figure in mind. It is written down so that a change to any of them can be seen to have moved it. `sim/tests/test_power_threshold.py` fails if it leaves a band of 10% to 30% at any tier.
+
+  
+
+Measured at 125 floors, the midpoint of the 100 to 150 the Cataclysm boss dungeon spans, with no dungeon modifiers and no subtype.
+
+  
+
 ### **Maximum Resistance**
 
 Over-capping and raising the maximum are two different things and are easy to confuse. **Over-capping** is having more than 70% resistance, which any resistance affix does and which is worth having because penetration and Overwhelm are subtracted before the cap. **Raising the maximum** moves the 70% itself, so more of a hit is actually stopped.

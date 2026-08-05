@@ -20,6 +20,95 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — A maxed player losing about one Cataclysm dungeon run in five is intended
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied. Issue #250. No number changed.
+
+**STATED BY THE PROJECT OWNER, 2026-08-05:** "This is fine as it is. Go with
+option A." Option A on the issue was to write the intent into the design document
+rather than change any figure.
+
+## What was measured
+
+The Cataclysm boss dungeon is the final dungeon of a run and dying in it ends the
+run — `Engine._resolve_dungeon` in `sim/cataclysm_sim/engine.py` sets `lost` and
+returns. Its last-floor enemy, the Cataclysm Boss, **out-scores the maximum
+player Power Score of its own difficulty tier at every tier**, so no amount of
+gear reachable within a tier makes the fight safe.
+
+Re-measured on 2026-08-05 against the player power anchors set that day. The
+figures on the issue itself were computed against the previous anchors and are
+stale.
+
+| Tier | Player ceiling | Cataclysm Boss | Boss ÷ ceiling | Death chance at the ceiling |
+|---|---|---|---|---|
+| 1 | 385 | 773 | 2.01 | 16.7% |
+| 2 | 883 | 1,413 | 1.60 | 18.0% |
+| 3 | 1,508 | 2,189 | 1.45 | 18.6% |
+| 4 | 2,225 | 3,035 | 1.36 | 19.6% |
+| 5 | 3,078 | 4,044 | 1.31 | 19.6% |
+| 6 | 4,057 | 5,173 | 1.28 | 19.7% |
+| 7 | 5,120 | 6,361 | 1.24 | 20.4% |
+| 8 | 6,327 | 7,729 | 1.22 | 20.2% |
+
+Measured at 125 floors, the midpoint of the 100 to 150 the Cataclysm boss dungeon
+spans, with no dungeon modifiers and no subtype.
+
+**The band is 16.7% to 20.4%**, and it now climbs almost monotonically with the
+tier. Before the anchors were reset earlier the same day it ran 15.9% to 21.5%
+with tier 5 measurably a breather compared with the tiers either side of it. That
+change was made for a different reason — tier width not climbing monotonically —
+and this is a second, unlooked-for consequence of it worth recording.
+
+## Why it is built this way, and why it is not a defect
+
+Overwhelm has no hard gate: an enemy above the player's Power Score strips
+mitigation in proportion to the gap rather than refusing entry. A Cataclysm Boss
+the player could out-score would make the final fight of a maxed run a formality.
+Leaving it above the ceiling means the last fight is decided by the odds, and the
+empire layer is what the player spends between runs to change those odds.
+
+The consistency across all eight tiers is itself evidence the Overwhelm model is
+doing what its own documentation says. Overwhelm is rated against tier width
+precisely so that the same relative shortfall costs the same at every tier, and a
+figure that lands within four percentage points across eight tiers is that claim
+holding.
+
+## The two alternatives, and why neither was taken
+
+**Lower the Cataclysm Boss score so a maxed player can out-score it.** The death
+chance at the ceiling would fall to zero and the fight would stop mattering.
+
+**Raise the player power ceiling, or lower `boss_risk_multiplier` (6.0) or
+`per_floor_risk` (0.010) in `sim/cataclysm_sim/config.py`.** Tunes the risk
+without changing the shape, and was not needed: nothing said the current figure
+was wrong, only that nothing said it was right.
+
+## What was missing, and what now fills it
+
+Nothing stated the intent, so there was no way to tell whether 20% was the
+target, twice the target, or half of it. `docs/Cataclysm_GDD_v2.md` now has a
+section, "The Final Fight Is Never Safe, and That Is Deliberate", in the Overwhelm
+chapter. It states the band, that it is a run rather than an attempt that ends,
+how far the boss out-scores the ceiling at each end of the tier range, the
+measurement conditions, and which test fails if the figure moves.
+
+**Every figure in that section is re-derived by a test rather than restated.**
+Six tests in `sim/tests/test_power_threshold.py` parse the numbers out of the
+document and compare them against the model, so the prose and the model cannot
+drift apart. That failure mode is not hypothetical: issue #6 was three analysis
+scripts whose printed conclusions went stale when the anchors changed, and issue
+#253 was a second copy of those anchors that nothing was checking.
+
+## Evidence
+
+```
+1287 passed in 10.15s
+ruff check . — All checks passed!
+```
+
+---
+
 ## 2026-08-05 — An attribute is a whole number of points, rounded to the nearest, in the maths and not only on the screen
 
 **Affects** `docs/Cataclysm_GDD_v2.md`, `sim/cataclysm_sim/character.py` and
