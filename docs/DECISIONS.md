@@ -20,6 +20,85 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — One affix per group: an affix belongs to a group for every stat it grants
+
+**The question.** Issue #128. `docs/Cataclysm_GDD_v2.md` restricted affixes by
+gear slot and by prefix against suffix, and by nothing else. Nothing stopped a
+four-affix Masterful piece rolling "Flat maximum health" four times. The issue
+left three things open: what a group is, whether a hybrid affix collides with its
+own halves, and whether prefixes and suffixes can share a group.
+
+**THE RULE. An affix belongs to a group for every stat it grants, named by the
+stat and the kind together. One piece holds at most one affix from any group.**
+
+**RESEARCHED, NOT INVENTED.** Path of Exile calls this a mod group and it is the
+only mechanism making two modifiers on one item mutually exclusive. The published
+specification of the Path of Exile 2 data states it as "a string identifier
+shared by one or more modifiers" and "the sole mechanism for mutual exclusion
+between mods on a single item", with the constraint "only one modifier from any
+given mod group may exist on an item at any time". Craft of Exile's mod groups
+page and the Path of Exile wiki state the same rule for Path of Exile 1: the
+existence of a modifier on an item prevents one of the same mod group being
+added. Sources:
+
+- https://github.com/Isayi9999/sift-public/blob/main/POE2_MOD_GROUPS_SPEC.md
+- https://www.craftofexile.com/modgroups
+- https://pathofexile.fandom.com/wiki/Modifiers
+
+I could not confirm from public sources whether Last Epoch or Diablo 4 forbid a
+duplicate affix on one item. Searches returned crafting guides that describe two
+prefixes and two suffixes per item but state no duplicate rule either way. That
+part is therefore not evidence and is not cited in the design document.
+
+**DERIVED, NOT AUTHORED: the group comes from what the affix grants.** Both Path
+of Exile games write the group onto each modifier by hand. This project derives
+it from the stat and the kind, so a new affix cannot be added without a group and
+two affixes granting the same stat in the same kind cannot be given different
+groups by mistake. That also means `game/Data/Affixes.csv` needs **no new
+column**: the group is computable from the columns already there, `Stat` and
+`ValueKind` for a stat affix, `HybridPart1` and `HybridPart2` for a hybrid,
+`Ailment` for an ailment affix, and the rolled damage types for a resistance
+affix. Issue #128 proposed a column; a derived group cannot drift from what the
+affix grants and a column can, which is the same argument that removed the
+duplicated resistance cap in #233 and the duplicated hybrid ratio before it.
+
+**JUDGEMENT, NOT DERIVED: a hybrid occupies the group of each of its halves.**
+Path of Exile 2 goes the other way and gives a hybrid its own group, so both the
+pure and the hybrid version can sit on one item. Two reasons to differ. A hybrid
+here grants each half at 70% of the single affix, so a piece carrying "Health and
+armor" beside "Flat maximum health" carries the same stat twice, which is what
+the rule exists to stop. And a piece here has two prefix slots against that
+game's three, so the same allowance concentrates a piece far more. This is the
+part of the decision that is a call rather than a reading, and it is the part to
+revisit if items come out feeling too constrained in play.
+
+**FALLS OUT OF THE RULE: resistance is grouped by damage type, not by family.**
+The eight resistances are eight stats on the character sheet, so they are eight
+groups. A single-resistance roll occupies one of them, so two single rolls
+covering different types may share a piece. An all-resistance roll occupies all
+eight and so excludes every other resistance affix on that piece. No separate
+rule was needed for the three families.
+
+**ALREADY ANSWERED: prefixes and suffixes cannot share a group.** The design
+already says a stat appearing as a prefix never appears as a suffix, and
+`sim/cataclysm_sim/affixes.py` has enforced it since the pool was built. The two
+pools are group-disjoint without a rule of their own.
+
+**What it does not do.** It constrains one piece, not one character. Capping a
+resistance takes roughly twelve affix slots across a set and is meant to.
+
+**Affects.** `docs/Cataclysm_GDD_v2.md`, new section "One Affix Per Group" in the
+Affixes part of section VI. **Applied.**
+
+**In the model.** `sim/cataclysm_sim/affixes.py` gained `stat_group`,
+`ailment_group`, `resistance_group`, `groups_of`, `may_join`,
+`draw_without_repeating_a_group`, `everything_for` and `distinct_groups_for`, and
+a module-level check that every gear slot still offers enough distinct groups to
+fill its two prefix and two suffix slots. The loot roll itself is issue #44 and
+is not built here.
+
+---
+
 ## 2026-08-05 — Increased damage against a target's damage type is worth 400%, against the generic affix's 125%
 
 **The question.** The project owner approved eight affixes on 2026-08-04, one per

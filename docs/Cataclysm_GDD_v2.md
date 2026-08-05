@@ -1517,6 +1517,43 @@ Every piece has four affix slots, and they are **two prefixes and two suffixes**
 
   
 
+### **One Affix Per Group**
+
+The split above says which pool an affix is drawn from. It does not say what an affix may sit beside, and without a second rule a four-affix Masterful piece can roll **Flat maximum health** four times over. Slot restrictions do not help: every affix is restricted against the slot and against nothing else, least of all itself.
+
+
+
+**The rule. An affix belongs to a group for every stat it grants, named by the stat and the kind together. One piece holds at most one affix from any group.**
+
+
+
+**The group is derived from what the affix grants, not written on it.** Two affixes granting the same stat in the same kind are in the same group because they grant the same thing, so a new affix cannot be added without a group and two copies of one stat cannot be given different groups by mistake.
+
+
+
+|  |  |  |
+| :-- | :-- | :-- |
+| \*\*Case\*\* | \*\*What the rule gives\*\* | \*\*Why\*\* |
+| Flat and increased of one stat | Both may sit on one piece | Different kinds, so different groups. The design already says neither kind is strictly better and that is the reason for having both |
+| A hybrid and one of its halves | Cannot sit on one piece | A hybrid grants each half at 70%, so the piece would carry the same stat twice |
+| Two single-resistance rolls | May sit on one piece if they cover different damage types | The eight resistances are eight stats, so they are eight groups |
+| An all-resistance roll | Excludes every other resistance affix on that piece | It occupies all eight resistance groups at once |
+| A prefix and a suffix | Never collide | A stat that appears as a prefix never appears as a suffix, so the two pools share no group |
+
+
+
+**Where the shape comes from.** Path of Exile calls this a **mod group**, and it is the only thing that makes two modifiers on one item mutually exclusive: a group is an identifier shared by one or more modifiers, and only one modifier from a group may exist on an item at a time. Path of Exile 2 keeps the rule and the name. Both games write the group onto each modifier by hand; this design derives it instead, which is the one deliberate difference.
+
+
+
+**A hybrid excluding its own halves is the other deliberate difference.** Path of Exile 2 gives a hybrid modifier its own group, so a weapon there can carry both the pure and the hybrid version. That allowance concentrates far more here, because a piece has two prefix slots rather than that game's three, and because the point of a hybrid in this design is to commit a build to two stats at once rather than to deepen one.
+
+
+
+**What it does not do.** It does not stop a stat appearing across several pieces. Capping a resistance takes roughly twelve affix slots and is meant to be spread over a set; the rule constrains one piece, not one character.
+
+
+
 ### **Item Bases and Implicits**
 
 Every slot is a **category**, not a single item. Each category contains several **bases**, and each base carries one to three **implicit** stats. An implicit does not roll and cannot be changed. It is what the item **is**, so picking a base commits a character to a defensive layer or an offensive property before any affix is involved.
