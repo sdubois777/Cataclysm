@@ -223,8 +223,8 @@ def test_the_overwhelm_figures_quoted_in_the_design_documents_are_still_true():
     def stripped(rarity: str) -> float:
         return combat.overwhelm(player, at_tier_eight(rarity).score, width) * 100
 
-    assert stripped("Common") == pytest.approx(8.9, abs=0.05)
-    assert stripped("Cataclysm Boss") == pytest.approx(21.4, abs=0.05)
+    assert stripped("Common") == pytest.approx(8.4, abs=0.05)
+    assert stripped("Cataclysm Boss") == pytest.approx(20.9, abs=0.05)
 
 
 def test_overwhelm_shrinks_as_the_player_out_powers_the_enemy():

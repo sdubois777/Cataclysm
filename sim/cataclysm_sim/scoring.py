@@ -35,8 +35,12 @@ import re
 # ran for five months on a power curve 21-44% below the real one. The self-test
 # below now parses the reference file and fails on any drift, so a future edit
 # there cannot pass unnoticed.
+#
+# Tiers 2 to 7 were reset upstream on 2026-08-05, in DungeonSimulator commit
+# 6c9be8b, because tier 6 was narrower than tier 5. Issue #7. Tiers 1 and 8 are
+# unchanged: `player_power.py` pins its curve through those two and nothing else.
 PLAYER_MAX_SCORES: dict[int, float] = {
-    0: 0, 1: 385, 2: 871, 3: 1457, 4: 2144, 5: 3251, 6: 4166, 7: 5209, 8: 6327,
+    0: 0, 1: 385, 2: 883, 3: 1508, 4: 2225, 5: 3078, 6: 4057, 7: 5120, 8: 6327,
 }
 
 BASE_TYPE_SCORES = {"Basic": 30, "Quest": 60, "Fallen City": 90, "Cataclysm": 120}

@@ -20,6 +20,107 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The player power anchors for tiers 2 to 7 were reset so tier width climbs at every tier
+
+**Affects** `src/utils/calculateScores.tsx` in the separate
+`sdubois777/DungeonSimulator` repository, and every copy of the anchors in this
+one. Applied. Issue #7.
+
+**The anchors are now 385, 883, 1508, 2225, 3078, 4057, 5120, 6327.** They were
+385, 871, 1457, 2144, 3251, 4166, 5209, 6327.
+
+**STATED BY THE PROJECT OWNER, 2026-08-05:** take the candidate derived from the
+player Power Score model, and make sure the change reaches everywhere player and
+dungeon scores are calculated.
+
+## What was wrong
+
+Tier width is the previous tier's maximum subtracted from this tier's, and it
+multiplies **every** weighted term in the Enemy Score formula: dungeon type,
+subtype and enemy rarity. The widths did not climb monotonically. Tier 5 was
+1,107 wide where the surrounding trend was about 790, and tier 6 was **narrower**
+than tier 5 at 915.
+
+Two consequences, measured on 2026-08-05 and not previously recorded:
+
+| tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Boss minus Common on the same floor, before | 116 | 146 | 176 | 206 | **332** | **274** | 313 | 336 |
+| Chance a player at their own tier's ceiling dies in a Cataclysm dungeon, before | 16.7% | 18.4% | 19.5% | 20.3% | **15.9%** | 20.8% | 20.8% | 21.5% |
+
+A tier 6 Boss stood out less against its own trash than a tier 5 Boss did, and
+tier 5 was measurably a breather compared with the tiers either side of it.
+
+## Why these values, and the correction to what was first proposed
+
+The new anchors come from `sim/cataclysm_sim/player_power.py`, the model that
+scores a reference character whose level, gear rarity, gear upgrade level, gem
+count and resistances all advance smoothly with the tier. Its curve is a
+quadratic pinned through the tier 1 and tier 8 anchors and nothing else, so
+tiers 2 to 7 are predictions rather than fits.
+
+**The proposal first posted on issue #7 moved all seven of tiers 1 to 7, and that
+was wrong.** Moving tier 1 re-pins the quadratic, which changes the derived
+weights, which changes every prediction. Installing that proposal and re-running
+the model was measured: it then predicted 383, 882, 1506, 2223, 3076, 4056, 5119
+against the anchors just installed, disagreeing with itself at seven of the eight
+tiers.
+
+**Leaving tiers 1 and 8 alone avoids that entirely.** The curve does not move, so
+the predictions do not move, and the anchors can simply be set to them. Measured
+after installing: tiers 2 through 8 are exact and tier 1 is one point off, 384
+against 385. That single residual is the reference character's level and filled
+socket count being whole numbers where the continuous curve asks for 12.5 and
+5.625.
+
+It also moves six anchors instead of seven.
+
+## What the widths are now
+
+| tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| width | 385 | 498 | 625 | 717 | 853 | 979 | 1063 | 1207 |
+| step over the tier below | | 1.29x | 1.25x | 1.15x | 1.19x | 1.15x | 1.09x | 1.14x |
+
+Every tier is wider than the one below it, and the step ranges from 1.09 to 1.29
+times against the previous 0.83 to 1.61.
+
+## Every place the change had to reach
+
+| File | What it holds |
+|---|---|
+| `src/utils/calculateScores.tsx` in `sdubois777/DungeonSimulator` | The authoritative table. Commit 6c9be8b. |
+| `sim/cataclysm_sim/scoring.py` | The verified Python copy |
+| `sim/cataclysm_sim/combat.py` | A docstring quoting what a maxed tier 8 player would take under a rejected alternative rule; 54% became 56% |
+| `sim/analyse_scoring.py` | A hand transcription of the design document's ranges table |
+| `sim/tests/test_player_power.py` | A test that asserted the old residual signature, rewritten to assert the residual is gone, plus a new test that widths climb |
+| `sim/tests/test_enemy_stats.py` | Two pinned Overwhelm figures |
+| `docs/Cataclysm_GDD_v2.md` | Two anchor tables, the Overwhelm sentence in section IV, and two paragraphs describing the anomaly |
+| `docs/DECISIONS.md` | The Overwhelm comparison table in the 2026-08-03 entry |
+| `game/Source/Cataclysm/Player/CataclysmPowerScore.cpp` | The C++ anchor table |
+| `game/Source/Cataclysm/Tests/CataclysmPowerScoreTests.cpp` | The C++ mirror of the residual test, rewritten the same way |
+
+Nothing else in the repository holds a copy: a search of every Python, Markdown,
+C++ and header file for the six retired values returns nothing.
+
+**The Overwhelm figures moved and three documents quoted them.** A player at the
+tier 8 ceiling now loses 8.4% of their mitigation to a Common enemy, 12.2% to a
+Herald and 20.9% to a Cataclysm Boss, where the figures were 8.9%, 12.6% and
+21.4%. Those three numbers are the stated argument in `docs/DECISIONS.md` for why
+enemies carry no per-rarity Penetration stat. The argument is unchanged: Overwhelm
+still exceeds the retired per-rarity figure at Common and still sits below it at
+Herald and Cataclysm Boss.
+
+## What was not done
+
+`sim/experiments.py`, the tuning sweep, has **not** been re-run. It is about
+25,000 simulated campaigns and roughly eighteen minutes, and there is no saved
+baseline from before this change to compare against, so a single run would
+produce numbers with nothing to measure them against. Any tuning conclusion drawn
+from a sweep run before 2026-08-05 was computed on the old curve and should be
+treated as unverified, in the same way issue #6 treated the analysis scripts.
+---
+
 ## 2026-08-05 — The empire tree is the node graph; the keystones document is commentary on it
 
 **Affects** `docs/README.md`, `docs/Empire_Skill_Tree_Keystones.md`. Applied.
@@ -4066,9 +4167,9 @@ player at that tier's maximum Power Score:
 
 | Rarity | Per-rarity penetration, now removed | Overwhelm, already present |
 |---|---|---|
-| Common | 0% | 8.9% |
-| Herald | 15% | 12.6% |
-| Cataclysm Boss | 25% | 21.4% |
+| Common | 0% | 8.4% |
+| Herald | 15% | 12.2% |
+| Cataclysm Boss | 25% | 20.9% |
 
 Overwhelm is the better of the two copies for two reasons. It shrinks to nothing
 as the player out-powers the content, where a fixed per-rarity number punishes

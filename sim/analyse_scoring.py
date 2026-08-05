@@ -90,8 +90,8 @@ hdr("D. GDD 'Power Score Ranges by Tier' vs DungeonSimulator anchors")
 #: anchors inside the same document and nothing tests it, so this transcription
 #: is checked against the model by sim/tests/test_analysis_scripts.py and the
 #: document itself is issue #253.
-GDD = {1: (0, 385), 2: (386, 871), 3: (872, 1457), 4: (1458, 2144),
-       5: (2145, 3251), 6: (3252, 4166), 7: (4167, 5209), 8: (5210, 6327)}
+GDD = {1: (0, 385), 2: (386, 883), 3: (884, 1508), 4: (1509, 2225),
+       5: (2226, 3078), 6: (3079, 4057), 7: (4058, 5120), 8: (5121, 6327)}
 print(f"{'tier':>5}{'GDD range':>18}{'sim max':>10}{'sim in GDD range?':>20}")
 print("-" * 88)
 for t in range(1, 9):

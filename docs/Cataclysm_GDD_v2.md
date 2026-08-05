@@ -581,7 +581,7 @@ Gear and gem rarity equal the difficulty tier because there are eight of each, a
 
   
 
-This reference character scores 6,327 at tier 8, landing exactly on the tier 8 anchor, and 384 against the tier 1 anchor of 385. The six tiers in between are within 5.3%, and that residual is not a defect of the formula: tier 5 is 1,107 points wide where the surrounding trend is about 790, and no smoothly progressing character can pass through that kink.
+This reference character scores 6,327 at tier 8, landing exactly on the tier 8 anchor, and 384 against the tier 1 anchor of 385. **The six tiers in between land exactly on their anchors**, because on 2026-08-05 those six anchors were reset to what this formula predicts. Before that they were 871, 1,457, 2,144, 3,251, 4,166 and 5,209, and the six tiers in between were within 5.3% rather than exact. Tiers 1 and 8 were deliberately left alone: the formula's weights are solved from those two anchors and nothing else, so moving either one would shift every prediction. Issue #7.
 
   
 
@@ -1017,7 +1017,7 @@ Tier Width is the difference between the maximum Power Score of the current diff
 
   
 
-**Enemy rarity produces an Overwhelm ladder by itself**, because rarity already raises Enemy Score. At tier 8, a player at that tier's maximum Power Score loses 8.9% of their mitigation to a Common enemy and 21.4% to a Cataclysm Boss, with no per-rarity number written anywhere.
+**Enemy rarity produces an Overwhelm ladder by itself**, because rarity already raises Enemy Score. At tier 8, a player at that tier's maximum Power Score loses 8.4% of their mitigation to a Common enemy and 20.9% to a Cataclysm Boss, with no per-rarity number written anywhere.
 
   
 
@@ -2643,17 +2643,17 @@ The anchor every score is measured against: the maximum Power Score a player is 
 | :-: | :-: | :-: |
 | \*\*Tier\*\* | \*\*Maximum\*\* | \*\*Tier width\*\* |
 | 1 | 385 | 385 |
-| 2 | 871 | 486 |
-| 3 | 1457 | 586 |
-| 4 | 2144 | 687 |
-| 5 | 3251 | 1107 |
-| 6 | 4166 | 915 |
-| 7 | 5209 | 1043 |
-| 8 | 6327 | 1118 |
+| 2 | 883 | 498 |
+| 3 | 1508 | 625 |
+| 4 | 2225 | 717 |
+| 5 | 3078 | 853 |
+| 6 | 4057 | 979 |
+| 7 | 5120 | 1063 |
+| 8 | 6327 | 1207 |
 
 
 
-**These are a design choice, not a derived result.** They began as a flat arithmetic progression 283 points wide per tier and were revised at least three times. Tier 5 is 1,107 wide where the surrounding trend is about 790, and tier 6 is narrower than tier 5; issue #7 records that anomaly. They can be revisited.
+**These are a design choice, not a derived result.** They began as a flat arithmetic progression 283 points wide per tier and were revised at least four times. **Tier width now climbs at every tier**, from 385 to 1,207, at a step between 1.09 and 1.29 times. It did not until 2026-08-05: tier 5 was 1,107 wide where the surrounding trend was about 790, and tier 6 was narrower than tier 5 at 915. Because tier width multiplies every weighted term in the Enemy Score formula, a tier 6 Boss gained less power over a tier 6 Common enemy than a tier 5 Boss gained over a tier 5 Common, and a player at their own tier's ceiling died measurably less often at tier 5 than at the tiers either side. Issue #7 has the measurements. They can be revisited again.
 
 
 
@@ -2744,13 +2744,13 @@ The max level is 100. Players earn experience by killing dungeon enemies and def
 | :-: | :-: |
 | \*\*Tier\*\* | \*\*Expected Power Score Range\*\* |
 | T1 | 0 — 385 |
-| T2 | 386 — 871 |
-| T3 | 872 — 1,457 |
-| T4 | 1,458 — 2,144 |
-| T5 | 2,145 — 3,251 |
-| T6 | 3,252 — 4,166 |
-| T7 | 4,167 — 5,209 |
-| T8 | 5,210 — 6,327 |
+| T2 | 386 — 883 |
+| T3 | 884 — 1,508 |
+| T4 | 1,509 — 2,225 |
+| T5 | 2,226 — 3,078 |
+| T6 | 3,079 — 4,057 |
+| T7 | 4,058 — 5,120 |
+| T8 | 5,121 — 6,327 |
 
   
 
