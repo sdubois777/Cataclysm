@@ -136,7 +136,7 @@ War_Sword_Movement,Sword,War,Movement,Lunge,"Dash forward at high speed, driving
 Death_Greataxe_Movement,Greataxe,Death,Movement,,,Slot.Movement,,
 Chaos_Greataxe_Movement,Greataxe,Chaos,Movement,,,Slot.Movement,,
 Demonic_Greataxe_Special,Greataxe,Demonic,Special,Emberhurl,"Hurl your greataxe spinning through a group of enemies in a line, hitting each enemy twice, once going out and once returning to your hand. The axe trails fire, setting alight every enemy it passes and leaving its flight path burning for 4 seconds.","Item.Weapon.2hAxe, Element.Demonic, Type.Projectile, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Special",Projectile,Range=12; Radius=1.5; Pierce=99; Returns=1; Speed=1800; Burn=1; GroundRadius=1.5; GroundDuration=4
-War_Whip_Movement,Whip,War,Movement,Whip Swing,"Hook your whip around an anchor point or enemy up to 10 meters away and swing through the air, covering the distance instantly. If hooked to an enemy, the swing yanks them off balance and briefly stuns them on your arrival.","Item.Weapon.Whip, Element.War, Keyword.CC, Slot.Movement",,
+War_Whip_Movement,Whip,War,Movement,Whip Swing,"Hook your whip around an anchor point or enemy up to 10 meters away and swing through the air, covering the distance instantly. If hooked to an enemy, the swing yanks them off balance and briefly stuns them for 0.75 seconds on your arrival.","Item.Weapon.Whip, Element.War, Keyword.CC, Slot.Movement",,
 Death_Greataxe_Special,Greataxe,Death,Special,,,Slot.Special,,
 Chaos_Greataxe_Special,Greataxe,Chaos,Special,,,Slot.Special,,
 Celestial_Spear_Support,Spear,Celestial,Support,,,Slot.Support,,
