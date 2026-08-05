@@ -42,6 +42,21 @@ void UCataclysmPrimaryAttributeSet::PreAttributeChange(
 	// budget is one point per level and is enforced where points are spent, not
 	// here, because gear and passives may also grant attributes.
 	NewValue = FMath::Max(NewValue, 0.0f);
+
+	// An attribute is a whole number of points. The affix that raises one is a
+	// percentage, so 33 Spirit with a +12% affix arrives here as 36.96 and
+	// leaves as 37. Rounding here rather than in the character screen is the
+	// point of the rule: every reader of the attribute gets the same number, so
+	// a player cannot compute what 37 Spirit should give and be handed what
+	// 36.96 gives. Issue #225.
+	NewValue = RoundedPoints(NewValue);
+}
+
+float UCataclysmPrimaryAttributeSet::RoundedPoints(float Raw)
+{
+	// FMath::RoundToFloat rounds a half away from zero, and an attribute is
+	// never negative, so this is "round half up" as the design states it.
+	return FMath::RoundToFloat(FMath::Max(Raw, 0.0f));
 }
 
 TArray<FGameplayAttribute> UCataclysmPrimaryAttributeSet::GetAllAttributes()

@@ -20,6 +20,102 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — An attribute is a whole number of points, rounded to the nearest, in the maths and not only on the screen
+
+**Affects** `docs/Cataclysm_GDD_v2.md`, `sim/cataclysm_sim/character.py` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmPrimaryAttributeSet.cpp`. Applied.
+Issue #225.
+
+**STATED BY THE PROJECT OWNER, 2026-08-05, verbatim:**
+
+> ARPG players are obsessed with math and calculations. If you show them a
+> number that isn't true, they'll keep digging and complaining. Round to the
+> nearest whole number.
+
+## The question
+
+Each of the eight primary attributes has exactly one affix and it is a
+percentage increase, decided when gear was allowed to grant attributes on
+2026-08-04. A percentage of a whole number is usually not one. A character with
+33 Spirit wearing a top-tier +12% Spirit affix reaches **36.96**, and nothing
+said whether that was 36, 37 or 36.96.
+
+## The answer, and the part of it that matters most
+
+Round to the nearest whole number. A half rounds up: 36.5 becomes 37.
+
+**The rounding is applied to the value, not to how the value is printed.** That
+is the whole content of the owner's reasoning. The arrangement to avoid is a
+character screen reading 37 Spirit while the calculations keep 36.96, because a
+player then works out what 37 Spirit should give, is handed something else, and
+reports it as a bug. There is one value, it is whole, and every reader gets the
+same one.
+
+The issue's own written recommendation was the opposite — keep the fraction in
+the maths and round only for display — and it was **overruled**. Recorded so the
+recommendation is not re-proposed as though it had never been considered.
+
+## Two alternatives, and why each was rejected
+
+**Flooring.** Never grants more than was earned, and it was rejected because it
+takes +12% of 4 Spirit from 4.48 back to 4, so an affix on a lightly invested
+attribute is worth **exactly nothing**. The affix is a percentage so that it is
+*weak* when spread thin, which rewards a decision the player already made. Being
+worth zero below a threshold is a different thing and reads as broken rather
+than as a trade-off.
+
+**Keeping the fraction.** Loses nothing numerically, and it is the one
+arrangement in which the screen and the maths can disagree.
+
+## Round half up, not round half to even
+
+Python's built-in `round` rounds a half to the nearest even number, so it gives
+4 for 4.5 and 36 for 36.5. A player reads "nearest whole number" as 4.5 becoming
+5. Halves are reachable — 10% of 5 points is 5.5 — so the rule is spelled out
+rather than delegated to a language default.
+`sim/tests/test_attribute_rounding.py::test_the_built_in_round_really_would_disagree`
+holds the three cases where the two differ, so the reason for a separate
+function cannot quietly stop being true.
+
+## What had to be built before the rule had anywhere to live
+
+**The simulation could not represent an attribute affix at all.**
+`sim/cataclysm_sim/character.py` validated `Gear.increased` against the
+character sheet's stats, and the eight attributes are not stats, so
+`Gear(increased={"agility": 0.12})` raised. The eight affixes added by pull
+request #224 existed in the affix pool and reached no character. Three things
+changed:
+
+- `Gear.increased` now admits an attribute name as well as a stat name.
+  `Gear.flat` and `Gear.weapon_base` still do not: there is no flat attribute
+  affix, and a weapon supplies a base only for the stats it owns.
+- `Character.attribute(name)` returns the allocated points raised by any gear
+  increase and rounded, and `Character.attribute_line()` returns all eight.
+- `Character.increases(stat)` reads each attribute through `Character.attribute`
+  instead of off the raw allocation. Reading the allocation is what made an
+  attribute affix grant nothing.
+
+`Attributes.increases_for` still reads the allocation alone and is kept for
+asking what levelling by itself bought. Its docstring says so.
+
+**In the game**, `UCataclysmPrimaryAttributeSet::PreAttributeChange` already
+clamped an attribute at zero and now rounds as well, through a named
+`RoundedPoints` function so a test can check the rule without building an
+ability system component.
+
+## Evidence
+
+```
+1281 passed in 10.11s
+ruff check . — All checks passed!
+```
+
+Worked example, measured rather than asserted: a character with 33 Vitality and
+a +12% Vitality affix has exactly the maximum health of a character with 37
+Vitality and no affix, which is the mismatch this rule exists to prevent.
+
+---
+
 ## 2026-08-05 — Damage over time has three levers, each worth 52% at top tier, and they were priced together
 
 **Affects** `docs/Cataclysm_GDD_v2.md`, `docs/All_Things_Cataclysm.xlsx`, the
