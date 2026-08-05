@@ -1332,43 +1332,76 @@ DAMAGE_TYPES_ON_TWO_HANDED = 8
 DIFFICULTY_TIERS = 8
 
 
-def max_affix_tier(tier: int) -> int:
-    """The highest affix tier reachable at a difficulty tier, by any route.
+#: How far above the difficulty tier a DROP may roll. Stated by the project
+#: owner on 2026-08-05, issue #241.
+#:
+#: The one-above is what makes a drop worth reading. With the cap sitting exactly
+#: on the tier, every affix a player found was one they could already make, so
+#: the only reason to run a dungeon was quantity. One tier above means the best
+#: thing a dungeon can produce is something the forge cannot yet reach.
+DROP_TIERS_ABOVE_DIFFICULTY = 1
 
-    Issue #129. Affixes have seven tiers and tier 7 is worth seven times tier 1,
-    and nothing said which of them a drop could roll. Without a gate a tier 1
-    dungeon drops a T7 affix and the seven-tier curve does nothing for
-    progression at all.
 
-    THE GATE IS THE DIFFICULTY TIER, which is the design's own precedent three
-    times over: gear and gem rarity equal the difficulty tier, the best upgrade
+def max_affix_tier_on_a_drop(tier: int) -> int:
+    """The highest affix tier a DROP may roll at a difficulty tier.
+
+    Issue #129, revised by the project owner on 2026-08-05 in issue #241.
+    Affixes have seven tiers and tier 7 is worth seven times tier 1, and nothing
+    said which of them a drop could roll. Without a gate a tier 1 dungeon drops
+    a T7 affix and the seven-tier curve does nothing for progression at all.
+
+    THE GATE IS THE DIFFICULTY TIER PLUS ONE. The difficulty tier is the design's
+    own gate three times over: gear and gem rarity equal it, the best upgrade
     stone that can drop is capped by it, and a weapon rolls damage types up to
-    it. This is the same shape as `max_damage_types` -- the lower of a fixed
-    ceiling and the tier -- and deliberately so.
+    it. The plus one is the project owner's, and it is what gives a drop
+    something the forge cannot yet make.
 
-    THERE ARE EIGHT DIFFICULTY TIERS AND SEVEN AFFIX TIERS, so one has to double
-    up. It doubles at the TOP: tiers 7 and 8 both reach T7. Doubling at the
-    bottom instead would mean tiers 1 and 2 both stopped at T1, and early
-    progression has fewer other axes to lean on than late progression, which has
-    gear rarity, gear upgrade level and sockets still climbing.
+    THERE ARE EIGHT DIFFICULTY TIERS AND SEVEN AFFIX TIERS. With the plus one,
+    the cap reaches T7 at difficulty tier 6 and stays there for tiers 6, 7 and 8.
 
-    IT CAPS CRAFTING TOO, not only the drop. Capping the drop alone would leave
-    the gate doing nothing, because the Potency Crystal raises an affix a tier at
-    a time and a tier 1 player would simply craft to T7. The design already gates
-    progression rather than the source: the upgrade stone rule caps what can
-    drop by the current difficulty tier for the same reason.
+    IT DOES NOT CAP CRAFTING. See `max_affix_tier_by_crafting`.
     """
     if not 1 <= tier <= DIFFICULTY_TIERS:
         raise ValueError(f"tier {tier} is outside 1 to {DIFFICULTY_TIERS}")
-    return min(AFFIX_TIERS[-1], tier)
+    return min(AFFIX_TIERS[-1], tier + DROP_TIERS_ABOVE_DIFFICULTY)
+
+
+def max_affix_tier_by_crafting(tier: int) -> int:
+    """The highest affix tier CRAFTING may reach at a difficulty tier: all of them.
+
+    STATED BY THE PROJECT OWNER, issue #241, 2026-08-05: a player may craft an
+    affix as high as they can afford, at any difficulty tier. What stops a tier 1
+    player owning a set of T7 affixes is cost, not a rule -- the Potency Crystal
+    raises one tier at a time, `game/Data/CraftingMaterials.csv` prices the
+    deterministic affix craft at one day per tier of affix, and the empire tree's
+    crafting investment is what brings that within reach.
+
+    Takes `tier` and ignores it on purpose. A caller asking "how high can this be
+    crafted here" gets an answer with the same shape as the drop cap, and the
+    day this stops being flat there is one place to change.
+    """
+    if not 1 <= tier <= DIFFICULTY_TIERS:
+        raise ValueError(f"tier {tier} is outside 1 to {DIFFICULTY_TIERS}")
+    return AFFIX_TIERS[-1]
+
+
+def max_affix_tier(tier: int) -> int:
+    """The highest affix tier reachable at a difficulty tier, by any route.
+
+    Which is the crafting ceiling, because crafting is uncapped. Kept as a name
+    because callers asking "what is the best possible here" should not have to
+    know which route wins.
+    """
+    return max(max_affix_tier_on_a_drop(tier), max_affix_tier_by_crafting(tier))
 
 
 def roll_affix_tier(tier: int, rng) -> int:
     """The tier one affix rolls at on a drop at this difficulty tier.
 
-    Uniform from T1 up to `max_affix_tier(tier)`. Every tier at or below the cap
-    stays in the pool, so a deep drop is better on average without being
-    predictable, which is what makes a drop worth reading.
+    Uniform from T1 up to `max_affix_tier_on_a_drop(tier)`, which is the
+    difficulty tier plus one, capped at T7. Every tier at or below that stays in
+    the pool, so a deep drop is better on average without being predictable,
+    which is what makes a drop worth reading.
 
     That is what the genre does. Path of Exile gates modifier tiers on item
     level, and item level expands which tiers are available rather than removing
@@ -1377,7 +1410,7 @@ def roll_affix_tier(tier: int, rng) -> int:
     this design already uses one section away: a weapon rolls from one damage
     type up to the lower of its own limit and the tier it dropped on.
     """
-    return rng.randint(1, max_affix_tier(tier))
+    return rng.randint(1, max_affix_tier_on_a_drop(tier))
 
 
 def max_damage_types(hands: int, tier: int) -> int:
@@ -2029,13 +2062,18 @@ def _check_every_slot_can_fill_all_four_of_its_affixes() -> None:
 
 
 def _check_the_affix_tier_gate_covers_every_difficulty_tier() -> None:
-    """The gate has to reach the top and never exceed it, at both ends.
+    """The DROP gate has to reach the top and never exceed it, at both ends.
 
-    A gate that never reaches T7 makes the top tier unreachable and the crafting
-    material that raises affixes pointless. A gate that exceeds the affix tiers
-    would index outside TIER_FRACTIONS and raise on the first drop.
+    A gate that never reaches T7 makes the top tier undroppable. A gate that
+    exceeds the affix tiers would index outside TIER_FRACTIONS and raise on the
+    first drop.
+
+    Checks the drop cap rather than `max_affix_tier`, because crafting is
+    uncapped by the project owner's decision on issue #241 and so has nothing
+    left to check.
     """
-    reached = [max_affix_tier(t) for t in range(1, DIFFICULTY_TIERS + 1)]
+    reached = [max_affix_tier_on_a_drop(t)
+               for t in range(1, DIFFICULTY_TIERS + 1)]
     # Checked FIRST so a gate that runs off the end of the tier list is named
     # for what it is. Checking the top value first would report a gate reaching
     # T8 as "T7 can never be reached", which is both wrong and unhelpful.
@@ -2049,10 +2087,14 @@ def _check_the_affix_tier_gate_covers_every_difficulty_tier() -> None:
             f"the affix tier gate tops out at T{max(reached)}, so T"
             f"{AFFIX_TIERS[-1]} can never be reached and the Potency Crystal "
             "has nothing to raise an affix to")
-    if min(reached) != AFFIX_TIERS[0]:
+    # AT LEAST T1, not exactly T1. The cap is the ceiling of the draw, and the
+    # draw runs from T1 up to it, so a cap of T2 at difficulty tier 1 still
+    # drops T1 items. Requiring equality here is what the rule said before the
+    # project owner raised the cap to the tier plus one on issue #241.
+    if min(reached) < AFFIX_TIERS[0]:
         raise ValueError(
-            f"the affix tier gate starts at T{min(reached)}; difficulty tier 1 "
-            f"has to allow T{AFFIX_TIERS[0]} or nothing can drop at all")
+            f"the affix tier gate tops out at T{min(reached)} somewhere, which "
+            f"is below T{AFFIX_TIERS[0]}, so nothing can drop at all there")
     if reached != sorted(reached):
         raise ValueError(
             f"the affix tier gate falls as the difficulty tier rises: {reached}")

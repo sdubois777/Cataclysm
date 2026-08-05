@@ -1369,7 +1369,7 @@ Affixes are the ordinary stats on gear, separate from the enchantments below. Ev
 
 ### **Affix Tiers**
 
-Every affix has seven tiers, T1 to T7, because the crafting material that raises them (the Potency Crystal) levels an affix to T7. One shared curve produces all seven from the affix's top value. Which of the seven a given item can reach is set by the difficulty tier; see What Tier an Affix Can Roll At below.
+Every affix has seven tiers, T1 to T7, because the crafting material that raises them (the Potency Crystal) levels an affix to T7. One shared curve produces all seven from the affix's top value. Which of the seven a DROP can roll is set by the difficulty tier; crafting is limited by cost rather than by tier. See What Tier an Affix Can Roll At below.
 
   
 
@@ -1405,7 +1405,7 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 
 
-**The gate is the difficulty tier, and it caps the affix tier by any route: `affix tier <= min(7, difficulty tier)`.**
+**A drop rolls affixes up to `min(7, difficulty tier + 1)`. Crafting has no tier gate at all: an affix can be raised as high as the player can afford.**
 
 
 
@@ -1415,13 +1415,13 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 |  |  |  |
 | :-: | :-: | :-- |
-| \*\*Difficulty tier\*\* | \*\*Highest affix tier\*\* | \*\*What else that tier brings\*\* |
-| 1 | T1 | Everyday gear, +3 upgrade level |
-| 2 | T2 | Quality gear, +4 |
-| 3 | T3 | Superb gear, +5 |
-| 4 | T4 | Masterful gear, +6 |
-| 5 | T5 | Legendary gear, +7 |
-| 6 | T6 | Mythical gear, +8 |
+| \*\*Difficulty tier\*\* | \*\*Highest affix tier a drop can roll\*\* | \*\*What else that tier brings\*\* |
+| 1 | T2 | Everyday gear, +3 upgrade level |
+| 2 | T3 | Quality gear, +4 |
+| 3 | T4 | Superb gear, +5 |
+| 4 | T5 | Masterful gear, +6 |
+| 5 | T6 | Legendary gear, +7 |
+| 6 | T7 | Mythical gear, +8 |
 | 7 | T7 | Ascendant gear, +9 |
 | 8 | T7 | Cataclysmic gear, +10 |
 
@@ -1429,7 +1429,7 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 
 
-**There are eight difficulty tiers and seven affix tiers, so one tier has to double up, and it doubles at the top.** Tiers 7 and 8 both reach T7. Doubling at the bottom instead would leave tiers 1 and 2 both stopping at T1, and early progression has fewer other things climbing alongside it. At the top, gear rarity, gear upgrade level and filled sockets are all still rising.
+**The drop cap reaches T7 at difficulty tier 6 and stays there.** There are eight difficulty tiers and seven affix tiers, and the one-above rule spends the difference at the top: tiers 6, 7 and 8 all reach T7 on a drop. That is where it costs least, because gear rarity, gear upgrade level and filled sockets are all still rising through those tiers.
 
 
 
@@ -1441,11 +1441,11 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 
 
-**The cap applies to crafting as well as to the drop.** The Potency Crystal raises an affix one tier at a time, and it cannot raise one past the difficulty tier the player has reached. Capping only the drop would leave the gate doing nothing, because a tier 1 player would craft to T7 instead of finding one. The upgrade stone rule already gates progression rather than the source, and this matches it. Carrying an old piece forward into a higher tier and raising its affixes again is the intended consequence.
+**Crafting is not gated by the difficulty tier, and cost is what limits it.** The Potency Crystal raises an affix one tier at a time and may take it to T7 at any difficulty tier. What stops a tier 1 player owning a set of T7 affixes is what it costs: each step is a craft, the deterministic affix craft is priced at one day per tier of affix, and a day at the forge is a day not defending the empire. Reaching the top early is possible and expensive, which is a decision rather than a rule.
 
 
 
-**No affix tier is drop-only.** Last Epoch makes its top two tiers uncraftable, and its stated reason is that crafting made near-perfect items too easy to reach, which removed the reason to hunt for gear. The tier cap answers that here instead: crafting cannot outrun the player's own progress, so it cannot produce a near-perfect item early. A dropped high tier still saves the days at the forge that raising it would have cost, and a day at the forge is a day not defending the empire, which is this game's scarcest resource. A drop-only band can be added later without changing anything else, because the drop cap and the crafting ceiling are two separate numbers.
+**No affix tier is drop-only, and the one-above rule is what gives a drop its own reason to exist.** Last Epoch makes its top two tiers uncraftable, and its stated reason is that crafting made near-perfect items too easy to reach, which removed the reason to hunt for gear. This design answers that with the plus one instead: the best affix a dungeon can drop is one tier above what the player has otherwise reached, so a good drop is always something worth having. A dropped high tier also saves the days at the forge that raising it would have cost, and a day at the forge is a day not defending the empire, which is this game's scarcest resource.
 
 
 

@@ -4,15 +4,14 @@ WHY THIS EXISTS. Issue #129. Affixes have seven tiers and T7 is worth seven time
 T1, and nothing said which of them a drop could reach. Without a gate a tier 1
 dungeon drops a T7 affix and the seven-tier curve does nothing for progression.
 
-THE RULE. `affix tier <= min(7, difficulty tier)`, applied to the drop and to
-crafting alike. Below the cap a drop rolls uniformly from T1 up to it.
+THE RULE, as the project owner settled it on 2026-08-05 in issue #241:
 
-The three things the issue left open are each pinned below:
+    a DROP rolls up to min(7, difficulty tier + 1), uniformly from T1
+    CRAFTING has no tier gate; cost is the only limit
+    a player may equip an affix above their own difficulty tier
 
-    what the gate is            the difficulty tier, the design's own gate
-    hard cap or weighted range  a hard cap on the maximum, everything below
-                                it still in the pool
-    any tiers drop-only         none; the cap already does that job
+The plus one is what gives a drop something the forge has not already reached,
+and it is why a dungeon is worth running for quality rather than only quantity.
 """
 
 from __future__ import annotations
@@ -29,9 +28,28 @@ from cataclysm_sim import affixes as af
 # The gate itself
 # --------------------------------------------------------------------------
 
-def test_the_cap_is_the_difficulty_tier_until_the_affix_tiers_run_out():
-    assert [af.max_affix_tier(t) for t in range(1, 9)] == \
-        [1, 2, 3, 4, 5, 6, 7, 7]
+def test_a_drop_rolls_up_to_one_tier_above_the_difficulty_tier():
+    assert [af.max_affix_tier_on_a_drop(t) for t in range(1, 9)] == \
+        [2, 3, 4, 5, 6, 7, 7, 7]
+
+
+def test_crafting_has_no_tier_gate_at_any_difficulty_tier():
+    """Stated by the project owner, issue #241: a player may craft an affix as
+    high as they can afford, wherever they are. Cost is the limit, not a rule."""
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        assert af.max_affix_tier_by_crafting(tier) == af.AFFIX_TIERS[-1]
+
+
+def test_the_best_reachable_tier_is_the_crafting_one_because_it_is_uncapped():
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        assert af.max_affix_tier(tier) == af.AFFIX_TIERS[-1]
+
+
+def test_a_drop_can_beat_what_the_player_could_otherwise_have_reached():
+    """The whole point of the plus one. Below the top three difficulty tiers a
+    drop can carry an affix one tier above the difficulty it dropped at."""
+    for tier in range(1, 6):
+        assert af.max_affix_tier_on_a_drop(tier) > tier
 
 
 def test_the_top_affix_tier_is_reachable():
@@ -41,12 +59,16 @@ def test_the_top_affix_tier_is_reachable():
     assert af.AFFIX_TIERS[-1] in reached
 
 
-def test_the_lowest_difficulty_tier_can_still_drop_something():
-    assert af.max_affix_tier(1) == af.AFFIX_TIERS[0]
+def test_the_lowest_difficulty_tier_can_still_drop_the_lowest_tier():
+    """The cap is the ceiling of the draw, not the whole of it. T1 stays in the
+    pool at every difficulty tier."""
+    rng = random.Random(2)
+    assert 1 in {af.roll_affix_tier(1, rng) for _ in range(200)}
 
 
 def test_the_cap_never_falls_as_the_difficulty_tier_rises():
-    caps = [af.max_affix_tier(t) for t in range(1, af.DIFFICULTY_TIERS + 1)]
+    caps = [af.max_affix_tier_on_a_drop(t)
+            for t in range(1, af.DIFFICULTY_TIERS + 1)]
     assert caps == sorted(caps)
 
 
@@ -54,32 +76,35 @@ def test_every_cap_is_a_real_affix_tier():
     """A cap outside the tier list would index outside TIER_FRACTIONS and raise
     on the first drop rather than at import."""
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        assert af.max_affix_tier(tier) in af.AFFIX_TIERS
+        assert af.max_affix_tier_on_a_drop(tier) in af.AFFIX_TIERS
 
 
-def test_the_doubled_tier_is_at_the_top_and_not_the_bottom():
-    """Eight difficulty tiers against seven affix tiers, so exactly one affix
-    tier serves two difficulty tiers. Which one is a design decision: the top,
-    because late progression still has gear rarity, upgrade level and sockets
-    climbing while early progression has less."""
-    caps = [af.max_affix_tier(t) for t in range(1, af.DIFFICULTY_TIERS + 1)]
+def test_the_top_tier_serves_the_last_three_difficulty_tiers():
+    """Eight difficulty tiers against seven affix tiers, and the plus one
+    spends the difference at the top: tiers 6, 7 and 8 all reach T7 on a drop.
+    That is where it costs least, because gear rarity, upgrade level and sockets
+    are all still climbing through those tiers."""
+    caps = [af.max_affix_tier_on_a_drop(t)
+            for t in range(1, af.DIFFICULTY_TIERS + 1)]
     repeated = [tier for tier, count in Counter(caps).items() if count > 1]
     assert repeated == [af.AFFIX_TIERS[-1]]
+    assert Counter(caps)[af.AFFIX_TIERS[-1]] == 3
 
 
 def test_a_difficulty_tier_outside_the_range_is_rejected():
     with pytest.raises(ValueError):
-        af.max_affix_tier(0)
+        af.max_affix_tier_on_a_drop(0)
     with pytest.raises(ValueError):
-        af.max_affix_tier(af.DIFFICULTY_TIERS + 1)
+        af.max_affix_tier_on_a_drop(af.DIFFICULTY_TIERS + 1)
 
 
-def test_the_gate_is_the_same_shape_as_the_weapon_damage_type_gate():
-    """Both are `min(a fixed ceiling, the difficulty tier)`. Using one shape for
-    both is the point: it is a fourth use of an existing mechanism rather than a
-    new one."""
+def test_the_drop_gate_is_the_weapon_damage_type_gate_shifted_by_one():
+    """Both are `min(a fixed ceiling, something that rises with the difficulty
+    tier)`. The affix gate adds one to the tier first; the weapon gate does not.
+    Keeping them recognisably the same shape is deliberate."""
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        assert af.max_affix_tier(tier) == min(af.AFFIX_TIERS[-1], tier)
+        assert af.max_affix_tier_on_a_drop(tier) == min(
+            af.AFFIX_TIERS[-1], tier + af.DROP_TIERS_ABOVE_DIFFICULTY)
         assert af.max_damage_types(1, tier) == min(
             af.DAMAGE_TYPES_ON_ONE_HANDED, tier)
 
@@ -91,7 +116,7 @@ def test_the_gate_is_the_same_shape_as_the_weapon_damage_type_gate():
 def test_a_drop_never_exceeds_the_cap():
     rng = random.Random(20260805)
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        cap = af.max_affix_tier(tier)
+        cap = af.max_affix_tier_on_a_drop(tier)
         for _ in range(500):
             assert 1 <= af.roll_affix_tier(tier, rng) <= cap
 
@@ -102,12 +127,12 @@ def test_every_tier_at_or_below_the_cap_can_still_roll():
     nothing to do."""
     rng = random.Random(11)
     seen = {af.roll_affix_tier(8, rng) for _ in range(2000)}
-    assert seen == set(range(1, af.max_affix_tier(8) + 1))
+    assert seen == set(range(1, af.max_affix_tier_on_a_drop(8) + 1))
 
 
-def test_a_tier_one_drop_can_only_be_tier_one():
+def test_a_tier_one_drop_can_only_be_tier_one_or_two():
     rng = random.Random(3)
-    assert {af.roll_affix_tier(1, rng) for _ in range(200)} == {1}
+    assert {af.roll_affix_tier(1, rng) for _ in range(200)} == {1, 2}
 
 
 def test_the_draw_is_uniform_across_the_allowed_tiers():
@@ -116,7 +141,7 @@ def test_the_draw_is_uniform_across_the_allowed_tiers():
     test is the one to change, and the decision belongs in docs/DECISIONS.md."""
     rng = random.Random(99)
     counts = Counter(af.roll_affix_tier(8, rng) for _ in range(70000))
-    expected = 70000 / af.max_affix_tier(8)
+    expected = 70000 / af.max_affix_tier_on_a_drop(8)
     for tier, count in counts.items():
         assert abs(count - expected) < expected * 0.1, (
             f"T{tier} came up {count} times against an expected {expected:.0f}")
@@ -127,7 +152,7 @@ def test_the_average_drop_at_the_deepest_tier_is_the_middle_tier():
     sevenths of a perfect one, and crafting closes the rest."""
     rng = random.Random(5)
     rolls = [af.roll_affix_tier(8, rng) for _ in range(20000)]
-    expected = (af.max_affix_tier(8) + 1) / 2
+    expected = (af.max_affix_tier_on_a_drop(8) + 1) / 2
     assert abs(sum(rolls) / len(rolls) - expected) < 0.1
 
 
@@ -140,7 +165,7 @@ def test_a_deeper_drop_is_better_on_average():
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
         rolls = [af.roll_affix_tier(tier, rng) for _ in range(5000)]
         means.append(sum(rolls) / len(rolls))
-    for lower, higher in zip(means[:6], means[1:7], strict=True):
+    for lower, higher in zip(means[:5], means[1:6], strict=True):
         assert higher > lower, means
 
 
@@ -157,12 +182,13 @@ def test_a_capped_affix_is_worth_its_share_of_the_top_value():
     """The gate and the linear tier curve have to agree: a tier 3 drop of the
     flat health affix is worth three sevenths of a T7 one, not some other
     number."""
-    cap = af.max_affix_tier(3)
+    cap = af.max_affix_tier_on_a_drop(3)
+    assert cap == 4
     assert af.FLAT_HEALTH.value_at(cap) == pytest.approx(
-        af.FLAT_HEALTH.value_at(7) * 3 / 7)
+        af.FLAT_HEALTH.value_at(7) * 4 / 7)
 
 
 def test_the_cap_at_every_difficulty_tier_produces_a_computable_value():
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        value = af.FLAT_HEALTH.value_at(af.max_affix_tier(tier))
+        value = af.FLAT_HEALTH.value_at(af.max_affix_tier_on_a_drop(tier))
         assert value > 0

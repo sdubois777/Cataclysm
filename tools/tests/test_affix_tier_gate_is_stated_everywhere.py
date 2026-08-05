@@ -1,8 +1,14 @@
 """The affix tier gate, pinned across the design document, the shipped crafting
 data and the model.
 
-WHY THIS EXISTS. Issue #129. `affix tier <= min(7, difficulty tier)` is stated in
-three places and each can drift from the others:
+WHY THIS EXISTS. Issue #129, revised by the project owner on 2026-08-05 in issue
+#241. The rule is now:
+
+    a DROP rolls up to min(7, difficulty tier + 1)
+    CRAFTING has no tier gate; cost is the only limit
+    a player may equip an affix above their own difficulty tier
+
+It is stated in several places and each can drift from the others:
 
     docs/Cataclysm_GDD_v2.md            the design document, section VI, in the
                                         section "What Tier an Affix Can Roll At"
@@ -11,12 +17,13 @@ three places and each can drift from the others:
                                         Crystal's stated function
     sim/cataclysm_sim/affixes.py        the model that implements the gate
 
-THE ONE THING THE CRAFTING CHECK IS FOR. The cap applies to crafting as well as
-to the drop. A reader of the crafting table alone would otherwise be told the
-Potency Crystal raises an affix "up to t7" and nothing more, which is the whole
-gate missing. That row is generated from the Crafting sheet of
-`docs/All_Things_Cataclysm.xlsx`, so a change has to be made there and the table
-regenerated with `python tools/generate_datatables.py`.
+THE ONE THING THE CRAFTING CHECK IS FOR. It said the opposite until #241: that
+the Potency Crystal could not raise an affix past the difficulty tier. The
+project owner reversed that, so the check now holds the reverse — that the row
+does NOT claim a difficulty tier gate. Same file, opposite assertion, which is
+why it is checked rather than left to memory. That row is generated from the
+Crafting sheet of `docs/All_Things_Cataclysm.xlsx`, so a change has to be made
+there and the table regenerated with `python tools/generate_datatables.py`.
 """
 
 from __future__ import annotations
@@ -97,10 +104,11 @@ class TestTheDocumentTableMatchesTheModel:
 
     def test_every_row_matches_the_model(self, gate_table, model):
         for difficulty_tier, affix_tier in sorted(gate_table.items()):
-            assert affix_tier == model.max_affix_tier(difficulty_tier), (
-                f"the document says difficulty tier {difficulty_tier} reaches "
-                f"T{affix_tier}; the model says "
-                f"T{model.max_affix_tier(difficulty_tier)}")
+            assert affix_tier == model.max_affix_tier_on_a_drop(
+                    difficulty_tier), (
+                f"the document says a drop at difficulty tier {difficulty_tier} "
+                f"reaches T{affix_tier}; the model says "
+                f"T{model.max_affix_tier_on_a_drop(difficulty_tier)}")
 
     def test_the_gear_rarity_column_matches_the_reference_progression(
             self, section, model):
@@ -127,12 +135,12 @@ class TestTheDocumentTableMatchesTheModel:
 
 
 class TestTheDocumentStatesTheRule:
-    def test_it_states_the_formula(self, section):
-        assert "min(7, difficulty tier)" in section
+    def test_it_states_the_drop_formula(self, section):
+        assert "min(7, difficulty tier + 1)" in section
 
-    def test_it_says_the_cap_applies_to_crafting_as_well_as_the_drop(
-            self, section):
-        assert "applies to crafting as well as to the drop" in section
+    def test_it_says_crafting_is_limited_by_cost_and_not_by_tier(self, section):
+        assert "Crafting is not gated by the difficulty tier" in section
+        assert "cost is what limits it" in section
 
     def test_it_says_every_tier_below_the_cap_stays_in_the_pool(self, section):
         assert "at or below the cap stays in the pool" in section
@@ -144,8 +152,8 @@ class TestTheDocumentStatesTheRule:
         assert "Path of Exile" in section
         assert "Last Epoch" in section
 
-    def test_it_says_which_tier_doubles_up_and_why(self, section):
-        assert "doubles at the top" in section
+    def test_it_says_where_the_drop_cap_stops_climbing(self, section):
+        assert "reaches T7 at difficulty tier 6 and stays there" in section
 
     def test_the_odds_it_quotes_follow_from_the_cap(self, section, model):
         """"about one time in seven" is 1 / max_affix_tier(8) under a uniform
@@ -157,12 +165,13 @@ class TestTheDocumentStatesTheRule:
         assert stated is not None, (
             f"the section says 'one time in {match.group(1)}', which this test "
             "cannot read as a number")
-        assert stated == model.max_affix_tier(model.DIFFICULTY_TIERS)
+        assert stated == model.max_affix_tier_on_a_drop(model.DIFFICULTY_TIERS)
 
     def test_the_average_it_quotes_follows_from_the_cap(self, section, model):
         match = re.search(r"averages T(\d+)", section)
         assert match, "the section does not say what a deep drop averages"
-        expected = (model.max_affix_tier(model.DIFFICULTY_TIERS) + 1) / 2
+        expected = (model.max_affix_tier_on_a_drop(model.DIFFICULTY_TIERS)
+                    + 1) / 2
         assert abs(int(match.group(1)) - expected) < 0.5
 
 
@@ -179,16 +188,23 @@ class TestTheAffixTiersSectionPointsAtTheGate:
 
 
 class TestTheShippedCraftingDataSaysTheSame:
-    def test_the_potency_crystal_states_the_difficulty_tier_cap(
+    def test_the_potency_crystal_does_not_claim_a_difficulty_tier_gate(
             self, potency_crystal):
+        """It said it did until #241. The project owner reversed that: crafting
+        may reach T7 at any difficulty tier and cost is the limit. A row that
+        claims a gate again would contradict the design document."""
         functions = (potency_crystal.get("Functions") or "")
-        assert "difficulty tier" in functions.lower(), (
-            "the Potency Crystal row in game/Data/CraftingMaterials.csv says "
-            f"{functions!r}, which does not mention the difficulty tier cap. A "
-            "reader of the crafting table alone would think crafting can reach "
-            "T7 at any tier. Edit the Crafting sheet of "
+        assert "never above the current difficulty tier" not in functions, (
+            "the Potency Crystal row in game/Data/CraftingMaterials.csv claims "
+            "a difficulty tier gate on crafting. The project owner removed that "
+            "on issue #241: crafting may reach T7 anywhere and cost is what "
+            "limits it. Edit the Crafting sheet of "
             "docs/All_Things_Cataclysm.xlsx and regenerate with "
             "python tools/generate_datatables.py.")
+        assert "cost is the limit" in functions.lower(), (
+            f"the Potency Crystal row says {functions!r}, which does not say "
+            "what limits crafting. A reader of the crafting table alone should "
+            "not have to infer it.")
 
     def test_it_still_states_the_top_affix_tier(self, potency_crystal, model):
         functions = (potency_crystal.get("Functions") or "").lower()

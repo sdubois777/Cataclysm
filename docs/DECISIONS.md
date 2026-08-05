@@ -20,6 +20,72 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — A drop rolls one affix tier above the difficulty tier, and crafting has no tier gate at all
+
+**This reverses part of the entry below dated the same day**, "The difficulty
+tier caps which affix tier an item can reach, by drop or by crafting". That entry
+labelled two of its parts as judgements rather than readings and said the
+drop-only question was the one most open to reversal. The project owner answered
+on issue #241 and reversed a different part.
+
+**STATED BY THE PROJECT OWNER, 2026-08-05, verbatim in substance:**
+
+- A player may wear equipment with an affix tier higher than their current
+  difficulty tier. There is no restriction on equipping.
+- Equipment drops with affixes **equal to or lower than the current difficulty
+  tier plus one**.
+- Crafting may raise an affix **as high as the player can afford**, at any
+  difficulty tier. With limited investment in the empire tree's crafting
+  branches it will simply be too expensive in resources, time and gold.
+
+**THE RULE.** A drop rolls uniformly from T1 up to `min(7, difficulty tier + 1)`.
+Crafting has no tier gate. Equipping has no tier gate.
+
+**What the plus one buys, and why it is the better answer.** With the cap sitting
+exactly on the difficulty tier, every affix a player found was one the forge
+could already produce, so a dungeon was worth running for quantity and never for
+quality. One tier above means the best thing a dungeon can drop is something
+crafting has not yet reached. That is a reason to run a dungeon that survives
+however much crafting investment a player has made, and it is the same job Last
+Epoch gives its two drop-only tiers without making any tier uncraftable.
+
+**Why capping crafting was wrong.** The earlier entry argued that capping only
+the drop would leave the gate doing nothing, because a tier 1 player would craft
+to T7 rather than find one. That reasoning treated cost as free. It is not: the
+Potency Crystal raises one tier at a time,
+`game/Data/CraftingMaterials.csv` prices the deterministic affix craft at one day
+per tier of affix, and a day at the forge is a day not defending the empire. The
+empire tree's crafting investment is what moves that from impossible to merely
+expensive, which is a decision a player makes rather than a rule the game
+enforces.
+
+**Where the eight-against-seven mismatch now falls.** The drop cap reaches T7 at
+difficulty tier 6 and stays there for tiers 6, 7 and 8. That is where it costs
+least, because gear rarity, gear upgrade level and filled sockets are all still
+rising through those tiers.
+
+**What is unchanged from the earlier entry.** The gate is still the difficulty
+tier, which is the design's own gate three times over. Every tier at or below the
+cap still stays in the pool, so a drop is better on average without being
+predictable; Path of Exile and Last Epoch both gate that way and neither removes
+the low tiers. No affix tier is drop-only.
+
+**Affects.** `docs/Cataclysm_GDD_v2.md`, the section "What Tier an Affix Can Roll
+At" in section VI. `docs/All_Things_Cataclysm.xlsx`, the Crafting sheet, where
+the Potency Crystal's function no longer claims a difficulty tier gate, and the
+generated `game/Data/CraftingMaterials.csv` and
+`game/Content/Data/DT_CraftingMaterials.uasset` with it. **Applied.**
+
+**In the model.** `sim/cataclysm_sim/affixes.py` replaces the single
+`max_affix_tier(tier)` with three: `max_affix_tier_on_a_drop(tier)`,
+`max_affix_tier_by_crafting(tier)`, and `max_affix_tier(tier)` kept as the best
+of both for callers that do not care which route. `roll_affix_tier` draws against
+the drop cap. The import-time check now tests the drop cap, and its lower bound
+changed from "equals T1" to "at least T1", because a cap of T2 at difficulty
+tier 1 still drops T1 items.
+
+---
+
 ## 2026-08-05 — The stat that makes better loot drop is called Magic Find, and only that
 
 **The question.** Issue #244. One stat had three names. It is `magic_find` on
