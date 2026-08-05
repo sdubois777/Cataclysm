@@ -788,3 +788,36 @@ def test_the_individual_sources_reaching_a_stat_can_be_listed():
     reaching = c.more_sources_for("max_health")
     assert len(reaching) == 2
     assert {m.source for m in reaching} == {"gem", "keystone"}
+
+
+def test_the_base_source_comment_agrees_with_the_table_it_introduces():
+    """Issue #265. The comment above `_NON_CLASS_BASE` used to say that area of
+    effect and damage over time frequency were "placed with the skill". They come
+    from the class, which the table it introduces, the design document's "Where
+    Each Stat's Base Comes From" section, and
+    `test_area_of_effect_and_dot_frequency_belong_to_the_class` in this file all
+    agree on. The comment was the only copy that disagreed, and it disagreed with
+    the four lines directly beneath it.
+
+    A comment cannot be checked by running it, so this reads the source text.
+    """
+    import pathlib
+
+    source = pathlib.Path(ch.__file__).read_text(encoding="utf-8")
+    start = source.index("#: Where each stat's base value comes from")
+    end = source.index("_NON_CLASS_BASE: dict[str, str] = {")
+    comment = " ".join(source[start:end].split())
+
+    off_class = {s for s, src in ch.BASE_SOURCE.items() if src != "class"}
+    assert off_class == {"attack_speed", "crit_chance"}, (
+        f"the stats that do not come from the class are now {sorted(off_class)}. "
+        "The comment above _NON_CLASS_BASE describes that set by name and needs "
+        "rewriting to match.")
+
+    assert "placed with the skill" not in comment, (
+        "the comment says area of effect and damage over time are placed with "
+        "the skill. They come from the class. Issue #265.")
+    assert "COME FROM THE CLASS" in comment, (
+        "the comment no longer states which side area of effect and the damage "
+        "over time stats fall on, which is the ambiguity issue #265 was filed "
+        "about.")

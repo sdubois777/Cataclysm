@@ -141,11 +141,22 @@ ALL_STATS: tuple[str, ...] = tuple(s for g in STAT_GROUPS.values() for s in g)
 #: Where each stat's base value comes from. Every stat on the sheet has exactly
 #: one source. Anything not named here comes from the class.
 #:
-#: The weapon and skill entries are a proposal and are the part of this most
-#: likely to be wrong. Critical strike chance is certain -- the project owner
-#: stated it. Area of effect and damage-over-time frequency are placed with the
-#: skill by the same reasoning: a skill has a radius and a tick rate, and a
-#: character does not have those in the abstract.
+#: TWO STATS ARE NAMED HERE AND EVERY OTHER STAT COMES FROM THE CLASS. Attack
+#: speed comes from the equipped weapon. Critical strike chance comes from the
+#: skill being used, and that one is certain because the project owner stated it.
+#: The weapon and skill placements are still the part of this most likely to be
+#: wrong, because they are the only two that were reasoned rather than stated.
+#:
+#: AREA OF EFFECT AND THE THREE DAMAGE OVER TIME STATS COME FROM THE CLASS, and
+#: this comment used to say the opposite. It claimed they were "placed with the
+#: skill", which contradicted the four lines directly below it and every other
+#: copy of the rule: `test_area_of_effect_and_dot_frequency_belong_to_the_class`
+#: in `sim/tests/test_character.py` asserts the class, the "Where Each Stat's
+#: Base Comes From" table in `docs/Cataclysm_GDD_v2.md` lists them under the
+#: class, and `DEFAULT_STAT_LINE` below gives them a class baseline of 100.
+#: Issue #265. They are percentages of what the skill or the effect does, so a
+#: baseline of 100 means unchanged, and a class that is naturally better at any
+#: of them starts above 100.
 _NON_CLASS_BASE: dict[str, str] = {
     "attack_speed": "weapon",
     "crit_chance": "skill",
