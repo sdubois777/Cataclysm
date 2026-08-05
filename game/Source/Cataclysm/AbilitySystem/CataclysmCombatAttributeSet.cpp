@@ -21,10 +21,17 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitCritMultiplier(150.0f);  // a critical strike is worth 1.5x by default
 	InitAttackSpeed(0.0f);       // supplied by the equipped weapon
 
-	// Percentages of what the skill itself does, so 100 means "unchanged".
-	// Zero here would leave Efficacy nothing to scale.
+	// Percentages of what the skill or the effect itself does, so 100 means
+	// "unchanged". Zero here would leave Efficacy nothing to scale.
+	//
+	// The three damage over time levers all start at 100 for the same reason.
+	// They multiply each other, so a zero on any one of them would take a
+	// damage over time build's whole output to zero rather than only its own
+	// third of it. Issue #205.
 	InitAreaOfEffect(100.0f);
+	InitDotDamage(100.0f);
 	InitDotFrequency(100.0f);
+	InitDotDuration(100.0f);
 
 	InitPenetration(0.0f);
 	InitSpellDamage(0.0f);
@@ -69,7 +76,9 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CritMultiplier);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackSpeed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AreaOfEffect);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotDamage);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotFrequency);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotDuration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Penetration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SpellDamage);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsWar);
@@ -149,7 +158,8 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetAttackDamageAttribute(),
 		GetCritChanceAttribute(), GetCritMultiplierAttribute(),
 		GetAttackSpeedAttribute(), GetAreaOfEffectAttribute(),
-		GetDotFrequencyAttribute(), GetPenetrationAttribute(),
+		GetDotDamageAttribute(), GetDotFrequencyAttribute(),
+		GetDotDurationAttribute(), GetPenetrationAttribute(),
 		GetSpellDamageAttribute(),
 		GetDamageVsWarAttribute(), GetDamageVsDemonicAttribute(),
 		GetDamageVsDeathAttribute(), GetDamageVsPestilenceAttribute(),
@@ -171,7 +181,9 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritMultiplier)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackSpeed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AreaOfEffect)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDamage)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotFrequency)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDuration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Penetration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SpellDamage)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsWar)

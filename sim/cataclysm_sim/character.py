@@ -129,7 +129,8 @@ STAT_GROUPS: dict[str, tuple[str, ...]] = {
     "Defense": ("armor", "evasion", "block_chance", "damage_reduction",
                 "retaliation", "crowd_control_resistance") + RESISTANCE_STATS,
     "Offense": ("crit_chance", "crit_multiplier", "attack_speed",
-                "area_of_effect", "dot_frequency", "penetration",
+                "area_of_effect", "dot_damage", "dot_frequency",
+                "dot_duration", "penetration",
                 "spell_damage") + DAMAGE_VS_STATS,
     "Utility": ("movement_speed", "cooldown_reduction", "magic_find",
                 "loot_quantity"),
@@ -281,11 +282,18 @@ DEFAULT_STAT_LINE: dict[str, Scaling] = {
     "crit_chance": Scaling(),
     "crit_multiplier": Scaling(base=150.0),
     "attack_speed": Scaling(),
-    # Area of effect and damage-over-time frequency are percentages of whatever
-    # the skill itself does, so their baseline is 100%, not zero. A class that
-    # is naturally better at either starts above 100.
+    # Area of effect and the three damage-over-time levers are percentages of
+    # whatever the skill or the effect itself does, so their baseline is 100%,
+    # not zero. A class that is naturally better at any of them starts above 100.
+    #
+    # THE THREE LEVERS ARE THE THREE NUMBERS A DAMAGE-OVER-TIME EFFECT HAS. The
+    # design document says such an effect deals a fixed amount per tick, so its
+    # total is damage per tick x ticks per second x seconds. Each of those is
+    # scalable on its own and all three multiply. Issues #205 and #220.
     "area_of_effect": Scaling(base=100.0),
+    "dot_damage": Scaling(base=100.0),
     "dot_frequency": Scaling(base=100.0),
+    "dot_duration": Scaling(base=100.0),
     "penetration": Scaling(),
     "spell_damage": Scaling(),
     # Increased damage against one type of enemy. Zero for every class: no class

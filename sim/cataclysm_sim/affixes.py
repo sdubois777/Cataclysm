@@ -903,26 +903,111 @@ FLAT_CRIT_MULTIPLIER = StatAffix("Flat critical strike multiplier",
 INCREASED_ATTACK_SPEED = StatAffix("Increased attack speed", "attack_speed",
                                    "increased", 15.0, OFFENSIVE_SLOTS, SUFFIX)
 
-#: Against the class base: both baseline at 100%, being percentages of whatever
+#: Against the class base: baselines at 100%, being a percentage of whatever
 #: the skill itself does, so 12% is the same ratio the other increases use.
 INCREASED_AREA_OF_EFFECT = StatAffix("Increased area of effect",
                                      "area_of_effect", "increased", 12.0,
                                      OFFENSIVE_SLOTS, SUFFIX)
-#: TICK RATE IS DAMAGE, NOT DELIVERY. Decided by the project owner on
-#: 2026-08-04, issue #220. A damage over time effect deals a fixed amount per
-#: tick, so ticking twice as often deals twice the total. Damage per tick, tick
-#: rate and duration are three separate scalable metrics and all three multiply
-#: the same output.
+
+
+# -- The three damage over time levers ------------------------------------
+#
+# TICK RATE IS DAMAGE, NOT DELIVERY. Decided by the project owner on 2026-08-04,
+# issue #220. A damage over time effect deals a fixed amount per tick, so ticking
+# twice as often deals twice the total. Damage per tick, tick rate and duration
+# are three separate scalable metrics and all three multiply the same output.
+#
+# ONE SET OF LEVERS FOR EVERY DAMAGE OVER TIME EFFECT, NOT ONE SET PER AILMENT.
+# Six of the ten ailment affixes apply a damage over time effect -- bleed,
+# poison, disease, void splinter, necrosis and burn -- and skills apply burn
+# outright on top of that. Three levers each would be eighteen affixes for one
+# build archetype, against the eight the whole damage-against-a-type family
+# costs. It also matches the lever that already existed: there has only ever been
+# one damage over time frequency stat, shared by every effect, and splitting the
+# other two per ailment while leaving that one shared would be incoherent.
+# Issue #205.
+
+#: How many of the three levers a damage over time build has to buy. Named
+#: because the pricing below divides by it.
+DOT_LEVERS = 3
+
+
+def dot_lever_top_value() -> float:
+    """Top-tier value for each of the three damage over time levers.
+
+    DERIVED, NOT PICKED, and derived from the direct-hit build it has to be fair
+    against. `REFERENCE_INCREASED_DAMAGE_AFFIXES` slots spent on
+    `INCREASED_DAMAGE` multiply a direct-hit build's damage by 8.5. The same
+    number of slots spread evenly over the three levers has to reach the same
+    figure, so with `s` slots on each lever:
+
+        (1 + s x v) ** 3 = 1 + REFERENCE_INCREASED_DAMAGE_AFFIXES x 1.25
+
+    WHY IT HAS TO BE SOLVED RATHER THAN COPIED FROM ANOTHER AFFIX. The three
+    levers multiply each other, so setting any one of them against an existing
+    affix sets the wrong number: three affixes at 125% each would be 8.5 x 8.5 x
+    8.5, not 8.5. This is the whole reason issue #258 was blocked on issue #205
+    rather than being a one-line edit.
+
+    THE COMPARISON HOLDS THE SLOT COUNT FIXED AND NOTHING ELSE. It says a damage
+    over time build and a direct-hit build that each spend six offensive affix
+    slots on raising their own damage end up in the same place. It does NOT hold
+    at other slot counts, and cannot: an additive bracket and a product of three
+    brackets only cross once. Below six slots the damage over time build is
+    behind and above it ahead, reaching about three times a direct-hit build at
+    eighteen slots. That shape is deliberate -- the design document says the
+    three levers multiply and that this is why they are separate stats -- but the
+    size of the gap at heavy investment has not been played. Issue #264 carries
+    it, with four alternative ways to close it.
+    """
+    target = 1.0 + REFERENCE_INCREASED_DAMAGE_AFFIXES * INCREASED_DAMAGE.top_value / 100.0
+    slots_per_lever = REFERENCE_INCREASED_DAMAGE_AFFIXES / DOT_LEVERS
+    return (target ** (1.0 / DOT_LEVERS) - 1.0) / slots_per_lever * 100.0
+
+
+#: The shipped figure, rounded to a whole percentage from `dot_lever_top_value()`
+#: because every other top value in this pool is a whole number and a player
+#: reads these on an item. The exact solve is 52.04%; rounding down leaves a
+#: damage over time build at 8.49 against a direct-hit build's 8.50, which is
+#: 0.1% short and errs in the safer direction, since these levers compound.
 #:
-#: THE 12.0 BELOW PREDATES THAT ANSWER AND IS KNOWN TO BE WRONG. It was set to
-#: match increased armour and increased maximum health, on the unexamined
-#: assumption that ticking faster only changed when damage arrived. As a damage
-#: multiplier it belongs against increased damage's 125.0 instead. It is left at
-#: 12.0 rather than guessed at, because the other two levers do not exist yet
-#: and the three have to be priced together. Issue #258.
+#: `test_affixes.py` checks the rounding against the solve, so this cannot drift
+#: away from its derivation without a test failing.
+DOT_LEVER_TOP_VALUE = 52.0
+
+#: Damage per tick. The lever that did not exist at all before issue #205, and
+#: the reason a build could apply nine different ailments and never make one of
+#: them hurt more.
+INCREASED_DOT_DAMAGE = StatAffix("Increased damage over time", "dot_damage",
+                                 "increased", DOT_LEVER_TOP_VALUE,
+                                 OFFENSIVE_SLOTS, SUFFIX)
+
+#: Ticks per second. WAS 12.0 AND THAT WAS WRONG, set to match increased armour
+#: and increased maximum health on the unexamined assumption that ticking faster
+#: only changed when damage arrived. Issue #258.
 INCREASED_DOT_FREQUENCY = StatAffix("Increased damage over time frequency",
-                                    "dot_frequency", "increased", 12.0,
-                                    OFFENSIVE_SLOTS, SUFFIX)
+                                    "dot_frequency", "increased",
+                                    DOT_LEVER_TOP_VALUE, OFFENSIVE_SLOTS,
+                                    SUFFIX)
+
+#: How long the effect runs. The third lever, and the other one issue #205 found
+#: missing.
+#:
+#: NOT THE SAME THING AS AILMENT MAGNITUDE. Magnitude comes from chance to apply
+#: above 100% and, for an effect with a capped strength such as Cripple, turns
+#: into duration only once that cap is reached -- see `ailment_application` and
+#: the design document's table of what magnitude scales. This affix lengthens
+#: every damage over time effect directly, whatever its chance to apply is.
+INCREASED_DOT_DURATION = StatAffix("Increased damage over time duration",
+                                   "dot_duration", "increased",
+                                   DOT_LEVER_TOP_VALUE, OFFENSIVE_SLOTS,
+                                   SUFFIX)
+
+#: The three in the order the design document lists them: damage per tick, tick
+#: rate, duration.
+DOT_LEVER_AFFIXES: tuple[StatAffix, ...] = (INCREASED_DOT_DAMAGE,
+                                            INCREASED_DOT_FREQUENCY,
+                                            INCREASED_DOT_DURATION)
 
 #: Against the requirement: enemy resistance runs from 0 to 35 and penetration
 #: beyond it grants nothing, so a handful of these covers the hardest target in
@@ -1104,13 +1189,12 @@ AFFIX_POOL: tuple[StatAffix, ...] = (
     FLAT_CRIT_MULTIPLIER,
     INCREASED_ATTACK_SPEED,
     INCREASED_AREA_OF_EFFECT,
-    INCREASED_DOT_FREQUENCY,
     FLAT_PENETRATION,
     INCREASED_MOVEMENT_SPEED,
     INCREASED_COOLDOWN_REDUCTION,
     FLAT_MAGIC_FIND,
     INCREASED_LOOT_QUANTITY,
-) + ATTRIBUTE_AFFIXES + DAMAGE_VS_AFFIXES
+) + DOT_LEVER_AFFIXES + ATTRIBUTE_AFFIXES + DAMAGE_VS_AFFIXES
 
 
 def pool_for(slot: str, position: str | None = None) -> tuple[StatAffix, ...]:

@@ -607,7 +607,7 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
 ### **The Character Sheet**
 
-A character has 43 stats, grouped the way the gameplay tag list groups its Stat tags.
+A character has 45 stats, grouped the way the gameplay tag list groups its Stat tags.
 
   
 
@@ -617,7 +617,7 @@ A character has 43 stats, grouped the way the gameplay tag list groups its Stat 
 | Resource | Maximum Health, Maximum Mana, Maximum Energy Shield, Class Resource |
 | Recovery | Health Regeneration, Mana Regeneration, Energy Shield Regeneration, Life Leech, Mana Leech, Energy Shield Leech |
 | Defence | Armor, Evasion, Block Chance, Damage Reduction, Retaliation, Crowd Control Resistance, and the eight Resistances |
-| Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time Frequency, Penetration, Spell Damage, and the eight Damage Against a Type figures |
+| Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time, Damage over Time Frequency, Damage over Time Duration, Penetration, Spell Damage, and the eight Damage Against a Type figures |
 | Utility | Movement Speed, Cooldown Reduction, Magic Find, Loot Quantity |
 
   
@@ -635,7 +635,7 @@ Attributes only scale. A stat therefore needs a base value before any attribute 
 |  |  |
 | :-: | :-- |
 | \*\*Source\*\* | \*\*Stats\*\* |
-| The class | Vitals, recovery, defences, resistances, movement speed, area of effect, damage over time frequency |
+| The class | Vitals, recovery, defences, resistances, movement speed, area of effect, and the three damage over time stats |
 | The equipped weapon | Attack speed, and off this sheet, attack range and attack damage |
 | The skill being used | Critical strike chance, and off this sheet, the base cooldown, projectile count and duration |
 
@@ -649,7 +649,11 @@ Attributes only scale. A stat therefore needs a base value before any attribute 
 
   
 
-**Area of effect and damage over time frequency belong to the character, not the skill.** They are percentages of whatever the skill itself does, so their baseline is 100% rather than zero. A class naturally better at either starts above 100.
+**Area of effect and the three damage over time stats belong to the character, not the skill.** They are percentages of whatever the skill or the effect itself does, so their baseline is 100% rather than zero. A class naturally better at any of them starts above 100.
+
+  
+
+**The three damage over time stats are Damage over Time, Damage over Time Frequency and Damage over Time Duration.** They are the three numbers every damage over time effect has — how much one tick deals, how often it ticks, and how long it runs — and they are separate stats because all three multiply. One set is shared by every damage over time effect rather than each ailment having its own three; see "Applying Damage Over Time and Other Effects".
 
   
 
@@ -1075,12 +1079,16 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
-|  |  |  |
-| :-- | :-- | :-- |
-| \*\*Metric\*\* | \*\*What raising it does\*\* | \*\*Total damage\*\* |
-| Damage per tick | Each tick hits harder | Rises |
-| Tick rate | More ticks in the same time | Rises |
-| Duration | The effect runs for longer | Rises |
+|  |  |  |  |
+| :-- | :-- | :-- | :-- |
+| \*\*Metric\*\* | \*\*The stat that raises it\*\* | \*\*What raising it does\*\* | \*\*Total damage\*\* |
+| Damage per tick | Damage over Time | Each tick hits harder | Rises |
+| Tick rate | Damage over Time Frequency | More ticks in the same time | Rises |
+| Duration | Damage over Time Duration | The effect runs for longer | Rises |
+
+  
+
+**Each of the three is a stat on the character sheet with a baseline of 100%, and each has one affix worth 52% at T7.** One set of three is shared by every damage over time effect rather than each ailment having its own; "Scaling Damage Over Time" carries where the 52% comes from and why it had to be solved for all three at once.
 
   
 
@@ -1571,6 +1579,45 @@ Eight affixes, one per damage type: **increased damage against War / Demonic / D
   
 
 **There is no two-type or all-type version.** The all-type version is the generic Increased Damage affix, which already exists; a second one would be the same affix twice. A two-type version would sit between them, in the way the two-resistance affix does, and is deliberately not built yet: the two ends have to be played before a middle rung can be priced.
+
+  
+
+### **Scaling Damage Over Time**
+
+Three affixes, one for each of the three numbers a damage over time effect has. Each gives **52% at T7**.
+
+  
+
+|  |  |  |
+| :-- | :-: | :-- |
+| \*\*Affix\*\* | \*\*T7 value\*\* | \*\*Raises\*\* |
+| Increased damage over time | 52% | How much one tick deals |
+| Increased damage over time frequency | 52% | How many ticks happen per second |
+| Increased damage over time duration | 52% | How long the effect runs |
+
+  
+
+**All three affixes exist because all three numbers multiply**, which the "Applying Damage Over Time and Other Effects" section states. Two of the three had no affix and no stat at all until this was written, so a character could roll ten different chances to apply an ailment and never make one of those ailments hurt more.
+
+  
+
+**Where 52% comes from.** It is solved, not chosen, and it has to be solved because the three multiply each other. Six affix slots spent on Increased Damage multiply a direct-hit build's damage by 8.5, and six slots is the build the damage numbers in "The Damage Target" are fitted against. Two slots on each of the three damage over time affixes has to reach the same 8.5, so each affix is the value that satisfies (1 + 2v)³ = 8.5. That is v = 52.04%, rounded down to 52%.
+
+  
+
+**Setting any one of them against an existing affix would give the wrong number.** Increased Damage is 125%, but three affixes at 125% each would multiply damage over time by 8.5 × 8.5 × 8.5, not 8.5. This is why the three could not be priced one at a time and why the affix that already existed, Increased Damage over Time Frequency, was wrong at 12%: it had been set to match Increased Armour and Increased Maximum Health, on the assumption that ticking faster only changed when damage arrived rather than how much of it there was.
+
+  
+
+**The comparison holds the slot count fixed and nothing else, and it only holds at six slots.** An additive bracket and a product of three brackets cross exactly once. Below six slots a damage over time build is behind a direct-hit build spending the same, and above six it is ahead — about 1.8 times at twelve slots and about 3 times at eighteen. That shape follows from the three levers multiplying, which is deliberate, but the size of it has not been played and is expected to move.
+
+  
+
+**One set of three stats is shared by every damage over time effect.** Not one set per ailment. Six of the ten ailment affixes apply a damage over time effect and skills apply burn outright as well, so three levers each would be eighteen affixes serving one build archetype, against the eight the whole Damage Against a Target's Type family costs. It also matches the stat that already existed: there has only ever been one Damage over Time Frequency, shared by everything.
+
+  
+
+**The Efficacy attribute keeps granting 1% increased damage over time frequency per point and does not grant the other two.** One attribute point buying three multiplying increases would make Efficacy strictly the best attribute for any damage over time build, and no other attribute compounds that way. The 1% is also already generous once frequency counts as damage: 100 points of Efficacy multiply damage over time output by 2.0, where 100 points of Ferocity — the direct-hit damage attribute — multiply a direct hit by about 1.56 through critical strike chance and multiplier together.
 
   
 

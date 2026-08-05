@@ -4,8 +4,8 @@
     {
       "asset": "DT_Affixes",
       "csv": "Affixes.csv",
-      "rows": 78,
-      "csv_sha256": "1124e5ad7bd5cd8696e82423df698ff26f79bafc179a599d32c626a2fbc6213c"
+      "rows": 80,
+      "csv_sha256": "e3ca42e1414f45fad5b9860e1c5130f1a0d8809a8ef908f266b494fa227fbab1"
     },
     {
       "asset": "DT_Attributes",
@@ -22,8 +22,8 @@
     {
       "asset": "DT_ClassStats",
       "csv": "ClassStats.csv",
-      "rows": 31,
-      "csv_sha256": "395896230f106297af44f0d5285e97f5ddd342ec760a955cdbfde63e88017c50"
+      "rows": 33,
+      "csv_sha256": "dfdc092c9a801a1e35365eb284a38975e98272abb87933c2608d587aa1d017b5"
     },
     {
       "asset": "DT_CraftingMaterials",

@@ -6,7 +6,9 @@ Default_health_regen,Default,health_regen,1.0,0.15
 Default_mana_regen,Default,mana_regen,1.0,0.1
 Default_crit_multiplier,Default,crit_multiplier,150.0,0.0
 Default_area_of_effect,Default,area_of_effect,100.0,0.0
+Default_dot_damage,Default,dot_damage,100.0,0.0
 Default_dot_frequency,Default,dot_frequency,100.0,0.0
+Default_dot_duration,Default,dot_duration,100.0,0.0
 Default_movement_speed,Default,movement_speed,4.0,0.0
 Default_loot_quantity,Default,loot_quantity,100.0,0.0
 Ravager_max_health,Ravager,max_health,130.0,20.0

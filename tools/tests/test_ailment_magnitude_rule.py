@@ -22,16 +22,19 @@ The rule above is a relationship between two numbers rather than a row in a
 table, so a data-level reading cannot find it. Pinning it is what stops the third
 report of the same thing.
 
-THIS FILE DOES NOT CLOSE #205, AND MUST NOT BE READ AS SETTLING IT. The project
-owner decided on 2026-08-04 that the overflow rule is not enough on its own and
-that the pool needs flat damage-over-time damage, duration and chance affixes as
-well, plus more sources of tick frequency than the single existing affix. See
-decision 4 of the "Nine decisions from an audit of the affix pool" entry in
-`docs/DECISIONS.md`. That work is still open.
+THE OVERFLOW RULE IS NOT THE ONLY WAY AN AILMENT IS MADE STRONGER ANY MORE. When
+this file was written it was, and the file said so. The project owner decided on
+2026-08-04 that the overflow rule is not enough on its own and that the pool
+needs damage-over-time damage and duration affixes as well; that work landed on
+2026-08-05 under issues #205 and #258, and the character sheet now carries three
+damage over time stats rather than one. See decision 4 of the "Nine decisions
+from an audit of the affix pool" entry in `docs/DECISIONS.md` for the decision,
+and the 2026-08-05 entry for what was built.
 
-NOTHING HERE BLOCKS IT. Every assertion below is about the overflow rule and
-about which effects are damage over time. None of them says a scaling stat may
-not exist, so adding those affixes does not fail this file.
+THE TWO ARE DIFFERENT MECHANISMS AND BOTH APPLY. Magnitude comes from chance to
+apply above 100% and, for an effect with a capped strength such as Cripple, turns
+into duration only once that cap is reached. The three affixes raise every damage
+over time effect directly, whatever its chance to apply is.
 
 WHAT TICK RATE DOES WAS DECIDED AFTER THIS FILE WAS WRITTEN, and it is now
 asserted here. Issue #220 asked whether a damage over time effect deals a fixed
@@ -47,10 +50,12 @@ and sources are in `docs/DECISIONS.md`. It is asserted here because the reading
 decides whether one shipped affix value is a damage multiplier or a convenience,
 and the document is the only place that says which.
 
-WHAT IS STILL WRONG AND IS NOT THIS FILE'S JOB. The 12% on that affix was set
-under the other reading and is known to be mis-priced. It is not corrected here,
-because two of the three levers do not exist yet and the three have to be priced
-together. Issue #258, blocked on #205.
+THE AFFIX THAT WAS MIS-PRICED UNDER THE OTHER READING IS NOW CORRECT. Increased
+damage over time frequency was 12%, set to match increased armour and increased
+maximum health while ticking faster was assumed to be a delivery change. It is
+52%, the same as the two levers added alongside it, solved so that six affix
+slots spread over the three reach what six slots of Increased Damage reach.
+Issue #258.
 
 NOTHING HERE IS A SECOND COPY OF THE NUMBERS. Every expected value is parsed out
 of the design document. Changing the design in `Cataclysm_GDD_v2.md` is what
@@ -419,22 +424,37 @@ class TestDamageOverTimeIsPerTick:
         assert "Path of Exile" in section and "Last Epoch" in section
         assert "deliberate departure" in section
 
-    def test_the_model_records_that_the_shipped_value_is_known_wrong(self):
-        """`INCREASED_DOT_FREQUENCY` is 12.0, priced as a convenience. Under
-        this rule it is a damage multiplier. Leaving a wrong number with nothing
-        saying so is how it survives into tuning as if it were considered."""
+    def test_all_three_levers_have_an_affix_and_all_three_are_priced_alike(
+            self):
+        """The three levers multiply, so they are worth the same each.
+
+        WHAT THIS TEST USED TO SAY, AND WHY IT CHANGED. Until 2026-08-05 this
+        asserted the opposite: that `INCREASED_DOT_FREQUENCY` was still 12.0 and
+        that `sim/cataclysm_sim/affixes.py` still carried a comment admitting the
+        value was wrong. It recorded a defect rather than a rule -- tick rate had
+        been priced as a delivery change while the issue #220 answer made it a
+        damage multiplier -- and it said in its own message to delete it once the
+        value was fixed. Issues #205 and #258 fixed it, so the assertion is now
+        the property that is true: all three levers exist and all three cost the
+        same, because a build has to buy all three to get the multiplying total
+        and any one of them being cheaper would make it the only one worth
+        rolling.
+        """
         from cataclysm_sim import affixes
 
-        source = pathlib.Path(affixes.__file__).read_text(encoding="utf-8")
-        start = source.index("INCREASED_DOT_FREQUENCY = StatAffix")
-        comment = source[:start]
-        assert "#258" in comment[-900:], (
-            "sim/cataclysm_sim/affixes.py no longer records that "
-            "INCREASED_DOT_FREQUENCY's value predates the issue #220 answer and "
-            "is being re-priced under issue #258. Either the value was fixed, "
-            "in which case delete this test and close #258, or the note was "
-            "lost.")
-        assert affixes.INCREASED_DOT_FREQUENCY.top_value == 12.0, (
-            "INCREASED_DOT_FREQUENCY has moved off 12.0. If it was re-priced "
-            "under issue #258, remove the comment saying it is wrong and this "
-            "test with it.")
+        assert len(affixes.DOT_LEVER_AFFIXES) == 3, (
+            "there are three damage over time levers -- damage per tick, tick "
+            "rate and duration -- and DOT_LEVER_AFFIXES no longer holds three.")
+        stats = {a.stat for a in affixes.DOT_LEVER_AFFIXES}
+        assert stats == {"dot_damage", "dot_frequency", "dot_duration"}, stats
+        for affix in affixes.DOT_LEVER_AFFIXES:
+            assert affix.kind == "increased", (
+                f"{affix.name} is a {affix.kind} affix. Each lever is a "
+                "percentage of what the effect itself does, with a baseline of "
+                "100, so an increase is the only shape that fits.")
+            assert affix.top_value == affixes.DOT_LEVER_TOP_VALUE, (
+                f"{affix.name} is worth {affix.top_value} where the other "
+                f"damage over time levers are worth "
+                f"{affixes.DOT_LEVER_TOP_VALUE}. The three multiply each other, "
+                "so pricing one differently makes it the only one a build "
+                "bothers to roll.")
