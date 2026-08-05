@@ -412,7 +412,13 @@ def gems(book) -> list[dict]:
             continue
         name, effect = clean(raw[0]), clean(raw[1])
 
-        match = re.search(r"(\d+(?:\.\d+)?)\s*%", effect)
+        # `\d*\.?\d+` and NOT `\d+(?:\.\d+)?`, which is what this was until issue
+        # #246. That pattern requires a digit before the decimal point, so on
+        # "Increases Magic Find by .5%" it matched "5%" and made the Everyday
+        # value 0.05 -- ten times the stated figure, and larger than the six
+        # rarity tiers above it. Nothing reported an error; the gem simply
+        # shipped with a value its own description contradicted.
+        match = re.search(r"(\d*\.?\d+)\s*%", effect)
         if not match:
             raise DataError(f"Gems row {index}: {name!r} states no percentage in "
                             f"its effect text, so the Everyday value cannot be "
@@ -440,6 +446,28 @@ def gems(book) -> list[dict]:
                  "Everyday": everyday}
         for offset, tier in enumerate(tiers, start=2):
             entry[tier] = number(raw[offset], tier, index) if offset < len(raw) else 0.0
+
+        # A RARER GEM HAS TO BE WORTH MORE. Gear and gem rarity equal the
+        # difficulty tier, so the ladder is the whole of a gem's progression: a
+        # tier that pays less than the one below it means a player who finds a
+        # rarer gem should keep the commoner one, and nothing in the interface
+        # would tell them so.
+        #
+        # Checked here rather than in a test because the generator is the only
+        # place that sees the prose value and the seven numeric ones together.
+        # Issue #246: reading ".5%" as 5% put Of The Goblin's Everyday value
+        # above its next six tiers, and the table shipped that way because no
+        # check compared them.
+        ladder = [entry[t] for t in ("Everyday", *tiers)]
+        for lower, higher in zip(ladder, ladder[1:], strict=False):
+            if higher <= lower:
+                raise DataError(
+                    f"Gems row {index}: {name!r} does not get better as it gets "
+                    f"rarer. Its eight values are {ladder}, and {higher} is not "
+                    f"above {lower}. The first of those is read from the effect "
+                    f"text {effect!r} and the rest are the sheet's numeric "
+                    f"columns.")
+
         out.append(entry)
     return unique(out, "Gems")
 

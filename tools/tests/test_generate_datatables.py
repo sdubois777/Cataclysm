@@ -271,6 +271,86 @@ class TestGems:
             "a gem row key must be readable, not a numeric suffix on someone "
             "else's name")
 
+    @staticmethod
+    def one_gem(tmp_path, effect: str, *values):
+        """A workbook holding a single gem, so a value can be read back."""
+        return openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone",
+                      "Legendary Gemstone", "Mythical Gemstone",
+                      "Ascendant Gemstone", "Cataclysmic Gemstone", "Type"],
+                     ["Of Testing", effect, *values, "Utility"]]}))
+
+    def test_a_percentage_written_without_a_leading_zero_is_read_whole(
+            self, tmp_path):
+        """Issue #246. The pattern was `\\d+(?:\\.\\d+)?`, which needs a digit
+        before the decimal point, so ".5%" matched only its "5%" and the gem Of
+        The Goblin shipped at 0.05 -- ten times its stated value, and larger
+        than the six rarity tiers above it."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by .5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        assert gen.gems(book)[0]["Everyday"] == pytest.approx(0.005)
+
+    @pytest.mark.parametrize("effect,expected", [
+        ("Increases Magic Find by .5%", 0.005),
+        ("Increases Magic Find by 0.5%", 0.005),
+        ("Increases Mana by 5%", 0.05),
+        ("Increases AoE by 10%", 0.10),
+        ("Increases movespeed by 1%", 0.01),
+        ("20% chance to apply poison", 0.20),
+        ("Increases something by 2.5 %", 0.025),
+    ])
+    def test_every_way_a_percentage_gets_written(self, tmp_path, effect,
+                                                 expected):
+        """The wider pattern must still read the forms that already worked. A
+        fix that only handled the leading dot would be as wrong as the original.
+        Values below rise from the largest of these so the ladder check passes
+        whichever effect is used."""
+        book = self.one_gem(tmp_path, effect,
+                            0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
+        assert gen.gems(book)[0]["Everyday"] == pytest.approx(expected)
+
+    def test_a_gem_that_gets_worse_as_it_gets_rarer_is_an_error(self, tmp_path):
+        """The check that would have caught issue #246 whatever caused it.
+
+        Gear and gem rarity equal the difficulty tier, so this ladder is the
+        whole of a gem's progression. A tier paying less than the one below it
+        means finding a rarer gem is a downgrade, and nothing in the interface
+        would say so.
+        """
+        book = self.one_gem(tmp_path, "Increases Magic Find by 5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        with pytest.raises(gen.DataError, match="does not get better as it gets"):
+            gen.gems(book)
+
+    def test_a_gem_that_stalls_at_one_tier_is_also_an_error(self, tmp_path):
+        """Equal is not rising. A tier worth exactly what the one below is worth
+        is a rarity step a player pays for and gets nothing from."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by 1%",
+                            0.02, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07)
+        with pytest.raises(gen.DataError, match="does not get better as it gets"):
+            gen.gems(book)
+
+    def test_the_error_names_the_gem_and_shows_all_eight_values(self, tmp_path):
+        """A message giving only 'a gem is wrong' costs whoever reads it a
+        search of the sheet."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by 5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        with pytest.raises(gen.DataError) as caught:
+            gen.gems(book)
+        message = str(caught.value)
+        assert "Of Testing" in message
+        assert "0.05" in message and "0.01" in message
+
+    def test_a_rising_ladder_is_accepted(self, tmp_path):
+        """The other side of it. A check that refused ordinary gems would pass
+        every test above and break the whole sheet."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by .5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        row = gen.gems(book)[0]
+        assert row["Everyday"] == pytest.approx(0.005)
+        assert row["Cataclysmic"] == pytest.approx(0.05)
+
 
 class TestValidation:
     def test_an_undefined_tag_is_reported(self):
