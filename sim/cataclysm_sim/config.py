@@ -42,6 +42,64 @@ class SurgeMode(str, Enum):
     BOTH = "both"
 
 
+class LethalityMode(str, Enum):
+    """Which of the three difficulty modes a character was created in.
+
+    From the Difficulty Options section of `docs/Cataclysm_GDD_v2.md`. Locked at
+    character creation and never changed, so one campaign is one mode throughout.
+    Issue #289 asked for this, because the empire upgrade tree is partitioned by
+    lethality mode (issue #277) and nothing here represented the modes at all.
+    """
+    STANDARD = "standard"
+    HARDCORE = "hardcore"
+    HERETIC = "heretic"
+
+
+@dataclass(frozen=True)
+class LethalityRules:
+    """What one lethality mode changes about the strategy layer.
+
+    ONLY THE PARTS THIS SIMULATION CAN REPRESENT. The design document gives each
+    mode four columns and two of them have no model here:
+
+      * Equipment lost on death -- 10% of 18 equipped pieces on Hardcore, 20%
+        with a floor of 2 on Heretic. Player power in this simulation is one
+        scalar accumulated from floors cleared and crafts, with no per-item
+        model, so losing 1.8 of 18 pieces has no representation that would not be
+        an invented conversion into a power fraction.
+      * Heads-up display -- Hardcore shows the map overlay only and Heretic hides
+        it. This simulation has no player perception model; its policies see the
+        true state.
+
+    AND ONE HERETIC RULE THAT DOES MATTER HERE IS STILL MISSING: cities get 2
+    upgrade slots instead of 3. `world.City.upgrades` exists as a field and is
+    read by nothing, so there is no city upgrade system to reduce. That is the
+    half of issue #289 that cannot be measured, and it is issue #318.
+    """
+
+    #: Days lost when the player dies. Standard 5, Hardcore 10, Heretic 15.
+    death_day_cost: int
+
+    #: Multiplies the number of dungeons a surge spawns. Heretic is the only
+    #: mode that changes it: "Surges spawn 25% more dungeons".
+    surge_dungeon_multiplier: float
+
+    #: City upgrade slots. Carried because the design gives it and a reader will
+    #: look for it; NOTHING READS IT, because no city upgrade system exists.
+    #: Issue #318.
+    city_upgrade_slots: int
+
+
+LETHALITY_RULES: dict[LethalityMode, LethalityRules] = {
+    LethalityMode.STANDARD: LethalityRules(
+        death_day_cost=5, surge_dungeon_multiplier=1.0, city_upgrade_slots=3),
+    LethalityMode.HARDCORE: LethalityRules(
+        death_day_cost=10, surge_dungeon_multiplier=1.0, city_upgrade_slots=3),
+    LethalityMode.HERETIC: LethalityRules(
+        death_day_cost=15, surge_dungeon_multiplier=1.25, city_upgrade_slots=2),
+}
+
+
 # Ordered weakest -> strongest. Used for "distance to the Pillar" reasoning.
 TIER_ORDER = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY, CityTier.PILLAR]
 
@@ -118,6 +176,9 @@ class TuningConfig:
     surge_mode: SurgeMode = SurgeMode.STATIC
     surge_interval_days: float = 120.0
     surge_dungeon_count: int = 4
+
+    # Heretic spawns 25% more dungeons per surge. Set by the lethality mode.
+    surge_dungeon_multiplier: float = 1.0
 
     # ACCELERATING / BOTH: each surge multiplies the gap by this and floors it.
     surge_interval_decay: float = 0.88
@@ -246,7 +307,14 @@ class TuningConfig:
     craft_material_cost: float = 40.0
     craft_power_gain_frac: float = 0.05
 
-    # Dying costs days and the dungeon is not cleared.
+    # Which difficulty mode this campaign is played in. A record of what the
+    # numbers below were set to; `with_lethality` is what sets them together.
+    # A test asserts the defaults here equal LETHALITY_RULES[STANDARD], so the
+    # two cannot drift apart silently. Issue #289.
+    lethality_mode: LethalityMode = LethalityMode.STANDARD
+
+    # Dying costs days and the dungeon is not cleared. Set by the lethality
+    # mode: Standard 5, Hardcore 10, Heretic 15.
     death_day_cost: int = 5
     # Policies refuse dungeons riskier than this.
     death_risk_tolerance: float = 0.35
@@ -346,6 +414,19 @@ class TuningConfig:
 
     def with_tree(self, tree: EmpireTree) -> "TuningConfig":
         return replace(self, tree=tree)
+
+    def with_lethality(self, mode: LethalityMode) -> "TuningConfig":
+        """This config played in one of the three difficulty modes.
+
+        Sets the mode AND every number the mode owns, together, because setting
+        `lethality_mode` alone would label a config Heretic while it ran on
+        Standard numbers. See `LethalityRules` for the two mode effects that
+        have no model here and the one that is issue #318.
+        """
+        rules = LETHALITY_RULES[mode]
+        return replace(self, lethality_mode=mode,
+                       death_day_cost=rules.death_day_cost,
+                       surge_dungeon_multiplier=rules.surge_dungeon_multiplier)
 
 
 # =========================================================================

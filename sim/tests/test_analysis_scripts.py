@@ -97,10 +97,105 @@ def penetration_run():
 
 @pytest.mark.parametrize("name", ["analyse_scoring.py", "analyse_dungeons.py",
                                   "analyse_penetration.py",
-                                  "analyse_damage_vs_type.py"])
+                                  "analyse_damage_vs_type.py",
+                                  "analyse_lethality_modes.py",
+                                  "analyse_two_handed_multiplier.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
+
+
+def test_every_analysis_script_is_covered_here():
+    """The list above is written out, so a new sim/analyse_*.py could be added
+    and never run by anything. That is how a script goes stale unnoticed, which
+    is the whole reason this file exists."""
+    on_disk = {path.name for path in SIM_ROOT.glob("analyse_*.py")}
+    listed = set(test_the_script_runs_and_prints_something.pytestmark[0].args[1])
+    assert on_disk == listed, (
+        f"these analysis scripts are not run by any test: "
+        f"{sorted(on_disk - listed)}. Add them to the parametrize list above, "
+        f"and check their stated conclusions the way the sections below do.")
+
+
+# --------------------------------------------------------------------------
+# analyse_lethality_modes.py -- issue #289
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def lethality_run():
+    """About 4.4 seconds, which is far more than the other four scripts put
+    together. It runs 125 campaigns; the others are analytical. Module-scoped so
+    it runs once for every test below."""
+    return run("analyse_lethality_modes.py")
+
+
+def test_it_reports_a_row_for_every_mode_and_both_controls(lethality_run):
+    _, ns = lethality_run
+    assert set(ns["ROWS"]) == {"standard", "hardcore", "heretic",
+                               "surges only", "death cost only"}
+
+
+def test_the_headline_ratio_is_computed_from_its_own_rows(lethality_run):
+    """The trap this file exists for: a typed sentence under a computed table.
+    Recomputed here from the run's own numbers."""
+    printed, ns = lethality_run
+    rows = ns["ROWS"]
+    ratio = rows["heretic"]["rate"] / rows["standard"]["rate"]
+    assert f"at {ratio:.2f}x the Standard rate" in printed
+
+
+def test_the_control_row_ratio_is_computed_from_its_own_rows(lethality_run):
+    """The control is the row that answers issue #289: Heretic's extra dungeons
+    with nothing else changed."""
+    printed, ns = lethality_run
+    rows = ns["ROWS"]
+    ratio = rows["surges only"]["rate"] / rows["standard"]["rate"]
+    assert f"ON THEIR OWN give {ratio:.2f}x" in printed
+
+
+def test_the_extra_dungeons_do_not_buy_proportionally_more_points(
+        lethality_run):
+    """THE FINDING, asserted as a direction rather than a figure.
+
+    Issue #289 asked whether Heretic's 25% extra dungeons over-compensate for
+    starting its empire tree from nothing. They do not: the fill rate rises by
+    far less than 25%, because more dungeons against an unchanged day budget
+    means more of them resolve undefeated, and an undefeated dungeon pays
+    nothing. Measured at five sample sizes from 15 to 80 campaigns on
+    2026-08-05, the control row ran 1.02x to 1.09x and never approached 1.25x.
+
+    The figure moves with the sample size. The direction is the answer.
+    """
+    from cataclysm_sim.config import LETHALITY_RULES, LethalityMode
+
+    _, ns = lethality_run
+    rows = ns["ROWS"]
+    multiplier = LETHALITY_RULES[
+        LethalityMode.HERETIC].surge_dungeon_multiplier
+    ratio = rows["surges only"]["rate"] / rows["standard"]["rate"]
+    assert ratio < multiplier, (
+        f"the empire tree fill rate now rises by {ratio:.2f}x when the surge "
+        f"dungeon count rises by {multiplier:.2f}x, so extra dungeons DO buy "
+        f"proportionally more empire points. That reverses the answer issue "
+        f"#289 was given and the paragraph the script prints under its table.")
+    assert rows["surges only"]["resolved"] > rows["standard"]["resolved"], (
+        "more dungeons no longer means more of them resolving undefeated, "
+        "which is the mechanism the script gives for the finding above.")
+
+
+def test_it_says_which_half_of_the_question_it_cannot_answer(lethality_run):
+    """The measurement is one-sided by construction and must say so. Heretic's
+    2 city upgrade slots instead of 3 is the effect that would cost Heretic,
+    and there is no city upgrade system to reduce."""
+    printed, _ = lethality_run
+    assert "WHAT THIS DOES NOT ANSWER" in printed
+    assert "Issue #318" in printed, (
+        "the script no longer names the issue holding the half it cannot "
+        "measure. Without it a reader takes the number as the whole answer.")
+    assert "UPPER BOUND" in printed, (
+        "the script does not say its number is an upper bound. Every effect it "
+        "leaves out costs the harder modes, so the true figure is lower, and "
+        "that is what makes an incomplete measurement usable.")
 
 
 # --------------------------------------------------------------------------
