@@ -203,3 +203,118 @@ class TestTheDungeonScoreFormulaAgrees:
         assert "middle floor" in dungeon_section, (
             "the formula collapses the MIDDLE floor's rarity spread, and a "
             "reader who does not know that will compute the wrong number")
+
+
+#: The second copy of the player power anchors, in its own top-level section
+#: outside the two above. Issue #253.
+RANGES_SECTION = "## **Power Score Ranges by Tier**"
+
+
+@pytest.fixture(scope="module")
+def ranges_section(document) -> str:
+    start = document.find(RANGES_SECTION)
+    assert start != -1, (
+        f"{GDD.name} has no section headed {RANGES_SECTION!r}. It states the "
+        "player power anchors as closed ranges, and it is the copy furthest "
+        "from the model. Issue #253.")
+    after = document[start + len(RANGES_SECTION):]
+    stop = re.search(r"^#{1,6} ", after, re.MULTILINE)
+    return after[:stop.start()] if stop else after
+
+
+def stated_ranges(section: str) -> dict[int, tuple[int, int]]:
+    """The table as `{tier: (low, high)}`.
+
+    Not read with `table_after`, which this table defeats twice: its numbers
+    carry thousands separators (`1,457`) so they do not match that helper's
+    plain-number pattern, and its first cell is `T4` rather than a bare digit.
+    """
+    out: dict[int, tuple[int, int]] = {}
+    for line in section.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or r"\*\*" in line:
+            continue
+        tier = re.fullmatch(r"T(\d)", cells[0])
+        # The non-breaking space is a Google Docs conversion artefact and
+        # appears in this document; \s does not match it.
+        bounds = re.fullmatch(r"([\d,]+)\s*[—–-]\s*([\d,]+)",
+                              cells[1].replace(" ", " "))
+        if not (tier and bounds):
+            continue
+        out[int(tier.group(1))] = tuple(
+            int(g.replace(",", "")) for g in bounds.groups())
+    return out
+
+
+class TestThePowerScoreRangesTable:
+    """The design document states the player power anchors TWICE.
+
+    `### **Player Maximum Power Scores**`, inside the Enemy Score Formula
+    section, gives each tier's maximum and width, and
+    `test_the_player_maximum_power_scores_and_their_widths` above checks it.
+
+    `## **Power Score Ranges by Tier**` is a separate top-level section further
+    down, and gives the same eight numbers as closed ranges: tier 4 reads
+    `1,458 — 2,144`, which is the previous tier's maximum plus one through this
+    tier's maximum. Nothing checked it, because the fixture above slices the
+    document between the Enemy Score Formula heading and the Vertical Slice
+    Enemies heading, and this table sits after that end marker.
+
+    Both copies agree with the model today. The risk is the one issues #2 and #6
+    already produced once: the anchors were replaced upstream, every copy nobody
+    was checking went stale, and it stayed invisible for five months. Issue #253.
+    """
+
+    def test_the_document_still_has_the_section(self, document):
+        """Stated as its own test as well as asserted in the fixture. Renaming
+        the heading makes every other test here error inside that fixture, and
+        an error names no test. This one does."""
+        assert RANGES_SECTION in document, (
+            f"{GDD.name} no longer has a section headed {RANGES_SECTION!r}. If "
+            "it was renamed, update RANGES_SECTION in this file; if it was "
+            "removed, the anchors are now stated once and this class can go. "
+            "Issue #253.")
+
+    def test_the_table_has_a_row_for_every_tier(self, ranges_section):
+        assert sorted(stated_ranges(ranges_section)) == list(range(1, 9))
+
+    def test_each_range_ends_at_that_tier_s_anchor(self, ranges_section, model):
+        stated = stated_ranges(ranges_section)
+        for tier, (_, high) in stated.items():
+            assert high == model.PLAYER_MAX_SCORES[tier], (
+                f"{GDD.name} says tier {tier} tops out at {high:,}; "
+                f"sim/cataclysm_sim/scoring.py says "
+                f"{model.PLAYER_MAX_SCORES[tier]:,.0f}. Issue #253.")
+
+    def test_each_range_starts_one_above_the_tier_below(self, ranges_section,
+                                                        model):
+        """Tier 1 starts at zero; every other tier starts at the previous
+        tier's maximum plus one, so the eight ranges tile the whole scale with
+        no gap and no overlap."""
+        stated = stated_ranges(ranges_section)
+        for tier, (low, _) in stated.items():
+            expected = 0 if tier == 1 else model.PLAYER_MAX_SCORES[tier - 1] + 1
+            assert low == expected, (
+                f"{GDD.name} says tier {tier} starts at {low:,}, which should "
+                f"be {expected:,.0f}. Issue #253.")
+
+    def test_the_two_copies_in_the_document_agree_with_each_other(
+            self, ranges_section, section):
+        """Both are checked against the model above, so this cannot fail on its
+        own. It exists to name the real fault when it does: the document
+        contradicts itself, and a reader has no way to tell which half is
+        right."""
+        maxima_here = {t: high for t, (_, high) in
+                       stated_ranges(ranges_section).items()}
+        start = section.find("### **Player Maximum Power Scores**")
+        assert start != -1
+        maxima_there: dict[int, int] = {}
+        for line in section[start:].splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) < 3 or r"\*\*" in line:
+                continue
+            if all(re.fullmatch(r"\d+", c) for c in cells[:3]):
+                maxima_there[int(cells[0])] = int(cells[1])
+        assert maxima_here == maxima_there, (
+            f"the two tables in {GDD.name} that state the player power anchors "
+            "disagree with each other. Issue #253.")
