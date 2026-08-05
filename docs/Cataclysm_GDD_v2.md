@@ -2511,6 +2511,27 @@ Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affe
 
 Players accumulate empire upgrade points by defeating dungeons. These points are spent on a permanent empire-wide upgrade tree that persists through all runs — including failed ones. Empire upgrades provide lasting bonuses to city defenses, population, dungeon floor counts, and more. This is the primary meta-progression system.
 
+**The empire upgrade tree belongs to the account, not to the character.** Every
+character on the account shares one tree, so making a new character costs that
+character's levels and gear and nothing else. The meta-progression carries over.
+This is what makes trying a different class, or a harder lethality mode, cheap
+enough to be worth doing — and the lethality mode and the Solo Self-Found flag
+are both locked at character creation, so making a new character is the only way
+to try either.
+
+**A Solo Self-Found character is the exception. It has its own empire tree,
+shared with nothing.** Its points come only from its own runs, and no other
+character can spend them or benefit from them. That follows from what the flag
+means: a Solo Self-Found character already has no auction house and no shared
+stash, and inheriting a mature account's empire tree would be the largest handout
+of the three. A player running Solo Self-Found is starting the whole game over,
+which is the point of the flag.
+
+**How the shared tree is scoped is still open.** Issue #277 asks whether the
+sharing between characters is bounded by the lethality mode or by the difficulty
+tier, so that progress earned at an easier setting cannot be carried into a
+harder one. Until that is answered, only the ownership rule above is settled.
+
   
 
 ## **Capital Services**
@@ -2940,6 +2961,11 @@ The max level is 100. Players earn experience by killing dungeon enemies and def
 ## **Roguelike Meta Progression**
 
 Empire upgrade points are earned by defeating dungeons and persist through all runs including failures. The empire upgrade tree provides permanent bonuses to city defenses, dungeon parameters, and empire management. This system ensures every run — even a failed one — makes the next attempt slightly stronger, rewarding persistence without making early runs trivial.
+
+**The tree persists across characters as well as across runs.** It belongs to the
+account, so a new character inherits it. The one exception is a Solo Self-Found
+character, which has its own tree and inherits nothing. The Empire-Wide Upgrades
+section states the rule in full.
 
   
 

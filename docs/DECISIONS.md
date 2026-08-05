@@ -20,6 +20,78 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The empire upgrade tree belongs to the account, except under Solo Self-Found
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied. Issue #273. The second half of
+the answer is not applied and is carried by #277; see "What is not settled" below.
+
+## The question
+
+`docs/Cataclysm_GDD_v2.md` said twice that empire upgrade points "persist through
+all runs — including failed ones", and never said anything about characters. So
+it was unstated whether a new character starts the primary meta-progression
+system over.
+
+## The answer, 2026-08-05
+
+The project owner: **"account wide, unless solo self found."**
+
+Every character on the account shares one empire upgrade tree. A Solo Self-Found
+character has its own, shared with nothing.
+
+## Why the exception follows from what the flag already means
+
+A Solo Self-Found character has no auction house and no shared stash. Inheriting a
+mature account's empire tree would be a larger handout than either of those, and
+would be the one shared resource the flag did not close off. The flag means
+starting the whole game from nothing, so the empire tree has to be included.
+
+## Why account-wide for everyone else
+
+The design document calls the tree "empire-wide" and "the primary meta-progression
+system", and the pitch it is written against — no run is wasted, each attempt is
+stronger than the last — reads as a property of the game rather than of one
+character. A per-character tree would make that promise much weaker than the
+wording suggests.
+
+It also makes issue #255 cheap. That issue locked the lethality mode and the Solo
+Self-Found flag at character creation, and the main argument for locking was that
+rerolling is affordable. That is only true because the empire tree survives a new
+character.
+
+The cost is that a new character on a mature account skips the early difficulty.
+That is real, and it is what the second half of the answer was aimed at.
+
+## What is not settled
+
+The rest of the answer was: **"And it should only apply to the same difficulty
+tier so you can't run up your empire tree in normal and then switch to the hardest
+mode and have a huge head start."**
+
+That sentence scopes the sharing, but the game has two difficulty axes and the
+sentence uses words from both. "Difficulty tier" is the T1 to T8 content axis.
+"Normal" and "the hardest mode" read as the lethality axis, where the modes are
+Standard, Hardcore and Heretic. Three trees per account or eight is not a small
+difference: `docs/Empire_Development_Tree_Final.json`, the empire passive tree,
+has 159 nodes and 1,248 allocatable points.
+
+**Nothing was written for that half**, because writing a scope rule that turns out
+to be the wrong axis is harder to notice and undo than leaving it absent. Issue
+#277 carries it, with both readings, what each costs, and what the genre does.
+
+The recommendation on #277 is the lethality mode, for three reasons. No shipped
+game in the genre partitions meta-progression by a numeric difficulty step —
+Path of Exile scopes the Atlas tree by league and by Softcore against Hardcore but
+not by map tier; Diablo IV scopes Renown and Altars of Lilith by realm but not by
+World Tier; Last Epoch scopes by cycle and by the Hardcore and Solo Challenge
+flags but not by monolith corruption. Scoping by difficulty tier would also mean a
+player who advances a tier arrives with an empty tree at the moment the content
+gets harder, which contradicts the document's own claim that the tree makes each
+next attempt stronger. And it composes with #255: because the lethality mode is
+locked at character creation, no character can cross that boundary by any route.
+
+---
+
 ## 2026-08-05 — The lethality mode and the Solo Self-Found flag are both locked at character creation
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied. Issue #255.
