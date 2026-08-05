@@ -20,6 +20,80 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The empire tree can be respecced in days, and its four capstone choices are inherited
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #288.
+
+### Two questions, answered together
+
+**Could the empire upgrade tree be respecced?** `docs/Cataclysm_GDD_v2.md` listed
+one respec service, "Trainer | Respec passive skill points". Everywhere else the
+document says "passive skill point" it means the class trees — "Per level: 1
+passive skill point". The empire tree is spent with empire upgrade points, a
+different currency with a different name, so the Trainer row did not cover it and
+nothing else did.
+
+**And were the four capstone choices meant to be inherited already made?**
+`docs/Empire_Development_Tree_Final.json`, the empire tree node graph, holds four
+decision capstones at 25, 50, 100 and 200 points, each one choice from three:
+
+| Threshold | Capstone | The three options |
+|---|---|---|
+| 25 | Foundations of the Empire | The Aegis of Hope, The Delver, The Hoarder |
+| 50 | Edicts of Power | The Sentinel, The Collector's Decree, The Soul Forge |
+| 100 | The Imperial Vanguard | The Warlord, The Master Tinkerer, The Midas Touch |
+| 200 | The Imperial Zenith | Imperial Prowess, The Last Stand, The Flood Barrier |
+
+Under the account-wide rule from issue #273, the second character in a lethality
+mode arrives at a tree where all four are already chosen and never faces the
+decisions.
+
+### Why they are one decision and not two
+
+Respec is the mechanism that would let a player revisit an inherited capstone. If
+the tree can be respecced, inheriting the choices costs little. If it cannot, the
+first character in a mode fixes four decisions permanently for every character
+that follows it, for the life of that mode's tree.
+
+### What was decided
+
+Confirmed by the project owner on issue #288, 2026-08-05: "Your recommendation is
+correct."
+
+**The empire tree can be respecced, at the Trainer, for a cost in days.** The
+number of days is left as a tuning value. **The four capstone choices belong to
+the tree and therefore to the lethality mode**, so they are inherited already
+made and can be changed by respeccing like any other allocation.
+
+### Why a cost in days rather than gold or nothing
+
+`docs/Cataclysm_GDD_v2.md` already says every capital service is paid for in
+time: "All services cost time, reinforcing the time pressure." Pricing an empire
+respec the same way needs no new currency and no new rule, and it keeps the
+choice real, because a day spent at the capital is a day not spent defending the
+empire. A free respec would make the capstones not decisions, which is what the
+node graph calls them.
+
+### What argues against it
+
+**It weakens the capstones as identity.** A choice that can be undone for a fixed
+number of days is a preference, not a commitment. The strongest version of these
+capstones would be permanent per lethality mode, and that version was rejected
+because of what it does to inheritance rather than because of what it does to the
+choice.
+
+**The day cost is unspecified, so the decision is only half-priced.** A respec
+costing 1 day is effectively free and a respec costing 60 is effectively
+permanent, and the decision above is compatible with both. The number has to come
+from play. This is recorded rather than solved.
+
+**It gives a mature account a lever a new one does not have.** A player with a
+200-point tree can re-cut all four capstones for one payment in days, which is a
+larger swing than any single choice a new character makes. That follows from the
+tree being account-level and is not specific to respec.
+
+---
+
 ## 2026-08-05 — A Solo Self-Found empire tree survives the character that earned it
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #286.
@@ -681,9 +755,9 @@ Five questions surfaced while writing the rule. Each is its own issue.
 | Issue | Question |
 |---|---|
 | #285 | The shared stash and the auction house are not partitioned, so gear can still cross the boundary the tree no longer crosses. **Answered 2026-08-05: they are now partitioned the same way. See the entry at the top of this file.** |
-| #286 | A Solo Self-Found character consumed by Worn Residue is the only owner of its tree, so "Empire progress is kept" has no referent. |
-| #287 | Whether a seasonal league is a fourth partition. Every game in the table above that has leagues, cycles or realms partitions by them first; Grim Dawn, which has none, does not. |
-| #288 | Whether the empire tree can be respecced, and whether the four tier capstones being inherited already chosen is intended. |
+| #286 | A Solo Self-Found character consumed by Worn Residue is the only owner of its tree, so "Empire progress is kept" has no referent. **Answered 2026-08-05: the tree is never destroyed and the next Solo Self-Found character in that mode inherits it. See the entry near the top of this file.** |
+| #287 | Whether a seasonal league is a fourth partition. Every game in the table above that has leagues, cycles or realms partitions by them first; Grim Dawn, which has none, does not. Still open, and now labelled `needs-operator`. |
+| #288 | Whether the empire tree can be respecced, and whether the four tier capstones being inherited already chosen is intended. **Answered 2026-08-05: it can be respecced at a cost in days, and the inheritance is intended. See the entry near the top of this file.** |
 | #289 | Whether Heretic's 25% extra surge dungeons over-compensate for its tree starting empty. |
 
 **One worry was checked and dismissed.** Content difficulty does not assume the

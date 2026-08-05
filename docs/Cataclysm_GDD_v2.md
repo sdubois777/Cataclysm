@@ -2655,6 +2655,32 @@ character.** Each of them persists across every run and every character that
 feeds it, exactly as before. The scope narrows which characters share a tree; it
 does not shorten how long a tree lasts.
 
+**The tree can be respecced, at a cost in days.** The Trainer at the capital
+moves empire upgrade points as well as class passive skill points, and like every
+other capital service it is paid for in days rather than gold. How many days is a
+tuning value and is not fixed here. A respec moves an allocation inside one tree;
+it is not a route between trees, because the points are scoped to the lethality
+mode that earned them and moving where they sit does not change which mode that
+was.
+
+**The four tier-milestone capstones belong to the tree, not to the character.**
+`Empire_Development_Tree_Final.json` holds four decision capstones — Foundations
+of the Empire at 25 points, Edicts of Power at 50, The Imperial Vanguard at 100
+and The Imperial Zenith at 200 — and each is one choice from three. They are
+allocations in the tree and the tree belongs to the lethality mode, so **the
+second character in a mode inherits all four choices already made** and never
+faces the decisions. It can change them by respeccing, at the same cost in days
+any other character pays.
+
+**That is intended rather than an oversight.** A capstone chosen at 25 points
+says what the empire is for, not what one character is for, so it belongs at the
+same level as the rest of the tree. Inheriting it is the same benefit as
+inheriting everything else in the tree, which is the whole reason trying a
+different class is cheap. Respec is what stops it being permanent: the first
+character in a mode fixes a starting position for the ones that follow, not a
+life sentence. Without respec it would be a life sentence, which is why the two
+questions were answered together.
+
 **The partition is storage, not content.** There is one node graph,
 `Empire_Development_Tree_Final.json`, and every tree allocates the same nodes at
 the same values. Heretic does not get a tree tuned for Heretic.
@@ -2694,7 +2720,7 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 | Smith (Cataclysmic Forge) | Crafting, upgrading gear, Forge interactions |
 | Jeweler | Combines and sockets gems |
 | Auction House | Buy and sell items. One market per lethality mode (disabled in SSF) |
-| Trainer | Respec passive skill points |
+| Trainer | Respec class passive skill points, and respec the empire upgrade tree. Both cost days. |
 | Side Quests | Random missions for crafting materials, gear, and gold |
 
   
