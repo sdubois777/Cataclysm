@@ -101,6 +101,16 @@ Self-Found and Heretic Solo Self-Found are both real combinations.
 | \*\*Flag\*\* | \*\*Rules\*\* |
 | Solo Self-Found (SSF) | No auction house, no shared stash. Drop rates are unchanged. |
 
+**Both choices are locked at character creation and cannot be changed
+afterwards.** The lethality mode never changes, in either direction, and dying
+does not change it — a Hardcore or Heretic character that dies stays Hardcore or
+Heretic and pays the day cost in the table above. The Solo Self-Found flag never
+comes off, so a Solo Self-Found character can never use the auction house or the
+shared stash. A player who wants a different combination makes a new character.
+This is what makes a mode worth anything: a Heretic Solo Self-Found character
+carried those rules for its whole life, and could not have switched them off at
+the moment they became inconvenient.
+
 **No mode grants increased loot.** Drop rate belongs to the difficulty tier,
 which is the axis this game already scales content on. That is where every
 shipped game in the genre puts it: Path of Exile's Solo Self-Found league has
