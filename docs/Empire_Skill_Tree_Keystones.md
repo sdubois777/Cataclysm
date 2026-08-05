@@ -1,8 +1,27 @@
 # Empire Skill Tree Keystones
 
-> Exported from Google Drive (Doc `1qhS-gsZvWEXgjefh4mrbrbezwyulD3L_dGwo_ybFgcM`),
-> last modified 2026-02-10. Source of truth is the Drive doc; this copy exists so
-> the sim and the Unreal data pipeline can be diffed against it in-repo.
+> **This file is commentary. `Empire_Development_Tree_Final.json` is the empire
+> tree.** That file is the node graph the passive tree editor reads and writes,
+> and it is what the game and the simulation are built against. This one is prose
+> describing the same tree, and it is older and smaller: it was last edited on
+> 2026-02-10 and the node graph on 2026-03-05, and it names 105 of the graph's 173
+> nodes. Where the two disagree about a node, the graph is right. Issue #25.
+>
+> Three things in this file have no counterpart in the graph, listed here so a
+> reader does not have to find that out node by node. They may have been dropped
+> deliberately when the tree was rebuilt, or lost; nobody recorded which, and
+> issue #260 asks.
+>
+> | In this file | Status in the node graph |
+> | :-- | :-- |
+> | **Bounties**, a 10% chance for a dungeon to spawn a gold-dropping Elite | There is a node called Bounty, but it grants +5% loot quantity per point. Same word, different effect. |
+> | **Weightless Spoils**, +10 inventory slots | Absent. The graph does not mention inventory anywhere. |
+> | **The 4 Decision Nodes**, choose a Cataclysm type for 25% resistance | Absent. The graph has five decision nodes and none of them is this. |
+>
+> Exported from Google Drive (Doc `1qhS-gsZvWEXgjefh4mrbrbezwyulD3L_dGwo_ybFgcM`)
+> on 2026-08-02. As of that date the repository copy is the source of truth and is
+> not synced back to Drive; treat the Drive original as historical. See
+> `docs/README.md`.
 
 ### Tier 1: Foundations of the Empire
 
@@ -38,7 +57,7 @@ The tree is divided into four distinct "pie slices," with each slice representin
 
 1. **Architect:** Focuses on city defense, population management, and the overall resilience of the empire.
 2. **Explorer:** Focuses on dungeon speed, efficiency, and loot.
-3. **Treasurer:** Focuses on economy, gold drops, and generating resources.
+3. **Treasury:** Focuses on economy, gold drops, and generating resources.
 4. **Artisan:** Focuses on all aspects of crafting, enchanting, and item modification.
 
 ### The Final Capstones
@@ -47,7 +66,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 
 - **Architect: The Royal Engineer's Blessing** — For every city that has a defensive upgrade, all cities in your empire gain a **2%** passive defense bonus.
 - **Explorer: The Cartographer's Blessing** — For every city that has an Explorer-based city upgrade, loot quantity and rarity are increased by 5%.
-- **Tyrant: The Golden Touch** — For every city that has an economic upgrade, all gold and crafting materials dropped from dungeons are increased by **10%**.
+- **Treasury: The Golden Touch** — For every city that has an economic upgrade, all gold and crafting materials dropped from dungeons are increased by **10%**.
 - **Artisan: The Alchemist's Transmutation** — Increase the stats of a crafted affix on an item by 1% per passive point allocated in the Artisan branch.
 
 ## Architect Quadrant
@@ -194,7 +213,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Expanded Station (Smith, Max 3 pts):** Adds +1 Worker to the Smith station.
 - **Expanded Station (Enchantress, Max 3 pts):** Adds +1 Worker to the Enchantress station.
 - **NOTABLE: Master's Touch:** 1% chance per 100 CR on an item to reset the CR to 0 when crafting.
-- **NOTABLE: Architectural Synergy:** Every 10 points in the **Treasurer** branch reduces crafting gold costs by 5%.
+- **NOTABLE: Architectural Synergy:** Every 10 points in the **Treasury** branch reduces crafting gold costs by 5%.
 - **NOTABLE: Sovereign's Assembly:** Reduce total crafting time required by 50%.
 
 ### Tier 4: The Sovereign's Forge

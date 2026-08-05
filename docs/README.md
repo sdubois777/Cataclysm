@@ -75,6 +75,44 @@ obsolete. Those decisions still need applying to the files in this folder.
 - **"Masochist Passive Tree"** and **"Nephilim Passive Tree"** — class design docs
   in the same Drive folder, not part of the empire layer.
 
+## Which file is the empire passive tree
+
+**`Empire_Development_Tree_Final.json` is the tree. `Empire_Skill_Tree_Keystones.md`
+is commentary on it.** Both describe the empire passive tree and they are not the
+same size, so this needs saying rather than guessing. Issue #25.
+
+| | The node graph | The prose |
+|---|---|---|
+| File | `Empire_Development_Tree_Final.json` | `Empire_Skill_Tree_Keystones.md` |
+| What it holds | 159 nodes, 158 edges, 173 distinct node and capstone-option names | 108 bullets across 4 keystone tiers, 4 branch capstones and 4 quadrants |
+| Last edited | 2026-03-05, per its own `metadata.updatedAt` | 2026-02-10 |
+| Authoritative for | The tree's structure and every node's name and effect | Nothing the graph also states |
+
+105 of the prose's 108 bullets name a node that is in the graph. The graph has 68
+names the prose does not mention at all, because it is roughly three weeks newer
+and was expanded after the prose was written. **Where the two disagree, the graph
+is right.**
+
+Three prose entries have no counterpart in the graph — Bounties, Weightless
+Spoils, and the Architect quadrant's four decision nodes. Nobody recorded whether
+they were cut or lost. They are listed in the prose file's own header and in issue
+#260.
+
+**The quadrant is called Treasury.** The prose called it three things: Treasurer
+in the branch list, Tyrant in the capstone list and Treasury in its section
+heading. The graph uses Treasury nine times, Treasurer and Tyrant never, and its
+on-canvas label reads TREASURY. The prose now matches. Note this is a different
+word from the **Treasurer** city upgrade in `game/Data/CityUpgrades.csv`, which
+keeps its name.
+
+**The node graph is not generated output.** The passive tree editor at
+`C:\Projects\PassiveTreeCreator` holds no tree data of its own — it opens a JSON
+file the user picks and downloads one back. So this file is the data, and editing
+it here is safe. The same is true of the three class tree JSON files.
+
+`tools/tests/test_empire_tree_documents_agree.py` holds the comparison, so the two
+files cannot drift apart again without something failing.
+
 ## Related, but not in this folder
 
 The authoritative power model is **not** here. It lives in the separate
