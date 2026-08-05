@@ -1353,7 +1353,7 @@ Affixes are the ordinary stats on gear, separate from the enchantments below. Ev
 
 ### **Affix Tiers**
 
-Every affix has seven tiers, T1 to T7, because the crafting material that raises them (the Potency Crystal) levels an affix to T7. One shared curve produces all seven from the affix's top value.
+Every affix has seven tiers, T1 to T7, because the crafting material that raises them (the Potency Crystal) levels an affix to T7. One shared curve produces all seven from the affix's top value. Which of the seven a given item can reach is set by the difficulty tier; see What Tier an Affix Can Roll At below.
 
   
 
@@ -1382,6 +1382,56 @@ Without ranges, two crafting materials do nothing at all. The Corrupted Mote rer
 **The overlap reaches exactly one tier and never two.** A tier's floor is 0.75 of its own fraction, so tier N is undercut by tier N−1 only when N is above 4, and by tier N−2 only when N is above 8, which cannot happen with seven tiers.
 
   
+
+### **What Tier an Affix Can Roll At**
+
+Seven tiers do nothing for progression unless something says which of them a drop can reach. Without a gate a tier 1 dungeon drops a T7 affix, and the tier ladder is decoration.
+
+
+
+**The gate is the difficulty tier, and it caps the affix tier by any route: `affix tier <= min(7, difficulty tier)`.**
+
+
+
+**The difficulty tier is the design's own gate, three times already.** Gear and gem rarity equal the difficulty tier. The best upgrade stone that can drop is capped by the current difficulty tier. A weapon rolls damage types up to the lower of its own limit and the tier it dropped on. This is the fourth use of the same shape, not a new mechanism.
+
+
+
+|  |  |  |
+| :-: | :-: | :-- |
+| \*\*Difficulty tier\*\* | \*\*Highest affix tier\*\* | \*\*What else that tier brings\*\* |
+| 1 | T1 | Everyday gear, +3 upgrade level |
+| 2 | T2 | Quality gear, +4 |
+| 3 | T3 | Superb gear, +5 |
+| 4 | T4 | Masterful gear, +6 |
+| 5 | T5 | Legendary gear, +7 |
+| 6 | T6 | Mythical gear, +8 |
+| 7 | T7 | Ascendant gear, +9 |
+| 8 | T7 | Cataclysmic gear, +10 |
+
+*Gear rarity and upgrade level are the reference progression stated in section IV.*
+
+
+
+**There are eight difficulty tiers and seven affix tiers, so one tier has to double up, and it doubles at the top.** Tiers 7 and 8 both reach T7. Doubling at the bottom instead would leave tiers 1 and 2 both stopping at T1, and early progression has fewer other things climbing alongside it. At the top, gear rarity, gear upgrade level and filled sockets are all still rising.
+
+
+
+**Every tier at or below the cap stays in the pool.** A drop rolls uniformly from T1 up to the cap, so a tier 8 drop averages T4 and reaches T7 about one time in seven. A drop that always handed over the cap would not be a drop, it would be a delivery, and the crafting materials that reroll and perfect a value would have nothing left to do.
+
+
+
+**That is what the genre does.** Path of Exile gates modifier tiers on item level: item level expands which tiers are available rather than removing the low ones, so a high item level gives an item better potential and guarantees nothing. Last Epoch gates the same way on area level. It is also the shape this document already uses for damage types on a weapon, one section below.
+
+
+
+**The cap applies to crafting as well as to the drop.** The Potency Crystal raises an affix one tier at a time, and it cannot raise one past the difficulty tier the player has reached. Capping only the drop would leave the gate doing nothing, because a tier 1 player would craft to T7 instead of finding one. The upgrade stone rule already gates progression rather than the source, and this matches it. Carrying an old piece forward into a higher tier and raising its affixes again is the intended consequence.
+
+
+
+**No affix tier is drop-only.** Last Epoch makes its top two tiers uncraftable, and its stated reason is that crafting made near-perfect items too easy to reach, which removed the reason to hunt for gear. The tier cap answers that here instead: crafting cannot outrun the player's own progress, so it cannot produce a near-perfect item early. A dropped high tier still saves the days at the forge that raising it would have cost, and a day at the forge is a day not defending the empire, which is this game's scarcest resource. A drop-only band can be added later without changing anything else, because the drop cap and the crafting ceiling are two separate numbers.
+
+
 
 ### **Resistance Affixes**
 

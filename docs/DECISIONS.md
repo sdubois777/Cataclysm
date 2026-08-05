@@ -20,6 +20,83 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The difficulty tier caps which affix tier an item can reach, by drop or by crafting
+
+**The question.** Issue #129. Affixes have seven tiers and T7 is worth seven
+times T1, and nothing said which of them a drop could reach. Without a gate a
+tier 1 dungeon drops a T7 affix and the seven-tier curve does nothing for
+progression. The issue left three things open: what the gate is, whether it is a
+hard cap or a weighted range, and whether any tiers are drop-only.
+
+**THE RULE. `affix tier <= min(7, difficulty tier)`, applied to the drop and to
+crafting alike. Below the cap, a drop rolls uniformly from T1 up to it.**
+
+**DERIVED, NOT CHOSEN: the gate is the difficulty tier.** It is this design's own
+gate three times already. Gear and gem rarity equal the difficulty tier. The best
+upgrade stone that can drop is capped by the current difficulty tier. A weapon
+rolls damage types up to the lower of its own limit and the tier it dropped on,
+which is `min(own limit, tier)` — exactly the shape used here. This is a fourth
+use of an existing mechanism rather than a new one. The other two candidates the
+issue named were dungeon depth and enemy rarity; depth already pays in days and
+in enemy score, and neither has a precedent in the document.
+
+**RESEARCHED: a hard cap on the maximum, with every tier at or below it still in
+the pool.** Path of Exile gates modifier tiers on item level, and item level
+expands which tiers are *available* rather than removing the low ones, so a high
+item level gives better potential and guarantees nothing. Last Epoch gates the
+same way on area level, and its top tier needs area level 90. Sources:
+
+- https://pathofexile.fandom.com/wiki/Modifiers
+- https://www.lastepochtools.com/news/article/introducing-tier-6-and-7-item-affixes-22279
+- https://www.icy-veins.com/last-epoch/crafting-guide
+
+A uniform draw from T1 to the cap is the simplest rule with that property and it
+invents no constant. At difficulty tier 8 it gives a mean of T4 and reaches T7
+about one drop in seven. That the draw is uniform rather than weighted is the
+part most likely to want tuning against real play; the shape is the decision, the
+distribution inside it is a starting point.
+
+**JUDGEMENT, NOT DERIVED: the doubled tier goes at the top.** There are eight
+difficulty tiers and seven affix tiers, so one affix tier serves two difficulty
+tiers. Tiers 7 and 8 both reach T7. Doubling at the bottom instead — `max(1, tier
+- 1)` — would leave tiers 1 and 2 both stopping at T1. Early progression has
+fewer other things climbing alongside it; at the top, gear rarity, gear upgrade
+level and filled sockets are all still rising, so a flat step there costs less.
+
+**JUDGEMENT, NOT DERIVED: the cap applies to crafting as well as to the drop.**
+Capping only the drop would leave the gate doing nothing, because the Potency
+Crystal raises an affix one tier at a time and a tier 1 player would craft to T7
+rather than find one. The design already gates progression rather than the
+source: the upgrade stone rule caps what can drop by the current difficulty tier
+for the same reason. The consequence — carrying an old piece forward into a
+higher tier and raising its affixes again — is wanted rather than tolerated.
+
+**NO AFFIX TIER IS DROP-ONLY.** Last Epoch makes its top two tiers uncraftable.
+Its developers' stated reason is that with tier 5 as the crafting ceiling it was
+too easy to reach near-perfect items, which made hunting for gear less exciting
+than gambling and crafting. The tier cap answers that here instead: crafting
+cannot outrun the player's own progress, so it cannot produce a near-perfect item
+early. A dropped high tier also still saves the days at the forge that raising it
+would have cost, and a day at the forge is a day not defending the empire. A
+drop-only band remains addable later without changing anything else, because the
+drop cap and the crafting ceiling are two separate numbers. **This is the part of
+the decision most open to reversal**; it is raised for the project owner in the
+issue filed alongside this entry.
+
+**Affects.** `docs/Cataclysm_GDD_v2.md`, new section "What Tier an Affix Can Roll
+At" in section VI, and the opening of the Affix Tiers section, which now points
+at it. `docs/All_Things_Cataclysm.xlsx`, the Crafting sheet, where the Potency
+Crystal's function now says it never raises an affix above the current difficulty
+tier, and the generated `game/Data/CraftingMaterials.csv` and
+`game/Content/Data/DT_CraftingMaterials.uasset` with it. **Applied.**
+
+**In the model.** `sim/cataclysm_sim/affixes.py` gained `max_affix_tier(tier)`
+and `roll_affix_tier(tier, rng)`, and a module-level check that the gate reaches
+T7, starts at T1, never leaves the affix tier range and never falls as the
+difficulty tier rises. The loot roll itself is issue #44.
+
+---
+
 ## 2026-08-05 — One affix per group: an affix belongs to a group for every stat it grants
 
 **The question.** Issue #128. `docs/Cataclysm_GDD_v2.md` restricted affixes by
