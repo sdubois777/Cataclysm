@@ -20,6 +20,91 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — A run ending costs the run, not the character
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #315.
+
+### The question
+
+`docs/Cataclysm_GDD_v2.md` described a run ending in two ways that could not both
+be true. The Worn Residue section said a character killed by its own corrupted
+double "is consumed" and that "the run ends", and the Cataclysmic Forge
+introduction priced the whole residue system on that being permanent: residue was
+"the only way the Forge can cost a player anything permanent". Meanwhile the
+project owner's answer on issue #286 said a run ending keeps the character.
+
+Nothing in the document said, in one place, what a run ending costs.
+
+### What was decided
+
+**By the project owner, 2026-08-05, on issue #315:**
+
+> For the consume character part, it says the run ends. Which means you restart
+> the tier you're currently on. You just keep your character/gear/passive
+> trees/empire tree. Your second example, you read that wrong. It's saying why we
+> don't replace the character with a fresh one. The worn residue trigger doesn't
+> actually consume the character, it consumes it in the sense that their
+> character will get added to the pool of Nemesis characters for that dungeon
+> modifier. No need to overthink it, if the nemesis created from worn residue
+> kills you, you fail the run.
+
+Three separate rulings, all applied:
+
+1. **A run ending never costs the character.** The same character plays the next
+   run with its levels, its equipment, its class passive trees and its empire
+   upgrade tree. This holds for all four ways a run ends: defeating the boss
+   dungeon, losing the capital, dying in the Last Stand, and being killed by the
+   Worn Residue double.
+2. **A failed run replays the same tier.** Only defeating the boss dungeon adds a
+   Cataclysm to the next run. What a failed run costs is the empire map, the
+   cities, the days spent, and the progress toward the active Cataclysms.
+3. **"Consumed" names where the character goes, not what is taken from the
+   player.** A snapshot joins the shared library of corrupted characters that The
+   Corrupted dungeon modifier draws from. The character itself is untouched.
+
+### What changed in the document
+
+| Place | What it said | What it says now |
+|---|---|---|
+| Section II, new subsection Ending a Run | nothing; the cost of a run ending was never stated in one place | the four ways a run ends, that none costs the character, what a failed run does cost, and that ordinary death in a dungeon is not a run ending |
+| Cataclysmic Forge introduction, section VII | residue is "the only way the Forge can cost a player anything permanent" | the Forge cannot cost a player anything permanent; its worst outcome ends a run |
+| Worn Residue and Consumption, section VII | "the character is consumed" with no definition | a paragraph headed "Consumed does not mean destroyed", and a paragraph naming what being consumed actually costs |
+| "Why the run ends rather than the character being replaced mid-run" | read as a description of what happens | labelled as the alternative the design rejected, which is what the owner said it was |
+| Empire-Wide Upgrades, tree survival rule | gave "Worn Residue can consume a character outright" as the reason the rule matters | says nothing in the design destroys a character, so the rule is a safeguard rather than a live case |
+| The Corrupted, section VIII | "a player could lose a high-tier character on purpose" | "get a high-tier character consumed on purpose", and notes that doing so is now cheap |
+
+### The case against
+
+**It makes the Consumption Threshold warning guard a smaller stake than its
+presentation implies.** The threshold shows a confirmation prompt, and the
+document calls crossing it "always a decision the player made on purpose". The
+consequence is now the loss of a run. That is still the largest non-permanent
+setback in the game — a high-tier empire and every day spent building it — but it
+is not what the original wording suggested. The Worn Residue section now says
+this plainly rather than leaving the reader to notice it.
+
+**Deliberately being consumed is cheap, and it feeds the shared table.** A player
+can now cross the threshold on purpose to put a high-tier character into the
+corrupted-character pool at no cost beyond the run. The Scaling rule in The
+Corrupted section already blocks the profitable version of this — the drawn
+character is rebuilt at the drawing dungeon's tier, not the tier it was consumed
+at — and that rule now carries more weight than when it was written.
+
+**The empire tree survival rule from issue #286 now has no trigger.** It says a
+lost Solo Self-Found character's tree passes to the next Solo Self-Found
+character in that mode. Nothing in the design loses a character any more. The
+rule is kept as a safeguard and the document says so. Whether a player can delete
+a character, which would give the rule a trigger, is issue #325.
+
+### What this does not decide
+
+**Whether a failed run should cost anything permanent at all.** The design now
+has no permanent cost for failure of any kind. That is a coherent roguelike
+position and it is what the owner chose, but it is a balance question that needs
+play rather than argument, so it is recorded here and not raised as an issue.
+
+---
+
 ## 2026-08-05 — The carried inventory is 48 slots and nothing increases it
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #308.
@@ -455,6 +540,12 @@ ending does not cost the character, which would contradict consumption destroyin
 it and contradict the paragraph headed "Why the run ends rather than the character
 being replaced mid-run". **That is a separate question and was not decided here.**
 It is issue #315, which quotes the sentence and lists both readings.
+
+**It has since been answered, on 2026-08-05, and the answer is that a run ending
+does not cost the character.** See the entry headed "A run ending costs the run,
+not the character" in this file. That answer does not change anything decided
+above; the tree still survives, and the reason it survives is now one the
+document never needs to use, because nothing destroys a character.
 
 ---
 

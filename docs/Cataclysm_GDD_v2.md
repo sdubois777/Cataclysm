@@ -240,6 +240,38 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
   
 
+### **Ending a Run**
+
+**A run ending never costs the character.** There are four ways a run ends:
+defeating the Cataclysm boss dungeon, losing the capital, dying in the Last Stand
+dungeon, and being killed by the corrupted double that Worn Residue produces. In
+every one of them the same character plays the next run, keeping its levels, its
+equipment, its class passive trees and its empire upgrade tree. Nothing in this
+design destroys a character.
+
+  
+
+**What a failed run costs is the run: the empire and the tier.** The empire map,
+the cities, the days elapsed and the progress made toward the active Cataclysms
+are all lost, and the next run replays the same tier — the same number of
+simultaneous Cataclysms — rather than adding one. Only defeating the boss dungeon
+adds a Cataclysm to the next run.
+
+  
+
+**What is kept is everything held outside the run.** The character and its gear
+and levels, the empire upgrade tree of its lethality mode, the account's gold and
+the shared stash all survive. That is what makes the empire upgrade tree the
+primary meta-progression system: a failed run still fed it.
+
+  
+
+**Ordinary death inside a dungeon is not a run ending.** It costs the days listed
+in the lethality mode table in section II and, in Hardcore and Heretic, some
+equipped items. The run continues.
+
+  
+
 ## **Combat System**
 
 ### **Real-Time Action**
@@ -2312,7 +2344,7 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
 
 The Cataclysmic Forge is a high-stakes, deterministic crafting system built around the game's core theme of Time Management. A craft never destroys the item being crafted. The Forge's primary penalty is a strategic setback — crafting expensive items costs the player valuable days needed to manage the Empire and defend against the next Surge.
 
-There is one exception, and it is the only way the Forge can cost a player anything permanent: residue accumulated across worn equipment can reach a threshold at which the character is hunted, and can be lost. That is described under Worn Residue and Consumption below. It is warned before it can happen, and it is avoidable by managing residue.
+**The Forge cannot cost a player anything permanent.** Its worst outcome is that residue accumulated across worn equipment reaches a threshold at which the character is hunted by a corrupted copy of itself, and losing that fight ends the run. Ending a run costs the run, not the character, which is stated in full under Ending a Run in section II. That worst outcome is described under Worn Residue and Consumption below. It is warned before it can happen, and it is avoidable by managing residue.
 
   
 
@@ -2355,7 +2387,7 @@ Worn Residue grants nothing. It is not a resource and it does not make the chara
 
   
 
-**This half needs no connection.** The double is built from the player's own character, on the player's own machine. Nothing about crossing the threshold, being hunted, winning or being consumed requires a network connection or the shared table. Only The Corrupted dungeon modifier, which draws a character somebody else lost, needs either.
+**This half needs no connection.** The double is built from the player's own character, on the player's own machine. Nothing about crossing the threshold, being hunted, winning or being consumed requires a network connection or the shared table. Only The Corrupted dungeon modifier, which draws a character somebody else had consumed, needs either.
 
   
 
@@ -2370,11 +2402,23 @@ This is deliberate. Party play scales enemy health and damage with the number of
 Whether anyone is actually consumed is decided by the party rule in section VIII: if at least one player leaves the dungeon alive, nobody is consumed. Leaving alive is a reprieve rather than a solution — residue is unchanged and the doubles return on the next dungeon. Only killing the double clears residue.
 
   - **If the player kills the double**, residue is set to zero on every equipped item. The character keeps its equipment and the run continues.
-  - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run. **Empire progress is kept, in every mode, including Solo Self-Found.** For an ordinary character the lethality mode's shared tree is untouched, because it never belonged to the character. A Solo Self-Found character is the only owner of its tree, so the Empire-Wide Upgrades section says what happens to it: the tree is held and the next Solo Self-Found character created in that lethality mode inherits it. A snapshot of the character is written to the shared library of corrupted characters described in section VIII.
+  - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run.
 
   
 
-**Why the run ends rather than the character being replaced mid-run.** A run is played at a fixed tier. Replacing a tier 5 character with a fresh one leaves the player at a tier they cannot survive, which is a loss presented as a continuation. Ending the run states the same penalty honestly, and it reuses a rule the game already has rather than inventing a new category of death.
+**Consumed does not mean destroyed.** The character survives with its levels, its equipment, its class passive trees and its empire upgrade tree, and plays the next run at the same tier, exactly as any other run ending works. What "consumed" names is that a snapshot of the character is written to the shared library of corrupted characters described in section VIII, where it joins the pool that The Corrupted dungeon modifier draws from and becomes an enemy other players fight. The character is taken into that pool; it is not taken from the player.
+
+  
+
+**Empire progress is kept, in every mode, including Solo Self-Found.** For an ordinary character the lethality mode's shared tree is untouched, because it never belonged to the character. A Solo Self-Found character is the only owner of its tree, and it keeps it, because it is still there to own it. The Empire-Wide Upgrades section states the general rule that no empire tree is ever destroyed.
+
+  
+
+**Why the run ends rather than the character being replaced mid-run.** This is the alternative the design rejected, not a description of what happens. A run is played at a fixed tier. Replacing a tier 5 character with a fresh one would leave the player at a tier they cannot survive, which is a loss presented as a continuation. Ending the run states the same penalty honestly, and it reuses a rule the game already has rather than inventing a new category of death. No character is replaced, and none is destroyed.
+
+  
+
+**What being consumed actually costs.** The run, and nothing else — the same price as dying in the Last Stand. This is deliberately smaller than the Consumption Threshold warning makes it sound, and the warning is still worth showing, because losing a run at a high tier is the largest setback in the game that is not permanent: the empire, the cities and every day spent building them are gone, and the next run replays the same tier.
 
   
 
@@ -2482,7 +2526,7 @@ While this modifier is active, one corrupted former player character is placed i
 
   
 
-**Scaling.** The drawn character is rebuilt at the tier of the dungeon it appears in, not the tier it was consumed at. Level, item level, affix tiers and residue all scale to the dungeon's tier. Without this, a player could lose a high-tier character on purpose and then farm its equipment at a tier where the fight is trivial.
+**Scaling.** The drawn character is rebuilt at the tier of the dungeon it appears in, not the tier it was consumed at. Level, item level, affix tiers and residue all scale to the dungeon's tier. Without this, a player could get a high-tier character consumed on purpose and then farm its equipment at a tier where the fight is trivial. That matters more than it looks: being consumed costs the run and not the character, so deliberately feeding a character into this table is cheap.
 
   
 
@@ -2634,9 +2678,13 @@ the whole game over, which is the point of the flag.
 **A tree is never destroyed, in any mode, including Solo Self-Found.** Losing the
 character that earned a tree does not lose the tree. That matters for Solo
 Self-Found in a way it does not for the others, because a Solo Self-Found
-character is the only owner of its tree, and Worn Residue can consume a character
-outright. **When a Solo Self-Found character is lost, its private tree is held,
-and the next Solo Self-Found character created in the same lethality mode
+character is the only owner of its tree, so it is the only case where the
+question can arise at all. **Nothing in this design currently destroys a
+character**, which section II states under Ending a Run: being consumed by Worn
+Residue ends the run and leaves the character intact. So the rule below is a
+safeguard covering any later rule that does lose a character, rather than a case
+that arises today. **When a Solo Self-Found character is lost, its private tree
+is held, and the next Solo Self-Found character created in the same lethality mode
 inherits it rather than starting from nothing.** That character is the successor
 of the lost one; a second Solo Self-Found character created while the first is
 still alive still starts from nothing, which is what the rule above means.
