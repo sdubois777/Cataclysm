@@ -87,3 +87,74 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
     survive *= max(0.05, 1.0 - boss_risk)
 
     return 1.0 - survive
+
+
+# --------------------------------------------------------------------------
+# What power a dungeon actually asks for
+# --------------------------------------------------------------------------
+#
+# Issue #8. The report in `experiments.py` invited the reader to compare every
+# power figure against a hard-coded range that had been derived against the
+# player power anchors issue #2 replaced, and never re-derived.
+#
+# THERE IS NO SINGLE NUMBER, and that is the first thing to say. Death chance
+# falls smoothly with power and never reaches zero at any power the tier allows,
+# because the thing on the last floor of a Cataclysm dungeon outscores the
+# maximum player power of its own tier: 2.0 times at tier 1, falling to 1.2
+# times at tier 8. So the question "what power clears it" only has an answer
+# once a death chance is named.
+
+#: The death chance the reported threshold is quoted at. A run that dies in the
+#: Cataclysm dungeon is over -- see `Engine._resolve_dungeon` -- so this is a
+#: run-ending risk rather than a setback, and one in ten is a reasonable reading
+#: of "can attempt it". It is a reporting choice, not a design rule.
+REPORTED_DEATH_CHANCE = 0.10
+
+
+def power_for_death_chance(target: float, tier: int, dtype: str, subtype: str,
+                           total_floors: int, modifier_score: float,
+                           per_floor_risk: float, boss_risk_multiplier: float,
+                           boss_rarity: str = "Boss",
+                           rate: float = OVERWHELM_RATE,
+                           cap: float = OVERWHELM_CAP) -> float:
+    """The player Power Score at which this dungeon kills you `target` of the time.
+
+    Found by bisection, because `death_chance` compounds seven sampled floors
+    and a boss and has no closed form. It is monotonically decreasing in power,
+    which is what makes bisection valid: more power never raises the risk.
+
+    Returns 0.0 if the dungeon is already safer than `target` at no power at all.
+    The upper bound is open-ended rather than the tier ceiling, because the
+    answer is routinely ABOVE that ceiling and clamping it would hide exactly
+    the fact this exists to report.
+    """
+    if not 0.0 < target < 1.0:
+        raise ValueError(f"target death chance must be between 0 and 1, "
+                         f"got {target}")
+
+    def risk(power: float) -> float:
+        return death_chance(power, tier, dtype, subtype, total_floors,
+                            modifier_score, per_floor_risk,
+                            boss_risk_multiplier, boss_rarity, rate, cap)
+
+    if risk(0.0) <= target:
+        return 0.0
+
+    low = 0.0
+    high = max(1.0, scoring.tier_bounds(tier)[1])
+    # Walk the ceiling up until the dungeon is safe enough, rather than assuming
+    # the tier's own range contains the answer. It usually does not.
+    for _ in range(40):
+        if risk(high) <= target:
+            break
+        high *= 2.0
+    else:
+        return float("inf")
+
+    for _ in range(60):
+        mid = (low + high) / 2.0
+        if risk(mid) > target:
+            low = mid
+        else:
+            high = mid
+    return high
