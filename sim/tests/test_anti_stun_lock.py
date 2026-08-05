@@ -39,6 +39,14 @@ from cataclysm_sim import damage as dm
 #: dealt and the threshold is the only thing being measured.
 MAX_HEALTH = 10_000.0
 
+#: The design document writes small counts as words, so a test comparing a count
+#: read from the skill table against the document's prose has to spell it the
+#: same way. Only the range the displacing-skill count could plausibly reach.
+NUMBER_WORDS = {
+    6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven",
+    12: "twelve", 13: "thirteen", 14: "fourteen", 15: "fifteen",
+}
+
 
 def defender(**kwargs) -> dm.Defender:
     kwargs.setdefault("health", MAX_HEALTH)
@@ -376,11 +384,239 @@ def test_the_document_says_a_displacement_is_not_covered(gdd):
         "anti-stun-lock rule. Issue #297.")
 
 
-def test_the_document_does_not_leave_displacement_sounding_unlimited(gdd):
-    """Not covered by this rule is not the same as repeatable without limit."""
-    assert "This does not mean it should be repeatable without limit" in gdd, (
-        "the design document says displacement is outside the rule without "
-        "saying that something else still has to limit it. Issue #302.")
+def test_the_document_states_what_limits_repeated_displacement(gdd):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-05 this was
+    test_the_document_does_not_leave_displacement_sounding_unlimited, and it
+    checked that the document admitted displacement still needed a limit that
+    nobody had chosen — the sentence "This does not mean it should be repeatable
+    without limit", pointing at issue #302.
+
+    #302 is answered, so the property to hold is the rule itself. The admission
+    would now be a promise the document has already kept."""
+    text = unwrapped(gdd)
+    assert "limited instead by diminishing distance" in text, (
+        "the design document no longer states what limits repeated "
+        "displacement. Issue #302 answered it on 2026-08-05: each displacement "
+        "within 5 seconds moves the target half as far as the one before.")
+    assert "half as far as the one before" in text, (
+        "the document names a limit on repeated displacement without saying "
+        "what the limit is. The rule is halving. Issue #302.")
+
+
+def test_the_displacement_rule_reuses_the_stun_immunity_window(gdd):
+    """One number, not two. The section already has a 5 second window for stun
+    immunity, and the displacement count resets on the same 5 seconds. Reusing
+    it is deliberate and the document says so, because a reader who finds two
+    5-second windows should know they are the same one rather than a
+    coincidence that could drift apart."""
+    text = unwrapped(gdd)
+    assert "The 5 seconds is the same 5 seconds" in text, (
+        "the design document states a 5 second window for the displacement "
+        "rule without saying it is the stun immunity window. Two independent "
+        "5s are two numbers that can drift. Issue #302.")
+    assert f"{dm.STUN_IMMUNITY_SECONDS:.0f} seconds" in text, (
+        f"the model's stun immunity window is "
+        f"{dm.STUN_IMMUNITY_SECONDS} seconds and the document no longer says "
+        f"so where the displacement rule reuses it.")
+
+
+def test_the_displacement_rule_exempts_no_boss_and_says_why(gdd):
+    """The one place this rule deliberately differs from the stun rule above it.
+    A boss cannot be stunned at all, because a boss held still is not a fight. A
+    boss pushed four meters is still fighting, so the reason does not carry
+    across and the exemption is not repeated.
+
+    Without the reason stated, the difference reads as an oversight and the next
+    reader adds boss immunity for symmetry."""
+    text = unwrapped(gdd)
+    assert "no boss exemption" in text, (
+        "the design document does not say whether a boss is exempt from the "
+        "displacement rule. The stun rule two paragraphs above makes bosses "
+        "immune, so silence here reads as an oversight. Issue #302.")
+    assert "a boss pushed four meters is still fighting" in text, (
+        "the document exempts no boss from the displacement rule without "
+        "giving the reason, which is the only thing distinguishing it from the "
+        "stun rule's boss immunity. Issue #302.")
+
+
+def test_the_document_says_why_distance_rather_than_immunity(gdd):
+    """CLAUDE.md requires a design decision to cite how the genre does it. Two
+    shipped games solved this differently and the document takes the axis from
+    one and the escalation from the other, so both belong in the text: Path of
+    Exile 2 treats knockback distance as a scalar on both sides, Diablo IV
+    escalates a hidden resistance to a hard immunity threshold."""
+    text = unwrapped(gdd)
+    assert "Why distance rather than immunity" in text, (
+        "the design document states the halving rule without saying why it is "
+        "a curve rather than the immunity threshold Diablo IV ships. That is "
+        "the one real alternative and it needs answering. Issue #302.")
+    for game in ("Path of Exile 2", "Diablo IV"):
+        assert game in text, (
+            f"the document's argument for diminishing distance no longer "
+            f"cites {game}. The argument is that the genre has two answers and "
+            f"this takes one axis from each.")
+
+
+def test_the_document_shows_the_rule_prevents_the_failure_it_was_written_for(gdd):
+    """A rule with no worked example is a rule nobody can check. The failure
+    named on issue #302 was "a target held permanently at the far end of a
+    room", and the document does the arithmetic that shows halving prevents
+    it."""
+    text = unwrapped(gdd)
+    assert "cannot produce the failure it was written for" in text, (
+        "the design document states the halving rule without showing it stops "
+        "the thing it was written to stop. Issue #302 named that thing: a "
+        "target held permanently at the far end of a room.")
+    assert "4 meters, then 2, then 1" in text, (
+        "the worked example is gone. Three displacements inside the window "
+        "move a target seven meters in total, which is the arithmetic that "
+        "makes the rule checkable. Issue #302.")
+
+
+class TestTheDisplacementRuleMatchesTheSkillTable:
+    """The rule's central argument is a fact about the skill list, so it is read
+    from `game/Data/WeaponSkills.csv` rather than asserted.
+
+    The argument is that a hard immunity threshold is unnecessary because no
+    displacing skill can be repeated quickly: all of them are Heavy attacks,
+    which are slow by design, or Movement skills, which go on cooldown. If a
+    displacing skill ever appears in another slot that argument weakens, and
+    `docs/DECISIONS.md` says outright that the decision should be re-read when
+    it does. These tests are what makes that happen.
+    """
+
+    #: The slots a displacing skill may be in for the rule's argument to hold.
+    SLOTS_THAT_CANNOT_BE_SPAMMED = {"Heavy", "Movement"}
+
+    def _rows(self):
+        import csv
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[2]
+        path = root / "game" / "Data" / "WeaponSkills.csv"
+        if not path.is_file():
+            pytest.skip("the generated weapon skill table is not present")
+        with path.open(encoding="utf-8-sig") as handle:
+            return list(csv.DictReader(handle))
+
+    def _displacing(self) -> dict[str, str]:
+        """Skill name to slot, for skills that push or shove a target.
+
+        Three things say "knock" and are not a displacement, and each is
+        excluded for its own reason. "cannot be knocked back" and "immune to"
+        are a skill preventing displacement rather than applying it; "knocking
+        their weapon aside" is Flaying Lash's disarm; "knocked down" is the
+        knockdown, which the rule above covers instead.
+        """
+        import re
+
+        out: dict[str, str] = {}
+        for row in self._rows():
+            text = row["SkillDescription"]
+            for found in re.finditer(r"knock\w*", text, re.I):
+                before = text[max(0, found.start() - 40):found.start()]
+                after = text[found.start():found.start() + 60]
+                if re.search(r"cannot be|immune to", before, re.I):
+                    continue
+                if re.search(r"their weapon", after, re.I):
+                    continue
+                if re.search(r"^knock\w*\s+(?:them\s+|enemies\s+)?down",
+                             after, re.I):
+                    continue
+                out[row["SkillName"]] = row["Slot"]
+                break
+        return out
+
+    def test_some_skill_actually_displaces(self):
+        """Guards every test below from passing on an empty set."""
+        assert self._displacing(), (
+            "no skill in game/Data/WeaponSkills.csv displaces a target any "
+            "more, so the displacement rule in the design document governs "
+            "nothing. Either a skill was reworded or the rule can go.")
+
+    def test_every_displacing_skill_is_in_a_slot_that_cannot_be_spammed(self):
+        """The load-bearing fact. The document argues no hard immunity is
+        needed BECAUSE no displacing skill can be repeated quickly. A displacing
+        skill in a fast slot makes that argument false, and the halving curve
+        may then be too weak."""
+        wrong = {name: slot for name, slot in self._displacing().items()
+                 if slot not in self.SLOTS_THAT_CANNOT_BE_SPAMMED}
+        assert not wrong, (
+            f"these displacing skills are outside the Heavy and Movement "
+            f"slots: {wrong}. docs/Cataclysm_GDD_v2.md argues that repeated "
+            f"displacement needs no immunity threshold because every "
+            f"displacing skill is either a slow Heavy attack or a Movement "
+            f"skill on cooldown. That argument is now false, and "
+            f"docs/DECISIONS.md says the decision should be re-read when it "
+            f"is. Issue #302.")
+
+    def test_the_document_states_the_number_of_displacing_skills_it_found(self):
+        """The document says "all nine displacing skills". A count in prose goes
+        stale silently, so it is checked. Changing the skill list means changing
+        the sentence, which is the point."""
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parents[2]
+        gdd = (root / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+        count = len(self._displacing())
+        assert f"all {NUMBER_WORDS[count]} displacing skills" in unwrapped(gdd), (
+            f"game/Data/WeaponSkills.csv has {count} displacing skills and "
+            f"docs/Cataclysm_GDD_v2.md does not say so. Issue #302.")
+
+    def test_nothing_in_the_game_can_displace_the_player(self):
+        """The document claims this, and it is the reason issue #310 exists. If
+        an enemy modifier or status effect ever displaces the player, the
+        sentence saying nothing does becomes false and #310 is answered."""
+        import pathlib
+        import re
+
+        root = pathlib.Path(__file__).resolve().parents[2]
+        found: dict[str, list[str]] = {}
+        for name in ("EnemyModifiers.csv", "StatusEffects.csv"):
+            path = root / "game" / "Data" / name
+            if not path.is_file():
+                continue
+            with path.open(encoding="utf-8-sig") as handle:
+                hits = [line for line in handle
+                        if re.search(r"knock\w*\s+(?:back|aside)", line, re.I)]
+            if hits:
+                found[name] = hits
+        assert not found, (
+            f"something can now displace the player: {found}. "
+            "docs/Cataclysm_GDD_v2.md says nothing in the game knocks the "
+            "player back, which is why Living Pyre, Unstoppable Force and "
+            "Forge Stance spend part of their text on immunity to it. Issue "
+            "#310 is answered; update the document and delete this test.")
+
+
+def test_the_decision_log_records_the_displacement_reasoning(gdd):
+    """The design document states rules; the reasoning lives in the decision
+    log. This one needs it more than most, because the argument rests on a fact
+    about the current skill list and a later reader has to be able to see that
+    and re-check it."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[2]
+    log = (root / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
+    heading = ("## 2026-08-05 — Repeated displacement is limited by halving its "
+               "distance, not by immunity")
+    assert heading in log, (
+        "docs/DECISIONS.md has no entry for issue #302. The rule is in the "
+        "design document; the reasoning belongs here.")
+    entry = log[log.index(heading):]
+    entry = entry[:entry.index("\n---", 1)] if "\n---" in entry[1:] else entry
+    assert "What argues against it" in entry, (
+        "the entry records only the case for diminishing distance. Diablo IV "
+        "is the one game that actually solved this and it chose a hard "
+        "threshold instead, which is a real argument the log should carry.")
+    assert "should be re-read" in entry, (
+        "the entry does not say under what condition the decision stops "
+        "holding. It rests on every displacing skill being in a slow slot, so "
+        "that is the condition. Issue #302.")
+    assert entry.count("https://") >= 5, (
+        "the entry makes claims about three shipped games and cites fewer than "
+        "five sources.")
+    assert "search result summaries" in entry, (
+        "the entry presents its sources without saying none was fetched. "
+        "Stating that is the project rule when the evidence is second-hand.")
 
 
 def test_knockdown_and_stun_share_one_immunity_window(gdd):
