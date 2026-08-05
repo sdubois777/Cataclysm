@@ -2370,7 +2370,7 @@ This is deliberate. Party play scales enemy health and damage with the number of
 Whether anyone is actually consumed is decided by the party rule in section VIII: if at least one player leaves the dungeon alive, nobody is consumed. Leaving alive is a reprieve rather than a solution — residue is unchanged and the doubles return on the next dungeon. Only killing the double clears residue.
 
   - **If the player kills the double**, residue is set to zero on every equipped item. The character keeps its equipment and the run continues.
-  - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run. Empire progress is kept. A snapshot of the character is written to the shared library of corrupted characters described in section VIII.
+  - **If the double kills the player**, the character is consumed. The run ends, exactly as dying in the Last Stand ends a run. **Empire progress is kept, in every mode, including Solo Self-Found.** For an ordinary character the lethality mode's shared tree is untouched, because it never belonged to the character. A Solo Self-Found character is the only owner of its tree, so the Empire-Wide Upgrades section says what happens to it: the tree is held and the next Solo Self-Found character created in that lethality mode inherits it. A snapshot of the character is written to the shared library of corrupted characters described in section VIII.
 
   
 
@@ -2630,6 +2630,25 @@ from what the flag means: a Solo Self-Found character already has no auction
 house and no shared stash, and inheriting a mature account's empire tree would be
 the largest handout of the three. A player running Solo Self-Found is starting
 the whole game over, which is the point of the flag.
+
+**A tree is never destroyed, in any mode, including Solo Self-Found.** Losing the
+character that earned a tree does not lose the tree. That matters for Solo
+Self-Found in a way it does not for the others, because a Solo Self-Found
+character is the only owner of its tree, and Worn Residue can consume a character
+outright. **When a Solo Self-Found character is lost, its private tree is held,
+and the next Solo Self-Found character created in the same lethality mode
+inherits it rather than starting from nothing.** That character is the successor
+of the lost one; a second Solo Self-Found character created while the first is
+still alive still starts from nothing, which is what the rule above means.
+
+**Why the tree survives its owner.** Nothing else in this design destroys empire
+upgrade points. A failed run keeps them, a death keeps them, and the whole
+meta-progression system is built on the promise that a run is never wasted.
+Destroying the tree would make being consumed the one failure in the game that
+costs meta-progression, and it would fall only on Solo Self-Found, which is
+already the harshest flag and already the mode where the tree took longest to
+build. It would also make the tree worth less the more of it a player has, which
+inverts the reason to invest in it at all.
 
 **So an account holds three shared trees plus one for every Solo Self-Found
 character.** Each of them persists across every run and every character that
@@ -3097,12 +3116,15 @@ lethality mode.** It belongs to the account, so a new character inherits it —
 but only from characters in the same mode. Standard, Hardcore and Heretic each
 have their own tree, and a character starting in a mode the account has not
 played before starts that tree from nothing. The one exception is a Solo
-Self-Found character, which has its own tree and inherits nothing at all. The
-Empire-Wide Upgrades section states the rule in full.
+Self-Found character, which has its own tree and inherits nothing from the
+account. It does inherit one thing: if a Solo Self-Found character is lost, the
+next Solo Self-Found character created in that lethality mode takes over its
+tree. The Empire-Wide Upgrades section states the rule in full.
 
 **So "no run is wasted" means no run within a mode is wasted.** Every run feeds
 the tree of the mode it was played in, whether it was won or lost. What a run
-never does is feed a different mode's tree.
+never does is feed a different mode's tree. No run feeds nothing: losing the
+character does not destroy the tree it built, in any mode.
 
   
 

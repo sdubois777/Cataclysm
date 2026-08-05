@@ -68,6 +68,12 @@ WHAT IS ASSERTED HERE.
       scope, because a reader arriving at either one must not be told half of it
     the decision log records the reasoning, the genre evidence, the case AGAINST
       the decision, and the five questions left open
+    a tree is never destroyed, in any mode, and a lost Solo Self-Found
+      character's private tree passes to the next Solo Self-Found character
+    the Worn Residue consumption bullet no longer says "empire progress is kept"
+      without saying who keeps it when the consumed character owned the tree
+    the decision log quotes the owner rather than paraphrasing, and names the
+      half of that answer that was NOT applied
 """
 
 from __future__ import annotations
@@ -542,3 +548,188 @@ def test_the_decision_log_lists_what_was_deliberately_left_open(decision_entry):
             f"five questions the scoping rule deliberately did not settle. "
             f"Either it has been answered and belongs in the entry, or it "
             f"should not have been dropped.")
+
+
+# --------------------------------------------------------------------------
+# What happens to a Solo Self-Found tree when its only owner is lost
+#
+# Issue #286. `docs/Cataclysm_GDD_v2.md` says a character consumed by Worn
+# Residue is gone and that "Empire progress is kept". That sentence predates the
+# ownership rule above. For an ordinary character it is obvious who keeps the
+# progress -- the tree never belonged to the character. A Solo Self-Found
+# character is the ONLY owner of its tree, so consumption destroys the owner and
+# the sentence had no referent.
+#
+# DECIDED by the project owner, 2026-08-05, on issue #286: "Regardless of what
+# mode you're playing on, the empire tree persists." So the tree is never
+# destroyed. A lost Solo Self-Found character's private tree is held and the next
+# Solo Self-Found character created in that lethality mode inherits it.
+#
+# THE SAME ANSWER ALSO SAID "you restart the tier you were on while keeping your
+# gear/levels/empire tree", which would mean a run ending never costs the
+# character at all. That contradicts consumption destroying it and would remove
+# the Worn Residue mechanic's entire cost. It was NOT decided here; it is issue
+# #315.
+# --------------------------------------------------------------------------
+
+#: The section describing what being consumed by Worn Residue costs.
+CONSUMPTION_SECTION = "## **Worn Residue and Consumption**"
+
+#: The decision log entry for the rule below.
+SURVIVAL_DECISION_HEADING = ("## 2026-08-05 — A Solo Self-Found empire tree "
+                             "survives the character that earned it")
+
+
+@pytest.fixture(scope="module")
+def consumption(document: str) -> str:
+    return unwrapped(section_of(document, CONSUMPTION_SECTION))
+
+
+@pytest.fixture(scope="module")
+def survival_entry() -> str:
+    """Just this decision's entry, for the reason the fixture above gives: the
+    names in it appear in other entries of a 5,000-line file."""
+    assert DECISIONS.is_file(), "docs/DECISIONS.md is missing"
+    text = DECISIONS.read_text(encoding="utf-8")
+    start = text.find(SURVIVAL_DECISION_HEADING)
+    assert start != -1, (
+        f"docs/DECISIONS.md has no entry headed {SURVIVAL_DECISION_HEADING!r}. "
+        f"That entry carries the owner's answer on issue #286 and the reasoning "
+        f"for it, and it is the only place either is written down.")
+    end = text.find("\n---", start)
+    return unwrapped(text[start:end if end != -1 else len(text)])
+
+
+def test_the_tree_is_never_destroyed_in_any_mode(ownership):
+    """The rule itself, stated generally rather than only for the Solo
+    Self-Found case, because the general form is what the owner answered and it
+    covers whatever else can destroy a character later."""
+    assert "never destroyed, in any mode, including Solo Self-Found" in ownership, (
+        "the Empire-Wide Upgrades section no longer states that an empire tree "
+        "survives losing the character that earned it. For a Solo Self-Found "
+        "character that character is the tree's only owner, so without this "
+        "rule 'Empire progress is kept' has no referent. Issue #286.")
+
+
+def test_it_says_who_inherits_a_lost_solo_self_found_tree(ownership):
+    """Saying the tree is not destroyed is half an answer. A tree nobody can
+    ever spend is reading B from the issue, which is destruction with extra
+    bookkeeping. The section has to name the character that receives it."""
+    assert ("the next Solo Self-Found character created in the same lethality "
+            "mode inherits it rather than starting from nothing") in ownership, (
+        "the section says a lost Solo Self-Found tree is kept without saying "
+        "who inherits it. A tree no character can spend is the same as a "
+        "destroyed one. Issue #286.")
+
+
+def test_it_separates_the_successor_from_a_second_concurrent_character(ownership):
+    """This is the sentence that stops the new rule reading as a contradiction
+    of the old one. The section still says a second Solo Self-Found character
+    starts from nothing, and that stays true: it is about a character played
+    ALONGSIDE the first, not the replacement for one that was lost."""
+    assert "still alive still starts from nothing" in ownership, (
+        "the section grants a lost Solo Self-Found character's tree to the next "
+        "one without saying that a second character created while the first is "
+        "alive still starts from nothing. Those are different cases and the "
+        "section states both rules, so it has to say which is which. "
+        "Issue #286.")
+
+
+def test_the_survival_rule_says_why_rather_than_only_what(ownership):
+    """Same argument as the exception above. A rule with no reason gets deleted
+    by the next reader who thinks it is an oversight -- and this one looks like
+    a softening of the game's harshest mechanic, so it will attract that."""
+    assert "Why the tree survives its owner" in ownership, (
+        "the section states that a tree outlives its owner without saying why. "
+        "The reason is that nothing else in the design destroys empire upgrade "
+        "points, and that destroying them would fall only on Solo Self-Found, "
+        "which is already the harshest flag. Issue #286.")
+    assert "run is never wasted" in ownership
+
+
+def test_the_consumption_bullet_no_longer_says_kept_without_saying_by_whom(
+        consumption):
+    """The sentence this issue was about. "Empire progress is kept" was true for
+    an ordinary character and undefined for a Solo Self-Found one."""
+    assert ("Empire progress is kept, in every mode, including Solo Self-Found"
+            in consumption), (
+        "the Worn Residue consumption bullet says empire progress is kept "
+        "without saying it holds for Solo Self-Found, where the consumed "
+        "character was the tree's only owner. Issue #286.")
+
+
+def test_the_consumption_bullet_points_at_the_rule(consumption):
+    """A reader arriving at the consumption bullet must be able to find out what
+    happens to the private tree without already knowing the ownership rule."""
+    assert "Empire-Wide Upgrades section" in consumption, (
+        "the consumption bullet no longer points at the section that says what "
+        "happens to a Solo Self-Found character's tree. Issue #286.")
+    assert "only owner of its tree" in consumption, (
+        "the consumption bullet does not say why Solo Self-Found needs its own "
+        "answer here. It needs one because the consumed character owned the "
+        "tree outright. Issue #286.")
+
+
+def test_the_summary_section_no_longer_says_it_inherits_nothing_at_all(summary):
+    """WHAT THIS USED TO BE. The summary section said a Solo Self-Found
+    character "has its own tree and inherits nothing at all". That is now false
+    in one case: the successor to a lost Solo Self-Found character inherits its
+    tree. A reader who lands on this section and not the other must not be told
+    the old rule."""
+    assert "inherits nothing at all" not in summary, (
+        "the Roguelike Meta Progression section still says a Solo Self-Found "
+        "character inherits nothing at all. Since issue #286 it inherits the "
+        "tree of a lost Solo Self-Found character in the same lethality mode.")
+    assert "inherits nothing from the account" in summary
+    assert "takes over its tree" in summary, (
+        "the Roguelike Meta Progression section no longer carries the "
+        "inheritance rule. It is the section that promises no run is wasted, so "
+        "a reader who lands there must learn that losing a character does not "
+        "lose the tree. Issue #286.")
+
+
+def test_the_no_run_is_wasted_promise_covers_losing_the_character(summary):
+    """The promise is the reason this decision went the way it did, so the
+    section that makes the promise should say it survives losing a character."""
+    assert "losing the character does not destroy the tree it built" in summary, (
+        "the 'no run is wasted' paragraph does not say that losing the "
+        "character keeps the tree. That is the strongest case for the rule and "
+        "the section making the promise is where it belongs. Issue #286.")
+
+
+def test_the_decision_log_quotes_the_owner_rather_than_paraphrasing(
+        survival_entry):
+    """The answer was three sentences and only the first was applied. A
+    paraphrase would hide that, and the second sentence is issue #315."""
+    assert ("Regardless of what mode you're playing on, the empire tree persists"
+            in survival_entry), (
+        "the docs/DECISIONS.md entry no longer quotes the owner's answer on "
+        "issue #286. It is the whole basis of the rule and part of it was "
+        "deliberately not applied, so the exact words matter.")
+
+
+def test_the_decision_log_records_what_argues_against_the_survival_rule(
+        survival_entry):
+    """This rule softens the mechanic the document calls the Forge's only
+    permanent cost. Whoever reads this next should find that already written
+    down rather than discover it as an objection."""
+    assert "The case against" in survival_entry, (
+        "the docs/DECISIONS.md entry for issue #286 records no case against. "
+        "There is one: Worn Residue is described as the only way the Forge can "
+        "cost a player anything permanent, and for Solo Self-Found this "
+        "removes the largest part of that cost.")
+    assert ("only way the Forge can cost a player anything permanent"
+            in survival_entry)
+
+
+def test_the_decision_log_says_which_half_of_the_answer_was_not_applied(
+        survival_entry):
+    """CLAUDE.md: say what did not work, or was skipped, plainly. The owner's
+    second sentence would remove the Worn Residue mechanic's cost entirely and
+    was not acted on. Without this, a later reader comparing the answer with the
+    document would think the answer had been applied wrongly."""
+    assert "#315" in survival_entry, (
+        "the docs/DECISIONS.md entry does not name the issue holding the part "
+        "of the owner's answer that was NOT decided -- that a run ending keeps "
+        "the character's gear and levels. Issue #315.")
+    assert "was not decided here" in survival_entry

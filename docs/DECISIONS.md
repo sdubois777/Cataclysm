@@ -20,6 +20,88 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — A Solo Self-Found empire tree survives the character that earned it
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #286.
+
+### The question
+
+`docs/Cataclysm_GDD_v2.md` says that a character consumed by Worn Residue is
+gone, the run ends, and "Empire progress is kept". That sentence was written when
+empire progress had one meaning: the account keeps it. Issue #273 then made the
+empire upgrade tree account-owned **except** under Solo Self-Found, where the
+tree belongs to one character and is shared with nothing.
+
+So for a Solo Self-Found character, consumption destroys the only owner of its
+tree, and "Empire progress is kept" had no referent. Kept by whom?
+
+### What was decided
+
+**By the project owner, 2026-08-05, on issue #286:**
+
+> Regardless of what mode you're playing on, the empire tree persists. The game
+> operates like a rogue like in that way. Death isn't the end, but you restart the
+> tier you were on while keeping your gear/levels/empire tree
+
+Applied to the question this issue asked: **the tree is never destroyed, in any
+mode.** A lost Solo Self-Found character's private tree is held, and the next
+Solo Self-Found character created in the same lethality mode inherits it instead
+of starting from nothing.
+
+The "a second Solo Self-Found character starts from nothing again" rule still
+holds and is not in conflict. It is about a second character played *alongside*
+the first. The rule added here is about the *successor* to one that was lost.
+
+### Why inheritance rather than destruction
+
+Nothing else in this design destroys empire upgrade points. A failed run keeps
+them; a death keeps them; the meta-progression system is built on the promise
+that a run is never wasted, and the document states that promise twice.
+
+Destroying the tree would have made being consumed the single failure in the game
+that costs meta-progression, and it would have fallen only on Solo Self-Found —
+the harshest flag, and the one where the tree took longest to build because it
+starts from nothing and is fed by one character. It would also have made a tree
+worth less the larger it grew, because the amount at risk rises with every point
+spent, which inverts the reason to invest in it.
+
+For scale: a Hardcore death costs 10 days and about 1.8 of 18 equipped pieces,
+and the run continues. Destroying an arbitrarily large tree for one lost fight is
+not the same order of penalty as anything else in the design.
+
+### The case against
+
+**Worn Residue is described as the one permanent cost, and this softens it.**
+`docs/Cataclysm_GDD_v2.md` says residue "is the only way the Forge can cost a
+player anything permanent". Consumption still costs the character — its levels,
+its gear, and its place in the run — which is permanent. But for Solo Self-Found
+it no longer costs the meta-progression, which was the largest thing it could
+have cost.
+
+**A player can now lose a Solo Self-Found character deliberately and keep the
+tree.** There is no gain in doing so: the successor starts at level one with no
+gear and the same tree, which is strictly worse than not being consumed. So the
+exploit does not pay, but it does mean consumption cannot be used as a
+meta-progression sink.
+
+**The inheritance needs a rule for which character receives it.** The document
+says the next Solo Self-Found character created in the same lethality mode. That
+is simple and needs no player choice, but it means a player who wants a fresh
+private tree must first create a character to absorb the held one. Recorded as a
+consequence rather than solved; it surfaces when the save format is designed,
+which is issue #21.
+
+### What this deliberately does not decide
+
+The owner's answer also says "you restart the tier you were on while keeping your
+gear/levels/empire tree". Read literally, keeping gear and levels means a run
+ending does not cost the character, which would contradict consumption destroying
+it and contradict the paragraph headed "Why the run ends rather than the character
+being replaced mid-run". **That is a separate question and was not decided here.**
+It is issue #315, which quotes the sentence and lists both readings.
+
+---
+
 ## 2026-08-05 — Repeated displacement is limited by halving its distance, not by immunity
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #302.
