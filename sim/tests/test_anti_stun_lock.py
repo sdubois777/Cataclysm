@@ -274,3 +274,52 @@ def test_the_document_records_that_point_four_is_still_open(gdd):
     """The project owner answered three of the issue's four questions and
     deferred the fourth. A document that reads as complete would lose that."""
     assert "not yet decided" in gdd
+
+
+# --- What the rule covers, said once ----------------------------------------
+#
+# Issue #296. The section used to say both that a slow is not covered by this
+# rule and that whether a slow is covered is open, four lines apart. Both cannot
+# be true. The first is the surviving statement, because the reason behind it is
+# used elsewhere in the document: Cripple's slow caps below total precisely
+# because a full stop would be a stun, which only makes sense if the two are
+# governed separately.
+
+
+def test_the_document_says_a_slow_is_not_covered(gdd):
+    assert "A slow is not a stun and is not covered by this rule." in gdd, (
+        "the design document no longer states that the anti-stun-lock rule does "
+        "not cover slows. Issue #296.")
+
+
+def test_the_document_does_not_also_say_a_slow_is_open(gdd):
+    """The contradiction itself. This is the check that fails if it comes back."""
+    assert "knockback and slow carry the same threshold" not in gdd, (
+        "the design document says a slow's position is open, four lines after "
+        "saying it is settled and not covered. Both cannot be true. Issue #296.")
+
+
+def test_knockback_is_the_thing_still_open(gdd):
+    """Narrowed, not deleted. Knockback genuinely is undecided. Issue #297."""
+    assert "Whether knockback carries the same threshold and window as stun" in gdd, (
+        "the design document no longer records that knockback's position is "
+        "open. It is: issue #297.")
+
+
+def test_the_reason_a_slow_is_separate_is_still_in_the_document(gdd):
+    """The cap on Cripple's slow is why a slow is governed separately.
+
+    If this sentence goes, the surviving statement above loses its support and
+    the question is genuinely open again rather than merely written twice.
+    """
+    assert ("Cripple's slow caps below total** because a full stop is a stun") in gdd, (
+        "the design document no longer explains that Cripple's slow caps below "
+        "total because a full stop would be a stun. That is the reason a slow "
+        "is not covered by the anti-stun-lock rule. Issue #296.")
+
+
+def test_the_open_questions_name_issues_that_are_not_the_closed_parent(gdd):
+    """#270 was split into #296 to #300 and closed, so pointing at it is a dead end."""
+    assert "Issue #270 carries it" not in gdd, (
+        "the design document points at issue #270, which was split into #296, "
+        "#297, #298, #299 and #300 and closed. Name the live children instead.")

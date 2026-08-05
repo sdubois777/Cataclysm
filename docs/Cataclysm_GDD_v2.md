@@ -1505,7 +1505,9 @@ Taking the middle rather than the strictest is deliberate. This design also has 
 
   
 
-**What offensive crowd control gear exists is not yet decided.** Cripple is the only crowd control effect available as an affix today. Stun reaches the game through the Blunt weapon sub-type, through four weapon skills, and through two enchantments, but no affix grants a chance to stun and none scales a stun's duration. Whether knockback and slow carry the same threshold and window as stun is also open. Issue #270 carries it.
+**What offensive crowd control gear exists is not yet decided.** Cripple is the only crowd control effect available as an affix today. Stun reaches the game through the Blunt weapon sub-type, through four weapon skills, and through two enchantments, but no affix grants a chance to stun and none scales a stun's duration. Whether knockback carries the same threshold and window as stun is also open. Issues #297, #298 and #299 carry these.
+
+**A slow's position is settled and is not among those open questions.** It is stated two paragraphs above: a slow is not a stun and this rule does not cover it. That was written down before the questions above were, and this paragraph used to list a slow as open as well, which made the document say both things at once.
 
   
 
