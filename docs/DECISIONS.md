@@ -20,6 +20,107 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The shared stash and the auction house are partitioned by lethality mode
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #285.
+
+**Decided by the project owner on 2026-08-05.** The issue offered three options
+and the answer was option 1, the widest one: one stash and one auction house per
+lethality mode, not one per account.
+
+## What was wrong
+
+The empire upgrade tree was partitioned by lethality mode on 2026-08-05, for the
+reason the project owner gave on issue #277:
+
+> so you can't run up your empire tree in normal and then switch to the hardest
+> mode and have a huge head start.
+
+That sealed the meta-progression route and left the equipment route open. Gear
+and crafting materials could still pass from a mature Standard character to a
+first Heretic character through the shared stash or by self-trading on the
+auction house, and **a geared handoff is a larger head start than any number of
+empire upgrade points.** A rule that seals the small channel and leaves the large
+one open is harder to explain than sealing both or sealing neither.
+
+## What the genre does
+
+Every game surveyed partitions its stash on the same axis as its
+meta-progression. None partitions the two on different axes.
+
+| Game | Meta-progression partition | Stash partition |
+|---|---|---|
+| Path of Exile | Atlas passive tree, per league, where league includes the Hardcore flag | Stash contents, same league partition. Purchased tab *slots* cross; the items in them do not |
+| Diablo III | Paragon, four tallies across realm and Hardcore | Stash, same partition |
+| Diablo IV | Renown, Altars of Lilith, across realm and Hardcore | Stash **and gold**, same partition. Four stashes per account |
+| Last Epoch | Cycle, plus the Hardcore and Solo flags | Stash, **gold** and crafting materials, same partition |
+| Grim Dawn | Shared progress stored separately for Hardcore and Softcore | Stash, same partition, in two separate files: `transfer.gst` for Softcore and `transfer.gsh` for Hardcore |
+
+**Grim Dawn is the cleanest case**, because it carries both kinds of axis on one
+character-creation screen and treats them differently on purpose. Hardcore, a
+categorical permadeath flag, splits the account layer completely. Veteran, a
+numeric difficulty step, does not: Veteran characters share a stash with
+non-Veteran ones. This design's lethality mode is the first kind, and its
+difficulty tier is the second, which is why the partition follows the mode.
+
+**Path of Exile draws a line worth copying.** Buying a stash tab with real money
+grants the slot in every league, including Hardcore. The items inside it stay in
+the league they were put in. So the entitlement crosses and the contents do not.
+If this game ever sells storage the same split applies — although the
+monetisation section already rules out selling it, at line 3109 of
+`docs/Cataclysm_GDD_v2.md`: "no stash or storage fees of any kind".
+
+## What argues against it
+
+**Three markets instead of one, in a game that will not have a deep market
+anyway.** Auction house liquidity falls with population and this splits the
+population three ways on top of any seasonal split. The cost is real. It is
+smaller here than in the games above because this is a single-player-first design
+with co-op listed as a Phase 2 feature, so the market was never going to be deep,
+and because the harder modes will hold a minority of players — which means the
+Heretic market is the one that will feel thin.
+
+**Nothing was migrated, because there is nothing to migrate.** No save format
+exists, no player has a stash, and the partition is being written before any
+storage code. Had this been decided after launch it would have needed a migration
+rule for items already in a shared stash, and that rule has no good answer.
+
+## The rule as written
+
+Anything the account shares between characters is held once per lethality mode,
+never once for the account. Anything a character holds by itself needs no rule at
+all, because the lethality mode is locked at character creation and never
+changes, so a character stays in one partition for its whole life.
+
+Solo Self-Found is unaffected. It already has no auction house and no shared
+stash, so there is nothing for the partition to divide.
+
+## What this deliberately does not settle
+
+| Issue | Question |
+|---|---|
+| #305 | The shared stash has no design beyond its name. Nothing says how large it is, whether it has tabs, or what it can hold. |
+| #306 | The document does not say whether gold is held by the character or by the account, so it cannot say whether this rule touches gold. Two of the five games above partition gold with the stash. |
+
+The rule above was written to be true under either answer to #306, which is why
+it names the container rather than the currency.
+
+Sources:
+[Stash — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Stash),
+[Stash — Diablo Wiki](https://diablo.fandom.com/wiki/Stash),
+[Diablo 4 Hardcore Survival Guide — Maxroll](https://maxroll.gg/d4/resources/hardcore-guide),
+[Any way to transfer items from SC to HC? — Last Epoch forums](https://forum.lastepoch.com/t/any-way-to-transfer-items-from-sc-to-hc/49680),
+[Hardcore shared stash question — Grim Dawn discussions](https://steamcommunity.com/app/219990/discussions/0/141136086937425918/).
+
+**Evidence limit, stated because the project rule requires it.** These five are
+search result summaries of those pages, not the pages themselves. `WebFetch`
+receives HTTP 402 from `pathofexile.fandom.com` and `diablo.fandom.com` and an
+access-denied page from `poewiki.net`. The Grim Dawn file names `transfer.gst`
+and `transfer.gsh` are the most specific claim here and are the one worth
+re-checking first if any of this is ever relied on.
+
+---
+
 ## 2026-08-05 — A knockdown is covered by the anti-stun-lock rule; a knockback is not
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #297.
@@ -325,7 +426,7 @@ Five questions surfaced while writing the rule. Each is its own issue.
 
 | Issue | Question |
 |---|---|
-| #285 | The shared stash and the auction house are not partitioned, so gear can still cross the boundary the tree no longer crosses. |
+| #285 | The shared stash and the auction house are not partitioned, so gear can still cross the boundary the tree no longer crosses. **Answered 2026-08-05: they are now partitioned the same way. See the entry at the top of this file.** |
 | #286 | A Solo Self-Found character consumed by Worn Residue is the only owner of its tree, so "Empire progress is kept" has no referent. |
 | #287 | Whether a seasonal league is a fourth partition. Every game in the table above that has leagues, cycles or realms partitions by them first; Grim Dawn, which has none, does not. |
 | #288 | Whether the empire tree can be respecced, and whether the four tier capstones being inherited already chosen is intended. |

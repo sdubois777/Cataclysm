@@ -252,6 +252,159 @@ def test_the_section_also_names_the_solo_self_found_tree(section):
     assert "not with another Solo Self-Found character" in text
 
 
+def test_the_section_names_the_stash_and_auction_house_partition(section):
+    """Issue #285, answered by the project owner on 2026-08-05: the shared stash
+    and the auction house are partitioned by lethality mode, as the empire tree
+    already was.
+
+    WHY IT HAS TO BE HERE. Same argument as the empire tree test above. This is
+    the screen where the choice is made, and a player choosing Heretic needs to
+    know that the gear and the market do not come with them. It is arguably a
+    larger surprise than the tree, because a stash is a thing the player can see
+    the contents of and reasonably expect to still be there.
+
+    The assertion carries enough of the sentence to fix its meaning, because the
+    test above records an adversarial review that defeated a shorter one by
+    negating the paragraph around a surviving substring."""
+    text = unwrapped(section)
+    assert "The shared stash and the auction house are partitioned the same way" \
+        in text, (
+        "the Difficulty Options section no longer says the shared stash and the "
+        "auction house are partitioned by lethality mode. That was decided on "
+        "issue #285 on 2026-08-05, and this is the section where the player "
+        "picks the mode it partitions on.")
+    assert "Nothing moves between them" in text
+
+
+def test_the_section_says_why_sealing_the_tree_alone_was_not_enough(section):
+    """A rule with no reason reads as arbitrary and gets removed by the next
+    person who finds it inconvenient. The reason here is a comparison of sizes:
+    a geared handoff from a mature Standard character is worth more to a first
+    Heretic character than any number of empire upgrade points, so partitioning
+    the tree alone would have sealed the smaller route and left the larger open.
+
+    This is the argument the project owner accepted on #285, and it is the one
+    that answers the obvious objection — that three auction houses split an
+    already thin market three ways."""
+    text = unwrapped(section)
+    assert "larger head start" in text, (
+        "the Difficulty Options section states the stash and auction house "
+        "partition without the reason for it. The reason is that a geared "
+        "handoff is a larger head start than the empire points the tree "
+        "partition already blocks. Issue #285.")
+
+
+def test_the_section_says_solo_self_found_is_unaffected_by_that_partition(section):
+    """Solo Self-Found already has no auction house and no shared stash — the
+    Solo Self-Found table row says exactly that. So the partition divides
+    nothing for it, and a reader who has just been told about three stashes
+    needs to be told which of them a Solo Self-Found character gets. The answer
+    is none, and it is already true rather than a new rule."""
+    text = unwrapped(section)
+    assert "A Solo Self-Found character is unaffected, because it has neither" \
+        in text, (
+        "the Difficulty Options section partitions the stash and the auction "
+        "house three ways without saying where that leaves Solo Self-Found, "
+        "which has neither. Issue #285.")
+
+
+def test_the_decision_log_records_the_stash_partition_and_its_cost(document):
+    """CLAUDE.md requires a design decision to cite how shipped games in the
+    genre do it, and to record what argues against it. Five games were surveyed
+    and all five partition the stash on the same axis as their meta-progression.
+
+    The case against is auction house liquidity: three markets in a game whose
+    market was never going to be deep, and the thinnest of the three will be
+    Heretic, the mode with the fewest players. That belongs written down."""
+    decisions = REPO_ROOT / "docs" / "DECISIONS.md"
+    assert decisions.is_file(), "docs/DECISIONS.md is missing"
+    log = decisions.read_text(encoding="utf-8")
+    heading = ("## 2026-08-05 — The shared stash and the auction house are "
+               "partitioned by lethality mode")
+    assert heading in log, (
+        "docs/DECISIONS.md has no entry for the stash and auction house "
+        "partition decided on issue #285. The design document states the rule; "
+        "this log is where this project keeps the reasoning.")
+    entry = log[log.index(heading):]
+    entry = entry[:entry.index("\n---", 1)] if "\n---" in entry[1:] else entry
+    # The table ROW, not the name anywhere in the entry. Proving these guards
+    # caught the looser version: deleting Grim Dawn from the survey table left
+    # the name in a later sentence about its two save files, and the test still
+    # passed. A survey is its rows.
+    rows = {line.strip().strip("|").split("|")[0].strip()
+            for line in entry.splitlines() if line.strip().startswith("|")}
+    for game in ("Path of Exile", "Diablo III", "Diablo IV", "Last Epoch",
+                 "Grim Dawn"):
+        assert game in rows, (
+            f"the genre survey table in the docs/DECISIONS.md entry for issue "
+            f"#285 has no row for {game}. The argument is that no shipped game "
+            f"partitions its meta-progression on one axis and its stash on "
+            f"another, and that argument is only as good as the games behind "
+            f"it. Rows found: {sorted(rows)}")
+    assert "What argues against it" in entry, (
+        "the entry records only the case for partitioning. Splitting the "
+        "auction house three ways is a real cost in a game with a thin market "
+        "and it belongs in the log.")
+    assert entry.count("https://") >= 5, (
+        "the entry makes claims about five shipped games and cites fewer than "
+        "five sources.")
+
+
+def test_the_decision_log_admits_its_sources_are_search_summaries(document):
+    """CLAUDE.md: if the evidence for a result was compromised, say so plainly
+    and first. None of the five sources for the genre survey was fetched — the
+    hosts return HTTP 402 or an access-denied page — so every claim rests on a
+    search result summary of the page rather than the page. A later reader
+    deciding how much weight to give this needs to know that."""
+    decisions = REPO_ROOT / "docs" / "DECISIONS.md"
+    log = decisions.read_text(encoding="utf-8")
+    heading = ("## 2026-08-05 — The shared stash and the auction house are "
+               "partitioned by lethality mode")
+    entry = log[log.index(heading):]
+    entry = entry[:entry.index("\n---", 1)] if "\n---" in entry[1:] else entry
+    assert "search result summaries" in entry, (
+        "the docs/DECISIONS.md entry for issue #285 presents five web sources "
+        "without saying none of them was actually fetched. Stating that is the "
+        "project rule when evidence is second-hand.")
+
+
+def test_the_decision_log_records_why_no_migration_rule_was_needed(document):
+    """The obvious question about partitioning a stash is what happens to items
+    already in it. The answer here is that there are none, because no save
+    format exists yet. That is a fact about timing, not about design, and it
+    will stop being true — so it is recorded now, while it is still cheap."""
+    decisions = REPO_ROOT / "docs" / "DECISIONS.md"
+    log = decisions.read_text(encoding="utf-8")
+    heading = ("## 2026-08-05 — The shared stash and the auction house are "
+               "partitioned by lethality mode")
+    entry = log[log.index(heading):]
+    entry = entry[:entry.index("\n---", 1)] if "\n---" in entry[1:] else entry
+    assert "nothing to migrate" in entry, (
+        "the docs/DECISIONS.md entry for issue #285 does not say what happens "
+        "to items already in a shared stash. The answer is that there are none "
+        "because no save format exists, and that answer expires.")
+
+
+def test_the_capital_services_table_scopes_the_auction_house(document):
+    """The Capital Services table is where a player looks up what the auction
+    house does. Before #285 its row read 'Buy and sell items (disabled in SSF)',
+    which is now incomplete in a way that matters: it is one market per
+    lethality mode, so a Heretic character cannot buy what a Standard character
+    listed."""
+    row = next((line for line in document.splitlines()
+                if line.strip().startswith("| Auction House |")), None)
+    assert row is not None, (
+        "the Capital Services table in docs/Cataclysm_GDD_v2.md has no Auction "
+        "House row.")
+    assert "One market per lethality mode" in row, (
+        "the Capital Services row for the Auction House does not say it is "
+        "partitioned by lethality mode. Issue #285 settled that on 2026-08-05, "
+        "and this table is where a player looks the service up.")
+    assert "disabled in SSF" in row, (
+        "the Auction House row lost the rule that Solo Self-Found cannot use "
+        "it, which predates #285 and is still true.")
+
+
 def test_the_decision_log_records_why_the_choices_are_locked(document):
     """The design document states the rule; the reasoning lives in the decision
     log, which is where this project keeps it."""

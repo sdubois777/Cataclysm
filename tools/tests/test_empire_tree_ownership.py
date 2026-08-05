@@ -374,17 +374,65 @@ def test_it_says_why_the_boundary_cannot_be_crossed(ownership):
         "ever changes partition. Issues #255 and #277.")
 
 
-def test_it_admits_the_boundary_is_claimed_for_the_tree_only(ownership):
-    """Honesty about the limit of the rule. The shared stash and the auction
-    house are not partitioned, so gear, gold and materials can still cross the
-    boundary that empire points no longer cross. Claiming otherwise would be
-    false; saying nothing would let a reader assume the route is closed."""
-    assert "#285" in ownership, (
-        "the section no longer records that the shared stash and the auction "
-        "house are not partitioned by lethality mode. Either issue #285 has "
-        "been answered and the answer belongs here, or this sentence should "
-        "not have been removed.")
-    assert "shared stash and the auction house are not partitioned" in ownership
+def test_the_boundary_covers_the_stash_and_the_auction_house_too(ownership):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-05 this was
+    test_it_admits_the_boundary_is_claimed_for_the_tree_only, and it checked that
+    the section admitted the shared stash and the auction house were NOT
+    partitioned, naming issue #285 as the open question. The project owner
+    answered #285 on 2026-08-05: partition both. So the property to hold is the
+    opposite one, and the admission would now be false.
+
+    A reader who takes 'the empire tree is partitioned' to mean gear can still
+    cross would be wrong, and that is the reading the section has to close."""
+    assert "shared stash and the auction house are partitioned" in ownership, (
+        "the Empire-Wide Upgrades section no longer states that the shared "
+        "stash and the auction house are partitioned by lethality mode. That "
+        "was decided on issue #285 on 2026-08-05. Without it a reader may take "
+        "the tree partition as the only one and assume gear still crosses.")
+    assert "not partitioned" not in ownership, (
+        "the section still says something is not partitioned. Issue #285 "
+        "settled that everything the account shares is. If a new unpartitioned "
+        "thing has been found, it needs its own issue rather than a sentence "
+        "here that contradicts the rule two paragraphs above it.")
+
+
+def test_it_states_the_partition_rule_generally_rather_than_as_a_list(ownership):
+    """A list of partitioned things has no answer for the next thing added. The
+    empire tree, the stash and the auction house were each decided separately
+    (#277 and #285) and each time the answer was the same. Stating the general
+    rule means a future shared feature — a shared crafting bench, an account
+    achievement track — arrives with its answer already written."""
+    assert "anything the account shares between characters is held once per " \
+           "lethality mode" in ownership.lower(), (
+        "the section lists what is partitioned instead of stating the rule "
+        "that decides it. Issues #277 and #285 both landed on the same rule: "
+        "anything the account shares is held once per lethality mode. Without "
+        "the general form, the next shared thing has no answer.")
+
+
+def test_it_says_what_needs_no_partition_rule_and_why(ownership):
+    """The rule is only half an answer without its complement. A character's own
+    possessions need no partition, and the reason is the same one that makes the
+    whole boundary hold: the lethality mode is locked at character creation
+    (#255), so a character never changes partition."""
+    assert "never changes mode" in ownership, (
+        "the section states what is partitioned but not what needs no "
+        "partition. Anything a character holds by itself is already safe, "
+        "because the lethality mode is locked at character creation. Leaving "
+        "that out invites a partition rule for every per-character thing.")
+
+
+def test_it_names_the_two_questions_the_partition_left_open(ownership):
+    """The stash was partitioned before it was designed. Two things stayed open
+    and both were filed rather than guessed: the stash has no design beyond its
+    name, and nobody has said whether gold is held by the character or the
+    account. A reader who finds no stash rules should be told that is known."""
+    for issue in ("#305", "#306"):
+        assert issue in ownership, (
+            f"the section no longer names {issue}. The stash was partitioned "
+            f"before it was designed (#305) and before anyone said where gold "
+            f"is held (#306). Either one has been answered and its answer "
+            f"belongs here, or it should not have been dropped.")
 
 
 def test_the_old_claim_that_a_harder_mode_is_cheap_is_gone(ownership):
