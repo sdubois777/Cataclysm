@@ -202,6 +202,56 @@ def test_it_says_what_a_player_does_who_wants_a_different_combination(section):
         "Issue #255.")
 
 
+def test_the_section_names_the_empire_tree_cost_of_choosing_a_mode(section):
+    """Issue #277 scoped the empire upgrade tree to the lethality mode, so
+    choosing Hardcore or Heretic for the first time means starting that mode's
+    tree from nothing. That is the largest cost of the choice and it is
+    permanent, and this is the section where the player makes the choice.
+
+    WHY IT HAS TO BE HERE AND NOT ONLY IN THE EMPIRE SECTION. The empire rule
+    lives about 2,400 lines further down the document. A player reading this
+    table is told what dying costs, what equipment it takes and what the display
+    shows, and was told nothing about the meta-progression restart. Diablo IV
+    shipped a partitioned system while describing it as account-wide and players
+    reported the partition as a defect; the fix for that is saying so where the
+    choice is made.
+
+    THE FIRST VERSION OF THIS TEST WAS WORTHLESS AND AN ADVERSARIAL REVIEW
+    PROVED IT. It asserted the substrings "own empire upgrade tree" and
+    "starting that mode's tree from nothing". A reviewer replaced the paragraph
+    with one stating the OPPOSITE rule — "No lethality mode has its own empire
+    upgrade tree ... so choosing Hardcore or Heretic never means starting that
+    mode's tree from nothing." — and every test still passed, because both
+    substrings survive inside the negations. Each assertion now carries enough
+    of its sentence to fix its meaning."""
+    text = unwrapped(section)
+    assert "Each lethality mode has its own empire upgrade tree" in text, (
+        "the Difficulty Options section no longer says that each lethality mode "
+        "has its own empire upgrade tree. It is the largest and most permanent "
+        "cost of choosing a harder mode, and this is where the player chooses. "
+        "Issue #277.")
+    assert "means starting that mode's tree from nothing" in text
+
+
+def test_the_section_also_names_the_solo_self_found_tree(section):
+    """Half a rule at the point of choice is worse than none, and this is the
+    harsher half. The Solo Self-Found table row lists what the flag takes away —
+    the auction house and the shared stash — and said nothing about the empire
+    tree, which the decision log calls "the largest handout of the three" and
+    "the strictest version anyone has shipped".
+
+    It is also stricter than the mode rule this section already carries: a Solo
+    Self-Found tree is private to one character, so a second Solo Self-Found
+    character starts from nothing again."""
+    text = unwrapped(section)
+    assert "Solo Self-Found is stricter than that" in text, (
+        "the Difficulty Options section states the lethality mode partition "
+        "without the Solo Self-Found one, which is harsher. A player ticking "
+        "that box is told what it takes away and not that it also starts the "
+        "empire tree from nothing. Issues #273 and #277.")
+    assert "not with another Solo Self-Found character" in text
+
+
 def test_the_decision_log_records_why_the_choices_are_locked(document):
     """The design document states the rule; the reasoning lives in the decision
     log, which is where this project keeps it."""
