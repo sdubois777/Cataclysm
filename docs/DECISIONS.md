@@ -20,6 +20,84 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Difficulty is two independent choices, and no mode grants extra loot
+
+**Affects** the "Difficulty Options" section and the risk table of
+`docs/Cataclysm_GDD_v2.md`, the main design document. Applied. Issue #32.
+
+**Solo Self-Found is a flag, not a mode.** It was listed alongside Standard,
+Hardcore and Heretic as if choosing it meant not choosing Hardcore. It changes
+where items come from and does not change how easily a player dies, so it belongs
+on its own axis. A character now picks one lethality mode — Standard, Hardcore or
+Heretic — and separately may set Solo Self-Found. Hardcore Solo Self-Found and
+Heretic Solo Self-Found are both real.
+
+Settled by research, not judgement. Last Epoch lets one character carry Hardcore
+and Solo Challenge at the same time; its wiki states that one or more challenges
+can be selected at once and names Hardcore Solo Self Found as an example. Path of
+Exile ships Hardcore SSF as a league in its own right.
+
+**No difficulty mode grants increased loot.** Three of the four entries said
+"Increased loot drops" with no number, and the number was never going to arrive,
+because there is nothing in the genre to copy it from.
+
+- Path of Exile's Solo Self-Found league has drop rates identical to the trade
+  league. There is no bonus of any kind, and players complain about exactly that.
+- Diablo IV attaches drop rate to the World Tier, which is the difficulty of the
+  content, and gives the Hardcore flag no drop bonus at all. Its Hardcore rewards
+  are titles and cosmetics.
+
+That is the same split this game already has: **drop rate belongs to the
+difficulty tier**, which scales content, and not to a flag describing what happens
+to the player on death.
+
+**This is a judgement and it is cheap to reverse.** The alternative is a
+compensating bonus for Solo Self-Found, on the argument that a self-found player
+here has no auction house at all and so has strictly fewer items available. It
+was not taken because Path of Exile's players are in the same position and get
+nothing, and because inventing a constant with nothing to measure it against is
+what left the document saying "increased" for a year. Reversing it needs only a
+figure, expressed as increased loot quantity so it lands in the same currency as
+the Luck attribute and the Increased Loot Quantity affix.
+
+**Hardcore drops each equipped piece with a 10% chance.** The document already
+described the mechanic — a per-piece chance on death — and only the number was
+missing. 10% is Tibia's figure for an unblessed character, and Tibia is the game
+that shipped this exact mechanic. Over the 18 pieces a character wears, that is
+1.8 pieces on an average death.
+
+**Heretic doubles the rate to 20% and keeps its floor of 2 pieces, which is 3.7
+on average.** A rate is needed here, not just a floor, and this is the judgement
+in it. At Hardcore's own 10% rate a floor of two produces 2.4 pieces on average
+against Hardcore's 1.8, so the two modes would have felt the same on death while
+reading as a ladder. Doubling the rate makes Heretic cost about twice what
+Hardcore costs, and the floor then binds on about one death in ten rather than on
+nearly half of them.
+
+The piece count is 18 — seven armour pieces, eight rings, a necklace, a relic and
+a weapon — read from `GEAR_PIECES` in `sim/cataclysm_sim/affixes.py`. It is what
+turns a per-piece chance into an amount, so `tools/tests/test_difficulty_modes.py`
+reads it from the model rather than from the document, and recomputes both stated
+averages from the stated rates.
+
+**Casual stays removed.** It was referenced in the risk table and defined nowhere.
+That was settled earlier on this issue; the risk table now names the three
+lethality modes and does not name Solo Self-Found, which does not change urgency.
+
+**Still open, filed separately:** nothing says whether a player may change their
+lethality mode or their Solo Self-Found flag after character creation, or what
+happens to a Hardcore character's flag when it dies. Last Epoch converts a dead
+Hardcore character to softcore; this game's death costs days rather than ending
+the character, so that answer does not carry over.
+
+Sources:
+[Path of Exile Solo Self-Found wiki](https://pathofexile.fandom.com/wiki/Solo_Self-Found),
+[Last Epoch character creation guide](https://lastepoch.fandom.com/wiki/Guides:Character_Creation),
+[Diablo IV Hardcore mode rewards](https://primagames.com/gaming/what-are-the-diablo-4-hardcore-mode-rewards),
+[Tibia death and blessings](https://tibia.fandom.com/wiki/Blessings).
+
+---
+
 ## 2026-08-05 — Why Overwhelm is rated against tier width, re-measured; and analysis scripts compute their conclusions
 
 **Affects** `sim/cataclysm_sim/combat.py`, `sim/cataclysm_sim/scoring.py` and the
