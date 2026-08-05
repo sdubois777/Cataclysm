@@ -161,15 +161,37 @@ contain them. So they are then imported as DataTable assets under `/Game/Data/`:
 
 ```bash
 python ../tools/generate_datatables.py
-"/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
-  "$PWD/Cataclysm.uproject" -run=pythonscript \
-  -script="$PWD/../tools/generate_datatable_assets.py" \
-  -unattended -nopause -nosplash
+python ../tools/run_editor_python.py tools/generate_datatable_assets.py
 ```
 
-**`-script=` must be an absolute path.** A relative one resolves from the engine's
-own binaries directory rather than from this folder, and fails with
-`Could not load Python file 'C:/Program Files/Epic Games/UE_5.8/Engine/Binaries/tools/...'`.
+**`tools/run_editor_python.py` starts the editor for you and checks the run.** It
+refuses to start when the project's compiled C++ modules are missing, and it
+fails afterwards unless the editor's own log says the script both started and
+finished without errors. Run the editor by hand and neither is checked. It works
+with the editor open.
+
+**It does not work from a git worktree, and it says so instead of doing nothing.**
+The editor cannot load a project whose C++ modules are not built, `game/Binaries/`
+is gitignored, so a worktree never has one. Before this check existed the editor
+started, ran for about twenty seconds, wrote nothing and exited normally, and the
+only sign was `tools/tests/test_datatable_assets_are_current.py` failing later
+about stale assets. That was issue
+[#279](https://github.com/sdubois777/Cataclysm/issues/279). To regenerate a table
+while working in a worktree: make the same CSV change in the ordinary checkout,
+run the generator there, copy the changed asset out of `Content/Data/` and the
+whole of `Data/datatable_asset_sources.json` back into the worktree, then
+`git restore game/` in the ordinary checkout to leave it clean.
+
+**Building the worktree its own binaries is not the fix**, and neither is sharing
+the ordinary checkout's through a junction. Those binaries are compiled from
+`Source/`, and a worktree exists to hold a different version of that tree, so the
+editor would load C++ that does not match the source beside it and report
+nothing.
+
+**If you do run the editor by hand, `-script=` must be an absolute path.** A
+relative one resolves from the engine's own binaries directory rather than from
+this folder, and fails with `Could not load Python file 'C:/Program Files/Epic
+Games/UE_5.8/Engine/Binaries/tools/...'`.
 
 **It rewrites all fourteen assets even when one CSV changed**, because a `.uasset`
 carries generated identifiers that differ between runs. Check
@@ -200,9 +222,7 @@ pull requests that merged with stale assets and prompted it.
 **The input assets and the sandbox level.**
 
 ```bash
-"/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
-  "$PWD/Cataclysm.uproject" -run=pythonscript \
-  -script="../tools/generate_input_assets.py" -unattended -nopause -nosplash
+python ../tools/run_editor_python.py tools/generate_input_assets.py
 ```
 
 Both scripts overwrite every property of every asset they own, so an asset
