@@ -38,19 +38,47 @@ def test_every_tier_lands_within_six_percent_of_its_anchor():
             f"{pct:+.1f}% off")
 
 
-def test_the_residual_is_concentrated_at_the_tier_4_to_5_boundary():
-    """Records WHY the fit is not exact, so a future change notices if it moves.
+def test_the_model_now_hits_every_anchor_above_tier_one_exactly():
+    """This test used to record a defect. It now records that the defect is gone.
 
-    The anchors are not smooth: tier 5 is 1107 points wide where the trend is
-    about 790. A smoothly progressing character cannot pass through that kink.
-    Tiers 4 and 5 should therefore hold the largest error of either sign, and
-    tiers 1 and 8 the smallest. See issue #7.
+    Until 2026-08-05 the anchors were not smooth: tier 5 was 1107 points wide
+    where the surrounding trend was about 790, and tier 6 was NARROWER than tier
+    5. A smoothly progressing character cannot pass through that kink, so this
+    file asserted the resulting residual signature instead -- largest positive
+    error at tier 4, largest negative at tier 5. That signature was one of the two
+    independent pieces of evidence on issue #7 that the anchors were wrong.
+
+    The anchors were then reset to what this model predicts, in DungeonSimulator
+    commit 6c9be8b. Tiers 2 to 7 moved; tiers 1 and 8 deliberately did not,
+    because `_curve_coefficients` pins the curve through those two and nothing
+    else, so moving either would re-pin the curve and shift every prediction.
+
+    What is left is a single residual at tier 1, where the reference character
+    scores 384 against an anchor of 385. Every other tier is exact.
     """
     errors = {tier: pct for tier, _, _, pct in pp.anchor_report()}
-    assert errors[4] == pytest.approx(max(errors.values()), abs=1e-9)
-    assert errors[5] == pytest.approx(min(errors.values()), abs=1e-9)
-    assert abs(errors[1]) < 1.0
-    assert abs(errors[8]) < 1.0
+    for tier in range(2, 9):
+        assert errors[tier] == pytest.approx(0.0, abs=1e-9), (
+            f"tier {tier} is {errors[tier]:+.2f}% off its anchor. The anchors "
+            "were set to this model's own predictions on 2026-08-05, so every "
+            "tier above 1 should be exact. Issue #7.")
+    assert abs(errors[1]) < 1.0, (
+        f"tier 1 is {errors[1]:+.2f}% off. The reference character not landing "
+        "exactly on the curve at the bottom end is expected; a whole percent "
+        "is not.")
+
+
+def test_the_tier_widths_climb_at_every_tier():
+    """The defect issue #7 was filed for, asserted directly rather than through
+    its residual signature. Tier width multiplies every weighted term in
+    `scoring.py`, so a tier narrower than the one below it compresses that tier's
+    whole rarity spread."""
+    widths = [scoring.tier_width(t) for t in range(1, 9)]
+    for lower, higher in zip(widths, widths[1:], strict=False):
+        assert higher > lower, (
+            f"tier widths do not climb: {[round(w) for w in widths]}. A tier "
+            "narrower than the one below it means its Boss gains less power "
+            "over its Common enemies than the tier below does. Issue #7.")
 
 
 def test_reference_character_scores_rise_with_tier():

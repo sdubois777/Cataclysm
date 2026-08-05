@@ -92,12 +92,12 @@ bool FCataclysmPowerAnchorTest::RunTest(const FString& Parameters)
 	struct FCase { int32 Tier; int32 Expected; int32 Anchor; };
 	const FCase Cases[] = {
 		{ 1,  384,  385 },
-		{ 2,  883,  871 },
-		{ 3, 1508, 1457 },
-		{ 4, 2225, 2144 },
-		{ 5, 3078, 3251 },
-		{ 6, 4057, 4166 },
-		{ 7, 5120, 5209 },
+		{ 2,  883,  883 },
+		{ 3, 1508, 1508 },
+		{ 4, 2225, 2225 },
+		{ 5, 3078, 3078 },
+		{ 6, 4057, 4057 },
+		{ 7, 5120, 5120 },
 		{ 8, 6327, 6327 },
 	};
 
@@ -123,34 +123,34 @@ bool FCataclysmPowerAnchorTest::RunTest(const FString& Parameters)
 		FMath::Abs(FScore::Score(FScore::ReferenceCharacter(1))
 				   - FScore::TierAnchors()[1]) <= 1);
 
-	// The six tiers in between are within 5.33%, and the worst of them is tier 5
-	// at 5.3214%. The Python model's docstring rounds that to "5.3%", which is
-	// why the bound here is 5.33 and not 5.3 -- a tighter bound fails against
-	// the very model it is checking.
+	// The six tiers in between land EXACTLY on their anchors.
 	//
-	// The residual is the anchor curve itself rather than a defect in the
-	// formula: tier 5 is 1,107 points wide where the surrounding trend is about
-	// 790, so no smoothly progressing character can pass through that kink.
-	float WorstError = 0.0f;
+	// This block used to assert a residual instead: the middle tiers within
+	// 5.33%, worst at tier 5 at 5.3214%. That residual was the anchor curve
+	// rather than a defect in the formula -- tier 5 was 1,107 points wide where
+	// the surrounding trend was about 790, and tier 6 was NARROWER than tier 5,
+	// so no smoothly progressing character could pass through the kink. On
+	// 2026-08-05 the six middle anchors were reset to what this formula predicts,
+	// in DungeonSimulator commit 6c9be8b, and the residual went to zero. Issue #7.
 	for (int32 Tier = 2; Tier <= 7; ++Tier)
 	{
-		const float Anchor = static_cast<float>(FScore::TierAnchors()[Tier]);
-		const float Error = FMath::Abs(FScore::Score(FScore::ReferenceCharacter(Tier))
-									   - Anchor) / Anchor;
-		WorstError = FMath::Max(WorstError, Error);
+		TestEqual(FString::Printf(TEXT("tier %d lands exactly on its anchor"), Tier),
+			FScore::Score(FScore::ReferenceCharacter(Tier)),
+			FScore::TierAnchors()[Tier]);
 	}
-	TestTrue(FString::Printf(TEXT("the middle tiers stay within 5.33%%, worst was %.4f%%"),
-			 WorstError * 100.0f),
-		WorstError <= 0.0533f);
 
-	// And the worst one is tier 5, at the figure the model reports.
-	const float Tier5Error =
-		FMath::Abs(FScore::Score(FScore::ReferenceCharacter(5))
-				   - static_cast<float>(FScore::TierAnchors()[5]))
-		/ static_cast<float>(FScore::TierAnchors()[5]);
-	TestTrue(FString::Printf(TEXT("tier 5 is 5.3214%% low, got %.4f%%"),
-			 Tier5Error * 100.0f),
-		FMath::IsNearlyEqual(Tier5Error, 0.053214f, 0.0001f));
+	// Tier width climbs at every tier. This is the defect issue #7 was filed for,
+	// asserted directly rather than through the residual it produced. Tier width
+	// multiplies every weighted term in the Enemy Score model, so a tier narrower
+	// than the one below compresses that tier's whole rarity spread.
+	for (int32 Tier = 2; Tier <= 8; ++Tier)
+	{
+		const int32 Below = FScore::TierAnchors()[Tier - 1] - FScore::TierAnchors()[Tier - 2];
+		const int32 Here = FScore::TierAnchors()[Tier] - FScore::TierAnchors()[Tier - 1];
+		TestTrue(FString::Printf(TEXT("tier %d is wider than tier %d, %d against %d"),
+				 Tier, Tier - 1, Here, Below),
+			Here > Below);
+	}
 
 	// A tier outside 1 to 8 is refused rather than guessed at.
 	AddExpectedError(TEXT("outside 1-8"), EAutomationExpectedErrorFlags::Contains, 2);

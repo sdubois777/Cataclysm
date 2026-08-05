@@ -8,7 +8,7 @@ const TArray<int32>& UCataclysmPowerScore::TierAnchors()
 	// Indexed by tier, so entry 0 is unused and entry 8 is the end of the game.
 	// Authoritative, from `scoring.PLAYER_MAX_SCORES` in the simulation.
 	static const TArray<int32> Anchors = {
-		0, 385, 871, 1457, 2144, 3251, 4166, 5209, 6327,
+		0, 385, 883, 1508, 2225, 3078, 4057, 5120, 6327,
 	};
 	return Anchors;
 }

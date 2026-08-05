@@ -11,12 +11,13 @@ Rated against TIER WIDTH rather than a flat point step. The rejected alternative
 was 2% penetration per 50 points of shortfall, and a flat 50-point step is worth
 13% of a T1 tier but only 4% of a T8 one -- which would have made a maxed T1
 player eat 16% penetration at their own final boss while a maxed T8 player ate
-54%, for exactly the same situation.
+56%, for exactly the same situation.
 
 Those four percentages are measurements of `scoring.py`, so they go stale when
 its anchors move, and they did: this paragraph read 17%, 6%, 13% and 47% for the
 five months that file carried the pre-#2 anchors, which is the whole of the time
-this rule was being decided. `sim/tests/test_analysis_scripts.py` recomputes them
+this rule was being decided, and the T8 figure moved again when issue #7 reset the
+tier 2 to 7 anchors. `sim/tests/test_analysis_scripts.py` recomputes them
 and fails if the paragraph disagrees. Issue #6. `sim/analyse_penetration.py` is
 the measurement itself.
 """
