@@ -20,6 +20,82 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The stat that makes better loot drop is called Magic Find, and only that
+
+**The question.** Issue #244. One stat had three names. It is `magic_find` on
+the character sheet in `sim/cataclysm_sim/character.py`, the column
+`luck_magic_find` in `game/Data/Attributes.csv`, the affix `Flat magic find` in
+`game/Data/Affixes.csv` and the gameplay attribute `MagicFind` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`. It was also
+written as **"rarity find"** in three shipped tables and as **"loot rarity"** in a
+fourth. A player reading the gem Of The Goblin, which said "Increases Rarity Find
+by .5%", had no way to know that is the same number the affix calls magic find and
+stacks with it.
+
+**THE DECISION. Magic Find, everywhere.**
+
+**Why that one and not Rarity Find.** Not because it is the better phrase. It is
+already the name the value lives under in every place the number is actually
+stored, so keeping it is a change to four prose descriptions, while switching to
+Rarity Find would rename the stat on the character sheet, the affix, the column in
+the attribute table, the gameplay attribute in C++, the gameplay tags and every
+test that names any of them.
+
+**The case for Rarity Find, recorded rather than lost.** This game names its eight
+gear qualities Everyday, Quality, Superb, Masterful, Legendary, Mythical,
+Ascendant and Cataclysmic. None of them is called "magic". So "magic find" is a
+term inherited from another game, naming a rarity this one does not have, while
+"rarity find" says plainly what the stat does. If the project owner prefers Rarity
+Find, the rename is larger but not difficult, and it is much better done before
+issue #44 builds loot generation on top of the current name. Issue #244 has the
+full list of what it would touch.
+
+**What changed.** Four cells in `docs/All_Things_Cataclysm.xlsx`, the design
+workbook, and the generated tables and DataTable assets below them:
+
+| Sheet | Row | Was | Now |
+|---|---|---|---|
+| Gems | Of The Goblin | Increases Rarity Find by .5% | Increases Magic Find by .5% |
+| City Upgrades | Treasurer | 10% increased rarity find | 10% increased magic find |
+| Dungeon Modifiers | Infernal Beacons | stacking loot rarity find buff | stacking magic find buff |
+| Dungeon Modifiers | Reality Twister | increased loot rarity | increased magic find |
+
+Plus the Luck row of the attribute table in `docs/Cataclysm_GDD_v2.md`, whose stat
+column said Magic Find while its effect column said rarity find.
+
+**The word "rarity" on its own is untouched and stays.** Gear rarity is the
+eight-tier ladder above; enemy rarity is the Common to Cataclysm Boss ladder in
+section X. Both are real and neither is this stat. The dungeon modifier Volatile
+Evolution, "higher rarity mobs", and the enemy modifier Parasite Host, "upgrade
+them to the next rarity", are both left exactly as they were.
+
+**NOT DONE HERE, and deliberately: the empire tree documents.**
+`docs/Empire_Skill_Tree_Keystones.md` uses "Loot Rarity" in five places and
+`docs/Empire_Development_Tree_Final.json` in eight. They are left alone for two
+reasons. They already disagree with each other, and issue #25 is open to reconcile
+them, so changing one of them now would interfere with that work. And the JSON is
+authored by a separate tool outside this repository, so a hand edit risks being
+overwritten. Filed as its own issue.
+
+**One consequence worth knowing.** The row key in `game/Data/CityUpgrades.csv` is
+derived from the description text, so renaming the description renamed the row from
+`Treasurer_Dungeons_here_have_10_increased_rarity` to
+`Treasurer_Dungeons_here_have_10_increased_magic_f`. Nothing referenced the old
+key; that was checked before the change.
+
+**Affects.** `docs/Cataclysm_GDD_v2.md`, the Luck row and a new paragraph in the
+Character Stats section stating the stat has one name. `docs/All_Things_Cataclysm.xlsx`
+and the generated `game/Data/Gems.csv`, `game/Data/CityUpgrades.csv`,
+`game/Data/DungeonModifiers.csv` and their three DataTable assets. **Applied.**
+
+**In the tests.** `tools/tests/test_magic_find_has_one_name.py` refuses the two
+retired phrases across every generated table found by glob and across the design
+document, checks the three rows that carried them still describe what they do, and
+checks the stat is still called magic find in all five places the value lives. It
+deliberately does not search for the bare word "rarity".
+
+---
+
 ## 2026-08-05 — The difficulty tier caps which affix tier an item can reach, by drop or by crafting
 
 **The question.** Issue #129. Affixes have seven tiers and T7 is worth seven

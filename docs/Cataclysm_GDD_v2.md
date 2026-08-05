@@ -582,7 +582,7 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 | Mind | Max Mana / Mana Regen | \\+2% mana / +1% increased mana regeneration |
 | Spirit | Energy Shield / Shield Regen | \\+2% energy shield / +1% increased shield regeneration |
 | Efficacy | CDR / AOE / DoT Frequency | \\+1% cooldown increase / +2% AOE / +1% increased DoT frequency |
-| Luck | Magic Find / Loot Quantity | \\+0.01% rarity find / +1% loot quantity |
+| Luck | Magic Find / Loot Quantity | \\+0.01% magic find / +1% loot quantity |
 
   
 
@@ -639,6 +639,14 @@ Attributes only scale. A stat therefore needs a base value before any attribute 
   
 
 **Magic find is not the same shape, and its baseline is zero.** It is an added percentage rather than a percentage of something, and it has a flat source: the Flat Magic Find affix. That is the base the Luck attribute then scales.
+
+  
+
+**The stat is called Magic Find, and it has only that name.** It raises the chance that a drop is a higher gear rarity. Gems, affixes, city upgrades, dungeon modifiers and the Luck attribute all feed the same number, and one name is what lets a player add them up. Two other names for it were in use in the shipped tables until 2026-08-05; `docs/DECISIONS.md` records which, and why this one was kept.
+
+  
+
+**Gear rarity and enemy rarity are different things and keep the word "rarity".** Gear rarity is the eight-tier ladder from Everyday to Cataclysmic; enemy rarity is the Common to Cataclysm Boss ladder in section X. Magic find shifts the first of those; it is not one of them.
 
   
 

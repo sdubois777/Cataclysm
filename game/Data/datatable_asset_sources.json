@@ -17,7 +17,7 @@
       "asset": "DT_CityUpgrades",
       "csv": "CityUpgrades.csv",
       "rows": 24,
-      "csv_sha256": "0b0f1ce19b1432552ff5af406ec4a27928de9a7e2dbaaf998ae87bcef658e145"
+      "csv_sha256": "e2ffad79746ae58bcac34ddc61980ff7bf6e2a066da42aab771929fec1a6999b"
     },
     {
       "asset": "DT_ClassStats",
@@ -35,7 +35,7 @@
       "asset": "DT_DungeonModifiers",
       "csv": "DungeonModifiers.csv",
       "rows": 116,
-      "csv_sha256": "9199f7bbbb85deb988b83865a75c558522736cf4fcbbe7552c3ba4e4da92437c"
+      "csv_sha256": "7d2d78da27e4f189c7b7bbe7ca3ac4ec75d2b2c528156d1a4a8126605e3e9a4f"
     },
     {
       "asset": "DT_EnchantmentsNegative",
@@ -59,7 +59,7 @@
       "asset": "DT_Gems",
       "csv": "Gems.csv",
       "rows": 27,
-      "csv_sha256": "ea7b67965e5d6bcc9e23e1e90cc5d7582ad0be78ea6d89fed9943ad86333a0f8"
+      "csv_sha256": "8b2e591ed422af4dc86398dc0bf4b734e6849ffb335ebe3950dd6831c995b11e"
     },
     {
       "asset": "DT_ItemBases",
