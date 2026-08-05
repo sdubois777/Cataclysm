@@ -124,6 +124,15 @@ not with another Solo Self-Found character. So it starts the meta-progression
 from nothing, and a second Solo Self-Found character starts from nothing again.
 The Empire-Wide Upgrades section states both rules in full.
 
+**The shared stash and the auction house are partitioned the same way.** Standard
+characters share one stash and one market, Hardcore characters share a second
+pair, and Heretic characters share a third. Nothing moves between them. This
+exists for the same reason the tree partition does: a fully geared handoff from a
+mature Standard character is a larger head start for a first Heretic character
+than any number of empire upgrade points, so sealing the tree alone would close
+the smaller route and leave the larger one open. A Solo Self-Found character is
+unaffected, because it has neither.
+
 **No mode grants increased loot.** Drop rate belongs to the difficulty tier,
 which is the axis this game already scales content on. That is where every
 shipped game in the genre puts it: Path of Exile's Solo Self-Found league has
@@ -2612,10 +2621,22 @@ locked at character creation and never changes, in either direction, and dying
 does not change it. So a character stays in one partition for its whole life:
 there is no migration, no conversion on death, and no transfer.
 
-**The boundary is claimed for the empire tree and for nothing else yet.** The
-shared stash and the auction house are not partitioned by lethality mode, so
-gear, gold and crafting materials can still pass from a Standard character to a
-Heretic one. Whether that should be closed as well is issue #285.
+**The boundary covers everything the account shares, not the tree alone.** The
+shared stash and the auction house are partitioned by lethality mode exactly as
+the tree is: three stashes and three markets, with nothing passing between them.
+So gear and crafting materials cannot reach a Heretic character from a Standard
+one, because there is no shared container both can open and no market both can
+trade in. The rule generalises: **anything the account shares between characters
+is held once per lethality mode, never once for the account.** Anything a
+character holds by itself needs no rule, because a character never changes mode.
+
+That is what the genre does. Path of Exile, Diablo III, Diablo IV, Last Epoch and
+Grim Dawn each partition the stash on the same axis as their meta-progression,
+and none of them partitions the two on different axes. `docs/DECISIONS.md`
+records the survey, the cost in auction house liquidity, and the two questions
+this leaves open: the shared stash has no design of its own beyond its name
+(issue #305), and the document does not say whether gold is held by the character
+or by the account (issue #306).
 
   
 
@@ -2629,7 +2650,7 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 | Enchanter | Adds or modifies enchantments on gear |
 | Smith (Cataclysmic Forge) | Crafting, upgrading gear, Forge interactions |
 | Jeweler | Combines and sockets gems |
-| Auction House | Buy and sell items (disabled in SSF) |
+| Auction House | Buy and sell items. One market per lethality mode (disabled in SSF) |
 | Trainer | Respec passive skill points |
 | Side Quests | Random missions for crafting materials, gear, and gold |
 
