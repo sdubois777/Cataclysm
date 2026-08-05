@@ -20,6 +20,102 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The shared stash is 600 fixed slots, free, and holds no gold
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #305.
+
+### The gap
+
+`docs/Cataclysm_GDD_v2.md` referred to a shared stash five times and never
+described one. Every mention was a statement *about* the stash — Solo Self-Found
+does not have one, it is partitioned by lethality mode, it carries no fees — and
+none said what it is. Issue #285 partitioned it in a document that had never said
+how big it was, what it held, or whether a character had one of its own.
+
+### What was decided
+
+There is no operator answer on this issue. The section was written under the
+constraints the document already carries, and every choice below names what
+constrained it.
+
+| Question | Answer | What decided it |
+|---|---|---|
+| How large | 600 slots, six tabs of 100 | Anchored to Path of Exile 2's four free tabs of 144 = 576 |
+| Does it grow | No | See below |
+| Tabs, and are they bought | Six, cosmetic only, nothing to buy | The monetisation section already says "no stash or storage fees of any kind" |
+| What it holds | Gear, gems, crafting materials | Gold is a balance, not an item |
+| Does a character have a private stash | No | Path of Exile, Diablo IV and Last Epoch all have one shared store and a carried inventory |
+| Does the auction house draw from it | Yes | It is why Solo Self-Found loses the market and the stash together |
+
+### Why fixed rather than sold for gold
+
+**Selling stash tabs for in-game gold is the common answer and it was not taken.**
+Diablo IV starts a player at 50 shared slots and sells a second 50 for 100,000
+gold. Last Epoch sells tabs for gold up to a limit of 200. Both would fit a game
+that has already ruled out selling storage for money.
+
+Two things stopped it.
+
+**It rests on an undecided question.** A stash shared by the account, bought with
+gold, needs to know whether gold belongs to the account or to the character. That
+is issue #306 and it is open. Under per-character gold, one character funding an
+account-wide expansion is a rule that has to be written; under account gold it
+needs none.
+
+**There is no other gold sink written down.** This design prices every capital
+service in days rather than gold. Gold has sources — side quests, The Midas Touch
+capstone, the auction house — and no stated sink at all. Setting the first one in
+isolation would be a number with nothing to calibrate against, and a wrong first
+sink is worse than none because everything after it is priced relative to it.
+
+**What would argue for revisiting it.** If issue #306 settles gold as
+account-held, and a gold economy is designed with more than one sink in it, a
+gold-priced expansion becomes the cheap and genre-normal answer. The rule that
+would change is only "it does not grow"; nothing else in the section depends on
+it.
+
+### The case against a fixed stash
+
+**It removes a reward.** Diablo IV grants tabs for seasonal participation and
+Last Epoch for accumulated gold, and in both cases the extra space is something
+to work towards. A fixed stash gives a player nothing to earn in that direction
+at all.
+
+**600 may be badly wrong in either direction, and nothing here can tell.** This
+game has 18 equipment slots, eight Cataclysm types with type-specific affixes
+that reward keeping more than one set, gems, and crafting materials. That argues
+for more storage than a game with fewer item categories. Against that, the
+document commits to no storage fees, so a stash that is too small cannot be fixed
+by paying. The number is an anchor, not a measurement, and it says so where it is
+written.
+
+**It interacts with an already-cut node.** Issue #260 recorded that Weightless
+Spoils, an empire tree node granting 10 inventory slots, exists in the prose
+description of the tree and not in the node graph, so it was never built. With
+this decision, neither the carried inventory nor the stash has any scaling source
+anywhere in the design. Whether that is right for the carried inventory is issue
+#308; this entry settles only the stash.
+
+### Sources
+
+All are search-result summaries rather than the pages themselves, because
+`WebFetch` cannot reach the wiki hosts several of these sit on.
+
+- Path of Exile 2 stash tabs: four free tabs, 144 slots each; premium and quad
+  tabs sold for points. https://mobalytics.gg/poe-2/guides/stash-tabs and
+  https://vulkk.com/2025/02/20/path-of-exile-2-stash-tabs-explained/
+- Diablo IV: 50 shared slots to start, a second 50 for 100,000 gold, further tabs
+  through seasonal participation. https://vhpg.com/diablo-4-stash/ and
+  https://us.forums.blizzard.com/en/d4/t/max-number-of-stash-tabs/211105
+- Diablo IV: inventories are per character, the stash is shared, and gold and
+  materials move between characters.
+  https://primagames.com/tips/diablo-4-shared-stash-how-to-share-equipment-between-your-characters
+- Last Epoch: tabs cost in-game gold only, rising in price, limit 200, with
+  naming and colour-coding. http://www.vhpg.com/last-epoch-stash-tabs/ and
+  https://www.icy-veins.com/last-epoch/stash-tab-organization
+
+---
+
 ## 2026-08-05 — The empire tree can be respecced in days, and its four capstone choices are inherited
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #288.
