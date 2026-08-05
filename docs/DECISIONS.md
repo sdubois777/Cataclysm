@@ -20,6 +20,151 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The anti-stun-lock rule: a damage threshold, a five second window, and bosses immune
+
+**Affects** `docs/Cataclysm_GDD_v2.md` and `sim/cataclysm_sim/damage.py`. Applied.
+Issue #216. The fourth question that issue asked is deferred and carried by #270.
+
+## The requirement
+
+Stated by the project owner: crowd control must not become tedious the way it is
+in many games in the genre, where the smallest hit can stun and a player can be
+stun-locked until they die.
+
+## The answer, 2026-08-05, point by point against the four questions
+
+**1. Which crowd control effects exist.** "Cripple is the only CC affix we have
+right now. But I'm pretty sure enemy modifiers have wording like stun and such."
+
+**2. The anti-lock rule.** "I agree it should be a combination of the two.
+Players with a lot of health just don't get stunned from small hits at all, and
+players with lower health can be stunned, but then they should get at least a 5
+second stun immunity window."
+
+**3. Does it apply to enemies.** "Bosses are immune to stun."
+
+**4. What offensive affixes exist.** "Unknown/not full implemented yet."
+Deferred.
+
+## The check the owner asked for, and what it found
+
+The owner asked whether enemy modifiers already use stun wording.
+**`game/Data/EnemyModifiers.csv` contains no stun wording at all.** The nearest
+thing is the Void Corrupted modifier, which disables player abilities while the
+player stands in corrupted ground — a loss of control, but not called a stun.
+
+Stun does already exist in the shipped data, in three other places:
+
+| Where | What |
+|---|---|
+| `docs/Cataclysm_GDD_v2.md`, Weapon Sub-Types | Blunt: 10% chance to stun for 0.75 seconds, on every hit |
+| `game/Data/WeaponSkills.csv` | Shield Bash 1.5s, Shockwave Leap 1s, Lunge 0.75s, Whip Swing unstated |
+| `game/Data/EnchantmentsPositive.csv` | Brute's Heart 10-piece set bonus, 3 seconds |
+
+Two Ultimates — Living Pyre and Unstoppable Force — grant the player immunity to
+stun, slow and knockback for 6 seconds. One negative enchantment stuns the player
+for 0.5 to 1 second after a charge skill. The `Keyword.CC` gameplay tag is
+declared in `game/Config/Tags/CataclysmTags.ini` as "Crowd Control
+(Stun/Slow/Freeze)" and appears on 56 rows across the three tables.
+
+So the owner's point 1 was right about affixes and the expectation about enemy
+modifiers was not borne out.
+
+## The three rules
+
+| Rule | What it stops |
+|---|---|
+| A hit must take at least **10%** of the target's maximum health to stun | Constant interruption by small hits |
+| A stunned target cannot be stunned again for **5 seconds** | Being chain-stunned by large hits |
+| **A boss cannot be stunned at all** | The player holding a boss still for the whole fight |
+
+**Both of the first two are needed.** A damage threshold alone still allows chain
+stunning by large hits. An immunity window alone still allows constant
+interruption by small ones. The owner said the same thing independently.
+
+**The threshold reads damage actually dealt, not damage swung.** A hit that armor
+and resistance reduced to a scratch is a scratch. That is what makes defensive
+investment stop the interruption rather than only reduce the damage, and both
+surveyed games do the same.
+
+**A skill whose stated effect is to stun ignores the damage threshold.** Shield
+Bash, Shockwave Leap, Lunge and Whip Swing all state that they stun, and a
+threshold that made them fail against a healthy target would leave them doing
+nothing they were written to do. Such a skill does not ignore boss immunity and
+does not ignore the immunity window.
+
+## Where the numbers come from
+
+**The 10% threshold is the middle of what the genre ships**, and the three games
+surveyed do not agree with each other:
+
+| Game | Threshold to be able to stun |
+|---|---|
+| Last Epoch | More than 5% of maximum health |
+| Path of Exile | About 10% of effective maximum life, because a computed stun chance at or below 20% is discarded |
+| Path of Exile 2 | 15%, below which the chance is zero |
+
+Taking the middle rather than the strictest is deliberate. This design also has a
+5 second immunity window, which is longer than Last Epoch's 1 second and longer
+than the 4 seconds Path of Exile gives its unique bosses. The window is doing most
+of the anti-lock work, so the threshold does not also need to be the harshest.
+
+**The 5 second window was stated by the owner**, not derived. It is longer than
+every stun the game can currently apply — the longest is the Brute's Heart set
+bonus at 3 seconds — which is what makes it a real gap between stuns rather than
+a formality.
+
+**Immunity for bosses is the simplest of four options and none of the surveyed
+games uses it.** Path of Exile makes a unique boss immune only while stunned and
+for 4 seconds after. Last Epoch counts a boss as having 50% more health for the
+stun calculation. Diablo IV routes crowd control into a separate stagger meter
+that must be filled before any of it applies.
+
+## A consequence worth stating
+
+**Four shipped player skills lose their stun against a boss.** Shield Bash,
+Shockwave Leap, Lunge and Whip Swing still deal their damage and still move the
+player, and their stun does nothing in a boss fight. That follows directly from
+the owner's answer to point 3 and is not a defect, but it is a change in what
+those four skills are worth in the fight they matter most in.
+
+## A slow is not a stun
+
+Cripple reduces an enemy's movement and attack speed by 30% and leaves it able to
+act. The design document already said its reduction caps below total because a
+full stop would be a stun by another name, and the same reasoning applies to
+Weaken. The anti-stun-lock rule names stun only. Whether knockback and slow carry
+the same threshold and window is open and is carried by #270.
+
+## What was built
+
+`sim/cataclysm_sim/damage.py`, the model of one hit's resolution, gained
+`STUN_DAMAGE_THRESHOLD`, `STUN_IMMUNITY_SECONDS`, `can_be_stunned`,
+`Defender.is_boss` and `Attacker.stun_is_designed`, and its `resolve` now gates
+the stun roll on all of it.
+
+**The immunity window is recorded but NOT enforced anywhere.** It is a rule about
+time and `resolve` has no clock. Nothing in this repository implements it yet.
+The constant exists so the design document, the model and whatever the game
+eventually implements cannot disagree about the figure, and
+`sim/tests/test_anti_stun_lock.py` says this plainly rather than leaving it to be
+assumed.
+
+## Evidence
+
+```
+1315 passed in 10.23s
+ruff check . — All checks passed!
+```
+
+Sources:
+[Stun — Last Epoch Support](https://support.lastepoch.com/hc/en-us/articles/46361891772443-Stun),
+[Stun — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Stun),
+[Crowd Control — Diablo 4 Wiki, PureDiablo](https://www.purediablo.com/diablo4/Crowd_Control),
+[Diablo 4: Staggering Explained — Game Rant](https://gamerant.com/diablo-4-d4-staggering-explained/).
+
+---
+
 ## 2026-08-05 — A maxed player losing about one Cataclysm dungeon run in five is intended
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied. Issue #250. No number changed.

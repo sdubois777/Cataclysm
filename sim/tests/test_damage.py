@@ -279,11 +279,34 @@ def test_a_blocked_hit_can_still_stun():
     Deliberately does NOT pin the stun roll: forcing it would bypass the chance
     calculation and the test could not tell whether blocking suppresses stun.
     A certain stun chance is used instead, so the roll must succeed on its own.
+
+    THE HIT IS LARGE ON PURPOSE, and it did not used to be. Until issue #216 any
+    blocked hit could stun. The anti-stun-lock rule added a second condition --
+    the damage that got through has to be at least
+    `damage.STUN_DAMAGE_THRESHOLD` per cent of the defender's maximum health --
+    and a block halves the damage, so a hit that only just cleared the threshold
+    falls below it once blocked. That is the rule working, not blocking
+    suppressing stun. This test keeps its original point by using a hit that is
+    still above the threshold after being halved.
     """
-    certain = hit(subtype="Blunt", bonus_stun_chance=100.0)
+    certain = hit(damage=4_000.0, subtype="Blunt", bonus_stun_chance=100.0)
     r = dm.resolve(certain, plain(), force_evade=False, force_block=True)
     assert r.blocked
+    assert r.dealt_to_health >= 10_000.0 * dm.STUN_DAMAGE_THRESHOLD / 100.0
     assert r.stunned
+
+
+def test_blocking_does_not_by_itself_stop_a_stun():
+    """The claim the test above is really making, isolated from the threshold.
+
+    Same attacker, same defender, blocked and unblocked. If blocking suppressed
+    stun outright rather than only by reducing damage, these two would differ.
+    """
+    certain = hit(damage=4_000.0, subtype="Blunt", bonus_stun_chance=100.0)
+    blocked = dm.resolve(certain, plain(), force_evade=False, force_block=True)
+    clean = dm.resolve(certain, plain(), force_evade=False, force_block=False)
+    assert blocked.blocked and not clean.blocked
+    assert blocked.stunned == clean.stunned is True
 
 
 def test_the_stun_roll_respects_the_chance_without_being_forced():

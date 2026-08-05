@@ -1422,7 +1422,67 @@ Weapons have a physical sub-type that determines baseline combat properties:
 
   
 
-The stun uses the shortest duration any designed skill uses. A weapon sub-type that can stun on every hit must not outclass the skills whose entire purpose is stunning, which run to 3 seconds. Crowd control resistance reduces the chance proportionally, so a character at 100% cannot be stunned at all. An evaded hit never stuns, because nothing made contact; a blocked hit still can, because a block reduces damage rather than preventing contact.
+The stun uses the shortest duration any designed skill uses. A weapon sub-type that can stun on every hit must not outclass the skills whose entire purpose is stunning, which run to 3 seconds. Crowd control resistance reduces the chance proportionally, so a character at 100% cannot be stunned at all. An evaded hit never stuns, because nothing made contact; a blocked hit still can, because a block reduces damage rather than preventing contact — provided what got through still clears the damage threshold below.
+
+  
+
+### **Stun and the Anti-Stun-Lock Rule**
+
+**Being stunned repeatedly with no chance to act is the failure this rule exists to prevent.** Many games in the genre let the smallest hit stun, and a player can then be held still until they die. Three rules together stop it, and all three are needed.
+
+  
+
+|  |  |
+| :-- | :-- |
+| \*\*Rule\*\* | \*\*What it stops\*\* |
+| A hit must take at least 10% of the target's maximum health to stun | Constant interruption by small hits |
+| A target that is stunned cannot be stunned again for 5 seconds | Being chain-stunned by large hits |
+| A boss cannot be stunned at all | The player holding a boss still for the whole fight |
+
+  
+
+**A damage threshold alone is not enough**, because large hits could still chain. **An immunity window alone is not enough**, because small hits could still interrupt constantly. The two are a pair.
+
+  
+
+**The threshold is measured against damage actually dealt, not the damage swung.** A hit that armor and resistance reduced to a scratch is a scratch. This is what makes defensive investment stop the interruption rather than only reduce the damage.
+
+  
+
+**A skill whose stated effect is to stun ignores the damage threshold.** Shield Bash, Shockwave Leap, Lunge and Whip Swing all state that they stun, and a threshold that made them fail against a healthy target would leave them doing nothing they were written to do. Such a skill does **not** ignore boss immunity, and it does not ignore the immunity window.
+
+  
+
+**Where 10% comes from.** It is the middle of what the genre ships, and the three games surveyed do not agree with each other.
+
+  
+
+|  |  |
+| :-- | :-- |
+| \*\*Game\*\* | \*\*Threshold to be able to stun\*\* |
+| Last Epoch | More than 5% of the target's maximum health |
+| Path of Exile | About 10% of effective maximum life, because a computed stun chance at or below 20% is discarded |
+| Path of Exile 2 | 15%, below which the chance is zero |
+
+  
+
+Taking the middle rather than the strictest is deliberate. This design also has a 5 second immunity window, which is longer than Last Epoch's 1 second and longer than the 4 seconds Path of Exile gives its unique bosses, so the window is doing most of the work and the threshold does not also need to be the harshest of the three.
+
+  
+
+**A boss cannot be stunned at all.** Not resistant, not harder to stun — immune. This is the half of the rule that had to be decided alongside the other two: whatever stops the player being stun-locked is what stops the player chain-stunning a boss, and a boss that can be held still is not a fight.
+
+  
+
+**Why immunity rather than resistance.** None of the three surveyed games uses plain immunity: Path of Exile makes a unique boss immune only while stunned and for 4 seconds after, Last Epoch counts a boss as having 50% more health for the stun calculation, and Diablo IV routes crowd control into a separate stagger meter that must be filled before any of it applies. Outright immunity is the simplest of the four and it is what was chosen.
+
+  
+
+**A slow is not a stun and is not covered by this rule.** Cripple reduces an enemy's movement and attack speed and leaves it able to act, which is why its reduction caps below total — a full stop would be a stun by another name. The same reasoning applies to Weaken.
+
+  
+
+**What offensive crowd control gear exists is not yet decided.** Cripple is the only crowd control effect available as an affix today. Stun reaches the game through the Blunt weapon sub-type, through four weapon skills, and through two enchantments, but no affix grants a chance to stun and none scales a stun's duration. Whether knockback and slow carry the same threshold and window as stun is also open. Issue #270 carries it.
 
   
 
