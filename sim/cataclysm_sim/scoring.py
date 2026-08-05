@@ -148,15 +148,76 @@ def final_boss_score(tier: int, dungeon_type: str, subtype: str,
 REFERENCE_ENV_VAR = "CATACLYSM_SCORING_REFERENCE"
 
 
-def reference_path() -> pathlib.Path | None:
-    """Locate DungeonSimulator's calculateScores.tsx, the authoritative model."""
+def _git_common_dir(start: pathlib.Path) -> pathlib.Path | None:
+    """The `.git` directory shared by a checkout and every worktree made from it.
+
+    Returns None when nothing above `start` is a git checkout at all.
+
+    An ordinary checkout has a `.git` DIRECTORY and this returns it. A linked
+    worktree has a `.git` FILE holding one `gitdir: <path>` line, and that path
+    holds a `commondir` file pointing back at the original `.git`. Following
+    both is how git itself gets from a worktree to the checkout it was made
+    from, and it is the reason this cannot be done by counting directory levels:
+    a worktree under `.claude/worktrees/<name>` sits three levels deeper than
+    the checkout it belongs to. Issue #275.
+    """
+    for parent in start.parents:
+        dot_git = parent / ".git"
+        if dot_git.is_dir():
+            return dot_git
+        if not dot_git.is_file():
+            continue
+        line = dot_git.read_text(encoding="utf-8").strip()
+        if not line.startswith("gitdir:"):
+            return None
+        worktree_git = pathlib.Path(line[len("gitdir:"):].strip())
+        if not worktree_git.is_absolute():
+            worktree_git = (parent / worktree_git).resolve()
+        commondir = worktree_git / "commondir"
+        if not commondir.is_file():
+            # A `.git` file with no `commondir` beside its target is a submodule
+            # rather than a worktree. Its target IS the git directory.
+            return worktree_git
+        common = pathlib.Path(commondir.read_text(encoding="utf-8").strip())
+        if not common.is_absolute():
+            common = (worktree_git / common).resolve()
+        return common
+    return None
+
+
+def repository_root() -> pathlib.Path:
+    """The top of the Cataclysm checkout, found the way git finds it.
+
+    Returns the ORIGINAL checkout even when this code is running from a linked
+    worktree, because that is where the sibling DungeonSimulator checkout is.
+    """
+    here = pathlib.Path(__file__).resolve()
+    common = _git_common_dir(here)
+    if common is not None:
+        return common.parent
+    # Not a git checkout at all: fall back to this file's own layout,
+    # sim/cataclysm_sim/scoring.py -> the repository root two levels up.
+    return here.parents[2]
+
+
+def reference_search_path() -> pathlib.Path:
+    """Where reference_path() looks, whether or not anything is there.
+
+    Separate from reference_path() so a skip can name the path it tried. A skip
+    that says only "not present" reads as "nothing is wrong" when the real cause
+    is that the search looked in the wrong place.
+    """
     override = os.environ.get(REFERENCE_ENV_VAR)
     if override:
-        p = pathlib.Path(override)
-        return p if p.is_file() else None
-    # sim/cataclysm_sim/scoring.py -> <workspace>/DungeonSimulator/src/utils/...
-    guess = (pathlib.Path(__file__).resolve().parents[3]
-             / "DungeonSimulator" / "src" / "utils" / "calculateScores.tsx")
+        return pathlib.Path(override)
+    # <workspace>/Cataclysm -> <workspace>/DungeonSimulator/src/utils/...
+    return (repository_root().parent
+            / "DungeonSimulator" / "src" / "utils" / "calculateScores.tsx")
+
+
+def reference_path() -> pathlib.Path | None:
+    """Locate DungeonSimulator's calculateScores.tsx, the authoritative model."""
+    guess = reference_search_path()
     return guess if guess.is_file() else None
 
 
@@ -186,6 +247,7 @@ def check_against_reference(verbose: bool = True) -> bool:
     if ref is None:
         if verbose:
             print("SKIPPED constant check: calculateScores.tsx not found.\n"
+                  f"  Looked for: {reference_search_path()}\n"
                   f"  Set {REFERENCE_ENV_VAR} to its path to enable drift detection.")
         return False
 

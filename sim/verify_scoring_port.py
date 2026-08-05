@@ -97,6 +97,7 @@ def main() -> int:
     ref = scoring.reference_path()
     if ref is None:
         print("SKIPPED: calculateScores.tsx not found.")
+        print(f"  Looked for: {scoring.reference_search_path()}")
         print(f"  Set {scoring.REFERENCE_ENV_VAR} to its path.")
         return 0
     if shutil.which("node") is None:
