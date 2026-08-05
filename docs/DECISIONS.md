@@ -294,6 +294,18 @@ them, so changing one of them now would interfere with that work. And the JSON i
 authored by a separate tool outside this repository, so a hand edit risks being
 overwritten. Filed as its own issue.
 
+> **Done on 2026-08-05 by issue #247**, which renamed all thirteen. The first
+> reason above held and cost nothing: the rename touches node descriptions, not
+> node identity or structure, so issue #25's reconciliation is unaffected and the
+> two files now agree on this word instead of disagreeing in a new way. **The
+> second reason was wrong.** The passive tree editor at
+> `C:\PassiveTreeCreator` holds no tree data — `src/utils/serialization.ts`
+> reads a JSON file the user opens and downloads one back, so
+> `Empire_Development_Tree_Final.json` is the data rather than an export of it.
+> Anyone opening it in the editor carries the edit through rather than
+> overwriting it. `tools/tests/test_magic_find_has_one_name.py` now covers both
+> files and no longer excludes anything.
+
 **One consequence worth knowing.** The row key in `game/Data/CityUpgrades.csv` is
 derived from the description text, so renaming the description renamed the row from
 `Treasurer_Dungeons_here_have_10_increased_rarity` to
