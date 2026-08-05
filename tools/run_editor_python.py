@@ -25,15 +25,19 @@ WHAT THIS DOES. Two checks either side of the editor.
 compiled modules are all present. A missing `game/Binaries/Win64/` is reported as
 what it is, and the message says outright when this checkout is a git worktree.
 
-**After**: read the run's log and fail unless the Python interpreter actually
-logged something. This is what catches the silent case: an editor that gave up
-before reaching the Python plugin writes a log with no `LogPython` line in it at
-all. The log is this runner's own file, `game/Saved/Logs/run_editor_python.log`,
-not the editor's default `Cataclysm.log` — see RUN_LOG for why that matters.
+**After**: read the run's log and fail unless the commandlet reported both
+starting this script and finishing without errors. That is what catches the
+silent case: an editor that gave up before reaching the Python plugin never logs
+`Running Python script:` at all. The log is this runner's own file,
+`game/Saved/Logs/run_editor_python.log`, not the editor's default
+`Cataclysm.log` — see RUN_LOG for why that matters.
 
-    THE SCRIPT MUST LOG AT LEAST ONE LINE THROUGH `unreal.log`, or the run is
-    reported as not having happened. Both generators log every asset they write,
-    so this costs them nothing.
+    IT IS NOT ENOUGH TO LOOK FOR THE `LogPython` CATEGORY. Engine plugins run
+    their own start-up scripts and log 40 lines under it before the `-script=`
+    file is reached, so a run in which the script raised still has plenty of
+    them. The first version of this file checked exactly that and reported a
+    script that called `unreal.log_error` and raised `SystemExit(1)` as a
+    success. See SCRIPT_STARTED.
 
 WHAT THIS DOES NOT DO. It does not make a worktree work. Sharing the ordinary
 checkout's `game/Binaries/` through a junction would let the editor start, but
@@ -121,21 +125,14 @@ def missing_module_libraries() -> list[str]:
             if not (PROJECT_BINARIES / name).is_file()]
 
 
-def check_preconditions() -> None:
-    """Raise CannotRunEditorScript unless the editor can actually load the project."""
-    if not EDITOR_CMD.is_file():
-        raise CannotRunEditorScript(
-            f"The Unreal editor is not at {EDITOR_CMD}.\n"
-            f"  Set UE_ROOT to the engine installation directory. It is "
-            f"currently {ENGINE_ROOT}.")
+def missing_binaries_message(missing: list[str], worktree: bool) -> str:
+    """What to say when the project's compiled modules are not there.
 
-    if not PROJECT_FILE.is_file():
-        raise CannotRunEditorScript(f"{PROJECT_FILE} does not exist.")
-
-    missing = missing_module_libraries()
-    if not missing:
-        return
-
+    Separate from check_preconditions() so it can be tested anywhere. The engine
+    is not installed on the continuous integration runner, so a test that reached
+    this through check_preconditions() would get the "editor is not at" message
+    instead and pass or fail for the wrong reason.
+    """
     message = [
         "The editor cannot be started.",
         f"This project's compiled modules are not in {PROJECT_BINARIES}.",
@@ -145,7 +142,7 @@ def check_preconditions() -> None:
         "would start, run for about twenty seconds, write nothing, and exit",
         "without saying why. That is issue #279.",
     ]
-    if is_worktree():
+    if worktree:
         message += [
             "",
             f"THIS CHECKOUT IS A GIT WORKTREE ({REPO_ROOT}).",
@@ -161,7 +158,23 @@ def check_preconditions() -> None:
             '  "$UE_ROOT/Engine/Build/BatchFiles/Build.bat" CataclysmEditor '
             f"Win64 Development -Project={PROJECT_FILE} -WaitMutex",
         ]
-    raise CannotRunEditorScript("\n".join(message))
+    return "\n".join(message)
+
+
+def check_preconditions() -> None:
+    """Raise CannotRunEditorScript unless the editor can actually load the project."""
+    if not EDITOR_CMD.is_file():
+        raise CannotRunEditorScript(
+            f"The Unreal editor is not at {EDITOR_CMD}.\n"
+            f"  Set UE_ROOT to the engine installation directory. It is "
+            f"currently {ENGINE_ROOT}.")
+
+    if not PROJECT_FILE.is_file():
+        raise CannotRunEditorScript(f"{PROJECT_FILE} does not exist.")
+
+    missing = missing_module_libraries()
+    if missing:
+        raise CannotRunEditorScript(missing_binaries_message(missing, is_worktree()))
 
 
 def _comparable(path: str) -> str:

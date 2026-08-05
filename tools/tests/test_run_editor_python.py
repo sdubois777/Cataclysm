@@ -29,11 +29,13 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from run_editor_python import (  # noqa: E402
+    EDITOR_CMD,
     REQUIRED_MODULE_LIBRARIES,
     RUN_LOG,
     CannotRunEditorScript,
     check_preconditions,
     is_worktree,
+    missing_binaries_message,
     missing_module_libraries,
     script_outcome,
     script_started,
@@ -158,12 +160,38 @@ class TestPreconditions:
         expected = {f"UnrealEditor-{module['Name']}.dll" for module in modules}
         assert set(REQUIRED_MODULE_LIBRARIES) == expected
 
-    def test_a_worktree_is_refused_with_a_message_naming_the_cause(self):
-        """Skips in the ordinary checkout, where the binaries are present.
+    def test_a_worktree_is_told_it_is_a_worktree(self):
+        """The message must name the cause, not just say something is missing.
 
-        In a worktree this is the real thing: the same call the runner makes,
-        raising rather than starting an editor that would do nothing.
+        Built from the message function rather than from check_preconditions(),
+        so it runs everywhere. Continuous integration has no engine installed, so
+        going through check_preconditions() there reaches the "editor is not at"
+        branch and never tests this at all.
         """
+        message = missing_binaries_message(list(REQUIRED_MODULE_LIBRARIES),
+                                           worktree=True)
+        assert "GIT WORKTREE" in message
+        assert "gitignored" in message
+        assert "279" in message
+        assert "game/README.md" in message
+        for name in REQUIRED_MODULE_LIBRARIES:
+            assert name in message
+
+    def test_an_ordinary_checkout_is_told_to_build(self):
+        """A missing build in the ordinary checkout is a different instruction."""
+        message = missing_binaries_message(["UnrealEditor-Cataclysm.dll"],
+                                           worktree=False)
+        assert "Build.bat" in message
+        assert "GIT WORKTREE" not in message
+
+    def test_the_real_check_refuses_this_checkout_when_it_has_no_binaries(self):
+        """The same call the runner makes. Skips where it cannot say anything.
+
+        Needs both an installed engine and a checkout with no built modules,
+        which is a worktree on the development machine and nowhere else.
+        """
+        if not EDITOR_CMD.is_file():
+            pytest.skip(f"no Unreal engine at {EDITOR_CMD}")
         if not missing_module_libraries():
             pytest.skip("this checkout has its modules built, so nothing is missing")
         with pytest.raises(CannotRunEditorScript) as raised:
