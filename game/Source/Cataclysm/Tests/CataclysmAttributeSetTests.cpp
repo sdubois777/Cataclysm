@@ -441,6 +441,20 @@ CATACLYSM_TEST(FCataclysmExternallyBasedStatsTest,
 			Fixture.Combat->GetAreaOfEffect(), 100.0f);
 		TestEqual(TEXT("Damage over time frequency baselines at one hundred"),
 			Fixture.Combat->GetDotFrequency(), 100.0f);
+
+		// Loot quantity is a percentage of what the dungeon would otherwise
+		// drop, so it is the same shape and needs the same baseline. Issue
+		// #243: it started at zero, and because every source of loot quantity
+		// is an increase rather than a flat grant, it stayed at zero however
+		// much a player spent on it. Nothing errored, which is why it survived.
+		TestEqual(TEXT("Loot quantity baselines at one hundred per cent"),
+			Fixture.Combat->GetLootQuantity(), 100.0f);
+
+		// Magic find is deliberately NOT the same shape. It is an added
+		// percentage rather than a percentage of something, and it has a flat
+		// source in the Flat Magic Find affix, so zero is correct here.
+		TestEqual(TEXT("Magic find starts at zero, supplied flat by an affix"),
+			Fixture.Combat->GetMagicFind(), 0.0f);
 	}
 	World->DestroyWorld(false);
 	return true;

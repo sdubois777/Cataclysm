@@ -634,6 +634,14 @@ Attributes only scale. A stat therefore needs a base value before any attribute 
 
   
 
+**Loot quantity has a baseline of 100% for the same reason.** It is a percentage of whatever the dungeon would otherwise drop, so 100 means unchanged and a character with no bonuses sits there. Every source of loot quantity is an increase — the Luck attribute, the Increased Loot Quantity affix, the hybrid affix pairing it with magic find, and several Explorer branch nodes on the empire tree — and an increase applied to a baseline of zero is zero, so a baseline of 100 is what makes any of them do anything.
+
+  
+
+**Magic find is not the same shape, and its baseline is zero.** It is an added percentage rather than a percentage of something, and it has a flat source: the Flat Magic Find affix. That is the base the Luck attribute then scales.
+
+  
+
 **Movement speed is measured in metres per second.** A tank sits at roughly 3. Agility scales that value, so a tank with points invested moves at 3 × (1 + increases).
 
   

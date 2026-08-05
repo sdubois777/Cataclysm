@@ -165,6 +165,57 @@ def test_area_of_effect_baselines_at_one_hundred_percent_not_zero():
     assert boosted.stat("area_of_effect") == pytest.approx(200.0)
 
 
+def test_loot_quantity_baselines_at_one_hundred_percent_not_zero():
+    """Issue #243. It is a percentage of whatever the dungeon would otherwise
+    drop, so 100% is 'unchanged'.
+
+    A baseline of zero left it permanently at zero, because EVERY source of loot
+    quantity is an increase and not one of them is flat: the Luck attribute, the
+    Increased Loot Quantity affix, its hybrid with magic find, and several
+    Explorer branch nodes on the empire tree.
+    """
+    c = ch.Character(ch.GENERIC, level=100)
+    assert c.stat("loot_quantity") == pytest.approx(100.0)
+
+
+def test_every_source_of_loot_quantity_actually_moves_it():
+    """The failure this guards is silent: nothing errored, the number was just
+    always zero. Each source is checked on its own so a later change that
+    breaks one of them is named."""
+    plain = ch.Character(ch.GENERIC, level=100).stat("loot_quantity")
+
+    from_luck = ch.Character(ch.GENERIC, level=100,
+                             attributes=ch.Attributes(luck=100))
+    assert from_luck.stat("loot_quantity") > plain
+
+    from_gear = ch.Character(
+        ch.GENERIC, level=100,
+        gear=ch.Gear(increased={"loot_quantity": 0.32}))
+    assert from_gear.stat("loot_quantity") == pytest.approx(132.0)
+
+    together = ch.Character(
+        ch.GENERIC, level=100, attributes=ch.Attributes(luck=100),
+        gear=ch.Gear(increased={"loot_quantity": 0.32}))
+    assert together.stat("loot_quantity") == pytest.approx(232.0)
+
+
+def test_magic_find_baselines_at_zero_because_it_has_a_flat_source():
+    """The other half of the same attribute, and deliberately NOT the same
+    shape. Magic find is an added percentage rather than a percentage of
+    something, and the Flat Magic Find affix supplies the base that Luck then
+    scales. Issue #81 is about how much Luck's share of it is worth, which is a
+    separate question from whether it works at all."""
+    assert ch.Character(ch.GENERIC, level=100).stat("magic_find") == \
+        pytest.approx(0.0)
+    geared = ch.Character(ch.GENERIC, level=100,
+                          gear=ch.Gear(flat={"magic_find": 40.0}))
+    assert geared.stat("magic_find") == pytest.approx(40.0)
+    with_luck = ch.Character(ch.GENERIC, level=100,
+                             attributes=ch.Attributes(luck=100),
+                             gear=ch.Gear(flat={"magic_find": 40.0}))
+    assert with_luck.stat("magic_find") > geared.stat("magic_find")
+
+
 # --------------------------------------------------------------------------
 # Increases are scoped by tag
 # --------------------------------------------------------------------------
