@@ -274,13 +274,20 @@ class Simulation:
 
         Grows with the surge index under SWELLING/BOTH, and with the number of
         simultaneous Cataclysms in every mode.
+
+        The lethality mode multiplies the result LAST, after the cap. Heretic's
+        rule is stated without qualification -- "Surges spawn 25% more dungeons"
+        -- while `surge_count_max` bounds how far the Cataclysm's own escalation
+        runs, which is a different thing. Applying the multiplier before the cap
+        would make Heretic identical to Standard at every surge that reaches it,
+        which is where the extra dungeons would hurt most. Issue #289.
         """
         cfg = self.cfg
         n = float(cfg.surge_dungeon_count)
         if cfg.surge_mode in (SurgeMode.SWELLING, SurgeMode.BOTH):
             n += cfg.surge_count_growth * self.surge_index
         n = min(n, float(cfg.surge_count_max))
-        return max(1, int(n))
+        return max(1, int(n * cfg.surge_dungeon_multiplier))
 
     def surge_gap(self) -> float:
         """Days until the surge after this one.

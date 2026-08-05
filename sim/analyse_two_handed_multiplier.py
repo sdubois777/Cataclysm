@@ -431,5 +431,11 @@ def main() -> None:
     why_the_multiplier_applies_to_implicits_too()
 
 
-if __name__ == "__main__":
-    main()
+# Called unconditionally, like the other analyse_*.py scripts. It used to sit
+# behind `if __name__ == "__main__"`, and `sim/tests/test_analysis_scripts.py`
+# executes these with `runpy.run_path`, which does NOT set `__name__` to
+# `"__main__"`. So the whole report was invisible to any test that ran the file.
+# Nothing noticed, because this script was also missing from that file's list of
+# scripts to run. Both were found on 2026-08-05 by the new check that the list
+# covers every sim/analyse_*.py on disk.
+main()
