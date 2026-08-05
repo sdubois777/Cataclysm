@@ -265,6 +265,162 @@ class TestThePresetSectionCoversBothEnds:
             "the preset section no longer reports the spread of objectives "
             "cleared per tier, which is the measurement issue #294 turns on.")
 
+    def test_the_table_header_states_the_day_cap(self, capsys):
+        """Issue #293. A campaign that runs out of days has no result, so the
+        day budget is part of what the table measured and belongs beside the
+        power ceiling rather than only in the config file."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1,), trials=2)
+        printed = capsys.readouterr().out
+        assert f"day cap {base.max_days:,}" in printed, (
+            "the preset table no longer states the day cap it ran under. A "
+            "campaign that hits the cap has no result, so the cap is part of "
+            "what the table measured. Issue #293.")
+
+
+class TestTheSweepFlagsCampaignsWithNoResult:
+    """Issue #293. `engine.Simulation.run` is
+
+        while self.day < self.cfg.max_days and not self.lost and not self.won:
+
+    with no other exit, so a campaign that is neither won nor lost ran out of
+    days and has NO result. The `stale%` column reads like a third outcome
+    beside winning and losing and is not one.
+
+    At difficulty tier 8 the Architect preset scores 0% win, 0% loss and 100%
+    no result, and every ranking metric proposed on issue #294 reads that as a
+    good score -- win minus loss ranks it FIRST, ahead of the only preset that
+    wins anything. So the sweep has to say which cells are unresolved.
+
+    These run the warning function directly rather than through a sweep,
+    because producing a 100%-unresolved cell honestly costs about 150 seconds
+    and a test that waits that long will not be run.
+    """
+
+    def test_it_says_nothing_when_every_cell_resolved(self, capsys):
+        """A warning that always fires is not a warning. Ordinary tier 1 cells
+        have stalemate rates around 20% and must not trip it."""
+        flagged = experiments.warn_about_unresolved_campaigns(
+            ["a", "b"], {"a": 21.0, "b": 3.0}, 2500)
+        assert flagged == []
+        assert capsys.readouterr().out == "", (
+            "the sweep warns about unresolved campaigns for a table where "
+            "every cell resolved. Tier 1 stalemate rates run to about 20% and "
+            "are normal.")
+
+    def test_it_names_every_preset_whose_campaigns_mostly_had_no_result(self,
+                                                                       capsys):
+        flagged = experiments.warn_about_unresolved_campaigns(
+            ["fine", "truncated", "also truncated"],
+            {"fine": 12.0, "truncated": 100.0, "also truncated": 64.0}, 2500)
+        assert flagged == ["truncated", "also truncated"]
+        printed = capsys.readouterr().out
+        assert "truncated: 100% of campaigns ran out of days" in printed
+        assert "also truncated: 64% of campaigns ran out of days" in printed
+        assert "fine" not in printed, (
+            "the warning names a preset whose campaigns did resolve.")
+
+    def test_it_says_why_the_numbers_are_not_comparable(self, capsys):
+        """Naming the cell is not enough. A reader looking at 0% win and 0%
+        loss needs to be told those are not two measurements of a preset, they
+        are the absence of any measurement."""
+        experiments.warn_about_unresolved_campaigns(["x"], {"x": 100.0}, 2500)
+        printed = capsys.readouterr().out
+        assert "not" in printed and "comparable" in printed, (
+            "the warning names the unresolved presets without saying their "
+            "win and loss rates cannot be compared with the others. Issue "
+            "#293.")
+
+    def test_it_records_that_raising_the_day_cap_is_not_a_clean_control(self,
+                                                                       capsys):
+        """The measurement issue #293 asked for was run on 2026-08-05 and its
+        result is that the experiment cannot answer the question. Dungeon power
+        is keyed to ELAPSED DAYS at 22% per 100 days, so a run given more days
+        is given a harder game, and the day cap is not an independent variable.
+
+        Without this sentence the obvious next step -- raise max_days -- looks
+        like a fix. It is not, and it costs about eight times the sweep's
+        runtime to find that out again."""
+        experiments.warn_about_unresolved_campaigns(["x"], {"x": 100.0}, 2500)
+        printed = capsys.readouterr().out
+        assert "not an" in printed and "independent variable" in printed, (
+            "the warning does not record that raising the day cap changes the "
+            "difficulty as well as the length of the run. Issue #293.")
+        assert "22% per 100 days" in printed, (
+            "the warning states that dungeon power is keyed to elapsed days "
+            "without the rate. The rate is what decides whether the confound "
+            "matters, and it is 0.22 per 100 days in config.py.")
+
+    def test_the_stated_rate_matches_the_configured_one(self):
+        """The warning quotes 22% per 100 days. If the constant changes, the
+        sentence becomes false, and a false explanation is worse than none."""
+        assert TuningConfig().dungeon_power_escalation_per_100_days == 0.22, (
+            "dungeon_power_escalation_per_100_days is no longer 0.22, so the "
+            "unresolved-campaign warning in experiments.py quotes the wrong "
+            "rate. Update the printed sentence and this test together.")
+
+    def test_the_threshold_is_a_majority_of_campaigns(self):
+        """Below half, the resolved campaigns are still the larger sample and
+        the rates mean something. At or above half they do not."""
+        assert experiments.UNRESOLVED_WARNING_PERCENT == 50.0
+
+    def test_a_cell_exactly_at_the_threshold_is_flagged(self, capsys):
+        """Half the campaigns having no result is already too many, and an
+        off-by-one here would silently drop the borderline cases the warning
+        exists for."""
+        assert experiments.warn_about_unresolved_campaigns(
+            ["x"], {"x": experiments.UNRESOLVED_WARNING_PERCENT}, 2500) == ["x"]
+        capsys.readouterr()
+
+    def test_the_warning_reaches_the_printed_table(self, capsys):
+        """Every test above calls the warning directly, which proves what it
+        says and not that anything calls it. This runs the real preset section
+        with a day cap of 40, so no campaign can finish and every cell is
+        unresolved, and checks the warning comes out.
+
+        40 days rather than the real 2,500 because a cell that is genuinely
+        100% unresolved at the real cap costs about 150 seconds to produce.
+        """
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER, max_days=40)
+        experiments.exp_presets(base, tiers=(1,), trials=2)
+        printed = capsys.readouterr().out
+        assert "NO RESULT for most campaigns" in printed, (
+            "exp_presets does not warn about unresolved campaigns even when "
+            "every campaign in the table ran out of days. The warning function "
+            "exists but nothing calls it. Issue #293.")
+        assert "day cap 40" in printed
+
+    def test_no_warning_appears_when_the_cells_resolve(self, capsys):
+        """The other half. At the real day cap and tier 1 the presets resolve,
+        so the warning must stay silent -- otherwise it would appear on every
+        table and stop meaning anything."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1,), trials=4)
+        printed = capsys.readouterr().out
+        assert "NO RESULT for most campaigns" not in printed, (
+            "the unresolved-campaign warning fires on an ordinary tier 1 "
+            "table, where the campaigns do resolve. A warning that always "
+            "fires is not a warning.")
+
+    def test_the_campaign_loop_has_no_exit_other_than_the_day_cap(self):
+        """The whole warning rests on this. If the day loop ever gains another
+        way out, a campaign could end with no result for a different reason and
+        the warning would be attributing it wrongly."""
+        import inspect
+
+        from cataclysm_sim import engine
+
+        source = inspect.getsource(engine.Simulation.run)
+        body = source[source.index("while"):]
+        assert "break" not in body, (
+            "engine.Simulation.run now has a break in its day loop, so a "
+            "campaign can end without winning, losing, or running out of "
+            "days. The unresolved-campaign warning in experiments.py says "
+            "otherwise. Issue #293.")
+        assert "self.day < self.cfg.max_days" in body, (
+            "engine.Simulation.run no longer bounds its day loop by "
+            "cfg.max_days. Issue #293.")
+
     def test_the_tier_actually_changes_the_run(self, capsys):
         """Otherwise the second table would be a copy of the first.
 

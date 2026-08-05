@@ -397,6 +397,80 @@ def rank_by_win(wins: dict[str, float], tolerance: float) -> list[tuple[str, ...
     return [tuple(names) for _, names in groups]
 
 
+#: Above this share of campaigns ending with no result, a cell's win and loss
+#: rates describe the day cap more than they describe the preset, so the sweep
+#: says so rather than letting them be read as outcomes. Issue #293.
+UNRESOLVED_WARNING_PERCENT = 50.0
+
+
+def warn_about_unresolved_campaigns(names, stale: dict[str, float],
+                                    max_days: int) -> list[str]:
+    """Name any preset whose campaigns mostly ended with no result, and return
+    those names.
+
+    WHY THIS EXISTS. Issue #293. `engine.Simulation.run` is
+
+        while self.day < self.cfg.max_days and not self.lost and not self.won:
+
+    with no other way out, so a campaign that is neither won nor lost ended
+    because it ran out of days. It has NO result. The `stale%` column reads like
+    a third outcome beside winning and losing, and it is not one.
+
+    That matters because the table is a ranking. At tier 8 the Architect preset
+    scores 0% win, 0% loss and 100% no result, and every ranking metric proposed
+    on issue #294 reads that row as a good score: win minus loss puts it FIRST,
+    ahead of the only preset that wins anything.
+
+    WHAT WAS MEASURED, 2026-08-05, 100 campaigns per row, Architect at tier 8:
+
+        max_days   win%  loss%  stale%  obj/8    days
+            2500      0      0     100    1.4    2500
+            5000      0      0     100    2.0    5000
+           10000      0     20      80    3.2    9860
+           20000      0    100       0    3.5   11375
+
+    Raising the cap resolves them, and it resolves them as losses. The win rate
+    never leaves zero.
+
+    BUT THAT EXPERIMENT DOES NOT MEAN WHAT IT LOOKS LIKE, and the reason is why
+    this warning exists rather than a larger default day cap. Dungeon power is
+    keyed to elapsed days, at `dungeon_power_escalation_per_100_days` = 0.22 in
+    `config.py`:
+
+        power_scale = 1.0 + 0.22 * (day / 100)
+
+    So the day cap is not an independent variable. At 2500 days dungeons reach
+    6.5 times base power; at the 11,375 mean days those runs reached, 26 times.
+    Giving a campaign more days also gives it a harder game, so the measurement
+    cannot separate "this preset is too weak to win" from "the difficulty
+    treadmill outruns any preset given long enough". Both are consistent with
+    every number above.
+
+    What is established is narrower and is what this function reports: a cell
+    with most campaigns unresolved has no comparable win or loss rate, and the
+    reader has to be told which cells those are.
+    """
+    unresolved = [name for name in names
+                  if stale.get(name, 0.0) >= UNRESOLVED_WARNING_PERCENT]
+    if not unresolved:
+        return []
+    print(f"\n  NO RESULT for most campaigns of "
+          f"{len(unresolved)} preset(s), at the {max_days:,} day cap:")
+    for name in unresolved:
+        print(f"    {name}: {stale[name]:.0f}% of campaigns ran out of days "
+              "without winning or losing")
+    print("  Those campaigns have no outcome, so this preset's win and loss "
+          "rates are not")
+    print("  comparable with the others in this table. Raising the cap "
+          "resolves them as")
+    print("  losses, but it also raises dungeon power, which is keyed to "
+          "elapsed days at")
+    print("  22% per 100 days, so a longer run is a harder run and the cap is "
+          "not an")
+    print("  independent variable. Issue #293.")
+    return unresolved
+
+
 def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
     """The preset comparison, run once per tier. Returns the win rates it printed.
 
@@ -414,9 +488,12 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
     #: alongside the win rate because a win requires all of them, so this is the
     #: same axis measured before it saturates. Issue #294.
     objectives: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
+    #: Percentage of campaigns that ended with no result. Issue #293.
+    stale: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
     for tier in tiers:
         ceiling = scoring.tier_bounds(tier)[1]
-        print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}")
+        print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}, "
+              f"day cap {base.max_days:,}")
         header = (f"{'preset':<42}{'win%':>7}{'loss%':>7}{'stale%':>8}"
                   f"{'obj/' + str(base.quest_objectives_required):>7}"
                   f"{'cities':>8}{'floors':>9}{'crafts':>8}{'triage%':>9}")
@@ -428,9 +505,12 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             s = summarise(batch(cfg, policies.triage, trials=trials))
             wins[tier][tree.name] = s["win"]
             objectives[tier][tree.name] = s["obj"]
+            stale[tier][tree.name] = s["stale"]
             print(f"{tree.name:<42}{s['win']:>7.0f}{s['lost']:>7.0f}"
                   f"{s['stale']:>8.0f}{s['obj']:>7.1f}{s['cities']:>8.1f}"
                   f"{s['floors']:>9.0f}{s['crafts']:>8.1f}{s['triage']:>9.1f}")
+        warn_about_unresolved_campaigns(wins[tier].keys(), stale[tier],
+                                        base.max_days)
 
     if len(tiers) > 1:
         tolerance = win_rate_noise(trials)
