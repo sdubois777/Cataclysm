@@ -299,11 +299,20 @@ def test_the_document_does_not_also_say_a_slow_is_open(gdd):
         "saying it is settled and not covered. Both cannot be true. Issue #296.")
 
 
-def test_knockback_is_the_thing_still_open(gdd):
-    """Narrowed, not deleted. Knockback genuinely is undecided. Issue #297."""
-    assert "Whether knockback carries the same threshold and window as stun" in gdd, (
-        "the design document no longer records that knockback's position is "
-        "open. It is: issue #297.")
+def test_the_open_questions_are_about_gear_and_not_about_slows(gdd):
+    """What is open is which affixes exist, and nothing about what the rule covers.
+
+    THIS USED TO ASSERT THAT KNOCKBACK WAS OPEN, when the only settled thing was
+    that a slow is not covered. Issue #297 then settled knockback too, by
+    splitting it: a knockdown is covered in full and a displacement is not. So
+    the sentence this checked is gone, and what remains open in this paragraph is
+    only which crowd control affixes exist, which is #298 and #299.
+    """
+    assert "knockback carries the same threshold and window as stun" not in gdd, (
+        "the design document says knockback's position is open. It was settled "
+        "by issue #297: a knockdown is covered by the rule, a displacement is "
+        "not.")
+    assert "no affix grants a chance to stun and none scales a stun's duration" in gdd
 
 
 def test_the_reason_a_slow_is_separate_is_still_in_the_document(gdd):
@@ -323,3 +332,132 @@ def test_the_open_questions_name_issues_that_are_not_the_closed_parent(gdd):
     assert "Issue #270 carries it" not in gdd, (
         "the design document points at issue #270, which was split into #296, "
         "#297, #298, #299 and #300 and closed. Name the live children instead.")
+
+
+# --- Knockdown is covered, displacement is not ------------------------------
+#
+# Issue #297. This project has two different effects under the one word
+# "knockback". A knockdown stops the target acting for a stated number of
+# seconds, which is what a stun does. A displacement moves it and lets it act on
+# arrival. They get opposite answers, and the split is what the genre does:
+# Diablo IV ships Knockback and Knock Down as separate effects.
+
+
+def test_the_document_states_the_criterion_for_being_covered(gdd):
+    """The project owner's rule, 2026-08-05: only hard stops are covered.
+
+    Stated as a general test rather than as a list, so an effect added later has
+    an answer without anyone having to decide it case by case.
+    """
+    assert ("An effect is covered when it completely stops the target operating "
+            "any part of its character") in gdd, (
+        "the design document no longer states the criterion for what the "
+        "anti-stun-lock rule covers. Issue #297.")
+
+
+def test_madness_is_recorded_as_open_rather_than_decided_by_omission(gdd):
+    """It is the one case the criterion does not settle, and it is the longest
+    hold in the game and the only one that is freely rollable. Issue #303."""
+    assert "Issue #303" in gdd, (
+        "the design document no longer records that Madness's position under the "
+        "anti-stun-lock rule is open. Leaving it out reads as not covered, which "
+        "is one of the two answers and has not been chosen.")
+
+
+def test_the_document_says_a_knockdown_is_covered(gdd):
+    assert "A knockdown is a hard stop, so it carries all three parts" in gdd, (
+        "the design document no longer says a knockdown is covered by the "
+        "anti-stun-lock rule. Issue #297.")
+
+
+def test_the_document_says_a_displacement_is_not_covered(gdd):
+    assert "Displacement is not covered, because it does not hold the target still." in gdd, (
+        "the design document no longer says displacement is outside the "
+        "anti-stun-lock rule. Issue #297.")
+
+
+def test_the_document_does_not_leave_displacement_sounding_unlimited(gdd):
+    """Not covered by this rule is not the same as repeatable without limit."""
+    assert "This does not mean it should be repeatable without limit" in gdd, (
+        "the design document says displacement is outside the rule without "
+        "saying that something else still has to limit it. Issue #302.")
+
+
+def test_knockdown_and_stun_share_one_immunity_window(gdd):
+    """One each would allow the alternation the window exists to stop."""
+    assert "share one window rather than one each" in gdd, (
+        "the design document no longer says stun and knockdown share a single "
+        "immunity window. Two 3 second holds taken in turn is the failure the "
+        "window exists to prevent. Issue #297.")
+
+
+class TestTheDocumentMatchesTheSkillTable:
+    """The split is only right if the skills really do divide that way.
+
+    Read from `game/Data/WeaponSkills.csv`, the generated table of weapon
+    skills, so a skill added later with a knockdown longer than the document
+    claims makes this fail rather than quietly making the document wrong.
+    """
+
+    def _skills(self):
+        import csv
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[2]
+        path = root / "game" / "Data" / "WeaponSkills.csv"
+        if not path.is_file():
+            pytest.skip("the generated weapon skill table is not present")
+        with path.open(encoding="utf-8-sig") as handle:
+            return list(csv.DictReader(handle))
+
+    def _durations(self, pattern: str) -> dict[str, float]:
+        import re
+
+        out: dict[str, float] = {}
+        for row in self._skills():
+            found = re.search(pattern, row["SkillDescription"], re.I)
+            if found:
+                out[row["SkillName"]] = float(found.group(1))
+        return out
+
+    def test_some_skill_actually_knocks_down(self):
+        """Guards every test below from passing on an empty set."""
+        assert self._durations(r"knocked down for ([\d.]+) second"), (
+            "no skill in game/Data/WeaponSkills.csv knocks down any more, so "
+            "the knockdown half of the anti-stun-lock rule covers nothing. "
+            "Either a skill was renamed or the rule can be simplified.")
+
+    def test_every_knockdown_is_longer_than_every_skill_stun(self):
+        """The document's argument rests on this, so it is checked, not asserted.
+
+        If a knockdown were shorter than the stuns, leaving it outside the rule
+        would be arguable. It is not: the shortest knockdown is longer than the
+        longest stun a skill grants.
+        """
+        knockdowns = self._durations(r"knocked down for ([\d.]+) second")
+        stuns = self._durations(r"stun\w*[^.]*?for ([\d.]+) second")
+        assert stuns, "no skill states a stun duration any more"
+        assert min(knockdowns.values()) > max(stuns.values()), (
+            f"knockdowns run {sorted(knockdowns.values())} and skill stuns run "
+            f"{sorted(stuns.values())}. The design document argues a knockdown "
+            "must be covered by the anti-stun-lock rule because it is the "
+            "longest hold in the game. That is no longer true. Issue #297.")
+
+    def test_no_knockdown_is_shorter_than_the_blunt_sub_type_stun(self):
+        """0.75s is the shortest designed hold. A knockdown under it would be a
+        different kind of effect and would need its own paragraph."""
+        knockdowns = self._durations(r"knocked down for ([\d.]+) second")
+        assert min(knockdowns.values()) >= dm.BLUNT_STUN_SECONDS
+
+    def test_displacement_and_knockdown_are_different_skills(self):
+        """If one skill did both, the document would need to say which wins."""
+        import re
+
+        both = [row["SkillName"] for row in self._skills()
+                if re.search(r"knocked down for", row["SkillDescription"], re.I)
+                and re.search(r"knock\w*\s+(?:them\s+|enemies\s+)?back",
+                              row["SkillDescription"], re.I)]
+        assert not both, (
+            "these skills both displace and knock down, and the design document "
+            f"treats those as separate effects with opposite rules: {both}. "
+            "Issue #297.")

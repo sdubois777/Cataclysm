@@ -20,6 +20,105 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — A knockdown is covered by the anti-stun-lock rule; a knockback is not
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #297.
+
+**The governing test, stated by the project owner on 2026-08-05:**
+
+> Slow is not covered by anti stun rule. Only hard stuns, things that completely
+> stop you from operating any part of your character. The rest is manageable from
+> a player perspective.
+
+That is now the criterion in the document, and it answers this issue and several
+others at once. An effect is covered when it completely stops the target
+operating any part of its character. A slow, a damage reduction, a displacement
+and a disarm all leave the target able to act, so none of them is covered. A stun
+and a knockdown do not, so both are.
+
+**The question as filed was whether knockback carries the stun damage threshold
+and the 5 second immunity window. That turned out to be the wrong question**,
+because this project has two different effects under that one word and the
+criterion above sends them opposite ways.
+
+Reading `game/Data/WeaponSkills.csv`, twelve skills displace an enemy and two
+knock one down:
+
+| Effect | Example | What it does to the target |
+| ----- | ----- | ----- |
+| Displacement | Haymaker, "knocks them back 4 meters" | Moves it. It can act on arrival |
+| Knockdown | Warlord's Decree, "knocked down for 2 seconds" | Stops it acting for a stated time |
+
+**A knockdown is a hard stop.** A target on the floor for 3 seconds is operating
+no part of itself. That also matches the document's existing reasoning, written
+before the criterion above was stated: Cripple's slow caps below total "because a
+full stop is a stun", and Weaken's reduction caps because "an enemy that deals no
+damage is harmless, which is a stun by another name".
+
+**The numbers make leaving it out untenable.** Every stun a skill grants runs 0.75
+to 1.5 seconds. Warlord's Decree knocks down for 2 and Cataclysm for 3. So if
+knockdown were outside the rule, the longest hold in the game would be the one
+nothing limits, and Cataclysm would hold a boss still for 3 seconds while Shield
+Bash's 1.5 second stun does nothing to it. The stated reason for boss immunity is
+that "a boss that can be held still is not a fight", and that reason does not care
+which word the skill used.
+
+**The cost of this decision, stated plainly.** Warlord's Decree and Cataclysm are
+Ultimates, and their knockdown now does nothing to a boss. That is a real loss to
+two signature skills. It is accepted because the alternative is a rule that can be
+stepped around by wording, and because both skills keep their damage, their armor
+shatter and their fissure, which is most of what they are. It is written in one
+paragraph and is reversible if play says otherwise.
+
+**They share one immunity window rather than one each.** Two 3 second holds taken
+in turn is exactly the failure the window exists to stop, and giving stun and
+knockdown separate windows would allow it.
+
+**Displacement is not covered**, because it does not hold the target still. No
+damage threshold, so a weak hit can still shove, and a boss can be pushed. That is
+not the same as saying it should be repeatable without limit, and what limits it
+is issue #302.
+
+### What the genre does
+
+| Game | Knockback | Act-prevention |
+| ----- | ----- | ----- |
+| Path of Exile | Displacement only; explicitly does not interrupt the target's actions | Stun, separately |
+| Path of Exile 2 | Movement, to create space | Heavy Stun; the target counts as Immobilised and is harder to Heavy Stun again for a short time |
+| Diablo IV | Knockback pushes. **Knock Down is a separate effect that pins the target in place, and Diablo IV's own documentation says it does not count as a Stun** | Stun, plus a hard crowd control resistance that accumulates |
+
+All three separate displacement from act-prevention. **Diablo IV separates them
+under exactly these two names**, which is the strongest support for the split, and
+also shows that not being a stun does not mean being unlimited: it limits repeated
+knockback by an escalating resistance instead of by a damage threshold.
+
+Diablo IV's treatment of Knock Down is a counter-case worth recording: it says
+Knock Down does not count as a Stun, where this decision says a knockdown is
+covered by the stun rule. The difference is that Diablo IV routes all hard crowd
+control through one accumulating resistance, so its Knock Down is limited by that
+pool whether or not it is called a stun. This project has no such pool, so leaving
+knockdown outside the rule would leave it limited by nothing at all.
+
+### Sources
+
+- [Knockback — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Knockback)
+- [Knockback — Path of Exile 2 Wiki](https://www.poewiki.net/wiki/poe2wiki:Knockback)
+- [Heavy Stun explained — Path of Exile 2](https://mobalytics.gg/poe-2/guides/stun)
+- [Knock Down — Diablo 4](https://www.purediablo.com/diablo4/Knocked_Down)
+- [Crowd Control — Diablo Wiki](https://diablo.fandom.com/wiki/Crowd_Control)
+- [Crowd control status effects — Diablo IV, Icy Veins](https://www.icy-veins.com/d4/guides/crowd-control-status-effects/)
+- [Stun — Last Epoch Wiki](https://lastepoch.fandom.com/wiki/Stun)
+
+**Evidence limit.** The two Path of Exile Fandom pages and the Diablo Fandom page
+could not be fetched directly; both return an access error to an automated
+request. What is recorded above comes from search summaries of those pages rather
+than from the pages themselves. The Diablo IV sources also disagree about whether
+knockback feeds the same resistance pool as stun. Neither affects this decision,
+which rests on the split between displacement and act-prevention that all three
+games make, but it should be confirmed before #302 copies any number.
+
+---
+
 ## 2026-08-05 — A slow is not covered by the anti-stun-lock rule, and the document only says it once now
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #296.
