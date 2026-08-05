@@ -213,3 +213,48 @@ Editing any `.Build.cs` or `.Target.cs`, or adding a module to the `.uproject`,
 requires regenerating project files before building. UnrealBuildTool compiles
 those files into a rules assembly, and a stale assembly produces confusing errors
 that look like missing symbols.
+
+## Toolset plugins, and why `AllToolsets` is not all of them
+
+Unreal 5.8 ships toolset plugins in
+`Engine/Plugins/Experimental/Toolsets`. Each one exposes a slice of the editor to
+an agent through Epic's Model Context Protocol server. The project enables
+`ModelContextProtocol` and `AllToolsets` in `Cataclysm.uproject`.
+
+**`AllToolsets` does not enable all of them, despite the name.** It is an
+aggregator whose own `.uplugin` lists 21 toolsets. The directory holds 26 besides
+the aggregator itself, so **five are outside it** and have to be named in
+`Cataclysm.uproject` one at a time:
+
+| Toolset plugin | What it exposes | Enabled here |
+|---|---|---|
+| `MetaHumanGenerator` | Creating and editing MetaHuman characters | **Yes.** Issue #267 |
+| `ChaosClothAssetToolset` | Cloth simulation assets | No. Nothing uses cloth yet |
+| `LiveCodingToolset` | Recompiling C++ from inside the editor | No. `tools/unreal_build.py` already builds, and Live Coding cannot add or remove a class |
+| `MVVMToolset` | Model-View-ViewModel bindings for the interface | No. Interface work has not started; issues #49 and #136 |
+| `SequencerAnimMixerToolset` | Animation mixing in Sequencer | No. The animation pipeline is undecided; issue #18 |
+
+Each enabled plugin costs editor startup time and adds to the surface an agent
+has to reason about, so they are enabled when something needs them rather than
+in advance.
+
+### What `MetaHumanGenerator` actually does
+
+Its whole surface is nine functions: `create`, `begin_edit`, `end_edit`, and a
+getter and setter each for body shape, skin tone and eye colour. It creates a
+character and adjusts three things about it. It does not sculpt faces, and it does
+not do hair or clothing.
+
+It matters anyway because **a MetaHuman arrives rigged**. The asset pipeline
+research on issue #17 found that the hard part of generating a character is not
+the mesh but that a generated mesh has no skeleton and no skin weights. It
+produces humans only, so it does nothing for the non-humanoid half of the
+bestiary.
+
+**Enabling it also enables `MetaHumanCharacter`, `MetaHumanCoreTech` and
+`MetaHumanSDK`**, which are its declared dependencies and were all disabled
+before. All three ship with the engine.
+
+**A plugin change only takes effect on the next editor restart.** The plugin was
+added to `Cataclysm.uproject` by editing the file; `PluginToolset.SetPluginEnabled`
+does the same thing through the running editor and also needs a restart.
