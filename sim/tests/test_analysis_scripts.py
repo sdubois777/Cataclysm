@@ -107,7 +107,8 @@ def penetration_run():
                                   "analyse_penetration.py",
                                   "analyse_damage_vs_type.py",
                                   "analyse_lethality_modes.py",
-                                  "analyse_two_handed_multiplier.py"])
+                                  "analyse_two_handed_multiplier.py",
+                                  "analyse_weakening_ailments.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -656,6 +657,157 @@ def test_the_docstring_records_that_the_figure_drifted():
     doc = unwrapped(source("analyse_two_handed_multiplier.py"))
     assert "THAT SENTENCE USED TO READ" in doc
     assert "#319" in doc
+
+
+
+# --------------------------------------------------------------------------
+# analyse_weakening_ailments.py -- issue #300
+#
+# The measurement behind the decision that Cripple, Weaken, Shred and Madness
+# scale by chance to apply and nothing else. Every figure it prints is read from
+# game/Data/StatusEffects.csv, game/Data/Gems.csv or cataclysm_sim.affixes, so
+# the checks below recompute from the same places rather than pinning numbers.
+#
+# THE DIRECTIONS MATTER MORE THAN THE FIGURES HERE. The decision rests on two:
+# that the caps are NOT filled by affixes alone, and that they ARE filled with a
+# handful of sockets. Either one reversing would change the answer, and neither
+# is visible from a figure on its own.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def weakening_run():
+    return run("analyse_weakening_ailments.py")
+
+
+def test_it_reads_the_base_strengths_from_the_data(weakening_run):
+    """Not typed in. The four descriptions in game/Data/StatusEffects.csv are
+    the only statement of what these effects do."""
+    printed, ns = weakening_run
+    rows = ns["status_effect_rows"]()
+    assert set(rows) == {"Cripple", "Weaken", "Shred", "Madness"}
+    for name, description in rows.items():
+        base = ns["base_strength"](description)
+        shown = "none" if base is None else ns["format_base"](base)
+        assert f"{name:<10}{shown:>10}" in printed
+
+
+def test_it_distinguishes_a_resistance_point_from_a_percentage(weakening_run):
+    """Shred takes 10 POINTS off a resistance; Cripple and Weaken take a
+    percentage off a speed and a damage number. An earlier version of the
+    script printed all three as percentages, which made Shred read as a small
+    version of the other two."""
+    printed, ns = weakening_run
+    rows = ns["status_effect_rows"]()
+    assert ns["base_strength"](rows["Shred"])[1] is False, (
+        "Shred's reduction now parses as a percentage. It is 10 resistance "
+        "points, and the script prints a unit so the two cannot be confused.")
+    assert ns["base_strength"](rows["Cripple"])[1] is True
+    assert "10pts" in printed
+
+
+def test_only_the_two_capped_effects_have_a_cap(weakening_run):
+    """Cripple and Weaken cap at a percentage. Shred stops when the resistance
+    reaches zero, which depends on the enemy, and Madness has no strength at
+    all. A magnitude affix would have nothing to push against on either."""
+    _, ns = weakening_run
+    rows = ns["status_effect_rows"]()
+    capped = {name for name, text in rows.items()
+              if ns["magnitude_cap"](text) is not None}
+    assert capped == {"Cripple", "Weaken"}, (
+        f"the effects with a percentage magnitude cap are now {sorted(capped)}. "
+        f"Issue #300's answer treats Cripple and Weaken as the two that have "
+        f"one and Shred and Madness as the two that do not.")
+
+
+def test_all_four_roll_their_magnitude_into_duration(weakening_run):
+    """The second half of the argument. Without this the chance affix is two
+    levers rather than three, and the case for a duration affix comes back."""
+    _, ns = weakening_run
+    rows = ns["status_effect_rows"]()
+    for name, description in rows.items():
+        assert ns["rolls_over_into_duration"](description), (
+            f"{name} no longer rolls its magnitude into duration. Issue #300 "
+            f"decided no duration affix is needed BECAUSE it does. If this is "
+            f"deliberate, the paragraphs in docs/Cataclysm_GDD_v2.md and the "
+            f"docs/DECISIONS.md entry both need revisiting.")
+
+
+def test_the_affix_ceiling_is_the_computed_one(weakening_run):
+    """Eleven pieces at fifteen per cent. Recomputed from GEAR_SLOTS rather
+    than pinned, so adding a ring slot moves both."""
+    printed, ns = weakening_run
+    from cataclysm_sim import affixes as af
+    for name in ("Cripple", "Weaken", "Shred", "Madness"):
+        pieces, total = ns["affix_ceiling"](ns["WEAKENING"][name])
+        expected = sum(count for slot, count in af.GEAR_SLOTS.items()
+                       if slot in ns["WEAKENING"][name].allowed_slots)
+        assert pieces == expected
+        assert f"{name:<10}{pieces:>8}" in printed
+        assert f"{total:>9.0f}%" in printed
+
+
+def test_the_chance_needed_to_fill_a_cap_is_the_solved_one(weakening_run):
+    """267% for Cripple and 400% for Weaken. Derived from the overflow rule --
+    magnitude is total chance over 100 -- rather than measured, so this checks
+    the printed figure against the formula."""
+    printed, ns = weakening_run
+    rows = ns["status_effect_rows"]()
+    for name in ("Cripple", "Weaken"):
+        base, _ = ns["base_strength"](rows[name])
+        cap = ns["magnitude_cap"](rows[name])
+        needed = ns["chance_needed_to_fill_the_cap"](base, cap)
+        assert f"{needed:>14.0f}%" in printed
+        assert needed == pytest.approx(100.0 * cap / base)
+
+
+def test_the_caps_are_not_filled_by_affixes_alone(weakening_run):
+    """THE FIRST DIRECTION THE DECISION RESTS ON. If affixes alone filled the
+    caps, chance to apply would stop paying long before a build ran out of
+    them, and the argument that it keeps scaling would fail."""
+    _, ns = weakening_run
+    rows = ns["status_effect_rows"]()
+    for name in ("Cripple", "Weaken"):
+        base, _ = ns["base_strength"](rows[name])
+        cap = ns["magnitude_cap"](rows[name])
+        needed = ns["chance_needed_to_fill_the_cap"](base, cap)
+        _, from_affixes = ns["affix_ceiling"](ns["WEAKENING"][name])
+        assert from_affixes < needed, (
+            f"{name}'s magnitude cap is now filled by affixes alone "
+            f"({from_affixes:.0f}% against {needed:.0f}% needed). Issue #300's "
+            f"answer assumes a build has to spend on gems as well, which is "
+            f"what makes the chance affix keep paying.")
+
+
+def test_the_caps_are_filled_with_a_handful_of_sockets(weakening_run):
+    """THE SECOND DIRECTION. If the caps needed most of the forty-five sockets,
+    reaching them would be a build-defining cost rather than an ordinary one,
+    and a magnitude affix would be doing real work."""
+    _, ns = weakening_run
+    from cataclysm_sim import player_power
+    rows = ns["status_effect_rows"]()
+    for name in ("Cripple", "Weaken"):
+        base, _ = ns["base_strength"](rows[name])
+        cap = ns["magnitude_cap"](rows[name])
+        needed = ns["chance_needed_to_fill_the_cap"](base, cap)
+        _, from_affixes = ns["affix_ceiling"](ns["WEAKENING"][name])
+        per_gem = ns["gem_chance"](ns["WEAKENING"][name].gem)
+        sockets = (needed - from_affixes) / per_gem
+        assert sockets < player_power.TOTAL_SOCKETS / 4, (
+            f"{name}'s magnitude cap now needs {sockets:.0f} of "
+            f"{player_power.TOTAL_SOCKETS} sockets. Issue #300's answer "
+            f"assumes a handful. At this cost a magnitude affix would be "
+            f"buying something real.")
+
+
+def test_it_says_what_the_measurement_does_not_show(weakening_run):
+    """CLAUDE.md: say what did not work. The measurement shows a second affix
+    would add no lever. It does not show one lever is worth as much as three,
+    and the script must not let a reader take it that way."""
+    printed, _ = weakening_run
+    assert "WHAT THAT DOES NOT SAY" in printed
+    assert "It does not say the four are as strong as" in printed, (
+        "analyse_weakening_ailments.py no longer says what its measurement "
+        "does not cover. Issue #300.")
 
 
 # --------------------------------------------------------------------------

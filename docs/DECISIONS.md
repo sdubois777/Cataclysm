@@ -20,6 +20,101 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Cripple, Weaken, Shred and Madness scale by chance alone
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #300.
+
+### The question
+
+The six damage over time effects have three rollable affixes each: a chance to
+apply, a damage affix and a duration affix, the last two added by issue #205. The
+four weakening effects — Cripple, Weaken, Shred and Madness — have one, a chance
+to apply. Issue #300 asked whether that asymmetry is a gap.
+
+### What was decided
+
+**No magnitude affix and no duration affix are added.** Chance to apply stays the
+only rollable stat for these four, because it is already all three levers.
+
+The rule that makes it so is `ailment_application` in
+`sim/cataclysm_sim/affixes.py`, settled by the project owner on 2026-08-03:
+chance caps at 100% and everything past it multiplies the effect's magnitude. The
+second half is in the design document's own table: magnitude raises the strength
+to its cap, then extends the duration instead. So one affix raises whichever of
+chance, magnitude and duration the build has not yet filled, in that order.
+
+### The measurement
+
+`sim/analyse_weakening_ailments.py`, run 2026-08-05, at the top affix tier on
+fully upgraded gear. Every figure is read from `game/Data/StatusEffects.csv`,
+`game/Data/Gems.csv` and `sim/cataclysm_sim/affixes.py` rather than typed in.
+
+| Effect | base | cap | chance needed to fill the cap | affixes alone | filled by |
+|---|---|---|---|---|---|
+| Cripple | 30% | 80% | 267% | 165% | affixes + 1 of 45 sockets |
+| Weaken | 20% | 80% | 400% | 165% | affixes + 4 of 45 sockets |
+| Shred | 10 resistance points | none | — | 165% | no percentage cap to fill |
+| Madness | none | none | — | 165% | magnitude is duration |
+
+Eleven gear pieces can carry a chance to apply, one each, because `ailment_group`
+puts every roll of the same chance in one group and a piece cannot hold two from
+a group. Eleven at 15% is 165%.
+
+**Neither cap is filled by affixes alone, and both are filled by affixes plus a
+handful of sockets.** A build that wants one of these effects reaches the cap; a
+build that does not, does not. That is the shape a scaling stat should have.
+
+**Shred and Madness have no percentage cap at all.** Shred stops when the
+resistance it is reducing reaches zero, which depends on the enemy rather than on
+a number here. Madness reduces nothing — it redirects the enemy — so its
+magnitude goes straight to duration and a magnitude affix would have nothing to
+scale.
+
+### The case against, and it is the stronger half of the evidence
+
+**Every comparison game gives its equivalents a second lever.** The survey was
+not close and it argues the other way:
+
+| Game | What it sells separately |
+|---|---|
+| Path of Exile | "increased Effect of Chill" and "increased Effect of Withered" on items, passives and cluster jewels. Withered is 6% increased chaos damage taken per stack, and 100% increased effect doubles what each stack is worth. |
+| Diablo IV | a Crowd Control Duration affix, rolling on amulets and on the Sorcerer focus, covering Slow, Immobilize, Stun, Chill, Freeze and the rest. |
+| Last Epoch | Slow stacks up to three times rather than scaling in magnitude, and the game has a stated Ailment Duration and Effectiveness axis. |
+
+**The evidence for these three claims is web search result summaries rather than
+the pages themselves.** `WebFetch` gets HTTP 402 from `pathofexile.fandom.com`
+and `diablo.fandom.com` and an access-denied page from `poewiki.net`.
+
+**Why this design differs anyway.** In all three of those games a chance to apply
+stops paying at 100%. Every point past it is dead, so a separate magnitude stat
+is the only way an ailment build keeps scaling. Here chance does not stop paying,
+which is the whole reason `ailment_application` exists — its docstring names the
+dead-point problem as the thing it was written to avoid. One stat therefore does
+the work those games need two or three stats for.
+
+### What would reverse this
+
+**Play, not argument.** Two things would show the decision is wrong:
+
+1. **A build reaches the cap and then has nothing to buy.** Past the cap, chance
+   buys duration, and duration on a 4-second slow may stop feeling like progress
+   long before the numbers stop rising. That is a feel question.
+2. **The four turn out to be worth less than the six per affix slot.** This
+   decision says nothing about that. It says a second affix would add no new
+   lever; it does not say one lever is priced correctly against three.
+
+Reversing it is cheap: three rows in the Affixes sheet of
+`docs/All_Things_Cataclysm.xlsx`, then `python tools/generate_datatables.py` and
+the DataTable asset generator.
+
+### What this deliberately does not decide
+
+Whether Madness is a hard stun for the anti-stun-lock rule. That is issue #303
+and it is waiting on the project owner. Nothing here depends on the answer: the
+magnitude of Madness is its duration either way.
+
+---
+
 ## 2026-08-05 — A run ending costs the run, not the character
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #315.
