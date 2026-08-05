@@ -20,6 +20,69 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The lethality mode and the Solo Self-Found flag are both locked at character creation
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied. Issue #255.
+
+## The question
+
+`docs/Cataclysm_GDD_v2.md` defined difficulty as two independent choices — one
+lethality mode of Standard, Hardcore or Heretic, plus an optional Solo Self-Found
+flag — but never said when those choices are made or whether they can change
+later. Three sub-questions were open: are they set only at character creation,
+does a Hardcore death take the mode off, and can Solo Self-Found be switched off
+part-way.
+
+## The answer, 2026-08-05
+
+The project owner chose option 1 of the three the issue offered: **"they're
+locked in."** Both choices are set at character creation and never change.
+
+## Why the genre does not settle this one
+
+The two games this two-axis shape was taken from both resolve it with
+permadeath, which this game does not have.
+
+| Game | What it does on a Hardcore death | Why |
+|---|---|---|
+| Last Epoch | Converts the character to softcore, keeping its Solo Challenge flag | The character is dead and otherwise unplayable |
+| Path of Exile | Migrates the character to the Standard league | Same reason |
+
+Both convert because the run is over and the character would otherwise be
+unusable. **Here the run continues.** A Hardcore death costs 10 days and drops on
+average 1.8 of the 18 equipped pieces. Converting the character on death would
+take a run that is still going and change its rules part-way through, on one
+unlucky moment. That is a larger intervention than the games it would have been
+borrowed from make, not a smaller one.
+
+## What the alternatives cost
+
+**Freely switchable downward** makes the Solo Self-Found flag mean nothing: play
+self-found until it is inconvenient, then switch the auction house on.
+
+**Convert to Standard on a Hardcore death** is the paragraph above.
+
+**Locked** is the only option under which both flags mean the same thing for the
+whole life of the character, which is what makes a Hardcore Solo Self-Found
+character worth anything to have.
+
+## What it costs the player
+
+A player who wants to try a harder mode makes a new character. That is cheaper
+than it first looks, because of the answer to issue #273: empire upgrade points
+are account-wide except under Solo Self-Found, so rerolling costs a character's
+levels and gear but not the empire meta-progression.
+
+## Where it is enforced
+
+`tools/tests/test_difficulty_modes.py` asserts that the section states the rule
+and names all three of its consequences. No code enforces it yet, because no code
+models a lethality mode or the Solo Self-Found flag — a search of every `.py`,
+`.cpp`, `.h` and `.csv` file in the repository on 2026-08-05 found no occurrence
+of "Self-Found", "SSF" or "lethality" outside the design document and its tests.
+
+---
+
 ## 2026-08-05 — The anti-stun-lock rule: a damage threshold, a five second window, and bosses immune
 
 **Affects** `docs/Cataclysm_GDD_v2.md` and `sim/cataclysm_sim/damage.py`. Applied.

@@ -28,6 +28,12 @@ WHAT THE GENRE SETTLED, with sources in `docs/DECISIONS.md`:
                                              described, so only the number was
                                              missing.
 
+WHEN THE CHOICES ARE MADE. Issue #255. The section defined the two axes but never
+said when a player picks them or whether the pick can move. The project owner
+answered on 2026-08-05: both are locked at character creation and never change,
+including on death. `docs/DECISIONS.md` records why, and why Last Epoch and Path
+of Exile converting a dead Hardcore character does not transfer here.
+
 WHAT IS ASSERTED HERE.
 
     the document has a lethality table and a separate Solo Self-Found table
@@ -36,6 +42,8 @@ WHAT IS ASSERTED HERE.
     every lethality mode states a day cost and an equipment loss rule
     Heretic loses more equipment than Hardcore, which is the whole ladder
     the risk table's list of modes matches the lethality table
+    both choices are locked at character creation, death does not unset the
+      lethality mode, and Solo Self-Found never comes off
 """
 
 from __future__ import annotations
@@ -128,6 +136,82 @@ def test_solo_self_found_has_its_own_table_and_keeps_its_two_rules(section):
     row = row_for(section, "Solo Self-Found (SSF)")
     assert "No auction house" in row
     assert "no shared stash" in row
+
+
+# --------------------------------------------------------------------------
+# When the choices are made, and that they never move afterwards
+# --------------------------------------------------------------------------
+
+def test_the_difficulty_section_sits_inside_character_creation(document):
+    """Where the section lives is half of the answer: the choices are made when
+    the character is made. If someone moves this section out to a settings or
+    options chapter, the placement stops saying that and the prose below is the
+    only thing left holding the rule up."""
+    creation = document.find("## **Character Creation and Customization**")
+    assert creation != -1, "the document has no Character Creation chapter"
+    difficulty = document.find(SECTION, creation)
+    assert difficulty != -1, (
+        f"{SECTION} no longer appears after the Character Creation chapter. "
+        "The choices are made at character creation, so the section belongs "
+        "there. Issue #255.")
+    following = document.find("\n## ", creation + 1)
+    assert following == -1 or difficulty < following, (
+        f"{SECTION} has moved out of the Character Creation chapter. "
+        "Issue #255.")
+
+
+def test_it_says_both_choices_are_locked_at_character_creation(section):
+    """The rule the project owner chose on 2026-08-05, out of three options."""
+    text = unwrapped(section)
+    assert "locked at character creation and cannot be changed" in text, (
+        "the Difficulty Options section no longer says when the lethality mode "
+        "and the Solo Self-Found flag are chosen or whether they can move. "
+        "That was the whole of issue #255.")
+
+
+def test_dying_does_not_take_the_lethality_mode_off(section):
+    """The one place this could have gone the other way. Last Epoch and Path of
+    Exile both convert a dead Hardcore character, but they do it because the
+    character is dead and unusable. Here the run continues, so converting would
+    change a live run's rules on one unlucky moment."""
+    text = unwrapped(section)
+    assert "dying does not change it" in text, (
+        "the section no longer says what a Hardcore or Heretic death does to "
+        "the lethality mode. It does nothing to it: the character stays in the "
+        "mode and pays the day cost. Issue #255.")
+    assert "stays Hardcore or Heretic" in text
+
+
+def test_the_solo_self_found_flag_never_comes_off(section):
+    """Without this the flag is worth nothing: a player runs self-found until it
+    is inconvenient and then switches the auction house on."""
+    text = unwrapped(section)
+    assert "Solo Self-Found flag never comes off" in text, (
+        "the section no longer says the Solo Self-Found flag is permanent. "
+        "Issue #255.")
+    assert "can never use the auction house" in text
+
+
+def test_it_says_what_a_player_does_who_wants_a_different_combination(section):
+    """A rule that forbids something has to say what to do instead, or the
+    section reads as an oversight rather than a decision."""
+    text = unwrapped(section)
+    assert "makes a new character" in text, (
+        "the section forbids changing the difficulty choices without saying "
+        "what a player who wants a different combination does instead. "
+        "Issue #255.")
+
+
+def test_the_decision_log_records_why_the_choices_are_locked(document):
+    """The design document states the rule; the reasoning lives in the decision
+    log, which is where this project keeps it."""
+    decisions = REPO_ROOT / "docs" / "DECISIONS.md"
+    assert decisions.is_file(), "docs/DECISIONS.md is missing"
+    text = unwrapped(decisions.read_text(encoding="utf-8"))
+    assert "locked at character creation" in text, (
+        "docs/DECISIONS.md has no entry explaining why the lethality mode and "
+        "the Solo Self-Found flag cannot change. Issue #255.")
+    assert "Issue #255" in text
 
 
 # --------------------------------------------------------------------------
