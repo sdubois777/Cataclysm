@@ -20,6 +20,140 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Damage over time has three levers, each worth 52% at top tier, and they were priced together
+
+**Affects** `docs/Cataclysm_GDD_v2.md`, `docs/All_Things_Cataclysm.xlsx`, the
+generated tables in `game/Data/`, `sim/cataclysm_sim/character.py`,
+`sim/cataclysm_sim/affixes.py` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`. Applied.
+Issues #205 and #258.
+
+## What was missing
+
+Ten affixes applied an ailment. **One** affix touched damage over time at all,
+and it changed only how often the effect ticked. Nothing anywhere made a damage
+over time effect hit harder or run longer, and the stats to hold those numbers
+did not exist either — `CataclysmCombatAttributeSet.h` had `DotFrequency` and
+nothing else. A player could build entirely into applying ailments and then have
+no way to make any of them do more.
+
+The character sheet now carries three damage over time stats where it carried
+one, so it has 45 stats rather than 43:
+
+| Stat | What it raises | Baseline |
+|---|---|---|
+| Damage over Time | How much one tick deals | 100% |
+| Damage over Time Frequency | How many ticks happen per second | 100% |
+| Damage over Time Duration | How long the effect runs | 100% |
+
+Each has one affix, a suffix rolling on gloves, necklaces, relics, rings and
+weapons, worth **52% at T7**.
+
+## Why the three had to be priced in one change
+
+They multiply each other, which the design document already stated: a character
+with 48% on each deals 324% of base, not 148%. So setting any one of them against
+an existing affix sets the wrong number. Three affixes at Increased Damage's 125%
+would multiply damage over time by 8.5 × 8.5 × 8.5 instead of 8.5.
+
+That is why issue #258 was labelled `blocked` on #205 rather than being a
+one-line edit, and it is why both are closed by the same change.
+
+## Where 52% comes from
+
+Solved, not chosen. Six affix slots spent on Increased Damage multiply a
+direct-hit build's damage by 8.5, and six slots is the build every other damage
+number in `sim/cataclysm_sim/affixes.py` is fitted against —
+`REFERENCE_INCREASED_DAMAGE_AFFIXES`. Two slots on each of the three levers has
+to reach the same 8.5:
+
+    (1 + 2v)³ = 1 + 6 × 1.25 = 8.5     →     v = 52.04%
+
+Rounded down to 52%, which leaves a damage over time build at ×8.49 against ×8.50
+and so errs on the low side, which is the safer direction for levers that
+compound. `dot_lever_top_value()` computes the solve and
+`sim/tests/test_dot_levers.py` checks the shipped constant against it, so the
+value follows Increased Damage if that ever moves.
+
+## What the one affix that already existed was wrong about
+
+"Increased damage over time frequency" was **12%**, set to match increased armour
+and increased maximum health. That was priced under the assumption that ticking
+faster changed only when damage arrived. The project owner answered on 2026-08-04
+that a damage over time effect deals a **fixed amount per tick**, which makes tick
+rate a damage multiplier, so 12% was about a tenth of what it should be. It is now
+52% with the other two.
+
+## The Efficacy attribute was deliberately left alone, and this is the measurement
+
+Issue #258 listed `game/Data/Attributes.csv` as carrying a second wrong value:
+Efficacy grants 1% increased damage over time frequency per point, set under the
+same assumption. **It was measured rather than scaled, and it does not move.**
+
+- Scaling it by the same factor the affix moved, 52 ÷ 12, would put it at 4.33%
+  per point. At 100 points that multiplies damage over time output by **5.33**.
+- At the 1% it already has, 100 points multiply damage over time output by **2.0**.
+- 100 points of Ferocity — the attribute a direct-hit build buys, through critical
+  strike chance and multiplier together — multiply an expected hit by **1.56**.
+
+So 1% per point is already worth more to a damage over time build than Ferocity is
+to a direct-hit one, and 4.33% would be about three and a half times it.
+
+**Efficacy also drives exactly one of the three levers and must keep driving only
+one.** One attribute point buying three multiplying increases would make Efficacy
+strictly the best attribute for any damage over time build, and no other attribute
+compounds within itself that way.
+`test_efficacy_drives_one_lever_and_only_one` checks that no attribute drives more
+than one of the three.
+
+## One set of levers, not one set per ailment
+
+Six of the ten ailment affixes apply a damage over time effect — bleed, poison,
+disease, void splinter, necrosis and burn — and every Demonic skill applies burn
+outright as well. Three levers each would be eighteen affixes serving one build
+archetype, against the eight the whole damage-against-a-target's-type family
+costs. It also matches the stat that already existed: there has only ever been one
+damage over time frequency, shared by everything.
+
+## What this does not settle, and it is a real risk
+
+**The equal-value pricing holds at six affix slots and nowhere else, and it cannot
+hold anywhere else.** An additive bracket and a product of three brackets cross
+exactly once. Below six slots a damage over time build is behind a direct-hit
+build spending the same; above it, ahead.
+
+| Offensive affix slots | Direct-hit | Damage over time | Ratio |
+|---|---|---|---|
+| 3 | ×4.75 | ×3.51 | 0.74 |
+| 6 | ×8.50 | ×8.50 | 1.00 |
+| 12 | ×16.00 | ×29.27 | 1.83 |
+| 18 | ×23.50 | ×70.06 | 2.98 |
+
+There are 48 offensive affix slots on a full set of gear, so eighteen is not
+theoretical. The compounding itself is deliberate and the design document says so.
+The **size** of the gap at heavy investment has not been played and is filed as
+issue #264 with four alternative ways to close it.
+
+## Evidence
+
+```
+1254 passed in 10.18s
+ruff check . — All checks passed!
+```
+
+Five breaks were fed to the new guards and every one was caught: one lever priced
+differently from the other two, the top value drifting back to 12%, a lever
+baselining at zero, Efficacy driving two levers, and a lever dropped off the sheet
+entirely.
+
+Sources for how the genre handles it, carried over from the 2026-08-05 entry on
+tick rate:
+[Damage over time — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Damage_over_time),
+[Damage Over Time — Official Last Epoch Wiki](https://lastepoch.fandom.com/wiki/Damage_Over_Time),
+[Ailments Explained — Last Epoch, Maxroll](https://maxroll.gg/last-epoch/resources/ailments-explained).
+
+---
+
 ## 2026-08-05 — The player power anchors for tiers 2 to 7 were reset so tier width climbs at every tier
 
 **Affects** `src/utils/calculateScores.tsx` in the separate

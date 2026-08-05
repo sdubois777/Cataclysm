@@ -113,7 +113,7 @@ namespace CataclysmAttributeTest
 CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	"Cataclysm.Attributes.CharacterSheetIsComplete")
 {
-	// 43 stats on the character sheet, plus the four current values that pair
+	// 45 stats on the character sheet, plus the four current values that pair
 	// with a maximum, plus the damage meta attribute.
 	const int32 Vitals = UCataclysmVitalAttributeSet::GetAllAttributes().Num();
 	const int32 Primary = UCataclysmPrimaryAttributeSet::GetAllAttributes().Num();
@@ -136,20 +136,22 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 	TestEqual(TEXT("Eight resistances, one per damage type"), Resist, 8);
 	// Twenty-five since the eight increased-damage-against-a-type stats were
-	// added for #213. Seventeen before that.
-	TestEqual(TEXT("Twenty-five combat and utility stats, plus attack damage off the sheet"),
-		Combat, 25 + OffSheetCombatStats);
+	// added for #213. Seventeen before that. Twenty-seven since damage over time
+	// damage and damage over time duration joined damage over time frequency
+	// for #205.
+	TestEqual(TEXT("Twenty-seven combat and utility stats, plus attack damage off the sheet"),
+		Combat, 27 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);
 	TestEqual(TEXT("Two class resource attributes"), Resource, 2);
 
-	// The 43 sheet stats: 3 maxima + 6 recovery from vitals, 25 combat,
+	// The 45 sheet stats: 3 maxima + 6 recovery from vitals, 27 combat,
 	// 8 resistances, 1 class resource maximum. The six recovery stats are the
-	// three regenerations and the three leeches. The 25 combat stats include the
+	// three regenerations and the three leeches. The 27 combat stats include the
 	// eight increased-damage-against-a-type figures, which are the offensive
-	// mirror of the eight resistances.
-	TestEqual(TEXT("Forty-three stats on the character sheet"),
-		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 43);
+	// mirror of the eight resistances, and the three damage over time levers.
+	TestEqual(TEXT("Forty-five stats on the character sheet"),
+		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 45);
 	return true;
 }
 
@@ -434,13 +436,21 @@ CATACLYSM_TEST(FCataclysmExternallyBasedStatsTest,
 		TestEqual(TEXT("Attack speed starts at zero, supplied by the weapon"),
 			Fixture.Combat->GetAttackSpeed(), 0.0f);
 
-		// Area of effect and damage over time frequency are percentages of what
-		// the skill does, so their baseline is 100 rather than zero. A zero here
-		// would leave Efficacy nothing to scale.
+		// Area of effect and the three damage over time levers are percentages
+		// of what the skill or the effect does, so their baseline is 100 rather
+		// than zero. A zero here would leave Efficacy nothing to scale.
 		TestEqual(TEXT("Area of effect baselines at one hundred per cent"),
 			Fixture.Combat->GetAreaOfEffect(), 100.0f);
+
+		// The three levers multiply each other, so a zero on any one of them
+		// takes a damage over time build's whole output to zero rather than
+		// only its own third of it. Issue #205.
+		TestEqual(TEXT("Damage over time damage baselines at one hundred"),
+			Fixture.Combat->GetDotDamage(), 100.0f);
 		TestEqual(TEXT("Damage over time frequency baselines at one hundred"),
 			Fixture.Combat->GetDotFrequency(), 100.0f);
+		TestEqual(TEXT("Damage over time duration baselines at one hundred"),
+			Fixture.Combat->GetDotDuration(), 100.0f);
 
 		// Loot quantity is a percentage of what the dungeon would otherwise
 		// drop, so it is the same shape and needs the same baseline. Issue

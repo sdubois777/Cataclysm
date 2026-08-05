@@ -117,10 +117,31 @@ public:
 	FGameplayAttributeData AreaOfEffect;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, AreaOfEffect)
 
-	/** A percentage of whatever the skill does, so 100 means unchanged. */
+	// -- The three damage over time levers ---------------------------------
+	//
+	// A damage over time effect deals a FIXED AMOUNT PER TICK, so its total is
+	// damage per tick x ticks per second x seconds. Each of those three is
+	// scalable on its own and all three multiply the same output. One set is
+	// shared by every damage over time effect rather than each ailment carrying
+	// three of its own. Issues #205 and #220.
+	//
+	// Each is a percentage of whatever the effect itself does, so 100 means
+	// unchanged, which is the shape AreaOfEffect already has.
+
+	/** Damage per tick, as a percentage of the effect's own. 100 unchanged. */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DotDamage)
+	FGameplayAttributeData DotDamage;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DotDamage)
+
+	/** Ticks per second, as a percentage of the effect's own. 100 unchanged. */
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DotFrequency)
 	FGameplayAttributeData DotFrequency;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DotFrequency)
+
+	/** How long it runs, as a percentage of the effect's own. 100 unchanged. */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DotDuration)
+	FGameplayAttributeData DotDuration;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DotDuration)
 
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_Penetration)
 	FGameplayAttributeData Penetration;
@@ -240,7 +261,9 @@ protected:
 	UFUNCTION() void OnRep_CritMultiplier(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AreaOfEffect(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DotDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DotFrequency(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DotDuration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Penetration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_SpellDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageVsWar(const FGameplayAttributeData& OldValue);

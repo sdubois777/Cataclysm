@@ -168,8 +168,10 @@ class TestTheCountsThatAreAssertedInUnreal:
 
     def test_the_class_stat_row_count(self, class_sheet):
         # 30 until issue #243 added a Default row for loot_quantity, which
-        # needed a baseline of 100 rather than zero.
-        assert len(class_sheet) == 31
+        # needed a baseline of 100 rather than zero. 33 since issue #205 added
+        # Default rows for dot_damage and dot_duration, which need a baseline of
+        # 100 for the same reason.
+        assert len(class_sheet) == 33
 
     def test_the_attribute_effect_row_count(self, attribute_sheet):
         assert len(attribute_sheet) == 17
