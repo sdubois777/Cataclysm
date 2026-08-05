@@ -8,7 +8,7 @@
 
 - **The Aegis of Hope:** Your Outposts have 50% increased defenses.
 - **The Delver:** Reduces the number of days it takes to clear a dungeon by **5**, to a minimum of **1**.
-- **The Hoarder:** Loot rarity is increased by **25%** and quantity by **100%**.
+- **The Hoarder:** Magic Find is increased by **25%** and loot quantity by **100%**.
 
 ### Tier 2: The Edicts of Power
 
@@ -127,7 +127,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Imperial Reserve (Max 25 pts):** +1% Global Damage Reduction for all cities for every 100,000 Gold in your Treasury (Capped at 25%).
 - **Golden Age (Max 25 pts):** +1% Total Empire Population per point (Wealth attracts people).
 - **NOTABLE: Economic Bailout:** If a City's health hits 0, you can pay a massive Gold fee (that scales with your level) to prevent it from becoming a **Fallen City**. (Once per city per "Tier".)
-- **NOTABLE: The Gilded Path:** Gain +1% Loot Rarity in dungeons for every 5% "Gold Cost Reduction" you have across the entire Empire Tree.
+- **NOTABLE: The Gilded Path:** Gain +1% Magic Find in dungeons for every 5% "Gold Cost Reduction" you have across the entire Empire Tree.
 - **NOTABLE: Stimulus Package:** If your Empire Population falls below 50% of its maximum possible value, Gold drops in dungeons are doubled until you reclaim a city.
 - **NOTABLE: Pax Imperialis:** For every 1,000 surviving citizens in your Empire, you generate 5 Gold every 1 day.
 
@@ -136,7 +136,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 ### Tier 1: The Scout
 
 - **Pacing (Max 10 pts):** -1 days from dungeon run time per point (Min 1).
-- **Eyes of the Empire (Max 10 pts):** +5% Loot Rarity per point.
+- **Eyes of the Empire (Max 10 pts):** +5% Magic Find per point.
 - **NOTABLE: Fleet Footed:** -5 days from dungeon run time.
 - **NOTABLE: Field Depot (Rank 1):** A Stash appears every 30 floors in dungeons.
 - **NOTABLE: Tactical Entry:** If a dungeon has more than 50 floors, the days it takes to run are halved.
@@ -148,7 +148,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Deep Boring (Max 10 pts):** +1 floors to dungeons per point.
 - **Gamble (Max 3 pts):** Every 20 days get one dungeon modifier reroll per point.
 - **NOTABLE: Efficiency Premium:** +5% Loot Quantity for every **Day** removed from a dungeon's default run time (capped at 50%).
-- **NOTABLE: Quality over Quantity:** +2% Loot Rarity for every **Floor** removed from the dungeon's default depth.
+- **NOTABLE: Quality over Quantity:** +2% Magic Find for every **Floor** removed from the dungeon's default depth.
 - **NOTABLE: Architectural Insight:** +1 floors to dungeons for every 10 points invested in the **Architect** branch.
 
 ### Tier 3: The Trailblazer
@@ -163,7 +163,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 ### Tier 4: Master Explorer
 
 - **Temporal Mastery (Max 25 pts):** -1 Day from dungeon run time per point.
-- **Manifest Wealth (Max 25 pts):** +1% Loot Rarity per floor cleared in the current dungeon.
+- **Manifest Wealth (Max 25 pts):** +1% Magic Find per floor cleared in the current dungeon.
 - **NOTABLE: Field Depot (Rank 3):** A Stash appears every 5 floors.
 - **DECISION NOTABLE: Auto-Seller:** Items hidden by your loot filter are automatically sold for 25% gold value **OR** **Auto-Shatter:** Items hidden by your loot filter are automatically converted into crafting materials upon drop.
 - **NOTABLE: One-Day Specialist:** If a dungeon's run time is reduced to the **1-Day minimum**, all Loot Quantity/Rarity modifiers from the Explorer branch are doubled for that dungeon.
