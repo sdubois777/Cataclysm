@@ -2722,6 +2722,58 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 | Auction House | Buy and sell items. One market per lethality mode (disabled in SSF) |
 | Trainer | Respec class passive skill points, and respec the empire upgrade tree. Both cost days. |
 | Side Quests | Random missions for crafting materials, gear, and gold |
+| Stash | Shared storage. One stash per lethality mode (disabled in SSF) |
+
+  
+
+## **Storage**
+
+**There are two containers and they are different things.** A character's
+inventory is carried, belongs to that character alone, and goes into a dungeon
+with it. The stash sits at the capital, belongs to the account, and never enters
+a dungeon. **A character has no private stash.** Everything a character stores is
+either in its own inventory or in the shared one.
+
+**The stash is shared between characters, once per lethality mode.** Standard
+characters open one stash, Hardcore characters a second and Heretic characters a
+third, with nothing passing between them. That is the general rule stated in the
+Empire-Wide Upgrades section: anything the account shares between characters is
+held once per lethality mode. A Solo Self-Found character has no stash at all,
+which is what its table row says, so everything it owns is carried.
+
+**Size: 600 slots, as six tabs of 100.** Every tab is the same 10 by 10 grid, and
+one item takes one slot whatever it is. The tabs can be renamed and colour-coded
+and nothing else about them differs; they are one container divided for the
+player's convenience, not six containers with rules of their own.
+
+**The stash does not grow and there is nothing to buy.** All six tabs are open
+from the first character in that lethality mode. No empire upgrade node grants
+stash space, no gold price expands it, and the monetisation section already rules
+out the third possibility: "no stash or storage fees of any kind". A player's
+storage is the same on their first day in a mode as on their last.
+
+**It holds items: gear, gems and crafting materials.** It does not hold gold,
+because gold is a balance rather than an item and is not stored anywhere. Where
+that balance lives — with the character or with the account — is a separate
+question and is issue #306.
+
+**The auction house lists from the stash, not from the carried inventory.** That
+is why a Solo Self-Found character loses both together and why one market and one
+stash exist per lethality mode: a market can only offer what the stash it draws
+from can hold.
+
+**Why fixed rather than earned or bought.** 600 slots is close to what Path of
+Exile 2 gives for free, which is four tabs of 144. Diablo IV starts at 50 and
+sells more for gold; Last Epoch sells up to 200 tabs for gold. Selling tabs for
+gold is the common answer and was not taken here, for two reasons. It would rest
+on whether gold belongs to the character or the account, which is not decided
+(issue #306), and this design has no other gold sink written down, so pricing one
+in isolation would be a guess with nothing to calibrate against. `docs/DECISIONS.md`
+records the sources and the case for revisiting it.
+
+**600 is a tuning value.** The rule is that storage is fixed, free and shared per
+lethality mode; the number is an anchor to the nearest comparable game and should
+move once there is real play to measure it against.
 
   
 
