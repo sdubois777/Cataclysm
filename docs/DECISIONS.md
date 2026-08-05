@@ -20,6 +20,40 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — A slow is not covered by the anti-stun-lock rule, and the document only says it once now
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #296.
+
+The section "Stun and the Anti-Stun-Lock Rule" said two contradictory things four
+lines apart. One paragraph said a slow is not a stun and is not covered by the
+rule. The next said whether a slow carries the same threshold and window as stun
+was still open. Both cannot be true.
+
+**The first is correct, and the reason it is correct is already load-bearing
+elsewhere in the document.** The ailment section says Cripple's slow caps below
+total "because a full stop is a stun, and stunning is a separate mechanic with
+its own counter in Crowd Control Resistance", and says Weaken's reduction caps
+for the same reason. That cap only makes sense if a slow and a stun are governed
+separately. If the anti-stun-lock rule covered slows, the cap would be doing the
+rule's job twice.
+
+So the second paragraph was the error. It was written when the open questions
+about crowd control gear were first listed, and it over-stated what was open by
+sweeping a settled thing in with two unsettled ones.
+
+**Knockback stays open, and is not the same question.** A knockback takes control
+away completely for the moment it applies, which is what the rule limits, but it
+is brief and does not hold the target still afterwards, so it resembles neither a
+stun nor a slow closely enough to settle by analogy. Issue #297 carries it.
+
+**What was not changed.** The rule itself, its three parts, and the numbers in
+them. This entry records which of two existing statements is the surviving one,
+not a new decision about how slows behave. Nothing in
+`sim/cataclysm_sim/damage.py` changed, because the model never applied the rule
+to slows in the first place.
+
+---
+
 ## 2026-08-05 — The empire upgrade tree belongs to the account, except under Solo Self-Found
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #273 settled who
