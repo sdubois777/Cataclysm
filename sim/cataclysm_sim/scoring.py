@@ -8,10 +8,15 @@ empire rig was using, and it changes one thing fundamentally:
 Because the baseline term is driven by `currentFloor / totalFloors`, a 150-floor
 dungeon and a 20-floor dungeon at the same tier are nearly equally hard per
 floor -- the deep one just takes 7x longer. At T1 the middle-floor Dungeon Score
-runs 151 (20 floors) -> 159 (50) -> 171 (100) -> 184 (150): a 22% spread across
+runs 194 (20 floors) -> 201 (50) -> 214 (100) -> 226 (150): a 16% spread across
 a 7.5x depth range.
 
 The rig previously assumed deeper meant proportionally harder, which was wrong.
+
+Those four scores are measurements of the model below, so they go stale whenever
+the anchors move. They did: they were 151/159/171/184 for the five months this
+file carried the pre-#2 anchors. `sim/tests/test_analysis_scripts.py` now
+recomputes them and fails if this paragraph disagrees. Issue #6.
 """
 
 from __future__ import annotations
@@ -47,6 +52,18 @@ RARITY_WEIGHTS = {
     "Common": 0, "Elite": 0.05, "Legendary": 0.1,
     "Herald": 0.15, "Boss": 0.3, "Cataclysm Boss": 0.5,
 }
+
+# The parts of the formula that are bare numbers in the reference rather than
+# entries in one of its six tables. Named here only so a reader -- and the
+# analysis scripts alongside this package -- can refer to them instead of
+# retyping the formula in a second file, which is how issue #6 happened. The
+# values are unchanged. `check_against_reference` cannot see them because they
+# are not tables; `verify_scoring_port.py`, which executes the real TypeScript
+# and compares outputs, is what proves they are still right.
+BASELINE_WEIGHT = 0.9           # baseline = tierMin + width * this * floorRatio
+PROCEDURAL_DIVISOR = 20.0       # scalingFactor = floorScalingBase / this
+PROCEDURAL_PER_FLOOR = 0.5      # procedural += currentFloor * this
+DEPTH_TENSION_PER_TIER = 1.2    # (currentFloor - middleFloor) * tier * this
 
 # Weights used to collapse a floor's rarity spread into one Dungeon Score.
 DUNGEON_SCORE_MIX = (
@@ -87,13 +104,15 @@ def enemy_scores(tier: int, dungeon_type: str, subtype: str,
     middle_floor = math.ceil(total_floors / 2)
     floor_ratio = current_floor / total_floors
 
-    baseline = p_min + width * 0.9 * floor_ratio
+    baseline = p_min + width * BASELINE_WEIGHT * floor_ratio
     type_bonus = width * TYPE_WEIGHTS.get(dungeon_type, 0.0)
     sub_bonus = width * SUBTYPE_WEIGHTS.get(subtype, 0.0)
 
-    scaling_factor = FLOOR_SCALING_BASES[dungeon_type] / 20.0
-    procedural = (scaling_factor * floor_ratio) + (current_floor * 0.5)
-    depth_tension = (current_floor - middle_floor) * (tier * 1.2)
+    scaling_factor = FLOOR_SCALING_BASES[dungeon_type] / PROCEDURAL_DIVISOR
+    procedural = ((scaling_factor * floor_ratio)
+                  + (current_floor * PROCEDURAL_PER_FLOOR))
+    depth_tension = ((current_floor - middle_floor)
+                     * (tier * DEPTH_TENSION_PER_TIER))
 
     out = {}
     for rarity, w in RARITY_WEIGHTS.items():

@@ -1,9 +1,25 @@
 """What the DungeonSimulator scoring model implies about player-vs-content.
 
 Run: python analyse_scoring.py
+
+Every figure in the prose under a table is computed from the model, not typed.
+Issue #6: this file spent five months printing conclusions worked out against
+the player power anchors issue #2 replaced, and nothing flagged it because a
+sentence in a print statement cannot go out of date noisily. Keep it that way --
+if you want to state a number here, derive it.
 """
 
+import math
+
 from cataclysm_sim import scoring as S
+
+#: The example this file walks through in detail. A Cataclysm dungeon at the
+#: shallowest tier, at the depth `experiments.py` runs one at.
+EXAMPLE_TIER = 1
+EXAMPLE_FLOORS = 125
+
+#: Depths sampled to show that floor count is a time lever, not a difficulty one.
+DEPTHS = (8, 15, 25, 40, 60, 100, 150)
 
 
 def hdr(t):
@@ -24,18 +40,36 @@ for t in range(1, 9):
     print(f"{t:>5}{pmax:>12}{basic_boss:>15}{basic_mid:>14}{cat_boss:>16}"
           f"{cat_boss / pmax:>12.2f}x")
 
-hdr("B. Where the Cataclysm Boss number comes from (T1, 125 floors)")
-w = S.tier_width(1)
-print(f"  tier width                     = {w:.0f}")
-print(f"  baseline   0.90 x width        = {0.90 * w:>8.1f}")
-print(f"  type bonus 0.20 x width        = {0.20 * w:>8.1f}   (Cataclysm)")
-print(f"  rarity     0.50 x width        = {0.50 * w:>8.1f}   (Cataclysm Boss)")
-print(f"  procedural 400/20 + 125*0.5    = {400 / 20 + 125 * 0.5:>8.1f}")
-print(f"  depth      (125-63) * 1 * 1.2  = {(125 - 63) * 1.2:>8.1f}")
+hdr(f"B. Where the Cataclysm Boss number comes from "
+    f"(T{EXAMPLE_TIER}, {EXAMPLE_FLOORS} floors)")
+w = S.tier_width(EXAMPLE_TIER)
+middle = math.ceil(EXAMPLE_FLOORS / 2)
+base_w = S.BASELINE_WEIGHT
+type_w = S.TYPE_WEIGHTS["Cataclysm"]
+rarity_w = S.RARITY_WEIGHTS["Cataclysm Boss"]
+scaling = S.FLOOR_SCALING_BASES["Cataclysm"] / S.PROCEDURAL_DIVISOR
+procedural = scaling + EXAMPLE_FLOORS * S.PROCEDURAL_PER_FLOOR
+tension = (EXAMPLE_FLOORS - middle) * EXAMPLE_TIER * S.DEPTH_TENSION_PER_TIER
+weighted = base_w + type_w + rarity_w
+
+
+def term(label: str, value: float, note: str = "") -> None:
+    print(f"  {label:<30} = {value:>8.1f}{note}")
+
+
+print(f"  {'tier width':<30} = {w:>8.0f}")
+term(f"baseline   {base_w:.2f} x width", base_w * w)
+term(f"type bonus {type_w:.2f} x width", type_w * w, "   (Cataclysm)")
+term(f"rarity     {rarity_w:.2f} x width", rarity_w * w, "   (Cataclysm Boss)")
+term(f"procedural {S.FLOOR_SCALING_BASES['Cataclysm']:.0f}"
+     f"/{S.PROCEDURAL_DIVISOR:.0f} + {EXAMPLE_FLOORS}"
+     f"*{S.PROCEDURAL_PER_FLOOR}", procedural)
+term(f"depth      ({EXAMPLE_FLOORS}-{middle}) * {EXAMPLE_TIER}"
+     f" * {S.DEPTH_TENSION_PER_TIER}", tension)
 print(f"  {'-' * 40}")
-print(f"  total                          = "
-      f"{0.9 * w + 0.2 * w + 0.5 * w + 400 / 20 + 125 * 0.5 + (125 - 63) * 1.2:>8.1f}")
-print("\n  The weighted terms alone sum to 1.60 x tier width, but a player can")
+term("total", weighted * w + procedural + tension)
+print(f"\n  The weighted terms alone sum to {weighted:.2f} x tier width, but a "
+      f"player can")
 print("  only gain 1.00 x tier width across the entire tier. The gap is")
 print("  structural, not a tuning accident.")
 
@@ -51,6 +85,11 @@ for t in range(1, 9):
     prev = wd
 
 hdr("D. GDD 'Power Score Ranges by Tier' vs DungeonSimulator anchors")
+#: Transcribed by hand from the "Power Score Ranges by Tier" table in
+#: docs/Cataclysm_GDD_v2.md, read 2026-08-05. That table is a second copy of the
+#: anchors inside the same document and nothing tests it, so this transcription
+#: is checked against the model by sim/tests/test_analysis_scripts.py and the
+#: document itself is issue #253.
 GDD = {1: (0, 385), 2: (386, 871), 3: (872, 1457), 4: (1458, 2144),
        5: (2145, 3251), 6: (3252, 4166), 7: (4167, 5209), 8: (5210, 6327)}
 print(f"{'tier':>5}{'GDD range':>18}{'sim max':>10}{'sim in GDD range?':>20}")
@@ -62,17 +101,27 @@ for t in range(1, 9):
     print(f"{t:>5}{f'{lo}-{hi}':>18}{m:>10}{ok:>20}")
 
 hdr("E. Depth is length, not difficulty")
-print("  T1 Basic, Dungeon Score at the middle floor:\n")
-for f in (8, 15, 25, 40, 60, 100, 150):
-    print(f"    {f:>4} floors -> {S.dungeon_score(1, 'Basic', 'None', f):>4}"
-          f"   ({f} days to run)")
-print("\n  7.5x the depth buys 22% more difficulty. Floor count is a TIME and")
+print(f"  T{EXAMPLE_TIER} Basic, Dungeon Score at the middle floor:\n")
+by_depth = {f: S.dungeon_score(EXAMPLE_TIER, "Basic", "None", f)
+            for f in DEPTHS}
+for f, score in by_depth.items():
+    print(f"    {f:>4} floors -> {score:>4}   ({f} days to run)")
+shallow, deep = DEPTHS[0], DEPTHS[-1]
+print(f"\n  {deep / shallow:.1f}x the depth buys "
+      f"{by_depth[deep] / by_depth[shallow] - 1:.0%} more difficulty. Floor "
+      f"count is a TIME and")
 print("  LOOT lever, not a difficulty lever.")
 
 hdr("F. Early floors score negative")
-print("  T1 Basic, 50 floors:\n")
+SHALLOW_FLOORS = 50
+print(f"  T{EXAMPLE_TIER} Basic, {SHALLOW_FLOORS} floors:\n")
 for f in (1, 3, 5, 10, 25):
-    s = S.enemy_scores(1, "Basic", "None", 50, f)
+    s = S.enemy_scores(EXAMPLE_TIER, "Basic", "None", SHALLOW_FLOORS, f)
     print(f"    floor {f:>3}: common={s['Common']:>6}  boss={s['Boss']:>6}")
-print("\n  depthTension is (floor - middle) * tier * 1.2, which is large and")
-print("  negative near the entrance. Floor 1 enemies have negative power.")
+first = S.enemy_scores(EXAMPLE_TIER, "Basic", "None", SHALLOW_FLOORS,
+                       1)["Common"]
+print(f"\n  depthTension is (floor - middle) * tier * "
+      f"{S.DEPTH_TENSION_PER_TIER}, which is large and")
+print(f"  negative near the entrance. A floor 1 Common enemy scores {first}, "
+      f"which is")
+print(f"  {'below' if first < 0 else 'above'} zero.")

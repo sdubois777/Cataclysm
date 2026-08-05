@@ -20,6 +20,79 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Why Overwhelm is rated against tier width, re-measured; and analysis scripts compute their conclusions
+
+**Affects** `sim/cataclysm_sim/combat.py`, `sim/cataclysm_sim/scoring.py` and the
+three `sim/analyse_*.py` scripts. Applied. No design document changes.
+
+**The decision to rate Overwhelm against tier width still stands, and the numbers
+that were given as its reason were wrong.** Issue #6. The argument is in the
+opening docstring of `sim/cataclysm_sim/combat.py`, the module that turns a power
+shortfall into lost mitigation. It said a flat 50-point step is worth 17% of a
+tier 1 tier width but only 6% of a tier 8 one, which made a maxed tier 1 player
+eat 13% penetration at their own final boss while a maxed tier 8 player ate 47%.
+
+Re-measured against the player power anchors issue #2 installed:
+
+| Figure | As written | Measured now |
+|---|---|---|
+| A flat 50-point step, as a share of the tier 1 width | 17% | 13% |
+| The same step, as a share of the tier 8 width | 6% | 4% |
+| Penetration a maxed tier 1 player takes at their final boss | 13% | 16% |
+| Penetration a maxed tier 8 player takes at their final boss | 47% | 54% |
+
+Every number moved and the conclusion did not: a flat point step still punishes
+the top tier several times harder than the bottom one for the same situation, and
+the ratio between the two is unchanged at about 3.5. So the mechanic is right for
+the reason given, but nobody had checked that since the anchors moved.
+
+**`sim/analyse_penetration.py` is kept rather than deleted, and now says at the
+top that it analyses a proposal the project rejected.** That script is where the
+four figures came from. The rule it examines — enemies above your Power Score
+gain resistance penetration — does not exist: the entry dated 2026-08-03 in this
+log records that enemies carry no Penetration stat because Overwhelm already does
+that job, shrinks as the player out-powers the content, and strips armour, block
+and evasion rather than resistance alone.
+
+Deleting it was the alternative. Keeping it wins because it is the measurement
+the decision was made on, and a decision whose evidence has been thrown away
+cannot be re-checked. It gains a section that runs the same comparison against
+Overwhelm as it shipped, so a reader is not left with two rules neither of which
+the game uses. **This is a judgement, not a reading.**
+
+**Working rule, from here on: a conclusion printed under a table in an analysis
+script is computed, not typed.** All three scripts had typed their conclusions,
+so when the anchors moved each one printed a table and a sentence directly
+underneath it that disagreed with the table. Nothing raised, because a wrong
+sentence inside a `print` is not an error.
+
+What changed as a result of re-running them, beyond the four figures above:
+
+- `sim/analyse_scoring.py` said 7.5 times the depth buys 22% more difficulty. Its
+  own table samples 8 to 150 floors, which is 18.8 times the depth, and buys 18%.
+- `sim/analyse_dungeons.py` said dungeon modifiers are about 4% of a tier width at
+  tier 1. The table above the sentence said 2.9%.
+- `sim/analyse_penetration.py` said routine content "barely triggers" the
+  proposed rule. A player at 70% of their tier now out-powers a mid-floor Basic
+  dungeon at every one of the eight tiers, so it does not trigger at all.
+- `sim/cataclysm_sim/scoring.py`'s own docstring quoted four tier 1 Dungeon Scores
+  by depth. All four were the pre-issue-#2 values.
+
+`sim/tests/test_analysis_scripts.py` runs each script, recomputes each conclusion
+from the model, and requires the recomputed string to appear in what the script
+printed. It also keeps the retired figures out by the exact phrase each appeared
+in. Each of its six guards was proved to fail by re-typing the figure it guards.
+
+**Four bare numbers in `sim/cataclysm_sim/scoring.py`'s formula are now named
+constants** — `BASELINE_WEIGHT`, `PROCEDURAL_DIVISOR`, `PROCEDURAL_PER_FLOOR` and
+`DEPTH_TENSION_PER_TIER`. No value changed. They are named so the analysis scripts
+can refer to the formula instead of retyping it, which is how two of them came to
+disagree with it. `CLAUDE.md` forbids hand-editing that file's constants because
+it is a port; naming a literal is not editing it, and `sim/verify_scoring_port.py`
+was run afterwards and reproduced the reference across 96,768 values.
+
+---
+
 ## 2026-08-05 — A drop rolls one affix tier above the difficulty tier, and crafting has no tier gate at all
 
 **This reverses part of the entry below dated the same day**, "The difficulty
