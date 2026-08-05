@@ -1289,6 +1289,26 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
+**Cripple, Weaken, Shred and Madness have one affix each, a chance to apply, and no separate affix for magnitude or duration.** The six damage over time effects have three affixes: a chance to apply, a damage affix and a duration affix. The four weakening effects have one, and that is the design rather than a gap.
+
+  
+
+**Chance to apply is already all three levers.** Chance above 100% becomes magnitude, and magnitude above the cap becomes duration, which is the rule the two tables above state. So one affix raises whichever of the three the build has not yet filled, in that order, and a second affix for magnitude would raise a number that is already capped.
+
+  
+
+**Measured 2026-08-05**, at the top affix tier on fully upgraded gear. Eleven pieces can carry a chance to apply, one each, for 165%. Cripple reaches its 80% cap at 267% and Weaken at 400%, so affixes alone reach 0.6 and 0.4 of the cap and one Cataclysmic gem takes Cripple past it, four take Weaken past it. A build that wants one of these effects fills its cap; a build that does not, does not. `sim/analyse_weakening_ailments.py` prints the working.
+
+  
+
+**This is not a claim that the four are as strong as the six**, or that one affix is priced correctly against three. It is a statement about levers: a magnitude affix and a duration affix would add no way to scale these effects that the chance affix does not already provide.
+
+  
+
+**The comparison games all do give their equivalents a second lever, and they have no rule like this one.** Path of Exile sells increased effect of Chill and of Withered; Diablo IV sells Crowd Control Duration on amulets. In those games a chance to apply stops paying at 100%, so a separate magnitude stat is the only way to keep scaling. Here it does not stop paying, which is why one stat does the work of three. `docs/DECISIONS.md` records the survey and what would reverse this.
+
+  
+
 **Necrosis no longer stacks.** Its earlier description had it stacking and reducing healing by 10% per stack, which the single-stack rule above rules out. It now carries the whole reduction in one application and scales with magnitude like everything else.
 
   
