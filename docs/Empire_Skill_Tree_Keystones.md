@@ -7,16 +7,15 @@
 > 2026-02-10 and the node graph on 2026-03-05, and it names 105 of the graph's 173
 > nodes. Where the two disagree about a node, the graph is right. Issue #25.
 >
-> Three things in this file have no counterpart in the graph, listed here so a
-> reader does not have to find that out node by node. They may have been dropped
-> deliberately when the tree was rebuilt, or lost; nobody recorded which, and
-> issue #260 asks.
->
-> | In this file | Status in the node graph |
-> | :-- | :-- |
-> | **Bounties**, a 10% chance for a dungeon to spawn a gold-dropping Elite | There is a node called Bounty, but it grants +5% loot quantity per point. Same word, different effect. |
-> | **Weightless Spoils**, +10 inventory slots | Absent. The graph does not mention inventory anywhere. |
-> | **The 4 Decision Nodes**, choose a Cataclysm type for 25% resistance | Absent. The graph has five decision nodes and none of them is this. |
+> **Three entries were removed from this file on 2026-08-05** because the tree
+> never had them. They were **Bounties** (a 10% chance for a dungeon to spawn a
+> gold-dropping Elite), **Weightless Spoils** (+10 inventory slots) and **The 4
+> Decision Nodes** (pick one Cataclysm type for 25% resistance). The project
+> owner settled it on issue #260: this file is brainstorming written before the
+> passive tree editor existed, so an idea here that is not in the graph was never
+> built rather than lost from it. The three are recorded in full in
+> `docs/DECISIONS.md` so the ideas survive, and one consequence of dropping
+> Weightless Spoils is issue #308: nothing in the design grants inventory slots.
 >
 > Exported from Google Drive (Doc `1qhS-gsZvWEXgjefh4mrbrbezwyulD3L_dGwo_ybFgcM`)
 > on 2026-08-02. As of that date the repository copy is the source of truth and is
@@ -87,9 +86,8 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **NOTABLE: Public Works:** -20% Gold cost for all City Upgrades.
 - **NOTABLE: Rapid Renovation:** -1 Day to city upgrade construction time (Min 1 day).
 
-### Tier 3: The Adaptive Bulwark (Decision Tier)
+### Tier 3: The Adaptive Bulwark
 
-- **The 4 Decision Nodes:** (Demonic/Celestial, etc.) — Choose one for each to get 25% Resistance.
 - **Global Vigilance (Max 20 pts):** -2% Damage from all sources (Surges/Dungeons) per point.
 - **Metropolitan Growth (Max 10 pts):** +15% Base City Population per point.
 - **NOTABLE: Martial Law:** At <10% City Health, Dungeon Resolution Timer is extended by +5 Days.
@@ -117,7 +115,6 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Master Trader (Max 10 pts):** +5% Gold gained when selling items in the Market per point.
 - **War Funding (Max 10 pts):** -2% cost for the first upgrade in a city per point.
 - **NOTABLE: Cleanup Crew:** When a dungeon is cleared, 10% of the Gold you *didn't* pick up off the ground is automatically sent to your stash.
-- **NOTABLE: Bounties:** Every dungeon has a 10% chance to spawn a "Bounty Target" (Elite) that drops a massive sack of Gold.
 
 ### Tier 2: Urban Investment
 
@@ -176,7 +173,6 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Overclock (Max 20 pts):** -1 day from dungeon run time per point.
 - **NOTABLE: Field Depot (Rank 2):** A Stash appears every 15 floors.
 - **NOTABLE: Temporal Efficiency:** Every 5 points invested in the **Artisan** branch increases loot quantity by 10%.
-- **NOTABLE: Weightless Spoils:** Adds 10 inventory slots.
 - **NOTABLE: The High Roller:** For every 10 floors **Added** to a dungeon, gain a 5% chance for the Boss to drop an additional Legendary or above item.
 
 ### Tier 4: Master Explorer

@@ -20,6 +20,80 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Three empire tree ideas in the prose were never built, not lost
+
+**Affects** `docs/Empire_Skill_Tree_Keystones.md` and `docs/README.md`. Applied in
+full. Issue #260.
+
+**Decided by the project owner on 2026-08-05:**
+
+> For now, the empire tree json is the authoritative source. The prose was just
+> there when I was originally brainstorming before I built the PassiveTreeCreator
+> app.
+
+## What the question was
+
+The empire passive tree is described twice. `docs/Empire_Development_Tree_Final.json`
+is the node graph the passive tree editor reads and writes.
+`docs/Empire_Skill_Tree_Keystones.md` is prose describing the same tree. Issue #25
+reconciled them and found the graph newer and larger: 173 distinct names against
+the prose's 108, with 105 of the prose's names appearing in the graph.
+
+Three did not, and **nobody had recorded whether they were cut on purpose when the
+tree was rebuilt or lost in the rebuild.** The distinction mattered because two of
+the three were load-bearing: one was a whole tier's namesake and one was the only
+thing in the design granting inventory slots.
+
+## The answer, and why it settles all three at once
+
+The prose predates the tool. It is a brainstorm written before the passive tree
+editor existed, so it was never a description of a built tree that could lose
+nodes — it is a list of ideas, some of which were later built and some of which
+were not. **An idea in the prose with no node in the graph was never built.**
+There is nothing to restore.
+
+That is also consistent with the only other evidence available.
+`docs/Empire_Development_Tree_Final.json` has two commits in its entire history,
+both from 2026-08-02 or later, and it arrived from Google Drive already in its
+current state. There is no earlier version of the graph in which the three nodes
+could have existed and then been deleted.
+
+## What the three were, recorded here because the prose no longer holds them
+
+| Name | Where in the prose | What it did |
+|---|---|---|
+| **Bounties** | Treasury quadrant, tier 1 | Every dungeon has a 10% chance to spawn a "Bounty Target" (Elite) that drops a massive sack of Gold. |
+| **Weightless Spoils** | Explorer quadrant, tier 3 | Adds 10 inventory slots. |
+| **The 4 Decision Nodes** | Architect quadrant, tier 3 | (Demonic/Celestial, etc.) — Choose one for each to get 25% Resistance. |
+
+These are the exact bullets that were deleted. Anyone who wants one of them back
+builds it in the editor at `C:\Projects\PassiveTreeCreator`, which opens and saves
+the JSON directly. The prose follows the graph and never leads it.
+
+**The graph has a node named Bounty**, granting +5% Loot Quantity per point. Same
+word, unrelated effect. It is not a survival of the prose's Bounties and was not
+treated as one.
+
+**The Architect tier 3 heading changed.** The prose called it "The Adaptive
+Bulwark (Decision Tier)", named after the decision node that turns out never to
+have been built. The parenthetical is gone; the tier is still The Adaptive
+Bulwark. Nothing else names it — the graph's on-canvas tier labels read plainly
+"TIER 1" through "TIER 4".
+
+## What this leaves open
+
+**Dropping Weightless Spoils leaves nothing in the design granting inventory
+slots, which is issue #308.** Searching the graph for the word finds no node, and
+`docs/Cataclysm_GDD_v2.md` does not state an inventory size either. The likely
+answer is that inventory is fixed and does not scale, which is what Path of Exile,
+Diablo IV and Last Epoch all do, but it has to be written rather than left absent.
+That question overlaps issue #305, the shared stash having no design of its own.
+
+The other two leave nothing open. Gold-dropping Elites and Cataclysm-type
+resistance both have other sources in the tree.
+
+---
+
 ## 2026-08-05 — The shared stash and the auction house are partitioned by lethality mode
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #285.
