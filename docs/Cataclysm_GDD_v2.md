@@ -2737,6 +2737,24 @@ with it. The stash sits at the capital, belongs to the account, and never enters
 a dungeon. **A character has no private stash.** Everything a character stores is
 either in its own inventory or in the shared one.
 
+**The carried inventory is 48 slots, four rows of twelve, and nothing increases
+it.** One item takes one slot whatever it is, the same rule the stash uses. No
+empire upgrade node grants slots, no affix grants slots, and no city upgrade
+grants slots. A character carries the same 48 on its first dungeon and its last.
+
+**Why nothing increases it.** Diablo IV fixes its inventory at 33 slots and says
+why: "To avoid interrupting gameplay with pockets of inventory management, we're
+not planning to bring back different-sized items." Path of Exile and Last Epoch
+also never grow the carried inventory. A scaling source would also weaken a
+pressure this design created on purpose — a dungeon floor costs a day, so a
+dungeon is a long way from anywhere to put things down, and how much can be
+carried is part of how deep it is worth going.
+
+**48 rather than Diablo IV's 33** because that game's dungeons are minutes long
+with a free town portal at the end of them, and here a dungeon is many floors at
+a day each. Diablo III used 60. The number is a tuning value; the rule is that it
+does not change.
+
 **The stash is shared between characters, once per lethality mode.** Standard
 characters open one stash, Hardcore characters a second and Heretic characters a
 third, with nothing passing between them. That is the general rule stated in the
