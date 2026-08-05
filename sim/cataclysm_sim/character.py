@@ -104,6 +104,22 @@ DAMAGE_TYPES = ("War", "Demonic", "Death", "Pestilence",
 
 RESISTANCE_STATS = tuple(f"resistance_{d.lower()}" for d in DAMAGE_TYPES)
 
+#: The offensive mirror of the eight resistances: increased damage dealt to an
+#: enemy whose own damage type is that one. Each is a percentage that joins the
+#: increases bracket, and it applies only against that type of enemy.
+#:
+#: WHY THERE ARE EIGHT AND NOT ONE. The design document says an enemy has a
+#: damage type of its own, which is its Cataclysm's, and that a run starts with
+#: one Cataclysm active and gains one more each time a Cataclysm is defeated. So
+#: which of these eight is worth anything changes over a campaign, in exactly
+#: the way the three resistance breadth families already do. Issue #213.
+#:
+#: THESE ARE ON THE SHEET, unlike `attack_damage`. The rule for keeping a stat
+#: off the sheet is that it belongs to the equipped weapon rather than to the
+#: character. This belongs to the character: it reads the target, not the
+#: weapon, so how many damage types the weapon carries does not touch it.
+DAMAGE_VS_STATS = tuple(f"damage_vs_{d.lower()}" for d in DAMAGE_TYPES)
+
 #: The character sheet, grouped the way `game/Config/Tags/CataclysmTags.ini`
 #: groups its Stat.* tags.
 STAT_GROUPS: dict[str, tuple[str, ...]] = {
@@ -113,7 +129,8 @@ STAT_GROUPS: dict[str, tuple[str, ...]] = {
     "Defense": ("armor", "evasion", "block_chance", "damage_reduction",
                 "retaliation", "crowd_control_resistance") + RESISTANCE_STATS,
     "Offense": ("crit_chance", "crit_multiplier", "attack_speed",
-                "area_of_effect", "dot_frequency", "penetration", "spell_damage"),
+                "area_of_effect", "dot_frequency", "penetration",
+                "spell_damage") + DAMAGE_VS_STATS,
     "Utility": ("movement_speed", "cooldown_reduction", "magic_find",
                 "loot_quantity"),
 }
@@ -271,6 +288,10 @@ DEFAULT_STAT_LINE: dict[str, Scaling] = {
     "dot_frequency": Scaling(base=100.0),
     "penetration": Scaling(),
     "spell_damage": Scaling(),
+    # Increased damage against one type of enemy. Zero for every class: no class
+    # is born better against a Cataclysm, because which Cataclysms a run faces
+    # is drawn at run start and the class is chosen before that.
+    **{s: Scaling() for s in DAMAGE_VS_STATS},
     # Utility. Movement speed is in metres per second, following the project
     # owner's example of a tank at about 3.
     "movement_speed": Scaling(base=4.0),

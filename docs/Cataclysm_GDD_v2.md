@@ -801,7 +801,7 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
 ### **The Character Sheet**
 
-A character has 35 stats, grouped the way the gameplay tag list groups its Stat tags.
+A character has 43 stats, grouped the way the gameplay tag list groups its Stat tags.
 
   
 
@@ -811,7 +811,7 @@ A character has 35 stats, grouped the way the gameplay tag list groups its Stat 
 | Resource | Maximum Health, Maximum Mana, Maximum Energy Shield, Class Resource |
 | Recovery | Health Regeneration, Mana Regeneration, Energy Shield Regeneration, Life Leech, Mana Leech, Energy Shield Leech |
 | Defence | Armor, Evasion, Block Chance, Damage Reduction, Retaliation, Crowd Control Resistance, and the eight Resistances |
-| Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time Frequency, Penetration, Spell Damage |
+| Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time Frequency, Penetration, Spell Damage, and the eight Damage Against a Type figures |
 | Utility | Movement Speed, Cooldown Reduction, Magic Find, Loot Quantity |
 
   
@@ -1640,6 +1640,44 @@ These have no breadth axis. What they have instead is the two ends of the stat p
   
 
 **Increased damage is ten times increased health because damage and health are on different scales**, which is ordinary for the genre. That is also what forces flat damage to be small: a character with six increased damage affixes is already multiplying by 8.5, so the bracket those multiply has to stay around 200 at tier 8.
+
+  
+
+### **Damage Against a Target's Type**
+
+Eight affixes, one per damage type: **increased damage against War / Demonic / Death / Pestilence / Famine / Celestial / Chaos / Void enemies**. Each gives **400% at T7**, against the generic Increased Damage affix's 125%.
+
+  
+
+**They read the target, not the weapon.** An enemy has a damage type of its own, which is its Cataclysm's; see section X. This affix applies when that type matches and does nothing otherwise. Because it reads the enemy, how many damage types the player's weapon carries has no effect on it.
+
+  
+
+**They add into the same bracket as Increased Damage.** The pipeline is (base + flat) x (1 + increases) x more1 x more2, and a conditional increase joins the increases bracket rather than becoming a third multiplier. That is what Diablo 4 and Last Epoch both do: a damage bonus with a stated condition is additive.
+
+  
+
+**They are prefixes, in the same slots as Increased Damage**, so a player choosing one gives up the other on that piece. That competition is what makes it a choice.
+
+  
+
+|  |  |  |
+| :-- | :-: | :-- |
+| \*\*Affix\*\* | \*\*T7 value\*\* | \*\*Best when\*\* |
+| Increased damage | 125% | Many Cataclysms are active |
+| Increased damage against one type | 400% | Few Cataclysms are active |
+
+  
+
+**Where 400% comes from.** It is the ratio this game already pays for narrowing a modifier from all eight damage types to one. The resistance families give 20% per type at breadth one and 6% per type at breadth eight, so narrowing is worth about 3.33 times. The generic damage affix is the breadth-eight case, because it applies whatever the target is. 125% times 3.33 is 417%, rounded to 400%.
+
+  
+
+**What that produces over a campaign.** A run starts with one Cataclysm active and adds one each time a Cataclysm is defeated. The generic affix is worth 125% whatever stands in front of the player; a type-specific one is worth 400% against its own type and nothing against the other seven, so across C active Cataclysms it averages 400/C. The two are equal at C = 3.2. The type-specific affix is the better use of a prefix for the first three Cataclysms of a campaign and the generic one from four onward. That is the same shape the resistance ladder has, and it is where the reason to change equipment between runs comes from.
+
+  
+
+**There is no two-type or all-type version.** The all-type version is the generic Increased Damage affix, which already exists; a second one would be the same affix twice. A two-type version would sit between them, in the way the two-resistance affix does, and is deliberately not built yet: the two ends have to be played before a middle rung can be priced.
 
   
 
