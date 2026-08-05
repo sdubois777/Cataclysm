@@ -1545,17 +1545,41 @@ Taking the middle rather than the strictest is deliberate. This design also has 
 
   
 
-**Displacement is not covered, because it does not hold the target still.** Being pushed four meters costs the target the distance and nothing else; it can act on arrival. There is no damage threshold on it, so a weak hit can still shove, and a boss can be pushed. **This does not mean it should be repeatable without limit** — a target held permanently at the far end of a room is being controlled, whatever the mechanic is called — but the limit on it is not this rule and is not settled. Issue #302 carries it.
+**Displacement is not covered, because it does not hold the target still.** Being pushed four meters costs the target the distance and nothing else; it can act on arrival. There is no damage threshold on it, so a weak hit can still shove, and a boss can be pushed.
 
   
 
-**Where this split comes from.** The genre draws the same line. In Path of Exile a knockback does not interrupt the target's actions at all, which is the difference from a stun. Path of Exile 2 keeps knockback as pure movement and puts the act-prevention in Heavy Stun, which is harder to reapply for a short time afterwards. Diablo IV is the clearest: it ships Knockback and Knock Down as separate effects, where Knock Down pins the target in place, and its own documentation says Knock Down does not count as a Stun. Diablo IV also limits repeated knockback, but by an escalating resistance rather than by a damage threshold, which is the shape issue #302 should start from.
+**It is limited instead by diminishing distance.** Each displacement applied to a target that has already been displaced within the last 5 seconds moves it **half as far as the one before** — the full distance, then half, then a quarter, and so on. The count resets once 5 seconds pass in which that target is not displaced at all. There is no damage threshold, no immunity flag and no boss exemption: a boss is pushed under the same halving as anything else, because a boss pushed four meters is still fighting, while a boss held still is not a fight. That is the whole difference between this rule and the one above it.
+
+  
+
+**The 5 seconds is the same 5 seconds.** It is the stun immunity window, reused rather than a second number to remember. The two do not interact otherwise — being displaced does not delay a stun and being stunned does not reset the displacement count.
+
+  
+
+**Why distance rather than immunity.** Path of Exile 2 already treats distance as the quantity rather than as a yes or no: skills carry increased knockback distance, and defensive modifiers reduce the distance an incoming knockback moves you. Diablo IV takes the other route, adding a flat 40% to a hidden crowd control resistance per knockback and making the target immune once that resistance reaches 65%. Immunity works there because knockback in Diablo IV comes from skills that can be repeated quickly. **Here it cannot**: all nine displacing skills sit in the Heavy or Movement slot, and nothing in any other slot displaces at all, so the case Diablo IV's threshold exists to stop is already bounded by which slots the effect lives in. A Heavy attack is the slow one by design — Molten Crush is described as "the slowest heavy blow in the game" — and a Movement skill goes on cooldown.
+
+  
+
+Halving is also the only option under which no skill ever visibly does nothing. Bull Rush and Cinder Rush charge through a crowd "knocking them aside"; under an immunity flag the player would run through enemies that do not react, which reads as a defect rather than as a rule. A halved shove still looks like a shove.
+
+  
+
+**It cannot produce the failure it was written for.** Three displacements inside 5 seconds move a target 4 meters, then 2, then 1 — seven meters in total, and nothing worth measuring after that. A target cannot be held at the far end of a room.
+
+  
+
+**Outright immunity to displacement still exists, as a skill effect rather than as a rule.** Living Pyre, Unstoppable Force and Forge Stance each state that their user cannot be knocked back, and Bull Rush and Cinder Rush grant immunity to all crowd control while charging. Those are unchanged. Note that nothing in the game currently knocks the *player* back, so all five clauses are written against a threat the data does not yet contain; issue #310 carries that.
+
+  
+
+**Where this split comes from.** The genre draws the same line. In Path of Exile a knockback does not interrupt the target's actions at all, which is the difference from a stun. Path of Exile 2 keeps knockback as pure movement and puts the act-prevention in Heavy Stun, which is harder to reapply for a short time afterwards. Diablo IV is the clearest: it ships Knockback and Knock Down as separate effects, where Knock Down pins the target in place, and its own documentation says Knock Down does not count as a Stun. Diablo IV also limits repeated knockback, but by an escalating resistance rather than by a damage threshold, which is where the diminishing distance rule above started.
 
   
 
 **What offensive crowd control gear exists is not yet decided.** Cripple is the only crowd control effect available as an affix today. Stun reaches the game through the Blunt weapon sub-type, through four weapon skills, and through two enchantments, but no affix grants a chance to stun and none scales a stun's duration. Issues #298 and #299 carry these.
 
-**A slow's position is settled and is not among those open questions**, and neither is a knockdown's or a displacement's. All three are stated above: a slow is not a stun and this rule does not cover it, a knockdown is covered in full, and a displacement is not covered but is limited by something still to be decided in issue #302. This paragraph used to list a slow and a knockback as open as well, which made the document say two things at once about each.
+**A slow's position is settled and is not among those open questions**, and neither is a knockdown's or a displacement's. All three are stated above: a slow is not a stun and this rule does not cover it, a knockdown is covered in full, and a displacement is not covered but is limited by halving its distance on repeat. This paragraph used to list a slow and a knockback as open as well, which made the document say two things at once about each.
 
   
 

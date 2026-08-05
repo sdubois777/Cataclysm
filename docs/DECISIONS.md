@@ -20,6 +20,104 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — Repeated displacement is limited by halving its distance, not by immunity
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #302.
+
+Issue #297 put displacement outside the anti-stun-lock rule, because being pushed
+four meters costs the target the distance and nothing else — it can act on
+arrival. The document then said, correctly, that this did not mean displacement
+should be repeatable without limit, and pointed here for the limit.
+
+**The rule: each displacement applied to a target that has already been displaced
+within the last 5 seconds moves it half as far as the one before.** Full
+distance, then half, then a quarter. The count resets after 5 seconds with no
+displacement applied to that target. No damage threshold, no immunity flag, no
+boss exemption.
+
+## What the genre does, and why the two shipped answers differ
+
+| Game | How it limits repeated knockback |
+|---|---|
+| Path of Exile | It does not need to. Knockback does not interrupt the target's actions at all, which is the documented difference from stun |
+| Path of Exile 2 | Treats **distance** as the quantity. Skills carry increased knockback distance; defensive modifiers such as Hunker Down reduce the distance an incoming knockback moves you. No immunity flag |
+| Diablo IV | Escalating resistance. Each knockback adds a flat **40%** hard crowd control resistance, 20% per tick for effects that apply it continuously. Knockback and pull stop working once that resistance reaches **65%**, so two applications is the practical limit. Separately, each second of hard crowd control suffered adds 10%, capping at 95% |
+
+**The two Diablo IV sources issue #302 flagged as disagreeing are both right.**
+One said the hard crowd control pool excludes knockback; the other gave knockback
+a flat 40% per application with immunity at 65%. Those compose: knockback is
+excluded from the *duration-based* accumulation that everything else feeds, and
+has its own per-application escalation with its own lower threshold.
+
+## Why this design took Path of Exile 2's axis and Diablo IV's escalation
+
+**Immunity works in Diablo IV because knockback there comes from skills that can
+be repeated quickly. Here it cannot.** All nine displacing skills are in the
+Heavy or Movement slot and nothing in any other slot displaces, so the case
+Diablo IV's threshold exists to prevent is already bounded by which slots the
+effect lives in. A Heavy attack is the slow one by design and a Movement skill
+goes on cooldown. Adding a hard immunity on top of that would be a second limit
+on a problem the slot layout already limits.
+
+That count is checked against `game/Data/WeaponSkills.csv` by a test rather than
+asserted here, because it is the load-bearing fact and it will move.
+
+**Halving is the only option under which no skill ever visibly does nothing.**
+Bull Rush and Cinder Rush charge through a crowd "knocking them aside". Under an
+immunity flag the player would run through enemies that do not react, which reads
+as a defect rather than as a rule. A halved shove still looks like a shove.
+
+**It reuses the one number the section already has.** The 5 second window is the
+stun immunity window. Diablo IV's shape would have needed three new numbers: an
+amount per application, a threshold and a decay rate.
+
+**No boss exemption, unlike stun.** A boss cannot be stunned at all, because a
+boss held still is not a fight. A boss pushed four meters is still fighting, so
+the reason does not carry across. Making a boss unpushable would also make the
+two charge skills pass through it with no effect, which is the visible-failure
+problem again.
+
+## What argues against it
+
+**It is not what the only game that solved this problem did.** Diablo IV chose a
+hard threshold and this chose a soft curve, and the reason given — that the slot
+layout already bounds repetition — depends on a fact about this project's current
+skill list rather than on a principle. **If a displacing skill is ever added
+outside the Heavy and Movement slots, this decision should be re-read**, because
+the argument for the soft curve weakens immediately. A test fails when that
+happens.
+
+**Halving never reaches zero.** After six applications a 4 meter shove is 6
+centimetres, which is not a problem in play but is not a clean stop either. A
+threshold gives an exact answer to "can this be repeated" and a curve does not.
+
+## What this does not change
+
+Outright immunity to displacement still exists as a skill effect. Living Pyre,
+Unstoppable Force and Forge Stance state that their user cannot be knocked back,
+and Bull Rush and Cinder Rush grant immunity to all crowd control while charging.
+
+**Nothing in the game can currently knock the player back.** `EnemyModifiers.csv`
+contains no displacement and neither does `StatusEffects.csv`, so those five
+clauses are written against a threat the data does not yet contain. Issue #310
+carries that; the rule above is written for both directions so it does not depend
+on the answer.
+
+Sources:
+[Knockback — Path of Exile 2 Wiki](https://www.poewiki.net/wiki/poe2wiki:Knockback),
+[PoE 2 Guide: Knockback Explained — Mobalytics](https://mobalytics.gg/poe-2/guides/knockback),
+[Knockback — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Knockback),
+[Crowd Control — Diablo Wiki](https://diablo.fandom.com/wiki/Crowd_Control),
+[Diablo 4 Knockback — vhpg](https://vhpg.com/diablo-4-knockback/).
+
+**Evidence limit.** All five are search result summaries rather than fetched
+pages; `WebFetch` gets HTTP 402 from the Fandom hosts and an access-denied page
+from `poewiki.net`. The Diablo IV numbers, 40% per application and immunity at
+65%, are the most specific claims here and came from two independent summaries
+that agreed, which is the strongest the evidence gets without a fetch.
+
+---
+
 ## 2026-08-05 — Three empire tree ideas in the prose were never built, not lost
 
 **Affects** `docs/Empire_Skill_Tree_Keystones.md` and `docs/README.md`. Applied in
