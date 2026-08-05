@@ -15,15 +15,62 @@ from __future__ import annotations
 import statistics
 from dataclasses import replace
 
-from cataclysm_sim import policies
+from cataclysm_sim import combat, policies, scoring
 from cataclysm_sim.config import (
     TREE_ARCHITECT_AS_DESIGNED, TREE_EXPLORER_AS_DESIGNED, TREE_EXPLORER_DEEP,
     TREE_EXPLORER_VIA_FLOORS, TREE_NONE, TREE_PROPOSED_FIX,
-    EmpireTree, SurgeMode, TuningConfig,
+    CityTier, DungeonType, EmpireTree, SurgeMode, TuningConfig,
 )
 from cataclysm_sim.engine import Simulation
 
 TRIALS = 250
+
+
+def cataclysm_power_key(cfg: TuningConfig) -> list[str]:
+    """The lines describing what the power column should be compared against.
+
+    Issue #8. This used to be a hard-coded range, worked out against the player
+    power anchors that issue #2 replaced and never re-derived. It is computed
+    here instead, for the tier the report is actually running at, so it cannot
+    go stale again. The retired range is not written out anywhere in this file,
+    because `sim/tests/test_power_threshold.py` refuses it by text.
+
+    IT IS NOT ONE NUMBER. Death chance falls smoothly with power and never
+    reaches zero, because the thing on the last floor outscores the maximum
+    player power of its own tier at every tier.
+    """
+    spec = cfg.DUNGEON_SPECS[(DungeonType.CATACLYSM, CityTier.PILLAR)]
+    floors = round(sum(spec.floors) / 2)
+    modifier_score = 0.0
+    ceiling = scoring.tier_bounds(cfg.tier)[1]
+
+    def risk(power: float) -> float:
+        return combat.death_chance(
+            power, cfg.tier, "Cataclysm", "None", floors, modifier_score,
+            cfg.per_floor_risk, cfg.boss_risk_multiplier, "Cataclysm Boss",
+            cfg.overwhelm_rate, cfg.overwhelm_cap)
+
+    needed = combat.power_for_death_chance(
+        combat.REPORTED_DEATH_CHANCE, cfg.tier, "Cataclysm", "None", floors,
+        modifier_score, cfg.per_floor_risk, cfg.boss_risk_multiplier,
+        "Cataclysm Boss", cfg.overwhelm_rate, cfg.overwhelm_cap)
+
+    # Said rather than assumed: whether the safer figure is reachable follows
+    # from the two numbers, so this sentence cannot become false while the
+    # numbers move.
+    reach = ("and so is NOT reachable at this tier"
+             if needed > ceiling else "and is reachable within this tier")
+
+    return [
+        "  power      final player Power Score. The Cataclysm dungeon at tier "
+        f"{cfg.tier} is {floors} floors and",
+        f"             kills a player at the tier ceiling of {ceiling:,.0f} "
+        f"{risk(ceiling):.0%} of the time. Dying there ends",
+        f"             the run. A {combat.REPORTED_DEATH_CHANCE:.0%} death "
+        f"chance needs {needed:,.0f}, which is "
+        f"{needed / ceiling:.2f}x that ceiling,",
+        f"             {reach}.",
+    ]
 
 
 def batch(cfg: TuningConfig, policy, trials: int = TRIALS, seed0: int = 0):
@@ -289,7 +336,8 @@ def main():
     print("  win%       cleared 8 objectives, then the Cataclysm dungeon")
     print("  stale%     neither won nor lost -- hit the day cap")
     print("  floors     total floors cleared -- the loot proxy")
-    print("  power      final player Power Score (Cataclysm dungeon needs ~320-420)")
+    for line in cataclysm_power_key(TuningConfig()):
+        print(line)
     print("  forge%     share of the run spent at the forge, defending nothing")
     print("  triage%    free days facing 2+ dungeons about to detonate")
 
