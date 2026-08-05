@@ -81,3 +81,16 @@ The authoritative power model is **not** here. It lives in the separate
 DungeonSimulator repository at `src/utils/calculateScores.tsx`, and
 `sim/cataclysm_sim/scoring.py` is a port of it. That port checks itself against
 the original on every run; see the comments in `scoring.py`.
+
+**That model, not this folder, is authoritative for the Enemy Score numbers.**
+The Enemy Score Formula section of `Cataclysm_GDD_v2.md` and the Dungeon Score
+Formula section are transcriptions of it: the rarity, dungeon type and subtype
+weights, the floor scaling bases, the base type scores and the player tier
+anchors. Editing a number in the document changes nothing about the game; it only
+makes the document wrong.
+
+Those two sections went stale for a year, describing the model's January 2025
+first-commit formula after it was replaced upstream and never re-exported. Issue
+#30 has the history. `tools/tests/test_enemy_score_formula.py` now compares every
+one of those tables against the port, so the same drift cannot happen quietly
+again.

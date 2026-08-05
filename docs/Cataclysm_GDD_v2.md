@@ -2095,7 +2095,23 @@ If an offline mode is offered, this modifier is excluded from dungeon generation
 
 ## **Dungeon Score Formula**
 
-Dungeon Score = (Common Enemy Score × 0.6) + (Elite Enemy Score × 0.2) + (Rare Enemy Score × 0.15) + (Legendary Enemy Score × 0.04) + (Boss Enemy Score × 0.01)
+A dungeon's score is **its middle floor**, with that floor's six rarity scores collapsed into one number by how common each rarity is.
+
+  
+
+Dungeon Score = round( (Common × 0.6) + (Elite × 0.2) + (Legendary × 0.15) + (Herald × 0.04) + (Boss × 0.01) )
+
+  
+
+**The middle floor, not the first or the last.** A dungeon's difficulty is what a player meets on average across it, and the Enemy Score formula in section X makes depth the thing that raises difficulty, so the middle floor is the average by construction.
+
+  
+
+**The five weights are how common each rarity is, and they sum to 1.** Cataclysm Boss is absent because it does not appear on an ordinary floor.
+
+  
+
+**There is no Rare tier.** An earlier version of this formula weighted Rare at 0.15; that rarity does not exist. The 0.15 belongs to Legendary, Herald takes 0.04 and Boss 0.01. See section X.
 
   
 
@@ -2346,13 +2362,119 @@ This is the opposite of dungeon modifiers, which do carry a score. That differen
 
 ## **Enemy Score Formula**
 
-Enemy Score = (((Base Type Score + Floor Scaling Score) × 0.75 + Floor Scaling Score × 0.25) × Difficulty Multiplier + Modifier Score) × Rarity Multiplier × Dungeon Type Multiplier × Subtype Multiplier
+Every enemy's score is built from **the width of its difficulty tier**: the gap between the maximum Power Score a player is expected to reach at the end of this tier and the end of the tier below. Nothing in the formula multiplies. Each contribution is a fraction of that width, or a flat number of points, and they are added.
 
-  
+
+
+Write **W** for the tier width and **Pmin** for the previous tier's maximum. Write **f** for the floor ratio, which is the current floor divided by the total floors, and **m** for the middle floor, which is the total floors divided by two and rounded up.
+
+
+
+    Enemy Score = round(
+        Pmin + W x 0.9 x f                          the baseline for this depth
+      + W x Type Weight                             which kind of dungeon
+      + W x Subtype Weight                          which variant of it
+      + W x Rarity Weight                           what kind of enemy
+      + Floor Scaling Base / 20 x f + Floor x 0.5   procedural depth
+      + (Floor - m) x Tier x 1.2                    depth tension
+      + Modifier Score                              the dungeon's modifiers
+    )
+
+
+
+**Rounding is JavaScript's, not Python's.** Halves go up rather than to the nearest even number. The formula is built from halves and fifths so exact .5 values are common, and the difference showed up on about 2% of inputs.
+
+
+
+**Depth tension is negative above the middle floor and positive below it.** An enemy on floor 1 of a 10-floor dungeon is worth less than the tier baseline; one on floor 10 is worth more. That is what makes going deeper the thing that raises difficulty, and it is why one dungeon floor costs one day.
+
+
+
+**THIS FORMULA IS NOT AUTHORED HERE.** It is a transcription of `sim/cataclysm_sim/scoring.py`, which is a verified port of `src/utils/calculateScores.tsx` in the separate, private `sdubois777/DungeonSimulator` repository. That file is authoritative for every number in this section. `sim/verify_scoring_port.py` checks the port against it, and `tools/tests/test_enemy_score_formula.py` checks this section against the port. Changing a number here changes nothing; it only makes this section wrong.
+
+
+
+**An earlier version of this section documented a different formula**, which multiplied a base score by a rarity multiplier, a dungeon type multiplier and a subtype multiplier. That was the model's first-commit form from January 2025. It was replaced upstream by the version above and this document was never re-exported, so the section described a formula the game had not used for a year. Issue #30 records how that was found.
+
+
 
 ## **Parameter Values**
 
-### **Base Type Score**
+### **Rarity Weights**
+
+|  |  |
+| :-: | :-: |
+| \*\*Enemy Rarity\*\* | \*\*Weight\*\* |
+| Common | 0 |
+| Elite | 0.05 |
+| Legendary | 0.1 |
+| Herald | 0.15 |
+| Boss | 0.3 |
+| Cataclysm Boss | 0.5 |
+
+
+
+**There is no Rare tier.** It existed in the first-commit version of the model and does not exist now.
+
+
+
+**A weight is a fraction of the tier width, added.** A Boss is not two and a half times a Common enemy, which the superseded multiplier table said. It is 0.3 of one tier's width above it. On the last floor of a 10-floor Basic dungeon with no subtype at tier 8, a Common enemy scores 6,273 and a Boss scores 6,609: about 5% apart, not 150%.
+
+
+
+**This is where the Overwhelm ladder in section IV comes from.** Rarity raises Enemy Score, and Overwhelm is rated against the gap between Enemy Score and Player Power Score as a share of tier width, so the rarity weight IS the share of mitigation that rarity strips. No per-rarity Overwhelm number is written anywhere and none is needed.
+
+
+
+### **Dungeon Type Weights**
+
+|  |  |
+| :-: | :-: |
+| \*\*Dungeon Type\*\* | \*\*Weight\*\* |
+| Basic | 0.0 |
+| Quest | 0.05 |
+| Fallen City | 0.1 |
+| Cataclysm | 0.2 |
+
+
+
+### **Subtype Weights**
+
+|  |  |
+| :-: | :-: |
+| \*\*Subtype\*\* | \*\*Weight\*\* |
+| None | 0 |
+| Timed | 0 |
+| Horde | 0.05 |
+| Siege | 0.05 |
+| Cow Level | 0.1 |
+| Elite | 0.15 |
+| Volatile | 0.17 |
+| Sacrificial | 0.2 |
+
+
+
+**Timed carries no weight, deliberately.** A time limit is a constraint on the player rather than on the enemies, so it changes nothing about what an encounter is worth.
+
+
+
+### **Floor Scaling Bases**
+
+|  |  |
+| :-: | :-: |
+| \*\*Dungeon Type\*\* | \*\*Base\*\* |
+| Basic | 100 |
+| Quest | 200 |
+| Fallen City | 300 |
+| Cataclysm | 400 |
+
+
+
+Divided by 20 and multiplied by the floor ratio. This is the only place a dungeon type contributes flat points rather than a fraction of tier width.
+
+
+
+### **Base Type Scores**
 
 |  |  |
 | :-: | :-: |
@@ -2362,41 +2484,35 @@ Enemy Score = (((Base Type Score + Floor Scaling Score) × 0.75 + Floor Scaling 
 | Fallen City | 90 |
 | Cataclysm | 120 |
 
-  
 
-### **Rarity Multipliers**
 
-|  |  |
-| :-: | :-: |
-| \*\*Enemy Rarity\*\* | \*\*Multiplier\*\* |
-| Common | 1.0 |
-| Elite | 1.3 |
-| Legendary | 2.0 |
-| Herald | not set |
-| Boss | 2.5 |
-| Cataclysm Boss | not set |
+**Nothing reads these.** They are declared in the authoritative source and the current formula does not use them; the Floor Scaling Bases above took over the job. They are listed because the port still verifies them against the source, so they are part of the shipped data, and a reader finding them in the code deserves to be told they do nothing.
 
-  
 
-These six tiers are the ones the power model uses, and that model is a port of the authoritative scoring source, so its list wins. There is no **Rare** tier; it appeared in an earlier version of this table and does not exist.
 
-  
+### **Player Maximum Power Scores**
 
-**Two multipliers are deliberately unset rather than guessed.** The multipliers above were fitted to a five-tier list that included Rare and had no Herald or Cataclysm Boss. The power model expresses the same ordering in a different unit — a fraction of tier width rather than a multiplier — so the two cannot be converted into each other without deciding what a multiplier means relative to a weight. Herald sits between Legendary and Boss; Cataclysm Boss sits above Boss. Both numbers need fitting against real play.
+The anchor every score is measured against: the maximum Power Score a player is expected to reach by the end of each difficulty tier.
 
-  
 
-### **Dungeon Type Multipliers**
 
-|  |  |
-| :-: | :-: |
-| \*\*Dungeon Type\*\* | \*\*Multiplier\*\* |
-| Basic | 1.0 |
-| Quest | 1.2 |
-| Fallen City | 1.3 |
-| Cataclysm | 1.5 |
+|  |  |  |
+| :-: | :-: | :-: |
+| \*\*Tier\*\* | \*\*Maximum\*\* | \*\*Tier width\*\* |
+| 1 | 385 | 385 |
+| 2 | 871 | 486 |
+| 3 | 1457 | 586 |
+| 4 | 2144 | 687 |
+| 5 | 3251 | 1107 |
+| 6 | 4166 | 915 |
+| 7 | 5209 | 1043 |
+| 8 | 6327 | 1118 |
 
-  
+
+
+**These are a design choice, not a derived result.** They began as a flat arithmetic progression 283 points wide per tier and were revised at least three times. Tier 5 is 1,107 wide where the surrounding trend is about 790, and tier 6 is narrower than tier 5; issue #7 records that anomaly. They can be revisited.
+
+
 
 ## **Vertical Slice Enemies (Demonic Cataclysm)**
 
