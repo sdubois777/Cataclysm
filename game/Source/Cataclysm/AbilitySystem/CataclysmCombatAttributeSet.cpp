@@ -43,8 +43,14 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 
 	InitMovementSpeed(4.0f);     // metres per second
 	InitCooldownReduction(0.0f);
+
+	// Magic find is an added percentage and has a flat source, the "Flat magic
+	// find" affix, so zero is right. Loot quantity is a percentage of what the
+	// dungeon would otherwise drop and every source of it is an increase, so
+	// 100 means "unchanged" and zero would leave every source nothing to
+	// scale. Issue #243.
 	InitMagicFind(0.0f);
-	InitLootQuantity(0.0f);
+	InitLootQuantity(100.0f);
 }
 
 void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(

@@ -22,8 +22,8 @@
     {
       "asset": "DT_ClassStats",
       "csv": "ClassStats.csv",
-      "rows": 30,
-      "csv_sha256": "84a8da2af2e4ce8b4de565f1763bcee138bb269aec0731c0748ff218a10547da"
+      "rows": 31,
+      "csv_sha256": "395896230f106297af44f0d5285e97f5ddd342ec760a955cdbfde63e88017c50"
     },
     {
       "asset": "DT_CraftingMaterials",

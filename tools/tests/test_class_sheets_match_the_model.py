@@ -167,7 +167,9 @@ class TestTheCountsThatAreAssertedInUnreal:
     been missed before, so both are stated here as well."""
 
     def test_the_class_stat_row_count(self, class_sheet):
-        assert len(class_sheet) == 30
+        # 30 until issue #243 added a Default row for loot_quantity, which
+        # needed a baseline of 100 rather than zero.
+        assert len(class_sheet) == 31
 
     def test_the_attribute_effect_row_count(self, attribute_sheet):
         assert len(attribute_sheet) == 17

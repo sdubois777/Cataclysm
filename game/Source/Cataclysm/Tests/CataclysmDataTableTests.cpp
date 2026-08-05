@@ -110,7 +110,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                78)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
-	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             30)
+	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             31)
 	// 17: eight attributes, each raising two stats, except Efficacy raising
 	// three.
 	CHECK_TABLE(FCataclysmAttributeEffectRow,   "Attributes.csv",             17)

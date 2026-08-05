@@ -296,8 +296,17 @@ DEFAULT_STAT_LINE: dict[str, Scaling] = {
     # owner's example of a tank at about 3.
     "movement_speed": Scaling(base=4.0),
     "cooldown_reduction": Scaling(),
+    # Magic find is an added percentage, so zero is right: it has a FLAT source,
+    # the "Flat magic find" affix, which is what Luck then scales.
     "magic_find": Scaling(),
-    "loot_quantity": Scaling(),
+    # Loot quantity is a percentage of whatever the dungeon would otherwise
+    # drop, so its baseline is 100% rather than zero, for the same reason area
+    # of effect and damage-over-time frequency have one. Issue #243. Every
+    # source of loot quantity is an INCREASE -- the Luck attribute, the
+    # "Increased loot quantity" affix, its hybrid, and several empire tree
+    # nodes -- and not one of them is flat, so a base of zero left the stat
+    # permanently at zero however much was spent on it.
+    "loot_quantity": Scaling(base=100.0),
 }
 
 
