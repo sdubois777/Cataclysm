@@ -20,6 +20,90 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — The carried inventory is 48 slots and nothing increases it
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #308.
+
+### The gap
+
+Issue #260 settled that `docs/Empire_Skill_Tree_Keystones.md`, the prose
+description of the empire tree, predates the passive tree editor, so an idea in
+it with no node in `docs/Empire_Development_Tree_Final.json` was never built. One
+of the three removed that way was the only thing anywhere in the design that
+granted inventory slots:
+
+> **NOTABLE: Weightless Spoils:** Adds 10 inventory slots.
+
+With it confirmed as never built, nothing scaled inventory and nothing stated a
+size either. Searching the node graph for the word finds no node.
+
+### What was decided
+
+**48 slots, four rows of twelve, one item per slot, and nothing increases it.**
+No empire upgrade node, no affix, no city upgrade.
+
+### Why nothing increases it
+
+**It is what the genre does.** Diablo IV fixes its inventory at 33 slots and
+cannot be increased, and Blizzard stated the reason: "To avoid interrupting
+gameplay with pockets of inventory management, we're not planning to bring back
+different-sized items." Path of Exile's 12 by 5 grid never grows; Last Epoch's
+answer is loot filters rather than more space.
+
+**And a scaling source would weaken a pressure this design created on purpose.**
+A dungeon floor costs a day, so a dungeon is a long way from anywhere to put
+things down, and how much can be carried is part of how deep it is worth going.
+That is a live tension in a game whose whole strategy layer is a day budget.
+Adding slots would be a flat power gain with nothing traded for it.
+
+### Why 48 and not 33
+
+Diablo IV's dungeons are minutes long with a free town portal at the end. Here a
+dungeon is many floors at a day each, so the gap between chances to put something
+down is far larger and the number should sit above that anchor rather than at it.
+Diablo III used 60. 48 is four rows of twelve, which is Path of Exile's grid
+width, and it sits between the two. **The number is a tuning value; the rule is
+that it does not change.**
+
+### The Explorer quadrant does not need a replacement node
+
+The issue asked whether removing Weightless Spoils leaves the Explorer quadrant's
+tier 3 one node lighter. **It does not, and the premise is worth correcting.**
+Issue #260 established that the prose file predates the node graph, so Weightless
+Spoils was never in the graph to be removed. The prose file lost an entry; the
+tree lost nothing and is exactly the size it always was. There is no hole to fill.
+
+### What argues against it
+
+**A fixed bag in a game with day-priced dungeons is harsher than a fixed bag
+anywhere else.** In all three surveyed games a full inventory costs seconds. Here
+it may cost days or a whole dungeon, and this entry does not say which, because
+the design does not say. That is issue #323, filed with this decision and
+labelled `needs-operator`, and it is the question that decides whether 48 is
+generous or crippling.
+
+**It removes the only stated reward for the Explorer quadrant's depth theme.**
+Weightless Spoils was thematically the node that paid a deep-diving player for
+carrying more. Nothing replaces that, and the entry above explains why nothing
+needs to structurally — but the theme is now one idea lighter than the prose file
+suggested it was.
+
+**48 is a construction, not a measurement.** It is built from two other games'
+numbers and one grid width. No play has tested it.
+
+### Sources
+
+Search-result summaries rather than the pages themselves.
+
+- Diablo IV: 33 fixed slots, one item per slot, cannot be increased, with
+  Blizzard's stated reason.
+  https://www.gamepur.com/guides/how-to-increase-inventory-space-in-diablo-iv and
+  https://www.vhpg.com/diablo-4-inventory/
+- Diablo III used 60 slots, and the comparison is a standing player complaint.
+  https://us.forums.blizzard.com/en/d4/t/inventory-is-too-small-d3-60-slots-d433-slots-and-rings-and-gems-take-up-twice-the-space/13691
+
+---
+
 ## 2026-08-05 — Gold is held by the account, once per lethality mode
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #306.

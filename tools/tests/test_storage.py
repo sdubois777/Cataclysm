@@ -442,3 +442,142 @@ def test_the_stash_entry_no_longer_calls_gold_ownership_open(decision_entry):
         "gold owner as a reason the stash is fixed. Issue #306 answered it the "
         "same day.")
     assert "only the second reason below still stands" in decision_entry
+
+
+# --------------------------------------------------------------------------
+# The carried inventory -- issue #308
+#
+# Issue #260 settled that docs/Empire_Skill_Tree_Keystones.md predates the
+# passive tree editor, so an idea in it with no node in
+# docs/Empire_Development_Tree_Final.json was never built. One of the three
+# removed that way, Weightless Spoils, was the only thing anywhere in the design
+# that granted inventory slots. Nothing scaled inventory afterwards and nothing
+# stated a size either.
+#
+# DECIDED 2026-08-05: 48 slots, four rows of twelve, one item per slot, and
+# nothing increases it. There is no operator answer; the reasoning is in
+# docs/DECISIONS.md and the number is a tuning value.
+# --------------------------------------------------------------------------
+
+TREE = REPO_ROOT / "docs" / "Empire_Development_Tree_Final.json"
+
+INVENTORY_DECISION_HEADING = ("## 2026-08-05 — The carried inventory is 48 "
+                              "slots and nothing increases it")
+
+
+@pytest.fixture(scope="module")
+def inventory_entry() -> str:
+    text = DECISIONS.read_text(encoding="utf-8")
+    start = text.find(INVENTORY_DECISION_HEADING)
+    assert start != -1, (
+        f"docs/DECISIONS.md has no entry headed "
+        f"{INVENTORY_DECISION_HEADING!r}.")
+    end = text.find("\n---", start)
+    return unwrapped(text[start:end if end != -1 else len(text)])
+
+
+def inventory_figures(storage: str) -> tuple[int, int, int]:
+    """(total slots, rows, slots per row) as the Storage section states them."""
+    match = re.search(
+        r"carried inventory is (\d+) slots, (\w+) rows of (\w+)", storage)
+    assert match, (
+        "the Storage section does not state a carried inventory size in the "
+        "form 'carried inventory is N slots, R rows of C'. Issue #308.")
+    words = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+             "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
+    return int(match.group(1)), words[match.group(2)], words[match.group(3)]
+
+
+def test_it_states_a_carried_inventory_size(storage):
+    total, rows, per_row = inventory_figures(storage)
+    assert total > 0 and rows > 0 and per_row > 0
+
+
+def test_the_inventory_rows_and_the_total_agree(storage):
+    """Same arithmetic check the stash gets, for the same reason: the number is
+    expected to move and must not move in one sentence only."""
+    total, rows, per_row = inventory_figures(storage)
+    assert rows * per_row == total, (
+        f"the Storage section says {total} inventory slots and also {rows} rows "
+        f"of {per_row}, which is {rows * per_row}. Issue #308.")
+
+
+def test_nothing_increases_the_carried_inventory(storage):
+    """The answer to issue #308, and the three routes it has to close. Naming
+    only the empire tree would leave affixes and city upgrades open, and the
+    empire tree is the one that already lost its node."""
+    assert "nothing increases\nit".replace("\n", " ") in storage, (
+        "the Storage section does not say the carried inventory never grows. "
+        "Issue #308.")
+    for route in ("No\nempire upgrade node grants slots", "no affix grants slots",
+                  "no city upgrade\ngrants slots"):
+        assert route.replace("\n", " ") in storage, (
+            f"the Storage section does not rule out {route!r} as a source of "
+            f"inventory slots. Issue #308.")
+
+
+def test_the_inventory_rule_says_why_rather_than_only_what(storage):
+    """A flat rule with no reason reads as an oversight, and this one looks
+    like a missing feature: the prose description of the empire tree used to
+    describe a node that granted slots."""
+    assert "Why nothing increases it" in storage, (
+        "the Storage section fixes the inventory without saying why. Issue "
+        "#308.")
+    assert "a dungeon floor costs a day" in storage, (
+        "the reason given does not connect to the pressure this design already "
+        "has. A dungeon floor costs a day, so a dungeon is a long way from "
+        "anywhere to put things down, and that is what makes carrying capacity "
+        "a real constraint here. Issue #308.")
+
+
+def test_it_says_why_the_number_is_not_diablo_fours(storage):
+    """The nearest anchor is 33 and this design chose more. A number above a
+    cited anchor with no reason reads as a mistake."""
+    assert "rather than Diablo IV's 33" in storage, (
+        "the Storage section states an inventory size without saying why it "
+        "differs from the game it is anchored to. Issue #308.")
+
+
+def test_no_node_in_the_empire_tree_grants_inventory_slots():
+    """THE FACT THE DECISION RESTS ON. If a node granting slots is ever added
+    with the passive tree editor, the Storage section's claim that nothing
+    increases the inventory becomes false and this fails.
+
+    docs/Empire_Development_Tree_Final.json is authoritative for the tree;
+    docs/Empire_Skill_Tree_Keystones.md is older prose commentary. Issue #25.
+    """
+    import json
+
+    graph = json.loads(TREE.read_text(encoding="utf-8"))
+    granting = [node["data"]["name"] for node in graph["nodes"]
+                if "inventor" in json.dumps(node["data"]).lower()]
+    assert granting == [], (
+        f"{granting} in {TREE.name} mention inventory. The Storage section says "
+        f"nothing increases the carried inventory, and docs/DECISIONS.md gives "
+        f"that as a decision rather than an accident. Issues #308 and #260.")
+
+
+def test_the_inventory_entry_corrects_the_replacement_node_premise(
+        inventory_entry):
+    """Issue #308 asked whether the Explorer quadrant needs a node to replace
+    Weightless Spoils. It does not, and the premise was wrong: the prose file
+    predates the graph, so the node was never in the tree to be removed."""
+    assert "does not need a replacement node" in inventory_entry, (
+        "the docs/DECISIONS.md entry does not answer the second half of issue "
+        "#308, which asked whether the Explorer quadrant needs a replacement "
+        "node.")
+    assert "never in the graph to be removed" in inventory_entry, (
+        "the entry says no replacement is needed without correcting the "
+        "premise. Nothing was removed from the tree; the prose file lost an "
+        "entry. Issue #260.")
+
+
+def test_the_inventory_entry_records_what_argues_against_it(inventory_entry):
+    assert "What argues against it" in inventory_entry
+    assert "#323" in inventory_entry, (
+        "the entry does not name the open question that decides whether 48 is "
+        "generous or crippling: what happens when the inventory fills partway "
+        "down a dungeon. Issue #323.")
+    assert "a construction, not a measurement" in inventory_entry, (
+        "the entry does not say the number is built from other games' figures "
+        "rather than measured. Issue #308.")
