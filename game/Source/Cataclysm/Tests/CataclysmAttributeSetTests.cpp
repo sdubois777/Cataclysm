@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "GameplayEffect.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -225,11 +226,23 @@ CATACLYSM_TEST(FCataclysmResistanceOverCapTest,
 		TestEqual(TEXT("Raw resistance keeps its over-capped value"),
 			Fixture.Resistances->GetDemonicResistance(), 150.0f);
 
-		// The 70% figure caps what resistance is WORTH, not what it may be.
+		// The 70% figure caps what resistance is WORTH, not what it may be, and
+		// it lives in the damage calculation. This used to call a second copy
+		// of it on the attribute set, which took no penetration argument and so
+		// could not show the property the over-capping is FOR. Issue #232.
 		TestEqual(TEXT("Effective resistance is capped at seventy"),
-			UCataclysmResistanceAttributeSet::EffectiveResistance(150.0f), 70.0f);
+			UCataclysmDamageCalculation::EffectiveResistance(150.0f, 0.0f), 70.0f);
 		TestEqual(TEXT("Effective resistance below the cap is unchanged"),
-			UCataclysmResistanceAttributeSet::EffectiveResistance(45.0f), 45.0f);
+			UCataclysmDamageCalculation::EffectiveResistance(45.0f, 0.0f), 45.0f);
+
+		// What the headroom buys, which is the reason to over-cap at all.
+		// Penetration is subtracted before the cap, so 150 resistance still
+		// sits at the cap against 30 penetration where exactly 70 would drop
+		// to 40.
+		TestEqual(TEXT("Over-capped resistance holds the cap against penetration"),
+			UCataclysmDamageCalculation::EffectiveResistance(150.0f, 30.0f), 70.0f);
+		TestEqual(TEXT("Resistance at exactly the cap does not"),
+			UCataclysmDamageCalculation::EffectiveResistance(70.0f, 30.0f), 40.0f);
 	}
 	World->DestroyWorld(false);
 	return true;

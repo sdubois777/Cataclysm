@@ -23,22 +23,22 @@ WHAT THIS FILE CHECKS, WHICH IS THE PART AN IMPORT CANNOT REACH.
     the three C++ constants     Unreal cannot import a Python module.
     the design document         Prose cannot import anything.
 
-THE C++ SIDE HAS THE SAME DUPLICATION and it is not consolidated here, because
-removing it means a new include between an attribute set and the damage
-calculation, which is a coupling decision rather than a rename. The three are
-compared instead:
+THE C++ SIDE HAD THE SAME DUPLICATION AND NO LONGER DOES. Issue #232 deleted
+`UCataclysmResistanceAttributeSet::EffectiveResistanceCap` and the helper beside
+it, which clamped a raw resistance at 70 with no penetration argument. Nothing
+outside a test called it, and the answer it gave was wrong for the design:
+penetration is subtracted BEFORE the cap, which is the whole reason the cap is
+soft. Two C++ copies are left and both are real:
 
     UCataclysmDamageCalculation::ResistanceCap
         game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h
-        Applied in the damage calculation itself.
-    UCataclysmResistanceAttributeSet::EffectiveResistanceCap
-        game/Source/Cataclysm/AbilitySystem/CataclysmResistanceAttributeSet.h
-        Applied when reading an effective resistance off the attribute set.
+        Applied in the damage calculation itself. This is the one the game runs.
     FCataclysmPowerScoreModel::ResistanceCap
         game/Source/Cataclysm/Player/CataclysmPowerScore.h
-        Already compared against `player_power.py` by
-        tools/tests/test_power_score_port.py. Repeated here so this file is the
-        one place that lists every copy of the number.
+        A different question -- how much resistance counts toward Power Score --
+        that happens to stop at the same number. Already compared against
+        `player_power.py` by tools/tests/test_power_score_port.py. Repeated here
+        so this file is the one place that lists every copy of the number.
 
 READING SOURCE WITH A REGULAR EXPRESSION IS CRUDE, and it is what
 tools/tests/test_power_score_port.py already does for the same reason: the
@@ -61,10 +61,17 @@ SOURCE = REPO_ROOT / "game" / "Source" / "Cataclysm"
 CPP_COPIES = [
     ("AbilitySystem/CataclysmDamageCalculation.h", "ResistanceCap",
      "the damage calculation"),
-    ("AbilitySystem/CataclysmResistanceAttributeSet.h", "EffectiveResistanceCap",
-     "the resistance attribute set"),
     ("Player/CataclysmPowerScore.h", "ResistanceCap",
      "the Power Score model"),
+]
+
+#: A constant that was deleted, checked so it cannot come back unnoticed.
+#: `UCataclysmResistanceAttributeSet::EffectiveResistanceCap` was a third copy
+#: whose helper ignored penetration, which is the one thing the cap's softness
+#: depends on. Issue #232.
+DELETED_CPP_COPIES = [
+    ("AbilitySystem/CataclysmResistanceAttributeSet.h",
+     "EffectiveResistanceCap"),
 ]
 
 #: Every place `docs/Cataclysm_GDD_v2.md` states the cap, and a pattern that
@@ -158,6 +165,16 @@ class TestTheCppCopiesAgree:
             f"could not find {constant} in {path.name}, which is what "
             f"{applied_by} applies")
         assert float(match.group(1)) == pytest.approx(cap)
+
+    @pytest.mark.parametrize("relative_path,constant", DELETED_CPP_COPIES)
+    def test_a_deleted_copy_has_not_come_back(self, relative_path, constant):
+        """Deleting a duplicate only helps if it stays deleted."""
+        text = read(SOURCE / relative_path)
+        assert constant not in text, (
+            f"{constant} is back in {relative_path}. It was deleted by #232 "
+            "because it was a second copy of the resistance cap whose helper "
+            "ignored penetration, and penetration is subtracted before the cap. "
+            "Use UCataclysmDamageCalculation::ResistanceCap instead.")
 
 
 class TestTheDesignDocumentAgrees:
