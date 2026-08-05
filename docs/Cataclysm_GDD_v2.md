@@ -111,6 +111,19 @@ This is what makes a mode worth anything: a Heretic Solo Self-Found character
 carried those rules for its whole life, and could not have switched them off at
 the moment they became inconvenient.
 
+**Each lethality mode has its own empire upgrade tree.** A character's empire
+meta-progression is shared with every other character in the same mode and with
+no character in another one, so choosing Hardcore or Heretic for the first time
+means starting that mode's tree from nothing. This is the largest cost of the
+choice and it is permanent, because the mode cannot be changed afterwards.
+
+**Solo Self-Found is stricter than that, and it is the harsher of the two
+choices.** A Solo Self-Found character has its own empire upgrade tree shared
+with no other character at all — not with the others in its lethality mode, and
+not with another Solo Self-Found character. So it starts the meta-progression
+from nothing, and a second Solo Self-Found character starts from nothing again.
+The Empire-Wide Upgrades section states both rules in full.
+
 **No mode grants increased loot.** Drop rate belongs to the difficulty tier,
 which is the axis this game already scales content on. That is where every
 shipped game in the genre puts it: Path of Exile's Solo Self-Found league has
@@ -2512,25 +2525,56 @@ Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affe
 Players accumulate empire upgrade points by defeating dungeons. These points are spent on a permanent empire-wide upgrade tree that persists through all runs — including failed ones. Empire upgrades provide lasting bonuses to city defenses, population, dungeon floor counts, and more. This is the primary meta-progression system.
 
 **The empire upgrade tree belongs to the account, not to the character.** Every
-character on the account shares one tree, so making a new character costs that
-character's levels and gear and nothing else. The meta-progression carries over.
-This is what makes trying a different class, or a harder lethality mode, cheap
-enough to be worth doing — and the lethality mode and the Solo Self-Found flag
-are both locked at character creation, so making a new character is the only way
-to try either.
+character on the account shares one tree with every other character in the same
+lethality mode. Making another character in a mode already being played costs
+that character's levels and gear and nothing else, and the meta-progression
+carries over. That is what makes trying a different class cheap enough to be
+worth doing — and because the lethality mode and the Solo Self-Found flag are
+both locked at character creation, making a new character is the only way to try
+either.
+
+**The sharing is scoped to the lethality mode.** Standard characters share one
+empire upgrade tree, Hardcore characters share a second, and Heretic characters
+share a third. Progress made in one never appears in another, so **a player
+moving to a harder mode starts that mode's tree from nothing.** That is the
+point: the tree cannot be run up on Standard and then carried into Heretic as a
+head start. Trying a different class is cheap; trying a harder mode is not, and
+it is not meant to be.
+
+**The points are scoped as well as the tree they are spent on.** An empire
+upgrade point earned by a character is earned into that character's lethality
+mode, and can only be spent there. There is no single account balance of points
+that three trees draw from; there are three balances. Without that, a player
+could farm points on Standard and spend them into Heretic, which is exactly the
+thing the scope exists to prevent.
 
 **A Solo Self-Found character is the exception. It has its own empire tree,
-shared with nothing.** Its points come only from its own runs, and no other
-character can spend them or benefit from them. That follows from what the flag
-means: a Solo Self-Found character already has no auction house and no shared
-stash, and inheriting a mature account's empire tree would be the largest handout
-of the three. A player running Solo Self-Found is starting the whole game over,
-which is the point of the flag.
+shared with nothing** — not with the other characters in its lethality mode, and
+not with other Solo Self-Found characters. Its points come only from its own
+runs, and no other character can spend them or benefit from them. That follows
+from what the flag means: a Solo Self-Found character already has no auction
+house and no shared stash, and inheriting a mature account's empire tree would be
+the largest handout of the three. A player running Solo Self-Found is starting
+the whole game over, which is the point of the flag.
 
-**How the shared tree is scoped is still open.** Issue #277 asks whether the
-sharing between characters is bounded by the lethality mode or by the difficulty
-tier, so that progress earned at an easier setting cannot be carried into a
-harder one. Until that is answered, only the ownership rule above is settled.
+**So an account holds three shared trees plus one for every Solo Self-Found
+character.** Each of them persists across every run and every character that
+feeds it, exactly as before. The scope narrows which characters share a tree; it
+does not shorten how long a tree lasts.
+
+**The partition is storage, not content.** There is one node graph,
+`Empire_Development_Tree_Final.json`, and every tree allocates the same nodes at
+the same values. Heretic does not get a tree tuned for Heretic.
+
+**Nothing crosses the boundary, because no character can.** The lethality mode is
+locked at character creation and never changes, in either direction, and dying
+does not change it. So a character stays in one partition for its whole life:
+there is no migration, no conversion on death, and no transfer.
+
+**The boundary is claimed for the empire tree and for nothing else yet.** The
+shared stash and the auction house are not partitioned by lethality mode, so
+gear, gold and crafting materials can still pass from a Standard character to a
+Heretic one. Whether that should be closed as well is issue #285.
 
   
 
@@ -2962,10 +3006,17 @@ The max level is 100. Players earn experience by killing dungeon enemies and def
 
 Empire upgrade points are earned by defeating dungeons and persist through all runs including failures. The empire upgrade tree provides permanent bonuses to city defenses, dungeon parameters, and empire management. This system ensures every run — even a failed one — makes the next attempt slightly stronger, rewarding persistence without making early runs trivial.
 
-**The tree persists across characters as well as across runs.** It belongs to the
-account, so a new character inherits it. The one exception is a Solo Self-Found
-character, which has its own tree and inherits nothing. The Empire-Wide Upgrades
-section states the rule in full.
+**The tree persists across characters as well as across runs, within one
+lethality mode.** It belongs to the account, so a new character inherits it —
+but only from characters in the same mode. Standard, Hardcore and Heretic each
+have their own tree, and a character starting in a mode the account has not
+played before starts that tree from nothing. The one exception is a Solo
+Self-Found character, which has its own tree and inherits nothing at all. The
+Empire-Wide Upgrades section states the rule in full.
+
+**So "no run is wasted" means no run within a mode is wasted.** Every run feeds
+the tree of the mode it was played in, whether it was won or lost. What a run
+never does is feed a different mode's tree.
 
   
 

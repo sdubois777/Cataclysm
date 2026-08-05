@@ -22,8 +22,9 @@ applied or still pending.
 
 ## 2026-08-05 — The empire upgrade tree belongs to the account, except under Solo Self-Found
 
-**Affects** `docs/Cataclysm_GDD_v2.md`. Applied. Issue #273. The second half of
-the answer is not applied and is carried by #277; see "What is not settled" below.
+**Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #273 settled who
+owns the tree; issue #277 settled what the sharing is scoped to. Both halves are
+now written; see "What the sharing is scoped to" below.
 
 ## The question
 
@@ -62,33 +63,179 @@ character.
 The cost is that a new character on a mature account skips the early difficulty.
 That is real, and it is what the second half of the answer was aimed at.
 
-## What is not settled
+## What the sharing is scoped to
 
 The rest of the answer was: **"And it should only apply to the same difficulty
 tier so you can't run up your empire tree in normal and then switch to the hardest
 mode and have a huge head start."**
 
 That sentence scopes the sharing, but the game has two difficulty axes and the
-sentence uses words from both. "Difficulty tier" is the T1 to T8 content axis.
+sentence used words from both. "Difficulty tier" is the T1 to T8 content axis.
 "Normal" and "the hardest mode" read as the lethality axis, where the modes are
 Standard, Hardcore and Heretic. Three trees per account or eight is not a small
 difference: `docs/Empire_Development_Tree_Final.json`, the empire passive tree,
 has 159 nodes and 1,248 allocatable points.
 
-**Nothing was written for that half**, because writing a scope rule that turns out
-to be the wrong axis is harder to notice and undo than leaving it absent. Issue
-#277 carries it, with both readings, what each costs, and what the genre does.
+**Nothing was written for that half at the time**, because writing a scope rule
+that turns out to be on the wrong axis is harder to notice and undo than leaving
+it absent. Issue #277 carried it with both readings.
 
-The recommendation on #277 is the lethality mode, for three reasons. No shipped
-game in the genre partitions meta-progression by a numeric difficulty step —
-Path of Exile scopes the Atlas tree by league and by Softcore against Hardcore but
-not by map tier; Diablo IV scopes Renown and Altars of Lilith by realm but not by
-World Tier; Last Epoch scopes by cycle and by the Hardcore and Solo Challenge
-flags but not by monolith corruption. Scoping by difficulty tier would also mean a
-player who advances a tier arrives with an empty tree at the moment the content
-gets harder, which contradicts the document's own claim that the tree makes each
-next attempt stronger. And it composes with #255: because the lethality mode is
-locked at character creation, no character can cross that boundary by any route.
+**Answered 2026-08-05: the lethality mode.** Standard characters share one empire
+upgrade tree, Hardcore characters share a second, Heretic characters share a
+third, and each Solo Self-Found character has its own on top of that. Three shared
+trees per account plus one per Solo Self-Found character.
+
+## Why the points are scoped and not only the tree
+
+The most natural way to build "three trees" is one account-wide balance of empire
+upgrade points with three separate allocations of it. **That would not do what was
+asked for.** A player could farm points on Standard and spend them into Heretic,
+which is precisely the head start the answer was aimed at.
+
+So the design document states both: a point is earned into the earning character's
+lethality mode and can only be spent there, and there are three balances rather
+than one.
+
+This also settles where a point goes in co-op without needing a co-op rule. It
+goes to the lethality mode of the character that earned it. Whether a party may
+mix lethality modes at all is a different question and belongs to #31.
+
+## Why the lethality mode and not the difficulty tier
+
+**No shipped game in the genre partitions meta-progression by a numeric difficulty
+step.** The pattern is unanimous across six games, and in every case the numeric
+axis is a source of progression or a gate on rewards rather than a divider between
+pools.
+
+| Game | Account-wide progression | Partitioned by | Never partitioned by |
+|---|---|---|---|
+| Path of Exile | Atlas passive tree | League, which includes the Softcore/Hardcore and Solo Self-Found flags | Map tier T1 to T16 |
+| Path of Exile 2 | Atlas passive tree | League, the same way | Waystone tier T1 to T15 |
+| Diablo III | Paragon levels | Realm and Hardcore, giving exactly four tallies | Torment level, Greater Rift tier |
+| Diablo IV | Renown, Altars of Lilith, Codex of Power | Realm and Hardcore | World Tier, Torment |
+| Last Epoch | Stash, gold, materials, faction rank | Cycle, Hardcore, and the two Solo flags | Monolith corruption |
+| Grim Dawn | Recipes, illusions, shared progress | Hardcore | Veteran, which shares the stash |
+
+**Grim Dawn is the cleanest single piece of evidence**, because it carries both
+kinds of axis and treats them differently on purpose. Hardcore is chosen at
+character creation, cannot be changed afterwards, and splits the account layer
+completely: the transfer stash, recipes and illusions are all stored separately
+for Hardcore and Softcore. Veteran is a difficulty setting that can be switched on
+and off from the menu before loading a character, and it splits nothing — a
+Veteran character shares the stash with its non-Veteran counterparts. The axis
+that is chosen once and never changed partitions; the axis that is a difficulty
+dial does not.
+
+**Path of Exile 2 is the sharpest counter-case to the difficulty-tier reading.**
+Its Atlas passive points are earned two per waystone tier, T1 through T15. The
+numeric difficulty ladder is how a player fills one tree. Partitioning by it would
+be architecturally backwards.
+
+**The reason behind the unanimity applies directly here.** A numeric difficulty
+step is something one character climbs during one campaign. Partitioning by it
+would make a character's own progress fall out of its own pool as it advanced, and
+every tier-up would orphan the work done below. A categorical mode is different in
+kind: it is chosen once, never climbed, and never left.
+
+**It also composes with the character-creation lock.** Issue #255 locked the
+lethality mode at creation, in either direction and including on death, so no
+character ever changes partition and the boundary needs no enforcement beyond
+that.
+
+## What argues against it, recorded because it is real
+
+Mode partitioning is the genre norm and no clear counter-example was found. The
+arguments against it are about the cost it imposes, not about whether anyone else
+does it differently.
+
+**Diablo IV shipped this exact partition and players read it as a defect.** The
+game director stated publicly that Altar of Lilith unlocks are earned "once —
+they're account based". The shipped behaviour partitioned them by realm and mode,
+and produced a bug report titled "Altars of Lillith not account wide, only realm
+wide". The lesson is not that partitioning is wrong; it is that "account-wide" is
+heard by players as genuinely account-wide, so a partition has to be stated where
+the player can see it. That is why the rule is now written into the Difficulty
+Options section as well, which is where the choice is actually made.
+
+**Blizzard later walked the mechanism back.** In Diablo IV Season 11 the Altars
+stopped granting permanent power at all, and Renown became Eternal-realm-only.
+Permanent account power that has to be re-earned in each partition generated years
+of re-grind complaints, and the eventual resolution was to remove the permanent
+power rather than keep re-earning it.
+
+**Last Epoch met the same complaint and answered it with catch-up, not more
+partitions.** A player thread asking for monolith corruption to be shared across
+characters put it as "Imagine if you had to complete your atlas on every new char
+in PoE", and the studio's stated answer was catch-up mechanics for alternate
+characters.
+
+**The Solo Self-Found rule here is stricter than the genre.** In Path of Exile,
+Solo Self-Found is a league, so Solo Self-Found characters on one account share an
+Atlas with each other — a second shared pool, not a private one. Only Last Epoch's
+Solo Character Found matches a private per-character rule, and even that was
+softened in patch 1.0.1 with a merge path. A private, permanent tree with no exit
+is the strictest version anyone has shipped.
+
+**The fan-out is wider than any surveyed game.** Three lethality modes plus one
+private tree per Solo Self-Found character exceeds Path of Exile's flag
+multiplication, which is itself a standing complaint about fragmenting the player
+base. The cost falls on exactly the players most worth recruiting into the harder
+modes.
+
+None of this changes the decision. It is recorded so that if the re-grind cost
+turns out to be the problem those studios found it to be, the response is already
+known: reduce the cost of re-earning rather than remove the partition.
+
+## What this deliberately does not settle
+
+Five questions surfaced while writing the rule. Each is its own issue.
+
+| Issue | Question |
+|---|---|
+| #285 | The shared stash and the auction house are not partitioned, so gear can still cross the boundary the tree no longer crosses. |
+| #286 | A Solo Self-Found character consumed by Worn Residue is the only owner of its tree, so "Empire progress is kept" has no referent. |
+| #287 | Whether a seasonal league is a fourth partition. Every game in the table above that has leagues, cycles or realms partitions by them first; Grim Dawn, which has none, does not. |
+| #288 | Whether the empire tree can be respecced, and whether the four tier capstones being inherited already chosen is intended. |
+| #289 | Whether Heretic's 25% extra surge dungeons over-compensate for its tree starting empty. |
+
+**One worry was checked and dismissed.** Content difficulty does not assume the
+player has an empire tree: Enemy Score is built from the width of the difficulty
+tier, and player Power Score is four additive terms — level, gear, gems and
+resistances — stated in the Power Score section of `docs/Cataclysm_GDD_v2.md`.
+The empire tree appears in neither. A first Heretic character at tier 1 with an
+empty tree is in exactly the position of any first character on any account. What
+the empty tree costs is the empire layer's run-time and resolve-timer levers, not
+survivability.
+
+## What was checked in the repository rather than looked up
+
+- `docs/Empire_Development_Tree_Final.json`, parsed on 2026-08-05: 159 nodes and
+  1,248 allocatable points, being 110 basic nodes worth 1,199, 41 keystones worth
+  41, and 8 capstones worth 8.
+- The Difficulty Options section of `docs/Cataclysm_GDD_v2.md` lists exactly three
+  lethality modes, which is what makes the count three shared trees rather than
+  some other number.
+- No file under `sim/`, `game/Source/` or `game/Data/` contains "lethality",
+  "SSF" or "Self-Found". Nothing in code models any of this yet.
+
+Sources:
+[Atlas completion is per account and league — Path of Exile forum](https://www.pathofexile.com/forum/view-thread/3241482),
+[Atlas passive tree — Path of Exile 2 forum](https://www.pathofexile.com/forum/view-thread/3678292),
+[Paragon — Diablo Wiki](https://diablo.fandom.com/wiki/Paragon),
+[Altars of Lilith — Maxroll](https://maxroll.gg/d4/resources/altar-of-lilith),
+[Altars of Lillith not account wide, only realm wide — Blizzard forums](https://us.forums.blizzard.com/en/d4/t/altars-of-lillith-not-account-wide-only-realm-wide/88037),
+[Diablo IV Season 11 changes how Altars of Lilith work — Icy Veins](https://www.icy-veins.com/d4/news/diablo-4-season-11-changes-how-altars-of-lilith-work/),
+[Game difficulties — Grim Dawn official guide](https://www.grimdawn.com/guide/game-settings/game-difficulties/).
+
+**Confidence is not uniform and the entry should not be read as if it were.** The
+Path of Exile, Diablo III, Diablo IV and Grim Dawn claims come from the sources
+above and are stated with confidence. The Last Epoch patch 1.0.1 merge behaviour
+and the Torchlight Infinite cross-boundary sharing were reported during research
+but not confirmed against a primary source, so treat them as supporting colour.
+No shipped ARPG was found that deliberately shares a spendable meta-progression
+tree across its hardcore and softcore ladders, which is the absence the decision
+leans on; an absence is weaker evidence than a positive finding and is recorded
+here as such.
 
 ---
 
