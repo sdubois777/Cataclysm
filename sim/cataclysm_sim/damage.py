@@ -128,6 +128,74 @@ BLUNT_STUN_CHANCE = 10.0
 #: seconds.
 BLUNT_STUN_SECONDS = 0.75
 
+
+# --------------------------------------------------------------------------
+# The anti-stun-lock rule
+# --------------------------------------------------------------------------
+#
+# THE REQUIREMENT, from the project owner: crowd control must not become tedious
+# the way it is in many games in the genre, where the smallest hit can stun and a
+# player can be stun-locked until they die. Issue #216.
+#
+# ANSWERED 2026-08-05, and it is a combination of two mechanisms rather than one:
+#
+#   1. A target with a lot of health is not stunned by small hits AT ALL.
+#   2. A target that IS stunned cannot be stunned again for at least 5 seconds.
+#   3. Bosses are immune to stun outright.
+#
+# BOTH OF THE FIRST TWO ARE NEEDED. A damage threshold alone still allows chain
+# stunning by large hits. An immunity window alone still allows constant
+# interruption by small ones.
+#
+# ONLY THE FIRST AND THIRD LIVE HERE. The immunity window is a rule about time
+# and this module resolves one hit with no clock, so the game enforces it. What
+# this module can do, and does, is refuse a stun the threshold forbids and refuse
+# one against a boss.
+
+#: How much of the target's MAXIMUM health a hit must deal before it can stun at
+#: all, as a percentage. Below this the stun chance is zero however high the
+#: attacker's chance to stun is.
+#:
+#: 10% IS THE MIDDLE OF WHAT THE GENRE SHIPS, and the three surveyed games do not
+#: agree:
+#:
+#:     Last Epoch     more than 5% of maximum health
+#:     Path of Exile  more than about 10% of effective maximum life, because a
+#:                    computed stun chance at or below 20% is discarded
+#:     Path of Exile 2  15%, below which the chance is zero
+#:
+#: Taking the middle rather than the strictest is deliberate: this design also
+#: has a 5 second immunity window, which is longer than Last Epoch's 1 second and
+#: longer than the 4 seconds Path of Exile gives its unique bosses. The window is
+#: doing most of the anti-lock work, so the threshold does not also need to be
+#: the harshest of the three.
+STUN_DAMAGE_THRESHOLD = 10.0
+
+#: How long a target cannot be stunned again after being stunned, in seconds.
+#: Stated by the project owner as "at least 5 seconds". Enforced by the game
+#: rather than here, and recorded here so both copies of the rule sit together.
+STUN_IMMUNITY_SECONDS = 5.0
+
+
+def can_be_stunned(damage_to_health: float, defender: Defender) -> bool:
+    """Whether a hit is even eligible to stun, before any chance roll.
+
+    Two ways to be ineligible: the defender is a boss, or the hit did not take
+    enough of the defender's maximum health to count as a heavy blow.
+
+    MEASURED AGAINST DAMAGE ACTUALLY DEALT, not the attack's raw damage. A hit
+    that armour and resistance reduced to a scratch is a scratch, which is the
+    whole point of the rule -- a well defended character stops being interrupted
+    by chip damage. Both surveyed games do the same.
+
+    A DESIGNED STUN IGNORES THE THRESHOLD. See `Attacker.stun_is_designed`.
+    """
+    if defender.is_boss:
+        return False
+    if defender.health <= 0.0:
+        return False
+    return damage_to_health >= defender.health * STUN_DAMAGE_THRESHOLD / 100.0
+
 # --------------------------------------------------------------------------
 # Energy shield recharge
 # --------------------------------------------------------------------------
@@ -185,6 +253,19 @@ class Attacker:
     #: scale, and it does not exist yet: see issue #79.
     bonus_stun_chance: float = 0.0
 
+    #: Whether this attack's stated effect is to stun, rather than the stun being
+    #: a side effect of the damage.
+    #:
+    #: FOUR SHIPPED SKILLS SET THIS, in `game/Data/WeaponSkills.csv`: Shield Bash
+    #: stuns for 1.5 seconds, Shockwave Leap for 1, Lunge for 0.75, and Whip
+    #: Swing "briefly". So does the Brute's Heart set enchantment, for 3 seconds.
+    #:
+    #: A DESIGNED STUN IGNORES THE DAMAGE THRESHOLD. Shield Bash's whole purpose
+    #: is to stun, so a threshold that made it fail against a healthy target
+    #: would leave the skill doing nothing it was written to do. It does NOT
+    #: ignore boss immunity, and it does not ignore the immunity window.
+    stun_is_designed: bool = False
+
     def stun_chance(self) -> float:
         """Chance to stun before the target's crowd control resistance."""
         base = BLUNT_STUN_CHANCE if self.subtype == "Blunt" else 0.0
@@ -219,6 +300,19 @@ class Defender:
     mana: float = 0.0
     #: Reduces the chance of being stunned, as a percentage of that chance.
     crowd_control_resistance: float = 0.0
+
+    #: Whether this defender is a boss. A boss cannot be stunned at all.
+    #:
+    #: Stated by the project owner 2026-08-05, issue #216. The same rule that
+    #: stops the player being stun-locked would otherwise let the player
+    #: chain-stun a boss, and a boss that can be held still is not a fight. The
+    #: three surveyed games all reach for something here and none of them uses
+    #: plain immunity: Path of Exile makes a unique boss immune only while
+    #: stunned and for 4 seconds after, Last Epoch counts a boss as having 50%
+    #: more health for the stun threshold, and Diablo IV routes crowd control
+    #: into a separate stagger meter. Outright immunity is the simplest of the
+    #: four and is what was chosen.
+    is_boss: bool = False
 
     # -- What makes energy shield a distinct defence rather than extra health --
     #
@@ -374,9 +468,20 @@ def resolve(attacker: Attacker, defender: Defender,
     # 8. Stun, rolled separately from damage. A hit that is evaded never gets
     # here; a hit that is blocked still can, because a block reduces damage
     # rather than preventing contact.
-    stun_chance = effective_stun_chance(attacker, defender)
-    stunned = (force_stun if force_stun is not None
-               else rng.uniform(0, 100) < stun_chance)
+    #
+    # The anti-stun-lock rule gates the roll rather than reducing it. A hit that
+    # took too little of the target's maximum health cannot stun however high the
+    # attacker's chance is, and a boss cannot be stunned at all. A skill whose
+    # stated effect is to stun skips the damage threshold but not boss immunity.
+    # Issue #216.
+    if defender.is_boss:
+        stunned = False
+    elif attacker.stun_is_designed or can_be_stunned(to_health, defender):
+        stun_chance = effective_stun_chance(attacker, defender)
+        stunned = (force_stun if force_stun is not None
+                   else rng.uniform(0, 100) < stun_chance)
+    else:
+        stunned = False
 
     return Resolution(
         evaded=False, blocked=blocked, incoming=attacker.damage,
