@@ -1501,13 +1501,52 @@ Taking the middle rather than the strictest is deliberate. This design also has 
 
   
 
+**What this rule covers: hard stops, and nothing else.** An effect is covered when it completely stops the target operating any part of its character. Everything short of that is manageable by the player it is used on, and is limited by its own numbers rather than by this rule.
+
+  
+
+| Effect | Covered | Because |
+| ----- | ----- | ----- |
+| Stun | **Yes** | The target cannot act at all |
+| Knockdown | **Yes** | The target cannot act at all; it is simply on the floor while it happens |
+| Slow, such as Cripple | No | Slower is still able to act |
+| Damage reduction, such as Weaken | No | Weaker is still able to act |
+| Displacement, such as a 4 metre knockback | No | The target can act on arrival |
+| Disarm | No | Movement and any skill that does not need the weapon still work |
+| Madness | **Open** | The target operates every part of itself, but not for the side that owns it. Issue #303 |
+
+  
+
 **A slow is not a stun and is not covered by this rule.** Cripple reduces an enemy's movement and attack speed and leaves it able to act, which is why its reduction caps below total — a full stop would be a stun by another name. The same reasoning applies to Weaken.
 
   
 
-**What offensive crowd control gear exists is not yet decided.** Cripple is the only crowd control effect available as an affix today. Stun reaches the game through the Blunt weapon sub-type, through four weapon skills, and through two enchantments, but no affix grants a chance to stun and none scales a stun's duration. Whether knockback carries the same threshold and window as stun is also open. Issues #297, #298 and #299 carry these.
+**Knocking a target back and knocking a target down are two different effects, and only one of them is covered.** Twelve weapon skills push or floor an enemy, and they do not all do the same thing.
 
-**A slow's position is settled and is not among those open questions.** It is stated two paragraphs above: a slow is not a stun and this rule does not cover it. That was written down before the questions above were, and this paragraph used to list a slow as open as well, which made the document say both things at once.
+  
+
+| Effect | What a skill says | Covered by this rule |
+| ----- | ----- | ----- |
+| Displacement | "knocks them back 4 meters", "knocking them aside" | **No** |
+| Knockdown | "knocked down for 2 seconds" | **Yes, in full** |
+
+  
+
+**A knockdown is a hard stop, so it carries all three parts of the rule.** It stops the target acting for a stated number of seconds, which is the whole of what a stun does; the target simply happens to be on the floor. Two Ultimates knock down — Warlord's Decree for 2 seconds and Cataclysm for 3 — and both are longer than every stun any skill grants, which run 0.75 to 1.5 seconds. Leaving knockdown outside the rule would mean the longest hold in the game is the one nothing limits, and that it works on a boss while Shield Bash's 1.5 seconds does not. The same exemption applies as for stun: a skill whose stated effect is to knock down ignores the damage threshold, and does **not** ignore boss immunity or the immunity window. The two share one window rather than one each, because two 3-second holds taken in turn is exactly the failure the window exists to stop.
+
+  
+
+**Displacement is not covered, because it does not hold the target still.** Being pushed four meters costs the target the distance and nothing else; it can act on arrival. There is no damage threshold on it, so a weak hit can still shove, and a boss can be pushed. **This does not mean it should be repeatable without limit** — a target held permanently at the far end of a room is being controlled, whatever the mechanic is called — but the limit on it is not this rule and is not settled. Issue #302 carries it.
+
+  
+
+**Where this split comes from.** The genre draws the same line. In Path of Exile a knockback does not interrupt the target's actions at all, which is the difference from a stun. Path of Exile 2 keeps knockback as pure movement and puts the act-prevention in Heavy Stun, which is harder to reapply for a short time afterwards. Diablo IV is the clearest: it ships Knockback and Knock Down as separate effects, where Knock Down pins the target in place, and its own documentation says Knock Down does not count as a Stun. Diablo IV also limits repeated knockback, but by an escalating resistance rather than by a damage threshold, which is the shape issue #302 should start from.
+
+  
+
+**What offensive crowd control gear exists is not yet decided.** Cripple is the only crowd control effect available as an affix today. Stun reaches the game through the Blunt weapon sub-type, through four weapon skills, and through two enchantments, but no affix grants a chance to stun and none scales a stun's duration. Issues #298 and #299 carry these.
+
+**A slow's position is settled and is not among those open questions**, and neither is a knockdown's or a displacement's. All three are stated above: a slow is not a stun and this rule does not cover it, a knockdown is covered in full, and a displacement is not covered but is limited by something still to be decided in issue #302. This paragraph used to list a slow and a knockback as open as well, which made the document say two things at once about each.
 
   
 
