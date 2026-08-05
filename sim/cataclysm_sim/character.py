@@ -354,6 +354,42 @@ GENERIC = ClassDefinition(name="Generic")
 # Gear, attributes, and the character
 # --------------------------------------------------------------------------
 
+def attribute_points(raw: float) -> int:
+    """An attribute's point count after gear has increased it.
+
+    STATED BY THE PROJECT OWNER, 2026-08-05, issue #225:
+
+        ARPG players are obsessed with math and calculations. If you show them a
+        number that isn't true, they'll keep digging and complaining. Round to
+        the nearest whole number.
+
+    WHAT THE QUESTION WAS. Each of the eight attributes has one affix and it is
+    a percentage increase, so a character with 33 Spirit and a top-tier +12%
+    Spirit affix arrives at 36.96. Nothing said whether that is 36, 37 or 36.96.
+
+    ROUNDING THE MATHS AND NOT ONLY THE DISPLAY IS THE POINT OF THE ANSWER. The
+    failure the owner named is a player reading 37 on the character screen,
+    working out what 37 Spirit should give, and getting a different number
+    because the maths kept 36.96. One rounded value used everywhere is what
+    stops that, so this is applied here, in the model, rather than left to the
+    interface.
+
+    HALF ROUNDS UP, NOT TO EVEN. Python's built-in `round` rounds a half to the
+    nearest even number, so it would give 36 for 36.5 and 38 for 37.5. That is
+    correct for statistics and surprising to a player, who reads "round to the
+    nearest whole number" as 36.5 becoming 37. Halves are reachable: 10% of 5 is
+    5.5. So the rule is spelled out here rather than delegated.
+
+    FLOORING WAS CONSIDERED AND REJECTED. It would take +12% of 4 Spirit to
+    4.48 and back down to 4, so a low-investment character would gain exactly
+    nothing from the affix. The affix is a percentage so that it is WEAK when
+    spread thin; being worth zero is a different thing and reads as broken.
+    """
+    if raw < 0.0:
+        raise ValueError(f"an attribute cannot be negative, got {raw}")
+    return math.floor(raw + 0.5)
+
+
 @dataclass(frozen=True)
 class Attributes:
     """Points spent. One point per level, spread across the eight attributes."""
@@ -371,7 +407,14 @@ class Attributes:
         return sum(getattr(self, n) for n in ATTRIBUTE_NAMES)
 
     def increases_for(self, stat: str) -> float:
-        """Sum of increases this allocation contributes to one stat."""
+        """Sum of increases this allocation contributes to one stat.
+
+        THE ALLOCATION ONLY. This class holds the points a player spent at
+        level-up and knows nothing about gear, so an attribute affix does not
+        reach it. `Character.increases` is the one that counts everything, and
+        it reads each attribute through `Character.attribute` rather than
+        calling this. Use this when you want what levelling alone bought.
+        """
         return sum(getattr(self, attribute) * effects[stat]
                    for attribute, effects in ATTRIBUTE_EFFECTS.items()
                    if stat in effects)
@@ -488,6 +531,13 @@ class Gear:
     sum the attribute points do and applies to everything. `modifiers` are
     increases scoped to a tag, applying only to skills that carry it.
     `weapon_base` supplies the base for the stats the weapon owns.
+
+    `increased` MAY ALSO NAME ONE OF THE EIGHT ATTRIBUTES, and the other three
+    tables may not. Each attribute has exactly one affix and it is a percentage
+    increase to the attribute the character already has -- there is no flat
+    attribute affix, and a weapon supplies no attribute -- so an attribute name
+    belongs in this one table and nowhere else. `Character.attribute` reads them
+    back out. Issues #204 and #225.
     """
 
     flat: dict[str, float] = field(default_factory=dict)
@@ -498,11 +548,19 @@ class Gear:
     def __post_init__(self) -> None:
         for label, table in (("flat", self.flat), ("increased", self.increased),
                              ("weapon_base", self.weapon_base)):
-            unknown = set(table) - set(ALL_STATS)
+            allowed = set(ALL_STATS)
+            if label == "increased":
+                allowed |= set(ATTRIBUTE_NAMES)
+            unknown = set(table) - allowed
             if unknown:
                 raise ValueError(
                     f"gear {label} names stats that are not on the character "
                     f"sheet: {sorted(unknown)}")
+
+    def attribute_increases(self) -> dict[str, float]:
+        """Only the entries in `increased` that name an attribute."""
+        return {name: value for name, value in self.increased.items()
+                if name in ATTRIBUTE_NAMES}
 
 
 # --------------------------------------------------------------------------
@@ -910,13 +968,42 @@ class Character:
             start = self.definition.base_at(stat, self.level)
         return start + self.gear.flat.get(stat, 0.0)
 
+    def attribute(self, name: str) -> int:
+        """How many points of an attribute this character effectively has.
+
+        The points allocated at level-up, raised by any attribute affix on gear,
+        and rounded to the nearest whole number. `attribute_points` carries the
+        rounding rule and why it is applied to the maths rather than only to the
+        character screen.
+
+        A WHOLE NUMBER IS WHAT EVERY READER GETS. There is no second, unrounded
+        value kept anywhere for the arithmetic to use, because a screen and a
+        calculation disagreeing is the failure the rule exists to prevent.
+        """
+        if name not in ATTRIBUTE_NAMES:
+            raise KeyError(f"{name} is not one of the eight attributes")
+        allocated = getattr(self.attributes, name)
+        increase = self.gear.increased.get(name, 0.0)
+        return attribute_points(allocated * (1.0 + increase))
+
+    def attribute_line(self) -> dict[str, int]:
+        """Every attribute at its effective, rounded value."""
+        return {name: self.attribute(name) for name in ATTRIBUTE_NAMES}
+
     def increases(self, stat: str) -> float:
         """Every increase that reaches this stat for the skill in hand.
 
         Attribute points and unscoped gear increases always count. A tag-scoped
         modifier counts only when the skill being used carries a matching tag.
+
+        THE ATTRIBUTE CONTRIBUTION IS READ THROUGH `attribute`, NOT OFF THE
+        ALLOCATION. An attribute affix raises the attribute, and the raised
+        attribute is what scales the stats it drives. Reading the allocation
+        here would make an attribute affix grant nothing at all.
         """
-        total = (self.attributes.increases_for(stat)
+        total = (sum(self.attribute(name) * effects[stat]
+                     for name, effects in ATTRIBUTE_EFFECTS.items()
+                     if stat in effects)
                  + self.gear.increased.get(stat, 0.0))
         for m in self.gear.modifiers:
             if m.stat == stat and m.applies_to(self.skill.tags):

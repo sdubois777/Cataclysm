@@ -492,6 +492,48 @@ CATACLYSM_TEST(FCataclysmPrimaryAttributesStartEmptyTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// An attribute is a whole number of points
+// --------------------------------------------------------------------------
+//
+// Each of the eight attributes has one affix and it is a percentage increase, so
+// 33 Spirit with a top-tier +12% affix reaches 36.96. The project owner decided
+// on 2026-08-05 that the value rounds to the nearest whole number, and that it
+// rounds in the maths rather than only on the character screen: a screen reading
+// 37 while the calculation keeps 36.96 is what makes a player report a bug.
+// Issue #225. `attribute_points` in `sim/cataclysm_sim/character.py` is the
+// matching function in the simulation.
+
+CATACLYSM_TEST(FCataclysmAttributeRoundingTest,
+	"Cataclysm.Attributes.AnAttributeIsAWholeNumberOfPoints")
+{
+	// Pure arithmetic first, so a failure here says the rule is wrong rather
+	// than that the ability system did not call it.
+	TestEqual(TEXT("36.96 points round to 37"),
+		UCataclysmPrimaryAttributeSet::RoundedPoints(36.96f), 37.0f);
+	TestEqual(TEXT("36.4 points round to 36"),
+		UCataclysmPrimaryAttributeSet::RoundedPoints(36.4f), 36.0f);
+	TestEqual(TEXT("A half rounds up, so 36.5 points become 37"),
+		UCataclysmPrimaryAttributeSet::RoundedPoints(36.5f), 37.0f);
+	TestEqual(TEXT("4.48 points round to 4"),
+		UCataclysmPrimaryAttributeSet::RoundedPoints(4.48f), 4.0f);
+	TestEqual(TEXT("A whole number is left alone"),
+		UCataclysmPrimaryAttributeSet::RoundedPoints(33.0f), 33.0f);
+
+	UWorld* World = CataclysmAttributeTest::MakeWorld();
+	{
+		const CataclysmAttributeTest::FScopedFullCharacter Fixture(World);
+
+		// Then through the ability system, because a rule nothing calls is not a
+		// rule. 36.96 is the worked example from the issue: 33 Spirit raised 12%.
+		Fixture.Add(UCataclysmPrimaryAttributeSet::GetSpiritAttribute(), 36.96f);
+		TestEqual(TEXT("A fractional Spirit becomes a whole Spirit"),
+			Fixture.Primary->GetSpirit(), 37.0f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_AUTOMATION_TESTS

@@ -73,6 +73,27 @@ public:
 	/** Every attribute on this set, for iteration in tests and interface code. */
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
+	/**
+	 * An attribute's point count, rounded to the nearest whole number.
+	 *
+	 * STATED BY THE PROJECT OWNER, 2026-08-05, issue #225: players of this genre
+	 * check the arithmetic, and a displayed number that is not the number the
+	 * maths used sends them looking for a bug. Each of the eight attributes has
+	 * one affix and it is a percentage increase, so 33 Spirit with a top-tier
+	 * +12% affix reaches 36.96 and has to become 37 everywhere -- not 37 on the
+	 * character screen and 36.96 in the calculation.
+	 *
+	 * HALF ROUNDS UP, which is what a player reads "nearest whole number" to
+	 * mean. Halves are reachable: 10% of 5 is 5.5.
+	 *
+	 * It is a named function rather than a line inside PreAttributeChange so
+	 * that a test can check the rule without building an ability system
+	 * component, and so the call site says which rule it is applying.
+	 * `attribute_points` in `sim/cataclysm_sim/character.py` is the matching
+	 * function in the simulation and carries the same reasoning.
+	 */
+	static float RoundedPoints(float Raw);
+
 protected:
 	UFUNCTION() void OnRep_Agility(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Ferocity(const FGameplayAttributeData& OldValue);

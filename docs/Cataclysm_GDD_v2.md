@@ -605,6 +605,42 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
   
 
+### **How an Attribute Rounds**
+
+**An attribute is always a whole number of points, rounded to the nearest.** A half rounds up: 36.5 becomes 37.
+
+  
+
+Points come from levelling, from the Maw, and from gear. The gear source is a percentage increase rather than a grant of points — see "What Affixes Do Not Grant" — and a percentage of a whole number is usually not one. A character with 33 Spirit wearing a top-tier +12% Spirit affix reaches 36.96.
+
+  
+
+|  |  |
+| :-- | :-: |
+| \*\*Points before rounding\*\* | \*\*Attribute\*\* |
+| 36.96 | 37 |
+| 36.5 | 37 |
+| 36.4 | 36 |
+| 4.48 | 4 |
+
+  
+
+**The rounded number is the only number.** It is not a display convenience laid over a fractional value the calculations keep using. There is one value, it is whole, and the character screen and every stat it drives read the same one.
+
+  
+
+**That is the reason for the rule.** Players of this genre check the arithmetic. A character screen reading 37 Spirit while the maths uses 36.96 means a player works out what 37 Spirit should give, is handed something else, and reports it as a bug. Rounding the value itself removes the disagreement rather than hiding it.
+
+  
+
+**Flooring was considered and rejected.** Rounding down never grants more than was earned, but it takes +12% of 4 Spirit from 4.48 back to 4, so an affix on a lightly invested attribute would be worth exactly nothing. The affix is a percentage so that it is *weak* when spread thin; being worth zero below a threshold is a different thing and reads as broken rather than as a trade-off.
+
+  
+
+**Keeping the fraction was also considered and rejected**, for the reason above: it is the arrangement in which the screen and the maths can disagree.
+
+  
+
 ### **The Character Sheet**
 
 A character has 45 stats, grouped the way the gameplay tag list groups its Stat tags.
@@ -1970,6 +2006,10 @@ An affix cannot appear on every piece. Without restrictions every slot is interc
   
 
 That is the whole point of the design. An attribute affix is worth little to a character spread across several attributes and a great deal to one that has specialised, so it rewards a decision the player already made rather than handing everyone the same value. A flat version would do the opposite, which is why there is none.
+
+  
+
+**An attribute is always a whole number of points, rounded to the nearest.** A percentage of a whole number is not one — 33 Spirit with a top-tier +12% Spirit affix is 36.96 — so the result is rounded, and it is rounded in the maths and not only on the character screen. See "How an Attribute Rounds" below.
 
   
 
