@@ -428,17 +428,33 @@ def test_it_says_what_needs_no_partition_rule_and_why(ownership):
         "that out invites a partition rule for every per-character thing.")
 
 
-def test_it_names_the_two_questions_the_partition_left_open(ownership):
-    """The stash was partitioned before it was designed. Two things stayed open
-    and both were filed rather than guessed: the stash has no design beyond its
-    name, and nobody has said whether gold is held by the character or the
-    account. A reader who finds no stash rules should be told that is known."""
-    for issue in ("#305", "#306"):
-        assert issue in ownership, (
-            f"the section no longer names {issue}. The stash was partitioned "
-            f"before it was designed (#305) and before anyone said where gold "
-            f"is held (#306). Either one has been answered and its answer "
-            f"belongs here, or it should not have been dropped.")
+def test_the_two_questions_the_partition_left_open_are_answered(ownership):
+    """WHAT THIS USED TO ASSERT. That the section named issues #305 and #306 as
+    open: the stash had been partitioned before anything described it, and
+    nobody had said whether gold was held by the character or the account.
+
+    Both were answered on 2026-08-05 and the sentence naming them was removed,
+    so this test failed. That is the right failure for the wrong-looking reason,
+    and rewriting it is the fix -- it now asserts the answers are here.
+
+    The gold answer belongs in THIS section specifically. This is where the
+    general rule lives ("anything the account shares between characters is held
+    once per lethality mode"), and that rule was deliberately written to hold
+    whichever way #306 went. Now that it is answered, the section has to say
+    which of its two branches gold is in, or the rule reads as complete while
+    leaving its most-used case unstated.
+    """
+    assert "Gold is one of the things the account shares" in ownership, (
+        "the Empire-Wide Upgrades section states the general partition rule "
+        "without saying gold falls under it. Issue #306 settled that gold is "
+        "held by the account, once per lethality mode.")
+    assert "The Storage section states it in full" in ownership, (
+        "the section states the gold rule without pointing at where the stash "
+        "and gold are described together. Issues #305 and #306.")
+    assert "#305" not in ownership and "#306" not in ownership, (
+        "the section still cites #305 or #306 as questions it leaves open. "
+        "Both were answered on 2026-08-05: the Storage section describes the "
+        "stash, and gold is held by the account once per lethality mode.")
 
 
 def test_the_old_claim_that_a_harder_mode_is_cheap_is_gone(ownership):

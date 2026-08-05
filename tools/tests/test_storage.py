@@ -18,10 +18,23 @@ section was written under the constraints the document already carried, and
     a character has no private stash; it has an inventory and the shared one
     the auction house lists from the stash
 
-WHAT IS ASSERTED HERE. Each of the five questions the issue listed, plus the two
-boundaries this section must not cross: it must not decide where gold lives,
-which is issue #306, and it must not contradict the monetisation section's
-promise of no storage fees.
+AND ISSUE #306, ANSWERED THE SAME DAY AND LATER: gold is held by the account,
+once per lethality mode, exactly as the stash is. It lives in the same section,
+so its checks live in this file. The argument came from inside the document
+rather than from the genre survey, which was split: the Empire-Wide Upgrades
+section says making another character in a mode already being played costs
+"levels and gear and nothing else", and per-character gold would have made that
+sentence false.
+
+WHAT IS ASSERTED HERE. Each of the five questions issue #305 listed, the gold
+answer and its reasoning, and the boundary this section must not cross: it must
+not contradict the monetisation section's promise of no storage fees.
+
+ONE TEST HERE USED TO ASSERT THE OPPOSITE OF WHAT IT ASSERTS NOW, because it
+recorded that gold's owner was an open question. It says so in its own docstring,
+under the heading WHAT THIS USED TO ASSERT. A test that records an absence has to
+be rewritten when the absence is filled, or it fails for the right reason and
+gets deleted for the wrong one.
 
 600 IS A TUNING VALUE AND THE TESTS TREAT IT AS ONE. The slot count is read from
 the document and checked for internal consistency -- six tabs of 100 make 600 --
@@ -195,30 +208,66 @@ def test_it_explains_why_solo_self_found_loses_both_together(storage):
 # The boundaries this section must not cross
 # --------------------------------------------------------------------------
 
-def test_it_does_not_decide_where_gold_lives(storage):
-    """Issue #306 asks whether gold is held by the character or the account and
-    is open. The Storage section has to say the stash does not hold gold
-    WITHOUT answering that, or it settles an open question in passing."""
+def test_the_stash_itself_holds_no_gold(storage):
+    """Gold is a balance rather than an item, so it is not in the container even
+    though it is shared on the same axis as the container."""
     assert "It does not hold gold" in storage
-    assert "issue #306" in storage, (
-        "the Storage section says the stash holds no gold without pointing at "
-        "the open question of where gold does live. Issue #306.")
 
-    # Every sentence that mentions gold alongside BOTH owners is offering the
-    # two as alternatives, so it has to be marked as an open question. A flat
-    # blacklist of phrasings does not work: "whether gold belongs to the
-    # character or the account, which is not decided" contains the same words as
-    # a statement that it does, and is the opposite of one.
-    # "issue #306" is deliberately NOT a hedge. A sentence can state a
-    # conclusion and cite the issue in the same breath, and one written that way
-    # passed this check until the break-and-restore run below caught it.
-    hedges = ("not decided", "separate question", "whether")
-    for sentence in re.split(r"(?<=[.!?]) ", storage):
-        low = sentence.lower()
-        if "gold" in low and "character" in low and "account" in low:
-            assert any(h in low for h in hedges), (
-                f"the Storage section decides where gold lives, in: "
-                f"{sentence!r}. That is issue #306 and is open.")
+
+def test_it_says_gold_is_held_by_the_account_once_per_lethality_mode(storage):
+    """WHAT THIS USED TO ASSERT. Until issue #306 was answered on 2026-08-05,
+    this file asserted the OPPOSITE property: that the Storage section named
+    where gold lives as an open question and stated no conclusion about it. That
+    test split the section into sentences, found every sentence mentioning gold
+    alongside both owners, and required a hedge on each one.
+
+    The question is now answered, so a test that fails when the document states
+    the answer would be failing for the right reason and getting deleted for the
+    wrong one. It asserts the answer instead.
+
+    THE ANSWER CAME FROM INSIDE THE DOCUMENT, not from the genre survey, which
+    was split. The Empire-Wide Upgrades section says making another character in
+    a mode already being played costs "levels and gear and nothing else", and
+    per-character gold would have made that sentence false.
+    """
+    assert "Gold is held by the account, once per lethality mode" in storage, (
+        "the Storage section no longer says who owns gold. Issue #306 settled "
+        "it: the account, once per lethality mode, exactly as the stash is.")
+
+
+def test_the_gold_rule_names_the_sentence_that_decided_it(storage):
+    """A rule taken from a sentence elsewhere in the same document should say
+    which sentence, or a later edit to that sentence silently removes the
+    argument for this one."""
+    assert "levels and gear and nothing else" in storage, (
+        "the Storage section states that gold is account-held without quoting "
+        "the sentence that decided it. Issue #306.")
+
+
+def test_solo_self_found_gold_is_private_too(storage):
+    """Every other account-level thing has this exception: the empire tree, the
+    stash, the auction house. Gold without it would be the one shared resource
+    the flag failed to close off, which is the exact argument issue #273 used
+    for the tree."""
+    assert "its gold is its own and" in storage, (
+        "the Storage section makes gold account-held without saying a Solo "
+        "Self-Found character's gold is private. Issues #273 and #306.")
+
+
+def test_the_partition_section_also_names_gold(document):
+    """Two sections carry this rule and a reader may arrive at either. The
+    Empire-Wide Upgrades section is the one that states the general partition
+    rule, so it has to say gold is one of the things the rule covers."""
+    ownership = unwrapped(section_of(document, "## **Empire-Wide Upgrades**"))
+    assert "Gold is one of the things the account shares" in ownership, (
+        "the Empire-Wide Upgrades section states the general partition rule "
+        "without saying gold falls under it. That rule was written to hold "
+        "whichever way issue #306 went, and now that it is answered the section "
+        "should say which way.")
+    assert "cannot fund a Heretic one" in ownership, (
+        "the section does not state the consequence: three gold balances means "
+        "a Standard character cannot fund a Heretic one, which is the same "
+        "route the stash partition closed for gear. Issues #285 and #306.")
 
 
 def test_it_agrees_with_the_monetisation_promise(document, storage):
@@ -311,3 +360,85 @@ def test_the_decision_log_connects_it_to_the_cut_inventory_node(decision_entry):
     assert "#308" in decision_entry, (
         "the entry does not point at the open issue about what grants carried "
         "inventory slots. This entry settles the stash only.")
+
+
+# --------------------------------------------------------------------------
+# The gold decision log entry -- issue #306
+# --------------------------------------------------------------------------
+
+GOLD_DECISION_HEADING = ("## 2026-08-05 — Gold is held by the account, once per "
+                         "lethality mode")
+
+
+@pytest.fixture(scope="module")
+def gold_entry() -> str:
+    text = DECISIONS.read_text(encoding="utf-8")
+    start = text.find(GOLD_DECISION_HEADING)
+    assert start != -1, (
+        f"docs/DECISIONS.md has no entry headed {GOLD_DECISION_HEADING!r}. It "
+        f"is the only place the reasoning for gold's ownership is recorded, "
+        f"including that the issue's own original recommendation was reversed.")
+    end = text.find("\n---", start)
+    return unwrapped(text[start:end if end != -1 else len(text)])
+
+
+def test_the_gold_entry_records_the_argument_from_inside_the_document(
+        gold_entry):
+    """The genre survey was split, so it did not decide this. The document's own
+    sentence did, and that is the part a later reader most needs."""
+    assert "levels and gear **and nothing else**" in gold_entry, (
+        "the docs/DECISIONS.md entry for issue #306 no longer quotes the "
+        "sentence that settled it. The survey was split three to one and the "
+        "decision does not rest on it.")
+
+
+def test_the_gold_entry_records_that_the_first_recommendation_was_wrong(
+        gold_entry):
+    """Issue #306's body recommended per-character gold on a count that turned
+    out to be backwards. An entry that quietly adopted the opposite answer
+    without saying so would leave the issue and the document disagreeing with
+    no explanation."""
+    assert "originally recommended the opposite" in gold_entry, (
+        "the entry does not record that issue #306's own recommendation was "
+        "reversed by a corrected survey. Anyone reading the issue first will "
+        "otherwise think the document ignored it.")
+    assert "re-checked" in gold_entry, (
+        "the entry does not say the corrected claims were re-checked before "
+        "the decision. The correction comment on issue #306 asked for exactly "
+        "that, because the count was the whole argument.")
+
+
+def test_the_gold_entry_surveys_the_four_games(gold_entry):
+    for game in ("Diablo IV", "Last Epoch", "Diablo III", "Path of Exile"):
+        assert game in gold_entry, (
+            f"the docs/DECISIONS.md entry for issue #306 does not cite {game}.")
+
+
+def test_the_gold_entry_records_what_argues_against_it(gold_entry):
+    assert "What argues against it" in gold_entry, (
+        "the entry records no case against account-held gold. There is one: it "
+        "is one more thing to re-earn per lethality mode, and a first Heretic "
+        "character now starts with no tree, no stash and no gold.")
+    assert "no tree, no stash and no gold" in gold_entry
+
+
+def test_the_gold_entry_notes_where_this_design_is_softer_than_last_epoch(
+        gold_entry):
+    """Last Epoch's hardcore characters share with nothing at all, not even each
+    other. This design shares within a mode, and the difference is deliberate
+    rather than an incomplete copy."""
+    assert "stricter than this design and the difference is deliberate" \
+        in gold_entry, (
+        "the entry cites Last Epoch without noting that its partition is "
+        "harsher than the one chosen here.")
+
+
+def test_the_stash_entry_no_longer_calls_gold_ownership_open(decision_entry):
+    """The entry for issue #305 gave two reasons for a fixed stash and the
+    first was that gold's owner was unknown. It was answered hours later, so
+    that reason is gone and the entry says so rather than staying wrong."""
+    assert "that reason has since gone" in decision_entry, (
+        "the docs/DECISIONS.md entry for issue #305 still gives an undecided "
+        "gold owner as a reason the stash is fixed. Issue #306 answered it the "
+        "same day.")
+    assert "only the second reason below still stands" in decision_entry
