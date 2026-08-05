@@ -20,6 +20,83 @@ applied or still pending.
 
 ---
 
+## 2026-08-05 — A damage over time effect deals a fixed amount per tick, not a total spread across a duration
+
+**Affects** the "Applying Damage Over Time and Other Effects" section of
+`docs/Cataclysm_GDD_v2.md`, the main design document. Applied. Issue #220.
+
+**STATED BY THE PROJECT OWNER, 2026-08-04.** A damage over time effect deals a
+fixed amount per tick. The worked example given: 20 damage per tick, ticking once
+per second, lasting 5 seconds. Increasing tick rate makes it tick faster than once
+per second, and the total goes up.
+
+**Three independently scalable metrics: damage per tick, tick rate, duration.**
+Raising any one of them raises the total damage the effect deals.
+
+**This is the opposite of what the genre does, and it was chosen knowing that.**
+Both games surveyed define a damage over time effect as a rate and derive the
+per-tick amount from it, so ticking is delivery rather than damage:
+
+- **Last Epoch** states it directly: an effect applies its total damage over a set
+  length of time divided into ticks per second, and each tick deals the total
+  divided by the time. Raising duration raises total damage and leaves damage per
+  second alone.
+- **Path of Exile** goes further and has an explicit family of modifiers for this
+  — "Ignited Enemies Burn faster" and its relatives raise damage per second and
+  shorten the duration by the same factor, so the total is unchanged. It is a
+  delivery lever by construction.
+
+Neither has a stat that adds damage by adding ticks. The research recommended
+copying Path of Exile and was overruled, which is a legitimate outcome: the shape
+a shipped game uses is evidence, not a rule, and damage over time builds in this
+genre commonly do scale damage and duration separately.
+
+**The arithmetic consequence, recorded once so it is a choice rather than a
+surprise.** All three levers multiply the same output. Against the owner's
+example:
+
+| | Damage per tick | Ticks per second | Duration | Total |
+|---|---|---|---|---|
+| Base | 20 | 1 | 5s | 100 |
+| +48% tick rate only | 20 | 1.48 | 5s | 148 |
+| +48% duration only | 20 | 1 | 7.4s | 148 |
+| +48% damage per tick only | 29.6 | 1 | 5s | 148 |
+| **+48% on all three** | 29.6 | 1.48 | 7.4s | **324** |
+
+A direct-hit build with +48% increased damage ends at 1.48 times base, because
+increases add inside one bracket of `(base + flat) × (1 + increases) × more1 ×
+more2`. A damage over time build with the same +48% on each of its three levers
+ends at 3.24 times.
+
+This document's "What Affixes Do Not Grant" section says no ordinary affix is a
+"more" multiplier, and that multiplicative sources come from gems, passive tree
+keystones and enchantments. Three separate affixes multiplying the same output is
+not literally a "more" affix, but it produces the same curve. **That is why the
+three levers have to be priced together and not one at a time.**
+
+**Two of the three levers do not exist yet.** Only tick rate does, as
+`DotFrequency` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`, which no code
+reads. There is no affix or attribute for flat damage over time damage and none
+for duration. Both are recorded in issue #205.
+
+**The one shipped value is now known to be wrong and is deliberately left alone.**
+"Increased damage over time frequency" is 12% at top tier in
+`game/Data/Affixes.csv`, set to match increased armour and increased maximum
+health on the assumption that ticking faster only changed when damage arrived.
+The affix that is straightforwardly a damage multiplier, "Increased damage", is
+125%. Re-pricing it now would mean setting one of three multiplying levers in
+isolation, so it is filed as issue #258, blocked on #205, and
+`INCREASED_DOT_FREQUENCY` in `sim/cataclysm_sim/affixes.py` carries a comment
+saying the value is wrong and why rather than a guess that reads as considered.
+
+Sources:
+[Damage over time — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Damage_over_time),
+[Damage Over Time — Official Last Epoch Wiki](https://lastepoch.fandom.com/wiki/Damage_Over_Time),
+[Ailments Explained — Last Epoch, Maxroll](https://maxroll.gg/last-epoch/resources/ailments-explained).
+
+---
+
 ## 2026-08-05 — Difficulty is two independent choices, and no mode grants extra loot
 
 **Affects** the "Difficulty Options" section and the risk table of

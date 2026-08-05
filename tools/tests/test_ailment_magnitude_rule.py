@@ -33,10 +33,24 @@ NOTHING HERE BLOCKS IT. Every assertion below is about the overflow rule and
 about which effects are damage over time. None of them says a scaling stat may
 not exist, so adding those affixes does not fail this file.
 
-WHAT IS STILL UNDECIDED. What "increased damage over time frequency" actually
-does — whether ticking faster delivers more total damage or the same total sooner
-— is undecided, and this file deliberately asserts nothing about it. That is
-issue #220.
+WHAT TICK RATE DOES WAS DECIDED AFTER THIS FILE WAS WRITTEN, and it is now
+asserted here. Issue #220 asked whether a damage over time effect deals a fixed
+amount per tick or a total spread across a duration, because "increased damage
+over time frequency" means opposite things under the two readings. The project
+owner answered on 2026-08-04: **a fixed amount per tick**, so ticking faster deals
+more total damage, and damage per tick, tick rate and duration are three separate
+metrics that all multiply the same output.
+
+That is the opposite of Path of Exile and Last Epoch, which both treat ticking as
+delivery and leave the total alone. The departure is deliberate and the reasoning
+and sources are in `docs/DECISIONS.md`. It is asserted here because the reading
+decides whether one shipped affix value is a damage multiplier or a convenience,
+and the document is the only place that says which.
+
+WHAT IS STILL WRONG AND IS NOT THIS FILE'S JOB. The 12% on that affix was set
+under the other reading and is known to be mis-priced. It is not corrected here,
+because two of the three levers do not exist yet and the three have to be priced
+together. Issue #258, blocked on #205.
 
 NOTHING HERE IS A SECOND COPY OF THE NUMBERS. Every expected value is parsed out
 of the design document. Changing the design in `Cataclysm_GDD_v2.md` is what
@@ -324,3 +338,103 @@ class TestWhichEffectsAreDamageOverTime:
             assert kinds[effect] == expected, (
                 f"{effect} scales {scales!r} so it should be a {expected} in "
                 f"{STATUS_EFFECT_CSV.name}, which calls it a {kinds[effect]}")
+
+
+class TestDamageOverTimeIsPerTick:
+    """Issue #220. Which of the two readings the document states, and that its
+    own worked example is arithmetically what it claims.
+
+    A sentence saying "fixed amount per tick" is easy to write and easy to
+    soften back into ambiguity, which is what left this undecided for as long as
+    it was. The example is checked as well as the sentence, because an example
+    that does not multiply out is how a reader learns the sentence was not meant.
+    """
+
+    #: The sentence the whole reading rests on, quoted exactly.
+    THE_RULE = "**A damage over time effect deals a fixed amount per tick.**"
+
+    #: The three levers, and the word the document uses for each.
+    LEVERS = ("Damage per tick", "Tick rate", "Duration")
+
+    def test_the_document_says_which_of_the_two_readings_it_is(self, section):
+        assert self.THE_RULE in section, (
+            "the design document no longer states that a damage over time "
+            "effect deals a fixed amount per tick. Without it, 'increased "
+            "damage over time frequency' means either a damage multiplier or a "
+            "convenience and nothing says which. Issue #220.")
+
+    def test_it_rules_out_the_other_reading_by_name(self, section):
+        """Saying what it is leaves a reader who arrived from Path of Exile
+        assuming the total is fixed. The document says it is not."""
+        assert "It is not a total handed out in instalments." in section
+
+    def test_all_three_levers_are_named_and_all_three_raise_the_total(
+            self, section):
+        for lever in self.LEVERS:
+            row = next((line for line in section.splitlines()
+                        if line.strip().strip("|").split("|")[0].strip()
+                        == lever), None)
+            assert row is not None, (
+                f"the design document does not list {lever} as a damage over "
+                f"time metric. Issue #220 says there are three.")
+            assert row.strip().endswith("Rises |"), (
+                f"{lever} no longer raises the total damage of a damage over "
+                f"time effect. All three do, which is the whole decision.")
+
+    def test_the_worked_example_multiplies_out(self, section):
+        """20 damage per tick, once per second, 5 seconds, 100 total."""
+        found = re.search(
+            r"deals (\d+) damage per tick, ticks once per second and lasts "
+            r"(\d+) seconds deals (\d+) damage in total", section)
+        assert found, (
+            "the design document's damage over time example is gone or "
+            "reworded. It is what makes the rule unambiguous. Issue #220.")
+        per_tick, seconds, total = (int(g) for g in found.groups())
+        assert per_tick * seconds == total, (
+            f"{per_tick} per tick for {seconds} seconds is "
+            f"{per_tick * seconds}, but the document says {total}")
+
+    def test_it_states_that_the_three_multiply_and_the_figure_is_right(
+            self, section):
+        """A reader who assumes the three add gets 2.44 where the rule gives
+        3.24, which is the difference between a build working and not."""
+        found = re.search(
+            r"with (\d+)% more of each does not deal (\d+)% of the base total; "
+            r"it deals [\d.]+ × [\d.]+ × [\d.]+, which is (\d+)%", section)
+        assert found, (
+            "the design document no longer says what happens when all three "
+            "damage over time levers are raised together. They multiply, and "
+            "that is the consequence of the rule most likely to surprise. "
+            "Issue #220.")
+        each, added, multiplied = (int(g) for g in found.groups())
+        assert added == 100 + each
+        assert round((1 + each / 100) ** 3 * 100) == multiplied, (
+            f"{each}% on each of three multiplying levers is "
+            f"{(1 + each / 100) ** 3 * 100:.0f}% of base, not {multiplied}%")
+
+    def test_it_says_the_departure_from_the_genre_is_deliberate(self, section):
+        """Both games surveyed do the opposite. A reader who knows that needs to
+        see it was a choice, or they will file it as a mistake -- which is
+        exactly how issue #220 came to be written."""
+        assert "Path of Exile" in section and "Last Epoch" in section
+        assert "deliberate departure" in section
+
+    def test_the_model_records_that_the_shipped_value_is_known_wrong(self):
+        """`INCREASED_DOT_FREQUENCY` is 12.0, priced as a convenience. Under
+        this rule it is a damage multiplier. Leaving a wrong number with nothing
+        saying so is how it survives into tuning as if it were considered."""
+        from cataclysm_sim import affixes
+
+        source = pathlib.Path(affixes.__file__).read_text(encoding="utf-8")
+        start = source.index("INCREASED_DOT_FREQUENCY = StatAffix")
+        comment = source[:start]
+        assert "#258" in comment[-900:], (
+            "sim/cataclysm_sim/affixes.py no longer records that "
+            "INCREASED_DOT_FREQUENCY's value predates the issue #220 answer and "
+            "is being re-priced under issue #258. Either the value was fixed, "
+            "in which case delete this test and close #258, or the note was "
+            "lost.")
+        assert affixes.INCREASED_DOT_FREQUENCY.top_value == 12.0, (
+            "INCREASED_DOT_FREQUENCY has moved off 12.0. If it was re-priced "
+            "under issue #258, remove the comment saying it is wrong and this "
+            "test with it.")

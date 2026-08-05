@@ -908,6 +908,18 @@ INCREASED_ATTACK_SPEED = StatAffix("Increased attack speed", "attack_speed",
 INCREASED_AREA_OF_EFFECT = StatAffix("Increased area of effect",
                                      "area_of_effect", "increased", 12.0,
                                      OFFENSIVE_SLOTS, SUFFIX)
+#: TICK RATE IS DAMAGE, NOT DELIVERY. Decided by the project owner on
+#: 2026-08-04, issue #220. A damage over time effect deals a fixed amount per
+#: tick, so ticking twice as often deals twice the total. Damage per tick, tick
+#: rate and duration are three separate scalable metrics and all three multiply
+#: the same output.
+#:
+#: THE 12.0 BELOW PREDATES THAT ANSWER AND IS KNOWN TO BE WRONG. It was set to
+#: match increased armour and increased maximum health, on the unexamined
+#: assumption that ticking faster only changed when damage arrived. As a damage
+#: multiplier it belongs against increased damage's 125.0 instead. It is left at
+#: 12.0 rather than guessed at, because the other two levers do not exist yet
+#: and the three have to be priced together. Issue #258.
 INCREASED_DOT_FREQUENCY = StatAffix("Increased damage over time frequency",
                                     "dot_frequency", "increased", 12.0,
                                     OFFENSIVE_SLOTS, SUFFIX)
