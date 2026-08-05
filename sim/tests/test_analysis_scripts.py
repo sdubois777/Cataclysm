@@ -26,9 +26,19 @@ WHAT THIS FILE CHECKS.
 
 WHY IT RUNS THE SCRIPTS RATHER THAN TESTING HELPERS. Testing a helper is not
 testing what a report prints -- see the same lesson recorded in
-`sim/tests/test_power_threshold.py`. These three are scripts with no helpers to
-test: the whole file is the report. All three together take under a tenth of a
-second, so running them is affordable in a way `sim/experiments.py` is not.
+`sim/tests/test_power_threshold.py`. These are scripts with no helpers worth
+testing on their own: the whole file is the report. All of them together take
+under a tenth of a second, so running them is affordable in a way
+`sim/experiments.py` is not.
+
+A FOURTH SCRIPT, `sim/analyse_damage_vs_type.py`, was added for issue #234 and is
+covered here too. It is the measurement that issue asked for and could not make:
+what four prefix slots of "increased damage against X enemies" are worth against
+four of the generic affix. Its two headline findings are checked against
+recomputed values, and one of them -- that the crossover measured on time to kill
+is LOWER than the ratio of the two affix values, not higher -- is checked by
+direction as well as by figure, because that is the claim a future edit is most
+likely to get backwards.
 """
 
 from __future__ import annotations
@@ -86,10 +96,113 @@ def penetration_run():
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", ["analyse_scoring.py", "analyse_dungeons.py",
-                                  "analyse_penetration.py"])
+                                  "analyse_penetration.py",
+                                  "analyse_damage_vs_type.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
+
+
+# --------------------------------------------------------------------------
+# analyse_damage_vs_type.py -- issue #234
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def damage_vs_type_run():
+    return run("analyse_damage_vs_type.py")
+
+
+def expected_brackets(other_slots: int) -> tuple[float, float, float]:
+    """(generalist, specialist against its type, specialist against the rest).
+
+    Recomputed here from `affixes` rather than read out of the script, so this
+    checks the script rather than agreeing with it.
+    """
+    from cataclysm_sim import affixes as A
+
+    generic = A.INCREASED_DAMAGE.value_at(7) / 100.0
+    specific = A.DAMAGE_VS_TOP_VALUE / 100.0
+    shared = 1.0 + other_slots * generic
+    slots = 4                       # the comparison issue #234 sets up
+    return (shared + slots * generic, shared + slots * specific, shared)
+
+
+def test_the_swing_at_the_bare_build_is_the_computed_one(damage_vs_type_run):
+    """The figure issue #234 quotes, recomputed. It is the four slots against
+    nothing else, which is the largest the swing ever gets."""
+    printed, _ = damage_vs_type_run
+    g, m, _ = expected_brackets(0)
+    assert f"The bare case swings {m / g:.2f}x" in printed
+
+
+def test_the_swing_at_the_reference_build_is_smaller(damage_vs_type_run):
+    """The finding issue #234 did not have. Increases are additive, so the same
+    four slots matter less once the build carries others. If this ever stops
+    being smaller, the additive bracket has become something else."""
+    from cataclysm_sim import affixes as A
+
+    printed, _ = damage_vs_type_run
+    bare_g, bare_m, _ = expected_brackets(0)
+    ref_g, ref_m, _ = expected_brackets(A.REFERENCE_INCREASED_DAMAGE_AFFIXES)
+    assert ref_m / ref_g < bare_m / bare_g, (
+        "the swing at the reference build is no longer smaller than at the bare "
+        "build. That was the whole point of section A.")
+    assert f"swings {ref_m / ref_g:.2f}x from the same four slots" in printed
+
+
+def test_the_crossover_on_damage_is_the_ratio_of_the_two_affixes(
+        damage_vs_type_run):
+    """Where issue #234's 3.2 comes from. It falls out of the arithmetic and
+    does not depend on how many other increases the build has, which is worth
+    pinning because it is the figure everyone will reach for."""
+    from cataclysm_sim import affixes as A
+
+    printed, ns = damage_vs_type_run
+    expected = A.DAMAGE_VS_TOP_VALUE / A.INCREASED_DAMAGE.value_at(7)
+    for other in (0, A.REFERENCE_INCREASED_DAMAGE_AFFIXES, 8):
+        assert ns["crossover_on_damage"](other) == pytest.approx(expected)
+    assert f"not {expected:.2f}." in printed
+
+
+def test_the_crossover_on_time_is_lower_than_the_crossover_on_damage(
+        damage_vs_type_run):
+    """THE DIRECTION IS THE FINDING, and it is the opposite of the one the issue
+    was filed expecting. Averaging time to kill rather than damage moves the
+    crossover DOWN, so the specialist stops paying sooner than the ratio of the
+    two affix values suggests. A future edit that flips this sentence back would
+    reverse the conclusion, so the direction is asserted, not only the figure."""
+    from cataclysm_sim import affixes as A
+
+    printed, ns = damage_vs_type_run
+    other = A.REFERENCE_INCREASED_DAMAGE_AFFIXES
+    g, m, s = expected_brackets(other)
+    expected = (1.0 / m - 1.0 / s) / (1.0 / g - 1.0 / s)
+
+    assert expected < A.DAMAGE_VS_TOP_VALUE / A.INCREASED_DAMAGE.value_at(7), (
+        "the crossover on time is no longer below the crossover on damage. "
+        "Section C of analyse_damage_vs_type.py says it is lower and explains "
+        "why; if that has changed, the explanation has to change with it.")
+    assert f"the crossover is {expected:.2f} active" in printed
+    assert "It is LOWER, so the specialist stops" in printed
+
+
+def test_the_crossover_does_not_depend_on_health_or_the_base_bracket(
+        damage_vs_type_run):
+    """They cancel in the solve, and the docstring says so. Checked because a
+    crossover that quietly started depending on enemy health would make every
+    figure in section C tier-specific without anything saying so."""
+    _, ns = damage_vs_type_run
+    one = ns["crossover_cataclysms"](6, base=100.0, health=1000.0)
+    other = ns["crossover_cataclysms"](6, base=7.0, health=999_999.0)
+    assert one == pytest.approx(other)
+
+
+def test_it_does_not_claim_to_settle_the_question(damage_vs_type_run):
+    """Issue #234 exists because the magnitude is a feel question that needs
+    play. This script measures; it must not start recommending, or the issue
+    will be closed on the strength of a number that cannot answer it."""
+    printed, _ = damage_vs_type_run
+    assert "Nothing here says 400% is too high or too low" in printed
 
 
 # --------------------------------------------------------------------------
