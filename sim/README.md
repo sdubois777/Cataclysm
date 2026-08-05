@@ -10,6 +10,26 @@ python experiments.py
 
 Pure standard-library Python. No dependencies.
 
+## Which difficulty tier the results are from
+
+**Every section of `experiments.py` runs at difficulty tier 1, except section 7,
+which runs at tier 1 and tier 8.** The game has eight tiers. A number from this
+report is a tier 1 number unless its own heading says otherwise, and the report
+prints that in its header.
+
+This matters because tier width — the gap between one tier's maximum player
+Power Score and the tier below — multiplies every weighted term of the Enemy
+Score formula. It runs 385, 498, 625, 717, 853, 979, 1063, 1207 across the eight
+tiers, so the relation between player power and enemy power is not the same at
+both ends. Measured: the empire tree preset ordering in section 7 is not the same
+at tier 1 as at tier 8.
+
+The tier is `SWEEP_TIER` in `experiments.py`, and the preset section's tiers are
+`PRESET_TIERS`. Sweeping all eight tiers would take about two and a half hours,
+which is why only section 7 pays for a second one. This was issue
+[#281](https://github.com/sdubois777/Cataclysm/issues/281); before it, the tier
+came from an unstated default and nothing in the output mentioned it.
+
 ## Fixed rules (not swept)
 
 - **One floor costs one day.** Depth and time are the same axis, so a dungeon

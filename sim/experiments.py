@@ -12,6 +12,7 @@ Ground rules now fixed by design rather than swept:
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import replace
 
@@ -24,6 +25,35 @@ from cataclysm_sim.config import (
 from cataclysm_sim.engine import Simulation
 
 TRIALS = 250
+
+#: The difficulty tier every section runs at, except the preset comparison.
+#:
+#: THE GAME HAS EIGHT TIERS AND THIS REPORT MEASURES ONE. It always did: the
+#: default in `cataclysm_sim/config.py` is `tier: int = 1` and no section used to
+#: override it, so every tuning conclusion this project holds is a tier 1 result
+#: and nothing said so. Issue #281. Named here so that it is a decision rather
+#: than an accident, and printed in the header so a reader of the output cannot
+#: miss it.
+#:
+#: Tier matters because tier width -- the gap to the tier below -- multiplies
+#: every weighted term of the Enemy Score formula. It runs 385, 498, 625, 717,
+#: 853, 979, 1063, 1207, so the relation between player power and enemy power is
+#: not the same at both ends.
+SWEEP_TIER = 1
+
+#: Which tiers the empire tree preset comparison runs at, section 7.
+#:
+#: Both ends of the curve, because that is where a scaling problem shows and
+#: sweeping all eight would cost about two and a half hours. Section 7 is the one
+#: worth paying for: issues #4 and #5, the two open tuning findings, both turn on
+#: the preset ordering it prints. If the ordering is the same at tier 1 and tier
+#: 8 the tier 1 conclusions probably generalise; if it differs, that is a finding
+#: on its own. Issue #281.
+#:
+#: THE OTHER SETTINGS STAY AS CALIBRATED AT TIER 1. Sections 0 and 2 pick the
+#: surge and forge numbers, and they are not re-derived per tier. Only the tier
+#: changes between the two tables, which is what makes them comparable.
+PRESET_TIERS = (1, 8)
 
 
 def cataclysm_power_key(cfg: TuningConfig) -> list[str]:
@@ -70,6 +100,35 @@ def cataclysm_power_key(cfg: TuningConfig) -> list[str]:
         f"chance needs {needed:,.0f}, which is "
         f"{needed / ceiling:.2f}x that ceiling,",
         f"             {reach}.",
+    ]
+
+
+def header_lines() -> list[str]:
+    """Everything printed before the first section, including which tier this is.
+
+    A FUNCTION SO IT CAN BE TESTED. `main()` runs about 25,000 campaigns and
+    takes roughly eighteen minutes, so a test that called it to read the header
+    would never be run. `sim/tests/test_sweep_tier.py` calls this instead.
+    """
+    ceiling = scoring.tier_bounds(SWEEP_TIER)[1]
+    return [
+        "CATACLYSM -- empire layer tuning rig (rev 3: paused timers + the forge)",
+        f"{TRIALS} campaigns per cell, deterministic seeds",
+        "",
+        f"DIFFICULTY TIER {SWEEP_TIER} of 8, player power ceiling "
+        f"{ceiling:,.0f}. Every section below runs at",
+        "that tier and no other, except section 7, which also runs at tier "
+        f"{PRESET_TIERS[-1]}.",
+        f"A result from this report is a tier {SWEEP_TIER} result unless its own "
+        "heading says so. Issue #281.",
+        "",
+        "Column key:",
+        "  win%       cleared 8 objectives, then the Cataclysm dungeon",
+        "  stale%     neither won nor lost -- hit the day cap",
+        "  floors     total floors cleared -- the loot proxy",
+        *cataclysm_power_key(replace(TuningConfig(), tier=SWEEP_TIER)),
+        "  forge%     share of the run spent at the forge, defending nothing",
+        "  triage%    free days facing 2+ dungeons about to detonate",
     ]
 
 
@@ -138,6 +197,7 @@ def exp_calibrate() -> TuningConfig:
         for interval in (75, 90, 120):
             for count in (5, 6, 7):
                 cfg = replace(TuningConfig(),
+                              tier=SWEEP_TIER,
                               surge_mode=SurgeMode.STATIC,
                               resolve_floor_ratio=ratio,
                               surge_interval_days=float(interval),
@@ -301,18 +361,99 @@ def exp_days_vs_floors(base: TuningConfig):
     print("  and deletes the cost. Floor reduction pays for itself.")
 
 
-def exp_presets(base: TuningConfig):
-    rule("7. EMPIRE TREE PRESETS -- head to head")
-    print(f"{'preset':<42}{'win%':>7}{'loss%':>7}{'stale%':>8}{'cities':>8}"
-          f"{'floors':>9}{'crafts':>8}{'triage%':>9}")
-    print("-" * 100)
-    for tree in (TREE_NONE, TREE_EXPLORER_AS_DESIGNED, TREE_EXPLORER_VIA_FLOORS,
-                 TREE_EXPLORER_DEEP, TREE_ARCHITECT_AS_DESIGNED, TREE_PROPOSED_FIX):
-        cfg = base.with_tree(tree)
-        s = summarise(batch(cfg, policies.triage, trials=150))
-        print(f"{tree.name:<42}{s['win']:>7.0f}{s['lost']:>7.0f}{s['stale']:>8.0f}"
-              f"{s['cities']:>8.1f}{s['floors']:>9.0f}{s['crafts']:>8.1f}"
-              f"{s['triage']:>9.1f}")
+PRESETS = (TREE_NONE, TREE_EXPLORER_AS_DESIGNED, TREE_EXPLORER_VIA_FLOORS,
+           TREE_EXPLORER_DEEP, TREE_ARCHITECT_AS_DESIGNED, TREE_PROPOSED_FIX)
+
+
+def win_rate_noise(trials: int) -> float:
+    """How far apart two win rates must be before the gap means anything.
+
+    A cell is `trials` independent campaigns, so its win rate is a binomial
+    proportion whose standard error is at most sqrt(0.25 / trials), largest at
+    50%. The difference of two independent rates has sqrt(2) times that. At 150
+    campaigns per cell it comes to 5.8 percentage points.
+
+    WITHOUT THIS THE ORDERING IS NOISE. Six presets sorted by win rate always
+    produce an ordering, whether or not the gaps mean anything, and at tier 8 the
+    win rate collapses towards zero and every preset ties. Reporting that as
+    "the ordering differs between tiers" would be reporting the sort's tie-break
+    as a finding.
+    """
+    return 100.0 * math.sqrt(2.0) * math.sqrt(0.25 / max(1, trials))
+
+
+def rank_by_win(wins: dict[str, float], tolerance: float) -> list[tuple[str, ...]]:
+    """Preset names grouped by win rate, best group first.
+
+    Two presets within `tolerance` of each other go in the same group, so the
+    result says only what the sample size can support.
+    """
+    groups: list[list] = []
+    for name in sorted(wins, key=lambda n: (-wins[n], n)):
+        if groups and abs(groups[-1][0] - wins[name]) <= tolerance:
+            groups[-1][1].append(name)
+        else:
+            groups.append([wins[name], [name]])
+    return [tuple(names) for _, names in groups]
+
+
+def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
+    """The preset comparison, run once per tier. Returns the win rates it printed.
+
+    Returned as {tier: {preset name: win rate}} so a caller can compare the
+    orderings rather than a person having to read two tables side by side.
+    """
+    rule(f"7. EMPIRE TREE PRESETS -- head to head, at tier "
+         f"{' and tier '.join(str(t) for t in tiers)}")
+    print("  Only the tier changes between these tables. The surge and forge")
+    print("  settings are the ones calibrated at tier "
+          f"{SWEEP_TIER} in sections 0 and 2.")
+
+    wins: dict[int, dict[str, float]] = {}
+    for tier in tiers:
+        ceiling = scoring.tier_bounds(tier)[1]
+        print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}")
+        print(f"{'preset':<42}{'win%':>7}{'loss%':>7}{'stale%':>8}{'cities':>8}"
+              f"{'floors':>9}{'crafts':>8}{'triage%':>9}")
+        print("-" * 100)
+        wins[tier] = {}
+        for tree in PRESETS:
+            cfg = replace(base, tier=tier).with_tree(tree)
+            s = summarise(batch(cfg, policies.triage, trials=trials))
+            wins[tier][tree.name] = s["win"]
+            print(f"{tree.name:<42}{s['win']:>7.0f}{s['lost']:>7.0f}"
+                  f"{s['stale']:>8.0f}{s['cities']:>8.1f}{s['floors']:>9.0f}"
+                  f"{s['crafts']:>8.1f}{s['triage']:>9.1f}")
+
+    if len(tiers) > 1:
+        tolerance = win_rate_noise(trials)
+        print(f"\n  PRESET ORDER BY WIN RATE, BEST FIRST. Presets within "
+              f"{tolerance:.1f} points of")
+        print(f"  each other are shown tied, because {trials} campaigns per cell "
+              "cannot separate them.")
+        orders = {}
+        for tier in tiers:
+            order = rank_by_win(wins[tier], tolerance)
+            orders[tier] = order
+            print(f"    tier {tier}: "
+                  + " > ".join(" = ".join(group) for group in order))
+
+        flat = [t for t, order in orders.items() if len(order) == 1]
+        if flat:
+            print("\n  NO CONCLUSION. Every preset ties at tier "
+                  + ", ".join(str(t) for t in flat) + ", so there is no ordering")
+            print("  to compare. Win rate stops separating the presets once it "
+                  "collapses towards")
+            print("  zero. Measuring these tiers needs a metric that still "
+                  "varies there.")
+        elif len(set(tuple(o) for o in orders.values())) == 1:
+            print("\n  The ordering is THE SAME at every tier measured, so the")
+            print("  tier 1 conclusions on issues #4 and #5 probably generalise.")
+        else:
+            print("\n  The ordering DIFFERS between tiers, so the tier 1")
+            print("  conclusions on issues #4 and #5 do not generalise. That is a")
+            print("  finding in its own right. Issue #281.")
+    return wins
 
 
 def exp_escalation(base: TuningConfig, mode: SurgeMode):
@@ -330,16 +471,8 @@ def exp_escalation(base: TuningConfig, mode: SurgeMode):
 
 
 def main():
-    print("CATACLYSM -- empire layer tuning rig (rev 3: paused timers + the forge)")
-    print(f"{TRIALS} campaigns per cell, deterministic seeds\n")
-    print("Column key:")
-    print("  win%       cleared 8 objectives, then the Cataclysm dungeon")
-    print("  stale%     neither won nor lost -- hit the day cap")
-    print("  floors     total floors cleared -- the loot proxy")
-    for line in cataclysm_power_key(TuningConfig()):
+    for line in header_lines():
         print(line)
-    print("  forge%     share of the run spent at the forge, defending nothing")
-    print("  triage%    free days facing 2+ dungeons about to detonate")
 
     base = exp_calibrate()
     exp_policies(base)
