@@ -18,8 +18,16 @@
  * over-capping is the point: enemy penetration reduces effective resistance, so
  * the headroom above the cap is what keeps a character at the cap in practice.
  *
- * The cap therefore belongs in the damage calculation, which is not yet written.
- * See the issue on the damage pipeline.
+ * The cap therefore belongs in the damage calculation, and it is now there:
+ * `UCataclysmDamageCalculation::EffectiveResistance` in
+ * CataclysmDamageCalculation.h holds the 70% figure and applies it.
+ *
+ * THIS CLASS USED TO HOLD A SECOND COPY of that figure and a helper that
+ * applied it, and both are gone. The helper took a raw resistance and clamped
+ * it at 70 with no penetration argument, which is the wrong answer: penetration
+ * is subtracted BEFORE the cap, and that is the whole reason the cap is called
+ * soft and the whole reason over-capping is worth anything. Nothing outside a
+ * test ever called it. Issue #232.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmResistanceAttributeSet : public UAttributeSet
@@ -31,9 +39,6 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
-
-	/** The cap on how much resistance reduces damage. Not a cap on the attribute. */
-	static constexpr float EffectiveResistanceCap = 70.0f;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Resistances", ReplicatedUsing = OnRep_WarResistance)
 	FGameplayAttributeData WarResistance;
@@ -68,9 +73,6 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmResistanceAttributeSet, VoidResistance)
 
 	static TArray<FGameplayAttribute> GetAllAttributes();
-
-	/** What a raw resistance value is actually worth against damage. */
-	static float EffectiveResistance(float RawResistance);
 
 protected:
 	UFUNCTION() void OnRep_WarResistance(const FGameplayAttributeData& OldValue);

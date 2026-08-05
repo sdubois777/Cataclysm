@@ -47,11 +47,6 @@ void UCataclysmResistanceAttributeSet::PreAttributeChange(
 	NewValue = FMath::Max(NewValue, -100.0f);
 }
 
-float UCataclysmResistanceAttributeSet::EffectiveResistance(float RawResistance)
-{
-	return FMath::Min(RawResistance, EffectiveResistanceCap);
-}
-
 TArray<FGameplayAttribute> UCataclysmResistanceAttributeSet::GetAllAttributes()
 {
 	return {
