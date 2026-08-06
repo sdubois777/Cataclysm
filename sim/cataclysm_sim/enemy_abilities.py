@@ -6,8 +6,8 @@ an enemy does with its turn. Issue #29 is the epic that asks, and it is split on
 enemy at a time: #348 the Imp, #349 the Succubus, #350 the Hellhound, #351 the
 Brute, #352 the Corrupted Sentinel, #353 the Abyssal Warden, #354 the Gatekeeper.
 
-**Only the Imp, the Succubus and the Hellhound are filled in.** The other four
-are open issues. An archetype with no entry here has no designed abilities yet,
+**Only the Imp, the Succubus, the Hellhound and the Brute are filled in.** The
+other three are open issues. An archetype with no entry here has no designed abilities yet,
 and asking for one raises rather than returning an empty list, so a missing
 design cannot be mistaken for a finished one.
 
@@ -67,7 +67,19 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 #: Riders any shape may carry, from the same section of the design document.
 #: Also a copy of `SHAPE_RIDERS` in `tools/generate_datatables.py`.
 RIDERS = ("GroundRadius", "GroundDuration", "GroundHitsAllies", "Burn",
-          "Effect", "FinalHitPercent", "HealthCostPercent")
+          "Effect", "StunSeconds", "FinalHitPercent", "HealthCostPercent")
+
+#: How long a target is immune to being stunned again, from the anti-stun-lock
+#: rule in section VI of `docs/Cataclysm_GDD_v2.md`. Any ability that stuns has
+#: to sit at least this far apart, whatever slot it is in, or it spends its uses
+#: on a target that cannot be stunned.
+STUN_IMMUNITY_WINDOW = 5.0
+
+#: The longest stun any designed player skill grants, Shield Bash's. An
+#: enemy ability that held the player still for longer than the player's own
+#: best hold would be the failure the anti-stun-lock section is written
+#: against. The four skills that stun run 0.75, 0.75, 1.0 and 1.5 seconds.
+LONGEST_DESIGNED_STUN = 1.5
 
 #: The three values a Movement shape's `Mode` may take.
 MOVEMENT_MODES = ("Leap", "Charge", "Blink")
@@ -166,14 +178,26 @@ def largest_telegraphed_radius(seconds: float) -> float:
 def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
     """Whether this ability gets a ground marker, by the document's own rules.
 
-    Two conditions, both from the Attack Telegraphs subsection. Its marker table
-    covers four of the seven shapes, so an ability in one of the other three has
-    no marker to draw at all and is read off the caster instead. And the wind-up
-    must fit inside half the cycle while still being a marker at least a metre
-    across.
+    Three conditions, all from the Attack Telegraphs subsection.
+
+    Its marker table covers four of the seven shapes, so an ability in one of
+    the other three has no marker to draw at all and is read off the caster
+    instead.
+
+    The ability's OWN marker has to be at least a metre across. "A marker
+    smaller than 1 metre is not a telegraph. It is smaller than the creature
+    standing in it, so there is nowhere to walk." That applies to the marker an
+    ability actually draws, not only to the largest one its cycle would allow.
+    The Brute is the case that shows the difference: its 2.8 second attack
+    interval puts it in the telegraph table's Yes column, and its ordinary slam
+    still gets no marker because a slam reaches 0.9 metres.
+
+    And the wind-up for that marker has to fit inside half the cycle.
     """
     kind = archetype(kind) if isinstance(kind, str) else kind
     if ability.shape not in TELEGRAPHED_SHAPES:
+        return False
+    if float(ability.params.get("Radius", 0.0)) < SMALLEST_USEFUL_MARKER_METRES:
         return False
     return (largest_telegraphed_radius(ability.cycle_seconds(kind))
             >= SMALLEST_USEFUL_MARKER_METRES)
@@ -301,6 +325,11 @@ ATTACK_REACH: dict[str, float] = {
     # around one player where twenty Imps do. Its threat is the charge rather
     # than the mass. Issue #350.
     "Hellhound": 0.90,
+
+    # The same contact reach, and for the same reason. The Brute's threat is
+    # the stomp and its weakness is that it can be got behind, neither of which
+    # is about reach. Issue #351.
+    "Brute": 0.90,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -407,6 +436,51 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                  "burning everything it passes and leaving that lane on fire "
                  "for 4 seconds. The fire burns other enemies and the "
                  "Hellhound itself.",
+        ),
+    ),
+    "Brute": (
+        Ability(
+            name="Slam",
+            shape="Strike",
+            slot="Basic",
+            # 0.9 metres is below the one metre floor for a marker, so this gets
+            # no telegraph even though the Brute's 2.8 second attack interval
+            # puts it in the telegraph table's Yes column. That column says how
+            # big a marker it COULD draw, not that everything it does draws one.
+            params={"Radius": 0.9, "Angle": 90, "MaxTargets": 1},
+            note="A swing at whatever is in front of it. It does not stun: an "
+                 "ordinary Brute hit lands at exactly 10% of the reference "
+                 "build's effective health, which is exactly the stun damage "
+                 "threshold, so a stun on it would be a coin flip.",
+        ),
+        Ability(
+            name="Stomp",
+            shape="Strike",
+            slot="Heavy",
+            # Radius 3.5 is the largest the Brute's own 2.8 second attack
+            # interval allows, so the wind-up is exactly half that interval,
+            # 1.4 seconds. Taking the maximum is the same choice the Succubus's
+            # bolt makes: an enemy's signature heavy attack should be as big as
+            # it can be while still being walked out of.
+            #
+            # Angle 360 because a stomp is a ring at its feet, and that is what
+            # stops the answer to a Brute being "stand behind it and ignore the
+            # marker" once its turn rate is halved.
+            #
+            # 1.5 seconds of stun is the longest any designed player skill
+            # grants -- Shield Bash's. An enemy's hold should not be longer than
+            # the best one the player has.
+            params={"Radius": 3.5, "Angle": 360, "StunSeconds": 1.5},
+            # The stun immunity window, NOT the Heavy slot's cooldown. The whole
+            # Heavy band in game/Data/SkillSlots.csv is 1 to 4 seconds, which is
+            # inside the 5 second window, so a Brute stomping on the Heavy
+            # cadence would spend most of its stomps on a target that cannot be
+            # stunned.
+            cooldown=STUN_IMMUNITY_WINDOW,
+            note="A ring at its feet, marked for 1.4 seconds, stunning for 1.5. "
+                 "At the Heavy slot's 250% it lands at 25% of the reference "
+                 "build's effective health, which clears the 10% stun damage "
+                 "threshold two and a half times over.",
         ),
     ),
 }
@@ -520,6 +594,37 @@ def _check_every_telegraphed_marker_fits_its_cycle() -> None:
                 f"{MOVEMENT_ESCAPE_CAP_METRES} m.")
 
 
+def _check_every_stun_is_spaced_by_the_immunity_window() -> None:
+    """An ability that stuns more often than every 5 seconds wastes its uses.
+
+    The anti-stun-lock rule makes a target immune for 5 seconds after a stun,
+    so a second stun inside that window lands on something that cannot be
+    stunned. This is a slot-independent constraint: the Heavy slot's whole
+    cooldown band sits inside the window.
+    """
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            if "StunSeconds" not in ability.params:
+                continue
+            assert ability.cooldown >= STUN_IMMUNITY_WINDOW, (
+                f"{name}'s {ability.name} stuns and comes round every "
+                f"{ability.cooldown} s, inside the {STUN_IMMUNITY_WINDOW} s "
+                "stun immunity window, so most of its uses would stun nothing.")
+
+
+def _check_no_stun_outlasts_the_longest_the_player_has() -> None:
+    """1.5 seconds is Shield Bash's, the longest any designed skill grants. An
+    enemy holding the player still for longer than the player's own best hold
+    is the failure the anti-stun-lock section is written against."""
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            seconds = float(ability.params.get("StunSeconds", 0.0))
+            assert seconds <= LONGEST_DESIGNED_STUN, (
+                f"{name}'s {ability.name} stuns for {seconds} s, longer than "
+                f"the {LONGEST_DESIGNED_STUN} s of the longest stun any "
+                "designed player skill grants.")
+
+
 def _check_reach_and_pack_are_only_set_for_designed_enemies() -> None:
     """A reach or a pack size for an enemy with no abilities is a half-design
     that would read as finished."""
@@ -538,6 +643,8 @@ _check_every_designed_enemy_has_exactly_one_basic_attack()
 _check_only_the_held_on_and_basic_abilities_lack_a_cooldown()
 _check_every_movement_ability_names_a_real_mode()
 _check_every_telegraphed_marker_fits_its_cycle()
+_check_every_stun_is_spaced_by_the_immunity_window()
+_check_no_stun_outlasts_the_longest_the_player_has()
 _check_reach_and_pack_are_only_set_for_designed_enemies()
 
 
