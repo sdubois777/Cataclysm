@@ -20,6 +20,133 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — A telegraph is a wind-up long enough to walk out of, and swarm enemies get none
+
+**Affects** `docs/Cataclysm_GDD_v2.md`, new section "Attack Telegraphs" in
+section X. Applied in full. Issue #347, the first child of the enemy design epic
+#29.
+
+### The question
+
+The design document said twice that the player "must read and dodge telegraphed
+enemy attacks" and nowhere said what a telegraph is. The word appeared in two
+sentences of overview prose and nowhere else: no shape, no duration, no rule
+about what the player can do during one, and no statement of which attacks get
+one at all.
+
+Six sibling issues each ask "what is this enemy's telegraph". Without this they
+would each have answered differently.
+
+### What was decided
+
+**A telegraph adds no new vocabulary.** It is an ordinary attack in one of the
+shapes the skill system already runs — Strike, Projectile, Aura, Movement, from
+the `Shape` column of `game/Data/WeaponSkills.csv` — drawn on the ground before
+it lands. An enemy ability is authored the same way a player skill is, and the
+marker is drawn from the ability's own numbers rather than authored a second time
+and allowed to disagree.
+
+**The wind-up duration is derived, not chosen.** The player escapes by walking or
+by using a Movement skill, and that gives two sizes of telegraph:
+
+| | Walk out of it | Spend a Movement skill |
+| :-- | :-- | :-- |
+| Wind-up | 0.4 + Radius ÷ 3.5 seconds | 0.8 + Radius ÷ 16 seconds |
+| Maximum radius | 3.5 × (attack interval ÷ 2 − 0.4) | 8 metres |
+| Gate | attack interval | ability cooldown of 5 seconds or more |
+
+Every figure except the reaction allowance comes from somewhere else in the
+project. 3.5 metres per second is the Ritualist, the slowest of the three Demonic
+classes in the class stat table. 8 metres is the shortest of the ten
+Movement-shape skill ranges in `game/Data/WeaponSkills.csv`. 5 seconds is the
+Movement slot cooldown in `game/Data/SkillSlots.csv`. The attack intervals are
+`ARCHETYPES` in `sim/cataclysm_sim/enemy_stats.py`.
+
+**Designing against the slowest and the shortest is deliberate.** Every build can
+then clear every telegraph, and the faster ones clear it with margin rather than
+only just.
+
+### The result nobody chose, which is the reason to trust the rule
+
+Applied to the seven vertical slice enemies, the rule says the Imp cannot
+telegraph anything larger than 0.2 metres and the Hellhound's basic attack
+nothing larger than 0.5. Both are smaller than the creature standing in the
+marker, so there is nowhere to walk. **Neither is telegraphed.**
+
+That is the design section X already asserts. It says "A single Common enemy is
+not the threat. A pack is", and an Imp that telegraphed would be individually
+dangerous and would stop being swarm fodder. The rule produces that outcome from
+the attack intervals without anybody deciding it per enemy, which is the main
+evidence that it is the right rule rather than a plausible one.
+
+**It also answers the dense-pack readability problem for free.** Only enemies
+with an attack interval of 2 seconds or more can telegraph, and the two swarm
+enemies are excluded by their own attack speed, so a pack cannot fill the screen
+with markers. That is the genre's best-known telegraph failure and it needed no
+separate mechanism.
+
+### The one figure that is not derived
+
+**0.4 seconds of reaction allowance**, and 0.8 for the larger telegraphs where
+the player must also decide whether to spend a cooldown. Simple visual reaction
+time is measured at 200 to 250 milliseconds and reaction to a new on-screen
+stimulus at 300 to 500 milliseconds. 0.4 sits inside that band and is what an
+ordinary player can do reliably while doing something else. It is stated in the
+document as the one figure that comes from outside the project.
+
+### What the genre does
+
+**Path of Exile 2** makes telegraphs the centre of its combat and answers them
+with a dodge roll carrying invincibility frames. **Diablo IV** uses ground
+markers and has shipped complaints that they disappear into the visual noise of a
+dense fight, and that it is inconsistent about which attacks get the dramatic
+treatment.
+
+**This game has neither a dodge roll nor an evade button**, which is why the
+duration is derived from walking speed rather than copied from either. That
+difference is the reason the numbers here are not Path of Exile 2's: a game where
+the answer is an invincibility frame can telegraph anything at any size, and a
+game where the answer is walking cannot.
+
+**Confidence is not uniform.** The Diablo IV and Path of Exile 2 claims come from
+web search summaries and community sources rather than from developer
+documentation. The reaction time figures are from published measurement summaries
+rather than a primary paper. The project's own figures — movement speeds, skill
+ranges, cooldowns, attack intervals — are read directly from the files named
+above and are certain.
+
+### What the project owner added
+
+The first version of this section treated the Movement skill as an emergency
+option and derived everything from walking. The project owner corrected it: the
+player also uses movement abilities for escape. The larger tier of telegraph, the
+8 metre cap and the 5 second cooldown gate are that correction applied.
+
+### What is not settled
+
+**Nothing here has been played.** Every duration is arithmetic against a reaction
+figure and a walking speed. Whether a 1.5 second wind-up feels fair is a question
+for a playable build, and the constants are expected to move once there is one.
+
+**How a large telegraph looks different from a small one is stated as a
+requirement and not designed.** The player has to know which kind they are
+looking at before deciding whether to spend a cooldown, and radius alone is not
+readable at a glance. That is visual design and waits on issue #19.
+
+**Still open.** Issues #348 to #354 are the seven per-enemy designs that use this
+vocabulary. Issue #355 publishes the archetype numbers as game data so the engine
+can read them. Issue #39 implements all of it.
+
+Sources:
+- Rage and telegraphs in Path of Exile 2: https://mobalytics.gg/poe-2/guides/rage
+- Dodge roll mechanics in Path of Exile 2: https://dving.net/guides/path-of-exile-2-guides/dodge-roll
+- Ground marker visibility in dense fights, Diablo IV forums: https://us.forums.blizzard.com/en/d4/t/option-to-reduce-or-hide-other-players%E2%80%99-spell-effects-for-better-ground-affix-visibility/249901
+- Inconsistent attack telegraphs, Diablo IV forums: https://us.forums.blizzard.com/en/d4/t/i-wish-those-falling-swords-had-the-dangerous-attack-telegraph/243631
+- Reaction time measurement summary: https://backyardbrains.com/pages/the-science-of-your-reaction-time
+- Human perception timings: https://www.pubnub.com/blog/how-fast-is-realtime-human-perception-and-technology/
+
+---
+
 ## 2026-08-05 — Cripple, Weaken, Shred and Madness scale by chance alone
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #300.

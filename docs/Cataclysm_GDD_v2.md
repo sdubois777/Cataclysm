@@ -2930,6 +2930,161 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
+## **Attack Telegraphs**
+
+Sections III and IV both say the player must read and dodge telegraphed enemy attacks. This section says what a telegraph is, how long it lasts, and which attacks get one.
+
+  
+
+### **A telegraph is a wind-up on a shape the game already has**
+
+  
+
+There is no separate telegraph shape vocabulary. A telegraphed attack is an ordinary attack in one of the shapes the skill system already uses, shown on the ground before it lands.
+
+  
+
+| Shape | Parameters it already carries | Marker |
+| :-- | :-- | :-- |
+| Strike | `Radius`, `Angle` | A filled circle at `Angle` 360, a cone otherwise |
+| Projectile | `Range`, `Radius`, `Speed` | A line of width 2 × `Radius` running to `Range` |
+| Aura | `Radius`, `Duration`, `Interval` | A ring at `Radius`, persisting for `Duration` |
+| Movement | `Mode`, `Range`, `Radius` | The path the enemy will travel, of width 2 × `Radius` |
+
+  
+
+Those are the same `Shape` and `ShapeParams` columns that `game/Data/WeaponSkills.csv` already uses for player skills, in the same units: radii and ranges in metres. Reusing them means an enemy ability is authored the same way a player skill is, and that the marker can be drawn from the ability's own numbers rather than authored twice and allowed to disagree.
+
+  
+
+### **How long a wind-up lasts**
+
+  
+
+**The player has two ways out of a telegraph: walking, and a Movement skill.** There is no dodge roll and no evade button, so those are the two, and they are not interchangeable. Walking is always available and covers a small area. A Movement skill covers a large one, is on a cooldown of 5 seconds typically and 3 at the shortest, and is one of the six skill slots the player chose to fill.
+
+  
+
+That gives two sizes of telegraph, and both are used. **Small ones are walked out of and large ones cost a Movement skill.** The small ones are set out immediately below; the large ones follow, under Telegraphs that need a Movement skill.
+
+  
+
+A walk-out wind-up has to last long enough for the slowest class to notice the marker and walk clear of it:
+
+  
+
+    Wind-up seconds = 0.4 + Radius ÷ 3.5
+
+  
+
+**0.4 seconds is the reaction allowance.** Simple visual reaction time is 200 to 250 milliseconds, and reaction to a new stimulus appearing on a screen is measured at 300 to 500 milliseconds. 0.4 sits in that band. It is not the fastest a person can react; it is what an ordinary player can do reliably while also doing something else.
+
+  
+
+**3.5 metres per second is the slowest class.** The Ritualist moves at 3.5, the Masochist at 4.0 and the Ravager at 4.6. Designing against the slowest means every class can clear every telegraph, and the faster classes clear it with margin rather than only just.
+
+  
+
+### **Which attacks get a telegraph**
+
+  
+
+**An attack is telegraphed when its wind-up fits inside half the enemy's attack interval.** Half, not all of it, because an enemy that spends its whole cycle winding up is never actually attacking, and a marker that is on the ground continuously stops being a warning.
+
+  
+
+Rearranged, that gives the largest area each enemy can telegraph, straight from the attack intervals in `sim/cataclysm_sim/enemy_stats.py`:
+
+  
+
+    Largest telegraphed radius = 3.5 × (attack interval ÷ 2 − 0.4)
+
+  
+
+| Enemy | Attack interval | Largest telegraphed radius | Telegraphed? |
+| :-- | :-: | :-: | :-- |
+| Imp | 0.9 s | 0.2 m | **No** |
+| Hellhound | 1.1 s | 0.5 m | **No**, for its basic attack |
+| Corrupted Sentinel | 2.0 s | 2.1 m | Yes |
+| Abyssal Warden | 2.4 s | 2.8 m | Yes |
+| Succubus | 2.6 s | 3.2 m | Yes |
+| Brute | 2.8 s | 3.5 m | Yes |
+| Gatekeeper | 3.0 s | 3.9 m | Yes |
+
+  
+
+**A marker smaller than 1 metre is not a telegraph.** It is smaller than the creature standing in it, so there is nowhere to walk. The Imp at 0.2 m and the Hellhound at 0.5 m fall below that, which is what puts them in the No column rather than a judgement about what those creatures are like.
+
+  
+
+**That result is the design the document already asserts, arrived at from the numbers rather than assumed.** Section X says of the Imp that "a single Common enemy is not the threat, a pack is". An Imp that could telegraph would be individually dangerous and would stop being swarm fodder. The rule produces that outcome without anybody choosing it per enemy.
+
+  
+
+**An ability on a cooldown is telegraphed against its own cooldown, not the attack interval.** The Hellhound's charge is a Movement-shape ability rather than its 1.1 second basic attack, so it is telegraphed even though its basic attack is not. Substitute the cooldown for the attack interval in the formula above.
+
+  
+
+### **Telegraphs that need a Movement skill**
+
+  
+
+An area larger than the walk-out limit is legitimate, and is what makes a mini-boss or a boss feel different from a Brute. It is not a bigger version of the same thing; it is the case the Movement slot exists to answer. Two rules keep it fair.
+
+  
+
+**A movement-skill telegraph caps at 8 metres of radius.** The ten Movement-shape skills in `game/Data/WeaponSkills.csv` have ranges of 8, 9, 10 and 12 metres, and 8 is the shortest — the Sword's charge and the Axe's leap. Designing against the shortest is the same choice as designing the walk-out limit against the slowest class: every build can clear it, and the longer-ranged ones clear it with margin. Anything above 8 metres cannot be escaped by any means the player has, which makes it a damage event rather than a telegraph.
+
+  
+
+**It may only appear on an ability with a cooldown of at least 5 seconds.** That is the Movement slot's typical cooldown. Below it the player would face a second large area with their escape still recharging, which is not a test of reading the telegraph — it is a test of whether the last one happened to be far enough back.
+
+  
+
+Its wind-up uses the same formula with the Movement skill's speed rather than walking speed. A Movement skill crosses its 8 metre range in well under a second, so the wind-up is dominated by the reaction allowance and by the player recognising that this is the large kind:
+
+  
+
+    Wind-up seconds = 0.8 + Radius ÷ 16
+
+  
+
+**0.8 rather than 0.4** because the player has to decide, not only react: this is the one that costs a cooldown, and spending it on a marker they could have walked out of is a mistake the telegraph should not force. **16 metres per second** is the 8 metre range crossed in half a second. At the 8 metre cap that gives a 1.3 second wind-up.
+
+  
+
+**A large telegraph looks different from a small one.** The player has to know which one they are looking at before they decide whether to spend a cooldown, and radius alone is not readable at a glance in a fight.
+
+  
+
+### **What the player can do during a wind-up, and what the attack does**
+
+  
+
+- **The area is fixed when the wind-up starts.** It does not follow the player. An attack that tracks cannot be walked out of, which would make the wind-up decorative.
+- **The player can do anything during it.** Attacking, casting and using a Movement skill are all allowed. A wind-up that stops the player acting is a stun with a warning, and stuns are governed separately.
+- **Leaving the area avoids the attack completely.** Not reduced damage — nothing. Partial credit for a dodge means the correct play is to ignore telegraphs and stack mitigation, which is the behaviour this whole section exists to prevent.
+- **The enemy is committed once the wind-up starts.** It does not cancel because the player left. Committing is what makes a telegraph a chance to punish the enemy rather than only a chance to survive it.
+- **Interrupting the enemy cancels the attack.** This is what makes crowd control offensive rather than only defensive.
+
+  
+
+### **Twenty markers on screen at once**
+
+  
+
+This is the failure the genre is worst at. Diablo IV has shipped complaints that ground markers disappear into the visual noise of a dense fight, and that its own warnings are inconsistent about which attacks get the dramatic treatment.
+
+  
+
+**The rule above solves it rather than needing a separate fix.** Only enemies with an attack interval of 2 seconds or more can telegraph anything, and the two swarm enemies — the Imp and the Hellhound — are excluded by their own attack speed. A pack cannot fill the screen with markers, because the creatures that come in packs do not produce any. The markers that do appear come from the slow, heavy, individually dangerous enemies, which are also the ones that arrive in small numbers.
+
+  
+
+**Two markers of the same shape overlapping is one marker, drawn once.** This matters at the Gatekeeper, where phases can stack area attacks, and it is the case that produces unreadable overlap everywhere else.
+
+  
+
 ## **Enemy Modifiers**
 
 Enemy modifiers apply to an **individual enemy**, and are separate from the dungeon modifiers in section VIII, which apply to a whole dungeon.
