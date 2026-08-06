@@ -22,7 +22,11 @@ which checks its shape and not its numbers.
 from __future__ import annotations
 
 import ast
+import contextlib
+import io
+import math
 import pathlib
+import random
 import sys
 from dataclasses import replace
 
@@ -150,10 +154,17 @@ class TestNoSectionRelivesTheBug:
 
 #: Where the preset ordering starts and stops in `exp_presets` output.
 #: FOUR blocks below it print one `tier N:` line per tier -- the tolerance
-#: comparison, the win-rate second opinion, and the objectives-cleared block --
-#: so matching on that prefix alone picks up all of them. Issue #294.
+#: comparison, the same ordering under the cap alone, the win-rate second
+#: opinion, and the objectives-cleared block -- so matching on that prefix alone
+#: picks up all of them. Issues #294 and #328.
 _ORDER_HEADING = "PRESET ORDER BY WIN RATE MINUS LOSS RATE"
-_ORDER_ENDS_AT = "HOW CONSERVATIVE THAT TOLERANCE IS"
+_ORDER_ENDS_AT = "HOW MUCH THE PER-PAIR TOLERANCE BUYS"
+
+#: The block that reprints the ordering under the worst-case cap, which is what
+#: the report gave before issue #328. Kept sliceable so a test can compare the
+#: two orderings the report itself prints.
+_CAP_ORDER_HEADING = "THE SAME ORDER UNDER THE CAP ALONE"
+_CAP_ORDER_ENDS_AT = "PRESET ORDER BY WIN RATE ALONE"
 
 #: The same, for the win-rate ordering kept as a second opinion. Issue #294.
 _WIN_ORDER_HEADING = "PRESET ORDER BY WIN RATE ALONE"
@@ -174,6 +185,11 @@ def _ordering_lines(printed: str) -> list[str]:
 def _win_ordering_lines(printed: str) -> list[str]:
     """The same for the win-rate ordering printed as a second opinion."""
     return _lines_between(printed, _WIN_ORDER_HEADING, _WIN_ORDER_ENDS_AT)
+
+
+def _cap_ordering_lines(printed: str) -> list[str]:
+    """The same for the ordering under the worst-case cap. Issue #328."""
+    return _lines_between(printed, _CAP_ORDER_HEADING, _CAP_ORDER_ENDS_AT)
 
 
 class TestTheOrderingIsReportedHonestly:
@@ -371,6 +387,265 @@ class TestTheMarginNoiseFloor:
                 == pytest.approx(experiments.margin_noise(150) / 2.0))
 
 
+class TestTheTolerancePerPair:
+    """Issue #328. The grouping no longer uses one worst-case figure for the
+    whole table. It uses the tolerance each PAIR of cells needs, computed from
+    the rates those two cells observed after smoothing.
+
+    WHAT THE BOUND COST. It assumes a cell that wins half its campaigns and
+    loses the other half, where one campaign's variance is 1. Above difficulty
+    tier 5 almost every campaign loses, the variance is near zero, and the bound
+    was about eight times wider than the closest measured pair needed.
+
+    WHY IT COULD NOT SIMPLY BE SWAPPED. A cell that observed 0 wins in 60
+    campaigns has an estimated variance of exactly zero, so its tolerance
+    against another such cell is exactly zero and ANY gap gets called a
+    difference. `smoothed_rates` pulls the rates off the boundary first, and
+    `sim/analyse_margin_tolerance.py` is the measurement that chose by how much:
+    two cells with IDENTICAL true rates are separated 51% of the time unsmoothed
+    against a target near 32%.
+    """
+
+    def test_the_smoothing_constant_is_the_documented_one(self):
+        """Both derivations give 0.5: Agresti-Coull's z^2/2 at z = 1, which is
+        the one standard error this tolerance covers, and the Jeffreys prior
+        for a multinomial. Pinned because the whole calibration rests on it."""
+        assert experiments.MARGIN_SMOOTHING == 0.5
+
+    def test_smoothing_moves_a_cell_that_won_nothing_off_the_boundary(self):
+        """THE FAILURE THE SMOOTHING EXISTS FOR. 0% win and 100% loss is the
+        common cell at tier 8."""
+        win, loss = experiments.smoothed_rates(0.0, 100.0, 60)
+        assert win > 0.0
+        assert loss < 100.0
+
+    def test_smoothing_never_moves_a_rate_past_the_middle(self):
+        """It is a weighted average of the observed rate and one third, so it
+        always moves toward the centre and never overshoots it. Checked because
+        a smoothing that could cross would turn a losing cell into a winning
+        one."""
+        for win in range(0, 101, 10):
+            for loss in range(0, 101 - win, 10):
+                smooth_win, smooth_loss = experiments.smoothed_rates(
+                    float(win), float(loss), 60)
+                for before, after in ((win, smooth_win), (loss, smooth_loss)):
+                    lo, hi = sorted((float(before), 100.0 / 3.0))
+                    assert lo - 1e-9 <= after <= hi + 1e-9
+
+    def test_no_smoothing_is_the_identity(self):
+        """So that the constant is the only thing that changes behaviour, and a
+        measurement can compare against the unsmoothed case."""
+        assert experiments.smoothed_rates(0.0, 100.0, 60, 0.0) == (0.0, 100.0)
+        assert experiments.smoothed_rates(12.0, 44.0, 60, 0.0) == pytest.approx(
+            (12.0, 44.0))
+
+    def test_two_cells_that_lost_everything_no_longer_get_a_zero_tolerance(
+            self):
+        """THE BUG THE BOUND EXISTED TO AVOID, and the reason issue #294 kept
+        the bound rather than swapping in the observed figure. Without
+        smoothing this is exactly 0.0, so a gap of any size at all would be
+        reported as a real difference."""
+        unsmoothed = experiments.margin_variance(0.0, 100.0)
+        assert unsmoothed == 0.0, (
+            "the unsmoothed variance of an all-losing cell is no longer zero, "
+            "so the trap this smoothing was added for has gone away and the "
+            "constant should be re-derived rather than kept.")
+        assert experiments.margin_noise_between(
+            0.0, 100.0, 0.0, 100.0, 60) > 0.0
+
+    def test_the_smoothed_pair_tolerance_never_exceeds_the_bound(self):
+        """What makes `margin_noise` safe as the cap. Smoothed rates are still
+        rates, and `margin_variance` is at most 1 for any rates at all, so this
+        holds by construction -- checked over a grid because it is the property
+        `rank_by_score` relies on when it takes the smaller of the two."""
+        for trials in (60, 150):
+            for win in range(0, 101, 10):
+                for loss in range(0, 101 - win, 10):
+                    observed = experiments.margin_noise_between(
+                        float(win), float(loss), 50.0, 50.0, trials)
+                    assert observed <= experiments.margin_noise(trials) + 1e-9
+
+    def test_the_high_tier_pair_tolerance_is_a_fraction_of_the_cap(self):
+        """THE POINT OF THE CHANGE, as a number. These are the rates of the
+        closest pair at difficulty tiers 6 and 7, measured 2026-08-06 at 60
+        campaigns per cell: the Explorer maxed preset against Explorer via
+        floors (+30 floors). Smoothed it gets 4.28 points against a cap of
+        18.26, so the cap was 4.3 times wider than that pair needed."""
+        observed = experiments.margin_noise_between(0.0, 100.0, 0.0, 96.7, 60)
+        assert observed < experiments.margin_noise(60) / 3.0, (
+            f"the per-pair tolerance for two losing cells is now "
+            f"{observed:.2f} against a cap of {experiments.margin_noise(60):.2f}. "
+            f"Issue #328 was opened because the cap was many times wider than "
+            f"these cells need; if that ratio has collapsed, the change is "
+            f"buying nothing and should be reconsidered.")
+
+    def test_that_pair_is_still_reported_tied_and_that_is_correct(self):
+        """SAID PLAINLY BECAUSE IT IS THE OPPOSITE OF WHAT THE ISSUE EXPECTED.
+
+        Issue #328 said that pair is 3.3 points apart and "needs 2.3 points to
+        be called apart". The 2.3 is the UNSMOOTHED estimate, which is the one
+        the same issue says cannot be used, because a cell that won nothing
+        gets a variance of exactly zero. Smoothed it is 4.28, and 3.3 does not
+        clear it.
+
+        So the fix does NOT separate the pair it was opened about. What it
+        separates is the wider pairs, which moved the reported order at tiers
+        5, 6 and 7. If a future change makes this pair separate, check what
+        moved: it probably means the smoothing was reduced.
+        """
+        gap = 3.3
+        smoothed = experiments.margin_noise_between(0.0, 100.0, 0.0, 96.7, 60)
+        assert gap <= smoothed, (
+            f"the closest pair at tiers 6 and 7 now separates: a gap of {gap} "
+            f"against a tolerance of {smoothed:.2f}. Issue #328's own figure "
+            f"of 2.3 was unsmoothed. Check MARGIN_SMOOTHING before treating "
+            f"this as a gain.")
+        unsmoothed = 100.0 * math.sqrt(
+            (experiments.margin_variance(0.0, 100.0)
+             + experiments.margin_variance(0.0, 96.7)) / 60.0)
+        assert unsmoothed == pytest.approx(2.3, abs=0.05), (
+            f"the unsmoothed tolerance for that pair is {unsmoothed:.2f}, not "
+            f"the 2.3 issue #328 quotes, so these are no longer the rates the "
+            f"issue was measured on and the paragraph above needs rewriting.")
+        assert gap > unsmoothed
+
+    def test_the_pair_tolerance_factory_agrees_with_the_function(self):
+        wins = {"a": 4.0, "b": 0.0}
+        losses = {"a": 90.0, "b": 97.0}
+        tolerance = experiments.pair_tolerance_from(wins, losses, 60)
+        assert tolerance("a", "b") == experiments.margin_noise_between(
+            4.0, 90.0, 0.0, 97.0, 60)
+
+    def test_a_scalar_tolerance_groups_exactly_as_it_did_before(self):
+        """`rank_by_score` now checks a candidate against EVERY member of the
+        group rather than only the one that opened it. With one tolerance the
+        two rules are the same rule, because the list is sorted by score so the
+        opener is the furthest member. Checked against a direct copy of the old
+        rule over random inputs, because "the same rule" is an argument and
+        this is the evidence."""
+        rng = random.Random(20260806)
+
+        def old_rule(scores, tolerance):
+            groups = []
+            for name in sorted(scores, key=lambda n: (-scores[n], n)):
+                if groups and abs(groups[-1][0] - scores[name]) <= tolerance:
+                    groups[-1][1].append(name)
+                else:
+                    groups.append([scores[name], [name]])
+            return [tuple(names) for _, names in groups]
+
+        for _ in range(400):
+            scores = {f"p{i}": round(rng.uniform(-100.0, 100.0), 1)
+                      for i in range(rng.randint(2, 8))}
+            tolerance = round(rng.uniform(0.0, 40.0), 1)
+            assert (experiments.rank_by_score(scores, tolerance)
+                    == old_rule(scores, tolerance))
+
+    def test_the_pair_tolerance_is_used_when_it_is_given(self):
+        """A gap of 4 with a cap of 10 is a tie; the same gap with a pair
+        tolerance of 1 is not."""
+        scores = {"a": 10.0, "b": 6.0}
+        assert experiments.rank_by_score(scores, 10.0) == [("a", "b")]
+        assert experiments.rank_by_score(
+            scores, 10.0, pair_tolerance=lambda x, y: 1.0) == [("a",), ("b",)]
+
+    def test_the_cap_stops_a_pair_tolerance_looser_than_the_worst_case(self):
+        """The guard, proved by feeding it the input it guards against. A pair
+        tolerance of a million must not merge presets the worst case says are
+        different."""
+        scores = {"a": 90.0, "b": 10.0}
+        assert experiments.rank_by_score(
+            scores, 5.0, pair_tolerance=lambda x, y: 1e6) == [("a",), ("b",)]
+
+    def test_a_preset_must_clear_every_member_of_a_group_not_just_the_opener(
+            self):
+        """Why the rule changed. `c` is within the pair tolerance of the group
+        opener `a` but not of `b`, which is already in the group. Grouping it
+        with both would claim a tie between `b` and `c` that the tolerance for
+        that pair rejects."""
+        scores = {"a": 10.0, "b": 7.0, "c": 4.0}
+
+        def tolerance(x, y):
+            return 1.0 if {x, y} == {"b", "c"} else 100.0
+
+        assert experiments.rank_by_score(
+            scores, 100.0, pair_tolerance=tolerance) == [("a", "b"), ("c",)]
+
+    def test_the_result_is_not_always_a_refinement_of_the_caps_grouping(self):
+        """SAID OUT LOUD SO NOBODY ASSUMES IT. Issue #328 expected a tighter
+        tolerance to split groups and never merge them. It does not follow:
+        splitting a group changes which preset opens the next one, so a pair
+        can be compared that the cap never compared.
+
+        Here the cap gives (a, b) then (c). The pair tolerance splits a from b,
+        which leaves b opening a group, and c then joins b -- a grouping the
+        cap's does not contain and which does not contain the cap's.
+        """
+        scores = {"a": 10.0, "b": 6.0, "c": 2.0}
+
+        def tolerance(x, y):
+            return 3.0 if {x, y} == {"a", "b"} else 5.0
+
+        under_cap = experiments.rank_by_score(scores, 5.0)
+        under_pair = experiments.rank_by_score(
+            scores, 5.0, pair_tolerance=tolerance)
+        assert under_cap == [("a", "b"), ("c",)]
+        assert under_pair == [("a",), ("b", "c")]
+        assert not set(under_pair) <= set(under_cap)
+        assert not set(under_cap) <= set(under_pair)
+
+
+@pytest.fixture(scope="module")
+def printed():
+    """One two-tier run of the preset section at two campaigns per cell.
+
+    Module-scoped because the section is the slowest thing this file touches
+    and every test below reads the same output.
+    """
+    base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+    return out.getvalue()
+
+
+class TestTheReportShowsWhatThePerPairToleranceChanged:
+    """Issue #328. The report prints both orderings, so a reader can see what
+    the change did without running the previous version."""
+
+    def test_it_prints_the_ordering_under_the_cap_as_well(self, printed):
+        assert _CAP_ORDER_HEADING in printed
+        assert len(_cap_ordering_lines(printed)) == 2
+
+    def test_it_says_whether_the_change_moved_anything(self, printed):
+        assert ("The per-pair tolerance CHANGES the reported order" in printed
+                or "changes no reported order at any tier" in printed), (
+            "the report no longer states whether the per-pair tolerance moved "
+            "any ordering. That sentence is what connects issue #328 to issues "
+            "#4 and #5, which rest on the ordering.")
+
+    def test_it_says_the_tolerance_is_computed_per_pair(self, printed):
+        collapsed = unwrapped(printed)
+        assert "THE TOLERANCE IS COMPUTED PER PAIR" in collapsed
+        assert "Issue #328" in collapsed
+        assert "MARGIN_SMOOTHING" in collapsed, (
+            "the report does not name the smoothing constant, so a reader "
+            "cannot find why a cell that won nothing has a tolerance at all.")
+
+    def test_the_closest_pair_block_shows_both_verdicts(self, printed):
+        """Gap, the tolerance that pair got, and what each of the two figures
+        calls it. Without both verdicts the block is two numbers with no
+        statement of which one decided."""
+        block = printed[printed.index(_ORDER_ENDS_AT):]
+        for tier in (1, 8):
+            line = next((ln for ln in block.splitlines()
+                         if ln.strip().startswith(f"tier {tier}:")), None)
+            assert line is not None
+            assert ("fewer than two presets ranked" in line
+                    or ("closest gap" in line and "cap" in line
+                        and ("APART" in line or "tied" in line)))
+
+
 class TestTheClosestPairIsIdentified:
     """`closest_ranked_pair` finds the gap that decides whether the tolerance
     mattered. Every wider gap survives a tolerance this one survives."""
@@ -447,6 +722,42 @@ class TestTheOrderingUsesWinMinusLoss:
             "the preset table no longer prints the win-minus-loss column, so "
             "the column the ordering is built on is not visible. Issue #294.")
 
+    def test_the_ordering_is_built_with_the_per_pair_tolerance(self):
+        """Issue #328. A behaviour check cannot see this: when the two
+        tolerances happen to give the same grouping -- which they do at the
+        two-campaign sample size these tests run at -- a report built without
+        the per-pair tolerance is identical to one built with it. So the call
+        itself is checked.
+
+        Read out of the syntax tree rather than by matching text, because the
+        argument sits on its own line and any reformatting would silently stop
+        a string match from checking anything.
+        """
+        presets = next(node for node in ast.walk(TREE)
+                       if isinstance(node, ast.FunctionDef)
+                       and node.name == "exp_presets")
+        ranked_margins = [
+            node for node in ast.walk(presets)
+            if isinstance(node, ast.Call)
+            and getattr(node.func, "id", None) == "rank_by_score"
+            and node.args
+            and isinstance(node.args[0], ast.Subscript)
+            and getattr(node.args[0].value, "id", None) == "margins"]
+        assert ranked_margins, (
+            "exp_presets no longer ranks the margins with rank_by_score. "
+            "Issue #294.")
+        with_pair = [call for call in ranked_margins
+                     if any(kw.arg == "pair_tolerance" for kw in call.keywords)]
+        assert with_pair, (
+            "exp_presets ranks the margins without passing pair_tolerance, so "
+            "the ordering is back on the worst-case cap and issue #328 has "
+            "been undone. The cap is about four times wider than the high "
+            "difficulty tiers need.")
+        assert len(with_pair) < len(ranked_margins), (
+            "every rank_by_score call on the margins now passes a pair "
+            "tolerance, so the report no longer computes the ordering under "
+            "the cap alone and cannot show what the change did.")
+
     def test_the_ordering_is_built_from_the_margins(self):
         """A source check, because the printed order alone cannot tell which
         dict it came from when the two metrics happen to agree."""
@@ -479,10 +790,16 @@ class TestTheOrderingUsesWinMinusLoss:
         assert "+1 won, -1 lost, 0 no result" in printed
         assert "exactly twice the win rate's" in printed
 
-    def test_the_report_shows_how_conservative_the_bound_is(self, capsys):
-        """The bound assumes a cell that wins half its campaigns and loses the
-        rest. At tier 8 nothing does, so the figure used is far wider than the
-        one that pair needs, and the report says so per tier."""
+    def test_the_report_shows_how_conservative_the_cap_is(self, capsys):
+        """The cap assumes a cell that wins half its campaigns and loses the
+        rest. At tier 8 nothing does, so it is far wider than the one that pair
+        needs, and the report says so per tier.
+
+        WHAT THIS USED TO ASSERT. Until issue #328 the block was headed HOW
+        CONSERVATIVE THAT TOLERANCE IS, because the worst-case figure was the
+        tolerance the grouping used. It is now the cap, and the tolerance is
+        computed per pair, so the heading names what the per-pair figure buys.
+        """
         base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
         experiments.exp_presets(base, tiers=(1, 8), trials=2)
         printed = capsys.readouterr().out

@@ -434,18 +434,75 @@ def margin_noise(trials: int) -> float:
     campaigns per cell on 2026-08-05, the closest pair at tiers 6 and 7 needed
     2.3 points and this bound gave them 18.3.
 
-    THE GROUPING USES THE BOUND ANYWAY, and that is deliberate. Estimating the
-    variance from the rates a cell observed sends it to exactly zero when the
-    cell won nothing, which would call any non-zero gap significant -- the same
-    failure this guards against, arrived at from the other side. Fixing that
-    needs the rates smoothed away from the boundary first, which is issue #328.
-    `margin_noise_between` computes the observed figure and the sweep prints it
-    beside the bound, so how much is being given away is visible per tier.
+    THE GROUPING NO LONGER USES THE BOUND. Issue #328. It uses
+    `margin_noise_between`, which estimates the variance from the rates each
+    pair of cells actually observed, after `smoothed_rates` has pulled those
+    rates off the boundary. This bound stays as the CAP that `rank_by_score`
+    applies to any per-pair tolerance, and as the comparison the report prints
+    per tier so the difference between the two is visible.
+
+    WHAT THIS PARAGRAPH USED TO SAY. Until issue #328 it read "THE GROUPING
+    USES THE BOUND ANYWAY, and that is deliberate", because estimating the
+    variance from observed rates sends it to exactly zero for a cell that won
+    nothing, which would call any non-zero gap significant. That is still true
+    of an unsmoothed estimate; `smoothed_rates` is what fixed it, and
+    `sim/analyse_margin_tolerance.py` is the measurement that chose how much
+    smoothing.
 
     THE BOUND ERRS SAFELY. It can report a real difference as a tie; it cannot
     report noise as a difference.
     """
     return 2.0 * win_rate_noise(trials)
+
+
+#: Pseudo-outcomes added to each of a campaign's three possible results -- won,
+#: lost, no result -- before a cell's variance is estimated from the rates it
+#: observed. Issue #328.
+#:
+#: WHY ANY SMOOTHING. A cell that observed 0 wins in 60 campaigns gets an
+#: estimated win probability of exactly 0, and `margin_variance` then returns
+#: exactly 0, so `margin_noise_between` gives that pair a tolerance of exactly
+#: 0 and calls any non-zero gap significant. The cell's true win rate is not
+#: zero; the sample has simply not seen the tail. Substituting the observed rate
+#: straight in asserts a certainty the sample does not have.
+#:
+#: WHY 0.5 AND NOT SOMETHING ELSE. Two derivations agree on it, and the
+#: measurement in `sim/analyse_margin_tolerance.py` accepts it.
+#:
+#:   1. Agresti-Coull adds z^2/2 notional outcomes to each category, where z is
+#:      the number of standard errors the interval covers. The familiar "add 2
+#:      successes and 2 failures" is z = 1.96, a 95% interval. The tolerance
+#:      here is ONE standard error, so z = 1 and z^2/2 = 0.5.
+#:   2. The Jeffreys prior for a multinomial is Dirichlet(1/2, ..., 1/2), which
+#:      is 0.5 per category with no reference to a confidence level at all.
+#:
+#: WHAT THE MEASUREMENT SAYS, exactly, at 60 campaigns per cell over 113 (p, q)
+#: points. Two cells with IDENTICAL true rates should be called different about
+#: 31.7% of the time by a one-standard-error two-sided test. Unsmoothed, the
+#: worst point over that grid reaches 51.0% and 39 of the 113 points exceed
+#: 33%. At 0.125 and above nothing exceeds 33% anywhere. 0.5 sits inside the
+#: safe region rather than on its edge, and what it costs is confined to cells
+#: whose true win rate is under about 2%.
+MARGIN_SMOOTHING = 0.5
+
+
+def smoothed_rates(win: float, loss: float, trials: int,
+                   smoothing: float = MARGIN_SMOOTHING) -> tuple[float, float]:
+    """Win and loss rates pulled off the 0% and 100% boundaries. Issue #328.
+
+    Both rates in and out are percentages, as `summarise` reports them. The
+    third outcome -- a campaign that ran out of days, which is neither a win nor
+    a loss -- is smoothed too, which is why the denominator gains three
+    pseudo-outcomes rather than two. See `MARGIN_SMOOTHING`.
+
+    This CANNOT push a rate past a boundary it was inside: the result is a
+    weighted average of the observed rate and 1/3, so it always moves toward
+    the middle and never past it.
+    """
+    denominator = trials + 3.0 * smoothing
+    won = win / 100.0 * trials + smoothing
+    lost = loss / 100.0 * trials + smoothing
+    return 100.0 * won / denominator, 100.0 * lost / denominator
 
 
 def margin_noise_between(win_a: float, loss_a: float,
@@ -455,14 +512,33 @@ def margin_noise_between(win_a: float, loss_a: float,
 
     The same derivation as `margin_noise` without the worst-case substitution,
     so this is what separates that pair rather than what would separate the
-    hardest possible pair.
+    hardest possible pair. THIS IS WHAT THE GROUPING USES since issue #328.
+
+    The rates are smoothed first -- see `MARGIN_SMOOTHING` -- because a cell
+    that won nothing would otherwise be handed a variance of exactly zero.
     """
+    win_a, loss_a = smoothed_rates(win_a, loss_a, trials)
+    win_b, loss_b = smoothed_rates(win_b, loss_b, trials)
     variance = margin_variance(win_a, loss_a) + margin_variance(win_b, loss_b)
     return 100.0 * math.sqrt(variance / max(1, trials))
 
 
+def pair_tolerance_from(win: dict[str, float], loss: dict[str, float],
+                        trials: int):
+    """A `rank_by_score` pair tolerance built from one tier's measured rates.
+
+    Issue #328. Returns a function of two preset names, which is the shape
+    `rank_by_score` wants. Written as a factory rather than a closure inside
+    the tier loop so that it can be tested on its own.
+    """
+    def tolerance(name_a: str, name_b: str) -> float:
+        return margin_noise_between(win[name_a], loss[name_a],
+                                    win[name_b], loss[name_b], trials)
+    return tolerance
+
+
 def rank_by_score(scores: dict[str, float], tolerance: float,
-                  exclude=()) -> list[tuple[str, ...]]:
+                  exclude=(), pair_tolerance=None) -> list[tuple[str, ...]]:
     """Preset names grouped by score, best group first.
 
     RENAMED FROM `rank_by_win`, issue #294. The grouping was never specific to
@@ -472,6 +548,12 @@ def rank_by_score(scores: dict[str, float], tolerance: float,
     Two presets within `tolerance` of each other go in the same group, so the
     result says only what the sample size can support.
 
+    `pair_tolerance` is optional and takes two names, returning the tolerance
+    for that pair. Issue #328. `tolerance` is then a CAP rather than the figure
+    used: the pair figure is used where it is smaller, which it always is for
+    `margin_noise_between` against `margin_noise`, and the cap stops a future
+    caller passing something looser than the worst case can justify.
+
     `exclude` names presets to leave out of the ranking entirely. Issue #294.
     A preset whose campaigns ran out of days has no win rate to rank: 0% win
     and 0% loss is the absence of a result, not a poor one. Ranked anyway, the
@@ -480,22 +562,43 @@ def rank_by_score(scores: dict[str, float], tolerance: float,
     anywhere in the order is the bug. `warn_about_unresolved_campaigns` names
     the cells and is what the caller passes in here.
 
-    The names are dropped BEFORE grouping, not after. Each preset is compared
-    with the FIRST member of the group being built, so which presets are
-    present decides what the rest are measured against. With a tolerance of 5,
+    The names are dropped BEFORE grouping, not after. Which presets are present
+    decides what the rest are measured against. With a tolerance of 5,
     {a: 10, b: 6, c: 2} is (a, b) then (c), and the same three without a is one
     group (b, c). Filtering the finished groups would give the grouping of a
     set that was never ranked.
+
+    A PRESET JOINS A GROUP ONLY IF IT IS WITHIN TOLERANCE OF EVERY MEMBER, not
+    only of the one that opened the group. Issue #328. With a single `tolerance`
+    the two rules are the SAME rule: the list is sorted by score, so the opener
+    is the furthest member and clearing it clears the rest. They come apart once
+    the tolerance depends on the pair, because the widest gap and the widest
+    tolerance need not belong to the same pair, and a group whose members are
+    separable is a false claim of a tie.
+
+    THE RESULT IS NOT GUARANTEED TO BE A REFINEMENT of what the same scores give
+    under the cap alone. A tighter tolerance can split a group, and splitting it
+    changes which preset opens the next one, so a later pair can be compared
+    that was never compared before. {a: 10, b: 6, c: 2} with a cap of 5 gives
+    (a, b) then (c); if the pair (a, b) tolerates only 3 and the pair (b, c)
+    tolerates 5, it gives (a) then (b, c). Neither grouping contains the other.
     """
     ranked = {name: value for name, value in scores.items()
               if name not in exclude}
-    groups: list[list] = []
+
+    def between(name_a: str, name_b: str) -> float:
+        if pair_tolerance is None:
+            return tolerance
+        return min(tolerance, pair_tolerance(name_a, name_b))
+
+    groups: list[list[str]] = []
     for name in sorted(ranked, key=lambda n: (-ranked[n], n)):
-        if groups and abs(groups[-1][0] - ranked[name]) <= tolerance:
-            groups[-1][1].append(name)
+        if groups and all(abs(ranked[member] - ranked[name])
+                          <= between(member, name) for member in groups[-1]):
+            groups[-1].append(name)
         else:
-            groups.append([ranked[name], [name]])
-    return [tuple(names) for _, names in groups]
+            groups.append([name])
+    return [tuple(names) for names in groups]
 
 
 def closest_ranked_pair(scores: dict[str, float],
@@ -662,11 +765,27 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             for name in unresolved[tier]:
                 no_result_at.setdefault(name, []).append(tier)
 
-        print(f"\n  PRESET ORDER BY WIN RATE MINUS LOSS RATE, BEST FIRST. "
-              f"Presets within {tolerance:.1f}")
-        print(f"  points of each other are shown tied, because {trials} "
-              "campaigns per cell cannot")
-        print("  separate them.")
+        print("\n  PRESET ORDER BY WIN RATE MINUS LOSS RATE, BEST FIRST. "
+              "Presets the sample")
+        print(f"  cannot separate are shown tied, because {trials} campaigns "
+              "per cell is what")
+        print("  there is.")
+        print("\n  THE TOLERANCE IS COMPUTED PER PAIR, from the rates those "
+              "two cells actually")
+        print("  got, rather than from the worst case any cell could have. "
+              "Issue #328. A cell")
+        print("  that loses nearly every campaign varies far less than one "
+              "that wins half, so")
+        print("  one figure for the whole table gave the high tiers about "
+              "eight times the")
+        print(f"  tolerance they needed. The worst case is still the cap, at "
+              f"{tolerance:.1f} points.")
+        print("  Rates are smoothed by "
+              f"{MARGIN_SMOOTHING} of a campaign per outcome first, or a cell "
+              "that won")
+        print("  nothing would be handed a tolerance of exactly zero. See "
+              "MARGIN_SMOOTHING and")
+        print("  sim/analyse_margin_tolerance.py.")
         print("\n  WHY THIS METRIC AND NOT WIN RATE. Issue #294. Win rate "
               "collapses towards zero")
         print("  above tier 3: at tier 8 five of six presets sit between 0 and "
@@ -682,7 +801,7 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
               "independent rates. Its")
         print(f"  worst-case spread is exactly twice the win rate's, which is "
               f"the {tolerance:.1f} points")
-        print("  used above. See margin_noise.")
+        print("  this table caps at. See margin_noise.")
         if no_result_at:
             print(f"\n  LEFT OUT OF THE ORDER, no result at the "
                   f"{base.max_days:,} day cap:")
@@ -698,20 +817,35 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             print("  resolve, so the orderings below cover the same presets. "
                   "Issue #294.")
         orders = {}
+        bound_orders = {}
         for tier in tiers:
             order = rank_by_score(margins[tier], tolerance,
-                                  exclude=no_result_at)
+                                  exclude=no_result_at,
+                                  pair_tolerance=pair_tolerance_from(
+                                      wins[tier], losses[tier], trials))
             orders[tier] = order
+            bound_orders[tier] = rank_by_score(margins[tier], tolerance,
+                                               exclude=no_result_at)
             print(f"    tier {tier}: "
                   + (" > ".join(" = ".join(group) for group in order)
                      if order else "NO PRESET RANKED"))
 
-        print("\n  HOW CONSERVATIVE THAT TOLERANCE IS, for the closest pair "
-              "actually measured at")
-        print("  each tier. The bound above assumes a cell that wins half its "
-              "campaigns and")
-        print("  loses the other half; a cell that loses nearly all of them "
-              "varies far less.")
+        print("\n  HOW MUCH THE PER-PAIR TOLERANCE BUYS, for the closest pair "
+              "actually measured")
+        print("  at each tier. The cap assumes a cell that wins half its "
+              "campaigns and loses")
+        print("  the other half; a cell that loses nearly all of them varies "
+              "far less.")
+        print("\n  THIS IS THE HARDEST PAIR AT EACH TIER, so read it as a "
+              "lower bound on what")
+        print("  changed rather than as the change. Every wider gap in the "
+              "table is helped")
+        print("  more. The verdicts are for that pair TAKEN ON ITS OWN: a "
+              "preset joins a")
+        print("  group only if it is within tolerance of every member, so a "
+              "preset can sit")
+        print("  outside a group while still being within tolerance of one "
+              "preset inside it.")
         for tier in tiers:
             pair = closest_ranked_pair(margins[tier], exclude=no_result_at)
             if pair is None:
@@ -722,9 +856,42 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
                 wins[tier][first], losses[tier][first],
                 wins[tier][second], losses[tier][second], trials)
             gap = abs(margins[tier][first] - margins[tier][second])
+            used = min(tolerance, observed)
+            verdict = "APART" if gap > used else "tied"
+            was = "APART" if gap > tolerance else "tied"
             print(f"    tier {tier}: closest gap {gap:>5.1f} points, "
-                  f"tolerance for that pair {observed:>5.1f}, bound "
-                  f"{tolerance:>5.1f}")
+                  f"tolerance for that pair {observed:>5.1f} -> {verdict:<5} "
+                  f"cap {tolerance:>5.1f} -> {was}")
+        print("\n  THE PAIR ISSUE #328 WAS OPENED ABOUT IS STILL REPORTED "
+              "TIED. It quoted 2.3")
+        print("  points for the closest pair at tiers 6 and 7 against a gap "
+              "of 3.3. That 2.3")
+        print("  was the UNSMOOTHED estimate, which is the one that gives a "
+              "cell winning")
+        print("  nothing a tolerance of exactly zero and cannot be used. "
+              "Smoothed, that pair")
+        print("  gets about 4.3, and 3.3 does not clear it. What the change "
+              "buys is the")
+        print("  wider pairs, which the block below shows.")
+
+        print("\n  THE SAME ORDER UNDER THE CAP ALONE, which is what this "
+              "report printed before")
+        print("  issue #328. Kept so the change is visible here rather than "
+              "only in the issue.")
+        for tier in tiers:
+            order = bound_orders[tier]
+            print(f"    tier {tier}: "
+                  + (" > ".join(" = ".join(group) for group in order)
+                     if order else "NO PRESET RANKED"))
+        moved = [t for t in tiers if orders[t] != bound_orders[t]]
+        if moved:
+            print("  The per-pair tolerance CHANGES the reported order at tier "
+                  + ", ".join(str(t) for t in moved) + ".")
+        else:
+            print("  The per-pair tolerance changes no reported order at any "
+                  "tier measured, so")
+            print("  nothing on issues #4 and #5 turns on it at this sample "
+                  "size.")
 
         print(f"\n  PRESET ORDER BY WIN RATE ALONE, as a second opinion, "
               f"tolerance {win_tolerance:.1f} points.")
