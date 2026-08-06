@@ -20,6 +20,111 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — The Succubus is a support enemy, and its buff is an aura so that killing it works
+
+**Affects** `docs/Cataclysm_GDD_v2.md`, a new "The Succubus" subsection in
+section X, and `sim/cataclysm_sim/enemy_abilities.py`. Applied in full. Issue
+#349, a child of the enemy design epic #29.
+
+### The question
+
+The Succubus is the only enemy in the vertical slice that makes the others
+stronger. Its role line says it "debuffs player and buffs nearby allies", and
+neither half had a mechanism, a number or an effect name. Issue #349 asked which
+debuff, what the ally buff is and whether it is an aura or a cast, what its
+telegraph is, and whether its energy shield differs from the player's.
+
+### What was decided
+
+**Three abilities**: a telegraphed bolt on its attack interval, a curse on a ten
+second cooldown, and an aura held on while it lives.
+
+**Its wind-up is exactly half its attack interval, which is the most the
+telegraph rule allows.** The cap for a 2.6 second interval is 3.15 metres, and
+the Succubus uses all of it, which makes the wind-up 1.3 seconds. That is what
+"slow but powerful attacks" has to mean mechanically for an enemy with the second
+highest damage share in the slice.
+
+**The curse applies Withered Touch**, chosen from `game/Data/StatusEffects.csv`
+rather than invented. Five seconds, because Battle Cry and Final Curse are the
+only enemy-applied debuffs in that table that state a duration and both say five.
+Ten seconds of cooldown, so the player has as long without it as with it; ten is
+also the top of the Support slot's cooldown band.
+
+**A new general rule: an innate ability must not duplicate a modifier its own
+Cataclysm can roll.** An enemy carries one modifier per rarity above Common, from
+its own Cataclysm's column of `game/Data/EnemyModifiers.csv` and the Generic one.
+An ability duplicating a modifier the same creature could roll would let it hold
+the effect twice with nothing saying what that means. A modifier belonging to a
+different Cataclysm is not a clash, because that enemy can never roll it. Two
+Demonic modifiers, Abyssal Aura and Infernal Brand, are also effect names and are
+therefore closed to Demonic enemies as innate abilities.
+
+**The ally buff is Commander** — "all nearby allies gain 20% increased stats",
+already in the effect table — **held on as an Aura rather than cast.** This is
+the load-bearing choice. A cast buff lasts its duration and survives the caster,
+so killing the Succubus achieves nothing until the timer runs out. An aura ends
+the instant it dies, which is what makes target priority the lesson this enemy
+teaches. Its radius is the Succubus's own attack range, because that is how far
+from the fight it stands.
+
+**Three of the seven shapes have no ground marker**, and that is not an omission
+in the telegraph table: there is nothing for a curse to be drawn on. SelfBuff,
+Summon and Debuff are read off the caster's animation and answered by
+interrupting, which is the counter the Attack Telegraphs subsection already
+names.
+
+**It stands at 8 metres and does not retreat.** Eight is the shortest
+Movement-shape skill range in `game/Data/WeaponSkills.csv`, the same anchor the
+telegraph work used; a ranged enemy beyond it could not be closed on by every
+build. It does not kite because at 3.5 metres per second it matches the slowest
+class and loses to the other two, so retreating produces a chase rather than a
+test, and the enemy whose job is to punish standing still is the Corrupted
+Sentinel.
+
+**Its energy shield behaves exactly like the player's**, and nothing needed
+adding. Three of the five existing rules decide the fight: damage over time
+passes through it and holds it empty, magic weapons strip 10% more, and it
+refills three seconds after the last damage. 42 of the 51 designed Demonic
+skills carry `Burn=1`, so a Demonic player already carries the answer without
+building for it.
+
+**An enemy ability now declares a slot**, one of the seven in
+`game/Data/SkillSlots.csv`. Basic runs on the archetype's attack interval, Aura
+is held on, and the other five run on their own cooldown. Before this an ability
+with no cooldown was assumed to be the basic attack, which cannot express an aura
+that is simply on.
+
+### What was rejected
+
+**Giving the Succubus a debuff invented for it.** The effect table already holds
+fifty entries and the issue asked for a choice from it.
+
+**A cast ally buff with a duration.** It makes killing the support enemy pointless
+for as long as the timer runs, which is the opposite of what a support enemy
+should teach.
+
+**Kiting.** It cannot outrun any class, so it would only produce a chase, and it
+would take the Corrupted Sentinel's job.
+
+### Evidence
+
+`tools/tests/test_enemy_abilities.py` grows from 19 tests to 30. The wind-up, the
+telegraph verdict, the aura radius, the 8 metre stand-off and the burning-skill
+count are all recomputed from `sim/cataclysm_sim/enemy_stats.py`,
+`game/Data/WeaponSkills.csv`, `game/Data/StatusEffects.csv` and
+`game/Data/EnemyModifiers.csv`. All 22 deliberate breaks were caught by the
+intended test.
+
+**One of the tests caught a real mistake in the design while it was being
+written.** The first version of the modifier-clash rule compared against every
+modifier in the table, and it rejected Commander. Commander is a War modifier, so
+a Demonic Succubus can never roll it and there is no clash; the rule was narrowed
+to the enemy's own Cataclysm plus Generic, which is the pool an enemy actually
+draws from.
+
+---
+
 ## 2026-08-06 — The Imp has one attack, and how many can reach you is decided by geometry
 
 **Affects** `docs/Cataclysm_GDD_v2.md`, new section "Vertical Slice Enemy
