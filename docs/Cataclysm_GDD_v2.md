@@ -1423,20 +1423,51 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**What a summoned minion hits for is one rule for every minion, not a number per skill.** A minion's attack deals **30% of its summoner's weapon damage**, and it attacks **once per second**. It has no damage of its own, so it grows exactly as the character does and never stops mattering. Neither figure is a Shape Param, because neither varies between summoning skills; what varies is how many minions a skill makes and how long they last, and those are already `Count`, `MaxActive` and `Duration`.
+**Every minion type has its own stats.** A minion is not a percentage of its summoner. Each named type — a lesser imp, a mote of living fire, a bolt turret, a ballista, a spike trap — carries its own health, damage per hit, attack interval, movement speed, reach and threat weight. Two skills that produce the same creature produce the same stats, and one skill that produces two kinds of creature produces two stat blocks.
 
   
 
-| What a minion has | Where it comes from |
+**A minion reaches its summoner through exactly three channels, and nothing else crosses.**
+
+  
+
+| What a minion takes from its summoner | How |
 | :-: | :-: |
-| Damage per attack | 30% of the summoner's weapon damage |
-| Attacks per second | 1 |
-| How many, and for how long | The summoning skill's `Count`, `MaxActive` and `Duration` |
-| What its attacks are worth in total | 3 imps x 30% x 1 per second = 90% of weapon damage per second |
+| Its side | Everything the summoner is hostile to, it is hostile to |
+| Its base health and base damage | The type's own base, raised by the summoner's **level** |
+| Increased damage | One **primary attribute**, declared by the minion type |
 
   
 
-Ninety percent per second sits below an automatic basic attack, which is 128% to 150% per second depending on weapon speed. So a Ritualist holding three imps has added meaningfully to their damage without the minions becoming the whole of it. Diablo IV uses the same shape and very nearly the same number: its Necromancer minions gain 30% of the player's weapon damage and take their attack rate from the player's weapon. Path of Exile does the opposite and gives minions damage entirely their own; that route needs a whole separate family of minion-only stats to scale, which this game does not have and does not want for two skills.
+**Everything else is blocked unless a modifier says "minion".** A minion does not take the summoner's weapon damage, flat added damage, attack speed, critical strike chance or multiplier, penetration, armour, evasion, block, resistances, energy shield, leech, movement speed, cooldown reduction, area of effect, magic find, chance to apply an ailment, damage over time, or increased damage against a type of enemy. If a modifier does not name minions, it does not reach one.
+
+  
+
+**The summoner's level is the floor and gear cannot touch it.** It is what keeps a minion useful for a player who has found no minion gear at all, and because no affix, enchantment, gem or passive can raise it, it can never be counted twice.
+
+  
+
+**One enchantment is the named exception, and it is the model for any future one.** "Summoned minions inherit 10%-25% of your armor and resistances" already exists. Inheritance beyond the three channels above exists **only** where an enchantment says so by name. A blanket rule with no exception would contradict the enchantment table on the day it was written.
+
+  
+
+**Minion count is gear-modifiable, and only through enchantments. It is never an affix.** Two enchantments raise it and the unique-per-character rule means each can appear once across all equipped gear, so the total a player can reach is bounded permanently. That placement follows the same rule as maximum resistance, stated earlier in this document: an affix has seven tiers and can appear on several pieces, and a modifier that does not tolerate that range belongs in the enchantment table. Count tolerates it least of all — there are eight ring slots, so a "+1 minion" suffix would be eight from rings alone before any other piece — and count multiplies every other minion investment at once, because damage, effective health and rider uptime all scale with how many minions are alive.
+
+  
+
+**Count applies to summons, not to deployables.** A summon spawns at the caster and walks, so one more is safe. A deployable is placed in a pattern: Iron Fortress arranges two ballistae and three spike traps around the caster, and adding to a placement pattern is a level design problem as well as a balance one.
+
+  
+
+**This reverses the rule this document used to state**, which was that a minion's attack deals 30% of its summoner's weapon damage, that it attacks once per second, and that it has no stats of its own. That rule was justified "for two skills". There are six, and two of them already state their own health and attack rate: a bolt turret has 200 health and fires every 1.5 seconds, a ballista has 500 health and fires every 2 seconds. A class whose survival depends on its minions — the Ritualist "survives at range and behind what it summons" — had no way to make them tougher, because minion durability was not stated anywhere.
+
+  
+
+**Scaling from an attribute rather than from weapon damage is what makes minion affixes safe.** Under the old rule, weapon damage affixes already scaled minions, so adding minion damage affixes on top would have scaled them twice from one investment. Once minion damage no longer reads the summoner's weapon, that double count cannot happen. The second protection is structural: no ordinary affix in this game is a multiplier, so an attribute's contribution and an affix's contribution add rather than multiply.
+
+  
+
+**Four numbers are not settled and are tracked rather than guessed here.** Which attribute minions scale from (#335). The per-type base health and damage, which need the simulation rather than a judgement (#336). The four minion affixes and their values (#337). Whether the three deployable skills state their numbers in data rather than in prose (#338).
 
   
 
