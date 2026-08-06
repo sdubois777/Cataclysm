@@ -3324,6 +3324,126 @@ The vertical slice will feature five to seven base enemy types from the Demonic 
 
   
 
+## **Vertical Slice Enemy Behaviour**
+
+The table above says what each of the seven is. This says what each one does.
+
+  
+
+**An enemy ability is written the same way a player skill is**: a `Shape` and its parameters, the two columns `game/Data/WeaponSkills.csv` already carries, in the same units — radii and reaches in metres, durations in seconds. The seven shapes are listed in section V. Nothing about an enemy needs a second vocabulary, and the Attack Telegraphs subsection above already draws a ground marker from those same numbers.
+
+  
+
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Imp is designed.** The other six are open work: the Succubus, the Hellhound, the Brute, the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
+
+  
+
+### **The Imp**
+
+  
+
+**The Imp has one attack and nothing else, and that is the design rather than an omission.**
+
+  
+
+| Ability | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-- | :-: | :-: |
+| Rend | Strike | `Radius=1.32; Angle=90; MaxTargets=1` | its 0.9 s attack interval | No |
+
+  
+
+**It cannot telegraph, by the rule the section above already sets.** A 0.9 second attack interval allows a marker of 0.2 metres, which is smaller than the creature standing in it. That is not a choice made for the Imp; it falls out of the enemy being fast.
+
+  
+
+**A second ability is refused for two reasons.** The first is that whatever an Imp does is multiplied by the pack. Ten Imps with one extra ability between them is ten of that ability going off at once, and if it were large enough to telegraph it would be ten markers — which is precisely the failure the Twenty Markers subsection above exists to prevent, arriving from the one enemy that subsection clears.
+
+  
+
+The second is that a second ability cannot be quick. The smallest useful marker is 1 metre, and by the wind-up formula that needs a cycle of at least 1.4 seconds — longer than the Imp's whole attack interval. So any telegraphed ability an Imp had would be the slowest thing it does, and the creature's entire role is that one of them is not worth reacting to. An untelegraphed one is worse: an unavoidable extra hit landing from ten directions at once.
+
+  
+
+#### **Its reach is set by the pack, not by the creature**
+
+  
+
+**Bodies cannot overlap, so a swarm queues in rings around whatever it is attacking.** How many fit in a ring is arithmetic. A body of radius `r` standing `D` from the centre covers `2 × arcsin(r ÷ D)` of the circle, so a full ring holds:
+
+  
+
+    Ring capacity = pi ÷ arcsin(Body radius ÷ Distance)
+
+  
+
+Two body measurements feed it, and both are already in the project. The player's capsule radius is **0.42 m**, from `CapsuleRadius` in `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`. The Imp's body radius is **0.30 m**, the same as the lesser imp minion's capsule in `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`, because it is the same creature.
+
+  
+
+| Rank | Distance from the player | How many fit | Running total |
+| :-: | :-: | :-: | :-: |
+| First | 0.72 m | 7 | 7 |
+| Second | 1.32 m | 13 | 20 |
+| Third | 1.92 m | 20 | 40 |
+
+  
+
+**The Imp's reach is 1.32 metres, which is exactly the second rank.** It is set there because the document's own pack figures require it. Section X states that ten Imps kill a geared character in 4.9 seconds and twenty in 2.4. One rank is seven Imps, and seven take 6.9 seconds. A reach that let only the rank in contact swing would make both of the stated figures false, because the eighth Imp onward would be standing behind the first seven doing nothing.
+
+  
+
+Reach is measured centre to centre, which is how the engine measures it: `ACataclysmEnemyController::Think` compares the distance between the two actors' locations against `MeleeReachCm`.
+
+  
+
+#### **Twenty is the cap, and the geometry is the only thing enforcing it**
+
+  
+
+Two ranks are twenty Imps and the third is out of reach, so **twenty is the most that can ever hit a player at once** — the same twenty section X already uses as the lethal pack. A twenty-first Imp stands behind them and waits for one to die.
+
+  
+
+**There is no attack-token rule and there deliberately will not be one.** Limiting how many enemies may swing at once is the standard answer in melee action games: Doom (2016) makes each enemy request a token before attacking, and the Batman Arkham games allow two or three at a time. It is the wrong answer here. This document already commits to ten Imps killing a geared character in 4.9 seconds and twenty in 2.4, and a token limit of two or three would make both false and flatten the difference between a pack of ten and a pack of twenty to nothing. Physical crowding produces the same protection — a player is never surrounded by more than twenty — without capping the damage the design has already promised.
+
+  
+
+#### **A pack is ten**
+
+  
+
+Ten, because this document already names ten as the pack that kills a geared character in 4.9 seconds. It is three more than one full rank, which is what makes the second rank, and therefore the reach above, matter in an ordinary encounter rather than only in a swarm event.
+
+  
+
+**Imps surround; they do not funnel.** Each one takes the nearest free place in the innermost rank that has one. Nothing coordinates the pack and nothing needs to: filling the closest gap produces a ring because a ring is what is left once the closer places are taken.
+
+  
+
+#### **The player can always leave, and it costs the Movement slot**
+
+  
+
+An Imp moves at 6.5 metres per second. The three Demonic classes move at 3.5, 4.0 and 4.6. **Walking away from an Imp is never an escape**, so a pack that has closed cannot be un-closed on foot, and the Movement slot is what breaks it — the same slot the large telegraphs above are designed against.
+
+  
+
+**A Leap and a Blink clear a ring of bodies. A Charge does not.** A leap goes over and a blink is not travel at all, where a charge runs along the ground and meets whatever is in the way. That is a decision this section makes rather than something section V already said, and it is what stops "surrounded" meaning "dead regardless of what you built". Path of Exile 2's most repeated Early Access complaint is being body-blocked by a monster clump with no way out, and its dodge roll deliberately does not pass through monsters; two of this game's three Movement modes do.
+
+  
+
+**Bring area damage.** An Imp has 25% evasion and evasion avoids direct attacks only, so a single-target build fighting twenty of them misses a quarter of its swings while an area skill does not. That is the general rule in section X applied to the enemy it was written for.
+
+  
+
+#### **What the engine has to do**
+
+  
+
+The ring behaviour is not scripted. It is what crowd avoidance produces when twenty agents path to the same point and cannot overlap. Unreal's Detour Crowd is the one to use rather than the older RVO avoidance on the character movement component: Epic's own documentation describes Detour Crowd as the system for dense crowds and the one that stops agents being pushed off the navigation mesh, and running both at once causes the agents to jitter. The crowd agent radius is the body radius above.
+
+  
+
 # **XI. Cataclysm Quest Mechanics**
 
 Each Cataclysm has a unique world mechanic that layers onto the standard dungeon defense gameplay. These mechanics define the strategic challenge of each run and must be addressed to unlock the Cataclysm boss dungeon.
