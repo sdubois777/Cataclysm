@@ -54,6 +54,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import io
+import math
 import pathlib
 import runpy
 
@@ -108,7 +109,8 @@ def penetration_run():
                                   "analyse_damage_vs_type.py",
                                   "analyse_lethality_modes.py",
                                   "analyse_two_handed_multiplier.py",
-                                  "analyse_weakening_ailments.py"])
+                                  "analyse_weakening_ailments.py",
+                                  "analyse_margin_tolerance.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -808,6 +810,146 @@ def test_it_says_what_the_measurement_does_not_show(weakening_run):
     assert "It does not say the four are as strong as" in printed, (
         "analyse_weakening_ailments.py no longer says what its measurement "
         "does not cover. Issue #300.")
+
+
+# --------------------------------------------------------------------------
+# analyse_margin_tolerance.py -- issue #328
+#
+# The measurement that chose how much to smooth a cell's observed win and loss
+# rates before its variance is estimated. Section 7 of sim/experiments.py used
+# to group empire tree presets with one worst-case tolerance for the whole
+# table; it now computes one per pair, and that cannot be done from raw observed
+# rates because a cell that won nothing gets a variance of exactly zero.
+#
+# THE SCRIPT IS A STATISTICS MEASUREMENT, NOT A GAME ONE. It imports nothing
+# from cataclysm_sim. Every figure is an exact enumeration over the trinomial
+# outcome space, so there is no sample size to argue about and no random seed:
+# the same numbers come back every run, which is what makes pinning them here
+# reasonable.
+#
+# THE DIRECTIONS MATTER MORE THAN THE FIGURES. Three of them: that no smoothing
+# fails badly, that the chosen constant is above the floor rather than on it,
+# and that the pair issue #328 was opened about is STILL reported tied. The
+# third is the opposite of what the issue expected and is the thing a future
+# reader is most likely to get backwards.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def margin_tolerance_run():
+    """About 0.7 seconds. Exact enumeration over a seven-point grid."""
+    return run("analyse_margin_tolerance.py")
+
+
+def test_no_smoothing_separates_identical_cells_far_too_often(
+        margin_tolerance_run):
+    """THE FIRST DIRECTION. Two cells drawn from the SAME probabilities should
+    be called different about 31.7% of the time by a one-standard-error test.
+    Unsmoothed, at the rates the high difficulty tiers produce, it is about
+    half the time. If this ever falls to the target the smoothing is no longer
+    needed and the constant should go."""
+    _, ns = margin_tolerance_run
+    worst = max(ns["false_separation"](ns["TRIALS"], win, loss, 0.0)[0]
+                for win, loss in ns["GRID"])
+    assert worst > ns["TARGET_PERCENT"] + 10.0, (
+        f"the unsmoothed estimator's worst false-separation rate over the "
+        f"grid is now {worst:.1f}% against a target of "
+        f"{ns['TARGET_PERCENT']:.1f}%. Issue #328 exists because it was about "
+        f"51%. If that has gone away, MARGIN_SMOOTHING is solving a problem "
+        f"that no longer exists.")
+
+
+def test_the_chosen_smoothing_is_above_the_floor_rather_than_on_it(
+        margin_tolerance_run):
+    """THE SECOND DIRECTION, and the reason the constant is not the smallest
+    one that works. The floor is measured over a finite grid, and the candidate
+    one step below it already fails, so sitting on the floor would be one grid
+    point from the failure the smoothing exists to prevent."""
+    from experiments import MARGIN_SMOOTHING
+
+    _, ns = margin_tolerance_run
+    holds = [s for s in ns["CANDIDATES"]
+             if ns["worst_over_the_grid"](s)[0]
+             <= ns["TARGET_PERCENT"] + 1.5]
+    assert 0.0 not in holds, "no smoothing must not be reported as holding"
+    assert MARGIN_SMOOTHING in holds
+    assert MARGIN_SMOOTHING > min(holds), (
+        f"MARGIN_SMOOTHING is {MARGIN_SMOOTHING}, which is the smallest value "
+        f"that holds on this grid. Section B of the script argues for a value "
+        f"above the floor, not on it. Either raise the constant or rewrite "
+        f"that argument.")
+
+
+def test_the_floor_and_the_failing_candidate_are_both_printed(
+        margin_tolerance_run):
+    """A table that showed every candidate holding would argue nothing. The
+    grid includes the point that catches 0.0625 for exactly this reason."""
+    printed, ns = margin_tolerance_run
+    holds = [s for s in ns["CANDIDATES"]
+             if ns["worst_over_the_grid"](s)[0] <= ns["TARGET_PERCENT"] + 1.5]
+    fails = [s for s in ns["CANDIDATES"] if s not in holds]
+    assert len(fails) >= 2, (
+        f"only {fails} fail the calibration on this grid. The table needs a "
+        f"failing candidate ABOVE zero, or 'the floor is not zero' is the only "
+        f"thing it shows. Add a (win, loss) point that catches one.")
+    assert f"THE SMALLEST CANDIDATE THAT HOLDS IS {min(holds):g}" in printed
+
+
+def test_the_pair_the_issue_was_opened_about_is_still_tied(
+        margin_tolerance_run):
+    """THE THIRD DIRECTION, and the finding that contradicts the issue.
+
+    Issue #328 quoted that pair as 3.3 points apart needing 2.3. The 2.3 is the
+    unsmoothed figure the issue itself rules out. Smoothed it is 4.28, so the
+    change does NOT separate the pair it was opened for, and the script says so
+    in its own heading.
+    """
+    from experiments import MARGIN_SMOOTHING, margin_noise_between
+
+    printed, ns = margin_tolerance_run
+    a, b = ns["TIER_67_PAIR"]
+    smoothed = margin_noise_between(*a, *b, ns["TRIALS"])
+    assert ns["TIER_67_GAP"] <= smoothed, (
+        f"the tier 6 and 7 pair now separates at smoothing "
+        f"{MARGIN_SMOOTHING}: a gap of {ns['TIER_67_GAP']:.1f} against "
+        f"{smoothed:.2f}. Section D of the script says it does not.")
+    assert "IS STILL REPORTED TIED" in printed
+
+
+def test_it_recovers_the_issues_own_unsmoothed_figure(margin_tolerance_run):
+    """Proof that the transcribed rates are the ones the issue was measured on,
+    rather than a pair that merely looks similar. Unsmoothed they give 2.31,
+    which is the 2.3 the issue quotes."""
+    from experiments import margin_variance
+
+    _, ns = margin_tolerance_run
+    a, b = ns["TIER_67_PAIR"]
+    unsmoothed = math.sqrt(
+        (margin_variance(*a) + margin_variance(*b)) / ns["TRIALS"]) * 100.0
+    assert unsmoothed == pytest.approx(2.3, abs=0.05)
+
+
+def test_the_enumeration_keeps_effectively_all_the_probability(
+        margin_tolerance_run):
+    """Rare outcomes are dropped before the pairwise sum. If a real tail were
+    being dropped, every percentage in section A would be measuring a
+    truncated distribution and nothing would say so."""
+    _, ns = margin_tolerance_run
+    for win, loss in ns["GRID"]:
+        _, mass, _ = ns["false_separation"](ns["TRIALS"], win, loss, 0.5)
+        assert mass > 0.99999, (
+            f"the enumeration at win={win}, loss={loss} keeps only {mass:.6f} "
+            f"of the probability. Lower NEGLIGIBLE in "
+            f"sim/analyse_margin_tolerance.py.")
+
+
+def test_it_says_the_grouping_is_not_a_refinement(margin_tolerance_run):
+    """CLAUDE.md: say what did not work. Issue #328 assumed a tighter tolerance
+    could only split groups. It cannot only split them, and the script must say
+    so or the assumption survives."""
+    printed, _ = margin_tolerance_run
+    assert "WHAT THIS DOES NOT SHOW" in printed
+    assert ("is a refinement of the cap's grouping. It is not one."
+            in unwrapped(printed))
 
 
 # --------------------------------------------------------------------------
