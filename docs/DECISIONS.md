@@ -20,6 +20,141 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — Minions have their own stats, and reach the summoner through three channels
+
+**Affects** `docs/Cataclysm_GDD_v2.md`. The rule is applied in full; the numbers
+are not set. Issue #209.
+
+### What was reversed
+
+The document stated one rule for every minion: "A minion's attack deals 30% of
+its summoner's weapon damage, and it attacks once per second. It has no damage of
+its own." It rejected a minion stat family on the grounds that Path of Exile's
+route "needs a whole separate family of minion-only stats to scale, which this
+game does not have and does not want for two skills."
+
+The project owner reversed this on 2026-08-04, on the grounds that a player who
+builds around minions and finds no minion gear will be unhappy. Three parts:
+each minion skill gets its own stats, base scaling comes from an attribute rather
+than from weapon damage, and minion affixes exist on gear on top of that.
+
+### The old reasoning did not survive contact with the data
+
+**"For two skills" was already false.** `game/Data/WeaponSkills.csv` holds six
+skills tagged `Type.Minion`: Bolt Turret, Ballista, Iron Fortress, Cinder Swarm,
+Summon Imp and Open the Rift. The document also lists 24 classes, at least two of
+which are built entirely on minions.
+
+**Two minions already had stats.** Bolt Turret's description states "The turret
+has 200 HP" and that it fires every 1.5 seconds. Ballista states 500 health and
+every 2 seconds. Neither attacks once per second, so the rule the document stated
+was contradicted by the shipped data.
+
+**Minion gear already existed.** `game/Data/EnchantmentsPositive.csv` and
+`game/Data/EnchantmentsNegative.csv` carry 17 positive and 6 negative
+minion-related enchantments, including two that raise the minion count and one
+that grants partial inheritance of armour and resistances. The document said
+minions had no stats while the enchantment table sold modifiers for them.
+
+### What replaced it
+
+A minion reaches its summoner through three channels and nothing else: its side,
+its base health and damage raised by the summoner's level, and increased damage
+from one primary attribute declared per minion type. Everything else is blocked
+unless a modifier names minions.
+
+**The one named exception is deliberate.** The enchantment "Summoned minions
+inherit 10%-25% of your armor and resistances" already exists, so a blanket
+zero-inheritance rule would have contradicted the data on the day it was written.
+That is the same failure this log already records for the affix audit that read
+data without reading the prose rules, arrived at from the other direction.
+
+### Why this removes the double-scaling problem, in two layers
+
+**The first layer is the reversal itself.** Under the old rule, weapon damage
+affixes already scaled minions, so adding minion damage affixes on top would have
+scaled them twice from one investment. Once minion damage no longer reads the
+summoner's weapon, that double count cannot happen.
+
+**The second layer is structural and is this game's advantage over every game
+surveyed.** `docs/Cataclysm_GDD_v2.md` already states that no ordinary affix is a
+multiplier: an affix is flat or increased. Every catastrophic minion scaling
+failure found in the survey was multiplicative — Diablo III's Carnevil fetishes,
+where attack speed raised both the fire rate and the damage; Diablo IV's stacked
+multiplier aspects on top of full stat inheritance; Path of Exile's The Baron,
+where one attribute fed minion stats, minion count and player sustain at once.
+Here an attribute's contribution and an affix's contribution add. They cannot
+multiply each other.
+
+### Minion count stays in the enchantment table permanently
+
+**This reuses a rule this document already wrote.** The maximum resistance
+decision states that every affix has seven tiers and can appear on several
+pieces, and that a modifier which does not tolerate that range belongs in the
+enchantment table instead.
+
+Count fails those tests harder than maximum resistance does. It has no meaningful
+seven-step curve. There are **eight ring slots**, so a "+1 maximum minions"
+suffix would be +8 from rings alone before the necklace, relic, belt or boots. And
+it multiplies every other minion investment at once, because damage, effective
+health and rider uptime all scale with how many minions are alive.
+
+The enchantment table is already safe for it, because enchantments are unique per
+character: each can appear once across all equipped gear, so the total is bounded
+permanently and each one costs a slot on a Legendary item or better.
+
+**The genre agrees and three of the four games surveyed have clawed count back.**
+Diablo IV withdrew its freely-imprintable minion count aspects from the game
+entirely. Path of Exile moved count off unique items onto skill gems in patch
+3.8.0, with the stated reason of "making summoners less reliant on specific unique
+items". Path of Exile 2 ships no generic rollable minion count affix at all.
+Diablo II is the counter-example and the warning: count there scales continuously
+off gear that grants skill levels, and geared summoners reach roughly 13 to 17
+skeletons.
+
+### What is deliberately not decided here
+
+Four numbers, all tracked as issues rather than guessed: which attribute (#335),
+the per-type base health and damage, which need the simulation (#336), the four
+minion affixes and their values (#337), and moving the three deployable skills'
+numbers out of prose into data (#338).
+
+**One value was deliberately omitted rather than forgotten.** A flat added minion
+damage affix is not proposed. Its correct value cannot be set until the per-type
+base damage curve exists, and a flat addition is multiplied by the number of
+active minions, which is already the most dangerous quantity in the system. If
+minion builds feel numerically flat after the first tuning pass, this is the first
+thing to add, and it should be split by attack type when it lands. Recorded here
+so the next affix audit does not report it as a gap.
+
+### Where the evidence came from, and how good it is
+
+Eleven agents: five researching Diablo IV, Path of Exile 1, Path of Exile 2, Last
+Epoch and the genre's failure modes, five adversarially trying to refute those
+findings, one synthesising. Every claim was graded as a page actually read, a web
+search summary, or an inference.
+
+**Three of the survey's findings were refuted by the verification pass and the
+corrections are what this decision rests on.** Diablo IV was reported as having no
+minion life itemisation, which is false — it has a Maximum Minion Life affix, and
+building on the supposed absence would have produced the wrong recommendation
+here. A widely-quoted figure that ground-pathing minions in Path of Exile 2
+"attack empty space 30-40% of the fight" was refuted as an uncited single-author
+number, so the qualitative point is used and the magnitude is not. A supposed
+100% cap on minion attack speed in Diablo IV was found to be probably a
+conflation with a different mechanic, so no cap is copied.
+
+**Diablo IV's inheritance rule is deliberately not copied**, because nobody can
+establish what it is. The only official source says minions receive 100% of the
+player's *attributes*; the widely-repeated reading that they inherit 100% of
+everything is unsupported and partly contradicted.
+
+**The strongest evidence was this project's own data**, not the genre. The
+enchantment table, the six minion skills, and the affix values were read directly
+and settled more of the design than any external source did.
+
+---
+
 ## 2026-08-05 — Cripple, Weaken, Shred and Madness scale by chance alone
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied in full. Issue #300.
