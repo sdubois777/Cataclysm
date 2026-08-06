@@ -6,10 +6,10 @@ an enemy does with its turn. Issue #29 is the epic that asks, and it is split on
 enemy at a time: #348 the Imp, #349 the Succubus, #350 the Hellhound, #351 the
 Brute, #352 the Corrupted Sentinel, #353 the Abyssal Warden, #354 the Gatekeeper.
 
-**Only the Imp is filled in.** The other six are open issues. An archetype with no
-entry here has no designed abilities yet, and asking for one raises rather than
-returning an empty list, so a missing design cannot be mistaken for a finished
-one.
+**Only the Imp and the Succubus are filled in.** The other five are open issues.
+An archetype with no entry here has no designed abilities yet, and asking for one
+raises rather than returning an empty list, so a missing design cannot be
+mistaken for a finished one.
 
 THE VOCABULARY IS THE PLAYER'S, DELIBERATELY. An ability is a `Shape` plus
 `Params`, the same two columns `game/Data/WeaponSkills.csv` already carries for
@@ -63,6 +63,19 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 RIDERS = ("GroundRadius", "GroundDuration", "Burn", "Effect",
           "FinalHitPercent", "HealthCostPercent")
 
+#: The seven slots in `game/Data/SkillSlots.csv`. An enemy ability declares one
+#: for the same reason a player skill does: the slot says what kind of thing it
+#: is and, for everything except Basic, what its cooldown band is. Only Basic
+#: runs on the archetype's attack interval; only Aura is held on with no
+#: cooldown at all.
+SLOTS = ("Basic", "Heavy", "Special", "Support", "Aura", "Ultimate", "Movement")
+
+#: The four shapes the Attack Telegraphs subsection of the design document gives
+#: a ground marker to. An ability in one of the other three -- SelfBuff, Summon,
+#: Debuff -- has no marker to draw, so it is read off the caster's animation and
+#: answered by interrupting rather than by walking out of it.
+TELEGRAPHED_SHAPES = ("Strike", "Projectile", "Aura", "Movement")
+
 #: The player's capsule radius in metres. `CapsuleRadius` is 42 centimetres in
 #: `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`. Every ring of
 #: enemies is measured from the player's centre, and the innermost one starts at
@@ -92,10 +105,15 @@ class Ability:
 
     name: str
     shape: str
+
+    #: Which of the seven slots in `game/Data/SkillSlots.csv` it behaves like.
+    #: Basic runs on the archetype's attack interval; Aura is held on while the
+    #: creature lives; everything else runs on `cooldown`.
+    slot: str
     params: dict[str, float | str] = field(default_factory=dict)
 
-    #: Seconds before it may be used again. Zero means it is the enemy's basic
-    #: attack and runs on the archetype's attack interval instead.
+    #: Seconds before it may be used again. Zero for a Basic attack, which runs
+    #: on the archetype's attack interval, and for an Aura, which is held on.
     cooldown: float = 0.0
 
     #: What it does, in one line. This is the design, not flavour text.
@@ -103,16 +121,26 @@ class Ability:
 
     @property
     def is_basic_attack(self) -> bool:
-        return self.cooldown <= 0.0
+        return self.slot == "Basic"
+
+    @property
+    def is_held_on(self) -> bool:
+        """An Aura is on for as long as the creature is alive. Killing it is
+        what turns the effect off, which is the whole point of a support enemy.
+        """
+        return self.slot == "Aura"
 
     def cycle_seconds(self, kind: Archetype) -> float:
         """The interval a telegraph for this ability is measured against.
 
         The design document's rule: an ability on a cooldown is telegraphed
         against its own cooldown, and a basic attack against the archetype's
-        attack interval.
+        attack interval. An ability that is held on has no cycle, so it returns
+        zero and is never telegraphed.
         """
-        return kind.attack_interval if self.is_basic_attack else self.cooldown
+        if self.is_basic_attack:
+            return kind.attack_interval
+        return 0.0 if self.is_held_on else self.cooldown
 
 
 def largest_telegraphed_radius(seconds: float) -> float:
@@ -127,8 +155,17 @@ def largest_telegraphed_radius(seconds: float) -> float:
 
 
 def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
-    """Whether this ability gets a ground marker, by the document's own rule."""
+    """Whether this ability gets a ground marker, by the document's own rules.
+
+    Two conditions, both from the Attack Telegraphs subsection. Its marker table
+    covers four of the seven shapes, so an ability in one of the other three has
+    no marker to draw at all and is read off the caster instead. And the wind-up
+    must fit inside half the cycle while still being a marker at least a metre
+    across.
+    """
     kind = archetype(kind) if isinstance(kind, str) else kind
+    if ability.shape not in TELEGRAPHED_SHAPES:
+        return False
     return (largest_telegraphed_radius(ability.cycle_seconds(kind))
             >= SMALLEST_USEFUL_MARKER_METRES)
 
@@ -207,6 +244,14 @@ ATTACK_REACH: dict[str, float] = {
     # document says ten take 4.9 and twenty take 2.4, so a reach that let only
     # the front rank swing would contradict its own numbers. Issue #348.
     "Imp": 1.32,
+
+    # 8 metres, which is the shortest Movement-shape skill range in
+    # game/Data/WeaponSkills.csv -- the Sword's charge and the Axe's leap. The
+    # Attack Telegraphs subsection already uses that figure as the furthest a
+    # player can be made to travel, and a ranged enemy standing beyond it could
+    # not be closed on by every build. It is also the distance the Succubus
+    # holds at, because it neither advances nor retreats. Issue #349.
+    "Succubus": 8.0,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -223,11 +268,61 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
         Ability(
             name="Rend",
             shape="Strike",
+            slot="Basic",
             params={"Radius": 1.32, "Angle": 90, "MaxTargets": 1},
-            cooldown=0.0,
             note="A claw swipe at whatever it is standing next to. Its radius "
                  "is its attack reach, so the front two ranks of a pack both "
                  "connect.",
+        ),
+    ),
+    "Succubus": (
+        Ability(
+            name="Soulfire",
+            shape="Projectile",
+            slot="Basic",
+            # Radius 3.15 is the largest marker a 2.6 second attack interval
+            # allows, so its wind-up is exactly half the interval. The Succubus
+            # takes all of it because "slow but powerful" has to mean something
+            # the player can see. Speed 1200 is the slowest player projectile in
+            # game/Data/WeaponSkills.csv, Magma Quake's; a slow bolt is a
+            # readable one, and the marker is on the ground before it flies.
+            params={"Range": 8, "Radius": 3.15, "Speed": 1200},
+            note="A slow bolt of demonic fire, marked on the ground for 1.3 "
+                 "seconds first. The largest telegraph any ordinary Demonic "
+                 "enemy produces except the Brute's.",
+        ),
+        Ability(
+            name="Wither the Living",
+            shape="Debuff",
+            slot="Support",
+            # Withered Touch is chosen from game/Data/StatusEffects.csv rather
+            # than invented, and it is one of the debuffs the enemy modifier
+            # pool has NOT already claimed. 5 seconds is the duration both of
+            # the enemy-applied debuffs in that table that state one use.
+            params={"Range": 8, "MaxTargets": 1, "Duration": 5,
+                    "Effect": "Withered Touch"},
+            # Twice the duration, so the player has as long without it as with
+            # it. 10 seconds is also the top of the Support slot's cooldown band
+            # in game/Data/SkillSlots.csv, which is the slot curses live in.
+            cooldown=10.0,
+            note="Reduces the player's damage and energy shield for 5 seconds. "
+                 "No ground marker: the telegraph table draws four shapes and "
+                 "Debuff is not one, so this is read off the caster and "
+                 "answered by interrupting it.",
+        ),
+        Ability(
+            name="Dominion",
+            shape="Aura",
+            slot="Aura",
+            # No Duration, so it is a toggle held on while the creature lives --
+            # the design document's own rule for the Aura shape. Radius is the
+            # Succubus's own attack range, because that is how far from the
+            # fight it stands, so a smaller one would buff nothing at the moment
+            # it matters and a larger one would buff a fight it is not in.
+            params={"Radius": 8, "Effect": "Commander"},
+            note="Every allied enemy within 8 metres gains 20% increased "
+                 "stats, for as long as the Succubus is alive. Killing it "
+                 "first is the correct play, and this is what makes that true.",
         ),
     ),
 }
@@ -272,14 +367,43 @@ def _check_every_parameter_belongs_to_its_shape() -> None:
                 f"{list(RIDERS)}.")
 
 
+def _check_every_ability_declares_a_real_slot() -> None:
+    """A slot outside the seven has no cooldown band and no meaning."""
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            assert ability.slot in SLOTS, (
+                f"{name}'s {ability.name} is in slot {ability.slot!r}, which is "
+                f"not one of the seven: {list(SLOTS)}")
+
+
 def _check_every_designed_enemy_has_exactly_one_basic_attack() -> None:
     """Two basic attacks means nothing decides which one runs on the interval,
     and none means the creature stands there."""
     for name, entries in ABILITIES.items():
         basics = [a for a in entries if a.is_basic_attack]
         assert len(basics) == 1, (
-            f"{name} has {len(basics)} abilities with no cooldown. Exactly one "
+            f"{name} has {len(basics)} abilities in the Basic slot. Exactly one "
             "is its basic attack, which runs on its attack interval.")
+
+
+def _check_only_the_held_on_and_basic_abilities_lack_a_cooldown() -> None:
+    """Everything else would fire every time the brain looked at it.
+
+    A Basic attack is paced by the archetype's attack interval and an Aura is
+    held on, so those two are the only ones a zero means something for.
+    """
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            paced = ability.is_basic_attack or ability.is_held_on
+            assert paced or ability.cooldown > 0.0, (
+                f"{name}'s {ability.name} is in the {ability.slot} slot with no "
+                "cooldown, so nothing paces it. Only Basic and Aura may leave "
+                "it at zero.")
+            assert not paced or ability.cooldown == 0.0, (
+                f"{name}'s {ability.name} is in the {ability.slot} slot and "
+                f"also carries a cooldown of {ability.cooldown}. A Basic attack "
+                "is paced by the attack interval and an Aura is held on, so "
+                "neither reads a cooldown.")
 
 
 def _check_reach_and_pack_are_only_set_for_designed_enemies() -> None:
@@ -295,7 +419,9 @@ def _check_reach_and_pack_are_only_set_for_designed_enemies() -> None:
 
 _check_every_ability_uses_a_real_shape()
 _check_every_parameter_belongs_to_its_shape()
+_check_every_ability_declares_a_real_slot()
 _check_every_designed_enemy_has_exactly_one_basic_attack()
+_check_only_the_held_on_and_basic_abilities_lack_a_cooldown()
 _check_reach_and_pack_are_only_set_for_designed_enemies()
 
 
@@ -311,12 +437,16 @@ if __name__ == "__main__":
         print(f"{name} -- {kind.role}")
         for ability in entries:
             cycle = ability.cycle_seconds(kind)
-            gate = ("attack interval" if ability.is_basic_attack
-                    else "own cooldown")
-            print(f"    {ability.name:<12} {ability.shape:<11} "
-                  f"{ability.params}")
-            print(f"    {'':12} every {cycle:.1f}s ({gate}), largest marker it "
-                  f"could telegraph {largest_telegraphed_radius(cycle):.1f} m, "
+            if ability.is_basic_attack:
+                gate = "attack interval"
+            elif ability.is_held_on:
+                gate = "held on while it lives"
+            else:
+                gate = "own cooldown"
+            print(f"    {ability.name:<18} {ability.slot:<8} "
+                  f"{ability.shape:<11} {ability.params}")
+            print(f"    {'':18} every {cycle:.1f}s ({gate}), largest marker it "
+                  f"could telegraph {largest_telegraphed_radius(cycle):.2f} m, "
                   f"telegraphed: {is_telegraphed(ability, kind)}")
         print()
 
@@ -325,7 +455,7 @@ if __name__ == "__main__":
     print(f"    {'enemy':<10} {'body':>6} {'reach':>7} {'rank':>5} "
           f"{'distance':>9} {'fits':>5} {'total':>6}")
     print("    " + "-" * 54)
-    for name in ABILITIES:
+    for name in PACK_SIZE:
         kind = archetype(name)
         reach = ATTACK_REACH[name]
         total = 0

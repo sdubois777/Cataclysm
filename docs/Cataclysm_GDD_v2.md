@@ -3334,7 +3334,19 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Imp is designed.** The other six are open work: the Succubus, the Hellhound, the Brute, the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
+**An enemy ability also declares a slot**, one of the seven in `game/Data/SkillSlots.csv`, for the same reason a player skill does: the slot says what kind of thing it is and what its cooldown band is. Only two of the seven behave specially on an enemy.
+
+  
+
+| Slot | What paces it |
+| :-: | :-- |
+| Basic | The archetype's attack interval, from `sim/cataclysm_sim/enemy_stats.py`. Every enemy has exactly one Basic ability and it carries no cooldown of its own. |
+| Aura | Nothing. It is held on for as long as the creature is alive, which is the design document's own rule for an Aura with no `Duration`. |
+| The other five | Their own cooldown, which is also what a telegraph on them is measured against. |
+
+  
+
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Imp and the Succubus are designed.** The other five are open work: the Hellhound, the Brute, the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
 
   
 
@@ -3346,9 +3358,9 @@ The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.p
 
   
 
-| Ability | Shape | Parameters | Runs on | Telegraphed |
-| :-- | :-: | :-- | :-: | :-: |
-| Rend | Strike | `Radius=1.32; Angle=90; MaxTargets=1` | its 0.9 s attack interval | No |
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Rend | Basic | Strike | `Radius=1.32; Angle=90; MaxTargets=1` | its 0.9 s attack interval | No |
 
   
 
@@ -3441,6 +3453,112 @@ An Imp moves at 6.5 metres per second. The three Demonic classes move at 3.5, 4.
   
 
 The ring behaviour is not scripted. It is what crowd avoidance produces when twenty agents path to the same point and cannot overlap. Unreal's Detour Crowd is the one to use rather than the older RVO avoidance on the character movement component: Epic's own documentation describes Detour Crowd as the system for dense crowds and the one that stops agents being pushed off the navigation mesh, and running both at once causes the agents to jitter. The crowd agent radius is the body radius above.
+
+  
+
+### **The Succubus**
+
+  
+
+**The Succubus is the only enemy in the slice that makes the others stronger, and that is what has to be read off it.** It is a ranged caster with three abilities: a slow telegraphed bolt, a curse on the player, and an aura that buffs every allied enemy near it.
+
+  
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Soulfire | Basic | Projectile | `Range=8; Radius=3.15; Speed=1200` | its 2.6 s attack interval | Yes, 1.3 s wind-up |
+| Wither the Living | Support | Debuff | `Range=8; MaxTargets=1; Duration=5; Effect=Withered Touch` | a 10 s cooldown | No |
+| Dominion | Aura | Aura | `Radius=8; Effect=Commander` | held on while it lives | No |
+
+  
+
+#### **Its wind-up is exactly half its attack interval, which is the most the rule allows**
+
+  
+
+The Attack Telegraphs subsection above caps a telegraphed radius at `3.5 × (attack interval ÷ 2 − 0.4)`, and for a 2.6 second interval that is 3.15 metres — the figure its per-enemy table rounds to 3.2. **The Succubus uses all of it**, so its wind-up is `0.4 + 3.15 ÷ 3.5`, which is 1.3 seconds, which is exactly half of 2.6.
+
+  
+
+That is what "slow but powerful attacks" has to mean mechanically. Its damage share of 1.60 is the second highest in the slice, and a hit that large has to be visible for as long as the rule permits. It is the biggest marker any ordinary Demonic enemy produces except the Brute's 3.5 metres.
+
+  
+
+**A Projectile's marker is a line, not a circle**, of width 2 × `Radius` running out to `Range`, which the telegraph table above already specifies. So the player leaves it by stepping sideways, and the 3.15 metres is how far sideways. Its speed of 1200 is the slowest player projectile in `game/Data/WeaponSkills.csv`, Magma Quake's; a slow bolt is a readable one.
+
+  
+
+#### **The curse is chosen from the effect table, not invented**
+
+  
+
+**Wither the Living applies Withered Touch**, which is already in `game/Data/StatusEffects.csv`: it reduces the player's damage output and their mana and energy shield. There is no new effect here.
+
+  
+
+**An innate ability must not duplicate a modifier its own Cataclysm can roll.** Several names in `game/Data/StatusEffects.csv` are also enemy modifiers in `game/Data/EnemyModifiers.csv`, and an enemy carries one modifier per rarity above Common, drawn from its own Cataclysm's column and the Generic one. An ability that duplicated a modifier the same creature could roll would let it hold the effect twice with nothing saying what that means. Withered Touch is in neither the Demonic nor the Generic column, so the Succubus may have it innately.
+
+  
+
+**A modifier belonging to a different Cataclysm is not a clash**, because that enemy can never roll it. Two Demonic modifiers, Abyssal Aura and Infernal Brand, are also named in the effect table and are therefore closed to Demonic enemies as innate abilities. Nothing else is.
+
+  
+
+**Five seconds, because that is the duration the enemy-applied debuffs in that table state.** Battle Cry and Final Curse both say five, and they are the only enemy-applied entries that give a figure at all.
+
+  
+
+**Ten seconds of cooldown, so the player has as long without the curse as with it.** Ten is also the top of the Support slot's cooldown band in `game/Data/SkillSlots.csv`, which is the slot curses belong to.
+
+  
+
+#### **Three of the seven shapes have no ground marker at all**
+
+  
+
+The telegraph table above draws a marker for Strike, Projectile, Aura and Movement. It draws nothing for SelfBuff, Summon or Debuff, and that is not an omission: **there is no ground for a curse to be drawn on.** An ability in one of those three shapes is read off the caster's animation rather than off the floor, and the counter to it is the one the Attack Telegraphs subsection already names — interrupting the enemy cancels the attack. That is what makes crowd control the answer to a Succubus rather than footwork.
+
+  
+
+#### **The ally buff is an aura held on, not a cast**
+
+  
+
+**Dominion grants Commander** — "all nearby allies gain 20% increased stats", already in `game/Data/StatusEffects.csv` — to every allied enemy within 8 metres, for as long as the Succubus is alive. Commander is also a **War** enemy modifier, which a Demonic enemy can never roll, so the rule above is satisfied.
+
+  
+
+**Held on rather than cast, because killing it first is the correct play and only an aura makes that true.** A buff that is cast and then lasts a duration survives the caster, so killing the Succubus achieves nothing until the timer runs out. An aura ends the instant it dies. The Succubus is the only enemy in the slice that changes how the others fight, and the lesson it has to teach is target priority.
+
+  
+
+**Its radius is its own attack range.** The Succubus stands 8 metres from the player, so an ally fighting the player is at most 8 metres from the Succubus. A smaller radius would buff nothing at the moment it matters; a larger one would buff a fight the Succubus is not in.
+
+  
+
+#### **It holds its ground and does not kite**
+
+  
+
+The Succubus walks to 8 metres and stops. **Eight metres because that is the shortest Movement-shape skill range in `game/Data/WeaponSkills.csv`** — the Sword's charge and the Axe's leap — which is the same anchor the Attack Telegraphs subsection uses. A ranged enemy standing further out than the player's shortest gap-closer could not be answered by every build.
+
+  
+
+**It does not retreat when the player closes.** It moves at 3.5 metres per second, which matches the slowest Demonic class and loses to the other two, so kiting would produce a chase it cannot win and would waste the player's time rather than test anything. The enemy that punishes a player for standing still is the Corrupted Sentinel, which never moves at all; duplicating that on the Succubus would take the Sentinel's job.
+
+  
+
+#### **Its energy shield behaves exactly like the player's**
+
+  
+
+It is one of only two enemies in the slice with an energy shield, at 50% of its health. **Nothing about it is special**, and the five rules in section IV apply unchanged. Three of them decide how the fight goes:
+
+  
+
+- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 42 of the 51 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
+- **Magic weapons strip 10% more of it per hit** than other weapon sub-types.
+- **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
 
   
 
