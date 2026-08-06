@@ -194,8 +194,9 @@ def test_the_section_lists_exactly_the_enemies_that_are_designed(section):
     from cataclysm_sim.enemy_abilities import ABILITIES
     from cataclysm_sim.enemy_stats import ARCHETYPES
 
-    designed = sorted(ABILITIES)
-    joined = " and ".join(f"the {name}" for name in designed).lower()
+    designed = [f"the {name}" for name in sorted(ABILITIES)]
+    joined = (designed[0] if len(designed) == 1
+              else ", ".join(designed[:-1]) + " and " + designed[-1]).lower()
     assert f"only {joined} are designed" in section.lower(), (
         "the Vertical Slice Enemy Behaviour section no longer says that only "
         f"{joined} are designed. It has to name exactly the enemies in "
@@ -676,8 +677,300 @@ def test_the_energy_shield_answer_counts_the_burning_skills(succubus_section,
 
 
 # --------------------------------------------------------------------------
+# The Hellhound
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def hellhound_section() -> str:
+    return subsection("Hellhound")
+
+
+@pytest.fixture(scope="module")
+def hellhound():
+    from cataclysm_sim.enemy_stats import archetype
+    return archetype("Hellhound")
+
+
+@pytest.fixture(scope="module")
+def hellhound_abilities():
+    from cataclysm_sim.enemy_abilities import abilities
+    return abilities("Hellhound")
+
+
+def test_the_hellhound_ability_table_matches_the_data(hellhound_section,
+                                                      hellhound_abilities):
+    assert len(hellhound_abilities) == 2, (
+        f"the Hellhound now has {len(hellhound_abilities)} abilities. The "
+        "design document describes two: a bite and a charge. The fire trail is "
+        "a rider on the charge, not a third ability.")
+    for ability in hellhound_abilities:
+        assert_row_matches(hellhound_section, ability, "Hellhound")
+
+
+def test_the_bite_reaches_contact_and_fits_five(hellhound, hellhound_section):
+    """Derived from the two body radii, the same way the Imp's reach is, and it
+    is what separates a charger from a swarm."""
+    from cataclysm_sim.enemy_abilities import (ATTACK_REACH, PLAYER_BODY_RADIUS,
+                                               attackers_within_reach,
+                                               ring_capacity)
+
+    contact = PLAYER_BODY_RADIUS + hellhound.body_radius
+    assert ATTACK_REACH["Hellhound"] == pytest.approx(contact), (
+        f"the Hellhound reaches {ATTACK_REACH['Hellhound']} m but contact is "
+        f"{contact:.2f} m: the player's {PLAYER_BODY_RADIUS} plus its own "
+        f"{hellhound.body_radius}.")
+
+    fits = ring_capacity(hellhound, 0)
+    assert attackers_within_reach(hellhound, contact) == fits == 5, (
+        f"{fits} Hellhounds now fit around one player, not 5. The subsection "
+        "states five, against the Imp's twenty, and that is what makes this a "
+        "charger rather than a swarm.")
+    assert "one rank of hellhounds is five" in hellhound_section.lower(), (
+        "the Hellhound subsection no longer states how many fit around a "
+        "player. Issue #350.")
+
+
+def test_the_charge_is_telegraphed_and_the_bite_is_not(hellhound,
+                                                       hellhound_abilities):
+    """Both verdicts come from the existing wind-up rule rather than a
+    judgement, and the Attack Telegraphs subsection names this enemy as the
+    example of an ability telegraphed against its cooldown."""
+    from cataclysm_sim.enemy_abilities import is_telegraphed
+
+    by_name = {a.name: a for a in hellhound_abilities}
+    assert not is_telegraphed(by_name["Maul"], hellhound), (
+        "the Hellhound's bite is now telegraphed. Its 1.1 second attack "
+        "interval allows a 0.5 metre marker, below the one metre floor.")
+    assert is_telegraphed(by_name["Hellrush"], hellhound), (
+        "the Hellhound's charge is no longer telegraphed. It runs on its own "
+        "cooldown rather than the attack interval, which is what the Attack "
+        "Telegraphs subsection uses it as the example of.")
+
+
+def test_the_charge_wind_up_is_stated_and_computed(hellhound_abilities,
+                                                   hellhound_section):
+    from cataclysm_sim.enemy_abilities import REACTION_ALLOWANCE, WALK_OUT_SPEED
+
+    charge = next(a for a in hellhound_abilities if a.shape == "Movement")
+    wind_up = REACTION_ALLOWANCE + float(charge.params["Radius"]) / WALK_OUT_SPEED
+    assert f"{wind_up:.2f} s wind-up" in hellhound_section, (
+        f"the Hellhound's ability table does not state a {wind_up:.2f} s "
+        "wind-up, which is what its corridor radius gives.")
+
+
+def test_the_charge_goes_further_than_walking_would(hellhound,
+                                                    hellhound_abilities,
+                                                    hellhound_section):
+    """The test a charge has to pass to be worth having: it must beat simply
+    walking for the same time it spends standing still winding up."""
+    from cataclysm_sim.enemy_abilities import REACTION_ALLOWANCE, WALK_OUT_SPEED
+
+    charge = next(a for a in hellhound_abilities if a.shape == "Movement")
+    wind_up = REACTION_ALLOWANCE + float(charge.params["Radius"]) / WALK_OUT_SPEED
+    walked = hellhound.move_speed * wind_up
+    assert float(charge.params["Range"]) > walked, (
+        f"the charge covers {charge.params['Range']} m but the Hellhound could "
+        f"walk {walked:.2f} m during the {wind_up:.2f} s it spends winding up. "
+        "A charge shorter than that is worse than not winding up at all.")
+    assert f"{walked:.1f} metres" in hellhound_section, (
+        f"the Hellhound subsection does not state the {walked:.1f} metres it "
+        "could walk instead, which is the whole reason for the charge's range.")
+
+
+def test_the_charge_corridor_is_the_narrowest_a_player_charge_uses(
+        hellhound_abilities):
+    """A wide corridor is a wall rather than a lane. The narrowest player charge
+    is the anchor, the same way the shortest Movement range anchors the
+    Succubus."""
+    import csv
+
+    skills = REPO_ROOT / "game" / "Data" / "WeaponSkills.csv"
+    if not skills.is_file():
+        pytest.skip("game/Data/WeaponSkills.csv is not present")
+    radii = []
+    with skills.open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["Shape"] != "Movement":
+                continue
+            params = dict(pair.strip().split("=", 1)
+                          for pair in row["ShapeParams"].split(";"))
+            if params.get("Mode") == "Charge":
+                radii.append(float(params["Radius"]))
+
+    assert radii, "no Charge-mode skills in game/Data/WeaponSkills.csv"
+    charge = next(a for a in hellhound_abilities if a.shape == "Movement")
+    assert float(charge.params["Radius"]) == pytest.approx(min(radii)), (
+        f"the Hellhound's corridor is {charge.params['Radius']} m and the "
+        f"narrowest player charge is {min(radii)} m. Anything wider is a wall "
+        "rather than a lane to step out of.")
+
+
+def test_the_charge_cooldown_is_the_movement_slot_cooldown(hellhound_abilities):
+    import csv
+
+    slots = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
+    if not slots.is_file():
+        pytest.skip("game/Data/SkillSlots.csv is not present")
+    with slots.open(encoding="utf-8-sig", newline="") as handle:
+        movement = next(row for row in csv.DictReader(handle)
+                        if row["Slot"] == "Movement")
+
+    charge = next(a for a in hellhound_abilities if a.shape == "Movement")
+    assert charge.cooldown == pytest.approx(float(movement["Cooldown"])), (
+        f"the charge's cooldown is {charge.cooldown} s and the Movement slot's "
+        f"is {movement['Cooldown']} s in game/Data/SkillSlots.csv.")
+
+
+def test_the_trail_is_riders_on_the_charge_not_a_third_ability(
+        hellhound_abilities, hellhound_section):
+    """Exactly the shape the player's Flamedart already uses, plus the one new
+    rider."""
+    charge = next(a for a in hellhound_abilities if a.shape == "Movement")
+    for rider in ("Burn", "GroundRadius", "GroundDuration", "GroundHitsAllies"):
+        assert rider in charge.params, (
+            f"the Hellhound's charge no longer carries {rider}. The fire trail "
+            "is riders on the charge rather than an ability of its own.")
+    assert charge.params["GroundRadius"] == charge.params["Radius"], (
+        "the trail is no longer as wide as the lane the Hellhound charged "
+        "through, which is what it is meant to be: the ground it burned.")
+    assert "not a third ability" in hellhound_section.lower(), (
+        "the Hellhound subsection no longer says the trail is a rider.")
+
+
+def test_the_new_rider_is_declared_in_the_shared_vocabulary(hellhound_section):
+    """GroundHitsAllies has to exist in section V's rider list and in the
+    generator that validates player skills, or an enemy would be the only thing
+    that knows about it."""
+    from cataclysm_sim.enemy_abilities import RIDERS
+
+    assert "GroundHitsAllies" in RIDERS
+
+    # Sliced out of section V, not searched for in the whole document. The
+    # Hellhound's own subsection names the rider several times, so a whole-file
+    # search passes even when section V has dropped it.
+    text = GDD.read_text(encoding="utf-8")
+    start = text.find("**A burning patch of ground is a rider, not a shape.**")
+    assert start != -1, (
+        "docs/Cataclysm_GDD_v2.md section V no longer has the paragraph that "
+        "lists the riders any shape may carry.")
+    riders_text = unwrapped(text[start:text.find("# **VI.", start)])
+
+    # The enumeration sentence alone, not the whole paragraph. The paragraph
+    # after it also names the rider, so checking the paragraph passes even when
+    # the list itself has dropped it.
+    listing = re.search(r"riders work the same way:(.*?)\.\s", riders_text)
+    assert listing, (
+        "section V no longer enumerates the riders that work like "
+        "GroundRadius and GroundDuration.")
+    assert "`GroundHitsAllies`" in listing.group(1), (
+        "section V's rider list no longer includes GroundHitsAllies. The "
+        "Hellhound's fire trail is the only thing that sets it, and a rider "
+        "only that enemy knows about is a rider nothing validates. Issue #350.")
+    assert "no player skill does" in riders_text, (
+        "section V no longer says that GroundHitsAllies is off unless set and "
+        "that no player skill sets it.")
+    assert "burns the hellhound too" in hellhound_section.lower(), (
+        "the Hellhound subsection no longer says its own trail burns it, which "
+        "is what makes the rule one line rather than an exception.")
+
+
+def test_the_trail_tick_rate_is_the_ground_zone_class_constant(
+        hellhound_section):
+    """Answered from the code rather than chosen: a ground zone already ticks
+    once a second, and the trail's per-tick damage follows from that."""
+    ground_zone = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+                   / "CataclysmGroundZone.h")
+    tick = cpp_constant(ground_zone, "TickSeconds")
+    assert tick == pytest.approx(1.0), (
+        f"ACataclysmGroundZone::TickSeconds is now {tick}. The Hellhound "
+        "subsection says the trail deals damage once a second and that "
+        "standing in it for its whole 4 seconds costs one bite, which is four "
+        "ticks of a quarter each.")
+    assert "once a second" in hellhound_section.lower(), (
+        "the Hellhound subsection no longer states how often the trail deals "
+        "damage.")
+
+
+def test_the_document_says_what_killing_it_does_to_the_trail(hellhound_section):
+    """Both cases, because they follow from two different existing rules and a
+    reader who only sees one will guess the other wrong."""
+    lowered = hellhound_section.lower()
+    assert "killed during the wind-up" in lowered, (
+        "the Hellhound subsection no longer says what killing it during the "
+        "wind-up does. Issue #350.")
+    assert "killed during the charge" in lowered, (
+        "the Hellhound subsection no longer says what killing it mid-charge "
+        "does to the trail it has already laid.")
+
+
+# --------------------------------------------------------------------------
 # The data guards themselves
 # --------------------------------------------------------------------------
+
+def test_the_shape_vocabulary_matches_the_datatable_generator():
+    """sim/cataclysm_sim/enemy_abilities.py holds a copy of the shape and rider
+    tables that tools/generate_datatables.py validates player skills with.
+
+    Two copies of one vocabulary is exactly the drift CLAUDE.md warns about, and
+    this project has had it twice. Enemy abilities cannot import the generator,
+    because the simulation package is standalone, so they are compared instead.
+    """
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import generate_datatables as gen
+
+    from cataclysm_sim.enemy_abilities import RIDERS, SHAPE_PARAMS
+
+    assert set(SHAPE_PARAMS) == set(gen.SHAPE_PARAMS), (
+        "the shapes in sim/cataclysm_sim/enemy_abilities.py and "
+        "tools/generate_datatables.py no longer agree: "
+        f"{sorted(set(SHAPE_PARAMS) ^ set(gen.SHAPE_PARAMS))}")
+    for shape, params in SHAPE_PARAMS.items():
+        assert set(params) == gen.SHAPE_PARAMS[shape], (
+            f"the parameters for {shape} differ between the two: "
+            f"{sorted(set(params) ^ gen.SHAPE_PARAMS[shape])}")
+    assert set(RIDERS) == set(gen.SHAPE_RIDERS), (
+        "the riders in the two files no longer agree: "
+        f"{sorted(set(RIDERS) ^ set(gen.SHAPE_RIDERS))}")
+
+
+def test_the_movement_modes_match_the_datatable_generator():
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import generate_datatables as gen
+
+    from cataclysm_sim.enemy_abilities import MOVEMENT_MODES
+
+    assert set(MOVEMENT_MODES) == gen.MOVEMENT_MODES, (
+        "the Movement modes in the two files no longer agree: "
+        f"{sorted(set(MOVEMENT_MODES) ^ gen.MOVEMENT_MODES)}")
+
+
+def test_a_marker_too_big_for_its_cycle_is_rejected():
+    """The guard in enemy_abilities.py. A marker larger than the wind-up can
+    cover cannot be escaped, which the design document calls a damage event
+    rather than a telegraph."""
+    from cataclysm_sim.enemy_abilities import Ability, fits_its_cycle
+    from cataclysm_sim.enemy_stats import archetype
+
+    brute = archetype("Brute")
+    too_big = Ability(name="Test", shape="Strike", slot="Heavy",
+                      params={"Radius": 7.0}, cooldown=3.0)
+    assert not fits_its_cycle(too_big, brute)
+
+    # The same radius on a 5 second cooldown is legal, because that is the tier
+    # the Movement slot answers.
+    movement_tier = Ability(name="Test", shape="Strike", slot="Heavy",
+                            params={"Radius": 7.0}, cooldown=5.0)
+    assert fits_its_cycle(movement_tier, brute)
+
+    # And 9 metres is not legal at any cooldown: nothing the player has crosses
+    # it.
+    beyond_reach = Ability(name="Test", shape="Strike", slot="Heavy",
+                           params={"Radius": 9.0}, cooldown=30.0)
+    assert not fits_its_cycle(beyond_reach, brute)
 
 def test_an_undesigned_enemy_raises_rather_than_returning_nothing():
     """Six of the seven have no abilities. Returning an empty list would let a

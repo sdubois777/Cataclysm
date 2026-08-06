@@ -1419,7 +1419,11 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius` and `GroundDuration`. Four other riders work the same way: `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius` and `GroundDuration`. Five other riders work the same way: `GroundHitsAllies` makes that ground burn everything standing in it whatever side it is on, `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+
+  
+
+**`GroundHitsAllies` is off unless a skill sets it, and no player skill does.** Burning ground normally hurts only the caster's enemies, which is what every one of the eight player skills that leaves some wants. The Hellhound's fire trail is the only thing in the game that sets it, and that is what makes the trail the one source of friendly fire.
 
   
 
@@ -3346,7 +3350,7 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Imp and the Succubus are designed.** The other five are open work: the Hellhound, the Brute, the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Hellhound, the Imp and the Succubus are designed.** The other four are open work: the Brute, the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
 
   
 
@@ -3559,6 +3563,103 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 - **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 42 of the 51 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
 - **Magic weapons strip 10% more of it per hit** than other weapon sub-types.
 - **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
+
+  
+
+### **The Hellhound**
+
+  
+
+**The Hellhound is the enemy that teaches a player to read a wind-up**, because its charge is the one attack in the slice that is both clearly telegraphed and severely punishing to stand in. It has two abilities: a bite it uses constantly, and a charge on a cooldown that leaves the ground on fire.
+
+  
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Maul | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1; Burn=1` | its 1.1 s attack interval | No |
+| Hellrush | Movement | Movement | `Mode=Charge; Range=10; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundHitsAllies=1` | a 5 s cooldown | Yes, 0.83 s wind-up |
+
+  
+
+#### **Its bite reaches contact and no further, so only five fit around a player**
+
+  
+
+0.9 metres is 0.42 for the player's body plus the Hellhound's own 0.48. Put through the ring arithmetic in the Imp's subsection above, **one rank of Hellhounds is five**, against twenty Imps. A Hellhound is more than half again as wide as an Imp, and its threat is the charge rather than the mass.
+
+  
+
+The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm enemies", and that is true in the narrow sense it means there: both are excluded from telegraphing their basic attacks by their own attack speed. It does not mean they arrive in comparable numbers.
+
+  
+
+#### **The charge**
+
+  
+
+**A 5 second cooldown**, which is the Movement slot's typical cooldown in `game/Data/SkillSlots.csv`. That is what puts the charge on the telegraph rule's cooldown clock rather than its 1.1 second attack interval — which the Attack Telegraphs subsection already names the Hellhound's charge as the example of.
+
+  
+
+**A corridor 1.5 metres to either side.** That is the narrowest radius any player Charge-mode skill uses, Flamedart's, so the marker is a lane to step out of rather than a wall to run from. Its wind-up is `0.4 + 1.5 ÷ 3.5`, which is 0.83 seconds.
+
+  
+
+**Ten metres long, and that length is what makes it a charge rather than running.** During a 0.83 second wind-up the Hellhound could simply walk 6.2 metres at its own 7.5 metres per second. A charge shorter than that would be strictly worse than not winding up at all. Ten is also the range three of the four player Charge-mode skills use.
+
+  
+
+**It cannot turn.** The lane is fixed when the wind-up starts, which is the general rule the Attack Telegraphs subsection already sets: the area does not follow the player, because an attack that tracks cannot be walked out of.
+
+  
+
+**The player leaves the lane when their centre leaves it.** That is how the engine measures every area — `UCataclysmTargeting` tests an actor's location against the shape — so the 1.5 metres in the wind-up formula is the whole distance to cover, not a distance plus a body.
+
+  
+
+**A miss punishes itself, and no separate recovery rule is needed.** The Hellhound is committed once the wind-up starts, so it runs the full ten metres whether or not anything is still there. It ends up ten metres past the player, facing away, and covering that ground again takes 1.33 seconds at its own speed before it has even turned. That is the window the telegraph buys.
+
+  
+
+#### **The fire trail**
+
+  
+
+**The trail is not a third ability.** It is the same three riders the player's Flamedart already carries — `Burn`, `GroundRadius` and `GroundDuration` — on the charge itself, plus one that is new.
+
+  
+
+| Question | Answer | Where it comes from |
+| :-- | :-- | :-- |
+| How wide | 1.5 m to either side | the charge corridor; the trail is the lane it burned |
+| How long it lasts | 4 seconds | Flamedart's `GroundDuration`, the shortest of the player charges |
+| How often it deals damage | once a second | `ACataclysmGroundZone::TickSeconds`, which is already 1.0 |
+| How much | a quarter of one of its bites per tick | so that standing in it for the whole 4 seconds costs exactly one bite |
+
+  
+
+**That last figure has nowhere to live in data yet.** No rider states what burning ground deals per tick, and the eight player skills that leave some do not state it either, so it is prose here and issue #361 is where the field gets added.
+
+  
+
+**The trail is worth one bite, not a second damage source.** It exists to take ground away, not to kill. A player who walks through it once loses a fraction of a hit; a player who fights inside it for its whole life loses a hit they could have avoided by moving two metres.
+
+  
+
+**`GroundHitsAllies=1` is what makes it burn other demons.** Section V's rider list carries this and nothing else in the game sets it. Every enemy is on one side, so no enemy's attack can touch another; this rider is a property of the burning ground rather than a change of side, in the same way the Madness debuff is an attitude rather than a third team.
+
+  
+
+**It burns the Hellhound too.** That is the simple version of the rule rather than an exception bolted onto it, and it earns its place: a Hellhound whose return path crosses the lane it just laid takes its own fire, so a player who moves along the trail rather than across it is rewarded for reading the ground.
+
+  
+
+**The trail outlives the Hellhound.** Killing it does not put the fire out, in the same way a player's burning ground is not removed when the player who left it dies. Two cases follow from rules already stated:
+
+  
+
+- **Killed during the wind-up**: the charge is cancelled and there is no trail, because interrupting an enemy cancels the attack.
+- **Killed during the charge**: it stops where it fell, and the lane it has already burned keeps burning for the rest of its 4 seconds.
 
   
 
