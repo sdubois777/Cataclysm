@@ -20,6 +20,170 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — The Masochist resource is Anguish, and healing is what decays it
+
+**Affects** `docs/Cataclysm_GDD_v2.md` (the Class Resource Systems section),
+`docs/Masochist_Class_Tree_Final.json` (new), `docs/README.md`. Applied in full.
+Issue #63.
+
+### What was already decided, and what was left to this change
+
+The 2026-08-04 entry below, "DECISION 4: the Masochist resource has two
+generators, and the passive tree decides which one a build leans on", recorded
+the project owner's answer that the resource is built by **both** spending health
+and taking damage. It deliberately left the build rate, the cap, the decay and
+what spends it to be designed with the tree, because the owner's answer made
+them properties of tree nodes rather than of the class.
+
+This entry fills those in. It also names the resource, which the 2026-08-02
+entry on the three Demonic class stat lines explicitly left to this work.
+
+### The resource
+
+**Anguish.** Base pool 100, which is the Masochist's `Class Resource` value in
+the class stat table and matches the Ravager's. It is generated in one unit,
+percent of maximum health, through the two generators the owner decided on:
+
+- 1 Anguish per 1% of maximum health **lost to damage**
+- 1 Anguish per 1% of maximum health **spent as an ability cost**
+
+Both generators use the same unit deliberately, so that neither dominates
+because of pool size and a build can be measured against either.
+
+**Healing removes Anguish, at 1 per 1% of maximum health restored. There is no
+timer.** That is the part that is new here and it is the load-bearing choice, so
+the case for it is set out below.
+
+### Why healing and not a timer
+
+Resolve and Fury decay on a timer out of combat. Preparation does not decay at
+all. A fourth timer resource would have been a fourth copy of Resolve, which is
+the resource Anguish is closest to in every other respect: both are built by
+being hit and both feed retaliation.
+
+Tying decay to healing does three things a timer cannot.
+
+**It makes the class stat line mean something.** The Masochist has by far the
+largest health regeneration of the three Demonic classes: 37.6 per second
+against 2,526 maximum health, which is 1.49% per second. Under this rule that is
+1.49 Anguish per second, so a full pool drains in about 67 seconds standing
+still — comparable to a slow timer, but derived from a number the design already
+set rather than invented next to it.
+
+**It is the only resource decay a player controls.** Every other one runs on its
+own. This one is a build choice, which is what the design document asks class
+resources to be: "not optional stat bars, they are the engine of the build".
+
+**It explains the refusals the stat line already makes.** The 2026-08-02 entry
+says the Masochist "refuses evasion and energy shield: evading is missing out,
+and a shield absorbs the damage the class needs to convert". That was an
+assertion with nothing behind it. Under this rule it is arithmetic: both stats
+reduce health lost, and health lost is the resource.
+
+### What the genre does, and where this leaves the genre behind
+
+**A resource built by taking damage is normal.** Path of Exile's Rage is
+sustained by being hit — a character loses Rage over time only if they have not
+taken damage or gained Rage recently.
+
+**A tree node that changes the decay rule is normal.** Last Epoch's Rancour node
+stops rage decaying outside combat. That is the same shape as the `Sanguine
+Ledger` keystone here, which stops health regeneration removing Anguish at the
+cost of halving that regeneration.
+
+**Rewarding a character for staying injured is well established, and one shipped
+skill is close enough to be worth naming.** Path of Exile's Petrified Blood
+converts part of the immediate life loss from hits into damage over time,
+prevents the character recovering life above the low-life threshold by any means
+except flasks, and adds a life cost to skills while above that threshold. Three
+things in this tree are the same shapes: the `Point of No Return` keystone caps
+healing at 50% in exchange for damage, `Martyr's Wellspring` turns an ability's
+health cost into a damage-over-time debuff instead of an immediate loss, and the
+whole Low Life branch pays out below fixed health thresholds.
+
+**No shipped game was found where healing consumes a class resource.** That was
+searched for specifically and nothing turned up. So the decay rule is not copied
+from anything, and it is the one part of this design with no precedent behind it.
+It is stated here as untested rather than as established practice.
+
+**Confidence is not uniform.** The Rage, Rancour and Petrified Blood claims come
+from web search result summaries, not from the wiki pages themselves;
+`pathofexile.fandom.com` returns HTTP 402 to this project's fetch tool, which is
+a known trap recorded in the working notes. The Masochist stat numbers are read
+directly from `docs/Cataclysm_GDD_v2.md` and are certain.
+
+### The tree
+
+`docs/Masochist_Class_Tree_Final.json`. 74 nodes — 55 basic, 15 keystones, 4
+capstones — 69 edges, 440 spendable points against the 230 point budget. That is
+the same node count, keystone count, capstone count and point total as
+`docs/Bulwark_Class_Tree_Final.json`, and the same per-node point distribution.
+
+One spine, "The Path of Suffering", carries the resource and the four nodes the
+prose design named. Four branches hang off it: Flesh Craver (built around health
+lost to damage), Soul Scourge (built around health spent as an ability cost),
+Flagellant (built around debuffs on the character), and the Low Life path. Each
+branch ends in a keystone that leans the resource one way — `Flesh Craver` gives
+30% more Anguish from damage and 50% less from costs, `Soul Scourge` does the
+reverse. That is what "the passive tree decides which one a build leans on"
+means in practice.
+
+### The prose design's three thresholds became four tiers
+
+The Drive document "Masochist Passive Tree" put its "but-for" choices at 25, 50
+and **75** points. The design document specifies four capstone tiers at 25, 50,
+**100** and 200. The issue asked for these to be reconciled.
+
+**The three written vows keep their contents and move to 25, 50 and 100.** The
+200 tier is new and had to be designed: *The Martyr, but For the Flesh* reflects
+all damage taken onto nearby enemies and sets health regeneration to zero,
+*Apotheosis, but For the Mind* removes the Anguish cap in exchange for 1% more
+damage taken per 100 Anguish held, and *The Undying, but For the End* consumes
+all Anguish to survive lethal damage.
+
+The tiers are recorded in the `threshold` field, and the three choices per tier
+in the `options` field, which is what the editor at
+`C:\Projects\PassiveTreeCreator` reads for decision nodes and what
+`docs/Empire_Development_Tree_Final.json` already does. The three March 2026
+class trees say only "Choose one of three oaths" in the description and record
+the oaths nowhere, so what those choices are is lost. This tree does not repeat
+that.
+
+### Wording corrected against the design document's own rule
+
+Section IV reserves "more" and "less" for gems, passive tree keystones and
+enchantments, and requires everything else to say "increased". The prose design
+broke this on basic nodes — "Your Life Leech effects are 10% more effective per
+point" — and those are written as "increased" here. Keystones still use "more"
+and "less", which is what the rule allows.
+
+### What is not settled
+
+The numbers are not calibrated against combat, because there is still no
+combat to calibrate against. They are internally consistent and sized against
+the Bulwark tree, which is the closest sibling; that is all that can be claimed.
+
+The prose design called the Soul Scourge branch "Caster & Mana/ES-Based", but
+the Masochist's base Energy Shield is 0 and the stat line refuses it
+deliberately. The branch is built on mana, and one node and no keystone touches
+Energy Shield, on the basis that gear can still grant it. Issue #345 records
+that tension rather than resolving it here.
+
+**Still open.** Issue #38 implements this tree in the engine and is what the
+Phase 1 vertical slice needs next. Issue #24 covers the other 21 class trees.
+Issue #343 and issue #344 are two defects in the older trees found while reading
+them for this work.
+
+Sources:
+- Rage in Path of Exile 2: https://mobalytics.gg/poe-2/guides/rage
+- Rage, Path of Exile wiki: https://pathofexile.fandom.com/wiki/Rage
+- Rancour and rage decay, Last Epoch forum: https://forum.lastepoch.com/t/movement-abilities-shouldnt-start-rage-decay-for-rancour/46636
+- Forge Guard overview, Last Epoch: https://www.icy-veins.com/last-epoch/forge-guard-overview
+- Petrified Blood, Path of Exile wiki: https://pathofexile.fandom.com/wiki/Petrified_Blood
+- Petrified Blood mathematical analysis: https://devtrackers.gg/pathofexile/p/09e2e187-petrified-blood-a-mathematical-analysis
+
+---
+
 ## 2026-08-06 — Minions have their own stats, and reach the summoner through three channels
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. The rule is applied in full; the numbers
