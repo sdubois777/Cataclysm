@@ -444,6 +444,15 @@ Each class has a unique resource that the passive tree unlocks and develops. Res
 | Bulwark (War) | Resolve — builds through combat, enables damage reduction and retaliation bursts. Decays out of combat. |
 | Berserker (War) | Fury — builds on critical melee hits, decays out of combat. At max Fury, Berserking triggers devastating strikes. Wrath (2H) and Frenzy (DW) are sustained drain states. |
 | Saboteur (War) | Preparation — builds by placing and triggering traps and gadgets. Does not decay. Powers trap AOE, evasion, and gadget empowerment. |
+| Masochist (Demonic) | Anguish — builds from health you lose, through two generators the tree develops separately: 1 Anguish per 1% of maximum health lost to damage, and 1 per 1% of maximum health spent as an ability cost. Healing removes it at the same rate, so health regeneration is what decays it rather than a timer. Base pool 100. |
+
+  
+
+The Masochist resource is the only one a player controls the decay of. Resolve and Fury decay on a timer out of combat and Preparation does not decay at all; Anguish falls only when the character heals. That is deliberate. The Masochist has by far the largest health regeneration of the three Demonic classes, 37.6 per second against 2,526 maximum health, which is 1.49% per second, so a full pool of 100 drains in about 67 seconds standing still. Healing up and staying powerful are the same resource spent twice.
+
+  
+
+The node graph is `docs/Masochist_Class_Tree_Final.json`. The Ravager and Ritualist resources are not designed yet, and neither are the other 19 class trees; issue #24 covers them.
 
   
 

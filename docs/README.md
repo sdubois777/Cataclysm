@@ -37,6 +37,7 @@ python tools/reformat_google_docs_artefacts.py
 | `Berserker_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
 | `Bulwark_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
 | `Saboteur_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
+| `Masochist_Class_Tree_Final.json` | Not from Drive | Same schema. Written in this repository for issue #63, from the prose in the Drive doc "Masochist Passive Tree". It is the only class tree here that Drive does not hold, so re-exporting the folder will not overwrite it and will not restore it either. |
 
 ## Sheets in `All_Things_Cataclysm.xlsx`
 
