@@ -72,6 +72,14 @@ WHAT THIS DOES NOT COVER. Enemy abilities. The Hellhound's fire trail, the
 Brute's stomp stun, the Gatekeeper's phases and the Abyssal Warden's positional
 weak points are behaviour, not statistics. They belong with the enemy design work
 in issues #29 and #39. This is the stat block each of them stands on.
+`enemy_abilities.py` is where that behaviour goes as it is designed, one enemy at
+a time; the Imp is the only one filled in so far (#348).
+
+ONE FIELD HERE IS A BODY MEASUREMENT RATHER THAN A COMBAT STATISTIC.
+`body_radius` says how wide the creature is, and it exists because how many of a
+swarm can stand around one player at once is a geometry question, not a combat
+one. It lives here because it is fixed per archetype exactly like movement speed
+and attack interval are.
 """
 
 from __future__ import annotations
@@ -176,6 +184,17 @@ class Archetype:
     evasion: float = 0.0              # percent, direct attacks only
     energy_shield_fraction: float = 0.0   # of this enemy's health
 
+    #: How wide the creature's body is, as a radius in metres. It decides how
+    #: many of this kind can stand around one player at once, which is the whole
+    #: of the Imp's design: see `enemy_abilities.ring_capacity`.
+    #:
+    #: The default is 0.48 because that is `EnemyCapsuleRadius` in
+    #: `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`, which every
+    #: enemy uses today. An archetype that has not had its own figure decided
+    #: keeps that one, so nothing changes for the six enemies whose design issues
+    #: are still open (#349 to #354).
+    body_radius: float = 0.48
+
     #: Percent of all incoming damage resisted, whatever its type. One figure,
     #: not eight: see the note at the top of this file. A negative value would
     #: mean the creature takes extra damage from everything, which is legal and
@@ -211,6 +230,12 @@ ARCHETYPES: dict[str, Archetype] = {
             attack_interval=0.9, move_speed=6.5, evasion=25.0,
             # None at all. Swarm fodder should die to whatever the player has.
             resistance=0.0,
+            # The smallest body in the slice, and the same as the lesser imp
+            # minion's capsule in game/Source/Cataclysm/AbilitySystem/
+            # CataclysmMinion.cpp, because it is the same creature. At 0.30 m
+            # exactly twenty fit within the Imp's reach, which is the pack size
+            # the design document already commits to. Issue #348.
+            body_radius=0.30,
         ),
         Archetype(
             name="Succubus",
@@ -295,8 +320,22 @@ def _check_no_enemy_can_become_immune() -> None:
             "the 70% the design caps resistance at")
 
 
+def _check_every_body_has_a_width() -> None:
+    """A body radius of zero would let unlimited enemies stand on one point.
+
+    `enemy_abilities.ring_capacity` divides by it, and it is what caps how many
+    of a swarm can reach the player at once. Zero or a negative value removes
+    that cap silently rather than raising anywhere useful.
+    """
+    for kind in ARCHETYPES.values():
+        assert kind.body_radius > 0.0, (
+            f"{kind.name} has a body radius of {kind.body_radius}, so any "
+            "number of them could stand on the same point")
+
+
 _check_every_archetype_deals_a_real_damage_type()
 _check_no_enemy_can_become_immune()
+_check_every_body_has_a_width()
 
 
 def archetype(name: str) -> Archetype:

@@ -20,6 +20,103 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — The Imp has one attack, and how many can reach you is decided by geometry
+
+**Affects** `docs/Cataclysm_GDD_v2.md`, new section "Vertical Slice Enemy
+Behaviour" in section X, and `sim/cataclysm_sim/enemy_abilities.py`, a new file.
+Applied in full. Issue #348, a child of the enemy design epic #29.
+
+### The question
+
+All seven Demonic enemies have had complete stat blocks in
+`sim/cataclysm_sim/enemy_stats.py` for some time — health, damage, armour,
+attack interval, movement speed, evasion, resistance. None of them had a single
+ability, so nothing said what any of them does with its turn.
+
+Issue #348 asked three things about the Imp: what its basic attack is, how a
+pack behaves, and whether it has a second ability at all.
+
+### What was decided
+
+**An enemy ability is written exactly like a player skill.** A `Shape` and its
+parameters, the same two columns `game/Data/WeaponSkills.csv` already carries,
+in the same units. There is no separate enemy vocabulary. The Attack Telegraphs
+subsection added the day before already draws a ground marker from those same
+numbers, so this is the second thing to reuse them and the reason to keep doing
+so: one executor in the engine, one authoring format, and a marker that cannot
+disagree with the attack it warns about.
+
+**The Imp has exactly one ability: a Strike called Rend, radius 1.32 metres,
+90 degree cone, one target.** It runs on the archetype's 0.9 second attack
+interval and it is not telegraphed, which the existing telegraph rule already
+decided by that interval alone.
+
+**Refusing a second ability is the decision, not an omission**, for two reasons.
+Whatever an Imp does is multiplied by the pack, so one extra ability on ten Imps
+is ten of it at once — the "twenty markers on screen" failure arriving from the
+one enemy the telegraph rule clears. And the smallest useful marker of 1 metre
+needs a cycle of at least 1.4 seconds, which is longer than the Imp's whole
+attack interval, so any telegraphed ability it had would be the slowest thing it
+does on the creature whose role is being individually ignorable.
+
+**How many Imps can hit a player at once is geometry, not a rule.** Bodies
+cannot overlap, so a swarm queues in rings. A body of radius `r` at distance `D`
+from the centre covers `2 × arcsin(r ÷ D)` of the circle, so a ring holds
+`pi ÷ arcsin(r ÷ D)` of them.
+
+**The Imp's body radius is 0.30 metres**, the same as the lesser imp minion's
+capsule in `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`, because it
+is the same creature. The player's is 0.42, from `CapsuleRadius` in
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`. That gives 7 in
+the first rank at 0.72 m and 13 in the second at 1.32 m.
+
+**Rend's radius is 1.32 metres because that is exactly the second rank.** It was
+not chosen for looking right. Section X already states that ten Imps kill a
+geared character in 4.9 seconds and twenty in 2.4. One rank is seven, and seven
+take 6.9 seconds. A reach that let only the rank in contact swing would make
+both of the document's own figures false.
+
+**Twenty is therefore the cap on a swarm, and nothing else enforces it.** The
+third rank is out of reach. Twenty is the same twenty the document already calls
+the lethal pack.
+
+**A pack is ten**, which is the other figure the document already commits to. It
+is three more than one full rank, so the second rank does something in an
+ordinary fight rather than only in a swarm event.
+
+**A Leap and a Blink clear a ring of bodies; a Charge does not.** This is new.
+Section V says what each Movement mode hits, not whether it passes through
+bodies, so this fills that gap. It is what stops "surrounded" meaning "dead
+whatever you built".
+
+### What was rejected
+
+**An attack-token rule**, which is the standard answer in the genre: Doom (2016)
+makes an enemy request a token before attacking and the Batman Arkham games
+allow two or three attackers at a time. It is the wrong answer here because this
+document has already committed to ten Imps killing in 4.9 seconds and twenty in
+2.4. A token limit of two or three makes both false and flattens the difference
+between a pack of ten and a pack of twenty to nothing. Physical crowding gives
+the same protection — never more than twenty on you — without capping damage the
+design already promised.
+
+**Chasing the exact figures rather than the rules.** The 4.9 and 2.4 second
+kill times are fast, and whether they survive contact with a real fight is a
+balance question for play rather than for this issue. They are recorded as
+concerns on #264 and #234 and are not re-derived here.
+
+### Evidence
+
+`tools/tests/test_enemy_abilities.py`, 19 tests, recomputes the ring table, the
+reach and the telegraph verdict from `sim/cataclysm_sim/enemy_stats.py` and the
+two C++ capsule constants rather than comparing the document against a copy of
+itself. All 25 deliberate breaks were caught by the intended test. One of the 25
+was not caught on the first attempt: the word "blink" survived in a neighbouring
+sentence, so the test now slices the verdict sentence out and checks each mode
+against it.
+
+---
+
 ## 2026-08-06 — A telegraph is a wind-up long enough to walk out of, and swarm enemies get none
 
 **Affects** `docs/Cataclysm_GDD_v2.md`, new section "Attack Telegraphs" in
