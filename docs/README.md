@@ -9,6 +9,25 @@ originals as historical.
 
 A design decision is not real until it is in this folder.
 
+## Adding a table to one of the Markdown documents
+
+**Write it as an ordinary Markdown table, with a heading row above the alignment
+row.** Do not paste one out of Google Docs.
+
+The Google Docs converter produces tables with an empty heading row and the real
+headings one row lower with their bold markers escaped, which GitHub renders as a
+blank heading band followed by a row of literal `\*\*Name\*\*` text. Every table
+in this folder was converted away from that shape (issue #238), and pasting one
+back in would reintroduce it for that table alone.
+
+`tools/reformat_google_docs_artefacts.py` converts a pasted table, and
+`tools/tests/test_design_documents_have_no_conversion_artefacts.py` fails if one
+is left unconverted:
+
+```bash
+python tools/reformat_google_docs_artefacts.py
+```
+
 | File | Source in Drive | Format note |
 |---|---|---|
 | `Cataclysm_GDD_v2.md` | Doc "Cataclysm\_GDD\_v2(1)" | Converted to Markdown so it produces readable diffs. No version number: see below. |

@@ -31,7 +31,7 @@ The game is won by defeating the Cataclysm boss dungeon. It is lost when a clear
 
 |  |  |
 | :-: | :-: |
-| \*\*KEY PILLARS\*\* | Time is the primary resource. Decisions cascade. Power comes from itemization, not character levels alone. Every run is winnable — and every failure teaches something. |
+| **KEY PILLARS** | Time is the primary resource. Decisions cascade. Power comes from itemization, not character levels alone. Every run is winnable — and every failure teaches something. |
 
   
 
@@ -87,18 +87,16 @@ Self-Found and Heretic Solo Self-Found are both real combinations.
 
 **Lethality mode. Choose one.**
 
-|  |  |  |  |  |
+| Mode | Dying costs | Equipment lost on death | Heads-up display | Other |
 | :-: | :-: | :-: | :-: | :-: |
-| \*\*Mode\*\* | \*\*Dying costs\*\* | \*\*Equipment lost on death\*\* | \*\*Heads-up display\*\* | \*\*Other\*\* |
 | Standard | 5 days | none | shown | — |
 | Hardcore | 10 days | each of the 18 equipped pieces drops with a 10% chance, so 1.8 on average | map overlay only | — |
 | Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons. Cities have 2 upgrade slots instead of 3. |
 
 **Solo Self-Found. Optional. Combines with any lethality mode.**
 
-|  |  |
+| Flag | Rules |
 | :-: | :-: |
-| \*\*Flag\*\* | \*\*Rules\*\* |
 | Solo Self-Found (SSF) | No auction house, no shared stash. Drop rates are unchanged. |
 
 **Both choices are locked at character creation and cannot be changed
@@ -158,9 +156,8 @@ The following are default controls. Players with multiple damage types can map m
 
 ### **Scheme 1: mouse movement (default)**
 
-|  |  |
+| Input | Action |
 | :-: | :-: |
-| \*\*Input\*\* | \*\*Action\*\* |
 | LMB | Move to the point clicked. Clicking an enemy walks toward it; it does not attack. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
@@ -180,9 +177,8 @@ WASD moves the character, so the Support ability moves off W to 1 and the left m
 
   
 
-|  |  |
+| Input | Action |
 | :-: | :-: |
-| \*\*Input\*\* | \*\*Action\*\* |
 | WASD | Directional movement |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
@@ -294,9 +290,8 @@ A player carrying several damage types will have far more skills available than 
 
   
 
-|  |  |
+| Slot | Description |
 | :-: | :-: |
-| \*\*Slot\*\* | \*\*Description\*\* |
 | Basic Attack | Automatic — augmented by all damage types on the weapon. Can be a damage source or resource generator depending on build. |
 | Heavy Attack (RMB) | Moderate cooldown. More impactful hits with slower or longer animations. Often the primary damage button. |
 | Special (Q) | Highly varied — traps, deployables, grenades, pets, terrain effects. Defines playstyle more than any other slot. |
@@ -317,9 +312,8 @@ Every skill deals a percentage of **weapon damage**, which means the weapon's ow
 
   
 
-|  |  |  |  |
+| Slot | Typical | Range | Why |
 | :-- | :-: | :-: | :-- |
-| \*\*Slot\*\* | \*\*Typical\*\* | \*\*Range\*\* | \*\*Why\*\* |
 | Basic Attack | 100% | fixed | Automatic and free. It is weapon damage. |
 | Movement | 100% | 75–150% | Some also deal damage, so an ordinary hit is the right middle. |
 | Support | 0% | 0–100% | Buffs, shields, stances, curses and banners usually deal none. |
@@ -344,9 +338,8 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 
   
 
-|  |  |  |  |
+| Slot | Cooldown | Band | Mana |
 | :-- | :-: | :-: | :-- |
-| \*\*Slot\*\* | \*\*Cooldown\*\* | \*\*Band\*\* | \*\*Mana\*\* |
 | Basic Attack | none | — | restores 6 on hit |
 | Heavy Attack | 1.5s | 1–4s | 15 |
 | Support | 4s | 2–10s | 25 |
@@ -390,9 +383,8 @@ The automatic basic attack returns 6 mana each time it lands. At a typical 1.3 a
 
   
 
-|  |  |  |  |  |
+| Class | Mana | Regen | Income while fighting | Everything on cooldown lasts |
 | :-- | :-: | :-: | :-: | :-- |
-| \*\*Class\*\* | \*\*Mana\*\* | \*\*Regen\*\* | \*\*Income while fighting\*\* | \*\*Everything on cooldown lasts\*\* |
 | Ravager | 436 | 10.9/s | 18.6/s | 25s |
 | Ritualist | 1,278 | 26.8/s | 34.6/s | effectively unlimited |
 | Masochist | 644 | 10.9/s | 19.6/s | 40s |
@@ -427,15 +419,14 @@ Each damage type unlocks three class passive trees. Players can spec into one cl
 
   
 
-Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 25/50/100/200 points), and a total of \~440 spendable points. The per-character point budget is 230, meaning players invest in roughly 53% of any tree — specialization is required.
+Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 25/50/100/200 points), and a total of ~440 spendable points. The per-character point budget is 230, meaning players invest in roughly 53% of any tree — specialization is required.
 
   
 
 ### **Node Types**
 
-|  |  |
+| Type | Description |
 | :-: | :-: |
-| \*\*Type\*\* | \*\*Description\*\* |
 | Basic Nodes | Scaling stat nodes with per-point benefits and threshold bonuses at mid-investment. Most of the tree. |
 | Keystones | Single-point investments that fundamentally change how a mechanic works. Build-defining. Require full investment in a parent node. |
 | Capstones | One per tier (25/50/100/200 pts). Player chooses one of three options per tier. Escalating power from identity declaration to god-tier mechanics. |
@@ -448,9 +439,8 @@ Each class has a unique resource that the passive tree unlocks and develops. Res
 
   
 
-|  |  |
+| Class | Resource & Summary |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Resource & Summary\*\* |
 | Bulwark (War) | Resolve — builds through combat, enables damage reduction and retaliation bursts. Decays out of combat. |
 | Berserker (War) | Fury — builds on critical melee hits, decays out of combat. At max Fury, Berserking triggers devastating strikes. Wrath (2H) and Frenzy (DW) are sustained drain states. |
 | Saboteur (War) | Preparation — builds by placing and triggering traps and gadgets. Does not decay. Powers trap AOE, evasion, and gadget empowerment. |
@@ -469,9 +459,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **War**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Bulwark | The defensive anchor. Masters of block, armor, and Resolve. Can absorb punishment and retaliate with stored energy. Excels at being an immovable frontliner. Resource: Resolve. |
 | Berserker | Fury-driven melee aggressor. Builds Fury on crits, fires off devastating Berserking strikes at max Fury. Two sub-identities: 2H/Wrath (heavy hits, AOE, execute) and DW/Frenzy (attack speed, hit volume, chaining). Resource: Fury. |
 | Saboteur | Trap and gadget specialist. Lays proximity mines, deploys turrets and ballistas, and controls space through deployables. Evasion woven throughout the tree as a class-wide survival stat. Pairs with Dagger, Crossbow, and Spear. Resource: Preparation. |
@@ -480,9 +469,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Demonic**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Ravager | Frontline aggressor embodying raw demonic power. Brutal melee combat style with devastating strength. |
 | Ritualist | Summoner and manipulator of demonic forces. Commands demonic entities and can possess enemies to turn them against allies. |
 | Masochist | Converts received damage into buffs and counterattacks. Uses HP instead of mana for abilities. |
@@ -491,9 +479,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Death**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Soul Collector | Siphons life essence from enemies, weakening foes while strengthening self. Channels stolen life force into stat enhancement and soul-based abilities. |
 | Necromancer | Summons and commands the restless dead. Raises skeletal minions, spectral entities, and undead armies. |
 | Shadow | Melds with darkness for unparalleled mobility. Can move through obstacles and traverse inaccessible areas. |
@@ -502,9 +489,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Pestilence**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Plague Lord | Harbinger of disease and decay. Commands dark magic and vile concoctions that spread sickness and weaken entire groups of enemies. |
 | Virion | Close-quarters combatant with virulent poisons and rotting diseases. Stacks debuffs progressively on enemies to drain defenses and vitality. |
 | Poison Master | Concocts potent toxins and brews deadly potions. Deploys poisonous projectiles, clouds, and venomous traps. |
@@ -513,9 +499,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Famine**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Vampire | High health leech sustain. Cannot use energy shields. Survives through aggressive life-stealing. |
 | Energy Leech | Disrupts enemy spellcasting by draining mana reserves. Siphoned mana replenishes own pool, enabling devastating abilities. |
 | Shield Breaker | Steals and dismantles enemy energy shields. Identifies and exploits defensive barrier weaknesses. |
@@ -524,9 +509,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Celestial**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Nephilim | Forsaken offspring of celestial beings and mortals. Excels at melee combat enhanced by powerful heavenly spells. |
 | Zealous Inquisitor | Wields holy fire to cleanse corruption. Mid-range damage dealer that exposes enemy weaknesses and punishes prolonged fights. |
 | Dawnbringer | Channels sun and stars for destruction and healing. High mobility hybrid alternating between offensive solar bursts and healing starlight. |
@@ -535,9 +519,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Chaos**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Agent of Chaos | Highly random damage and effects. Damage ranges from extremely low to extremely high. If multiclassing, secondary class perks also gain randomness. |
 | Chaos Shaper | Shape-shifting adaptability. Assumes different forms based on weapon type, each with distinct strengths and weaknesses. |
 | Discordant Trickster | Master of illusions and deception. Creates lifelike illusions to disorient foes, disrupt formations, and manipulate perception. |
@@ -546,9 +529,8 @@ Players with multiple damage types on their weapon can invest in multiple class 
 
 ### **Void**
 
-|  |  |
+| Class | Identity |
 | :-: | :-: |
-| \*\*Class\*\* | \*\*Identity\*\* |
 | Singularity | Manipulates gravity for area control. Creates gravitational anomalies that alter movement and positioning of enemies and allies. |
 | Avatar of Madness | Induces madness and psychic confusion. Distorts perceptions and drives enemies to hallucination, paranoia, and fear. |
 | The Maw | Consumes items and enemies for Attribute points. Rarity of consumed entity determines the reward. |
@@ -567,9 +549,8 @@ Power Score = (Level Weight × Character Level) + (Gear Weight × Σ over equipp
 
   
 
-|  |  |
+| Weight | Value |
 | :-: | :-: |
-| \*\*Weight\*\* | \*\*Value\*\* |
 | Level Weight | 6.3270 |
 | Gear Weight | 6.2330 |
 | Upgrade Factor | 0.2525 |
@@ -611,9 +592,8 @@ Power Score is calibrated against the tier ranges in section XII using the refer
 
   
 
-|  |  |  |
+| Gear on every piece at tier 8 | Power Score | Against the anchor |
 | :-- | :-: | :-: |
-| \*\*Gear on every piece at tier 8\*\* | \*\*Power Score\*\* | \*\*Against the anchor\*\* |
 | Cataclysmic | 6,327 | 100% |
 | Ascendant | 5,932 | 94% |
 | Mythical | 5,536 | 88% |
@@ -627,17 +607,16 @@ So chasing Cataclysmic gear is what pushes a character toward the maximum Power 
 
   
 
-|  |  |  |  |  |  |
+| Tier | Level | Gear Rarity | Gear Level | Gems Filled | Each Resistance |
 | :-: | :-: | :-: | :-: | :-: | :-: |
-| \*\*Tier\*\* | \*\*Level\*\* | \*\*Gear Rarity\*\* | \*\*Gear Level\*\* | \*\*Gems Filled\*\* | \*\*Each Resistance\*\* |
-| T1 | 12 | Everyday | \\+3 | 6 | 8.8% |
-| T2 | 25 | Quality | \\+4 | 11 | 17.5% |
-| T3 | 38 | Superb | \\+5 | 17 | 26.2% |
-| T4 | 50 | Masterful | \\+6 | 22 | 35.0% |
-| T5 | 62 | Legendary | \\+7 | 28 | 43.8% |
-| T6 | 75 | Mythical | \\+8 | 34 | 52.5% |
-| T7 | 88 | Ascendant | \\+9 | 39 | 61.2% |
-| T8 | 100 | Cataclysmic | \\+10 | 45 | 70.0% |
+| T1 | 12 | Everyday | +3 | 6 | 8.8% |
+| T2 | 25 | Quality | +4 | 11 | 17.5% |
+| T3 | 38 | Superb | +5 | 17 | 26.2% |
+| T4 | 50 | Masterful | +6 | 22 | 35.0% |
+| T5 | 62 | Legendary | +7 | 28 | 43.8% |
+| T6 | 75 | Mythical | +8 | 34 | 52.5% |
+| T7 | 88 | Ascendant | +9 | 39 | 61.2% |
+| T8 | 100 | Cataclysmic | +10 | 45 | 70.0% |
 
   
 
@@ -655,17 +634,16 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
   
 
-|  |  |  |
+| Attribute | Stats | Per Point |
 | :-: | :-: | :-: |
-| \*\*Attribute\*\* | \*\*Stats\*\* | \*\*Per Point\*\* |
-| Agility | Move Speed / Evasion | \\+2% move speed / +0.5% evasion |
-| Ferocity | Crit Chance / Crit Multiplier | \\+0.5% crit chance / +5% crit multiplier |
-| Constitution | Armor / Block Chance | \\+2% armor / +1% block chance |
-| Vitality | Max HP / HP Regen | \\+2% HP / +1% increased HP regeneration |
-| Mind | Max Mana / Mana Regen | \\+2% mana / +1% increased mana regeneration |
-| Spirit | Energy Shield / Shield Regen | \\+2% energy shield / +1% increased shield regeneration |
-| Efficacy | CDR / AOE / DoT Frequency | \\+1% cooldown increase / +2% AOE / +1% increased DoT frequency |
-| Luck | Magic Find / Loot Quantity | \\+0.01% magic find / +1% loot quantity |
+| Agility | Move Speed / Evasion | +2% move speed / +0.5% evasion |
+| Ferocity | Crit Chance / Crit Multiplier | +0.5% crit chance / +5% crit multiplier |
+| Constitution | Armor / Block Chance | +2% armor / +1% block chance |
+| Vitality | Max HP / HP Regen | +2% HP / +1% increased HP regeneration |
+| Mind | Max Mana / Mana Regen | +2% mana / +1% increased mana regeneration |
+| Spirit | Energy Shield / Shield Regen | +2% energy shield / +1% increased shield regeneration |
+| Efficacy | CDR / AOE / DoT Frequency | +1% cooldown increase / +2% AOE / +1% increased DoT frequency |
+| Luck | Magic Find / Loot Quantity | +0.01% magic find / +1% loot quantity |
 
   
 
@@ -679,9 +657,8 @@ Points come from levelling, from the Maw, and from gear. The gear source is a pe
 
   
 
-|  |  |
+| Points before rounding | Attribute |
 | :-- | :-: |
-| \*\*Points before rounding\*\* | \*\*Attribute\*\* |
 | 36.96 | 37 |
 | 36.5 | 37 |
 | 36.4 | 36 |
@@ -711,9 +688,8 @@ A character has 45 stats, grouped the way the gameplay tag list groups its Stat 
 
   
 
-|  |  |
+| Group | Stats |
 | :-: | :-- |
-| \*\*Group\*\* | \*\*Stats\*\* |
 | Resource | Maximum Health, Maximum Mana, Maximum Energy Shield, Class Resource |
 | Recovery | Health Regeneration, Mana Regeneration, Energy Shield Regeneration, Life Leech, Mana Leech, Energy Shield Leech |
 | Defence | Armor, Evasion, Block Chance, Damage Reduction, Retaliation, Crowd Control Resistance, and the eight Resistances |
@@ -732,9 +708,8 @@ Attributes only scale. A stat therefore needs a base value before any attribute 
 
   
 
-|  |  |
+| Source | Stats |
 | :-: | :-- |
-| \*\*Source\*\* | \*\*Stats\*\* |
 | The class | Vitals, recovery, defences, resistances, movement speed, area of effect, and the three damage over time stats |
 | The equipped weapon | Attack speed, and off this sheet, attack range and attack damage |
 | The skill being used | Critical strike chance, and off this sheet, the base cooldown, projectile count and duration |
@@ -799,9 +774,8 @@ There are three leech stats, and all three work the same way. Life leech fills h
 
   
 
-|  |  |
+| Rule | Value |
 | :-- | :-- |
-| \*\*Rule\*\* | \*\*Value\*\* |
 | What is leeched | A percentage of damage actually dealt |
 | Damage counted | After the target's mitigation, capped at the target's remaining health |
 | Payout period | 3 seconds from the hit |
@@ -831,9 +805,8 @@ Matching is hierarchical, following the tag names. A modifier requiring `Type.AO
 
   
 
-|  |  |  |
+| Skill | Area of Effect | Its Tags |
 | :-: | :-: | :-- |
-| \*\*Skill\*\* | \*\*Area of Effect\*\* | \*\*Its Tags\*\* |
 | Smoke Bomb | 140% | Item.Weapon.Dagger, Type.AOE.PointBlank |
 | Thrust | 100% | Item.Weapon.Spear, Type.Strike |
 
@@ -863,9 +836,8 @@ These are the three classes the vertical slice needs, because a damage type unlo
 
   
 
-|  |  |  |  |
+| Stat | Ravager | Ritualist | Masochist |
 | :-- | :-: | :-: | :-: |
-| \*\*Stat\*\* | \*\*Ravager\*\* | \*\*Ritualist\*\* | \*\*Masochist\*\* |
 | Maximum Health | 2,110 | 1,060 | 2,526 |
 | Maximum Mana | 436 | 1,278 | 644 |
 | Maximum Energy Shield | 0 | 832 | 0 |
@@ -933,9 +905,8 @@ Attribute points and every gear affix worded "increased" add together into one b
 
   
 
-|  |  |  |
+| Already held | Another +60% increased is worth | A 60% "more" is worth |
 | :-: | :-: | :-- |
-| \*\*Already held\*\* | \*\*Another +60% increased is worth\*\* | \*\*A 60% "more" is worth\*\* |
 | +0% | 60.0% | 60.0% |
 | +100% | 30.0% | 60.0% |
 | +300% | 15.0% | 60.0% |
@@ -983,9 +954,8 @@ The skill supplies the base cooldown and the character's accumulated increases a
 
   
 
-|  |  |  |
+| Efficacy Points | 4-Second Skill Becomes | Shown As |
 | :-: | :-: | :-: |
-| \*\*Efficacy Points\*\* | \*\*4-Second Skill Becomes\*\* | \*\*Shown As\*\* |
 | 25 | 3.20s | 20.0% |
 | 50 | 2.67s | 33.3% |
 | 100 | 2.00s | 50.0% |
@@ -1005,9 +975,8 @@ Damage-over-time frequency uses the same form, because it is also a rate. Area o
 
   
 
-|  |  |  |
+| Stat | Cap | Hard or Soft |
 | :-: | :-: | :-: |
-| \*\*Stat\*\* | \*\*Cap\*\* | \*\*Hard or Soft\*\* |
 | Resistances | 70% | Soft. Resistance above it is worth having; one enchantment raises the cap itself, to a ceiling of 90%. |
 | Evasion | 60% | Soft. Gear enchantments may exceed it. |
 | Crit chance | 100% | Hard. Above 100% it means nothing. |
@@ -1037,9 +1006,8 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 
   
 
-|  |  |
+| Step | What happens |
 | :-: | :-- |
-| \*\*Step\*\* | \*\*What happens\*\* |
 | 1. Evasion | Direct attacks only. An evaded hit stops here and does nothing. |
 | 2. Block | Removes 50% of what remains. Applies to area damage as well. |
 | 3. Armor | Reduces damage by `armor / (armor + K)`, where K is 800 × the difficulty tier, capped at 75%. |
@@ -1169,9 +1137,8 @@ Over-capping and raising the maximum are two different things and are easy to co
 
   
 
-|  |  |  |
+| Figure | Value | What it is |
 | :-- | :-: | :-- |
-| \*\*Figure\*\* | \*\*Value\*\* | \*\*What it is\*\* |
 | Base cap | 70% | Where a resistance caps with nothing done about it |
 | Ceiling on the cap | 90% | Hard. No stacking goes past it |
 | Damage taken at the base cap | 30% | |
@@ -1205,9 +1172,8 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
-|  |  |  |  |
+| Metric | The stat that raises it | What raising it does | Total damage |
 | :-- | :-- | :-- | :-- |
-| \*\*Metric\*\* | \*\*The stat that raises it\*\* | \*\*What raising it does\*\* | \*\*Total damage\*\* |
 | Damage per tick | Damage over Time | Each tick hits harder | Rises |
 | Tick rate | Damage over Time Frequency | More ticks in the same time | Rises |
 | Duration | Damage over Time Duration | The effect runs for longer | Rises |
@@ -1230,9 +1196,8 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
-|  |  |
+| Chance from all sources | What happens |
 | :-- | :-- |
-| \*\*Chance from all sources\*\* | \*\*What happens\*\* |
 | 60% | Applies on 60% of hits, at its normal magnitude |
 | 100% | Applies on every hit, at its normal magnitude |
 | 250% | Applies on every hit, at 2.5 times its magnitude |
@@ -1252,9 +1217,8 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-|  |  |
+| The effect has | Magnitude scales |
 | :-- | :-- |
-| \*\*The effect has\*\* | \*\*Magnitude scales\*\* |
 | Damage over time, with no cap on it | The damage |
 | A strength with a cap, such as a slow | The strength up to that cap, then the duration instead |
 | No strength axis at all, such as Madness | The duration |
@@ -1265,9 +1229,8 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-|  |  |  |
+| Effect | What it does | Magnitude scales |
 | :-- | :-- | :-- |
-| \*\*Effect\*\* | \*\*What it does\*\* | \*\*Magnitude scales\*\* |
 | Bleed | Damage over time | The damage |
 | Poison | Damage over time | The damage |
 | Disease | Damage over time | The damage |
@@ -1357,9 +1320,8 @@ Not all damage types are available on all weapons. Damage type availability is t
 
   
 
-|  |  |
+| Damage Type | Available Weapon Types |
 | :-: | :-: |
-| \*\*Damage Type\*\* | \*\*Available Weapon Types\*\* |
 | War | Sword, Greatsword, Dagger, Axe, Greataxe, Spear, Fist, Shield, Crossbow, 2H Crossbow, Warhammer, Whip |
 | Demonic | Sword, Greatsword, Dagger, Axe, Greataxe, Fist, Whip, Warhammer, Wand, Staff |
 | Death | Sword, Greatsword, Dagger, Greataxe, Spear, Fist, Whip, Wand, Staff |
@@ -1389,9 +1351,8 @@ The following is a sample of War damage type skills across weapon types to illus
 
   
 
-|  |  |  |
+| Weapon | Skill | Description |
 | :-: | :-: | :-: |
-| \*\*Weapon\*\* | \*\*Skill\*\* | \*\*Description\*\* |
 | Warhammer / Heavy | Earthquake | Slam into the ground, shockwave in 6m radius, knocks down enemies, reduces armor, leaves damaging fissure. |
 | Dagger / Special | Proximity Mine | Place a concealed mine that arms in 0.5s and detonates on trigger for heavy damage in a 3m blast with bleed. |
 | Spear / Special | Ballista | Deploy a ballista that fires at the furthest enemy in 15m every 2 seconds, dealing enormous damage and pinning targets. |
@@ -1413,9 +1374,8 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 
   
 
-|  |  |  |
+| Weapon | Skill | Description |
 | :-: | :-: | :-: |
-| \*\*Weapon\*\* | \*\*Skill\*\* | \*\*Description\*\* |
 | Greataxe / Heavy | Molten Cleave | Horizontal arc across a wide cone, setting each enemy alight and dragging a line of molten slag that burns for 6s. |
 | Greataxe / Ultimate | Pyroclasm | Spin 3s hitting all in melee range, setting every enemy alight and leaving 5m of burning ground for 8s. Final hit 300% weapon damage. |
 | Fist / Heavy | Searing Hook | Burning hook, 4m knockback, sets alight. Deals 1% increased damage per 1% of maximum health missing. |
@@ -1438,9 +1398,8 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-|  |  |  |
+| Shape | What it does | Numbers it reads |
 | :-: | :-: | :-: |
-| \*\*Shape\*\* | \*\*What it does\*\* | \*\*Numbers it reads\*\* |
 | Strike | Hits everything in a cone or ring around the caster. An angle of 360 is a ring. With a duration and an interval it repeats, which is what a spin is. | Radius, Angle, MaxTargets, Duration, Interval, Knockback |
 | Projectile | Sends something out toward where the player is aiming. One that pierces travels a line and hits what it passes; one that does not lands and hits in a radius there. | Range, Radius, Pierce, Returns, Speed |
 | Self Buff | Grants the caster an effect for a duration. | Duration, Radius |
@@ -1459,13 +1418,12 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-|  |  |
+| What a minion has | Where it comes from |
 | :-: | :-: |
-| \*\*What a minion has\*\* | \*\*Where it comes from\*\* |
 | Damage per attack | 30% of the summoner's weapon damage |
 | Attacks per second | 1 |
 | How many, and for how long | The summoning skill's `Count`, `MaxActive` and `Duration` |
-| What its attacks are worth in total | 3 imps x 30% x 1 per second \= 90% of weapon damage per second |
+| What its attacks are worth in total | 3 imps x 30% x 1 per second = 90% of weapon damage per second |
 
   
 
@@ -1492,9 +1450,8 @@ Ninety percent per second sits below an automatic basic attack, which is 128% to
 
 Weapons have a physical sub-type that determines baseline combat properties:
 
-|  |  |
+| Sub-Type | Property |
 | :-: | :-: |
-| \*\*Sub-Type\*\* | \*\*Property\*\* |
 | Piercing | Ignores 20% of enemy armor |
 | Slashing | 10% more damage vs. HP |
 | Blunt | 10% chance to stun for 0.75 seconds |
@@ -1516,9 +1473,8 @@ The stun uses the shortest duration any designed skill uses. A weapon sub-type t
 
   
 
-|  |  |
+| Rule | What it stops |
 | :-- | :-- |
-| \*\*Rule\*\* | \*\*What it stops\*\* |
 | A hit must take at least 10% of the target's maximum health to stun | Constant interruption by small hits |
 | A target that is stunned cannot be stunned again for 5 seconds | Being chain-stunned by large hits |
 | A boss cannot be stunned at all | The player holding a boss still for the whole fight |
@@ -1541,9 +1497,8 @@ The stun uses the shortest duration any designed skill uses. A weapon sub-type t
 
   
 
-|  |  |
+| Game | Threshold to be able to stun |
 | :-- | :-- |
-| \*\*Game\*\* | \*\*Threshold to be able to stun\*\* |
 | Last Epoch | More than 5% of the target's maximum health |
 | Path of Exile | About 10% of effective maximum life, because a computed stun chance at or below 20% is discarded |
 | Path of Exile 2 | 15%, below which the chance is zero |
@@ -1641,9 +1596,8 @@ Halving is also the only option under which no skill ever visibly does nothing. 
 
   
 
-|  |  |  |  |
+| Rarity | Enchantments | Regular affixes | Notes |
 | :-: | :-: | :-: | :-- |
-| \*\*Rarity\*\* | \*\*Enchantments\*\* | \*\*Regular affixes\*\* | \*\*Notes\*\* |
 | Everyday | 0 | 1 | Common drops, basic affixes |
 | Quality | 0 | 2 | Slightly improved base stats |
 | Superb | 0 | 3 | Better affix rolls |
@@ -1732,9 +1686,8 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 
 
-|  |  |  |
+| Difficulty tier | Highest affix tier a drop can roll | What else that tier brings |
 | :-: | :-: | :-- |
-| \*\*Difficulty tier\*\* | \*\*Highest affix tier a drop can roll\*\* | \*\*What else that tier brings\*\* |
 | 1 | T2 | Everyday gear, +3 upgrade level |
 | 2 | T3 | Quality gear, +4 |
 | 3 | T4 | Superb gear, +5 |
@@ -1774,9 +1727,8 @@ Three families, differing in how many resistances one roll covers. Per-type valu
 
   
 
-|  |  |  |  |
+| Family | Covers | T7 value each | Best when |
 | :-- | :-: | :-: | :-- |
-| \*\*Family\*\* | \*\*Covers\*\* | \*\*T7 value each\*\* | \*\*Best when\*\* |
 | Single resistance | 1 | 20% | Few Cataclysms are active |
 | Two resistances | 2 | 14% | The middle of a run |
 | All resistances | 8 | 6% | Many Cataclysms are active |
@@ -1797,9 +1749,8 @@ These have no breadth axis. What they have instead is the two ends of the stat p
 
   
 
-|  |  |  |
+| Affix | T7 value | Rolls between |
 | :-- | :-: | :-- |
-| \*\*Affix\*\* | \*\*T7 value\*\* | \*\*Rolls between\*\* |
 | Flat maximum health | 120 | 90 and 120 |
 | Increased maximum health | 12% | 9% and 12% |
 | Flat damage | 18 | 13.5 and 18 |
@@ -1833,9 +1784,8 @@ Eight affixes, one per damage type: **increased damage against War / Demonic / D
 
   
 
-|  |  |  |
+| Affix | T7 value | Best when |
 | :-- | :-: | :-- |
-| \*\*Affix\*\* | \*\*T7 value\*\* | \*\*Best when\*\* |
 | Increased damage | 125% | Many Cataclysms are active |
 | Increased damage against one type | 400% | Few Cataclysms are active |
 
@@ -1859,9 +1809,8 @@ Three affixes, one for each of the three numbers a damage over time effect has. 
 
   
 
-|  |  |  |
+| Affix | T7 value | Raises |
 | :-- | :-: | :-- |
-| \*\*Affix\*\* | \*\*T7 value\*\* | \*\*Raises\*\* |
 | Increased damage over time | 52% | How much one tick deals |
 | Increased damage over time frequency | 52% | How many ticks happen per second |
 | Increased damage over time duration | 52% | How long the effect runs |
@@ -1906,9 +1855,8 @@ Everything else follows from that one number rather than being set separately:
 
   
 
-|  |  |
+| Enemy at tier 8 | Non-critical hits to kill |
 | :-- | :-: |
-| \*\*Enemy at tier 8\*\* | \*\*Non-critical hits to kill\*\* |
 | Common Imp | 0.7 |
 | Common Hellhound | 1.5 |
 | Elite Succubus | 3.4 |
@@ -1933,9 +1881,8 @@ Every piece has four affix slots, and they are **two prefixes and two suffixes**
 
   
 
-|  |  |  |
+| Position | What it carries | Examples |
 | :-- | :-- | :-- |
-| \*\*Position\*\* | \*\*What it carries\*\* | \*\*Examples\*\* |
 | Prefix | How big a character's numbers are | Health, mana, energy shield, armor, evasion, damage, spell damage, class resource |
 | Suffix | How often, how fast, and how much gets through | Resistances, attack speed, critical strikes, penetration, regeneration, leech, block, movement speed, cooldown reduction, area of effect, magic find |
 
@@ -1955,9 +1902,8 @@ The split above says which pool an affix is drawn from. It does not say what an 
 
 
 
-|  |  |  |
+| Case | What the rule gives | Why |
 | :-- | :-- | :-- |
-| \*\*Case\*\* | \*\*What the rule gives\*\* | \*\*Why\*\* |
 | Flat and increased of one stat | Both may sit on one piece | Different kinds, so different groups. The design already says neither kind is strictly better and that is the reason for having both |
 | A hybrid and one of its halves | Cannot sit on one piece | A hybrid grants each half at 70%, so the piece would carry the same stat twice |
 | Two single-resistance rolls | May sit on one piece if they cover different damage types | The eight resistances are eight stats, so they are eight groups |
@@ -1990,9 +1936,8 @@ There are 55 bases across the 11 slots. Gear upgrade level multiplies an implici
 
 #### **Armor and Jewelry Bases**
 
-|  |  |
+| Base | Implicit |
 | :-- | :-- |
-| \*\*Base\*\* | \*\*Implicit\*\* |
 | **Head** — Helm | 200 armor |
 | Hood | 4 evasion |
 | Circlet | 55 maximum energy shield |
@@ -2051,9 +1996,8 @@ A weapon carries two things no other item has: a physical **sub-type**, and a li
 
   
 
-|  |  |  |  |  |  |
+| Base | Hands | Sub-Type | Max Damage Types | Attacks/sec | Implicit |
 | :-- | :-: | :-: | :-: | :-: | :-- |
-| \*\*Base\*\* | \*\*Hands\*\* | \*\*Sub-Type\*\* | \*\*Max Damage Types\*\* | \*\*Attacks/sec\*\* | \*\*Implicit\*\* |
 | Sword | 1 | Slashing | 4 | 1.30 | 40 flat damage, 5% increased attack speed |
 | Dagger | 1 | Piercing | 4 | 1.50 | 26 flat damage, 8 critical strike chance |
 | Axe | 1 | Slashing | 4 | 1.25 | 46 flat damage |
@@ -2079,9 +2023,8 @@ A weapon carries two things no other item has: a physical **sub-type**, and a li
 
   
 
-|  |  |  |  |
+| Difficulty tier | Most on one one-hander | Most on one two-hander | Most while dual wielding |
 | :-: | :-: | :-: | :-: |
-| \*\*Difficulty tier\*\* | \*\*Most on one one-hander\*\* | \*\*Most on one two-hander\*\* | \*\*Most while dual wielding\*\* |
 | 1 | 1 | 1 | 2 |
 | 2 | 2 | 2 | 4 |
 | 3 | 3 | 3 | 6 |
@@ -2121,9 +2064,8 @@ With the multiplier applied to both, a two-handed weapon deals about **1.33 time
 
 ### **What a Dual Wielder Has**
 
-|  |  |  |
+|  | Two-handed | Dual wielding |
 | :-- | :-: | :-: |
-| \*\*\*\* | \*\*Two-handed\*\* | \*\*Dual wielding\*\* |
 | Equipped pieces | 18 | 19 |
 | Affix slots | 72 | 76 |
 | Damage types | 3 | 4 |
@@ -2171,9 +2113,8 @@ A chance to apply an effect on hit. These grant no number on the character sheet
 
   
 
-|  |  |  |  |
+| Affix | T7 Chance | Kind | Same effect as gem |
 | :-- | :-: | :-- | :-- |
-| \*\*Affix\*\* | \*\*T7 Chance\*\* | \*\*Kind\*\* | \*\*Same effect as gem\*\* |
 | Chance to bleed | 15% | Damage over time | Of Rending |
 | Chance to poison | 25% | Damage over time | Of The Viper |
 | Chance to disease | 20% | Damage over time | Of Rot |
@@ -2205,9 +2146,8 @@ An affix cannot appear on every piece. Without restrictions every slot is interc
 
   
 
-|  |  |  |
+| Family | Slots | Where |
 | :-- | :-: | :-- |
-| \*\*Family\*\* | \*\*Slots\*\* | \*\*Where\*\* |
 | Damage | 48 | Weapon, Rings, Relic, Necklace, Gloves |
 | Health and armor | 56 | Head, Chest, Shoulders, Belt, Pants, Boots, Rings |
 | Resistance | 68 | Everything except the Weapon |
@@ -2276,7 +2216,7 @@ Enchantments are tag-based rather than skill-specific, ensuring the loot pool re
 
 |  |  |
 | :-: | :-: |
-| \*\*UNIQUE PER CHARACTER\*\* | Each enchantment can only appear once across all of a player's equipped gear. You cannot equip the same enchantment on multiple pieces. This prevents degenerate stacking of powerful effects (e.g. equipping '50% increased HP' on every ring slot), keeps the power ceiling consistent, and makes build assembly a genuine puzzle — players must find a complementary set of enchantments rather than farming one great roll repeatedly. |
+| **UNIQUE PER CHARACTER** | Each enchantment can only appear once across all of a player's equipped gear. You cannot equip the same enchantment on multiple pieces. This prevents degenerate stacking of powerful effects (e.g. equipping '50% increased HP' on every ring slot), keeps the power ceiling consistent, and makes build assembly a genuine puzzle — players must find a complementary set of enchantments rather than farming one great roll repeatedly. |
 
   
 
@@ -2284,9 +2224,8 @@ The weight system governs rarity and balance simultaneously. Weight 1 enchantmen
 
   
 
-|  |  |
+| Weight | Rarity / Power Level |
 | :-: | :-: |
-| \*\*Weight\*\* | \*\*Rarity / Power Level\*\* |
 | 1 | Rare — very powerful effect, severe consequence |
 | 2 | Uncommon — strong effect, significant drawback |
 | 3 | Moderate — solid effect, manageable drawback |
@@ -2319,19 +2258,18 @@ Gear can be upgraded from +1 to +10 using upgrade stones obtained as dungeon dro
 
   
 
-|  |  |
+| Upgrade Level | +1 Stones Required (cumulative) |
 | :-: | :-: |
-| \*\*Upgrade Level\*\* | \*\*+1 Stones Required (cumulative)\*\* |
-| \\+1 | 1 |
-| \\+2 | 3 |
-| \\+3 | 7 |
-| \\+4 | 15 |
-| \\+5 | 31 |
-| \\+6 | 63 |
-| \\+7 | 127 |
-| \\+8 | 255 |
-| \\+9 | 511 |
-| \\+10 | 1,023 |
+| +1 | 1 |
+| +2 | 3 |
+| +3 | 7 |
+| +4 | 15 |
+| +5 | 31 |
+| +6 | 63 |
+| +7 | 127 |
+| +8 | 255 |
+| +9 | 511 |
+| +10 | 1,023 |
 
   
 
@@ -2341,9 +2279,8 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
 
   
 
-|  |  |  |
+| Slot | Sockets | Notes |
 | :-: | :-: | :-: |
-| \*\*Slot\*\* | \*\*Sockets\*\* | \*\*Notes\*\* |
 | Helmet | 2 |   |
 | Chest | 6 | Most sockets of any armor piece |
 | Shoulders | 2 |   |
@@ -2374,9 +2311,8 @@ Every modification made to an item adds Cataclysmic Residue (CR). This residue r
 
   
 
-|  |  |
+| CR Range | Effect |
 | :-: | :-: |
-| \*\*CR Range\*\* | \*\*Effect\*\* |
 | 0 - 99 | Cost penalty (gold multiplier increases). Time penalty minimal. |
 | 100+ | Critical Time Penalty kicks in — crafting costs real in-game days. |
 
@@ -2497,9 +2433,8 @@ This makes a surviving player's escape worth something to the whole party, and i
 
 ## **Dungeon Types**
 
-|  |  |
+| Type | Description |
 | :-: | :-: |
-| \*\*Type\*\* | \*\*Description\*\* |
 | Basic | Standard dungeon. Most common type. |
 | Quest | Does not resolve — refreshes and may move to adjacent city. Required to challenge the Cataclysm. |
 | Fallen City | Captured player city. Must be retaken to restore it. Higher floor count and multiple bosses. |
@@ -2509,9 +2444,8 @@ This makes a surviving player's escape worth something to the whole party, and i
 
 ## **Dungeon Sub-Types**
 
-|  |  |
+| Sub-Type | Description |
 | :-: | :-: |
-| \*\*Sub-Type\*\* | \*\*Description\*\* |
 | Timed | Failing the time limit is treated as dying. Killing enemies adds time. Rewards scale with clear speed. |
 | Horde | Number of floors equals number of enemy waves. |
 | Sacrificial | Double modifiers. Player can sacrifice materials to remove the extra modifiers, or accept them for bonus rewards. |
@@ -2642,9 +2576,8 @@ A major aspect of Cataclysm is the management of the player's empire. The empire
 
 ## **City Tiers**
 
-|  |  |
+| Tier | Count / Min Floors on Fall |
 | :-: | :-: |
-| \*\*Tier\*\* | \*\*Count / Min Floors on Fall\*\* |
 | Village | 12 cities — minimum 20 floors if captured |
 | City | 8 cities — minimum 40 floors if captured |
 | Metropolis | 4 cities — minimum 60 floors if captured |
@@ -2784,9 +2717,8 @@ the cost in auction house liquidity.
 
 The capital houses all NPC services. All services cost time, reinforcing the time pressure.
 
-|  |  |
+| NPC | Service |
 | :-: | :-: |
-| \*\*NPC\*\* | \*\*Service\*\* |
 | Enchanter | Adds or modifies enchantments on gear |
 | Smith (Cataclysmic Forge) | Crafting, upgrading gear, Forge interactions |
 | Jeweler | Combines and sockets gems |
@@ -2887,9 +2819,8 @@ Enemy Score is a power rating. It says what an encounter is worth, not how much 
 
   
 
-|  |  |
+| Layer | What it sets |
 | :-: | :-- |
-| \*\*Layer\*\* | \*\*What it sets\*\* |
 | Rarity | Magnitude only: health, damage, armor, energy shield |
 | Archetype | Everything else: attack interval, critical strike chance and multiplier, movement speed, evasion, energy shield as a fraction of health, resistances, and how big this kind of creature is relative to average |
 
@@ -2913,9 +2844,8 @@ A reference character at difficulty tier 8 — a level 100 Ravager spending ever
 
   
 
-|  |  |
+| Layer | What it removes |
 | :-- | :-: |
-| \*\*Layer\*\* | \*\*What it removes\*\* |
 | Armor, 7,299 points against the tier 8 curve | 53.3% |
 | Resistance, at the cap | 70.0% |
 | Block chance 28%, removing half a hit each time | 14.0% on average |
@@ -2932,9 +2862,8 @@ So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen w
 
   
 
-|  |  |  |
+| Enemy at tier 8 | Hits to kill it | Seconds |
 | :-- | :-: | :-: |
-| \*\*Enemy at tier 8\*\* | \*\*Hits to kill it\*\* | \*\*Seconds\*\* |
 | Common Imp | 54 | 48.6 |
 | Common Hellhound | 24 | 26.4 |
 | Elite Succubus | 11 | 28.6 |
@@ -2977,9 +2906,8 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
-|  |  |  |
+| Enemy | Resistance | Why |
 | :-- | :-: | :-- |
-| \*\*Enemy\*\* | \*\*Resistance\*\* | \*\*Why\*\* |
 | Imp | 0% | Swarm fodder should die to whatever the player has |
 | Hellhound | 10% | A beast, relying on speed rather than soaking hits |
 | Succubus | 10% | Little of its own; the energy shield is what keeps it alive |
@@ -3012,9 +2940,8 @@ An enemy carries **one modifier per rarity above Common**:
 
   
 
-|  |  |
+| Rarity | Enemy Modifiers |
 | :-: | :-: |
-| \*\*Rarity\*\* | \*\*Enemy Modifiers\*\* |
 | Common | 0 |
 | Elite | 1 |
 | Legendary | 2 |
@@ -3078,9 +3005,8 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 ### **Rarity Weights**
 
-|  |  |
+| Enemy Rarity | Weight |
 | :-: | :-: |
-| \*\*Enemy Rarity\*\* | \*\*Weight\*\* |
 | Common | 0 |
 | Elite | 0.05 |
 | Legendary | 0.1 |
@@ -3104,9 +3030,8 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 ### **Dungeon Type Weights**
 
-|  |  |
+| Dungeon Type | Weight |
 | :-: | :-: |
-| \*\*Dungeon Type\*\* | \*\*Weight\*\* |
 | Basic | 0.0 |
 | Quest | 0.05 |
 | Fallen City | 0.1 |
@@ -3116,9 +3041,8 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 ### **Subtype Weights**
 
-|  |  |
+| Subtype | Weight |
 | :-: | :-: |
-| \*\*Subtype\*\* | \*\*Weight\*\* |
 | None | 0 |
 | Timed | 0 |
 | Horde | 0.05 |
@@ -3136,9 +3060,8 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 ### **Floor Scaling Bases**
 
-|  |  |
+| Dungeon Type | Base |
 | :-: | :-: |
-| \*\*Dungeon Type\*\* | \*\*Base\*\* |
 | Basic | 100 |
 | Quest | 200 |
 | Fallen City | 300 |
@@ -3152,9 +3075,8 @@ Divided by 20 and multiplied by the floor ratio. This is the only place a dungeo
 
 ### **Base Type Scores**
 
-|  |  |
+| Dungeon Type | Score |
 | :-: | :-: |
-| \*\*Dungeon Type\*\* | \*\*Score\*\* |
 | Basic | 30 |
 | Quest | 60 |
 | Fallen City | 90 |
@@ -3172,9 +3094,8 @@ The anchor every score is measured against: the maximum Power Score a player is 
 
 
 
-|  |  |  |
+| Tier | Maximum | Tier width |
 | :-: | :-: | :-: |
-| \*\*Tier\*\* | \*\*Maximum\*\* | \*\*Tier width\*\* |
 | 1 | 385 | 385 |
 | 2 | 883 | 498 |
 | 3 | 1508 | 625 |
@@ -3196,9 +3117,8 @@ The vertical slice will feature five to seven base enemy types from the Demonic 
 
   
 
-|  |  |
+| Enemy | Role |
 | :-: | :-: |
-| \*\*Enemy\*\* | \*\*Role\*\* |
 | The Imp | Fast, swarming melee. Weak individually, overwhelming in packs. |
 | The Succubus | Ranged caster. Debuffs player and buffs nearby allies. Slow but powerful attacks. |
 | The Hellhound | Aggressive charger that leaves fire trails. Trail can damage other enemies. |
@@ -3273,9 +3193,8 @@ The max level is 100. Players earn experience by killing dungeon enemies and def
 
 ## **Power Score Ranges by Tier**
 
-|  |  |
+| Tier | Expected Power Score Range |
 | :-: | :-: |
-| \*\*Tier\*\* | \*\*Expected Power Score Range\*\* |
 | T1 | 0 — 385 |
 | T2 | 386 — 883 |
 | T3 | 884 — 1,508 |
@@ -3422,9 +3341,8 @@ All cosmetics are purely visual — no pay-to-win, ever.
 
 # **XVI. Risks and Mitigations**
 
-|  |  |
+| Risk | Mitigation |
 | :-: | :-: |
-| \*\*Risk\*\* | \*\*Mitigation\*\* |
 | Skill matrix scope creep (11 weapons × 8 damage types × 6 slots = 528+ skills) | Launch with one complete damage type per patch. Use tag-based design to maximize re-use and make each skill feel distinct. |
 | Time pressure mechanics frustrating casual players | The lethality mode (Standard, Hardcore or Heretic) lets players tune the urgency, and Standard is the default. Permanent meta-progression ensures no run feels wasted. |
 | Passive tree complexity overwhelming new players | Strong visual design with clear branching and class fantasy. Beginner preset builds. In-game tooltips on all node interactions. |

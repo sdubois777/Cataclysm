@@ -102,11 +102,17 @@ def bindings_from_the_generator(list_name: str) -> set[tuple[str, str]]:
 
 
 def bindings_from_the_design_document(heading: str) -> set[tuple[str, str]]:
-    """The (engine key name, Input Action asset) pairs in one document table.
+    r"""The (engine key name, Input Action asset) pairs in one document table.
 
-    The table is the first one after `heading`. Rows are the document's own
-    export shape: a `|  |  |` line, an alignment line, a bold header row, then
-    one row per binding.
+    The table is the first one after `heading`: a heading row, an alignment
+    line, then one row per binding.
+
+    THE HEADING ROW IS SKIPPED BY POSITION. Issue #238. The document used to
+    carry the Google Docs export shape, which was an empty `|  |  |` line, an
+    alignment line, and then the real heading as a body row with its bold
+    markers escaped, so the heading was skipped by looking for `\*`. An ordinary
+    Markdown heading is plain text, so nothing is collected until the alignment
+    line has been passed.
     """
     text = DESIGN_DOC.read_text(encoding="utf-8")
     start = text.find(f"### **{heading}**")
@@ -120,6 +126,7 @@ def bindings_from_the_design_document(heading: str) -> set[tuple[str, str]]:
     section = text[start : end if end != -1 else len(text)]
 
     bindings: set[tuple[str, str]] = set()
+    past_the_heading = False
     for line in section.splitlines():
         row = line.strip()
         if not row.startswith("|"):
@@ -128,8 +135,11 @@ def bindings_from_the_design_document(heading: str) -> set[tuple[str, str]]:
         if len(cells) != 2:
             continue
         key_label, action_text = cells
-        if not key_label or key_label.startswith(":") or key_label.startswith("\\*"):
-            continue  # the alignment line and the bold header row
+        if key_label.startswith(":") or set(key_label) <= {"-", ":"}:
+            past_the_heading = True  # the alignment line
+            continue
+        if not past_the_heading or not key_label:
+            continue  # the heading row, above the alignment line
 
         engine_keys = KEY_LABEL_TO_ENGINE_KEYS.get(key_label)
         assert engine_keys is not None, (

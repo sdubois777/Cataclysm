@@ -91,10 +91,18 @@ AT_A_MULTIPLE = re.compile(r"at (\d+(?:\.\d+)?) times its magnitude")
 #: The line introducing the per-effect table.
 EFFECT_TABLE_MARKER = "**The effects a player can apply**"
 
-#: A cell that is a heading rather than data. The design document was exported
-#: with its bold markers escaped, so a heading cell reads `\*\*Effect\*\*`. A
-#: separator row is all colons and dashes, or all empty.
-HEADING_CELL = re.compile(r"^\\?\*\\?\*")
+#: A cell that is a heading rather than data. A separator row is all colons and
+#: dashes, or all empty.
+#:
+#: HEADINGS ARE FOUND BY POSITION NOW, NOT BY TEXT. Issue #238. The design
+#: document used to be exported from Google Docs with an empty heading row and
+#: the real headings one row lower with their bold markers escaped, so a heading
+#: cell read `\*\*Effect\*\*` and this pattern found it. The document now has
+#: ordinary Markdown headings above the separator row, which no pattern can tell
+#: from data, so `table_after` takes only the rows below the separator.
+#: `HEADING_CELL` is kept because bold is still used inside data cells and a row
+#: that is entirely bold is still not data.
+HEADING_CELL = re.compile(r"^\*\*.*\*\*$")
 SEPARATOR_CELL = re.compile(r"^[:\-]*$")
 
 
@@ -128,6 +136,12 @@ def table_after(section: str, marker: str) -> list[list[str]]:
     ANCHORED TO THE MARKER rather than taken from the whole section, because the
     section holds three tables and matching on shape alone picked up the wrong
     one. Header and separator rows are dropped, so what comes back is data.
+
+    THE HEADING IS EVERYTHING ABOVE THE SEPARATOR ROW. Issue #238. Before the
+    design document was reformatted, the heading was a body row whose cells were
+    escaped bold, and it was dropped by matching that text. An ordinary Markdown
+    heading is plain text and cannot be told from data, so nothing is collected
+    until the separator row has been seen.
     """
     lines = section.splitlines()
     index = next((i for i, line in enumerate(lines) if marker in line), None)
@@ -135,14 +149,18 @@ def table_after(section: str, marker: str) -> list[list[str]]:
 
     rows: list[list[str]] = []
     started = False
+    past_the_heading = False
     for line in lines[index + 1:]:
         stripped = line.strip()
         if stripped.startswith("|"):
             started = True
             row = cells(stripped)
-            if any(HEADING_CELL.match(c) for c in row):
-                continue
             if all(SEPARATOR_CELL.match(c) for c in row):
+                past_the_heading = True
+                continue
+            if not past_the_heading:
+                continue
+            if any(HEADING_CELL.match(c) for c in row):
                 continue
             rows.append(row)
         elif started and stripped:
