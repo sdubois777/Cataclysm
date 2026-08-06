@@ -83,7 +83,16 @@ def workbook_descriptions() -> dict[str, str]:
 
 
 def summary_rows(heading: str) -> list[tuple[str, str]]:
-    """The (skill name, summary) pairs under one heading's table."""
+    r"""The (skill name, summary) pairs under one heading's table.
+
+    THE HEADING ROW IS SKIPPED BY POSITION. Issue #238. The document used to
+    carry the Google Docs export shape, in which the real heading was a body row
+    below the alignment row with its bold markers escaped, so it was skipped by
+    looking for a cell starting `\*\*`. An ordinary Markdown heading is plain
+    text and reads as data, so nothing is collected until the alignment row has
+    been passed. Without that, the heading cell "Skill" was returned as a skill
+    name and checked against the workbook.
+    """
     text = DESIGN_DOC.read_text(encoding="utf-8")
     start = text.find(f"## **{heading}**")
     if start == -1:
@@ -94,11 +103,16 @@ def summary_rows(heading: str) -> list[tuple[str, str]]:
     table = text[start : end if end != -1 else len(text)]
 
     rows = []
+    past_the_heading = False
     for line in table.splitlines():
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        # Three columns: weapon and slot, skill name, description. The header row
-        # and the alignment row have no description worth reading.
-        if len(cells) != 3 or not cells[1] or cells[1].startswith((":", "\\*\\*")):
+        # Three columns: weapon and slot, skill name, description.
+        if len(cells) != 3:
+            continue
+        if all(set(cell) <= {"-", ":"} and cell for cell in cells):
+            past_the_heading = True
+            continue
+        if not past_the_heading or not cells[1]:
             continue
         rows.append((cells[1], cells[2]))
     return rows
