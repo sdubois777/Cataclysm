@@ -195,6 +195,16 @@ class Archetype:
     #: are still open (#349 to #354).
     body_radius: float = 0.48
 
+    #: How fast it can turn on the spot, in degrees per second. It is what
+    #: decides whether a creature can be got behind, which is the whole of what
+    #: the design means by "can be outmanoeuvred".
+    #:
+    #: The default is 480 because that is the `RotationRate` yaw every enemy is
+    #: constructed with in
+    #: `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`. An
+    #: archetype that has not had its own figure decided keeps that one.
+    turn_rate_degrees: float = 480.0
+
     #: Percent of all incoming damage resisted, whatever its type. One figure,
     #: not eight: see the note at the top of this file. A negative value would
     #: mean the creature takes extra damage from everything, which is legal and
@@ -263,6 +273,12 @@ ARCHETYPES: dict[str, Archetype] = {
             attack_interval=2.8, crit_multiplier=200.0, move_speed=2.5,
             # Thick hide on top of the armour, which is its main defence.
             resistance=15.0,
+            # 180 rather than every other enemy's 480, because "can be
+            # outmanoeuvred" has to be a number. A player circling at the
+            # Brute's own reach turns at 223 degrees per second even in the
+            # slowest Demonic class, so anything under that can be got behind
+            # by every build. Issue #351.
+            turn_rate_degrees=180.0,
         ),
         Archetype(
             name="Corrupted Sentinel",
@@ -320,6 +336,16 @@ def _check_no_enemy_can_become_immune() -> None:
             "the 70% the design caps resistance at")
 
 
+def _check_every_creature_can_turn() -> None:
+    """A turn rate of zero would mean a creature that can never face anything,
+    which is a bug rather than a design and would make every melee enemy
+    harmless by walking half a step."""
+    for kind in ARCHETYPES.values():
+        assert kind.turn_rate_degrees > 0.0, (
+            f"{kind.name} turns at {kind.turn_rate_degrees} degrees per second, "
+            "so it can never face what it is fighting")
+
+
 def _check_every_body_has_a_width() -> None:
     """A body radius of zero would let unlimited enemies stand on one point.
 
@@ -336,6 +362,7 @@ def _check_every_body_has_a_width() -> None:
 _check_every_archetype_deals_a_real_damage_type()
 _check_no_enemy_can_become_immune()
 _check_every_body_has_a_width()
+_check_every_creature_can_turn()
 
 
 def archetype(name: str) -> Archetype:

@@ -904,8 +904,289 @@ def test_the_document_says_what_killing_it_does_to_the_trail(hellhound_section):
 
 
 # --------------------------------------------------------------------------
+# The Brute
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def brute_section() -> str:
+    return subsection("Brute")
+
+
+@pytest.fixture(scope="module")
+def brute():
+    from cataclysm_sim.enemy_stats import archetype
+    return archetype("Brute")
+
+
+@pytest.fixture(scope="module")
+def brute_abilities():
+    from cataclysm_sim.enemy_abilities import abilities
+    return abilities("Brute")
+
+
+def test_the_brute_ability_table_matches_the_data(brute_section,
+                                                  brute_abilities):
+    assert len(brute_abilities) == 2, (
+        f"the Brute now has {len(brute_abilities)} abilities. The design "
+        "document describes two: a slam and a stomp.")
+    for ability in brute_abilities:
+        assert_row_matches(brute_section, ability, "Brute")
+
+
+def test_the_slam_lands_exactly_on_the_stun_damage_threshold(brute_section):
+    """The reason the slam does not stun, recomputed against the reference build
+    rather than quoted. An Elite Brute's ordinary hit is 10.0% of that
+    character's effective health and the threshold is 10%."""
+    from cataclysm_sim import damage as dmg
+    from cataclysm_sim import enemy_stats as es
+    from cataclysm_sim import reference_build as rb
+
+    enemy = es.stats_on_floor("Elite", 8, "Cataclysm", kind="Brute")
+    hits = dmg.hits_to_kill(
+        dmg.Attacker(damage=enemy.average_damage_per_hit,
+                     damage_type=enemy.damage_type),
+        rb.defender(8))
+    share = 100.0 / hits
+    assert share == pytest.approx(10.0, abs=0.5), (
+        f"an Elite Brute's ordinary hit is now {share:.1f}% of the reference "
+        "build's effective health, not the 10% the design document states. "
+        "That figure is the whole reason the slam does not stun.")
+    assert "exactly 10% of the reference build" in brute_section, (
+        "the Brute subsection no longer states that its slam lands exactly on "
+        "the stun damage threshold. Issue #351.")
+
+
+def test_the_stomp_clears_the_threshold_at_the_heavy_slot_percent(brute_section):
+    """250% of a hit that is 10% of the pool is 25%, which is two and a half
+    times the threshold. Both numbers are read out of the data."""
+    import csv
+
+    slots = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
+    if not slots.is_file():
+        pytest.skip("game/Data/SkillSlots.csv is not present")
+    with slots.open(encoding="utf-8-sig", newline="") as handle:
+        heavy = next(row for row in csv.DictReader(handle)
+                     if row["Slot"] == "Heavy")
+
+    percent = float(heavy["DamagePercent"])
+    assert percent == pytest.approx(250.0), (
+        f"the Heavy slot is now {percent}% in game/Data/SkillSlots.csv. The "
+        "Brute subsection says the stomp lands at 25% of the reference build's "
+        "effective health, which is that percent of a 10% hit.")
+    assert f"the Heavy slot's {percent:.0f}%" in brute_section, (
+        "the Brute subsection no longer states which slot percent the stomp "
+        "uses.")
+
+
+def test_the_stomp_cooldown_is_the_stun_immunity_window(brute_abilities,
+                                                        brute_section):
+    """Not the Heavy slot's cooldown, which sits entirely inside the window."""
+    import csv
+
+    from cataclysm_sim.enemy_abilities import STUN_IMMUNITY_WINDOW
+
+    stomp = next(a for a in brute_abilities if "StunSeconds" in a.params)
+    assert stomp.cooldown == pytest.approx(STUN_IMMUNITY_WINDOW), (
+        f"the stomp comes round every {stomp.cooldown} s and the stun immunity "
+        f"window is {STUN_IMMUNITY_WINDOW} s. A stun inside the window lands "
+        "on a target that cannot be stunned.")
+
+    slots = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
+    if not slots.is_file():
+        pytest.skip("game/Data/SkillSlots.csv is not present")
+    with slots.open(encoding="utf-8-sig", newline="") as handle:
+        heavy = next(row for row in csv.DictReader(handle)
+                     if row["Slot"] == "Heavy")
+    assert float(heavy["CooldownHighest"]) < STUN_IMMUNITY_WINDOW, (
+        "the Heavy slot's cooldown band now reaches "
+        f"{heavy['CooldownHighest']} s, which is no longer entirely inside the "
+        f"{STUN_IMMUNITY_WINDOW} s immunity window. The Brute subsection's "
+        "reason for overriding the slot's cooldown rests on that.")
+    assert "slot-independent rule" in brute_section, (
+        "the Brute subsection no longer states that any stunning ability sits "
+        "at least the immunity window apart whatever slot it is in.")
+
+
+def test_no_enemy_stun_outlasts_the_longest_designed_player_stun(brute_section):
+    """1.5 seconds is Shield Bash's, recomputed from the skill descriptions
+    rather than trusted."""
+    import csv
+    import re as regex
+
+    from cataclysm_sim.enemy_abilities import ABILITIES, LONGEST_DESIGNED_STUN
+
+    skills = REPO_ROOT / "game" / "Data" / "WeaponSkills.csv"
+    if not skills.is_file():
+        pytest.skip("game/Data/WeaponSkills.csv is not present")
+    stated = []
+    with skills.open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            for seconds in regex.findall(
+                    r"stun(?:ning|s)?[^.]*?for ([0-9.]+) seconds?",
+                    row["SkillDescription"], regex.IGNORECASE):
+                stated.append(float(seconds))
+
+    assert stated, (
+        "no skill in game/Data/WeaponSkills.csv states a stun duration any "
+        "more, so the ceiling on an enemy's stun has nothing behind it.")
+    assert max(stated) == pytest.approx(LONGEST_DESIGNED_STUN), (
+        f"the longest stun a designed player skill grants is now {max(stated)} "
+        f"s, not the {LONGEST_DESIGNED_STUN} s the enemy data caps against.")
+
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            seconds = float(ability.params.get("StunSeconds", 0.0))
+            assert seconds <= max(stated), (
+                f"{name}'s {ability.name} stuns for {seconds} s, longer than "
+                "anything the player can do.")
+
+    assert "longest any designed player skill grants" in brute_section, (
+        "the Brute subsection no longer states where its 1.5 seconds comes "
+        "from.")
+
+
+def test_the_brute_turns_slower_than_a_player_can_circle_it(brute,
+                                                            brute_section):
+    """The number behind 'can be outmanoeuvred'. The ceiling is derived from
+    the player's own speed at the Brute's own reach."""
+    import math
+
+    from cataclysm_sim.enemy_abilities import ATTACK_REACH
+
+    text = GDD.read_text(encoding="utf-8")
+    row = re.search(r"\| Movement Speed \|([^\n]*)\|", text)
+    assert row, "the Three Demonic Class Stat Lines table has no Movement Speed row"
+    slowest = min(float(cell) for cell in row.group(1).split("|") if cell.strip())
+
+    circling = math.degrees(slowest / ATTACK_REACH["Brute"])
+    assert brute.turn_rate_degrees < circling, (
+        f"the Brute turns at {brute.turn_rate_degrees} degrees per second and "
+        f"a player circling at its {ATTACK_REACH['Brute']} m reach turns at "
+        f"{circling:.0f}, even in the slowest class. It can no longer be got "
+        "behind by every build.")
+    assert f"{circling:.0f} degrees per second" in brute_section, (
+        f"the Brute subsection does not state the {circling:.0f} degrees per "
+        "second a player circles at, which is the ceiling on its turn rate.")
+
+    # Every angular figure in the subsection is checked, not only the first
+    # one found. The subsection states the circling rate twice, in a table and
+    # in prose, and a test that accepts either passes while the other is wrong.
+    engine_default = cpp_constant_int(
+        REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+        / "CataclysmEnemyCharacter.cpp")
+    allowed = {round(circling), round(brute.turn_rate_degrees),
+               round(engine_default)}
+    stated = {int(found) for found
+              in re.findall(r"(\d+) degrees per second", brute_section)}
+    assert stated <= allowed, (
+        f"the Brute subsection states {sorted(stated - allowed)} degrees per "
+        f"second, which is none of the three real figures {sorted(allowed)}: "
+        "the player circling, the Brute turning, and the engine default.")
+
+
+def test_every_other_enemy_still_turns_at_the_engine_default(brute):
+    """The Brute is the exception. If the default moved, the subsection's
+    comparison is wrong."""
+    from cataclysm_sim.enemy_stats import ARCHETYPES
+
+    default = cpp_constant_int(
+        REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+        / "CataclysmEnemyCharacter.cpp")
+    for name, kind in ARCHETYPES.items():
+        if name == "Brute":
+            continue
+        assert kind.turn_rate_degrees == pytest.approx(default), (
+            f"{name} turns at {kind.turn_rate_degrees} and the engine builds "
+            f"every enemy at {default}. Only the Brute is meant to differ.")
+
+
+def test_the_slam_gets_no_marker_even_though_the_brute_can_telegraph(
+        brute, brute_abilities, brute_section):
+    """The clarification this enemy forced: the telegraph table's Yes column is
+    about the largest marker an enemy could draw, not about every attack."""
+    from cataclysm_sim.enemy_abilities import (SMALLEST_USEFUL_MARKER_METRES,
+                                               is_telegraphed,
+                                               largest_telegraphed_radius)
+
+    by_name = {a.name: a for a in brute_abilities}
+    allowed = largest_telegraphed_radius(brute.attack_interval)
+    assert allowed >= SMALLEST_USEFUL_MARKER_METRES, (
+        "the Brute's attack interval no longer allows a marker at all, so it "
+        "is not in the telegraph table's Yes column and this test has nothing "
+        "to say.")
+    assert not is_telegraphed(by_name["Slam"], brute), (
+        "the Brute's slam is now telegraphed. It reaches "
+        f"{by_name['Slam'].params['Radius']} m, under the "
+        f"{SMALLEST_USEFUL_MARKER_METRES} m floor, so it has no marker to draw "
+        "however much its attack interval would allow.")
+    assert is_telegraphed(by_name["Stomp"], brute)
+    assert "a marker under one metre is not drawn" in brute_section.lower(), (
+        "the Brute subsection no longer states the rule its slam is the "
+        "example of. Issue #351.")
+
+
+def test_the_stomp_takes_the_largest_marker_its_attack_interval_allows(
+        brute, brute_abilities, brute_section):
+    """The same choice the Succubus's bolt makes, and sized by the attack
+    interval rather than by the longer cooldown on purpose."""
+    from cataclysm_sim.enemy_abilities import (REACTION_ALLOWANCE,
+                                               WALK_OUT_SPEED,
+                                               largest_telegraphed_radius)
+
+    stomp = next(a for a in brute_abilities if "StunSeconds" in a.params)
+    allowed = largest_telegraphed_radius(brute.attack_interval)
+    assert float(stomp.params["Radius"]) == pytest.approx(allowed), (
+        f"the stomp draws {stomp.params['Radius']} m and the Brute's "
+        f"{brute.attack_interval} s attack interval allows {allowed:.2f} m.")
+
+    wind_up = REACTION_ALLOWANCE + allowed / WALK_OUT_SPEED
+    assert wind_up == pytest.approx(brute.attack_interval / 2.0)
+    assert f"{wind_up:.1f} s wind-up" in brute_section, (
+        f"the Brute's ability table does not state a {wind_up:.1f} s wind-up.")
+
+    assert float(stomp.params["Angle"]) == 360, (
+        "the stomp is no longer a ring. A cone on an enemy that turns at half "
+        "speed is answered once and never again.")
+
+
+def test_the_stomp_can_be_walked_out_of_from_contact(brute, brute_abilities,
+                                                     brute_section):
+    from cataclysm_sim.enemy_abilities import (ATTACK_REACH, REACTION_ALLOWANCE,
+                                               WALK_OUT_SPEED)
+
+    stomp = next(a for a in brute_abilities if "StunSeconds" in a.params)
+    to_cover = float(stomp.params["Radius"]) - ATTACK_REACH["Brute"]
+    seconds = to_cover / WALK_OUT_SPEED
+    budget = (REACTION_ALLOWANCE + float(stomp.params["Radius"])
+              / WALK_OUT_SPEED) - REACTION_ALLOWANCE
+    assert seconds < budget, (
+        f"walking clear of the stomp from contact takes {seconds:.2f} s and "
+        f"the wind-up budgets {budget:.2f} s of walking.")
+    assert f"{to_cover:.1f} metres" in brute_section, (
+        f"the Brute subsection does not state the {to_cover:.1f} metres a "
+        "player at its reach has to cover.")
+    assert f"{seconds:.2f} seconds" in brute_section, (
+        f"the Brute subsection does not state the {seconds:.2f} seconds that "
+        "takes.")
+
+
+# --------------------------------------------------------------------------
 # The data guards themselves
 # --------------------------------------------------------------------------
+
+def cpp_constant_int(path: pathlib.Path) -> float:
+    """The yaw out of `RotationRate = FRotator(0.0f, 480.0f, 0.0f)`."""
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present")
+    text = path.read_text(encoding="utf-8", errors="replace")
+    found = re.search(
+        r"RotationRate\s*=\s*FRotator\(\s*[0-9.]+f?\s*,\s*([0-9.]+)f?\s*,",
+        text)
+    assert found, (
+        f"{path.name} no longer sets RotationRate on the enemy character. The "
+        "Brute's turn rate is stated against that default. Issue #351.")
+    return float(found.group(1))
+
 
 def test_the_shape_vocabulary_matches_the_datatable_generator():
     """sim/cataclysm_sim/enemy_abilities.py holds a copy of the shape and rider

@@ -143,6 +143,9 @@ SHAPE_RIDERS = {
                         "Absent or 0 means it burns only the caster's enemies, "
                         "which is what every player skill wants. The Hellhound's "
                         "fire trail is the only thing that sets it",
+    "StunSeconds": "how long the target is stunned, if the skill stuns. The "
+                   "anti-stun-lock rule in section VI still applies: it is the "
+                   "duration, not a promise that a stun lands",
     "FinalHitPercent": "percent of weapon damage a closing hit deals, if any",
     "HealthCostPercent": "percent of current health one use costs, if any",
     "Effect": "the named status effect this applies, from the Buffs, Debuffs or "

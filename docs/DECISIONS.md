@@ -20,6 +20,99 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — The Brute's ordinary hit sits exactly on the stun threshold, so only its stomp stuns
+
+**Affects** `docs/Cataclysm_GDD_v2.md`, a new "The Brute" subsection in section X
+and one new rider in section V's list; `sim/cataclysm_sim/enemy_abilities.py`;
+`sim/cataclysm_sim/enemy_stats.py`; and `tools/generate_datatables.py`. Applied
+in full. Issue #351, a child of the enemy design epic #29.
+
+### The question
+
+The Brute is the first thing in the game that stuns the player, and the
+anti-stun-lock rule in section VI is written for a "target" without ever saying
+that a player is one. Issue #351 asked for the stomp's radius, wind-up, stun
+duration and pacing, and for what "can be outmanoeuvred" means mechanically.
+
+### What was decided
+
+**The three anti-stun-lock rules apply with the player as the target**, and each
+of the three does real work on this enemy.
+
+**Its ordinary slam lands at exactly 10% of the reference build's effective
+health, which is exactly the stun damage threshold.** An Elite Brute at
+difficulty tier 8 kills that character in 10 hits. A stun sitting precisely on
+its own threshold is decided by rounding, so **the slam does not stun at all**
+and only the stomp does. This was not arranged; it was found by computing the
+figure. It is the clearest evidence the threshold rule is doing work.
+
+**The stomp is a Heavy-slot ability at the Heavy slot's 250%**, which lands at
+25% of the same pool — two and a half times the threshold, so it stuns through
+more mitigation than the reference build carries.
+
+**Its cooldown is the 5 second stun immunity window, not the Heavy slot's.** The
+whole Heavy cooldown band is 1 to 4 seconds, entirely inside the window, so a
+Brute stomping on the Heavy cadence would spend most of its stomps on a player
+who cannot be stunned. **Any ability whose stated effect is a stun sits at least
+5 seconds apart, whatever slot it is in.** That is a new general rule.
+
+**It stuns for 1.5 seconds, the longest any designed player skill grants.** The
+four skills that stun run 0.75, 0.75, 1.0 and 1.5. An enemy holding the player
+still for longer than the player's own best hold is the failure the whole
+section is written against.
+
+**The stomp takes the largest marker its attack interval allows, 3.5 metres**, so
+its wind-up is exactly half that interval. That is the same choice the Succubus's
+bolt makes and it is now a pattern: an enemy's signature heavy attack takes the
+largest marker its own attack interval allows. Sizing it by the 5 second cooldown
+instead would allow 7.35 metres, which the design document rules out by saying
+the larger kind of telegraph "is what makes a mini-boss or a boss feel different
+from a Brute".
+
+**It is a ring rather than a cone**, because a cone on an enemy that turns at
+half speed is answered once and never again.
+
+**A new field, `turn_rate_degrees`**, defaulting to the 480 every enemy is built
+with in C++. The Brute turns at 180. The ceiling on it is derived: a player
+circling at the Brute's own 0.9 metre reach sweeps 223 degrees per second even in
+the slowest Demonic class, so anything under that can be got behind by every
+build. 180 is the round figure inside it.
+
+**A clarification the Brute forced.** Being in the telegraph table's Yes column
+says how big a marker an enemy could draw, not that every attack draws one. The
+Brute's slam reaches 0.9 metres, under the one-metre floor, so it gets no marker
+even though the Brute can telegraph. `is_telegraphed` was checking only the
+largest marker the cycle allowed and not the ability's own radius; it now checks
+both.
+
+**A new rider, `StunSeconds`.** There was nowhere to put a stun duration. It goes
+in `tools/generate_datatables.py`, in section V's rider list, and in the enemy
+module.
+
+### What could not be settled here
+
+**There is no `Stun` row in `game/Data/StatusEffects.csv`**, and the four player
+skills that stun state their durations only in prose. So the stomp expresses its
+stun as a `StunSeconds` rider rather than the more consistent `Effect=Stun`.
+Issue #363.
+
+### Evidence
+
+`tools/tests/test_enemy_abilities.py` grows from 44 tests to 54. The 10% figure
+is recomputed against `sim/cataclysm_sim/reference_build.py` rather than quoted,
+the 1.5 second ceiling is recomputed by reading stun durations out of the skill
+descriptions, and the 223 degree ceiling is recomputed from the class stat table
+and the Brute's own reach. All 21 deliberate breaks were caught by the intended
+test.
+
+**One break was not caught on the first attempt**, and for the third time in a
+row it was the same shape of mistake: the subsection states the circling rate
+twice, in a table and in prose, so changing one left the other satisfying the
+test. The test now checks every "N degrees per second" figure in the subsection
+against the three real ones.
+
+---
+
 ## 2026-08-06 — The Hellhound's charge must beat walking, and its fire burns everything including itself
 
 **Affects** `docs/Cataclysm_GDD_v2.md`, a new "The Hellhound" subsection in

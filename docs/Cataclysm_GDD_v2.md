@@ -1419,7 +1419,7 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius` and `GroundDuration`. Five other riders work the same way: `GroundHitsAllies` makes that ground burn everything standing in it whatever side it is on, `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius` and `GroundDuration`. Six other riders work the same way: `GroundHitsAllies` makes that ground burn everything standing in it whatever side it is on, `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `StunSeconds` is how long a stun lasts, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
 
   
 
@@ -3350,7 +3350,7 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Hellhound, the Imp and the Succubus are designed.** The other four are open work: the Brute, the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Brute, the Hellhound, the Imp and the Succubus are designed.** The other three are open work: the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
 
   
 
@@ -3660,6 +3660,109 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 
 - **Killed during the wind-up**: the charge is cancelled and there is no trail, because interrupting an enemy cancels the attack.
 - **Killed during the charge**: it stops where it fell, and the lane it has already burned keeps burning for the rest of its 4 seconds.
+
+  
+
+### **The Brute**
+
+  
+
+**The Brute is the enemy the anti-stun-lock rule was written for**, and it is the first thing in the game that stuns the player. It has two abilities: a swing it uses constantly, and a stomp that stuns.
+
+  
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 2.8 s attack interval | No |
+| Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | a 5 s cooldown | Yes, 1.4 s wind-up |
+
+  
+
+#### **Being in the telegraph table's Yes column does not mean everything an enemy does is telegraphed**
+
+  
+
+The Attack Telegraphs subsection lists the Brute's largest telegraphed radius as 3.5 metres and puts it in the Yes column. **That says how big a marker it could draw, not that all of its attacks draw one.** Its ordinary slam reaches 0.9 metres, which is under the one-metre floor that subsection sets, so the slam gets no marker at all. Only the stomp does.
+
+  
+
+The rule is worth stating plainly because it applies to every enemy still to be designed: **a marker under one metre is not drawn, whatever the enemy's attack interval allows.**
+
+  
+
+#### **The three anti-stun-lock rules apply with the player as the target**
+
+  
+
+Section VI states them for a target, and a player is a target. The Brute is where that becomes concrete, and each of the three does real work here.
+
+  
+
+| Rule | What it does to the Brute |
+| :-- | :-- |
+| A hit must take at least 10% of the target's maximum health to stun | Its slam cannot stun. See below. |
+| A stunned target is immune for 5 seconds | Sets the stomp's cooldown, not its slot |
+| A boss cannot be stunned | Not engaged; the Brute is not a boss, and the player is not one either |
+
+  
+
+**Its ordinary slam lands at exactly 10% of the reference build's effective health, which is exactly the threshold.** An Elite Brute at difficulty tier 8 kills the reference character in 10 hits. A stun that sits precisely on its own threshold is a coin flip decided by rounding, so **the slam does not stun at all** and only the stomp does. That is the clearest evidence the threshold rule is doing work rather than being decoration: it lands on a real enemy, at the middle rarity, at the top tier.
+
+  
+
+**The stomp is a Heavy-slot ability at the Heavy slot's 250%, which lands at 25% of the same pool.** Two and a half times the threshold, so it stuns through any reasonable amount of extra mitigation rather than only against the reference build.
+
+  
+
+**Its cooldown is the 5 second immunity window, and that is a slot-independent rule.** The Heavy slot's cooldown band in `game/Data/SkillSlots.csv` is 1 to 4 seconds, and the whole band sits inside the window. A Brute stomping on the Heavy cadence would spend most of its stomps on a player who cannot be stunned. **Any ability whose stated effect is a stun sits at least 5 seconds apart, whatever slot it is in.**
+
+  
+
+**It stuns for 1.5 seconds, which is the longest any designed player skill grants** — Shield Bash's. The four skills that stun run 0.75, 0.75, 1.0 and 1.5. An enemy holding the player still for longer than the player's own best hold is the failure the whole anti-stun-lock section is written against, so that is the ceiling.
+
+  
+
+#### **The stomp takes the largest marker its attack interval allows**
+
+  
+
+3.5 metres, so its wind-up is `0.4 + 3.5 ÷ 3.5` = 1.4 seconds, which is exactly half the Brute's 2.8 second attack interval. **This is the same choice the Succubus's bolt makes**, and it is becoming the pattern: an enemy's signature heavy attack takes the largest marker its own attack interval allows, even when a longer cooldown would permit more.
+
+  
+
+**Sizing it by the attack interval rather than by the cooldown is deliberate.** The 5 second cooldown would allow 7.35 metres and a 2.5 second wind-up. That is legal and it is wrong here: the design document says the Movement-skill-sized telegraph "is what makes a mini-boss or a boss feel different from a Brute". The Brute gets the walk-out kind.
+
+  
+
+**It is a ring, not a cone.** `Angle=360`, because a stomp is a shockwave at its feet and because a cone would make the answer to a Brute "stand behind it and ignore the marker" once its turn rate is halved.
+
+  
+
+**Walking out of it is comfortable and that is intended.** A player standing at the Brute's reach is 0.9 metres from its centre and needs to cover 2.6 metres. At the slowest class's 3.5 metres per second that takes 0.74 seconds, against the 1.0 second of walking the wind-up budgets after the reaction allowance.
+
+  
+
+#### **What "can be outmanoeuvred" means, in numbers**
+
+  
+
+Three things, and all three come from figures that already exist.
+
+  
+
+| | The Brute | What the player has |
+| :-- | :-: | :-- |
+| Movement speed | 2.5 m/s | 3.5, 4.0 and 4.6: every class outruns it by at least 40% |
+| Turn rate | 180 degrees per second | circling at its reach is 223 degrees per second, in the slowest class |
+| Commitment | committed once the stomp's wind-up starts | the general telegraph rule; the Brute does not cancel because you left |
+
+  
+
+**The turn rate is the new number and the ceiling on it is derived.** Every other enemy turns at 480 degrees per second, which is the `RotationRate` yaw `ACataclysmEnemyCharacter` gives them all. A player circling at the Brute's 0.9 metre reach sweeps 3.5 ÷ 0.9 radians per second even in the slowest Demonic class, which is 223 degrees per second. **Anything under that can be got behind by every build**, and 180 is the round figure inside it.
+
+  
+
+That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy attack was a cone would be answered once and never again.
 
   
 
