@@ -20,6 +20,124 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — The seven vertical slice enemies are cast from the free Paragon character packs
+
+**Affects** issues #17 (3D asset generation pipeline) and #18 (animation
+pipeline). No design document changes: this decides which existing art plays each
+enemy, not what the enemies are. **Pending.** Nothing is downloaded or imported;
+#365 is the issue that does that and measures the result.
+
+### The evidence behind this entry is weak, and that comes first
+
+None of these assets are on the development machine. A search of the Epic
+launcher's installed-items manifest, `C:\Projects`, `Documents`, `Downloads`,
+`AppData` and `Program Files` found no Paragon content of any kind; the manifest
+lists only Unreal Engine 5.8, Quixel Bridge and the Fab plugin. Every statement
+below about how a character looks or moves comes from knowledge of the Paragon
+roster, not from opening a mesh or an animation. **None of it is confirmed until
+the packs are downloaded and measured.**
+
+### The question
+
+Issue #17 assumes every model in the game is generated, and names asset
+production as the largest single risk to the project shipping. It proposes
+trialling Trellis 2 locally against hosted tools such as Meshy and Tripo, then
+writing a pipeline. That is a multi-week investigation standing in front of the
+first enemy existing.
+
+The vertical slice needs seven enemies. The project owner already has the free
+Paragon character packs in their Fab library.
+
+### What was decided
+
+Cast the seven vertical slice enemies from Paragon characters rather than
+generating them.
+
+| Enemy | Paragon character | Confidence |
+| :-- | :-- | :-- |
+| The Imp | Minions pack, melee minion | Good. Small, and built to spawn in numbers |
+| The Succubus | Countess | Chosen by the project owner over The Fey |
+| The Hellhound | Scorch, from the Iggy & Scorch pack | Good. Fire is already the character's theme |
+| The Brute | Rampage | Good. Large, slow and heavy |
+| The Corrupted Sentinel | Minions pack, ranged minion, rooted in place | Weak. No Paragon character is stationary by design |
+| The Abyssal Warden | Grux, molten skin | Good. The design says "massive stone and lava demon" |
+| The Gatekeeper | Sevarog | **Unconfirmed.** Not established that this pack is in the library |
+
+Three candidates were considered and rejected. **Khaimera** is fast and feral
+rather than heavy, so he does not read as the Brute; he suits an elite Hellhound
+variant instead. **The Fey** floats and casts, so she cannot play the Imp, which
+has to be a fast ground swarmer. **Iggy** is a single character carrying a full
+animation set, which is more than a swarm unit needs; the plain minions cost less
+per spawned body.
+
+### This does not answer #17
+
+#17 stays open and stays unanswered. It covers gear for 24 classes, 15 weapon
+types across eight rarity tiers, enemies for eight Cataclysms, and city and
+dungeon environment art. Paragon supplies none of that. What this decision does
+is take the vertical slice's seven enemies out of #17's scope, so the generation
+pipeline investigation no longer stands in front of Phase 1.
+
+### The measurement that has to pass before this is safe
+
+Enemy attack intervals are already fixed, in `ARCHETYPES` in
+`sim/cataclysm_sim/enemy_stats.py`. They cap how long an attack animation can
+run, and the telegraph rule in section X of `docs/Cataclysm_GDD_v2.md` caps the
+wind-up at half the interval:
+
+| Enemy | Attack interval | Whole attack must fit in | Wind-up must fit in |
+| :-- | :-: | :-: | :-: |
+| Imp | 0.9 s | 0.9 s | no telegraph |
+| Hellhound | 1.1 s | 1.1 s | none on the basic attack |
+| Corrupted Sentinel | 2.0 s | 2.0 s | 1.0 s |
+| Abyssal Warden | 2.4 s | 2.4 s | 1.2 s |
+| Succubus | 2.6 s | 2.6 s | 1.3 s |
+| Brute | 2.8 s | 2.8 s | 1.4 s |
+| Gatekeeper | 3.0 s | 3.0 s | 1.5 s |
+
+**The Imp at 0.9 seconds is the one at risk.** Paragon basic attack animations
+are generally longer than that, which is a second reason to prefer a minion over
+Iggy. If no candidate animation fits, the choices are to raise playback speed, to
+cut the animation, or to lengthen the Imp's attack interval — and lengthening it
+lowers the swarm's damage, so it is not free.
+
+This is measurable rather than arguable, and it is the first task after download.
+
+### What this costs
+
+**These are the most widely used free assets in Unreal.** A game sold with
+unmodified Grux and Rampage will be recognised as having done that. For a
+vertical slice proving the combat loop it does not matter. For anything sold it
+does, so this covers Phase 1 only and Phase 2 has to plan replacement.
+
+**Eight gigabytes of video memory is the binding hardware limit** on the
+development machine's RTX 3070. Paragon characters ship with 4K textures. Seven
+distinct characters plus a swarm needs a texture size cap set at import. That is
+a settings problem rather than a blocker.
+
+**Licensing was not verified.** Epic released the Paragon characters at no cost
+for use in Unreal Engine projects. Read the current Fab listing terms before
+anything ships rather than relying on that summary.
+
+### What is not settled
+
+- Whether the Sevarog pack is in the library, which decides the Gatekeeper.
+- The Corrupted Sentinel. A rooted ranged minion is the cheap answer, not a good
+  one, and no Paragon character is stationary by design.
+- Whether enemies keep their own Paragon skeletons or are retargeted onto one
+  shared skeleton. #18 asks for a single locked skeleton standard. Enemies never
+  share animations with the player, so keeping the Paragon skeletons is workable,
+  but #18 has to say so rather than leave the two answers to contradict.
+- Every animation duration in the table above.
+- How physically wide any of these enemies are. Only the Imp has a measured
+  `body_radius`; the other six take the 0.48 m default, which is roughly a
+  person and contradicts calling the Warden "massive" and the Gatekeeper
+  "towering". #366. That number decides what scale the models import at, so it
+  is better settled before #365 than back-filled from whatever Grux happens to
+  be.
+
+---
+
 ## 2026-08-06 — The Brute's ordinary hit sits exactly on the stun threshold, so only its stomp stuns
 
 **Affects** `docs/Cataclysm_GDD_v2.md`, a new "The Brute" subsection in section X
