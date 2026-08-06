@@ -20,6 +20,99 @@ applied or still pending.
 
 ---
 
+## 2026-08-06 — The Hellhound's charge must beat walking, and its fire burns everything including itself
+
+**Affects** `docs/Cataclysm_GDD_v2.md`, a new "The Hellhound" subsection in
+section X and one new rider in section V's list;
+`sim/cataclysm_sim/enemy_abilities.py`; and `tools/generate_datatables.py`.
+Applied in full. Issue #350, a child of the enemy design epic #29.
+
+### The question
+
+The Hellhound is the fastest thing in the vertical slice and the only source of
+friendly fire the design describes. Issue #350 asked for the charge's range,
+wind-up, speed, whether it can turn and what a miss costs; the trail's width,
+duration, damage and rate; whether the trail outlives the creature; and its
+telegraph.
+
+### What was decided
+
+**Two abilities: a bite and a charge.** The fire trail is riders on the charge,
+exactly as the player's Flamedart already carries them, not a third ability.
+
+**Its bite reaches contact and no further**, 0.9 metres, which is the player's
+0.42 body radius plus its own 0.48. Through the ring arithmetic from the Imp's
+design that makes **one rank of Hellhounds five**, against twenty Imps. That is
+the mechanical difference between a charger and a swarm, and it means the two
+enemies the telegraph section groups together as "the two swarm enemies" do not
+arrive in comparable numbers. That grouping is only about both being too fast to
+telegraph a basic attack.
+
+**A charge must go further than the creature could walk while winding up.** This
+is the new general rule and it is what sets the range. The wind-up is 0.83
+seconds, during which the Hellhound stands still, and at 7.5 metres per second it
+could have covered 6.2 metres by simply walking. A charge shorter than that is
+strictly worse than not winding up at all. Ten metres clears it, and ten is also
+what three of the four player Charge-mode skills use.
+
+**The corridor is 1.5 metres to either side**, the narrowest radius any player
+Charge-mode skill uses. A wide corridor is a wall to run from; a narrow one is a
+lane to step out of, which is what a telegraph is for.
+
+**The cooldown is 5 seconds**, the Movement slot's typical cooldown. That is what
+puts the charge on the telegraph rule's cooldown clock rather than its 1.1 second
+attack interval, which the Attack Telegraphs subsection already names this enemy
+as the example of.
+
+**A miss punishes itself and needs no recovery rule.** The Hellhound is committed
+once the wind-up starts, so it runs the full ten metres and ends up ten metres
+past the player facing away. Covering that ground again is 1.33 seconds at its
+own speed. The punish window falls out of the geometry.
+
+**One new rider, `GroundHitsAllies`.** Burning ground normally hurts only the
+caster's enemies, which is what all eight player skills that leave some want. The
+Hellhound's trail is the only thing in the game that sets this, and it is what
+makes the trail the single source of friendly fire. It is a property of the
+ground rather than a change of side, in the same way the Madness debuff is an
+attitude override rather than a third team.
+
+**The trail burns the Hellhound too.** That is the simple version of the rule
+rather than an exception bolted onto it, and it earns its place: a Hellhound
+whose return path crosses its own lane takes its own fire.
+
+**The trail outlives the Hellhound**, and the two cases follow from rules already
+stated. Killed during the wind-up, the charge is cancelled and there is no trail,
+because interrupting cancels an attack. Killed mid-charge, it stops where it fell
+and what it has already burned keeps burning.
+
+**The trail is worth one bite over its whole life**, so a quarter of a bite per
+tick across four one-second ticks. It exists to take ground away rather than to
+kill.
+
+### What could not be settled here
+
+**There is no data field for what burning ground deals per tick, for any skill.**
+`ACataclysmGroundZone` takes a `DamagePerTick` and nothing supplies it from data,
+and the eight player skills that leave burning ground state only a radius and a
+duration. The Hellhound's figure is therefore prose in the design document.
+Issue #361 adds the field, and it is a player-skill problem before it is an enemy
+one.
+
+### Evidence
+
+`tools/tests/test_enemy_abilities.py` grows from 30 tests to 44. Two of the new
+ones compare the shape, rider and Movement-mode vocabulary in
+`sim/cataclysm_sim/enemy_abilities.py` against `tools/generate_datatables.py`,
+which is the authoritative copy — this project has had a silently drifting copy
+twice. All 23 deliberate breaks were caught by the intended test.
+
+**One break was not caught on the first attempt**, and it was the same shape of
+mistake as the previous one: removing the rider from section V's enumeration left
+it in the paragraph below, so a paragraph-wide search still passed. The test now
+slices out the enumeration sentence alone.
+
+---
+
 ## 2026-08-06 — The Succubus is a support enemy, and its buff is an aura so that killing it works
 
 **Affects** `docs/Cataclysm_GDD_v2.md`, a new "The Succubus" subsection in

@@ -138,6 +138,11 @@ SHAPE_RIDERS = {
     "Burn": "1 if the skill sets what it hits alight, 0 or absent if not",
     "GroundRadius": "metres of burning ground left behind, 0 for none",
     "GroundDuration": "seconds that ground burns",
+    "GroundHitsAllies": "1 if that ground burns everything standing in it "
+                        "whatever side it is on, including whatever left it. "
+                        "Absent or 0 means it burns only the caster's enemies, "
+                        "which is what every player skill wants. The Hellhound's "
+                        "fire trail is the only thing that sets it",
     "FinalHitPercent": "percent of weapon damage a closing hit deals, if any",
     "HealthCostPercent": "percent of current health one use costs, if any",
     "Effect": "the named status effect this applies, from the Buffs, Debuffs or "

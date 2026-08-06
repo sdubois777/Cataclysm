@@ -6,10 +6,10 @@ an enemy does with its turn. Issue #29 is the epic that asks, and it is split on
 enemy at a time: #348 the Imp, #349 the Succubus, #350 the Hellhound, #351 the
 Brute, #352 the Corrupted Sentinel, #353 the Abyssal Warden, #354 the Gatekeeper.
 
-**Only the Imp and the Succubus are filled in.** The other five are open issues.
-An archetype with no entry here has no designed abilities yet, and asking for one
-raises rather than returning an empty list, so a missing design cannot be
-mistaken for a finished one.
+**Only the Imp, the Succubus and the Hellhound are filled in.** The other four
+are open issues. An archetype with no entry here has no designed abilities yet,
+and asking for one raises rather than returning an empty list, so a missing
+design cannot be mistaken for a finished one.
 
 THE VOCABULARY IS THE PLAYER'S, DELIBERATELY. An ability is a `Shape` plus
 `Params`, the same two columns `game/Data/WeaponSkills.csv` already carries for
@@ -48,11 +48,16 @@ SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Aura",
 #: Which parameter names each shape reads. Same names and same meanings as the
 #: player skill rows use. A key outside its shape's list is a typo that would be
 #: read as nothing by whatever executes the shape.
+#:
+#: THIS IS A COPY. `SHAPE_PARAMS` in `tools/generate_datatables.py` is the same
+#: table and is what validates the player skill sheet. The two are checked
+#: against each other by `tools/tests/test_enemy_abilities.py`, because a copy
+#: in this project has silently drifted before.
 SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
                "Knockback"),
     "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed"),
-    "SelfBuff": ("Duration", "Radius"),
+    "SelfBuff": ("Duration", "Radius", "IncreasePerBurning"),
     "Movement": ("Mode", "Range", "Radius"),
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval"),
     "Aura": ("Radius", "Duration", "Interval"),
@@ -60,8 +65,12 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 }
 
 #: Riders any shape may carry, from the same section of the design document.
-RIDERS = ("GroundRadius", "GroundDuration", "Burn", "Effect",
-          "FinalHitPercent", "HealthCostPercent")
+#: Also a copy of `SHAPE_RIDERS` in `tools/generate_datatables.py`.
+RIDERS = ("GroundRadius", "GroundDuration", "GroundHitsAllies", "Burn",
+          "Effect", "FinalHitPercent", "HealthCostPercent")
+
+#: The three values a Movement shape's `Mode` may take.
+MOVEMENT_MODES = ("Leap", "Charge", "Blink")
 
 #: The seven slots in `game/Data/SkillSlots.csv`. An enemy ability declares one
 #: for the same reason a player skill does: the slot says what kind of thing it
@@ -170,6 +179,40 @@ def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
             >= SMALLEST_USEFUL_MARKER_METRES)
 
 
+#: The largest marker an ability may have if it is escaped with a Movement skill
+#: rather than by walking, and the cooldown that tier requires. Both from the
+#: Attack Telegraphs subsection: 8 metres is the shortest Movement-shape skill
+#: range and 5 seconds is the Movement slot's cooldown.
+MOVEMENT_ESCAPE_CAP_METRES = 8.0
+MOVEMENT_ESCAPE_MINIMUM_COOLDOWN = 5.0
+
+
+def fits_its_cycle(ability: Ability, kind: Archetype | str) -> bool:
+    """Whether a telegraphed ability's marker is small enough for its cycle.
+
+    Eight metres is an absolute ceiling. The design document says of it that
+    "anything above 8 metres cannot be escaped by any means the player has,
+    which makes it a damage event rather than a telegraph", and that is a
+    statement about the player's reach rather than about any one tier.
+
+    Under that ceiling there are two tiers and passing either is enough. A
+    marker the player walks out of has to fit inside half the cycle. A larger
+    one is legal only on a cooldown of at least 5 seconds, because that is what
+    the Movement slot can answer.
+
+    An ability that is not telegraphed has no marker and so no limit.
+    """
+    kind = archetype(kind) if isinstance(kind, str) else kind
+    if not is_telegraphed(ability, kind):
+        return True
+    radius = float(ability.params.get("Radius", 0.0))
+    if radius > MOVEMENT_ESCAPE_CAP_METRES:
+        return False
+    if radius <= largest_telegraphed_radius(ability.cycle_seconds(kind)):
+        return True
+    return ability.cooldown >= MOVEMENT_ESCAPE_MINIMUM_COOLDOWN
+
+
 # --------------------------------------------------------------------------
 # How many of a swarm can reach one player at once
 # --------------------------------------------------------------------------
@@ -252,6 +295,12 @@ ATTACK_REACH: dict[str, float] = {
     # not be closed on by every build. It is also the distance the Succubus
     # holds at, because it neither advances nor retreats. Issue #349.
     "Succubus": 8.0,
+
+    # Contact and no further: 0.42 for the player's body plus its own 0.48. A
+    # Hellhound is more than half again as wide as an Imp, so only five fit
+    # around one player where twenty Imps do. Its threat is the charge rather
+    # than the mass. Issue #350.
+    "Hellhound": 0.90,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -323,6 +372,41 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             note="Every allied enemy within 8 metres gains 20% increased "
                  "stats, for as long as the Succubus is alive. Killing it "
                  "first is the correct play, and this is what makes that true.",
+        ),
+    ),
+    "Hellhound": (
+        Ability(
+            name="Maul",
+            shape="Strike",
+            slot="Basic",
+            # Contact reach, so exactly one rank of five can bite at once.
+            params={"Radius": 0.9, "Angle": 90, "MaxTargets": 1, "Burn": 1},
+            note="A bite at whatever it is standing against. Not telegraphed: "
+                 "a 1.1 second attack interval allows a 0.5 metre marker, "
+                 "which is smaller than the animal standing in it.",
+        ),
+        Ability(
+            name="Hellrush",
+            shape="Movement",
+            slot="Movement",
+            # Radius 1.5 is the narrowest corridor any player Charge-mode skill
+            # uses, Flamedart's, so the marker is a lane to step out of rather
+            # than a wall. Range 10 is what three of the four player charges
+            # use, and it is more than the 6.2 metres the Hellhound could cover
+            # by simply walking during the 0.83 second wind-up -- which is the
+            # test a charge has to pass to be worth having at all.
+            #
+            # The trail is the same three riders Flamedart carries, plus the one
+            # thing that is new in the whole slice: GroundHitsAllies.
+            params={"Mode": "Charge", "Range": 10, "Radius": 1.5, "Burn": 1,
+                    "GroundRadius": 1.5, "GroundDuration": 4,
+                    "GroundHitsAllies": 1},
+            # The Movement slot's typical cooldown in game/Data/SkillSlots.csv.
+            cooldown=5.0,
+            note="Charges in a straight line fixed when the wind-up starts, "
+                 "burning everything it passes and leaving that lane on fire "
+                 "for 4 seconds. The fire burns other enemies and the "
+                 "Hellhound itself.",
         ),
     ),
 }
@@ -406,6 +490,36 @@ def _check_only_the_held_on_and_basic_abilities_lack_a_cooldown() -> None:
                 "neither reads a cooldown.")
 
 
+def _check_every_movement_ability_names_a_real_mode() -> None:
+    """Mode is the one Movement parameter whose value is a name. A typo would be
+    read as no mode at all."""
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            if ability.shape != "Movement":
+                continue
+            mode = ability.params.get("Mode")
+            assert mode in MOVEMENT_MODES, (
+                f"{name}'s {ability.name} is a Movement in mode {mode!r}, "
+                f"which is not one of {list(MOVEMENT_MODES)}")
+
+
+def _check_every_telegraphed_marker_fits_its_cycle() -> None:
+    """A marker too big for its cycle cannot be escaped, which by the design
+    document's own words makes it a damage event rather than a telegraph."""
+    for name, entries in ABILITIES.items():
+        kind = archetype(name)
+        for ability in entries:
+            assert fits_its_cycle(ability, kind), (
+                f"{name}'s {ability.name} draws a "
+                f"{ability.params.get('Radius')} m marker on a "
+                f"{ability.cycle_seconds(kind)} s cycle, which allows at most "
+                f"{largest_telegraphed_radius(ability.cycle_seconds(kind)):.2f}"
+                " m. Nothing larger can be walked out of, and the Movement "
+                "skill tier needs a cooldown of at least "
+                f"{MOVEMENT_ESCAPE_MINIMUM_COOLDOWN} s and a radius of at most "
+                f"{MOVEMENT_ESCAPE_CAP_METRES} m.")
+
+
 def _check_reach_and_pack_are_only_set_for_designed_enemies() -> None:
     """A reach or a pack size for an enemy with no abilities is a half-design
     that would read as finished."""
@@ -422,6 +536,8 @@ _check_every_parameter_belongs_to_its_shape()
 _check_every_ability_declares_a_real_slot()
 _check_every_designed_enemy_has_exactly_one_basic_attack()
 _check_only_the_held_on_and_basic_abilities_lack_a_cooldown()
+_check_every_movement_ability_names_a_real_mode()
+_check_every_telegraphed_marker_fits_its_cycle()
 _check_reach_and_pack_are_only_set_for_designed_enemies()
 
 
