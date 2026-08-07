@@ -198,18 +198,34 @@ public:
 
 	/**
 	 * The ground speed the walk animation was authored for, in centimetres per
-	 * second. The play rate is the Brute's real speed divided by this.
+	 * second. The play rate is the Brute's real speed divided by this, so at the
+	 * designed 250 cm/s the walk plays at 250 / 374 = 0.67.
 	 *
-	 * A BY-EYE NUMBER, AND THE ONLY ONE IN THIS CLASS THAT IS. Jog_Biped_Fwd has
-	 * no root motion -- checked, `bEnableRootMotion` is False -- so there is no
-	 * distance stored in the asset to derive the authored speed from. It has to
-	 * be set by watching whether the feet slide.
+	 * MEASURED FROM THE ANIMATION, NOT CHOSEN. `tools/measure_animation_stride.py`
+	 * samples the ik_foot_l and ik_foot_r bones every frame, takes whichever is
+	 * lower as the planted one, and measures how fast it travels backwards. A
+	 * planted foot must move backwards at exactly the speed the character moves
+	 * forwards or it slides, so that speed IS the authored ground speed. Run on
+	 * 2026-08-07 it reported:
 	 *
-	 * Editable so that tuning it does not need a rebuild.
+	 *     Jog_Biped_Fwd   -Y at 373.7 cm/s
+	 *     Idle_Biped      -Y at   0.3 cm/s   (the control: standing still)
+	 *
+	 * Idle_Biped reading zero is what makes the jog figure trustworthy rather
+	 * than an artefact.
+	 *
+	 * THIS REPLACED A GUESS OF 500, WHICH IS WHY THE FEET SLID. At 500 the play
+	 * rate was 0.50 instead of 0.67, so the animation ran a quarter too slowly
+	 * and the body outran its own stride: the planted foot slid forwards while
+	 * the other leg swung. That is the fault this number fixes.
+	 *
+	 * Still editable without a rebuild, because 373.7 is a robust average over a
+	 * gait cycle rather than an exact constant, and the last of it has to be
+	 * judged by eye.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Cataclysm|Enemy",
 			  meta = (ClampMin = "1.0"))
-	float AuthoredWalkSpeedCmPerSecond = 500.0f;
+	float AuthoredWalkSpeedCmPerSecond = 373.7f;
 
 	/** Play rate floor. Below this the animation reads as frozen. */
 	static constexpr float MinimumPlayRate = 0.2f;

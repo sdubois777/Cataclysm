@@ -106,6 +106,38 @@ wind-up at half the attack interval. `SequenceLength` gives the whole animation,
 not the moment inside it when damage lands. Finding that needs the animation
 notifies read per asset.
 
+## How fast the locomotion animations were authored to move
+
+A walking animation is authored for a character travelling at some speed. Play it
+on a character that moves at a different speed and the planted foot slides. That
+speed is not stored in the asset — none of these have root motion — so
+`tools/measure_animation_stride.py` derives it: it samples the `ik_foot_l` and
+`ik_foot_r` bones every frame, takes whichever is lower as the planted one, and
+measures how fast that foot travels backwards. A planted foot must move backwards
+at exactly the speed the character moves forwards, or it slides.
+
+Measured 2026-08-07:
+
+| Animation | Authored ground speed | Note |
+|---|:-:|---|
+| `Idle_Biped` | 0.3 cm/s | The control. Standing still should read zero, and does. |
+| `Jog_Biped_Fwd` | **373.7 cm/s** | What the Brute plays. |
+| `Jog_Quad_Fwd` | 406.4 cm/s | The all-fours variant, unused so far. |
+| `Run_Fwd` | not measurable | Reads 0 on every axis: it does not key the IK foot bones, so this method cannot see it. |
+
+The Brute moves at its designed 250 cm/s, so it plays `Jog_Biped_Fwd` at
+250 ÷ 373.7 = **0.67**. An earlier guess of 500 cm/s gave 0.50, which ran the
+animation a quarter too slowly and made the planted foot slide forwards.
+
+**Forward is −Y in these animations**, which is why the Brute's mesh component
+carries a −90 degree yaw to face the way its actor faces. A first version of the
+measurement assumed forward was X and reported a nonsense 38 cm/s jog; the
+symptom was a negative median with symmetric extremes, which is what measuring a
+side-to-side axis looks like.
+
+The same script and the same reasoning apply to the other six enemies when their
+locomotion is built.
+
 ## Per-enemy animation inventory
 
 Durations in seconds. Only attack-relevant animations are listed; each character
