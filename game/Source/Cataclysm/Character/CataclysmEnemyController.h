@@ -32,6 +32,20 @@ enum class ECataclysmBrainAction : uint8
 	 * Chasing and Attacking. Appending cannot.
 	 */
 	Roaming,
+
+	/**
+	 * Committed to a telegraphed ability and standing still until it lands.
+	 *
+	 * The design gives the wind-up five rules: the area is fixed when it starts
+	 * and does not follow the player, the player may do anything during it,
+	 * leaving the area avoids the attack completely, the enemy is committed
+	 * once it starts, and interrupting cancels it. The first four are here. The
+	 * fifth is not, because nothing in the project can interrupt anything yet.
+	 *
+	 * Appended, like Roaming, because this is a UENUM and inserting renumbers
+	 * every value after it.
+	 */
+	WindingUp,
 };
 
 /**
@@ -342,6 +356,47 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	int32 AttacksOrdered = 0;
 
+	/**
+	 * Which entry of the pawn's EnemyAbilities it would use against a target at
+	 * the given distance, or -1 for none of them.
+	 *
+	 * -1 MEANS THE ORDINARY ATTACK, not "do nothing". The ordinary attack has no
+	 * cooldown, so an enemy in reach always has something to do; an enemy out of
+	 * reach with nothing available keeps walking.
+	 *
+	 * SEPARATE FROM Think SO A TEST CAN ASK IT DIRECTLY, at any distance, with
+	 * any cooldown state, without arranging a world in which that distance
+	 * happens. It is the same split ChooseRoamTarget makes.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|AI")
+	int32 ChooseAbility(float DistanceCm) const;
+
+	/** Whether that ability has finished cooling down. Read by tests. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|AI")
+	bool IsAbilityReady(int32 Index) const;
+
+	/** Which ability it is winding up, or -1. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	int32 WindingUpAbility = -1;
+
+	/** World seconds at which the ability being wound up lands. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float WindUpLandsAt = 0.0f;
+
+	/**
+	 * Where the ability being wound up was aimed when it started.
+	 *
+	 * FIXED AT THE START AND NOT FOLLOWED, which is the design rule that makes
+	 * walking out of a telegraph work: "the area is fixed when the wind-up
+	 * starts and does not follow the player".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	FVector WindUpAimedAt = FVector::ZeroVector;
+
+	/** How many abilities it has used. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	int32 AbilitiesUsed = 0;
+
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void OnUnPossess() override;
 
@@ -368,6 +423,35 @@ private:
 
 	/** False until the first attack, so the first one is never made to wait. */
 	bool bHasAttacked = false;
+
+	/**
+	 * World seconds at which each ability was last used, indexed as
+	 * EnemyAbilities is. Grown to fit on first use.
+	 *
+	 * A LARGE NEGATIVE START, so that every ability is off cooldown when a
+	 * creature spawns rather than all of them waiting out one cooldown from a
+	 * world time of zero. Using zero would have been the obvious choice and
+	 * would make a Brute spawned into a fresh world unable to stomp for its
+	 * first five seconds.
+	 */
+	TArray<float> AbilityLastUsedAt;
+
+	/** Start each ability far enough in the past to be ready immediately. */
+	static constexpr float NeverUsed = -1000000.0f;
+
+	/**
+	 * Carry on a wind-up already in progress, landing it if it is due.
+	 *
+	 * Called before the target search, because a committed attack finishes
+	 * whether or not what it was aimed at is still there.
+	 *
+	 * @return true when it handled this pass, so Think should stop.
+	 */
+	bool ContinueWindUp(ACataclysmCharacterBase* Driven);
+
+	/** Start an ability if one is in range and off cooldown. */
+	ECataclysmBrainAction UseAbilitiesOn(ACataclysmCharacterBase* Driven,
+										 AActor* Target, float DistanceCm);
 
 	/**
 	 * Whether the anchor has been recorded. Distinct from the anchor being the

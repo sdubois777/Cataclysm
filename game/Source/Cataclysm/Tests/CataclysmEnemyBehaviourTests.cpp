@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -19,6 +20,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
@@ -69,6 +71,61 @@ namespace CataclysmBehaviourTest
 
 	/** The player capsule radius in CataclysmPlayerCharacter.cpp. */
 	constexpr float PlayerCapsuleRadiusCm = 42.0f;
+
+	/**
+	 * Move the world clock forward without ticking anything.
+	 *
+	 * WHY THIS IS NEEDED AT ALL. A world built by UWorld::CreateWorld is never
+	 * ticked, so its clock never moves, so nothing that waits -- a cooldown, a
+	 * wind-up, the pause between roam legs -- can ever finish. Before this,
+	 * those could only be checked by reading the deadline the code stored and
+	 * trusting the comparison against it.
+	 *
+	 * WHY WRITING THE CLOCK RATHER THAN TICKING. UWorld::TimeSeconds is public.
+	 * Ticking a synthetic world runs physics, movement and animation, none of
+	 * which these tests want and one of which is recorded on issue #374 as
+	 * having hung the test process for minutes. Everything under test here reads
+	 * the clock through GetTimeSeconds and nothing else, so moving the clock is
+	 * the whole of what "time passed" means to it.
+	 */
+	static void AdvanceWorldClock(UWorld* World, double Seconds)
+	{
+		World->TimeSeconds += Seconds;
+	}
+
+	/**
+	 * Run the Brute's abilities to completion so only its ordinary swing is
+	 * left, and return how many it used.
+	 *
+	 * Several tests below are about chasing or swinging, and a Brute with an
+	 * ability ready would rather use that. This spends them.
+	 *
+	 * IT ASKS BEFORE IT ACTS, and that is the point. Written to call Think and
+	 * react to what came back, it performed the ordinary swing on the pass that
+	 * found no ability left -- so a test that measured health afterwards saw no
+	 * change, because the hit it was waiting for had already happened inside
+	 * the helper. Asking ChooseAbility first means it stops without acting.
+	 *
+	 * @param DistanceCm  how far the target is, which decides what is available
+	 */
+	static int32 SpendAbilities(UWorld* World, ACataclysmEnemyController* Brain,
+								float DistanceCm)
+	{
+		int32 Used = 0;
+		for (int32 Pass = 0; Pass < 8; ++Pass)
+		{
+			if (Brain->ChooseAbility(DistanceCm) == INDEX_NONE)
+			{
+				break;
+			}
+
+			Brain->Think();                    // starts the wind-up
+			AdvanceWorldClock(World, 2.0);     // past the longest of them, 1.4 s
+			Brain->Think();                    // lands it
+			++Used;
+		}
+		return Used;
+	}
 
 	/** A character on the given side, with health and an attack. */
 	struct FScopedFighter
@@ -758,6 +815,12 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 		ACataclysmBruteCharacter::DesignedMeleeReachCm, Apart),
 		Apart <= ACataclysmBruteCharacter::DesignedMeleeReachCm);
 
+	// SPEND THE STOMP FIRST. A Brute in contact would rather stomp than swing,
+	// because the stomp reaches from its own feet and hits for 250% against the
+	// swing's 100%. This test is about the ordinary swing, which is what is left
+	// once the stomp is cooling down.
+	SpendAbilities(World, Brain, 80.0f);
+
 	const float Before = Player.Health();
 
 	TestEqual(TEXT("a Brute in contact reach attacks rather than roaming"),
@@ -1084,7 +1147,14 @@ bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
 	// no designed second speed to fall back on. There is one now.
 	FScopedFighter Player(World, FVector(5 * M, 0, 0), ECataclysmTeam::Players,
 						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
-	TestEqual(TEXT("it is chasing"),
+
+	// SPEND THE ROCK THROW FIRST. At five metres the Brute would rather throw
+	// than walk, and its throwing range is its whole notice radius, so it only
+	// chases once that is cooling down. That is the behaviour, not a nuisance:
+	// it closes while it waits to throw again.
+	SpendAbilities(World, Brain, 5 * M);
+
+	TestEqual(TEXT("with its abilities cooling down it chases"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Chasing));
 	Brute.Actor->ApplyChaseSpeed();
@@ -1160,9 +1230,11 @@ bool FCataclysmBruteChaseStateComesFromTheBrainTest::RunTest(const FString&)
 	Brain->Think();
 	TestFalse(TEXT("a wandering Brute is not chasing"), Brute.Actor->IsChasing());
 
-	// Inside the notice radius, outside reach: chasing.
+	// Inside the notice radius, outside reach, abilities spent: chasing.
 	Player.Actor->SetActorLocation(FVector(5 * M, 0, 0));
-	TestEqual(TEXT("with the player five metres away it chases"),
+	SpendAbilities(World, Brain, 5 * M);
+	TestEqual(TEXT("with the player five metres away and its abilities spent, "
+				   "it chases"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Chasing));
 	TestTrue(TEXT("and it reports itself as chasing"), Brute.Actor->IsChasing());
@@ -1171,7 +1243,8 @@ bool FCataclysmBruteChaseStateComesFromTheBrainTest::RunTest(const FString&)
 	// stopped moving by then, so the standing animation is the right one.
 	Player.Actor->SetActorLocation(FVector(80.0f, 0.0f,
 		Player.Actor->GetActorLocation().Z));
-	TestEqual(TEXT("in reach it attacks"),
+	SpendAbilities(World, Brain, 80.0f);
+	TestEqual(TEXT("in reach with its abilities spent it swings"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
 	TestFalse(TEXT("and an attacking Brute is not chasing, because it has stopped"),
@@ -1316,6 +1389,8 @@ bool FCataclysmBruteAttacksAtTrueContactTest::RunTest(const FString&)
 	TestEqual(TEXT("which is exactly the Brute's designed reach"),
 		Contact, ACataclysmBruteCharacter::DesignedMeleeReachCm);
 
+	SpendAbilities(World, Brain, Contact);
+
 	const float Before = Player.Health();
 	TestEqual(TEXT("a Brute touching the player attacks rather than chasing"),
 		static_cast<int32>(Brain->Think()),
@@ -1380,13 +1455,23 @@ bool FCataclysmBruteChasesThenGoesBackToRoamingTest::RunTest(const FString&)
 	// and outside the 90 cm reach.
 	Player.Actor->SetActorLocation(FVector(5 * M, 0, 0));
 
-	TestEqual(TEXT("the player stepping inside its notice radius makes it chase"),
+	// THE FIRST THING IT DOES IS THROW A ROCK, not walk. Its throwing range is
+	// its whole notice radius, so the moment it notices the player it has
+	// something better to do than close the distance.
+	TestEqual(TEXT("the player stepping inside its notice radius makes it "
+				   "wind up a rock"),
 		static_cast<int32>(Brain->Think()),
-		static_cast<int32>(ECataclysmBrainAction::Chasing));
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
 	TestEqual(TEXT("and the player is what it is going after"),
 		Brain->CurrentTarget.Get(), static_cast<AActor*>(Player.Actor));
 	TestFalse(TEXT("and the place it was wandering to is forgotten"),
 		Brain->bHasRoamTarget);
+
+	// Once the rock is thrown and cooling down, it closes.
+	SpendAbilities(World, Brain, 5 * M);
+	TestEqual(TEXT("and with that cooling down it chases"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
 
 	// The player leaves again. This is item 7 of what was asked for: it goes
 	// back to roaming rather than standing still where the chase ended.
@@ -1404,6 +1489,372 @@ bool FCataclysmBruteChasesThenGoesBackToRoamingTest::RunTest(const FString&)
 	// distribution, so being equal would mean the target was never cleared.
 	TestNotEqual(TEXT("and it is a freshly chosen point, not the abandoned one"),
 		Brain->RoamTarget, AbandonedTarget);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Abilities: choosing between them by range, and cooling down
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteChoosesAbilityByRangeTest,
+	"Cataclysm.AI.ABruteChoosesItsAbilityByHowFarAwayYouAre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteChoosesAbilityByRangeTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	const TArray<FCataclysmEnemyAbility> Abilities = Brute.Actor->EnemyAbilities();
+	TestEqual(TEXT("the Brute has two abilities beyond its ordinary swing"),
+		Abilities.Num(), 2);
+	TestEqual(TEXT("the stomp is first, so it wins where both reach"),
+		Abilities[ACataclysmBruteCharacter::StompAbility].Name, FName(TEXT("Stomp")));
+	TestEqual(TEXT("and the rock throw second"),
+		Abilities[ACataclysmBruteCharacter::RockThrowAbility].Name,
+		FName(TEXT("Rip and Toss")));
+
+	// THE WHOLE POINT OF THE FEATURE, stated as a table of distances.
+	const int32 Stomp = ACataclysmBruteCharacter::StompAbility;
+	const int32 Throw = ACataclysmBruteCharacter::RockThrowAbility;
+
+	TestEqual(TEXT("pressed against it: the stomp, which reaches from its feet"),
+		Brain->ChooseAbility(50.0f), Stomp);
+	TestEqual(TEXT("at three metres: still the stomp"),
+		Brain->ChooseAbility(300.0f), Stomp);
+	TestEqual(TEXT("at five metres, past the stomp: the rock"),
+		Brain->ChooseAbility(500.0f), Throw);
+	TestEqual(TEXT("at nine metres: still the rock"),
+		Brain->ChooseAbility(900.0f), Throw);
+
+	// BEYOND EVERYTHING, so it has nothing to use and must close instead.
+	TestEqual(TEXT("at twelve metres, past the throw: nothing, so it walks"),
+		Brain->ChooseAbility(1200.0f), int32(INDEX_NONE));
+
+	// THE ROCK IS NOT THROWN AT SOMETHING IT COULD HIT. Inside melee reach the
+	// stomp is the only candidate, and when it is cooling down the answer is
+	// the ordinary swing rather than a rock at point blank range.
+	TestTrue(TEXT("the rock throw does not start until beyond melee reach"),
+		Abilities[Throw].MinRangeCm
+			>= ACataclysmBruteCharacter::DesignedMeleeReachCm);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteAbilitiesCoolDownTest,
+	"Cataclysm.AI.ABruteWaitsOutACooldownAndSwingsMeanwhile",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteAbilitiesCoolDownTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	const int32 Stomp = ACataclysmBruteCharacter::StompAbility;
+
+	// EVERYTHING IS READY WHEN IT SPAWNS. Cooldowns start elapsed rather than
+	// at a world time of zero, or a Brute in a fresh world could not stomp for
+	// its first five seconds.
+	TestTrue(TEXT("a freshly spawned Brute can stomp at once"),
+		Brain->IsAbilityReady(Stomp));
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	// Two metres away: inside the stomp, outside melee reach.
+	TestEqual(TEXT("it starts winding up the stomp"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and says which ability it is committed to"),
+		Brain->WindingUpAbility, Stomp);
+
+	// COMMITTED. The design says so, and this is where that is enforced: it
+	// does not reconsider while the wind-up runs, whatever the target does.
+	Player.Actor->SetActorLocation(FVector(20 * M, 0, 0));
+	TestEqual(TEXT("the player running away does not cancel it"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("it is still the same ability"), Brain->WindingUpAbility, Stomp);
+
+	// AND IT LANDS WHERE IT WAS MARKED. The aim point was recorded when the
+	// wind-up started, which is what makes walking clear of one work.
+	TestTrue(TEXT("the aim point is where the player was, not where they are"),
+		FVector::Dist2D(Brain->WindUpAimedAt, FVector(200.0f, 0.0f, 0.0f)) < 100.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRockFliesWhereItWasAimedTest,
+	"Cataclysm.AI.AThrownRockGoesWhereItWasAimedNotWhereYouWentAfterwards",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRockFliesWhereItWasAimedTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE ONLY ABILITY THE AIM POINT ACTUALLY AFFECTS, which is why this test
+	// exists separately from the stomp's. The stomp is a ring at the Brute's
+	// own feet, so it ignores where it was aimed entirely and walking out of it
+	// works by leaving the Brute's radius. The rock is thrown at a point, and
+	// nothing checked that the point was the marked one until this: a
+	// deliberate break that made the throw follow the target passed every other
+	// test in the suite.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	auto FlyProjectiles = [World]()
+	{
+		for (TActorIterator<ACataclysmProjectile> It(World); It; ++It)
+		{
+			// Generous steps: the rock travels 1200 cm a second and has at most
+			// ten metres to cover, so forty passes is far more than enough.
+			for (int32 Step = 0; Step < 40 && It->Step(0.05f); ++Step)
+			{
+			}
+		}
+	};
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// Five metres: past the stomp, inside the throw.
+	FScopedFighter Player(World, FVector(5 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	TestEqual(TEXT("the Brute winds up a rock"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and it is the rock, not the stomp"),
+		Brain->WindingUpAbility,
+		int32(ACataclysmBruteCharacter::RockThrowAbility));
+
+	// SIDEWAYS, WELL CLEAR OF THE BLAST. The rock does not pierce, so its 210
+	// cm radius is the blast where it stops; six metres to the side is clear of
+	// that by a wide margin.
+	Player.Actor->SetActorLocation(FVector(5 * M, 6 * M,
+		Player.Actor->GetActorLocation().Z));
+
+	const float Before = Player.Health();
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::RockThrowWindUpSeconds + 0.1);
+	Brain->Think();
+	FlyProjectiles();
+
+	TestEqual(TEXT("a player who stepped aside took nothing"),
+		Player.Health(), Before);
+
+	// AND THE CONTROL, or the assertion above would pass on a rock that never
+	// hits anyone at all.
+	Player.Actor->SetActorLocation(FVector(5 * M, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::RockThrowCooldownSeconds + 0.1);
+
+	TestEqual(TEXT("it winds up another rock"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+
+	const float BeforeStanding = Player.Health();
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::RockThrowWindUpSeconds + 0.1);
+	Brain->Think();
+	FlyProjectiles();
+
+	TestTrue(FString::Printf(
+		TEXT("and a player who stood still was hit (%.0f to %.0f)"),
+		BeforeStanding, Player.Health()),
+		Player.Health() < BeforeStanding);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStompCanBeWalkedOutOfTest,
+	"Cataclysm.AI.WalkingOutOfAStompDuringItsWindUpAvoidsItCompletely",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStompCanBeWalkedOutOfTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE POINT OF HAVING A TELEGRAPH AT ALL, and the design states it as a
+	// rule: "leaving the area avoids the attack completely". Everything else
+	// about the wind-up -- the state, the deadline, the recorded aim point --
+	// is machinery in service of this one observable fact, and until this test
+	// existed none of it was checked against what a player would actually feel.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// Two metres away: inside the 3.5 metre stomp.
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	TestEqual(TEXT("the Brute begins a stomp"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and it is the stomp, not the rock"),
+		Brain->WindingUpAbility, int32(ACataclysmBruteCharacter::StompAbility));
+
+	// OUT OF THE RING BEFORE IT LANDS. The stomp reaches 3.5 metres from the
+	// Brute's own feet, so five is clear of it.
+	Player.Actor->SetActorLocation(FVector(5 * M, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	const float Before = Player.Health();
+	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
+
+	TestEqual(TEXT("the stomp lands"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestEqual(TEXT("and the player who walked clear took nothing"),
+		Player.Health(), Before);
+
+	// AND THE OTHER HALF, or the test above would pass on a stomp that never
+	// hits anybody. Standing in it costs health.
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::StompCooldownSeconds + 0.1);
+
+	TestEqual(TEXT("it begins another stomp"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+
+	const float BeforeStanding = Player.Health();
+	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
+	Brain->Think();
+
+	TestTrue(FString::Printf(
+		TEXT("and a player who stood in it lost health (%.0f to %.0f)"),
+		BeforeStanding, Player.Health()),
+		Player.Health() < BeforeStanding);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteAlwaysHasSomethingToDoTest,
+	"Cataclysm.AI.ABruteInReachIsNeverIdleBecauseEverythingIsCoolingDown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteAlwaysHasSomethingToDoTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE PROPERTY THE DESIGN INSISTS ON. The Basic slot has no cooldown, so an
+	// enemy in reach can never end up standing still with everything
+	// unavailable. It is structural here rather than a rule to remember: the
+	// ordinary swing is not in EnemyAbilities at all, so it cannot be cooling
+	// down.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	for (const FCataclysmEnemyAbility& Ability : Brute.Actor->EnemyAbilities())
+	{
+		TestTrue(FString::Printf(
+			TEXT("%s has a cooldown, so it cannot be the fallback"),
+			*Ability.Name.ToString()),
+			Ability.CooldownSeconds > 0.0f);
+	}
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	// Spend the stomp, then stand in contact. The stomp is on cooldown and the
+	// rock throw does not reach point blank, so only the swing is left.
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	SpendAbilities(World, Brain, 200.0f);
+	TestFalse(TEXT("the stomp is now cooling down"),
+		Brain->IsAbilityReady(ACataclysmBruteCharacter::StompAbility));
+
+	const float Contact = ACataclysmBruteCharacter::DesignedMeleeReachCm
+		- 10.0f;
+	Player.Actor->SetActorLocation(FVector(Contact, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	TestEqual(TEXT("in contact with the stomp cooling down, it chooses nothing"),
+		Brain->ChooseAbility(Contact), int32(INDEX_NONE));
+
+	const float Before = Player.Health();
+	TestEqual(TEXT("so it falls back to its ordinary swing rather than standing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
+		Before, Player.Health()), Player.Health() < Before);
 
 	return true;
 }

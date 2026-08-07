@@ -493,6 +493,58 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                  "build's effective health, which clears the 10% stun damage "
                  "threshold two and a half times over.",
         ),
+        Ability(
+            name="Rip and Toss",
+            shape="Projectile",
+            slot="Special",
+            # WHAT IT IS FOR. The Brute has nothing to do about a player who
+            # stands off, and the design principle is that abilities should mean
+            # different things rather than all mean "damage". This one means
+            # "standing outside my reach is not free". It is the only reason the
+            # creature is not answered by walking backwards.
+            #
+            # RANGE 10 IS ITS NOTICE RADIUS. The rule is that there is no
+            # distance at which the Brute is aware of you and can do nothing.
+            # The notice radius is 1000 cm in
+            # game/Source/Cataclysm/Character/CataclysmBruteCharacter.h and was
+            # set by playing; if it moves, this should move with it.
+            #
+            # RADIUS 2.1 IS SET BY THE ANIMATION, which is the only hard
+            # constraint available. A telegraph has to be long enough to play
+            # the attack's wind-up animation, the way the Stomp's 1.4 second
+            # wind-up covers the 0.83 second Ability_GroundSmash_Start.
+            # Ability_RipNToss_Toss is 0.87 seconds, so the wind-up must be at
+            # least that, and 0.4 + Radius / 3.5 >= 0.87 needs a radius of at
+            # least 1.65 m. At 2.1 the wind-up is exactly 1.0 second, clearing
+            # the animation by 0.13 -- a similar margin to the Stomp's.
+            #
+            # It is also well under the Stomp's 3.5 m, so the two markers read
+            # as different sizes, and well under the 7.35 m its own cooldown
+            # would allow.
+            #
+            # SPEED 1200 IS THE SAME AS THE SUCCUBUS'S SOULFIRE, which is the
+            # slowest projectile any player skill uses in
+            # game/Data/WeaponSkills.csv. A thrown rock should not outrun the
+            # slowest spell in the game.
+            #
+            # PIERCE 0 BECAUSE IT IS ONE ROCK. It stops at what it hits.
+            params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Speed": 1200},
+            # THE SPECIAL SLOT'S TYPICAL COOLDOWN, and the approach time
+            # confirms it is the right side of the constraint that matters. The
+            # Brute crosses its own 10 m throwing range in 2 seconds at its 5
+            # m/s chase speed, so a cooldown under that would let it throw twice
+            # per approach and it would read as a ranged enemy rather than a
+            # bruiser with a rock. At 5 seconds it throws once and then it is on
+            # you.
+            cooldown=5.0,
+            note="It tears a rock out of the ground and throws it, marked as a "
+                 "line 4.2 metres wide for 1 second first. At the Special "
+                 "slot's 150% it is worth half a Stomp. Added 2026-08-07 when "
+                 "the project owner settled the Brute at three abilities -- "
+                 "this, the Slam and the Stomp -- on the grounds that it is a "
+                 "basic mob and that rarities and modifiers are where extra "
+                 "abilities belong.",
+        ),
     ),
 }
 
