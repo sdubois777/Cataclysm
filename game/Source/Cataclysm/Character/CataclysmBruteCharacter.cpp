@@ -85,33 +85,61 @@ static TAutoConsoleVariable<float> CVarBruteAuthoredChaseSpeed(
  * Empty means use ChaseAnimationPath on the class.
  */
 /**
- * How fast the Brute moves while chasing, for judging the chase gait by eye.
+ * Live override for the chase speed, for judging it by eye.
  *
- * WHY THIS EXISTS AND WHY IT DEFAULTS TO OFF. Playing a running animation on a
- * character that has not changed speed reads as running on the spot -- reported
- * from a play session on 2026-08-07 as "he moves his arms and legs faster but
- * doesn't actually move faster". A running gait only means anything if the
- * creature runs.
+ * THE DESIGNED FIGURE IS NOW 500 AND LIVES IN THE MODEL, as chase_speed on
+ * ARCHETYPES["Brute"] in sim/cataclysm_sim/enemy_stats.py, so this is a tuning
+ * aid rather than the source of the number. It started as the only way to try a
+ * second speed at all, because the design had none for any enemy; playing it on
+ * 2026-08-07 settled 500 and that went into the model.
  *
- * But movement speed is not the engine's to choose. ARCHETYPES["Brute"] in
- * sim/cataclysm_sim/enemy_stats.py gives move_speed 2.5, it is half of what
- * makes "can be outmanoeuvred" true, and tools/tests/test_brute_matches_the_model.py
- * fails if the C++ disagrees with it. A separate chase speed is a design
- * change, and the design has no second speed for any enemy.
- *
- * So zero means no change, and the Brute moves at its designed 250 in both
- * states. Setting this finds the number that looks right; the number then goes
- * to a design issue rather than being quietly adopted. Diablo II is the
- * precedent worth citing there: its monstats.txt carries Velocity and
- * Runvelocity as separate per-monster columns, so a walk speed and a chase
- * speed is an ordinary shape rather than an invention.
+ * Zero means use the designed figure, so clearing it restores the design.
  */
 static TAutoConsoleVariable<float> CVarBruteChaseSpeed(
 	TEXT("Cataclysm.Brute.ChaseSpeed"),
 	0.0f,
 	TEXT("Centimetres per second the Brute moves while chasing. 0 uses its "
-		 "designed 250 in both states. Anything above the player's 350 to 460 "
-		 "would make it uncatchable, which its design says it must not be."),
+		 "designed 500. It wanders at 250 either way. The player currently "
+		 "moves at Unreal's default 600 rather than a designed class speed, "
+		 "which is issue #391, so the margin here is not what the design "
+		 "believes it is."),
+	ECVF_Default);
+
+/**
+ * Live override for the seconds between swings, for finding the right pace.
+ *
+ * WHY IT IS WANTED. 2.8 seconds is the designed interval and the project owner
+ * reported it on 2026-08-07 as "a pretty long delay", with the reasoning that an
+ * enemy that is not attacking might as well be scenery. That is a balance
+ * judgement about how the game feels, which is exactly the kind of number that
+ * has to be found by playing rather than derived.
+ *
+ * WHY IT IS NOT SIMPLY CHANGED. The interval is not only a rate. The telegraph
+ * rule sizes an enemy's ground marker from it, as
+ * 3.5 * (interval / 2 - 0.4) metres, so shortening it shrinks the Stomp's
+ * marker:
+ *
+ *     2.8 s -> 3.50 m marker, 1.40 s wind-up   (the design today)
+ *     2.4 s -> 2.80 m marker, 1.20 s wind-up
+ *     2.0 s -> 2.10 m marker, 1.00 s wind-up
+ *     1.6 s -> 1.40 m marker, 0.80 s wind-up
+ *     1.4 s -> 1.05 m marker, 0.70 s wind-up   (the floor)
+ *     1.2 s -> 0.70 m marker                   (below the 1 m floor: no marker)
+ *
+ * Under about 1.4 seconds the marker is smaller than the creature standing in
+ * it and the Stomp stops being telegraphable at all. So the usable range is 1.4
+ * to 2.8, and whatever is chosen goes into enemy_stats.py with the Stomp
+ * re-derived to match, not into this file.
+ *
+ * Zero means use the designed interval.
+ */
+static TAutoConsoleVariable<float> CVarBruteAttackInterval(
+	TEXT("Cataclysm.Brute.AttackInterval"),
+	0.0f,
+	TEXT("Seconds between the Brute's swings. 0 uses its designed 2.8. Below "
+		 "about 1.4 the Stomp's telegraph marker falls under the one metre "
+		 "floor and the Stomp can no longer be telegraphed, so 1.4 to 2.8 is "
+		 "the usable range."),
 	ECVF_Default);
 
 static TAutoConsoleVariable<FString> CVarBruteChaseAnimation(
@@ -176,12 +204,16 @@ void ACataclysmBruteCharacter::ApplyChaseSpeed()
 		return;
 	}
 
-	// THE DESIGNED SPEED UNLESS SOMEONE IS DELIBERATELY EXPERIMENTING. Written
-	// every frame rather than only on the state change, so that clearing the
-	// console variable back to zero restores the designed speed immediately
-	// rather than leaving whatever was last set.
-	const float ChaseSpeed = CVarBruteChaseSpeed.GetValueOnAnyThread();
-	Movement->MaxWalkSpeed = (ChaseSpeed > 0.0f && IsChasing())
+	// TWO DESIGNED SPEEDS, PICKED BY WHAT THE BRAIN IS DOING. The console
+	// variable overrides the chase one for tuning by eye and zero means "use
+	// the designed figure", so clearing it mid-session restores the design
+	// rather than leaving whatever was last typed. Written every frame for that
+	// reason rather than only when the state changes.
+	const float Override = CVarBruteChaseSpeed.GetValueOnAnyThread();
+	const float ChaseSpeed = Override > 0.0f
+		? Override : DesignedChaseSpeedCmPerSecond;
+
+	Movement->MaxWalkSpeed = IsChasing()
 		? ChaseSpeed : DesignedWalkSpeedCmPerSecond;
 }
 
@@ -195,6 +227,12 @@ float ACataclysmBruteCharacter::EffectiveAuthoredChaseSpeed() const
 {
 	const float Override = CVarBruteAuthoredChaseSpeed.GetValueOnAnyThread();
 	return Override > 0.0f ? Override : AuthoredChaseSpeedCmPerSecond;
+}
+
+float ACataclysmBruteCharacter::SecondsBetweenAttacks() const
+{
+	const float Override = CVarBruteAttackInterval.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : AttackIntervalSeconds;
 }
 
 void ACataclysmBruteCharacter::AttackTarget(AActor* Target)

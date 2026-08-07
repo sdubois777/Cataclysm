@@ -53,6 +53,17 @@ public:
 	virtual void AttackTarget(AActor* Target) override;
 
 	/**
+	 * Seconds between swings: the designed interval, or the console override.
+	 *
+	 * `Cataclysm.Brute.AttackInterval` exists because how often an enemy swings
+	 * is a judgement about how the game feels, and 2.8 seconds was reported as
+	 * too long to play against. It defaults to zero, meaning use the design.
+	 * See the console variable for why shortening it is not free: the telegraph
+	 * rule sizes the Stomp's ground marker from this number.
+	 */
+	virtual float SecondsBetweenAttacks() const override;
+
+	/**
 	 * Chooses the standing or walking animation and sets the walk's play rate.
 	 *
 	 * PUBLIC SO A TEST CAN STEP IT WITHOUT A TICKING WORLD, the same reason
@@ -185,6 +196,28 @@ public:
 	 * anything below that can be got behind by every build.
 	 */
 	static constexpr float DesignedTurnRateDegreesPerSecond = 180.0f;
+
+	/**
+	 * Centimetres per second once it has noticed the player.
+	 * enemy_stats.py, chase_speed=5.0 metres.
+	 *
+	 * TWICE ITS PATROL SPEED, and that is the whole of what makes it a threat
+	 * rather than scenery. Set by the project owner on 2026-08-07 by playing
+	 * it: a Brute that chased at the 250 it wanders at could be walked away
+	 * from without thinking about it.
+	 *
+	 * IT IS STILL SLOWER THAN THE PLAYER, but not by the margin the design
+	 * believes. ACataclysmPlayerCharacter never sets MaxWalkSpeed, so the
+	 * player runs at Unreal's default 600 rather than the 350 to 460 the class
+	 * table specifies -- issue #391. Against the 600 the game really uses, 500
+	 * leaves a 100 cm/s margin. Against the designed figures it would be
+	 * unescapable. THIS NUMBER HAS TO BE RE-JUDGED WHEN #391 IS FIXED.
+	 *
+	 * "Can be outmanoeuvred" is unaffected either way: it is a turn rate
+	 * property, and a player circling at this creature's reach sweeps 223
+	 * degrees per second against its 180.
+	 */
+	static constexpr float DesignedChaseSpeedCmPerSecond = 500.0f;
 	//~ End designed numbers
 
 	/**
@@ -458,26 +491,30 @@ public:
 	 * The ground speed the chase animation is treated as having been authored
 	 * for, in centimetres per second.
 	 *
-	 * MEASURED, NOT GUESSED. tools/measure_animation_stride.py reports
-	 * Jog_Quad_Fwd at 304.5 cm/s, re-measured on 2026-08-07 and recorded in
-	 * game/docs/enemy-source-assets.md. The Brute moves at 250, so the play
-	 * rate is 250 / 304.5 = 0.821 and the feet keep up with the ground.
+	 * SET BY EYE ON 2026-08-07, BY THE PROJECT OWNER WATCHING IT RUN, and that
+	 * is the right authority for it: the whole criterion is whether a planted
+	 * foot appears to slide, which is a judgement about what a person sees.
+	 * With the chase speed at 500 this makes the play rate 500 / 350 = 1.43.
 	 *
-	 * WHAT LEAVING IT AT 250 LOOKED LIKE, because that was the first attempt:
-	 * a play rate of exactly 1.0, so the feet travelled as if the body were
-	 * moving at 304.5 while it moved at 250, sliding 22% -- reported as "it is
-	 * like he isn't moving far enough within the animation".
+	 * IT IS NOT THE MEASURED FIGURE, AND THE GAP IS EXPECTED.
+	 * tools/measure_animation_stride.py reports Jog_Quad_Fwd at 304.5 cm/s, and
+	 * the same tool reported 242.9 for the walking animation where the by-eye
+	 * answer was 225. It reads high on both, by 8% on the walk and 15% here.
+	 * The tool's own documentation calls its output a starting estimate good to
+	 * roughly ten percent, because the IK foot bones it tracks never touch the
+	 * ground on this skeleton.
 	 *
-	 * THE MEASUREMENT MAY STILL BE HIGH BY ABOUT EIGHT PERCENT. On the walking
-	 * animation the same tool said 242.9 and the figure the project owner
-	 * settled on by eye was 225. If the same bias applies here the true value
-	 * is nearer 282, giving a play rate of 0.887. Tune it with
-	 * Cataclysm.Brute.AuthoredChaseSpeed while watching; a smaller number plays
-	 * the animation faster.
+	 * WHAT LEAVING IT AT THE BRUTE'S OWN SPEED LOOKED LIKE, because that was
+	 * the first attempt: a play rate of exactly 1.0, so the feet travelled as
+	 * if the body were moving at 304.5 while it moved at 250, sliding 22% --
+	 * reported as "it is like he isn't moving far enough within the animation".
+	 *
+	 * Retune it with Cataclysm.Brute.AuthoredChaseSpeed while watching. A
+	 * smaller number plays the animation faster.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Enemy",
 			  meta = (ClampMin = "1.0"))
-	float AuthoredChaseSpeedCmPerSecond = 304.5f;
+	float AuthoredChaseSpeedCmPerSecond = 350.0f;
 
 	/** As EffectiveAuthoredWalkSpeed, for the chase animation. */
 	float EffectiveAuthoredChaseSpeed() const;

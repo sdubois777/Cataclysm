@@ -1065,35 +1065,42 @@ bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
 	const float Designed =
 		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
 
-	// Nothing in sight and no override: the designed speed.
+	const float DesignedChase =
+		ACataclysmBruteCharacter::DesignedChaseSpeedCmPerSecond;
+
+	TestTrue(TEXT("the designed chase speed is faster than the patrol speed, "
+				  "or noticing the player would change nothing"),
+		DesignedChase > Designed);
+
+	// Nothing in sight and no override: the patrol speed.
 	ChaseSpeed->Set(0.0f);
 	Brain->Think();
 	Brute.Actor->ApplyChaseSpeed();
-	TestEqual(TEXT("wandering, it moves at its designed speed"),
+	TestEqual(TEXT("wandering, it moves at its designed patrol speed"),
 		Movement->MaxWalkSpeed, Designed);
 
-	// Chasing, still no override: STILL the designed speed. Zero must mean no
-	// change, or the console variable would silently alter designed behaviour
-	// for anyone who never touched it.
+	// Chasing, no override: the designed CHASE speed. This is the change made
+	// on 2026-08-07 -- zero used to mean "no change at all" because there was
+	// no designed second speed to fall back on. There is one now.
 	FScopedFighter Player(World, FVector(5 * M, 0, 0), ECataclysmTeam::Players,
 						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
 	TestEqual(TEXT("it is chasing"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Chasing));
 	Brute.Actor->ApplyChaseSpeed();
-	TestEqual(TEXT("chasing with no override set, it still moves at the "
-				   "designed speed"),
-		Movement->MaxWalkSpeed, Designed);
+	TestEqual(TEXT("chasing with no override, it moves at the designed chase speed"),
+		Movement->MaxWalkSpeed, DesignedChase);
 
-	// Chasing with an override: it moves at that speed.
+	// Chasing with an override: it moves at that speed instead.
 	constexpr float Faster = 320.0f;
 	ChaseSpeed->Set(Faster);
 	Brain->Think();
 	Brute.Actor->ApplyChaseSpeed();
 	TestEqual(TEXT("chasing with an override set, it moves at the override"),
 		Movement->MaxWalkSpeed, Faster);
-	TestTrue(TEXT("which is faster than its designed speed"),
-		Movement->MaxWalkSpeed > Designed);
+	TestNotEqual(TEXT("which is not the designed chase speed, so the override "
+					  "is really what is being read"),
+		Movement->MaxWalkSpeed, DesignedChase);
 
 	// AND IT GOES BACK WHEN THE CHASE ENDS, or a Brute that once saw the player
 	// would wander at chase speed for the rest of its life.
@@ -1115,8 +1122,9 @@ bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
 
 	ChaseSpeed->Set(0.0f);
 	Brute.Actor->ApplyChaseSpeed();
-	TestEqual(TEXT("and clearing it returns to the designed speed at once"),
-		Movement->MaxWalkSpeed, Designed);
+	TestEqual(TEXT("and clearing it returns to the designed chase speed at once, "
+				   "not to the patrol speed"),
+		Movement->MaxWalkSpeed, DesignedChase);
 
 	return true;
 }

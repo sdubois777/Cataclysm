@@ -117,6 +117,51 @@ def test_walk_speed_matches_in_centimetres() -> None:
     )
 
 
+def test_chase_speed_matches_in_centimetres() -> None:
+    """The speed it moves at once it has noticed you, against the model.
+
+    A SECOND SPEED, ADDED 2026-08-07. The Brute wanders at 2.5 metres per second
+    and commits at 5.0. Diablo II gives every monster both a `Velocity` and a
+    `Runvelocity`, so this is an ordinary shape rather than an invention.
+
+    WHY IT IS A DESIGN FIGURE AND NOT A TUNING VALUE: it decides whether the
+    player can disengage at all, which is a statement about what fighting this
+    creature is like. See the note on `chase_speed` in enemy_stats.py, including
+    that the margin against the player is currently not the one the design
+    believes, because of issue #391.
+    """
+    archetype = brute_archetype()
+
+    assert constant(
+        BRUTE_HEADER, "DesignedChaseSpeedCmPerSecond"
+    ) == pytest.approx(archetype.chase_speed * 100.0), (
+        "The Brute's chase speed in the C++ has drifted from "
+        "ARCHETYPES['Brute'].chase_speed. The model is in metres per second and "
+        "the engine is in centimetres per second."
+    )
+
+
+def test_it_commits_faster_than_it_patrols() -> None:
+    """Chasing must be faster than wandering, or the second speed does nothing.
+
+    Stated as an inequality rather than a value, so the test says what the two
+    speeds are for instead of repeating them.
+    """
+    archetype = brute_archetype()
+
+    assert archetype.chase_speed > archetype.move_speed, (
+        "The Brute's chase speed is no faster than its patrol speed, so "
+        "noticing the player changes nothing about how it moves and the "
+        "four-legged chase animation is claiming speed it does not have."
+    )
+
+    chase_cm = constant(BRUTE_HEADER, "DesignedChaseSpeedCmPerSecond")
+    walk_cm = constant(BRUTE_HEADER, "DesignedWalkSpeedCmPerSecond")
+    assert chase_cm > walk_cm, (
+        "The C++ chase speed is no faster than the C++ walk speed."
+    )
+
+
 def test_turn_rate_matches() -> None:
     assert constant(
         BRUTE_HEADER, "DesignedTurnRateDegreesPerSecond"
