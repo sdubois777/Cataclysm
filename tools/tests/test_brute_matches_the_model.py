@@ -217,3 +217,61 @@ def test_the_brute_is_slower_than_the_enemy_defaults_it_overrides() -> None:
         "A Brute reaches at least as far as an ordinary enemy. Its reach is "
         "contact reach by design, which is shorter."
     )
+
+
+def test_the_walk_play_rate_uses_the_measured_stride() -> None:
+    """The authored walk speed in the C++ matches what was measured from the art.
+
+    WHY THIS EXISTS. `AuthoredWalkSpeedCmPerSecond` decides how fast the Brute's
+    walk animation plays. It started as a guess of 500, which made the animation
+    run a quarter too slowly and the planted foot slide forwards while the other
+    leg swung. It was replaced with 373.7, measured from the animation itself by
+    `tools/measure_animation_stride.py`.
+
+    A guess and a measurement look identical in the source. This ties the number
+    to the one written down in `game/docs/enemy-source-assets.md`, the reference
+    listing which art plays each enemy, so changing one without the other fails
+    rather than quietly reintroducing foot sliding.
+
+    WHAT IT DOES NOT CHECK. That 373.7 is right. Only that the C++ and the
+    document agree, and that the resulting play rate is sane. Re-running the
+    measurement script is the only thing that checks the figure itself.
+    """
+    import re as _re
+
+    reference = REPO_ROOT / "game" / "docs" / "enemy-source-assets.md"
+    if not reference.is_file():
+        pytest.fail(f"{reference.relative_to(REPO_ROOT)} does not exist")
+
+    text = reference.read_text(encoding="utf-8")
+    match = _re.search(r"`Jog_Biped_Fwd`\s*\|\s*\*\*([\d.]+) cm/s\*\*", text)
+    if match is None:
+        pytest.fail(
+            "game/docs/enemy-source-assets.md no longer records a measured "
+            "ground speed for Jog_Biped_Fwd in its locomotion table. If the "
+            "table moved, update this test; if the measurement was deleted, the "
+            "C++ constant is an unguarded guess again."
+        )
+    documented = float(match.group(1))
+
+    in_code = uproperty_default(BRUTE_HEADER, "AuthoredWalkSpeedCmPerSecond")
+
+    assert in_code == pytest.approx(documented), (
+        f"CataclysmBruteCharacter.h plays the walk as though it were authored "
+        f"for {in_code} cm/s, but game/docs/enemy-source-assets.md records the "
+        f"measurement as {documented} cm/s. Re-run "
+        f"tools/measure_animation_stride.py and make both agree."
+    )
+
+    # The play rate that falls out of it has to be usable. Outside the clamp the
+    # animation is either frozen or a blur, and the number is wrong.
+    designed_speed_cm = brute_archetype().move_speed * 100.0
+    play_rate = designed_speed_cm / in_code
+    minimum = constant(BRUTE_HEADER, "MinimumPlayRate")
+    maximum = constant(BRUTE_HEADER, "MaximumPlayRate")
+
+    assert minimum < play_rate < maximum, (
+        f"At the Brute's designed {designed_speed_cm} cm/s the walk would play "
+        f"at {play_rate:.2f}, which is outside the {minimum} to {maximum} range "
+        f"the class clamps to, so the clamp would be hiding a wrong number."
+    )
