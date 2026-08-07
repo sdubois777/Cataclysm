@@ -85,13 +85,37 @@ shared skill templates that the designed skills are configured from, and the
 two-team friend-or-foe model. `game/docs/ability-system.md` explains where the
 component lives and why.
 
-`Content/` holds generated assets, not authored ones:
+`Content/` holds generated assets, third-party asset packs, and a place for
+authored work. [`docs/content-layout.md`](docs/content-layout.md) is the full
+convention: where things go, what they are called, and the three rules that are
+easy to get wrong.
+
+**Generated. A generator owns these and overwrites them wholesale.** Do not edit
+them by hand.
 
 | Path | What it is |
 |---|---|
-| `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. The five training dummies are not in the map — `ACataclysmGameMode` spawns them in a ring at play time. |
-| `Data/` | Fourteen DataTable assets imported from the workbook. See below. |
-| `Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
+| `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. No enemy is in the map — `ACataclysmGameMode` spawns them at play time. |
+| `Content/Data/` | Fourteen DataTable assets imported from the workbook. See below. |
+| `Content/Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
+
+**Not in git.**
+
+| Path | What it is |
+|---|---|
+| `Content/Paragon*/` | Six free Fab character packs, 17.31 GB, supplying the art for the vertical slice enemies. Re-acquired from Fab rather than committed. [`docs/enemy-source-assets.md`](docs/enemy-source-assets.md) says which pack plays which enemy. |
+| `Content/Developers/` | Unreal's per-user sandbox. Not project content. |
+
+**Authored, and committed.**
+
+| Path | What it is |
+|---|---|
+| `Content/Enemies/<Cataclysm>/<Enemy>/` | Blueprints, animation Blueprints, retargeted animations and material instances for one enemy. Only `Enemies/Demonic/Brute/` exists so far and it is still empty, because the Brute is entirely C++. |
+
+**Work derived from a third-party pack must not be saved inside that pack's
+folder.** Those folders are excluded from git, so an asset saved there is dropped
+by `git add` with no error and no warning. Guarded by
+`tools/tests/test_third_party_packs_are_not_committed.py`.
 
 ## What is not here yet
 

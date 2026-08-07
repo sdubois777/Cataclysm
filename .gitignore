@@ -50,21 +50,38 @@ Build/
 # than deleting this line: !game/Content/Maps/L_Whatever_BuiltData.uasset
 *_BuiltData.uasset
 
-# Third-party asset packs downloaded from Fab. These are 17.31 GB as of
-# 2026-08-07 and every .uasset in them goes through Git LFS, so committing them
-# would put 17 GB into LFS storage and into every future clone. GitHub's free LFS
-# allowance is 1 GB, so this would cost money and would keep costing it.
+# Per-developer scratch space. Unreal creates a folder here per user and treats
+# it as a sandbox rather than as project content, so nothing in it is shared.
+game/Content/Developers/
+
+# --- Third-party asset packs -------------------------------------------------
 #
-# They do not need to be in git. They are free, they are already hosted by Epic,
-# and anyone can re-acquire them from their own Fab library. The list of which
-# pack plays which enemy, and the animation durations measured from them, is in
-# game/docs/enemy-source-assets.md, which IS committed. That file is the part
-# worth keeping under version control; the 17 GB it describes is not.
+# Downloaded from Fab and left where Fab installs them, at the root of Content.
+# They are 17.31 GB as of 2026-08-07 and every .uasset in them goes through Git
+# LFS, so committing them would put 17 GB into LFS storage and draw on LFS
+# bandwidth on every clone and every continuous integration checkout. A GitHub
+# Free or Pro account includes 10 GiB of each per month
+# (https://docs.github.com/en/billing/concepts/product-billing/git-lfs).
 #
-# Work derived from these packs — a Blueprint, an animation Blueprint, a
-# retargeted animation authored in this project — belongs in git and must live
-# outside these folders to be picked up. Issue #370 decides the wider policy.
+# They do not need to be in git. They are free, Epic still hosts them, and anyone
+# can re-acquire them from their own Fab library. The durable record is
+# game/docs/enemy-source-assets.md, which names which pack plays which enemy and
+# carries every measurement taken from them. That file is text and IS committed.
+#
+# WORK DERIVED FROM THESE PACKS DOES NOT GO IN THESE FOLDERS. A retargeted
+# animation or an animation Blueprint is this project's own work and belongs in
+# git. Saved inside one of these folders it is dropped by `git add` with no error
+# and no warning. It goes in game/Content/Enemies/<Cataclysm>/<Enemy>/ instead;
+# game/docs/content-layout.md is the full convention.
+#
+# EVERY LINE IN THIS BLOCK IS PARSED. tools/third_party_content.py reads the
+# patterns between the two markers below so that this file stays the single place
+# the vendor list is written down. Add a new vendor's folder here and the tests
+# that depend on it follow automatically. Keep one pattern per line.
+#
+# THIRD-PARTY-PACKS-BEGIN
 game/Content/Paragon*/
+# THIRD-PARTY-PACKS-END
 
 # Unreal crash and log output
 *.log
