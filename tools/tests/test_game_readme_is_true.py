@@ -194,14 +194,31 @@ def test_the_art_claim_matches_how_many_characters_have_a_mesh() -> None:
 
 
 def test_no_procedural_dungeon_claim_is_still_true() -> None:
-    """The readme says `L_Sandbox` is the only map."""
+    """The readme says `L_Sandbox` is the only map this project authored.
+
+    THIRD-PARTY PACKS ARE EXCLUDED, and that is not the test being weakened. The
+    six free Paragon character packs each ship demo and lighting maps --
+    `Rampage.umap`, `Countess.umap`, `AnimationTestMap.umap` and others, sixteen
+    in total. They are downloaded content that `.gitignore` already excludes from
+    the repository, and none of them is a level this game plays. Counting them
+    would make this guard fail for everyone who has the art installed and pass
+    for everyone who does not, which is the opposite of useful.
+
+    The claim being guarded is about the project's own maps, so the folders git
+    ignores are skipped here for the same reason git ignores them.
+    """
     if "L_Sandbox` is the only map" not in readme_text():
         pytest.skip("The readme no longer claims L_Sandbox is the only map.")
 
-    maps = sorted(path.name for path in (GAME_DIR / "Content").rglob("*.umap"))
+    content = GAME_DIR / "Content"
+    maps = sorted(
+        path.name
+        for path in content.rglob("*.umap")
+        if not path.relative_to(content).parts[0].startswith("Paragon")
+    )
     assert maps == ["L_Sandbox.umap"], (
-        "game/README.md says L_Sandbox is the only map, but game/Content/ holds: "
-        f"{', '.join(maps)}."
+        "game/README.md says L_Sandbox is the only map, but game/Content/ holds "
+        f"these outside the third-party packs: {', '.join(maps)}."
     )
 
 

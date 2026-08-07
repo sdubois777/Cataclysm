@@ -100,8 +100,10 @@ bool FCataclysmBruteCarriesItsDesignedNumbers::RunTest(const FString&)
 	TestEqual(TEXT("walks at the designed 250 cm/s"),
 		Movement->MaxWalkSpeed,
 		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond);
+	// CAST, BECAUSE FRotator's components are double in Unreal 5 while the
+	// designed constant is a float, and TestEqual has an overload for each.
 	TestEqual(TEXT("turns at the designed 180 deg/s"),
-		Movement->RotationRate.Yaw,
+		static_cast<float>(Movement->RotationRate.Yaw),
 		ACataclysmBruteCharacter::DesignedTurnRateDegreesPerSecond);
 
 	const UCapsuleComponent* Capsule = Brute->GetCapsuleComponent();
@@ -241,6 +243,20 @@ bool FCataclysmBruteFightsWithOrWithoutItsArt::RunTest(const FString&)
 
 	if (bArtIsInstalled)
 	{
+		// CALLED DIRECTLY RATHER THAN RELYING ON BeginPlay. BeginPlay calls this
+		// too, but whether it fires depends on how the world under test was
+		// built, and reading the mesh afterwards cannot tell "the art failed to
+		// load" apart from "BeginPlay never ran". The return value can.
+		//
+		// WITHOUT THE ANIMATION BLUEPRINT, and that is not tidiness. Starting the
+		// Paragon animation graph in a world made by UWorld::CreateWorld hangs
+		// the whole test process; see the comment in
+		// ACataclysmBruteCharacter::ResolveBody and issue #374. What this test
+		// is for is whether the Brute wears the mesh, which does not need it.
+		const bool bResolved = Brute->ResolveBody(/*bIncludeAnimation=*/false);
+		TestTrue(TEXT("the Brute resolved its body when the art is installed"),
+			bResolved);
+
 		const USkeletalMeshComponent* MeshComponent = Brute->GetMesh();
 		if (TestNotNull(TEXT("mesh component"), MeshComponent))
 		{
@@ -268,7 +284,7 @@ bool FCataclysmBruteFightsWithOrWithoutItsArt::RunTest(const FString&)
 	Hero->SetHealth(1000.0f);
 
 	TArray<AActor*> Found = UCataclysmTargeting::FindEnemiesInSphere(
-		Hero, Hero->GetActorLocation(), 500.0f);
+		World, Hero, Hero->GetActorLocation(), 500.0f);
 	TestTrue(TEXT("the Brute is a valid enemy target"), Found.Contains(Brute));
 
 	Hero->Destroy();

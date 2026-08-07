@@ -14,8 +14,9 @@
  *
  * WHY A C++ SUBCLASS RATHER THAN A BLUEPRINT. Three project rules point the same
  * way. game/README.md says Content/ holds generated assets rather than authored
- * ones; .gitignore excludes game/Content/Paragon*/ so a Blueprint saved beside
- * the art would be dropped by git without a word; and issue #370 question 3,
+ * ones; .gitignore excludes the Paragon folders under game/Content, so a
+ * Blueprint saved beside the art would be dropped by git without a word; and
+ * issue #370 question 3,
  * which asks where authored enemy assets should live, is open and waiting on the
  * operator. A C++ class is reviewable text, needs no answer to that question,
  * and is the same shape ACataclysmMinion already uses to override its capsule,
@@ -116,12 +117,22 @@ public:
 	static const TCHAR* BodyMeshPath;
 	static const TCHAR* BodyAnimBlueprintPath;
 
-private:
 	/**
 	 * Puts the Rampage mesh on, or logs why it could not and keeps the
-	 * placeholder cylinder.
+	 * placeholder cylinder. Returns true when the skeletal mesh resolved.
 	 *
-	 * Returns true when the skeletal mesh resolved.
+	 * PUBLIC SO A TEST CAN CALL IT RATHER THAN INFER IT. BeginPlay calls this,
+	 * but whether BeginPlay runs at all depends on how the world was made, and a
+	 * test that spawns into a synthetic world and then checks the mesh cannot
+	 * tell "the art is missing" apart from "BeginPlay did not fire". Calling it
+	 * directly and reading the return value distinguishes the two, and it is
+	 * safe to call twice: assigning the same mesh again is a no-op.
+	 *
+	 * @param bIncludeAnimation  Pass false to bind the mesh without starting the
+	 *   Paragon animation blueprint. ONLY TESTS SHOULD DO THIS. Running that
+	 *   graph inside a world built by UWorld::CreateWorld hangs the process --
+	 *   measured, see the comment in ResolveBody and issue #374 -- because it
+	 *   expects an owning pawn in a world with a game context.
 	 */
-	bool ResolveBody();
+	bool ResolveBody(bool bIncludeAnimation = true);
 };

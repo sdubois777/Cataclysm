@@ -43,10 +43,10 @@ void ACataclysmBruteCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ResolveBody();
+	ResolveBody(/*bIncludeAnimation=*/true);
 }
 
-bool ACataclysmBruteCharacter::ResolveBody()
+bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 {
 	USkeletalMeshComponent* MeshComponent = GetMesh();
 	if (!MeshComponent)
@@ -82,20 +82,35 @@ bool ACataclysmBruteCharacter::ResolveBody()
 		FVector(0.0f, 0.0f, -BruteCapsuleHalfHeight),
 		FRotator(0.0f, -90.0f, 0.0f));
 
-	if (UClass* AnimClass = Cast<UClass>(
-			FSoftObjectPath(BodyAnimBlueprintPath).TryLoad()))
+	// SEPARABLE FROM THE MESH, AND NOT OPTIONAL DRESSING -- THIS IS MEASURED.
+	// Running the Paragon animation blueprint inside a world made by
+	// UWorld::CreateWorld hangs the process. Observed on 2026-08-07: the
+	// automation test spawned a Brute, the log recorded
+	// "Script Msg called by: Rampage_AnimBlueprint_C", and the run then sat at
+	// 44 seconds of processor time and 2.91 GB for over three minutes without
+	// moving either figure, and had to be killed.
+	//
+	// The animation graph is third-party and expects an owning pawn in a world
+	// with a game context, which a synthetic test world does not have. So a test
+	// asks for the mesh alone. Nothing in the real game passes false here.
+	// Issue #374.
+	if (bIncludeAnimation)
 	{
-		MeshComponent->SetAnimInstanceClass(AnimClass);
-	}
-	else
-	{
-		// A mesh with no animation blueprint stands in its reference pose. Worth
-		// saying, because "the Brute does not move its legs" is otherwise a
-		// puzzling thing to see in a level.
-		UE_LOG(LogCataclysm, Warning,
-			TEXT("Brute animation blueprint not found at %s, so it will stand "
-				 "in its reference pose."),
-			BodyAnimBlueprintPath);
+		if (UClass* AnimClass = Cast<UClass>(
+				FSoftObjectPath(BodyAnimBlueprintPath).TryLoad()))
+		{
+			MeshComponent->SetAnimInstanceClass(AnimClass);
+		}
+		else
+		{
+			// A mesh with no animation blueprint stands in its reference pose.
+			// Worth saying, because "the Brute does not move its legs" is
+			// otherwise a puzzling thing to see in a level.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Brute animation blueprint not found at %s, so it will "
+					 "stand in its reference pose."),
+				BodyAnimBlueprintPath);
+		}
 	}
 
 	// OTHERWISE THE CYLINDER SITS INSIDE THE DEMON. The base class creates
