@@ -225,16 +225,12 @@ bool FCataclysmBruteNoticesLaterThanAnOrdinaryEnemy::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { Brute->Destroy(); Ordinary->Destroy(); };
 
-	// THE DERIVATION, RESTATED AS AN ASSERTION. The notice radius is the ground
-	// the Brute covers in one attack cycle, so noticing leads to a fight rather
-	// than to a walk that never arrives. Both inputs are designed numbers.
-	TestEqual(
-		TEXT("the notice radius is one attack cycle of walking, 250 x 2.8"),
-		ACataclysmBruteCharacter::BruteNoticeRadiusCm,
-		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond
-			* ACataclysmBruteCharacter::DesignedAttackIntervalSeconds);
-
-	TestEqual(TEXT("and the Brute actually uses it"),
+	// THE FIGURE IS PLAY-TESTED, NOT DERIVED, so there is no arithmetic to
+	// restate here. It was 700, derived as one attack cycle of walking, and
+	// that derivation stopped being true on 2026-08-07 when the attack interval
+	// moved to 1.6 and the chase speed to 500. What can still be checked is
+	// what the number has to do, which is the rest of this test.
+	TestEqual(TEXT("the Brute uses its own notice radius"),
 		Brute->SightRadiusCm(), ACataclysmBruteCharacter::BruteNoticeRadiusCm);
 
 	// STRICTLY SHORTER THAN WHAT IT INHERITED, stated as an inequality so that
@@ -258,13 +254,17 @@ bool FCataclysmBruteNoticesLaterThanAnOrdinaryEnemy::RunTest(const FString&)
 		Brute->RoamRadiusCm(), Brute->SightRadiusCm()),
 		Brute->RoamRadiusCm() < Brute->SightRadiusCm());
 
-	// THE SANDBOX CHECK THAT DECIDED THE NUMBER. ACataclysmGameMode spawns the
-	// Brute 1200 cm from the player start. At the inherited 1500 it notices the
-	// player as the level opens and never roams at all, which is the whole
-	// reason this changed. At 700 it does not.
+	// THE ONE HARD BOUND ON THE NUMBER. ACataclysmGameMode spawns the Brute
+	// 1200 cm from the player start. Any notice radius at or above that means
+	// it sees the player as the level opens, never wanders, and none of the
+	// roaming behaviour can be observed at all -- which is what the inherited
+	// 1500 did. At 1000 there is 200 cm of margin, and this is the assertion
+	// that fails first if the radius creeps back up.
 	constexpr float SandboxSpawnDistanceCm = 1200.0f;
-	TestTrue(TEXT("a Brute at its sandbox spawn distance does NOT notice the "
-				  "player standing at the player start"),
+	TestTrue(FString::Printf(
+		TEXT("a Brute does NOT notice a player standing at the player start, "
+			 "%.0f cm away (it notices from %.0f)"),
+		SandboxSpawnDistanceCm, Brute->SightRadiusCm()),
 		Brute->SightRadiusCm() < SandboxSpawnDistanceCm);
 	TestTrue(TEXT("whereas an ordinary enemy at that distance would"),
 		Ordinary->SightRadiusCm() > SandboxSpawnDistanceCm);

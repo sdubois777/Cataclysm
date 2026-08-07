@@ -1125,22 +1125,56 @@ def test_the_slam_gets_no_marker_even_though_the_brute_can_telegraph(
         "example of. Issue #351.")
 
 
-def test_the_stomp_takes_the_largest_marker_its_attack_interval_allows(
+def test_the_stomp_is_telegraphed_against_its_own_cooldown(
         brute, brute_abilities, brute_section):
-    """The same choice the Succubus's bolt makes, and sized by the attack
-    interval rather than by the longer cooldown on purpose."""
+    """The stomp's marker is sized by its cooldown, not the attack interval.
+
+    THE RULE, docs/Cataclysm_GDD_v2.md: "An ability on a cooldown is
+    telegraphed against its own cooldown, not the attack interval. Substitute
+    the cooldown for the attack interval in the formula above."
+
+    THIS TEST USED TO ASSERT THE OPPOSITE, and was right to at the time. When
+    the stomp was designed the Brute's attack interval was 2.8 s, which allows
+    a 3.5 m marker, and the stomp took exactly that -- so sizing it by the
+    interval and by the 5 s cooldown were indistinguishable in the direction
+    that mattered, and the interval was the tighter of the two.
+
+    The attack interval moved to 1.6 s on 2026-08-07 because 2.8 played as too
+    slow to be a threat. That interval allows only 1.4 m, and the stomp did NOT
+    shrink with it, because the stomp never ran on the attack interval: it runs
+    on its own 5 s cooldown, which allows 7.35 m. The stomp is unchanged and
+    this test now says why that is correct rather than accidental.
+    """
     from cataclysm_sim.enemy_abilities import (REACTION_ALLOWANCE,
                                                WALK_OUT_SPEED,
                                                largest_telegraphed_radius)
 
     stomp = next(a for a in brute_abilities if "StunSeconds" in a.params)
-    allowed = largest_telegraphed_radius(brute.attack_interval)
-    assert float(stomp.params["Radius"]) == pytest.approx(allowed), (
-        f"the stomp draws {stomp.params['Radius']} m and the Brute's "
-        f"{brute.attack_interval} s attack interval allows {allowed:.2f} m.")
+    radius = float(stomp.params["Radius"])
 
-    wind_up = REACTION_ALLOWANCE + allowed / WALK_OUT_SPEED
-    assert wind_up == pytest.approx(brute.attack_interval / 2.0)
+    allowed = largest_telegraphed_radius(stomp.cooldown)
+    assert radius <= allowed + 1e-9, (
+        f"the stomp draws {radius} m and its {stomp.cooldown} s cooldown "
+        f"allows {allowed:.2f} m, so the player cannot clear it in time.")
+
+    # NOT THE MAXIMUM, AND DELIBERATELY. The cooldown would allow 7.35 m with a
+    # 2.5 s wind-up. That is legal and wrong: the Brute gets the walk-out kind
+    # of telegraph, and the test below checks a player at its reach can walk
+    # clear. A marker that large on a creature this slow is unmissable rather
+    # than dodgeable.
+    assert radius < allowed, (
+        "the stomp takes the largest marker its cooldown allows. That is legal "
+        "but it is not what was designed: see the walk-out test below.")
+
+    # AND IT IS STILL BIGGER THAN THE BASIC SWING COULD EVER DRAW, which is the
+    # whole reason it is the ability with the telegraph.
+    from_interval = largest_telegraphed_radius(brute.attack_interval)
+    assert radius > from_interval, (
+        f"the stomp's {radius} m marker is no bigger than the {from_interval:.2f} m "
+        f"the Brute's {brute.attack_interval} s attack interval would allow, so "
+        "it is no longer the ability worth telegraphing.")
+
+    wind_up = REACTION_ALLOWANCE + radius / WALK_OUT_SPEED
     assert f"{wind_up:.1f} s wind-up" in brute_section, (
         f"the Brute's ability table does not state a {wind_up:.1f} s wind-up.")
 

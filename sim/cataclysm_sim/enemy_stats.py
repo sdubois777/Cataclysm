@@ -286,7 +286,7 @@ ARCHETYPES: dict[str, Archetype] = {
             name="Brute",
             role="Heavily armored slow melee. Can be outmaneuvered",
             health_share=2.20, damage_share=1.75, armor_share=3.00,
-            attack_interval=2.8, crit_multiplier=200.0, move_speed=2.5,
+            attack_interval=1.6, crit_multiplier=200.0, move_speed=2.5,
             # Thick hide on top of the armour, which is its main defence.
             resistance=15.0,
             # 180 rather than every other enemy's 480, because "can be

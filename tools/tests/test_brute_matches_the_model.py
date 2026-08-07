@@ -264,32 +264,38 @@ def test_the_brute_is_slower_than_the_enemy_defaults_it_overrides() -> None:
     )
 
 
-def test_the_notice_radius_is_one_attack_cycle_of_walking() -> None:
-    """The Brute's notice radius is derived, and this is the derivation.
+def test_the_notice_radius_lets_the_sandbox_brute_be_seen_wandering() -> None:
+    """The one property of the notice radius that is arithmetic, not taste.
 
-    WHAT IT IS. The distance the Brute covers in one attack cycle, so that
-    noticing the player leads to a fight rather than to a walk it never
-    finishes: `move_speed x attack_interval`, 2.5 m/s x 2.8 s = 7 m = 700 cm.
+    THE FIGURE ITSELF IS NOT DERIVED, and this test does not pretend otherwise.
+    1000 cm was set by playing on 2026-08-07. It replaced 700, which WAS derived
+    -- `move_speed x attack_interval` -- and that derivation stopped being true
+    the same day, twice: the attack interval moved to 1.6, and the Brute now
+    chases at 500 rather than the 250 the arithmetic used.
 
-    WHY IT IS GUARDED HERE RATHER THAN ONLY IN C++. Both inputs come from
-    `ARCHETYPES['Brute']`, so a change to either should move the notice radius
-    with it. Continuous integration never opens the editor and so never runs the
-    automation tests; without this the derivation would be a claim in a comment.
+    WHAT IS STILL CHECKABLE is the thing the number has to do. The sandbox spawns
+    the Brute `BruteDistanceCm` from the player start, so a notice radius at or
+    above that distance means it notices the player as the level opens, never
+    wanders, and the whole roaming behaviour is invisible. That was the state at
+    the inherited 1500 and it is the fault worth guarding against.
 
-    WHAT IT DOES NOT CHECK. That one attack cycle is the right rule. Nothing in
-    `docs/Cataclysm_GDD_v2.md` states a notice radius for any enemy, and this
-    derivation uses two numbers only the Brute has, so it says nothing about the
-    other six. Issue #383 asks for the general rule.
+    Issue #383 asks for the general rule across all seven enemies. Until it is
+    answered this is a play-tested figure with one hard bound.
     """
-    archetype = brute_archetype()
-    expected_cm = archetype.move_speed * 100.0 * archetype.attack_interval
+    notice = constant(BRUTE_HEADER, "BruteNoticeRadiusCm")
+    spawn = uproperty_default(GAME_MODE_HEADER, "BruteDistanceCm")
 
-    assert constant(BRUTE_HEADER, "BruteNoticeRadiusCm") == pytest.approx(
-        expected_cm
-    ), (
-        "The Brute's notice radius is no longer one attack cycle of walking. "
-        "It is derived from ARCHETYPES['Brute'].move_speed and .attack_interval, "
-        "so if one of those changed, this should have moved with it."
+    assert notice < spawn, (
+        f"The Brute notices from {notice:.0f} cm and the sandbox spawns it "
+        f"{spawn:.0f} cm from the player start, so it notices the player the "
+        "instant the level opens, never wanders, and none of its roaming can "
+        "be seen. That is exactly the state the inherited 1500 produced."
+    )
+
+    reach = constant(BRUTE_HEADER, "DesignedMeleeReachCm")
+    assert notice > reach * 2.0, (
+        "The Brute's notice radius is close to its own reach, so it could be "
+        "walked up to and stood beside without ever waking up."
     )
 
 

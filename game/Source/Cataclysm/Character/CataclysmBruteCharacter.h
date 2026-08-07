@@ -169,8 +169,26 @@ public:
 	// them, which is the only thing keeping the two honest. The power model has
 	// silently drifted from its own source twice before; see CLAUDE.md.
 
-	/** Seconds between attacks. enemy_stats.py, attack_interval=2.8. */
-	static constexpr float DesignedAttackIntervalSeconds = 2.8f;
+	/**
+	 * Seconds between attacks. enemy_stats.py, attack_interval=1.6.
+	 *
+	 * WAS 2.8, CHANGED ON 2026-08-07 BY PLAYING IT. At 2.8 the Brute swung for
+	 * one second and then stood still for one point eight, and the project
+	 * owner's judgement was that an enemy that is not attacking might as well
+	 * be scenery. 1.6 was found by trying values live with
+	 * Cataclysm.Brute.AttackInterval.
+	 *
+	 * IT DOES NOT TOUCH THE STOMP, which was the obvious worry and is not one.
+	 * An ability with a cooldown is telegraphed against that cooldown rather
+	 * than the attack interval -- the rule is stated in section X of
+	 * docs/Cataclysm_GDD_v2.md -- and the Stomp's 5 second cooldown allows a
+	 * 7.35 metre marker. It draws 3.5, which was well inside the allowance
+	 * before and still is. Its wind-up is unchanged at 1.4 seconds.
+	 *
+	 * WHAT IT DOES CHANGE is how hard this creature hits over time: the same
+	 * damage per swing arrives 75% more often.
+	 */
+	static constexpr float DesignedAttackIntervalSeconds = 1.6f;
 
 	/**
 	 * How close it must be to hit, centre to centre, in centimetres.
@@ -224,55 +242,41 @@ public:
 	 * How far it notices the player, in centimetres. Replaces the base enemy's
 	 * 1500.
 	 *
-	 * DERIVED FROM THE BRUTE'S OWN TWO DESIGNED NUMBERS, and it is the distance
-	 * it covers in one attack cycle:
+	 * SET BY PLAYING IT, ON 2026-08-07, and that is the honest description.
+	 * There is no derivation behind 1000 and it would be dishonest to build one
+	 * after the fact.
 	 *
-	 *     move_speed x attack_interval = 250 cm/s x 2.8 s = 700 cm
+	 * WHAT IT REPLACED, AND WHY THAT WENT. It was 700, derived as the ground
+	 * this creature covers in one attack cycle -- move_speed x attack_interval,
+	 * 250 x 2.8. That arithmetic was tidy and it stopped being true twice over
+	 * on the same day: the attack interval moved to 1.6, which would make the
+	 * same formula give 400, and the Brute now chases at 500 rather than 250,
+	 * so "one attack cycle of walking" is not a distance it takes one attack
+	 * cycle to walk. A derivation that has to be rewritten every time an input
+	 * moves was never really the reason for the number.
 	 *
-	 * So noticing the player means a fight starts within one cycle, rather than
-	 * beginning a walk it will not finish. Both inputs are authoritative and
-	 * pinned: enemy_stats.py gives move_speed 2.5 and attack_interval 2.8, and
-	 * tools/tests/test_brute_matches_the_model.py fails when either drifts.
+	 * WHY THE INHERITED 1500 STILL WENT. docs/DECISIONS.md records it as "the
+	 * same distance Subjugate reaches, which is the longest range the designed
+	 * Demonic skills use" -- symmetry, a monster notices you from as far as you
+	 * could hit it. That suits a caster. The same entry labels it a judgement
+	 * "expected to change".
 	 *
-	 * IT IS ALSO EXACTLY TWICE THE STOMP'S TELEGRAPH RADIUS, which is the more
-	 * useful way to read it. largest_telegraphed_radius(2.8) in
-	 * enemy_abilities.py is 3.5 m, so 700 cm is 2 x 350. Walking the first half
-	 * takes (700 - 350) / 250 = 1.4 s and the Stomp's wind-up is 1.4 s, so the
-	 * time from noticing the player to a Stomp landing is exactly one attack
-	 * interval. That is one property rather than two coincidences: it holds
-	 * whenever the telegraph radius is half of speed times interval, which is
-	 * what the telegraph rule makes it.
+	 * THE ONE CONSTRAINT THAT IS ARITHMETIC, and it still holds at 1000.
+	 * ACataclysmGameMode spawns the Brute 1200 cm from the player start, so a
+	 * notice radius under 1200 means it does not see the player as the level
+	 * opens and the first thing anyone sees it do is wander. At 1500 it never
+	 * roamed at all. 1000 leaves 200 cm of margin, which is thinner than 700
+	 * left and is the figure to revisit first if roaming stops being visible.
 	 *
-	 * WHY THE INHERITED 1500 WAS WRONG FOR THIS ENEMY RATHER THAN WRONG. It is
-	 * derived -- docs/DECISIONS.md records it as "the same distance Subjugate
-	 * reaches, which is the longest range the designed Demonic skills use", and
-	 * Range=15 in game/Data/WeaponSkills.csv is indeed the longest. That
-	 * reasoning is symmetry: a monster notices you from as far as you could hit
-	 * it. It suits a caster. It does not suit a melee enemy that moves at
-	 * 2.5 m/s against a player moving at 3.5 to 4.6, because such an enemy can
-	 * never close a 15 metre gap against a player who does not want it closed.
-	 * The same entry labels all of those figures judgements "expected to
-	 * change".
-	 *
-	 * WHAT IT LOOKS LIKE IN THE SANDBOX, which is the check that matters most.
-	 * ACataclysmGameMode spawns the Brute 1200 cm from the player start. At
-	 * 1500 it notices the player at the instant the level opens and walks at
-	 * them for ever, so it never roams and the roaming cannot be seen at all.
-	 * At 700 it does not, so the first thing a player sees it do is wander.
-	 *
-	 * IT DOES NOT FOLLOW THAT A MOTIONLESS PLAYER IS SAFE, and the first draft
-	 * of this comment wrongly implied it was. The roam circle reaches to
-	 * 1200 - 600 = 600 cm from the player start, which is inside the 700 cm
-	 * notice radius, so a Brute that happens to wander to the near edge of its
-	 * circle notices a player who has not moved. That is the intended
-	 * behaviour, not a leak: a creature patrolling ground near you should find
-	 * you eventually.
+	 * A MOTIONLESS PLAYER IS STILL FOUND EVENTUALLY. The roam circle reaches to
+	 * 1200 - 600 = 600 cm from the player start, inside this radius, so a Brute
+	 * that wanders to the near edge of its circle notices someone who has not
+	 * moved. That is intended.
 	 *
 	 * ONE ENEMY, NOT SEVEN. The design document states no notice radius for any
-	 * enemy, and this figure is derived from numbers only the Brute has, so it
-	 * says nothing about the other six. Issue #383 asks for the general rule.
+	 * enemy. Issue #383 asks for the general rule.
 	 */
-	static constexpr float BruteNoticeRadiusCm = 700.0f;
+	static constexpr float BruteNoticeRadiusCm = 1000.0f;
 
 	/**
 	 * How far from where it spawned it wanders, in centimetres.
