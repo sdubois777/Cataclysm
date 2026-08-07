@@ -926,9 +926,28 @@ def brute_abilities():
 
 def test_the_brute_ability_table_matches_the_data(brute_section,
                                                   brute_abilities):
-    assert len(brute_abilities) == 2, (
-        f"the Brute now has {len(brute_abilities)} abilities. The design "
-        "document describes two: a slam and a stomp.")
+    """Three abilities, and the count is pinned deliberately.
+
+    THE ART CARRIES FIVE. The imported Paragon pack has animations for a rock
+    throw, a second heavy smash and two self-buffs on top of the slam and the
+    stomp. The Brute takes three, decided by the project owner on 2026-08-07:
+    it is a common enemy, and a common enemy that opens with five abilities
+    leaves nothing for rarity and modifiers to add.
+
+    So this asserts three rather than "at least two". Adding a fourth to this
+    creature should be a decision somebody makes on purpose, not something that
+    happens because an animation existed. Issue #382.
+    """
+    assert len(brute_abilities) == 3, (
+        f"the Brute now has {len(brute_abilities)} abilities. It is designed "
+        "with three: a slam, a stomp and a thrown rock. The art carries five "
+        "and the other two were declined on purpose -- extra abilities belong "
+        "to rarities and modifiers, not to a basic mob.")
+
+    names = {ability.name for ability in brute_abilities}
+    assert names == {"Slam", "Stomp", "Rip and Toss"}, (
+        f"the Brute's abilities are now {sorted(names)}.")
+
     for ability in brute_abilities:
         assert_row_matches(brute_section, ability, "Brute")
 

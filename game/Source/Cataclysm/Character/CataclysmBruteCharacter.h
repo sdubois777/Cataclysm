@@ -63,6 +63,76 @@ public:
 	 */
 	virtual float SecondsBetweenAttacks() const override;
 
+	//~ The two abilities beyond the ordinary swing. Driven by the controller.
+	virtual TArray<FCataclysmEnemyAbility> EnemyAbilities() const override;
+	virtual void UseEnemyAbility(int32 Index, AActor* Target,
+								 const FVector& AimedAt) override;
+	virtual void BeginEnemyAbilityWindUp(int32 Index, AActor* Target) override;
+	//~ End
+
+	/**
+	 * Where each ability sits in EnemyAbilities.
+	 *
+	 * THE STOMP FIRST, so that a target close enough for both gets the bigger
+	 * hit. They barely overlap: the stomp reaches 3.5 m and the rock throw does
+	 * not start until beyond melee reach, so the contested band is 0.9 to 3.5 m
+	 * and the stomp deserves it at 250% against the throw's 150%.
+	 *
+	 * THE ORDINARY SWING IS IN NEITHER, because it has no cooldown and is what
+	 * happens when both of these are unavailable. See EnemyAbilities on the base
+	 * class for why that is structural rather than a rule to remember.
+	 */
+	enum : int32 { StompAbility = 0, RockThrowAbility = 1 };
+
+	//~ The Stomp, from ABILITIES["Brute"] in enemy_abilities.py.
+
+	/** Radius in centimetres. Radius=3.5 metres. */
+	static constexpr float StompRadiusCm = 350.0f;
+
+	/** Seconds between stomps. Its own cooldown, the stun immunity window. */
+	static constexpr float StompCooldownSeconds = 5.0f;
+
+	/** Seconds of telegraph. 0.4 + 3.5 / 3.5, from the wind-up rule. */
+	static constexpr float StompWindUpSeconds = 1.4f;
+
+	/** Percent of its damage one stomp deals. The Heavy slot's 250%. */
+	static constexpr float StompDamagePercent = 250.0f;
+
+	//~ Rip and Toss, from the same table.
+
+	/** How far it can throw, in centimetres. Range=10 metres. */
+	static constexpr float RockThrowRangeCm = 1000.0f;
+
+	/** Half the width of the marked line, in centimetres. Radius=2.1 metres. */
+	static constexpr float RockThrowRadiusCm = 210.0f;
+
+	/** Centimetres per second the rock travels. Speed=1200. */
+	static constexpr float RockThrowSpeedCmPerSecond = 1200.0f;
+
+	/** Seconds between throws. */
+	static constexpr float RockThrowCooldownSeconds = 5.0f;
+
+	/** Seconds of telegraph. 0.4 + 2.1 / 3.5. */
+	static constexpr float RockThrowWindUpSeconds = 1.0f;
+
+	/** Percent of its damage one rock deals. The Special slot's 150%. */
+	static constexpr float RockThrowDamagePercent = 150.0f;
+	//~ End designed ability numbers
+
+	/** Where the ground smash animation lives. */
+	static const TCHAR* StompAnimationPath;
+
+	/** Where the rock throw animation lives. */
+	static const TCHAR* RockThrowAnimationPath;
+
+	/** The ground smash. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> StompAnimation;
+
+	/** The rock throw. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> RockThrowAnimation;
+
 	/**
 	 * Chooses the standing or walking animation and sets the walk's play rate.
 	 *

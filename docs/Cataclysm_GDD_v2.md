@@ -3673,8 +3673,41 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
-| Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 2.8 s attack interval | No |
+| Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 1.6 s attack interval | No |
 | Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | a 5 s cooldown | Yes, 1.4 s wind-up |
+| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Speed=1200` | a 5 s cooldown | Yes, 1.0 s wind-up |
+
+  
+
+#### **Three abilities, not five, because it is a basic mob**
+
+  
+
+The imported art carries animations for five: the two above, a rock throw, a second heavy smash, and two self-buffs. **The Brute takes three.** Decided by the project owner on 2026-08-07: a common enemy that opens with five abilities leaves nothing for rarity and modifiers to add, and those are where extra abilities belong. The heavy smash duplicates what the Stomp already means, and the two self-buffs contradict a role built on being slow and outmanoeuvrable.
+
+  
+
+#### **Rip and Toss answers standing still out of reach**
+
+  
+
+Its purpose is the one thing the other two cannot do. A Brute with only a Slam and a Stomp is answered by walking backwards; this is what makes that cost something.
+
+  
+
+**Range 10 metres is its notice radius**, so there is no distance at which the Brute is aware of the player and can do nothing.
+
+  
+
+**Radius 2.1 metres is set by the animation.** A telegraph has to last long enough to play the attack's own wind-up, the way the Stomp's 1.4 seconds covers the 0.83 second ground smash start. The toss animation is 0.87 seconds, and `0.4 + Radius ÷ 3.5 ≥ 0.87` needs at least 1.65 metres; 2.1 gives exactly a 1 second wind-up and clears the animation by 0.13. It is also well under the Stomp's 3.5, so the two markers read as different sizes, and well under the 7.35 its own cooldown would allow.
+
+  
+
+**Speed 1200 is the Succubus's Soulfire figure**, the slowest projectile any player skill uses. A thrown rock should not outrun the slowest spell in the game.
+
+  
+
+**A 5 second cooldown means one throw per approach.** The Brute crosses its own 10 metre throwing range in 2 seconds at its 5 metre per second chase speed, so a shorter cooldown would let it throw twice on the way in and it would read as a ranged enemy rather than a bruiser with a rock.
 
   
 

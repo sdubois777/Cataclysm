@@ -71,6 +71,11 @@ void ACataclysmEnemyController::OnUnPossess()
 	bHasRoamTarget = false;
 	RoamPauseUntil = 0.0f;
 
+	// A wind-up belongs to the pawn that started it. Left set, a controller
+	// that possessed a second pawn would land the first one's attack.
+	WindingUpAbility = INDEX_NONE;
+	AbilityLastUsedAt.Reset();
+
 	Super::OnUnPossess();
 }
 
@@ -114,6 +119,14 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	{
 		LastAction = ECataclysmBrainAction::Idle;
 		CurrentTarget = nullptr;
+		return LastAction;
+	}
+
+	// A WIND-UP ALREADY RUNNING OUTRANKS EVERYTHING, including looking for a
+	// target at all. See ContinueWindUp for why a committed attack finishes
+	// whether or not what it was aimed at is still there.
+	if (ContinueWindUp(Driven))
+	{
 		return LastAction;
 	}
 
@@ -169,6 +182,18 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	const float Distance = FVector::Dist2D(
 		Driven->GetActorLocation(), Target->GetActorLocation());
 
+	// ABILITIES BEFORE EVERYTHING ELSE, INCLUDING BEFORE THE CHASE. An ability
+	// that reaches beyond the melee reach is the only reason a creature would
+	// stop walking at something it cannot touch yet, so asking here rather than
+	// after the reach test is what lets a Brute throw a rock while closing.
+	// Returns Idle when it has nothing to use, and the ordinary logic below
+	// then runs unchanged.
+	const ECataclysmBrainAction Used = UseAbilitiesOn(Driven, Target, Distance);
+	if (Used != ECataclysmBrainAction::Idle)
+	{
+		return Used;
+	}
+
 	// PLUS A TOLERANCE, because the Brute's reach IS its contact distance and a
 	// collision solver never leaves two touching capsules at exactly the
 	// distance where they touch. See ContactToleranceCm for the measurement
@@ -210,6 +235,157 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		++AttacksOrdered;
 	}
 
+	return LastAction;
+}
+
+bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
+{
+	if (WindingUpAbility == INDEX_NONE || !Driven)
+	{
+		return false;
+	}
+
+	// COMMITTED MEANS COMMITTED, INCLUDING WHEN THE TARGET IS GONE. This runs
+	// before the target search rather than after it, and that is a behaviour
+	// decision rather than an ordering detail: an enemy that has begun a stomp
+	// finishes it even if what it was aiming at died or walked out of sight.
+	// The attack was already aimed at a fixed point, so there is nothing left
+	// for a target to contribute.
+	//
+	// It also closes a hole. Written the other way round, losing the target
+	// mid-wind-up left WindingUpAbility set and never cleared, so the next
+	// thing the creature noticed was hit by an attack it started long ago and
+	// aimed somewhere else.
+	StopMovement();
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+	if (Now < WindUpLandsAt)
+	{
+		LastAction = ECataclysmBrainAction::WindingUp;
+		return true;
+	}
+
+	// IT LANDS WHERE IT WAS MARKED, not where the target is now. That is the
+	// whole of why walking out of a telegraph works.
+	const int32 Landing = WindingUpAbility;
+	WindingUpAbility = INDEX_NONE;
+
+	if (AbilityLastUsedAt.IsValidIndex(Landing))
+	{
+		AbilityLastUsedAt[Landing] = Now;
+	}
+	Driven->UseEnemyAbility(Landing, CurrentTarget.Get(), WindUpAimedAt);
+	++AbilitiesUsed;
+
+	LastAction = ECataclysmBrainAction::Attacking;
+	return true;
+}
+
+bool ACataclysmEnemyController::IsAbilityReady(int32 Index) const
+{
+	const ACataclysmCharacterBase* Driven = Body();
+	if (!Driven)
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+	if (!Abilities.IsValidIndex(Index))
+	{
+		return false;
+	}
+
+	if (Abilities[Index].CooldownSeconds <= 0.0f)
+	{
+		return true;
+	}
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const float LastUsed = AbilityLastUsedAt.IsValidIndex(Index)
+		? AbilityLastUsedAt[Index] : NeverUsed;
+
+	return Now - LastUsed >= Abilities[Index].CooldownSeconds;
+}
+
+int32 ACataclysmEnemyController::ChooseAbility(float DistanceCm) const
+{
+	const ACataclysmCharacterBase* Driven = Body();
+	if (!Driven)
+	{
+		return INDEX_NONE;
+	}
+
+	// FIRST IN RANGE AND OFF COOLDOWN WINS. The order of EnemyAbilities is the
+	// priority order, which is the pawn's business rather than the brain's:
+	// only the creature knows which of its attacks it would rather land.
+	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+	for (int32 Index = 0; Index < Abilities.Num(); ++Index)
+	{
+		const FCataclysmEnemyAbility& Ability = Abilities[Index];
+		if (DistanceCm < Ability.MinRangeCm || DistanceCm > Ability.MaxRangeCm)
+		{
+			continue;
+		}
+		if (!IsAbilityReady(Index))
+		{
+			continue;
+		}
+		return Index;
+	}
+
+	return INDEX_NONE;
+}
+
+ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
+	ACataclysmCharacterBase* Driven, AActor* Target, float DistanceCm)
+{
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+	const int32 Chosen = ChooseAbility(DistanceCm);
+	if (Chosen == INDEX_NONE)
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+	if (AbilityLastUsedAt.Num() < Abilities.Num())
+	{
+		AbilityLastUsedAt.SetNum(Abilities.Num());
+		for (int32 Index = 0; Index < AbilityLastUsedAt.Num(); ++Index)
+		{
+			if (AbilityLastUsedAt[Index] == 0.0f)
+			{
+				AbilityLastUsedAt[Index] = NeverUsed;
+			}
+		}
+	}
+
+	StopMovement();
+
+	if (Abilities[Chosen].WindUpSeconds > 0.0f)
+	{
+		WindingUpAbility = Chosen;
+		WindUpLandsAt = Now + Abilities[Chosen].WindUpSeconds;
+		WindUpAimedAt = Target ? Target->GetActorLocation()
+							   : Driven->GetActorLocation();
+		Driven->BeginEnemyAbilityWindUp(Chosen, Target);
+
+		LastAction = ECataclysmBrainAction::WindingUp;
+		return LastAction;
+	}
+
+	// No wind-up, so it lands at once.
+	AbilityLastUsedAt[Chosen] = Now;
+	Driven->UseEnemyAbility(Chosen, Target,
+							Target ? Target->GetActorLocation()
+								   : Driven->GetActorLocation());
+	++AbilitiesUsed;
+
+	LastAction = ECataclysmBrainAction::Attacking;
 	return LastAction;
 }
 

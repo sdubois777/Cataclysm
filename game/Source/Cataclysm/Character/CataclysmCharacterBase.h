@@ -13,6 +13,54 @@ class UCataclysmAbilitySet;
 class UCataclysmAbilitySystemComponent;
 
 /**
+ * One thing an enemy can do, described so the brain can choose between them.
+ *
+ * DESCRIPTION AND EXECUTION ARE SEPARATE ON PURPOSE. This says when an ability
+ * may be used; ACataclysmCharacterBase::UseEnemyAbility does it. The controller
+ * needs only the description, so it can pick for any enemy without knowing what
+ * any of them actually do, and a test can check the choosing without anything
+ * being cast.
+ *
+ * NOT THE GAMEPLAY ABILITY SYSTEM, and that is worth saying out loud because
+ * the player's skills are. No enemy has a granted ability, an ability set or a
+ * cooldown effect, and building that is a change of its own. This is the
+ * smallest thing that lets one enemy choose between three attacks by range.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEnemyAbility
+{
+	GENERATED_BODY()
+
+	/** What it is called. For logs and test failures, not for logic. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	FName Name;
+
+	/**
+	 * How far the target must be for this to be worth using, in centimetres.
+	 *
+	 * A ranged attack sets this to the melee reach: there is no sense throwing
+	 * a rock at something already being hit. A melee attack leaves it at zero.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float MinRangeCm = 0.0f;
+
+	/** How far it reaches, in centimetres. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float MaxRangeCm = 0.0f;
+
+	/** Seconds before it may be used again. Zero is always available. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float CooldownSeconds = 0.0f;
+
+	/**
+	 * Seconds the enemy stands committed before it lands, in which the player
+	 * can walk clear. Zero lands at once.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float WindUpSeconds = 0.0f;
+};
+
+/**
  * Shared base for anything with abilities: the player and every enemy.
  *
  * Does not own an ability system component. Where the component lives differs
@@ -101,6 +149,40 @@ public:
 
 	/** Hit the given target once. Called by the controller when it is in reach. */
 	virtual void AttackTarget(AActor* Target) {}
+
+	/**
+	 * What this character can do beyond its ordinary attack, in the order it
+	 * would rather use them. Empty means it only has AttackTarget.
+	 *
+	 * ORDER IS PRIORITY, and the caller takes the first entry that is in range
+	 * and off cooldown. Put the ability you would rather use first.
+	 *
+	 * THE ORDINARY ATTACK IS NOT IN HERE, deliberately. It has no cooldown --
+	 * the attack interval is a rate limit, not a cooldown -- so it is always
+	 * available and is what happens when nothing in this list qualifies. That
+	 * is the property that stops an enemy standing in reach doing nothing
+	 * because everything it owns is cooling down, and keeping the fallback out
+	 * of the list is what makes it structural rather than a rule to remember.
+	 */
+	virtual TArray<FCataclysmEnemyAbility> EnemyAbilities() const { return {}; }
+
+	/**
+	 * Do the ability at the given index of EnemyAbilities.
+	 *
+	 * @param Index    into EnemyAbilities, already checked by the caller
+	 * @param Target   what it was aimed at, which may since have moved
+	 * @param AimedAt  where it was aimed when the wind-up started. A telegraphed
+	 *   attack lands where it was marked, not where the target is now, which is
+	 *   what makes walking out of one work.
+	 */
+	virtual void UseEnemyAbility(int32 Index, AActor* Target,
+								 const FVector& AimedAt) {}
+
+	/**
+	 * Called when an ability's wind-up begins, so the character can start the
+	 * animation that goes with it. Does nothing by default.
+	 */
+	virtual void BeginEnemyAbilityWindUp(int32 Index, AActor* Target) {}
 
 protected:
 	/**

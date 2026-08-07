@@ -2,6 +2,9 @@
 
 #include "Character/CataclysmBruteCharacter.h"
 #include "Cataclysm.h"
+#include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstance.h"
@@ -35,8 +38,8 @@ static TAutoConsoleVariable<float> CVarBruteAuthoredWalkSpeed(
 	TEXT("Ground speed in cm/s that the Brute's walk animation is treated as "
 		 "having been authored for. The walk plays at the Brute's real speed "
 		 "divided by this, so a smaller number plays it faster. 0 uses the "
-		 "measured value on the class (373.7). For tuning foot sliding by eye "
-		 "during a play session."),
+		 "figure on the class, 225, which was set by eye. For tuning foot "
+		 "sliding by eye during a play session."),
 	ECVF_Default);
 
 const TCHAR* ACataclysmBruteCharacter::BodyMeshPath =
@@ -51,6 +54,14 @@ const TCHAR* ACataclysmBruteCharacter::WalkAnimationPath =
 const TCHAR* ACataclysmBruteCharacter::ChaseAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Jog_Quad_Fwd.Jog_Quad_Fwd");
+
+const TCHAR* ACataclysmBruteCharacter::StompAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Ability_GroundSmash_Start.Ability_GroundSmash_Start");
+
+const TCHAR* ACataclysmBruteCharacter::RockThrowAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Ability_RipNToss_Rip.Ability_RipNToss_Rip");
 
 const TCHAR* ACataclysmBruteCharacter::AttackAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
@@ -68,8 +79,8 @@ static TAutoConsoleVariable<float> CVarBruteAuthoredChaseSpeed(
 	0.0f,
 	TEXT("Ground speed in cm/s that the Brute's chase animation is treated as "
 		 "having been authored for. It plays at the Brute's real speed divided "
-		 "by this, so a smaller number plays it faster. 0 uses the value on the "
-		 "class, which is the Brute's own 250 and therefore a play rate of 1.0."),
+		 "by this, so a smaller number plays it faster. 0 uses the figure on "
+		 "the class, 350, set by eye against the four-legged chase gait."),
 	ECVF_Default);
 
 /**
@@ -114,40 +125,31 @@ static TAutoConsoleVariable<float> CVarBruteChaseSpeed(
  * judgement about how the game feels, which is exactly the kind of number that
  * has to be found by playing rather than derived.
  *
- * WHY IT IS NOT SIMPLY CHANGED. The interval is not only a rate. The telegraph
- * rule sizes an enemy's ground marker from it, as
- * 3.5 * (interval / 2 - 0.4) metres, so shortening it shrinks the Stomp's
- * marker:
+ * IT DOES NOT TOUCH THE STOMP, which was the obvious worry and is not one. An
+ * ability with a cooldown is telegraphed against that cooldown rather than the
+ * attack interval, which section X of docs/Cataclysm_GDD_v2.md states and
+ * Ability.cycle_seconds implements. The Stomp runs on its 5 second cooldown.
  *
- *     2.8 s -> 3.50 m marker, 1.40 s wind-up   (the design today)
- *     2.4 s -> 2.80 m marker, 1.20 s wind-up
- *     2.0 s -> 2.10 m marker, 1.00 s wind-up
- *     1.6 s -> 1.40 m marker, 0.80 s wind-up
- *     1.4 s -> 1.05 m marker, 0.70 s wind-up   (the floor)
- *     1.2 s -> 0.70 m marker                   (below the 1 m floor: no marker)
+ * WHAT IT DOES SIZE is the marker the ordinary swing could draw, which is
+ * nothing: the Slam's 0.9 m radius is under the one metre floor at any interval.
  *
- * Under about 1.4 seconds the marker is smaller than the creature standing in
- * it and the Stomp stops being telegraphable at all. So the usable range is 1.4
- * to 2.8, and whatever is chosen goes into enemy_stats.py with the Stomp
- * re-derived to match, not into this file.
- *
- * Zero means use the designed interval.
+ * Zero means use the designed interval, which is 1.6 as of 2026-08-07.
  */
 static TAutoConsoleVariable<float> CVarBruteAttackInterval(
 	TEXT("Cataclysm.Brute.AttackInterval"),
 	0.0f,
-	TEXT("Seconds between the Brute's swings. 0 uses its designed 2.8. Below "
-		 "about 1.4 the Stomp's telegraph marker falls under the one metre "
-		 "floor and the Stomp can no longer be telegraphed, so 1.4 to 2.8 is "
-		 "the usable range."),
+	TEXT("Seconds between the Brute's swings. 0 uses its designed 1.6. This "
+		 "does NOT affect the Stomp, which is telegraphed against its own 5 "
+		 "second cooldown rather than the attack interval."),
 	ECVF_Default);
 
 static TAutoConsoleVariable<FString> CVarBruteChaseAnimation(
 	TEXT("Cataclysm.Brute.ChaseAnimation"),
 	TEXT(""),
 	TEXT("Asset path of the animation the Brute plays while chasing. Empty uses "
-		 "the class default, Run_Fwd. Try Jog_Quad_Fwd or Sprint_Quad_Fwd for "
-		 "the four-legged gaits."),
+		 "the class default, Jog_Quad_Fwd, the four-legged stance. Set "
+		 "Cataclysm.Brute.AuthoredChaseSpeed to whatever the replacement was "
+		 "authored for, or its feet will slide."),
 	ECVF_Default);
 
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
@@ -227,6 +229,115 @@ float ACataclysmBruteCharacter::EffectiveAuthoredChaseSpeed() const
 {
 	const float Override = CVarBruteAuthoredChaseSpeed.GetValueOnAnyThread();
 	return Override > 0.0f ? Override : AuthoredChaseSpeedCmPerSecond;
+}
+
+TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
+{
+	FCataclysmEnemyAbility Stomp;
+	Stomp.Name = TEXT("Stomp");
+	// FROM ITS OWN FEET OUT, so no minimum: a target pressed against the Brute
+	// is inside the ring and should be hit by it.
+	Stomp.MinRangeCm = 0.0f;
+	Stomp.MaxRangeCm = StompRadiusCm;
+	Stomp.CooldownSeconds = StompCooldownSeconds;
+	Stomp.WindUpSeconds = StompWindUpSeconds;
+
+	FCataclysmEnemyAbility RockThrow;
+	RockThrow.Name = TEXT("Rip and Toss");
+	// NOT AT SOMETHING IT COULD HIT INSTEAD. There is no sense throwing a rock
+	// at a target already within swinging distance, and the model says so: the
+	// ability exists to answer standing off, not to replace the swing.
+	RockThrow.MinRangeCm = DesignedMeleeReachCm;
+	RockThrow.MaxRangeCm = RockThrowRangeCm;
+	RockThrow.CooldownSeconds = RockThrowCooldownSeconds;
+	RockThrow.WindUpSeconds = RockThrowWindUpSeconds;
+
+	// ORDER IS PRIORITY. See the StompAbility enumeration in the header.
+	return {Stomp, RockThrow};
+}
+
+void ACataclysmBruteCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
+{
+	// THE ANIMATION IS THE TELEGRAPH, for now. There is no ground marker drawn
+	// anywhere in the project -- issue #371 covers that -- so the only warning
+	// a player gets is the creature visibly starting the attack. That is why
+	// the wind-up animation starts here, when the wind-up starts, rather than
+	// when the damage lands.
+	UAnimSequence* Wanted = Index == StompAbility
+		? StompAnimation.Get() : RockThrowAnimation.Get();
+	if (!Wanted)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// HELD FOR THE WHOLE WIND-UP, NOT THE ANIMATION'S OWN LENGTH, which is the
+	// opposite of what the ordinary swing does and is right for the opposite
+	// reason. The swing's animation IS the attack. A wind-up animation is
+	// shorter than the wind-up it illustrates -- the ground smash start is 0.83
+	// seconds inside a 1.4 second telegraph -- so holding the mesh for the
+	// animation would leave the Brute standing in its normal pose for the last
+	// half second before a stomp lands, which is exactly when a player is
+	// deciding whether to move.
+	const float Hold = Index == StompAbility
+		? StompWindUpSeconds : RockThrowWindUpSeconds;
+	SwingUntilSeconds = World->GetTimeSeconds() + Hold;
+
+	if (USkeletalMeshComponent* MeshComponent = GetMesh())
+	{
+		if (UAnimSingleNodeInstance* Single = MeshComponent->GetSingleNodeInstance())
+		{
+			Single->SetAnimationAsset(Wanted, /*bIsLooping=*/false);
+			Single->SetPosition(0.0f, /*bFireNotifies=*/false);
+			Single->SetPlayRate(1.0f);
+			Single->SetPlaying(true);
+		}
+	}
+}
+
+void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
+											   const FVector& AimedAt)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	if (Index == StompAbility)
+	{
+		// EVERYTHING IN THE RING, not just the target. Angle=360 in the model,
+		// which is what stops the answer to a Brute being "stand behind it".
+		//
+		// NO STUN, AND THAT IS THE ONE PIECE STILL MISSING. The design gives
+		// this 1.5 seconds of stun and nothing in the project can stun
+		// anything: there is no Stun row in game/Data/StatusEffects.csv and no
+		// stun, root or interrupt anywhere in the source. Issue #371. The
+		// damage and the telegraph are here; the hold is not.
+		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
+				World, this, GetActorLocation(), StompRadiusCm))
+		{
+			UCataclysmSkillEffects::ApplyHit(this, Caught, StompDamagePercent);
+		}
+		return;
+	}
+
+	if (Index == RockThrowAbility)
+	{
+		// AIMED WHERE IT WAS MARKED. AimedAt is where the target stood when the
+		// wind-up began, so a player who moved has moved out of the line.
+		ACataclysmProjectile::Fire(
+			this, GetActorLocation(), AimedAt,
+			RockThrowRadiusCm, RockThrowSpeedCmPerSecond,
+			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
+			FGameplayTagContainer(), /*bInBurns=*/false);
+		return;
+	}
 }
 
 float ACataclysmBruteCharacter::SecondsBetweenAttacks() const
@@ -449,6 +560,11 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 
 		AttackAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(AttackAnimationPath).TryLoad());
+
+		StompAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(StompAnimationPath).TryLoad());
+		RockThrowAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(RockThrowAnimationPath).TryLoad());
 
 		if (IdleAnimation)
 		{
