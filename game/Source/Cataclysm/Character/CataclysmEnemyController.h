@@ -12,7 +12,7 @@ class ACataclysmCharacterBase;
 UENUM(BlueprintType)
 enum class ECataclysmBrainAction : uint8
 {
-	/** Nothing hostile within sight. Standing still. */
+	/** Nothing hostile within sight, and this character does not roam. Standing still. */
 	Idle,
 
 	/** Something hostile is in sight but out of reach. Walking toward it. */
@@ -20,6 +20,18 @@ enum class ECataclysmBrainAction : uint8
 
 	/** In reach. Hitting it, or waiting for the attack interval to elapse. */
 	Attacking,
+
+	/**
+	 * Nothing hostile within sight, and this character roams. Walking to a
+	 * point it picked for itself, or standing at one for a moment.
+	 *
+	 * LAST IN THE LIST RATHER THAN BESIDE Idle, WHICH IT READS LIKE. This is a
+	 * UENUM, so the numeric values are part of how it is saved and replicated,
+	 * and every existing test compares `static_cast<int32>` of one of these
+	 * against another. Inserting a value in the middle silently renumbers
+	 * Chasing and Attacking. Appending cannot.
+	 */
+	Roaming,
 };
 
 /**
@@ -28,11 +40,17 @@ enum class ECataclysmBrainAction : uint8
  * WHY IN C++ RATHER THAN A BEHAVIOUR TREE. A behaviour tree and its blackboard
  * are binary `.uasset` files. Every other rule in this project is text a pull
  * request can show a diff of, and every other behaviour is covered by an
- * automation test that runs headless. Three states -- idle, chase, attack --
- * expressed as a tree would be six assets nobody could review and nothing could
- * test, to say what twenty lines say here. A behaviour tree earns its cost when
+ * automation test that runs headless. Four states -- idle, roam, chase, attack
+ * -- expressed as a tree would be assets nobody could review and nothing could
+ * test, to say what this file says in text. A behaviour tree earns its cost when
  * the logic is deep enough that designers need to edit it without a programmer,
  * and issue #39's seven enemies are the point at which that is worth revisiting.
+ *
+ * ROAMING IS WHERE THAT COST STARTS TO SHOW. It added a state, a timer and an
+ * anchor, and the states now have transitions between them rather than being a
+ * flat choice each pass. One more feature of that size -- the wind-up and
+ * telegraph issue #371 needs, most likely -- is the point to weigh the tree
+ * again rather than assume the answer is still no.
  *
  * IT THINKS ON A TIMER, NOT ON TICK. Four times a second. A dungeon floor can
  * hold a great many monsters, and asking "who is nearest" sixty times a second
@@ -40,14 +58,21 @@ enum class ECataclysmBrainAction : uint8
  * does not change that fast. The same reasoning already applies to
  * ACataclysmGroundZone's sweep.
  *
+ * ROAMING IS OPT-IN, AND THAT IS THE POINT. A character roams only when its
+ * RoamRadiusCm() is above zero, and the default on ACataclysmCharacterBase is
+ * zero. So a monster that has not asked to roam still stands still with nothing
+ * in sight, exactly as before, and a summoned imp does not wander away from the
+ * fight its summoner made it for. Today only the Brute asks.
+ *
  * WHAT IT DOES NOT DO. It has no memory: it re-picks the nearest target every
  * pass rather than staying with one, so two monsters equally distant can swap
- * between them. It has no leash, so a monster that has noticed the player
- * follows for as long as the player stays within its sight radius rather than
- * returning to where it started. Diablo II gives each monster its own vision
- * distance and Path of Exile monsters break off and return when the player gets
- * far enough, so both of those are shapes worth having; neither is needed to
- * make an imp chase what it is attacking, which is what issue #163 asks for.
+ * between them. It has no leash: a monster that has noticed the player follows
+ * for as long as the player stays within its sight radius, however far that
+ * takes it from where it started. Roaming gives it somewhere to go back to --
+ * the anchor below -- but nothing pulls it back while it can still see a
+ * target. Diablo II gives each monster its own vision distance and Path of
+ * Exile monsters break off and return when the player gets far enough; the
+ * second of those is still missing.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmEnemyController : public AAIController
@@ -70,13 +95,139 @@ public:
 	static constexpr float ApproachFractionOfReach = 0.8f;
 
 	/**
-	 * Choose a target, walk toward it, and hit it when it is in reach.
+	 * Seconds a roaming character stands at a point it reached before choosing
+	 * the next one.
+	 *
+	 * A JUDGEMENT, NOT A DESIGN FIGURE, and the design document has nothing to
+	 * offer here: it contains no notice radius, patrol path, roam behaviour or
+	 * leash distance for any of the seven enemies. Two seconds is long enough
+	 * that the pause reads as the creature stopping rather than as a hitch in
+	 * the pathing, and short enough that a Brute is not standing still for most
+	 * of the time a player is watching it.
+	 *
+	 * Fixed rather than a range on purpose. A range would make two Brutes drift
+	 * out of step, which is the reason to want one, but it also makes the
+	 * behaviour untestable without either seeding the random stream or
+	 * asserting on a band. It is the first thing to try if roaming reads as
+	 * mechanical once there is more than one Brute on screen.
+	 */
+	static constexpr float RoamPauseSeconds = 2.0f;
+
+	/**
+	 * How near a roam target counts as having arrived, in centimetres.
+	 *
+	 * The character movement component stops short of a destination by its own
+	 * acceptance radius, so a test for exact arrival never fires and the
+	 * character stands on its target for ever. This is the same figure passed
+	 * to the move request, so the two agree by construction.
+	 */
+	static constexpr float RoamAcceptanceRadiusCm = 50.0f;
+
+	/**
+	 * How much longer than the straight line a roam leg is allowed to take
+	 * before the character gives up on it and picks somewhere else.
+	 *
+	 * Three, because a path around obstacles is longer than the straight line
+	 * and a character also spends time turning at each corner. This is the
+	 * safety net's generosity, not a pacing figure: a leg that finishes normally
+	 * ends by arriving, long before the deadline. Too tight and a Brute
+	 * abandons walks it was going to complete; too loose and a stuck one stands
+	 * still for longer than a player would take to notice.
+	 */
+	static constexpr float RoamLegGenerosity = 3.0f;
+
+	/**
+	 * The least time a roam leg gets, in seconds, however short it is.
+	 *
+	 * Without a floor, a leg of a few centimetres would get a deadline of
+	 * almost zero and be abandoned on the pass after it started.
+	 */
+	static constexpr float RoamLegMinimumSeconds = 2.0f;
+
+	/**
+	 * Choose a target, walk toward it, and hit it when it is in reach. With
+	 * nothing to chase, roam if this character roams and stand still if not.
 	 *
 	 * Public and callable so that tests can run one pass without waiting for a
 	 * timer, in the same way ACataclysmMinion::AttackOnce is.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|AI")
 	ECataclysmBrainAction Think();
+
+	/**
+	 * Where to wander to next, or false if this character cannot pick a point.
+	 *
+	 * SEPARATE FROM THE STATE MACHINE ON PURPOSE, the same split
+	 * ACataclysmBruteCharacter::AnimationForGroundSpeed makes from
+	 * DriveLocomotion. This is the decision and Think is the application. A
+	 * test can call this in any world and get a definite answer, which matters
+	 * a great deal here: every automation test world is built by
+	 * UWorld::CreateWorld and has no navigation mesh at all, so the navigation
+	 * system's own answer is unavailable in exactly the place the behaviour
+	 * most needs checking.
+	 *
+	 * THE NAVIGATION SYSTEM FIRST, A CIRCLE AROUND THE ANCHOR SECOND. With a
+	 * navigation mesh, UNavigationSystemV1::GetRandomReachablePointInRadius
+	 * returns somewhere the character can actually walk to, which is the
+	 * answer that respects walls. Without one it falls back to a random point
+	 * in the circle, which is what the chase already does in the same
+	 * situation. The fallback is bounded where the chase's is not: the point is
+	 * always within RoamRadiusCm of the anchor, so the worst it can do is walk
+	 * the character a known distance from where it started, rather than
+	 * following a target to anywhere at all.
+	 *
+	 * @param OutTarget  set to the chosen point when this returns true
+	 * @return false when the character does not roam, or has no anchor yet
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|AI")
+	bool ChooseRoamTarget(FVector& OutTarget) const;
+
+	/**
+	 * Where it was when this controller took it over. Roaming is around here.
+	 *
+	 * AN ANCHOR RATHER THAN WHEREVER IT HAPPENS TO BE STANDING. Without one,
+	 * each roam leg starts from the end of the last, which is a random walk: a
+	 * Brute left alone long enough arrives anywhere the navigation mesh
+	 * reaches. Anchoring to the spawn point bounds the whole behaviour to a
+	 * circle, which is also what makes the sandbox safe -- see RoamRadiusCm on
+	 * ACataclysmBruteCharacter for the arithmetic.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	FVector RoamAnchor = FVector::ZeroVector;
+
+	/** Where it is currently walking to while roaming. Meaningless otherwise. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	FVector RoamTarget = FVector::ZeroVector;
+
+	/** Whether RoamTarget is a place it is actually going. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	bool bHasRoamTarget = false;
+
+	/**
+	 * World seconds until which a roaming character stands at the point it
+	 * reached. Zero means it is not pausing. Read by tests.
+	 *
+	 * PUBLIC SO THE PAUSE CAN BE CHECKED WITHOUT ADVANCING TIME. An automation
+	 * test world built by UWorld::CreateWorld is never ticked, so
+	 * GetTimeSeconds does not move and a test cannot wait two seconds for the
+	 * pause to end. Reading the deadline proves the pause was set for the right
+	 * length; that the character stays put until then is checked by calling
+	 * Think again and finding it has not chosen a new target.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float RoamPauseUntil = 0.0f;
+
+	/**
+	 * World seconds by which the current roam leg must have finished, after
+	 * which the character gives up on it and chooses somewhere else. Read by
+	 * tests.
+	 *
+	 * The safety net against a walk that ends without arriving. See the comment
+	 * on it in Roam for why this is a deadline rather than the path following
+	 * component's own status.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float RoamLegDeadline = 0.0f;
 
 	/**
 	 * The nearest thing the possessed pawn may attack, or null.
@@ -111,6 +262,15 @@ protected:
 	ACataclysmCharacterBase* Body() const;
 
 private:
+	/**
+	 * Roam, or stand still if this character does not roam.
+	 *
+	 * The whole of what Think does when there is nothing to chase. Separate
+	 * only so that Think stays readable as four cases rather than three cases
+	 * and a paragraph.
+	 */
+	ECataclysmBrainAction Roam();
+
 	FTimerHandle ThinkTimer;
 
 	/** World seconds at the last attack, so the interval can be honoured. */
@@ -118,4 +278,11 @@ private:
 
 	/** False until the first attack, so the first one is never made to wait. */
 	bool bHasAttacked = false;
+
+	/**
+	 * Whether the anchor has been recorded. Distinct from the anchor being the
+	 * zero vector, which is a legitimate place to stand.
+	 */
+	bool bHasRoamAnchor = false;
+
 };

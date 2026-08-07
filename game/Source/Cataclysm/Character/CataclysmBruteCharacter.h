@@ -116,6 +116,69 @@ public:
 	//~ End designed numbers
 
 	/**
+	 * How far it notices the player, in centimetres. Replaces the base enemy's
+	 * 1500.
+	 *
+	 * DERIVED FROM THE BRUTE'S OWN TWO DESIGNED NUMBERS, and it is the distance
+	 * it covers in one attack cycle:
+	 *
+	 *     move_speed x attack_interval = 250 cm/s x 2.8 s = 700 cm
+	 *
+	 * So noticing the player means a fight starts within one cycle, rather than
+	 * beginning a walk it will not finish. Both inputs are authoritative and
+	 * pinned: enemy_stats.py gives move_speed 2.5 and attack_interval 2.8, and
+	 * tools/tests/test_brute_matches_the_model.py fails when either drifts.
+	 *
+	 * WHY THE INHERITED 1500 WAS WRONG FOR THIS ENEMY RATHER THAN WRONG. It is
+	 * derived -- docs/DECISIONS.md records it as "the same distance Subjugate
+	 * reaches, which is the longest range the designed Demonic skills use", and
+	 * Range=15 in game/Data/WeaponSkills.csv is indeed the longest. That
+	 * reasoning is symmetry: a monster notices you from as far as you could hit
+	 * it. It suits a caster. It does not suit a melee enemy that moves at
+	 * 2.5 m/s against a player moving at 3.5 to 4.6, because such an enemy can
+	 * never close a 15 metre gap against a player who does not want it closed.
+	 * The same entry labels all of those figures judgements "expected to
+	 * change".
+	 *
+	 * WHAT IT LOOKS LIKE IN THE SANDBOX, which is the check that matters most.
+	 * ACataclysmGameMode spawns the Brute 1200 cm from the player start. At
+	 * 1500 it notices the player at the instant the level opens and walks at
+	 * them for ever, so it never roams and the roaming cannot be seen at all.
+	 * At 700 it does not, so it roams until the player closes to seven metres.
+	 *
+	 * ONE ENEMY, NOT SEVEN. The design document states no notice radius for any
+	 * enemy, and this figure is derived from numbers only the Brute has, so it
+	 * says nothing about the other six. Issue #383 asks for the general rule.
+	 */
+	static constexpr float BruteNoticeRadiusCm = 700.0f;
+
+	/**
+	 * How far from where it spawned it wanders, in centimetres.
+	 *
+	 * BOUNDED BY THE LEVEL, NOT BY TASTE. The sandbox floor and its navigation
+	 * bounds are 4000 cm across centred on the world origin, so nothing can
+	 * path further than 2000 cm from the centre (FLOOR_EXTENT in
+	 * tools/generate_input_assets.py). ACataclysmGameMode puts the Brute 1200
+	 * cm out, leaving 800 cm to the bound. Recast insets the walkable surface
+	 * by the agent radius, which for this capsule is 48 cm, so about 752 cm is
+	 * really reachable. 600 leaves a margin of roughly 150 cm.
+	 *
+	 * ALSO SMALLER THAN THE NOTICE RADIUS ABOVE, which matters for a reason
+	 * that is not obvious: a character that roamed further from its anchor than
+	 * it can see would wander out of the area it is meant to be guarding and
+	 * have no way of knowing. At 600 against 700 it cannot.
+	 *
+	 * The navigation system is asked first and will not return an unreachable
+	 * point, so this figure is the bound on the fallback rather than on the
+	 * usual case. See ACataclysmEnemyController::ChooseRoamTarget.
+	 */
+	static constexpr float BruteRoamRadiusCm = 600.0f;
+
+	//~ Driven by ACataclysmEnemyController
+	virtual float RoamRadiusCm() const override { return BruteRoamRadiusCm; }
+	//~ End
+
+	/**
 	 * Collision radius in centimetres. Deliberately the same 48 as every other
 	 * enemy, and NOT the Rampage mesh's width.
 	 *

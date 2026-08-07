@@ -19,6 +19,10 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+// ON_SCOPE_EXIT. This file used it from the first version and compiled anyway,
+// through a transitive include that nothing guarantees. Named here so a change
+// to some other header cannot break this one.
+#include "Misc/ScopeExit.h"
 #include "UObject/SoftObjectPath.h"
 
 /**
@@ -190,6 +194,92 @@ bool FCataclysmBruteCanActuallyReachThePlayer::RunTest(const FString&)
 	constexpr float OrdinaryReach = 200.0f;
 	TestTrue(TEXT("an ordinary enemy had margin to spare either way"),
 		Contact3D < OrdinaryReach);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteNoticesLaterThanAnOrdinaryEnemy,
+	"Cataclysm.Brute.NoticesLaterThanAnOrdinaryEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteNoticesLaterThanAnOrdinaryEnemy::RunTest(const FString&)
+{
+	using namespace CataclysmBruteTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Ordinary = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(0.0f, 5000.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute spawned"), Brute)
+		|| !TestNotNull(TEXT("ordinary enemy spawned"), Ordinary))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Brute->Destroy(); Ordinary->Destroy(); };
+
+	// THE DERIVATION, RESTATED AS AN ASSERTION. The notice radius is the ground
+	// the Brute covers in one attack cycle, so noticing leads to a fight rather
+	// than to a walk that never arrives. Both inputs are designed numbers.
+	TestEqual(
+		TEXT("the notice radius is one attack cycle of walking, 250 x 2.8"),
+		ACataclysmBruteCharacter::BruteNoticeRadiusCm,
+		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond
+			* ACataclysmBruteCharacter::DesignedAttackIntervalSeconds);
+
+	TestEqual(TEXT("and the Brute actually uses it"),
+		Brute->SightRadiusCm(), ACataclysmBruteCharacter::BruteNoticeRadiusCm);
+
+	// STRICTLY SHORTER THAN WHAT IT INHERITED, stated as an inequality so that
+	// the test says what the change was for rather than repeating a number.
+	TestTrue(FString::Printf(
+		TEXT("a Brute notices strictly later than an ordinary enemy (%.0f vs %.0f)"),
+		Brute->SightRadiusCm(), Ordinary->SightRadiusCm()),
+		Brute->SightRadiusCm() < Ordinary->SightRadiusCm());
+
+	// IT STILL NOTICES BEFORE IT CAN BE HIT, which is the floor on how small
+	// this may go. An enemy whose notice radius was inside its own reach could
+	// be stood next to without ever waking up.
+	TestTrue(TEXT("and it notices from much further than it can reach"),
+		Brute->SightRadiusCm() > Brute->AttackReachCm() * 2.0f);
+
+	// AND IT ROAMS A SHORTER DISTANCE THAN IT SEES. A character that wandered
+	// further from its anchor than it can notice would leave the ground it is
+	// meant to be holding without any way of knowing.
+	TestTrue(FString::Printf(
+		TEXT("it roams less far than it sees (%.0f vs %.0f)"),
+		Brute->RoamRadiusCm(), Brute->SightRadiusCm()),
+		Brute->RoamRadiusCm() < Brute->SightRadiusCm());
+
+	// THE SANDBOX CHECK THAT DECIDED THE NUMBER. ACataclysmGameMode spawns the
+	// Brute 1200 cm from the player start. At the inherited 1500 it notices the
+	// player as the level opens and never roams at all, which is the whole
+	// reason this changed. At 700 it does not.
+	constexpr float SandboxSpawnDistanceCm = 1200.0f;
+	TestTrue(TEXT("a Brute at its sandbox spawn distance does NOT notice the "
+				  "player standing at the player start"),
+		Brute->SightRadiusCm() < SandboxSpawnDistanceCm);
+	TestTrue(TEXT("whereas an ordinary enemy at that distance would"),
+		Ordinary->SightRadiusCm() > SandboxSpawnDistanceCm);
+
+	// AND ITS ROAMING STAYS ON THE FLOOR. The sandbox navigation bounds are
+	// 4000 cm across centred on the origin, so a Brute spawned 1200 cm out has
+	// 800 cm to the edge, less the capsule radius Recast insets by.
+	constexpr float FloorExtentCm = 4000.0f;
+	const float HeadroomCm = FloorExtentCm / 2.0f - SandboxSpawnDistanceCm
+		- ACataclysmBruteCharacter::BruteCapsuleRadius;
+	TestTrue(FString::Printf(
+		TEXT("its roam radius fits between the spawn and the bounds "
+			 "(%.0f cm of %.0f available)"),
+		Brute->RoamRadiusCm(), HeadroomCm),
+		Brute->RoamRadiusCm() < HeadroomCm);
 
 	return true;
 }

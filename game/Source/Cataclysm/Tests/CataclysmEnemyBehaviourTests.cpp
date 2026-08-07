@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Engine/World.h"
@@ -97,6 +98,39 @@ namespace CataclysmBehaviourTest
 		}
 
 		ACataclysmEnemyCharacter* Actor = nullptr;
+	};
+
+	/**
+	 * A Brute, which is the only character in the project that roams.
+	 *
+	 * SEPARATE FROM FScopedFighter RATHER THAN TEMPLATED OVER IT, because a
+	 * Brute needs no health or attack damage set for any roaming test: roaming
+	 * happens when there is nothing to fight, so the fighting half is dead
+	 * weight here.
+	 */
+	struct FScopedBrute
+	{
+		FScopedBrute(UWorld* World, const FVector& Where)
+		{
+			Actor = World->SpawnActor<ACataclysmBruteCharacter>(
+				Where, FRotator::ZeroRotator);
+			check(Actor);
+		}
+
+		~FScopedBrute()
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+		}
+
+		ACataclysmEnemyController* Brain() const
+		{
+			return Cast<ACataclysmEnemyController>(Actor->GetController());
+		}
+
+		ACataclysmBruteCharacter* Actor = nullptr;
 	};
 }
 
@@ -378,6 +412,348 @@ bool FCataclysmImpChasesWhatItAttacksTest::RunTest(const FString&)
 	TestEqual(TEXT("An imp standing next to its summoner is idle"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Idle));
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Roaming
+//
+// WHY THESE CAN BE CHECKED HEADLESS WHEN MOVEMENT CANNOT. Walking needs a
+// navigation mesh and a world built by UWorld::CreateWorld has none, which is
+// why the file header says movement itself is checked in a Play-In-Editor
+// session. Roaming is a decision before it is a walk: which point, chosen from
+// where, and what state the brain reports. All of that is assertable here.
+// ACataclysmEnemyController::ChooseRoamTarget exists as a separate function
+// precisely so it can be called in a world with no navigation system.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoamingIsOptInTest,
+	"Cataclysm.AI.OnlyACharacterThatAsksToRoamRoams",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoamingIsOptInTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE REGRESSION THIS EXISTS FOR. Adding a Roaming state could easily have
+	// made every enemy in the project wander off, and the four tests above that
+	// assert Idle would have been "fixed" by editing them. They were not
+	// edited, and this says why: an ordinary enemy does not roam because it
+	// never asked to.
+	FScopedFighter Ordinary(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	TestEqual(TEXT("an ordinary enemy does not ask to roam"),
+		Ordinary.Actor->RoamRadiusCm(), 0.0f);
+
+	ACataclysmEnemyController* OrdinaryBrain = Ordinary.Brain();
+	if (!OrdinaryBrain)
+	{
+		AddError(TEXT("A spawned monster has no controller."));
+		return false;
+	}
+	TestEqual(TEXT("so with nothing in sight it is Idle, exactly as before"),
+		static_cast<int32>(OrdinaryBrain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Idle));
+
+	FVector Unused = FVector::ZeroVector;
+	TestFalse(TEXT("and it cannot pick a roam target at all"),
+		OrdinaryBrain->ChooseRoamTarget(Unused));
+
+	// A summoned imp must not wander away from the fight it was made for.
+	FScopedFighter Summoner(World, FVector(50 * M, 0, 0), ECataclysmTeam::Players);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(50 * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not summon an imp."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	TestEqual(TEXT("a summoned imp does not ask to roam either"),
+		Imp->RoamRadiusCm(), 0.0f);
+
+	// And the Brute, which is the one that does.
+	FScopedBrute Brute(World, FVector(20 * M, 0, 0));
+	TestEqual(TEXT("a Brute asks to roam, within its designed radius"),
+		Brute.Actor->RoamRadiusCm(),
+		ACataclysmBruteCharacter::BruteRoamRadiusCm);
+	TestTrue(TEXT("which is greater than zero, or nothing would happen"),
+		Brute.Actor->RoamRadiusCm() > 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteRoamsWithNothingInSightTest,
+	"Cataclysm.AI.ABruteWithNothingInSightWalksSomewhereAndStops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteRoamsWithNothingInSightTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FVector Spawn(5 * M, 3 * M, 0);
+	FScopedBrute Brute(World, Spawn);
+
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// THE ANCHOR IS WHERE IT WAS PUT. Compared in the horizontal plane only: a
+	// character is pushed up by its capsule half-height as it spawns, so its Z
+	// is not the Z it was asked for and never was the interesting part.
+	const FVector AnchorOffset = Brain->RoamAnchor - Spawn;
+	TestTrue(FString::Printf(
+		TEXT("the roam anchor is where it spawned (%.0f cm away in the plane)"),
+		FVector2D(AnchorOffset.X, AnchorOffset.Y).Size()),
+		FVector2D(AnchorOffset.X, AnchorOffset.Y).Size() < 1.0f);
+
+	// Nothing hostile anywhere in the world, so it roams rather than standing.
+	TestEqual(TEXT("a Brute alone in the world roams"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Roaming));
+	TestNull(TEXT("and has no target, because there is nothing to have"),
+		Brain->CurrentTarget.Get());
+	TestTrue(TEXT("and it has chosen somewhere to go"), Brain->bHasRoamTarget);
+
+	const float ChosenDistance = FVector::Dist2D(Brain->RoamTarget, Brain->RoamAnchor);
+	TestTrue(FString::Printf(
+		TEXT("which is inside its roam radius (%.0f cm of %.0f)"),
+		ChosenDistance, ACataclysmBruteCharacter::BruteRoamRadiusCm),
+		ChosenDistance <= ACataclysmBruteCharacter::BruteRoamRadiusCm);
+
+	// IT DOES NOT RE-PICK EVERY PASS. Think runs four times a second, and a
+	// character that chose a new destination each time would vibrate on the
+	// spot instead of walking anywhere. This is the assertion that catches it.
+	const FVector FirstChoice = Brain->RoamTarget;
+	TestEqual(TEXT("a second pass is still roaming"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Roaming));
+	TestEqual(TEXT("and is still walking to the same place"),
+		Brain->RoamTarget, FirstChoice);
+
+	// STILL HOLDING IT, not merely still remembering it. RoamTarget keeps its
+	// value after arrival too, so the line above passes whether the character is
+	// walking or has given up; this is the one that tells them apart.
+	//
+	// It is also what proves the move request was accepted. Roam treats a move
+	// status of Idle as the walk having ended, so if the request had failed
+	// outright -- which is a live possibility in a world with no navigation mesh
+	// -- this pass would have cleared the flag and this assertion would fail.
+	TestTrue(TEXT("and is still actually going there rather than having given up"),
+		Brain->bHasRoamTarget);
+
+	// THE SAFETY NET HAS A DEADLINE AND IT IS IN THE FUTURE. A roam move is
+	// ordered once and never re-issued, so a walk that ends short of the target
+	// would leave the character standing still for good. The deadline is what
+	// notices. It must be at least the floor, and it must be ahead of now, or it
+	// would fire on the pass after setting off.
+	TestTrue(FString::Printf(
+		TEXT("the roam leg has a deadline ahead of now (%.2f, now %.2f)"),
+		Brain->RoamLegDeadline, World->GetTimeSeconds()),
+		Brain->RoamLegDeadline > World->GetTimeSeconds());
+	TestTrue(FString::Printf(
+		TEXT("and it is at least the minimum a short leg gets (%.2f of %.2f)"),
+		Brain->RoamLegDeadline - static_cast<float>(World->GetTimeSeconds()),
+		ACataclysmEnemyController::RoamLegMinimumSeconds),
+		Brain->RoamLegDeadline - static_cast<float>(World->GetTimeSeconds())
+			>= ACataclysmEnemyController::RoamLegMinimumSeconds);
+
+	// ARRIVING. Nothing moves the character in a world with no navigation, so
+	// the arrival is staged by putting it on its own target.
+	Brute.Actor->SetActorLocation(
+		FVector(FirstChoice.X, FirstChoice.Y, Brute.Actor->GetActorLocation().Z));
+
+	TestEqual(TEXT("standing on its target it is still roaming"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Roaming));
+	TestFalse(TEXT("but it has let go of the target it reached"),
+		Brain->bHasRoamTarget);
+
+	// THE PAUSE, CHECKED BY ITS DEADLINE RATHER THAN BY WAITING. This world is
+	// never ticked so GetTimeSeconds does not advance; see the property comment
+	// on RoamPauseUntil.
+	//
+	// CAST, for the reason CataclysmBruteTests already records about FRotator:
+	// UWorld::GetTimeSeconds returns a double and RoamPauseSeconds is a float,
+	// and TestEqual has an overload for each, so the mixed pair is ambiguous
+	// and does not compile.
+	const float ExpectedPauseEnd = static_cast<float>(World->GetTimeSeconds())
+		+ ACataclysmEnemyController::RoamPauseSeconds;
+	TestEqual(TEXT("and it is standing there for the pause"),
+		Brain->RoamPauseUntil, ExpectedPauseEnd);
+
+	TestEqual(TEXT("a pass during the pause does not set off again"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Roaming));
+	TestFalse(TEXT("and still has not chosen anywhere new"), Brain->bHasRoamTarget);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoamTargetsAreSpreadTest,
+	"Cataclysm.AI.RoamTargetsStayInRangeAndAreNotAllTheSamePlace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoamTargetsAreSpreadTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	const float Radius = ACataclysmBruteCharacter::BruteRoamRadiusCm;
+
+	// EVERY POINT, NOT A SAMPLE OF ONE. The choice is random, so a single call
+	// proves almost nothing: a bug that put one point in a hundred outside the
+	// radius would pass a single-call test ninety-nine times out of a hundred.
+	constexpr int32 Draws = 200;
+	int32 OutsideRadius = 0;
+	int32 Failures = 0;
+	float Furthest = 0.0f;
+	TSet<FString> Distinct;
+
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		FVector Chosen = FVector::ZeroVector;
+		if (!Brain->ChooseRoamTarget(Chosen))
+		{
+			++Failures;
+			continue;
+		}
+
+		const float Distance = FVector::Dist2D(Chosen, Brain->RoamAnchor);
+		Furthest = FMath::Max(Furthest, Distance);
+		if (Distance > Radius)
+		{
+			++OutsideRadius;
+		}
+
+		Distinct.Add(FString::Printf(TEXT("%.0f,%.0f"), Chosen.X, Chosen.Y));
+	}
+
+	TestEqual(TEXT("a Brute can always choose somewhere to roam"), Failures, 0);
+	TestEqual(FString::Printf(
+		TEXT("every one of %d roam targets is inside the roam radius "
+			 "(furthest was %.0f cm of %.0f)"), Draws, Furthest, Radius),
+		OutsideRadius, 0);
+
+	// NOT ALL THE SAME PLACE. A ChooseRoamTarget that returned the anchor every
+	// time would satisfy every assertion above and produce a Brute that never
+	// moves. Two hundred draws from a continuous distribution collapsing to
+	// fewer than fifty distinct points is not something chance does.
+	TestTrue(FString::Printf(
+		TEXT("the targets are spread rather than one point (%d distinct of %d)"),
+		Distinct.Num(), Draws),
+		Distinct.Num() > 50);
+
+	// AND THEY REACH THE OUTER PART OF THE CIRCLE. Drawing the distance without
+	// the square root would cluster them near the anchor; this catches that.
+	TestTrue(FString::Printf(
+		TEXT("at least one target is in the outer half of the circle "
+			 "(furthest %.0f cm, half-radius %.0f)"), Furthest, Radius * 0.5f),
+		Furthest > Radius * 0.5f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteChasesThenGoesBackToRoamingTest,
+	"Cataclysm.AI.ABruteStopsRoamingToChaseAndRoamsAgainWhenThePlayerLeaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteChasesThenGoesBackToRoamingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+
+	// FAR ENOUGH AWAY TO BE INVISIBLE TO IT. Twenty metres against a notice
+	// radius of seven.
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	TestEqual(TEXT("with the player far away the Brute roams"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Roaming));
+	TestTrue(TEXT("and has somewhere it is going"), Brain->bHasRoamTarget);
+
+	const FVector AbandonedTarget = Brain->RoamTarget;
+
+	// The player walks up to five metres, inside the seven metre notice radius
+	// and outside the 90 cm reach.
+	Player.Actor->SetActorLocation(FVector(5 * M, 0, 0));
+
+	TestEqual(TEXT("the player stepping inside its notice radius makes it chase"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestEqual(TEXT("and the player is what it is going after"),
+		Brain->CurrentTarget.Get(), static_cast<AActor*>(Player.Actor));
+	TestFalse(TEXT("and the place it was wandering to is forgotten"),
+		Brain->bHasRoamTarget);
+
+	// The player leaves again. This is item 7 of what was asked for: it goes
+	// back to roaming rather than standing still where the chase ended.
+	Player.Actor->SetActorLocation(FVector(20 * M, 0, 0));
+
+	TestEqual(TEXT("the player leaving puts it back to roaming"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Roaming));
+	TestNull(TEXT("with no target any more"), Brain->CurrentTarget.Get());
+	TestTrue(TEXT("and somewhere new to go"), Brain->bHasRoamTarget);
+
+	// A FRESH POINT, NOT THE ONE IT ABANDONED. Resuming the old target would
+	// send it back to a place it chose for reasons that stopped applying when
+	// it noticed the player. The two points are drawn from a continuous
+	// distribution, so being equal would mean the target was never cleared.
+	TestNotEqual(TEXT("and it is a freshly chosen point, not the abandoned one"),
+		Brain->RoamTarget, AbandonedTarget);
 
 	return true;
 }
