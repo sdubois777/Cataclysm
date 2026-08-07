@@ -125,7 +125,7 @@ Measured and set 2026-08-07:
 |---|:-:|:-:|---|
 | `Idle_Biped` | 0.0 cm/s | — | The control. Standing still must read zero, and does. |
 | `Jog_Biped_Fwd` | 242.9 cm/s | **225 cm/s** | What the Brute plays. Set by eye; the estimate agrees to 8%. |
-| `Jog_Quad_Fwd` | 304.5 cm/s | **304.5 cm/s** | What the Brute plays while chasing. The all-fours stance. |
+| `Jog_Quad_Fwd` | 304.5 cm/s | **350 cm/s** | What the Brute plays while chasing. The all-fours stance. Set by eye; the estimate reads 15% low against it. |
 | `Run_Fwd` | not measurable | — | Reads 0 on every axis: it does not key the IK foot bones, so the method cannot see it. |
 
 The Brute moves at its designed 250 cm/s, so it plays `Jog_Biped_Fwd` at
@@ -138,10 +138,17 @@ selected by brain state rather than by speed. It has to be by state: its movemen
 speed is the same designed 250 cm/s either way, so speed cannot tell the two
 apart.
 
-`Jog_Quad_Fwd` is the all-fours stance, and that is the point of choosing it. It
-reads as having noticed the player through posture rather than through pace,
-which is the only honest option for a creature that does not actually speed up.
-At 250 ÷ 304.5 its play rate is **0.82**.
+`Jog_Quad_Fwd` is the all-fours stance, and that is the point of choosing it: it
+reads as having noticed the player through posture as well as pace.
+
+**The Brute does speed up while chasing**, from 250 to 500 cm/s, which is a
+designed figure in `sim/cataclysm_sim/enemy_stats.py` rather than an animation
+one. So the chase animation plays at 500 ÷ 350 = **1.43**.
+
+The 350 was set by eye on 2026-08-07. The measuring script says 304.5, and it
+also said 242.9 for the walking animation where the by-eye answer was 225 — it
+reads high on the walk and low here, which is within the roughly ten percent the
+script's own documentation claims for itself.
 
 **Two candidates were rejected, both measured on 2026-08-07.**
 

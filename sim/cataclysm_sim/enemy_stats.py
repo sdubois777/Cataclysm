@@ -182,6 +182,22 @@ class Archetype:
     crit_multiplier: float = 150.0    # percent
     move_speed: float = 4.5           # metres per second
     evasion: float = 0.0              # percent, direct attacks only
+
+    #: How fast it moves once it has noticed the player, in metres per second.
+    #: Zero means it uses `move_speed` in both states, which is what every
+    #: enemy but the Brute does.
+    #:
+    #: A SECOND SPEED IS ORDINARY, not an invention for one creature. Diablo II
+    #: gives every monster both a `Velocity` and a `Runvelocity` column in
+    #: `monstats.txt`. A creature that patrols at one pace and commits at
+    #: another is the normal shape; one pace for both is the special case.
+    #:
+    #: IT ALSO DECIDES WHETHER THE PLAYER CAN DISENGAGE, which is why it is a
+    #: design figure and not an engine tuning value. Player movement is 3.5,
+    #: 4.0 and 4.6 metres per second across the three Demonic classes, so a
+    #: chase speed above 4.6 means no class can break away and the fight is
+    #: mandatory once noticed.
+    chase_speed: float = 0.0
     energy_shield_fraction: float = 0.0   # of this enemy's health
 
     #: How wide the creature's body is, as a radius in metres. It decides how
@@ -279,6 +295,30 @@ ARCHETYPES: dict[str, Archetype] = {
             # slowest Demonic class, so anything under that can be got behind
             # by every build. Issue #351.
             turn_rate_degrees=180.0,
+            # It lumbers at 2.5 while it has seen nothing and commits at 5.0
+            # once it has. Set by the project owner on 2026-08-07 by playing it,
+            # after a Brute that chased at its patrol speed was reported as
+            # barely a threat.
+            #
+            # IT IS STILL SLOWER THAN THE PLAYER, AND THE MARGIN IS NOT THE ONE
+            # THE DESIGN THINKS IT IS. The design gives the three Demonic
+            # classes 3.5, 4.0 and 4.6 metres per second, and 5.0 would beat all
+            # three -- but no player character in the engine uses any of those.
+            # ACataclysmPlayerCharacter never sets MaxWalkSpeed, so it runs at
+            # Unreal's default of 6.0 metres per second. Measured 2026-08-07;
+            # issue #391.
+            #
+            # So against what the game actually runs, 5.0 leaves the player a
+            # 1.0 metre per second margin: they can break away, but only by
+            # committing to it, which is what playing it was reported to feel
+            # like. Against the design's own figures it would be unescapable.
+            # WHEN #391 IS FIXED THIS NUMBER HAS TO BE RE-JUDGED.
+            #
+            # "CAN BE OUTMANOEUVRED" HOLDS EITHER WAY, through the turn rate
+            # rather than through footspeed. A player circling at the Brute's
+            # reach sweeps 223 degrees per second and it turns at 180, so it can
+            # be got behind by every build exactly as before.
+            chase_speed=5.0,
         ),
         Archetype(
             name="Corrupted Sentinel",
