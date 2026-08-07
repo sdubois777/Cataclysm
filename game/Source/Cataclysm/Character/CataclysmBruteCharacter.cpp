@@ -49,7 +49,8 @@ const TCHAR* ACataclysmBruteCharacter::WalkAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Jog_Biped_Fwd.Jog_Biped_Fwd");
 
 const TCHAR* ACataclysmBruteCharacter::ChaseAnimationPath =
-	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Run_Fwd.Run_Fwd");
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Jog_Quad_Fwd.Jog_Quad_Fwd");
 
 const TCHAR* ACataclysmBruteCharacter::AttackAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
