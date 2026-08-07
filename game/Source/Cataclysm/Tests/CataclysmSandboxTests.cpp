@@ -81,6 +81,11 @@ bool FCataclysmTrainingDummiesSpawnTest::RunTest(const FString& Parameters)
 
 	// Called directly rather than through StartPlay, because StartPlay also
 	// wants a player controller and a pawn and this test is about the dummies.
+	// ASKED FOR EXPLICITLY RATHER THAN TAKEN FROM THE DEFAULT. The default is 0
+	// as of 2026-08-07, because five cylinders crowd around the Brute and make it
+	// hard to watch. This test is about whether the spawner works, so it says how
+	// many it wants.
+	GameMode->TrainingDummyCount = 5;
 	const int32 Spawned = GameMode->SpawnTrainingDummies();
 
 	TestTrue(FString::Printf(
@@ -184,6 +189,8 @@ bool FCataclysmTrainingDummiesRingThePlayerStartTest::RunTest(const FString& Par
 		return false;
 	}
 
+	// Asked for explicitly; see the note in the spawn test above.
+	GameMode->TrainingDummyCount = 5;
 	const int32 Spawned = GameMode->SpawnTrainingDummies();
 	TestTrue(TEXT("Dummies were spawned"), Spawned > 0);
 
