@@ -13,6 +13,8 @@
 // UAnimSequence is only forward declared on the Brute, and the gait test builds
 // throwaway ones with NewObject, which needs the whole type.
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
@@ -781,6 +783,173 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 		Brain->AttacksOrdered, 1);
 	TestEqual(TEXT("so the player lost no more health"),
 		Player.Health(), AfterFirst);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChaseStopsCloseEnoughToHitTest,
+	"Cataclysm.AI.AChaseStopsCloseEnoughToActuallyHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChaseStopsCloseEnoughToHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// WHAT THIS GUARDS, and it is the fault behind "he doesn't attack when he
+	// reaches me" reported on 2026-08-07.
+	//
+	// FAIMoveRequest is constructed with bReachTestIncludesAgentRadius and
+	// bReachTestIncludesGoalRadius both true. That silently adds BOTH capsule
+	// radii to the acceptance radius. For the Brute, whose acceptance radius is
+	// 0.8 of a 90 cm reach, the request that reads as "stop within 72 cm" means
+	// "stop within 72 + 48 + 42 = 162 cm" -- so the chase ends nearly a metre
+	// outside the distance at which it could swing, and it stands there.
+	//
+	// The flags are the only observable part. Where the character actually
+	// stops needs a navigation mesh, which no automation test world has.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	FScopedFighter Player(World, FVector(10 * M, 0, 0), ECataclysmTeam::Players);
+
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	const float Reach = ACataclysmBruteCharacter::DesignedMeleeReachCm;
+	const FAIMoveRequest Request =
+		Brain->MakeChaseMoveRequest(Player.Actor, Reach);
+
+	TestFalse(TEXT("the reach test does not add the chaser's own capsule radius"),
+		Request.IsReachTestIncludingAgentRadius());
+	TestFalse(TEXT("nor the target's"),
+		Request.IsReachTestIncludingGoalRadius());
+
+	// AND THE NUMBER IT STOPS AT IS INSIDE WHAT IT CAN HIT. Stated as the
+	// consequence rather than as the flags, so the test says why it cares.
+	const float StoppingDistance = Request.GetAcceptanceRadius()
+		+ (Request.IsReachTestIncludingAgentRadius()
+			? ACataclysmBruteCharacter::BruteCapsuleRadius : 0.0f)
+		+ (Request.IsReachTestIncludingGoalRadius()
+			? PlayerCapsuleRadiusCm : 0.0f);
+
+	TestTrue(FString::Printf(
+		TEXT("so the chase aims to stop at %.0f cm, inside the %.0f cm it can "
+			 "hit from"), StoppingDistance, Reach),
+		StoppingDistance <= Reach);
+
+	// WITH THE DEFAULTS IT WOULD NOT BE, which is what makes the assertion
+	// above worth making. Stated so the number is on the record.
+	const float WithEngineDefaults = Request.GetAcceptanceRadius()
+		+ ACataclysmBruteCharacter::BruteCapsuleRadius + PlayerCapsuleRadiusCm;
+	TestTrue(FString::Printf(
+		TEXT("whereas the engine defaults would stop it at %.0f cm, well "
+			 "outside %.0f"), WithEngineDefaults, Reach),
+		WithEngineDefaults > Reach);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteSwingIsVisibleTest,
+	"Cataclysm.AI.ABruteHoldsItsSwingAnimationInsteadOfCuttingItOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+
+	// CALLED RATHER THAN WAITED FOR, which the Brute's own header asks for:
+	// whether BeginPlay runs at all depends on how the world was made, so a
+	// test that spawned and then checked could not tell "the art is missing"
+	// apart from "BeginPlay did not fire". Measured here: it does not fire, and
+	// without this the art half of this test silently never ran.
+	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
+
+	TestFalse(TEXT("a Brute that has not swung is not swinging"),
+		Brute.Actor->IsSwinging());
+
+	// WITHOUT THE ART, PLAYING A SWING DOES NOTHING AND SAYS SO. The Paragon
+	// packs are gitignored, so this is the state in continuous integration and
+	// on a fresh clone, and it must not pretend to swing.
+	if (Brute.Actor->AttackAnimation == nullptr)
+	{
+		Brute.Actor->PlayAttackAnimation();
+		TestFalse(TEXT("with no attack animation loaded it never claims to swing"),
+			Brute.Actor->IsSwinging());
+		AddInfo(TEXT("The Paragon art is absent, so only the no-art half of this "
+					 "test ran. Install the pack to exercise the rest."));
+		return true;
+	}
+
+	// THROUGH AttackTarget, NOT PlayAttackAnimation. Calling the animation
+	// directly would pass even if nothing ever triggered it, which is exactly
+	// the mistake the first version of this test made: three deliberate breaks
+	// went unnoticed. The swing has to be a consequence of hitting something.
+	FScopedFighter Player(World, FVector(80.0f, 0.0f, 0.0f), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+	Brute.Actor->SetAttackDamage(35.0f);
+
+	const float Now = static_cast<float>(World->GetTimeSeconds());
+	Brute.Actor->AttackTarget(Player.Actor);
+
+	TestTrue(TEXT("landing a hit starts the swing"), Brute.Actor->IsSwinging());
+
+	// THE SWING LASTS THE ANIMATION, NOT THE ATTACK INTERVAL, and this reads
+	// the deadline the code stored rather than the animation asset. Reading the
+	// asset proved nothing: it is the same number whatever the code does.
+	const float Held = Brute.Actor->SwingUntilSeconds - Now;
+	TestEqual(TEXT("and holds the mesh for exactly the animation's own length"),
+		Held, Brute.Actor->AttackAnimation->GetPlayLength());
+	TestTrue(FString::Printf(
+		TEXT("which is shorter than the %.1f s between attacks, so it is not "
+			 "frozen in its finishing pose (%.2f s)"),
+		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds, Held),
+		Held < ACataclysmBruteCharacter::DesignedAttackIntervalSeconds);
+
+	// AND LOCOMOTION LEAVES IT ALONE. The Brute has stopped moving to attack,
+	// so the next frame's choice would be the standing animation and the swing
+	// would be cut off after one frame -- which looks exactly like not
+	// attacking. DriveLocomotion is called here to prove it does not.
+	const USkeletalMeshComponent* MeshComponent = Brute.Actor->GetMesh();
+	const UAnimSingleNodeInstance* Single =
+		MeshComponent ? MeshComponent->GetSingleNodeInstance() : nullptr;
+	if (!Single)
+	{
+		AddError(TEXT("The Brute has no single node animation instance, so the "
+					  "swing cannot be checked."));
+		return false;
+	}
+
+	TestEqual(TEXT("the swing animation is what is on the mesh"),
+		Single->GetAnimationAsset(),
+		static_cast<UAnimationAsset*>(Brute.Actor->AttackAnimation));
+
+	Brute.Actor->DriveLocomotion();
+
+	TestEqual(TEXT("and a frame of locomotion does not replace it"),
+		Single->GetAnimationAsset(),
+		static_cast<UAnimationAsset*>(Brute.Actor->AttackAnimation));
+	TestTrue(TEXT("and it is still swinging afterwards"),
+		Brute.Actor->IsSwinging());
 
 	return true;
 }
