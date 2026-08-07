@@ -11,6 +11,33 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "UObject/SoftObjectPath.h"
 
+/**
+ * Live override for the walk animation's authored speed, for tuning by eye.
+ *
+ * WHY A CONSOLE VARIABLE AND NOT JUST THE PROPERTY. The property is
+ * EditAnywhere, but the Brute is spawned by the game mode rather than placed in
+ * the level, so before a session starts there is no instance whose Details panel
+ * you could open. What this number needs is to be changed WHILE WATCHING the
+ * creature walk, which is what a console variable is for. In a play session:
+ *
+ *     Cataclysm.Brute.AuthoredWalkSpeed 300
+ *
+ * and the stride changes on the next frame, with no rebuild and no restart.
+ *
+ * ZERO MEANS "DO NOT OVERRIDE", so the measured figure on the class stays the
+ * answer of record and this is only ever a tuning aid. Setting it back to 0
+ * returns to the measured value.
+ */
+static TAutoConsoleVariable<float> CVarBruteAuthoredWalkSpeed(
+	TEXT("Cataclysm.Brute.AuthoredWalkSpeed"),
+	0.0f,
+	TEXT("Ground speed in cm/s that the Brute's walk animation is treated as "
+		 "having been authored for. The walk plays at the Brute's real speed "
+		 "divided by this, so a smaller number plays it faster. 0 uses the "
+		 "measured value on the class (373.7). For tuning foot sliding by eye "
+		 "during a play session."),
+	ECVF_Default);
+
 const TCHAR* ACataclysmBruteCharacter::BodyMeshPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Meshes/Rampage.Rampage");
 
@@ -62,6 +89,12 @@ void ACataclysmBruteCharacter::Tick(float DeltaSeconds)
 	DriveLocomotion();
 }
 
+float ACataclysmBruteCharacter::EffectiveAuthoredWalkSpeed() const
+{
+	const float Override = CVarBruteAuthoredWalkSpeed.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : AuthoredWalkSpeedCmPerSecond;
+}
+
 UAnimSequence* ACataclysmBruteCharacter::AnimationForGroundSpeed(
 	float GroundSpeedCmPerSecond, float& OutPlayRate) const
 {
@@ -79,7 +112,7 @@ UAnimSequence* ACataclysmBruteCharacter::AnimationForGroundSpeed(
 	// of the fault this fixes. Clamped because a play rate near zero freezes the
 	// pose and a very high one is a blur.
 	OutPlayRate = FMath::Clamp(
-		GroundSpeedCmPerSecond / FMath::Max(AuthoredWalkSpeedCmPerSecond, 1.0f),
+		GroundSpeedCmPerSecond / FMath::Max(EffectiveAuthoredWalkSpeed(), 1.0f),
 		MinimumPlayRate, MaximumPlayRate);
 	return WalkAnimation;
 }
