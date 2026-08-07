@@ -457,11 +457,22 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             name="Stomp",
             shape="Strike",
             slot="Heavy",
-            # Radius 3.5 is the largest the Brute's own 2.8 second attack
-            # interval allows, so the wind-up is exactly half that interval,
-            # 1.4 seconds. Taking the maximum is the same choice the Succubus's
-            # bolt makes: an enemy's signature heavy attack should be as big as
-            # it can be while still being walked out of.
+            # Radius 3.5 gives a wind-up of 0.4 + 3.5 / 3.5 = 1.4 seconds.
+            #
+            # IT IS SIZED AGAINST ITS OWN COOLDOWN, NOT THE ATTACK INTERVAL,
+            # which is the general rule for any ability that has a cooldown:
+            # see the telegraph section of docs/Cataclysm_GDD_v2.md. The 5
+            # second cooldown allows 7.35 metres and this deliberately takes
+            # half of it, because the Brute gets the walk-out kind of telegraph
+            # and a marker that large on a creature this slow is unmissable
+            # rather than dodgeable.
+            #
+            # THIS COMMENT USED TO SAY THE RADIUS WAS THE LARGEST THE ATTACK
+            # INTERVAL ALLOWED, and that the 1.4 second wind-up was exactly half
+            # of the then 2.8 second interval. Both were true and neither was
+            # the reason: the stomp never ran on the attack interval. When the
+            # interval moved to 1.6 on 2026-08-07, because 2.8 played as too
+            # slow to be a threat, nothing here needed to change.
             #
             # Angle 360 because a stomp is a ring at its feet, and that is what
             # stops the answer to a Brute being "stand behind it and ignore the

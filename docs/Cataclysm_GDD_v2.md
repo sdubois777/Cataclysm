@@ -3052,7 +3052,7 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 | Corrupted Sentinel | 2.0 s | 2.1 m | Yes |
 | Abyssal Warden | 2.4 s | 2.8 m | Yes |
 | Succubus | 2.6 s | 3.2 m | Yes |
-| Brute | 2.8 s | 3.5 m | Yes |
+| Brute | 1.6 s | 1.4 m | Yes |
 | Gatekeeper | 3.0 s | 3.9 m | Yes |
 
   
@@ -3722,15 +3722,19 @@ Section VI states them for a target, and a player is a target. The Brute is wher
 
   
 
-#### **The stomp takes the largest marker its attack interval allows**
+#### **The stomp is telegraphed against its own cooldown, and takes well under what that allows**
 
   
 
-3.5 metres, so its wind-up is `0.4 + 3.5 ÷ 3.5` = 1.4 seconds, which is exactly half the Brute's 2.8 second attack interval. **This is the same choice the Succubus's bolt makes**, and it is becoming the pattern: an enemy's signature heavy attack takes the largest marker its own attack interval allows, even when a longer cooldown would permit more.
+3.5 metres, so its wind-up is `0.4 + 3.5 ÷ 3.5` = 1.4 seconds.
 
   
 
-**Sizing it by the attack interval rather than by the cooldown is deliberate.** The 5 second cooldown would allow 7.35 metres and a 2.5 second wind-up. That is legal and it is wrong here: the design document says the Movement-skill-sized telegraph "is what makes a mini-boss or a boss feel different from a Brute". The Brute gets the walk-out kind.
+**It runs on its 5 second cooldown, not on the attack interval**, which is the general rule stated above for any ability with a cooldown. That cooldown allows 7.35 metres and a 2.5 second wind-up, and the stomp deliberately takes half of it. Taking the maximum is legal and it is wrong here: the design document says the Movement-skill-sized telegraph "is what makes a mini-boss or a boss feel different from a Brute". The Brute gets the walk-out kind, and a marker that large on a creature this slow is unmissable rather than dodgeable.
+
+  
+
+**This wording is a correction, made 2026-08-07.** It previously said the stomp took the largest marker its *attack interval* allowed, and that the 1.4 second wind-up being exactly half the 2.8 second interval was the point. Both facts were true and the reasoning was not: the stomp never ran on the attack interval. When that interval moved from 2.8 to 1.6 seconds, because 2.8 played as too slow to be a threat, the stomp did not move with it and nothing about it needed to.
 
   
 
