@@ -20,6 +20,26 @@ animation's own space is not X. A first version of this script measured X, got a
 median of -15 cm/s with symmetric extremes -- the signature of measuring a
 side-to-side axis -- and reported a nonsense 38 cm/s jog. So every axis is
 reported and the dominant one is chosen by size.
+
+THE ESTIMATOR IS THE MEAN, AND THE SECOND VERSION OF THIS SCRIPT GOT THAT WRONG.
+It averaged the top quartile of samples, reasoning that those were the frames
+where a foot was genuinely planted. For Jog_Biped_Fwd that gave 373.7 cm/s. The
+project owner then tuned the same animation by eye and found 225 cm/s correct --
+the top quartile was 66% too high, because it measures the PEAK of the velocity
+curve rather than a representative speed. The plain mean over the cycle gives
+239.9 cm/s for the same animation, within 7% of the by-eye answer, so the mean is
+what this uses now.
+
+WHY THE MEAN IS RIGHT. Over one full gait cycle the tracked foot alternates
+between stance, moving backwards at ground speed, and swing, moving forwards
+quickly. Averaging the backwards speed of whichever foot is lower, across a whole
+number of cycles, approximates the ground speed. Any estimator that favours the
+extremes measures the swing instead.
+
+WHAT THIS IS AND IS NOT. It is a starting estimate good to roughly ten percent,
+not an exact answer. The IK foot bones do not touch the ground -- on Rampage they
+stay 20 cm or more above it -- so "the lower foot" is an approximation of "the
+planted foot". Judge the last of it by eye.
 """
 
 import unreal
@@ -44,13 +64,11 @@ def component_space(anim, bone, time):
     return total.translation
 
 
-def robust_speed(samples):
-    """Mean of the top quartile: the part of the cycle where a foot is planted."""
+def cycle_mean(samples):
+    """Mean backwards speed over the cycle. See the module docstring."""
     if not samples:
         return 0.0
-    ordered = sorted(samples)
-    upper = ordered[int(len(ordered) * 0.75):]
-    return sum(upper) / float(len(upper)) if upper else 0.0
+    return sum(samples) / float(len(samples))
 
 
 def measure(path):
@@ -74,6 +92,7 @@ def measure(path):
 
     # Signed speed along each axis, in both directions, so nothing is assumed.
     per_axis = {"+X": [], "-X": [], "+Y": [], "-Y": []}
+    previous_planted = None
 
     for i in range(frames - 1):
         t0, t1 = i * step, (i + 1) * step
@@ -83,13 +102,23 @@ def measure(path):
             nxt[bone] = component_space(anim, bone, t1)
             height[bone] = now[bone].z
         planted = min(FOOT_BONES, key=lambda b: height[b])
+
+        # SKIP THE FRAME WHERE THE FEET SWAP. Right after the lower foot changes,
+        # the pair of positions being differenced belongs to two different phases
+        # and produces a spurious sample -- in Jog_Biped_Fwd, one of -53 cm/s
+        # among values around +250. Only difference a foot against itself.
+        if previous_planted is not None and previous_planted != planted:
+            previous_planted = planted
+            continue
+        previous_planted = planted
+
         d = nxt[planted] - now[planted]
         per_axis["+X"].append(d.x / step)
         per_axis["-X"].append(-d.x / step)
         per_axis["+Y"].append(d.y / step)
         per_axis["-Y"].append(-d.y / step)
 
-    results = dict((axis, robust_speed(vals)) for axis, vals in per_axis.items())
+    results = dict((axis, cycle_mean(vals)) for axis, vals in per_axis.items())
     best = max(results, key=lambda a: results[a])
 
     unreal.log("")

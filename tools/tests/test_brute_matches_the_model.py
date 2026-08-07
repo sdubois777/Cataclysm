@@ -219,23 +219,25 @@ def test_the_brute_is_slower_than_the_enemy_defaults_it_overrides() -> None:
     )
 
 
-def test_the_walk_play_rate_uses_the_measured_stride() -> None:
-    """The authored walk speed in the C++ matches what was measured from the art.
+def test_the_walk_play_rate_matches_the_recorded_figure() -> None:
+    """The authored walk speed in the C++ matches the figure written down.
 
     WHY THIS EXISTS. `AuthoredWalkSpeedCmPerSecond` decides how fast the Brute's
-    walk animation plays. It started as a guess of 500, which made the animation
-    run a quarter too slowly and the planted foot slide forwards while the other
-    leg swung. It was replaced with 373.7, measured from the animation itself by
-    `tools/measure_animation_stride.py`.
+    walk animation plays. It has been wrong twice: first as an outright guess of
+    500, then as 373.7 from a measuring script using an estimator that was 66%
+    high. The value in use now, 225, was set by the project owner watching the
+    creature walk.
 
-    A guess and a measurement look identical in the source. This ties the number
-    to the one written down in `game/docs/enemy-source-assets.md`, the reference
-    listing which art plays each enemy, so changing one without the other fails
-    rather than quietly reintroducing foot sliding.
+    A guess, a bad measurement and a good one all look identical in the source.
+    This ties the number to the one recorded in `game/docs/enemy-source-assets.md`,
+    the reference listing which art plays each enemy and what was measured from
+    it, so changing one without the other fails rather than quietly bringing foot
+    sliding back.
 
-    WHAT IT DOES NOT CHECK. That 373.7 is right. Only that the C++ and the
-    document agree, and that the resulting play rate is sane. Re-running the
-    measurement script is the only thing that checks the figure itself.
+    WHAT IT DOES NOT CHECK. That 225 is right. Only that the C++ and the document
+    agree, and that the resulting play rate is sane. Whether it looks right is a
+    judgement made by watching, and the console variable
+    `Cataclysm.Brute.AuthoredWalkSpeed` is how that is done.
     """
     import re as _re
 
@@ -244,23 +246,32 @@ def test_the_walk_play_rate_uses_the_measured_stride() -> None:
         pytest.fail(f"{reference.relative_to(REPO_ROOT)} does not exist")
 
     text = reference.read_text(encoding="utf-8")
-    match = _re.search(r"`Jog_Biped_Fwd`\s*\|\s*\*\*([\d.]+) cm/s\*\*", text)
-    if match is None:
+
+    # The locomotion table's Jog_Biped_Fwd row. The figure in use is the bold one;
+    # the unbold one beside it is the script's estimate, which is deliberately
+    # allowed to differ.
+    row = _re.search(r"^\|\s*`Jog_Biped_Fwd`\s*\|.*$", text, _re.M)
+    if row is None:
         pytest.fail(
-            "game/docs/enemy-source-assets.md no longer records a measured "
-            "ground speed for Jog_Biped_Fwd in its locomotion table. If the "
-            "table moved, update this test; if the measurement was deleted, the "
-            "C++ constant is an unguarded guess again."
+            "game/docs/enemy-source-assets.md has no Jog_Biped_Fwd row in its "
+            "locomotion table. If the table moved, update this test; if it was "
+            "deleted, the C++ constant is unrecorded again."
         )
-    documented = float(match.group(1))
+    in_use = _re.search(r"\*\*([\d.]+) cm/s\*\*", row.group(0))
+    if in_use is None:
+        pytest.fail(
+            "The Jog_Biped_Fwd row records no figure in use, which should be the "
+            f"bold one. The row reads: {row.group(0)}"
+        )
+    documented = float(in_use.group(1))
 
     in_code = uproperty_default(BRUTE_HEADER, "AuthoredWalkSpeedCmPerSecond")
 
     assert in_code == pytest.approx(documented), (
         f"CataclysmBruteCharacter.h plays the walk as though it were authored "
-        f"for {in_code} cm/s, but game/docs/enemy-source-assets.md records the "
-        f"measurement as {documented} cm/s. Re-run "
-        f"tools/measure_animation_stride.py and make both agree."
+        f"for {in_code} cm/s, but game/docs/enemy-source-assets.md records "
+        f"{documented} cm/s as the figure in use. Make both agree, and if the "
+        f"value changed because somebody re-judged it by eye, say so there."
     )
 
     # The play rate that falls out of it has to be usable. Outside the clamp the
