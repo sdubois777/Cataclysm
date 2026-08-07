@@ -24,18 +24,22 @@ applied or still pending.
 
 **Affects** issues #17 (3D asset generation pipeline) and #18 (animation
 pipeline). No design document changes: this decides which existing art plays each
-enemy, not what the enemies are. **Pending.** Nothing is downloaded or imported;
-#365 is the issue that does that and measures the result.
+enemy, not what the enemies are. All six packs were imported into
+`game/Content/` on 2026-08-07 and every claim below is now measured from the
+imported assets. The per-asset reference is `game/docs/enemy-source-assets.md`.
 
-### The evidence behind this entry is weak, and that comes first
+### One enemy fails its timing budget, and that comes first
 
-None of these assets are on the development machine. A search of the Epic
-launcher's installed-items manifest, `C:\Projects`, `Documents`, `Downloads`,
-`AppData` and `Program Files` found no Paragon content of any kind; the manifest
-lists only Unreal Engine 5.8, Quixel Bridge and the Fab plugin. Every statement
-below about how a character looks or moves comes from knowledge of the Paragon
-roster, not from opening a mesh or an animation. **None of it is confirmed until
-the packs are downloaded and measured.**
+**The Corrupted Sentinel does not fit.** Its firing animation runs 2.40 seconds
+against a 2.0 second attack interval. Every other enemy passes. That needs a
+decision and is filed as its own issue; see "What is not settled" below.
+
+**Two predictions in the first draft of this entry were wrong, and the
+measurements reversed both.** The draft said the Imp was the enemy at risk and
+that the Corrupted Sentinel was a weak match because no Paragon character stands
+still. The Imp passes with room to spare, and the Minions pack contains a siege
+minion built to root itself in place and fire. The failure is the siege minion's
+animation being too slow, not the choice of character.
 
 ### The question
 
@@ -53,15 +57,15 @@ Paragon character packs in their Fab library.
 Cast the seven vertical slice enemies from Paragon characters rather than
 generating them.
 
-| Enemy | Paragon character | Confidence |
-| :-- | :-- | :-- |
-| The Imp | Minions pack, melee minion | Good. Small, and built to spawn in numbers |
-| The Succubus | Countess | Chosen by the project owner over The Fey |
-| The Hellhound | Scorch, from the Iggy & Scorch pack | Good. Fire is already the character's theme |
-| The Brute | Rampage | Good. Large, slow and heavy |
-| The Corrupted Sentinel | Minions pack, ranged minion, rooted in place | Weak. No Paragon character is stationary by design |
-| The Abyssal Warden | Grux, molten skin | Good. The design says "massive stone and lava demon" |
-| The Gatekeeper | Sevarog | **Unconfirmed.** Not established that this pack is in the library |
+| Enemy | Paragon mesh | Triangles | Confirmed by |
+| :-- | :-- | :-: | :-- |
+| The Imp | `Minion_Lane_Melee_Dawn` | 9,786 | Ten attack animations at 0.80–0.83 s, inside the 0.9 s interval |
+| The Succubus | `SM_Countess` | 78,957 | Primary attack in three speeds: 0.60, 0.90 and 1.50 s |
+| The Hellhound | `IggyScorch`, Scorch half | 92,562 | `Scorch_Primary_Fire_Med` 0.97 s, and a fire breath with start, loop and end |
+| The Brute | `Rampage` | 52,174 | `Ability_GroundSmash_Start` 0.83 s gives the stomp a holdable wind-up |
+| The Corrupted Sentinel | `Minion_Lane_Siege_Dawn` | 10,379 | Roots itself: `PlantedIntro`, `Idle_Planted`, `Fire_Planted`, `PlantedExit` |
+| The Abyssal Warden | `GruxMolten` | 82,225 | The molten skin exists as its own mesh, not a material swap |
+| The Gatekeeper | `Sevarog` | 85,163 | Pack is present. Carries `Stage_1` to `Stage_4` marker poses |
 
 Three candidates were considered and rejected. **Khaimera** is fast and feral
 rather than heavy, so he does not read as the Brute; he suits an elite Hellhound
@@ -78,30 +82,41 @@ dungeon environment art. Paragon supplies none of that. What this decision does
 is take the vertical slice's seven enemies out of #17's scope, so the generation
 pipeline investigation no longer stands in front of Phase 1.
 
-### The measurement that has to pass before this is safe
+### The measurement, run 2026-08-07
 
-Enemy attack intervals are already fixed, in `ARCHETYPES` in
+Enemy attack intervals are fixed, in `ARCHETYPES` in
 `sim/cataclysm_sim/enemy_stats.py`. They cap how long an attack animation can
-run, and the telegraph rule in section X of `docs/Cataclysm_GDD_v2.md` caps the
-wind-up at half the interval:
+run. Every duration below is the `SequenceLength` asset registry tag on the
+imported animation, read through the editor:
 
-| Enemy | Attack interval | Whole attack must fit in | Wind-up must fit in |
-| :-- | :-: | :-: | :-: |
-| Imp | 0.9 s | 0.9 s | no telegraph |
-| Hellhound | 1.1 s | 1.1 s | none on the basic attack |
-| Corrupted Sentinel | 2.0 s | 2.0 s | 1.0 s |
-| Abyssal Warden | 2.4 s | 2.4 s | 1.2 s |
-| Succubus | 2.6 s | 2.6 s | 1.3 s |
-| Brute | 2.8 s | 2.8 s | 1.4 s |
-| Gatekeeper | 3.0 s | 3.0 s | 1.5 s |
+| Enemy | Attack interval | Shortest usable attack animation | Length | Verdict |
+| :-- | :-: | :-- | :-: | :-- |
+| Imp | 0.9 s | `Attack_A_SetA`, and nine more | 0.80 s | Passes |
+| Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | Passes |
+| Corrupted Sentinel | 2.0 s | `Fire_Planted` | 2.40 s | **Fails by 0.40 s** |
+| Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | Passes |
+| Succubus | 2.6 s | `Primary_Attack_Normal` | 0.90 s | Passes |
+| Brute | 2.8 s | `Attack_Melee_A` | 0.97 s | Passes |
+| Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | Passes |
 
-**The Imp at 0.9 seconds is the one at risk.** Paragon basic attack animations
-are generally longer than that, which is a second reason to prefer a minion over
-Iggy. If no candidate animation fits, the choices are to raise playback speed, to
-cut the animation, or to lengthen the Imp's attack interval — and lengthening it
-lowers the swarm's damage, so it is not free.
+**The Imp passes because the minion ships variant sets.** Its plain `Attack_A`
+through `Attack_D` run 1.00 s and would have overrun. The `_SetA` variants run
+0.80 s and the `_SetB` variants 0.83 s, giving ten attacks inside the 0.9 second
+interval with room left.
 
-This is measurable rather than arguable, and it is the first task after download.
+**The Corrupted Sentinel is the one that fails.** The siege minion's
+`Fire_Planted` and `Fire_Planted_B` are both 2.40 s against a 2.0 s interval, and
+its unplanted `Fire_A`, `Fire_B` and `Fire_C` are 2.80 s, which is worse. The
+options are a playback rate of 1.2, cutting the animation, or lengthening the
+Sentinel's attack interval to 2.4 s. The last one lowers its damage output, so it
+is not free.
+
+**Wind-up durations were not measured and remain unknown.** The telegraph rule in
+section X of `docs/Cataclysm_GDD_v2.md` caps the wind-up at half the attack
+interval, which is 1.0 s for the Sentinel up to 1.5 s for the Gatekeeper.
+`SequenceLength` gives the whole animation, not the point inside it where the
+damage lands. Finding that needs the animation notifies read one at a time, and
+it is separate work.
 
 ### What this costs
 
@@ -110,10 +125,20 @@ unmodified Grux and Rampage will be recognised as having done that. For a
 vertical slice proving the combat loop it does not matter. For anything sold it
 does, so this covers Phase 1 only and Phase 2 has to plan replacement.
 
+**17.31 GB of disk, measured after import.** The six packs are 1.35 GB for
+Sevarog up to 4.76 GB for the Minions pack. The machine has 1157 GB free, so this
+is not a constraint.
+
 **Eight gigabytes of video memory is the binding hardware limit** on the
 development machine's RTX 3070. Paragon characters ship with 4K textures. Seven
 distinct characters plus a swarm needs a texture size cap set at import. That is
 a settings problem rather than a blocker.
+
+**Triangle counts say the swarm choice was right by a factor of about nine.** The
+melee minion playing the Imp is 9,786 triangles. The hero characters run 52,174
+for Rampage up to 92,562 for Iggy and Scorch. The design commits to twenty Imps
+standing within reach of one player, which is roughly 196,000 triangles with the
+minion and roughly 1.85 million with a hero mesh.
 
 **Licensing was not verified.** Epic released the Paragon characters at no cost
 for use in Unreal Engine projects. Read the current Fab listing terms before
@@ -121,20 +146,29 @@ anything ships rather than relying on that summary.
 
 ### What is not settled
 
-- Whether the Sevarog pack is in the library, which decides the Gatekeeper.
-- The Corrupted Sentinel. A rooted ranged minion is the cheap answer, not a good
-  one, and no Paragon character is stationary by design.
-- Whether enemies keep their own Paragon skeletons or are retargeted onto one
-  shared skeleton. #18 asks for a single locked skeleton standard. Enemies never
-  share animations with the player, so keeping the Paragon skeletons is workable,
-  but #18 has to say so rather than leave the two answers to contradict.
-- Every animation duration in the table above.
-- How physically wide any of these enemies are. Only the Imp has a measured
-  `body_radius`; the other six take the 0.48 m default, which is roughly a
-  person and contradicts calling the Warden "massive" and the Gatekeeper
-  "towering". #366. That number decides what scale the models import at, so it
-  is better settled before #365 than back-filled from whatever Grux happens to
-  be.
+- **The Corrupted Sentinel's timing.** Its firing animation is 2.40 s against a
+  2.0 s interval, and every alternative in the pack is slower. #369 sets out the
+  three ways out and what each costs.
+- **Where the damage lands inside each animation.** `SequenceLength` gives the
+  whole animation. The telegraph rule needs the wind-up, which is the part before
+  the hit, and that has to be read from the animation notifies one asset at a
+  time. Until it is, no telegraph duration is confirmed for any enemy.
+- **How physically wide any of these enemies are.** Only the Imp has a measured
+  `body_radius`; the other six take the 0.48 m default, which is roughly a person
+  and contradicts calling the Warden "massive" and the Gatekeeper "towering".
+  #366. Triangle counts are now known but say nothing about width.
+- **Whether enemies keep their own Paragon skeletons or are retargeted onto one
+  shared skeleton.** #18 asks for a single locked skeleton standard. The imported
+  packs use per-character skeletons with bone counts from 39 on the siege minion
+  to 207 on Rampage, so one shared skeleton would mean retargeting all seven.
+  Enemies never share animations with the player, so keeping the Paragon
+  skeletons is workable, but #18 has to say so rather than leave the two answers
+  to contradict.
+- **Whether the Gatekeeper's four stage poses are usable as its phases.** Sevarog
+  carries `Stage_1` through `Stage_4`, each 0.03 s, which are marker poses rather
+  than animations. The design calls the Gatekeeper a multi-phase boss where each
+  phase introduces new mechanics. Whether those poses correspond to anything
+  useful has not been checked. #354 designs the phases.
 
 ---
 
