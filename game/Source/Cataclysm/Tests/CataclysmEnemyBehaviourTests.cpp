@@ -689,6 +689,95 @@ bool FCataclysmRoamTargetsAreSpreadTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteActuallyHitsWhatItReachesTest,
+	"Cataclysm.AI.ABruteInContactReachStopsRoamingAndLandsAHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// WHY A BRUTE RATHER THAN AN ORDINARY ENEMY, WHICH IS ALREADY COVERED. The
+	// Brute's reach is 90 cm, which is exactly the two capsule radii touching,
+	// with no margin at all. Every other enemy reaches 200 cm and has over a
+	// metre to spare. So the Brute is the only character where the distance
+	// comparison's own arithmetic decides whether it ever lands a hit, and
+	// issue #373 records it failing to for exactly that reason.
+	//
+	// Cataclysm.Brute.CanActuallyReachThePlayer checks the arithmetic and builds
+	// no world. This checks the consequence: a Brute put in contact with a
+	// player takes health off them.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// SPAWNED CLEAR AND THEN MOVED IN, which is the idiom the monster test above
+	// uses and it is not stylistic. Two capsules of radius 48 cm cannot both be
+	// spawned 80 cm apart without overlapping, and the spawn displaces one of
+	// them to make room -- so a Brute and a player spawned in contact end up
+	// further apart than either was asked for. Written the direct way first,
+	// this test failed with the Brute reporting Chasing at a distance that
+	// should have been inside its reach.
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	// Just inside the 90 cm contact reach, measured in the floor plane.
+	Player.Actor->SetActorLocation(FVector(80.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	// STATED RATHER THAN ASSUMED, so that a future failure says whether the
+	// characters were where the test meant them to be.
+	const float Apart = FVector::Dist2D(
+		Brute.Actor->GetActorLocation(), Player.Actor->GetActorLocation());
+	TestTrue(FString::Printf(
+		TEXT("the two are inside the Brute's %.0f cm reach (%.1f cm apart)"),
+		ACataclysmBruteCharacter::DesignedMeleeReachCm, Apart),
+		Apart <= ACataclysmBruteCharacter::DesignedMeleeReachCm);
+
+	const float Before = Player.Health();
+
+	TestEqual(TEXT("a Brute in contact reach attacks rather than roaming"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestEqual(TEXT("and the player is what it is hitting"),
+		Brain->CurrentTarget.Get(), static_cast<AActor*>(Player.Actor));
+	TestEqual(TEXT("and it counted the attack"), Brain->AttacksOrdered, 1);
+	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
+		Before, Player.Health()), Player.Health() < Before);
+
+	// ATTACKING WINS OVER ROAMING, so a Brute cannot wander off mid-fight.
+	TestFalse(TEXT("and it is not holding a place to wander to"),
+		Brain->bHasRoamTarget);
+
+	// THE ATTACK INTERVAL IS A RATE LIMIT AND IT HOLDS. The world is never
+	// ticked so no time passes, and the Brute's interval is 2.8 seconds, so a
+	// second pass must not produce a second hit.
+	const float AfterFirst = Player.Health();
+	TestEqual(TEXT("a second pass with no time elapsed still reports attacking"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestEqual(TEXT("but does not hit again, because 2.8 seconds have not passed"),
+		Brain->AttacksOrdered, 1);
+	TestEqual(TEXT("so the player lost no more health"),
+		Player.Health(), AfterFirst);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteChasesThenGoesBackToRoamingTest,
 	"Cataclysm.AI.ABruteStopsRoamingToChaseAndRoamsAgainWhenThePlayerLeaves",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
