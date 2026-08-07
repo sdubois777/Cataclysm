@@ -65,13 +65,14 @@ public:
 	// ----------------------------------------------------------------------
 	// What ACataclysmEnemyController needs in order to drive this character.
 	//
-	// FOUR VIRTUALS ON THE SHARED BASE RATHER THAN AN INTERFACE, and the reason
+	// FIVE VIRTUALS ON THE SHARED BASE RATHER THAN AN INTERFACE, and the reason
 	// is that the controller has to work for two classes that have nothing else
 	// in common -- a monster and a summoned imp -- and both already derive from
 	// here. The defaults make the base inert: a reach of zero means a character
-	// is never in range of anything, and AttackTarget does nothing. The player
-	// character inherits those defaults and is possessed by a player controller
-	// rather than this one, so nothing drives it.
+	// is never in range of anything, a roam radius of zero means it never
+	// wanders, and AttackTarget does nothing. The player character inherits
+	// those defaults and is possessed by a player controller rather than this
+	// one, so nothing drives it.
 	// ----------------------------------------------------------------------
 
 	/** How close it must be to hit something, in centimetres. Zero never reaches. */
@@ -82,6 +83,21 @@ public:
 
 	/** Seconds between one of its attacks and the next. */
 	virtual float SecondsBetweenAttacks() const { return 1.0f; }
+
+	/**
+	 * How far from where it started it wanders with nothing in sight, in
+	 * centimetres. Zero never roams, which is the default.
+	 *
+	 * OPT-IN RATHER THAN OPT-OUT, AND THAT IS A BEHAVIOUR DECISION RATHER THAN
+	 * A STYLE ONE. Two of the three characters this controller drives should
+	 * not wander. A summoned imp exists to fight what its summoner is fighting,
+	 * and one that strolled off between fights would be a bug rather than a
+	 * feature. A Corrupted Sentinel is designed stationary. Making the base
+	 * inert means adding roaming changed the behaviour of exactly the one
+	 * character that asked for it, and every existing test that asserts a
+	 * monster with nothing in sight is Idle still passes unedited.
+	 */
+	virtual float RoamRadiusCm() const { return 0.0f; }
 
 	/** Hit the given target once. Called by the controller when it is in reach. */
 	virtual void AttackTarget(AActor* Target) {}

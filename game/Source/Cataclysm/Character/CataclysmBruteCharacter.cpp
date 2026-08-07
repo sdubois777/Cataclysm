@@ -60,10 +60,13 @@ ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 	MeleeReachCm = DesignedMeleeReachCm;
 	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
 
-	// NoticeRadiusCm is left at the base's 1500. There is no design figure for
-	// how far any enemy notices the player -- the base class says so about its
-	// own three numbers -- so inventing one for the Brute would be inventing it
-	// for all seven.
+	// SEVEN METRES, NOT THE BASE'S FIFTEEN. The header derives it: the distance
+	// this enemy covers in one attack cycle, 250 cm/s x 2.8 s. The base's 1500
+	// is the longest range a designed player skill reaches, which is a sound
+	// rule for a caster and a poor one for a melee enemy slower than the player,
+	// because it starts a chase that can never end. Issue #383 asks for the rule
+	// covering all seven; this changes only the Brute.
+	NoticeRadiusCm = BruteNoticeRadiusCm;
 
 	GetCapsuleComponent()->InitCapsuleSize(BruteCapsuleRadius, BruteCapsuleHalfHeight);
 

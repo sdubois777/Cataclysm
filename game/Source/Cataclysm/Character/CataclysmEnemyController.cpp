@@ -5,6 +5,8 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "NavigationSystem.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "TimerManager.h"
 
@@ -28,6 +30,17 @@ void ACataclysmEnemyController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
+	// WHERE IT STARTED, RECORDED ONCE. Roaming is a circle around this, so a
+	// character left alone wanders around where it was put rather than
+	// random-walking across the level. Taken here rather than at the first roam
+	// because by then it may have chased something a long way, and "where it
+	// started" would silently come to mean "where it gave up".
+	if (InPawn)
+	{
+		RoamAnchor = InPawn->GetActorLocation();
+		bHasRoamAnchor = true;
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
@@ -49,6 +62,14 @@ void ACataclysmEnemyController::OnUnPossess()
 
 	CurrentTarget = nullptr;
 	LastAction = ECataclysmBrainAction::Idle;
+
+	// The anchor and the roam target belong to the pawn that is leaving. A
+	// controller that possesses a second pawn without clearing them would walk
+	// it to a point chosen for the first one, from an anchor somewhere else
+	// entirely.
+	bHasRoamAnchor = false;
+	bHasRoamTarget = false;
+	RoamPauseUntil = 0.0f;
 
 	Super::OnUnPossess();
 }
@@ -101,13 +122,30 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 
 	if (!Target)
 	{
-		// Stopped rather than left walking. A monster whose target died or
-		// walked out of sight otherwise keeps following the last path it was
-		// given, which reads as it chasing something that is not there.
-		StopMovement();
-		LastAction = ECataclysmBrainAction::Idle;
-		return LastAction;
+		// WHAT USED TO BE HERE WAS AN UNCONDITIONAL StopMovement(). It was
+		// right when standing still was the only thing to do with nothing in
+		// sight, and it is a trap now: Think runs four times a second, so a
+		// StopMovement on this path cancels every roam leg a quarter second
+		// after it is ordered and the character never takes a step. Stopping is
+		// now Roam's business, which does it once on arrival rather than every
+		// pass.
+		return Roam();
 	}
+
+	// IT HAS SOMETHING TO CHASE, SO WHATEVER IT WAS WALKING TO IS STALE. Left
+	// set, the roam target it had before it noticed the player would be resumed
+	// the moment the player left again, sending it back to a point it chose for
+	// reasons that no longer exist.
+	//
+	// WHAT IT PICKS INSTEAD IS NEAR THE ANCHOR, NOT NEAR WHERE THE CHASE ENDED,
+	// because ChooseRoamTarget always draws around RoamAnchor and the anchor is
+	// set once at possession. So a character that chased the player across the
+	// level and lost them walks back toward where it started. That is a soft
+	// leash-return and it is a good thing, but it arrived as a consequence of
+	// anchoring rather than as a designed rule -- there is still no leash while
+	// the target is in sight, which is the part issue #383 asks for.
+	bHasRoamTarget = false;
+	RoamPauseUntil = 0.0f;
 
 	const float Reach = Driven->AttackReachCm();
 
@@ -175,5 +213,180 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		++AttacksOrdered;
 	}
 
+	return LastAction;
+}
+
+bool ACataclysmEnemyController::ChooseRoamTarget(FVector& OutTarget) const
+{
+	const ACataclysmCharacterBase* Driven = Body();
+	if (!Driven || !bHasRoamAnchor)
+	{
+		return false;
+	}
+
+	const float RoamRadius = Driven->RoamRadiusCm();
+	if (RoamRadius <= 0.0f)
+	{
+		return false;
+	}
+
+	// THE NAVIGATION SYSTEM'S ANSWER WHEN THERE IS ONE. It returns a point on
+	// the navigation mesh that a path exists to, so it respects walls and it
+	// never picks somewhere the character would walk into a corner trying to
+	// reach. FNavigationSystem::GetCurrent is the accessor the rest of this
+	// project uses; see UCataclysmLevelAuthoring.
+	// NOT A const UWorld*, and the compiler is right to insist. FNavigationSystem
+	// ::GetCurrent returns a const navigation system for a const world, and
+	// GetRandomReachablePointInRadius is not a const member -- it can build
+	// missing data as a side effect of being asked.
+	if (UWorld* World = GetWorld())
+	{
+		if (UNavigationSystemV1* Navigation =
+				FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
+		{
+			FNavLocation Reachable;
+			if (Navigation->GetRandomReachablePointInRadius(
+					RoamAnchor, RoamRadius, Reachable))
+			{
+				OutTarget = Reachable.Location;
+				return true;
+			}
+		}
+	}
+
+	// A CIRCLE AROUND THE ANCHOR WHEN THERE IS NOT, and this branch is not only
+	// for broken levels: every automation test world is built by
+	// UWorld::CreateWorld, which has no navigation system at all, so without
+	// this there would be no way to check any of the roaming behaviour headless.
+	//
+	// SAFE IN A WAY THE CHASE'S EQUIVALENT IS NOT. The chase falls back to
+	// walking straight at a target that could be anywhere. This point is always
+	// within RoamRadiusCm of the anchor, so the character cannot end up further
+	// from where it started than the radius its own class asked for. That is
+	// what makes the fallback acceptable rather than merely convenient.
+	//
+	// SQUARE ROOT ON THE RADIUS, which is not decoration. Drawing the distance
+	// uniformly puts half the points inside the half-radius circle, which is a
+	// quarter of the area, so the character would spend most of its time near
+	// the anchor and the roam would read as fidgeting. The square root spreads
+	// them evenly over the disc.
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float Distance = RoamRadius * FMath::Sqrt(FMath::FRand());
+
+	OutTarget = RoamAnchor
+		+ FVector(FMath::Cos(Angle) * Distance, FMath::Sin(Angle) * Distance, 0.0f);
+	return true;
+}
+
+ECataclysmBrainAction ACataclysmEnemyController::Roam()
+{
+	ACataclysmCharacterBase* Driven = Body();
+
+	// NOT A ROAMER, SO THE OLD BEHAVIOUR EXACTLY. Standing still with nothing in
+	// sight is what every character in this project did before roaming existed,
+	// and it is still what a summoned imp and a stationary enemy should do.
+	if (!Driven || Driven->RoamRadiusCm() <= 0.0f)
+	{
+		StopMovement();
+		bHasRoamTarget = false;
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+	// Standing at the point it reached, waiting out the pause.
+	if (Now < RoamPauseUntil)
+	{
+		LastAction = ECataclysmBrainAction::Roaming;
+		return LastAction;
+	}
+
+	if (bHasRoamTarget)
+	{
+		// ARRIVED? Measured in the horizontal plane, for the same reason the
+		// reach comparison is: the character's capsule centre and a point on
+		// the floor are at different heights, and charging the arrival test for
+		// that difference would mean it never fires. Issue #373 records the
+		// same mistake made against the attack reach.
+		const float Remaining = FVector::Dist2D(Driven->GetActorLocation(), RoamTarget);
+
+		// OR IT HAS TAKEN LONGER THAN THE WALK COULD POSSIBLY TAKE, which is
+		// what stops a character freezing for good. A roam move is ordered once
+		// and never re-issued, so anything that ends the walk short of the
+		// target -- blocked by geometry, the path invalidated, the request
+		// aborted, or simply stopping just outside the acceptance radius --
+		// otherwise leaves it standing still holding a target it will never
+		// reach and nothing to notice.
+		//
+		// A DEADLINE RATHER THAN THE PATH FOLLOWING STATUS, and that is measured
+		// rather than preferred. The obvious test is GetMoveStatus() == Idle,
+		// and it is wrong here: on 2026-08-07 a world built by UWorld::CreateWorld
+		// -- every automation test world, and the case with no navigation mesh
+		// that the circle fallback exists to serve -- was found to accept the
+		// move request and report Idle immediately. Using the status would make
+		// the character "arrive" on the pass after setting off without having
+		// moved at all, so the fallback would never walk anywhere. A test caught
+		// it by failing.
+		const bool bTakenTooLong = Now >= RoamLegDeadline;
+
+		if (Remaining <= RoamAcceptanceRadiusCm || bTakenTooLong)
+		{
+			StopMovement();
+			bHasRoamTarget = false;
+			RoamPauseUntil = Now + RoamPauseSeconds;
+			LastAction = ECataclysmBrainAction::Roaming;
+			return LastAction;
+		}
+
+		// Still walking. Deliberately no second MoveTo: the path following
+		// component is already carrying out the first one, and re-issuing it
+		// four times a second restarts the path and makes the character stutter.
+		LastAction = ECataclysmBrainAction::Roaming;
+		return LastAction;
+	}
+
+	// Nothing chosen and nothing to wait for, so pick somewhere and set off.
+	FVector Chosen = FVector::ZeroVector;
+	if (!ChooseRoamTarget(Chosen))
+	{
+		StopMovement();
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
+	RoamTarget = Chosen;
+	bHasRoamTarget = true;
+
+	FAIMoveRequest Request(RoamTarget);
+	Request.SetAcceptanceRadius(RoamAcceptanceRadiusCm);
+	Request.SetUsePathfinding(true);
+
+	// The same fallback the chase makes, for the same reason. A roam target
+	// chosen by the circle rather than by the navigation system has no path to
+	// follow, so without this the request fails and the character stands still
+	// holding a target it never walks to.
+	if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+	{
+		Request.SetUsePathfinding(false);
+		MoveTo(Request);
+	}
+
+	// HOW LONG THIS LEG IS ALLOWED TO TAKE. The straight-line time at the
+	// character's own walking speed, times a generous factor because a path
+	// around obstacles is longer than the straight line, plus a floor so that a
+	// very short leg still gets a sensible allowance. This is a safety net for
+	// a walk that ends early, not a pacing mechanism: a leg that finishes
+	// normally is detected by arriving, long before this.
+	const float Speed = Driven->GetCharacterMovement()
+		? Driven->GetCharacterMovement()->GetMaxSpeed() : 0.0f;
+	const float StraightLineSeconds = Speed > 0.0f
+		? FVector::Dist2D(Driven->GetActorLocation(), RoamTarget) / Speed
+		: 0.0f;
+	RoamLegDeadline = Now + FMath::Max(
+		RoamLegMinimumSeconds, StraightLineSeconds * RoamLegGenerosity);
+
+	LastAction = ECataclysmBrainAction::Roaming;
 	return LastAction;
 }

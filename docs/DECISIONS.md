@@ -20,6 +20,104 @@ applied or still pending.
 
 ---
 
+## 2026-08-07 — An enemy can roam, but only if it asks to, and the Brute notices at seven metres not fifteen
+
+**Affects** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and
+`.cpp`, `CataclysmCharacterBase.h`, `CataclysmBruteCharacter.h` and `.cpp`.
+Applied in full. Raises issue #383 for the part that could not be answered.
+
+### The question
+
+The Brute stood still whenever nothing was in range, and noticed the player from
+fifteen metres. Both were asked to change: roam when there is nothing to fight,
+notice from closer, and go back to roaming when the player leaves.
+
+### Roaming is opt-in, and that is the substantive decision
+
+`ECataclysmBrainAction` gained a fourth value, `Roaming`. The obvious way to use
+it would be to make every enemy roam when it has no target. That is wrong for
+two of the three characters `ACataclysmEnemyController` drives:
+
+- **A summoned imp** exists to fight what its summoner is fighting. One that
+  strolled off between fights would be a bug wearing the clothes of a feature.
+- **The Corrupted Sentinel** is designed stationary.
+
+So `ACataclysmCharacterBase` gained a fifth controller-facing virtual,
+`RoamRadiusCm()`, defaulting to zero, and zero means never roam. Only the Brute
+overrides it. The evidence that this was the right shape is that all four
+existing automation tests asserting a character with nothing in sight is `Idle`
+still pass **unedited**, and breaking the default to a non-zero value makes five
+tests fail.
+
+`Roaming` was appended to the enumeration rather than inserted beside `Idle`,
+which it reads like. It is a `UENUM`, so inserting would renumber `Chasing` and
+`Attacking`.
+
+### The Brute notices at 700 cm
+
+Derived from the Brute's own two designed numbers as the ground it covers in one
+attack cycle: `move_speed x attack_interval`, 2.5 m/s x 2.8 s = 7 m. The meaning
+is that noticing the player leads to a fight within one cycle rather than to a
+walk that never arrives.
+
+**The old 1500 cm was not arbitrary and this log said so.** The judgement table
+in the 2026-08-04 entry below records it as "the same distance Subjugate reaches,
+which is the longest range the designed Demonic skills use", and `Range=15` in
+`game/Data/WeaponSkills.csv` is indeed the joint longest. That reasoning is
+symmetry: a monster notices you from as far as you could hit it. It suits a
+caster. It does not suit an enemy moving at 2.5 m/s against a player moving at
+3.5 to 4.6, which cannot close fifteen metres against a player who does not want
+it closed.
+
+**The check that decided it** was the sandbox. `ACataclysmGameMode` spawns the
+Brute 1200 cm from the player start, so at 1500 cm it notices the player as the
+level opens, never roams, and the new behaviour cannot be seen at all.
+
+**Genre precedent agrees. It was gathered after the number was derived, as a
+check on it rather than as its basis**, which matters because none of it is
+strong enough to derive from. Reported figures, with what kind of source each
+came from:
+
+| Game | Reported aggro radius | Source quality |
+|---|---|---|
+| Path of Exile | 8 m for ordinary monsters; 3 m for Defensive and Meat Shield | community documentation |
+| Path of Exile | 5.0 m in one official patch note | official, but about one specific change |
+| Path of Exile 2 | 8 m, raised from 6 m | community documentation |
+| Diablo II | 35 subtiles hardcoded default, 55 hard ceiling | decompiled game source and `monstats.txt` |
+| Diablo III, Diablo IV, Last Epoch, Grim Dawn | **no published figure found** | searched, nothing usable |
+
+So the band the genre uses for an ordinary monster is roughly 5 to 8 metres, and
+7 sits inside it. Treat that as corroboration and not as a citation: the Path of
+Exile numbers are community measurements rather than published constants, and
+Grinding Gear Games has never documented a base aggro radius.
+
+Diablo II is the most useful of the five for a different reason than its number.
+`aidist` is a per-monster column, which is the shape this project already copied
+when it made `NoticeRadiusCm` a per-class property rather than one constant.
+
+**Nothing was found for a leash distance, a wander radius or a pause in any of
+the five.** The pause of 2 seconds and the roam radius of 600 cm are therefore
+judgements, not precedent, and they are labelled as such in the code. The roam
+radius is at least bounded by arithmetic rather than taste: 4000 cm of floor,
+spawning 1200 cm out, less the 48 cm agent inset, leaves about 752 cm of
+headroom to the navigation bounds.
+
+### What this does not answer
+
+**Six enemies still have no notice radius**, and the derivation used here cannot
+give them one — applied to the stationary Corrupted Sentinel it produces zero.
+Issue #383 asks for the rule.
+
+**There is still no leash.** A character that has noticed the player follows for
+as long as the player stays inside its notice radius, however far from home that
+takes it. Roaming now gives every controller an anchor
+(`ACataclysmEnemyController::RoamAnchor`), so the missing half is only a rule for
+when to abandon a chase and walk back. Noticing and un-noticing are also the same
+distance, so a player walking the boundary makes the Brute flip between chasing
+and roaming; hysteresis is the usual fix and is not built.
+
+---
+
 ## 2026-08-07 — Third-party packs stay out of git, and authored enemy work lives under Content/Enemies
 
 **Affects** `.gitignore`, `game/README.md`, and a new `game/docs/content-layout.md`

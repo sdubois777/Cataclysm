@@ -219,6 +219,157 @@ def test_the_brute_is_slower_than_the_enemy_defaults_it_overrides() -> None:
     )
 
 
+def test_the_notice_radius_is_one_attack_cycle_of_walking() -> None:
+    """The Brute's notice radius is derived, and this is the derivation.
+
+    WHAT IT IS. The distance the Brute covers in one attack cycle, so that
+    noticing the player leads to a fight rather than to a walk it never
+    finishes: `move_speed x attack_interval`, 2.5 m/s x 2.8 s = 7 m = 700 cm.
+
+    WHY IT IS GUARDED HERE RATHER THAN ONLY IN C++. Both inputs come from
+    `ARCHETYPES['Brute']`, so a change to either should move the notice radius
+    with it. Continuous integration never opens the editor and so never runs the
+    automation tests; without this the derivation would be a claim in a comment.
+
+    WHAT IT DOES NOT CHECK. That one attack cycle is the right rule. Nothing in
+    `docs/Cataclysm_GDD_v2.md` states a notice radius for any enemy, and this
+    derivation uses two numbers only the Brute has, so it says nothing about the
+    other six. Issue #383 asks for the general rule.
+    """
+    archetype = brute_archetype()
+    expected_cm = archetype.move_speed * 100.0 * archetype.attack_interval
+
+    assert constant(BRUTE_HEADER, "BruteNoticeRadiusCm") == pytest.approx(
+        expected_cm
+    ), (
+        "The Brute's notice radius is no longer one attack cycle of walking. "
+        "It is derived from ARCHETYPES['Brute'].move_speed and .attack_interval, "
+        "so if one of those changed, this should have moved with it."
+    )
+
+
+def test_the_brute_notices_later_than_the_enemy_default() -> None:
+    """Shrinking the notice radius was the point, so the inequality is the test.
+
+    The base enemy's 1500 cm is itself derived -- `docs/DECISIONS.md` records it
+    as the longest range a designed Demonic skill reaches -- but that is a rule
+    for a caster. A melee enemy moving at 2.5 m/s against a player moving at 3.5
+    to 4.6 cannot close a fifteen metre gap against a player who does not want it
+    closed, so it would start a chase that never ends.
+    """
+    enemy_header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+                    / "CataclysmEnemyCharacter.h")
+
+    base_notice = uproperty_default(enemy_header, "NoticeRadiusCm")
+    brute_notice = constant(BRUTE_HEADER, "BruteNoticeRadiusCm")
+
+    assert brute_notice < base_notice, (
+        "A Brute notices from at least as far as an ordinary enemy, so the "
+        "change that shrank it has been undone."
+    )
+
+    brute_reach = constant(BRUTE_HEADER, "DesignedMeleeReachCm")
+    assert brute_notice > brute_reach * 2.0, (
+        "The Brute's notice radius is close to its own reach, so it could be "
+        "walked up to and stood beside without ever waking up."
+    )
+
+
+def test_the_brute_roams_less_far_than_it_sees_and_stays_on_the_floor() -> None:
+    """Two bounds on the roam radius, both of them arithmetic rather than taste.
+
+    SMALLER THAN THE NOTICE RADIUS, or a Brute could wander off the ground it is
+    meant to be holding and have no way of noticing that it had.
+
+    INSIDE THE NAVIGATION BOUNDS. The sandbox floor is `FLOOR_EXTENT` cm across
+    centred on the world origin, so nothing can path further than half of that
+    from the centre. `ACataclysmGameMode` puts the Brute `BruteDistanceCm` out,
+    and Recast insets the walkable surface by the agent radius, which for this
+    character is its capsule radius. What is left is the headroom the roam radius
+    has to fit inside.
+
+    All four inputs are read from the files that define them, so moving the
+    spawn distance or the floor size fails this rather than silently producing a
+    Brute that tries to walk off the world.
+    """
+    import re as _re
+
+    notice = constant(BRUTE_HEADER, "BruteNoticeRadiusCm")
+    roam = constant(BRUTE_HEADER, "BruteRoamRadiusCm")
+
+    assert roam < notice, (
+        "The Brute roams further from its anchor than it can see, so it can "
+        "leave the area it is guarding without knowing."
+    )
+
+    generator = REPO_ROOT / "tools" / "generate_input_assets.py"
+    if not generator.is_file():
+        pytest.fail(f"{generator.relative_to(REPO_ROOT)} does not exist")
+
+    floor_match = _re.search(
+        r"^FLOOR_EXTENT\s*=\s*([\d.]+)", generator.read_text(encoding="utf-8"), _re.M)
+    if floor_match is None:
+        pytest.fail(
+            "tools/generate_input_assets.py has no FLOOR_EXTENT line. It is what "
+            "sizes both the sandbox floor and the navigation bounds, so without "
+            "it the roam radius has nothing to be checked against."
+        )
+    floor_extent_cm = float(floor_match.group(1))
+
+    spawn_distance_cm = uproperty_default(GAME_MODE_HEADER, "BruteDistanceCm")
+    capsule_radius_cm = constant(BRUTE_HEADER, "BruteCapsuleRadius")
+
+    headroom_cm = floor_extent_cm / 2.0 - spawn_distance_cm - capsule_radius_cm
+
+    assert roam < headroom_cm, (
+        f"A Brute spawned {spawn_distance_cm:.0f} cm from the centre of a "
+        f"{floor_extent_cm:.0f} cm floor has only {headroom_cm:.0f} cm to the "
+        f"navigation bounds once the {capsule_radius_cm:.0f} cm agent inset is "
+        f"taken off, but it roams up to {roam:.0f} cm. Roam targets would fall "
+        "outside the navigation mesh, where the fallback walks it in a straight "
+        "line off the floor."
+    )
+
+
+def test_roaming_is_opt_in_so_nothing_else_starts_wandering() -> None:
+    """The base class must not roam, or every enemy in the project does.
+
+    THE REGRESSION THIS EXISTS FOR. `RoamRadiusCm` is a virtual on
+    `ACataclysmCharacterBase` with a default of zero, and that default is the
+    only thing keeping a summoned imp from strolling away from the fight it was
+    summoned into, and a Corrupted Sentinel -- designed stationary -- from
+    walking about. Four automation tests assert that a character with nothing in
+    sight is Idle; they pass unedited only because of this default.
+
+    The automation tests check it against live actors. This checks the source, so
+    it fails in continuous integration, which never opens the editor.
+    """
+    base_header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+                   / "CataclysmCharacterBase.h")
+    if not base_header.is_file():
+        pytest.fail(f"{base_header.relative_to(REPO_ROOT)} does not exist")
+
+    text = base_header.read_text(encoding="utf-8")
+    match = re.search(
+        r"virtual\s+float\s+RoamRadiusCm\s*\(\s*\)\s*const\s*"
+        r"\{\s*return\s+(-?\d+(?:\.\d+)?)f\s*;\s*\}",
+        text,
+    )
+    if match is None:
+        pytest.fail(
+            "game/Source/Cataclysm/Character/CataclysmCharacterBase.h no longer "
+            "has an inline 'virtual float RoamRadiusCm() const { return <n>f; }'. "
+            "If it moved to a .cpp, this guard cannot see it any more and "
+            "roaming being opt-in is unguarded in continuous integration."
+        )
+
+    assert float(match.group(1)) == 0.0, (
+        "ACataclysmCharacterBase::RoamRadiusCm no longer defaults to zero, so "
+        "every character the enemy controller drives now roams -- including "
+        "summoned imps, which should stay with the fight."
+    )
+
+
 def test_the_walk_play_rate_matches_the_recorded_figure() -> None:
     """The authored walk speed in the C++ matches the figure written down.
 
