@@ -129,6 +129,15 @@ public:
 	 * pinned: enemy_stats.py gives move_speed 2.5 and attack_interval 2.8, and
 	 * tools/tests/test_brute_matches_the_model.py fails when either drifts.
 	 *
+	 * IT IS ALSO EXACTLY TWICE THE STOMP'S TELEGRAPH RADIUS, which is the more
+	 * useful way to read it. largest_telegraphed_radius(2.8) in
+	 * enemy_abilities.py is 3.5 m, so 700 cm is 2 x 350. Walking the first half
+	 * takes (700 - 350) / 250 = 1.4 s and the Stomp's wind-up is 1.4 s, so the
+	 * time from noticing the player to a Stomp landing is exactly one attack
+	 * interval. That is one property rather than two coincidences: it holds
+	 * whenever the telegraph radius is half of speed times interval, which is
+	 * what the telegraph rule makes it.
+	 *
 	 * WHY THE INHERITED 1500 WAS WRONG FOR THIS ENEMY RATHER THAN WRONG. It is
 	 * derived -- docs/DECISIONS.md records it as "the same distance Subjugate
 	 * reaches, which is the longest range the designed Demonic skills use", and
@@ -144,7 +153,15 @@ public:
 	 * ACataclysmGameMode spawns the Brute 1200 cm from the player start. At
 	 * 1500 it notices the player at the instant the level opens and walks at
 	 * them for ever, so it never roams and the roaming cannot be seen at all.
-	 * At 700 it does not, so it roams until the player closes to seven metres.
+	 * At 700 it does not, so the first thing a player sees it do is wander.
+	 *
+	 * IT DOES NOT FOLLOW THAT A MOTIONLESS PLAYER IS SAFE, and the first draft
+	 * of this comment wrongly implied it was. The roam circle reaches to
+	 * 1200 - 600 = 600 cm from the player start, which is inside the 700 cm
+	 * notice radius, so a Brute that happens to wander to the near edge of its
+	 * circle notices a player who has not moved. That is the intended
+	 * behaviour, not a leak: a creature patrolling ground near you should find
+	 * you eventually.
 	 *
 	 * ONE ENEMY, NOT SEVEN. The design document states no notice radius for any
 	 * enemy, and this figure is derived from numbers only the Brute has, so it
@@ -163,10 +180,17 @@ public:
 	 * by the agent radius, which for this capsule is 48 cm, so about 752 cm is
 	 * really reachable. 600 leaves a margin of roughly 150 cm.
 	 *
-	 * ALSO SMALLER THAN THE NOTICE RADIUS ABOVE, which matters for a reason
-	 * that is not obvious: a character that roamed further from its anchor than
-	 * it can see would wander out of the area it is meant to be guarding and
-	 * have no way of knowing. At 600 against 700 it cannot.
+	 * ALSO SMALLER THAN THE NOTICE RADIUS ABOVE, and the property that buys is
+	 * precise: a player standing at the anchor is inside the Brute's notice
+	 * radius from anywhere in its roam circle. Roaming can therefore never take
+	 * it somewhere that it would fail to see something standing on the spot it
+	 * is guarding. 600 against 700 gives that with 100 cm to spare.
+	 *
+	 * An earlier version of this comment argued it in terms of "wandering out
+	 * of the area it is meant to guard", which conflates two different
+	 * measurements -- distance from the anchor and distance to a target -- and
+	 * does not actually follow. The area it holds is roam plus notice, 1300 cm,
+	 * and that is the figure that has to fit the level.
 	 *
 	 * The navigation system is asked first and will not return an unreachable
 	 * point, so this figure is the bound on the fallback rather than on the

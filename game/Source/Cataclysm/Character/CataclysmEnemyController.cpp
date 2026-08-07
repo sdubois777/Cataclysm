@@ -135,8 +135,15 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// IT HAS SOMETHING TO CHASE, SO WHATEVER IT WAS WALKING TO IS STALE. Left
 	// set, the roam target it had before it noticed the player would be resumed
 	// the moment the player left again, sending it back to a point it chose for
-	// reasons that no longer exist. Clearing it here is what makes "returns to
-	// roaming" pick a fresh point near wherever the chase ended.
+	// reasons that no longer exist.
+	//
+	// WHAT IT PICKS INSTEAD IS NEAR THE ANCHOR, NOT NEAR WHERE THE CHASE ENDED,
+	// because ChooseRoamTarget always draws around RoamAnchor and the anchor is
+	// set once at possession. So a character that chased the player across the
+	// level and lost them walks back toward where it started. That is a soft
+	// leash-return and it is a good thing, but it arrived as a consequence of
+	// anchoring rather than as a designed rule -- there is still no leash while
+	// the target is in sight, which is the part issue #383 asks for.
 	bHasRoamTarget = false;
 	RoamPauseUntil = 0.0f;
 
