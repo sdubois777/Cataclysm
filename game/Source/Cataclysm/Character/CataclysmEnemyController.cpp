@@ -175,14 +175,7 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// this comes from and why no other enemy needs it.
 	if (Distance > Reach + ContactToleranceCm)
 	{
-		// MOVETOACTOR RATHER THAN MOVETOLOCATION, because the target moves. A
-		// location is where the target was when the order was given; an actor is
-		// re-followed as it walks.
-		const float AcceptanceRadius = Reach * ApproachFractionOfReach;
-
-		FAIMoveRequest Request(Target);
-		Request.SetAcceptanceRadius(AcceptanceRadius);
-		Request.SetUsePathfinding(true);
+		FAIMoveRequest Request = MakeChaseMoveRequest(Target, Reach);
 
 		// A STRAIGHT LINE WHEN THERE IS NO NAVIGATION MESH. Pathfinding needs a
 		// NavMeshBoundsVolume in the level; without one the request fails and,
@@ -218,6 +211,26 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	}
 
 	return LastAction;
+}
+
+FAIMoveRequest ACataclysmEnemyController::MakeChaseMoveRequest(
+	AActor* Target, float ReachCm) const
+{
+	// MOVETOACTOR RATHER THAN MOVETOLOCATION, because the target moves. A
+	// location is where the target was when the order was given; an actor is
+	// re-followed as it walks.
+	FAIMoveRequest Request(Target);
+	Request.SetAcceptanceRadius(ReachCm * ApproachFractionOfReach);
+	Request.SetUsePathfinding(true);
+
+	// BOTH OFF, AND THIS IS THE WHOLE POINT OF THE FUNCTION. They default to
+	// true, which quietly adds both capsule radii to the acceptance radius and
+	// stops the Brute 162 cm from a target it can only hit at 90. See the
+	// header for the measurement.
+	Request.SetReachTestIncludesAgentRadius(false);
+	Request.SetReachTestIncludesGoalRadius(false);
+
+	return Request;
 }
 
 bool ACataclysmEnemyController::ChooseRoamTarget(FVector& OutTarget) const

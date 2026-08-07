@@ -44,6 +44,15 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	/**
+	 * Hits the target, and plays the swing that goes with it.
+	 *
+	 * OVERRIDDEN HERE RATHER THAN DRIVEN FROM THE CONTROLLER so that the
+	 * animation cannot drift apart from the damage: there is exactly one place
+	 * a hit happens, and this is it.
+	 */
+	virtual void AttackTarget(AActor* Target) override;
+
+	/**
 	 * Chooses the standing or walking animation and sets the walk's play rate.
 	 *
 	 * PUBLIC SO A TEST CAN STEP IT WITHOUT A TICKING WORLD, the same reason
@@ -73,6 +82,19 @@ public:
 	/** Whether the brain driving this Brute says it is chasing something. */
 	bool IsChasing() const;
 
+	/**
+	 * Sets the walk speed to the designed figure, or to the chase speed the
+	 * console variable asks for while chasing.
+	 *
+	 * DEFAULTS TO CHANGING NOTHING. `Cataclysm.Brute.ChaseSpeed` is zero unless
+	 * someone sets it, and zero means the designed 250 in both states. It
+	 * exists because a running animation on a character that has not changed
+	 * speed reads as running on the spot, and finding the speed that looks
+	 * right is a judgement made by watching. The number that comes out of that
+	 * belongs in the design, not here.
+	 */
+	void ApplyChaseSpeed();
+
 	/** What it plays standing still. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> IdleAnimation;
@@ -92,6 +114,40 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> ChaseAnimation;
+
+	/** What it plays when it swings. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> AttackAnimation;
+
+	/**
+	 * Start the swing animation, and hold it until it has played out.
+	 *
+	 * Called by the base class when an attack actually lands, so that the
+	 * animation and the damage cannot drift apart. Does nothing when the art is
+	 * absent, which is every fresh clone.
+	 */
+	void PlayAttackAnimation();
+
+	/**
+	 * Whether the swing animation is still playing and should not be replaced.
+	 *
+	 * WHY LOCOMOTION HAS TO ASK. DriveLocomotion runs every frame and picks an
+	 * animation from ground speed and brain state. The Brute stops moving to
+	 * attack, so on the very next frame that logic would choose the standing
+	 * animation and cut the swing off after one frame. This is what stops it.
+	 */
+	bool IsSwinging() const;
+
+	/**
+	 * World seconds until which the swing animation owns the mesh. Read by
+	 * tests. Zero means it is not swinging.
+	 *
+	 * PUBLIC FOR THE SAME REASON THE CONTROLLER'S ROAM DEADLINE IS: a synthetic
+	 * test world is never ticked, so a test cannot wait a second for the swing
+	 * to finish and has to read the deadline instead.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float SwingUntilSeconds = 0.0f;
 
 	//~ The designed numbers.
 	//
@@ -324,6 +380,20 @@ public:
 	 *     /Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Sprint_Quad_Fwd
 	 */
 	static const TCHAR* ChaseAnimationPath;
+
+	/**
+	 * What it plays when it swings.
+	 *
+	 * A PLAIN ANIMATION, NOT THE MONTAGE THAT SITS BESIDE IT. The pack ships
+	 * Attack_Biped_Melee_A_Montage and that is the ordinary way to do this, but
+	 * this mesh is driven in EAnimationMode::AnimationSingleNode and montages
+	 * are silently ignored in that mode -- they do not fail, they do nothing.
+	 * Issue #387 replaces the whole single-animation scheme with an animation
+	 * Blueprint, and montages become usable then. Until it lands, the plain
+	 * sequence played once is what makes a swing visible at all, and a swing
+	 * nobody can see was reported as the Brute not attacking.
+	 */
+	static const TCHAR* AttackAnimationPath;
 
 	/**
 	 * Below this ground speed the Brute is standing rather than walking, in

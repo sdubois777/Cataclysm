@@ -51,6 +51,10 @@ const TCHAR* ACataclysmBruteCharacter::WalkAnimationPath =
 const TCHAR* ACataclysmBruteCharacter::ChaseAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Run_Fwd.Run_Fwd");
 
+const TCHAR* ACataclysmBruteCharacter::AttackAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Attack_Biped_Melee_A.Attack_Biped_Melee_A");
+
 /**
  * Live override for the chase animation's authored speed, for tuning by eye.
  *
@@ -79,6 +83,36 @@ static TAutoConsoleVariable<float> CVarBruteAuthoredChaseSpeed(
  *
  * Empty means use ChaseAnimationPath on the class.
  */
+/**
+ * How fast the Brute moves while chasing, for judging the chase gait by eye.
+ *
+ * WHY THIS EXISTS AND WHY IT DEFAULTS TO OFF. Playing a running animation on a
+ * character that has not changed speed reads as running on the spot -- reported
+ * from a play session on 2026-08-07 as "he moves his arms and legs faster but
+ * doesn't actually move faster". A running gait only means anything if the
+ * creature runs.
+ *
+ * But movement speed is not the engine's to choose. ARCHETYPES["Brute"] in
+ * sim/cataclysm_sim/enemy_stats.py gives move_speed 2.5, it is half of what
+ * makes "can be outmanoeuvred" true, and tools/tests/test_brute_matches_the_model.py
+ * fails if the C++ disagrees with it. A separate chase speed is a design
+ * change, and the design has no second speed for any enemy.
+ *
+ * So zero means no change, and the Brute moves at its designed 250 in both
+ * states. Setting this finds the number that looks right; the number then goes
+ * to a design issue rather than being quietly adopted. Diablo II is the
+ * precedent worth citing there: its monstats.txt carries Velocity and
+ * Runvelocity as separate per-monster columns, so a walk speed and a chase
+ * speed is an ordinary shape rather than an invention.
+ */
+static TAutoConsoleVariable<float> CVarBruteChaseSpeed(
+	TEXT("Cataclysm.Brute.ChaseSpeed"),
+	0.0f,
+	TEXT("Centimetres per second the Brute moves while chasing. 0 uses its "
+		 "designed 250 in both states. Anything above the player's 350 to 460 "
+		 "would make it uncatchable, which its design says it must not be."),
+	ECVF_Default);
+
 static TAutoConsoleVariable<FString> CVarBruteChaseAnimation(
 	TEXT("Cataclysm.Brute.ChaseAnimation"),
 	TEXT(""),
@@ -129,7 +163,25 @@ void ACataclysmBruteCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	ApplyChaseSpeed();
 	DriveLocomotion();
+}
+
+void ACataclysmBruteCharacter::ApplyChaseSpeed()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// THE DESIGNED SPEED UNLESS SOMEONE IS DELIBERATELY EXPERIMENTING. Written
+	// every frame rather than only on the state change, so that clearing the
+	// console variable back to zero restores the designed speed immediately
+	// rather than leaving whatever was last set.
+	const float ChaseSpeed = CVarBruteChaseSpeed.GetValueOnAnyThread();
+	Movement->MaxWalkSpeed = (ChaseSpeed > 0.0f && IsChasing())
+		? ChaseSpeed : DesignedWalkSpeedCmPerSecond;
 }
 
 float ACataclysmBruteCharacter::EffectiveAuthoredWalkSpeed() const
@@ -142,6 +194,54 @@ float ACataclysmBruteCharacter::EffectiveAuthoredChaseSpeed() const
 {
 	const float Override = CVarBruteAuthoredChaseSpeed.GetValueOnAnyThread();
 	return Override > 0.0f ? Override : AuthoredChaseSpeedCmPerSecond;
+}
+
+void ACataclysmBruteCharacter::AttackTarget(AActor* Target)
+{
+	Super::AttackTarget(Target);
+	PlayAttackAnimation();
+}
+
+void ACataclysmBruteCharacter::PlayAttackAnimation()
+{
+	const UWorld* World = GetWorld();
+	if (!World || !AttackAnimation)
+	{
+		return;
+	}
+
+	// THE ANIMATION'S OWN LENGTH, NOT THE ATTACK INTERVAL. The swing is 1.0
+	// seconds and the interval between swings is 2.8, so holding the mesh for
+	// the interval would leave the Brute frozen in its finishing pose for 1.8
+	// seconds after every hit.
+	const float Length = AttackAnimation->GetPlayLength();
+	if (Length <= 0.0f)
+	{
+		return;
+	}
+
+	SwingUntilSeconds = World->GetTimeSeconds() + Length;
+
+	if (USkeletalMeshComponent* MeshComponent = GetMesh())
+	{
+		if (UAnimSingleNodeInstance* Single = MeshComponent->GetSingleNodeInstance())
+		{
+			// NOT LOOPING, and restarted from the beginning every swing, which
+			// is why this sets the asset even when it is already the one
+			// playing. Two swings in a row should read as two swings.
+			Single->SetAnimationAsset(AttackAnimation, /*bIsLooping=*/false);
+			Single->SetPosition(0.0f, /*bFireNotifies=*/false);
+			Single->SetPlayRate(1.0f);
+			Single->SetPlaying(true);
+		}
+	}
+}
+
+bool ACataclysmBruteCharacter::IsSwinging() const
+{
+	const UWorld* World = GetWorld();
+	return World && SwingUntilSeconds > 0.0f
+		&& World->GetTimeSeconds() < SwingUntilSeconds;
 }
 
 bool ACataclysmBruteCharacter::IsChasing() const
@@ -217,6 +317,15 @@ void ACataclysmBruteCharacter::DriveLocomotion()
 					 "load. Keeping the previous chase animation."),
 				*WantedChasePath);
 		}
+	}
+
+	// THE SWING OWNS THE MESH UNTIL IT HAS PLAYED OUT. The Brute stops moving
+	// to attack, so without this the next frame's choice would be the standing
+	// animation and the swing would be cut off after one frame -- which looks
+	// exactly like not attacking at all.
+	if (IsSwinging())
+	{
+		return;
 	}
 
 	// HORIZONTAL ONLY. Falling is not walking, and a Brute stepping off a ledge
@@ -299,6 +408,9 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(ChaseAnimationPath).TryLoad());
 		LoadedChaseAnimationPath = ChaseAnimationPath;
 
+		AttackAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(AttackAnimationPath).TryLoad());
+
 		if (IdleAnimation)
 		{
 			// SINGLE NODE, NOT AN ANIMATION BLUEPRINT. See the header for the
@@ -322,6 +434,14 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 				TEXT("Brute walking animation not found at %s, so it will slide "
 					 "rather than walk."),
 				WalkAnimationPath);
+		}
+
+		if (!AttackAnimation)
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Brute attack animation not found at %s, so its swings "
+					 "will be invisible."),
+				AttackAnimationPath);
 		}
 
 		if (!ChaseAnimation)

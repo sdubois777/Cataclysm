@@ -243,6 +243,36 @@ public:
 	bool ChooseRoamTarget(FVector& OutTarget) const;
 
 	/**
+	 * The move request used to walk at something it is chasing.
+	 *
+	 * SEPARATE SO A TEST CAN READ ITS FLAGS, which is the only way to check the
+	 * thing this function exists to get right. What it does cannot be seen from
+	 * outside otherwise: the request is handed to the path following component
+	 * and the only visible consequence is where the character stops, which
+	 * needs a navigation mesh no automation test world has.
+	 *
+	 * WHAT IT GETS RIGHT, AND WHY IT IS NOT THE DEFAULT. FAIMoveRequest is
+	 * constructed with bReachTestIncludesAgentRadius and
+	 * bReachTestIncludesGoalRadius both TRUE, verified in the engine source at
+	 * Runtime/AIModule/Private/AITypes.cpp. That adds BOTH capsule radii to the
+	 * acceptance radius, so a request that reads as "stop within 72 cm" really
+	 * means "stop within 72 + 48 + 42 = 162 cm".
+	 *
+	 * For every other enemy that is invisible: a training dummy reaches 200 cm
+	 * and 162 is inside it. For the Brute, whose reach is 90 cm, it means the
+	 * chase ends a metre and a half short and it never attacks at all --
+	 * reported from a play session on 2026-08-07 as "he doesn't attack when he
+	 * reaches me". Both flags are turned off so the acceptance radius means the
+	 * centre-to-centre distance the rest of this class measures in.
+	 *
+	 * The resulting 72 cm is closer than two capsules can physically get, so
+	 * the request is never satisfied and the character presses up against its
+	 * target. That is intended: arriving is not what triggers the attack. The
+	 * reach test in Think does, and it calls StopMovement when it fires.
+	 */
+	FAIMoveRequest MakeChaseMoveRequest(AActor* Target, float ReachCm) const;
+
+	/**
 	 * Where it was when this controller took it over. Roaming is around here.
 	 *
 	 * AN ANCHOR RATHER THAN WHEREVER IT HAPPENS TO BE STANDING. Without one,
