@@ -165,6 +165,34 @@ def test_no_empire_runtime_claim_is_still_true() -> None:
     )
 
 
+def test_the_art_claim_matches_how_many_characters_have_a_mesh() -> None:
+    """The readme says exactly one character wears real art.
+
+    THIS BULLET HAD NO GUARD AND THE TWO AROUND IT DID, which is how it stayed
+    saying "No art assets of any kind" while the Brute was given the Paragon
+    Rampage model. Counting characters that name a content path is a proxy, but
+    it is a proxy that moves the moment a second one is dressed.
+    """
+    text = readme_text()
+    if "One character has art" not in text:
+        pytest.skip("The readme no longer claims exactly one character has art.")
+
+    character_dir = GAME_DIR / "Source" / "Cataclysm"
+    dressed = sorted(
+        path.stem
+        for path in character_dir.rglob("*.cpp")
+        if "Tests" not in path.parts
+        and "/Game/Paragon" in path.read_text(encoding="utf-8", errors="replace")
+    )
+
+    assert dressed == ["CataclysmBruteCharacter"], (
+        "game/README.md says one character has art, but the classes naming a "
+        f"Paragon content path are: {', '.join(dressed) or 'none'}. Update the "
+        "'What is not here yet' section to match, and update "
+        "game/docs/enemy-source-assets.md."
+    )
+
+
 def test_no_procedural_dungeon_claim_is_still_true() -> None:
     """The readme says `L_Sandbox` is the only map."""
     if "L_Sandbox` is the only map" not in readme_text():

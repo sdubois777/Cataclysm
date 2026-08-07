@@ -37,6 +37,44 @@ Six free Paragon packs, imported 2026-08-07, 17.31 GB total.
 | The Gatekeeper | `Sevarog` | 85,163 | 155 |
 | The Hellhound | `IggyScorch`, the Scorch half | 92,562 | 198 |
 
+## How big each one actually is
+
+Reference-pose bounds read from each skeletal mesh through the editor, in
+centimetres. **The width figures overstate the body**, because the reference pose
+has the arms out: Rampage's 347 cm across X is its arm span, not its shoulders.
+Height and the authored physics shapes are the trustworthy numbers.
+
+| Enemy | Mesh height | Reference-pose X | Reference-pose Y |
+|---|:-:|:-:|:-:|
+| The Imp | 175.9 cm | 129.7 | 174.2 |
+| The Corrupted Sentinel | 196.2 cm | 155.9 | 211.1 |
+| The Succubus | 180.8 cm | 112.3 | 89.7 |
+| The Hellhound | 212.5 cm | 81.0 | 225.2 |
+| The Brute | 221.2 cm | 347.3 | 185.5 |
+| The Abyssal Warden | 227.8 cm | 186.8 | 238.0 |
+| The Gatekeeper | 311.1 cm | 206.9 | 307.1 |
+
+**The Gatekeeper is 3.11 metres tall**, which is the design document's "towering"
+as a measurement rather than an adjective. **The Imp's mesh is 1.76 metres tall**,
+roughly a person, so playing a small swarming creature with it means scaling it
+down rather than using it as authored.
+
+### The Brute's authored collision
+
+`Rampage_Extents`, the physics asset bound to the Rampage mesh, holds 11 bodies.
+The relevant one:
+
+| Bone | Shape | Radius |
+|---|---|:-:|
+| `spine_03` | Sphere | **82.1 cm** |
+
+That is Epic's own answer to how wide the torso is, and it is 1.7 times the
+0.48 m body radius the simulation assumes for every enemy except the Imp. It is
+evidence for issue #366 and it is deliberately **not** used as the collision
+capsule: see `game/Source/Cataclysm/Character/CataclysmBruteCharacter.h`, which
+explains that an 82 cm capsule would put the Brute permanently outside its own
+90 cm reach.
+
 `GruxMolten` is a separate mesh, not a material applied to the base `Grux` mesh.
 The base Grux is 46,920 triangles across 106 bones; the molten version is 82,225
 across 96. Choosing the molten skin therefore changes the mesh, not just the
