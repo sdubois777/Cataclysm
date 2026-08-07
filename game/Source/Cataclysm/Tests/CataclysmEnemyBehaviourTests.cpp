@@ -10,6 +10,9 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+// UAnimSequence is only forward declared on the Brute, and the gait test builds
+// throwaway ones with NewObject, which needs the whole type.
+#include "Animation/AnimSequence.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
@@ -778,6 +781,124 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 		Brain->AttacksOrdered, 1);
 	TestEqual(TEXT("so the player lost no more health"),
 		Player.Health(), AfterFirst);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteRunsWhileChasingTest,
+	"Cataclysm.AI.ABruteUsesADifferentGaitWhileChasingThanWhileWandering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteRunsWhileChasingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE DECISION, NOT THE PLAYBACK, for the reason the Brute's own animation
+	// tests give: applying an animation needs a component that has run InitAnim
+	// and a synthetic world does not reliably give one. AnimationForGroundSpeed
+	// is a pure function and can be asked anything.
+	//
+	// AND WITHOUT THE ART, WHICH IS THE POINT OF THE PLACEHOLDERS BELOW. The
+	// Paragon packs are gitignored, so on a fresh clone and in this worktree no
+	// animation loads at all and a test that compared real assets would silently
+	// check nothing. Two distinct throwaway UAnimSequence objects stand in.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+
+	UAnimSequence* Standing = NewObject<UAnimSequence>();
+	UAnimSequence* Walking = NewObject<UAnimSequence>();
+	UAnimSequence* Running = NewObject<UAnimSequence>();
+	Brute.Actor->IdleAnimation = Standing;
+	Brute.Actor->WalkAnimation = Walking;
+	Brute.Actor->ChaseAnimation = Running;
+
+	const float Moving = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
+	float Rate = 0.0f;
+
+	TestEqual(TEXT("standing still it stands, chasing or not"),
+		Brute.Actor->AnimationForGroundSpeed(0.0f, Rate, /*bChasing=*/true),
+		Standing);
+
+	TestEqual(TEXT("moving with nothing to chase it walks"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/false),
+		Walking);
+
+	TestEqual(TEXT("moving toward something it has noticed it runs"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true),
+		Running);
+
+	// THE SAME SPEED PRODUCES DIFFERENT ANIMATIONS, which is the whole point.
+	// The Brute moves at 250 cm/s either way, because its movement speed is a
+	// designed number, so ground speed cannot distinguish the two states and
+	// the brain has to.
+	TestNotEqual(TEXT("so the same ground speed gives two different gaits"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/false),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true));
+
+	// FALLS BACK TO THE WALK WITH NO CHASE CLIP, which is the state of every
+	// fresh clone, rather than falling back to nothing and freezing the pose.
+	Brute.Actor->ChaseAnimation = nullptr;
+	TestEqual(TEXT("with no chase animation loaded it walks while chasing"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true),
+		Walking);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteChaseStateComesFromTheBrainTest,
+	"Cataclysm.AI.ABruteAsksItsBrainWhetherItIsChasing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteChaseStateComesFromTheBrainTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	// Out of sight: it wanders, and wandering is not chasing.
+	Brain->Think();
+	TestFalse(TEXT("a wandering Brute is not chasing"), Brute.Actor->IsChasing());
+
+	// Inside the notice radius, outside reach: chasing.
+	Player.Actor->SetActorLocation(FVector(5 * M, 0, 0));
+	TestEqual(TEXT("with the player five metres away it chases"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestTrue(TEXT("and it reports itself as chasing"), Brute.Actor->IsChasing());
+
+	// In reach: attacking, which deliberately does NOT count as chasing. It has
+	// stopped moving by then, so the standing animation is the right one.
+	Player.Actor->SetActorLocation(FVector(80.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	TestEqual(TEXT("in reach it attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestFalse(TEXT("and an attacking Brute is not chasing, because it has stopped"),
+		Brute.Actor->IsChasing());
 
 	return true;
 }

@@ -67,15 +67,31 @@ public:
 	 * @return the standing or the walking animation, or null if neither loaded.
 	 */
 	UAnimSequence* AnimationForGroundSpeed(float GroundSpeedCmPerSecond,
-										   float& OutPlayRate) const;
+										   float& OutPlayRate,
+										   bool bChasing = false) const;
+
+	/** Whether the brain driving this Brute says it is chasing something. */
+	bool IsChasing() const;
 
 	/** What it plays standing still. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> IdleAnimation;
 
-	/** What it plays moving. Null until ResolveBody runs. */
+	/** What it plays moving with nothing to chase. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> WalkAnimation;
+
+	/**
+	 * What it plays moving toward something it has noticed. Null until
+	 * ResolveBody runs, and null is not a fault: the walk is used instead.
+	 *
+	 * CHOSEN BY BRAIN STATE, NOT BY SPEED, and it has to be, because the Brute
+	 * moves at the same 250 cm/s whether it is wandering or coming at you. Its
+	 * movement speed is a designed number that makes "can be outmanoeuvred"
+	 * true, so this reads the controller's state instead.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> ChaseAnimation;
 
 	//~ The designed numbers.
 	//
@@ -276,6 +292,40 @@ public:
 	static const TCHAR* WalkAnimationPath;
 
 	/**
+	 * What it plays while chasing, and why this one is a starting point rather
+	 * than an answer.
+	 *
+	 * NOT Sprint_Biped_Fwd, WHICH WAS THE OBVIOUS CHOICE AND IS USELESS.
+	 * Measured on 2026-08-07: it returns identical bone poses to
+	 * Jog_Biped_Fwd at every time sampled, with the same length, the same 29
+	 * frames and the same 189 tracks. The pack appears to realise a sprint by
+	 * playing the jog faster rather than by animating a second gait. Selecting
+	 * between the two would look like nothing had changed. Issue #386.
+	 *
+	 * Run_Fwd IS a different clip: 0.667 seconds, 20 frames, 47 tracks against
+	 * the jog's 189. It is the only genuinely distinct forward gait in the
+	 * pack besides the four-legged set.
+	 *
+	 * ITS AUTHORED SPEED CANNOT BE MEASURED. tools/measure_animation_stride.py
+	 * works by tracking the planted IK foot, and this clip carries no
+	 * ik_foot_l track at all -- which is the measured reason it reads zero on
+	 * every axis, where the documentation previously only inferred it. So the
+	 * play rate has to be judged by eye, which is exactly how the walk's 225
+	 * was arrived at, and Cataclysm.Brute.AuthoredChaseSpeed is how to do it
+	 * without a rebuild.
+	 *
+	 * TO AUDITION A DIFFERENT ONE WITHOUT A REBUILD, set
+	 * Cataclysm.Brute.ChaseAnimation to any animation's asset path. The
+	 * four-legged gaits are the interesting alternatives, because a heavy
+	 * demon dropping onto all fours reads as a charge in a way a faster walk
+	 * does not:
+	 *
+	 *     /Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Jog_Quad_Fwd
+	 *     /Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Sprint_Quad_Fwd
+	 */
+	static const TCHAR* ChaseAnimationPath;
+
+	/**
 	 * Below this ground speed the Brute is standing rather than walking, in
 	 * centimetres per second.
 	 *
@@ -336,6 +386,27 @@ public:
 	 */
 	float EffectiveAuthoredWalkSpeed() const;
 
+	/**
+	 * The ground speed the chase animation is treated as having been authored
+	 * for, in centimetres per second.
+	 *
+	 * DEFAULTS TO THE BRUTE'S OWN SPEED, WHICH MAKES THE PLAY RATE EXACTLY 1.0
+	 * -- that is, "play it as it was authored". That is deliberate rather than
+	 * lazy. The walk's figure of 225 was arrived at by measuring and then
+	 * correcting by eye, and two earlier guesses at it were wrong by 122% and
+	 * 66%. This clip cannot be measured at all, so rather than guess a fourth
+	 * number the default is the one choice that asserts nothing.
+	 *
+	 * Tune it with Cataclysm.Brute.AuthoredChaseSpeed while watching. A smaller
+	 * number plays the animation faster.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Enemy",
+			  meta = (ClampMin = "1.0"))
+	float AuthoredChaseSpeedCmPerSecond = 250.0f;
+
+	/** As EffectiveAuthoredWalkSpeed, for the chase animation. */
+	float EffectiveAuthoredChaseSpeed() const;
+
 	/** Play rate floor. Below this the animation reads as frozen. */
 	static constexpr float MinimumPlayRate = 0.2f;
 
@@ -358,4 +429,14 @@ public:
 	 *   the mesh binding without pulling in animation assets they do not need.
 	 */
 	bool ResolveBody(bool bIncludeAnimation = true);
+
+private:
+	/**
+	 * The asset path the chase animation currently in ChaseAnimation was loaded
+	 * from, so the console override only reloads when it actually changes.
+	 *
+	 * Also set when a load fails, or a mistyped path would be retried every
+	 * frame for the rest of the session.
+	 */
+	FString LoadedChaseAnimationPath;
 };

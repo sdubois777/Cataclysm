@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmBruteCharacter.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Components/CapsuleComponent.h"
@@ -46,6 +47,45 @@ const TCHAR* ACataclysmBruteCharacter::IdleAnimationPath =
 
 const TCHAR* ACataclysmBruteCharacter::WalkAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Jog_Biped_Fwd.Jog_Biped_Fwd");
+
+const TCHAR* ACataclysmBruteCharacter::ChaseAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Run_Fwd.Run_Fwd");
+
+/**
+ * Live override for the chase animation's authored speed, for tuning by eye.
+ *
+ * The chase clip's authored speed cannot be measured -- it carries no IK foot
+ * track for tools/measure_animation_stride.py to follow -- so this is the only
+ * way to arrive at it. Zero means do not override.
+ */
+static TAutoConsoleVariable<float> CVarBruteAuthoredChaseSpeed(
+	TEXT("Cataclysm.Brute.AuthoredChaseSpeed"),
+	0.0f,
+	TEXT("Ground speed in cm/s that the Brute's chase animation is treated as "
+		 "having been authored for. It plays at the Brute's real speed divided "
+		 "by this, so a smaller number plays it faster. 0 uses the value on the "
+		 "class, which is the Brute's own 250 and therefore a play rate of 1.0."),
+	ECVF_Default);
+
+/**
+ * Which animation the Brute plays while chasing, by asset path.
+ *
+ * WHY A PATH AND NOT A NUMBER. Which clip should represent running is an open
+ * question, not a tuning value: Sprint_Biped_Fwd turned out to be the same
+ * animation as the walk (issue #386), and the four-legged gaits are a real
+ * alternative that changes the creature's whole posture. Auditioning those
+ * means loading a different asset, and doing it from the console means doing it
+ * in one session instead of one rebuild each.
+ *
+ * Empty means use ChaseAnimationPath on the class.
+ */
+static TAutoConsoleVariable<FString> CVarBruteChaseAnimation(
+	TEXT("Cataclysm.Brute.ChaseAnimation"),
+	TEXT(""),
+	TEXT("Asset path of the animation the Brute plays while chasing. Empty uses "
+		 "the class default, Run_Fwd. Try Jog_Quad_Fwd or Sprint_Quad_Fwd for "
+		 "the four-legged gaits."),
+	ECVF_Default);
 
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 {
@@ -98,8 +138,25 @@ float ACataclysmBruteCharacter::EffectiveAuthoredWalkSpeed() const
 	return Override > 0.0f ? Override : AuthoredWalkSpeedCmPerSecond;
 }
 
+float ACataclysmBruteCharacter::EffectiveAuthoredChaseSpeed() const
+{
+	const float Override = CVarBruteAuthoredChaseSpeed.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : AuthoredChaseSpeedCmPerSecond;
+}
+
+bool ACataclysmBruteCharacter::IsChasing() const
+{
+	// ASKED OF THE BRAIN RATHER THAN INFERRED FROM SPEED, because the Brute
+	// moves at the same 250 cm/s whether it is wandering or coming at you, so
+	// speed cannot tell the two apart. Attacking deliberately does not count:
+	// it has stopped moving by then, so the standing animation is right.
+	const ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(GetController());
+	return Brain && Brain->LastAction == ECataclysmBrainAction::Chasing;
+}
+
 UAnimSequence* ACataclysmBruteCharacter::AnimationForGroundSpeed(
-	float GroundSpeedCmPerSecond, float& OutPlayRate) const
+	float GroundSpeedCmPerSecond, float& OutPlayRate, bool bChasing) const
 {
 	const bool bWalking = GroundSpeedCmPerSecond > WalkingThresholdCmPerSecond;
 
@@ -109,15 +166,24 @@ UAnimSequence* ACataclysmBruteCharacter::AnimationForGroundSpeed(
 		return IdleAnimation;
 	}
 
-	// FEET MATCHED TO GROUND SPEED. The walk was authored for a character moving
-	// at AuthoredWalkSpeedCmPerSecond; the Brute moves at 250. Playing it at 1.0
-	// makes the feet slide, which is the "walking slower than it is moving" half
-	// of the fault this fixes. Clamped because a play rate near zero freezes the
-	// pose and a very high one is a blur.
+	// THE CHASE CLIP ONLY WHEN THERE IS ONE. It is loaded from a gitignored
+	// pack like everything else here, so a fresh clone has no chase animation
+	// and falls back to the walk rather than to nothing.
+	const bool bRunning = bChasing && ChaseAnimation != nullptr;
+
+	// FEET MATCHED TO GROUND SPEED. The animation was authored for a character
+	// moving at some particular speed; the Brute moves at 250. Playing it at 1.0
+	// when those differ makes the feet slide, which is the "walking slower than
+	// it is moving" fault this exists to avoid. Clamped because a play rate near
+	// zero freezes the pose and a very high one is a blur.
+	const float AuthoredSpeed = bRunning
+		? EffectiveAuthoredChaseSpeed() : EffectiveAuthoredWalkSpeed();
+
 	OutPlayRate = FMath::Clamp(
-		GroundSpeedCmPerSecond / FMath::Max(EffectiveAuthoredWalkSpeed(), 1.0f),
+		GroundSpeedCmPerSecond / FMath::Max(AuthoredSpeed, 1.0f),
 		MinimumPlayRate, MaximumPlayRate);
-	return WalkAnimation;
+
+	return bRunning ? ChaseAnimation : WalkAnimation;
 }
 
 void ACataclysmBruteCharacter::DriveLocomotion()
@@ -128,11 +194,36 @@ void ACataclysmBruteCharacter::DriveLocomotion()
 		return;
 	}
 
+	// AUDITIONING A DIFFERENT CHASE CLIP WITHOUT A REBUILD. Checked here rather
+	// than only in ResolveBody so that changing the console variable takes
+	// effect on the next frame, which is the whole point of it. A string
+	// compare per frame on one enemy is not worth avoiding.
+	const FString WantedChasePath = CVarBruteChaseAnimation.GetValueOnAnyThread();
+	if (!WantedChasePath.IsEmpty() && WantedChasePath != LoadedChaseAnimationPath)
+	{
+		if (UAnimSequence* Swapped =
+				Cast<UAnimSequence>(FSoftObjectPath(WantedChasePath).TryLoad()))
+		{
+			ChaseAnimation = Swapped;
+			LoadedChaseAnimationPath = WantedChasePath;
+		}
+		else
+		{
+			// REMEMBERED EVEN THOUGH IT FAILED, or a mistyped path retries the
+			// load every frame for the rest of the session.
+			LoadedChaseAnimationPath = WantedChasePath;
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Cataclysm.Brute.ChaseAnimation is set to %s, which did not "
+					 "load. Keeping the previous chase animation."),
+				*WantedChasePath);
+		}
+	}
+
 	// HORIZONTAL ONLY. Falling is not walking, and a Brute stepping off a ledge
 	// should not break into a jog on the way down.
 	float PlayRate = 1.0f;
 	UAnimSequence* Wanted = AnimationForGroundSpeed(
-		GetVelocity().Size2D(), PlayRate);
+		GetVelocity().Size2D(), PlayRate, IsChasing());
 	if (!Wanted)
 	{
 		return;
@@ -204,6 +295,10 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 		WalkAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(WalkAnimationPath).TryLoad());
 
+		ChaseAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(ChaseAnimationPath).TryLoad());
+		LoadedChaseAnimationPath = ChaseAnimationPath;
+
 		if (IdleAnimation)
 		{
 			// SINGLE NODE, NOT AN ANIMATION BLUEPRINT. See the header for the
@@ -227,6 +322,17 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 				TEXT("Brute walking animation not found at %s, so it will slide "
 					 "rather than walk."),
 				WalkAnimationPath);
+		}
+
+		if (!ChaseAnimation)
+		{
+			// NOT A FAULT WORTH MORE THAN A LINE. Without it the Brute walks
+			// while chasing, which is what it did before there was a chase
+			// animation at all.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Brute chase animation not found at %s, so it will keep "
+					 "walking while it chases."),
+				ChaseAnimationPath);
 		}
 	}
 
