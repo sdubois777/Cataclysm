@@ -20,6 +20,117 @@ applied or still pending.
 
 ---
 
+## 2026-08-07 — Third-party packs stay out of git, and authored enemy work lives under Content/Enemies
+
+**Affects** `.gitignore`, `game/README.md`, and a new `game/docs/content-layout.md`
+which is the convention document. Applied in full. Issue #370.
+
+### The question
+
+Six free Paragon character packs, 17.31 GB, were imported to supply the art for
+the seven Demonic vertical slice enemies. Three things were undecided:
+
+1. Do third-party packs go in git?
+2. If not, what happens if a pack is delisted?
+3. Where does work *derived* from them live — a retargeted animation, an
+   animation Blueprint, a material instance?
+
+The third was blocking. The Brute was built entirely in C++ partly because there
+was nowhere agreed to save a Blueprint.
+
+### What the sources actually say, which is less than expected
+
+**Epic has never published a recommended Content folder structure.** It has one
+page, on asset naming, and that page says it reflects how Epic names assets in
+the In-Camera VFX Production Test — a virtual-production sample. That is why it
+has rows for `OCIO_` and `SNAP_` and none for Gameplay Ability or Input Action.
+Every "Epic-recommended folder layout" circulating online is community inference.
+
+**The community standard is the Gamemakin UE Style Guide**, which does cover
+folder structure. Its headline rule is a `Content/ProjectName/` wrapper.
+
+**Neither has a `ThirdParty/` or `External/` folder.** That layout is repeated on
+blogs and was asserted twice during this research; the strings do not appear in
+the style guide at all. The guide's separation mechanism is a side effect of the
+project wrapper: anything outside your project folder is not yours.
+
+**Epic's own Lyra follows neither consistently.** It uses `B_` for Blueprints
+against Epic's documented `BP_`, and uses the type folders the style guide
+forbids. Where it is the only source that has faced an asset type — Gameplay
+Abilities, Enhanced Input, Niagara — this project follows it.
+
+### What was decided
+
+**No `Content/Cataclysm/` wrapper**, departing from the style guide's headline
+rule. Its stated rationale is migration safety, so that migrating content into
+another project cannot overwrite same-named assets; this project will never do
+that, so the benefit does not apply while the cost does — every hard-coded
+`/Game/` path in the C++, the generators, the config and the tests. Continuous
+integration does not run the C++ tests, so a missed path would ship silently. The
+guide also defers to a project's existing conventions, and Lyra has no wrapper.
+
+**Third-party packs stay where Fab installs them, at the Content root, and out of
+git.** Fab offers no destination setting, and moving a pack leaves redirectors
+and risks breaking in-place updates — a cost paid on every pack update to buy a
+folder name. Keeping them out of git is a cost decision: 17.31 GB against the
+10 GiB of Git LFS storage and bandwidth a GitHub Free or Pro account includes per
+month, drawn on by every clone and every continuous integration checkout.
+
+**Authored enemy work goes in `game/Content/Enemies/<Cataclysm>/<Enemy>/`**, so
+the Brute's is `game/Content/Enemies/Demonic/Brute/`. The Cataclysm folder names
+are the eight `Element.*` tag names from `game/Config/Tags/CataclysmTags.ini`,
+verbatim. Retargeting copies rather than edits — Unreal's own operation is
+"Duplicate Anim Assets and Retarget" — so the destination is a free choice, and
+the vendor folder is the one choice that loses the work.
+
+**If a pack is delisted, the recovery is an offline archive**, not a second
+repository. One archive per pack on the development machine plus one off-machine
+copy. Not built yet; see below.
+
+### The rule that fails silently, and what now catches it
+
+An asset saved inside `game/Content/ParagonRampage/` is dropped by `git add` with
+no error and no warning, and the loss surfaces on somebody else's clone.
+
+**Nothing guarded the ignore rule itself.** Deleting the one line from
+`.gitignore` passed the entire test suite and the linter.
+`tools/tests/test_third_party_packs_are_not_committed.py` now checks four things:
+the vendor list is readable, every pack folder present on disk is ignored by
+`git check-ignore`, no vendor file is already tracked, and
+`Enemies/Demonic/Brute/` is *not* ignored. Verified by deleting the pattern and
+watching it fail.
+
+**The vendor list is written down once.** `.gitignore` holds it between two
+marker comments, `tools/third_party_content.py` reads it, and both that test and
+`tools/tests/test_game_readme_is_true.py` read that. Previously the test and
+`.gitignore` each decided independently that a third-party folder is one starting
+with "Paragon", so a pack from any other vendor would have been counted as
+project content by one and committed by the other.
+
+### One figure this corrects
+
+`.gitignore` and issue #370 both said GitHub's free Git LFS allowance is 1 GB. It
+is **10 GiB** of storage and 10 GiB of bandwidth on a Free or Pro account
+(https://docs.github.com/en/billing/concepts/product-billing/git-lfs). The
+conclusion does not change — 17.31 GB exceeds it, and bandwidth is drawn on every
+clone — but the number was wrong.
+
+### What is not settled
+
+- **The offline archive does not exist yet.** Until it does, a delisted pack is
+  an unrecoverable loss of the art for all seven vertical slice enemies. The
+  measurements in `game/docs/enemy-source-assets.md` survive; the art does not.
+- **Whether the Fab licence permits committing packs to a public repository.**
+  The relevant clause was found only in a forum reproduction, not in the licence
+  itself, so it is recorded as unverified. It does not affect this decision,
+  which keeps them out of git on cost grounds regardless.
+- **`Characters/`, `Abilities/`, `Items/`, `Empire/`, `Effects/`,
+  `MaterialLibrary/`, `UI/` and `Audio/`** are reserved names in
+  `game/docs/content-layout.md`, not folders. They get created when something
+  needs them.
+
+---
+
 ## 2026-08-06 — The seven vertical slice enemies are cast from the free Paragon character packs
 
 **Affects** issues #17 (3D asset generation pipeline) and #18 (animation

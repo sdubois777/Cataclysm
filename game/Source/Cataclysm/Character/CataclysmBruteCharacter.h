@@ -12,15 +12,18 @@
  * The first of the seven Demonic vertical slice enemies (issue #39) to exist as
  * its own class, and the first character in this project with real art.
  *
- * WHY A C++ SUBCLASS RATHER THAN A BLUEPRINT. Three project rules point the same
- * way. game/README.md says Content/ holds generated assets rather than authored
- * ones; .gitignore excludes the Paragon folders under game/Content, so a
- * Blueprint saved beside the art would be dropped by git without a word; and
- * issue #370 question 3,
- * which asks where authored enemy assets should live, is open and waiting on the
- * operator. A C++ class is reviewable text, needs no answer to that question,
- * and is the same shape ACataclysmMinion already uses to override its capsule,
- * speed and turn rate.
+ * WHY A C++ SUBCLASS RATHER THAN A BLUEPRINT. It is reviewable text rather than
+ * a binary asset, and it is the same shape ACataclysmMinion already uses to
+ * override its capsule, speed and turn rate.
+ *
+ * THAT IS NOW A PREFERENCE, NOT A CONSTRAINT. When this class was written there
+ * was nowhere agreed to save a Blueprint: .gitignore excludes the Paragon
+ * folders, so one saved beside the art would have been dropped by git without a
+ * word, and issue #370 had not settled where authored enemy assets belong. It
+ * has since: game/Content/Enemies/<Cataclysm>/<Enemy>/, so this enemy's is
+ * game/Content/Enemies/Demonic/Brute/. game/docs/content-layout.md is the
+ * convention. A Blueprint here would be legitimate; there has been no reason to
+ * make one.
  *
  * WHAT IT DELIBERATELY DOES NOT DO. The Stomp -- the 3.5 metre, 360 degree,
  * 1.5 second stun on a 5 second cooldown that issue #351 designed -- is not

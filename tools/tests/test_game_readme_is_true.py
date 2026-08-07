@@ -206,7 +206,18 @@ def test_no_procedural_dungeon_claim_is_still_true() -> None:
 
     The claim being guarded is about the project's own maps, so the folders git
     ignores are skipped here for the same reason git ignores them.
+
+    WHICH FOLDERS THOSE ARE IS NOT DECIDED HERE. This used to test whether the
+    first path segment started with "Paragon", and `.gitignore` decided the same
+    thing separately. A pack from any other vendor would have been counted as
+    project content by this test and committed by git. Both now read one list,
+    written down once in `.gitignore`.
     """
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import third_party_content
+
     if "L_Sandbox` is the only map" not in readme_text():
         pytest.skip("The readme no longer claims L_Sandbox is the only map.")
 
@@ -214,7 +225,7 @@ def test_no_procedural_dungeon_claim_is_still_true() -> None:
     maps = sorted(
         path.name
         for path in content.rglob("*.umap")
-        if not path.relative_to(content).parts[0].startswith("Paragon")
+        if not third_party_content.is_third_party(path.relative_to(content))
     )
     assert maps == ["L_Sandbox.umap"], (
         "game/README.md says L_Sandbox is the only map, but game/Content/ holds "

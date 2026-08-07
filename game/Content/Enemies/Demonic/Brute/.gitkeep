@@ -1,0 +1,9 @@
+Authored assets for The Brute go here: its Blueprint, its animation Blueprint,
+retargeted animation sequences, and material instances.
+
+NOT in game/Content/ParagonRampage/. That folder holds the third-party pack the
+Brute's art comes from and is excluded from git, so anything saved inside it is
+dropped by `git add` with no error and no warning.
+
+game/docs/content-layout.md is the full convention. This file exists because git
+does not track empty folders.
