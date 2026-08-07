@@ -11,6 +11,8 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimationAsset.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -248,11 +250,8 @@ bool FCataclysmBruteFightsWithOrWithoutItsArt::RunTest(const FString&)
 		// built, and reading the mesh afterwards cannot tell "the art failed to
 		// load" apart from "BeginPlay never ran". The return value can.
 		//
-		// WITHOUT THE ANIMATION BLUEPRINT, and that is not tidiness. Starting the
-		// Paragon animation graph in a world made by UWorld::CreateWorld hangs
-		// the whole test process; see the comment in
-		// ACataclysmBruteCharacter::ResolveBody and issue #374. What this test
-		// is for is whether the Brute wears the mesh, which does not need it.
+		// WITHOUT THE ANIMATIONS, because this half of the test is about whether
+		// the Brute wears the mesh. The animations get their own test below.
 		const bool bResolved = Brute->ResolveBody(/*bIncludeAnimation=*/false);
 		TestTrue(TEXT("the Brute resolved its body when the art is installed"),
 			bResolved);
@@ -288,6 +287,122 @@ bool FCataclysmBruteFightsWithOrWithoutItsArt::RunTest(const FString&)
 	TestTrue(TEXT("the Brute is a valid enemy target"), Found.Contains(Brute));
 
 	Hero->Destroy();
+	Brute->Destroy();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteAnimatesInsteadOfSliding,
+	"Cataclysm.Brute.AnimatesInsteadOfSliding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteAnimatesInsteadOfSliding::RunTest(const FString&)
+{
+	using namespace CataclysmBruteTest;
+
+	// WHAT THIS GUARDS. The first Brute to reach a level slid across the floor in
+	// a fixed pose, because the Paragon animation blueprint could not identify
+	// its owner and left its own speed at zero for ever. The mesh is now driven
+	// directly, and this checks the three things that were wrong: an animation is
+	// selected at all, standing and walking select different ones, and the walk's
+	// play rate follows ground speed instead of being stuck at one.
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute spawned"), Brute))
+	{
+		return false;
+	}
+
+	const bool bArtIsInstalled =
+		FSoftObjectPath(ACataclysmBruteCharacter::BodyMeshPath).TryLoad() != nullptr;
+	if (!bArtIsInstalled)
+	{
+		AddInfo(TEXT("Paragon Rampage pack is not installed, so the locomotion "
+					 "test is skipped. Expected in continuous integration."));
+		Brute->Destroy();
+		return true;
+	}
+
+	TestTrue(TEXT("the body and its animations resolved"),
+		Brute->ResolveBody(/*bIncludeAnimation=*/true));
+
+	// BOTH ANIMATIONS EXIST. If either soft path is wrong this is where it shows,
+	// rather than as a creature standing still in a level.
+	if (!TestNotNull(TEXT("a standing animation was loaded"), Brute->IdleAnimation.Get()))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("a walking animation was loaded"), Brute->WalkAnimation.Get()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("standing and walking are different animations"),
+		Brute->IdleAnimation != Brute->WalkAnimation);
+
+	USkeletalMeshComponent* MeshComponent = Brute->GetMesh();
+	if (!TestNotNull(TEXT("mesh component"), MeshComponent))
+	{
+		return false;
+	}
+
+	// NOT AN ANIMATION BLUEPRINT. The component plays one animation that this
+	// class chooses, rather than running the pack's graph. This is the setting
+	// the whole approach rests on.
+	TestEqual(TEXT("the mesh plays a single animation rather than a graph"),
+		static_cast<int32>(MeshComponent->GetAnimationMode()),
+		static_cast<int32>(EAnimationMode::AnimationSingleNode));
+
+	// THE DECISION IS TESTED, NOT THE PLAYBACK. AnimationForGroundSpeed is a
+	// pure function of speed, so it gives a definite answer in a world that has
+	// no animation instance. Whether the component then renders it is a
+	// Play-In-Editor question, and a screenshot answers that one.
+	float Rate = -1.0f;
+
+	// STANDING STILL.
+	TestEqual(TEXT("at rest it chooses the standing animation"),
+		Brute->AnimationForGroundSpeed(0.0f, Rate), Brute->IdleAnimation.Get());
+	TestEqual(TEXT("standing plays at normal speed"), Rate, 1.0f);
+
+	// A TWITCH IS NOT WALKING. A character told to stop keeps a little residual
+	// velocity for a frame or two, and treating that as walking makes it flicker.
+	TestEqual(TEXT("below the walking threshold it is still standing"),
+		Brute->AnimationForGroundSpeed(
+			ACataclysmBruteCharacter::WalkingThresholdCmPerSecond - 1.0f, Rate),
+		Brute->IdleAnimation.Get());
+
+	// WALKING AT THE DESIGNED SPEED.
+	const float Designed = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
+	TestEqual(TEXT("moving it chooses the walking animation"),
+		Brute->AnimationForGroundSpeed(Designed, Rate),
+		Brute->WalkAnimation.Get());
+
+	const float ExpectedRate = FMath::Clamp(
+		Designed / Brute->AuthoredWalkSpeedCmPerSecond,
+		ACataclysmBruteCharacter::MinimumPlayRate,
+		ACataclysmBruteCharacter::MaximumPlayRate);
+	TestEqual(TEXT("the walk's play rate is scaled to ground speed"),
+		Rate, ExpectedRate);
+
+	// AND IT FOLLOWS SPEED rather than being a constant that happens to match.
+	float FasterRate = -1.0f;
+	Brute->AnimationForGroundSpeed(Designed * 2.0f, FasterRate);
+	TestTrue(TEXT("twice the ground speed plays the walk faster"),
+		FasterRate > Rate);
+
+	// AND IT CANNOT RUN AWAY. Without a ceiling a fast enemy blurs.
+	float RunawayRate = -1.0f;
+	Brute->AnimationForGroundSpeed(100000.0f, RunawayRate);
+	TestEqual(TEXT("the play rate is capped"), RunawayRate,
+		ACataclysmBruteCharacter::MaximumPlayRate);
+
 	Brute->Destroy();
 	return true;
 }

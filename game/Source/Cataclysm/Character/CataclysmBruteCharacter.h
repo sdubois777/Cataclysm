@@ -38,6 +38,41 @@ public:
 	ACataclysmBruteCharacter();
 
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+
+	/**
+	 * Chooses the standing or walking animation and sets the walk's play rate.
+	 *
+	 * PUBLIC SO A TEST CAN STEP IT WITHOUT A TICKING WORLD, the same reason
+	 * ResolveBody is public. Safe to call when the mesh has no art: it returns
+	 * immediately.
+	 */
+	void DriveLocomotion();
+
+	/**
+	 * Which animation belongs at a given ground speed, and how fast to play it.
+	 *
+	 * SEPARATE FROM DriveLocomotion ON PURPOSE. This is the decision; the other
+	 * is the application. A test can call this with any speed and get a definite
+	 * answer, in any world, with no ticking and no animation instance -- which
+	 * matters, because applying an animation needs a component that has run
+	 * InitAnim and a synthetic test world does not always give one.
+	 *
+	 * @param GroundSpeedCmPerSecond  Horizontal speed. Vertical is ignored:
+	 *   falling is not walking.
+	 * @param OutPlayRate  Set to the rate the returned animation should play at.
+	 * @return the standing or the walking animation, or null if neither loaded.
+	 */
+	UAnimSequence* AnimationForGroundSpeed(float GroundSpeedCmPerSecond,
+										   float& OutPlayRate) const;
+
+	/** What it plays standing still. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> IdleAnimation;
+
+	/** What it plays moving. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> WalkAnimation;
 
 	//~ The designed numbers.
 	//
@@ -115,7 +150,72 @@ public:
 	 * is what this does.
 	 */
 	static const TCHAR* BodyMeshPath;
-	static const TCHAR* BodyAnimBlueprintPath;
+
+	/**
+	 * The two animations this enemy plays, and why it plays them itself rather
+	 * than through the Paragon animation blueprint that ships beside the mesh.
+	 *
+	 * THE PACK'S ANIMATION BLUEPRINT DOES NOT WORK ON THIS CHARACTER, MEASURED
+	 * RATHER THAN ASSUMED. Read at runtime on 2026-08-07 from a live
+	 * Play-In-Editor session, on the animation instance attached to a Brute the
+	 * controller had reported as Chasing:
+	 *
+	 *     speed          = 0
+	 *     isAccelerating = false
+	 *     character      = None
+	 *
+	 * `character` is the blueprint's own reference to the pawn it animates. It
+	 * fills that by casting the pawn owner to the class it was written for,
+	 * which is the pack's own RampagePlayerCharacter blueprint. An
+	 * ACataclysmBruteCharacter is not that class, the cast fails, and every
+	 * value the graph derives from it stays at zero for ever. The body still
+	 * moves, because the character movement component moves it, so what you see
+	 * is a Brute sliding across the floor in a fixed pose.
+	 *
+	 * The pose it holds is the all-fours one, because Rampage has two stances
+	 * and the graph's entry state is the quadruped locomotion at zero speed.
+	 * At any distance that reads as the creature lying on the ground.
+	 *
+	 * So the mesh is driven directly instead. Two animations, chosen in Tick,
+	 * with the walk's play rate scaled to ground speed. Both are the upright
+	 * "Biped" variants, matching the upright attack animations this enemy will
+	 * use. Issue #374 covers replacing this with an animation blueprint written
+	 * for this project, which is the proper answer and needs #370 settled first.
+	 */
+	static const TCHAR* IdleAnimationPath;
+	static const TCHAR* WalkAnimationPath;
+
+	/**
+	 * Below this ground speed the Brute is standing rather than walking, in
+	 * centimetres per second.
+	 *
+	 * A JUDGEMENT. Not zero, because a character that has been told to stop
+	 * keeps a little residual velocity for a frame or two while friction takes
+	 * it down, and comparing against zero makes it flicker between standing and
+	 * walking every time it arrives.
+	 */
+	static constexpr float WalkingThresholdCmPerSecond = 10.0f;
+
+	/**
+	 * The ground speed the walk animation was authored for, in centimetres per
+	 * second. The play rate is the Brute's real speed divided by this.
+	 *
+	 * A BY-EYE NUMBER, AND THE ONLY ONE IN THIS CLASS THAT IS. Jog_Biped_Fwd has
+	 * no root motion -- checked, `bEnableRootMotion` is False -- so there is no
+	 * distance stored in the asset to derive the authored speed from. It has to
+	 * be set by watching whether the feet slide.
+	 *
+	 * Editable so that tuning it does not need a rebuild.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Cataclysm|Enemy",
+			  meta = (ClampMin = "1.0"))
+	float AuthoredWalkSpeedCmPerSecond = 500.0f;
+
+	/** Play rate floor. Below this the animation reads as frozen. */
+	static constexpr float MinimumPlayRate = 0.2f;
+
+	/** Play rate ceiling. Above this it reads as a blur. */
+	static constexpr float MaximumPlayRate = 2.5f;
 
 	/**
 	 * Puts the Rampage mesh on, or logs why it could not and keeps the
@@ -128,11 +228,9 @@ public:
 	 * directly and reading the return value distinguishes the two, and it is
 	 * safe to call twice: assigning the same mesh again is a no-op.
 	 *
-	 * @param bIncludeAnimation  Pass false to bind the mesh without starting the
-	 *   Paragon animation blueprint. ONLY TESTS SHOULD DO THIS. Running that
-	 *   graph inside a world built by UWorld::CreateWorld hangs the process --
-	 *   measured, see the comment in ResolveBody and issue #374 -- because it
-	 *   expects an owning pawn in a world with a game context.
+	 * @param bIncludeAnimation  Pass false to bind the mesh without loading or
+	 *   starting the standing and walking animations. Tests use this to check
+	 *   the mesh binding without pulling in animation assets they do not need.
 	 */
 	bool ResolveBody(bool bIncludeAnimation = true);
 };

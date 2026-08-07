@@ -44,7 +44,21 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<ACataclysmEnemyCharacter>> TrainingDummies;
 
-protected:
+	/**
+	 * Puts Brutes in the sandbox, beyond where the ring of training dummies
+	 * would be. Public for the same reasons SpawnTrainingDummies is.
+	 *
+	 * SEPARATE FROM SpawnTrainingDummies RATHER THAN A PARAMETER ON IT, so the
+	 * dummy ring's settled behaviour is untouched by adding a second kind of
+	 * enemy. Returns how many were placed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnBrutes();
+
+	/** Every Brute this game mode placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmBruteCharacter>> Brutes;
+
 	/**
 	 * How many enemies to put in the level at the start of play.
 	 *
@@ -56,11 +70,25 @@ protected:
 	 * already records as a source of churn every time the editor opens.
 	 *
 	 * SANDBOX SCAFFOLDING, NOT THE REAL SPAWNER. Dungeon population is issue
-	 * #40 and the seven designed Demonic enemies are issue #39. Set this to zero
-	 * to turn it off.
+	 * #40 and the seven designed Demonic enemies are issue #39.
+	 *
+	 * ZERO SINCE 2026-08-07, ON THE PROJECT OWNER'S INSTRUCTION. Five cylinders
+	 * chasing the same player collide with and crowd around the Brute, which
+	 * makes it hard to watch what the Brute itself is doing. They were the only
+	 * thing in the sandbox to hit before there was a designed enemy; now there
+	 * is one, and they are in the way. Set this back to 5 to restore them.
+	 *
+	 * PUBLIC, unlike the other sandbox settings, so a test can ask for dummies
+	 * regardless of what the default happens to be. The two tests in
+	 * CataclysmSandboxTests.cpp check that the spawner works, not that anybody
+	 * currently wants five of them, and they would otherwise fail the moment
+	 * this default changed -- which is exactly what happened when it went to 0.
 	 */
+public:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
-	int32 TrainingDummyCount = 5;
+	int32 TrainingDummyCount = 0;
+
+protected:
 
 	/** How far from the player start the ring sits, in centimetres. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
@@ -95,21 +123,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float TrainingDummyAttackDamage = 20.0f;
 
-	/**
-	 * Puts Brutes in the sandbox, beyond the ring of training dummies.
-	 *
-	 * SEPARATE FROM SpawnTrainingDummies RATHER THAN A PARAMETER ON IT, so the
-	 * dummy ring's settled behaviour is untouched by adding a second kind of
-	 * enemy. Returns how many were placed.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
-	int32 SpawnBrutes();
-
-	/** Every Brute this game mode placed. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Sandbox")
-	TArray<TObjectPtr<class ACataclysmBruteCharacter>> Brutes;
-
-	/** How many to place. Zero for none. */
+	/** How many Brutes to place. Zero for none. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	int32 BruteCount = 1;
 

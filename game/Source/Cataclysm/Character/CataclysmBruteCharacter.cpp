@@ -2,8 +2,8 @@
 
 #include "Character/CataclysmBruteCharacter.h"
 #include "Cataclysm.h"
-#include "Animation/AnimBlueprint.h"
-#include "Animation/AnimInstance.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -14,11 +14,20 @@
 const TCHAR* ACataclysmBruteCharacter::BodyMeshPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Meshes/Rampage.Rampage");
 
-const TCHAR* ACataclysmBruteCharacter::BodyAnimBlueprintPath =
-	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Rampage_AnimBlueprint.Rampage_AnimBlueprint_C");
+const TCHAR* ACataclysmBruteCharacter::IdleAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Idle_Biped.Idle_Biped");
+
+const TCHAR* ACataclysmBruteCharacter::WalkAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Jog_Biped_Fwd.Jog_Biped_Fwd");
 
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 {
+	// TICKS, UNLIKE EVERY OTHER CHARACTER IN THIS PROJECT. Choosing between the
+	// standing and walking animation and setting the walk's play rate is a
+	// per-frame job. The tick does nothing else; the brain still runs on the
+	// controller's own quarter-second timer.
+	PrimaryActorTick.bCanEverTick = true;
+
 	// The designed numbers, overriding the base enemy's judgement figures. Each
 	// one is cited on its declaration in the header.
 	MeleeReachCm = DesignedMeleeReachCm;
@@ -44,6 +53,76 @@ void ACataclysmBruteCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	ResolveBody(/*bIncludeAnimation=*/true);
+}
+
+void ACataclysmBruteCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	DriveLocomotion();
+}
+
+UAnimSequence* ACataclysmBruteCharacter::AnimationForGroundSpeed(
+	float GroundSpeedCmPerSecond, float& OutPlayRate) const
+{
+	const bool bWalking = GroundSpeedCmPerSecond > WalkingThresholdCmPerSecond;
+
+	if (!bWalking)
+	{
+		OutPlayRate = 1.0f;
+		return IdleAnimation;
+	}
+
+	// FEET MATCHED TO GROUND SPEED. The walk was authored for a character moving
+	// at AuthoredWalkSpeedCmPerSecond; the Brute moves at 250. Playing it at 1.0
+	// makes the feet slide, which is the "walking slower than it is moving" half
+	// of the fault this fixes. Clamped because a play rate near zero freezes the
+	// pose and a very high one is a blur.
+	OutPlayRate = FMath::Clamp(
+		GroundSpeedCmPerSecond / FMath::Max(AuthoredWalkSpeedCmPerSecond, 1.0f),
+		MinimumPlayRate, MaximumPlayRate);
+	return WalkAnimation;
+}
+
+void ACataclysmBruteCharacter::DriveLocomotion()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent || !MeshComponent->GetSkeletalMeshAsset())
+	{
+		return;
+	}
+
+	// HORIZONTAL ONLY. Falling is not walking, and a Brute stepping off a ledge
+	// should not break into a jog on the way down.
+	float PlayRate = 1.0f;
+	UAnimSequence* Wanted = AnimationForGroundSpeed(
+		GetVelocity().Size2D(), PlayRate);
+	if (!Wanted)
+	{
+		return;
+	}
+
+	// THROUGH THE SINGLE NODE INSTANCE, NOT THE COMPONENT'S AnimationData.
+	// AnimationData is the editor-facing default; in a world that never ran
+	// InitAnim it does not follow what is actually playing, so comparing against
+	// it decided "not the one I want" every frame and restarted the animation
+	// every frame -- which holds it on its first pose and looks exactly like the
+	// standing-still fault this function exists to fix. Caught by
+	// Cataclysm.Brute.AnimatesInsteadOfSliding on 2026-08-07.
+	UAnimSingleNodeInstance* Single = MeshComponent->GetSingleNodeInstance();
+	if (!Single)
+	{
+		return;
+	}
+
+	// ONLY ON CHANGE, for the reason above.
+	if (Single->GetAnimationAsset() != Wanted)
+	{
+		Single->SetAnimationAsset(Wanted, /*bIsLooping=*/true);
+		Single->SetPlaying(true);
+	}
+
+	Single->SetPlayRate(PlayRate);
 }
 
 bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
@@ -82,34 +161,36 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 		FVector(0.0f, 0.0f, -BruteCapsuleHalfHeight),
 		FRotator(0.0f, -90.0f, 0.0f));
 
-	// SEPARABLE FROM THE MESH, AND NOT OPTIONAL DRESSING -- THIS IS MEASURED.
-	// Running the Paragon animation blueprint inside a world made by
-	// UWorld::CreateWorld hangs the process. Observed on 2026-08-07: the
-	// automation test spawned a Brute, the log recorded
-	// "Script Msg called by: Rampage_AnimBlueprint_C", and the run then sat at
-	// 44 seconds of processor time and 2.91 GB for over three minutes without
-	// moving either figure, and had to be killed.
-	//
-	// The animation graph is third-party and expects an owning pawn in a world
-	// with a game context, which a synthetic test world does not have. So a test
-	// asks for the mesh alone. Nothing in the real game passes false here.
-	// Issue #374.
 	if (bIncludeAnimation)
 	{
-		if (UClass* AnimClass = Cast<UClass>(
-				FSoftObjectPath(BodyAnimBlueprintPath).TryLoad()))
+		IdleAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(IdleAnimationPath).TryLoad());
+		WalkAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(WalkAnimationPath).TryLoad());
+
+		if (IdleAnimation)
 		{
-			MeshComponent->SetAnimInstanceClass(AnimClass);
+			// SINGLE NODE, NOT AN ANIMATION BLUEPRINT. See the header for the
+			// measurement behind this. Setting the mode explicitly matters
+			// because PlayAnimation on a component still in AnimationBlueprint
+			// mode is ignored.
+			MeshComponent->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+			MeshComponent->PlayAnimation(IdleAnimation, /*bLooping=*/true);
 		}
 		else
 		{
-			// A mesh with no animation blueprint stands in its reference pose.
-			// Worth saying, because "the Brute does not move its legs" is
-			// otherwise a puzzling thing to see in a level.
 			UE_LOG(LogCataclysm, Warning,
-				TEXT("Brute animation blueprint not found at %s, so it will "
-					 "stand in its reference pose."),
-				BodyAnimBlueprintPath);
+				TEXT("Brute standing animation not found at %s, so it will hold "
+					 "its reference pose."),
+				IdleAnimationPath);
+		}
+
+		if (!WalkAnimation)
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Brute walking animation not found at %s, so it will slide "
+					 "rather than walk."),
+				WalkAnimationPath);
 		}
 	}
 
