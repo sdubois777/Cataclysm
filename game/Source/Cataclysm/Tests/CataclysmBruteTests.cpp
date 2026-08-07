@@ -13,6 +13,7 @@
 #include "Character/CataclysmEnemyController.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationAsset.h"
+#include "HAL/IConsoleManager.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -402,6 +403,83 @@ bool FCataclysmBruteAnimatesInsteadOfSliding::RunTest(const FString&)
 	Brute->AnimationForGroundSpeed(100000.0f, RunawayRate);
 	TestEqual(TEXT("the play rate is capped"), RunawayRate,
 		ACataclysmBruteCharacter::MaximumPlayRate);
+
+	Brute->Destroy();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteWalkSpeedCanBeTunedLive,
+	"Cataclysm.Brute.WalkSpeedCanBeTunedLive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteWalkSpeedCanBeTunedLive::RunTest(const FString&)
+{
+	using namespace CataclysmBruteTest;
+
+	// WHAT THIS GUARDS. The measured authored walk speed is an average over a
+	// gait cycle, so the last of it is judged by eye, and judging by eye means
+	// changing the number while watching. That is what the console variable
+	// Cataclysm.Brute.AuthoredWalkSpeed is for. If it stops being read, tuning
+	// silently goes back to editing a header and rebuilding, and nobody would
+	// notice until they tried.
+
+	IConsoleVariable* Knob = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.Brute.AuthoredWalkSpeed"));
+	if (!TestNotNull(TEXT("the tuning console variable is registered"), Knob))
+	{
+		return false;
+	}
+
+	const float Restore = Knob->GetFloat();
+	ON_SCOPE_EXIT { Knob->Set(Restore, ECVF_SetByCode); };
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute spawned"), Brute))
+	{
+		return false;
+	}
+
+	// ZERO MEANS DO NOT OVERRIDE, so the measured property is what is used.
+	Knob->Set(0.0f, ECVF_SetByCode);
+	TestEqual(TEXT("at zero it uses the measured value on the class"),
+		Brute->EffectiveAuthoredWalkSpeed(),
+		Brute->AuthoredWalkSpeedCmPerSecond);
+
+	// A POSITIVE VALUE WINS.
+	Knob->Set(200.0f, ECVF_SetByCode);
+	TestEqual(TEXT("a positive value overrides the measured one"),
+		Brute->EffectiveAuthoredWalkSpeed(), 200.0f);
+
+	// AND IT CHANGES THE PLAY RATE, which is the whole point. A smaller authored
+	// speed means the animation is treated as a slower walk, so it must play
+	// faster to cover the same ground.
+	float RateAt200 = 0.0f;
+	Brute->AnimationForGroundSpeed(
+		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond, RateAt200);
+
+	Knob->Set(600.0f, ECVF_SetByCode);
+	float RateAt600 = 0.0f;
+	Brute->AnimationForGroundSpeed(
+		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond, RateAt600);
+
+	TestTrue(TEXT("a smaller authored speed plays the walk faster"),
+		RateAt200 > RateAt600);
+
+	// AND GOING BACK TO ZERO RESTORES THE MEASURED VALUE, so the dial is a
+	// tuning aid rather than a second source of truth.
+	Knob->Set(0.0f, ECVF_SetByCode);
+	TestEqual(TEXT("returning to zero restores the measured value"),
+		Brute->EffectiveAuthoredWalkSpeed(),
+		Brute->AuthoredWalkSpeedCmPerSecond);
 
 	Brute->Destroy();
 	return true;

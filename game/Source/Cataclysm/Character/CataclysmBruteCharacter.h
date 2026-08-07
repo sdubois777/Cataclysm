@@ -219,13 +219,30 @@ public:
 	 * and the body outran its own stride: the planted foot slid forwards while
 	 * the other leg swung. That is the fault this number fixes.
 	 *
-	 * Still editable without a rebuild, because 373.7 is a robust average over a
-	 * gait cycle rather than an exact constant, and the last of it has to be
-	 * judged by eye.
+	 * 373.7 is a robust average over a gait cycle rather than an exact constant,
+	 * so the last of it has to be judged by eye. TO TUNE IT WITHOUT A REBUILD,
+	 * USE THE CONSOLE VARIABLE `Cataclysm.Brute.AuthoredWalkSpeed` during a play
+	 * session; see EffectiveAuthoredWalkSpeed below. This property is the answer
+	 * of record and the console variable is the dial.
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Cataclysm|Enemy",
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Enemy",
 			  meta = (ClampMin = "1.0"))
 	float AuthoredWalkSpeedCmPerSecond = 373.7f;
+
+	/**
+	 * The authored walk speed actually in use: the console variable
+	 * `Cataclysm.Brute.AuthoredWalkSpeed` when it is above zero, otherwise the
+	 * measured property above.
+	 *
+	 * THE PROPERTY ALONE WAS NOT REACHABLE, WHICH IS WHY THIS EXISTS. It was
+	 * EditDefaultsOnly, and there is no Blueprint subclass of this class to open
+	 * -- issue #370, where authored enemy assets should live, is still open --
+	 * so there was no class default to edit and the Details panel hides
+	 * EditDefaultsOnly properties on a placed actor. Changing the number meant
+	 * editing this header and rebuilding, which is a poor way to judge something
+	 * by eye.
+	 */
+	float EffectiveAuthoredWalkSpeed() const;
 
 	/** Play rate floor. Below this the animation reads as frozen. */
 	static constexpr float MinimumPlayRate = 0.2f;
