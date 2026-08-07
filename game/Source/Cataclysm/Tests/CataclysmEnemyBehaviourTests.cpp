@@ -20,6 +20,7 @@
 #include "Character/CataclysmEnemyController.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -1017,6 +1018,105 @@ bool FCataclysmBruteRunsWhileChasingTest::RunTest(const FString&)
 	TestEqual(TEXT("with no chase animation loaded it walks while chasing"),
 		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true),
 		Walking);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteChaseSpeedTakesEffectTest,
+	"Cataclysm.AI.ABruteActuallyMovesFasterWhenAChaseSpeedIsSet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// WHY THIS EXISTS. The project owner reported on 2026-08-07 that the chase
+	// animation "is the same -- he's not actually moving faster than the walk,
+	// just animating faster", after Cataclysm.Brute.ChaseSpeed was added for
+	// exactly that. Two things could produce that report: the console variable
+	// was not set, or it does not work. This test settles which.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	IConsoleVariable* ChaseSpeed = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.Brute.ChaseSpeed"));
+	if (!ChaseSpeed)
+	{
+		AddError(TEXT("Cataclysm.Brute.ChaseSpeed is not registered."));
+		return false;
+	}
+	const float Original = ChaseSpeed->GetFloat();
+	ON_SCOPE_EXIT { ChaseSpeed->Set(Original); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	UCharacterMovementComponent* Movement = Brute.Actor->GetCharacterMovement();
+	if (!Brain || !Movement)
+	{
+		AddError(TEXT("A spawned Brute has no controller or no movement."));
+		return false;
+	}
+
+	const float Designed =
+		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
+
+	// Nothing in sight and no override: the designed speed.
+	ChaseSpeed->Set(0.0f);
+	Brain->Think();
+	Brute.Actor->ApplyChaseSpeed();
+	TestEqual(TEXT("wandering, it moves at its designed speed"),
+		Movement->MaxWalkSpeed, Designed);
+
+	// Chasing, still no override: STILL the designed speed. Zero must mean no
+	// change, or the console variable would silently alter designed behaviour
+	// for anyone who never touched it.
+	FScopedFighter Player(World, FVector(5 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+	TestEqual(TEXT("it is chasing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	Brute.Actor->ApplyChaseSpeed();
+	TestEqual(TEXT("chasing with no override set, it still moves at the "
+				   "designed speed"),
+		Movement->MaxWalkSpeed, Designed);
+
+	// Chasing with an override: it moves at that speed.
+	constexpr float Faster = 320.0f;
+	ChaseSpeed->Set(Faster);
+	Brain->Think();
+	Brute.Actor->ApplyChaseSpeed();
+	TestEqual(TEXT("chasing with an override set, it moves at the override"),
+		Movement->MaxWalkSpeed, Faster);
+	TestTrue(TEXT("which is faster than its designed speed"),
+		Movement->MaxWalkSpeed > Designed);
+
+	// AND IT GOES BACK WHEN THE CHASE ENDS, or a Brute that once saw the player
+	// would wander at chase speed for the rest of its life.
+	Player.Actor->SetActorLocation(FVector(30 * M, 0, 0));
+	TestNotEqual(TEXT("the player leaves and it stops chasing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	Brute.Actor->ApplyChaseSpeed();
+	TestEqual(TEXT("so it drops back to its designed speed to wander"),
+		Movement->MaxWalkSpeed, Designed);
+
+	// AND CLEARING THE OVERRIDE RESTORES THE DESIGNED SPEED MID-CHASE, so that
+	// setting it back to zero while watching undoes it immediately.
+	Player.Actor->SetActorLocation(FVector(5 * M, 0, 0));
+	Brain->Think();
+	Brute.Actor->ApplyChaseSpeed();
+	TestEqual(TEXT("chasing again at the override"),
+		Movement->MaxWalkSpeed, Faster);
+
+	ChaseSpeed->Set(0.0f);
+	Brute.Actor->ApplyChaseSpeed();
+	TestEqual(TEXT("and clearing it returns to the designed speed at once"),
+		Movement->MaxWalkSpeed, Designed);
 
 	return true;
 }
