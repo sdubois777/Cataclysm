@@ -125,11 +125,40 @@ Measured and set 2026-08-07:
 |---|:-:|:-:|---|
 | `Idle_Biped` | 0.0 cm/s | — | The control. Standing still must read zero, and does. |
 | `Jog_Biped_Fwd` | 242.9 cm/s | **225 cm/s** | What the Brute plays. Set by eye; the estimate agrees to 8%. |
-| `Jog_Quad_Fwd` | 304.5 cm/s | — | The all-fours variant, unused so far. |
+| `Jog_Quad_Fwd` | 304.5 cm/s | **304.5 cm/s** | What the Brute plays while chasing. The all-fours stance. |
 | `Run_Fwd` | not measurable | — | Reads 0 on every axis: it does not key the IK foot bones, so the method cannot see it. |
 
 The Brute moves at its designed 250 cm/s, so it plays `Jog_Biped_Fwd` at
 250 ÷ 225 = **1.11**.
+
+### Two gaits, chosen by what the brain is doing
+
+The Brute plays `Jog_Biped_Fwd` while wandering and `Jog_Quad_Fwd` while chasing,
+selected by brain state rather than by speed. It has to be by state: its movement
+speed is the same designed 250 cm/s either way, so speed cannot tell the two
+apart.
+
+`Jog_Quad_Fwd` is the all-fours stance, and that is the point of choosing it. It
+reads as having noticed the player through posture rather than through pace,
+which is the only honest option for a creature that does not actually speed up.
+At 250 ÷ 304.5 its play rate is **0.82**.
+
+**Two candidates were rejected, both measured on 2026-08-07.**
+
+`Sprint_Biped_Fwd` returns bone poses identical to `Jog_Biped_Fwd` at every time
+sampled, with the same 1.000 s length, the same 29 frames and the same 189
+tracks. The pack realises a sprint by playing the jog faster rather than by
+animating a second gait. `Sprint_Quad_Fwd` duplicates `Jog_Quad_Fwd` the same
+way. Issue #386.
+
+`Run_Fwd` is genuinely distinct — 0.667 s, 20 frames, 47 tracks against 189 —
+but it carries no `ik_foot_l` track, which is the measured reason the script
+reads zero for it. Its play rate would be a guess, and it looked like running on
+the spot.
+
+Both chase figures can be retuned live: `Cataclysm.Brute.ChaseAnimation` takes an
+asset path and `Cataclysm.Brute.AuthoredChaseSpeed` takes the speed that clip was
+authored for.
 
 To change it without a rebuild, use the console variable
 `Cataclysm.Brute.AuthoredWalkSpeed` during a play session. Zero returns to the

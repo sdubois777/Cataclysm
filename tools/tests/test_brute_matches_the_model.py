@@ -370,6 +370,71 @@ def test_roaming_is_opt_in_so_nothing_else_starts_wandering() -> None:
     )
 
 
+def _locomotion_row(animation: str) -> str:
+    """The locomotion table row for one animation in the asset reference."""
+    import re as _re
+
+    reference = REPO_ROOT / "game" / "docs" / "enemy-source-assets.md"
+    if not reference.is_file():
+        pytest.fail(f"{reference.relative_to(REPO_ROOT)} does not exist")
+
+    row = _re.search(rf"^\|\s*`{_re.escape(animation)}`\s*\|.*$",
+                     reference.read_text(encoding="utf-8"), _re.M)
+    if row is None:
+        pytest.fail(
+            f"game/docs/enemy-source-assets.md has no {animation} row in its "
+            "locomotion table. If the table moved, update this test; if the row "
+            "was deleted, the C++ constant is unrecorded again."
+        )
+    return row.group(0)
+
+
+def test_the_chase_play_rate_matches_the_recorded_figure() -> None:
+    """The chase animation's authored speed matches the figure written down.
+
+    THE SAME GUARD THE WALK HAS, for the same reason, and it exists because
+    getting this wrong is what the project owner saw. The chase animation
+    `Jog_Quad_Fwd` is authored for 304.5 cm/s and the Brute moves at 250. The
+    first version shipped with the authored speed left at 250, so the play rate
+    was 1.0 and the feet travelled 22% further than the ground -- reported as
+    "it is like he isn't moving far enough within the animation".
+
+    WHAT IT DOES NOT CHECK. That 304.5 is right. The measuring script is a
+    starting estimate good to roughly ten percent, and on the walking animation
+    it read 8% high. Whether it looks right is judged by watching, and
+    `Cataclysm.Brute.AuthoredChaseSpeed` is how that is done.
+    """
+    import re as _re
+
+    row = _locomotion_row("Jog_Quad_Fwd")
+    in_use = _re.search(r"\*\*([\d.]+) cm/s\*\*", row)
+    if in_use is None:
+        pytest.fail(
+            "The Jog_Quad_Fwd row records no figure in use, which should be the "
+            f"bold one. The row reads: {row}"
+        )
+    documented = float(in_use.group(1))
+    in_code = uproperty_default(BRUTE_HEADER, "AuthoredChaseSpeedCmPerSecond")
+
+    assert in_code == pytest.approx(documented), (
+        f"The Brute's chase animation is treated as authored for {in_code} cm/s "
+        f"in the C++, but game/docs/enemy-source-assets.md records "
+        f"{documented} cm/s as the figure in use. One of them moved without the "
+        "other, and the visible result is sliding feet."
+    )
+
+    designed_speed = brute_archetype().move_speed * 100.0
+    play_rate = designed_speed / in_code
+    minimum = constant(BRUTE_HEADER, "MinimumPlayRate")
+    maximum = constant(BRUTE_HEADER, "MaximumPlayRate")
+
+    assert minimum < play_rate < maximum, (
+        f"The chase animation would play at {play_rate:.2f}, outside the "
+        f"{minimum} to {maximum} the Brute clamps to, so the clamp rather than "
+        "the measurement would be deciding how it looks."
+    )
+
+
 def test_the_walk_play_rate_matches_the_recorded_figure() -> None:
     """The authored walk speed in the C++ matches the figure written down.
 

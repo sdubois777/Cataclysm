@@ -351,33 +351,31 @@ public:
 	 * What it plays while chasing, and why this one is a starting point rather
 	 * than an answer.
 	 *
-	 * NOT Sprint_Biped_Fwd, WHICH WAS THE OBVIOUS CHOICE AND IS USELESS.
-	 * Measured on 2026-08-07: it returns identical bone poses to
-	 * Jog_Biped_Fwd at every time sampled, with the same length, the same 29
-	 * frames and the same 189 tracks. The pack appears to realise a sprint by
-	 * playing the jog faster rather than by animating a second gait. Selecting
-	 * between the two would look like nothing had changed. Issue #386.
+	 * THE FOUR-LEGGED GAIT, CHOSEN BY THE PROJECT OWNER ON 2026-08-07 after
+	 * watching all three candidates. Rampage has two stances and this is the
+	 * other one: the Brute drops onto all fours to close. That reads as having
+	 * noticed you through POSTURE rather than through pace, which is what makes
+	 * it the right answer here -- the Brute moves at the same designed 2.5 m/s
+	 * whether it is wandering or chasing, so any gait that claims speed it does
+	 * not have looks like running on the spot. This one claims nothing.
 	 *
-	 * Run_Fwd IS a different clip: 0.667 seconds, 20 frames, 47 tracks against
-	 * the jog's 189. It is the only genuinely distinct forward gait in the
-	 * pack besides the four-legged set.
+	 * TWO CANDIDATES WERE REJECTED, both for measured reasons.
 	 *
-	 * ITS AUTHORED SPEED CANNOT BE MEASURED. tools/measure_animation_stride.py
-	 * works by tracking the planted IK foot, and this clip carries no
-	 * ik_foot_l track at all -- which is the measured reason it reads zero on
-	 * every axis, where the documentation previously only inferred it. So the
-	 * play rate has to be judged by eye, which is exactly how the walk's 225
-	 * was arrived at, and Cataclysm.Brute.AuthoredChaseSpeed is how to do it
-	 * without a rebuild.
+	 * Sprint_Biped_Fwd returns identical bone poses to the walking animation at
+	 * every time sampled, with the same length, the same 29 frames and the same
+	 * 189 tracks. The pack realises a sprint by playing the jog faster rather
+	 * than by animating a second gait, so selecting between them would look
+	 * like nothing had changed. Issue #386. Sprint_Quad_Fwd is a duplicate of
+	 * Jog_Quad_Fwd in exactly the same way, measured 2026-08-07.
 	 *
-	 * TO AUDITION A DIFFERENT ONE WITHOUT A REBUILD, set
-	 * Cataclysm.Brute.ChaseAnimation to any animation's asset path. The
-	 * four-legged gaits are the interesting alternatives, because a heavy
-	 * demon dropping onto all fours reads as a charge in a way a faster walk
-	 * does not:
+	 * Run_Fwd is genuinely distinct -- 0.667 s, 20 frames, 47 tracks against
+	 * 189 -- but it carries no ik_foot_l track, so its authored speed cannot be
+	 * measured at all and its play rate would be a guess. It was tried and
+	 * looked like running on the spot.
 	 *
-	 *     /Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Jog_Quad_Fwd
-	 *     /Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Sprint_Quad_Fwd
+	 * TO AUDITION ANOTHER WITHOUT A REBUILD, set Cataclysm.Brute.ChaseAnimation
+	 * to any animation's asset path, and set Cataclysm.Brute.AuthoredChaseSpeed
+	 * to whatever that one was authored for.
 	 */
 	static const TCHAR* ChaseAnimationPath;
 
@@ -460,19 +458,26 @@ public:
 	 * The ground speed the chase animation is treated as having been authored
 	 * for, in centimetres per second.
 	 *
-	 * DEFAULTS TO THE BRUTE'S OWN SPEED, WHICH MAKES THE PLAY RATE EXACTLY 1.0
-	 * -- that is, "play it as it was authored". That is deliberate rather than
-	 * lazy. The walk's figure of 225 was arrived at by measuring and then
-	 * correcting by eye, and two earlier guesses at it were wrong by 122% and
-	 * 66%. This clip cannot be measured at all, so rather than guess a fourth
-	 * number the default is the one choice that asserts nothing.
+	 * MEASURED, NOT GUESSED. tools/measure_animation_stride.py reports
+	 * Jog_Quad_Fwd at 304.5 cm/s, re-measured on 2026-08-07 and recorded in
+	 * game/docs/enemy-source-assets.md. The Brute moves at 250, so the play
+	 * rate is 250 / 304.5 = 0.821 and the feet keep up with the ground.
 	 *
-	 * Tune it with Cataclysm.Brute.AuthoredChaseSpeed while watching. A smaller
-	 * number plays the animation faster.
+	 * WHAT LEAVING IT AT 250 LOOKED LIKE, because that was the first attempt:
+	 * a play rate of exactly 1.0, so the feet travelled as if the body were
+	 * moving at 304.5 while it moved at 250, sliding 22% -- reported as "it is
+	 * like he isn't moving far enough within the animation".
+	 *
+	 * THE MEASUREMENT MAY STILL BE HIGH BY ABOUT EIGHT PERCENT. On the walking
+	 * animation the same tool said 242.9 and the figure the project owner
+	 * settled on by eye was 225. If the same bias applies here the true value
+	 * is nearer 282, giving a play rate of 0.887. Tune it with
+	 * Cataclysm.Brute.AuthoredChaseSpeed while watching; a smaller number plays
+	 * the animation faster.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Enemy",
 			  meta = (ClampMin = "1.0"))
-	float AuthoredChaseSpeedCmPerSecond = 250.0f;
+	float AuthoredChaseSpeedCmPerSecond = 304.5f;
 
 	/** As EffectiveAuthoredWalkSpeed, for the chase animation. */
 	float EffectiveAuthoredChaseSpeed() const;
