@@ -10,10 +10,14 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+// UAnimSequence is only forward declared on the Brute, and the gait test builds
+// throwaway ones with NewObject, which needs the whole type.
+#include "Animation/AnimSequence.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -59,6 +63,9 @@ namespace CataclysmBehaviourTest
 
 	/** Metres, so the tests read like the design document does. */
 	constexpr float M = 100.0f;
+
+	/** The player capsule radius in CataclysmPlayerCharacter.cpp. */
+	constexpr float PlayerCapsuleRadiusCm = 42.0f;
 
 	/** A character on the given side, with health and an attack. */
 	struct FScopedFighter
@@ -774,6 +781,283 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 		Brain->AttacksOrdered, 1);
 	TestEqual(TEXT("so the player lost no more health"),
 		Player.Health(), AfterFirst);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteRunsWhileChasingTest,
+	"Cataclysm.AI.ABruteUsesADifferentGaitWhileChasingThanWhileWandering",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteRunsWhileChasingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE DECISION, NOT THE PLAYBACK, for the reason the Brute's own animation
+	// tests give: applying an animation needs a component that has run InitAnim
+	// and a synthetic world does not reliably give one. AnimationForGroundSpeed
+	// is a pure function and can be asked anything.
+	//
+	// AND WITHOUT THE ART, WHICH IS THE POINT OF THE PLACEHOLDERS BELOW. The
+	// Paragon packs are gitignored, so on a fresh clone and in this worktree no
+	// animation loads at all and a test that compared real assets would silently
+	// check nothing. Two distinct throwaway UAnimSequence objects stand in.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+
+	UAnimSequence* Standing = NewObject<UAnimSequence>();
+	UAnimSequence* Walking = NewObject<UAnimSequence>();
+	UAnimSequence* Running = NewObject<UAnimSequence>();
+	Brute.Actor->IdleAnimation = Standing;
+	Brute.Actor->WalkAnimation = Walking;
+	Brute.Actor->ChaseAnimation = Running;
+
+	const float Moving = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
+	float Rate = 0.0f;
+
+	TestEqual(TEXT("standing still it stands, chasing or not"),
+		Brute.Actor->AnimationForGroundSpeed(0.0f, Rate, /*bChasing=*/true),
+		Standing);
+
+	TestEqual(TEXT("moving with nothing to chase it walks"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/false),
+		Walking);
+
+	TestEqual(TEXT("moving toward something it has noticed it runs"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true),
+		Running);
+
+	// THE SAME SPEED PRODUCES DIFFERENT ANIMATIONS, which is the whole point.
+	// The Brute moves at 250 cm/s either way, because its movement speed is a
+	// designed number, so ground speed cannot distinguish the two states and
+	// the brain has to.
+	TestNotEqual(TEXT("so the same ground speed gives two different gaits"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/false),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true));
+
+	// FALLS BACK TO THE WALK WITH NO CHASE CLIP, which is the state of every
+	// fresh clone, rather than falling back to nothing and freezing the pose.
+	Brute.Actor->ChaseAnimation = nullptr;
+	TestEqual(TEXT("with no chase animation loaded it walks while chasing"),
+		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true),
+		Walking);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteChaseStateComesFromTheBrainTest,
+	"Cataclysm.AI.ABruteAsksItsBrainWhetherItIsChasing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteChaseStateComesFromTheBrainTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	// Out of sight: it wanders, and wandering is not chasing.
+	Brain->Think();
+	TestFalse(TEXT("a wandering Brute is not chasing"), Brute.Actor->IsChasing());
+
+	// Inside the notice radius, outside reach: chasing.
+	Player.Actor->SetActorLocation(FVector(5 * M, 0, 0));
+	TestEqual(TEXT("with the player five metres away it chases"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestTrue(TEXT("and it reports itself as chasing"), Brute.Actor->IsChasing());
+
+	// In reach: attacking, which deliberately does NOT count as chasing. It has
+	// stopped moving by then, so the standing animation is the right one.
+	Player.Actor->SetActorLocation(FVector(80.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	TestEqual(TEXT("in reach it attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestFalse(TEXT("and an attacking Brute is not chasing, because it has stopped"),
+		Brute.Actor->IsChasing());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoamLegsAreWorthWalkingTest,
+	"Cataclysm.AI.ARoamingBruteDoesNotPickSomewhereItIsAlreadyStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoamLegsAreWorthWalkingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// WHAT THIS GUARDS, reported from a play session on 2026-08-07: the Brute
+	// took "weird half steps one at a time, waits a few seconds, moves again".
+	// A roam target is a random reachable point and nothing stopped it landing
+	// where the character already stands. One that does counts as arrived on
+	// the next pass without a step, then holds the full two second pause before
+	// drawing again.
+	//
+	// STATISTICAL, BECAUSE THE DRAW IS RANDOM, and the two cases are far enough
+	// apart that this is not a close call. The Brute may roam 600 cm and walks
+	// 250 cm in the second that a leg is required to last, so an unfiltered
+	// uniform draw lands too close (250/600)^2 = 17% of the time, about 17 in
+	// 100. Re-drawing up to six times makes it 0.17^6, about two in a hundred
+	// thousand. A threshold of 5 in 100 sits between the two with room to spare
+	// either way.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	const float Speed = Brute.Actor->GetCharacterMovement()->GetMaxSpeed();
+	const float ShortestWorthwhile =
+		Speed * ACataclysmEnemyController::ShortestWorthwhileRoamLegSeconds;
+
+	TestTrue(TEXT("a worthwhile leg is longer than the arrival radius, or "
+				  "arriving would be instant however far it walked"),
+		ShortestWorthwhile > ACataclysmEnemyController::RoamAcceptanceRadiusCm);
+	TestTrue(TEXT("and shorter than the roam radius, or nothing would qualify"),
+		ShortestWorthwhile < ACataclysmBruteCharacter::BruteRoamRadiusCm);
+
+	constexpr int32 Legs = 100;
+	int32 TooShort = 0;
+	float Shortest = TNumericLimits<float>::Max();
+
+	for (int32 Leg = 0; Leg < Legs; ++Leg)
+	{
+		// Back to a standing start each time: no target held, no pause running.
+		// The character does not move in a world with no navigation, so it is
+		// still on its anchor.
+		Brain->bHasRoamTarget = false;
+		Brain->RoamPauseUntil = 0.0f;
+
+		if (Brain->Think() != ECataclysmBrainAction::Roaming
+			|| !Brain->bHasRoamTarget)
+		{
+			AddError(FString::Printf(
+				TEXT("Leg %d did not produce a roam target."), Leg));
+			return false;
+		}
+
+		const float Length = FVector::Dist2D(
+			Brute.Actor->GetActorLocation(), Brain->RoamTarget);
+		Shortest = FMath::Min(Shortest, Length);
+		if (Length < ShortestWorthwhile)
+		{
+			++TooShort;
+		}
+	}
+
+	TestTrue(FString::Printf(
+		TEXT("almost every roam leg is worth walking: %d of %d were shorter "
+			 "than %.0f cm, shortest was %.0f cm"),
+		TooShort, Legs, ShortestWorthwhile, Shortest),
+		TooShort < 5);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteAttacksAtTrueContactTest,
+	"Cataclysm.AI.ABruteAttacksWhenItsCapsuleIsTouchingThePlayers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteAttacksAtTrueContactTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE CASE THE GAME ACTUALLY PRODUCES, WHICH 80 CM IS NOT. Two capsules
+	// cannot overlap, so the closest a Brute can physically stand to the player
+	// is the sum of their radii, 48 + 42 = 90 cm. Its reach is also exactly 90.
+	// So in a real session the chase always ends at the one distance where the
+	// comparison has no margin at all, and whether it attacks is decided by
+	// whether the separation lands a hair under or a hair over.
+	//
+	// The project owner reported on 2026-08-07 that the Brute "doesn't actually
+	// attack when he reaches me". This is the test for that.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	// Exactly touching: the two capsule radii, and not a centimetre less.
+	const float Contact = ACataclysmBruteCharacter::BruteCapsuleRadius
+		+ PlayerCapsuleRadiusCm;
+	Player.Actor->SetActorLocation(FVector(Contact, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	const float Apart = FVector::Dist2D(
+		Brute.Actor->GetActorLocation(), Player.Actor->GetActorLocation());
+	TestEqual(TEXT("the two are exactly at contact distance"), Apart, Contact);
+	TestEqual(TEXT("which is exactly the Brute's designed reach"),
+		Contact, ACataclysmBruteCharacter::DesignedMeleeReachCm);
+
+	const float Before = Player.Health();
+	TestEqual(TEXT("a Brute touching the player attacks rather than chasing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
+		Before, Player.Health()), Player.Health() < Before);
+
+	// AND A HAIR FURTHER OUT, which is where a collision solver realistically
+	// leaves two touching capsules. Without a tolerance this is the case that
+	// makes a Brute chase for ever without ever landing a hit.
+	Player.Actor->SetActorLocation(FVector(Contact + 1.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	const float BeforeNudged = Player.Health();
+	TestEqual(TEXT("a Brute one centimetre outside contact still attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(TEXT("though the attack interval may hold the hit back"),
+		Player.Health() <= BeforeNudged);
 
 	return true;
 }

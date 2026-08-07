@@ -95,6 +95,66 @@ public:
 	static constexpr float ApproachFractionOfReach = 0.8f;
 
 	/**
+	 * Extra centimetres allowed on the reach test, so that "touching" counts as
+	 * "in reach".
+	 *
+	 * WITHOUT THIS THE BRUTE CANNOT RELIABLY ATTACK, reported from a play
+	 * session on 2026-08-07 as "he doesn't actually attack when he reaches me".
+	 *
+	 * Its reach is 90 cm and that is exactly the sum of the two capsule radii,
+	 * 48 and 42, because the model derives contact reach that way. Two capsules
+	 * cannot overlap, so the closest the Brute can physically stand is also
+	 * 90 cm. The chase therefore always ends at the single distance where the
+	 * comparison has no margin, and a collision solver does not leave two
+	 * bodies at exactly their touching distance -- it leaves them a hair
+	 * outside it. A hair outside 90 is not within 90, so it chases for ever,
+	 * pressed against the player, never attacking.
+	 *
+	 * NO OTHER ENEMY HAS THIS PROBLEM, which is why it went unnoticed. Every
+	 * other reach in the project is 200 cm or more against the same capsules,
+	 * so all of them have over a metre of margin. The Brute is the only one
+	 * whose designed reach IS the contact distance.
+	 *
+	 * A JUDGEMENT AT TWO CENTIMETRES. It has to exceed the separation a
+	 * collision solver leaves, which is well under a centimetre, and it has to
+	 * stay far below anything the design distinguishes -- the closest two
+	 * designed reaches are 90 and 200 cm apart. Two centimetres is 2% of the
+	 * Brute's reach. It does NOT change the designed number, which stays 90 in
+	 * both the model and the header; it changes only how exactly the engine
+	 * insists on it. Issue #373 is the earlier half of this same problem.
+	 */
+	static constexpr float ContactToleranceCm = 2.0f;
+
+	/**
+	 * The least a roam leg is worth walking, as seconds of the character's own
+	 * movement.
+	 *
+	 * WHY A MINIMUM AT ALL, reported from the same play session as the Brute
+	 * taking "weird half steps one at a time, waits a few seconds, moves
+	 * again". A roam target is a random reachable point, and nothing stopped it
+	 * being a point the character is already standing on. When that happens it
+	 * counts as arrived on the very next pass, without moving, and then stands
+	 * through the full pause before drawing again. The result is a character
+	 * that mostly stands still and twitches.
+	 *
+	 * ONE SECOND OF WALKING, so it scales with the character rather than being
+	 * a distance picked for the Brute. At the Brute's 250 cm/s that is 250 cm,
+	 * comfortably clear of the 50 cm arrival radius and well inside the 600 cm
+	 * it may roam, so points that qualify always exist.
+	 */
+	static constexpr float ShortestWorthwhileRoamLegSeconds = 1.0f;
+
+	/**
+	 * How many times to re-draw a roam target that is too close before giving
+	 * up and taking the last one anyway.
+	 *
+	 * Bounded because the draw can fail to find a distant point legitimately --
+	 * a character boxed into a small room has nowhere far to go -- and looping
+	 * until it succeeds would hang the game rather than produce a short walk.
+	 */
+	static constexpr int32 RoamTargetDrawAttempts = 6;
+
+	/**
 	 * Seconds a roaming character stands at a point it reached before choosing
 	 * the next one.
 	 *

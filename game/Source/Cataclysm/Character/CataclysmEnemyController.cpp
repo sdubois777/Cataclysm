@@ -169,7 +169,11 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	const float Distance = FVector::Dist2D(
 		Driven->GetActorLocation(), Target->GetActorLocation());
 
-	if (Distance > Reach)
+	// PLUS A TOLERANCE, because the Brute's reach IS its contact distance and a
+	// collision solver never leaves two touching capsules at exactly the
+	// distance where they touch. See ContactToleranceCm for the measurement
+	// this comes from and why no other enemy needs it.
+	if (Distance > Reach + ContactToleranceCm)
 	{
 		// MOVETOACTOR RATHER THAN MOVETOLOCATION, because the target moves. A
 		// location is where the target was when the order was given; an actor is
@@ -348,8 +352,40 @@ ECataclysmBrainAction ACataclysmEnemyController::Roam()
 	}
 
 	// Nothing chosen and nothing to wait for, so pick somewhere and set off.
+	//
+	// SOMEWHERE WORTH WALKING TO, not merely somewhere. A random reachable
+	// point can land where the character is already standing, and one that does
+	// counts as arrived on the very next pass without a step being taken, then
+	// holds the full pause before drawing again. Several of those in a row is a
+	// character that stands still and twitches, which is what a play session on
+	// 2026-08-07 reported. Re-drawing a handful of times costs nothing and
+	// removes it.
+	const float Speed = Driven->GetCharacterMovement()
+		? Driven->GetCharacterMovement()->GetMaxSpeed() : 0.0f;
+	const float ShortestWorthwhileLegCm =
+		Speed * ShortestWorthwhileRoamLegSeconds;
+
 	FVector Chosen = FVector::ZeroVector;
-	if (!ChooseRoamTarget(Chosen))
+	bool bChose = false;
+	for (int32 Attempt = 0; Attempt < RoamTargetDrawAttempts; ++Attempt)
+	{
+		if (!ChooseRoamTarget(Chosen))
+		{
+			break;
+		}
+		bChose = true;
+
+		// GOOD ENOUGH, SO STOP DRAWING. The last draw is kept even when every
+		// attempt was too close, because a character with nowhere far to go
+		// should still shuffle rather than freeze.
+		if (FVector::Dist2D(Driven->GetActorLocation(), Chosen)
+				>= ShortestWorthwhileLegCm)
+		{
+			break;
+		}
+	}
+
+	if (!bChose)
 	{
 		StopMovement();
 		LastAction = ECataclysmBrainAction::Idle;
@@ -379,8 +415,9 @@ ECataclysmBrainAction ACataclysmEnemyController::Roam()
 	// very short leg still gets a sensible allowance. This is a safety net for
 	// a walk that ends early, not a pacing mechanism: a leg that finishes
 	// normally is detected by arriving, long before this.
-	const float Speed = Driven->GetCharacterMovement()
-		? Driven->GetCharacterMovement()->GetMaxSpeed() : 0.0f;
+	//
+	// Speed is the one read above, when the shortest worthwhile leg was worked
+	// out; both want the same number.
 	const float StraightLineSeconds = Speed > 0.0f
 		? FVector::Dist2D(Driven->GetActorLocation(), RoamTarget) / Speed
 		: 0.0f;
