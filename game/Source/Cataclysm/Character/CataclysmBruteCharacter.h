@@ -197,37 +197,39 @@ public:
 	static constexpr float WalkingThresholdCmPerSecond = 10.0f;
 
 	/**
-	 * The ground speed the walk animation was authored for, in centimetres per
-	 * second. The play rate is the Brute's real speed divided by this, so at the
-	 * designed 250 cm/s the walk plays at 250 / 374 = 0.67.
+	 * The ground speed the walk animation is treated as having been authored
+	 * for, in centimetres per second. The play rate is the Brute's real speed
+	 * divided by this, so at the designed 250 cm/s the walk plays at
+	 * 250 / 225 = 1.11.
 	 *
-	 * MEASURED FROM THE ANIMATION, NOT CHOSEN. `tools/measure_animation_stride.py`
-	 * samples the ik_foot_l and ik_foot_r bones every frame, takes whichever is
-	 * lower as the planted one, and measures how fast it travels backwards. A
-	 * planted foot must move backwards at exactly the speed the character moves
-	 * forwards or it slides, so that speed IS the authored ground speed. Run on
-	 * 2026-08-07 it reported:
+	 * SET BY EYE, ON 2026-08-07, BY THE PROJECT OWNER WATCHING IT WALK. That is
+	 * the right authority for this one: the whole criterion is whether a planted
+	 * foot appears to slide, which is a judgement about what a person sees.
 	 *
-	 *     Jog_Biped_Fwd   -Y at 373.7 cm/s
-	 *     Idle_Biped      -Y at   0.3 cm/s   (the control: standing still)
+	 * `tools/measure_animation_stride.py` estimates the same figure from the
+	 * animation, and agrees to within 8%:
 	 *
-	 * Idle_Biped reading zero is what makes the jog figure trustworthy rather
-	 * than an artefact.
+	 *     Jog_Biped_Fwd   242.9 cm/s   (estimate)   225 cm/s (by eye, in use)
+	 *     Idle_Biped        0.0 cm/s   (the control: standing still)
 	 *
-	 * THIS REPLACED A GUESS OF 500, WHICH IS WHY THE FEET SLID. At 500 the play
-	 * rate was 0.50 instead of 0.67, so the animation ran a quarter too slowly
-	 * and the body outran its own stride: the planted foot slid forwards while
-	 * the other leg swung. That is the fault this number fixes.
+	 * Idle_Biped reading zero is what makes the estimate credible at all.
 	 *
-	 * 373.7 is a robust average over a gait cycle rather than an exact constant,
-	 * so the last of it has to be judged by eye. TO TUNE IT WITHOUT A REBUILD,
-	 * USE THE CONSOLE VARIABLE `Cataclysm.Brute.AuthoredWalkSpeed` during a play
-	 * session; see EffectiveAuthoredWalkSpeed below. This property is the answer
-	 * of record and the console variable is the dial.
+	 * TWO EARLIER VALUES WERE WRONG, AND HOW THEY WERE WRONG IS WORTH KEEPING.
+	 * The first, 500, was an outright guess and made the play rate 0.50, so the
+	 * animation ran half speed while the body moved at full speed and the
+	 * planted foot slid forwards. The second, 373.7, came from the measuring
+	 * script when it averaged only the top quartile of its samples; that
+	 * measures the peak of the foot's velocity curve rather than a
+	 * representative speed, and was 66% high. The script now averages the whole
+	 * cycle. See its module docstring.
+	 *
+	 * TO TUNE IT WITHOUT A REBUILD, use the console variable
+	 * `Cataclysm.Brute.AuthoredWalkSpeed` during a play session; see
+	 * EffectiveAuthoredWalkSpeed below.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Enemy",
 			  meta = (ClampMin = "1.0"))
-	float AuthoredWalkSpeedCmPerSecond = 373.7f;
+	float AuthoredWalkSpeedCmPerSecond = 225.0f;
 
 	/**
 	 * The authored walk speed actually in use: the console variable

@@ -110,24 +110,48 @@ notifies read per asset.
 
 A walking animation is authored for a character travelling at some speed. Play it
 on a character that moves at a different speed and the planted foot slides. That
-speed is not stored in the asset — none of these have root motion — so
-`tools/measure_animation_stride.py` derives it: it samples the `ik_foot_l` and
-`ik_foot_r` bones every frame, takes whichever is lower as the planted one, and
-measures how fast that foot travels backwards. A planted foot must move backwards
-at exactly the speed the character moves forwards, or it slides.
+speed is not stored in the asset — none of these have root motion.
 
-Measured 2026-08-07:
+**The figure in use is set by eye, and that is deliberate.** The criterion is
+whether a planted foot appears to slide, which is a judgement about what a person
+sees. `tools/measure_animation_stride.py` produces an estimate to start from: it
+samples the `ik_foot_l` and `ik_foot_r` bones every frame, takes whichever is
+lower as the planted one, and averages how fast that foot travels backwards over
+the gait cycle.
 
-| Animation | Authored ground speed | Note |
-|---|:-:|---|
-| `Idle_Biped` | 0.3 cm/s | The control. Standing still should read zero, and does. |
-| `Jog_Biped_Fwd` | **373.7 cm/s** | What the Brute plays. |
-| `Jog_Quad_Fwd` | 406.4 cm/s | The all-fours variant, unused so far. |
-| `Run_Fwd` | not measurable | Reads 0 on every axis: it does not key the IK foot bones, so this method cannot see it. |
+Measured and set 2026-08-07:
+
+| Animation | Script estimate | In use | Note |
+|---|:-:|:-:|---|
+| `Idle_Biped` | 0.0 cm/s | — | The control. Standing still must read zero, and does. |
+| `Jog_Biped_Fwd` | 242.9 cm/s | **225 cm/s** | What the Brute plays. Set by eye; the estimate agrees to 8%. |
+| `Jog_Quad_Fwd` | 304.5 cm/s | — | The all-fours variant, unused so far. |
+| `Run_Fwd` | not measurable | — | Reads 0 on every axis: it does not key the IK foot bones, so the method cannot see it. |
 
 The Brute moves at its designed 250 cm/s, so it plays `Jog_Biped_Fwd` at
-250 ÷ 373.7 = **0.67**. An earlier guess of 500 cm/s gave 0.50, which ran the
-animation a quarter too slowly and made the planted foot slide forwards.
+250 ÷ 225 = **1.11**.
+
+To change it without a rebuild, use the console variable
+`Cataclysm.Brute.AuthoredWalkSpeed` during a play session. Zero returns to the
+value above.
+
+### Two earlier values were wrong, and how is worth keeping
+
+**500 cm/s** was an outright guess. It made the play rate 0.50, so the animation
+ran at half speed while the body moved at full speed, and the planted foot slid
+forwards while the other leg swung.
+
+**373.7 cm/s** came from the measuring script when it averaged only the top
+quartile of its samples, on the reasoning that those were the frames where a foot
+was genuinely planted. That measures the peak of the foot's velocity curve rather
+than a representative speed, and was 66% high. The project owner tuning by eye
+found 225, which is what exposed it. The script now averages the whole cycle and
+skips the frame where the tracked foot swaps, which brought it to 242.9.
+
+**The IK foot bones never touch the ground** — on Rampage they stay 20 cm or more
+above it — so "the lower foot" is an approximation of "the planted foot". Treat
+the script's output as a starting estimate good to roughly ten percent, not an
+answer.
 
 **Forward is −Y in these animations**, which is why the Brute's mesh component
 carries a −90 degree yaw to face the way its actor faces. A first version of the
@@ -135,7 +159,7 @@ measurement assumed forward was X and reported a nonsense 38 cm/s jog; the
 symptom was a negative median with symmetric extremes, which is what measuring a
 side-to-side axis looks like.
 
-The same script and the same reasoning apply to the other six enemies when their
+The same script and reasoning apply to the other six enemies when their
 locomotion is built.
 
 ## Per-enemy animation inventory
