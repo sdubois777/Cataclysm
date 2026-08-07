@@ -95,10 +95,16 @@ component lives and why.
 
 ## What is not here yet
 
-- **No art assets of any kind.** The player and every enemy are engine primitive
-  meshes from `/Engine/BasicShapes/`. There are no character models, animations,
-  authored materials, particle systems or sounds. The asset and animation
-  pipelines are still being chosen (issues
+- **One character has art. Everything else is an engine primitive.** The Brute
+  wears the Paragon Rampage model; the player, the summoned imp and the training
+  dummies are still primitive meshes from `/Engine/BasicShapes/`. The six free
+  Paragon packs that will play the seven vertical slice enemies are downloaded
+  into `Content/` but are excluded from git, so on a fresh clone the Brute falls
+  back to a primitive and says so in the log. Which pack plays which enemy, and
+  the animation durations measured from them, are in
+  [`docs/enemy-source-assets.md`](docs/enemy-source-assets.md). There are still
+  no authored materials, particle systems or sounds, and the asset and animation
+  pipelines for everything Paragon does not cover are still being chosen (issues
   [#17](https://github.com/sdubois777/Cataclysm/issues/17),
   [#18](https://github.com/sdubois777/Cataclysm/issues/18) and
   [#19](https://github.com/sdubois777/Cataclysm/issues/19)).

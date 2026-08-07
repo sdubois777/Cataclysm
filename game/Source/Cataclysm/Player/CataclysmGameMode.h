@@ -94,4 +94,53 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float TrainingDummyAttackDamage = 20.0f;
+
+	/**
+	 * Puts Brutes in the sandbox, beyond the ring of training dummies.
+	 *
+	 * SEPARATE FROM SpawnTrainingDummies RATHER THAN A PARAMETER ON IT, so the
+	 * dummy ring's settled behaviour is untouched by adding a second kind of
+	 * enemy. Returns how many were placed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnBrutes();
+
+	/** Every Brute this game mode placed. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmBruteCharacter>> Brutes;
+
+	/** How many to place. Zero for none. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 BruteCount = 1;
+
+	/**
+	 * How far from the player start, in centimetres.
+	 *
+	 * Beyond the dummy ring at 600, so the Brute is not standing among them and
+	 * has ground to walk across. Inside the sandbox's 4000 x 4000 cm navigation
+	 * bounds, because outside them it cannot path at all.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float BruteDistanceCm = 1200.0f;
+
+	/**
+	 * How much health each one has.
+	 *
+	 * SANDBOX SCAFFOLDING, NOT THE DESIGNED FIGURE, exactly as
+	 * TrainingDummyHealth is. This is the dummy's 5000 times the Brute's
+	 * health_share of 2.20 from ARCHETYPES in sim/cataclysm_sim/enemy_stats.py,
+	 * so a Brute is as much tougher than a dummy as the model says it should be,
+	 * on a scale the sandbox player can actually fight. The real figure comes
+	 * from tier, floor and rarity through the enemy score model, which has no
+	 * port into the engine yet: issues #39 and #355.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float BruteHealth = 11000.0f;
+
+	/**
+	 * What one of its attacks is worth. The dummy's 20 times the Brute's
+	 * damage_share of 1.75, on the same scaffolding reasoning as BruteHealth.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float BruteAttackDamage = 35.0f;
 };

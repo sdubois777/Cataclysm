@@ -50,6 +50,22 @@ Build/
 # than deleting this line: !game/Content/Maps/L_Whatever_BuiltData.uasset
 *_BuiltData.uasset
 
+# Third-party asset packs downloaded from Fab. These are 17.31 GB as of
+# 2026-08-07 and every .uasset in them goes through Git LFS, so committing them
+# would put 17 GB into LFS storage and into every future clone. GitHub's free LFS
+# allowance is 1 GB, so this would cost money and would keep costing it.
+#
+# They do not need to be in git. They are free, they are already hosted by Epic,
+# and anyone can re-acquire them from their own Fab library. The list of which
+# pack plays which enemy, and the animation durations measured from them, is in
+# game/docs/enemy-source-assets.md, which IS committed. That file is the part
+# worth keeping under version control; the 17 GB it describes is not.
+#
+# Work derived from these packs — a Blueprint, an animation Blueprint, a
+# retargeted animation authored in this project — belongs in git and must live
+# outside these folders to be picked up. Issue #370 decides the wider policy.
+game/Content/Paragon*/
+
 # Unreal crash and log output
 *.log
 Crashes/

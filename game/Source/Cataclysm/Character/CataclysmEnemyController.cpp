@@ -110,7 +110,25 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	}
 
 	const float Reach = Driven->AttackReachCm();
-	const float Distance = FVector::Dist(
+
+	// HORIZONTAL DISTANCE, NOT 3D DISTANCE. Reach is a floor-plane question --
+	// how close is it standing -- and capsule centres sit at different heights,
+	// so a 3D distance charges melee reach for a height difference nobody chose.
+	//
+	// This matters because contact reach is exact. The model derives it as
+	// PLAYER_BODY_RADIUS + body_radius (ring_distance in
+	// sim/cataclysm_sim/enemy_abilities.py), which for the Brute is
+	// 0.42 + 0.48 = 0.90 m, and the engine's capsules are the same 42 and 48 cm.
+	// The player's capsule half-height is 96 and an enemy's is 80, so two of them
+	// touching are 16 cm apart vertically. In 3D that is
+	// sqrt(90^2 + 16^2) = 91.4 cm, which is greater than the 90 cm reach, so a
+	// Brute pressed against the player would read as out of reach and chase for
+	// ever without landing a hit.
+	//
+	// Nothing that existed before this changes behaviour: the training dummy's
+	// reach is 200 cm and the imp's is well clear of contact, so both were
+	// already far outside the margin this affects. Issue #373.
+	const float Distance = FVector::Dist2D(
 		Driven->GetActorLocation(), Target->GetActorLocation());
 
 	if (Distance > Reach)

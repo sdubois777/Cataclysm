@@ -4,6 +4,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
@@ -30,6 +31,74 @@ void ACataclysmGameMode::StartPlay()
 	// from here rather than from the level means the sandbox's contents are
 	// reviewable text rather than bytes inside L_Sandbox.umap.
 	SpawnTrainingDummies();
+	SpawnBrutes();
+}
+
+int32 ACataclysmGameMode::SpawnBrutes()
+{
+	UWorld* World = GetWorld();
+	if (!World || BruteCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT. The player start sits at
+	// the height a default capsule needs, and the Brute's is 30 cm taller than
+	// the base enemy's, so spawning at the same Z buries its feet in the floor
+	// until the movement component pushes it out.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmBruteCharacter::BruteCapsuleHalfHeight - BaseEnemyCapsuleHalfHeight;
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < BruteCount; ++Index)
+	{
+		// Spread around the same centre when there is more than one, and
+		// directly in front when there is one.
+		const float Angle = 2.0f * PI * static_cast<float>(Index)
+						  / static_cast<float>(FMath::Max(BruteCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * BruteDistanceCm,
+			FMath::Sin(Angle) * BruteDistanceCm,
+			RiseCm);
+
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+			ACataclysmBruteCharacter::StaticClass(), Where, Facing, SpawnParams);
+		if (!Brute)
+		{
+			continue;
+		}
+
+		Brute->SetHealth(BruteHealth);
+		Brute->SetAttackDamage(BruteAttackDamage);
+
+		Brutes.Add(Brute);
+		++Spawned;
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Brutes %.0f cm from %s. Each has %.0f health, hits for "
+			 "%.0f every %.1f s, walks at %.0f cm/s and turns at %.0f deg/s."),
+		Spawned, BruteDistanceCm, *Centre.ToCompactString(),
+		BruteHealth, BruteAttackDamage,
+		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmBruteCharacter::DesignedTurnRateDegreesPerSecond);
+
+	return Spawned;
 }
 
 int32 ACataclysmGameMode::SpawnTrainingDummies()
