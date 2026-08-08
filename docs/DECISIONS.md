@@ -20,6 +20,42 @@ applied or still pending.
 
 ---
 
+## 2026-08-08 — Where the Brute's rip crater goes, and how craters avoid accumulating
+
+**Affects:** nothing in the design documents. Implementation detail, recorded
+because issue #432 asked for four judgements and two of them turned out not to be
+judgements at all.
+
+**Where it goes was measured, not chosen.** Following both hands through
+`Ability_RipNToss_Rip` with `AnimPoseExtensions`, `hand_l` bottoms out at 0.2833 s
+and `hand_r` at 0.2644 s, both 2.9 cm off the floor. Their midpoint is 52.9 cm in
+front of the creature and 0.6 cm off its centre line. That half-centimetre is the
+check on the whole measurement: a two-handed rip is symmetric, so a midpoint
+anywhere else would have meant the wrong bones or the wrong axis.
+
+**When it appears was measured too** — the earlier of those two times, because
+that is when the ground is first broken. Divided by the montage's play rate,
+since the rock throw is compressed by about 1.67.
+
+**How long it stays is a judgement, and it is set by an invariant rather than by
+eye.** Four seconds, chosen to sit under the throw's own five-second cooldown.
+That means one Brute can never have two craters, which answers the fourth
+question — per-Brute or per-place — without a manager, a cap or an eviction rule.
+Nobody has watched it; the number is free to move as long as it stays under the
+cooldown, and there is a test holding exactly that.
+
+**Craters reuse `ACataclysmDebrisBurst`** rather than getting an actor of their
+own. That actor was built generic in #422 — it names no project content and knows
+nothing about rocks — precisely so the next thing wanting a mesh on the floor for
+a few seconds would not need its own. A crater is that mechanism with one piece
+and no spread.
+
+**The general rule this sets:** where an animation already contains the answer,
+measure it rather than tuning it by eye; and where a lifetime could accumulate,
+pick one that makes accumulation impossible instead of managing it.
+
+---
+
 ## 2026-08-08 — A telegraph is counted in thinking passes, not compared against a clock
 
 **Affects** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and
