@@ -310,9 +310,15 @@ public:
 	 * recorded AttackBlendInSeconds while passing a literal zero, so a test
 	 * written against the record passed while the creature visibly snapped
 	 * into its pose instead of blending into it.
+	 *
+	 * @param Loops  how many times to repeat the clip. Fractional on purpose: a
+	 *   hold that has to cover a quarter of a second with a clip lasting seven
+	 *   and a half needs far less than one repeat, and a whole number cannot
+	 *   say so. A whole number is what let the rock throw's hold run for 7.67
+	 *   seconds when it was asked to cover 0.25.
 	 */
 	void PlayInAttackSlot(class UAnimSequence* Animation, float Rate,
-						  int32 Loops, float BlendOutTriggerTime);
+						  float Loops, float BlendOutTriggerTime);
 
 	/**
 	 * Which slot of ABP_Brute's animation graph an attack clip plays in.
@@ -396,6 +402,17 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float LastPlayedBlendOutTriggerTime = 0.0f;
+
+	/**
+	 * How many repeats of the clip the last play asked for. Read by tests.
+	 *
+	 * FRACTIONAL, AND THAT IS THE WHOLE REASON FOR RECORDING IT. A whole number
+	 * of repeats is what let the rock throw's hold play its full 7.67 seconds
+	 * when it had been asked to cover 0.25, because the smallest whole number
+	 * of repeats of a 7.67 second clip is one of them.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float LastPlayedLoops = 0.0f;
 
 	/**
 	 * The clip PlayOneShot last chose, and the rate it asked for. Read by tests.

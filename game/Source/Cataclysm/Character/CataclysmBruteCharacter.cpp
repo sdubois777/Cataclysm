@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -312,10 +313,48 @@ void ACataclysmBruteCharacter::StartHoldAnimation()
 		return;
 	}
 
-	// ENOUGH LOOPS TO COVER THE REST OF THE WINDOW, rounded up, so the hold
-	// never ends before the attack lands. Ending a hair late costs nothing: the
-	// release montage replaces it.
-	const int32 Loops = FMath::CeilToInt(PendingHoldSeconds / Length);
+	// NOT IF THE ATTACK HAS ALREADY LANDED. THIS IS THE FAULT THAT PRODUCED
+	// BOTH OF THE THINGS THE PROJECT OWNER SAW ON 2026-08-08.
+	//
+	// The rock throw's wind-up clip is 1.13 seconds played at a rate of 1.13,
+	// so it occupies exactly 1.00 second -- exactly its telegraph. This hold is
+	// scheduled for that moment, and the throw lands on the thinking pass at
+	// that same moment. They are not merely close: the thinking timer is a
+	// looping timer whose deadlines are exact, while this one is created inside
+	// a thinking callback, when the timer manager's clock has already passed
+	// that pass's deadline. So this hold's deadline is strictly the later of
+	// the two, and it ran AFTER the throw rather than before it.
+	//
+	// The clip it then played is Ability_RipNToss_Idle: 7.67 seconds of the
+	// creature standing still holding a rock over its head. That is "he holds
+	// for way too long at the top when he has his arms all the way up", and
+	// when the creature started walking again with that pose still on it, it is
+	// also "instead of going back to his chase animation he glides at me".
+	//
+	// ASKED OF THE BRAIN, WHICH IS THE ONLY THING THAT KNOWS. It clears
+	// WindingUpAbility the moment an ability lands, so a wind-up still in
+	// progress is exactly the condition under which a hold is wanted.
+	const ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(GetController());
+	if (!Brain || Brain->WindingUpAbility == INDEX_NONE)
+	{
+		PendingHoldAnimation = nullptr;
+		PendingHoldSeconds = 0.0f;
+		return;
+	}
+
+	// EXACTLY AS LONG AS IT WAS ASKED TO COVER, AND NOT ONE FRAME MORE. A whole
+	// number of loops cannot express that: the rock throw's hold clip is 7.67
+	// seconds and the gap it fills is 0.25, so the smallest whole number of
+	// loops is thirty times too long. The engine takes a fractional count and
+	// shortens the last repeat to match -- see
+	// UAnimMontage::CreateSlotAnimationAsDynamicMontage_WithFractionalLoops.
+	//
+	// THAT IS A SECOND LINE OF DEFENCE RATHER THAN A TIDINESS. The check above
+	// stops the hold starting late; this stops it outliving its ability by any
+	// route at all, including the two that nothing hooks: a pawn unpossessed
+	// mid-telegraph, and a pawn destroyed mid-telegraph.
+	const float Loops = FMath::Max(PendingHoldSeconds / Length, UE_KINDA_SMALL_NUMBER);
 
 	// IT DOES BLEND IN, AND THE EARLIER VERSION'S REASON FOR NOT DOING SO WAS
 	// FALSE. That comment said this clip continues the pose the wind-up ended
@@ -470,13 +509,13 @@ float ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
 	// anything from the clip's own length would be 0.13 seconds late.
 	const float PlaysFor = Length / Rate;
 
-	PlayInAttackSlot(Animation, Rate, /*Loops=*/1, BlendOutTriggerTime);
+	PlayInAttackSlot(Animation, Rate, /*Loops=*/1.0f, BlendOutTriggerTime);
 
 	return PlaysFor;
 }
 
 void ACataclysmBruteCharacter::PlayInAttackSlot(UAnimSequence* Animation,
-												float Rate, int32 Loops,
+												float Rate, float Loops,
 												float BlendOutTriggerTime)
 {
 	// EVERY CLIP THIS CREATURE PLAYS GOES THROUGH HERE, and that is the point.
@@ -496,6 +535,7 @@ void ACataclysmBruteCharacter::PlayInAttackSlot(UAnimSequence* Animation,
 	LastPlayedRate = Rate;
 	LastPlayedBlendInSeconds = BlendIn;
 	LastPlayedBlendOutTriggerTime = BlendOutTriggerTime;
+	LastPlayedLoops = Loops;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
 	if (!MeshComponent)
@@ -524,12 +564,30 @@ void ACataclysmBruteCharacter::PlayInAttackSlot(UAnimSequence* Animation,
 	// THE SEVENTH ARGUMENT IS NOT OPTIONAL DRESSING. See
 	// AbilityBlendOutTriggerTime in the header: leaving it at the engine's
 	// default throws away the last AttackBlendOutSeconds of every clip.
-	if (UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance())
+	UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance();
+	if (!AnimInstance)
 	{
-		AnimInstance->PlaySlotAnimationAsDynamicMontage(
-			Animation, AttackSlotName, BlendIn, BlendOut,
-			Rate, Loops, BlendOutTriggerTime);
+		return;
 	}
+
+	// BUILT AND PLAYED IN TWO STEPS RATHER THAN THROUGH
+	// PlaySlotAnimationAsDynamicMontage, AND ONLY BECAUSE OF THE LOOP COUNT.
+	// That convenience function takes a whole number of repeats. A hold that
+	// has to cover a quarter of a second using a clip lasting seven and a half
+	// needs a fraction of one, and this is the factory that accepts it: below
+	// one it shortens the segment to that fraction of the clip. At one it
+	// behaves exactly as the whole-number version did.
+	UAnimMontage* Montage =
+		UAnimMontage::CreateSlotAnimationAsDynamicMontage_WithFractionalLoops(
+			Animation, AttackSlotName, BlendIn, BlendOut, Loops,
+			BlendOutTriggerTime);
+	if (!Montage)
+	{
+		return;
+	}
+
+	AnimInstance->Montage_Play(Montage, Rate,
+							   EMontagePlayReturnType::MontageLength);
 }
 
 bool ACataclysmBruteCharacter::IsChasing() const
