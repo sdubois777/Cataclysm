@@ -4,8 +4,12 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmCharacterBase.h"
 #include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "UObject/ConstructorHelpers.h"
 
 namespace
 {
@@ -52,6 +56,25 @@ ACataclysmProjectile::ACataclysmProjectile()
 	// origin however it was spawned.
 	Anchor = CreateDefaultSubobject<USceneComponent>(TEXT("Anchor"));
 	SetRootComponent(Anchor);
+
+	// SOMETHING TO SEE. Until this, every projectile in the game was invisible:
+	// the actor's only component was the anchor above. Scaled in Fire, once
+	// BodyRadiusCm is known -- a piercing skill's projectile is as wide as the
+	// line it hits along, and everything else uses the standard body width.
+	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(
+		TEXT("PlaceholderBody"));
+	PlaceholderBody->SetupAttachment(Anchor);
+	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Engine content, found by path, so this adds no asset to the project. A
+	// sphere rather than the cylinder and cone the characters use, so a thing in
+	// the air is not mistaken for a thing standing on the ground.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(
+		TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	if (SphereMesh.Succeeded())
+	{
+		PlaceholderBody->SetStaticMesh(SphereMesh.Object);
+	}
 }
 
 ACataclysmProjectile* ACataclysmProjectile::Fire(
@@ -104,6 +127,18 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	// standard body width instead. See the comments on both fields.
 	Projectile->BodyRadiusCm =
 		Projectile->bPierces ? InRadiusCm : DefaultBodyRadiusCm;
+
+	// SIZED TO WHAT IT ACTUALLY HITS WITH, so what the player sees and what the
+	// sweep uses are the same width rather than two numbers that can disagree.
+	// The engine's basic shapes are BasicShapeSize across, so a scale of 1 is
+	// that wide and a body of BodyRadiusCm needs twice its radius over that.
+	if (Projectile->PlaceholderBody)
+	{
+		const float Scale = (Projectile->BodyRadiusCm * 2.0f)
+			/ ACataclysmCharacterBase::BasicShapeSize;
+		Projectile->PlaceholderBody->SetRelativeScale3D(
+			FVector(Scale, Scale, Scale));
+	}
 	Projectile->bWillReturn = bInReturns;
 	Projectile->DamagePercent = InDamagePercent;
 	Projectile->SkillTags = InSkillTags;

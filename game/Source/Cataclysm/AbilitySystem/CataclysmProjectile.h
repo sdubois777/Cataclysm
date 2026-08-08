@@ -8,6 +8,7 @@
 #include "CataclysmProjectile.generated.h"
 
 class ACataclysmProjectile;
+class UStaticMeshComponent;
 
 /** Told when a projectile has finished flying, and where it stopped. */
 DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmProjectileFinished, ACataclysmProjectile*);
@@ -193,6 +194,32 @@ public:
 	/** True when it stopped because world geometry blocked it. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	bool bBlockedByGeometry = false;
+
+	/**
+	 * A stand-in for the flying object, sized to BodyRadiusCm when it is fired.
+	 *
+	 * WITHOUT THIS EVERY PROJECTILE IN THE GAME IS INVISIBLE, and every one of
+	 * them was. This class had exactly one component -- an empty scene component
+	 * to root it -- so a thrown rock, a bolt of fire and every other projectile
+	 * skill dealt their damage with nothing on screen travelling between the
+	 * caster and the target. Reported from a play session on 2026-08-08 as the
+	 * Brute's rock throw not throwing a rock; it was never specific to the Brute.
+	 *
+	 * A SPHERE FROM ENGINE CONTENT, found by path, so this adds no asset to the
+	 * project. The player, every enemy and the summoned imp all carry a
+	 * placeholder of this kind for the same stated reason: this project's own
+	 * Content folder holds no meshes. A failure to find it is not fatal -- the
+	 * projectile still flies and still deals damage, it is just invisible again.
+	 *
+	 * NO COLLISION, like every other placeholder here. A projectile finds what it
+	 * passes through by sweeping the world itself, and a colliding mesh would
+	 * give it a second, differently sized way to hit things.
+	 *
+	 * PUBLIC LIKE THE SUMMONED IMP'S, so a test can check that a fired
+	 * projectile actually has something to draw.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Projectile")
+	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
 
 	virtual void Tick(float DeltaSeconds) override;
 
