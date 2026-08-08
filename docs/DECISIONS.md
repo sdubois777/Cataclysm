@@ -20,6 +20,123 @@ applied or still pending.
 
 ---
 
+## 2026-08-08 — A stun is a state the target is in, not a row in the status effect table
+
+**Affects** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
+`.cpp`, `CataclysmEnemyController.h` and `.cpp`, `CataclysmPlayerController.h`
+and `.cpp`, `CataclysmBruteCharacter.h` and `.cpp`, and the Tags sheet of
+`All_Things_Cataclysm.xlsx`. Applied in full. Raises issues #395 and #396 for the
+two parts that could not be answered.
+
+### The question
+
+The Brute's Stomp is designed to stun for 1.5 seconds and nothing in the project
+could stun anything. Issue #371 asked for the stun and proposed a specific home
+for it: "a `Stun` row in `game/Data/StatusEffects.csv` so its duration is data
+rather than a constant".
+
+### The proposed home turned out to be the wrong one
+
+Three findings, in the order they closed the question.
+
+**That file is generated, not authored.** `game/Data/StatusEffects.csv` is
+produced by `tools/generate_datatables.py` from the Buffs, Debuffs and DoTs
+sheets of `docs/All_Things_Cataclysm.xlsx`. A row cannot be added to it directly;
+it would have to be added to one of those three sheets.
+
+**Its `EffectKind` column only ever holds `Buff`, `Debuff` or `DoT`**, across all
+50 rows. A stun is none of the three, so it would have had to be filed under a
+kind that misdescribes it or the table would need a fourth kind.
+
+**The design already separates the two.** `Cataclysm_GDD_v2.md:1568` draws an
+explicit table of what the anti-stun-lock rule covers, and it puts stun and
+knockdown on one side and slows such as Cripple on the other:
+
+| | Covered | Why |
+|---|---|---|
+| Stun | Yes | The target cannot act at all |
+| Slow, such as Cripple | No | Slower is still able to act |
+
+Cripple *is* a Debuff row in that table. Stun is not in the table at all — it is
+in section VI with the three anti-stun-lock rules, which are combat rules rather
+than a named effect a skill applies.
+
+**So the duration comes from where every other Brute number comes from.**
+`StunSeconds: 1.5` on the Stomp in `sim/cataclysm_sim/enemy_abilities.py`, copied
+into a C++ constant and pinned by `tools/tests/test_brute_matches_the_model.py`.
+That is the shape the project already uses for the Brute's speed, reach, notice
+radius and attack interval, and it is guarded the same way.
+
+### Two new tags, in a new family, typed into the sheet by hand
+
+The stun is held as a gameplay tag for a duration, because that is how every
+other timed effect in this project already works —
+`UCataclysmSkillEffects::ApplyTagForDuration` builds a transient duration effect
+and `HasTag` answers "is it up?". Nothing new had to be written for the timing.
+
+Two tags were added: `State.Stunned` and `State.StunImmune`.
+
+**Not under `Status.`**, which is the branch generated one-per-row from the
+effect sheets. A hand-typed tag there would sit in a namespace that is otherwise
+entirely derived, and the generator treats a hand-typed `Status.*` as an override
+of a generated one rather than as an addition.
+
+**A new `State.` family instead**, typed into the Tags sheet of the workbook.
+There is precedent: the five `Cooldown.*` tags are machinery typed into that
+sheet by hand, and they sit outside the sheet's Excel table exactly as these two
+now do.
+
+**Not declared natively in C++**, which would have avoided touching the workbook
+at all. `UCataclysmSkillEffects::BurnTag` states the project's reason for
+refusing that: a native declaration creates the tag whether or not the workbook
+still lists it, which hides exactly the disagreement that matters.
+
+### The immunity window is the part that existed nowhere
+
+`sim/cataclysm_sim/damage.py:150` says in terms that it resolves one hit with no
+clock, that it therefore implements only the damage threshold and boss immunity,
+and that **the game enforces the five second window**. The game had no stun, so
+nothing enforced it anywhere. This is its first implementation.
+
+It is granted as a second tag at the moment the stun lands, so it belongs to the
+target rather than to whoever swung. Two Brutes cannot take turns.
+
+**The window starts when the stun starts, not when it ends.** Five seconds of
+immunity against a 1.5 second stun therefore leaves 3.5 seconds in which the
+target can act and still cannot be re-stunned. That is the intent: the rule
+exists to stop chain-stunning, not to add a cooldown to the player's recovery.
+
+### A stun cancels a wind-up rather than pausing it
+
+`ECataclysmBrainAction` recorded that the design gives the wind-up five rules and
+that the fifth — interrupting cancels it — was unimplemented "because nothing in
+the project can interrupt anything yet". A stun is the first thing that can.
+
+**Abandoned, not paused.** Left set, the wind-up's landing deadline would still
+be in the past when the stun wore off, so the first pass afterwards would land a
+stomp whose telegraph the player had already survived.
+
+**And not put on cooldown.** The ability's cooldown is stamped when it lands, so
+an attack interrupted before it landed was never spent and comes round again at
+once. An interrupt that also cost the enemy its Heavy would be paying the player
+twice for one action.
+
+### What could not be answered
+
+**Boss immunity is not implemented, because nothing in the project is a boss.**
+The third anti-stun-lock rule is "a boss cannot be stunned at all". There is no
+flag, class, tag or data column anywhere in `game/Source/` that identifies one.
+Issue #395. Nothing is wrong today only because no boss enemy exists yet.
+
+**Nothing draws a ground telegraph marker.** Issue #371 bundled that with the
+stun; it is a separate concern and is now issue #396. The wind-up timing already
+honours the design's formula, but the area the formula promises the player can
+walk out of is not drawn, so the only warning is still the animation. That
+matters more now than it did: misreading a Stomp costs control of the character
+rather than only health.
+
+---
+
 ## 2026-08-07 — An enemy can roam, but only if it asks to, and the Brute notices at seven metres not fifteen
 
 **Affects** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and

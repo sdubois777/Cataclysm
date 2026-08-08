@@ -299,6 +299,100 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 							   Burn.DurationSeconds, BurnTag());
 }
 
+FGameplayTag UCataclysmSkillEffects::StunnedTag()
+{
+	// Requested by name rather than declared natively, for the reason BurnTag
+	// gives: a native declaration would create the tag whether or not the
+	// workbook still lists it, hiding exactly the disagreement that matters.
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Stunned")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmSkillEffects::StunImmuneTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.StunImmune")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::IsStunned(const AActor* Actor)
+{
+	return HasTag(Actor, StunnedTag());
+}
+
+bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
+									   float DurationSeconds, float DamageDealt,
+									   bool bStunIsDesigned)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// RULE TWO: A STUNNED TARGET CANNOT BE STUNNED AGAIN FOR FIVE SECONDS.
+	// Checked first because it is the cheapest and because it applies to every
+	// stun, designed or incidental. A designed stun does not escape it: that is
+	// the whole reason the Brute's Stomp has a five second cooldown rather than
+	// a cooldown from the Heavy slot's one-to-four second band.
+	if (HasTag(Target, StunImmuneTag()))
+	{
+		return false;
+	}
+
+	// RULE ONE: A HIT MUST TAKE AT LEAST A TENTH OF MAXIMUM HEALTH TO STUN.
+	//
+	// A DESIGNED STUN SKIPS THIS AND ONLY THIS. An attack whose entire purpose
+	// is to stun should not fail to when it lands, so the Stomp does not have to
+	// clear the bar. It still obeys the window above. The distinction is
+	// stun_is_designed in sim/cataclysm_sim/damage.py.
+	if (!bStunIsDesigned)
+	{
+		const UAbilitySystemComponent* Defender =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Defender)
+		{
+			return false;
+		}
+
+		// A target already dead is not stunned, matching can_be_stunned in the
+		// model. Without this a killing blow would stun a corpse.
+		const float Health = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		if (Health <= 0.0f)
+		{
+			return false;
+		}
+
+		const float MaxHealth = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (MaxHealth <= 0.0f)
+		{
+			return false;
+		}
+
+		if (DamageDealt < MaxHealth * StunDamageThresholdPercent / 100.0f)
+		{
+			return false;
+		}
+	}
+
+	// RULE THREE, A BOSS CANNOT BE STUNNED, IS NOT CHECKED. There is no boss in
+	// this project to ask -- no flag, no class, no tag. Issue #395. This is the
+	// line it goes on when there is.
+
+	if (!ApplyTagForDuration(Instigator, Target, StunnedTag(), DurationSeconds))
+	{
+		return false;
+	}
+
+	// THE WINDOW STARTS WHEN THE STUN DOES, not when it ends, which is why five
+	// seconds of immunity and 1.5 seconds of stun leave a 3.5 second gap the
+	// target can act in before it can be stunned again.
+	ApplyTagForDuration(Instigator, Target, StunImmuneTag(),
+						StunImmunityWindowSeconds);
+
+	return true;
+}
+
 bool UCataclysmSkillEffects::HasTag(const AActor* Actor, const FGameplayTag& Tag)
 {
 	const UAbilitySystemComponent* AbilitySystem =

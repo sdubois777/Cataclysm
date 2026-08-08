@@ -82,6 +82,15 @@ private:
 	/** Puts CachedDestination under the cursor. False if the cursor hit nothing. */
 	bool UpdateCachedDestination();
 
+	/**
+	 * Whether the possessed pawn is stunned and may not act.
+	 *
+	 * SEPARATE FROM bStandStill, WHICH SUPPRESSES MOVEMENT ONLY. The design
+	 * defines a stun as the target being unable to act at all, so this gates
+	 * skills as well, and the player did not choose it.
+	 */
+	bool IsPawnStunned() const;
+
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;
 

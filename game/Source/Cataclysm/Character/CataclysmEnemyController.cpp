@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmEnemyController.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -119,6 +120,34 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	{
 		LastAction = ECataclysmBrainAction::Idle;
 		CurrentTarget = nullptr;
+		return LastAction;
+	}
+
+	// A STUN OUTRANKS EVEN A COMMITTED WIND-UP, and it is the only thing that
+	// does. The design says a stunned target cannot act at all, and the wind-up
+	// rules say interrupting one cancels it -- the rule ECataclysmBrainAction
+	// records as the one nothing could satisfy, because nothing could interrupt.
+	//
+	// THE WIND-UP IS ABANDONED RATHER THAN PAUSED. Left set, WindUpLandsAt would
+	// still hold a deadline in the past by the time the stun wore off, so the
+	// first pass afterwards would land a stomp the player had already survived
+	// the telegraph of. Clearing it means an interrupted attack simply did not
+	// happen.
+	//
+	// IT IS NOT PUT ON COOLDOWN EITHER. AbilityLastUsedAt is stamped when an
+	// ability LANDS, in ContinueWindUp, so an attack that was interrupted before
+	// it landed was never spent and is available again. That is what makes
+	// interrupting worth doing to the enemy rather than to the player.
+	if (UCataclysmSkillEffects::IsStunned(Driven))
+	{
+		WindingUpAbility = INDEX_NONE;
+
+		// Every pass, not once. Think runs four times a second and StopMovement
+		// is not sticky -- the comment below on the roaming path records this
+		// same trap biting there.
+		StopMovement();
+
+		LastAction = ECataclysmBrainAction::Stunned;
 		return LastAction;
 	}
 

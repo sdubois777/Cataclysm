@@ -553,3 +553,188 @@ def test_the_walk_play_rate_matches_the_recorded_figure() -> None:
         f"at {play_rate:.2f}, which is outside the {minimum} to {maximum} range "
         f"the class clamps to, so the clamp would be hiding a wrong number."
     )
+
+
+# ---------------------------------------------------------------------------
+# The Stomp
+#
+# EVERY ONE OF THESE WAS UNGUARDED UNTIL THE STUN WAS BUILT. The four Stomp
+# constants have been in the header since PR #394 in exactly the right shape for
+# the reader above, and nothing compared them to anything. The stun is the fifth
+# and the reason the rest are now pinned: it is the first Brute number whose
+# being wrong costs the player control of the character rather than health.
+# ---------------------------------------------------------------------------
+
+
+SKILL_EFFECTS_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm"
+                        / "AbilitySystem" / "CataclysmSkillEffects.h")
+
+
+def brute_ability(name: str):
+    """One entry of ABILITIES['Brute'] by name."""
+    from cataclysm_sim.enemy_abilities import abilities
+
+    for ability in abilities("Brute"):
+        if ability.name == name:
+            return ability
+    raise AssertionError(
+        f"sim/cataclysm_sim/enemy_abilities.py has no Brute ability named "
+        f"{name!r}. It holds: "
+        f"{[a.name for a in abilities('Brute')]}"
+    )
+
+
+def test_the_stomp_stun_matches_the_model() -> None:
+    stun = brute_ability("Stomp").params["StunSeconds"]
+
+    assert constant(BRUTE_HEADER, "StompStunSeconds") == pytest.approx(stun), (
+        "The Brute's stomp holds the player for a different length of time in "
+        "the C++ than ABILITIES['Brute'] in sim/cataclysm_sim/enemy_abilities.py "
+        "designs, and the Python is authoritative."
+    )
+
+
+def test_the_stomp_radius_matches_the_model_in_centimetres() -> None:
+    radius = brute_ability("Stomp").params["Radius"]
+
+    assert constant(BRUTE_HEADER, "StompRadiusCm") == pytest.approx(
+        radius * 100.0
+    ), (
+        "The stomp's ring is a different size in the C++ than the model "
+        "designs. It is also what the telegraph's wind-up is computed from, so "
+        "a disagreement here makes the wind-up wrong as well as the damage."
+    )
+
+
+def test_the_stomp_cooldown_matches_the_model() -> None:
+    assert constant(BRUTE_HEADER, "StompCooldownSeconds") == pytest.approx(
+        brute_ability("Stomp").cooldown
+    ), (
+        "The stomp comes round at a different rate in the C++ than the model "
+        "designs."
+    )
+
+
+def test_the_stomp_wind_up_is_the_designed_telegraph() -> None:
+    """The wind-up is a formula, not a taste, so it is checked as one.
+
+    docs/Cataclysm_GDD_v2.md:3016 gives the rule as
+
+        Wind-up seconds = 0.4 + Radius / 3.5
+
+    where 0.4 is the reaction allowance and 3.5 m/s is the slowest class's walk
+    speed. The forward form is written nowhere in sim/, only the rearranged cap,
+    so it is composed here from the two constants the model does hold.
+    """
+    from cataclysm_sim.enemy_abilities import REACTION_ALLOWANCE, WALK_OUT_SPEED
+
+    radius = brute_ability("Stomp").params["Radius"]
+    designed = REACTION_ALLOWANCE + radius / WALK_OUT_SPEED
+
+    assert constant(BRUTE_HEADER, "StompWindUpSeconds") == pytest.approx(
+        designed
+    ), (
+        f"The stomp telegraphs for a different length of time in the C++ than "
+        f"the wind-up rule gives for its {radius} m radius, which is "
+        f"{designed:.2f} seconds. The rule is the player's guarantee that the "
+        f"ring can be walked out of, so this is not a number to tune by eye."
+    )
+
+
+def test_the_stomp_damage_is_its_slot() -> None:
+    """Damage is the slot, not a number on the ability."""
+    from cataclysm_sim.character import SKILL_SLOTS
+
+    slot = brute_ability("Stomp").slot
+
+    assert constant(BRUTE_HEADER, "StompDamagePercent") == pytest.approx(
+        SKILL_SLOTS[slot].typical_damage
+    ), (
+        f"The stomp deals a different percentage in the C++ than the {slot} "
+        f"slot's typical damage in sim/cataclysm_sim/character.py. Nothing in "
+        f"ABILITIES stores a damage figure, because the slot IS the figure."
+    )
+
+
+def test_the_stomp_cooldown_is_the_stun_immunity_window() -> None:
+    """Why the cooldown is 5 and not something from the Heavy band.
+
+    The whole Heavy band in game/Data/SkillSlots.csv is 1 to 4 seconds, and all
+    of it sits inside the 5 second stun immunity window. A stomp that came round
+    sooner would be refused by the window rather than limited by its slot, so
+    the window is what sets the rate.
+    """
+    from cataclysm_sim.enemy_abilities import STUN_IMMUNITY_WINDOW
+
+    assert constant(BRUTE_HEADER, "StompCooldownSeconds") == pytest.approx(
+        STUN_IMMUNITY_WINDOW
+    ), (
+        "The stomp's cooldown is no longer the stun immunity window. If that "
+        "was deliberate, the enemy is now able to attempt a stun the window "
+        "will silently refuse, and the reason the cooldown is not a Heavy-slot "
+        "figure has been lost."
+    )
+
+
+def test_the_engine_carries_the_same_stun_rules_as_the_model() -> None:
+    """The two anti-stun-lock numbers the engine enforces.
+
+    sim/cataclysm_sim/damage.py is the model these are ported from. It says in
+    terms that it resolves one hit with no clock and that the GAME enforces the
+    immunity window, so the C++ is not a second copy of a working
+    implementation -- it is the only implementation, checked against the design
+    figures the model holds.
+    """
+    from cataclysm_sim import damage
+
+    assert constant(
+        SKILL_EFFECTS_HEADER, "StunDamageThresholdPercent"
+    ) == pytest.approx(damage.STUN_DAMAGE_THRESHOLD), (
+        "The share of maximum health a hit must take to stun has drifted from "
+        "STUN_DAMAGE_THRESHOLD in sim/cataclysm_sim/damage.py."
+    )
+
+    assert constant(
+        SKILL_EFFECTS_HEADER, "StunImmunityWindowSeconds"
+    ) == pytest.approx(damage.STUN_IMMUNITY_SECONDS), (
+        "The stun immunity window has drifted from STUN_IMMUNITY_SECONDS in "
+        "sim/cataclysm_sim/damage.py."
+    )
+
+
+def test_the_two_copies_of_the_immunity_window_in_the_model_agree() -> None:
+    """The model holds the same five seconds twice, and nothing compared them.
+
+    `STUN_IMMUNITY_WINDOW` in enemy_abilities.py sets every stunning ability's
+    cooldown; `STUN_IMMUNITY_SECONDS` in damage.py is the rule itself. They are
+    two independent copies of one design figure in a repository whose CLAUDE.md
+    records that copies here have silently drifted twice before.
+    """
+    from cataclysm_sim import damage
+    from cataclysm_sim.enemy_abilities import STUN_IMMUNITY_WINDOW
+
+    assert STUN_IMMUNITY_WINDOW == pytest.approx(damage.STUN_IMMUNITY_SECONDS), (
+        "sim/cataclysm_sim/enemy_abilities.py and sim/cataclysm_sim/damage.py "
+        "disagree about how long stun immunity lasts."
+    )
+
+
+def test_no_stun_outlasts_the_immunity_it_grants() -> None:
+    """Otherwise the window stops nothing.
+
+    A stun longer than its own immunity window would leave the target eligible
+    for the next stun before it had finished recovering from the last, which is
+    the stun-lock the rule exists to prevent.
+    """
+    from cataclysm_sim import damage
+
+    assert constant(BRUTE_HEADER, "StompStunSeconds") < constant(
+        SKILL_EFFECTS_HEADER, "StunImmunityWindowSeconds"
+    ), (
+        "The Brute's stomp holds the player for at least as long as the "
+        "immunity it grants, so a second Brute could take over the instant the "
+        "first let go."
+    )
+    assert damage.BLUNT_STUN_SECONDS < damage.STUN_IMMUNITY_SECONDS, (
+        "The incidental blunt-weapon stun outlasts the immunity window."
+    )
