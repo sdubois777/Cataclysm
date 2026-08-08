@@ -12,6 +12,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationAsset.h"
 #include "Components/CapsuleComponent.h"
@@ -466,15 +467,16 @@ bool FCataclysmBruteIsDrivenByItsOwnAnimationBlueprint::RunTest(const FString&)
 	TestEqual(TEXT("and the graph it runs is ABP_Brute"),
 		MeshComponent->GetAnimClass(), Expected);
 
-	// THE ATTACK CLIPS ARE STILL THIS CLASS'S JOB, because they are played into
-	// the graph's slot rather than selected by it. All four, so a broken path
-	// in any one of them is named here.
+	// THE ATTACK ANIMATIONS ARE STILL THIS CLASS'S JOB, because they are played
+	// into the graph's slot rather than selected by it. All three, so a broken
+	// path in any one of them is named here.
+	//
+	// THREE, NOT SIX, SINCE 2026-08-08. Each ability's wind-up and release now
+	// live inside one montage rather than being loaded and sequenced separately.
 	TestNotNull(TEXT("the swing clip loaded"), Brute->AttackAnimation.Get());
-	TestNotNull(TEXT("the stomp wind-up clip loaded"), Brute->StompAnimation.Get());
-	TestNotNull(TEXT("the stomp release clip loaded"),
-		Brute->StompReleaseAnimation.Get());
-	TestNotNull(TEXT("the rock throw wind-up clip loaded"),
-		Brute->RockThrowAnimation.Get());
+	TestNotNull(TEXT("the stomp montage loaded"), Brute->StompMontage.Get());
+	TestNotNull(TEXT("the rock throw montage loaded"),
+		Brute->RockThrowMontage.Get());
 
 	Brute->Destroy();
 	return true;
@@ -507,6 +509,209 @@ bool FCataclysmBruteAsksForASlotThatItsGraphHas::RunTest(const FString&)
 		ACataclysmBruteCharacter::AttackBlendInSeconds > 0.0f);
 	TestTrue(TEXT("and blends back out to locomotion"),
 		ACataclysmBruteCharacter::AttackBlendOutSeconds > 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteAbilityMontagesAreBuiltCorrectly,
+	"Cataclysm.Brute.ItsAbilityMontagesAreBuiltCorrectly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteAbilityMontagesAreBuiltCorrectly::RunTest(const FString&)
+{
+	// WHAT THIS GUARDS, AND WHY IT IS THE MOST IMPORTANT TEST OF THE THREE HERE.
+	//
+	// The Brute's two abilities are now driven by montage assets rather than by
+	// arithmetic in C++. That is the right place for them -- the timing can be
+	// scrubbed against a live preview -- but it moves several tuned numbers into
+	// binary files that a pull request cannot diff. Issue #406 makes exactly that
+	// complaint about the two play rates that moved into ABP_Brute, where nothing
+	// checks them and a change would be invisible.
+	//
+	// So everything this project relies on being true of those two assets is
+	// asserted here, read back off the asset itself:
+	//
+	//   the slot they play into      -- wrong, and every ability is invisible
+	//   the two clips and their order-- wrong, and the creature throws a punch
+	//                                   when it meant to throw a rock
+	//   where the join falls         -- wrong, and the damage lands at a moment
+	//                                   that does not match what is on screen
+	//   the blend settings           -- wrong, and the poised pose dissolves
+	//                                   before the attack lands, which is the
+	//                                   fault pull request #410 fixed
+	//
+	// tools/generate_brute_montages.py writes all of them. This is what stops it
+	// and this code disagreeing.
+	struct FCase
+	{
+		const TCHAR* What;
+		const TCHAR* Path;
+		const TCHAR* FirstClip;
+		const TCHAR* SecondClip;
+		float WindUpSeconds;
+		float JoinSeconds;
+		float TotalSeconds;
+	};
+
+	// THE MEASURED FIGURES, taken from the pack's own clips on 2026-08-08 and
+	// reported by tools/generate_brute_montages.py on every run.
+	const FCase Cases[] = {
+		{TEXT("the stomp"), ACataclysmBruteCharacter::StompMontagePath,
+		 TEXT("Ability_GroundSmash_Start"), TEXT("Ability_GroundSmash_End"),
+		 ACataclysmBruteCharacter::StompWindUpSeconds, 0.8333f, 1.5333f},
+		{TEXT("the rock throw"), ACataclysmBruteCharacter::RockThrowMontagePath,
+		 TEXT("Ability_RipNToss_Rip"), TEXT("Ability_RipNToss_Toss"),
+		 ACataclysmBruteCharacter::RockThrowWindUpSeconds, 1.1333f, 2.0000f},
+	};
+
+	// A HUNDREDTH OF A SECOND. The clips are authored at 30 frames a second, so
+	// a third of a frame is as close as any of these figures can be stated.
+	const float Tolerance = 0.01f;
+
+	int32 Checked = 0;
+	for (const FCase& Case : Cases)
+	{
+		UAnimMontage* Montage =
+			Cast<UAnimMontage>(FSoftObjectPath(Case.Path).TryLoad());
+		if (!Montage)
+		{
+			continue;
+		}
+
+		// THE ART TEST IS THE CLIP, NOT THE MONTAGE, AND THAT DISTINCTION IS THE
+		// WHOLE REASON THIS LOOP IS SHAPED THIS WAY. The two montage assets are
+		// committed; the Paragon clips inside them are gitignored. So on a fresh
+		// clone and in continuous integration the montage loads perfectly well
+		// and every segment's animation reference is null. Testing the montage
+		// for null would report the art as present and then compare figures that
+		// cannot be right.
+		const bool bHasSegments =
+			Montage->SlotAnimTracks.Num() > 0 &&
+			Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Num() > 0;
+		if (!bHasSegments ||
+			Montage->SlotAnimTracks[0].AnimTrack.AnimSegments[0]
+				.GetAnimReference() == nullptr)
+		{
+			continue;
+		}
+
+		++Checked;
+
+		const FSlotAnimationTrack& Track = Montage->SlotAnimTracks[0];
+
+		// THE SLOT, WHICH IS THE ONE THAT FAILS SILENTLY. A montage played into
+		// a slot the animation graph does not contain is dropped with no error
+		// of any kind -- the creature simply never plays it. ABP_Brute's Slot
+		// node and AttackSlotName are the other two corners of that agreement.
+		TestEqual(FString::Printf(
+			TEXT("%s plays into the slot the graph has"), Case.What),
+			Track.SlotName, ACataclysmBruteCharacter::AttackSlotName);
+
+		if (!TestEqual(FString::Printf(
+				TEXT("%s holds exactly two clips"), Case.What),
+				Track.AnimTrack.AnimSegments.Num(), 2))
+		{
+			continue;
+		}
+
+		// IN ORDER: THE WIND-UP, THEN THE RELEASE. Reversed, the creature would
+		// smash the ground and then raise its fist.
+		TestEqual(FString::Printf(TEXT("%s winds up first"), Case.What),
+			Track.AnimTrack.AnimSegments[0].GetAnimReference()->GetName(),
+			FString(Case.FirstClip));
+		TestEqual(FString::Printf(TEXT("%s releases second"), Case.What),
+			Track.AnimTrack.AnimSegments[1].GetAnimReference()->GetName(),
+			FString(Case.SecondClip));
+
+		// BACK TO BACK WITH NO GAP. The second segment starts exactly where the
+		// first ends, which is what UAnimMontage::PostLoad's call to
+		// FAnimTrack::ValidateSegmentTimes arranges and what makes the two clips
+		// one continuous movement rather than two.
+		TestEqual(FString::Printf(TEXT("%s starts its wind-up at zero"), Case.What),
+			Track.AnimTrack.AnimSegments[0].StartPos, 0.0f, Tolerance);
+		TestEqual(FString::Printf(
+			TEXT("%s begins its release exactly where the wind-up ends"), Case.What),
+			Track.AnimTrack.AnimSegments[1].StartPos, Case.JoinSeconds, Tolerance);
+
+		// AND BOTH AT AUTHORED SPEED. A play rate baked into a segment would be a
+		// second place speed is decided, competing with the montage's own rate.
+		TestEqual(FString::Printf(
+			TEXT("%s plays its wind-up at authored speed"), Case.What),
+			Track.AnimTrack.AnimSegments[0].AnimPlayRate, 1.0f, Tolerance);
+		TestEqual(FString::Printf(
+			TEXT("%s plays its release at authored speed"), Case.What),
+			Track.AnimTrack.AnimSegments[1].AnimPlayRate, 1.0f, Tolerance);
+
+		TestEqual(FString::Printf(TEXT("%s is as long as its two clips"), Case.What),
+			Montage->GetPlayLength(), Case.TotalSeconds, Tolerance);
+
+		TestEqual(FString::Printf(
+			TEXT("%s reports the join the character reads"), Case.What),
+			ACataclysmBruteCharacter::JoinSecondsFor(Montage), Case.JoinSeconds,
+			Tolerance);
+
+		// THE BLEND SETTINGS THE ASSET CARRIES. Montage_Play takes no blend
+		// arguments -- it reads BlendIn, BlendOut and BlendOutTriggerTime off the
+		// montage -- so these are the live values, not documentation.
+		TestEqual(FString::Printf(TEXT("%s blends in over the same time a swing "
+									   "does"), Case.What),
+			Montage->BlendIn.GetBlendTime(),
+			ACataclysmBruteCharacter::AttackBlendInSeconds, Tolerance);
+		TestEqual(FString::Printf(TEXT("%s blends out over the same time"), Case.What),
+			Montage->BlendOut.GetBlendTime(),
+			ACataclysmBruteCharacter::AttackBlendOutSeconds, Tolerance);
+
+		// AND PLAYS TO ITS LAST FRAME FIRST. At the engine's default of -1 the
+		// blend FINISHES as the montage ends, so it STARTS a blend-length before
+		// the end and the last 0.15 seconds of the release dissolves into
+		// walking. That is the fault pull request #410 fixed, and it now lives in
+		// the asset where it can come back without a code change.
+		TestEqual(FString::Printf(
+			TEXT("%s plays to its last frame before blending out"), Case.What),
+			Montage->BlendOutTriggerTime,
+			ACataclysmBruteCharacter::AbilityBlendOutTriggerTime, Tolerance);
+
+		// THE PROPERTY THE WHOLE DESIGN RESTS ON: the creature finishes winding
+		// up no later than the moment its attack lands. If the wind-up ran past
+		// the impact, the damage would be dealt while the fist was still going
+		// up. The rate is what buys this for the rock throw, whose rip clip is
+		// 1.13 seconds against a telegraph that ends at 1.00.
+		const float LandsAt =
+			ACataclysmBruteCharacter::LandsAtSecondsFor(Case.WindUpSeconds);
+		const float Rate =
+			ACataclysmBruteCharacter::MontageRateFor(Case.JoinSeconds, LandsAt);
+		const float JoinArrivesAt = Case.JoinSeconds / Rate;
+
+		TestTrue(FString::Printf(
+			TEXT("%s reaches its join by the time the attack lands "
+				 "(join at %.3f s, attack at %.3f s)"),
+			Case.What, JoinArrivesAt, LandsAt),
+			JoinArrivesAt <= LandsAt + Tolerance);
+
+		// NEVER SLOWER THAN AUTHORED, which is the other half of the same rule.
+		// Stretching a wind-up to fill its telegraph was tried and reported from
+		// a play session as slow motion.
+		TestTrue(FString::Printf(
+			TEXT("%s is never played slower than it was authored"), Case.What),
+			Rate >= 1.0f);
+	}
+
+	if (Checked == 0)
+	{
+		AddInfo(TEXT("The Paragon art is absent, so the montage contents could "
+					 "not be checked. Expected in continuous integration; the "
+					 "montage assets are committed but the clips inside them "
+					 "are not."));
+	}
+	else if (Checked != UE_ARRAY_COUNT(Cases))
+	{
+		// A HARD ERROR RATHER THAN A SKIP. One montage resolving and the other
+		// not means a broken path or a half-built pair, not a missing pack.
+		AddError(TEXT("One ability montage resolved its clips and the other did "
+					  "not, which means one of the two is wrong rather than the "
+					  "art being absent. Re-run tools/generate_brute_montages.py."));
+	}
 
 	return true;
 }
