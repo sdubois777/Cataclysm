@@ -279,8 +279,27 @@ been re-measured. They are now, and every one matches what #382 quoted.
 |---|:-:|---|
 | `Ability_RipNToss_Rip` | 1.13 | Tears the rock out of the ground |
 | `Ability_RipNToss_Idle` | 7.67 | Standing while holding it |
-| `Ability_RipNToss_Toss` | 0.87 | The throw |
+| `Ability_RipNToss_Toss` | 0.87 | The throw. The throwing hand reaches the top of its arc, which is where the rock is released, at **0.539 s** |
+| `Ability_RipNToss_Toss_Enraged` | 0.87 | A second throw clip. Its throwing hand reaches the top of its arc at **0.539 s** as well |
 | `Ability_RipNToss_Cancel` | 0.47 | Drops it without throwing |
+
+**The enraged throw releases at exactly the same moment as the ordinary one.**
+Measured 2026-08-08 with `tools/measure_animation_impact.py`, which now covers
+both. Issue #416 lists switching to this clip as one of four ways to stop the
+throw montage being compressed; this measurement rules that one out. The two
+clips are not identical -- the left hand does something different, reaching 4 cm
+at 0.173 s against the ordinary clip's 40 cm at 0.067 s -- but the right hand,
+which is the one holding the rock, follows the same arc to the same peak at the
+same time.
+
+**How much the throw montage is compressed, and why.** The rock does not leave
+the hand until 1.133 + 0.539 = **1.672 s** into the montage, and
+`ACataclysmBruteCharacter::RockThrowWindUpSeconds` is **1.000 s**. So
+`MontageRateFor` compresses the whole rip and throw to a play rate of **1.672**,
+running it in 1.196 s rather than the authored 2.000 s. That is inside the 2.5
+ceiling the class treats as usable, so nothing rejects it. Whether it reads as
+hurried on a creature designed as "heavily armoured slow melee" has not been
+judged by playing it. Issue #416.
 
 The pack also ships the rock itself and the mess it makes. One of the four rows
 below is in use.

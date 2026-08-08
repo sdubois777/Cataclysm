@@ -601,6 +601,167 @@ def test_the_gait_threshold_sits_between_the_two_designed_speeds() -> None:
 
 
 # ---------------------------------------------------------------------------
+# How hard the rock throw's animation has to be compressed
+#
+# WHY THESE EXIST. Issue #416. The rock does not leave the creature's hand until
+# 1.672 seconds into its montage and the telegraph allows 1.000, so
+# ACataclysmBruteCharacter::MontageRateFor plays the whole rip and throw at 1.67
+# times its authored speed. Nothing rejects that -- it is inside the 2.5 ceiling
+# the class treats as usable -- and nothing recorded it either.
+#
+# WHAT THEY DO AND DO NOT SETTLE. They do not say whether 1.67 looks right; that
+# needs somebody to watch it. They make any change to either input recompute the
+# consequence and fail until the recorded figure is updated with it, so the
+# decision cannot be made by accident.
+# ---------------------------------------------------------------------------
+
+
+def _rock_throw_release_in_the_document() -> float:
+    """The moment the throwing hand reaches the top of its arc, from the doc.
+
+    The bold figure in the `Ability_RipNToss_Toss` row of the locomotion
+    reference. Held in two places on purpose -- there and on the C++ constant --
+    because the C++ is what the game runs on and the document is what a person
+    reads, and this repository has had those drift before.
+    """
+    import re as _re
+
+    row = _locomotion_row("Ability_RipNToss_Toss")
+    found = _re.search(r"\*\*([\d.]+) s\*\*", row)
+    if found is None:
+        pytest.fail(
+            "The Ability_RipNToss_Toss row in game/docs/enemy-source-assets.md "
+            "no longer records when the rock is released. It should be the bold "
+            "figure. Without it the measured 0.539 s exists only in the C++."
+        )
+    return float(found.group(1))
+
+
+def _clip_length_in_the_document(animation: str) -> float:
+    """The Length column of one row of the locomotion reference."""
+    row = _locomotion_row(animation)
+    cells = [c.strip() for c in row.strip().strip("|").split("|")]
+    if len(cells) < 2:
+        pytest.fail(f"the {animation} row has no Length column: {row}")
+    try:
+        return float(cells[1])
+    except ValueError:
+        pytest.fail(f"the {animation} row's Length is not a number: {row}")
+
+
+def test_the_rock_throw_wind_up_is_the_designed_telegraph() -> None:
+    """The same rule the stomp is held to, which nothing was holding this to.
+
+    docs/Cataclysm_GDD_v2.md gives the wind-up as 0.4 + Radius / 3.5, where 0.4
+    is the reaction allowance and 3.5 m/s is the slowest class's walk speed. The
+    stomp has been pinned against that since the stun was built and the rock
+    throw never was, which is how a telegraph could be lengthened to suit an
+    animation without anybody having to argue for it.
+
+    Issue #416 proposes exactly that change. This test is what makes it a
+    decision rather than an edit: lengthening the telegraph fails here, and the
+    fix is to change the design rule and this test together, deliberately.
+    """
+    from cataclysm_sim.enemy_abilities import REACTION_ALLOWANCE, WALK_OUT_SPEED
+
+    radius = brute_ability("Rip and Toss").params["Radius"]
+    designed = REACTION_ALLOWANCE + radius / WALK_OUT_SPEED
+
+    assert constant(BRUTE_HEADER, "RockThrowWindUpSeconds") == pytest.approx(
+        designed
+    ), (
+        f"The rock throw telegraphs for a different length of time in the C++ "
+        f"than the wind-up rule gives for its {radius} m radius, which is "
+        f"{designed:.2f} seconds. If this was changed on purpose to fit the "
+        f"animation -- issue #416 -- then the rule needs an exception written "
+        f"down and this test needs to check the exception instead."
+    )
+
+
+def test_the_release_moment_is_recorded_in_both_places() -> None:
+    """The C++ constant and the asset document must agree about the measurement.
+
+    Neither can be derived from the asset: the Paragon clips carry no animation
+    notifies, so the only record of when the rock leaves the hand is this
+    measured figure, written down twice.
+    """
+    assert constant(
+        BRUTE_HEADER, "RockThrowStrikeIntoReleaseSeconds"
+    ) == pytest.approx(_rock_throw_release_in_the_document()), (
+        "CataclysmBruteCharacter.h and game/docs/enemy-source-assets.md "
+        "disagree about when the throwing hand reaches the top of its arc. "
+        "Re-measure with tools/measure_animation_impact.py and update both."
+    )
+
+
+def test_the_recorded_compression_is_what_the_two_inputs_give() -> None:
+    """The play rate the document states must follow from the wind-up and the
+    release, so changing either forces the consequence to be written down.
+
+    THE FAILURE THIS EXISTS FOR is lengthening the telegraph, or re-measuring
+    the release, and leaving the document saying the throw still plays at 1.67.
+    The number a reader would then use to judge whether it looks hurried would be
+    the old one.
+    """
+    import re as _re
+
+    reference = REPO_ROOT / "game" / "docs" / "enemy-source-assets.md"
+    if not reference.is_file():
+        pytest.fail(f"{reference.relative_to(REPO_ROOT)} does not exist")
+
+    stated = _re.search(r"a play rate of \*\*([\d.]+)\*\*",
+                        reference.read_text(encoding="utf-8"))
+    if stated is None:
+        pytest.fail(
+            "game/docs/enemy-source-assets.md no longer states the play rate "
+            "the throw montage is compressed to. Issue #416 is about that "
+            "figure, so it has to be written down somewhere a person reads."
+        )
+    recorded = float(stated.group(1))
+
+    rip = _clip_length_in_the_document("Ability_RipNToss_Rip")
+    release = constant(BRUTE_HEADER, "RockThrowStrikeIntoReleaseSeconds")
+    wind_up = constant(BRUTE_HEADER, "RockThrowWindUpSeconds")
+
+    expected = (rip + release) / wind_up
+
+    # A hundredth, because the clip lengths in the document are recorded to two
+    # decimal places and the real rip clip is 1.1333 seconds.
+    assert recorded == pytest.approx(expected, abs=0.01), (
+        f"game/docs/enemy-source-assets.md says the throw montage plays at "
+        f"{recorded}, but its rip clip is {rip} s, the rock leaves the hand "
+        f"{release} s into the clip after that, and the telegraph allows "
+        f"{wind_up} s -- which is {expected:.3f}. One of the three moved without "
+        f"the others."
+    )
+
+
+def test_the_compression_is_within_what_the_class_treats_as_usable() -> None:
+    """A play rate above the ceiling would be rejected at runtime and clamped.
+
+    MontageRateFor clamps to MaximumPlayRate, so a montage needing more
+    compression than that does not play faster -- it silently stops arriving
+    when the damage does, and the animation and the damage come apart again.
+    That is the failure this catches, and 1.672 against a ceiling of 2.5 is
+    closer to it than it looks: any telegraph shorter than 0.67 seconds would
+    cross it.
+    """
+    rip = _clip_length_in_the_document("Ability_RipNToss_Rip")
+    release = constant(BRUTE_HEADER, "RockThrowStrikeIntoReleaseSeconds")
+    wind_up = constant(BRUTE_HEADER, "RockThrowWindUpSeconds")
+    needed = (rip + release) / wind_up
+
+    ceiling = constant(BRUTE_HEADER, "MaximumPlayRate")
+
+    assert needed <= ceiling, (
+        f"The rock throw would have to play at {needed:.2f} to fit its "
+        f"{wind_up} s telegraph, and MontageRateFor clamps at {ceiling}. The "
+        f"montage would be clamped, so the rock would leave the hand after the "
+        f"projectile had already been fired."
+    )
+
+
+# ---------------------------------------------------------------------------
 # The Stomp
 #
 # EVERY ONE OF THESE WAS UNGUARDED UNTIL THE STUN WAS BUILT. The four Stomp
