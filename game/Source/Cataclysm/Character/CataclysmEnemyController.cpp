@@ -4,7 +4,9 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "Character/CataclysmCharacterBase.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "NavigationSystem.h"
@@ -77,6 +79,11 @@ void ACataclysmEnemyController::OnUnPossess()
 	WindingUpAbility = INDEX_NONE;
 	AbilityLastUsedAt.Reset();
 
+	// AND SO DOES ITS MARKER. A creature killed part way through a stomp is the
+	// ordinary case here, and its circle has to go with it rather than stay on
+	// the floor warning about an attack that will never arrive.
+	DismissWindUpMarker();
+
 	Super::OnUnPossess();
 }
 
@@ -86,6 +93,8 @@ void ACataclysmEnemyController::EndPlay(const EEndPlayReason::Type EndPlayReason
 	{
 		World->GetTimerManager().ClearTimer(ThinkTimer);
 	}
+
+	DismissWindUpMarker();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -141,6 +150,12 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	if (UCataclysmSkillEffects::IsStunned(Driven))
 	{
 		WindingUpAbility = INDEX_NONE;
+
+		// THE MARKER GOES WITH THE ATTACK IT WARNED OF. An interrupted wind-up
+		// did not happen, so leaving its circle on the floor would be telling
+		// the player to walk out of ground where nothing is now going to land.
+		// Do that a few times and they stop reading the next one.
+		DismissWindUpMarker();
 
 		// Every pass, not once. Think runs four times a second and StopMovement
 		// is not sticky -- the comment below on the roaming path records this
@@ -267,6 +282,70 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	return LastAction;
 }
 
+void ACataclysmEnemyController::ShowWindUpMarker(
+	ACataclysmCharacterBase* Driven, const FCataclysmEnemyAbility& Ability)
+{
+	// Whatever is still up from a previous wind-up goes first. Nothing should
+	// reach here with one still drawn, and if something ever does, one marker
+	// on the floor is a bug and two is a bug that is also confusing.
+	DismissWindUpMarker();
+
+	if (!Driven)
+	{
+		return;
+	}
+
+	// ON THE GROUND, NOT AT THE CREATURE'S MIDDLE. An actor's location is its
+	// capsule centre, which for a Brute is 130 cm up. A marker drawn there
+	// floats at chest height and reads as a wall rather than as a patch of
+	// floor.
+	float FeetOffsetCm = 0.0f;
+	if (const UCapsuleComponent* Capsule = Driven->GetCapsuleComponent())
+	{
+		FeetOffsetCm = Capsule->GetScaledCapsuleHalfHeight();
+	}
+	const FVector Feet = Driven->GetActorLocation() - FVector(0.0f, 0.0f, FeetOffsetCm);
+
+	switch (Ability.Shape)
+	{
+	case ECataclysmSkillShape::Strike:
+		// CENTRED ON THE CREATURE, because that is where a Strike hits from.
+		// The Brute's stomp sweeps from its own location, so the circle drawn
+		// here is the circle that sweep will use.
+		WindUpMarker = ACataclysmTelegraphMarker::ShowCircle(
+			Driven, Feet, Ability.MarkerRadiusCm, Ability.WindUpSeconds);
+		return;
+
+	case ECataclysmSkillShape::Projectile:
+		// FROM THE CREATURE TO WHERE IT AIMED. Flattened to the ground at the
+		// creature's feet at both ends, so the lane lies on the floor rather
+		// than tilting toward wherever the target's capsule centre happened to
+		// be.
+		WindUpMarker = ACataclysmTelegraphMarker::ShowLine(
+			Driven, Feet,
+			FVector(WindUpAimedAt.X, WindUpAimedAt.Y, Feet.Z),
+			Ability.MarkerRadiusCm, Ability.WindUpSeconds);
+		return;
+
+	default:
+		// SelfBuff, Summon, Debuff, Aura, Movement and None. The first three
+		// have no marker in the design at all and are answered by interrupting
+		// rather than by walking out of. Aura and Movement do have one in
+		// sim/cataclysm_sim/enemy_abilities.py and no enemy in the project has
+		// either yet, so neither is built; when one is, it lands here.
+		return;
+	}
+}
+
+void ACataclysmEnemyController::DismissWindUpMarker()
+{
+	if (ACataclysmTelegraphMarker* Marker = WindUpMarker.Get())
+	{
+		Marker->Dismiss();
+	}
+	WindUpMarker = nullptr;
+}
+
 bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
 {
 	if (WindingUpAbility == INDEX_NONE || !Driven)
@@ -300,6 +379,12 @@ bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
 	// whole of why walking out of a telegraph works.
 	const int32 Landing = WindingUpAbility;
 	WindingUpAbility = INDEX_NONE;
+
+	// TAKEN AWAY BEFORE THE ATTACK RESOLVES, NOT AFTER. The marker's job is
+	// finished the moment there is nothing left to walk out of, and removing it
+	// first means the frame the blow lands on is the frame the warning goes,
+	// rather than the two overlapping.
+	DismissWindUpMarker();
 
 	if (AbilityLastUsedAt.IsValidIndex(Landing))
 	{
@@ -441,6 +526,14 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 		WindUpLandsAt = Now + Abilities[Chosen].WindUpSeconds;
 		WindUpAimedAt = Target ? Target->GetActorLocation()
 							   : Driven->GetActorLocation();
+
+		// DRAWN BEFORE THE ANIMATION STARTS, AND AFTER WindUpAimedAt IS FIXED.
+		// After, because a lane marker runs to the point the shot was aimed at
+		// and would otherwise be drawn to last pass's aim. Before the character
+		// hook, because that hook is where a subclass does its own thing and
+		// this must not depend on what it does. Issue #396.
+		ShowWindUpMarker(Driven, Abilities[Chosen]);
+
 		Driven->BeginEnemyAbilityWindUp(Chosen, Target);
 
 		LastAction = ECataclysmBrainAction::WindingUp;

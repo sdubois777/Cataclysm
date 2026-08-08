@@ -7,6 +7,8 @@
 #include "CataclysmEnemyController.generated.h"
 
 class ACataclysmCharacterBase;
+class ACataclysmTelegraphMarker;
+struct FCataclysmEnemyAbility;
 
 /** What one pass of the controller's thinking decided to do. */
 UENUM(BlueprintType)
@@ -407,6 +409,24 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	FVector WindUpAimedAt = FVector::ZeroVector;
 
+	/**
+	 * The ground marker drawn for the wind-up in progress, or null.
+	 *
+	 * ON THE CONTROLLER RATHER THAN ON THE CHARACTER, and that is what makes
+	 * every enemy telegraph rather than only the ones that remember to. The
+	 * controller already owns the whole wind-up: it decides which ability
+	 * starts, fixes the point it is aimed at, knows when it lands, and knows
+	 * when a stun abandons it. A character's BeginEnemyAbilityWindUp is a hook a
+	 * subclass may override without calling its parent -- the Brute's does --
+	 * so drawing from there would be a rule each enemy could silently opt out
+	 * of.
+	 *
+	 * WEAK, because the marker carries its own lifespan as a backstop and can
+	 * go away underneath this.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	TWeakObjectPtr<ACataclysmTelegraphMarker> WindUpMarker;
+
 	/** How many abilities it has used. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	int32 AbilitiesUsed = 0;
@@ -462,6 +482,24 @@ private:
 	 * @return true when it handled this pass, so Think should stop.
 	 */
 	bool ContinueWindUp(ACataclysmCharacterBase* Driven);
+
+	/**
+	 * Draw the ground marker for an ability that is starting its wind-up.
+	 *
+	 * Does nothing for an ability whose shape has no marker, and nothing for one
+	 * whose marked area is under the design's one metre floor. Both are ordinary
+	 * outcomes rather than failures; see ACataclysmTelegraphMarker.
+	 */
+	void ShowWindUpMarker(ACataclysmCharacterBase* Driven,
+						  const FCataclysmEnemyAbility& Ability);
+
+	/**
+	 * Take the wind-up's marker away.
+	 *
+	 * Called when the attack lands and when a stun abandons the wind-up. Safe
+	 * when there is no marker, which is most of the time.
+	 */
+	void DismissWindUpMarker();
 
 	/** Start an ability if one is in range and off cooldown. */
 	ECataclysmBrainAction UseAbilitiesOn(ACataclysmCharacterBase* Driven,

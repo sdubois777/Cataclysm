@@ -20,6 +20,74 @@ applied or still pending.
 
 ---
 
+## 2026-08-08 — A telegraph marker is an engine shape drawn by the controller, and it runs to where the shot was aimed
+
+**Affects** `game/Source/Cataclysm/AbilitySystem/CataclysmTelegraphMarker.h` and
+`.cpp` (new), `CataclysmCharacterBase.h`, `CataclysmBruteCharacter.cpp`,
+`CataclysmEnemyController.h` and `.cpp`. Applied in full.
+
+### The question
+
+Issue #396. The design's wind-up rule is 0.4 seconds plus radius over 3.5 metres
+per second, where 3.5 is the slowest class's walk speed. That formula only means
+anything if the player can see the area. Nothing in the project drew a ground
+marker of any kind, so the Brute's Stomp waited the designed 1.4 seconds for its
+3.5 metre ring and the player had to judge that ring from an animation.
+
+Three things had to be decided: what draws it, who draws it, and how far a
+projectile's lane reaches.
+
+### What draws it: engine primitives, not a decal or a Niagara system
+
+The issue listed all three as options. A decal needs a material and a Niagara
+system needs a particle asset, and this project's own Content folder holds
+neither -- either would be the first authored art asset in the repository and
+would land in Git LFS.
+
+`/Engine/BasicShapes` is what the player's body, every enemy's body and every
+projectile already use for exactly this reason. A flattened cylinder reads as a
+circle on the floor and a flattened cube reads as a lane. It costs the repository
+nothing and replacing it later is a content change that touches none of the
+behaviour.
+
+### Who draws it: the controller, not the character
+
+`ACataclysmCharacterBase::BeginEnemyAbilityWindUp` is the obvious hook and is the
+wrong one. It is a virtual a subclass may override without calling its parent,
+and the Brute's override does exactly that, so drawing there would be a rule each
+enemy could silently opt out of by writing ordinary code.
+
+`ACataclysmEnemyController` already owns the whole wind-up: it picks the ability,
+fixes the point it was aimed at, knows when it lands, and knows when a stun
+abandons it. Drawing there means every enemy telegraphs without doing anything,
+and the marker is removed at all four places a wind-up can end.
+
+### How far a lane reaches: to where it was aimed, not to the ability's range
+
+The issue said the lane should run "to `Range`". Reading
+`ACataclysmProjectile::Fire` shows it takes `RemainingRangeCm` from the distance
+between the two points it is given, so a rock stops where it was aimed rather
+than flying on to the ability's maximum. A lane drawn out to the full 10 metres
+would mark four metres of ground that nothing is going to happen on, and a marker
+that covers ground where nothing lands teaches the player to distrust the next
+one. The lane is drawn to the aim point.
+
+### The rule that keeps a marker honest
+
+`FCataclysmEnemyAbility::MarkerRadiusCm` is filled from the same C++ constant the
+ability's own damage uses -- `StompRadiusCm` for the ring, `RockThrowRadiusCm`
+for the lane -- and `tools/tests/test_telegraph_markers.py` checks that it is
+filled from the constant by name rather than from a literal. A marker showing a
+different circle from the one that hurts is worse than no marker, because the
+player would have learnt to trust it.
+
+The one metre floor from the design document is enforced in one place, in the
+marker itself, and pinned against `SMALLEST_USEFUL_MARKER_METRES` in the model.
+The Brute's ordinary slam reaches 0.9 metres and so draws nothing, which is the
+design working rather than an omission.
+
+---
+
 ## 2026-08-08 — The player's movement speed is an attribute, and its placeholder is the shared class stat line
 
 **Affects** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and

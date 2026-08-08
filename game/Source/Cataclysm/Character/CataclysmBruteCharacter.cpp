@@ -184,6 +184,12 @@ TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
 	Stomp.CooldownSeconds = StompCooldownSeconds;
 	Stomp.WindUpSeconds = StompWindUpSeconds;
 
+	// A RING ON THE GROUND, DRAWN FROM THE SAME CONSTANT THE DAMAGE USES.
+	// UseEnemyAbility below sweeps FindEnemiesInSphere at StompRadiusCm, so the
+	// circle the player sees is exactly the circle that hits them. Issue #396.
+	Stomp.Shape = ECataclysmSkillShape::Strike;
+	Stomp.MarkerRadiusCm = StompRadiusCm;
+
 	FCataclysmEnemyAbility RockThrow;
 	RockThrow.Name = TEXT("Rip and Toss");
 	// NOT AT SOMETHING IT COULD HIT INSTEAD. There is no sense throwing a rock
@@ -193,6 +199,12 @@ TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
 	RockThrow.MaxRangeCm = RockThrowRangeCm;
 	RockThrow.CooldownSeconds = RockThrowCooldownSeconds;
 	RockThrow.WindUpSeconds = RockThrowWindUpSeconds;
+
+	// A LANE, NOT A CIRCLE, and it is the same width as the rock. UseEnemyAbility
+	// passes RockThrowRadiusCm to ACataclysmProjectile::Fire, so the ground
+	// marked is the ground the rock passes over. Issue #396.
+	RockThrow.Shape = ECataclysmSkillShape::Projectile;
+	RockThrow.MarkerRadiusCm = RockThrowRadiusCm;
 
 	// ORDER IS PRIORITY. See the StompAbility enumeration in the header.
 	return {Stomp, RockThrow};
