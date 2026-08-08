@@ -56,10 +56,11 @@ static TAutoConsoleVariable<float> CVarBruteChaseSpeed(
 	TEXT("Cataclysm.Brute.ChaseSpeed"),
 	0.0f,
 	TEXT("Centimetres per second the Brute moves while chasing. 0 uses its "
-		 "designed 500. It wanders at 250 either way. The player currently "
-		 "moves at Unreal's default 600 rather than a designed class speed, "
-		 "which is issue #391, so the margin here is not what the design "
-		 "believes it is."),
+		 "designed 500. It wanders at 250 either way. The player now walks at "
+		 "400, so the designed 500 is faster than the player and this creature "
+		 "cannot be walked away from. Issue #417 is where that gets re-judged. "
+		 "Anything at or below 375 also stops the four-legged chase animation "
+		 "playing."),
 	ECVF_Default);
 
 /**

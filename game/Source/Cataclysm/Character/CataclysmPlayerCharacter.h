@@ -11,6 +11,7 @@ class UCameraComponent;
 class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
+struct FOnAttributeChangeData;
 
 /**
  * The player pawn. Its ability system component lives on the player state, so
@@ -24,7 +25,59 @@ class CATACLYSM_API ACataclysmPlayerCharacter : public ACataclysmCharacterBase
 public:
 	ACataclysmPlayerCharacter();
 
+	/**
+	 * How fast the player walks before any class has been chosen, in centimetres
+	 * per second.
+	 *
+	 * WHAT IT REPLACED. Nothing set a walk speed at all until this constant
+	 * existed, so the player ran at Unreal's engine default of 600 -- see
+	 * `MaxWalkSpeed` in
+	 * Engine/Source/Runtime/Engine/Private/Components/CharacterMovementComponent.cpp.
+	 * The design gives the three Demonic classes 4.6, 3.5 and 4.0 metres per
+	 * second and not one of them reached the game. Issue #391.
+	 *
+	 * WHY THIS FIGURE AND NOT A NEW ONE. It is the shared `Default` line in
+	 * game/Data/ClassStats.csv, `movement_speed` 4.0, which is also what
+	 * UCataclysmCombatAttributeSet starts the MovementSpeed attribute at and what
+	 * the Masochist walks at. There is no class selection yet, so a character
+	 * that has chosen nothing walks at the line every class inherits rather than
+	 * at an engine constant.
+	 *
+	 * ONLY THE STARTING POINT. The pawn follows the MovementSpeed attribute from
+	 * the moment there is an ability system to read it from, so gear, passives
+	 * and effects move it. See InitAbilityActorInfo.
+	 */
+	static constexpr float DefaultWalkSpeedCmPerSecond = 400.0f;
+
+	/**
+	 * Centimetres in a metre.
+	 *
+	 * The design and the simulation state movement speed in metres per second;
+	 * UCharacterMovementComponent walks in centimetres per second. The factor is
+	 * applied in ApplyMovementSpeed and nowhere else.
+	 */
+	static constexpr float CentimetresPerMetre = 100.0f;
+
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	/**
+	 * Writes a movement speed, stated in metres per second, onto the movement
+	 * component.
+	 *
+	 * A NON-POSITIVE SPEED IS REFUSED RATHER THAN WRITTEN. An ability system that
+	 * holds no combat attribute set reports zero rather than failing, and a
+	 * MaxWalkSpeed of zero is a character who cannot move with nothing on screen
+	 * to say why. Refusing leaves whatever speed was last valid, which for a pawn
+	 * whose attributes have not arrived yet is DefaultWalkSpeedCmPerSecond.
+	 *
+	 * NOTHING IN THE PROJECT ROOTS THE PLAYER, so nothing is being blocked by
+	 * this. A designed root is a status effect and would stop movement through
+	 * the movement mode rather than by setting a speed of zero.
+	 *
+	 * Public so a test can drive it without building an ability system. The game
+	 * reaches it through the MovementSpeed attribute.
+	 */
+	void ApplyMovementSpeed(float MetresPerSecond);
 
 	/** Server: the pawn has been possessed and the player state is available. */
 	virtual void PossessedBy(AController* NewController) override;
@@ -124,6 +177,15 @@ protected:
 	TObjectPtr<UCataclysmWeaponSlotsComponent> WeaponSlots;
 
 private:
+	/** Passes the attribute's new value, in metres per second, to
+	 *  ApplyMovementSpeed. Bound in InitAbilityActorInfo. */
+	void OnMovementSpeedChanged(const FOnAttributeChangeData& Data);
+
+	/** So that a second InitAbilityActorInfo replaces the binding rather than
+	 *  adding a second one. That function runs from both PossessedBy and
+	 *  OnRep_PlayerState, and on a listen server both happen. */
+	FDelegateHandle MovementSpeedChangedHandle;
+
 	/** What the starting ability set granted, so it can be removed on unequip. */
 	FCataclysmAbilitySetHandles GrantedHandles;
 

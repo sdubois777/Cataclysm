@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Camera/CameraComponent.h"
@@ -52,6 +53,15 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// this keeps a click on a wall from pushing the character upward.
 	Movement->bConstrainToPlane = true;
 	Movement->bSnapToPlaneAtStart = true;
+
+	// A DESIGNED SPEED RATHER THAN THE ENGINE'S 600. Without this line the
+	// player moved at UCharacterMovementComponent's own default and no figure
+	// from game/Data/ClassStats.csv reached the game at all -- issue #391.
+	//
+	// THE STARTING POINT, NOT THE ANSWER. The ability system lives on the player
+	// state and does not exist yet here, so this is what the pawn walks at until
+	// InitAbilityActorInfo hands it over to the MovementSpeed attribute.
+	Movement->MaxWalkSpeed = DefaultWalkSpeedCmPerSecond;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -160,6 +170,29 @@ void ACataclysmPlayerCharacter::AddCameraZoom(float Notches)
 	SetActorTickEnabled(true);
 }
 
+void ACataclysmPlayerCharacter::ApplyMovementSpeed(float MetresPerSecond)
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// Refused rather than written. See the header for why zero is not a legal
+	// speed here and what would happen if it were.
+	if (MetresPerSecond <= 0.0f)
+	{
+		return;
+	}
+
+	Movement->MaxWalkSpeed = MetresPerSecond * CentimetresPerMetre;
+}
+
+void ACataclysmPlayerCharacter::OnMovementSpeedChanged(const FOnAttributeChangeData& Data)
+{
+	ApplyMovementSpeed(Data.NewValue);
+}
+
 UAbilitySystemComponent* ACataclysmPlayerCharacter::GetAbilitySystemComponent() const
 {
 	if (const ACataclysmPlayerState* PS = GetPlayerState<ACataclysmPlayerState>())
@@ -205,6 +238,37 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	// Owner is the player state, which holds the component and survives death.
 	// Avatar is this pawn, which is what acts in the world.
 	ASC->InitAbilityActorInfo(PS, this);
+
+	// THE PAWN FOLLOWS THE ATTRIBUTE FROM HERE ON, RATHER THAN CARRYING A NUMBER.
+	// Movement speed is a stat the design expects to be modified: game/Data/
+	// Affixes.csv has an increased movement speed suffix, four boot bases in
+	// ItemBases.csv carry one as an implicit, Agility scales it in
+	// Attributes.csv, and several enchantments raise and lower it. Writing a
+	// figure into MaxWalkSpeed once and leaving it would be the same defect as
+	// issue #391 one number later: every one of those sources would move the
+	// attribute and none of them would move the character.
+	//
+	// BOTH SIDES OF THE NETWORK. This runs from PossessedBy on the server and
+	// from OnRep_PlayerState on the owning client, so the pawn a client is
+	// predicting movement for uses the same speed the server does.
+	FOnGameplayAttributeValueChange& SpeedChanged =
+		ASC->GetGameplayAttributeValueChangeDelegate(
+			UCataclysmCombatAttributeSet::GetMovementSpeedAttribute());
+
+	// Removed before adding, because this function is safe to run twice and on a
+	// listen server it does. Without this a second call would leave two handlers
+	// on one pawn.
+	SpeedChanged.Remove(MovementSpeedChangedHandle);
+	MovementSpeedChangedHandle = SpeedChanged.AddUObject(
+		this, &ACataclysmPlayerCharacter::OnMovementSpeedChanged);
+
+	// BOUND FIRST, THEN READ. A change arriving between the two would otherwise
+	// be missed. GetNumericAttribute answers zero rather than failing when the
+	// component holds no combat attribute set, and ApplyMovementSpeed refuses
+	// zero, so a pawn whose attributes have not arrived keeps the designed
+	// default from the constructor.
+	ApplyMovementSpeed(ASC->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute()));
 
 	// Granting is server-only; the results replicate.
 	if (!HasAuthority())
