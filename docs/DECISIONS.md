@@ -20,6 +20,68 @@ applied or still pending.
 
 ---
 
+## 2026-08-08 — A projectile's appearance is passed in by whoever fires it, and sized from the mesh's own bounds
+
+**Affects** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and
+`.cpp`, `CataclysmBruteCharacter.h` and `.cpp`, and
+`game/docs/enemy-source-assets.md`. Applied in full. Raises issues #421 and #422
+for the two halves of #404 that are not this.
+
+### The question
+
+Issue #404. Every projectile in the game flew a grey engine sphere, including the
+Brute's thrown rock, and the Paragon Rampage pack ships the rock itself. The mesh
+could not simply be swapped in: `ACataclysmProjectile` is generic and all 398
+rows of `game/Data/WeaponSkills.csv` fire through it, so a rock in its
+constructor would have armed every player fire bolt with one.
+
+The issue offered three homes for the choice: an optional argument on `Fire`, a
+property on the firing character, or a column in the skill data.
+
+### An optional argument on Fire
+
+The data column was ruled out first, and not on taste. `game/Data/WeaponSkills.csv`
+is generated from the design workbook and holds player skills; the Brute is not
+in it and no enemy is, so a column there could not have served the caster that
+actually needed one.
+
+A property on the firing character would have meant the projectile asking its
+instigator what it should look like, which couples a generic actor to a character
+interface it otherwise knows nothing about.
+
+So `Fire` takes a trailing `UStaticMesh*` defaulting to null. Every existing
+caller is unchanged and keeps the sphere. The Brute passes its rock. The default
+is what keeps the 398 player skills out of it, and there is a test whose whole
+job is that the default stays.
+
+### Sized from the mesh's own bounds, not from an assumed cube
+
+The placeholder was scaled by `(BodyRadiusCm * 2) / 100`, where 100 is the size
+of the engine's basic shapes. That is a fact about `/Engine/BasicShapes` and not
+about meshes in general: applied to the pack's rock it drew it at 82.6 cm
+half-width against a 40 cm body, more than twice too large.
+
+Sizing now reads the mesh's own `BoxExtent` and scales so that the larger
+horizontal half-extent equals `BodyRadiusCm`. For the engine sphere, whose box is
+50 cm each way, that produces the same 0.8 it always did, and a test insists on
+exactly that number so the rewrite is provably a no-op for everything that was
+already working.
+
+The **horizontal** half-extent rather than the bounding sphere radius: a bounding
+sphere takes in the corners of the box, so the engine sphere would come out at
+86.6 rather than 50 and every projectile in the game would have shrunk.
+
+### What was split off
+
+#404 as filed contained three independent things. The rock in flight is this.
+The rock in the creature's hand during the wind-up, and the crater where it was
+torn out, are #421 -- that needs the Rampage skeleton's socket list, which
+nothing in this repository records, and a judgement about placement that has to
+be made by watching. The five fragments on impact are #422, which needs a
+decision about where impact effects live in general and carries a physics cost.
+
+---
+
 ## 2026-08-08 — A telegraph marker is an engine shape drawn by the controller, and it runs to where the shot was aimed
 
 **Affects** `game/Source/Cataclysm/AbilitySystem/CataclysmTelegraphMarker.h` and

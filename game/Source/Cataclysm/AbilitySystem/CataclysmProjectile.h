@@ -43,10 +43,15 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmProjectileFinished, ACataclysmProj
  * same step, and a blocking hit ends the flight at the impact point. That is
  * what makes cover mean something.
  *
- * NO MESH AND NO PARTICLE EFFECT. This project has no art content, so the
- * projectile is invisible and what it hits is the only evidence it exists. That
- * is a content gap, not a behaviour gap, and it is the same gap
- * `ACataclysmGroundZone` has.
+ * WHAT IT LOOKS LIKE IS THE CALLER'S BUSINESS. It carries a placeholder sphere
+ * from engine content, which is what every player skill still uses, and `Fire`
+ * takes an optional mesh for a caster that has one. The Brute passes the rock
+ * out of the Paragon pack. Baking a mesh into this class instead would give a
+ * fire bolt and a thrown boulder the same appearance, because all 398 rows of
+ * `game/Data/WeaponSkills.csv` come through here. Issues #403 and #404.
+ *
+ * NO PARTICLE EFFECT, on the other hand. That is a content gap and it is the
+ * same gap `ACataclysmGroundZone` has.
  *
  * WHY IT DEALS ITS OWN DAMAGE rather than calling back into the ability that
  * fired it. A projectile can outlive its caster, and an ability that ended
@@ -75,6 +80,8 @@ public:
 	 * @param InDamagePercent percent of the caster's weapon damage one hit deals
 	 * @param InSkillTags    the firing skill's tags, which scope the caster's modifiers
 	 * @param bInBurns       whether it sets what it hits alight
+	 * @param InBodyMesh     what the flying object looks like. Null keeps the
+	 *   placeholder sphere, which is what every player skill uses today.
 	 * @return the projectile, or null if the world, the caster or the speed is missing
 	 */
 	static ACataclysmProjectile* Fire(AActor* Instigator, const FVector& From,
@@ -82,7 +89,27 @@ public:
 									  float InSpeed, int32 InPierce, bool bInReturns,
 									  float InDamagePercent,
 									  const FGameplayTagContainer& InSkillTags,
-									  bool bInBurns);
+									  bool bInBurns,
+									  UStaticMesh* InBodyMesh = nullptr);
+
+	/**
+	 * Swap what the flying object looks like, and size it to BodyRadiusCm.
+	 *
+	 * CHOSEN BY WHOEVER FIRES, NEVER BAKED IN. This class is generic: every
+	 * projectile skill in game/Data/WeaponSkills.csv uses it, so giving it a
+	 * rock in its constructor would make every player fire bolt a rock. The
+	 * Brute passes its own; nothing else passes anything and keeps the sphere.
+	 * Issue #404.
+	 *
+	 * SIZED FROM THE MESH'S OWN BOUNDS, not from an assumption about how big it
+	 * is. The engine's basic shapes occupy a 100 centimetre cube and a mesh out
+	 * of an art pack does not, so a scale worked out for one is meaningless for
+	 * the other. Both come out at BodyRadiusCm, which is the width the sweep
+	 * uses, so what the player sees and what hits them stay the same size.
+	 *
+	 * A null mesh leaves whatever is already there.
+	 */
+	void SetBodyMesh(UStaticMesh* Mesh);
 
 	/**
 	 * Move forward by one step and hit whatever that step passed through.

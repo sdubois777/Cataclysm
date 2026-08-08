@@ -23,6 +23,12 @@ const TCHAR* ACataclysmBruteCharacter::BodyMeshPath =
 const TCHAR* ACataclysmBruteCharacter::AnimationBlueprintPath =
 	TEXT("/Game/Enemies/Demonic/Brute/ABP_Brute.ABP_Brute_C");
 
+// The rock, out of the pack's own folder. Its material M_Rock_To_Throw comes
+// with it without being named here: a static mesh carries its material slots.
+const TCHAR* ACataclysmBruteCharacter::RockMeshPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Meshes/Rocks/"
+		 "SM_Rock_To_Hold.SM_Rock_To_Hold");
+
 const FName ACataclysmBruteCharacter::AttackSlotName = TEXT("DefaultSlot");
 
 // THE TWO ABILITY MONTAGES LIVE BESIDE THE ANIMATION BLUEPRINT, NOT IN THE
@@ -564,11 +570,18 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 	{
 		// AIMED WHERE IT WAS MARKED. AimedAt is where the target stood when the
 		// wind-up began, so a player who moved has moved out of the line.
+		//
+		// IT THROWS THE PACK'S ROCK, NOT A GREY SPHERE, and it passes the mesh
+		// rather than the projectile knowing about it: every player skill fires
+		// through the same class, so a rock baked in there would arm every fire
+		// bolt with one. RockMesh is null without the Paragon pack, which is the
+		// state on a fresh clone, and the projectile then keeps its engine
+		// sphere. Issue #404.
 		ACataclysmProjectile::Fire(
 			this, GetActorLocation(), AimedAt,
 			RockThrowRadiusCm, RockThrowSpeedCmPerSecond,
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
-			FGameplayTagContainer(), /*bInBurns=*/false);
+			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh);
 		return;
 	}
 }
@@ -755,6 +768,21 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 	}
 
 	MeshComponent->SetSkeletalMesh(Body);
+
+	// RESOLVED HERE RATHER THAN AT THE MOMENT OF THE THROW. Loading an asset
+	// synchronously is a hitch, and the moment of the throw is the worst frame
+	// in the fight to take one on. Null without the pack, which is what a fresh
+	// clone and continuous integration both have; the projectile then keeps its
+	// engine sphere and the throw still works. Issue #404.
+	RockMesh = Cast<UStaticMesh>(FSoftObjectPath(RockMeshPath).TryLoad());
+	if (!RockMesh)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Brute rock not found at %s, so its throw will fly a "
+				 "placeholder sphere. This is expected without the Paragon "
+				 "Rampage pack."),
+			RockMeshPath);
+	}
 
 	// FEET ON THE CAPSULE BOTTOM. A skeletal mesh is authored with its origin at
 	// the feet, and the capsule's origin is its centre, so the mesh drops by the

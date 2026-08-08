@@ -4,7 +4,6 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
-#include "Character/CataclysmCharacterBase.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -77,10 +76,52 @@ ACataclysmProjectile::ACataclysmProjectile()
 	}
 }
 
+void ACataclysmProjectile::SetBodyMesh(UStaticMesh* Mesh)
+{
+	if (!PlaceholderBody)
+	{
+		return;
+	}
+
+	if (Mesh)
+	{
+		PlaceholderBody->SetStaticMesh(Mesh);
+	}
+
+	const UStaticMesh* Shown = PlaceholderBody->GetStaticMesh();
+	if (!Shown)
+	{
+		// No art at all: the Paragon pack is absent AND the engine sphere was
+		// not found. The projectile still flies and still deals damage.
+		return;
+	}
+
+	// FROM THE MESH'S OWN BOUNDS, so that a rock out of an art pack and an
+	// engine primitive both come out at BodyRadiusCm.
+	//
+	// THE HORIZONTAL HALF-EXTENT, not the bounding sphere radius. A bounding
+	// sphere takes in the corners of the box, so scaling by it would leave the
+	// engine's sphere -- whose box is 50 cm each way and whose bounding sphere
+	// is 86.6 -- noticeably smaller than the width the sweep uses. The two
+	// horizontal axes are what a projectile's width means.
+	const FVector Extent = Shown->GetBounds().BoxExtent;
+	const float HalfWidth = FMath::Max(Extent.X, Extent.Y);
+	if (HalfWidth <= UE_SMALL_NUMBER)
+	{
+		// A mesh with no width cannot be scaled to one. Left alone rather than
+		// divided by, which would be a scale of infinity.
+		return;
+	}
+
+	const float Scale = BodyRadiusCm / HalfWidth;
+	PlaceholderBody->SetRelativeScale3D(FVector(Scale, Scale, Scale));
+}
+
 ACataclysmProjectile* ACataclysmProjectile::Fire(
 	AActor* Instigator, const FVector& From, const FVector& To, float InRadiusCm,
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
-	const FGameplayTagContainer& InSkillTags, bool bInBurns)
+	const FGameplayTagContainer& InSkillTags, bool bInBurns,
+	UStaticMesh* InBodyMesh)
 {
 	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
 	if (!World || InSpeed <= 0.0f || InRadiusCm <= 0.0f)
@@ -130,15 +171,10 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 
 	// SIZED TO WHAT IT ACTUALLY HITS WITH, so what the player sees and what the
 	// sweep uses are the same width rather than two numbers that can disagree.
-	// The engine's basic shapes are BasicShapeSize across, so a scale of 1 is
-	// that wide and a body of BodyRadiusCm needs twice its radius over that.
-	if (Projectile->PlaceholderBody)
-	{
-		const float Scale = (Projectile->BodyRadiusCm * 2.0f)
-			/ ACataclysmCharacterBase::BasicShapeSize;
-		Projectile->PlaceholderBody->SetRelativeScale3D(
-			FVector(Scale, Scale, Scale));
-	}
+	// SetBodyMesh does both the swap and the sizing; a null mesh sizes the
+	// placeholder sphere the constructor already put there.
+	Projectile->SetBodyMesh(InBodyMesh);
+
 	Projectile->bWillReturn = bInReturns;
 	Projectile->DamagePercent = InDamagePercent;
 	Projectile->SkillTags = InSkillTags;
