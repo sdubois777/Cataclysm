@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "GenericTeamAgentInterface.h"
 #include "CataclysmCharacterBase.generated.h"
 
@@ -58,6 +59,36 @@ struct FCataclysmEnemyAbility
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	float WindUpSeconds = 0.0f;
+
+	/**
+	 * What shape of ground marker warns of it, if any.
+	 *
+	 * THE SAME ENUMERATION A PLAYER SKILL USES, because the model says an enemy
+	 * ability carries "exactly what a player skill row carries, so an ability
+	 * can be executed by the same code and its telegraph marker drawn from its
+	 * own numbers". A Strike marks a circle around the creature; a Projectile
+	 * marks the lane it will fly down.
+	 *
+	 * None draws nothing, which is right for anything the player answers by
+	 * interrupting rather than by walking out of.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	ECataclysmSkillShape Shape = ECataclysmSkillShape::None;
+
+	/**
+	 * How wide the marked area is, in centimetres. A radius for a Strike, the
+	 * projectile's own radius for a Projectile.
+	 *
+	 * THIS IS NOT A SECOND COPY OF THE ABILITY'S SIZE, and it must never become
+	 * one. Fill it from the same constant the ability's own code uses. A marker
+	 * that showed a different area from the one that hurts is worse than no
+	 * marker, because the player would have learnt to trust it.
+	 *
+	 * Below one metre nothing is drawn: see
+	 * ACataclysmTelegraphMarker::SmallestUsefulRadiusCm.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	float MarkerRadiusCm = 0.0f;
 };
 
 /**
