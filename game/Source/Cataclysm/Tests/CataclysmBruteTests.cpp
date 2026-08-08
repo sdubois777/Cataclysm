@@ -546,6 +546,7 @@ bool FCataclysmBruteAbilityMontagesAreBuiltCorrectly::RunTest(const FString&)
 	struct FCase
 	{
 		const TCHAR* What;
+		int32 Ability;
 		const TCHAR* Path;
 		const TCHAR* FirstClip;
 		const TCHAR* SecondClip;
@@ -554,13 +555,18 @@ bool FCataclysmBruteAbilityMontagesAreBuiltCorrectly::RunTest(const FString&)
 		float TotalSeconds;
 	};
 
-	// THE MEASURED FIGURES, taken from the pack's own clips on 2026-08-08 and
-	// reported by tools/generate_brute_montages.py on every run.
+	// THE MEASURED FIGURES. The clip lengths were taken from the pack on
+	// 2026-08-08 and are reported by tools/generate_brute_montages.py on every
+	// run. Where each blow lands inside its release clip was measured separately
+	// with tools/measure_animation_impact.py, because the clips carry no
+	// animation notifies and nothing else records it.
 	const FCase Cases[] = {
-		{TEXT("the stomp"), ACataclysmBruteCharacter::StompMontagePath,
+		{TEXT("the stomp"), ACataclysmBruteCharacter::StompAbility,
+		 ACataclysmBruteCharacter::StompMontagePath,
 		 TEXT("Ability_GroundSmash_Start"), TEXT("Ability_GroundSmash_End"),
 		 ACataclysmBruteCharacter::StompWindUpSeconds, 0.8333f, 1.5333f},
-		{TEXT("the rock throw"), ACataclysmBruteCharacter::RockThrowMontagePath,
+		{TEXT("the rock throw"), ACataclysmBruteCharacter::RockThrowAbility,
+		 ACataclysmBruteCharacter::RockThrowMontagePath,
 		 TEXT("Ability_RipNToss_Rip"), TEXT("Ability_RipNToss_Toss"),
 		 ACataclysmBruteCharacter::RockThrowWindUpSeconds, 1.1333f, 2.0000f},
 	};
@@ -672,26 +678,51 @@ bool FCataclysmBruteAbilityMontagesAreBuiltCorrectly::RunTest(const FString&)
 			Montage->BlendOutTriggerTime,
 			ACataclysmBruteCharacter::AbilityBlendOutTriggerTime, Tolerance);
 
-		// THE PROPERTY THE WHOLE DESIGN RESTS ON: the creature finishes winding
-		// up no later than the moment its attack lands. If the wind-up ran past
-		// the impact, the damage would be dealt while the fist was still going
-		// up. The rate is what buys this for the rock throw, whose rip clip is
-		// 1.13 seconds against a telegraph that ends at 1.00.
+		// THE PROPERTY THE WHOLE DESIGN RESTS ON: the blow you can see arrives at
+		// the moment the damage is dealt.
+		//
+		// THIS IS THE ASSERTION THAT WOULD HAVE CAUGHT THE FAULT THE PROJECT
+		// OWNER REPORTED ON 2026-08-08. The first version of this code assumed
+		// the release clip begins at the moment of impact. It does not: the
+		// creature's fists are still overhead when it starts, and take 0.179
+		// seconds to reach the ground. Lining up the join instead of the blow
+		// left 0.488 seconds of telegraph uncovered, which was filled by freezing
+		// the montage on one frame -- "he reaches his arms up in the air, freezes
+		// for a second or so, then continues to slamming down".
 		const float LandsAt =
 			ACataclysmBruteCharacter::LandsAtSecondsFor(Case.WindUpSeconds);
+		const float Impact =
+			ACataclysmBruteCharacter::ImpactSecondsFor(Montage, Case.Ability);
 		const float Rate =
-			ACataclysmBruteCharacter::MontageRateFor(Case.JoinSeconds, LandsAt);
-		const float JoinArrivesAt = Case.JoinSeconds / Rate;
+			ACataclysmBruteCharacter::MontageRateFor(Impact, LandsAt);
+		const float Delay =
+			ACataclysmBruteCharacter::MontageDelaySecondsFor(Montage, Case.Ability);
+
+		// The blow is measured from the start of the telegraph: wait out the
+		// delay, then play until the montage reaches its strike.
+		const float BlowArrivesAt = Delay + Impact / Rate;
+
+		TestEqual(FString::Printf(
+			TEXT("%s strikes at the moment its damage is dealt "
+				 "(blow at %.3f s, damage at %.3f s)"),
+			Case.What, BlowArrivesAt, LandsAt),
+			BlowArrivesAt, LandsAt, Tolerance);
+
+		// AND THE STRIKE IS INSIDE THE RELEASE CLIP, NOT AT ITS EDGE. Stated as a
+		// comparison rather than a number so that it fails if anyone sets the
+		// measured constant back to zero, which is the assumption that was wrong.
+		TestTrue(FString::Printf(
+			TEXT("%s strikes after its join rather than on it"), Case.What),
+			Impact > Case.JoinSeconds + 0.001f);
 
 		TestTrue(FString::Printf(
-			TEXT("%s reaches its join by the time the attack lands "
-				 "(join at %.3f s, attack at %.3f s)"),
-			Case.What, JoinArrivesAt, LandsAt),
-			JoinArrivesAt <= LandsAt + Tolerance);
+			TEXT("%s strikes before its montage ends"), Case.What),
+			Impact < Montage->GetPlayLength());
 
 		// NEVER SLOWER THAN AUTHORED, which is the other half of the same rule.
-		// Stretching a wind-up to fill its telegraph was tried and reported from
-		// a play session as slow motion.
+		// Stretching an animation to fill its telegraph was tried and reported
+		// from a play session as slow motion; waiting before starting is what
+		// fills the gap instead.
 		TestTrue(FString::Printf(
 			TEXT("%s is never played slower than it was authored"), Case.What),
 			Rate >= 1.0f);

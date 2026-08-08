@@ -96,11 +96,11 @@ ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 	// The walk speed has to follow what the brain is doing, and the brain runs
 	// on its own quarter-second timer while movement is read every frame.
 	//
-	// And an ability montage has to be frozen on its join frame for as long as
-	// the attack is still winding up, which means comparing the montage's real
-	// position against the brain's state every frame. That job was done by
-	// timers until 2026-08-08, and doing it by deadline is what let a held pose
-	// outlive the ability it belonged to; see UpdateAbilityMontageHold.
+	// And an ability montage has to start part way through its own telegraph,
+	// which means comparing the clock against the brain's state every frame.
+	// That job was done by timers until 2026-08-08, and doing it by deadline is
+	// what let a held clip outlive the ability it belonged to; see
+	// UpdateAbilityMontage.
 	//
 	// Choosing which locomotion clip to play was a third reason once, and is
 	// now ABP_Brute's job.
@@ -143,12 +143,12 @@ void ACataclysmBruteCharacter::Tick(float DeltaSeconds)
 	ApplyChaseSpeed();
 
 	// EVERY FRAME, BECAUSE THE THING IT WATCHES CHANGES BETWEEN FRAMES. It
-	// compares the montage's real position against the join and asks the brain
-	// whether the ability is still winding up. Both move on their own schedules,
-	// so a timer with a fixed deadline would sooner or later fall on the wrong
-	// side of one of them -- which is exactly the fault pull request #411 fixed
-	// and this replaces outright.
-	UpdateAbilityMontageHold();
+	// compares the clock against the delay an ability montage is waiting out,
+	// and asks the brain whether that ability is still being wound up. Both
+	// move on their own schedules, so a timer with a fixed deadline would
+	// sooner or later fall on the wrong side of one of them -- which is the
+	// fault pull request #411 fixed and this replaces outright.
+	UpdateAbilityMontage();
 }
 
 void ACataclysmBruteCharacter::ApplyChaseSpeed()
@@ -201,17 +201,36 @@ void ACataclysmBruteCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 {
 	// THE ANIMATION IS THE TELEGRAPH, for now. Nothing in this project draws a
 	// ground marker -- issue #396 -- so the only warning a player gets before a
-	// stomp or a thrown rock is the creature visibly starting the attack. That
-	// is why the montage starts here, when the wind-up starts, rather than when
-	// the damage lands.
+	// stomp or a thrown rock is the creature visibly starting the attack.
 	//
-	// AND THAT IS THE WHOLE OF WHAT THIS FUNCTION DOES NOW. It used to play a
-	// wind-up clip, work out how much of the telegraph that clip failed to
-	// cover, and set a timer to start a third clip looped a fractional number of
-	// times to cover the rest. All of that arithmetic is gone: the montage holds
-	// both halves, and UpdateAbilityMontageHold keeps the creature poised on the
-	// join frame until the attack lands.
-	PlayAbilityMontage(Index);
+	// BUT IT DOES NOT NECESSARILY START HERE, WHICH IS THE CHANGE OF 2026-08-08.
+	// The montage is timed so that the blow arrives exactly when the attack
+	// lands, and for the ground smash that means waiting about half a second
+	// before beginning to raise its fists. Until then the creature stands in its
+	// ordinary idle. The alternative, which this replaces, was to start at once
+	// and freeze the montage on one frame to fill the difference; the project
+	// owner reported that as the creature seizing up mid-swing.
+	const UWorld* World = GetWorld();
+	UAnimMontage* Montage = AbilityMontageFor(Index);
+
+	PendingAbilityMontage = INDEX_NONE;
+
+	if (!World || !Montage)
+	{
+		// Nothing to schedule against. Record the decision anyway.
+		PlayAbilityMontage(Index);
+		return;
+	}
+
+	AbilityWindUpBeganAtSeconds = World->GetTimeSeconds();
+
+	if (MontageDelaySecondsFor(Montage, Index) <= 0.0f)
+	{
+		PlayAbilityMontage(Index);
+		return;
+	}
+
+	PendingAbilityMontage = Index;
 }
 
 UAnimMontage* ACataclysmBruteCharacter::AbilityMontageFor(int32 Index) const
@@ -240,6 +259,19 @@ float ACataclysmBruteCharacter::WindUpSecondsFor(int32 Index)
 	return 0.0f;
 }
 
+float ACataclysmBruteCharacter::StrikeIntoReleaseSecondsFor(int32 Index)
+{
+	if (Index == StompAbility)
+	{
+		return StompStrikeIntoReleaseSeconds;
+	}
+	if (Index == RockThrowAbility)
+	{
+		return RockThrowStrikeIntoReleaseSeconds;
+	}
+	return 0.0f;
+}
+
 float ACataclysmBruteCharacter::LandsAtSecondsFor(float WindUpSeconds)
 {
 	const float Grid = ACataclysmEnemyController::ThinkIntervalSeconds;
@@ -264,20 +296,15 @@ float ACataclysmBruteCharacter::LandsAtSecondsFor(float WindUpSeconds)
 	// overshoot that differs between the pass which starts a wind-up and the
 	// pass which lands it. Against a strict less-than that decides a whole
 	// quarter second: simulated over 500 jittery frames it landed at 1.25 rather
-	// than 1.00 in nearly half of them. See the header for why returning the
-	// earliest of the two is nonetheless the right answer -- being early is
-	// absorbed by holding the pose, and being late is not absorbed by anything.
+	// than 1.00 in nearly half of them. Issue #413. Returning the earliest keeps
+	// the blow from arriving after the damage, which is the worse of the two.
 	return FMath::CeilToFloat(WindUpSeconds / Grid) * Grid;
 }
 
 float ACataclysmBruteCharacter::JoinSecondsFor(const UAnimMontage* Montage)
 {
-	// READ OFF THE ASSET RATHER THAN WRITTEN DOWN HERE. The wind-up clip's
-	// length is a property of the montage, and a second copy of it in this file
-	// is a number that can drift from the asset without anything noticing --
-	// which is the complaint issue #406 makes about the play rates now inside
-	// ABP_Brute. The automation test checks the asset against the measured
-	// figure instead, so there is one copy and it is guarded.
+	// READ OFF THE ASSET RATHER THAN WRITTEN DOWN HERE, so that replacing the
+	// wind-up clip with a longer one moves this without anyone remembering to.
 	if (!Montage || Montage->SlotAnimTracks.Num() == 0)
 	{
 		return 0.0f;
@@ -292,29 +319,94 @@ float ACataclysmBruteCharacter::JoinSecondsFor(const UAnimMontage* Montage)
 	return Track.AnimSegments[0].GetLength();
 }
 
-float ACataclysmBruteCharacter::MontageRateFor(float WindUpClipSeconds,
+float ACataclysmBruteCharacter::ImpactSecondsFor(const UAnimMontage* Montage,
+												 int32 Index)
+{
+	// THE JOIN IS NOT THE IMPACT. The release clip opens with the creature's
+	// fists still overhead and they take StrikeIntoReleaseSeconds to arrive.
+	// Assuming otherwise is what put a frozen frame in the middle of the stomp.
+	const float Join = JoinSecondsFor(Montage);
+	const float StrikeInClip = StrikeIntoReleaseSecondsFor(Index);
+
+	if (!Montage || Montage->SlotAnimTracks.Num() == 0)
+	{
+		return Join + StrikeInClip;
+	}
+
+	const FAnimTrack& Track = Montage->SlotAnimTracks[0].AnimTrack;
+	if (Track.AnimSegments.Num() < 2)
+	{
+		return Join + StrikeInClip;
+	}
+
+	// READ THROUGH THE SEGMENT'S OWN TRIM AND PLAY RATE, WHICH IS WHAT MAKES
+	// THIS SURVIVE THE MONTAGE BEING TUNED BY HAND.
+	//
+	// StrikeIntoReleaseSeconds is measured against the clip as it was authored:
+	// the fists reach the ground 0.179 seconds into Ability_GroundSmash_End
+	// played at normal speed. A montage segment need not play the clip that way.
+	// It can start part way in, and it can play at any rate, and the montage
+	// editor is where someone would change either -- which is the whole reason
+	// the timing was moved into the asset in the first place.
+	//
+	// So the moment inside the clip has to be converted into a moment on the
+	// montage's own timeline. Adding the raw figure was wrong, and was measured
+	// to be wrong on 2026-08-08: with the slam segment slowed to 0.55 the strike
+	// really arrives 0.324 seconds into that segment rather than 0.179.
+	const FAnimSegment& Release = Track.AnimSegments[1];
+	const float Rate = FMath::Abs(Release.GetValidPlayRate());
+	if (Rate <= UE_KINDA_SMALL_NUMBER)
+	{
+		return Join + StrikeInClip;
+	}
+
+	const float IntoSegment = (StrikeInClip - Release.AnimStartTime) / Rate;
+
+	// CLAMPED INTO THE SEGMENT, so that trimming the release clip past its own
+	// strike gives the segment's end rather than a time outside the montage.
+	return Join + FMath::Clamp(IntoSegment, 0.0f, Release.GetLength());
+}
+
+float ACataclysmBruteCharacter::MontageRateFor(float ImpactSeconds,
 											   float LandsAtSeconds)
 {
-	if (WindUpClipSeconds <= 0.0f || LandsAtSeconds <= 0.0f)
+	if (ImpactSeconds <= 0.0f || LandsAtSeconds <= 0.0f)
 	{
 		return 1.0f;
 	}
 
 	// NEVER SLOWER THAN AUTHORED. ONLY FASTER, AND ONLY WHEN IT MUST BE.
 	//
-	// Stretching a short clip across a long window was tried first and is wrong.
-	// The ground smash wind-up is 0.83 seconds inside a telegraph that ends at
-	// 1.50, so filling the window played it at 0.56 speed: the Brute raised its
-	// arms in slow motion and then the release ran at full speed, which was
-	// reported from a play session as a glitch rather than as one movement.
-	// Holding the poised pose instead is what UpdateAbilityMontageHold does.
+	// Where the montage reaches its blow sooner than the attack lands, this
+	// returns 1 and MontageDelaySecondsFor waits instead. Slowing the animation
+	// down to fill the gap was tried first and reported from a play session as
+	// slow motion.
 	//
-	// COMPRESSION IS STILL NEEDED IN THE OTHER DIRECTION. The rock throw's
-	// wind-up clip is 1.13 seconds against a telegraph that ends at 1.00, so at
-	// authored speed the rock has not come free by the time the throw lands.
-	// Playing that montage at 1.13 puts its join exactly on the impact.
-	return FMath::Clamp(FMath::Max(1.0f, WindUpClipSeconds / LandsAtSeconds),
+	// COMPRESSION IS STILL NEEDED IN THE OTHER DIRECTION, and the rock throw
+	// needs a great deal of it: the rock does not leave its hand until 1.672
+	// seconds and its telegraph allows 1.000, so it plays at 1.67 and looks
+	// hurried. Issue #416 asks whether its telegraph should be longer.
+	return FMath::Clamp(FMath::Max(1.0f, ImpactSeconds / LandsAtSeconds),
 						MinimumPlayRate, MaximumPlayRate);
+}
+
+float ACataclysmBruteCharacter::MontageDelaySecondsFor(
+	const UAnimMontage* Montage, int32 Index)
+{
+	const float Impact = ImpactSecondsFor(Montage, Index);
+	if (Impact <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float LandsAt = LandsAtSecondsFor(WindUpSecondsFor(Index));
+	const float Rate = MontageRateFor(Impact, LandsAt);
+
+	// WAIT OUT WHATEVER THE ANIMATION DOES NOT COVER. At rate 1 the ground smash
+	// takes 1.012 seconds to reach the ground and the attack lands at 1.500, so
+	// this is 0.488. Where the montage cannot fit at all the rate above has
+	// already compressed it, and this is zero.
+	return FMath::Max(0.0f, LandsAt - Impact / Rate);
 }
 
 void ACataclysmBruteCharacter::PlayAbilityMontage(int32 Index)
@@ -326,12 +418,11 @@ void ACataclysmBruteCharacter::PlayAbilityMontage(int32 Index)
 	// graph and choosing does not, so a test can check what was chosen in a
 	// world where nothing can play anything.
 	const float LandsAt = LandsAtSecondsFor(WindUpSecondsFor(Index));
-	const float Rate = MontageRateFor(JoinSecondsFor(Montage), LandsAt);
+	const float Rate = MontageRateFor(ImpactSecondsFor(Montage, Index), LandsAt);
 
 	LastPlayedMontage = Montage;
 	LastPlayedMontageRate = Montage ? Rate : 0.0f;
 	ActiveAbilityMontage = Montage ? Index : INDEX_NONE;
-	bHoldingAbilityPose = false;
 
 	if (!Montage)
 	{
@@ -369,75 +460,47 @@ void ACataclysmBruteCharacter::PlayAbilityMontage(int32 Index)
 							   EMontagePlayReturnType::MontageLength);
 }
 
-void ACataclysmBruteCharacter::UpdateAbilityMontageHold()
+void ACataclysmBruteCharacter::UpdateAbilityMontage()
 {
-	if (ActiveAbilityMontage == INDEX_NONE)
+	if (PendingAbilityMontage == INDEX_NONE)
 	{
 		return;
 	}
 
-	UAnimMontage* Montage = AbilityMontageFor(ActiveAbilityMontage);
-	if (!Montage)
-	{
-		ActiveAbilityMontage = INDEX_NONE;
-		bHoldingAbilityPose = false;
-		return;
-	}
-
-	USkeletalMeshComponent* MeshComponent = GetMesh();
-	UAnimInstance* AnimInstance =
-		MeshComponent ? MeshComponent->GetAnimInstance() : nullptr;
-	if (!AnimInstance)
+	const UWorld* World = GetWorld();
+	if (!World)
 	{
 		return;
 	}
 
-	if (!AnimInstance->Montage_IsActive(Montage))
-	{
-		// It finished, or something else took the slot. Nothing left to hold.
-		ActiveAbilityMontage = INDEX_NONE;
-		bHoldingAbilityPose = false;
-		return;
-	}
-
-	// ASKED OF THE BRAIN, WHICH IS THE ONLY THING THAT KNOWS. It clears
-	// WindingUpAbility the moment an ability lands, so "still winding up" is
-	// exactly the condition under which the poised pose should be held.
+	// ABANDONED IF THE ABILITY IS NO LONGER BEING WOUND UP. A pawn unpossessed
+	// or destroyed mid-telegraph leaves no landing to hook, and both of those
+	// used to strand a clip playing for its full length. Here the montage simply
+	// never starts, which is the whole fault class gone rather than patched.
 	const ACataclysmEnemyController* Brain =
 		Cast<ACataclysmEnemyController>(GetController());
-	const bool bStillWindingUp =
-		Brain && Brain->WindingUpAbility == ActiveAbilityMontage;
-
-	if (bStillWindingUp)
+	if (!Brain || Brain->WindingUpAbility != PendingAbilityMontage)
 	{
-		// FREEZE ON THE JOIN FRAME, WHICH IS THE POSE THE WIND-UP ENDS ON.
-		// Compared against the montage's real position rather than against a
-		// deadline, so this cannot fire on the wrong side of the thinking pass
-		// that lands the ability -- which is how the rock throw's hold came to
-		// outlive its own throw in pull request #411.
-		const float Join = JoinSecondsFor(Montage);
-		if (!bHoldingAbilityPose && Join > 0.0f &&
-			AnimInstance->Montage_GetPosition(Montage) >= Join)
-		{
-			AnimInstance->Montage_Pause(Montage);
-			bHoldingAbilityPose = true;
-		}
+		PendingAbilityMontage = INDEX_NONE;
 		return;
 	}
 
-	// THE ATTACK HAS LANDED, SO LET THE RELEASE RUN.
-	//
-	// THIS IS ALSO THE ONLY THING THAT CAN UNSTICK A HELD POSE, and it is why
-	// the condition is "the brain is no longer winding this up" rather than
-	// "the ability landed". A pawn unpossessed or destroyed mid-telegraph
-	// leaves no landing to hook, and both of those used to strand the old hold
-	// clip playing for its full length. Here they simply stop matching, and the
-	// montage is released on the next frame.
-	if (bHoldingAbilityPose)
+	UAnimMontage* Montage = AbilityMontageFor(PendingAbilityMontage);
+	const float Elapsed = World->GetTimeSeconds() - AbilityWindUpBeganAtSeconds;
+
+	// COMPARED AGAINST THE CLOCK EVERY FRAME RATHER THAN SET AS A DEADLINE. A
+	// timer fixes its deadline when it is created, which is how a held clip came
+	// to fire on the wrong side of the pass that landed its ability in pull
+	// request #411. This cannot be out of order with anything.
+	if (Elapsed + UE_KINDA_SMALL_NUMBER
+			< MontageDelaySecondsFor(Montage, PendingAbilityMontage))
 	{
-		AnimInstance->Montage_Resume(Montage);
-		bHoldingAbilityPose = false;
+		return;
 	}
+
+	const int32 Index = PendingAbilityMontage;
+	PendingAbilityMontage = INDEX_NONE;
+	PlayAbilityMontage(Index);
 }
 
 void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
@@ -452,9 +515,8 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 	// NOTHING IS PLAYED HERE, AND THAT IS THE CHANGE. The release half of the
 	// attack is already in the montage this ability started when its wind-up
 	// began, sitting immediately after the wind-up half. All that has to happen
-	// at the moment of impact is that the montage stops being held on its join
-	// frame, and UpdateAbilityMontageHold does that on the next tick, because
-	// the brain clears WindingUpAbility as it lands the ability.
+	// at the moment of impact is nothing at all: the montage was started part
+	// way into the telegraph precisely so that its blow arrives now.
 	//
 	// WHAT THAT REMOVES. Playing a second clip here meant the release was a
 	// separate montage that had to blend against the first, be sized to its own

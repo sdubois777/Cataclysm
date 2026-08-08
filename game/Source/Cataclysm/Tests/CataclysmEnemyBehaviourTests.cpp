@@ -2042,44 +2042,88 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::WindingUp));
 
-	TestEqual(TEXT("and plays the stomp montage"),
+	// AND DOES NOT START THE MONTAGE YET, WHICH IS THE CHANGE OF 2026-08-08 AND
+	// THE WHOLE REASON THE SLAM READS SMOOTHLY NOW.
+	//
+	// The ground smash reaches the ground 1.012 seconds into its montage and the
+	// attack lands at 1.500, so 0.488 seconds are unaccounted for. The first
+	// version started the montage at once and then froze it on a single frame to
+	// use up the difference. The project owner reported that on 2026-08-08: "He
+	// reaches his arms up in the air, freezes for a second or so, then continues
+	// to slamming down."
+	//
+	// Waiting instead means the creature stands in its ordinary idle, which
+	// moves, and then performs the attack as one continuous movement.
+	TestEqual(TEXT("the stomp waits before starting its montage"),
+		Brute.Actor->PendingAbilityMontage,
+		int32(ACataclysmBruteCharacter::StompAbility));
+
+	TestNull(TEXT("so nothing is playing yet"),
+		Brute.Actor->LastPlayedMontage.Get());
+
+	const float StompLandsAt = ACataclysmBruteCharacter::LandsAtSecondsFor(
+		ACataclysmBruteCharacter::StompWindUpSeconds);
+	const float StompDelay = ACataclysmBruteCharacter::MontageDelaySecondsFor(
+		Brute.Actor->StompMontage.Get(), ACataclysmBruteCharacter::StompAbility);
+
+	TestTrue(TEXT("and the wait is real rather than zero"), StompDelay > 0.0f);
+
+	// NOTHING STARTS IT EARLY EITHER. Asking before the wait has elapsed must
+	// leave it waiting, or the delay would be decorative.
+	Brute.Actor->UpdateAbilityMontage();
+	TestNull(TEXT("asking before the wait has elapsed starts nothing"),
+		Brute.Actor->LastPlayedMontage.Get());
+
+	// The timer that would do this in a real game does not fire in a world that
+	// is never ticked, so the test calls it, exactly as it calls Think.
+	AdvanceWorldClock(World, StompDelay + 0.01);
+	Brute.Actor->UpdateAbilityMontage();
+
+	TestEqual(TEXT("once the wait has elapsed it plays the stomp montage"),
 		Brute.Actor->LastPlayedMontage.Get(),
 		Brute.Actor->StompMontage.Get());
 
-	TestEqual(TEXT("and records which ability owns it, so the pose hold knows "
-				   "what to ask the brain about"),
+	TestEqual(TEXT("and records which ability owns it"),
 		Brute.Actor->ActiveAbilityMontage,
 		int32(ACataclysmBruteCharacter::StompAbility));
 
-	// THE STOMP IS NOT COMPRESSED. Its wind-up clip is 0.83 seconds inside a
-	// telegraph that ends at 1.50, so it has room to spare and plays at the
-	// speed it was authored. The spare time is covered by holding the poised
-	// pose rather than by slowing the clip down, which was tried first and
-	// reported from a play session as slow motion.
+	// THE STOMP IS NOT COMPRESSED. It reaches the ground 1.012 seconds in
+	// against a telegraph that ends at 1.500, so it has room to spare and plays
+	// at the speed it was authored. The spare time is waited out beforehand
+	// rather than taken out of the animation, because slowing the animation down
+	// was tried first and reported from a play session as slow motion.
 	TestEqual(TEXT("at the speed it was authored, rather than stretched to fill "
 				   "the telegraph"),
 		Brute.Actor->LastPlayedMontageRate, 1.0f, 0.001f);
 
-	// THE ASSERTION THAT CARRIES THE WHOLE TEST. The wind-up half of the montage
-	// must be over by the moment the attack lands, so that the release half --
-	// the smash itself -- begins on the impact rather than before or after it.
-	const float StompJoin =
-		ACataclysmBruteCharacter::JoinSecondsFor(Brute.Actor->StompMontage.Get());
-	const float StompLandsAt = ACataclysmBruteCharacter::LandsAtSecondsFor(
-		ACataclysmBruteCharacter::StompWindUpSeconds);
+	// THE ASSERTION THAT CARRIES THE WHOLE TEST: the blow you can see arrives at
+	// the moment the damage is dealt.
+	const float StompImpact = ACataclysmBruteCharacter::ImpactSecondsFor(
+		Brute.Actor->StompMontage.Get(), ACataclysmBruteCharacter::StompAbility);
 
-	TestTrue(TEXT("the stomp's wind-up half is over by the time the attack lands"),
-		StompJoin / Brute.Actor->LastPlayedMontageRate <= StompLandsAt + 0.01f);
+	TestEqual(TEXT("the fists reach the ground exactly when the stomp lands"),
+		StompDelay + StompImpact / Brute.Actor->LastPlayedMontageRate,
+		StompLandsAt, 0.01f);
+
+	// AND THE STRIKE IS PAST THE JOIN, not on it. This is the assumption that
+	// was wrong and produced the freeze: the release clip opens with the fists
+	// still overhead, and they take 0.179 seconds to arrive.
+	TestTrue(TEXT("the strike is inside the release clip rather than at its "
+				  "first frame"),
+		StompImpact > ACataclysmBruteCharacter::JoinSecondsFor(
+			Brute.Actor->StompMontage.Get()) + 0.001f);
 
 	// AND THE MONTAGE OUTLASTS THE MOMENT OF IMPACT, which is what makes the
-	// second half visible at all. A montage that ended at the impact would put
-	// the creature back into walking on the frame the damage was dealt, which is
-	// the fault reported on 2026-08-08 as "he winds up, and then cancels".
+	// follow-through visible at all. A montage that ended at the impact would
+	// put the creature back into walking on the frame the damage was dealt,
+	// which is the fault reported on 2026-08-08 as "he winds up, and then
+	// cancels".
 	TestTrue(TEXT("and the montage runs past the impact, so the smash is seen"),
-		Brute.Actor->StompMontage->GetPlayLength()
+		StompDelay + Brute.Actor->StompMontage->GetPlayLength()
 			/ Brute.Actor->LastPlayedMontageRate > StompLandsAt);
 
-	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::StompWindUpSeconds + 0.1 - StompDelay);
 
 	// COUNTED, NOT COMPARED, AND THE DIFFERENCE IS NOT ACADEMIC. The first
 	// version of this test remembered which montage was playing and checked it
@@ -2163,13 +2207,29 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	TestTrue(TEXT("and compresses it so the rock is free by the time it throws"),
 		Brute.Actor->LastPlayedMontageRate > 1.0f);
 
-	const float ThrowJoin = ACataclysmBruteCharacter::JoinSecondsFor(
-		Brute.Actor->RockThrowMontage.Get());
 	const float ThrowLandsAt = ACataclysmBruteCharacter::LandsAtSecondsFor(
 		ACataclysmBruteCharacter::RockThrowWindUpSeconds);
+	const float ThrowImpact = ACataclysmBruteCharacter::ImpactSecondsFor(
+		Brute.Actor->RockThrowMontage.Get(),
+		ACataclysmBruteCharacter::RockThrowAbility);
+	const float ThrowDelay = ACataclysmBruteCharacter::MontageDelaySecondsFor(
+		Brute.Actor->RockThrowMontage.Get(),
+		ACataclysmBruteCharacter::RockThrowAbility);
 
-	TestTrue(TEXT("the throw's wind-up half is over by the time it lands"),
-		ThrowJoin / Brute.Actor->LastPlayedMontageRate <= ThrowLandsAt + 0.01f);
+	// THE ROCK LEAVES THE HAND AT THE MOMENT THE PROJECTILE IS FIRED, which is
+	// the same property the stomp has and the reason both are timed this way.
+	TestEqual(TEXT("the rock leaves the hand exactly when the projectile is "
+				   "fired"),
+		ThrowDelay + ThrowImpact / Brute.Actor->LastPlayedMontageRate,
+		ThrowLandsAt, 0.01f);
+
+	// AND IT CANNOT WAIT, unlike the stomp. Tearing the rock out and swinging it
+	// overhead takes 1.672 seconds and the telegraph allows 1.000, so there is
+	// nothing to wait out and the whole montage is compressed instead. That is
+	// why it looks hurried, and it is a design question rather than an error
+	// here: issue #416.
+	TestEqual(TEXT("the throw has no time to wait and starts at once"),
+		ThrowDelay, 0.0f, 0.001f);
 
 	const int32 StartedBeforeThrowImpact = Brute.Actor->AbilityMontagesStarted;
 
@@ -2187,15 +2247,24 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	TestNotEqual(TEXT("the stomp and the throw are different montages"),
 		Brute.Actor->StompMontage.Get(), Brute.Actor->RockThrowMontage.Get());
 
-	// AND THE POSE HOLD SURVIVES BEING ASKED IN A WORLD THAT CANNOT ANIMATE.
-	// This world has no animation instance -- issue #374 records that
-	// instantiating a Paragon graph in a synthetic world hangs the test process
-	// -- so this returns without touching anything. Called anyway, because a
-	// null dereference here would take out every Brute in a real level.
-	Brute.Actor->UpdateAbilityMontageHold();
-	TestFalse(TEXT("nothing claims to be holding a pose in a world with no "
-				   "animation instance"),
-		Brute.Actor->bHoldingAbilityPose);
+	// A WIND-UP THAT IS ABANDONED MUST NOT START ITS MONTAGE LATER. This is the
+	// whole fault class that pull request #411 was about, stated as a test: a
+	// pawn unpossessed or destroyed mid-telegraph leaves no landing to hook, and
+	// a clip scheduled by deadline would play anyway, long after the ability it
+	// belonged to was gone.
+	//
+	// Here the brain is asked and disagrees, so the waiting montage is dropped.
+	Brute.Actor->PendingAbilityMontage = ACataclysmBruteCharacter::StompAbility;
+	Brute.Actor->AbilityWindUpBeganAtSeconds = 0.0f;
+	Brain->WindingUpAbility = INDEX_NONE;
+
+	const int32 StartedBeforeAbandon = Brute.Actor->AbilityMontagesStarted;
+	Brute.Actor->UpdateAbilityMontage();
+
+	TestEqual(TEXT("a wind-up that was abandoned starts no montage"),
+		Brute.Actor->AbilityMontagesStarted, StartedBeforeAbandon);
+	TestEqual(TEXT("and forgets itself rather than starting one later"),
+		Brute.Actor->PendingAbilityMontage, int32(INDEX_NONE));
 
 	return true;
 }

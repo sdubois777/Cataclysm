@@ -1,4 +1,4 @@
-// Copyright Stephen Dubois. All Rights Reserved.
+﻿// Copyright Stephen Dubois. All Rights Reserved.
 
 #pragma once
 
@@ -209,73 +209,121 @@ public:
 	 * rather than 1.00 in very nearly half of them.
 	 *
 	 * SO THIS RETURNS THE EARLIEST, AND THAT IS DELIBERATE RATHER THAN
-	 * OPTIMISTIC. The wind-up half of the montage is sized to finish by this
-	 * moment. Finishing early is free -- UpdateAbilityMontageHold holds the
-	 * poised pose until the attack really lands, however late that is, which is
-	 * the whole reason the pose is held rather than the montage delayed.
-	 * Finishing late is not free: the damage would be dealt while the creature
-	 * was still raising its fist. Aiming at the earliest possible landing is
-	 * what makes the jitter above harmless instead of a coin flip.
+	 * OPTIMISTIC. The montage is timed so that its strike arrives by this moment.
+	 * Arriving early costs a small misalignment; arriving late would deal the
+	 * damage while the creature was still raising its fists.
 	 */
 	static float LandsAtSecondsFor(float WindUpSeconds);
 
 	/**
-	 * Seconds into a montage where the wind-up ends and the release begins.
+	 * Seconds into a montage where the wind-up clip ends and the release clip
+	 * begins. The length of its first segment, or zero if it has none.
 	 *
-	 * The length of its first segment. That instant is the moment of impact:
-	 * everything before it is the creature getting ready, everything after is
-	 * the attack happening. Zero when the montage is null or empty.
+	 * THIS IS NOT THE MOMENT OF IMPACT, WHICH IS WHAT THE FIRST VERSION OF THIS
+	 * CODE ASSUMED AND GOT WRONG. See ImpactSecondsFor.
 	 */
 	static float JoinSecondsFor(const class UAnimMontage* Montage);
 
 	/**
-	 * The rate an ability montage plays at.
+	 * Seconds into the RELEASE clip at which the blow actually arrives.
 	 *
-	 * NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. A clip
-	 * stretched to fill a longer window was tried first and reported from a play
-	 * session as slow motion: the ground smash wind-up is 0.83 seconds inside a
-	 * telegraph that ends at 1.50, so filling it would play at 0.56 speed.
+	 * MEASURED, NOT GUESSED, AND THE FIRST VERSION OF THIS CODE GUESSED. It
+	 * assumed the release clip begins at the moment of impact, so that lining the
+	 * join up with the damage lined the blow up with it too. That is not what the
+	 * art does. Ability_GroundSmash_End BEGINS with the creature's fists still
+	 * overhead, at 341 and 349 centimetres -- continuous with the 321 and 333 the
+	 * wind-up clip ends on -- and they take 0.179 seconds to reach the ground.
 	 *
-	 * COMPRESSION IS STILL NEEDED THE OTHER WAY. The rock throw's wind-up clip
-	 * is 1.13 seconds against a telegraph that ends at 1.00, so at authored speed
-	 * the rock has not come free by the time the throw lands. Playing that
-	 * montage at 1.13 puts its join exactly on the impact.
+	 * Ability_RipNToss_Toss is the same shape for a different reason: the rock
+	 * does not leave the hand as the clip starts. The throwing hand climbs to the
+	 * top of its arc at 0.539 seconds and that is where the rock is released.
+	 *
+	 * WHAT THE WRONG ASSUMPTION COST. Treating the join as the impact left 0.667
+	 * seconds of the telegraph that the animation did not cover, which was filled
+	 * by freezing the montage on a single frame. The project owner reported it on
+	 * 2026-08-08: "He reaches his arms up in the air, freezes for a second or so,
+	 * then continues to slamming down."
+	 *
+	 * HOW TO RE-MEASURE. tools/measure_animation_impact.py evaluates each clip
+	 * with unreal.AnimPoseExtensions and follows the hands through it. The clips
+	 * carry no animation notifies -- all five were checked on 2026-08-08 -- so
+	 * there is no authored marker to read instead.
 	 */
-	static float MontageRateFor(float WindUpClipSeconds, float LandsAtSeconds);
+	static constexpr float StompStrikeIntoReleaseSeconds = 0.179f;
+	static constexpr float RockThrowStrikeIntoReleaseSeconds = 0.539f;
+
+	/** The figure above for one ability, or zero if it is not an ability. */
+	static float StrikeIntoReleaseSecondsFor(int32 Index);
 
 	/**
-	 * Freeze the montage on its join frame until the attack lands, and let it go
-	 * again once it has.
+	 * Seconds into the montage at which the attack visibly strikes: the join,
+	 * plus however far into the release clip the blow arrives.
 	 *
-	 * THIS IS WHAT THE HOLD CLIP USED TO DO, WITHOUT THE HOLD CLIP. The ground
-	 * smash wind-up occupies 0.83 seconds of a telegraph that ends at 1.50,
-	 * leaving 0.67 seconds in which the creature has finished winding up and the
-	 * attack has not yet landed. Something has to be on screen for that time, and
-	 * the right thing is the poised pose the wind-up ends on -- it is the only
-	 * warning the player gets, because nothing draws a ground marker yet (#396).
+	 * HALF READ FROM THE ASSET AND HALF A MEASURED CONSTANT, on purpose. The join
+	 * moves if the wind-up clip is ever replaced with a longer one, and reading it
+	 * off the montage means this follows without anyone remembering to. How far
+	 * into the release clip the blow lands is a property of what the art shows and
+	 * cannot be read from any asset, so it is the constant above.
+	 */
+	static float ImpactSecondsFor(const class UAnimMontage* Montage, int32 Index);
+
+	/**
+	 * The rate an ability montage plays at.
 	 *
-	 * PAUSING HOLDS THE POSE. FAnimMontageInstance::Pause sets bPlaying false and
-	 * does nothing else -- it does not stop the montage, blend it out, or remove
-	 * the instance -- so the instance stays active at its blend weight and keeps
-	 * driving the pose, while the sub-stepper returns NotMoved and the position
-	 * stops advancing. Confirmed in Engine/Private/Animation/AnimMontage.cpp.
+	 * NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE.
+	 * Stretching a clip to fill a longer window was tried first and reported from
+	 * a play session as slow motion. Where the montage reaches its strike sooner
+	 * than the attack lands, the answer is to start it later rather than to slow
+	 * it down -- see MontageDelaySecondsFor.
 	 *
-	 * DRIVEN FROM Tick RATHER THAN A TIMER, and that is the point. A timer has a
-	 * deadline that can fall on the wrong side of the thinking pass that lands
-	 * the ability, which is exactly how the rock throw's hold came to outlive its
-	 * throw in #411. This reads the montage's real position every frame and asks
-	 * the brain whether the ability is still winding up, so it cannot be out of
-	 * order with anything.
+	 * COMPRESSION IS STILL NEEDED THE OTHER WAY, and the rock throw needs a lot of
+	 * it. Tearing the rock out takes 1.133 seconds and the throwing arm does not
+	 * reach the top of its arc until 0.539 seconds into the clip after that, so
+	 * the rock does not leave the creature's hand until 1.672 seconds. Its
+	 * telegraph gives it 1.000. There is no way to show all of that in the time
+	 * the design allows, so it plays at 1.67 and looks hurried. That is a design
+	 * question rather than a bug in this arithmetic, and it is issue #416.
+	 */
+	static float MontageRateFor(float ImpactSeconds, float LandsAtSeconds);
+
+	/**
+	 * Seconds after the wind-up begins that the montage should start, so that its
+	 * strike arrives exactly when the attack lands.
+	 *
+	 * WHY A DELAY RATHER THAN A HELD POSE, WHICH IS THE CHANGE OF 2026-08-08.
+	 * The ground smash reaches its strike 1.012 seconds in and the attack lands at
+	 * 1.500, so 0.488 seconds have to come from somewhere. The first version froze
+	 * the montage on its join frame for that long, which is a single unchanging
+	 * frame and read as the creature seizing up mid-swing. Waiting before starting
+	 * instead means the creature stands in its ordinary idle -- which moves -- and
+	 * then performs the whole attack as one continuous movement.
+	 */
+	static float MontageDelaySecondsFor(const class UAnimMontage* Montage,
+										int32 Index);
+
+	/**
+	 * Start a waiting ability montage once its delay has elapsed.
+	 *
+	 * DRIVEN FROM Tick RATHER THAN A TIMER, and that is deliberate. A timer has a
+	 * deadline fixed when it is set; this compares the clock every frame, so it
+	 * cannot fire in the wrong order relative to anything, and it abandons the
+	 * montage if the brain has stopped winding the ability up in the meantime. A
+	 * timer with a deadline is how a held clip came to outlive its own ability in
+	 * pull request #411.
 	 *
 	 * PUBLIC AND CALLABLE SO A TEST CAN RUN IT WITHOUT WAITING, the same reason
 	 * ACataclysmEnemyController::Think is. An automation test world is never
 	 * ticked.
 	 */
-	void UpdateAbilityMontageHold();
+	void UpdateAbilityMontage();
 
-	/** True while an ability montage is frozen on its join frame. Read by tests. */
+	/** Which ability is waiting for its montage to start, or INDEX_NONE. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	bool bHoldingAbilityPose = false;
+	int32 PendingAbilityMontage = -1;
+
+	/** World time the current wind-up began. Meaningless when none is pending. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float AbilityWindUpBeganAtSeconds = 0.0f;
 
 	/** Which ability's montage is running, or INDEX_NONE. Read by tests. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")

@@ -170,9 +170,17 @@ def wanted_segments(clips):
 def track_already_correct(montage, clips):
     """True when the montage's slot track already holds exactly these clips.
 
-    Checked so that the second run leaves the track alone. Rewriting it would
+    CHECKED SO THAT THE SECOND RUN LEAVES THE TRACK ALONE. Rewriting it would
     put StartPos back to zero on every segment, and only a further load would
     lay them end to end again -- so the asset would never settle.
+
+    IT CHECKS THE WHOLE SEGMENT, NOT JUST WHICH CLIP IT POINTS AT, and that
+    matters. On 2026-08-08 AM_Brute_Stomp was edited by hand in the montage
+    editor: the wind-up was trimmed to play 0.119 to 0.630 instead of the whole
+    clip, and the slam was slowed to a play rate of 0.552. Both clips were still
+    the right clips in the right order, so checking only their identity reported
+    the track as correct, and this script left a hand-tuned asset in place while
+    claiming to own it. Anything this script sets, it now also verifies.
     """
     tracks = montage.get_editor_property("slot_anim_tracks")
     if len(tracks) != 1:
@@ -184,6 +192,15 @@ def track_already_correct(montage, clips):
     for segment, clip in zip(segments, clips, strict=True):
         if segment.get_editor_property("anim_reference") != clip:
             return False
+        wanted = {
+            "anim_start_time": 0.0,
+            "anim_end_time": clip.get_play_length(),
+            "anim_play_rate": 1.0,
+            "looping_count": 1,
+        }
+        for name, value in wanted.items():
+            if abs(segment.get_editor_property(name) - value) > 0.0001:
+                return False
     return True
 
 
