@@ -20,6 +20,65 @@ applied or still pending.
 
 ---
 
+## 2026-08-08 — A telegraph is counted in thinking passes, not compared against a clock
+
+**Affects** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and
+`.cpp`. Applied in full.
+
+### The question
+
+Issue #413. An enemy's ability landed on "the first thinking pass whose clock has
+gone past the deadline". That sounds exact and is not. A timer callback runs on
+the first FRAME past its deadline, so every pass carries up to a frame of
+overshoot, and the overshoot on the pass that starts a wind-up is not the
+overshoot on the pass that should land it.
+
+Where a telegraph sits clear of a pass boundary this is invisible. Where it sits
+ON one, a difference of a few milliseconds decides a whole quarter of a second.
+The Brute's rock throw sits exactly there: a 1.000 second telegraph against a
+0.250 second pass. Simulating the engine's own timer arithmetic over 500 jittery
+frames landed it on the later pass 246 times out of 500.
+
+### Counted, because counting cannot be affected by frame timing
+
+The telegraph is turned into a number of passes once, when the wind-up begins,
+and counted down. A wind-up begun on one pass lands exactly so many passes later
+whatever the frame rate is doing, because nothing in that sentence involves a
+clock.
+
+The clock comparison stays as a second condition, and it earns its place twice
+over. A hitch long enough to skip several thinking passes would otherwise hold an
+attack open past its own telegraph while the count worked through. And every
+automation test in this project moves the world clock by hand and calls the
+thinking function directly rather than letting the timer run, so without it no
+test could land an ability at all.
+
+### Rounded up, never down
+
+A telegraph that is not a whole number of passes takes the pass after it. The
+Brute's 1.4 second stomp is six passes and lands at 1.5, which is what it already
+did.
+
+That direction is not arbitrary. The design states a telegraph as the time the
+player has to walk clear, so an attack must never land sooner than it. Rounding
+to the nearest pass would land the stomp at 1.25 -- a tenth of a second sooner
+than the player was told they had.
+
+The cost is that the real telegraph can exceed the designed one by up to a pass,
+and the design's other bound on a telegraph -- that it fits inside half the
+ability's cycle -- has to be checked against the real figure rather than the
+designed one. `tools/tests/test_wind_up_lands_on_a_counted_pass.py` does that.
+
+### A defect this uncovered in the same day's work
+
+The ground telegraph marker added for #396 carries its own lifespan as a
+backstop, and it was given the DESIGNED telegraph. For the stomp that is 1.4
+seconds against a real landing at 1.5, so the marker took itself off the floor a
+tenth of a second before the ring it warned about went off. The marker is now
+shown for the effective telegraph.
+
+---
+
 ## 2026-08-08 — A projectile's appearance is passed in by whoever fires it, and sized from the mesh's own bounds
 
 **Affects** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and

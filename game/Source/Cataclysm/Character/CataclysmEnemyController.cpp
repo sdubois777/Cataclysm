@@ -77,6 +77,7 @@ void ACataclysmEnemyController::OnUnPossess()
 	// A wind-up belongs to the pawn that started it. Left set, a controller
 	// that possessed a second pawn would land the first one's attack.
 	WindingUpAbility = INDEX_NONE;
+	WindUpPassesLeft = 0;
 	AbilityLastUsedAt.Reset();
 
 	// AND SO DOES ITS MARKER. A creature killed part way through a stomp is the
@@ -150,6 +151,7 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	if (UCataclysmSkillEffects::IsStunned(Driven))
 	{
 		WindingUpAbility = INDEX_NONE;
+		WindUpPassesLeft = 0;
 
 		// THE MARKER GOES WITH THE ATTACK IT WARNED OF. An interrupted wind-up
 		// did not happen, so leaving its circle on the floor would be telling
@@ -306,6 +308,17 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 	}
 	const FVector Feet = Driven->GetActorLocation() - FVector(0.0f, 0.0f, FeetOffsetCm);
 
+	// THE MARKER LASTS AS LONG AS THE WIND-UP REALLY DOES, NOT AS LONG AS IT
+	// IS DESIGNED TO. An ability lands on a whole thinking pass, so a
+	// telegraph that is not a whole number of passes really runs to the pass
+	// after it -- the Brute's stomp is designed at 1.4 seconds and lands at
+	// 1.5. Drawn for the designed figure, the marker's own lifespan took it
+	// off the floor a tenth of a second before the ring it warned about went
+	// off. Found while counting passes for issue #413, in code added the
+	// same day for issue #396.
+	const float ShownForSeconds =
+		PassesForWindUp(Ability.WindUpSeconds) * ThinkIntervalSeconds;
+
 	switch (Ability.Shape)
 	{
 	case ECataclysmSkillShape::Strike:
@@ -313,7 +326,7 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 		// The Brute's stomp sweeps from its own location, so the circle drawn
 		// here is the circle that sweep will use.
 		WindUpMarker = ACataclysmTelegraphMarker::ShowCircle(
-			Driven, Feet, Ability.MarkerRadiusCm, Ability.WindUpSeconds);
+			Driven, Feet, Ability.MarkerRadiusCm, ShownForSeconds);
 		return;
 
 	case ECataclysmSkillShape::Projectile:
@@ -324,7 +337,7 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 		WindUpMarker = ACataclysmTelegraphMarker::ShowLine(
 			Driven, Feet,
 			FVector(WindUpAimedAt.X, WindUpAimedAt.Y, Feet.Z),
-			Ability.MarkerRadiusCm, Ability.WindUpSeconds);
+			Ability.MarkerRadiusCm, ShownForSeconds);
 		return;
 
 	default:
@@ -344,6 +357,23 @@ void ACataclysmEnemyController::DismissWindUpMarker()
 		Marker->Dismiss();
 	}
 	WindUpMarker = nullptr;
+}
+
+int32 ACataclysmEnemyController::PassesForWindUp(float WindUpSeconds)
+{
+	if (WindUpSeconds <= 0.0f)
+	{
+		// No telegraph at all. The caller lands the ability at once and never
+		// reaches the count, but a zero here would mean "already over" rather
+		// than "one pass", so it is answered explicitly.
+		return 0;
+	}
+
+	// CEILING, NOT ROUNDING. Rounding a 1.4 second telegraph to five passes
+	// would land the stomp at 1.25 -- a tenth of a second sooner than the
+	// player was told they had. See the header.
+	return FMath::Max(1,
+		FMath::CeilToInt(WindUpSeconds / ThinkIntervalSeconds));
 }
 
 bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
@@ -369,7 +399,32 @@ bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
 
-	if (Now < WindUpLandsAt)
+	// COUNTED DOWN, NOT COMPARED. See WindUpPassesLeft in the header for why
+	// comparing clocks alone decided a whole quarter of a second by coin toss.
+	if (WindUpPassesLeft > 0)
+	{
+		--WindUpPassesLeft;
+	}
+
+	// EITHER CONDITION LANDS IT, AND THE COUNT IS THE ONE THAT NORMALLY DOES.
+	//
+	// The count is what makes this deterministic. A wind-up begun on one pass
+	// lands exactly so many passes later whatever the frame rate is doing,
+	// because nothing in that sentence involves a clock.
+	//
+	// THE CLOCK IS A SAFETY NET FOR TWO CASES. A hitch long enough to skip
+	// several thinking passes would otherwise hold an attack open past its own
+	// telegraph while the count worked through. And every automation test in
+	// this project moves the world clock by hand and calls Think directly
+	// rather than letting the timer run -- see AdvanceWorldClock in
+	// CataclysmEnemyBehaviourTests.cpp -- so without it no test could land an
+	// ability at all.
+	//
+	// NEITHER CAN LAND ONE EARLY. The count reaches zero on the pass whose
+	// nominal time is the deadline, and the clock condition is the deadline
+	// itself, so the earlier of the two is before it by at most the length of
+	// the frame that pass ran on. Issue #413.
+	if (WindUpPassesLeft > 0 && Now < WindUpLandsAt)
 	{
 		LastAction = ECataclysmBrainAction::WindingUp;
 		return true;
@@ -379,6 +434,7 @@ bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
 	// whole of why walking out of a telegraph works.
 	const int32 Landing = WindingUpAbility;
 	WindingUpAbility = INDEX_NONE;
+	WindUpPassesLeft = 0;
 
 	// TAKEN AWAY BEFORE THE ATTACK RESOLVES, NOT AFTER. The marker's job is
 	// finished the moment there is nothing left to walk out of, and removing it
@@ -524,6 +580,7 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 	{
 		WindingUpAbility = Chosen;
 		WindUpLandsAt = Now + Abilities[Chosen].WindUpSeconds;
+		WindUpPassesLeft = PassesForWindUp(Abilities[Chosen].WindUpSeconds);
 		WindUpAimedAt = Target ? Target->GetActorLocation()
 							   : Driven->GetActorLocation();
 
