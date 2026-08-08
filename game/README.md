@@ -200,6 +200,17 @@ fails afterwards unless the editor's own log says the script both started and
 finished without errors. Run the editor by hand and neither is checked. It works
 with the editor open.
 
+**It also lists every file the run left changed.** Running the editor dirties the
+working tree in ways the script did not ask for: it rewrites
+`game/Config/DefaultEditor.ini` with its asset-viewer preview scene profiles, and
+it re-saves assets it merely happened to load. A re-saved `.uasset` is a new git
+LFS object rather than a readable diff, so one committed by accident inside a
+pull request about something else cannot be reviewed by anybody. The list is
+printed after the run, names the entries that are the editor's own bookkeeping,
+flags the binary ones, and gives the command that discards each kind. It reports
+and does not revert: the script's own output is a change to the working tree too,
+and only the person who ran it knows which is which. Issue #414.
+
 **It does not work from a git worktree, and it says so instead of doing nothing.**
 The editor cannot load a project whose C++ modules are not built, `game/Binaries/`
 is gitignored, so a worktree never has one. Before this check existed the editor

@@ -29,16 +29,20 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from run_editor_python import (  # noqa: E402
+    EDITOR_BOOKKEEPING_FILES,
     EDITOR_CMD,
     REQUIRED_MODULE_LIBRARIES,
     RUN_LOG,
     CannotRunEditorScript,
+    changes_between,
     check_preconditions,
+    describe_changes,
     is_worktree,
     missing_binaries_message,
     missing_module_libraries,
     script_outcome,
     script_started,
+    working_tree_state,
 )
 
 #: The script path used in all three captures below.
@@ -212,3 +216,168 @@ def test_the_run_log_is_not_the_editors_own_log():
     """
     assert RUN_LOG.name != "Cataclysm.log"
     assert RUN_LOG.parent.name == "Logs"
+
+
+# ---------------------------------------------------------------------------
+# What the run left changed
+#
+# WHY THIS EXISTS. Issue #414. Running the editor dirties the working tree in
+# ways the script did not ask for: it rewrites game/Config/DefaultEditor.ini with
+# about 57 kilobytes of asset-viewer preview scene profiles, and it re-saves
+# assets it merely happened to load. Both are committed files and .uasset is
+# stored in git LFS, so an incidental re-save is a new binary object rather than
+# a readable diff. It was caught once by checking the working tree by hand before
+# committing, and would be very easy to miss.
+# ---------------------------------------------------------------------------
+
+
+class TestWhatTheRunChanged:
+    def test_a_run_that_changed_nothing_reports_nothing(self):
+        """Silence is the ordinary case and must stay silent.
+
+        A report printed after every run, most of which change nothing beyond
+        the script's own output, is a warning people learn to skip.
+        """
+        assert changes_between({}, {}) == []
+        assert describe_changes([]) == ""
+
+    def test_a_file_the_run_touched_is_reported(self):
+        before = {}
+        after = {"game/Config/DefaultEditor.ini": " M"}
+
+        changed = changes_between(before, after)
+        assert changed == [("game/Config/DefaultEditor.ini", " M")]
+
+        report = describe_changes(changed)
+        assert "game/Config/DefaultEditor.ini" in report
+        assert "1 file(s) changed" in report
+
+    def test_a_file_that_was_already_dirty_is_not_blamed_on_the_run(self):
+        """THE ASSERTION THAT MAKES THE REPORT WORTH READING.
+
+        Somebody part way through a change runs a generator. Everything they
+        were already editing is modified before the editor starts. Reporting all
+        of it would bury the one file the editor really touched, which is the
+        only thing this exists to surface.
+        """
+        already = {"sim/cataclysm_sim/enemy_stats.py": " M",
+                   "game/Source/Cataclysm/Character/CataclysmBruteCharacter.cpp": " M"}
+        after = dict(already)
+        after["game/Content/Enemies/Demonic/Brute/ABP_Brute.uasset"] = " M"
+
+        changed = changes_between(already, after)
+        assert changed == [
+            ("game/Content/Enemies/Demonic/Brute/ABP_Brute.uasset", " M")]
+
+    def test_a_status_that_changed_is_reported_even_though_the_path_is_not_new(self):
+        """Untracked-then-written is a different fact from already-modified."""
+        before = {"game/Content/Enemies/Demonic/Brute/AM_Brute_Stomp.uasset": "??"}
+        after = {"game/Content/Enemies/Demonic/Brute/AM_Brute_Stomp.uasset": " M"}
+
+        assert changes_between(before, after) == [
+            ("game/Content/Enemies/Demonic/Brute/AM_Brute_Stomp.uasset", " M")]
+
+    def test_the_editor_bookkeeping_file_is_named_as_such(self):
+        """It is the one entry that is never the script's own output.
+
+        Everything else in the report may be exactly what the generator was run
+        to produce, and the runner cannot tell. This one cannot be.
+        """
+        report = describe_changes([(EDITOR_BOOKKEEPING_FILES[0], " M")])
+        assert "editor bookkeeping" in report
+        assert "not your script" in report
+
+    def test_a_binary_asset_is_flagged_as_unreviewable(self):
+        """The whole reason an incidental re-save matters more than a text change."""
+        for path in ("game/Content/Enemies/Demonic/Brute/ABP_Brute.uasset",
+                     "game/Content/Maps/L_Sandbox.umap"):
+            report = describe_changes([(path, " M")])
+            assert "git LFS" in report, path
+
+        text_only = describe_changes([("sim/cataclysm_sim/enemy_stats.py", " M")])
+        assert "git LFS" not in text_only
+
+    def test_the_report_says_how_to_discard_a_tracked_change(self):
+        """A list with nothing to do about it is only half of a report."""
+        report = describe_changes([("game/Config/DefaultEditor.ini", " M")])
+        assert "git checkout --" in report
+        assert "git clean" not in report, (
+            "a run that modified only tracked files was told how to remove an "
+            "untracked one, which is advice for a case that did not happen")
+
+    def test_an_untracked_file_is_given_the_command_that_works_on_it(self):
+        """`git checkout --` does nothing at all to an untracked file.
+
+        A newly written asset is untracked, and that is the case most likely to
+        be committed by accident. Sending somebody to a command that reports
+        success and leaves the file in place would be worse than saying nothing.
+        """
+        report = describe_changes(
+            [("game/Content/Enemies/Demonic/Brute/AM_New.uasset", "??")])
+        assert "git clean" in report
+        assert "git checkout --" not in report
+
+    def test_a_run_with_both_kinds_is_given_both_commands(self):
+        report = describe_changes([
+            ("game/Config/DefaultEditor.ini", " M"),
+            ("game/Content/Enemies/Demonic/Brute/AM_New.uasset", "??"),
+        ])
+        assert "git checkout --" in report
+        assert "git clean" in report
+
+    def test_reading_the_working_tree_gives_paths_relative_to_the_repository(self):
+        """Against the real repository, so the parsing is checked on real output.
+
+        Nothing is asserted about WHICH files are dirty -- that depends on what
+        the person running the tests happens to be doing. What is asserted is
+        that whatever comes back is shaped the way the report expects.
+        """
+        state = working_tree_state()
+        for path, code in state.items():
+            assert not path.startswith(("/", '"')), path
+            assert "\\" not in path, f"{path} should use forward slashes"
+            assert len(code) == 2, f"{path} has status {code!r}"
+
+    def test_it_survives_git_not_being_available(self, monkeypatch):
+        """A reporting aid must never stop a generator from running.
+
+        The editor scripts are the only way to build several assets in this
+        project, so a runner that refused to work without git would be a worse
+        problem than the one it reports.
+        """
+        import run_editor_python
+
+        def refuse(*args, **kwargs):
+            raise OSError("git is not installed")
+
+        # PATCHES THE subprocess MODULE ITSELF, because `run_editor_python`
+        # imports the module rather than the function. monkeypatch puts it back
+        # when the test ends, which is why this does not leak into the rest of
+        # the session.
+        monkeypatch.setattr(run_editor_python.subprocess, "run", refuse)
+        assert working_tree_state() == {}
+
+    def test_a_git_that_answers_with_an_error_is_not_believed(self, monkeypatch):
+        """Not every failure raises, and a failed git can still print something.
+
+        THE FAKE PRINTS A LINE ON PURPOSE. An earlier version of this test had it
+        exit non-zero with empty output, and then deleting the exit-code check
+        changed nothing -- the parse of an empty string returns an empty result
+        either way, so the test passed against broken code. Output plus a
+        non-zero code is what tells the two apart, and it is also what git really
+        does when it fails part way through reading a repository.
+        """
+        import subprocess
+
+        import run_editor_python
+
+        def refuse(*args, **kwargs):
+            return subprocess.CompletedProcess(
+                args=[], returncode=128,
+                stdout=" M game/Config/DefaultEditor.ini\n",
+                stderr="fatal: not a git repository")
+
+        monkeypatch.setattr(run_editor_python.subprocess, "run", refuse)
+        assert working_tree_state() == {}, (
+            "a git that reported failure was believed anyway, so a run could "
+            "report changes read out of a broken answer")
