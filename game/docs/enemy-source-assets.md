@@ -158,6 +158,25 @@ tracks. The pack realises a sprint by playing the jog faster rather than by
 animating a second gait. `Sprint_Quad_Fwd` duplicates `Jog_Quad_Fwd` the same
 way. Issue #386.
 
+**Corroborated a second way on 2026-08-08**, because the first measurement can no
+longer be repeated: it used
+`unreal.AnimationBlueprintLibrary.get_bone_pose_for_frame`, and that class is not
+exposed in this engine build — `tools/probe_brute_animation.py` reports it absent.
+The independent check is file size. `Jog_Biped_Fwd.uasset` is 176,346 bytes and
+`Sprint_Biped_Fwd.uasset` is 176,317, a difference of 29 bytes in 176 KB;
+`Jog_Quad_Fwd.uasset` and `Sprint_Quad_Fwd.uasset` are 160,766 and 160,778, twelve
+bytes apart. A difference that small is the asset name and its identifiers, not
+different bone data.
+
+**This is evidence, not proof.** Two clips with the same payload size could in
+principle differ. Opening both in the editor and scrubbing them side by side is
+the check that would settle it, and it takes a person about a minute.
+
+**What it means for the animation Blueprint, issue #387.** A locomotion blend
+space cannot have a walk axis and a run axis, because there is only one gait per
+stance. The two real choices the pack offers are the biped jog and the quadruped
+jog, which is what the current C++ already selects between by brain state.
+
 `Run_Fwd` is genuinely distinct — 0.667 s, 20 frames, 47 tracks against 189 —
 but it carries no `ik_foot_l` track, which is the measured reason the script
 reads zero for it. Its play rate would be a guess, and it looked like running on
@@ -246,11 +265,58 @@ attack.
 | `Ability_GroundSmash_End` | 0.70 | Stomp release |
 | `Ability_RMB_Smash` | 1.17 | Heavier single smash |
 | `Ability_Enrage_Start` / `_End` | 1.27 each | |
+| `Idle_Biped` | 4.33 | Standing |
+| `Jog_Biped_Fwd` | 1.00 | The walk |
+| `Sprint_Biped_Fwd` | 1.00 | Not a second gait. Identical to the jog; see below |
+| `Jog_Quad_Fwd` | 0.53 | The chase, on all fours |
+| `Sprint_Quad_Fwd` | 0.53 | Not a second gait either; see below |
+
+**Rip and Toss**, the thrown rock. Measured 2026-08-08 and never recorded here
+before: issue #382 listed these figures and stated in terms that they had not
+been re-measured. They are now, and every one matches what #382 quoted.
+
+| Animation | Length | Note |
+|---|:-:|---|
+| `Ability_RipNToss_Rip` | 1.13 | Tears the rock out of the ground |
+| `Ability_RipNToss_Idle` | 7.67 | Standing while holding it |
+| `Ability_RipNToss_Toss` | 0.87 | The throw |
+| `Ability_RipNToss_Cancel` | 0.47 | Drops it without throwing |
+
+The pack also ships the rock itself and the mess it makes, none of it used yet:
+`SM_Rock_To_Hold` and its material `M_Rock_To_Throw` under
+`Characters/Heroes/Rampage/`, and `SM_Rampage_Rock_Rip_Crater` plus five
+fragments `SM_Rampage_Rock_FragA` to `FragE` under `FX/Meshes/Debris/`. Issue
+#404 covers using them.
+
+**The rip clip is longer than the telegraph it plays inside.** The throw's
+wind-up is 1.0 s and the clip is 1.13 s, so at authored speed it is cut off
+before the rock comes free. `ACataclysmBruteCharacter::PlayOneShot` compresses it
+to fit. That is the whole reason that function speeds a clip up but never slows
+one down.
 
 The ground smash splitting into start, loop and end matters for #351, the Brute's
 ability design, which makes the stomp the only attack that stuns. A telegraph
 needs a wind-up that can be held open for a variable time, and the loop does
 that. The 0.83 s start fits inside the Brute's 1.4 s wind-up budget.
+
+**Nothing uses the loop yet.** The C++ holds the last frame of the start clip
+instead, because `EAnimationMode::AnimationSingleNode` plays one clip at a time
+and switching to the loop mid-telegraph would add a second hard cut to the one
+that already exists between the wind-up and the release. Playing start, then
+loop, then end as one movement is the animation Blueprint's job, issue #387.
+
+### How these were measured
+
+`tools/probe_brute_animation.py`, run through `tools/run_editor_python.py`. It
+reads `get_play_length()` on each asset inside the editor and prints it. Re-run it
+after importing or replacing any of these:
+
+```
+python tools/run_editor_python.py tools/probe_brute_animation.py
+```
+
+It changes nothing. The results land in `game/Saved/Logs/run_editor_python.log`,
+on the lines beginning `PROBE|`.
 
 ### The Succubus — Countess
 
