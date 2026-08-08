@@ -383,6 +383,30 @@ assets rather than of the pack:
 | `SM_Rock_02` | `M_RockPile_MeshEmit_01` |
 | `SM_Boulders_1` | `M_RockSlab` |
 
+**Where the rock comes out of the ground, measured.** Issue #432 asks where the
+crater goes, and the animation answers it. Following both hands through
+`Ability_RipNToss_Rip` with `unreal.AnimPoseExtensions` on 2026-08-08:
+
+| Bone | Lowest at | Position in the animation's own space |
+|---|---|---|
+| `hand_l` | 0.2833 s | (83.8, 62.0, 2.9) |
+| `hand_r` | 0.2644 s | (-84.9, 43.7, 2.9) |
+
+Their midpoint is **(-0.6, 52.9)**, so the rock comes out **52.9 cm in front of
+the creature**, on the floor. The half-centimetre is the check on the whole
+measurement: a two-handed rip is symmetric about the centre line, and a midpoint
+anywhere else would have meant the wrong bones or the wrong axis.
+
+**Forward is +Y in that space, not +X.** The Rampage mesh takes a -90 degree yaw
+on its component to face the way its actor faces.
+`tools/measure_animation_stride.py` records the same trap from the other side: a
+first version of it measured X, got symmetric extremes about zero -- the
+signature of a side-to-side axis -- and reported a nonsense jog speed.
+
+**The clip is 1.1333 s long**, so the hands reach the ground 23% of the way
+through it. The montage compresses the rip, so the wall-clock moment is that
+0.2644 divided by the play rate rather than 0.2644 of wall clock.
+
 **The fragments are also large.** Their half-widths run from 56 to 96 cm against
 the whole rock's 103, so five of them at their authored size would be five more
 boulders rather than one rock broken up. `Scatter` sizes each piece from its own

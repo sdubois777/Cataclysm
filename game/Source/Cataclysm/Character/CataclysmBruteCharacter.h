@@ -291,6 +291,143 @@ public:
 	static constexpr float RockFragmentRadiusCm = 13.0f;
 	static constexpr float RockFragmentSpreadCm = 26.0f;
 
+	/**
+	 * The hole the rock was torn out of.
+	 *
+	 * Issue #432. `Ability_RipNToss_Rip` is an animation whose whole content is
+	 * reaching down, tearing a rock out of the ground and lifting it. Since
+	 * issue #421 the rock is visibly in the creature's hand while it does that.
+	 * The ground it came out of was untouched.
+	 *
+	 * IT CARRIES THE CHECKERBOARD TOO, like the five fragments before it.
+	 * Measured 2026-08-08 and recorded in `game/docs/enemy-source-assets.md`:
+	 * `SM_Rampage_Rock_Rip_Crater` has `/Engine/EngineMaterials/WorldGridMaterial`
+	 * assigned. So it wears `RockMaterial`, from the rock that came out of it,
+	 * exactly as the fragments do.
+	 */
+	static const TCHAR* RockCraterMeshPath;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UStaticMesh> RockCraterMesh;
+
+	/**
+	 * How far in front of the creature the rock comes out of the ground, in
+	 * centimetres.
+	 *
+	 * MEASURED OUT OF THE CLIP RATHER THAN JUDGED BY EYE, which is the first of
+	 * the four decisions issue #432 asks for. Following both hands through
+	 * `Ability_RipNToss_Rip` with `AnimPoseExtensions` on 2026-08-08:
+	 *
+	 *     hand_l  lowest at 0.2833 s  ( 83.8, 62.0, 2.9)
+	 *     hand_r  lowest at 0.2644 s  (-84.9, 43.7, 2.9)
+	 *
+	 * Their midpoint is (-0.6, 52.9). THE HALF-CENTIMETRE IS THE CHECK: a
+	 * two-handed rip should be symmetric about the creature's centre line, and a
+	 * midpoint that landed anywhere else would have meant the wrong bones or the
+	 * wrong axis.
+	 *
+	 * AND THE AXIS IS Y, NOT X. The Rampage mesh takes a -90 degree yaw on its
+	 * component to face the way its actor faces, so forward in the animation's
+	 * own space is +Y. `tools/measure_animation_stride.py` records the same trap
+	 * from the other side: a first version of it measured X, got symmetric
+	 * extremes about zero -- the signature of a side-to-side axis -- and reported
+	 * a nonsense jog speed.
+	 */
+	static constexpr float CraterAheadCm = 52.9f;
+
+	/**
+	 * How wide the hole is, in centimetres.
+	 *
+	 * A JUDGEMENT, AND LABELLED AS ONE. Slightly wider than the 40 cm rock that
+	 * came out of it, which is the only relationship between the two that can be
+	 * argued for without watching it.
+	 * `ACataclysmProjectile::DefaultBodyRadiusCm` is that 40.
+	 */
+	static constexpr float CraterRadiusCm = 50.0f;
+
+	/**
+	 * How long the hole stays, in seconds.
+	 *
+	 * DELIBERATELY UNDER THE THROW'S OWN COOLDOWN, which is the third and fourth
+	 * of issue #432's decisions taken together. `RockThrowCooldownSeconds` is 5,
+	 * so a lifetime below it means ONE BRUTE CAN NEVER HAVE TWO CRATERS. That
+	 * turns "how do craters accumulate" from a thing needing a manager and a cap
+	 * into an invariant, and there is a test holding it.
+	 *
+	 * WHICH ALSO ANSWERS PER-BRUTE VERSUS PER-PLACE. Each creature rips its own
+	 * rock out of the ground in front of itself, so the crater belongs to the
+	 * Brute that made it and goes away on its own. Two Brutes standing in the
+	 * same place is not a case to design for; their capsules do not overlap.
+	 *
+	 * NOBODY HAS WATCHED THIS. Four seconds is long enough to still be there
+	 * when the rock lands and short enough to satisfy the invariant above.
+	 */
+	static constexpr float CraterSecondsOnTheGround = 4.0f;
+
+	/**
+	 * When in `Ability_RipNToss_Rip`, at its authored speed, the hands reach the
+	 * ground. Seconds.
+	 *
+	 * MEASURED, as above: `hand_r` bottoms out at 0.2644 s and `hand_l` at
+	 * 0.2833 s, both 2.9 cm off the floor. The earlier of the two is used,
+	 * because that is when the ground is first broken.
+	 *
+	 * THIS IS THE SECOND OF ISSUE #432'S DECISIONS -- when the hole appears. Not
+	 * at the start of the wind-up, or it is there before anything has dug it.
+	 * The clip is compressed by `MontageRateFor`, so the wall-clock moment is
+	 * this divided by the rate. See RipReachesGroundAtSeconds.
+	 */
+	static constexpr float RipReachesGroundSeconds = 0.2644f;
+
+	/**
+	 * Leaves the crater once the hands have reached the ground. Called every
+	 * frame from Tick.
+	 *
+	 * COMPARED AGAINST THE CLOCK EVERY FRAME RATHER THAN SET AS A TIMER, for the
+	 * reason UpdateAbilityMontage gives at length: a timer fixes its deadline
+	 * when it is created, which is how a held clip came to fire on the wrong
+	 * side of the pass that landed its ability in pull request #411.
+	 */
+	void UpdateRipCrater();
+
+	/** Where the rock comes out of the ground, in world space. */
+	FVector RipCraterLocation() const;
+
+	/**
+	 * How long after the wind-up begins the hands reach the ground, in seconds
+	 * of wall clock.
+	 *
+	 * The montage does not start when the wind-up does -- MontageDelaySecondsFor
+	 * waits out whatever the animation does not cover -- and it does not play at
+	 * its authored speed either. Both are asked rather than assumed.
+	 */
+	float RipReachesGroundAtSeconds() const;
+
+	/**
+	 * The same moment, from a delay and a play rate given to it.
+	 *
+	 * SPLIT OUT SO THAT THE COMPRESSION CAN BE TESTED AT ALL. The rate comes
+	 * from a montage, and a test that asks the member function above when to
+	 * advance its clock moves with whatever that function does -- deleting the
+	 * division by the rate left all four crater tests passing, which is how this
+	 * was found. Given the rate directly, a test can say the load-bearing thing:
+	 * an animation played twice as fast reaches the ground in half the time.
+	 */
+	static float RipReachesGroundAtSeconds(float DelaySeconds, float Rate);
+
+	/**
+	 * Whether this wind-up has already dug its hole.
+	 *
+	 * ONE PER THROW. Without it Tick would spawn a crater every frame from the
+	 * moment the hands land until the rock leaves. Cleared when the creature
+	 * stops winding up the throw, which is the same question UpdateCarriedRock
+	 * asks and covers every way a wind-up can end.
+	 *
+	 * Read by tests, which is why it is not private.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bCraterLeftForThisThrow = false;
+
 	/** The montage for one ability, or null if the art is absent. */
 	class UAnimMontage* AbilityMontageFor(int32 Index) const;
 

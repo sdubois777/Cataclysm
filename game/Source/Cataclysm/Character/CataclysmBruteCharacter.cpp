@@ -32,6 +32,12 @@ const TCHAR* ACataclysmBruteCharacter::RockMeshPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Meshes/Rocks/"
 		 "SM_Rock_To_Hold.SM_Rock_To_Hold");
 
+// The hole the rock came out of. In the FX folder rather than beside the rock,
+// which is why it is a separate path rather than a sibling of the one above.
+const TCHAR* ACataclysmBruteCharacter::RockCraterMeshPath =
+	TEXT("/Game/ParagonRampage/FX/Meshes/Debris/"
+		 "SM_Rampage_Rock_Rip_Crater.SM_Rampage_Rock_Rip_Crater");
+
 const FName ACataclysmBruteCharacter::AttackSlotName = TEXT("DefaultSlot");
 
 // A BONE, NOT A SOCKET. The Rampage mesh has no sockets at all -- find_socket
@@ -190,6 +196,10 @@ void ACataclysmBruteCharacter::Tick(float DeltaSeconds)
 
 	// EVERY FRAME AND FROM THE BRAIN, for the same reason as the line above.
 	UpdateCarriedRock();
+
+	// AND AGAIN FOR THE HOLE THE ROCK CAME OUT OF, which appears part way
+	// through the same wind-up rather than at either end of it. Issue #432.
+	UpdateRipCrater();
 }
 
 void ACataclysmBruteCharacter::ApplyChaseSpeed()
@@ -535,6 +545,103 @@ void ACataclysmBruteCharacter::UpdateCarriedRock()
 	CarriedRock->SetHiddenInGame(!bHolding || RockMesh == nullptr);
 }
 
+float ACataclysmBruteCharacter::RipReachesGroundAtSeconds() const
+{
+	UAnimMontage* Montage = AbilityMontageFor(RockThrowAbility);
+
+	const float LandsAt = LandsAtSecondsFor(WindUpSecondsFor(RockThrowAbility));
+	const float Rate =
+		MontageRateFor(ImpactSecondsFor(Montage, RockThrowAbility), LandsAt);
+
+	// THE DELAY FIRST, THEN THE CLIP. The montage does not begin when the
+	// wind-up does: MontageDelaySecondsFor waits out whatever the animation is
+	// too short to cover. Adding the measured moment to the wind-up's start
+	// instead would put the hole in the ground before the creature had reached
+	// for it, by exactly that delay.
+	const float Delay = MontageDelaySecondsFor(Montage, RockThrowAbility);
+
+	return RipReachesGroundAtSeconds(Delay, Rate);
+}
+
+float ACataclysmBruteCharacter::RipReachesGroundAtSeconds(float DelaySeconds,
+														 float Rate)
+{
+	// DIVIDED BY THE RATE, because the rip is compressed. The rock throw is
+	// compressed hard -- 1.67 at the time of writing, which is what issue #416
+	// is about -- so measuring 0.2644 s of authored clip and then waiting 0.2644
+	// s of wall clock would be most of a fifth of a second late, and the hole
+	// would appear after the creature had already lifted the rock out of it.
+	return DelaySeconds
+		+ RipReachesGroundSeconds / FMath::Max(Rate, UE_SMALL_NUMBER);
+}
+
+FVector ACataclysmBruteCharacter::RipCraterLocation() const
+{
+	// FORWARD OF THE CREATURE, NOT AT ITS FEET. The rip reaches down and out;
+	// the two hands bottom out 52.9 cm ahead of the centre line. See the header
+	// for the measurement and for why the axis is not the obvious one.
+	FVector Where = GetActorLocation()
+		+ GetActorForwardVector() * CraterAheadCm;
+
+	// ON THE FLOOR RATHER THAN AT THE ACTOR'S HEIGHT. An actor's location is the
+	// middle of its capsule, so a crater left there would hang in the air at
+	// chest height. The hands stop 2.9 cm off the ground, which is the ground.
+	if (const UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Where.Z = GetActorLocation().Z - Capsule->GetScaledCapsuleHalfHeight();
+	}
+
+	return Where;
+}
+
+void ACataclysmBruteCharacter::UpdateRipCrater()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// ASKED, NOT REMEMBERED, exactly as UpdateCarriedRock does. Every way a
+	// wind-up can end clears this on the controller, so clearing the flag here
+	// covers the attack landing, a stun cancelling it and the pawn being
+	// unpossessed without this function knowing what any of them are.
+	const ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(GetController());
+	if (!Brain || Brain->WindingUpAbility != RockThrowAbility)
+	{
+		bCraterLeftForThisThrow = false;
+		return;
+	}
+
+	if (bCraterLeftForThisThrow || !RockCraterMesh)
+	{
+		return;
+	}
+
+	// COMPARED AGAINST THE CLOCK EVERY FRAME. See the header, and the much
+	// longer note on UpdateAbilityMontage that this follows.
+	const float Elapsed = World->GetTimeSeconds() - AbilityWindUpBeganAtSeconds;
+	if (Elapsed + UE_KINDA_SMALL_NUMBER < RipReachesGroundAtSeconds())
+	{
+		return;
+	}
+
+	bCraterLeftForThisThrow = true;
+
+	// ONE PIECE, NO SPREAD. ACataclysmDebrisBurst is the project's way of
+	// putting meshes on the ground for a short time and taking them away again,
+	// and issue #422 built it generic on purpose -- it names no project content
+	// and knows nothing about rocks. A crater is that mechanism with a single
+	// piece, which is why there is no second actor here.
+	//
+	// IT NEEDS THE MATERIAL FOR THE SAME REASON THE FRAGMENTS DO. The crater
+	// mesh carries the engine's checkerboard placeholder.
+	ACataclysmDebrisBurst::Scatter(
+		this, RipCraterLocation(), {RockCraterMesh}, RockMaterial,
+		/*SpreadCm=*/0.0f, CraterRadiusCm, CraterSecondsOnTheGround);
+}
+
 void ACataclysmBruteCharacter::UpdateAbilityMontage()
 {
 	if (PendingAbilityMontage == INDEX_NONE)
@@ -867,6 +974,12 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 	// THE MATERIAL COMES FROM THE ROCK, NOT FROM THE FRAGMENTS. See the note on
 	// RockFragmentPathFormat: the fragments ship with the engine's checkerboard.
 	RockMaterial = RockMesh ? RockMesh->GetMaterial(0) : nullptr;
+
+	// THE HOLE IT CAME OUT OF. Null without the pack, which leaves the rip
+	// exactly as it was rather than breaking it -- UpdateRipCrater checks.
+	// It wears RockMaterial for the same reason the fragments do. Issue #432.
+	RockCraterMesh =
+		Cast<UStaticMesh>(FSoftObjectPath(RockCraterMeshPath).TryLoad());
 
 	RockFragments.Reset();
 	for (int32 Piece = 0; Piece < RockFragmentCount; ++Piece)
