@@ -69,6 +69,15 @@ namespace CataclysmBruteTest
 
 	/** The base enemy capsule half-height in CataclysmEnemyCharacter.cpp. */
 	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+
+	/**
+	 * The base enemy capsule radius in CataclysmEnemyCharacter.cpp.
+	 *
+	 * The six vertical slice enemies that have no class of their own are this
+	 * wide. tools/tests/test_enemy_abilities.py holds it against the design
+	 * model's default body radius of 0.48 m.
+	 */
+	constexpr float BaseEnemyCapsuleRadius = 48.0f;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -163,16 +172,24 @@ bool FCataclysmBruteCanActuallyReachThePlayer::RunTest(const FString&)
 	using namespace CataclysmBruteTest;
 
 	// ARITHMETIC, NOT A WORLD. This is the check that the Brute's reach is
-	// reachable at all, and it is the reason ACataclysmEnemyController::Think
-	// measures horizontal distance rather than 3D distance.
+	// reachable at all, and it is why ACataclysmEnemyController::Think measures
+	// floor-plane distance rather than 3D distance.
 	//
 	// Two capsules touching are their two radii apart on the floor plane. Their
-	// centres are not at the same height, because a player's capsule is 96 cm
-	// half-height and an enemy's is 80.
+	// centres are not at the same height: a player's capsule is 96 cm
+	// half-height and a BRUTE'S IS 110, so the Brute's centre is 14 cm ABOVE the
+	// player's.
+	//
+	// THE BRUTE'S OWN HALF-HEIGHT, NOT THE BASE ENEMY'S. Until 2026-08-08 this
+	// test used the 80 cm from ACataclysmEnemyCharacter, which is the wrong
+	// capsule for the creature the test is named after. It gave a 16 cm gap
+	// where the Brute's is 14, and a 91.41 cm 3D distance where the Brute's is
+	// 91.08. Both still cleared the assertion below, so the test passed while
+	// describing a creature that does not exist.
 	const float ContactHorizontal =
 		ACataclysmBruteCharacter::BruteCapsuleRadius + PlayerCapsuleRadius;
 	const float HeightDifference =
-		PlayerCapsuleHalfHeight - BaseEnemyCapsuleHalfHeight;
+		ACataclysmBruteCharacter::BruteCapsuleHalfHeight - PlayerCapsuleHalfHeight;
 	const float Contact3D = FMath::Sqrt(
 		ContactHorizontal * ContactHorizontal
 		+ HeightDifference * HeightDifference);
@@ -182,19 +199,100 @@ bool FCataclysmBruteCanActuallyReachThePlayer::RunTest(const FString&)
 	TestEqual(TEXT("contact on the floor plane is exactly the designed reach"),
 		ContactHorizontal, Reach);
 
-	// THE GUARD. If someone changes the controller back to a 3D distance, this
-	// records what breaks: the Brute pressed against the player measures further
-	// away than its own reach and chases for ever.
 	TestTrue(
-		TEXT("3D distance at contact EXCEEDS the reach, which is why the "
-			 "controller must not use it"),
+		TEXT("3D distance at contact exceeds the reach, which is why the "
+			 "controller measures the floor plane"),
 		Contact3D > Reach);
 
+	// AND THE HONEST PART, WHICH THIS TEST DID NOT SAY BEFORE. Measuring in 3D
+	// would no longer actually stop the Brute attacking, because Think() chases
+	// only when the distance exceeds the reach PLUS ContactToleranceCm, and that
+	// tolerance is 2 cm against a 1.08 cm excess.
+	//
+	// The tolerance did not exist when issue #373 was written: the floor-plane
+	// change landed in pull request #367 and the tolerance in #385 and #388.
+	// TWO MECHANISMS NOW COVER THE SAME GAP, so neither can be caught by a
+	// behaviour test on its own. Cataclysm.Enemy.EveryHeightGapFitsInsideTheContactTolerance
+	// is the guard for the day that stops being true.
+	TestTrue(
+		TEXT("and the contact tolerance currently absorbs that excess, so the "
+			 "3D distance would still be treated as in reach"),
+		Contact3D <= Reach + ACataclysmEnemyController::ContactToleranceCm);
+
 	// And the same check for the training dummy, showing why this never showed
-	// up before: its reach has 110 cm of margin.
+	// up before: its reach has over a metre of margin.
 	constexpr float OrdinaryReach = 200.0f;
 	TestTrue(TEXT("an ordinary enemy had margin to spare either way"),
 		Contact3D < OrdinaryReach);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmEveryHeightGapFitsInsideTheContactTolerance,
+	"Cataclysm.Brute.EveryHeightGapFitsInsideTheContactTolerance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEveryHeightGapFitsInsideTheContactTolerance::RunTest(const FString&)
+{
+	using namespace CataclysmBruteTest;
+
+	// WHAT THIS IS FOR, AND IT IS NOT WHAT IT LOOKS LIKE. Issue #373 changed
+	// Think() from a 3D distance to a floor-plane one, because a Brute pressed
+	// against a player measured further away than its own reach. That was true
+	// when it was written. It is not true now: ContactToleranceCm arrived
+	// afterwards and is 2 cm, which is wider than any height gap in the project
+	// costs at contact.
+	//
+	// SO NEITHER MECHANISM IS LOAD-BEARING ON ITS OWN TODAY, and no behaviour
+	// test can catch either being removed. Measured on 2026-08-08: changing
+	// FVector::Dist2D back to FVector::Dist in the controller left all 204
+	// automation tests passing.
+	//
+	// THIS TEST IS THE TRIPWIRE FOR THE DAY THAT CHANGES. A taller creature, a
+	// wider one, or a smaller tolerance makes the choice matter again, and then
+	// removing the floor-plane measurement really would stop that creature ever
+	// landing a hit. When this fails, the answer is not to widen the tolerance:
+	// it is to note that Think() measuring the floor plane has become
+	// load-bearing and to guard it as such.
+	const float Tolerance = ACataclysmEnemyController::ContactToleranceCm;
+
+	struct FCreature
+	{
+		const TCHAR* Name;
+		float CapsuleRadius;
+		float CapsuleHalfHeight;
+		float Reach;
+	};
+
+	// EVERY ENEMY CLASS THAT SETS ITS OWN CAPSULE. The base class is what the
+	// other six vertical slice enemies will use until each gets its own.
+	const FCreature Creatures[] = {
+		{TEXT("the base enemy"), BaseEnemyCapsuleRadius,
+		 BaseEnemyCapsuleHalfHeight, 200.0f},
+		{TEXT("the Brute"), ACataclysmBruteCharacter::BruteCapsuleRadius,
+		 ACataclysmBruteCharacter::BruteCapsuleHalfHeight,
+		 ACataclysmBruteCharacter::DesignedMeleeReachCm},
+	};
+
+	for (const FCreature& Creature : Creatures)
+	{
+		const float ContactHorizontal = Creature.CapsuleRadius + PlayerCapsuleRadius;
+		const float HeightGap =
+			FMath::Abs(Creature.CapsuleHalfHeight - PlayerCapsuleHalfHeight);
+		const float Contact3D = FMath::Sqrt(
+			ContactHorizontal * ContactHorizontal + HeightGap * HeightGap);
+
+		// THE EXCESS THE HEIGHT COSTS, which is what the tolerance has to cover.
+		const float Excess = Contact3D - ContactHorizontal;
+
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: standing at contact costs %.2f cm of extra distance "
+					 "when measured in 3D, and the contact tolerance is %.2f cm"),
+				Creature.Name, Excess, Tolerance),
+			Excess <= Tolerance);
+	}
 
 	return true;
 }
