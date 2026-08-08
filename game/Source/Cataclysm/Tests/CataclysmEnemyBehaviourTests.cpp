@@ -1860,6 +1860,206 @@ bool FCataclysmBruteAlwaysHasSomethingToDoTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------
+// Finishing an attack
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteFinishesItsAbilitiesTest,
+	"Cataclysm.AI.ABrutePlaysTheSecondHalfOfAnAbilityInsteadOfCancelling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// WHAT THIS GUARDS. Reported from a play session on 2026-08-08: "he winds
+	// up, and then cancels", for both the stomp and the rock throw. Each
+	// ability is two clips and only the wind-up was ever played, so at the
+	// moment of impact the mesh was handed straight back to the standing and
+	// walking animations and the attack visibly stopped part way through.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// BeginPlay does not fire in a world built this way, so the art half of
+	// this test would silently never run without asking for the body directly.
+	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	if (Brute.Actor->StompReleaseAnimation == nullptr)
+	{
+		// The Paragon packs are gitignored, so this is the state in continuous
+		// integration and on a fresh clone. Landing an ability must still work
+		// and must not claim to be holding a mesh it has no animation for.
+		Brute.Actor->UseEnemyAbility(ACataclysmBruteCharacter::StompAbility,
+									 Player.Actor, FVector::ZeroVector);
+		TestFalse(TEXT("with no release animation loaded it does not claim to hold "
+					   "the mesh"),
+			Brute.Actor->IsSwinging());
+		AddInfo(TEXT("The Paragon art is absent, so only the no-art half of this "
+					 "test ran. Install the pack to exercise the rest."));
+		return true;
+	}
+
+	// --- The stomp ---------------------------------------------------------
+
+	const float WindUpBegan = static_cast<float>(World->GetTimeSeconds());
+	TestEqual(TEXT("the Brute begins a stomp"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+
+	// THE WIND-UP FILLS THE WHOLE TELEGRAPH. The ground smash wind-up clip is
+	// 0.83 seconds inside a 1.4 second telegraph, so at normal speed it used to
+	// finish and freeze on its last frame for the remaining half second.
+	TestEqual(TEXT("and holds the mesh for the whole wind-up"),
+		Brute.Actor->SwingUntilSeconds - WindUpBegan,
+		ACataclysmBruteCharacter::StompWindUpSeconds);
+
+	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
+
+	const float Landed = static_cast<float>(World->GetTimeSeconds());
+	TestEqual(TEXT("the stomp lands"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+
+	// THE POINT OF THE WHOLE TEST. Before this, nothing was played when an
+	// ability landed, so SwingUntilSeconds was already in the past here and
+	// locomotion took the mesh back on the very next frame.
+	TestTrue(TEXT("landing the stomp starts an animation"),
+		Brute.Actor->IsSwinging());
+	TestEqual(TEXT("and it is the release clip, held for its own length"),
+		Brute.Actor->SwingUntilSeconds - Landed,
+		Brute.Actor->StompReleaseAnimation->GetPlayLength());
+
+	// --- The rock throw ----------------------------------------------------
+
+	if (Brute.Actor->RockThrowReleaseAnimation == nullptr)
+	{
+		AddError(TEXT("The stomp release animation loaded but the rock throw one "
+					  "did not, which means one of the two paths is wrong."));
+		return false;
+	}
+
+	// Out to five metres: beyond the stomp's 3.5 m ring, inside the throw's 10 m.
+	Player.Actor->SetActorLocation(FVector(5 * M, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::RockThrowCooldownSeconds + 0.1);
+
+	const float ThrowBegan = static_cast<float>(World->GetTimeSeconds());
+	TestEqual(TEXT("the Brute begins a rock throw"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and it is the rock, not the stomp"),
+		Brain->WindingUpAbility,
+		int32(ACataclysmBruteCharacter::RockThrowAbility));
+
+	// THE RIP CLIP IS LONGER THAN ITS TELEGRAPH, which is the opposite problem
+	// to the stomp's: at normal speed it was cut off before the rock left the
+	// ground. Holding for the telegraph and deriving the play rate fixes both.
+	TestEqual(TEXT("the wind-up holds the mesh for the whole telegraph"),
+		Brute.Actor->SwingUntilSeconds - ThrowBegan,
+		ACataclysmBruteCharacter::RockThrowWindUpSeconds);
+
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::RockThrowWindUpSeconds + 0.1);
+
+	const float Thrown = static_cast<float>(World->GetTimeSeconds());
+	Brain->Think();
+
+	TestTrue(TEXT("landing the throw starts an animation"),
+		Brute.Actor->IsSwinging());
+	TestEqual(TEXT("and it is the throw clip, held for its own length"),
+		Brute.Actor->SwingUntilSeconds - Thrown,
+		Brute.Actor->RockThrowReleaseAnimation->GetPlayLength());
+
+	// AND THE TWO RELEASES ARE DIFFERENT CLIPS, or a copy-paste in
+	// ReleaseAnimationFor would give the Brute one animation for everything and
+	// every assertion above would still pass.
+	TestNotEqual(TEXT("the stomp and the throw release differently"),
+		Brute.Actor->StompReleaseAnimation.Get(),
+		Brute.Actor->RockThrowReleaseAnimation.Get());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteWindUpFillsItsWindowTest,
+	"Cataclysm.AI.ABruteStretchesAWindUpClipToFillItsTelegraph",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteWindUpFillsItsWindowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE PLAY RATE, READ OFF THE MESH RATHER THAN INFERRED. The test above
+	// checks how long the mesh is held, which was already correct before this
+	// change and so proves nothing about the speed the clip runs at. This reads
+	// the rate that was actually set.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
+
+	if (Brute.Actor->StompAnimation == nullptr)
+	{
+		AddInfo(TEXT("The Paragon art is absent, so this test could not run. "
+					 "Install the pack to exercise it."));
+		return true;
+	}
+
+	USkeletalMeshComponent* MeshComponent = Brute.Actor->GetMesh();
+	UAnimSingleNodeInstance* Single =
+		MeshComponent ? MeshComponent->GetSingleNodeInstance() : nullptr;
+	if (!Single)
+	{
+		AddInfo(TEXT("The mesh has no single node instance, so the play rate "
+					 "could not be read. The length assertions in the test above "
+					 "still ran."));
+		return true;
+	}
+
+	Brute.Actor->BeginEnemyAbilityWindUp(
+		ACataclysmBruteCharacter::StompAbility, nullptr);
+
+	const float ClipLength = Brute.Actor->StompAnimation->GetPlayLength();
+	const float Wanted = ClipLength / ACataclysmBruteCharacter::StompWindUpSeconds;
+
+	TestEqual(FString::Printf(
+		TEXT("a %.2f s clip inside a %.2f s telegraph plays at %.3f"),
+		ClipLength, ACataclysmBruteCharacter::StompWindUpSeconds, Wanted),
+		Single->GetPlayRate(), Wanted);
+
+	// AND IT IS NOT SIMPLY 1.0, which is what it used to be and what a broken
+	// derivation would most likely fall back to.
+	TestTrue(TEXT("which is not the normal speed it used to play at"),
+		!FMath::IsNearlyEqual(Wanted, 1.0f));
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
 // Being stunned
 // --------------------------------------------------------------------------
 

@@ -130,19 +130,46 @@ public:
 	static constexpr float RockThrowDamagePercent = 150.0f;
 	//~ End designed ability numbers
 
-	/** Where the ground smash animation lives. */
+	//~ Each ability is TWO clips: the wind-up, then the release.
+	//
+	// BOTH HALVES ARE NEEDED AND ONLY THE FIRST USED TO BE PLAYED. The wind-up
+	// clip ends with the creature poised -- fist raised, rock held overhead --
+	// and the release is the half where the attack actually happens. Playing
+	// only the wind-up meant the mesh was handed back to the walking and
+	// standing animations at the moment of impact, so the Brute visibly began
+	// each attack and then abandoned it. Reported from a play session on
+	// 2026-08-08 as "he winds up, and then cancels".
+
+	/** Where the ground smash wind-up lives. */
 	static const TCHAR* StompAnimationPath;
 
-	/** Where the rock throw animation lives. */
+	/** Where the ground smash release lives. This is the impact. */
+	static const TCHAR* StompReleaseAnimationPath;
+
+	/** Where the rock throw wind-up lives. Tearing the rock out of the ground. */
 	static const TCHAR* RockThrowAnimationPath;
 
-	/** The ground smash. Null until ResolveBody runs. */
+	/** Where the rock throw release lives. This is the throw. */
+	static const TCHAR* RockThrowReleaseAnimationPath;
+
+	/** The ground smash wind-up. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> StompAnimation;
 
-	/** The rock throw. Null until ResolveBody runs. */
+	/** The ground smash release. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> StompReleaseAnimation;
+
+	/** The rock throw wind-up. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> RockThrowAnimation;
+
+	/** The rock throw release. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> RockThrowReleaseAnimation;
+
+	/** The release clip for one ability, or null if the art is absent. */
+	class UAnimSequence* ReleaseAnimationFor(int32 Index) const;
 
 	/**
 	 * Chooses the standing or walking animation and sets the walk's play rate.
@@ -219,6 +246,32 @@ public:
 	 * absent, which is every fresh clone.
 	 */
 	void PlayAttackAnimation();
+
+	/**
+	 * Play one animation from its first frame and keep the mesh for a duration.
+	 *
+	 * THE ONE PLACE THE MESH IS TAKEN OVER, so the three callers cannot drift.
+	 * The swing, the wind-up and the release all mean the same thing -- this
+	 * clip owns the creature until this moment -- and they used to say it in
+	 * three copies of the same six lines.
+	 *
+	 * THE PLAY RATE IS DERIVED, NOT PASSED IN, and that is the point of taking a
+	 * duration rather than a rate. The clip is stretched or compressed to fill
+	 * exactly the time it is being held for, which fixes two faults that looked
+	 * like one: the 0.83 second ground smash wind-up used to finish and then
+	 * freeze on its last frame for the remaining 0.57 seconds of a 1.4 second
+	 * telegraph, and the rock throw wind-up used to be cut off part way because
+	 * the clip is longer than the 1.0 second telegraph it plays inside.
+	 *
+	 * The rate is clamped to MinimumPlayRate and MaximumPlayRate, so a clip
+	 * wildly out of proportion to its window plays wrong rather than absurdly.
+	 *
+	 * Does nothing when the animation is null, which is every fresh clone.
+	 *
+	 * @param HoldSeconds  how long the mesh is kept. Zero or less uses the
+	 *                     clip's own length, which means play it at normal speed.
+	 */
+	void PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
 
 	/**
 	 * Whether the swing animation is still playing and should not be replaced.
