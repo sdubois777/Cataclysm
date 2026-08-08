@@ -300,19 +300,22 @@ ARCHETYPES: dict[str, Archetype] = {
             # after a Brute that chased at its patrol speed was reported as
             # barely a threat.
             #
-            # IT IS STILL SLOWER THAN THE PLAYER, AND THE MARGIN IS NOT THE ONE
-            # THE DESIGN THINKS IT IS. The design gives the three Demonic
-            # classes 3.5, 4.0 and 4.6 metres per second, and 5.0 would beat all
-            # three -- but no player character in the engine uses any of those.
-            # ACataclysmPlayerCharacter never sets MaxWalkSpeed, so it runs at
-            # Unreal's default of 6.0 metres per second. Measured 2026-08-07;
-            # issue #391.
+            # IT IS NOW FASTER THAN THE PLAYER, AND THAT IS NOT WHAT WAS
+            # JUDGED. When 5.0 was chosen, ACataclysmPlayerCharacter never
+            # assigned MaxWalkSpeed and the player ran at Unreal's default of
+            # 6.0 metres per second, so 5.0 left a 1.0 margin in the player's
+            # favour: they could break away, but only by committing to it,
+            # which is what playing it was reported to feel like. Issue #391
+            # fixed that on 2026-08-08 and the player now walks at the 4.0 the
+            # class stat data gives, so the same 5.0 is a 1.0 margin AGAINST
+            # them and this creature cannot be walked away from at all.
             #
-            # So against what the game actually runs, 5.0 leaves the player a
-            # 1.0 metre per second margin: they can break away, but only by
-            # committing to it, which is what playing it was reported to feel
-            # like. Against the design's own figures it would be unescapable.
-            # WHEN #391 IS FIXED THIS NUMBER HAS TO BE RE-JUDGED.
+            # SCALING IT DOWN IS NOT ENOUGH. ABP_Brute chooses the four-legged
+            # chase gait above 3.75 metres per second, so the usable window
+            # against a 4.0 player is 3.75 to 4.0; and the Ritualist is
+            # designed at 3.5, which no chase speed that triggers that gait can
+            # be escaped by. That is a design question rather than arithmetic
+            # and it is issue #417.
             #
             # "CAN BE OUTMANOEUVRED" HOLDS EITHER WAY, through the turn rate
             # rather than through footspeed. A player circling at the Brute's

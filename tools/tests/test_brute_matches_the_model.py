@@ -127,8 +127,14 @@ def test_chase_speed_matches_in_centimetres() -> None:
     WHY IT IS A DESIGN FIGURE AND NOT A TUNING VALUE: it decides whether the
     player can disengage at all, which is a statement about what fighting this
     creature is like. See the note on `chase_speed` in enemy_stats.py, including
-    that the margin against the player is currently not the one the design
-    believes, because of issue #391.
+    that since issue #391 landed the Brute is faster than the player rather than
+    slower, which is issue #417.
+
+    THIS TEST DELIBERATELY DOES NOT COMPARE IT AGAINST THE PLAYER. Doing so would
+    fail today, and it would be a failure with nothing to fix: no chase speed
+    satisfies both the 375 cm/s gait threshold inside ABP_Brute and being slower
+    than the Ritualist's designed 350. The assertion belongs in the change that
+    settles #417, not before it.
     """
     archetype = brute_archetype()
 

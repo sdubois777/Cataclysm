@@ -20,6 +20,64 @@ applied or still pending.
 
 ---
 
+## 2026-08-08 — The player's movement speed is an attribute, and its placeholder is the shared class stat line
+
+**Affects** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and
+`.cpp`. Applied in full. Raises issue #417, which the project owner has to
+answer.
+
+### The question
+
+Issue #391: `ACataclysmPlayerCharacter` configured its movement component and
+never assigned `MaxWalkSpeed`, so the player moved at Unreal's engine default of
+600 cm/s. The design gives the three Demonic classes 4.6, 3.5 and 4.0 metres per
+second and none of those reached the game. Two things had to be settled: what the
+player walks at when no class has been chosen, and whether the speed is a number
+or a stat.
+
+### It is a stat, because everything in the design already treats it as one
+
+`game/Data/Affixes.csv` carries an increased movement speed suffix, four boot
+bases in `ItemBases.csv` carry one as an implicit, Agility scales it in
+`Attributes.csv`, and both enchantment tables move it. A pawn holding a fixed
+number would leave every one of those changing a stat and nothing about the
+character -- the same defect one step later.
+
+`UCataclysmCombatAttributeSet` already had a `MovementSpeed` attribute, in metres
+per second, starting at 4.0 and replicated. Nothing read it. So the work was to
+connect what already existed rather than to build anything: the pawn subscribes
+to that attribute's change delegate when the ability system comes up, and writes
+`MaxWalkSpeed` from it.
+
+### The placeholder is 4.0 metres per second, and it is not a new number
+
+There is no class selection yet, so something has to be walked at before a class
+exists. 4.0 is the shared `Default` line in `game/Data/ClassStats.csv`, which is
+what a class inherits when it does not override movement speed. It is also
+exactly what the attribute already started at, and what the Masochist uses. So
+the placeholder is a designed figure rather than another arbitrary one, and the
+pawn does not visibly change speed when the player state arrives.
+
+### A zero movement speed is refused rather than written
+
+An ability system holding no combat attribute set reports zero rather than
+failing. Writing that through would leave a character who cannot move with
+nothing on screen to say why. Refusing it leaves the last usable speed, which for
+a pawn whose attributes have not arrived is the placeholder. Nothing in the
+project roots the player; a designed root would stop movement through the
+movement mode rather than by setting a speed of zero.
+
+### What this broke, and was not fixed here
+
+The Brute chases at 500 cm/s, set by the project owner on 2026-08-07 by playing
+it against the 600 the game was then using. At 400 the same figure makes the
+Brute faster than the player. It cannot simply be scaled down: `ABP_Brute`
+chooses the four-legged chase gait above 375 cm/s, and the Ritualist is designed
+at 350, so no chase speed both triggers that gait and can be walked away from by
+every class. That is a design question and it is issue #417.
+
+---
+
 ## 2026-08-08 — A stun is a state the target is in, not a row in the status effect table
 
 **Affects** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and

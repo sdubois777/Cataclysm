@@ -636,12 +636,18 @@ public:
 	 * it: a Brute that chased at the 250 it wanders at could be walked away
 	 * from without thinking about it.
 	 *
-	 * IT IS STILL SLOWER THAN THE PLAYER, but not by the margin the design
-	 * believes. ACataclysmPlayerCharacter never sets MaxWalkSpeed, so the
-	 * player runs at Unreal's default 600 rather than the 350 to 460 the class
-	 * table specifies -- issue #391. Against the 600 the game really uses, 500
-	 * leaves a 100 cm/s margin. Against the designed figures it would be
-	 * unescapable. THIS NUMBER HAS TO BE RE-JUDGED WHEN #391 IS FIXED.
+	 * IT IS NOW FASTER THAN THE PLAYER, AND THAT IS NOT WHAT WAS JUDGED. When
+	 * this figure was set, ACataclysmPlayerCharacter never assigned MaxWalkSpeed
+	 * and so ran at Unreal's default 600, which left 500 as a 100 cm/s margin in
+	 * the player's favour. Issue #391 fixed that: the player now walks at the
+	 * 400 the class stat data gives, so the same 500 is a 100 cm/s margin
+	 * AGAINST them and the Brute cannot be walked away from at all.
+	 *
+	 * IT IS NOT AS SIMPLE AS SCALING IT DOWN. ABP_Brute chooses the four-legged
+	 * chase gait above 375 cm/s, so the whole usable window against a 400 cm/s
+	 * player is 375 to 400; and the Ritualist is designed at 350, which no
+	 * chase speed above 375 can be escaped by. That is a design question rather
+	 * than arithmetic and it is issue #417.
 	 *
 	 * "Can be outmanoeuvred" is unaffected either way: it is a turn rate
 	 * property, and a player circling at this creature's reach sweeps 223
