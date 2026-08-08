@@ -1964,6 +1964,36 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		Brute.Actor->LastPlayedAnimation.Get(),
 		Brute.Actor->StompAnimation.Get());
 
+	// AND ARRANGES FOR SOMETHING TO FILL THE REST OF THE TELEGRAPH. The
+	// wind-up clip is 0.83 seconds inside a 1.4 second telegraph and is never
+	// played slower than it was authored, so on its own it leaves 0.57 seconds
+	// with nothing playing. Under the single-node scheme the mesh froze on the
+	// last frame and the gap was invisible; a montage blends back to
+	// locomotion, so the Brute raised its arms, dropped them, and only then
+	// smashed. Reported on 2026-08-08 as the slam cancelling half way.
+	if (Brute.Actor->StompHoldAnimation != nullptr)
+	{
+		TestEqual(TEXT("the hold clip is queued to fill the rest of the "
+					   "telegraph"),
+			Brute.Actor->PendingHoldAnimation.Get(),
+			Brute.Actor->StompHoldAnimation.Get());
+
+		const float Expected = ACataclysmBruteCharacter::StompWindUpSeconds
+			- Brute.Actor->StompAnimation->GetPlayLength();
+		TestEqual(TEXT("for exactly the part of the telegraph the wind-up clip "
+					   "does not cover"),
+			Brute.Actor->PendingHoldSeconds, Expected);
+
+		// THE TIMER DOES NOT FIRE IN A WORLD THAT IS NEVER TICKED, so this
+		// calls what the timer would have called.
+		Brute.Actor->StartHoldAnimation();
+		TestEqual(TEXT("and playing it holds the poised pose"),
+			Brute.Actor->LastPlayedAnimation.Get(),
+			Brute.Actor->StompHoldAnimation.Get());
+		TestEqual(TEXT("at the speed it was authored, rather than stretched"),
+			Brute.Actor->LastPlayedRate, 1.0f);
+	}
+
 	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
 
 	TestEqual(TEXT("the stomp lands"),
@@ -1974,6 +2004,18 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	// ability landed, so the mesh was handed straight back to locomotion at the
 	// moment of impact and the attack visibly stopped part way through.
 	TestEqual(TEXT("landing the stomp plays the release clip"),
+		Brute.Actor->LastPlayedAnimation.Get(),
+		Brute.Actor->StompReleaseAnimation.Get());
+
+	// AND NOTHING REPLACES IT A QUARTER OF A SECOND LATER. Landing an ability
+	// did not count against the attack interval until 2026-08-08, so the
+	// ordinary swing was free to start on the very next thinking pass and cut
+	// the 0.70 second release clip off after 0.25 of it. Reported from a play
+	// session as the slam ending part way through.
+	AdvanceWorldClock(World, ACataclysmEnemyController::ThinkIntervalSeconds);
+	Brain->Think();
+	TestEqual(TEXT("and a thinking pass a quarter of a second later does not "
+				   "replace it with a swing"),
 		Brute.Actor->LastPlayedAnimation.Get(),
 		Brute.Actor->StompReleaseAnimation.Get());
 

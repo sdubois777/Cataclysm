@@ -12,7 +12,9 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "TimerManager.h"
 #include "UObject/SoftObjectPath.h"
 
 const TCHAR* ACataclysmBruteCharacter::BodyMeshPath =
@@ -30,6 +32,10 @@ const TCHAR* ACataclysmBruteCharacter::StompAnimationPath =
 const TCHAR* ACataclysmBruteCharacter::StompReleaseAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Ability_GroundSmash_End.Ability_GroundSmash_End");
+
+const TCHAR* ACataclysmBruteCharacter::StompHoldAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Ability_GroundSmash_Loop.Ability_GroundSmash_Loop");
 
 const TCHAR* ACataclysmBruteCharacter::RockThrowAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
@@ -213,11 +219,90 @@ void ACataclysmBruteCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 	const float Hold = Index == StompAbility
 		? StompWindUpSeconds : RockThrowWindUpSeconds;
 
-	// STRETCHED TO FILL THE TELEGRAPH EXACTLY, which PlayOneShot does from the
-	// duration. Held at rate 1.0 instead, the ground smash wind-up finished
-	// half a second early and froze, and the rock throw wind-up was cut off
-	// before the rock left the ground.
+	// NOT STRETCHED TO FILL THE TELEGRAPH. An earlier version of this comment
+	// said it was, and that was never true once PlayOneShot gained its "never
+	// slower than authored" floor: a clip shorter than its window plays at
+	// rate 1.0 and finishes early. Stretching was tried first and reported from
+	// a play session as slow motion.
 	PlayOneShot(Wanted, Hold);
+
+	// SO SOMETHING HAS TO FILL THE REST OF THE WINDOW. The ground smash wind-up
+	// is 0.83 seconds inside a 1.4 second telegraph, which left 0.57 seconds
+	// with nothing playing. Under the old single-node scheme the mesh simply
+	// froze on the clip's last frame and that gap was invisible. A montage does
+	// not freeze -- it blends back to locomotion -- so the creature raised its
+	// arms, dropped them again, stood still, and only then smashed the ground.
+	// Reported on 2026-08-08 as the slam cancelling half way through.
+	//
+	// THE PACK ALREADY SHIPS THE ANSWER. Ability_GroundSmash_Loop is 0.03
+	// seconds long and exists for exactly this: to hold a wind-up open for as
+	// long as the telegraph needs. It is looped rather than stretched, so the
+	// creature stays poised at full authored speed.
+	UAnimSequence* Held = HoldAnimationFor(Index);
+	const float PlayedFor = Wanted->GetPlayLength();
+	if (Held && Held->GetPlayLength() > 0.0f && PlayedFor < Hold)
+	{
+		PendingHoldAnimation = Held;
+		PendingHoldSeconds = Hold - PlayedFor;
+
+		// ON A TIMER RATHER THAN IN Tick, because it happens once per ability
+		// rather than every frame, and because a timer says the delay in one
+		// place instead of spreading a deadline across two functions. It does
+		// not fire in an automation test world, which is never ticked; tests
+		// call StartHoldAnimation directly.
+		GetWorldTimerManager().SetTimer(
+			HoldAnimationTimer, this,
+			&ACataclysmBruteCharacter::StartHoldAnimation, PlayedFor,
+			/*bLoop=*/false);
+	}
+}
+
+UAnimSequence* ACataclysmBruteCharacter::HoldAnimationFor(int32 Index) const
+{
+	// ONLY THE STOMP HAS ONE, AND ONLY THE STOMP NEEDS ONE. The rock throw's
+	// wind-up clip is 1.13 seconds inside a 1.0 second telegraph, so it is
+	// already being compressed to fit and there is no gap to fill.
+	return Index == StompAbility ? StompHoldAnimation.Get() : nullptr;
+}
+
+void ACataclysmBruteCharacter::StartHoldAnimation()
+{
+	if (!PendingHoldAnimation || PendingHoldSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	const float Length = PendingHoldAnimation->GetPlayLength();
+	if (Length <= 0.0f)
+	{
+		return;
+	}
+
+	// ENOUGH LOOPS TO COVER THE REST OF THE WINDOW, rounded up, so the hold
+	// never ends before the attack lands. Ending a hair late costs nothing: the
+	// release montage replaces it.
+	const int32 Loops = FMath::CeilToInt(PendingHoldSeconds / Length);
+
+	// RECORDED BEFORE ANYTHING IS ASKED TO PLAY IT, for the reason PlayOneShot
+	// does the same: a test world has no animation instance, so a check made
+	// after this point could only ever see the no-art path.
+	LastPlayedAnimation = PendingHoldAnimation;
+	LastPlayedRate = 1.0f;
+
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (UAnimInstance* AnimInstance =
+			MeshComponent ? MeshComponent->GetAnimInstance() : nullptr)
+	{
+		// NO BLEND IN. This clip continues the pose the wind-up ended on, so
+		// blending into it would visibly soften a pose that should stay still.
+		AnimInstance->PlaySlotAnimationAsDynamicMontage(
+			PendingHoldAnimation, AttackSlotName,
+			/*BlendInTime=*/0.0f, AttackBlendOutSeconds,
+			/*InPlayRate=*/1.0f, Loops);
+	}
+
+	PendingHoldAnimation = nullptr;
+	PendingHoldSeconds = 0.0f;
 }
 
 UAnimSequence* ACataclysmBruteCharacter::ReleaseAnimationFor(int32 Index) const
@@ -445,6 +530,8 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(StompAnimationPath).TryLoad());
 		StompReleaseAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(StompReleaseAnimationPath).TryLoad());
+		StompHoldAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(StompHoldAnimationPath).TryLoad());
 		RockThrowAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(RockThrowAnimationPath).TryLoad());
 		RockThrowReleaseAnimation = Cast<UAnimSequence>(
