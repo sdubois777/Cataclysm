@@ -41,6 +41,12 @@ CLIPS = [
     "Ability_GroundSmash_End",
     "Ability_RipNToss_Rip",
     "Ability_RipNToss_Toss",
+    # NEVER MEASURED UNTIL ISSUE #416. The pack ships a second throw clip, and
+    # that issue lists using it as one of four options on the grounds that it
+    # might release the rock sooner -- which would reduce how far the montage
+    # has to be compressed to fit inside the telegraph. Measured now so the
+    # option is answered with a number rather than left open.
+    "Ability_RipNToss_Toss_Enraged",
 ]
 
 #: Samples across each clip. The clips are authored at 30 frames a second, so
