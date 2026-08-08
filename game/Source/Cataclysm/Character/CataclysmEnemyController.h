@@ -391,6 +391,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|AI")
 	bool IsAbilityReady(int32 Index) const;
 
+	/**
+	 * How many thinking passes a telegraph of this length takes.
+	 *
+	 * ROUNDED UP, NEVER DOWN, AND THAT IS THE PLAYER'S GUARANTEE. The design
+	 * states a telegraph as the time the player has to walk clear, so an
+	 * attack must never land sooner than it. A wind-up that is not a whole
+	 * number of passes therefore takes the pass after it: the Brute's 1.4
+	 * second stomp takes six passes and lands at 1.5, which is what it already
+	 * did before this was counted rather than compared.
+	 *
+	 * AT LEAST ONE, so that an ability with a very short telegraph is still
+	 * committed to for a pass rather than landing on the pass that began it.
+	 *
+	 * Static and public so a test can check the arithmetic without arranging a
+	 * world in which each length happens.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|AI")
+	static int32 PassesForWindUp(float WindUpSeconds);
+
 	/** Which ability it is winding up, or -1. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	int32 WindingUpAbility = -1;
@@ -398,6 +417,37 @@ public:
 	/** World seconds at which the ability being wound up lands. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	float WindUpLandsAt = 0.0f;
+
+	/**
+	 * Thinking passes still to go before the ability being wound up lands.
+	 *
+	 * WHY A COUNT AND NOT JUST THE CLOCK ABOVE. Issue #413. Landing on "the
+	 * first pass whose clock has passed WindUpLandsAt" sounds exact and is not.
+	 * A timer callback runs on the first FRAME past its deadline, so every pass
+	 * carries up to a frame of overshoot, and the overshoot on the pass that
+	 * starts a wind-up is not the overshoot on the pass that should land it. The
+	 * comparison then turns a difference of a few milliseconds into a difference
+	 * of a whole quarter of a second.
+	 *
+	 * IT ONLY SHOWS WHERE A TELEGRAPH SITS ON A PASS BOUNDARY, which is exactly
+	 * where the Brute's rock throw sits. Its wind-up is 1.000 second and a pass
+	 * is 0.250, so the deadline and the pass coincide. Simulating the engine's
+	 * own timer arithmetic over 500 jittery frames between 50 and 70 frames a
+	 * second landed it on the LATER pass 246 times out of 500: half at 1.00 and
+	 * half at 1.25. The stomp never moved, because its 1.400 second wind-up sits
+	 * 0.1 clear of the 1.500 boundary, which is far more than a frame.
+	 *
+	 * WHY IT SURVIVED. It lands at exactly 1.00 whenever a quarter second is a
+	 * whole number of frames, which is true at 30, 60, 120 and 144 frames a
+	 * second held steady. Every controlled test sees the good case.
+	 *
+	 * WHAT THE COUNT DOES. PassesForWindUp turns the telegraph into a number of
+	 * passes once, when the wind-up starts. Counting them down cannot be
+	 * affected by frame timing at all, so the same telegraph always takes the
+	 * same number of passes.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	int32 WindUpPassesLeft = 0;
 
 	/**
 	 * Where the ability being wound up was aimed when it started.
