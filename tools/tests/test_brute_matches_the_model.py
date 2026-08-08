@@ -440,118 +440,157 @@ def _locomotion_row(animation: str) -> str:
     return row.group(0)
 
 
-def test_the_chase_play_rate_matches_the_recorded_figure() -> None:
-    """The chase animation's authored speed matches the figure written down.
+def _play_rate_in_the_header(animation: str) -> float:
+    """The play rate the Brute's header records for one gait animation.
 
-    THE SAME GUARD THE WALK HAS, for the same reason, and it exists because
-    getting this wrong is what the project owner saw. The chase animation
-    `Jog_Quad_Fwd` is authored for 304.5 cm/s and the Brute moves at 250. The
-    first version shipped with the authored speed left at 250, so the play rate
-    was 1.0 and the feet travelled 22% further than the ground -- reported as
-    "it is like he isn't moving far enough within the animation".
+    WHY THE HEADER AND NOT THE CODE. Until 2026-08-08 the rate was computed in
+    C++ from a constant this test could read. It is now baked into two sequence
+    player nodes inside `game/Content/Enemies/Demonic/Brute/ABP_Brute.uasset`,
+    which is binary and which nothing here can open. The header records both
+    figures in a comment so that they stay in reviewable text; this reads that
+    comment.
 
-    WHAT IT DOES NOT CHECK. That 304.5 is right. The measuring script is a
-    starting estimate good to roughly ten percent, and on the walking animation
-    it read 8% high. Whether it looks right is judged by watching, and
-    `Cataclysm.Brute.AuthoredChaseSpeed` is how that is done.
+    THAT IS WEAKER THAN WHAT IT REPLACED, and deliberately recorded as such: it
+    pins the comment against the document, not the comment against the asset.
+    Nothing checks that the asset carries these numbers. Issue #406.
     """
     import re as _re
 
-    row = _locomotion_row("Jog_Quad_Fwd")
+    text = BRUTE_HEADER.read_text(encoding="utf-8")
+    found = _re.search(rf"{animation}\s+([\d.]+)", text)
+    if found is None:
+        pytest.fail(
+            f"CataclysmBruteCharacter.h no longer records a play rate for "
+            f"{animation}. It should be in the comment above MinimumPlayRate. "
+            f"If the animation Blueprint stopped using that clip, update this "
+            f"test; if the comment was deleted, the figure is now recorded "
+            f"nowhere in text at all."
+        )
+    return float(found.group(1))
+
+
+def _authored_speed_in_the_document(animation: str) -> float:
+    """The bold in-use figure from the locomotion table for one animation.
+
+    The unbold figure beside it is `tools/measure_animation_stride.py`'s own
+    estimate, which is deliberately allowed to differ.
+    """
+    import re as _re
+
+    row = _locomotion_row(animation)
     in_use = _re.search(r"\*\*([\d.]+) cm/s\*\*", row)
     if in_use is None:
         pytest.fail(
-            "The Jog_Quad_Fwd row records no figure in use, which should be the "
-            f"bold one. The row reads: {row}"
+            f"The {animation} row records no figure in use, which should be "
+            f"the bold one. The row reads: {row}"
         )
-    documented = float(in_use.group(1))
-    in_code = uproperty_default(BRUTE_HEADER, "AuthoredChaseSpeedCmPerSecond")
+    return float(in_use.group(1))
 
-    assert in_code == pytest.approx(documented), (
-        f"The Brute's chase animation is treated as authored for {in_code} cm/s "
-        f"in the C++, but game/docs/enemy-source-assets.md records "
-        f"{documented} cm/s as the figure in use. One of them moved without the "
-        "other, and the visible result is sliding feet."
+
+def test_the_chase_play_rate_matches_the_recorded_figure() -> None:
+    """The chase gait's play rate is the one its authored speed implies.
+
+    WHY THIS EXISTS. Getting it wrong is what the project owner saw. The chase
+    animation `Jog_Quad_Fwd` is treated as authored for 350 cm/s, set by eye,
+    and the Brute chases at 500. The first version shipped with the authored
+    speed left at the Brute's own speed, so the play rate was 1.0 and the feet
+    travelled 22% further than the ground -- reported as "it is like he isn't
+    moving far enough within the animation".
+
+    WHAT IT DOES NOT CHECK. That 350 is right; whether it looks right is judged
+    by watching. Nor that ABP_Brute actually carries the rate: see
+    `_play_rate_in_the_header` and issue #406.
+    """
+    documented = _authored_speed_in_the_document("Jog_Quad_Fwd")
+    recorded = _play_rate_in_the_header("Jog_Quad_Fwd")
+
+    chase_speed = brute_archetype().chase_speed * 100.0
+    expected = chase_speed / documented
+
+    assert recorded == pytest.approx(expected, rel=1e-4), (
+        f"CataclysmBruteCharacter.h says ABP_Brute plays the chase gait at "
+        f"{recorded}, but the Brute chases at {chase_speed} cm/s and "
+        f"game/docs/enemy-source-assets.md records the clip as authored for "
+        f"{documented} cm/s, which is {expected:.6f}. One of the three moved "
+        f"without the others, and the visible result is sliding feet."
     )
 
-    designed_speed = brute_archetype().move_speed * 100.0
-    play_rate = designed_speed / in_code
     minimum = constant(BRUTE_HEADER, "MinimumPlayRate")
     maximum = constant(BRUTE_HEADER, "MaximumPlayRate")
-
-    assert minimum < play_rate < maximum, (
-        f"The chase animation would play at {play_rate:.2f}, outside the "
-        f"{minimum} to {maximum} the Brute clamps to, so the clamp rather than "
-        "the measurement would be deciding how it looks."
+    assert minimum < recorded < maximum, (
+        f"The chase animation plays at {recorded:.2f}, outside the {minimum} "
+        f"to {maximum} the Brute treats as usable, so it is either frozen or a "
+        f"blur."
     )
 
 
 def test_the_walk_play_rate_matches_the_recorded_figure() -> None:
-    """The authored walk speed in the C++ matches the figure written down.
+    """The wandering gait's play rate is the one its authored speed implies.
 
-    WHY THIS EXISTS. `AuthoredWalkSpeedCmPerSecond` decides how fast the Brute's
-    walk animation plays. It has been wrong twice: first as an outright guess of
-    500, then as 373.7 from a measuring script using an estimator that was 66%
-    high. The value in use now, 225, was set by the project owner watching the
-    creature walk.
+    WHY THIS EXISTS. The authored walk speed has been wrong twice: first as an
+    outright guess of 500, then as 373.7 from a measuring script using an
+    estimator that was 66% high. The value in use now, 225, was set by the
+    project owner watching the creature walk. A guess, a bad measurement and a
+    good one all look identical once they are a play rate.
 
-    A guess, a bad measurement and a good one all look identical in the source.
-    This ties the number to the one recorded in `game/docs/enemy-source-assets.md`,
-    the reference listing which art plays each enemy and what was measured from
-    it, so changing one without the other fails rather than quietly bringing foot
-    sliding back.
-
-    WHAT IT DOES NOT CHECK. That 225 is right. Only that the C++ and the document
-    agree, and that the resulting play rate is sane. Whether it looks right is a
-    judgement made by watching, and the console variable
-    `Cataclysm.Brute.AuthoredWalkSpeed` is how that is done.
+    WHAT IT DOES NOT CHECK. That 225 is right, and not that ABP_Brute carries
+    the rate. Only that the header, the document and the designed speed agree.
     """
-    import re as _re
+    documented = _authored_speed_in_the_document("Jog_Biped_Fwd")
+    recorded = _play_rate_in_the_header("Jog_Biped_Fwd")
 
-    reference = REPO_ROOT / "game" / "docs" / "enemy-source-assets.md"
-    if not reference.is_file():
-        pytest.fail(f"{reference.relative_to(REPO_ROOT)} does not exist")
+    wander_speed = brute_archetype().move_speed * 100.0
+    expected = wander_speed / documented
 
-    text = reference.read_text(encoding="utf-8")
-
-    # The locomotion table's Jog_Biped_Fwd row. The figure in use is the bold one;
-    # the unbold one beside it is the script's estimate, which is deliberately
-    # allowed to differ.
-    row = _re.search(r"^\|\s*`Jog_Biped_Fwd`\s*\|.*$", text, _re.M)
-    if row is None:
-        pytest.fail(
-            "game/docs/enemy-source-assets.md has no Jog_Biped_Fwd row in its "
-            "locomotion table. If the table moved, update this test; if it was "
-            "deleted, the C++ constant is unrecorded again."
-        )
-    in_use = _re.search(r"\*\*([\d.]+) cm/s\*\*", row.group(0))
-    if in_use is None:
-        pytest.fail(
-            "The Jog_Biped_Fwd row records no figure in use, which should be the "
-            f"bold one. The row reads: {row.group(0)}"
-        )
-    documented = float(in_use.group(1))
-
-    in_code = uproperty_default(BRUTE_HEADER, "AuthoredWalkSpeedCmPerSecond")
-
-    assert in_code == pytest.approx(documented), (
-        f"CataclysmBruteCharacter.h plays the walk as though it were authored "
-        f"for {in_code} cm/s, but game/docs/enemy-source-assets.md records "
-        f"{documented} cm/s as the figure in use. Make both agree, and if the "
-        f"value changed because somebody re-judged it by eye, say so there."
+    assert recorded == pytest.approx(expected, rel=1e-4), (
+        f"CataclysmBruteCharacter.h says ABP_Brute plays the wandering gait at "
+        f"{recorded}, but the Brute wanders at {wander_speed} cm/s and "
+        f"game/docs/enemy-source-assets.md records the clip as authored for "
+        f"{documented} cm/s, which is {expected:.6f}. Make all three agree, and "
+        f"if the value changed because somebody re-judged it by eye, say so in "
+        f"the document."
     )
 
-    # The play rate that falls out of it has to be usable. Outside the clamp the
-    # animation is either frozen or a blur, and the number is wrong.
-    designed_speed_cm = brute_archetype().move_speed * 100.0
-    play_rate = designed_speed_cm / in_code
     minimum = constant(BRUTE_HEADER, "MinimumPlayRate")
     maximum = constant(BRUTE_HEADER, "MaximumPlayRate")
+    assert minimum < recorded < maximum, (
+        f"At the Brute's designed {wander_speed} cm/s the walk plays at "
+        f"{recorded:.2f}, outside the {minimum} to {maximum} range the class "
+        f"treats as usable, so the number is wrong."
+    )
 
-    assert minimum < play_rate < maximum, (
-        f"At the Brute's designed {designed_speed_cm} cm/s the walk would play "
-        f"at {play_rate:.2f}, which is outside the {minimum} to {maximum} range "
-        f"the class clamps to, so the clamp would be hiding a wrong number."
+
+def test_the_gait_threshold_sits_between_the_two_designed_speeds() -> None:
+    """ABP_Brute picks the gait by speed, so the two speeds must straddle it.
+
+    WHY THIS IS A TEST. Choosing the gait moved out of C++ and into ABP_Brute on
+    2026-08-08. The graph reads the creature's own ground speed and compares it
+    against 375 cm/s: below that it plays the two-legged wandering jog, above it
+    the four-legged chase. That works only because the Brute really does move at
+    two different speeds. If the wander and chase speeds were ever tuned to the
+    same side of 375, the Brute would use one gait for both states and nothing
+    else would notice.
+
+    THE THRESHOLD IS A COPY IN A BINARY ASSET, which is issue #406. It is
+    written here as a literal for the same reason the play rates are written in
+    the header: so that it exists in text somewhere.
+    """
+    gait_threshold_in_animation_blueprint = 375.0
+
+    kind = brute_archetype()
+    wander = kind.move_speed * 100.0
+    chase = kind.chase_speed * 100.0
+
+    assert wander < gait_threshold_in_animation_blueprint, (
+        f"The Brute wanders at {wander} cm/s, which is at or above the "
+        f"{gait_threshold_in_animation_blueprint} cm/s threshold ABP_Brute "
+        f"switches gait at, so it would drop onto all fours to patrol."
+    )
+    assert chase > gait_threshold_in_animation_blueprint, (
+        f"The Brute chases at {chase} cm/s, which is at or below the "
+        f"{gait_threshold_in_animation_blueprint} cm/s threshold ABP_Brute "
+        f"switches gait at, so noticing the player would not change its "
+        f"posture."
     )
 
 

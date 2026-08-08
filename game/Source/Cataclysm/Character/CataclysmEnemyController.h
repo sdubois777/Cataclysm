@@ -245,8 +245,9 @@ public:
 	 * Where to wander to next, or false if this character cannot pick a point.
 	 *
 	 * SEPARATE FROM THE STATE MACHINE ON PURPOSE, the same split
-	 * ACataclysmBruteCharacter::AnimationForGroundSpeed makes from
-	 * DriveLocomotion. This is the decision and Think is the application. A
+	 * ACataclysmBruteCharacter::PlayOneShot makes when it records
+	 * LastPlayedAnimation before asking anything to play it. This is the
+	 * decision and Think is the application. A
 	 * test can call this in any world and get a definite answer, which matters
 	 * a great deal here: every automation test world is built by
 	 * UWorld::CreateWorld and has no navigation mesh at all, so the navigation

@@ -6,8 +6,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
-#include "Animation/AnimSingleNodeInstance.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -15,45 +15,13 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "UObject/SoftObjectPath.h"
 
-/**
- * Live override for the walk animation's authored speed, for tuning by eye.
- *
- * WHY A CONSOLE VARIABLE AND NOT JUST THE PROPERTY. The property is
- * EditAnywhere, but the Brute is spawned by the game mode rather than placed in
- * the level, so before a session starts there is no instance whose Details panel
- * you could open. What this number needs is to be changed WHILE WATCHING the
- * creature walk, which is what a console variable is for. In a play session:
- *
- *     Cataclysm.Brute.AuthoredWalkSpeed 300
- *
- * and the stride changes on the next frame, with no rebuild and no restart.
- *
- * ZERO MEANS "DO NOT OVERRIDE", so the measured figure on the class stays the
- * answer of record and this is only ever a tuning aid. Setting it back to 0
- * returns to the measured value.
- */
-static TAutoConsoleVariable<float> CVarBruteAuthoredWalkSpeed(
-	TEXT("Cataclysm.Brute.AuthoredWalkSpeed"),
-	0.0f,
-	TEXT("Ground speed in cm/s that the Brute's walk animation is treated as "
-		 "having been authored for. The walk plays at the Brute's real speed "
-		 "divided by this, so a smaller number plays it faster. 0 uses the "
-		 "figure on the class, 225, which was set by eye. For tuning foot "
-		 "sliding by eye during a play session."),
-	ECVF_Default);
-
 const TCHAR* ACataclysmBruteCharacter::BodyMeshPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Meshes/Rampage.Rampage");
 
-const TCHAR* ACataclysmBruteCharacter::IdleAnimationPath =
-	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Idle_Biped.Idle_Biped");
+const TCHAR* ACataclysmBruteCharacter::AnimationBlueprintPath =
+	TEXT("/Game/Enemies/Demonic/Brute/ABP_Brute.ABP_Brute_C");
 
-const TCHAR* ACataclysmBruteCharacter::WalkAnimationPath =
-	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Jog_Biped_Fwd.Jog_Biped_Fwd");
-
-const TCHAR* ACataclysmBruteCharacter::ChaseAnimationPath =
-	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
-		 "Jog_Quad_Fwd.Jog_Quad_Fwd");
+const FName ACataclysmBruteCharacter::AttackSlotName = TEXT("DefaultSlot");
 
 const TCHAR* ACataclysmBruteCharacter::StompAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
@@ -75,34 +43,6 @@ const TCHAR* ACataclysmBruteCharacter::AttackAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Attack_Biped_Melee_A.Attack_Biped_Melee_A");
 
-/**
- * Live override for the chase animation's authored speed, for tuning by eye.
- *
- * The chase clip's authored speed cannot be measured -- it carries no IK foot
- * track for tools/measure_animation_stride.py to follow -- so this is the only
- * way to arrive at it. Zero means do not override.
- */
-static TAutoConsoleVariable<float> CVarBruteAuthoredChaseSpeed(
-	TEXT("Cataclysm.Brute.AuthoredChaseSpeed"),
-	0.0f,
-	TEXT("Ground speed in cm/s that the Brute's chase animation is treated as "
-		 "having been authored for. It plays at the Brute's real speed divided "
-		 "by this, so a smaller number plays it faster. 0 uses the figure on "
-		 "the class, 350, set by eye against the four-legged chase gait."),
-	ECVF_Default);
-
-/**
- * Which animation the Brute plays while chasing, by asset path.
- *
- * WHY A PATH AND NOT A NUMBER. Which clip should represent running is an open
- * question, not a tuning value: Sprint_Biped_Fwd turned out to be the same
- * animation as the walk (issue #386), and the four-legged gaits are a real
- * alternative that changes the creature's whole posture. Auditioning those
- * means loading a different asset, and doing it from the console means doing it
- * in one session instead of one rebuild each.
- *
- * Empty means use ChaseAnimationPath on the class.
- */
 /**
  * Live override for the chase speed, for judging it by eye.
  *
@@ -151,21 +91,12 @@ static TAutoConsoleVariable<float> CVarBruteAttackInterval(
 		 "second cooldown rather than the attack interval."),
 	ECVF_Default);
 
-static TAutoConsoleVariable<FString> CVarBruteChaseAnimation(
-	TEXT("Cataclysm.Brute.ChaseAnimation"),
-	TEXT(""),
-	TEXT("Asset path of the animation the Brute plays while chasing. Empty uses "
-		 "the class default, Jog_Quad_Fwd, the four-legged stance. Set "
-		 "Cataclysm.Brute.AuthoredChaseSpeed to whatever the replacement was "
-		 "authored for, or its feet will slide."),
-	ECVF_Default);
-
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 {
-	// TICKS, UNLIKE EVERY OTHER CHARACTER IN THIS PROJECT. Choosing between the
-	// standing and walking animation and setting the walk's play rate is a
-	// per-frame job. The tick does nothing else; the brain still runs on the
-	// controller's own quarter-second timer.
+	// TICKS, UNLIKE EVERY OTHER CHARACTER IN THIS PROJECT, for one reason: the
+	// walk speed has to follow what the brain is doing, and the brain runs on
+	// its own quarter-second timer while movement is read every frame. Choosing
+	// the animation used to be the other reason and is now ABP_Brute's job.
 	PrimaryActorTick.bCanEverTick = true;
 
 	// The designed numbers, overriding the base enemy's judgement figures. Each
@@ -203,7 +134,6 @@ void ACataclysmBruteCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	ApplyChaseSpeed();
-	DriveLocomotion();
 }
 
 void ACataclysmBruteCharacter::ApplyChaseSpeed()
@@ -225,18 +155,6 @@ void ACataclysmBruteCharacter::ApplyChaseSpeed()
 
 	Movement->MaxWalkSpeed = IsChasing()
 		? ChaseSpeed : DesignedWalkSpeedCmPerSecond;
-}
-
-float ACataclysmBruteCharacter::EffectiveAuthoredWalkSpeed() const
-{
-	const float Override = CVarBruteAuthoredWalkSpeed.GetValueOnAnyThread();
-	return Override > 0.0f ? Override : AuthoredWalkSpeedCmPerSecond;
-}
-
-float ACataclysmBruteCharacter::EffectiveAuthoredChaseSpeed() const
-{
-	const float Override = CVarBruteAuthoredChaseSpeed.GetValueOnAnyThread();
-	return Override > 0.0f ? Override : AuthoredChaseSpeedCmPerSecond;
 }
 
 TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
@@ -429,145 +347,55 @@ void ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
 	const float Rate = FMath::Clamp(FMath::Max(1.0f, Length / Hold),
 									MinimumPlayRate, MaximumPlayRate);
 
-	SwingUntilSeconds = World->GetTimeSeconds() + Hold;
+	// RECORDED BEFORE ANYTHING IS ASKED TO PLAY IT. See the declaration: the
+	// application needs a running animation graph and the decision does not, so
+	// a test can check which clip an ability chose in a world where nothing can
+	// play anything.
+	LastPlayedAnimation = Animation;
+	LastPlayedRate = Rate;
 
-	if (USkeletalMeshComponent* MeshComponent = GetMesh())
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
 	{
-		if (UAnimSingleNodeInstance* Single = MeshComponent->GetSingleNodeInstance())
-		{
-			// NOT LOOPING, and restarted from the beginning every time, which
-			// is why this sets the asset even when it is already the one
-			// playing. Two swings in a row should read as two swings.
-			Single->SetAnimationAsset(Animation, /*bIsLooping=*/false);
-			Single->SetPosition(0.0f, /*bFireNotifies=*/false);
-			Single->SetPlayRate(Rate);
-			Single->SetPlaying(true);
-		}
+		return;
 	}
-}
 
-bool ACataclysmBruteCharacter::IsSwinging() const
-{
-	const UWorld* World = GetWorld();
-	return World && SwingUntilSeconds > 0.0f
-		&& World->GetTimeSeconds() < SwingUntilSeconds;
+	// THROUGH THE ANIMATION SLOT, NOT BY REPLACING WHAT THE MESH IS PLAYING.
+	//
+	// WHAT THIS FIXED. The previous version drove the mesh in
+	// EAnimationMode::AnimationSingleNode, which plays exactly one clip and
+	// cannot blend between two. Each ability is two clips -- a wind-up and a
+	// release -- so the moment the release started, the mesh jumped from the
+	// last pose of the wind-up to the first pose of the release in a single
+	// frame. Reported from a play session on 2026-08-08 as the stomp reading
+	// wrong. Nothing in C++ could fix it, because the fault was the animation
+	// mode rather than the code driving it.
+	//
+	// A dynamic montage needs no montage asset on disk: it wraps a plain
+	// sequence and plays it in the named slot of ABP_Brute's animation graph,
+	// blending in over AttackBlendInSeconds and back out over
+	// AttackBlendOutSeconds. Locomotion keeps running underneath and is
+	// blended back to when the clip ends, which is also why nothing has to
+	// hold the mesh open for the duration any more.
+	if (UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance())
+	{
+		AnimInstance->PlaySlotAnimationAsDynamicMontage(
+			Animation, AttackSlotName,
+			AttackBlendInSeconds, AttackBlendOutSeconds,
+			Rate, /*LoopCount=*/1);
+	}
 }
 
 bool ACataclysmBruteCharacter::IsChasing() const
 {
-	// ASKED OF THE BRAIN RATHER THAN INFERRED FROM SPEED, because the Brute
-	// moves at the same 250 cm/s whether it is wandering or coming at you, so
-	// speed cannot tell the two apart. Attacking deliberately does not count:
-	// it has stopped moving by then, so the standing animation is right.
+	// ASKED OF THE BRAIN RATHER THAN INFERRED FROM SPEED. ABP_Brute does infer
+	// it from speed, because by the time the animation graph runs the two
+	// states really are two different speeds -- 250 wandering and 500 chasing.
+	// This is asked earlier than that: ApplyChaseSpeed is what SETS those two
+	// speeds, so it cannot read them back to decide which one to use.
 	const ACataclysmEnemyController* Brain =
 		Cast<ACataclysmEnemyController>(GetController());
 	return Brain && Brain->LastAction == ECataclysmBrainAction::Chasing;
-}
-
-UAnimSequence* ACataclysmBruteCharacter::AnimationForGroundSpeed(
-	float GroundSpeedCmPerSecond, float& OutPlayRate, bool bChasing) const
-{
-	const bool bWalking = GroundSpeedCmPerSecond > WalkingThresholdCmPerSecond;
-
-	if (!bWalking)
-	{
-		OutPlayRate = 1.0f;
-		return IdleAnimation;
-	}
-
-	// THE CHASE CLIP ONLY WHEN THERE IS ONE. It is loaded from a gitignored
-	// pack like everything else here, so a fresh clone has no chase animation
-	// and falls back to the walk rather than to nothing.
-	const bool bRunning = bChasing && ChaseAnimation != nullptr;
-
-	// FEET MATCHED TO GROUND SPEED. The animation was authored for a character
-	// moving at some particular speed; the Brute moves at 250. Playing it at 1.0
-	// when those differ makes the feet slide, which is the "walking slower than
-	// it is moving" fault this exists to avoid. Clamped because a play rate near
-	// zero freezes the pose and a very high one is a blur.
-	const float AuthoredSpeed = bRunning
-		? EffectiveAuthoredChaseSpeed() : EffectiveAuthoredWalkSpeed();
-
-	OutPlayRate = FMath::Clamp(
-		GroundSpeedCmPerSecond / FMath::Max(AuthoredSpeed, 1.0f),
-		MinimumPlayRate, MaximumPlayRate);
-
-	return bRunning ? ChaseAnimation : WalkAnimation;
-}
-
-void ACataclysmBruteCharacter::DriveLocomotion()
-{
-	USkeletalMeshComponent* MeshComponent = GetMesh();
-	if (!MeshComponent || !MeshComponent->GetSkeletalMeshAsset())
-	{
-		return;
-	}
-
-	// AUDITIONING A DIFFERENT CHASE CLIP WITHOUT A REBUILD. Checked here rather
-	// than only in ResolveBody so that changing the console variable takes
-	// effect on the next frame, which is the whole point of it. A string
-	// compare per frame on one enemy is not worth avoiding.
-	const FString WantedChasePath = CVarBruteChaseAnimation.GetValueOnAnyThread();
-	if (!WantedChasePath.IsEmpty() && WantedChasePath != LoadedChaseAnimationPath)
-	{
-		if (UAnimSequence* Swapped =
-				Cast<UAnimSequence>(FSoftObjectPath(WantedChasePath).TryLoad()))
-		{
-			ChaseAnimation = Swapped;
-			LoadedChaseAnimationPath = WantedChasePath;
-		}
-		else
-		{
-			// REMEMBERED EVEN THOUGH IT FAILED, or a mistyped path retries the
-			// load every frame for the rest of the session.
-			LoadedChaseAnimationPath = WantedChasePath;
-			UE_LOG(LogCataclysm, Warning,
-				TEXT("Cataclysm.Brute.ChaseAnimation is set to %s, which did not "
-					 "load. Keeping the previous chase animation."),
-				*WantedChasePath);
-		}
-	}
-
-	// THE SWING OWNS THE MESH UNTIL IT HAS PLAYED OUT. The Brute stops moving
-	// to attack, so without this the next frame's choice would be the standing
-	// animation and the swing would be cut off after one frame -- which looks
-	// exactly like not attacking at all.
-	if (IsSwinging())
-	{
-		return;
-	}
-
-	// HORIZONTAL ONLY. Falling is not walking, and a Brute stepping off a ledge
-	// should not break into a jog on the way down.
-	float PlayRate = 1.0f;
-	UAnimSequence* Wanted = AnimationForGroundSpeed(
-		GetVelocity().Size2D(), PlayRate, IsChasing());
-	if (!Wanted)
-	{
-		return;
-	}
-
-	// THROUGH THE SINGLE NODE INSTANCE, NOT THE COMPONENT'S AnimationData.
-	// AnimationData is the editor-facing default; in a world that never ran
-	// InitAnim it does not follow what is actually playing, so comparing against
-	// it decided "not the one I want" every frame and restarted the animation
-	// every frame -- which holds it on its first pose and looks exactly like the
-	// standing-still fault this function exists to fix. Caught by
-	// Cataclysm.Brute.AnimatesInsteadOfSliding on 2026-08-07.
-	UAnimSingleNodeInstance* Single = MeshComponent->GetSingleNodeInstance();
-	if (!Single)
-	{
-		return;
-	}
-
-	// ONLY ON CHANGE, for the reason above.
-	if (Single->GetAnimationAsset() != Wanted)
-	{
-		Single->SetAnimationAsset(Wanted, /*bIsLooping=*/true);
-		Single->SetPlaying(true);
-	}
-
-	Single->SetPlayRate(PlayRate);
 }
 
 bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
@@ -608,14 +436,7 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 
 	if (bIncludeAnimation)
 	{
-		IdleAnimation = Cast<UAnimSequence>(
-			FSoftObjectPath(IdleAnimationPath).TryLoad());
-		WalkAnimation = Cast<UAnimSequence>(
-			FSoftObjectPath(WalkAnimationPath).TryLoad());
-
-		ChaseAnimation = Cast<UAnimSequence>(
-			FSoftObjectPath(ChaseAnimationPath).TryLoad());
-		LoadedChaseAnimationPath = ChaseAnimationPath;
+		ResolveAnimationBlueprint(MeshComponent);
 
 		AttackAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(AttackAnimationPath).TryLoad());
@@ -629,48 +450,12 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 		RockThrowReleaseAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(RockThrowReleaseAnimationPath).TryLoad());
 
-		if (IdleAnimation)
-		{
-			// SINGLE NODE, NOT AN ANIMATION BLUEPRINT. See the header for the
-			// measurement behind this. Setting the mode explicitly matters
-			// because PlayAnimation on a component still in AnimationBlueprint
-			// mode is ignored.
-			MeshComponent->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-			MeshComponent->PlayAnimation(IdleAnimation, /*bLooping=*/true);
-		}
-		else
-		{
-			UE_LOG(LogCataclysm, Warning,
-				TEXT("Brute standing animation not found at %s, so it will hold "
-					 "its reference pose."),
-				IdleAnimationPath);
-		}
-
-		if (!WalkAnimation)
-		{
-			UE_LOG(LogCataclysm, Warning,
-				TEXT("Brute walking animation not found at %s, so it will slide "
-					 "rather than walk."),
-				WalkAnimationPath);
-		}
-
 		if (!AttackAnimation)
 		{
 			UE_LOG(LogCataclysm, Warning,
 				TEXT("Brute attack animation not found at %s, so its swings "
 					 "will be invisible."),
 				AttackAnimationPath);
-		}
-
-		if (!ChaseAnimation)
-		{
-			// NOT A FAULT WORTH MORE THAN A LINE. Without it the Brute walks
-			// while chasing, which is what it did before there was a chase
-			// animation at all.
-			UE_LOG(LogCataclysm, Warning,
-				TEXT("Brute chase animation not found at %s, so it will keep "
-					 "walking while it chases."),
-				ChaseAnimationPath);
 		}
 	}
 
@@ -684,6 +469,45 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("Brute is wearing %s."), BodyMeshPath);
+
+	return true;
+}
+
+bool ACataclysmBruteCharacter::ResolveAnimationBlueprint(
+	USkeletalMeshComponent* MeshComponent)
+{
+	if (!MeshComponent)
+	{
+		return false;
+	}
+
+	// THE GENERATED CLASS, NOT THE BLUEPRINT ASSET. SetAnimInstanceClass wants a
+	// UClass, and an animation Blueprint's runtime class is its asset path with
+	// _C on the end. Loading the asset itself and casting would silently give
+	// null, because a UAnimBlueprint is not a UAnimInstance subclass.
+	UClass* AnimationClass =
+		FSoftClassPath(AnimationBlueprintPath).TryLoadClass<UAnimInstance>();
+
+	if (!AnimationClass)
+	{
+		// NOT AN ERROR, FOR THE SAME REASON THE MISSING MESH IS NOT. ABP_Brute
+		// is committed, but every animation it plays comes from the gitignored
+		// Paragon Rampage pack, so on a fresh clone the graph has nothing to
+		// reference. The Brute still fights; it just holds its reference pose.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Brute animation Blueprint not found at %s, so it will hold "
+				 "its reference pose and its attacks will be invisible. This is "
+				 "expected without the Paragon Rampage pack; see "
+				 "game/docs/enemy-source-assets.md."),
+			AnimationBlueprintPath);
+		return false;
+	}
+
+	// THE MODE AS WELL AS THE CLASS. SetAnimInstanceClass sets the mode too, but
+	// saying it outright is what stops a later reader assuming this component is
+	// still in the single-node mode it used until 2026-08-08.
+	MeshComponent->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	MeshComponent->SetAnimInstanceClass(AnimationClass);
 
 	return true;
 }

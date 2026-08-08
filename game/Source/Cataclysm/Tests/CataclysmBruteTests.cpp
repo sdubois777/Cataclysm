@@ -11,9 +11,9 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationAsset.h"
-#include "HAL/IConsoleManager.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -383,20 +383,32 @@ bool FCataclysmBruteFightsWithOrWithoutItsArt::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmBruteAnimatesInsteadOfSliding,
-	"Cataclysm.Brute.AnimatesInsteadOfSliding",
+	FCataclysmBruteIsDrivenByItsOwnAnimationBlueprint,
+	"Cataclysm.Brute.IsDrivenByItsOwnAnimationBlueprint",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmBruteAnimatesInsteadOfSliding::RunTest(const FString&)
+bool FCataclysmBruteIsDrivenByItsOwnAnimationBlueprint::RunTest(const FString&)
 {
 	using namespace CataclysmBruteTest;
 
-	// WHAT THIS GUARDS. The first Brute to reach a level slid across the floor in
-	// a fixed pose, because the Paragon animation blueprint could not identify
-	// its owner and left its own speed at zero for ever. The mesh is now driven
-	// directly, and this checks the three things that were wrong: an animation is
-	// selected at all, standing and walking select different ones, and the walk's
-	// play rate follows ground speed instead of being stuck at one.
+	// WHAT THIS GUARDS, AND WHAT IT DELIBERATELY DOES NOT.
+	//
+	// It guards the wiring: that ABP_Brute's generated class loads, that the
+	// mesh component is put into animation Blueprint mode, and that the class
+	// it is given is that one. Those are the three things that would silently
+	// leave the Brute holding its reference pose.
+	//
+	// It does NOT run the animation graph, and that is on purpose. Issue #374
+	// records a Paragon animation graph instantiated inside a world built by
+	// UWorld::CreateWorld hanging the test process for over three minutes.
+	// Whether the poses actually blend is answered by watching it in a
+	// Play-In-Editor session, not here.
+	//
+	// It replaced Cataclysm.Brute.AnimatesInsteadOfSliding, which asserted the
+	// opposite setting -- that the component was in single-node mode -- because
+	// that was how the Brute was driven until 2026-08-08. The fault that test
+	// was written against, a creature sliding in a fixed pose, is still guarded:
+	// a Brute with no animation class is exactly that creature.
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
@@ -416,27 +428,26 @@ bool FCataclysmBruteAnimatesInsteadOfSliding::RunTest(const FString&)
 		FSoftObjectPath(ACataclysmBruteCharacter::BodyMeshPath).TryLoad() != nullptr;
 	if (!bArtIsInstalled)
 	{
-		AddInfo(TEXT("Paragon Rampage pack is not installed, so the locomotion "
-					 "test is skipped. Expected in continuous integration."));
+		AddInfo(TEXT("Paragon Rampage pack is not installed, so the animation "
+					 "Blueprint test is skipped. Expected in continuous "
+					 "integration."));
 		Brute->Destroy();
 		return true;
 	}
 
-	TestTrue(TEXT("the body and its animations resolved"),
-		Brute->ResolveBody(/*bIncludeAnimation=*/true));
+	// THE GENERATED CLASS, LOADED THE SAME WAY THE CHARACTER LOADS IT. A wrong
+	// path, a missing _C suffix or a deleted asset all show up here rather than
+	// as a creature standing still in a level.
+	UClass* Expected = FSoftClassPath(
+		ACataclysmBruteCharacter::AnimationBlueprintPath)
+			.TryLoadClass<UAnimInstance>();
+	if (!TestNotNull(TEXT("ABP_Brute's generated class loads"), Expected))
+	{
+		return false;
+	}
 
-	// BOTH ANIMATIONS EXIST. If either soft path is wrong this is where it shows,
-	// rather than as a creature standing still in a level.
-	if (!TestNotNull(TEXT("a standing animation was loaded"), Brute->IdleAnimation.Get()))
-	{
-		return false;
-	}
-	if (!TestNotNull(TEXT("a walking animation was loaded"), Brute->WalkAnimation.Get()))
-	{
-		return false;
-	}
-	TestTrue(TEXT("standing and walking are different animations"),
-		Brute->IdleAnimation != Brute->WalkAnimation);
+	TestTrue(TEXT("the body and its animation Blueprint resolved"),
+		Brute->ResolveBody(/*bIncludeAnimation=*/true));
 
 	USkeletalMeshComponent* MeshComponent = Brute->GetMesh();
 	if (!TestNotNull(TEXT("mesh component"), MeshComponent))
@@ -444,134 +455,59 @@ bool FCataclysmBruteAnimatesInsteadOfSliding::RunTest(const FString&)
 		return false;
 	}
 
-	// NOT AN ANIMATION BLUEPRINT. The component plays one animation that this
-	// class chooses, rather than running the pack's graph. This is the setting
-	// the whole approach rests on.
-	TestEqual(TEXT("the mesh plays a single animation rather than a graph"),
+	// AN ANIMATION BLUEPRINT, NOT A SINGLE ANIMATION. This is the setting the
+	// whole approach rests on: single-node mode plays exactly one clip and
+	// cannot blend, which is what made every ability cut between its wind-up
+	// and its release.
+	TestEqual(TEXT("the mesh runs an animation graph rather than one clip"),
 		static_cast<int32>(MeshComponent->GetAnimationMode()),
-		static_cast<int32>(EAnimationMode::AnimationSingleNode));
+		static_cast<int32>(EAnimationMode::AnimationBlueprint));
 
-	// THE DECISION IS TESTED, NOT THE PLAYBACK. AnimationForGroundSpeed is a
-	// pure function of speed, so it gives a definite answer in a world that has
-	// no animation instance. Whether the component then renders it is a
-	// Play-In-Editor question, and a screenshot answers that one.
-	float Rate = -1.0f;
+	TestEqual(TEXT("and the graph it runs is ABP_Brute"),
+		MeshComponent->GetAnimClass(), Expected);
 
-	// STANDING STILL.
-	TestEqual(TEXT("at rest it chooses the standing animation"),
-		Brute->AnimationForGroundSpeed(0.0f, Rate), Brute->IdleAnimation.Get());
-	TestEqual(TEXT("standing plays at normal speed"), Rate, 1.0f);
-
-	// A TWITCH IS NOT WALKING. A character told to stop keeps a little residual
-	// velocity for a frame or two, and treating that as walking makes it flicker.
-	TestEqual(TEXT("below the walking threshold it is still standing"),
-		Brute->AnimationForGroundSpeed(
-			ACataclysmBruteCharacter::WalkingThresholdCmPerSecond - 1.0f, Rate),
-		Brute->IdleAnimation.Get());
-
-	// WALKING AT THE DESIGNED SPEED.
-	const float Designed = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
-	TestEqual(TEXT("moving it chooses the walking animation"),
-		Brute->AnimationForGroundSpeed(Designed, Rate),
-		Brute->WalkAnimation.Get());
-
-	const float ExpectedRate = FMath::Clamp(
-		Designed / Brute->AuthoredWalkSpeedCmPerSecond,
-		ACataclysmBruteCharacter::MinimumPlayRate,
-		ACataclysmBruteCharacter::MaximumPlayRate);
-	TestEqual(TEXT("the walk's play rate is scaled to ground speed"),
-		Rate, ExpectedRate);
-
-	// AND IT FOLLOWS SPEED rather than being a constant that happens to match.
-	float FasterRate = -1.0f;
-	Brute->AnimationForGroundSpeed(Designed * 2.0f, FasterRate);
-	TestTrue(TEXT("twice the ground speed plays the walk faster"),
-		FasterRate > Rate);
-
-	// AND IT CANNOT RUN AWAY. Without a ceiling a fast enemy blurs.
-	float RunawayRate = -1.0f;
-	Brute->AnimationForGroundSpeed(100000.0f, RunawayRate);
-	TestEqual(TEXT("the play rate is capped"), RunawayRate,
-		ACataclysmBruteCharacter::MaximumPlayRate);
+	// THE ATTACK CLIPS ARE STILL THIS CLASS'S JOB, because they are played into
+	// the graph's slot rather than selected by it. All four, so a broken path
+	// in any one of them is named here.
+	TestNotNull(TEXT("the swing clip loaded"), Brute->AttackAnimation.Get());
+	TestNotNull(TEXT("the stomp wind-up clip loaded"), Brute->StompAnimation.Get());
+	TestNotNull(TEXT("the stomp release clip loaded"),
+		Brute->StompReleaseAnimation.Get());
+	TestNotNull(TEXT("the rock throw wind-up clip loaded"),
+		Brute->RockThrowAnimation.Get());
 
 	Brute->Destroy();
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmBruteWalkSpeedCanBeTunedLive,
-	"Cataclysm.Brute.WalkSpeedCanBeTunedLive",
+	FCataclysmBruteAsksForASlotThatItsGraphHas,
+	"Cataclysm.Brute.AsksForASlotThatItsGraphHas",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmBruteWalkSpeedCanBeTunedLive::RunTest(const FString&)
+bool FCataclysmBruteAsksForASlotThatItsGraphHas::RunTest(const FString&)
 {
-	using namespace CataclysmBruteTest;
+	// WHAT THIS GUARDS. An attack is played with
+	// PlaySlotAnimationAsDynamicMontage into a slot named by AttackSlotName.
+	// A montage played into a slot the graph does not have is dropped without
+	// an error, so a renamed Slot node in ABP_Brute would make every attack
+	// invisible and nothing would say why.
+	//
+	// IT CHECKS THE NAME, NOT THE PLAYBACK, for the reason the test above
+	// gives: instantiating the graph in a synthetic world is issue #374. The
+	// name is half the contract and it is the half that can be checked cheaply;
+	// the other half is that ABP_Brute's Slot node is still called this, which
+	// is verified by playing it.
+	TestEqual(TEXT("attacks are played into DefaultSlot"),
+		ACataclysmBruteCharacter::AttackSlotName, FName(TEXT("DefaultSlot")));
 
-	// WHAT THIS GUARDS. The measured authored walk speed is an average over a
-	// gait cycle, so the last of it is judged by eye, and judging by eye means
-	// changing the number while watching. That is what the console variable
-	// Cataclysm.Brute.AuthoredWalkSpeed is for. If it stops being read, tuning
-	// silently goes back to editing a header and rebuilding, and nobody would
-	// notice until they tried.
+	// AND THE TWO BLEND TIMES ARE NOT ZERO, which is the whole difference from
+	// the single-node mode this replaced. Zero blend is a one-frame cut.
+	TestTrue(TEXT("an attack blends in rather than cutting"),
+		ACataclysmBruteCharacter::AttackBlendInSeconds > 0.0f);
+	TestTrue(TEXT("and blends back out to locomotion"),
+		ACataclysmBruteCharacter::AttackBlendOutSeconds > 0.0f);
 
-	IConsoleVariable* Knob = IConsoleManager::Get().FindConsoleVariable(
-		TEXT("Cataclysm.Brute.AuthoredWalkSpeed"));
-	if (!TestNotNull(TEXT("the tuning console variable is registered"), Knob))
-	{
-		return false;
-	}
-
-	const float Restore = Knob->GetFloat();
-	ON_SCOPE_EXIT { Knob->Set(Restore, ECVF_SetByCode); };
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("world"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
-		FVector::ZeroVector, FRotator::ZeroRotator);
-	if (!TestNotNull(TEXT("brute spawned"), Brute))
-	{
-		return false;
-	}
-
-	// ZERO MEANS DO NOT OVERRIDE, so the measured property is what is used.
-	Knob->Set(0.0f, ECVF_SetByCode);
-	TestEqual(TEXT("at zero it uses the measured value on the class"),
-		Brute->EffectiveAuthoredWalkSpeed(),
-		Brute->AuthoredWalkSpeedCmPerSecond);
-
-	// A POSITIVE VALUE WINS.
-	Knob->Set(200.0f, ECVF_SetByCode);
-	TestEqual(TEXT("a positive value overrides the measured one"),
-		Brute->EffectiveAuthoredWalkSpeed(), 200.0f);
-
-	// AND IT CHANGES THE PLAY RATE, which is the whole point. A smaller authored
-	// speed means the animation is treated as a slower walk, so it must play
-	// faster to cover the same ground.
-	float RateAt200 = 0.0f;
-	Brute->AnimationForGroundSpeed(
-		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond, RateAt200);
-
-	Knob->Set(600.0f, ECVF_SetByCode);
-	float RateAt600 = 0.0f;
-	Brute->AnimationForGroundSpeed(
-		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond, RateAt600);
-
-	TestTrue(TEXT("a smaller authored speed plays the walk faster"),
-		RateAt200 > RateAt600);
-
-	// AND GOING BACK TO ZERO RESTORES THE MEASURED VALUE, so the dial is a
-	// tuning aid rather than a second source of truth.
-	Knob->Set(0.0f, ECVF_SetByCode);
-	TestEqual(TEXT("returning to zero restores the measured value"),
-		Brute->EffectiveAuthoredWalkSpeed(),
-		Brute->AuthoredWalkSpeedCmPerSecond);
-
-	Brute->Destroy();
 	return true;
 }
 

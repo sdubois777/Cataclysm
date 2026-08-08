@@ -22,8 +22,13 @@
  * word, and issue #370 had not settled where authored enemy assets belong. It
  * has since: game/Content/Enemies/<Cataclysm>/<Enemy>/, so this enemy's is
  * game/Content/Enemies/Demonic/Brute/. game/docs/content-layout.md is the
- * convention. A Blueprint here would be legitimate; there has been no reason to
- * make one.
+ * convention.
+ *
+ * ONE PIECE OF THIS ENEMY IS A BLUEPRINT, AND IT HAD TO BE. ABP_Brute, in that
+ * folder, is its animation graph. An animation graph cannot be written in C++
+ * at all -- it is compiled out of a Blueprint into the generated class -- and
+ * without one this creature could only ever play a single clip at a time with
+ * no blending between them. See AnimationBlueprintPath below.
  *
  * WHAT IT DELIBERATELY DOES NOT DO. Nothing draws a ground marker, so the only
  * warning the player gets before a stomp or a thrown rock is the wind-up
@@ -171,33 +176,6 @@ public:
 	/** The release clip for one ability, or null if the art is absent. */
 	class UAnimSequence* ReleaseAnimationFor(int32 Index) const;
 
-	/**
-	 * Chooses the standing or walking animation and sets the walk's play rate.
-	 *
-	 * PUBLIC SO A TEST CAN STEP IT WITHOUT A TICKING WORLD, the same reason
-	 * ResolveBody is public. Safe to call when the mesh has no art: it returns
-	 * immediately.
-	 */
-	void DriveLocomotion();
-
-	/**
-	 * Which animation belongs at a given ground speed, and how fast to play it.
-	 *
-	 * SEPARATE FROM DriveLocomotion ON PURPOSE. This is the decision; the other
-	 * is the application. A test can call this with any speed and get a definite
-	 * answer, in any world, with no ticking and no animation instance -- which
-	 * matters, because applying an animation needs a component that has run
-	 * InitAnim and a synthetic test world does not always give one.
-	 *
-	 * @param GroundSpeedCmPerSecond  Horizontal speed. Vertical is ignored:
-	 *   falling is not walking.
-	 * @param OutPlayRate  Set to the rate the returned animation should play at.
-	 * @return the standing or the walking animation, or null if neither loaded.
-	 */
-	UAnimSequence* AnimationForGroundSpeed(float GroundSpeedCmPerSecond,
-										   float& OutPlayRate,
-										   bool bChasing = false) const;
-
 	/** Whether the brain driving this Brute says it is chasing something. */
 	bool IsChasing() const;
 
@@ -214,32 +192,12 @@ public:
 	 */
 	void ApplyChaseSpeed();
 
-	/** What it plays standing still. Null until ResolveBody runs. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> IdleAnimation;
-
-	/** What it plays moving with nothing to chase. Null until ResolveBody runs. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> WalkAnimation;
-
-	/**
-	 * What it plays moving toward something it has noticed. Null until
-	 * ResolveBody runs, and null is not a fault: the walk is used instead.
-	 *
-	 * CHOSEN BY BRAIN STATE, NOT BY SPEED, and it has to be, because the Brute
-	 * moves at the same 250 cm/s whether it is wandering or coming at you. Its
-	 * movement speed is a designed number that makes "can be outmanoeuvred"
-	 * true, so this reads the controller's state instead.
-	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> ChaseAnimation;
-
 	/** What it plays when it swings. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> AttackAnimation;
 
 	/**
-	 * Start the swing animation, and hold it until it has played out.
+	 * Start the swing animation.
 	 *
 	 * Called by the base class when an attack actually lands, so that the
 	 * animation and the damage cannot drift apart. Does nothing when the art is
@@ -248,51 +206,78 @@ public:
 	void PlayAttackAnimation();
 
 	/**
-	 * Play one animation from its first frame and keep the mesh for a duration.
+	 * Play one animation once, blended over whatever the creature is doing.
 	 *
-	 * THE ONE PLACE THE MESH IS TAKEN OVER, so the three callers cannot drift.
-	 * The swing, the wind-up and the release all mean the same thing -- this
-	 * clip owns the creature until this moment -- and they used to say it in
-	 * three copies of the same six lines.
+	 * THE ONE PLACE AN ATTACK CLIP IS PLAYED, so the three callers cannot drift.
+	 * The swing, the wind-up and the release all mean the same thing.
+	 *
+	 * IT NO LONGER TAKES THE MESH OVER, which is the change of 2026-08-08. The
+	 * clip goes into AttackSlotName in ABP_Brute's animation graph, so
+	 * locomotion carries on underneath it and is blended back to when the clip
+	 * ends. Before that the mesh ran in EAnimationMode::AnimationSingleNode,
+	 * which plays exactly one clip and cannot blend, so a wind-up followed by a
+	 * release cut between the two in a single frame.
 	 *
 	 * THE PLAY RATE IS DERIVED, NOT PASSED IN, and that is the point of taking a
-	 * duration rather than a rate. The clip is stretched or compressed to fill
-	 * exactly the time it is being held for, which fixes two faults that looked
-	 * like one: the 0.83 second ground smash wind-up used to finish and then
-	 * freeze on its last frame for the remaining 0.57 seconds of a 1.4 second
-	 * telegraph, and the rock throw wind-up used to be cut off part way because
-	 * the clip is longer than the 1.0 second telegraph it plays inside.
+	 * duration rather than a rate. A clip longer than the window it plays inside
+	 * is compressed to fit; a shorter one is NOT stretched, because stretching
+	 * the 0.83 second ground smash wind-up across a 1.4 second telegraph played
+	 * it at 0.59 speed and read as slow motion.
 	 *
 	 * The rate is clamped to MinimumPlayRate and MaximumPlayRate, so a clip
 	 * wildly out of proportion to its window plays wrong rather than absurdly.
 	 *
 	 * Does nothing when the animation is null, which is every fresh clone.
 	 *
-	 * @param HoldSeconds  how long the mesh is kept. Zero or less uses the
-	 *                     clip's own length, which means play it at normal speed.
+	 * @param HoldSeconds  the window the clip has to fit inside. Zero or less
+	 *                     uses the clip's own length, meaning normal speed.
 	 */
 	void PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
 
 	/**
-	 * Whether the swing animation is still playing and should not be replaced.
+	 * Which slot of ABP_Brute's animation graph an attack clip plays in.
 	 *
-	 * WHY LOCOMOTION HAS TO ASK. DriveLocomotion runs every frame and picks an
-	 * animation from ground speed and brain state. The Brute stops moving to
-	 * attack, so on the very next frame that logic would choose the standing
-	 * animation and cut the swing off after one frame. This is what stops it.
+	 * DefaultSlot, because that is what the Slot node in that graph is named and
+	 * a montage played into a slot that does not exist is silently dropped.
 	 */
-	bool IsSwinging() const;
+	static const FName AttackSlotName;
 
 	/**
-	 * World seconds until which the swing animation owns the mesh. Read by
-	 * tests. Zero means it is not swinging.
+	 * Seconds an attack clip takes to blend in, and to blend back out to
+	 * locomotion.
 	 *
-	 * PUBLIC FOR THE SAME REASON THE CONTROLLER'S ROAM DEADLINE IS: a synthetic
-	 * test world is never ticked, so a test cannot wait a second for the swing
-	 * to finish and has to read the deadline instead.
+	 * A JUDGEMENT AT 0.15 SECONDS, roughly four frames at 30. The whole point is
+	 * that the number is not zero: zero is what the single-node mode gave, and a
+	 * wind-up cutting to a release in one frame is the fault this replaced. Long
+	 * enough to read as one movement, short enough that a swing still lands when
+	 * it looks like it lands.
+	 */
+	static constexpr float AttackBlendInSeconds = 0.15f;
+	static constexpr float AttackBlendOutSeconds = 0.15f;
+
+	/**
+	 * The clip PlayOneShot last chose, and the rate it asked for. Read by tests.
+	 * Null and zero until something is played.
+	 *
+	 * THE DECISION RECORDED SEPARATELY FROM THE APPLICATION, which is the split
+	 * this project already makes in ACataclysmEnemyController::ChooseRoamTarget
+	 * against Think. It is here because the application cannot be observed
+	 * headlessly at all: playing a slot animation needs an animation instance,
+	 * an animation instance needs the graph to be running, and issue #374
+	 * records a Paragon graph instantiated in a synthetic test world hanging the
+	 * test process for over three minutes.
+	 *
+	 * SET BEFORE THE ANIMATION INSTANCE IS ASKED FOR, so these record what was
+	 * chosen even where nothing can play it -- which is every automation test
+	 * world and every clone without the Paragon packs. Without that, the tests
+	 * covering which clip an ability plays could only ever check the no-art
+	 * path, and would pass while playing the wrong clip.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	float SwingUntilSeconds = 0.0f;
+	TObjectPtr<class UAnimSequence> LastPlayedAnimation;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float LastPlayedRate = 0.0f;
 
 	//~ The designed numbers.
 	//
@@ -485,177 +470,79 @@ public:
 	static const TCHAR* BodyMeshPath;
 
 	/**
-	 * The two animations this enemy plays, and why it plays them itself rather
-	 * than through the Paragon animation blueprint that ships beside the mesh.
+	 * The animation Blueprint that drives this creature, by generated-class path.
 	 *
-	 * THE PACK'S ANIMATION BLUEPRINT DOES NOT WORK ON THIS CHARACTER, MEASURED
-	 * RATHER THAN ASSUMED. Read at runtime on 2026-08-07 from a live
-	 * Play-In-Editor session, on the animation instance attached to a Brute the
-	 * controller had reported as Chasing:
+	 * WHY AN ANIMATION BLUEPRINT AT ALL, AND WHY THIS ONE RATHER THAN THE PACK'S.
+	 * The Paragon pack ships Rampage_AnimBlueprint and it does not work on this
+	 * character, measured rather than assumed. Read at runtime on 2026-08-07 from
+	 * a live Play-In-Editor session, on the animation instance attached to a
+	 * Brute the controller had reported as Chasing:
 	 *
 	 *     speed          = 0
 	 *     isAccelerating = false
 	 *     character      = None
 	 *
-	 * `character` is the blueprint's own reference to the pawn it animates. It
-	 * fills that by casting the pawn owner to the class it was written for,
-	 * which is the pack's own RampagePlayerCharacter blueprint. An
-	 * ACataclysmBruteCharacter is not that class, the cast fails, and every
-	 * value the graph derives from it stays at zero for ever. The body still
-	 * moves, because the character movement component moves it, so what you see
-	 * is a Brute sliding across the floor in a fixed pose.
+	 * `character` is that graph's own reference to the pawn it animates. It fills
+	 * it by casting the pawn owner to the class it was written for, which is the
+	 * pack's own RampagePlayerCharacter Blueprint. An ACataclysmBruteCharacter is
+	 * not that class, the cast fails, and every value the graph derives from it
+	 * stays at zero for ever.
 	 *
-	 * The pose it holds is the all-fours one, because Rampage has two stances
-	 * and the graph's entry state is the quadruped locomotion at zero speed.
-	 * At any distance that reads as the creature lying on the ground.
+	 * ABP_Brute is this project's own, in game/Content/Enemies/Demonic/Brute/ by
+	 * the convention in game/docs/content-layout.md. It holds three animation
+	 * clips blended by two booleans, and a Slot node named AttackSlotName that
+	 * attacks are played into. It reads the pawn's own ground speed rather than
+	 * casting to any particular class, so it cannot fail the way the pack's does.
 	 *
-	 * So the mesh is driven directly instead. Two animations, chosen in Tick,
-	 * with the walk's play rate scaled to ground speed. Both are the upright
-	 * "Biped" variants, matching the upright attack animations this enemy will
-	 * use. Issue #374 covers replacing this with an animation blueprint written
-	 * for this project, which is the proper answer and needs #370 settled first.
+	 * IT REPLACED DRIVING THE MESH DIRECTLY, on 2026-08-08. Until then the
+	 * component ran in EAnimationMode::AnimationSingleNode with C++ choosing one
+	 * clip per frame. That mode plays exactly one clip and cannot blend, so every
+	 * ability cut from the last frame of its wind-up to the first frame of its
+	 * release. Issue #387.
+	 *
+	 * THE _C SUFFIX IS NOT A TYPO. An animation Blueprint's runtime class is its
+	 * asset path with _C appended; the asset itself is a UAnimBlueprint, which is
+	 * not a UAnimInstance and cannot be handed to SetAnimInstanceClass.
 	 */
-	static const TCHAR* IdleAnimationPath;
-	static const TCHAR* WalkAnimationPath;
-
-	/**
-	 * What it plays while chasing, and why this one is a starting point rather
-	 * than an answer.
-	 *
-	 * THE FOUR-LEGGED GAIT, CHOSEN BY THE PROJECT OWNER ON 2026-08-07 after
-	 * watching all three candidates. Rampage has two stances and this is the
-	 * other one: the Brute drops onto all fours to close. That reads as having
-	 * noticed you through POSTURE rather than through pace, which is what makes
-	 * it the right answer here -- the Brute moves at the same designed 2.5 m/s
-	 * whether it is wandering or chasing, so any gait that claims speed it does
-	 * not have looks like running on the spot. This one claims nothing.
-	 *
-	 * TWO CANDIDATES WERE REJECTED, both for measured reasons.
-	 *
-	 * Sprint_Biped_Fwd returns identical bone poses to the walking animation at
-	 * every time sampled, with the same length, the same 29 frames and the same
-	 * 189 tracks. The pack realises a sprint by playing the jog faster rather
-	 * than by animating a second gait, so selecting between them would look
-	 * like nothing had changed. Issue #386. Sprint_Quad_Fwd is a duplicate of
-	 * Jog_Quad_Fwd in exactly the same way, measured 2026-08-07.
-	 *
-	 * Run_Fwd is genuinely distinct -- 0.667 s, 20 frames, 47 tracks against
-	 * 189 -- but it carries no ik_foot_l track, so its authored speed cannot be
-	 * measured at all and its play rate would be a guess. It was tried and
-	 * looked like running on the spot.
-	 *
-	 * TO AUDITION ANOTHER WITHOUT A REBUILD, set Cataclysm.Brute.ChaseAnimation
-	 * to any animation's asset path, and set Cataclysm.Brute.AuthoredChaseSpeed
-	 * to whatever that one was authored for.
-	 */
-	static const TCHAR* ChaseAnimationPath;
+	static const TCHAR* AnimationBlueprintPath;
 
 	/**
 	 * What it plays when it swings.
 	 *
 	 * A PLAIN ANIMATION, NOT THE MONTAGE THAT SITS BESIDE IT. The pack ships
-	 * Attack_Biped_Melee_A_Montage and that is the ordinary way to do this, but
-	 * this mesh is driven in EAnimationMode::AnimationSingleNode and montages
-	 * are silently ignored in that mode -- they do not fail, they do nothing.
-	 * Issue #387 replaces the whole single-animation scheme with an animation
-	 * Blueprint, and montages become usable then. Until it lands, the plain
-	 * sequence played once is what makes a swing visible at all, and a swing
-	 * nobody can see was reported as the Brute not attacking.
+	 * Attack_Biped_Melee_A_Montage and that would be the ordinary way to do
+	 * this. It is not used because a montage asset is a second binary file to
+	 * review for every clip, and PlaySlotAnimationAsDynamicMontage gives the
+	 * same blending from the plain sequence with nothing to author.
 	 */
 	static const TCHAR* AttackAnimationPath;
 
 	/**
-	 * Below this ground speed the Brute is standing rather than walking, in
-	 * centimetres per second.
+	 * The two figures the walking and chasing gaits are played back at, and where
+	 * they now live.
 	 *
-	 * A JUDGEMENT. Not zero, because a character that has been told to stop
-	 * keeps a little residual velocity for a frame or two while friction takes
-	 * it down, and comparing against zero makes it flicker between standing and
-	 * walking every time it arrives.
+	 * NOT IN THIS FILE ANY MORE. Until 2026-08-08 the Brute held both an authored
+	 * speed per clip and the arithmetic that turned them into a play rate. Both
+	 * moved into ABP_Brute, where the two sequence player nodes carry the rate
+	 * directly:
+	 *
+	 *     Jog_Biped_Fwd   1.111111   the wandering gait, 250 cm/s over 225
+	 *     Jog_Quad_Fwd    1.428571   the chasing gait,   500 cm/s over 350
+	 *
+	 * 225 and 350 were both set by eye on 2026-08-07 by the project owner
+	 * watching the creature move, which is the right authority for them: the
+	 * whole criterion is whether a planted foot appears to slide.
+	 * tools/measure_animation_stride.py estimates 242.9 and 304.5 for the same
+	 * two clips, high by 8% and 15%, and its own documentation calls its output
+	 * an estimate good to roughly ten percent.
+	 *
+	 * WHAT WAS LOST, SAID PLAINLY. The play rate used to follow the Brute's real
+	 * ground speed frame by frame; it is now a constant per clip. It differs only
+	 * while the creature is accelerating or stopping, because those are the only
+	 * moments its speed is neither 250 nor 500. WHAT WAS ALSO LOST is that these
+	 * two numbers no longer sit in text a pull request can diff: they are inside
+	 * a binary asset. Issue #406.
 	 */
-	static constexpr float WalkingThresholdCmPerSecond = 10.0f;
-
-	/**
-	 * The ground speed the walk animation is treated as having been authored
-	 * for, in centimetres per second. The play rate is the Brute's real speed
-	 * divided by this, so at the designed 250 cm/s the walk plays at
-	 * 250 / 225 = 1.11.
-	 *
-	 * SET BY EYE, ON 2026-08-07, BY THE PROJECT OWNER WATCHING IT WALK. That is
-	 * the right authority for this one: the whole criterion is whether a planted
-	 * foot appears to slide, which is a judgement about what a person sees.
-	 *
-	 * `tools/measure_animation_stride.py` estimates the same figure from the
-	 * animation, and agrees to within 8%:
-	 *
-	 *     Jog_Biped_Fwd   242.9 cm/s   (estimate)   225 cm/s (by eye, in use)
-	 *     Idle_Biped        0.0 cm/s   (the control: standing still)
-	 *
-	 * Idle_Biped reading zero is what makes the estimate credible at all.
-	 *
-	 * TWO EARLIER VALUES WERE WRONG, AND HOW THEY WERE WRONG IS WORTH KEEPING.
-	 * The first, 500, was an outright guess and made the play rate 0.50, so the
-	 * animation ran half speed while the body moved at full speed and the
-	 * planted foot slid forwards. The second, 373.7, came from the measuring
-	 * script when it averaged only the top quartile of its samples; that
-	 * measures the peak of the foot's velocity curve rather than a
-	 * representative speed, and was 66% high. The script now averages the whole
-	 * cycle. See its module docstring.
-	 *
-	 * TO TUNE IT WITHOUT A REBUILD, use the console variable
-	 * `Cataclysm.Brute.AuthoredWalkSpeed` during a play session; see
-	 * EffectiveAuthoredWalkSpeed below.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Enemy",
-			  meta = (ClampMin = "1.0"))
-	float AuthoredWalkSpeedCmPerSecond = 225.0f;
-
-	/**
-	 * The authored walk speed actually in use: the console variable
-	 * `Cataclysm.Brute.AuthoredWalkSpeed` when it is above zero, otherwise the
-	 * measured property above.
-	 *
-	 * THE PROPERTY ALONE WAS NOT REACHABLE, WHICH IS WHY THIS EXISTS. It was
-	 * EditDefaultsOnly, and there is no Blueprint subclass of this class to open
-	 * -- issue #370, where authored enemy assets should live, is still open --
-	 * so there was no class default to edit and the Details panel hides
-	 * EditDefaultsOnly properties on a placed actor. Changing the number meant
-	 * editing this header and rebuilding, which is a poor way to judge something
-	 * by eye.
-	 */
-	float EffectiveAuthoredWalkSpeed() const;
-
-	/**
-	 * The ground speed the chase animation is treated as having been authored
-	 * for, in centimetres per second.
-	 *
-	 * SET BY EYE ON 2026-08-07, BY THE PROJECT OWNER WATCHING IT RUN, and that
-	 * is the right authority for it: the whole criterion is whether a planted
-	 * foot appears to slide, which is a judgement about what a person sees.
-	 * With the chase speed at 500 this makes the play rate 500 / 350 = 1.43.
-	 *
-	 * IT IS NOT THE MEASURED FIGURE, AND THE GAP IS EXPECTED.
-	 * tools/measure_animation_stride.py reports Jog_Quad_Fwd at 304.5 cm/s, and
-	 * the same tool reported 242.9 for the walking animation where the by-eye
-	 * answer was 225. It reads high on both, by 8% on the walk and 15% here.
-	 * The tool's own documentation calls its output a starting estimate good to
-	 * roughly ten percent, because the IK foot bones it tracks never touch the
-	 * ground on this skeleton.
-	 *
-	 * WHAT LEAVING IT AT THE BRUTE'S OWN SPEED LOOKED LIKE, because that was
-	 * the first attempt: a play rate of exactly 1.0, so the feet travelled as
-	 * if the body were moving at 304.5 while it moved at 250, sliding 22% --
-	 * reported as "it is like he isn't moving far enough within the animation".
-	 *
-	 * Retune it with Cataclysm.Brute.AuthoredChaseSpeed while watching. A
-	 * smaller number plays the animation faster.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Enemy",
-			  meta = (ClampMin = "1.0"))
-	float AuthoredChaseSpeedCmPerSecond = 350.0f;
-
-	/** As EffectiveAuthoredWalkSpeed, for the chase animation. */
-	float EffectiveAuthoredChaseSpeed() const;
 
 	/** Play rate floor. Below this the animation reads as frozen. */
 	static constexpr float MinimumPlayRate = 0.2f;
@@ -664,8 +551,8 @@ public:
 	static constexpr float MaximumPlayRate = 2.5f;
 
 	/**
-	 * Puts the Rampage mesh on, or logs why it could not and keeps the
-	 * placeholder cylinder. Returns true when the skeletal mesh resolved.
+	 * Puts the Rampage mesh and ABP_Brute on, or logs why it could not and keeps
+	 * the placeholder cylinder. Returns true when the skeletal mesh resolved.
 	 *
 	 * PUBLIC SO A TEST CAN CALL IT RATHER THAN INFER IT. BeginPlay calls this,
 	 * but whether BeginPlay runs at all depends on how the world was made, and a
@@ -674,19 +561,21 @@ public:
 	 * directly and reading the return value distinguishes the two, and it is
 	 * safe to call twice: assigning the same mesh again is a no-op.
 	 *
-	 * @param bIncludeAnimation  Pass false to bind the mesh without loading or
-	 *   starting the standing and walking animations. Tests use this to check
-	 *   the mesh binding without pulling in animation assets they do not need.
+	 * @param bIncludeAnimation  Pass false to bind the mesh without loading the
+	 *   animation Blueprint or any attack clip. Tests use this to check the mesh
+	 *   binding without pulling in animation assets they do not need.
 	 */
 	bool ResolveBody(bool bIncludeAnimation = true);
 
-private:
 	/**
-	 * The asset path the chase animation currently in ChaseAnimation was loaded
-	 * from, so the console override only reloads when it actually changes.
+	 * Puts ABP_Brute on the mesh component, or logs why it could not.
 	 *
-	 * Also set when a load fails, or a mistyped path would be retried every
-	 * frame for the rest of the session.
+	 * SEPARATE FROM ResolveBody SO A TEST CAN ASK FOR IT ALONE and read whether
+	 * it succeeded, which is the only way to tell "the animation Blueprint is
+	 * absent" apart from "the whole art pack is absent". They are different
+	 * failures: ABP_Brute is committed and the Paragon pack is not.
+	 *
+	 * @return true when the generated class loaded and was assigned.
 	 */
-	FString LoadedChaseAnimationPath;
+	bool ResolveAnimationBlueprint(class USkeletalMeshComponent* MeshComponent);
 };
