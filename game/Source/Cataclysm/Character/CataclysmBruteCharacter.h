@@ -187,6 +187,57 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UStaticMesh> RockMesh;
 
+	/**
+	 * The bone the carried rock hangs from.
+	 *
+	 * MEASURED OUT OF THE ASSET, NOT GUESSED, AND THE ANSWER IS A BONE RATHER
+	 * THAN A SOCKET. `tools/probe_brute_animation.py`-style reads on 2026-08-08
+	 * found that the Rampage mesh has NO sockets at all: `find_socket` answers
+	 * null for every name tried, including this one. So the rock attaches to a
+	 * bone.
+	 *
+	 * WHY THIS BONE AND NOT `hand_r`. `weapon_r` is the rig's prop bone and it
+	 * is animated for exactly this purpose. Standing in `Idle_Biped` it sits 1.8
+	 * cm from `hand_r`, parked at the hand. Through the Rip and Toss clips the
+	 * two separate by 40 to 110 cm, because the animator is moving the prop
+	 * rather than the hand -- at the top of the throw's arc `hand_r` is at
+	 * (-60.5, 81.4, 209.6) and `weapon_r` is at (-45.2, 190.8, 211.1).
+	 *
+	 * THAT IS WHY THE ROCK NEEDS NO OFFSET AND NO SCALE. Where it sits is
+	 * authored in the animation. Issue #421 expected this to be a judgement
+	 * somebody had to make by eye; the measurement removed it.
+	 */
+	static const FName RockHoldBoneName;
+
+	/**
+	 * The rock while the creature is holding it, before the throw.
+	 *
+	 * WHAT IT REPLACED. The rock throw played `Ability_RipNToss_Rip`, an
+	 * animation whose whole content is tearing a rock out of the ground, with
+	 * nothing in the creature's hands. The rock then appeared in mid-air and
+	 * flew off. Issue #421.
+	 *
+	 * HIDDEN RATHER THAN SPAWNED AND DESTROYED. It is the same mesh every time
+	 * and it is needed several times a fight, so it is made once and its
+	 * visibility follows the brain. See UpdateCarriedRock.
+	 *
+	 * Read by tests, which is why it is not private.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UStaticMeshComponent> CarriedRock;
+
+	/**
+	 * Shows the rock while the rock throw is being wound up and hides it
+	 * otherwise. Called every frame from Tick.
+	 *
+	 * ASKS THE BRAIN RATHER THAN REMEMBERING, which is the same shape
+	 * UpdateAbilityMontage uses and for the same reason. Every way a wind-up can
+	 * end clears the controller's WindingUpAbility -- the attack landing, a stun
+	 * cancelling it, the pawn being unpossessed -- so asking covers all of them
+	 * without this function knowing what any of them are.
+	 */
+	void UpdateCarriedRock();
+
 	/** The montage for one ability, or null if the art is absent. */
 	class UAnimMontage* AbilityMontageFor(int32 Index) const;
 

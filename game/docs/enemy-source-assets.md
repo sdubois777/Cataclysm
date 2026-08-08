@@ -339,6 +339,29 @@ below is in use.
 | `SM_Rampage_Rock_Rip_Crater` | `FX/Meshes/Debris/` | Not used. The hole left where the rock was torn out. Issue #421, with the carry state |
 | `SM_Rampage_Rock_FragA` to `FragE` | `FX/Meshes/Debris/` | Not used. Five fragments for the rock breaking on impact. Issue #422 |
 
+**Where the rock goes in the creature's hand, measured 2026-08-08.** The Rampage
+mesh has **no sockets at all** -- `find_socket` answers null for every name
+tried, including `weapon_r`, `hand_r` and `RockSocket`. So a held prop attaches
+to a bone.
+
+**The bone is `weapon_r`, and it is animated for exactly this.** Standing in
+`Idle_Biped` it sits 1.8 cm from `hand_r`, parked at the hand. Through the Rip
+and Toss clips the two separate by 40 to 110 cm, because the animator is moving
+the prop rather than the hand:
+
+| Clip | Moment | `hand_r` | `weapon_r` |
+|---|---|---|---|
+| `Idle_Biped` | start | (-90.5, -17.8, 69.3) | (-92.3, -18.0, 70.1) |
+| `Ability_RipNToss_Idle` | start | (-88.0, -77.1, 76.6) | (-67.7, -31.0, 40.5) |
+| `Ability_RipNToss_Toss` | half way | (-60.5, 81.4, 209.6) | (-45.2, 190.8, 211.1) |
+
+That is why the carried rock needs no offset and no scale: where it sits is
+authored in the animation. Issue #421 expected that to be a judgement somebody
+had to make by eye, and the measurement removed it.
+
+**The skeleton also carries eleven `rock_spikes_*` bones.** They are body
+armour on the creature's arms, not the thrown rock, and nothing uses them.
+
 The rock is scaled to the projectile's own body width rather than shown at its
 authored size, so what is drawn and what the sweep hits are one thing rather than
 two numbers that can disagree. That is why it is not boulder-sized in flight.
