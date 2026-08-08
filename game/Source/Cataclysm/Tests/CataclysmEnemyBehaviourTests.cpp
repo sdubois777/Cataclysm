@@ -111,19 +111,55 @@ namespace CataclysmBehaviourTest
 	static int32 SpendAbilities(UWorld* World, ACataclysmEnemyController* Brain,
 								float DistanceCm)
 	{
+		const ACataclysmCharacterBase* Driven =
+			Cast<ACataclysmCharacterBase>(Brain->GetPawn());
+		if (!Driven)
+		{
+			return 0;
+		}
+
+		// EVERY SECOND THIS SPENDS COMES OUT OF THE COOLDOWNS IT IS TRYING TO
+		// START, which is the whole difficulty here and is why the advances
+		// below are as small as they can be. The Brute's abilities cool down
+		// for 5 seconds; this helper has to run both wind-ups AND then wait out
+		// the 1.6 second attack interval, and all of that has to fit inside 5
+		// seconds or the abilities come back and the caller sees the creature
+		// use one instead of swinging.
+		//
+		// A flat 2.0 seconds per ability was enough before the interval had to
+		// be waited out as well. With it, two abilities came to 5.7 seconds and
+		// the stomp was ready again -- which is what three tests reported as
+		// the Brute winding up when they expected a swing.
 		int32 Used = 0;
 		for (int32 Pass = 0; Pass < 8; ++Pass)
 		{
-			if (Brain->ChooseAbility(DistanceCm) == INDEX_NONE)
+			const int32 Chosen = Brain->ChooseAbility(DistanceCm);
+			if (Chosen == INDEX_NONE)
 			{
 				break;
 			}
 
-			Brain->Think();                    // starts the wind-up
-			AdvanceWorldClock(World, 2.0);     // past the longest of them, 1.4 s
-			Brain->Think();                    // lands it
+			const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+			const float WindUp = Abilities.IsValidIndex(Chosen)
+				? Abilities[Chosen].WindUpSeconds : 1.4f;
+
+			Brain->Think();                          // starts the wind-up
+			AdvanceWorldClock(World, WindUp + 0.05);  // just past its own wind-up
+			Brain->Think();                          // lands it
 			++Used;
 		}
+
+		// AND THEN WAIT OUT THE ATTACK INTERVAL, because landing an ability
+		// counts as an attack from 2026-08-08 and the ordinary swing is gated
+		// by the same interval. Without this the creature is free of its
+		// cooldowns but not yet free to swing, and every caller of this helper
+		// wants both -- they are all about what it does once the abilities are
+		// gone.
+		//
+		// LONGER THAN THE INTERVAL, NOT EQUAL TO IT, so the comparison is not
+		// being asked to decide a tie.
+		AdvanceWorldClock(World, Driven->SecondsBetweenAttacks() + 0.05);
+
 		return Used;
 	}
 
@@ -1964,6 +2000,36 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		Brute.Actor->LastPlayedAnimation.Get(),
 		Brute.Actor->StompAnimation.Get());
 
+	// AND ARRANGES FOR SOMETHING TO FILL THE REST OF THE TELEGRAPH. The
+	// wind-up clip is 0.83 seconds inside a 1.4 second telegraph and is never
+	// played slower than it was authored, so on its own it leaves 0.57 seconds
+	// with nothing playing. Under the single-node scheme the mesh froze on the
+	// last frame and the gap was invisible; a montage blends back to
+	// locomotion, so the Brute raised its arms, dropped them, and only then
+	// smashed. Reported on 2026-08-08 as the slam cancelling half way.
+	if (Brute.Actor->StompHoldAnimation != nullptr)
+	{
+		TestEqual(TEXT("the hold clip is queued to fill the rest of the "
+					   "telegraph"),
+			Brute.Actor->PendingHoldAnimation.Get(),
+			Brute.Actor->StompHoldAnimation.Get());
+
+		const float Expected = ACataclysmBruteCharacter::StompWindUpSeconds
+			- Brute.Actor->StompAnimation->GetPlayLength();
+		TestEqual(TEXT("for exactly the part of the telegraph the wind-up clip "
+					   "does not cover"),
+			Brute.Actor->PendingHoldSeconds, Expected);
+
+		// THE TIMER DOES NOT FIRE IN A WORLD THAT IS NEVER TICKED, so this
+		// calls what the timer would have called.
+		Brute.Actor->StartHoldAnimation();
+		TestEqual(TEXT("and playing it holds the poised pose"),
+			Brute.Actor->LastPlayedAnimation.Get(),
+			Brute.Actor->StompHoldAnimation.Get());
+		TestEqual(TEXT("at the speed it was authored, rather than stretched"),
+			Brute.Actor->LastPlayedRate, 1.0f);
+	}
+
 	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
 
 	TestEqual(TEXT("the stomp lands"),
@@ -1974,6 +2040,18 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	// ability landed, so the mesh was handed straight back to locomotion at the
 	// moment of impact and the attack visibly stopped part way through.
 	TestEqual(TEXT("landing the stomp plays the release clip"),
+		Brute.Actor->LastPlayedAnimation.Get(),
+		Brute.Actor->StompReleaseAnimation.Get());
+
+	// AND NOTHING REPLACES IT A QUARTER OF A SECOND LATER. Landing an ability
+	// did not count against the attack interval until 2026-08-08, so the
+	// ordinary swing was free to start on the very next thinking pass and cut
+	// the 0.70 second release clip off after 0.25 of it. Reported from a play
+	// session as the slam ending part way through.
+	AdvanceWorldClock(World, ACataclysmEnemyController::ThinkIntervalSeconds);
+	Brain->Think();
+	TestEqual(TEXT("and a thinking pass a quarter of a second later does not "
+				   "replace it with a swing"),
 		Brute.Actor->LastPlayedAnimation.Get(),
 		Brute.Actor->StompReleaseAnimation.Get());
 
@@ -2343,12 +2421,19 @@ bool FCataclysmStunnedBruteDoesNotSwingTest::RunTest(const FString&)
 			Player.Actor, Brute.Actor, /*DurationSeconds=*/1.5f,
 			/*DamageDealt=*/1000.0f, /*bStunIsDesigned=*/true));
 
-	// Just past the attack interval, so the swing is due again and the stun is
-	// the only thing holding it. Short enough to leave the stomp cooling down.
+	// Just past the attack interval, so the creature is due to attack again and
+	// the stun is the only thing holding it.
+	//
+	// WHICH ATTACK IT WOULD HAVE MADE DOES NOT MATTER, AND THIS USED TO ASSERT
+	// THAT IT DID. It required the stomp to still be cooling down so that only
+	// the swing was left. That was never the point of this test and it stopped
+	// being true on 2026-08-08, when landing an ability began counting against
+	// the attack interval: waiting the interval out costs enough clock that the
+	// stomp comes back. Think checks the stun before it looks at abilities at
+	// all -- see its first branch -- so a Brute with every ability ready is
+	// exactly as good a subject as one with none.
 	AdvanceWorldClock(World,
 		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds + 0.1);
-	TestEqual(TEXT("and the stomp is still cooling down, so the swing is due"),
-		Brain->ChooseAbility(Contact), int32(INDEX_NONE));
 
 	const float BeforeStunned = Player.Health();
 

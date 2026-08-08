@@ -308,6 +308,21 @@ bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
 	Driven->UseEnemyAbility(Landing, CurrentTarget.Get(), WindUpAimedAt);
 	++AbilitiesUsed;
 
+	// AN ABILITY THAT LANDS COUNTS AS AN ATTACK FOR THE ATTACK INTERVAL.
+	//
+	// WHAT THIS FIXED, reported from a play session on 2026-08-08 as the slam
+	// ending part way through. Without it, the ordinary swing was free to start
+	// on the very next thinking pass -- a quarter of a second later -- and the
+	// swing animation replaced the stomp's release clip after 0.25 of its 0.70
+	// seconds. The attack visibly stopped a third of the way in.
+	//
+	// IT IS ALSO RIGHT ON ITS OWN TERMS, animation aside. A Brute that stomps
+	// and then swings a quarter of a second later has attacked twice in the
+	// time its designed interval allows one attack, so the interval was not
+	// doing what it says.
+	LastAttackTime = Now;
+	bHasAttacked = true;
+
 	LastAction = ECataclysmBrainAction::Attacking;
 	return true;
 }
@@ -376,6 +391,31 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 
 	const int32 Chosen = ChooseAbility(DistanceCm);
 	if (Chosen == INDEX_NONE)
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	// THE ATTACK INTERVAL GATES ABILITIES TOO, NOT ONLY THE ORDINARY SWING.
+	//
+	// Until 2026-08-08 an ability was held back by its own cooldown and by
+	// nothing else, so a creature could land one attack and begin another on
+	// the very next thinking pass a quarter of a second later. The Brute did
+	// exactly that: it stomped and then immediately began a rock throw, whose
+	// wind-up animation replaced the stomp's release clip part way through.
+	// Reported from a play session as the slam ending half way.
+	//
+	// WHAT THE INTERVAL MEANS, WHICH IS THE REAL ARGUMENT. It is how often this
+	// creature attacks. A Brute that stomps and throws a rock inside one
+	// interval has attacked twice in the time the design allows one attack, and
+	// the interval was not describing the creature. Cooldowns say how often a
+	// PARTICULAR ability may be used; the interval says how often ANY attack
+	// may start. Both have to hold.
+	//
+	// RETURNING Idle MEANS "NO ABILITY", not "do nothing" -- see ChooseAbility.
+	// The caller falls through to chasing or to the ordinary swing, and the
+	// ordinary swing has always been gated by this same interval.
+	if (bHasAttacked && Driven->SecondsBetweenAttacks() > 0.0f
+		&& Now - LastAttackTime < Driven->SecondsBetweenAttacks())
 	{
 		return ECataclysmBrainAction::Idle;
 	}

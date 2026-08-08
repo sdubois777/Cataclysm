@@ -176,6 +176,42 @@ public:
 	/** The release clip for one ability, or null if the art is absent. */
 	class UAnimSequence* ReleaseAnimationFor(int32 Index) const;
 
+	/**
+	 * Where the clip that holds a wind-up open lives, and the clip itself.
+	 *
+	 * Ability_GroundSmash_Loop is 0.03 seconds long. That is not a mistake in
+	 * the pack: it is a single held pose, shipped so a wind-up can be kept open
+	 * for as long as a telegraph needs without the clip before it being slowed
+	 * down. Only the stomp has one, because only the stomp's wind-up clip is
+	 * shorter than its telegraph.
+	 */
+	static const TCHAR* StompHoldAnimationPath;
+
+	/** The clip that holds the stomp poised. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> StompHoldAnimation;
+
+	/** The hold clip for one ability, or null if it needs none. */
+	class UAnimSequence* HoldAnimationFor(int32 Index) const;
+
+	/**
+	 * Play the hold clip for the rest of the wind-up window.
+	 *
+	 * PUBLIC AND CALLABLE SO A TEST CAN RUN IT WITHOUT WAITING, the same reason
+	 * ACataclysmEnemyController::Think is. A timer schedules this in a real
+	 * game; an automation test world is never ticked, so its timer manager
+	 * never fires and a test has to call this itself.
+	 */
+	UFUNCTION()
+	void StartHoldAnimation();
+
+	/** What StartHoldAnimation will play, and for how long. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> PendingHoldAnimation;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float PendingHoldSeconds = 0.0f;
+
 	/** Whether the brain driving this Brute says it is chasing something. */
 	bool IsChasing() const;
 
@@ -494,6 +530,30 @@ public:
 	 * attacks are played into. It reads the pawn's own ground speed rather than
 	 * casting to any particular class, so it cannot fail the way the pack's does.
 	 *
+	 * WHAT IT LOOKS LIKE INSIDE, so that a reader does not have to open a binary
+	 * asset to know what drives the creature:
+	 *
+	 *     Jog_Quad_Fwd  ─┐                         (true:  chasing)
+	 *                    ├─ Blend Poses by bool ─┐ (bChasing)
+	 *     Jog_Biped_Fwd ─┘                       │ (false: wandering)
+	 *                                            ├─ Blend Poses by bool ─→ Slot
+	 *     Idle_Biped ─────────────────────────────┘ (bMoving)
+	 *
+	 * BLEND POSES BY BOOL PUTS THE TRUE POSE ON THE **TOP** PIN, WHICH IS THE
+	 * OPPOSITE OF HOW IT READS. The engine says so itself, in
+	 * Engine/Source/Runtime/AnimGraphRuntime/Private/AnimNodes/
+	 * AnimNode_BlendListByBool.cpp:
+	 *
+	 *     // Note: Intentionally flipped boolean sense
+	 *     // (the true input is #0, and the false input is #1)
+	 *     return GetActiveValue() ? 0 : 1;
+	 *
+	 * Both blends in this graph were wired the wrong way round on 2026-08-08 for
+	 * exactly that reason, and the project owner reported it as the Brute
+	 * standing still in its running animation and walking in its standing one.
+	 * Nothing caught it: the automation tests check that the graph loads and is
+	 * assigned, not which pose is on which pin. Issue #408.
+	 *
 	 * IT REPLACED DRIVING THE MESH DIRECTLY, on 2026-08-08. Until then the
 	 * component ran in EAnimationMode::AnimationSingleNode with C++ choosing one
 	 * clip per frame. That mode plays exactly one clip and cannot blend, so every
@@ -578,4 +638,8 @@ public:
 	 * @return true when the generated class loaded and was assigned.
 	 */
 	bool ResolveAnimationBlueprint(class USkeletalMeshComponent* MeshComponent);
+
+private:
+	/** Fires StartHoldAnimation when the wind-up clip has finished playing. */
+	FTimerHandle HoldAnimationTimer;
 };
