@@ -16,6 +16,7 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
@@ -1860,6 +1861,83 @@ bool FCataclysmBruteAlwaysHasSomethingToDoTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------
+// Seeing the thing in the air
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileIsVisibleTest,
+	"Cataclysm.AI.AFiredProjectileHasSomethingOnScreenToSee",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileIsVisibleTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// EVERY PROJECTILE IN THE GAME USED TO BE INVISIBLE, not just the Brute's
+	// rock. ACataclysmProjectile had one component, an empty scene component to
+	// give the actor a position, so a thrown rock and every player projectile
+	// skill dealt their damage with nothing travelling between the two. Reported
+	// from a play session on 2026-08-08 as the rock throw not throwing a rock.
+	//
+	// NO PARAGON ART NEEDED. The placeholder is an engine basic shape, so this
+	// runs in continuous integration and on a fresh clone.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Thrower(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+
+	ACataclysmProjectile* Rock = ACataclysmProjectile::Fire(
+		Thrower.Actor, FVector::ZeroVector, FVector(10 * M, 0.0f, 0.0f),
+		ACataclysmBruteCharacter::RockThrowRadiusCm,
+		ACataclysmBruteCharacter::RockThrowSpeedCmPerSecond,
+		/*InPierce=*/0, /*bInReturns=*/false,
+		ACataclysmBruteCharacter::RockThrowDamagePercent,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+
+	if (!Rock)
+	{
+		AddError(TEXT("Firing a projectile returned nothing."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Rock)) { Rock->Destroy(); } };
+
+	if (!Rock->PlaceholderBody)
+	{
+		AddError(TEXT("A fired projectile has no placeholder body component, so "
+					  "there is nothing on screen when one is thrown."));
+		return false;
+	}
+
+	TestTrue(TEXT("the placeholder has a mesh set, so it draws something"),
+		Rock->PlaceholderBody->GetStaticMesh() != nullptr);
+
+	// SIZED TO WHAT IT HITS WITH, so what the player sees and what the sweep
+	// uses cannot become two different widths.
+	//
+	// DOUBLE, NOT FLOAT. FVector components are double in Unreal 5, and mixing
+	// the two makes TestEqual ambiguous and stops the module compiling.
+	const double Expected = static_cast<double>(Rock->BodyRadiusCm * 2.0f)
+		/ static_cast<double>(ACataclysmCharacterBase::BasicShapeSize);
+	TestEqual(TEXT("and is scaled to the width the projectile actually hits with"),
+		Rock->PlaceholderBody->GetRelativeScale3D().X, Expected);
+
+	TestTrue(TEXT("which is a real size rather than zero"), Expected > 0.0);
+
+	// IT MUST NOT COLLIDE. The projectile sweeps the world itself to find what
+	// it passes through, so a colliding mesh would give it a second and
+	// differently sized way to hit things.
+	TestEqual(TEXT("the placeholder does not collide"),
+		static_cast<int32>(Rock->PlaceholderBody->GetCollisionEnabled()),
+		static_cast<int32>(ECollisionEnabled::NoCollision));
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
 // Finishing an attack
 // --------------------------------------------------------------------------
 
@@ -1999,18 +2077,24 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteWindUpFillsItsWindowTest,
-	"Cataclysm.AI.ABruteStretchesAWindUpClipToFillItsTelegraph",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteWindUpSpeedTest,
+	"Cataclysm.AI.ABruteNeverPlaysAWindUpSlowerThanItWasAuthored",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmBruteWindUpFillsItsWindowTest::RunTest(const FString&)
+bool FCataclysmBruteWindUpSpeedTest::RunTest(const FString&)
 {
 	using namespace CataclysmBehaviourTest;
 
 	// THE PLAY RATE, READ OFF THE MESH RATHER THAN INFERRED. The test above
-	// checks how long the mesh is held, which was already correct before this
-	// change and so proves nothing about the speed the clip runs at. This reads
-	// the rate that was actually set.
+	// checks how long the mesh is HELD, which says nothing about the speed the
+	// clip inside it runs at. This reads the rate that was actually set.
+	//
+	// THE RULE IS ASYMMETRIC AND THAT IS THE POINT. Stretching a short clip
+	// across a long telegraph was tried and reported from a play session as a
+	// glitch: the arms went up in slow motion and the release then ran at full
+	// speed. A clip shorter than its window holds its last pose instead, which
+	// is what Rampage's separate 0.03 second loop clip exists to do. A clip
+	// LONGER than its window still has to be compressed or it is cut off.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!World)
 	{
@@ -2022,7 +2106,8 @@ bool FCataclysmBruteWindUpFillsItsWindowTest::RunTest(const FString&)
 	FScopedBrute Brute(World, FVector::ZeroVector);
 	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
 
-	if (Brute.Actor->StompAnimation == nullptr)
+	if (Brute.Actor->StompAnimation == nullptr
+		|| Brute.Actor->RockThrowAnimation == nullptr)
 	{
 		AddInfo(TEXT("The Paragon art is absent, so this test could not run. "
 					 "Install the pack to exercise it."));
@@ -2035,26 +2120,68 @@ bool FCataclysmBruteWindUpFillsItsWindowTest::RunTest(const FString&)
 	if (!Single)
 	{
 		AddInfo(TEXT("The mesh has no single node instance, so the play rate "
-					 "could not be read. The length assertions in the test above "
-					 "still ran."));
+					 "could not be read. The hold-length assertions in the test "
+					 "above still ran."));
 		return true;
 	}
 
-	Brute.Actor->BeginEnemyAbilityWindUp(
-		ACataclysmBruteCharacter::StompAbility, nullptr);
+	struct FCase
+	{
+		const TCHAR* What;
+		int32 Ability;
+		UAnimSequence* Clip;
+		float Window;
+	};
 
-	const float ClipLength = Brute.Actor->StompAnimation->GetPlayLength();
-	const float Wanted = ClipLength / ACataclysmBruteCharacter::StompWindUpSeconds;
+	const FCase Cases[] =
+	{
+		{ TEXT("the ground smash"), ACataclysmBruteCharacter::StompAbility,
+		  Brute.Actor->StompAnimation.Get(),
+		  ACataclysmBruteCharacter::StompWindUpSeconds },
+		{ TEXT("the rock throw"), ACataclysmBruteCharacter::RockThrowAbility,
+		  Brute.Actor->RockThrowAnimation.Get(),
+		  ACataclysmBruteCharacter::RockThrowWindUpSeconds },
+	};
 
-	TestEqual(FString::Printf(
-		TEXT("a %.2f s clip inside a %.2f s telegraph plays at %.3f"),
-		ClipLength, ACataclysmBruteCharacter::StompWindUpSeconds, Wanted),
-		Single->GetPlayRate(), Wanted);
+	int32 Compressed = 0;
+	for (const FCase& Case : Cases)
+	{
+		Brute.Actor->BeginEnemyAbilityWindUp(Case.Ability, nullptr);
 
-	// AND IT IS NOT SIMPLY 1.0, which is what it used to be and what a broken
-	// derivation would most likely fall back to.
-	TestTrue(TEXT("which is not the normal speed it used to play at"),
-		!FMath::IsNearlyEqual(Wanted, 1.0f));
+		const float Length = Case.Clip->GetPlayLength();
+		const float Rate = Single->GetPlayRate();
+
+		TestEqual(FString::Printf(
+			TEXT("%s plays its %.2f s clip inside a %.2f s telegraph at the "
+				 "expected rate"),
+			Case.What, Length, Case.Window),
+			Rate, FMath::Max(1.0f, Length / Case.Window));
+
+		// NEVER IN SLOW MOTION, whichever clip it is. This is the assertion the
+		// play session produced.
+		TestTrue(FString::Printf(
+			TEXT("%s is never played slower than it was authored (rate %.3f)"),
+			Case.What, Rate),
+			Rate >= 1.0f);
+
+		// AND IT ALWAYS FITS. A clip that still ran past its window would be cut
+		// off, which is the fault the compression exists to prevent.
+		TestTrue(FString::Printf(
+			TEXT("%s finishes inside its telegraph (%.2f s at rate %.3f)"),
+			Case.What, Length, Rate),
+			Length / Rate <= Case.Window + KINDA_SMALL_NUMBER);
+
+		if (Rate > 1.0f)
+		{
+			++Compressed;
+		}
+	}
+
+	// AT LEAST ONE CLIP IS ACTUALLY LONGER THAN ITS WINDOW, or the compression
+	// branch is never taken and the assertions above would pass on code that
+	// simply returned 1.0 every time.
+	TestTrue(TEXT("at least one wind-up clip has to be compressed to fit"),
+		Compressed >= 1);
 
 	return true;
 }

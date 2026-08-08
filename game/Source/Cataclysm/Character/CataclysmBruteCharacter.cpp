@@ -406,10 +406,28 @@ void ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
 	// No duration asked for means play it at normal speed for as long as it is.
 	const float Hold = HoldSeconds > 0.0f ? HoldSeconds : Length;
 
-	// FILL THE WINDOW. A clip shorter than its window would otherwise finish
-	// and freeze on its last frame; one longer would be cut off part way.
-	const float Rate = FMath::Clamp(Length / Hold, MinimumPlayRate,
-									MaximumPlayRate);
+	// NEVER SLOWER THAN IT WAS AUTHORED. ONLY FASTER, AND ONLY WHEN IT MUST BE.
+	//
+	// Stretching a short clip across a long window was tried first and is
+	// wrong. The ground smash wind-up is 0.83 seconds inside a 1.4 second
+	// telegraph, so filling the window played it at 0.59 speed: the Brute
+	// raised its arms in slow motion and then the release ran at full speed,
+	// which was reported from a play session as a glitch rather than as one
+	// movement. The clips are authored at one speed and changing it on only
+	// half of them is what looks wrong.
+	//
+	// HOLDING THE LAST POSE IS WHAT THE PACK EXPECTS. Rampage ships a separate
+	// Ability_GroundSmash_Loop of 0.03 seconds, whose only purpose is to hold a
+	// wind-up open for as long as the telegraph needs. A creature poised with
+	// its arms up for the last half second of a telegraph is the intended
+	// reading, and it is also the clearest warning the player gets.
+	//
+	// COMPRESSION IS STILL NEEDED IN THE OTHER DIRECTION. The rock throw
+	// wind-up clip is longer than its 1.0 second telegraph, so at authored
+	// speed it is cut off before the rock comes free -- which is the other half
+	// of what that play session reported.
+	const float Rate = FMath::Clamp(FMath::Max(1.0f, Length / Hold),
+									MinimumPlayRate, MaximumPlayRate);
 
 	SwingUntilSeconds = World->GetTimeSeconds() + Hold;
 
