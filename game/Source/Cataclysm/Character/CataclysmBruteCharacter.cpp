@@ -59,9 +59,17 @@ const TCHAR* ACataclysmBruteCharacter::StompAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Ability_GroundSmash_Start.Ability_GroundSmash_Start");
 
+const TCHAR* ACataclysmBruteCharacter::StompReleaseAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Ability_GroundSmash_End.Ability_GroundSmash_End");
+
 const TCHAR* ACataclysmBruteCharacter::RockThrowAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Ability_RipNToss_Rip.Ability_RipNToss_Rip");
+
+const TCHAR* ACataclysmBruteCharacter::RockThrowReleaseAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Ability_RipNToss_Toss.Ability_RipNToss_Toss");
 
 const TCHAR* ACataclysmBruteCharacter::AttackAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
@@ -286,18 +294,25 @@ void ACataclysmBruteCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 	// deciding whether to move.
 	const float Hold = Index == StompAbility
 		? StompWindUpSeconds : RockThrowWindUpSeconds;
-	SwingUntilSeconds = World->GetTimeSeconds() + Hold;
 
-	if (USkeletalMeshComponent* MeshComponent = GetMesh())
+	// STRETCHED TO FILL THE TELEGRAPH EXACTLY, which PlayOneShot does from the
+	// duration. Held at rate 1.0 instead, the ground smash wind-up finished
+	// half a second early and froze, and the rock throw wind-up was cut off
+	// before the rock left the ground.
+	PlayOneShot(Wanted, Hold);
+}
+
+UAnimSequence* ACataclysmBruteCharacter::ReleaseAnimationFor(int32 Index) const
+{
+	if (Index == StompAbility)
 	{
-		if (UAnimSingleNodeInstance* Single = MeshComponent->GetSingleNodeInstance())
-		{
-			Single->SetAnimationAsset(Wanted, /*bIsLooping=*/false);
-			Single->SetPosition(0.0f, /*bFireNotifies=*/false);
-			Single->SetPlayRate(1.0f);
-			Single->SetPlaying(true);
-		}
+		return StompReleaseAnimation.Get();
 	}
+	if (Index == RockThrowAbility)
+	{
+		return RockThrowReleaseAnimation.Get();
+	}
+	return nullptr;
 }
 
 void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
@@ -308,6 +323,13 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 	{
 		return;
 	}
+
+	// THE HALF OF THE ATTACK YOU ACTUALLY SEE HAPPEN. The wind-up clip ends
+	// with the creature poised and nothing else was ever played, so at the
+	// moment of impact the mesh went straight back to standing or walking and
+	// the attack read as abandoned. Played before the damage rather than after
+	// only so that the two cannot be separated by an early return added later.
+	PlayOneShot(ReleaseAnimationFor(Index));
 
 	if (Index == StompAbility)
 	{
@@ -359,34 +381,48 @@ void ACataclysmBruteCharacter::AttackTarget(AActor* Target)
 
 void ACataclysmBruteCharacter::PlayAttackAnimation()
 {
+	// THE ANIMATION'S OWN LENGTH, NOT THE ATTACK INTERVAL, which is what
+	// passing no duration means. The swing is 1.0 seconds and the interval
+	// between swings is 1.6, so holding the mesh for the interval would leave
+	// the Brute frozen in its finishing pose after every hit.
+	PlayOneShot(AttackAnimation);
+}
+
+void ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
+										   float HoldSeconds)
+{
 	const UWorld* World = GetWorld();
-	if (!World || !AttackAnimation)
+	if (!World || !Animation)
 	{
 		return;
 	}
 
-	// THE ANIMATION'S OWN LENGTH, NOT THE ATTACK INTERVAL. The swing is 1.0
-	// seconds and the interval between swings is 2.8, so holding the mesh for
-	// the interval would leave the Brute frozen in its finishing pose for 1.8
-	// seconds after every hit.
-	const float Length = AttackAnimation->GetPlayLength();
+	const float Length = Animation->GetPlayLength();
 	if (Length <= 0.0f)
 	{
 		return;
 	}
 
-	SwingUntilSeconds = World->GetTimeSeconds() + Length;
+	// No duration asked for means play it at normal speed for as long as it is.
+	const float Hold = HoldSeconds > 0.0f ? HoldSeconds : Length;
+
+	// FILL THE WINDOW. A clip shorter than its window would otherwise finish
+	// and freeze on its last frame; one longer would be cut off part way.
+	const float Rate = FMath::Clamp(Length / Hold, MinimumPlayRate,
+									MaximumPlayRate);
+
+	SwingUntilSeconds = World->GetTimeSeconds() + Hold;
 
 	if (USkeletalMeshComponent* MeshComponent = GetMesh())
 	{
 		if (UAnimSingleNodeInstance* Single = MeshComponent->GetSingleNodeInstance())
 		{
-			// NOT LOOPING, and restarted from the beginning every swing, which
+			// NOT LOOPING, and restarted from the beginning every time, which
 			// is why this sets the asset even when it is already the one
 			// playing. Two swings in a row should read as two swings.
-			Single->SetAnimationAsset(AttackAnimation, /*bIsLooping=*/false);
+			Single->SetAnimationAsset(Animation, /*bIsLooping=*/false);
 			Single->SetPosition(0.0f, /*bFireNotifies=*/false);
-			Single->SetPlayRate(1.0f);
+			Single->SetPlayRate(Rate);
 			Single->SetPlaying(true);
 		}
 	}
@@ -568,8 +604,12 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 
 		StompAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(StompAnimationPath).TryLoad());
+		StompReleaseAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(StompReleaseAnimationPath).TryLoad());
 		RockThrowAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(RockThrowAnimationPath).TryLoad());
+		RockThrowReleaseAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(RockThrowReleaseAnimationPath).TryLoad());
 
 		if (IdleAnimation)
 		{
