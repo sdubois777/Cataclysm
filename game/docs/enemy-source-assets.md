@@ -282,11 +282,19 @@ been re-measured. They are now, and every one matches what #382 quoted.
 | `Ability_RipNToss_Toss` | 0.87 | The throw |
 | `Ability_RipNToss_Cancel` | 0.47 | Drops it without throwing |
 
-The pack also ships the rock itself and the mess it makes, none of it used yet:
-`SM_Rock_To_Hold` and its material `M_Rock_To_Throw` under
-`Characters/Heroes/Rampage/`, and `SM_Rampage_Rock_Rip_Crater` plus five
-fragments `SM_Rampage_Rock_FragA` to `FragE` under `FX/Meshes/Debris/`. Issue
-#404 covers using them.
+The pack also ships the rock itself and the mess it makes. One of the four rows
+below is in use.
+
+| Asset | Folder under `game/Content/ParagonRampage/` | State |
+|---|---|---|
+| `SM_Rock_To_Hold` | `Characters/Heroes/Rampage/Meshes/Rocks/` | **In use.** The throw flies it. `ACataclysmBruteCharacter::RockMeshPath` names it and hands it to `ACataclysmProjectile::Fire`. Issue #404 |
+| `M_Rock_To_Throw` | `Characters/Heroes/Rampage/Materials/Rocks/` | In use without being named anywhere: a static mesh carries its own material slots |
+| `SM_Rampage_Rock_Rip_Crater` | `FX/Meshes/Debris/` | Not used. The hole left where the rock was torn out. Issue #421, with the carry state |
+| `SM_Rampage_Rock_FragA` to `FragE` | `FX/Meshes/Debris/` | Not used. Five fragments for the rock breaking on impact. Issue #422 |
+
+The rock is scaled to the projectile's own body width rather than shown at its
+authored size, so what is drawn and what the sweep hits are one thing rather than
+two numbers that can disagree. That is why it is not boulder-sized in flight.
 
 **The rip clip is longer than the telegraph it plays inside.** The throw's
 wind-up is 1.0 s and the clip is 1.13 s, so at authored speed it is cut off

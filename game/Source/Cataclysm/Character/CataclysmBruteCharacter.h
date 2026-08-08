@@ -178,6 +178,15 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimMontage> RockThrowMontage;
 
+	/**
+	 * The rock the throw flies. Null until ResolveBody runs, and null for good
+	 * without the Paragon pack -- the projectile then keeps its engine sphere.
+	 *
+	 * Read by tests, which is why it is not private.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UStaticMesh> RockMesh;
+
 	/** The montage for one ability, or null if the art is absent. */
 	class UAnimMontage* AbilityMontageFor(int32 Index) const;
 
@@ -767,6 +776,27 @@ public:
 	 * is what this does.
 	 */
 	static const TCHAR* BodyMeshPath;
+
+	/**
+	 * The rock this creature tears out and throws.
+	 *
+	 * WHAT IT REPLACED. Every projectile in the game carried a grey engine
+	 * sphere, because ACataclysmProjectile is generic -- all 398 rows of
+	 * game/Data/WeaponSkills.csv fire through it -- and putting a rock in its
+	 * constructor would have given every player fire bolt a rock. So the mesh is
+	 * chosen by whoever fires and passed in. Issue #404.
+	 *
+	 * NAMED FOR HOLDING BECAUSE IT IS ALSO THE CARRY ASSET. The pack's animation
+	 * set has a whole carrying state -- Ability_RipNToss_Idle plus directional
+	 * carrying gaits and a cancel clip -- and none of it is used. Putting this
+	 * mesh in the creature's hand during the wind-up is issue #421 and is not
+	 * done here.
+	 *
+	 * A soft path resolved in BeginPlay, for the same reason BodyMeshPath is:
+	 * the Paragon packs are gitignored, so this is absent on a fresh clone and
+	 * the projectile keeps its engine sphere.
+	 */
+	static const TCHAR* RockMeshPath;
 
 	/**
 	 * The animation Blueprint that drives this creature, by generated-class path.
