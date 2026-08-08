@@ -889,6 +889,98 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteAtTrueContactAndTrueHeightsAttacks,
+	"Cataclysm.AI.ABruteAtTrueContactAndTrueHeightsAttacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteAtTrueContactAndTrueHeightsAttacks::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// WHAT THIS ADDS OVER THE TEST ABOVE, which also puts a Brute in contact.
+	// That one places the player 80 cm away and leaves both capsule centres at
+	// the same height, so it has 10 cm of horizontal slack and no vertical
+	// component at all. This one uses the real geometry:
+	//
+	//   exactly the designed reach apart on the floor plane, 90 cm
+	//   the real height difference, because a Brute's capsule half-height is
+	//   110 cm and a player's is 96
+	//
+	// Those are the numbers issue #373 is about, and no test used them.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// SPAWNED CLEAR AND THEN MOVED IN, for the reason the test above gives at
+	// length: two capsules cannot be spawned overlapping, and the spawn pushes
+	// one of them away to make room.
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	// THE PLAYER'S CAPSULE CENTRE SITS BELOW THE BRUTE'S, by the difference
+	// between the two half-heights. The stand-in is an ordinary enemy actor, so
+	// its height is placed rather than inherited; what is reproduced here is the
+	// vertical gap between the two centres, which is what a 3D distance would
+	// charge the Brute for.
+	constexpr float PlayerCapsuleHalfHeight = 96.0f;
+	const float PlayerZ = Brute.Actor->GetActorLocation().Z
+		- (ACataclysmBruteCharacter::BruteCapsuleHalfHeight
+		   - PlayerCapsuleHalfHeight);
+
+	Player.Actor->SetActorLocation(FVector(
+		ACataclysmBruteCharacter::DesignedMeleeReachCm, 0.0f, PlayerZ));
+
+	// STATED RATHER THAN ASSUMED, so a future failure says whether the two were
+	// where this test meant them to be.
+	const float Flat = static_cast<float>(FVector::Dist2D(
+		Brute.Actor->GetActorLocation(), Player.Actor->GetActorLocation()));
+	const float Solid = static_cast<float>(FVector::Dist(
+		Brute.Actor->GetActorLocation(), Player.Actor->GetActorLocation()));
+
+	TestEqual(TEXT("they are exactly the designed reach apart on the floor"),
+		Flat, ACataclysmBruteCharacter::DesignedMeleeReachCm, 0.01f);
+	TestTrue(FString::Printf(
+		TEXT("and further apart than that in 3D (%.2f cm against %.2f cm)"),
+		Solid, Flat), Solid > Flat);
+
+	// SPEND THE ABILITIES FIRST. A Brute in contact would rather stomp than
+	// swing. This test is about the ordinary swing, which is what is left once
+	// the abilities are cooling down.
+	//
+	// TOLD THE REAL DISTANCE, NOT A ROUNDER ONE. SpendAbilities decides what is
+	// available from the distance it is given, while Think() inside it measures
+	// the distance for itself. Passing 80 here while the Brute stood at 90 made
+	// the helper stop early and the creature then wound up an ability the helper
+	// believed it had already spent -- this test failed reporting WindingUp
+	// where it expected Attacking.
+	SpendAbilities(World, Brain, ACataclysmBruteCharacter::DesignedMeleeReachCm);
+
+	const float Before = Player.Health();
+
+	TestEqual(TEXT("a Brute at exactly its designed reach attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
+		Before, Player.Health()), Player.Health() < Before);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChaseStopsCloseEnoughToHitTest,
 	"Cataclysm.AI.AChaseStopsCloseEnoughToActuallyHit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

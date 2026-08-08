@@ -57,6 +57,10 @@ PLAYER_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
               / "CataclysmPlayerCharacter.cpp")
 MINION_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
               / "CataclysmMinion.cpp")
+ENEMY_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+             / "CataclysmEnemyCharacter.cpp")
+ENEMY_CONTROLLER_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+                        / "CataclysmEnemyController.cpp")
 
 SECTION = "## **Vertical Slice Enemy Behaviour**"
 NEXT_SECTION = "# **XI. Cataclysm Quest Mechanics**"
@@ -252,6 +256,102 @@ def test_the_two_body_radii_still_match_the_cpp(imp):
         f"MinionCapsuleRadius in {MINION_CPP.name} is {minion_cm} cm but the "
         f"Imp's body_radius is {imp.body_radius} m. The design document says "
         "they are the same because the lesser imp minion is the same creature.")
+
+
+def test_the_default_enemy_capsule_is_the_default_body_radius() -> None:
+    """The width six of the seven vertical slice enemies actually have.
+
+    WHY THIS WAS MISSING. `test_the_two_body_radii_still_match_the_cpp` above
+    checks the player's capsule and the minion's, and
+    `tools/tests/test_brute_matches_the_model.py` checks the Brute's. Nothing
+    checked `EnemyCapsuleRadius` in `CataclysmEnemyCharacter.cpp`, which is the
+    width of every enemy that has no class of its own -- which today is six of
+    the seven.
+
+    WHY IT MATTERS. A contact reach is the player's body radius plus the
+    creature's, and the Hellhound's 0.90 m is exactly that sum. That only works
+    while the engine's capsule really is the model's body radius. Issue #373
+    says the two "agree by coincidence of both being right; nothing enforces
+    it", and for this pair nothing did.
+    """
+    from cataclysm_sim.enemy_stats import Archetype
+
+    default_body_radius = Archetype.__dataclass_fields__["body_radius"].default
+    engine_cm = cpp_constant(ENEMY_CPP, "EnemyCapsuleRadius")
+
+    assert engine_cm / CM_PER_METRE == pytest.approx(default_body_radius), (
+        f"EnemyCapsuleRadius in {ENEMY_CPP.name} is {engine_cm} cm but the "
+        f"design model's default body_radius is {default_body_radius} m. Every "
+        f"contact reach is the player's body radius plus the creature's, so "
+        f"the two have to be the same number or a creature standing against "
+        f"the player measures outside its own reach.")
+
+
+def test_a_contact_reach_is_reachable_for_every_enemy_that_has_one() -> None:
+    """Contact reach has no margin, so it has to be exact for all of them.
+
+    WHAT ISSUE #373 LEFT OPEN. It fixed the Brute and asked whether reach should
+    account for the two capsule radii explicitly rather than relying on the
+    model and the engine happening to use the same numbers. This is that check,
+    for every enemy whose reach is contact rather than a chosen distance.
+
+    THE SUCCUBUS AND THE IMP ARE NOT CONTACT and are excluded by name below
+    rather than by a rule, because their reaches are design figures with their
+    own reasons: the Imp's is the second rank, and the Succubus holds at the
+    shortest movement-skill range.
+    """
+    from cataclysm_sim.enemy_abilities import ATTACK_REACH, ring_distance
+
+    contact_reach_enemies = ("Hellhound", "Brute")
+
+    for name in contact_reach_enemies:
+        contact = ring_distance(name, 0)
+        assert ATTACK_REACH[name] == pytest.approx(contact), (
+            f"{name} reaches {ATTACK_REACH[name]} m but standing against the "
+            f"player is {contact:.2f} m. A contact reach has no margin at all, "
+            f"so any difference means it either cannot touch the player or "
+            f"reaches through them.")
+
+    for name in ("Imp", "Succubus"):
+        assert ATTACK_REACH[name] != pytest.approx(ring_distance(name, 0)), (
+            f"{name}'s reach is now exactly contact, so it belongs in the list "
+            f"above and this test is no longer checking what it says it is.")
+
+
+def test_the_engine_measures_reach_on_the_floor_plane() -> None:
+    """Which is what makes a contact reach reachable at all.
+
+    WHY A SOURCE CHECK AND NOT A BEHAVIOUR TEST, said plainly because it is a
+    weaker guard and the reason matters. Two capsule centres at contact are 90
+    cm apart on the floor and 91.08 cm apart in three dimensions, because a
+    Brute's capsule half-height is 110 cm against a player's 96. The controller
+    chases only when the distance exceeds the reach plus
+    `ContactToleranceCm`, and that tolerance is 2 cm -- wider than the 1.08 cm
+    the height costs.
+
+    SO NO BEHAVIOUR TEST CAN CATCH THIS TODAY, and that was measured rather than
+    assumed: on 2026-08-08, changing `FVector::Dist2D` back to `FVector::Dist`
+    in the controller left all 204 automation tests passing. The tolerance did
+    not exist when issue #373 was written; it arrived in pull requests #385 and
+    #388, after the floor-plane change in #367.
+
+    `Cataclysm.Brute.EveryHeightGapFitsInsideTheContactTolerance` is the
+    tripwire for the day a taller or wider creature makes the difference exceed
+    the tolerance again.
+    """
+    if not ENEMY_CONTROLLER_CPP.is_file():
+        pytest.fail(f"{ENEMY_CONTROLLER_CPP.name} does not exist")
+
+    text = ENEMY_CONTROLLER_CPP.read_text(encoding="utf-8", errors="replace")
+    text = re.sub(r"//[^\n]*", "", text)
+
+    assert re.search(r"const\s+float\s+Distance\s*=\s*FVector::Dist2D\s*\(",
+                     text), (
+        "ACataclysmEnemyController::Think no longer measures the distance to "
+        "its target on the floor plane. A contact reach is the two capsule "
+        "radii, which is a floor-plane quantity; charging a creature for a "
+        "height difference nobody chose is not what any designed reach means. "
+        "See issue #373.")
 
 
 def test_the_rank_capacities_are_what_the_geometry_gives(imp):

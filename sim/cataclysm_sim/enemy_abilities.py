@@ -276,8 +276,13 @@ def attackers_within_reach(kind: Archetype | str, reach: float) -> int:
     """How many can hit one player at once, given the enemy's attack reach.
 
     Reach is measured centre to centre, which is how the engine measures it:
-    `ACataclysmEnemyController::Think` compares `FVector::Dist` between the two
-    actors' locations against `AttackReachCm`.
+    `ACataclysmEnemyController::Think` compares `FVector::Dist2D` between the
+    two actors' locations against `AttackReachCm`.
+
+    ON THE FLOOR PLANE, WHICH IS NOT A DETAIL. Capsule centres do not sit at the
+    same height: a player's capsule half-height is 96 cm and a Brute's is 110.
+    A 3D distance would charge a creature for a height difference nobody chose,
+    and at contact that is 91.08 cm against a 90 cm reach. Issue #373.
 
     This is the cap on a swarm. There is no attack-token rule anywhere in this
     project and there is deliberately none: the design document states that ten
