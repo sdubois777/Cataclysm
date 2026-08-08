@@ -1,0 +1,67 @@
+{
+  "graphs": [
+    {
+      "asset": "/Game/Enemies/Demonic/Brute/ABP_Brute",
+      "blend_by_bool_nodes": [
+        {
+          "blend_time_false": "0.100000",
+          "blend_time_true": "0.100000",
+          "condition": {
+            "node": "K2Node_VariableGet_0",
+            "title": "Get bChasing"
+          },
+          "false_branch": {
+            "clip": "Jog_Biped_Fwd",
+            "node": "AnimGraphNode_SequencePlayer_1",
+            "play_rate": 1.111111
+          },
+          "node": "AnimGraphNode_BlendListByBool_1",
+          "true_branch": {
+            "clip": "Jog_Quad_Fwd",
+            "node": "AnimGraphNode_SequencePlayer_2",
+            "play_rate": 1.428571
+          }
+        },
+        {
+          "blend_time_false": "0.100000",
+          "blend_time_true": "0.100000",
+          "condition": {
+            "node": "K2Node_VariableGet_1",
+            "title": "Get bMoving"
+          },
+          "false_branch": {
+            "clip": "Idle_Biped",
+            "node": "AnimGraphNode_SequencePlayer_0",
+            "play_rate": 1.0
+          },
+          "node": "AnimGraphNode_BlendListByBool_2",
+          "true_branch": {
+            "name": "AnimGraphNode_BlendListByBool_1",
+            "node": "AnimGraphNode_BlendListByBool"
+          }
+        }
+      ],
+      "sequence_players": [
+        {
+          "clip": "Idle_Biped",
+          "node": "AnimGraphNode_SequencePlayer_0",
+          "play_rate": 1.0
+        },
+        {
+          "clip": "Jog_Biped_Fwd",
+          "node": "AnimGraphNode_SequencePlayer_1",
+          "play_rate": 1.111111
+        },
+        {
+          "clip": "Jog_Quad_Fwd",
+          "node": "AnimGraphNode_SequencePlayer_2",
+          "play_rate": 1.428571
+        }
+      ],
+      "sha256": "312bb4564aa90f89712badaee8252f9dbc3c1bd4e3ee428a3ca36132075f2ba0"
+    }
+  ],
+  "the_flipped_boolean_sense": "A Blend Poses by bool node puts the TRUE pose on pin index 0 and the FALSE pose on pin 1, which is the opposite of how the node reads top to bottom. Both of ABP_Brute's were wired backwards on the strength of that. See issue #408.",
+  "what_is_not_covered": "The animation graph only. The event graph, where the condition variables below are computed from the pawn's ground speed, cannot be enumerated from Python -- AnimationBlueprintLibrary.GetNodesOfClass refuses anything that is not an AnimGraphNode. So each condition is recorded by NAME and how it is computed is unchecked, including the 375 cm/s gait threshold. See issue #430.",
+  "what_this_is": "Written by tools/read_animation_graph.py. What is wired to what inside each animation Blueprint, and the SHA-256 of the asset it was read from. tools/tests/test_animation_graph_reading_is_current.py fails when an asset has changed since. Regenerate with python tools/run_editor_python.py tools/read_animation_graph.py"
+}
