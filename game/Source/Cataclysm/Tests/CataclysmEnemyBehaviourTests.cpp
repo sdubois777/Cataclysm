@@ -1033,6 +1033,19 @@ bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 	TestEqual(TEXT("and plays it at the speed it was authored at"),
 		Brute.Actor->LastPlayedRate, 1.0f);
 
+	// AND THE SWING KEEPS THE ENGINE'S OWN BLEND-OUT, UNLIKE THE ABILITIES.
+	// A swing's last frames are the arm following through rather than a pose
+	// that has to be held and read, so dissolving them into walking is right.
+	// This is the most frequent clip the creature plays, and changing it was
+	// not asked for; the assertion is here so that a later change to
+	// PlayOneShot's default cannot alter it without saying so.
+	TestEqual(TEXT("and keeps the engine's own blend out, unlike an ability"),
+		Brute.Actor->LastPlayedBlendOutTriggerTime,
+		ACataclysmBruteCharacter::SwingBlendOutTriggerTime);
+	TestNotEqual(TEXT("which is not what the abilities use"),
+		ACataclysmBruteCharacter::SwingBlendOutTriggerTime,
+		ACataclysmBruteCharacter::AbilityBlendOutTriggerTime);
+
 	return true;
 }
 
@@ -2007,6 +2020,15 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	// last frame and the gap was invisible; a montage blends back to
 	// locomotion, so the Brute raised its arms, dropped them, and only then
 	// smashed. Reported on 2026-08-08 as the slam cancelling half way.
+	// THE WIND-UP HAS TO REACH ITS OWN LAST FRAME. At the engine's default the
+	// blend back to walking FINISHES as the clip ends, which means it STARTS
+	// AttackBlendOutSeconds before the end, and the creature never holds the
+	// pose it is winding up into. That is what the project owner reported on
+	// 2026-08-08 as the arms sagging and the attack glitching.
+	TestEqual(TEXT("the wind-up plays to its last frame before blending out"),
+		Brute.Actor->LastPlayedBlendOutTriggerTime,
+		ACataclysmBruteCharacter::AbilityBlendOutTriggerTime);
+
 	if (Brute.Actor->StompHoldAnimation != nullptr)
 	{
 		TestEqual(TEXT("the hold clip is queued to fill the rest of the "
@@ -2014,11 +2036,27 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 			Brute.Actor->PendingHoldAnimation.Get(),
 			Brute.Actor->StompHoldAnimation.Get());
 
-		const float Expected = ACataclysmBruteCharacter::StompWindUpSeconds
-			- Brute.Actor->StompAnimation->GetPlayLength();
-		TestEqual(TEXT("for exactly the part of the telegraph the wind-up clip "
-					   "does not cover"),
+		// PAST THE TELEGRAPH, NOT UP TO IT. The attack does not land when the
+		// telegraph expires -- it lands on the next pass of the brain's
+		// quarter-second thinking timer at or after that moment. For the
+		// stomp's 1.4 second telegraph that is 1.50, so a hold sized to 1.4
+		// ended before the attack it exists to hold open.
+		const float MustCover = ACataclysmBruteCharacter::StompWindUpSeconds
+			+ ACataclysmEnemyController::ThinkIntervalSeconds;
+		const float Expected =
+			MustCover - Brute.Actor->StompAnimation->GetPlayLength();
+		TestEqual(TEXT("for long enough to reach the thinking pass that lands "
+					   "the attack, not merely the end of the telegraph"),
 			Brute.Actor->PendingHoldSeconds, Expected);
+
+		// AND THAT IS LONGER THAN THE TELEGRAPH ALONE WOULD GIVE, which is the
+		// claim that fails against the version this replaced. Stated as a
+		// comparison rather than a number so it cannot be satisfied by
+		// arithmetic that happens to agree.
+		const float TelegraphOnly = ACataclysmBruteCharacter::StompWindUpSeconds
+			- Brute.Actor->StompAnimation->GetPlayLength();
+		TestTrue(TEXT("which is strictly longer than sizing it to the telegraph"),
+			Brute.Actor->PendingHoldSeconds > TelegraphOnly);
 
 		// THE TIMER DOES NOT FIRE IN A WORLD THAT IS NEVER TICKED, so this
 		// calls what the timer would have called.
@@ -2028,6 +2066,16 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 			Brute.Actor->StompHoldAnimation.Get());
 		TestEqual(TEXT("at the speed it was authored, rather than stretched"),
 			Brute.Actor->LastPlayedRate, 1.0f);
+
+		// AND IT BLENDS IN RATHER THAN SNAPPING. A zero blend here was what the
+		// project owner saw as the creature putting its arms all the way back
+		// up: the wind-up montage has already finished by the time this runs,
+		// so there was no pose being continued, only one being jumped to.
+		TestEqual(TEXT("blending in rather than snapping to the poise"),
+			Brute.Actor->LastPlayedBlendInSeconds,
+			ACataclysmBruteCharacter::AttackBlendInSeconds);
+		TestTrue(TEXT("which means a blend longer than zero"),
+			Brute.Actor->LastPlayedBlendInSeconds > 0.0f);
 	}
 
 	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
@@ -2042,6 +2090,13 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	TestEqual(TEXT("landing the stomp plays the release clip"),
 		Brute.Actor->LastPlayedAnimation.Get(),
 		Brute.Actor->StompReleaseAnimation.Get());
+
+	// AND THE SMASH REACHES ITS OWN LAST FRAME. Its ending is the impact
+	// settling; at the engine default the last AttackBlendOutSeconds of it
+	// dissolved into the walking and standing animation instead.
+	TestEqual(TEXT("and plays to its last frame before blending out"),
+		Brute.Actor->LastPlayedBlendOutTriggerTime,
+		ACataclysmBruteCharacter::AbilityBlendOutTriggerTime);
 
 	// AND NOTHING REPLACES IT A QUARTER OF A SECOND LATER. Landing an ability
 	// did not count against the attack interval until 2026-08-08, so the

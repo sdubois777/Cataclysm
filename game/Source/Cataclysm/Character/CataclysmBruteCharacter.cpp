@@ -45,6 +45,10 @@ const TCHAR* ACataclysmBruteCharacter::RockThrowReleaseAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Ability_RipNToss_Toss.Ability_RipNToss_Toss");
 
+const TCHAR* ACataclysmBruteCharacter::RockThrowHoldAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Ability_RipNToss_Idle.Ability_RipNToss_Idle");
+
 const TCHAR* ACataclysmBruteCharacter::AttackAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Attack_Biped_Melee_A.Attack_Biped_Melee_A");
@@ -224,7 +228,7 @@ void ACataclysmBruteCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 	// slower than authored" floor: a clip shorter than its window plays at
 	// rate 1.0 and finishes early. Stretching was tried first and reported from
 	// a play session as slow motion.
-	PlayOneShot(Wanted, Hold);
+	const float PlayedFor = PlayOneShot(Wanted, Hold, AbilityBlendOutTriggerTime);
 
 	// SO SOMETHING HAS TO FILL THE REST OF THE WINDOW. The ground smash wind-up
 	// is 0.83 seconds inside a 1.4 second telegraph, which left 0.57 seconds
@@ -238,12 +242,25 @@ void ACataclysmBruteCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 	// seconds long and exists for exactly this: to hold a wind-up open for as
 	// long as the telegraph needs. It is looped rather than stretched, so the
 	// creature stays poised at full authored speed.
+	//
+	// IT HAS TO COVER LONGER THAN THE TELEGRAPH, WHICH IS THE PART THAT WAS
+	// WRONG. The attack does not land when the telegraph expires; it lands on
+	// the next pass of the brain's thinking timer at or after that moment, and
+	// that timer runs on a fixed quarter-second grid. The stomp's 1.4 second
+	// telegraph falls between the fifth pass at 1.25 and the sixth at 1.50, so
+	// the smash really begins at 1.50. A hold sized to 1.4 ended a tenth of a
+	// second before the attack it exists to hold open, and had already begun
+	// fading a quarter-second before that. Covering one whole extra grid step
+	// is the smallest amount that is certain to reach the pass that lands it,
+	// whatever the telegraph is set to.
+	const float MustCover =
+		Hold + ACataclysmEnemyController::ThinkIntervalSeconds;
+
 	UAnimSequence* Held = HoldAnimationFor(Index);
-	const float PlayedFor = Wanted->GetPlayLength();
-	if (Held && Held->GetPlayLength() > 0.0f && PlayedFor < Hold)
+	if (Held && Held->GetPlayLength() > 0.0f && PlayedFor < MustCover)
 	{
 		PendingHoldAnimation = Held;
-		PendingHoldSeconds = Hold - PlayedFor;
+		PendingHoldSeconds = MustCover - PlayedFor;
 
 		// ON A TIMER RATHER THAN IN Tick, because it happens once per ability
 		// rather than every frame, and because a timer says the delay in one
@@ -259,10 +276,27 @@ void ACataclysmBruteCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 
 UAnimSequence* ACataclysmBruteCharacter::HoldAnimationFor(int32 Index) const
 {
-	// ONLY THE STOMP HAS ONE, AND ONLY THE STOMP NEEDS ONE. The rock throw's
-	// wind-up clip is 1.13 seconds inside a 1.0 second telegraph, so it is
-	// already being compressed to fit and there is no gap to fill.
-	return Index == StompAbility ? StompHoldAnimation.Get() : nullptr;
+	// BOTH ABILITIES NEED ONE, WHICH IS NOT OBVIOUS FOR THE ROCK THROW. Its
+	// wind-up clip is 1.13 seconds compressed into a 1.0 second telegraph, so
+	// the clip itself leaves no gap. The gap comes from the brain's thinking
+	// grid instead: 1.0 second is exactly four quarter-second passes, so
+	// whether the throw lands on the pass at 1.00 or the one at 1.25 is decided
+	// by which side of the comparison a floating point sum falls on. When it is
+	// the later pass, the creature stands holding nothing for a quarter of a
+	// second with a rock over its head.
+	//
+	// Ability_RipNToss_Idle is the pack's own answer, 7.67 seconds of the
+	// creature holding the torn-up rock. It is far longer than anything needed
+	// here, which costs nothing: the hold is stopped by the release montage.
+	if (Index == StompAbility)
+	{
+		return StompHoldAnimation.Get();
+	}
+	if (Index == RockThrowAbility)
+	{
+		return RockThrowHoldAnimation.Get();
+	}
+	return nullptr;
 }
 
 void ACataclysmBruteCharacter::StartHoldAnimation()
@@ -283,23 +317,16 @@ void ACataclysmBruteCharacter::StartHoldAnimation()
 	// release montage replaces it.
 	const int32 Loops = FMath::CeilToInt(PendingHoldSeconds / Length);
 
-	// RECORDED BEFORE ANYTHING IS ASKED TO PLAY IT, for the reason PlayOneShot
-	// does the same: a test world has no animation instance, so a check made
-	// after this point could only ever see the no-art path.
-	LastPlayedAnimation = PendingHoldAnimation;
-	LastPlayedRate = 1.0f;
-
-	USkeletalMeshComponent* MeshComponent = GetMesh();
-	if (UAnimInstance* AnimInstance =
-			MeshComponent ? MeshComponent->GetAnimInstance() : nullptr)
-	{
-		// NO BLEND IN. This clip continues the pose the wind-up ended on, so
-		// blending into it would visibly soften a pose that should stay still.
-		AnimInstance->PlaySlotAnimationAsDynamicMontage(
-			PendingHoldAnimation, AttackSlotName,
-			/*BlendInTime=*/0.0f, AttackBlendOutSeconds,
-			/*InPlayRate=*/1.0f, Loops);
-	}
+	// IT DOES BLEND IN, AND THE EARLIER VERSION'S REASON FOR NOT DOING SO WAS
+	// FALSE. That comment said this clip continues the pose the wind-up ended
+	// on, so blending into it would soften a pose that should stay still. The
+	// wind-up montage has already finished by the time this runs -- it is
+	// scheduled for exactly when the wind-up ends -- so a zero blend was not
+	// continuing anything. It snapped from whatever the animation graph was
+	// showing straight into the poise in one frame, which is what the project
+	// owner reported as the creature putting its arms all the way back up.
+	PlayInAttackSlot(PendingHoldAnimation, /*Rate=*/1.0f, Loops,
+					 AbilityBlendOutTriggerTime);
 
 	PendingHoldAnimation = nullptr;
 	PendingHoldSeconds = 0.0f;
@@ -332,7 +359,11 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 	// moment of impact the mesh went straight back to standing or walking and
 	// the attack read as abandoned. Played before the damage rather than after
 	// only so that the two cannot be separated by an early return added later.
-	PlayOneShot(ReleaseAnimationFor(Index));
+	// THE RELEASE REACHES ITS OWN LAST FRAME TOO. Its ending is the impact
+	// settling, and at the engine default the last 0.15 seconds of it was
+	// dissolving into the walking and standing animation.
+	PlayOneShot(ReleaseAnimationFor(Index), /*HoldSeconds=*/0.0f,
+				AbilityBlendOutTriggerTime);
 
 	if (Index == StompAbility)
 	{
@@ -391,19 +422,20 @@ void ACataclysmBruteCharacter::PlayAttackAnimation()
 	PlayOneShot(AttackAnimation);
 }
 
-void ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
-										   float HoldSeconds)
+float ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
+											float HoldSeconds,
+											float BlendOutTriggerTime)
 {
 	const UWorld* World = GetWorld();
 	if (!World || !Animation)
 	{
-		return;
+		return 0.0f;
 	}
 
 	const float Length = Animation->GetPlayLength();
 	if (Length <= 0.0f)
 	{
-		return;
+		return 0.0f;
 	}
 
 	// No duration asked for means play it at normal speed for as long as it is.
@@ -432,12 +464,38 @@ void ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
 	const float Rate = FMath::Clamp(FMath::Max(1.0f, Length / Hold),
 									MinimumPlayRate, MaximumPlayRate);
 
-	// RECORDED BEFORE ANYTHING IS ASKED TO PLAY IT. See the declaration: the
-	// application needs a running animation graph and the decision does not, so
-	// a test can check which clip an ability chose in a world where nothing can
-	// play anything.
+	// HOW LONG IT REALLY TAKES, WHICH IS NOT ITS LENGTH ONCE IT IS COMPRESSED.
+	// The rock throw's wind-up clip is 1.13 seconds played at a rate of 1.13,
+	// so it occupies exactly 1.00 second of wall clock. A caller that scheduled
+	// anything from the clip's own length would be 0.13 seconds late.
+	const float PlaysFor = Length / Rate;
+
+	PlayInAttackSlot(Animation, Rate, /*Loops=*/1, BlendOutTriggerTime);
+
+	return PlaysFor;
+}
+
+void ACataclysmBruteCharacter::PlayInAttackSlot(UAnimSequence* Animation,
+												float Rate, int32 Loops,
+												float BlendOutTriggerTime)
+{
+	// EVERY CLIP THIS CREATURE PLAYS GOES THROUGH HERE, and that is the point.
+	// The blend settings are recorded and used in the same breath, from the
+	// same two locals, so what is recorded cannot drift from what was asked
+	// for. It drifted once already: StartHoldAnimation recorded
+	// AttackBlendInSeconds while passing a literal zero, so a test written
+	// against the record passed while the creature snapped rather than blended.
+	const float BlendIn = AttackBlendInSeconds;
+	const float BlendOut = AttackBlendOutSeconds;
+
+	// RECORDED BEFORE ANYTHING IS ASKED TO PLAY IT. Playing needs a running
+	// animation graph and deciding does not, so a test can check what was
+	// chosen in a world where nothing can play anything -- which is every
+	// automation test world and every clone without the Paragon art.
 	LastPlayedAnimation = Animation;
 	LastPlayedRate = Rate;
+	LastPlayedBlendInSeconds = BlendIn;
+	LastPlayedBlendOutTriggerTime = BlendOutTriggerTime;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
 	if (!MeshComponent)
@@ -462,12 +520,15 @@ void ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
 	// AttackBlendOutSeconds. Locomotion keeps running underneath and is
 	// blended back to when the clip ends, which is also why nothing has to
 	// hold the mesh open for the duration any more.
+	//
+	// THE SEVENTH ARGUMENT IS NOT OPTIONAL DRESSING. See
+	// AbilityBlendOutTriggerTime in the header: leaving it at the engine's
+	// default throws away the last AttackBlendOutSeconds of every clip.
 	if (UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance())
 	{
 		AnimInstance->PlaySlotAnimationAsDynamicMontage(
-			Animation, AttackSlotName,
-			AttackBlendInSeconds, AttackBlendOutSeconds,
-			Rate, /*LoopCount=*/1);
+			Animation, AttackSlotName, BlendIn, BlendOut,
+			Rate, Loops, BlendOutTriggerTime);
 	}
 }
 
@@ -532,6 +593,8 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(StompReleaseAnimationPath).TryLoad());
 		StompHoldAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(StompHoldAnimationPath).TryLoad());
+		RockThrowHoldAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(RockThrowHoldAnimationPath).TryLoad());
 		RockThrowAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(RockThrowAnimationPath).TryLoad());
 		RockThrowReleaseAnimation = Cast<UAnimSequence>(

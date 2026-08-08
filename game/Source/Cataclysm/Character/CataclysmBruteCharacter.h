@@ -191,6 +191,27 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> StompHoldAnimation;
 
+	/**
+	 * Where the clip that holds the rock throw open lives, and the clip itself.
+	 *
+	 * Ability_RipNToss_Idle is 7.67 seconds of the creature standing holding
+	 * the rock it has torn up. Far longer than is ever needed here, which costs
+	 * nothing because the release montage stops it.
+	 *
+	 * WHY THE ROCK THROW NEEDS ONE AT ALL, which is not obvious. Its wind-up
+	 * clip is longer than its telegraph, not shorter, so the clip leaves no
+	 * gap. The gap is the brain's thinking grid: the throw's 1.0 second
+	 * telegraph is exactly four quarter-second passes, so whether it lands on
+	 * the pass at 1.00 or the one at 1.25 depends on which side of a floating
+	 * point comparison a sum falls. When it is the later one the creature
+	 * stands holding nothing, mid-throw, for a quarter of a second.
+	 */
+	static const TCHAR* RockThrowHoldAnimationPath;
+
+	/** The clip that holds the rock overhead. Null until ResolveBody runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> RockThrowHoldAnimation;
+
 	/** The hold clip for one ability, or null if it needs none. */
 	class UAnimSequence* HoldAnimationFor(int32 Index) const;
 
@@ -267,8 +288,31 @@ public:
 	 *
 	 * @param HoldSeconds  the window the clip has to fit inside. Zero or less
 	 *                     uses the clip's own length, meaning normal speed.
+	 * @param BlendOutTriggerTime  see AbilityBlendOutTriggerTime. Defaults to
+	 *                     the engine's own default, which is what the ordinary
+	 *                     swing wants.
+	 * @return how many seconds the clip will actually take, which is its length
+	 *                     divided by the rate it was given. Zero if nothing was
+	 *                     played. The caller needs this to know when the clip
+	 *                     ends; the clip's own length is the wrong answer
+	 *                     whenever it was compressed to fit.
 	 */
-	void PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
+	float PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f,
+					  float BlendOutTriggerTime = SwingBlendOutTriggerTime);
+
+	/**
+	 * Play one clip in the attack slot, and record what was asked for.
+	 *
+	 * THE ONLY PLACE THIS CREATURE TALKS TO THE ANIMATION SYSTEM. Both
+	 * PlayOneShot and StartHoldAnimation route through it, so the blend
+	 * settings that are recorded and the ones that are used come from the same
+	 * two local variables and cannot disagree. They disagreed once: the hold
+	 * recorded AttackBlendInSeconds while passing a literal zero, so a test
+	 * written against the record passed while the creature visibly snapped
+	 * into its pose instead of blending into it.
+	 */
+	void PlayInAttackSlot(class UAnimSequence* Animation, float Rate,
+						  int32 Loops, float BlendOutTriggerTime);
 
 	/**
 	 * Which slot of ABP_Brute's animation graph an attack clip plays in.
@@ -290,6 +334,68 @@ public:
 	 */
 	static constexpr float AttackBlendInSeconds = 0.15f;
 	static constexpr float AttackBlendOutSeconds = 0.15f;
+
+	/**
+	 * When a clip starts blending back to walking and standing, measured as
+	 * seconds before its own end.
+	 *
+	 * THE ENGINE'S DEFAULT IS -1 AND IT DOES NOT MEAN WHAT IT LOOKS LIKE. Its
+	 * own header, Engine/Classes/Animation/AnimMontage.h, says:
+	 *
+	 *     Time from Sequence End to trigger blend out.
+	 *     <0 means using BlendOutTime, so BlendOut finishes as Montage ends.
+	 *     >=0 means using 'SequenceEnd - BlendOutTriggerTime' to trigger.
+	 *
+	 * So at -1 the blend FINISHES as the clip ends, which means it STARTS
+	 * AttackBlendOutSeconds before the end. The last 0.15 seconds of the clip
+	 * is a falling cross-fade against whatever ABP_Brute is playing
+	 * underneath. Confirmed in Engine/Private/Animation/AnimMontage.cpp, in
+	 * FAnimMontageInstance::Advance: the branch is taken when
+	 * PlayTimeToEnd <= BlendOut.GetBlendTime(), and the blend duration is then
+	 * set to PlayTimeToEnd rather than to the full blend time.
+	 *
+	 * WHAT THAT LOOKED LIKE. The 0.83 second ground smash wind-up was at full
+	 * weight only from 0.15 to 0.68 seconds, so the creature never reached the
+	 * poised pose it was winding up into -- its arms sagged back toward
+	 * standing before the attack landed. Reported on 2026-08-08.
+	 *
+	 * ZERO MEANS PLAY THE WHOLE CLIP, THEN BLEND. At zero the trigger
+	 * comparison collapses to a near-zero epsilon, so nothing fires until the
+	 * clip is over; the montage then holds its final frame while the blend runs
+	 * for its full length. That is what a wind-up needs, because the pose it
+	 * ends on IS the telegraph.
+	 */
+	static constexpr float AbilityBlendOutTriggerTime = 0.0f;
+
+	/**
+	 * The same, for the ordinary swing, left at the engine default on purpose.
+	 *
+	 * A SWING IS NOT A WIND-UP. Its last frames are the arm following through,
+	 * not a pose that has to be held and read, so dissolving them into walking
+	 * is right and holding them for an extra 0.15 seconds would be a small
+	 * version of the frozen finishing pose that PlayAttackAnimation's comment
+	 * argues against. It is also by far the most frequent clip this creature
+	 * plays, so changing it is the change most likely to be noticed and least
+	 * likely to have been asked for.
+	 */
+	static constexpr float SwingBlendOutTriggerTime = -1.0f;
+
+	/**
+	 * What the last call to PlayOneShot or StartHoldAnimation asked for, beyond
+	 * the clip and the rate. Read by tests.
+	 *
+	 * WHY THESE ARE RECORDED AT ALL. Both of the numbers above are arguments
+	 * passed to an engine function, and an argument is not observable from
+	 * outside. Without these, deleting either one would leave every test in the
+	 * project green while the fault they were added to fix came straight back.
+	 * That is exactly what happened between 2026-08-08's first and second
+	 * attempts at this animation.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float LastPlayedBlendInSeconds = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float LastPlayedBlendOutTriggerTime = 0.0f;
 
 	/**
 	 * The clip PlayOneShot last chose, and the rate it asked for. Read by tests.
