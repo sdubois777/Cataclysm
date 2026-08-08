@@ -168,9 +168,37 @@ The independent check is file size. `Jog_Biped_Fwd.uasset` is 176,346 bytes and
 bytes apart. A difference that small is the asset name and its identifiers, not
 different bone data.
 
-**This is evidence, not proof.** Two clips with the same payload size could in
-principle differ. Opening both in the editor and scrubbing them side by side is
-the check that would settle it, and it takes a person about a minute.
+**Measured directly on 2026-08-08 and confirmed.** `tools/compare_animation_clips.py`
+evaluates both clips with `unreal.AnimPoseExtensions`, which this engine build
+does expose, and compares the pelvis and both feet at 25 points through each clip.
+That is a different method from the original one and from the file-size check.
+
+| Pair | Largest difference on any bone at any sample | Verdict |
+|---|--:|---|
+| `Jog_Biped_Fwd` / `Sprint_Biped_Fwd` | 0.0000 cm | the same animation |
+| `Jog_Biped_Bwd` / `Sprint_Biped_Bwd` | 0.0000 cm | the same animation |
+| `Jog_Biped_Lft` / `Sprint_Biped_Lft` | 0.0000 cm | the same animation |
+| `Jog_Biped_Rt` / `Sprint_Biped_Rt` | 0.0000 cm | the same animation |
+| `Jog_Quad_Fwd` / `Sprint_Quad_Fwd` | 0.0000 cm | the same animation |
+| `Jog_Quad_Bwd` / `Sprint_Quad_Bwd` | 2.3169 cm | **not identical** |
+| `Jog_Quad_Lft` / `Sprint_Quad_Lft` | 1.2927 cm | **not identical** |
+| `Jog_Quad_Rt` / `Sprint_Quad_Rt` | 1.8512 cm | **not identical** |
+| `Jog_Biped_Fwd` / `Jog_Quad_Fwd` (control) | 149.4755 cm | different animations |
+
+**The control is what makes the zeros mean anything.** Comparing the biped jog
+against the quadruped jog gives 149 cm, so the method resolves clips apart rather
+than returning the same thing for everything.
+
+**Three quadruped pairs are not identical, and that is new.** They differ by one
+to two centimetres at a foot, over a clip 0.53 seconds long. That is far too small
+to be a different gait — a stride carries a foot through more than a metre — but it
+is not zero, so the flat statement that every `Sprint_*` clip duplicates its jog
+is not quite true. It holds exactly for all four biped directions and for the
+quadruped forward clip, which are the ones that matter, because forward is the
+only direction either gait is used in.
+
+The by-eye check in the editor is no longer needed for the forward clips. Nothing
+turns on the three sideways and backward quadruped pairs.
 
 **What it means for the animation Blueprint, issue #387.** A locomotion blend
 space cannot have a walk axis and a run axis, because there is only one gait per
@@ -267,9 +295,9 @@ attack.
 | `Ability_Enrage_Start` / `_End` | 1.27 each | |
 | `Idle_Biped` | 4.33 | Standing |
 | `Jog_Biped_Fwd` | 1.00 | The walk |
-| `Sprint_Biped_Fwd` | 1.00 | Not a second gait. Identical to the jog; see below |
+| `Sprint_Biped_Fwd` | 1.00 | Not a second gait. Measured identical to the jog to 0.0000 cm; see below |
 | `Jog_Quad_Fwd` | 0.53 | The chase, on all fours |
-| `Sprint_Quad_Fwd` | 0.53 | Not a second gait either; see below |
+| `Sprint_Quad_Fwd` | 0.53 | Not a second gait either. Measured identical to 0.0000 cm; see below |
 
 **Rip and Toss**, the thrown rock. Measured 2026-08-08 and never recorded here
 before: issue #382 listed these figures and stated in terms that they had not
