@@ -14,7 +14,6 @@
 // UAnimSequence is only forward declared on the Brute, and the gait test builds
 // throwaway ones with NewObject, which needs the whole type.
 #include "Animation/AnimSequence.h"
-#include "Animation/AnimSingleNodeInstance.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Character/CataclysmBruteCharacter.h"
@@ -925,12 +924,24 @@ bool FCataclysmChaseStopsCloseEnoughToHitTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteSwingIsVisibleTest,
-	"Cataclysm.AI.ABruteHoldsItsSwingAnimationInsteadOfCuttingItOff",
+	"Cataclysm.AI.ABrutePlaysItsSwingClipWhenItLandsAHit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 {
 	using namespace CataclysmBehaviourTest;
+
+	// WHAT THIS GUARDS. A swing nobody can see was reported from a play session
+	// as the Brute not attacking at all, so the swing has to be a CONSEQUENCE of
+	// landing a hit rather than something a caller remembers to trigger.
+	//
+	// IT WAS ABruteHoldsItsSwingAnimationInsteadOfCuttingItOff UNTIL 2026-08-08,
+	// and it checked that the swing held the mesh for exactly its own length so
+	// that locomotion could not replace it a frame later. There is nothing left
+	// to hold: the swing now plays in a slot of ABP_Brute's graph, with
+	// locomotion running underneath it rather than competing for the mesh, and
+	// the graph blends back on its own when the clip ends. The renamed test
+	// keeps the half of the old one that still means something.
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!World)
@@ -949,8 +960,8 @@ bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 	// without this the art half of this test silently never ran.
 	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
 
-	TestFalse(TEXT("a Brute that has not swung is not swinging"),
-		Brute.Actor->IsSwinging());
+	TestNull(TEXT("a Brute that has not swung has played nothing"),
+		Brute.Actor->LastPlayedAnimation.Get());
 
 	// WITHOUT THE ART, PLAYING A SWING DOES NOTHING AND SAYS SO. The Paragon
 	// packs are gitignored, so this is the state in continuous integration and
@@ -958,8 +969,8 @@ bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 	if (Brute.Actor->AttackAnimation == nullptr)
 	{
 		Brute.Actor->PlayAttackAnimation();
-		TestFalse(TEXT("with no attack animation loaded it never claims to swing"),
-			Brute.Actor->IsSwinging());
+		TestNull(TEXT("with no attack animation loaded it plays nothing"),
+			Brute.Actor->LastPlayedAnimation.Get());
 		AddInfo(TEXT("The Paragon art is absent, so only the no-art half of this "
 					 "test ran. Install the pack to exercise the rest."));
 		return true;
@@ -973,115 +984,64 @@ bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
 	Brute.Actor->SetAttackDamage(35.0f);
 
-	const float Now = static_cast<float>(World->GetTimeSeconds());
 	Brute.Actor->AttackTarget(Player.Actor);
 
-	TestTrue(TEXT("landing a hit starts the swing"), Brute.Actor->IsSwinging());
+	TestEqual(TEXT("landing a hit plays the swing clip"),
+		Brute.Actor->LastPlayedAnimation.Get(),
+		Brute.Actor->AttackAnimation.Get());
 
-	// THE SWING LASTS THE ANIMATION, NOT THE ATTACK INTERVAL, and this reads
-	// the deadline the code stored rather than the animation asset. Reading the
-	// asset proved nothing: it is the same number whatever the code does.
-	const float Held = Brute.Actor->SwingUntilSeconds - Now;
-	TestEqual(TEXT("and holds the mesh for exactly the animation's own length"),
-		Held, Brute.Actor->AttackAnimation->GetPlayLength());
-	TestTrue(FString::Printf(
-		TEXT("which is shorter than the %.1f s between attacks, so it is not "
-			 "frozen in its finishing pose (%.2f s)"),
-		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds, Held),
-		Held < ACataclysmBruteCharacter::DesignedAttackIntervalSeconds);
-
-	// AND LOCOMOTION LEAVES IT ALONE. The Brute has stopped moving to attack,
-	// so the next frame's choice would be the standing animation and the swing
-	// would be cut off after one frame -- which looks exactly like not
-	// attacking. DriveLocomotion is called here to prove it does not.
-	const USkeletalMeshComponent* MeshComponent = Brute.Actor->GetMesh();
-	const UAnimSingleNodeInstance* Single =
-		MeshComponent ? MeshComponent->GetSingleNodeInstance() : nullptr;
-	if (!Single)
-	{
-		AddError(TEXT("The Brute has no single node animation instance, so the "
-					  "swing cannot be checked."));
-		return false;
-	}
-
-	TestEqual(TEXT("the swing animation is what is on the mesh"),
-		Single->GetAnimationAsset(),
-		static_cast<UAnimationAsset*>(Brute.Actor->AttackAnimation));
-
-	Brute.Actor->DriveLocomotion();
-
-	TestEqual(TEXT("and a frame of locomotion does not replace it"),
-		Single->GetAnimationAsset(),
-		static_cast<UAnimationAsset*>(Brute.Actor->AttackAnimation));
-	TestTrue(TEXT("and it is still swinging afterwards"),
-		Brute.Actor->IsSwinging());
+	// AT ITS OWN SPEED. PlayAttackAnimation passes no window, which means play
+	// the clip as it was authored. A rate other than 1 here would mean the
+	// swing had been given a duration to fit inside, which is what the two
+	// ability wind-ups do and the ordinary swing deliberately does not.
+	TestEqual(TEXT("and plays it at the speed it was authored at"),
+		Brute.Actor->LastPlayedRate, 1.0f);
 
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteRunsWhileChasingTest,
-	"Cataclysm.AI.ABruteUsesADifferentGaitWhileChasingThanWhileWandering",
+	"Cataclysm.AI.ABruteIsFastEnoughWhileChasingToChangeGait",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBruteRunsWhileChasingTest::RunTest(const FString&)
 {
-	using namespace CataclysmBehaviourTest;
-
-	// THE DECISION, NOT THE PLAYBACK, for the reason the Brute's own animation
-	// tests give: applying an animation needs a component that has run InitAnim
-	// and a synthetic world does not reliably give one. AnimationForGroundSpeed
-	// is a pure function and can be asked anything.
+	// WHAT THIS GUARDS, AND WHY IT NOW CHECKS SPEED RATHER THAN ANIMATION.
 	//
-	// AND WITHOUT THE ART, WHICH IS THE POINT OF THE PLACEHOLDERS BELOW. The
-	// Paragon packs are gitignored, so on a fresh clone and in this worktree no
-	// animation loads at all and a test that compared real assets would silently
-	// check nothing. Two distinct throwaway UAnimSequence objects stand in.
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	if (!World)
-	{
-		AddError(TEXT("Could not create a world."));
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	// It was ABruteUsesADifferentGaitWhileChasingThanWhileWandering until
+	// 2026-08-08, and it asserted that the Brute chose a different animation
+	// while chasing by calling a pure function in C++. That function is gone:
+	// choosing the gait is ABP_Brute's job now, and the graph picks it by
+	// comparing the creature's own ground speed against 375 cm/s. Below that it
+	// plays the two-legged wandering jog; above it, the four-legged chase.
+	//
+	// So the thing the gait depends on is the two designed speeds, and that is
+	// what is checked here. If they were ever tuned to the same side of 375, the
+	// Brute would silently use one gait for both states -- the same fault the
+	// old test existed to catch, arriving through the new mechanism.
+	//
+	// WHAT IT DELIBERATELY DOES NOT CHECK, because
+	// Cataclysm.AI.ABruteActuallyMovesFasterWhenAChaseSpeedIsSet already does:
+	// that ApplyChaseSpeed writes these two speeds onto the movement component
+	// at the right times. Repeating it here would be two tests failing for one
+	// cause.
 
-	FScopedBrute Brute(World, FVector::ZeroVector);
+	// THE THRESHOLD IS A COPY, and the original is inside a binary asset, which
+	// is issue #406. Written here so it exists in text beside the two constants
+	// it has to sit between. tools/tests/test_brute_matches_the_model.py holds
+	// the same comparison against the Python model.
+	constexpr float GaitThresholdInAnimationBlueprint = 375.0f;
 
-	UAnimSequence* Standing = NewObject<UAnimSequence>();
-	UAnimSequence* Walking = NewObject<UAnimSequence>();
-	UAnimSequence* Running = NewObject<UAnimSequence>();
-	Brute.Actor->IdleAnimation = Standing;
-	Brute.Actor->WalkAnimation = Walking;
-	Brute.Actor->ChaseAnimation = Running;
+	const float Wander = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
+	const float Chase = ACataclysmBruteCharacter::DesignedChaseSpeedCmPerSecond;
 
-	const float Moving = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
-	float Rate = 0.0f;
+	TestTrue(TEXT("the wandering speed is below the speed at which ABP_Brute "
+				  "changes gait, so patrolling stays on two legs"),
+		Wander < GaitThresholdInAnimationBlueprint);
 
-	TestEqual(TEXT("standing still it stands, chasing or not"),
-		Brute.Actor->AnimationForGroundSpeed(0.0f, Rate, /*bChasing=*/true),
-		Standing);
-
-	TestEqual(TEXT("moving with nothing to chase it walks"),
-		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/false),
-		Walking);
-
-	TestEqual(TEXT("moving toward something it has noticed it runs"),
-		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true),
-		Running);
-
-	// THE SAME SPEED PRODUCES DIFFERENT ANIMATIONS, which is the whole point.
-	// The Brute moves at 250 cm/s either way, because its movement speed is a
-	// designed number, so ground speed cannot distinguish the two states and
-	// the brain has to.
-	TestNotEqual(TEXT("so the same ground speed gives two different gaits"),
-		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/false),
-		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true));
-
-	// FALLS BACK TO THE WALK WITH NO CHASE CLIP, which is the state of every
-	// fresh clone, rather than falling back to nothing and freezing the pose.
-	Brute.Actor->ChaseAnimation = nullptr;
-	TestEqual(TEXT("with no chase animation loaded it walks while chasing"),
-		Brute.Actor->AnimationForGroundSpeed(Moving, Rate, /*bChasing=*/true),
-		Walking);
+	TestTrue(TEXT("and the chase speed is above it, so noticing the player "
+				  "drops the Brute onto all fours"),
+		Chase > GaitThresholdInAnimationBlueprint);
 
 	return true;
 }
@@ -1987,9 +1947,8 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		// and must not claim to be holding a mesh it has no animation for.
 		Brute.Actor->UseEnemyAbility(ACataclysmBruteCharacter::StompAbility,
 									 Player.Actor, FVector::ZeroVector);
-		TestFalse(TEXT("with no release animation loaded it does not claim to hold "
-					   "the mesh"),
-			Brute.Actor->IsSwinging());
+		TestNull(TEXT("with no release animation loaded it plays nothing"),
+			Brute.Actor->LastPlayedAnimation.Get());
 		AddInfo(TEXT("The Paragon art is absent, so only the no-art half of this "
 					 "test ran. Install the pack to exercise the rest."));
 		return true;
@@ -1997,33 +1956,26 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 
 	// --- The stomp ---------------------------------------------------------
 
-	const float WindUpBegan = static_cast<float>(World->GetTimeSeconds());
 	TestEqual(TEXT("the Brute begins a stomp"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::WindingUp));
 
-	// THE WIND-UP FILLS THE WHOLE TELEGRAPH. The ground smash wind-up clip is
-	// 0.83 seconds inside a 1.4 second telegraph, so at normal speed it used to
-	// finish and freeze on its last frame for the remaining half second.
-	TestEqual(TEXT("and holds the mesh for the whole wind-up"),
-		Brute.Actor->SwingUntilSeconds - WindUpBegan,
-		ACataclysmBruteCharacter::StompWindUpSeconds);
+	TestEqual(TEXT("and plays the wind-up clip"),
+		Brute.Actor->LastPlayedAnimation.Get(),
+		Brute.Actor->StompAnimation.Get());
 
 	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
 
-	const float Landed = static_cast<float>(World->GetTimeSeconds());
 	TestEqual(TEXT("the stomp lands"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
 
 	// THE POINT OF THE WHOLE TEST. Before this, nothing was played when an
-	// ability landed, so SwingUntilSeconds was already in the past here and
-	// locomotion took the mesh back on the very next frame.
-	TestTrue(TEXT("landing the stomp starts an animation"),
-		Brute.Actor->IsSwinging());
-	TestEqual(TEXT("and it is the release clip, held for its own length"),
-		Brute.Actor->SwingUntilSeconds - Landed,
-		Brute.Actor->StompReleaseAnimation->GetPlayLength());
+	// ability landed, so the mesh was handed straight back to locomotion at the
+	// moment of impact and the attack visibly stopped part way through.
+	TestEqual(TEXT("landing the stomp plays the release clip"),
+		Brute.Actor->LastPlayedAnimation.Get(),
+		Brute.Actor->StompReleaseAnimation.Get());
 
 	// --- The rock throw ----------------------------------------------------
 
@@ -2040,7 +1992,6 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	AdvanceWorldClock(World,
 		ACataclysmBruteCharacter::RockThrowCooldownSeconds + 0.1);
 
-	const float ThrowBegan = static_cast<float>(World->GetTimeSeconds());
 	TestEqual(TEXT("the Brute begins a rock throw"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::WindingUp));
@@ -2048,24 +1999,24 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		Brain->WindingUpAbility,
 		int32(ACataclysmBruteCharacter::RockThrowAbility));
 
+	TestEqual(TEXT("and plays the rip clip"),
+		Brute.Actor->LastPlayedAnimation.Get(),
+		Brute.Actor->RockThrowAnimation.Get());
+
 	// THE RIP CLIP IS LONGER THAN ITS TELEGRAPH, which is the opposite problem
-	// to the stomp's: at normal speed it was cut off before the rock left the
-	// ground. Holding for the telegraph and deriving the play rate fixes both.
-	TestEqual(TEXT("the wind-up holds the mesh for the whole telegraph"),
-		Brute.Actor->SwingUntilSeconds - ThrowBegan,
-		ACataclysmBruteCharacter::RockThrowWindUpSeconds);
+	// to the stomp's: at normal speed it is cut off before the rock leaves the
+	// ground. It is compressed to fit, so its play rate is above one.
+	TestTrue(TEXT("and compresses it to fit inside the telegraph"),
+		Brute.Actor->LastPlayedRate > 1.0f);
 
 	AdvanceWorldClock(World,
 		ACataclysmBruteCharacter::RockThrowWindUpSeconds + 0.1);
 
-	const float Thrown = static_cast<float>(World->GetTimeSeconds());
 	Brain->Think();
 
-	TestTrue(TEXT("landing the throw starts an animation"),
-		Brute.Actor->IsSwinging());
-	TestEqual(TEXT("and it is the throw clip, held for its own length"),
-		Brute.Actor->SwingUntilSeconds - Thrown,
-		Brute.Actor->RockThrowReleaseAnimation->GetPlayLength());
+	TestEqual(TEXT("landing the throw plays the toss clip"),
+		Brute.Actor->LastPlayedAnimation.Get(),
+		Brute.Actor->RockThrowReleaseAnimation.Get());
 
 	// AND THE TWO RELEASES ARE DIFFERENT CLIPS, or a copy-paste in
 	// ReleaseAnimationFor would give the Brute one animation for everything and
@@ -2085,9 +2036,11 @@ bool FCataclysmBruteWindUpSpeedTest::RunTest(const FString&)
 {
 	using namespace CataclysmBehaviourTest;
 
-	// THE PLAY RATE, READ OFF THE MESH RATHER THAN INFERRED. The test above
-	// checks how long the mesh is HELD, which says nothing about the speed the
-	// clip inside it runs at. This reads the rate that was actually set.
+	// THE PLAY RATE, READ OFF THE DECISION RATHER THAN OFF THE MESH. It used to
+	// be read from the single node animation instance; the mesh now runs
+	// ABP_Brute and attacks go through a slot in it, so there is no single node
+	// instance to ask and instantiating the graph in a synthetic world is issue
+	// #374. ACataclysmBruteCharacter::LastPlayedRate records what was asked for.
 	//
 	// THE RULE IS ASYMMETRIC AND THAT IS THE POINT. Stretching a short clip
 	// across a long telegraph was tried and reported from a play session as a
@@ -2111,17 +2064,6 @@ bool FCataclysmBruteWindUpSpeedTest::RunTest(const FString&)
 	{
 		AddInfo(TEXT("The Paragon art is absent, so this test could not run. "
 					 "Install the pack to exercise it."));
-		return true;
-	}
-
-	USkeletalMeshComponent* MeshComponent = Brute.Actor->GetMesh();
-	UAnimSingleNodeInstance* Single =
-		MeshComponent ? MeshComponent->GetSingleNodeInstance() : nullptr;
-	if (!Single)
-	{
-		AddInfo(TEXT("The mesh has no single node instance, so the play rate "
-					 "could not be read. The hold-length assertions in the test "
-					 "above still ran."));
 		return true;
 	}
 
@@ -2149,7 +2091,11 @@ bool FCataclysmBruteWindUpSpeedTest::RunTest(const FString&)
 		Brute.Actor->BeginEnemyAbilityWindUp(Case.Ability, nullptr);
 
 		const float Length = Case.Clip->GetPlayLength();
-		const float Rate = Single->GetPlayRate();
+		const float Rate = Brute.Actor->LastPlayedRate;
+
+		TestEqual(FString::Printf(
+			TEXT("%s plays its own wind-up clip"), Case.What),
+			Brute.Actor->LastPlayedAnimation.Get(), Case.Clip);
 
 		TestEqual(FString::Printf(
 			TEXT("%s plays its %.2f s clip inside a %.2f s telegraph at the "
