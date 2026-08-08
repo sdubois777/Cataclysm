@@ -1,4 +1,4 @@
-// Copyright Stephen Dubois. All Rights Reserved.
+﻿// Copyright Stephen Dubois. All Rights Reserved.
 
 #pragma once
 
@@ -135,103 +135,199 @@ public:
 	static constexpr float RockThrowDamagePercent = 150.0f;
 	//~ End designed ability numbers
 
-	//~ Each ability is TWO clips: the wind-up, then the release.
+	//~ Each ability is ONE MONTAGE holding two clips back to back: the wind-up,
+	// then the release.
 	//
-	// BOTH HALVES ARE NEEDED AND ONLY THE FIRST USED TO BE PLAYED. The wind-up
-	// clip ends with the creature poised -- fist raised, rock held overhead --
-	// and the release is the half where the attack actually happens. Playing
-	// only the wind-up meant the mesh was handed back to the walking and
-	// standing animations at the moment of impact, so the Brute visibly began
-	// each attack and then abandoned it. Reported from a play session on
-	// 2026-08-08 as "he winds up, and then cancels".
+	// BOTH HALVES ARE NEEDED. The wind-up clip ends with the creature poised --
+	// fist raised, rock held overhead -- and the release is the half where the
+	// attack actually happens.
+	//
+	// WHY A MONTAGE ASSET RATHER THAN CLIPS SEQUENCED HERE. Until 2026-08-08 this
+	// class played each ability as three separate dynamic montages -- a wind-up,
+	// a hold clip repeated a fractional number of times, then a release -- driven
+	// by two timers. Pull requests #407, #409, #410 and #411 were four attempts to
+	// make that work, and every one of them was the same fault wearing a new
+	// disguise: a timer firing in the wrong order, a clip sized to the wrong
+	// window, a blend setting that discarded the end of a clip, a hold that
+	// outlived the ability it was holding open.
+	//
+	// Inside one montage the two clips are one continuous timeline. There is no
+	// seam to blend, nothing to schedule between them, and no second clip that
+	// can outlive the first. Issue #412.
+	//
+	// NO HOLD CLIP APPEARS HERE AND NONE IS WANTED. Ability_GroundSmash_Loop and
+	// Ability_RipNToss_Idle exist to pad a wind-up out to a longer telegraph.
+	// Pausing the montage on its join frame does the same thing without a second
+	// asset -- see HoldsAbilityPose below.
+	//
+	// tools/generate_brute_montages.py builds both assets and is the reviewable
+	// record of what they contain, because a .uasset is binary and cannot be
+	// diffed. Re-running it overwrites anything edited by hand in the editor.
 
-	/** Where the ground smash wind-up lives. */
-	static const TCHAR* StompAnimationPath;
+	/** Where the ground smash montage lives. Wind-up, then impact. */
+	static const TCHAR* StompMontagePath;
 
-	/** Where the ground smash release lives. This is the impact. */
-	static const TCHAR* StompReleaseAnimationPath;
+	/** Where the rock throw montage lives. Tearing the rock out, then throwing. */
+	static const TCHAR* RockThrowMontagePath;
 
-	/** Where the rock throw wind-up lives. Tearing the rock out of the ground. */
-	static const TCHAR* RockThrowAnimationPath;
-
-	/** Where the rock throw release lives. This is the throw. */
-	static const TCHAR* RockThrowReleaseAnimationPath;
-
-	/** The ground smash wind-up. Null until ResolveBody runs. */
+	/** The ground smash montage. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> StompAnimation;
+	TObjectPtr<class UAnimMontage> StompMontage;
 
-	/** The ground smash release. Null until ResolveBody runs. */
+	/** The rock throw montage. Null until ResolveBody runs. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> StompReleaseAnimation;
+	TObjectPtr<class UAnimMontage> RockThrowMontage;
 
-	/** The rock throw wind-up. Null until ResolveBody runs. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> RockThrowAnimation;
+	/** The montage for one ability, or null if the art is absent. */
+	class UAnimMontage* AbilityMontageFor(int32 Index) const;
 
-	/** The rock throw release. Null until ResolveBody runs. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> RockThrowReleaseAnimation;
-
-	/** The release clip for one ability, or null if the art is absent. */
-	class UAnimSequence* ReleaseAnimationFor(int32 Index) const;
+	/** The designed telegraph for one ability, in seconds. Zero if not an ability. */
+	static float WindUpSecondsFor(int32 Index);
 
 	/**
-	 * Where the clip that holds a wind-up open lives, and the clip itself.
+	 * The EARLIEST moment an ability can land, in seconds after its wind-up
+	 * begins. Not the telegraph, and not a promise about the real landing.
 	 *
-	 * Ability_GroundSmash_Loop is 0.03 seconds long. That is not a mistake in
-	 * the pack: it is a single held pose, shipped so a wind-up can be kept open
-	 * for as long as a telegraph needs without the clip before it being slowed
-	 * down. Only the stomp has one, because only the stomp's wind-up clip is
-	 * shorter than its telegraph.
+	 * NOT THE TELEGRAPH, AND THE DIFFERENCE IS WHAT FOUR PULL REQUESTS KEPT
+	 * TRIPPING OVER. An ability does not land when its telegraph expires. It
+	 * lands on the first pass of the brain's thinking timer at or after that
+	 * moment -- ACataclysmEnemyController::ContinueWindUp returns early while
+	 * Now < WindUpLandsAt and only runs on a pass. So the stomp's 1.4 second
+	 * telegraph lands at 1.50, and anything sized to 1.4 finishes a tenth of a
+	 * second early.
+	 *
+	 * AND NOT A FIXED GRID EITHER, WHICH IS THE PART THAT IS EASY TO GET WRONG.
+	 * A timer callback runs on the first frame whose clock has passed its
+	 * deadline, so every pass carries up to one frame of overshoot and the
+	 * overshoot differs between the pass that starts a wind-up and the pass that
+	 * lands it. Where a telegraph sits clear of a step that does not matter: the
+	 * stomp's 1.4 is 0.1 clear of 1.50 and never moves. Where a telegraph sits
+	 * exactly ON a step it matters a great deal, because the comparison is a
+	 * strict less-than with no tolerance. The rock throw's 1.0 second telegraph
+	 * is exactly four steps, and simulating the engine's own timer arithmetic
+	 * over 500 jittery frames between 50 and 70 per second landed it at 1.25
+	 * rather than 1.00 in very nearly half of them.
+	 *
+	 * SO THIS RETURNS THE EARLIEST, AND THAT IS DELIBERATE RATHER THAN
+	 * OPTIMISTIC. The montage is timed so that its strike arrives by this moment.
+	 * Arriving early costs a small misalignment; arriving late would deal the
+	 * damage while the creature was still raising its fists.
 	 */
-	static const TCHAR* StompHoldAnimationPath;
-
-	/** The clip that holds the stomp poised. Null until ResolveBody runs. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> StompHoldAnimation;
+	static float LandsAtSecondsFor(float WindUpSeconds);
 
 	/**
-	 * Where the clip that holds the rock throw open lives, and the clip itself.
+	 * Seconds into a montage where the wind-up clip ends and the release clip
+	 * begins. The length of its first segment, or zero if it has none.
 	 *
-	 * Ability_RipNToss_Idle is 7.67 seconds of the creature standing holding
-	 * the rock it has torn up. Far longer than is ever needed here, which costs
-	 * nothing because the release montage stops it.
-	 *
-	 * WHY THE ROCK THROW NEEDS ONE AT ALL, which is not obvious. Its wind-up
-	 * clip is longer than its telegraph, not shorter, so the clip leaves no
-	 * gap. The gap is the brain's thinking grid: the throw's 1.0 second
-	 * telegraph is exactly four quarter-second passes, so whether it lands on
-	 * the pass at 1.00 or the one at 1.25 depends on which side of a floating
-	 * point comparison a sum falls. When it is the later one the creature
-	 * stands holding nothing, mid-throw, for a quarter of a second.
+	 * THIS IS NOT THE MOMENT OF IMPACT, WHICH IS WHAT THE FIRST VERSION OF THIS
+	 * CODE ASSUMED AND GOT WRONG. See ImpactSecondsFor.
 	 */
-	static const TCHAR* RockThrowHoldAnimationPath;
-
-	/** The clip that holds the rock overhead. Null until ResolveBody runs. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> RockThrowHoldAnimation;
-
-	/** The hold clip for one ability, or null if it needs none. */
-	class UAnimSequence* HoldAnimationFor(int32 Index) const;
+	static float JoinSecondsFor(const class UAnimMontage* Montage);
 
 	/**
-	 * Play the hold clip for the rest of the wind-up window.
+	 * Seconds into the RELEASE clip at which the blow actually arrives.
+	 *
+	 * MEASURED, NOT GUESSED, AND THE FIRST VERSION OF THIS CODE GUESSED. It
+	 * assumed the release clip begins at the moment of impact, so that lining the
+	 * join up with the damage lined the blow up with it too. That is not what the
+	 * art does. Ability_GroundSmash_End BEGINS with the creature's fists still
+	 * overhead, at 341 and 349 centimetres -- continuous with the 321 and 333 the
+	 * wind-up clip ends on -- and they take 0.179 seconds to reach the ground.
+	 *
+	 * Ability_RipNToss_Toss is the same shape for a different reason: the rock
+	 * does not leave the hand as the clip starts. The throwing hand climbs to the
+	 * top of its arc at 0.539 seconds and that is where the rock is released.
+	 *
+	 * WHAT THE WRONG ASSUMPTION COST. Treating the join as the impact left 0.667
+	 * seconds of the telegraph that the animation did not cover, which was filled
+	 * by freezing the montage on a single frame. The project owner reported it on
+	 * 2026-08-08: "He reaches his arms up in the air, freezes for a second or so,
+	 * then continues to slamming down."
+	 *
+	 * HOW TO RE-MEASURE. tools/measure_animation_impact.py evaluates each clip
+	 * with unreal.AnimPoseExtensions and follows the hands through it. The clips
+	 * carry no animation notifies -- all five were checked on 2026-08-08 -- so
+	 * there is no authored marker to read instead.
+	 */
+	static constexpr float StompStrikeIntoReleaseSeconds = 0.179f;
+	static constexpr float RockThrowStrikeIntoReleaseSeconds = 0.539f;
+
+	/** The figure above for one ability, or zero if it is not an ability. */
+	static float StrikeIntoReleaseSecondsFor(int32 Index);
+
+	/**
+	 * Seconds into the montage at which the attack visibly strikes: the join,
+	 * plus however far into the release clip the blow arrives.
+	 *
+	 * HALF READ FROM THE ASSET AND HALF A MEASURED CONSTANT, on purpose. The join
+	 * moves if the wind-up clip is ever replaced with a longer one, and reading it
+	 * off the montage means this follows without anyone remembering to. How far
+	 * into the release clip the blow lands is a property of what the art shows and
+	 * cannot be read from any asset, so it is the constant above.
+	 */
+	static float ImpactSecondsFor(const class UAnimMontage* Montage, int32 Index);
+
+	/**
+	 * The rate an ability montage plays at.
+	 *
+	 * NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE.
+	 * Stretching a clip to fill a longer window was tried first and reported from
+	 * a play session as slow motion. Where the montage reaches its strike sooner
+	 * than the attack lands, the answer is to start it later rather than to slow
+	 * it down -- see MontageDelaySecondsFor.
+	 *
+	 * COMPRESSION IS STILL NEEDED THE OTHER WAY, and the rock throw needs a lot of
+	 * it. Tearing the rock out takes 1.133 seconds and the throwing arm does not
+	 * reach the top of its arc until 0.539 seconds into the clip after that, so
+	 * the rock does not leave the creature's hand until 1.672 seconds. Its
+	 * telegraph gives it 1.000. There is no way to show all of that in the time
+	 * the design allows, so it plays at 1.67 and looks hurried. That is a design
+	 * question rather than a bug in this arithmetic, and it is issue #416.
+	 */
+	static float MontageRateFor(float ImpactSeconds, float LandsAtSeconds);
+
+	/**
+	 * Seconds after the wind-up begins that the montage should start, so that its
+	 * strike arrives exactly when the attack lands.
+	 *
+	 * WHY A DELAY RATHER THAN A HELD POSE, WHICH IS THE CHANGE OF 2026-08-08.
+	 * The ground smash reaches its strike 1.012 seconds in and the attack lands at
+	 * 1.500, so 0.488 seconds have to come from somewhere. The first version froze
+	 * the montage on its join frame for that long, which is a single unchanging
+	 * frame and read as the creature seizing up mid-swing. Waiting before starting
+	 * instead means the creature stands in its ordinary idle -- which moves -- and
+	 * then performs the whole attack as one continuous movement.
+	 */
+	static float MontageDelaySecondsFor(const class UAnimMontage* Montage,
+										int32 Index);
+
+	/**
+	 * Start a waiting ability montage once its delay has elapsed.
+	 *
+	 * DRIVEN FROM Tick RATHER THAN A TIMER, and that is deliberate. A timer has a
+	 * deadline fixed when it is set; this compares the clock every frame, so it
+	 * cannot fire in the wrong order relative to anything, and it abandons the
+	 * montage if the brain has stopped winding the ability up in the meantime. A
+	 * timer with a deadline is how a held clip came to outlive its own ability in
+	 * pull request #411.
 	 *
 	 * PUBLIC AND CALLABLE SO A TEST CAN RUN IT WITHOUT WAITING, the same reason
-	 * ACataclysmEnemyController::Think is. A timer schedules this in a real
-	 * game; an automation test world is never ticked, so its timer manager
-	 * never fires and a test has to call this itself.
+	 * ACataclysmEnemyController::Think is. An automation test world is never
+	 * ticked.
 	 */
-	UFUNCTION()
-	void StartHoldAnimation();
+	void UpdateAbilityMontage();
 
-	/** What StartHoldAnimation will play, and for how long. Read by tests. */
+	/** Which ability is waiting for its montage to start, or INDEX_NONE. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TObjectPtr<class UAnimSequence> PendingHoldAnimation;
+	int32 PendingAbilityMontage = -1;
 
+	/** World time the current wind-up began. Meaningless when none is pending. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	float PendingHoldSeconds = 0.0f;
+	float AbilityWindUpBeganAtSeconds = 0.0f;
+
+	/** Which ability's montage is running, or INDEX_NONE. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 ActiveAbilityMontage = -1;
 
 	/** Whether the brain driving this Brute says it is chasing something. */
 	bool IsChasing() const;
@@ -301,24 +397,30 @@ public:
 					  float BlendOutTriggerTime = SwingBlendOutTriggerTime);
 
 	/**
-	 * Play one clip in the attack slot, and record what was asked for.
+	 * Play one plain clip in the attack slot, and record what was asked for.
 	 *
-	 * THE ONLY PLACE THIS CREATURE TALKS TO THE ANIMATION SYSTEM. Both
-	 * PlayOneShot and StartHoldAnimation route through it, so the blend
-	 * settings that are recorded and the ones that are used come from the same
-	 * two local variables and cannot disagree. They disagreed once: the hold
-	 * recorded AttackBlendInSeconds while passing a literal zero, so a test
-	 * written against the record passed while the creature visibly snapped
+	 * THE ORDINARY SWING ONLY. The two abilities play montage assets instead and
+	 * do not come through here; see PlayAbilityMontage. This wraps a plain
+	 * sequence in a dynamic montage so it blends against locomotion, which is
+	 * what a montage asset would give but without a second binary file to review
+	 * for a clip that needs no sequencing.
+	 *
+	 * The blend settings that are recorded and the ones that are used come from
+	 * the same two local variables and cannot disagree. They disagreed once: a
+	 * caller recorded AttackBlendInSeconds while passing a literal zero, so a
+	 * test written against the record passed while the creature visibly snapped
 	 * into its pose instead of blending into it.
-	 *
-	 * @param Loops  how many times to repeat the clip. Fractional on purpose: a
-	 *   hold that has to cover a quarter of a second with a clip lasting seven
-	 *   and a half needs far less than one repeat, and a whole number cannot
-	 *   say so. A whole number is what let the rock throw's hold run for 7.67
-	 *   seconds when it was asked to cover 0.25.
 	 */
 	void PlayInAttackSlot(class UAnimSequence* Animation, float Rate,
-						  float Loops, float BlendOutTriggerTime);
+						  float BlendOutTriggerTime);
+
+	/**
+	 * Start the montage for one ability, timed so its join lands on the impact.
+	 *
+	 * Called when the wind-up begins. Records what it chose whether or not
+	 * anything can play it, for the reason given on LastPlayedAnimation.
+	 */
+	void PlayAbilityMontage(int32 Index);
 
 	/**
 	 * Which slot of ABP_Brute's animation graph an attack clip plays in.
@@ -368,8 +470,19 @@ public:
 	 * ZERO MEANS PLAY THE WHOLE CLIP, THEN BLEND. At zero the trigger
 	 * comparison collapses to a near-zero epsilon, so nothing fires until the
 	 * clip is over; the montage then holds its final frame while the blend runs
-	 * for its full length. That is what a wind-up needs, because the pose it
-	 * ends on IS the telegraph.
+	 * for its full length. That is what an ability needs, because the pose its
+	 * wind-up half ends on IS the telegraph.
+	 *
+	 * IT IS NO LONGER PASSED TO ANYTHING. Since 2026-08-08 the two ability
+	 * montages carry this setting themselves, written by
+	 * tools/generate_brute_montages.py, so it can be dragged against a live
+	 * preview in the montage editor. What this constant is now is the figure
+	 * those assets are REQUIRED to hold, and
+	 * Cataclysm.Brute.ItsAbilityMontagesAreBuiltCorrectly reads it back off
+	 * each asset and fails when they disagree. That guard is the answer to issue
+	 * #406 for these two assets: a tuned number inside a binary file with
+	 * nothing checking it is a number that can drift silently, and this one
+	 * cannot any more.
 	 */
 	static constexpr float AbilityBlendOutTriggerTime = 0.0f;
 
@@ -387,8 +500,8 @@ public:
 	static constexpr float SwingBlendOutTriggerTime = -1.0f;
 
 	/**
-	 * What the last call to PlayOneShot or StartHoldAnimation asked for, beyond
-	 * the clip and the rate. Read by tests.
+	 * What the last call to PlayOneShot asked for, beyond the clip and the rate.
+	 * Read by tests.
 	 *
 	 * WHY THESE ARE RECORDED AT ALL. Both of the numbers above are arguments
 	 * passed to an engine function, and an argument is not observable from
@@ -404,15 +517,36 @@ public:
 	float LastPlayedBlendOutTriggerTime = 0.0f;
 
 	/**
-	 * How many repeats of the clip the last play asked for. Read by tests.
+	 * The montage the last ability asked for, and the rate it asked for. Null
+	 * and zero until an ability winds up. Read by tests.
 	 *
-	 * FRACTIONAL, AND THAT IS THE WHOLE REASON FOR RECORDING IT. A whole number
-	 * of repeats is what let the rock throw's hold play its full 7.67 seconds
-	 * when it had been asked to cover 0.25, because the smallest whole number
-	 * of repeats of a 7.67 second clip is one of them.
+	 * RECORDED FOR THE SAME REASON AS LastPlayedAnimation BELOW: an argument
+	 * handed to an engine function is not observable from outside, so without
+	 * these a test could not tell which ability played which montage, or at what
+	 * speed, and deleting the timing arithmetic would leave every test green.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	float LastPlayedLoops = 0.0f;
+	TObjectPtr<class UAnimMontage> LastPlayedMontage;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float LastPlayedMontageRate = 0.0f;
+
+	/**
+	 * How many ability montages this creature has started. Read by tests.
+	 *
+	 * A COUNT RATHER THAN A COMPARISON, AND THAT IS THE WHOLE POINT OF IT. The
+	 * fault this guards against is a second montage being started at the moment
+	 * of impact, which is what pull requests #409, #410 and #411 each tried to
+	 * make work. The obvious test for that -- remember which montage was playing
+	 * before the attack landed, and check it is still that one afterwards --
+	 * CANNOT FAIL, because starting the same ability's montage a second time
+	 * leaves the recorded montage pointing at the same asset. That test was
+	 * written first, the fault was deliberately reintroduced, and it passed.
+	 *
+	 * Counting is what makes the difference observable.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 AbilityMontagesStarted = 0;
 
 	/**
 	 * The clip PlayOneShot last chose, and the rate it asked for. Read by tests.
@@ -762,7 +896,4 @@ public:
 	 */
 	bool ResolveAnimationBlueprint(class USkeletalMeshComponent* MeshComponent);
 
-private:
-	/** Fires StartHoldAnimation when the wind-up clip has finished playing. */
-	FTimerHandle HoldAnimationTimer;
 };

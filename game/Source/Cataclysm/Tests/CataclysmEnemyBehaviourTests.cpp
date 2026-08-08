@@ -1,4 +1,4 @@
-// Copyright Stephen Dubois. All Rights Reserved.
+﻿// Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Misc/AutomationTest.h"
 
@@ -1989,15 +1989,48 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
 		Player.Actor->GetActorLocation().Z));
 
-	if (Brute.Actor->StompReleaseAnimation == nullptr)
+	// THE ART PROBE IS THE MONTAGE BEING NULL, AND THAT IS ONLY TRUE BECAUSE OF
+	// THE ORDER ResolveBody DOES THINGS IN. The two montage assets are committed
+	// and the Paragon clips inside them are not, so a montage loaded on its own
+	// would be non-null on a fresh clone with all of its clip references empty.
+	// ResolveBody never gets that far: it gives up when the skeletal mesh fails
+	// to load, before it loads any animation at all. So on a fresh clone this is
+	// null, and that stays a truthful test of "the art is absent".
+	if (Brute.Actor->StompMontage == nullptr)
 	{
 		// The Paragon packs are gitignored, so this is the state in continuous
-		// integration and on a fresh clone. Landing an ability must still work
-		// and must not claim to be holding a mesh it has no animation for.
+		// integration and on a fresh clone. Winding up and landing an ability
+		// must both still work and must not claim to be playing anything.
+		Brute.Actor->BeginEnemyAbilityWindUp(
+			ACataclysmBruteCharacter::StompAbility, Player.Actor);
+		TestNull(TEXT("with no art loaded, winding up plays no montage"),
+			Brute.Actor->LastPlayedMontage.Get());
+
 		Brute.Actor->UseEnemyAbility(ACataclysmBruteCharacter::StompAbility,
 									 Player.Actor, FVector::ZeroVector);
-		TestNull(TEXT("with no release animation loaded it plays nothing"),
+		TestNull(TEXT("and landing it plays nothing either"),
 			Brute.Actor->LastPlayedAnimation.Get());
+
+		// AND THE ARITHMETIC IS STILL CHECKED, because it does not need any art.
+		// These are the numbers that decide when the creature's wind-up half
+		// ends, and getting them wrong is what four pull requests did.
+		TestEqual(TEXT("the stomp lands on the thinking pass at 1.50 s, not when "
+					   "its 1.4 s telegraph expires"),
+			ACataclysmBruteCharacter::LandsAtSecondsFor(
+				ACataclysmBruteCharacter::StompWindUpSeconds),
+			1.50f, 0.001f);
+		// THE ROCK THROW'S TELEGRAPH SITS EXACTLY ON A STEP, so 1.00 is the
+		// earliest pass that can land it rather than the one that will. It often
+		// really lands on the next pass, at 1.25, because a timer callback runs
+		// on the first frame past its deadline and the comparison is a strict
+		// less-than. Sizing the wind-up half against the earliest is what makes
+		// that harmless: the poised pose is held until the attack really lands.
+		TestEqual(TEXT("and the rock throw can land as early as 1.00 s, which is "
+					   "what its wind-up half is sized against"),
+			ACataclysmBruteCharacter::LandsAtSecondsFor(
+				ACataclysmBruteCharacter::RockThrowWindUpSeconds),
+			1.00f, 0.001f);
+
 		AddInfo(TEXT("The Paragon art is absent, so only the no-art half of this "
 					 "test ran. Install the pack to exercise the rest."));
 		return true;
@@ -2009,177 +2042,142 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::WindingUp));
 
-	TestEqual(TEXT("and plays the wind-up clip"),
-		Brute.Actor->LastPlayedAnimation.Get(),
-		Brute.Actor->StompAnimation.Get());
+	// AND DOES NOT START THE MONTAGE YET, WHICH IS THE CHANGE OF 2026-08-08 AND
+	// THE WHOLE REASON THE SLAM READS SMOOTHLY NOW.
+	//
+	// The ground smash reaches the ground 1.012 seconds into its montage and the
+	// attack lands at 1.500, so 0.488 seconds are unaccounted for. The first
+	// version started the montage at once and then froze it on a single frame to
+	// use up the difference. The project owner reported that on 2026-08-08: "He
+	// reaches his arms up in the air, freezes for a second or so, then continues
+	// to slamming down."
+	//
+	// Waiting instead means the creature stands in its ordinary idle, which
+	// moves, and then performs the attack as one continuous movement.
+	TestEqual(TEXT("the stomp waits before starting its montage"),
+		Brute.Actor->PendingAbilityMontage,
+		int32(ACataclysmBruteCharacter::StompAbility));
 
-	// AND ARRANGES FOR SOMETHING TO FILL THE REST OF THE TELEGRAPH. The
-	// wind-up clip is 0.83 seconds inside a 1.4 second telegraph and is never
-	// played slower than it was authored, so on its own it leaves 0.57 seconds
-	// with nothing playing. Under the single-node scheme the mesh froze on the
-	// last frame and the gap was invisible; a montage blends back to
-	// locomotion, so the Brute raised its arms, dropped them, and only then
-	// smashed. Reported on 2026-08-08 as the slam cancelling half way.
-	// THE WIND-UP HAS TO REACH ITS OWN LAST FRAME. At the engine's default the
-	// blend back to walking FINISHES as the clip ends, which means it STARTS
-	// AttackBlendOutSeconds before the end, and the creature never holds the
-	// pose it is winding up into. That is what the project owner reported on
-	// 2026-08-08 as the arms sagging and the attack glitching.
-	TestEqual(TEXT("the wind-up plays to its last frame before blending out"),
-		Brute.Actor->LastPlayedBlendOutTriggerTime,
-		ACataclysmBruteCharacter::AbilityBlendOutTriggerTime);
+	TestNull(TEXT("so nothing is playing yet"),
+		Brute.Actor->LastPlayedMontage.Get());
 
-	if (Brute.Actor->StompHoldAnimation != nullptr)
-	{
-		TestEqual(TEXT("the hold clip is queued to fill the rest of the "
-					   "telegraph"),
-			Brute.Actor->PendingHoldAnimation.Get(),
-			Brute.Actor->StompHoldAnimation.Get());
+	const float StompLandsAt = ACataclysmBruteCharacter::LandsAtSecondsFor(
+		ACataclysmBruteCharacter::StompWindUpSeconds);
+	const float StompDelay = ACataclysmBruteCharacter::MontageDelaySecondsFor(
+		Brute.Actor->StompMontage.Get(), ACataclysmBruteCharacter::StompAbility);
 
-		// PAST THE TELEGRAPH, NOT UP TO IT. The attack does not land when the
-		// telegraph expires -- it lands on the next pass of the brain's
-		// quarter-second thinking timer at or after that moment. For the
-		// stomp's 1.4 second telegraph that is 1.50, so a hold sized to 1.4
-		// ended before the attack it exists to hold open.
-		const float MustCover = ACataclysmBruteCharacter::StompWindUpSeconds
-			+ ACataclysmEnemyController::ThinkIntervalSeconds;
-		const float Expected =
-			MustCover - Brute.Actor->StompAnimation->GetPlayLength();
-		TestEqual(TEXT("for long enough to reach the thinking pass that lands "
-					   "the attack, not merely the end of the telegraph"),
-			Brute.Actor->PendingHoldSeconds, Expected);
+	TestTrue(TEXT("and the wait is real rather than zero"), StompDelay > 0.0f);
 
-		// AND THAT IS LONGER THAN THE TELEGRAPH ALONE WOULD GIVE, which is the
-		// claim that fails against the version this replaced. Stated as a
-		// comparison rather than a number so it cannot be satisfied by
-		// arithmetic that happens to agree.
-		const float TelegraphOnly = ACataclysmBruteCharacter::StompWindUpSeconds
-			- Brute.Actor->StompAnimation->GetPlayLength();
-		TestTrue(TEXT("which is strictly longer than sizing it to the telegraph"),
-			Brute.Actor->PendingHoldSeconds > TelegraphOnly);
+	// NOTHING STARTS IT EARLY EITHER. Asking before the wait has elapsed must
+	// leave it waiting, or the delay would be decorative.
+	Brute.Actor->UpdateAbilityMontage();
+	TestNull(TEXT("asking before the wait has elapsed starts nothing"),
+		Brute.Actor->LastPlayedMontage.Get());
 
-		// THE TIMER DOES NOT FIRE IN A WORLD THAT IS NEVER TICKED, so this
-		// calls what the timer would have called.
-		Brute.Actor->StartHoldAnimation();
-		TestEqual(TEXT("and playing it holds the poised pose"),
-			Brute.Actor->LastPlayedAnimation.Get(),
-			Brute.Actor->StompHoldAnimation.Get());
-		TestEqual(TEXT("at the speed it was authored, rather than stretched"),
-			Brute.Actor->LastPlayedRate, 1.0f);
+	// The timer that would do this in a real game does not fire in a world that
+	// is never ticked, so the test calls it, exactly as it calls Think.
+	AdvanceWorldClock(World, StompDelay + 0.01);
+	Brute.Actor->UpdateAbilityMontage();
 
-		// FOR EXACTLY THE TIME IT WAS ASKED TO COVER, WHICH NEEDS A FRACTION.
-		// A whole number of repeats is what let the rock throw's hold play its
-		// full 7.67 seconds against the 0.25 it was asked for, because the
-		// smallest whole number of repeats of a 7.67 second clip is one.
-		const float AskedFor = Expected;
-		const float HoldClipSeconds =
-			Brute.Actor->StompHoldAnimation->GetPlayLength();
-		TestEqual(TEXT("for exactly the time it was asked to cover, which needs "
-					   "a fraction of a repeat rather than a whole one"),
-			Brute.Actor->LastPlayedLoops * HoldClipSeconds, AskedFor);
+	TestEqual(TEXT("once the wait has elapsed it plays the stomp montage"),
+		Brute.Actor->LastPlayedMontage.Get(),
+		Brute.Actor->StompMontage.Get());
 
-		// AND IT BLENDS IN RATHER THAN SNAPPING. A zero blend here was what the
-		// project owner saw as the creature putting its arms all the way back
-		// up: the wind-up montage has already finished by the time this runs,
-		// so there was no pose being continued, only one being jumped to.
-		// AND IT REFUSES TO PLAY ONCE THE ATTACK HAS LANDED. THIS IS THE FAULT
-		// THAT PRODUCED BOTH OF THE THINGS REPORTED ON 2026-08-08.
-		//
-		// The hold is scheduled on a timer for the moment the wind-up clip
-		// ends. For the rock throw that moment is also when the attack lands,
-		// and the two timers do not resolve in the order the code assumed: the
-		// thinking timer loops with exact deadlines while this one is created
-		// inside a thinking callback, after that pass's deadline has passed. So
-		// the hold ran AFTER the throw and replaced it, leaving 7.67 seconds of
-		// Ability_RipNToss_Idle -- the creature standing still holding a rock
-		// over its head -- playing over everything, including walking.
-		//
-		// The brain clears WindingUpAbility the instant an ability lands, so
-		// that is what the hold asks before playing anything.
-		if (ACataclysmEnemyController* Landed = Brute.Brain())
-		{
-			UAnimSequence* BeforeLate = Brute.Actor->LastPlayedAnimation.Get();
-			UAnimSequence* HoldBefore = Brute.Actor->PendingHoldAnimation.Get();
-			const float HoldSecondsBefore = Brute.Actor->PendingHoldSeconds;
+	TestEqual(TEXT("and records which ability owns it"),
+		Brute.Actor->ActiveAbilityMontage,
+		int32(ACataclysmBruteCharacter::StompAbility));
 
-			// PUT THE BRAIN INTO THE STATE IT IS IN THE INSTANT AFTER AN
-			// ABILITY LANDS, which is the state the hold used to arrive in.
-			const int32 WindingUpBefore = Landed->WindingUpAbility;
-			Landed->WindingUpAbility = INDEX_NONE;
+	// THE STOMP IS NOT COMPRESSED. It reaches the ground 1.012 seconds in
+	// against a telegraph that ends at 1.500, so it has room to spare and plays
+	// at the speed it was authored. The spare time is waited out beforehand
+	// rather than taken out of the animation, because slowing the animation down
+	// was tried first and reported from a play session as slow motion.
+	TestEqual(TEXT("at the speed it was authored, rather than stretched to fill "
+				   "the telegraph"),
+		Brute.Actor->LastPlayedMontageRate, 1.0f, 0.001f);
 
-			// A DIFFERENT CLIP FROM THE ONE ALREADY PLAYING, ON PURPOSE. Queued
-			// with the stomp's own hold, this check would pass whether or not
-			// the guard worked, because the hold clip is what is playing anyway
-			// and the two outcomes would be the same value. The rock throw's
-			// hold is the other clip this creature can hold with.
-			if (Brute.Actor->RockThrowHoldAnimation != nullptr
-				&& Brute.Actor->RockThrowHoldAnimation != BeforeLate)
-			{
-				Brute.Actor->PendingHoldAnimation = Brute.Actor->RockThrowHoldAnimation;
-				Brute.Actor->PendingHoldSeconds = 0.5f;
+	// THE ASSERTION THAT CARRIES THE WHOLE TEST: the blow you can see arrives at
+	// the moment the damage is dealt.
+	const float StompImpact = ACataclysmBruteCharacter::ImpactSecondsFor(
+		Brute.Actor->StompMontage.Get(), ACataclysmBruteCharacter::StompAbility);
 
-				Brute.Actor->StartHoldAnimation();
-				TestEqual(TEXT("a hold that arrives after its attack landed "
-							   "plays nothing"),
-					Brute.Actor->LastPlayedAnimation.Get(), BeforeLate);
-				TestNull(TEXT("and forgets itself rather than firing later"),
-					Brute.Actor->PendingHoldAnimation.Get());
-			}
+	TestEqual(TEXT("the fists reach the ground exactly when the stomp lands"),
+		StompDelay + StompImpact / Brute.Actor->LastPlayedMontageRate,
+		StompLandsAt, 0.01f);
 
-			// PUT IT ALL BACK. The rest of this test drives the same Brute
-			// through a rock throw, and a brain left mid-wind-up or a hold left
-			// pending would make those assertions fail for a reason that has
-			// nothing to do with what they check.
-			Landed->WindingUpAbility = WindingUpBefore;
-			Brute.Actor->PendingHoldAnimation = HoldBefore;
-			Brute.Actor->PendingHoldSeconds = HoldSecondsBefore;
-		}
+	// AND THE STRIKE IS PAST THE JOIN, not on it. This is the assumption that
+	// was wrong and produced the freeze: the release clip opens with the fists
+	// still overhead, and they take 0.179 seconds to arrive.
+	TestTrue(TEXT("the strike is inside the release clip rather than at its "
+				  "first frame"),
+		StompImpact > ACataclysmBruteCharacter::JoinSecondsFor(
+			Brute.Actor->StompMontage.Get()) + 0.001f);
 
-		TestEqual(TEXT("blending in rather than snapping to the poise"),
-			Brute.Actor->LastPlayedBlendInSeconds,
-			ACataclysmBruteCharacter::AttackBlendInSeconds);
-		TestTrue(TEXT("which means a blend longer than zero"),
-			Brute.Actor->LastPlayedBlendInSeconds > 0.0f);
-	}
+	// AND THE MONTAGE OUTLASTS THE MOMENT OF IMPACT, which is what makes the
+	// follow-through visible at all. A montage that ended at the impact would
+	// put the creature back into walking on the frame the damage was dealt,
+	// which is the fault reported on 2026-08-08 as "he winds up, and then
+	// cancels".
+	TestTrue(TEXT("and the montage runs past the impact, so the smash is seen"),
+		StompDelay + Brute.Actor->StompMontage->GetPlayLength()
+			/ Brute.Actor->LastPlayedMontageRate > StompLandsAt);
 
-	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::StompWindUpSeconds + 0.1 - StompDelay);
+
+	// COUNTED, NOT COMPARED, AND THE DIFFERENCE IS NOT ACADEMIC. The first
+	// version of this test remembered which montage was playing and checked it
+	// was still that one after the attack landed. That test cannot fail:
+	// starting the stomp montage a second time leaves the recorded montage
+	// pointing at the same asset. The fault was reintroduced deliberately to
+	// check, and the test passed. A count is what makes a second play visible.
+	const int32 StartedBeforeImpact = Brute.Actor->AbilityMontagesStarted;
+
+	TestEqual(TEXT("exactly one montage has been started so far"),
+		StartedBeforeImpact, 1);
 
 	TestEqual(TEXT("the stomp lands"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
 
-	// THE POINT OF THE WHOLE TEST. Before this, nothing was played when an
-	// ability landed, so the mesh was handed straight back to locomotion at the
-	// moment of impact and the attack visibly stopped part way through.
-	TestEqual(TEXT("landing the stomp plays the release clip"),
-		Brute.Actor->LastPlayedAnimation.Get(),
-		Brute.Actor->StompReleaseAnimation.Get());
+	// THE POINT OF THE WHOLE TEST, AND IT IS NOW THE OPPOSITE ASSERTION TO THE
+	// ONE IT REPLACED.
+	//
+	// This test used to check that landing an ability PLAYED a second clip,
+	// because the release was a separate animation and nothing played it. Now
+	// the release is the second half of the montage that has been running since
+	// the wind-up began, so landing the ability must play NOTHING AT ALL. It
+	// only stops the montage being held on its join frame.
+	//
+	// This is the assertion that fails if anyone reintroduces a second montage
+	// at the moment of impact -- which is what pull requests #409, #410 and #411
+	// each tried to make work.
+	TestEqual(TEXT("landing the stomp starts no second montage, because the "
+				   "release is already the second half of the first one"),
+		Brute.Actor->AbilityMontagesStarted, StartedBeforeImpact);
 
-	// AND THE SMASH REACHES ITS OWN LAST FRAME. Its ending is the impact
-	// settling; at the engine default the last AttackBlendOutSeconds of it
-	// dissolved into the walking and standing animation instead.
-	TestEqual(TEXT("and plays to its last frame before blending out"),
-		Brute.Actor->LastPlayedBlendOutTriggerTime,
-		ACataclysmBruteCharacter::AbilityBlendOutTriggerTime);
+	TestNull(TEXT("and plays no plain clip either"),
+		Brute.Actor->LastPlayedAnimation.Get());
 
 	// AND NOTHING REPLACES IT A QUARTER OF A SECOND LATER. Landing an ability
 	// did not count against the attack interval until 2026-08-08, so the
 	// ordinary swing was free to start on the very next thinking pass and cut
-	// the 0.70 second release clip off after 0.25 of it. Reported from a play
-	// session as the slam ending part way through.
+	// the release clip off part way through. Reported from a play session as the
+	// slam ending part way through.
 	AdvanceWorldClock(World, ACataclysmEnemyController::ThinkIntervalSeconds);
 	Brain->Think();
-	TestEqual(TEXT("and a thinking pass a quarter of a second later does not "
-				   "replace it with a swing"),
-		Brute.Actor->LastPlayedAnimation.Get(),
-		Brute.Actor->StompReleaseAnimation.Get());
+	TestNull(TEXT("and a thinking pass a quarter of a second later does not "
+				  "replace it with a swing"),
+		Brute.Actor->LastPlayedAnimation.Get());
+	TestEqual(TEXT("nor with another montage"),
+		Brute.Actor->AbilityMontagesStarted, StartedBeforeImpact);
 
 	// --- The rock throw ----------------------------------------------------
 
-	if (Brute.Actor->RockThrowReleaseAnimation == nullptr)
+	if (Brute.Actor->RockThrowMontage == nullptr)
 	{
-		AddError(TEXT("The stomp release animation loaded but the rock throw one "
-					  "did not, which means one of the two paths is wrong."));
+		AddError(TEXT("The stomp montage loaded but the rock throw one did not, "
+					  "which means one of the two paths is wrong."));
 		return false;
 	}
 
@@ -2196,135 +2194,77 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		Brain->WindingUpAbility,
 		int32(ACataclysmBruteCharacter::RockThrowAbility));
 
-	TestEqual(TEXT("and plays the rip clip"),
-		Brute.Actor->LastPlayedAnimation.Get(),
-		Brute.Actor->RockThrowAnimation.Get());
+	TestEqual(TEXT("and plays the rock throw montage"),
+		Brute.Actor->LastPlayedMontage.Get(),
+		Brute.Actor->RockThrowMontage.Get());
 
 	// THE RIP CLIP IS LONGER THAN ITS TELEGRAPH, which is the opposite problem
-	// to the stomp's: at normal speed it is cut off before the rock leaves the
-	// ground. It is compressed to fit, so its play rate is above one.
-	TestTrue(TEXT("and compresses it to fit inside the telegraph"),
-		Brute.Actor->LastPlayedRate > 1.0f);
+	// to the stomp's: at authored speed the rock has not come free by the time
+	// the throw lands. The montage is compressed to fit, so its rate is above
+	// one. This is the case that the "start the montage late" scheme in issue
+	// #412's comment could not express at all, because the offset it asks for is
+	// negative here.
+	TestTrue(TEXT("and compresses it so the rock is free by the time it throws"),
+		Brute.Actor->LastPlayedMontageRate > 1.0f);
+
+	const float ThrowLandsAt = ACataclysmBruteCharacter::LandsAtSecondsFor(
+		ACataclysmBruteCharacter::RockThrowWindUpSeconds);
+	const float ThrowImpact = ACataclysmBruteCharacter::ImpactSecondsFor(
+		Brute.Actor->RockThrowMontage.Get(),
+		ACataclysmBruteCharacter::RockThrowAbility);
+	const float ThrowDelay = ACataclysmBruteCharacter::MontageDelaySecondsFor(
+		Brute.Actor->RockThrowMontage.Get(),
+		ACataclysmBruteCharacter::RockThrowAbility);
+
+	// THE ROCK LEAVES THE HAND AT THE MOMENT THE PROJECTILE IS FIRED, which is
+	// the same property the stomp has and the reason both are timed this way.
+	TestEqual(TEXT("the rock leaves the hand exactly when the projectile is "
+				   "fired"),
+		ThrowDelay + ThrowImpact / Brute.Actor->LastPlayedMontageRate,
+		ThrowLandsAt, 0.01f);
+
+	// AND IT CANNOT WAIT, unlike the stomp. Tearing the rock out and swinging it
+	// overhead takes 1.672 seconds and the telegraph allows 1.000, so there is
+	// nothing to wait out and the whole montage is compressed instead. That is
+	// why it looks hurried, and it is a design question rather than an error
+	// here: issue #416.
+	TestEqual(TEXT("the throw has no time to wait and starts at once"),
+		ThrowDelay, 0.0f, 0.001f);
+
+	const int32 StartedBeforeThrowImpact = Brute.Actor->AbilityMontagesStarted;
 
 	AdvanceWorldClock(World,
 		ACataclysmBruteCharacter::RockThrowWindUpSeconds + 0.1);
 
 	Brain->Think();
 
-	TestEqual(TEXT("landing the throw plays the toss clip"),
-		Brute.Actor->LastPlayedAnimation.Get(),
-		Brute.Actor->RockThrowReleaseAnimation.Get());
+	TestEqual(TEXT("landing the throw starts no second montage either"),
+		Brute.Actor->AbilityMontagesStarted, StartedBeforeThrowImpact);
 
-	// AND THE TWO RELEASES ARE DIFFERENT CLIPS, or a copy-paste in
-	// ReleaseAnimationFor would give the Brute one animation for everything and
+	// AND THE TWO ABILITIES USE DIFFERENT MONTAGES, or a copy-paste in
+	// AbilityMontageFor would give the Brute one animation for everything and
 	// every assertion above would still pass.
-	TestNotEqual(TEXT("the stomp and the throw release differently"),
-		Brute.Actor->StompReleaseAnimation.Get(),
-		Brute.Actor->RockThrowReleaseAnimation.Get());
+	TestNotEqual(TEXT("the stomp and the throw are different montages"),
+		Brute.Actor->StompMontage.Get(), Brute.Actor->RockThrowMontage.Get());
 
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteWindUpSpeedTest,
-	"Cataclysm.AI.ABruteNeverPlaysAWindUpSlowerThanItWasAuthored",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmBruteWindUpSpeedTest::RunTest(const FString&)
-{
-	using namespace CataclysmBehaviourTest;
-
-	// THE PLAY RATE, READ OFF THE DECISION RATHER THAN OFF THE MESH. It used to
-	// be read from the single node animation instance; the mesh now runs
-	// ABP_Brute and attacks go through a slot in it, so there is no single node
-	// instance to ask and instantiating the graph in a synthetic world is issue
-	// #374. ACataclysmBruteCharacter::LastPlayedRate records what was asked for.
+	// A WIND-UP THAT IS ABANDONED MUST NOT START ITS MONTAGE LATER. This is the
+	// whole fault class that pull request #411 was about, stated as a test: a
+	// pawn unpossessed or destroyed mid-telegraph leaves no landing to hook, and
+	// a clip scheduled by deadline would play anyway, long after the ability it
+	// belonged to was gone.
 	//
-	// THE RULE IS ASYMMETRIC AND THAT IS THE POINT. Stretching a short clip
-	// across a long telegraph was tried and reported from a play session as a
-	// glitch: the arms went up in slow motion and the release then ran at full
-	// speed. A clip shorter than its window holds its last pose instead, which
-	// is what Rampage's separate 0.03 second loop clip exists to do. A clip
-	// LONGER than its window still has to be compressed or it is cut off.
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	if (!World)
-	{
-		AddError(TEXT("Could not create a world."));
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	// Here the brain is asked and disagrees, so the waiting montage is dropped.
+	Brute.Actor->PendingAbilityMontage = ACataclysmBruteCharacter::StompAbility;
+	Brute.Actor->AbilityWindUpBeganAtSeconds = 0.0f;
+	Brain->WindingUpAbility = INDEX_NONE;
 
-	FScopedBrute Brute(World, FVector::ZeroVector);
-	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
+	const int32 StartedBeforeAbandon = Brute.Actor->AbilityMontagesStarted;
+	Brute.Actor->UpdateAbilityMontage();
 
-	if (Brute.Actor->StompAnimation == nullptr
-		|| Brute.Actor->RockThrowAnimation == nullptr)
-	{
-		AddInfo(TEXT("The Paragon art is absent, so this test could not run. "
-					 "Install the pack to exercise it."));
-		return true;
-	}
-
-	struct FCase
-	{
-		const TCHAR* What;
-		int32 Ability;
-		UAnimSequence* Clip;
-		float Window;
-	};
-
-	const FCase Cases[] =
-	{
-		{ TEXT("the ground smash"), ACataclysmBruteCharacter::StompAbility,
-		  Brute.Actor->StompAnimation.Get(),
-		  ACataclysmBruteCharacter::StompWindUpSeconds },
-		{ TEXT("the rock throw"), ACataclysmBruteCharacter::RockThrowAbility,
-		  Brute.Actor->RockThrowAnimation.Get(),
-		  ACataclysmBruteCharacter::RockThrowWindUpSeconds },
-	};
-
-	int32 Compressed = 0;
-	for (const FCase& Case : Cases)
-	{
-		Brute.Actor->BeginEnemyAbilityWindUp(Case.Ability, nullptr);
-
-		const float Length = Case.Clip->GetPlayLength();
-		const float Rate = Brute.Actor->LastPlayedRate;
-
-		TestEqual(FString::Printf(
-			TEXT("%s plays its own wind-up clip"), Case.What),
-			Brute.Actor->LastPlayedAnimation.Get(), Case.Clip);
-
-		TestEqual(FString::Printf(
-			TEXT("%s plays its %.2f s clip inside a %.2f s telegraph at the "
-				 "expected rate"),
-			Case.What, Length, Case.Window),
-			Rate, FMath::Max(1.0f, Length / Case.Window));
-
-		// NEVER IN SLOW MOTION, whichever clip it is. This is the assertion the
-		// play session produced.
-		TestTrue(FString::Printf(
-			TEXT("%s is never played slower than it was authored (rate %.3f)"),
-			Case.What, Rate),
-			Rate >= 1.0f);
-
-		// AND IT ALWAYS FITS. A clip that still ran past its window would be cut
-		// off, which is the fault the compression exists to prevent.
-		TestTrue(FString::Printf(
-			TEXT("%s finishes inside its telegraph (%.2f s at rate %.3f)"),
-			Case.What, Length, Rate),
-			Length / Rate <= Case.Window + KINDA_SMALL_NUMBER);
-
-		if (Rate > 1.0f)
-		{
-			++Compressed;
-		}
-	}
-
-	// AT LEAST ONE CLIP IS ACTUALLY LONGER THAN ITS WINDOW, or the compression
-	// branch is never taken and the assertions above would pass on code that
-	// simply returned 1.0 every time.
-	TestTrue(TEXT("at least one wind-up clip has to be compressed to fit"),
-		Compressed >= 1);
+	TestEqual(TEXT("a wind-up that was abandoned starts no montage"),
+		Brute.Actor->AbilityMontagesStarted, StartedBeforeAbandon);
+	TestEqual(TEXT("and forgets itself rather than starting one later"),
+		Brute.Actor->PendingAbilityMontage, int32(INDEX_NONE));
 
 	return true;
 }
