@@ -41,6 +41,30 @@
           }
         }
       ],
+      "event_graph_variables": [
+        {
+          "computed_from": {},
+          "node": "K2Node_VariableSet_9",
+          "title": "Set GroundSpeed",
+          "variable": "GroundSpeed"
+        },
+        {
+          "computed_from": {
+            "Make Literal Float.Value": "10.0"
+          },
+          "node": "K2Node_VariableSet_10",
+          "title": "Set bMoving",
+          "variable": "bMoving"
+        },
+        {
+          "computed_from": {
+            "Make Literal Float.Value": "375.0"
+          },
+          "node": "K2Node_VariableSet_11",
+          "title": "Set bChasing",
+          "variable": "bChasing"
+        }
+      ],
       "sequence_players": [
         {
           "clip": "Idle_Biped",
@@ -61,7 +85,7 @@
       "sha256": "312bb4564aa90f89712badaee8252f9dbc3c1bd4e3ee428a3ca36132075f2ba0"
     }
   ],
+  "how_the_event_graph_is_read": "UEdGraph.Nodes is protected and AnimationBlueprintLibrary.GetNodesOfClass refuses anything that is not an AnimGraphNode, so neither of those is the door. BlueprintEditorLibrary.find_event_graph returns the graph and unreal.find_object(graph, name) returns a node inside it. Variable setters are found by scanning K2Node_VariableSet_N, and each is walked back through its input pins to the literals it is computed from. That is how the 375 cm/s gait threshold below was read out of the asset for the first time. See issue #430.",
   "the_flipped_boolean_sense": "A Blend Poses by bool node puts the TRUE pose on pin index 0 and the FALSE pose on pin 1, which is the opposite of how the node reads top to bottom. Both of ABP_Brute's were wired backwards on the strength of that. See issue #408.",
-  "what_is_not_covered": "The animation graph only. The event graph, where the condition variables below are computed from the pawn's ground speed, cannot be enumerated from Python -- AnimationBlueprintLibrary.GetNodesOfClass refuses anything that is not an AnimGraphNode. So each condition is recorded by NAME and how it is computed is unchecked, including the 375 cm/s gait threshold. See issue #430.",
   "what_this_is": "Written by tools/read_animation_graph.py. What is wired to what inside each animation Blueprint, and the SHA-256 of the asset it was read from. tools/tests/test_animation_graph_reading_is_current.py fails when an asset has changed since. Regenerate with python tools/run_editor_python.py tools/read_animation_graph.py"
 }

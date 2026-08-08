@@ -18,11 +18,13 @@ THE SAME ARRANGEMENT `game/Data/datatable_asset_sources.json` ALREADY USES for t
 generated DataTables: a record of what was built, plus the hash of what it was
 built from, plus a test that fails when the source moved.
 
-WHAT THIS CANNOT SEE, AND IT MATTERS. The reader covers the animation graph. It
-does not cover the event graph, where `bChasing` and `bMoving` are computed from
-the pawn's ground speed. So the 375 cm/s gait threshold that
-`test_brute_matches_the_model.py` records is still checked only against a comment.
-Issue #430.
+THE EVENT GRAPH IS COVERED TOO, as of issue #430. `bChasing` and `bMoving` are
+not conditions that arrive from nowhere: the event graph computes each by
+comparing the pawn's ground speed against a number, and those two numbers decide
+when the Brute changes posture. They had never been read out of the asset. The
+375 cm/s gait threshold existed only as a literal in
+`test_brute_matches_the_model.py`, written down because somebody had once opened
+the graph and looked.
 """
 
 from __future__ import annotations
@@ -102,6 +104,99 @@ def blends_by_condition(brute: dict) -> dict[str, dict]:
         # The title reads "Get bChasing"; the variable is the last word.
         out[title.split()[-1] if title else ""] = blend
     return out
+
+
+def thresholds_of(brute: dict, variable: str) -> list[float]:
+    """Every number the event graph uses to compute one variable.
+
+    A list rather than a single value, because "how many did the walk find" is
+    itself worth asserting. None means the reader stopped seeing the graph;
+    several means the expression grew and nobody can say which one is the
+    threshold any more.
+    """
+    for entry in brute.get("event_graph_variables", []):
+        if entry.get("variable") != variable:
+            continue
+        out = []
+        for value in entry.get("computed_from", {}).values():
+            try:
+                out.append(float(value))
+            except (TypeError, ValueError):
+                continue
+        return out
+    return []
+
+
+def test_the_gait_threshold_was_read_out_of_the_asset(brute) -> None:
+    """The number the whole of issue #417 argues about.
+
+    THE FAILURE THIS EXISTS FOR is somebody opening ABP_Brute, changing the
+    comparison from 375 to something else, and every test in the repository
+    carrying on -- because until issue #430 the only copy of that number was a
+    literal in a Python file that nothing checked against the asset.
+
+    It also fails if the reader stops being able to see the event graph, which
+    is the more likely way this breaks: an engine upgrade that renames nodes or
+    withdraws `unreal.find_object` leaves an empty list here rather than a wrong
+    answer, and an empty list is a failure.
+    """
+    found = thresholds_of(brute, "bChasing")
+
+    assert len(found) == 1, (
+        f"the recorded reading gives {len(found)} numbers for how bChasing is "
+        f"computed ({found}), and there has to be exactly one for it to be "
+        f"called a threshold. None at all means the reader lost sight of the "
+        f"event graph -- regenerate with:\n"
+        f"  python tools/run_editor_python.py tools/read_animation_graph.py"
+    )
+
+
+def test_a_brute_has_to_be_moving_before_it_can_be_chasing(brute) -> None:
+    """The two thresholds are a chain, so their order is load-bearing.
+
+    The bMoving blend picks between standing and the gait blend; the gait blend
+    then picks between the two-legged and four-legged runs. So the four-legged
+    chase animation is only ever reached through bMoving being true. If the
+    chase threshold were the lower of the two there would be a band of speeds
+    where the Brute is chasing but not moving, and it would stand still in its
+    idle pose while closing on the player.
+
+    Nothing else in the project would catch that. Both numbers live inside a
+    binary asset.
+    """
+    moving = thresholds_of(brute, "bMoving")
+    chasing = thresholds_of(brute, "bChasing")
+
+    if len(moving) != 1 or len(chasing) != 1:
+        pytest.fail(
+            f"the recorded reading does not give one threshold each for bMoving "
+            f"({moving}) and bChasing ({chasing}), so their order cannot be "
+            f"checked.")
+
+    assert moving[0] < chasing[0], (
+        f"ABP_Brute treats the creature as moving above {moving[0]} cm/s and as "
+        f"chasing above {chasing[0]} cm/s. Chasing has to be the higher of the "
+        f"two: the four-legged chase animation is reached only through the "
+        f"moving blend, so between those speeds the Brute would stand in its "
+        f"idle pose while running at the player."
+    )
+
+
+def test_the_record_says_how_the_event_graph_was_reached(record) -> None:
+    """Because the two obvious ways do not work, and both look like they should.
+
+    `AnimationBlueprintLibrary.GetNodesOfClass` refuses anything that is not an
+    `AnimGraphNode`, and `UEdGraph.Nodes` is protected. Each cost an editor run
+    to find out. Without this note the next person spends them again.
+    """
+    note = record.get("how_the_event_graph_is_read", "")
+
+    assert "find_event_graph" in note and "find_object" in note, (
+        "game/Data/animation_graph_readings.json no longer records how the "
+        "event graph is reached. The two doors that look right are both shut -- "
+        "GetNodesOfClass refuses non-AnimGraphNodes and UEdGraph.Nodes is "
+        "protected -- so a reader without this note repeats issue #430."
+    )
 
 
 def test_the_recorded_reading_matches_the_asset_on_disk(brute) -> None:

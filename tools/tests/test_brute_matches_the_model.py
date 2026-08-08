@@ -61,6 +61,48 @@ def brute_reach_metres() -> float:
     return ATTACK_REACH["Brute"]
 
 
+def gait_threshold_from_the_asset() -> float:
+    """The speed ABP_Brute changes gait at, as read out of the Blueprint.
+
+    NOT A LITERAL TYPED HERE, which is what it was until issue #430. The number
+    lives inside a binary asset, so it was written down in this file on trust
+    and nothing compared the two. `tools/read_animation_graph.py` now walks the
+    event graph back from `Set bChasing` to the Make Literal Float feeding the
+    comparison, and records the result.
+
+    THIS FAILS RATHER THAN SKIPS when the record is missing, because a skip here
+    would quietly remove the only check on the relationship this file exists to
+    hold. The record is committed, so continuous integration has it even though
+    it has no editor and no art.
+    """
+    import json
+
+    record = REPO_ROOT / "game" / "Data" / "animation_graph_readings.json"
+    if not record.is_file():
+        pytest.fail(
+            f"{record.relative_to(REPO_ROOT)} does not exist, so the gait "
+            f"threshold inside ABP_Brute cannot be read. Regenerate it with:\n"
+            f"  python tools/run_editor_python.py tools/read_animation_graph.py")
+
+    data = json.loads(record.read_text(encoding="utf-8"))
+    for graph in data.get("graphs", []):
+        for entry in graph.get("event_graph_variables", []):
+            if entry.get("variable") != "bChasing":
+                continue
+            values = list(entry.get("computed_from", {}).values())
+            if len(values) == 1:
+                return float(values[0])
+            pytest.fail(
+                f"the recorded reading of ABP_Brute gives {len(values)} numbers "
+                f"for how bChasing is computed ({values}), so which one is the "
+                f"gait threshold cannot be said.")
+
+    pytest.fail(
+        "the recorded reading of ABP_Brute has no bChasing in its event graph, "
+        "so the gait threshold is unknown. Regenerate it with:\n"
+        "  python tools/run_editor_python.py tools/read_animation_graph.py")
+
+
 def constant(header: pathlib.Path, name: str) -> float:
     """The value of a `static constexpr float <name> = <number>f;` line."""
     if not header.is_file():
@@ -577,11 +619,15 @@ def test_the_gait_threshold_sits_between_the_two_designed_speeds() -> None:
     same side of 375, the Brute would use one gait for both states and nothing
     else would notice.
 
-    THE THRESHOLD IS A COPY IN A BINARY ASSET, which is issue #406. It is
-    written here as a literal for the same reason the play rates are written in
-    the header: so that it exists in text somewhere.
+    THE THRESHOLD IS READ OUT OF THE ASSET NOW, not written here as a literal.
+    Until issue #430 it was a 375.0 typed into this file, believed because
+    somebody had once opened the graph and looked at it; changing the comparison
+    inside ABP_Brute would have left this and everything else passing.
+    `tools/read_animation_graph.py` walks the event graph back from `Set
+    bChasing` to the Make Literal Float feeding the comparison, and records what
+    it finds.
     """
-    gait_threshold_in_animation_blueprint = 375.0
+    gait_threshold_in_animation_blueprint = gait_threshold_from_the_asset()
 
     kind = brute_archetype()
     wander = kind.move_speed * 100.0
