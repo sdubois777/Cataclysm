@@ -1001,81 +1001,47 @@ bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteRunsWhileChasingTest,
-	"Cataclysm.AI.ABruteMovesAtADifferentSpeedWhileChasingThanWhileWandering",
+	"Cataclysm.AI.ABruteIsFastEnoughWhileChasingToChangeGait",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBruteRunsWhileChasingTest::RunTest(const FString&)
 {
-	using namespace CataclysmBehaviourTest;
-
 	// WHAT THIS GUARDS, AND WHY IT NOW CHECKS SPEED RATHER THAN ANIMATION.
 	//
-	// It used to assert that the Brute chose a different animation while
-	// chasing, by asking a pure function in C++. That function is gone:
-	// choosing the gait is ABP_Brute's job as of 2026-08-08, and the graph
-	// picks it by reading the creature's own ground speed against a threshold
-	// of 375 cm/s.
+	// It was ABruteUsesADifferentGaitWhileChasingThanWhileWandering until
+	// 2026-08-08, and it asserted that the Brute chose a different animation
+	// while chasing by calling a pure function in C++. That function is gone:
+	// choosing the gait is ABP_Brute's job now, and the graph picks it by
+	// comparing the creature's own ground speed against 375 cm/s. Below that it
+	// plays the two-legged wandering jog; above it, the four-legged chase.
 	//
-	// That makes the two designed speeds the thing the gait depends on, so they
-	// are what has to be guarded. If the wander and chase speeds ever became the
-	// same number, or straddled 375 differently, the Brute would silently use
-	// one gait for both states -- which is the fault the old test existed to
-	// catch, arriving through the new mechanism.
+	// So the thing the gait depends on is the two designed speeds, and that is
+	// what is checked here. If they were ever tuned to the same side of 375, the
+	// Brute would silently use one gait for both states -- the same fault the
+	// old test existed to catch, arriving through the new mechanism.
+	//
+	// WHAT IT DELIBERATELY DOES NOT CHECK, because
+	// Cataclysm.AI.ABruteActuallyMovesFasterWhenAChaseSpeedIsSet already does:
+	// that ApplyChaseSpeed writes these two speeds onto the movement component
+	// at the right times. Repeating it here would be two tests failing for one
+	// cause.
 
-	// THE THRESHOLD IS A COPY, and it is a copy in a binary asset, which is
-	// issue #406. Stated here so that a reader of this test knows where the
-	// other half of the comparison lives.
+	// THE THRESHOLD IS A COPY, and the original is inside a binary asset, which
+	// is issue #406. Written here so it exists in text beside the two constants
+	// it has to sit between. tools/tests/test_brute_matches_the_model.py holds
+	// the same comparison against the Python model.
 	constexpr float GaitThresholdInAnimationBlueprint = 375.0f;
 
 	const float Wander = ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond;
 	const float Chase = ACataclysmBruteCharacter::DesignedChaseSpeedCmPerSecond;
 
-	TestTrue(TEXT("wandering is slower than the gait threshold"),
+	TestTrue(TEXT("the wandering speed is below the speed at which ABP_Brute "
+				  "changes gait, so patrolling stays on two legs"),
 		Wander < GaitThresholdInAnimationBlueprint);
-	TestTrue(TEXT("and chasing is faster than it"),
+
+	TestTrue(TEXT("and the chase speed is above it, so noticing the player "
+				  "drops the Brute onto all fours"),
 		Chase > GaitThresholdInAnimationBlueprint);
-
-	// AND THE BRUTE REALLY REACHES BOTH SPEEDS, which is a different claim from
-	// the two constants differing: ApplyChaseSpeed is what writes them onto the
-	// movement component, and a Brute whose brain is not chasing must not be
-	// given the chase speed.
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	if (!World)
-	{
-		AddError(TEXT("Could not create a world."));
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	FScopedBrute Brute(World, FVector::ZeroVector);
-
-	UCharacterMovementComponent* Movement = Brute.Actor->GetCharacterMovement();
-	if (!Movement)
-	{
-		AddError(TEXT("The Brute has no movement component."));
-		return false;
-	}
-
-	Brute.Actor->ApplyChaseSpeed();
-	TestEqual(TEXT("with nothing to chase it moves at its wandering speed"),
-		Movement->MaxWalkSpeed, Wander);
-
-	// THE BRAIN SAYS SO, not the speed, because ApplyChaseSpeed is what SETS
-	// the speed and so cannot read it back to decide.
-	FScopedFighter Player(World, FVector(500.0f, 0.0f, 0.0f), ECataclysmTeam::Players,
-						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
-	if (ACataclysmEnemyController* Brain =
-			Cast<ACataclysmEnemyController>(Brute.Actor->GetController()))
-	{
-		Brain->Think();
-		TestEqual(TEXT("a Brute with a player in sight and out of reach chases"),
-			static_cast<int32>(Brain->LastAction),
-			static_cast<int32>(ECataclysmBrainAction::Chasing));
-	}
-
-	Brute.Actor->ApplyChaseSpeed();
-	TestEqual(TEXT("and while chasing it moves at its chase speed"),
-		Movement->MaxWalkSpeed, Chase);
 
 	return true;
 }
