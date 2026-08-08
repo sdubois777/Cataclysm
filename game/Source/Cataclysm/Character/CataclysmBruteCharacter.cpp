@@ -31,6 +31,11 @@ const TCHAR* ACataclysmBruteCharacter::RockMeshPath =
 
 const FName ACataclysmBruteCharacter::AttackSlotName = TEXT("DefaultSlot");
 
+// A BONE, NOT A SOCKET. The Rampage mesh has no sockets at all -- find_socket
+// answers null for every name -- and weapon_r is the rig's prop bone, animated
+// through the Rip and Toss clips for exactly this. See the header.
+const FName ACataclysmBruteCharacter::RockHoldBoneName = TEXT("weapon_r");
+
 // THE TWO ABILITY MONTAGES LIVE BESIDE THE ANIMATION BLUEPRINT, NOT IN THE
 // PARAGON FOLDER. They are this project's own assets, built by
 // tools/generate_brute_montages.py out of the pack's clips, so they belong under
@@ -134,6 +139,18 @@ ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 	GetCharacterMovement()->MaxWalkSpeed = DesignedWalkSpeedCmPerSecond;
 	GetCharacterMovement()->RotationRate =
 		FRotator(0.0f, DesignedTurnRateDegreesPerSecond, 0.0f);
+
+	// THE ROCK IT TEARS OUT AND CARRIES. Attached to the prop bone here rather
+	// than at the moment of the throw, so that there is nothing to spawn on the
+	// frame an attack starts. Hidden until the wind-up asks for it.
+	//
+	// NO COLLISION. It is held, not thrown -- the thing that is thrown is an
+	// ACataclysmProjectile with its own sweep -- so a colliding mesh in the
+	// creature's hand would be a second way to hit somebody.
+	CarriedRock = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CarriedRock"));
+	CarriedRock->SetupAttachment(GetMesh(), RockHoldBoneName);
+	CarriedRock->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CarriedRock->SetHiddenInGame(true);
 }
 
 void ACataclysmBruteCharacter::BeginPlay()
@@ -156,6 +173,9 @@ void ACataclysmBruteCharacter::Tick(float DeltaSeconds)
 	// sooner or later fall on the wrong side of one of them -- which is the
 	// fault pull request #411 fixed and this replaces outright.
 	UpdateAbilityMontage();
+
+	// EVERY FRAME AND FROM THE BRAIN, for the same reason as the line above.
+	UpdateCarriedRock();
 }
 
 void ACataclysmBruteCharacter::ApplyChaseSpeed()
@@ -479,6 +499,28 @@ void ACataclysmBruteCharacter::PlayAbilityMontage(int32 Index)
 							   EMontagePlayReturnType::MontageLength);
 }
 
+void ACataclysmBruteCharacter::UpdateCarriedRock()
+{
+	if (!CarriedRock)
+	{
+		return;
+	}
+
+	// ASKED, NOT REMEMBERED. Every way a wind-up ends clears this on the
+	// controller -- the attack landing, a stun cancelling it, the pawn being
+	// unpossessed -- so one question covers all of them and this function does
+	// not have to know what any of them are.
+	const ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(GetController());
+	const bool bHolding =
+		Brain != nullptr && Brain->WindingUpAbility == RockThrowAbility;
+
+	// A ROCK THAT DID NOT LOAD STAYS HIDDEN. Without the Paragon pack RockMesh
+	// is null, and an empty mesh component shown in the hand is nothing to see
+	// rather than a fault, but hiding it keeps the state honest.
+	CarriedRock->SetHiddenInGame(!bHolding || RockMesh == nullptr);
+}
+
 void ACataclysmBruteCharacter::UpdateAbilityMontage()
 {
 	if (PendingAbilityMontage == INDEX_NONE)
@@ -775,6 +817,13 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 	// clone and continuous integration both have; the projectile then keeps its
 	// engine sphere and the throw still works. Issue #404.
 	RockMesh = Cast<UStaticMesh>(FSoftObjectPath(RockMeshPath).TryLoad());
+
+	// THE SAME MESH THE THROW FLIES. One asset, so what the creature is holding
+	// and what leaves its hand cannot become two different rocks.
+	if (CarriedRock)
+	{
+		CarriedRock->SetStaticMesh(RockMesh);
+	}
 	if (!RockMesh)
 	{
 		UE_LOG(LogCataclysm, Warning,
