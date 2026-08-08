@@ -145,19 +145,64 @@ class BuildOutcome:
         return self.returncode == 0 and self.result == "Succeeded"
 
     def compiled_the_file(self, source_path: str) -> bool:
-        """Whether this build compiled `source_path`, directly or in its module blob.
+        """Whether this build rebuilt the code in `source_path`.
 
-        A module's .cpp files are normally merged into `Module.<Module>.cpp`, and
-        UnrealBuildTool only compiles a file under its own name while `git status`
-        reports it modified. So both answers are correct evidence that the file's
-        code was rebuilt, and demanding the filename would fail on the restore
-        build of a correct sequence.
+        THREE ANSWERS COUNT, and every one of them is real evidence.
+
+        1. The file was compiled under its own name. UnrealBuildTool does that
+           while `git status` reports it modified -- the "adaptive non-unity
+           working set" the module docstring describes.
+
+        2. The module's unity blob was compiled. A module's .cpp files are
+           normally merged into `Module.<Module>.cpp`, and a large module is
+           split into numbered chunks: `Module.Cataclysm.1.cpp`,
+           `Module.Cataclysm.2.cpp`. Demanding the unnumbered spelling was the
+           second half of issue #384; this build really does print the numbered
+           ones, and neither equals `Module.Cataclysm.cpp`.
+
+        3. FOR A HEADER, a .cpp beside it was compiled. A header is never
+           compiled itself, so 1 can never hold for one -- which was the first
+           half of issue #384: `require_compiled` raised on every header path,
+           including on builds that had plainly rebuilt everything including it.
+
+        WHAT 3 IS AND IS NOT. It says the translation units next to the header
+        were rebuilt, not that every file including the header was. That is the
+        strongest statement the build output supports, because a header does not
+        appear in it at all. It is enough for what this is for: inside
+        `prove_cpp_guard` nothing but the edited files has changed, so a build
+        that rebuilt the header's neighbours rebuilt it for the reason it was
+        edited, and a build that rebuilt nothing -- the issue #139 failure this
+        whole check exists to catch -- still raises.
         """
         name = pathlib.PurePath(source_path).name
         if name in self.compiled:
             return True
+
         module = module_of(source_path)
-        return module is not None and f"Module.{module}.cpp" in self.compiled
+        if module is not None and self.compiled_the_unity_blob(module):
+            return True
+
+        return (name.lower().endswith(".h")
+                and self.compiled_a_neighbour_of(source_path))
+
+    def compiled_the_unity_blob(self, module: str) -> bool:
+        """Whether `Module.<module>.cpp`, numbered or not, was compiled."""
+        pattern = re.compile(rf"^Module\.{re.escape(module)}(?:\.\d+)?\.cpp$")
+        return any(pattern.match(name) for name in self.compiled)
+
+    def compiled_a_neighbour_of(self, header_path: str) -> bool:
+        """Whether any .cpp in the same directory as a header was compiled.
+
+        Reads the directory rather than guessing, because a header does not
+        always have a .cpp of the same name -- an interface or a struct header
+        has none at all.
+        """
+        folder = (REPO_ROOT / header_path).parent
+        if not folder.is_dir():
+            return False
+
+        beside = {path.name for path in folder.glob("*.cpp")}
+        return any(name in beside for name in self.compiled)
 
     @property
     def summary(self) -> str:
@@ -361,7 +406,11 @@ def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> 
 
 def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
                     test_prefix: str = "Cataclysm",
-                    target: str = DEFAULT_TARGET) -> CppGuardResult:
+                    target: str = DEFAULT_TARGET,
+                    *,
+                    builder: Callable[[str], BuildOutcome] = build,
+                    tester: Callable[[str], TestOutcome] = run_automation_tests,
+                    ) -> CppGuardResult:
     """Break C++ files, rebuild, run the tests, restore, and rebuild again.
 
     @param edits        path relative to the repository root, and a function
@@ -371,6 +420,12 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
                         worthless.
     @param test_prefix  which automation tests to run, for example
                         `Cataclysm.Skills`. Narrower is much faster.
+    @param builder      what runs a build. ONLY EVER PASSED BY TESTS, so that
+                        the order of the four steps below can be checked without
+                        an engine. One real run of this function takes minutes,
+                        which is why none of its sequencing was covered until
+                        issue #384.
+    @param tester       the same, for the automation test run.
 
     Four builds' worth of time. Every file is restored in a `finally`, and the
     restore is followed by a rebuild, so an exception or an interrupt cannot
@@ -381,6 +436,16 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
 
     originals: dict[pathlib.Path, bytes] = {}
     broken_at = time.time()
+
+    #: What went wrong first, if anything did.
+    #:
+    #: KEPT SO THE RESTORE CANNOT HIDE IT. The `finally` below rebuilds and
+    #: checks that rebuild, and until issue #384 a failure there raised straight
+    #: over whatever had already gone wrong -- so the traceback a caller read
+    #: described the restore rather than the break that caused it. Issue #384
+    #: records seeing exactly that.
+    first_failure: BaseException | None = None
+
     try:
         for relative, edit in edits.items():
             path = REPO_ROOT / relative
@@ -401,23 +466,40 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
             path.write_text(after, encoding="utf-8")
 
         broken_at = time.time()
-        broken_build = build(target)
+        broken_build = builder(target)
         if broken_build.succeeded:
             # Only demand a rebuild when the build worked. A break that fails to
             # compile is a legitimate, if blunt, way to reach the same evidence,
             # and it never reaches a Compile line for the file.
             require_compiled(broken_build, list(edits))
-            tests = run_automation_tests(test_prefix)
+            tests = tester(test_prefix)
         else:
             tests = TestOutcome(None, (), ())
 
         return CppGuardResult(broken_build, tests)
+    except BaseException as error:
+        first_failure = error
+        raise
     finally:
         for path, content in originals.items():
             restore_and_touch(path, content, broken_at)
         if originals:
-            restored_build = build(target)
-            require_compiled(restored_build, list(edits))
+            restored_build = builder(target)
+            try:
+                require_compiled(restored_build, list(edits))
+            except BuildDidNothing as restore_failure:
+                if first_failure is None:
+                    raise
+                # THE FIRST FAILURE IS THE ONE THAT EXPLAINS THE RUN, so it is
+                # the one that propagates. Raising here would replace it with a
+                # complaint about the restore, which is what issue #384 saw:
+                # two tracebacks, the second hiding the first. The restore
+                # problem still has to reach the caller, so it is attached to
+                # the failure already on its way out.
+                first_failure.add_note(
+                    "The restore build was also unsatisfactory, and this is "
+                    "reported as a note so it does not hide the failure above:"
+                    f"\n{restore_failure}")
 
 
 # ---------------------------------------------------------------------------

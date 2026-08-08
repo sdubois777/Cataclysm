@@ -38,6 +38,7 @@ from unreal_build import (  # noqa: E402
     parse_arguments,
     parse_build_output,
     parse_test_log,
+    prove_cpp_guard,
     require_compiled,
     restore_and_touch,
 )
@@ -328,3 +329,251 @@ def test_a_failing_test_is_a_failure() -> None:
 
 def test_a_clean_run_is_the_only_success() -> None:
     assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ())) == 0
+
+
+# ---------------------------------------------------------------------------
+# Proving a guard on a constant that lives in a header
+#
+# WHY THESE EXIST. Issue #384. Most of the constants this project guards are
+# `static constexpr float` in a header, and `prove_cpp_guard` raised
+# BuildDidNothing on every one of them -- on builds that had plainly rebuilt
+# everything that includes the header. Two separate causes, both below.
+# ---------------------------------------------------------------------------
+
+#: A real build, captured in issue #384, after breaking a constant in
+#: `CataclysmCharacterBase.h`. It rebuilt everything that includes that header
+#: and `require_compiled` raised anyway.
+#:
+#: THE TWO THINGS TO NOTICE. No line names a `.h`, because a header is never
+#: compiled. And the unity blob is SPLIT AND NUMBERED, so neither chunk equals
+#: `Module.Cataclysm.cpp`, which is the only spelling the old fallback knew.
+BUILD_AFTER_A_HEADER_BREAK = """\
+Building CataclysmEditor...
+Using Unreal Build Accelerator local executor to run 9 action(s)
+[1/9] Compile [x64] CataclysmBruteCharacter.cpp
+[2/9] Compile [x64] CataclysmBruteTests.cpp
+[3/9] Compile [x64] CataclysmCharacterBase.cpp
+[4/9] Compile [x64] CataclysmEnemyBehaviourTests.cpp
+[5/9] Compile [x64] CataclysmEnemyController.cpp
+[6/9] Compile [x64] Module.Cataclysm.1.cpp
+[7/9] Compile [x64] Module.Cataclysm.2.cpp
+[8/9] Link [x64] UnrealEditor-Cataclysm.lib
+[9/9] Link [x64] UnrealEditor-Cataclysm.dll
+Result: Succeeded
+"""
+
+#: The header whose constants issue #384 was found on. A real path, because
+#: `compiled_a_neighbour_of` reads the directory rather than guessing.
+CHARACTER_BASE_HEADER = "game/Source/Cataclysm/Character/CataclysmCharacterBase.h"
+
+
+def test_a_header_counts_as_rebuilt_when_its_neighbours_were_compiled() -> None:
+    """The exact case issue #384 reports, from the build output it reports.
+
+    A header is never compiled, so it can never appear in a compile line. Before
+    this, `require_compiled` raised on every header path no matter what the
+    build had done.
+    """
+    built = outcome(BUILD_AFTER_A_HEADER_BREAK)
+    assert built.succeeded
+
+    assert built.compiled_the_file(CHARACTER_BASE_HEADER), (
+        "a header break is still reported as a build that did nothing, which is "
+        "issue #384: the build compiled seven files including the header's own "
+        "neighbours, and this said it had not been rebuilt.")
+
+    # AND IT GOES THROUGH require_compiled, which is what prove_cpp_guard calls
+    # and where the exception was actually raised.
+    require_compiled(built, [CHARACTER_BASE_HEADER])
+
+
+#: A build with no unity blob line at all: every file compiled under its own
+#: name. This is what the adaptive non-unity working set produces when the
+#: modified files are the ones being compiled, and it is the case where the
+#: blob fallback has nothing to match.
+BUILD_WITH_NO_UNITY_BLOB = """\
+Building CataclysmEditor...
+Using Unreal Build Accelerator local executor to run 3 action(s)
+[1/3] Compile [x64] CataclysmCharacterBase.cpp
+[2/3] Link [x64] UnrealEditor-Cataclysm.lib
+Result: Succeeded
+"""
+
+
+def test_a_header_is_proved_by_a_cpp_beside_it_when_there_is_no_unity_blob() -> None:
+    """The half of issue #384 the numbering fix does not cover.
+
+    WHY THIS IS A SEPARATE TEST, and it was not until the guards were proved:
+    the build captured in issue #384 contains numbered unity chunks, so
+    recognising those alone makes that case pass. Deleting the header handling
+    left it passing, which meant nothing exercised the header handling at all.
+
+    Here there is no blob line to fall back on. A header is never compiled, so
+    the only evidence available is that a .cpp beside it was.
+    """
+    built = outcome(BUILD_WITH_NO_UNITY_BLOB)
+
+    assert not built.compiled_the_unity_blob("Cataclysm"), (
+        "this capture is supposed to have no unity blob line; if it gained one "
+        "this test stops isolating what it is about")
+
+    assert built.compiled_the_file(CHARACTER_BASE_HEADER), (
+        "a header cannot be proved rebuilt when its module compiled without a "
+        "unity blob, even though the .cpp beside it was compiled by name.")
+
+
+def test_a_numbered_unity_chunk_counts_for_a_cpp_as_well() -> None:
+    """The second cause, which is not limited to headers.
+
+    UnrealBuildTool splits a large module's unity blob into numbered chunks. Any
+    .cpp whose code landed in one rather than being compiled under its own name
+    would have hit the same wall. It had not bitten before only because a
+    modified file is compiled under its own name.
+    """
+    built = outcome(BUILD_AFTER_A_HEADER_BREAK)
+
+    assert built.compiled_the_unity_blob("Cataclysm"), (
+        "Module.Cataclysm.1.cpp and Module.Cataclysm.2.cpp are not recognised "
+        "as the Cataclysm module's unity blob, so any file whose code landed in "
+        "one is reported as not rebuilt.")
+
+    assert built.compiled_the_file(
+        "game/Source/Cataclysm/Character/SomethingNotCompiledByName.cpp")
+
+
+def test_a_header_still_raises_when_the_build_did_nothing() -> None:
+    """The issue #139 failure must still be caught, header or not.
+
+    THIS IS THE ONE THAT MATTERS. Making a header pass is easy; making it pass
+    without also making every header pass unconditionally is the point. A build
+    that reported success and compiled nothing is exactly the fault
+    `require_compiled` exists for, and it has to keep raising.
+    """
+    built = outcome(BUILD_THAT_DID_NOTHING)
+    assert built.succeeded, "UnrealBuildTool really does report success here"
+
+    assert not built.compiled_the_file(CHARACTER_BASE_HEADER)
+    with pytest.raises(BuildDidNothing):
+        require_compiled(built, [CHARACTER_BASE_HEADER])
+
+
+def test_a_header_is_not_proved_by_a_different_module_being_compiled() -> None:
+    """Otherwise any build of anything would prove any header.
+
+    The compiled file below is a real file in the Cataclysm module, but the
+    header under test is in a made-up module, so neither the blob nor the
+    neighbour check can match it.
+    """
+    built = outcome(BUILD_AFTER_A_HEADER_BREAK)
+
+    assert not built.compiled_the_file(
+        "game/Source/SomeOtherModule/Thing/Thing.h"), (
+        "a header in a module this build never touched is reported as rebuilt, "
+        "so the check would pass for anything.")
+
+
+# ---------------------------------------------------------------------------
+# The order prove_cpp_guard does things in, and what it reports when a step
+# fails
+#
+# NONE OF THESE RUN A BUILD. `prove_cpp_guard` takes `builder` and `tester`
+# for exactly this: one real run of it is four builds and several minutes, so
+# until issue #384 nothing checked its sequencing at all.
+# ---------------------------------------------------------------------------
+
+
+class RecordedBuilds:
+    """Hands out prepared build outcomes and remembers how often it was asked."""
+
+    def __init__(self, *outcomes: BuildOutcome) -> None:
+        self.remaining = list(outcomes)
+        self.calls = 0
+
+    def __call__(self, target: str) -> BuildOutcome:
+        self.calls += 1
+        return self.remaining.pop(0) if self.remaining else self.remaining[-1]
+
+
+def a_source_file(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
+    """A file `prove_cpp_guard` can break, outside the real repository."""
+    monkeypatch.setattr("unreal_build.REPO_ROOT", tmp_path)
+    source = tmp_path / "Thing.cpp"
+    source.write_text("float Reach() { return 250.0f; }\n", encoding="utf-8")
+    return source
+
+
+def build_that_compiled_thing() -> BuildOutcome:
+    return outcome("Building X...\n[1/1] Compile [x64] Thing.cpp\nResult: Succeeded\n")
+
+
+def test_it_breaks_builds_tests_restores_and_rebuilds_in_that_order(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two builds and one test run, and the file back as it was."""
+    source = a_source_file(tmp_path, monkeypatch)
+    original = source.read_bytes()
+
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    seen_during_the_test_run: list[str] = []
+
+    def tester(prefix: str) -> TestOutcome:
+        # READ INSIDE THE TEST RUN, because "the tests ran against the broken
+        # binary" is the whole claim prove_cpp_guard makes.
+        seen_during_the_test_run.append(source.read_text(encoding="utf-8"))
+        return TestOutcome(2, ("a",), ("b",))
+
+    result = prove_cpp_guard(
+        {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+        test_prefix="Cataclysm.Thing", builder=builds, tester=tester)
+
+    assert result.failed, "a failing test is what proves the guard"
+    assert builds.calls == 2, "one build for the break and one for the restore"
+    assert seen_during_the_test_run == ["float Reach() { return 0.0f; }\n"], (
+        "the tests did not run while the file was broken, so a failure among "
+        "them proves nothing")
+    assert source.read_bytes() == original, "the file was not restored"
+
+
+def test_a_bad_restore_build_raises_when_nothing_else_went_wrong(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """It must not be swallowed. A stale binary is issue #139 all over again."""
+    a_source_file(tmp_path, monkeypatch)
+
+    builds = RecordedBuilds(build_that_compiled_thing(),
+                            outcome(BUILD_THAT_DID_NOTHING))
+
+    with pytest.raises(BuildDidNothing):
+        prove_cpp_guard(
+            {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+            builder=builds, tester=lambda prefix: TestOutcome(2, ("a",), ("b",)))
+
+
+def test_a_bad_restore_build_does_not_hide_the_failure_that_came_first(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #384 reports two tracebacks, the second hiding the first.
+
+    The break build here did nothing, which is the failure that explains the
+    run. The restore build then failed outright. The caller must be told about
+    the first, because that is the one that says why the run is worthless.
+    """
+    a_source_file(tmp_path, monkeypatch)
+
+    builds = RecordedBuilds(
+        outcome(BUILD_THAT_DID_NOTHING),          # the break build: succeeded, built nothing
+        outcome(BUILD_THAT_FAILED, returncode=6),  # the restore build: failed outright
+    )
+
+    with pytest.raises(BuildDidNothing) as raised:
+        prove_cpp_guard(
+            {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+            builder=builds, tester=lambda prefix: TestOutcome(0, (), ()))
+
+    assert "did not rebuild" in str(raised.value), (
+        f"the exception that reached the caller describes the restore build "
+        f"rather than the break that caused the run to be worthless: "
+        f"{raised.value}")
+
+    notes = getattr(raised.value, "__notes__", [])
+    assert any("restore build was also unsatisfactory" in note for note in notes), (
+        "the restore build's own problem was dropped entirely. It has to reach "
+        "the caller too -- a repository left with a stale binary is the fault "
+        "issue #139 is about.")
