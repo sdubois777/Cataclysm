@@ -221,6 +221,40 @@ def test_the_recorded_reading_matches_the_asset_on_disk(brute) -> None:
     )
 
 
+def test_the_asset_can_always_be_identified_so_the_check_above_cannot_skip(
+) -> None:
+    """A skip here would take the only asset-level guard with it, silently.
+
+    WHY THIS IS ITS OWN TEST. `test_the_recorded_reading_matches_the_asset_on_disk`
+    skips when it cannot identify the asset, which is right -- a checkout without
+    the file has nothing to compare against and should not fail for it. But a
+    skip is green. If `game/Content` were ever gitignored, or the git LFS pointer
+    replaced by something this cannot read, that test would quietly stop running
+    and every other test in this file would carry on passing against a record
+    that no longer had to match anything.
+
+    THAT IS THE WHOLE OF ISSUE #406 RETURNING BY THE BACK DOOR. The two tuned
+    play rates live inside a binary asset; the only thing tying the record of
+    them to the asset itself is the hash comparison. This says the comparison is
+    actually happening.
+
+    IT WORKS WITHOUT THE BINARY. `.uasset` is tracked with git LFS, so a
+    checkout that has not fetched the content holds a small text pointer naming
+    the same SHA-256. Continuous integration is in exactly that state and this
+    still passes there.
+    """
+    identity = asset_identity(BRUTE_GRAPH)
+
+    assert identity is not None, (
+        f"{BRUTE_GRAPH}.uasset cannot be identified in this checkout, so "
+        f"test_the_recorded_reading_matches_the_asset_on_disk is skipping and "
+        f"nothing ties game/Data/animation_graph_readings.json to the asset it "
+        f"claims to describe. Either the file is missing from the checkout, or "
+        f"it is a git LFS pointer this cannot read. Both leave the Brute's two "
+        f"tuned play rates unguarded, which is issue #406."
+    )
+
+
 def test_the_gait_blend_has_the_running_animation_on_the_true_branch(brute) -> None:
     """The exact fault that shipped, stated as the thing that must be true.
 

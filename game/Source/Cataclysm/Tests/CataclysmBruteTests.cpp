@@ -525,9 +525,12 @@ bool FCataclysmBruteAbilityMontagesAreBuiltCorrectly::RunTest(const FString&)
 	// The Brute's two abilities are now driven by montage assets rather than by
 	// arithmetic in C++. That is the right place for them -- the timing can be
 	// scrubbed against a live preview -- but it moves several tuned numbers into
-	// binary files that a pull request cannot diff. Issue #406 makes exactly that
-	// complaint about the two play rates that moved into ABP_Brute, where nothing
-	// checks them and a change would be invisible.
+	// binary files that a pull request cannot diff. Issue #406 made exactly that
+	// complaint about the two play rates that moved into ABP_Brute. Those are
+	// covered a different way now: tools/read_animation_graph.py reads them out
+	// of the asset into a committed record, and three tests run from the design
+	// model through to the asset's own SHA-256. This test is the montage
+	// equivalent, and reads its figures straight off the assets instead.
 	//
 	// So everything this project relies on being true of those two assets is
 	// asserted here, read back off the asset itself:
