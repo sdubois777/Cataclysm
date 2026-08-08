@@ -39,6 +39,20 @@ silent case: an editor that gave up before reaching the Python plugin never logs
     script that called `unreal.log_error` and raised `SystemExit(1)` as a
     success. See SCRIPT_STARTED.
 
+**AFTER, SECOND**: report every file the run left changed. Issue #414. Running the
+editor dirties the working tree in ways the script did not ask for: it rewrites
+`game/Config/DefaultEditor.ini` with about 57 kilobytes of asset-viewer preview
+scene profiles, and it re-saves assets it merely happened to load. Both are
+committed files and `.uasset` is stored in git LFS, so an incidental re-save is a
+new binary object rather than a readable diff. Somebody who runs a generator and
+then types `git add -A` commits an engine version bump to a Blueprint they never
+opened, inside a pull request about something else, and no reviewer can read it.
+
+    IT REPORTS RATHER THAN REVERTS, and that is deliberate. The script's own
+    output is a change to the working tree as well, and this runner has no way of
+    telling the two apart -- the generators exist precisely to write assets. The
+    person who ran it does know. What was missing was a list to look at.
+
 WHAT THIS DOES NOT DO. It does not make a worktree work. Sharing the ordinary
 checkout's `game/Binaries/` through a junction would let the editor start, but
 those binaries are built from `game/Source/`, and a worktree exists precisely to
@@ -105,8 +119,112 @@ SCRIPT_FAILED = ("LogPythonScriptCommandlet: Error: "
                  "Python script executed with errors")
 
 
+#: Files the editor rewrites as its own bookkeeping, whatever the script did.
+#:
+#: NAMED SO THE REPORT CAN SAY WHICH IS WHICH. Everything else in the report may
+#: be the script's intended output; this one never is.
+#:
+#: WHY IT IS REPORTED RATHER THAN GITIGNORED. Committing the expanded version was
+#: the other suggestion on issue #414 and does not settle anything: the 57
+#: kilobytes are `[/Script/AdvancedPreviewScene.SharedProfiles]`, written by
+#: `USharedProfiles`, which is declared `UCLASS(config = Editor, defaultconfig)`
+#: in Engine/Source/Editor/AdvancedPreviewScene/Public/AssetViewerSettings.h --
+#: `defaultconfig` is what sends it to the PROJECT's ini rather than the user's.
+#: The engine owns that section and will write it again.
+#:
+#: Gitignoring the file outright would drop its one committed line,
+#: `bAllowMultiplePIEInstances=True`. Whether that line does anything is issue
+#: #427: the property does not appear in Unreal 5.8's editor classes -- the
+#: similarly named one is `bAllowMultiplePIEWorlds` -- and `UEditorEngine` is
+#: declared `config=Engine`, so it would not read this file anyway. Until that is
+#: confirmed by observation rather than by reading headers, this reports the file
+#: instead of hiding it.
+EDITOR_BOOKKEEPING_FILES = ("game/Config/DefaultEditor.ini",)
+
+
 class CannotRunEditorScript(RuntimeError):
     """A precondition failed, or the script did not run. The message says which."""
+
+
+def working_tree_state() -> dict[str, str]:
+    """Every path git considers changed, against its status code.
+
+    Untracked files are included, because an asset the editor wrote for the first
+    time is exactly as easy to commit by accident as one it modified.
+
+    An empty result when git cannot be run at all is deliberate: this is a
+    reporting aid, and a missing git must not stop a generator from running.
+    """
+    try:
+        finished = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True, text=True, cwd=REPO_ROOT, check=False)
+    except OSError:
+        return {}
+
+    if finished.returncode != 0:
+        return {}
+
+    state: dict[str, str] = {}
+    for line in finished.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        # Porcelain format is two status characters, a space, then the path. A
+        # renamed entry is "old -> new"; the new name is what is on disk.
+        code, path = line[:2], line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        state[path.strip('"')] = code
+    return state
+
+
+def changes_between(before: dict[str, str],
+                    after: dict[str, str]) -> list[tuple[str, str]]:
+    """Paths whose git status is not what it was, with the status they now have.
+
+    A path that was already modified before the run and is still modified is not
+    reported: the run did not do that. A path whose status CHANGED is, because
+    modified-then-also-staged is a different fact from untouched.
+    """
+    return sorted((path, code) for path, code in after.items()
+                  if before.get(path) != code)
+
+
+def describe_changes(changes: list[tuple[str, str]]) -> str:
+    """The report printed after a run. Empty when the run changed nothing."""
+    if not changes:
+        return ""
+
+    lines = [f"The editor run left {len(changes)} file(s) changed:"]
+    for path, code in changes:
+        note = ""
+        if path in EDITOR_BOOKKEEPING_FILES:
+            note = "   <- editor bookkeeping, not your script"
+        elif path.endswith((".uasset", ".umap")):
+            note = "   <- binary, stored in git LFS"
+        lines.append(f"  {code} {path}{note}")
+
+    lines += [
+        "",
+        "Some of these are what the script was for. Check the rest before",
+        "committing: the editor re-saves assets it merely loaded, and a .uasset",
+        "change cannot be reviewed by reading it. Issue #414.",
+        "",
+    ]
+
+    # TWO DIFFERENT COMMANDS, BECAUSE NEITHER WORKS ON THE OTHER CASE.
+    # `git checkout --` restores a tracked file and does nothing whatever to an
+    # untracked one, which is what a newly written asset is. Printing only that
+    # would send somebody to a command that reports success and leaves the file
+    # exactly where it was.
+    if any(code != "??" for _, code in changes):
+        lines.append(
+            "  git checkout -- <path>   to discard a change to a tracked file")
+    if any(code == "??" for _, code in changes):
+        lines.append(
+            "  git clean -f <path>      to remove one that is untracked (??)")
+
+    return "\n".join(lines)
 
 
 def is_worktree(path: pathlib.Path | None = None) -> bool:
@@ -208,13 +326,21 @@ def script_outcome(log_text: str) -> str:
     return "unknown"
 
 
-def run(script: pathlib.Path, timeout: float = 1800.0) -> str:
+def run(script: pathlib.Path, timeout: float = 1800.0,
+        changes: list[tuple[str, str]] | None = None) -> str:
     """Run one script inside the editor and return what the log said.
 
     The log is deleted first, so a run that writes nothing cannot be mistaken for
     the previous run's output.
+
+    @param changes  filled in, if given, with every path whose git status the run
+        changed. A list rather than a second return value so that callers which
+        only want the log are unaffected, and so that a run which raises still
+        leaves the caller holding what it dirtied before it failed.
     """
     check_preconditions()
+
+    before = working_tree_state()
 
     script = script.resolve()
     if not script.is_file():
@@ -237,6 +363,13 @@ def run(script: pathlib.Path, timeout: float = 1800.0) -> str:
          f"-script={script}", f"-abslog={RUN_LOG}",
          "-unattended", "-nopause", "-nosplash"],
         capture_output=True, text=True, cwd=GAME_DIR, timeout=timeout, check=False)
+
+    # BEFORE THE LOG IS JUDGED, so that a run which started the editor, dirtied
+    # the tree and then failed still reports what it dirtied. That is the case
+    # where the reader most needs the list, because a failed run is one nobody
+    # expects to have changed anything.
+    if changes is not None:
+        changes[:] = changes_between(before, working_tree_state())
 
     if not RUN_LOG.is_file():
         raise CannotRunEditorScript(
@@ -279,15 +412,28 @@ def main(argv: list[str] | None = None) -> int:
     if not script.is_absolute():
         script = REPO_ROOT / script
 
+    changes: list[tuple[str, str]] = []
     try:
-        run(script, timeout=args.timeout)
+        run(script, timeout=args.timeout, changes=changes)
     except CannotRunEditorScript as failure:
         # Not prefixed with "did not run": one of the three failures is a script
         # that ran and reported errors, and saying it did not run would be false.
         print(failure, file=sys.stderr)
+        # PRINTED ON THE FAILING PATH TOO. A run that failed part way through may
+        # still have left assets rewritten, and that is the case where nobody
+        # thinks to look.
+        report = describe_changes(changes)
+        if report:
+            print("", file=sys.stderr)
+            print(report, file=sys.stderr)
         return 2
 
     print(f"{script.name} ran. Read {RUN_LOG} for what it did.")
+
+    report = describe_changes(changes)
+    if report:
+        print("")
+        print(report)
     return 0
 
 
