@@ -2067,10 +2067,74 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		TestEqual(TEXT("at the speed it was authored, rather than stretched"),
 			Brute.Actor->LastPlayedRate, 1.0f);
 
+		// FOR EXACTLY THE TIME IT WAS ASKED TO COVER, WHICH NEEDS A FRACTION.
+		// A whole number of repeats is what let the rock throw's hold play its
+		// full 7.67 seconds against the 0.25 it was asked for, because the
+		// smallest whole number of repeats of a 7.67 second clip is one.
+		const float AskedFor = Expected;
+		const float HoldClipSeconds =
+			Brute.Actor->StompHoldAnimation->GetPlayLength();
+		TestEqual(TEXT("for exactly the time it was asked to cover, which needs "
+					   "a fraction of a repeat rather than a whole one"),
+			Brute.Actor->LastPlayedLoops * HoldClipSeconds, AskedFor);
+
 		// AND IT BLENDS IN RATHER THAN SNAPPING. A zero blend here was what the
 		// project owner saw as the creature putting its arms all the way back
 		// up: the wind-up montage has already finished by the time this runs,
 		// so there was no pose being continued, only one being jumped to.
+		// AND IT REFUSES TO PLAY ONCE THE ATTACK HAS LANDED. THIS IS THE FAULT
+		// THAT PRODUCED BOTH OF THE THINGS REPORTED ON 2026-08-08.
+		//
+		// The hold is scheduled on a timer for the moment the wind-up clip
+		// ends. For the rock throw that moment is also when the attack lands,
+		// and the two timers do not resolve in the order the code assumed: the
+		// thinking timer loops with exact deadlines while this one is created
+		// inside a thinking callback, after that pass's deadline has passed. So
+		// the hold ran AFTER the throw and replaced it, leaving 7.67 seconds of
+		// Ability_RipNToss_Idle -- the creature standing still holding a rock
+		// over its head -- playing over everything, including walking.
+		//
+		// The brain clears WindingUpAbility the instant an ability lands, so
+		// that is what the hold asks before playing anything.
+		if (ACataclysmEnemyController* Landed = Brute.Brain())
+		{
+			UAnimSequence* BeforeLate = Brute.Actor->LastPlayedAnimation.Get();
+			UAnimSequence* HoldBefore = Brute.Actor->PendingHoldAnimation.Get();
+			const float HoldSecondsBefore = Brute.Actor->PendingHoldSeconds;
+
+			// PUT THE BRAIN INTO THE STATE IT IS IN THE INSTANT AFTER AN
+			// ABILITY LANDS, which is the state the hold used to arrive in.
+			const int32 WindingUpBefore = Landed->WindingUpAbility;
+			Landed->WindingUpAbility = INDEX_NONE;
+
+			// A DIFFERENT CLIP FROM THE ONE ALREADY PLAYING, ON PURPOSE. Queued
+			// with the stomp's own hold, this check would pass whether or not
+			// the guard worked, because the hold clip is what is playing anyway
+			// and the two outcomes would be the same value. The rock throw's
+			// hold is the other clip this creature can hold with.
+			if (Brute.Actor->RockThrowHoldAnimation != nullptr
+				&& Brute.Actor->RockThrowHoldAnimation != BeforeLate)
+			{
+				Brute.Actor->PendingHoldAnimation = Brute.Actor->RockThrowHoldAnimation;
+				Brute.Actor->PendingHoldSeconds = 0.5f;
+
+				Brute.Actor->StartHoldAnimation();
+				TestEqual(TEXT("a hold that arrives after its attack landed "
+							   "plays nothing"),
+					Brute.Actor->LastPlayedAnimation.Get(), BeforeLate);
+				TestNull(TEXT("and forgets itself rather than firing later"),
+					Brute.Actor->PendingHoldAnimation.Get());
+			}
+
+			// PUT IT ALL BACK. The rest of this test drives the same Brute
+			// through a rock throw, and a brain left mid-wind-up or a hold left
+			// pending would make those assertions fail for a reason that has
+			// nothing to do with what they check.
+			Landed->WindingUpAbility = WindingUpBefore;
+			Brute.Actor->PendingHoldAnimation = HoldBefore;
+			Brute.Actor->PendingHoldSeconds = HoldSecondsBefore;
+		}
+
 		TestEqual(TEXT("blending in rather than snapping to the poise"),
 			Brute.Actor->LastPlayedBlendInSeconds,
 			ACataclysmBruteCharacter::AttackBlendInSeconds);
