@@ -873,13 +873,15 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 		Brain->bHasRoamTarget);
 
 	// THE ATTACK INTERVAL IS A RATE LIMIT AND IT HOLDS. The world is never
-	// ticked so no time passes, and the Brute's interval is 2.8 seconds, so a
-	// second pass must not produce a second hit.
+	// ticked so no time passes, and the Brute's interval is 1.6 seconds, so a
+	// second pass must not produce a second hit. The figure was 2.8 until
+	// play testing on 2026-08-07; what this test needs is only that some
+	// time has to pass, so it holds at either.
 	const float AfterFirst = Player.Health();
 	TestEqual(TEXT("a second pass with no time elapsed still reports attacking"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
-	TestEqual(TEXT("but does not hit again, because 2.8 seconds have not passed"),
+	TestEqual(TEXT("but does not hit again, because no time has passed"),
 		Brain->AttacksOrdered, 1);
 	TestEqual(TEXT("so the player lost no more health"),
 		Player.Health(), AfterFirst);
