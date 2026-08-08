@@ -39,6 +39,16 @@ python -m ruff check .                    # lint
 ```
 
 ```bash
+python tools/unreal_build.py build            # compile the editor target
+python tools/unreal_build.py tests            # compile, then run the automation tests
+python tools/unreal_build.py tests --prefix Cataclysm.Brute   # one group only
+```
+
+That wrapper exits non-zero when the build fails, when a test fails, and when no
+test results could be read at all. Until issue #436 it had no entry point, so
+every invocation of it exited 0 having done nothing.
+
+```bash
 cd sim && python -m cataclysm_sim.scoring     # power model self-test
 cd sim && python verify_scoring_port.py       # compare against the real source
 cd sim && python experiments.py               # full sweeps -- SLOW, see below
@@ -206,7 +216,13 @@ cycle each:
 - **The automation test command writes nothing useful to standard output.**
   Redirecting it captures only the software development kit validation banner.
   The results are in `game/Saved/Logs/Cataclysm.log`.
-  `unreal_build.run_automation_tests()` reads that file.
+  `unreal_build.run_automation_tests()` reads that file, and
+  `python tools/unreal_build.py tests` prints what it found.
+- **A command that exits 0 and prints nothing has usually not run.** That is not
+  hypothetical: `python tools/unreal_build.py --tests` did exactly that until
+  issue #436, because the file was a library with no entry point, and it was run
+  three times before anyone noticed. Check the exit code and check that the
+  output says how many tests were performed.
 
 **Say what did not work.** If a test fails, or you skipped part of the task, or
 the evidence for a result was compromised, say so plainly and first. Do not

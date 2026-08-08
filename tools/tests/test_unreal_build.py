@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import subprocess
 import sys
 import time
 
@@ -31,12 +32,19 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from unreal_build import (  # noqa: E402
     BuildDidNothing,
     BuildOutcome,
+    TestOutcome,
+    exit_code_for,
     module_of,
+    parse_arguments,
     parse_build_output,
     parse_test_log,
     require_compiled,
     restore_and_touch,
 )
+
+#: The script itself, for the tests below that run it as a command rather than
+#: importing it.
+BUILD_SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "unreal_build.py"
 
 #: A real build that had work to do. Captured 2026-08-04 with a clean working
 #: tree, which is why the compile line names the unity blob rather than a file.
@@ -215,3 +223,108 @@ def test_restoring_a_file_leaves_it_newer_than_the_break(tmp_path: pathlib.Path)
     assert source.stat().st_mtime > broken_at, (
         "the restored file still looks older than the build made from the broken "
         "version, so UnrealBuildTool would skip it. See issue #139.")
+
+
+# ---------------------------------------------------------------------------
+# Running it as a command
+#
+# WHY THESE EXIST. Issue #436. This file had no `__main__` block, so
+# `python tools/unreal_build.py --tests` imported the module, printed nothing
+# and exited 0. That was run three times before anyone noticed, because an exit
+# code of 0 with no output is what a successful run looks like once its output
+# has been filtered. It is the same fault the rest of this file guards against
+# -- work reported as done that was never done -- at the front door instead of
+# in the build.
+#
+# NONE OF THESE START A BUILD. The two that run the script as a command only
+# reach the argument parser; the rest call functions directly. The whole group
+# is as fast as the tests above it and runs in continuous integration, which has
+# no engine.
+# ---------------------------------------------------------------------------
+
+
+def run_the_script(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """Run `unreal_build.py` as a command, with arguments that never build."""
+    return subprocess.run(
+        [sys.executable, str(BUILD_SCRIPT), *arguments],
+        capture_output=True, text=True, check=False)
+
+
+def test_running_it_with_no_arguments_fails_instead_of_doing_nothing() -> None:
+    """The exact regression issue #436 is about.
+
+    THE FAILURE THIS EXISTS FOR is somebody removing the entry point, or moving
+    these functions into another module and leaving this one importable but
+    inert. Both put the file back in the state where every invocation of it
+    reports success without running anything.
+    """
+    finished = run_the_script()
+
+    assert finished.returncode != 0, (
+        "python tools/unreal_build.py with no arguments exited 0. That is "
+        "indistinguishable from a successful build-and-test run whose output "
+        "was filtered away, which is how issue #436 happened: it was run three "
+        "times and reported nothing three times.")
+
+    assert (finished.stdout + finished.stderr).strip(), (
+        "it exited non-zero but printed nothing at all, so a caller has no way "
+        "to tell what went wrong.")
+
+
+def test_an_unrecognised_command_fails_rather_than_being_ignored() -> None:
+    """A misspelled subcommand must not silently do nothing."""
+    finished = run_the_script("tets")
+
+    assert finished.returncode != 0, (
+        "an unrecognised subcommand exited 0, so a typo in a build script would "
+        "look like a passing run.")
+
+
+def test_both_spellings_of_the_two_commands_are_accepted() -> None:
+    """`--tests` is the spelling recorded in issue #436, so somebody will type it.
+
+    Parsed rather than run: the alternative is a test that starts a real Unreal
+    build in order to find out whether a flag was spelled correctly.
+    """
+    assert parse_arguments(["tests"]).command == "tests"
+    assert parse_arguments(["--tests"]).command == "tests"
+    assert parse_arguments(["build"]).command == "build"
+    assert parse_arguments(["--build"]).command == "build"
+
+
+def test_the_test_prefix_and_target_can_be_chosen() -> None:
+    """Because proving one guard should not mean running all 204 tests."""
+    parsed = parse_arguments(["tests", "--prefix", "Cataclysm.Brute"])
+    assert parsed.prefix == "Cataclysm.Brute"
+    assert not parsed.no_build
+
+    assert parse_arguments(["tests", "--no-build"]).no_build
+
+
+def test_a_run_that_read_no_results_is_a_failure() -> None:
+    """Nothing ran is not the same as nothing failed.
+
+    `TestOutcome(None, (), ())` is what comes back when the log could not be
+    read: the editor never started, the run crashed, the log was locked. This is
+    issue #436 one level further in, and reporting it as a pass would be the
+    same mistake in a different place.
+    """
+    assert exit_code_for(TestOutcome(None, (), ())) != 0
+    assert exit_code_for(None) != 0
+
+
+def test_a_run_that_performed_zero_tests_is_a_failure() -> None:
+    """The same thing said differently, and it really happens.
+
+    A test prefix that matches nothing produces this: the run is real, the log
+    is readable, and no test was executed.
+    """
+    assert exit_code_for(TestOutcome(0, (), ())) != 0
+
+
+def test_a_failing_test_is_a_failure() -> None:
+    assert exit_code_for(TestOutcome(3, ("a", "b"), ("c",))) != 0
+
+
+def test_a_clean_run_is_the_only_success() -> None:
+    assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ())) == 0
