@@ -1133,9 +1133,24 @@ public:
 	 * WHAT WAS LOST, SAID PLAINLY. The play rate used to follow the Brute's real
 	 * ground speed frame by frame; it is now a constant per clip. It differs only
 	 * while the creature is accelerating or stopping, because those are the only
-	 * moments its speed is neither 250 nor 500. WHAT WAS ALSO LOST is that these
-	 * two numbers no longer sit in text a pull request can diff: they are inside
-	 * a binary asset. Issue #406.
+	 * moments its speed is neither 250 nor 500.
+	 *
+	 * THE TWO NUMBERS ARE BACK IN TEXT, which they were not when this comment
+	 * was first written and which issue #406 was opened about.
+	 * tools/read_animation_graph.py reads them out of ABP_Brute and writes them
+	 * to game/Data/animation_graph_readings.json, which is committed. Three
+	 * tests run the whole way from the design model to the bytes on disk:
+	 *
+	 *   the designed speeds -> this comment
+	 *       test_brute_matches_the_model.py, the two play rate tests
+	 *   this comment -> what ABP_Brute actually carries
+	 *       test_animation_graph_reading_is_current.py, the play rates test
+	 *   that reading -> the asset's own SHA-256
+	 *       the same file, the reading-is-current test
+	 *
+	 * SO EDITING THIS COMMENT ALONE FAILS, and editing the asset without
+	 * re-running the reader fails as well. Regenerate the record with:
+	 *   python tools/run_editor_python.py tools/read_animation_graph.py
 	 */
 
 	/** Play rate floor. Below this the animation reads as frozen. */

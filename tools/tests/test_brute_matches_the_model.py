@@ -498,9 +498,15 @@ def _play_rate_in_the_header(animation: str) -> float:
     figures in a comment so that they stay in reviewable text; this reads that
     comment.
 
-    THAT IS WEAKER THAN WHAT IT REPLACED, and deliberately recorded as such: it
-    pins the comment against the document, not the comment against the asset.
-    Nothing checks that the asset carries these numbers. Issue #406.
+    THE ASSET IS CHECKED TOO, in a different file. This function pins the
+    comment against the design model; `test_animation_graph_reading_is_current.py`
+    pins the same comment against a reading taken out of `ABP_Brute` itself, and
+    pins that reading against the asset's SHA-256 so it cannot describe an older
+    graph. The three together run from the design model to the bytes on disk.
+
+    That was not true when this was written. Issue #406 said the figures were
+    "no longer numbers a reviewer can see or a test can read", and at the time
+    they were not; the reader that changed it arrived with issue #408.
     """
     import re as _re
 
@@ -546,8 +552,12 @@ def test_the_chase_play_rate_matches_the_recorded_figure() -> None:
     moving far enough within the animation".
 
     WHAT IT DOES NOT CHECK. That 350 is right; whether it looks right is judged
-    by watching. Nor that ABP_Brute actually carries the rate: see
-    `_play_rate_in_the_header` and issue #406.
+    by watching.
+
+    THAT ABP_BRUTE CARRIES THE RATE IS CHECKED ELSEWHERE, by
+    `test_animation_graph_reading_is_current.py`. This test is the link from the
+    design model to the header comment; that file holds the two links from the
+    comment to the asset's own bytes.
     """
     documented = _authored_speed_in_the_document("Jog_Quad_Fwd")
     recorded = _play_rate_in_the_header("Jog_Quad_Fwd")
@@ -581,8 +591,10 @@ def test_the_walk_play_rate_matches_the_recorded_figure() -> None:
     project owner watching the creature walk. A guess, a bad measurement and a
     good one all look identical once they are a play rate.
 
-    WHAT IT DOES NOT CHECK. That 225 is right, and not that ABP_Brute carries
-    the rate. Only that the header, the document and the designed speed agree.
+    WHAT IT DOES NOT CHECK. That 225 is right. Only that the header, the
+    document and the designed speed agree; that ABP_Brute really carries the
+    rate is the other half of the chain, held in
+    `test_animation_graph_reading_is_current.py`.
     """
     documented = _authored_speed_in_the_document("Jog_Biped_Fwd")
     recorded = _play_rate_in_the_header("Jog_Biped_Fwd")
