@@ -228,6 +228,165 @@ bool FCataclysmBruteCanActuallyReachThePlayer::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmBruteTest
+{
+	/** A number a Blueprint variable holds, whether it is a float or a double. */
+	static bool ReadNumber(const UObject* Object, const TCHAR* Name, double& Out)
+	{
+		// FNumericProperty RATHER THAN FFloatProperty. Blueprint reals are
+		// doubles in Unreal 5, and asking for a float finds nothing at all --
+		// which would read as "the graph has no such variable" rather than as
+		// the wrong question.
+		const FNumericProperty* Property =
+			FindFProperty<FNumericProperty>(Object->GetClass(), Name);
+		if (!Property)
+		{
+			return false;
+		}
+		Out = Property->GetFloatingPointPropertyValue(
+			Property->ContainerPtrToValuePtr<void>(Object));
+		return true;
+	}
+
+	/** A boolean a Blueprint variable holds. */
+	static bool ReadFlag(const UObject* Object, const TCHAR* Name, bool& Out)
+	{
+		const FBoolProperty* Property =
+			FindFProperty<FBoolProperty>(Object->GetClass(), Name);
+		if (!Property)
+		{
+			return false;
+		}
+		Out = Property->GetPropertyValue_InContainer(Object);
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTheAnimationGraphRunsAndReadsTheCreaturesSpeed,
+	"Cataclysm.Brute.TheAnimationGraphRunsAndReadsTheCreaturesSpeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheAnimationGraphRunsAndReadsTheCreaturesSpeed::RunTest(const FString&)
+{
+	using namespace CataclysmBruteTest;
+
+	// WHAT THIS IS FOR. Issue #374 says no automated test ever runs the
+	// animation graph, because doing so hung the test process and never
+	// returned. That was measured against the PACK'S graph,
+	// Rampage_AnimBlueprint, which casts its owning pawn to the Paragon
+	// character class it was written for. The Brute has used a
+	// project-authored graph, ABP_Brute, since 2026-08-07, and this test
+	// establishes by running it that the hang does not happen with that one.
+	//
+	// EVALUATED, NOT ONLY BOUND. Cataclysm.Brute.RunsItsAnimationBlueprint
+	// already checks that the mesh is in animation-Blueprint mode and that the
+	// class is ABP_Brute. Binding a class is not running a graph, and the hang
+	// issue #374 records came from evaluation. This one ticks it and reads back
+	// the three variables its event graph computes.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute spawned"), Brute))
+	{
+		return false;
+	}
+
+	if (FSoftObjectPath(ACataclysmBruteCharacter::BodyMeshPath).TryLoad() == nullptr)
+	{
+		AddInfo(TEXT("Paragon Rampage pack is not installed, so there is no "
+					 "skeleton to run a graph on. Expected in continuous "
+					 "integration."));
+		Brute->Destroy();
+		return true;
+	}
+
+	if (!TestTrue(TEXT("the body and its animation Blueprint resolved"),
+		Brute->ResolveBody(/*bIncludeAnimation=*/true)))
+	{
+		return false;
+	}
+
+	USkeletalMeshComponent* Mesh = Brute->GetMesh();
+	if (!TestNotNull(TEXT("mesh component"), Mesh))
+	{
+		return false;
+	}
+
+	UAnimInstance* Graph = Mesh->GetAnimInstance();
+	if (!TestNotNull(TEXT("the graph has an instance to run"), Graph))
+	{
+		return false;
+	}
+
+	// THE THRESHOLDS THE GRAPH ACTUALLY CARRIES, read out of the asset for
+	// issue #430 and recorded in game/Data/animation_graph_readings.json:
+	//
+	//     bMoving  = ground speed > 10
+	//     bChasing = ground speed > 375
+	//
+	// Written here as literals on purpose. This test is the other end of that
+	// reading: the record says what the asset contains, and this says the
+	// running graph behaves that way.
+	struct FCase
+	{
+		const TCHAR* What;
+		float SpeedCmPerSecond;
+		bool bExpectMoving;
+		bool bExpectChasing;
+	};
+
+	const FCase Cases[] = {
+		{TEXT("standing still"), 0.0f, false, false},
+		{TEXT("wandering at its designed walk speed"), 250.0f, true, false},
+		{TEXT("chasing at its designed chase speed"), 500.0f, true, true},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		Brute->GetCharacterMovement()->Velocity =
+			FVector(Case.SpeedCmPerSecond, 0.0f, 0.0f);
+
+		// THIS IS THE LINE ISSUE #374 IS ABOUT. With the pack's own graph the
+		// process stopped here and never returned.
+		Mesh->TickAnimation(0.1f, /*bNeedsValidRootMotion=*/false);
+
+		double GroundSpeed = -1.0;
+		bool bMoving = false;
+		bool bChasing = false;
+
+		if (!TestTrue(FString::Printf(
+				TEXT("%s: the graph has a GroundSpeed variable"), Case.What),
+			ReadNumber(Graph, TEXT("GroundSpeed"), GroundSpeed))
+			|| !TestTrue(FString::Printf(
+				TEXT("%s: the graph has a bMoving variable"), Case.What),
+			ReadFlag(Graph, TEXT("bMoving"), bMoving))
+			|| !TestTrue(FString::Printf(
+				TEXT("%s: the graph has a bChasing variable"), Case.What),
+			ReadFlag(Graph, TEXT("bChasing"), bChasing)))
+		{
+			return false;
+		}
+
+		TestEqual(FString::Printf(
+			TEXT("%s: the graph read the creature's ground speed"), Case.What),
+			static_cast<float>(GroundSpeed), Case.SpeedCmPerSecond, 1.0f);
+
+		TestEqual(FString::Printf(TEXT("%s: bMoving"), Case.What),
+			bMoving, Case.bExpectMoving);
+		TestEqual(FString::Printf(TEXT("%s: bChasing"), Case.What),
+			bChasing, Case.bExpectChasing);
+	}
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmEveryHeightGapFitsInsideTheContactTolerance,
 	"Cataclysm.Brute.EveryHeightGapFitsInsideTheContactTolerance",
@@ -497,10 +656,17 @@ bool FCataclysmBruteIsDrivenByItsOwnAnimationBlueprint::RunTest(const FString&)
 	// it is given is that one. Those are the three things that would silently
 	// leave the Brute holding its reference pose.
 	//
-	// It does NOT run the animation graph, and that is on purpose. Issue #374
-	// records a Paragon animation graph instantiated inside a world built by
-	// UWorld::CreateWorld hanging the test process for over three minutes.
-	// Whether the poses actually blend is answered by watching it in a
+	// It does NOT run the animation graph. That is now a division of labour
+	// rather than a restriction: Cataclysm.Brute.TheAnimationGraphRunsAndReadsTheCreaturesSpeed
+	// ticks the graph and reads back what its event graph computes.
+	//
+	// Issue #374 recorded a Paragon animation graph instantiated inside a world
+	// built by UWorld::CreateWorld hanging the test process for over three
+	// minutes. That was Rampage_AnimBlueprint, the pack's own, which casts its
+	// owning pawn to the Paragon character class it was written for. ABP_Brute
+	// is this project's and does not.
+	//
+	// Whether the poses LOOK right is still answered by watching a
 	// Play-In-Editor session, not here.
 	//
 	// It replaced Cataclysm.Brute.AnimatesInsteadOfSliding, which asserted the
@@ -593,11 +759,12 @@ bool FCataclysmBruteAsksForASlotThatItsGraphHas::RunTest(const FString&)
 	// an error, so a renamed Slot node in ABP_Brute would make every attack
 	// invisible and nothing would say why.
 	//
-	// IT CHECKS THE NAME, NOT THE PLAYBACK, for the reason the test above
-	// gives: instantiating the graph in a synthetic world is issue #374. The
-	// name is half the contract and it is the half that can be checked cheaply;
-	// the other half is that ABP_Brute's Slot node is still called this, which
-	// is verified by playing it.
+	// IT CHECKS THE NAME, NOT THE PLAYBACK. The name is half the contract and
+	// it is the half that can be checked without art; the other half is that
+	// ABP_Brute's Slot node is still called this, which needs the graph and the
+	// skeleton. That the graph can be run at all is settled -- see
+	// Cataclysm.Brute.TheAnimationGraphRunsAndReadsTheCreaturesSpeed and issue
+	// #374 -- so the missing half is reachable work rather than a wall.
 	TestEqual(TEXT("attacks are played into DefaultSlot"),
 		ACataclysmBruteCharacter::AttackSlotName, FName(TEXT("DefaultSlot")));
 

@@ -804,11 +804,16 @@ public:
 	 *
 	 * THE DECISION RECORDED SEPARATELY FROM THE APPLICATION, which is the split
 	 * this project already makes in ACataclysmEnemyController::ChooseRoamTarget
-	 * against Think. It is here because the application cannot be observed
-	 * headlessly at all: playing a slot animation needs an animation instance,
-	 * an animation instance needs the graph to be running, and issue #374
-	 * records a Paragon graph instantiated in a synthetic test world hanging the
-	 * test process for over three minutes.
+	 * against Think. It is here because the application needs a running
+	 * animation instance, which needs the art: without the Paragon packs there
+	 * is no skeleton to run a graph on, and that is every clone and every
+	 * continuous integration run.
+	 *
+	 * THE GRAPH ITSELF RUNS FINE IN A TEST WORLD, which it did not when this
+	 * was written. Issue #374 recorded a Paragon graph hanging the test process
+	 * for over three minutes; that was Rampage_AnimBlueprint, the pack's own.
+	 * ABP_Brute is this project's and
+	 * Cataclysm.Brute.TheAnimationGraphRunsAndReadsTheCreaturesSpeed ticks it.
 	 *
 	 * SET BEFORE THE ANIMATION INSTANCE IS ASKED FOR, so these record what was
 	 * chosen even where nothing can play it -- which is every automation test

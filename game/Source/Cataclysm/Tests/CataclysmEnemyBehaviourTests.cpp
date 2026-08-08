@@ -83,10 +83,15 @@ namespace CataclysmBehaviourTest
 	 *
 	 * WHY WRITING THE CLOCK RATHER THAN TICKING. UWorld::TimeSeconds is public.
 	 * Ticking a synthetic world runs physics, movement and animation, none of
-	 * which these tests want and one of which is recorded on issue #374 as
-	 * having hung the test process for minutes. Everything under test here reads
-	 * the clock through GetTimeSeconds and nothing else, so moving the clock is
-	 * the whole of what "time passed" means to it.
+	 * which these tests want. Everything under test here reads the clock
+	 * through GetTimeSeconds and nothing else, so moving the clock is the whole
+	 * of what "time passed" means to it.
+	 *
+	 * ANIMATION IS NO LONGER A REASON TO AVOID IT. Issue #374 recorded a
+	 * Paragon graph hanging the test process for minutes; that was the pack's
+	 * own Rampage_AnimBlueprint. This project's ABP_Brute is ticked deliberately
+	 * by Cataclysm.Brute.TheAnimationGraphRunsAndReadsTheCreaturesSpeed. What is
+	 * left is the ordinary reason: these tests are about decisions, not motion.
 	 */
 	static void AdvanceWorldClock(UWorld* World, double Seconds)
 	{
