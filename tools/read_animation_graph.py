@@ -35,14 +35,22 @@ changed since, which is what stops the record quietly describing an older graph.
 That is the same arrangement `game/Data/datatable_asset_sources.json` already uses
 for the generated DataTables.
 
-WHAT IT CANNOT SEE. The animation graph only. The blueprint's own method for
-enumerating nodes is `AnimationBlueprintLibrary.GetNodesOfClass` and it
-refuses anything that is not an `AnimGraphNode`, so the event graph -- where
-`bChasing` and `bMoving` are computed from the pawn's ground speed -- is
-invisible to it. The conditions below are therefore recorded BY NAME and how
-each is computed is unchecked. The 375 cm/s gait threshold that
-`tools/tests/test_brute_matches_the_model.py` records has still never been
-read out of the asset. Issue #430.
+IT READS THE EVENT GRAPH TOO, which issue #430 was opened because it could not.
+Two obvious doors are both shut: `AnimationBlueprintLibrary.GetNodesOfClass`
+refuses anything that is not an `AnimGraphNode`, and `UEdGraph`'s own `Nodes`
+property is protected. The door that opens is
+`unreal.BlueprintEditorLibrary.find_event_graph`, which returns the graph, and
+`unreal.find_object(graph, name)`, which returns a node inside it by name. From
+one node the rest of the graph is reachable, because every pin can name its
+owning node and list what it is connected to.
+
+So the conditions the blend nodes switch on are no longer recorded by name
+alone. Walking back from a variable setter through its input pins reaches the
+literals it is computed from, and that is where the Brute's 375 cm/s gait
+threshold really lives -- a Make Literal Float feeding a float comparison
+against the pawn's ground speed. Before this it existed only as a number
+written down in `tools/tests/test_brute_matches_the_model.py`, believed
+because somebody had once looked at the graph.
 
 WHAT IT CHANGES. Nothing in the asset. It only reads, and writes the record.
 """
@@ -206,6 +214,108 @@ def read_blend_node(node):
     }
 
 
+#: How far to scan for variable setter nodes in the event graph.
+#:
+#: A BOUNDED SCAN RATHER THAN A LIST OF NAMES, because `UEdGraph::Nodes` is
+#: protected and `unreal.find_object` needs an exact name. Unreal names nodes
+#: `<ClassName>_<N>` within their outer, so this tries each index in turn.
+#: Whatever is found is written into the record by name, so a setter numbered
+#: beyond this range shows up as a missing variable rather than as silence.
+EVENT_GRAPH_SCAN_LIMIT = 64
+
+#: The node class that writes a Blueprint variable.
+VARIABLE_SETTER_CLASS = "K2Node_VariableSet"
+
+#: How far back to walk from a setter looking for the numbers it uses.
+#:
+#: `Set bChasing` reaches its 375.0 in three hops -- setter, comparison, Make
+#: Literal Float -- so this has room to spare for a longer expression without
+#: wandering off into the whole graph.
+WALK_DEPTH = 6
+
+#: The execution pin. Followed, it walks the whole event chain backwards into
+#: every other node's inputs, which buries the one number being looked for.
+EXECUTION_PIN = "execute"
+
+
+def node_title(node):
+    """What the graph shows a person for this node.
+
+    NO ARGUMENT, for the reason `driver_of` above records: `unreal.NodeTitleType`
+    is not a bound type in this build.
+    """
+    try:
+        return str(node.get_node_title()).strip().replace("\n", " ")
+    except Exception:  # noqa: BLE001 - the class name is the floor
+        return type(node).__name__
+
+
+def literals_behind(node, depth, seen):
+    """Every literal value reachable back from a node, as {where: value}.
+
+    Walks input pins. A pin with a connection is followed; a pin holding a value
+    and going nowhere is recorded. That is what turns "bChasing is set from
+    something" into "bChasing is ground speed > 375.0".
+
+    `seen` stops a graph with a shared node -- and the ground speed node is
+    shared by all three setters -- from being walked twice.
+    """
+    out = {}
+    key = node.get_name()
+    if key in seen or depth > WALK_DEPTH:
+        return out
+    seen.add(key)
+
+    for pin in node.list_input_pins():
+        if str(pin.get_pin_name()) == EXECUTION_PIN:
+            continue
+
+        connected = pin.list_connected_pins()
+        if connected:
+            for other in connected:
+                out.update(literals_behind(other.get_owning_node(), depth + 1, seen))
+            continue
+
+        value = pin.get_pin_value()
+        if value not in ("", None):
+            out["{0}.{1}".format(node_title(node), str(pin.get_pin_name()))] = value
+
+    return out
+
+
+def read_event_graph(asset):
+    """What each variable the event graph writes is computed from.
+
+    Returns a list of {node, variable, title, computed_from}. The literals are
+    what makes this worth reading at all: the gait threshold the whole of issue
+    #417 argues about is a number inside this graph and nowhere else.
+    """
+    graph = unreal.BlueprintEditorLibrary.find_event_graph(asset)
+    if graph is None:
+        return []
+
+    setters = []
+    for index in range(EVENT_GRAPH_SCAN_LIMIT):
+        name = "{0}_{1}".format(VARIABLE_SETTER_CLASS, index)
+        try:
+            node = unreal.find_object(graph, name)
+        except Exception:  # noqa: BLE001 - an unused index is the ordinary case
+            node = None
+        if node is None:
+            continue
+
+        title = node_title(node)
+        setters.append({
+            "node": name,
+            # The title reads "Set bChasing"; the variable is the last word.
+            "variable": title.split()[-1] if title else "",
+            "title": title,
+            "computed_from": literals_behind(node, 0, set()),
+        })
+
+    return setters
+
+
 def read_graph(object_path):
     asset = unreal.load_asset(object_path)
     if asset is None:
@@ -219,6 +329,7 @@ def read_graph(object_path):
         "asset": object_path,
         "sha256": content_hash(object_path),
         "blend_by_bool_nodes": [read_blend_node(node) for node in blends],
+        "event_graph_variables": read_event_graph(asset),
         "sequence_players": [],
     }
 
@@ -247,6 +358,13 @@ def report(reading):
         say("      switches on: {0}".format(blend["condition"]))
         say("      blend times: true {0}, false {1}".format(
             blend["blend_time_true"], blend["blend_time_false"]))
+
+    say("  event graph variables: {0}".format(
+        len(reading["event_graph_variables"])))
+    for variable in reading["event_graph_variables"]:
+        say("    {0}".format(variable["title"]))
+        for where, value in sorted(variable["computed_from"].items()):
+            say("      {0} = {1}".format(where, value))
 
     say("  sequence players: {0}".format(len(reading["sequence_players"])))
     for player in reading["sequence_players"]:
@@ -278,14 +396,16 @@ def main():
             "was read from. tools/tests/test_animation_graph_reading_is_current.py "
             "fails when an asset has changed since. Regenerate with "
             "python tools/run_editor_python.py tools/read_animation_graph.py",
-        "what_is_not_covered":
-            "The animation graph only. The event graph, where the "
-            "condition variables below are computed from the pawn's "
-            "ground speed, cannot be enumerated from Python -- "
-            "AnimationBlueprintLibrary.GetNodesOfClass refuses anything "
-            "that is not an AnimGraphNode. So each condition is recorded "
-            "by NAME and how it is computed is unchecked, including the "
-            "375 cm/s gait threshold. See issue #430.",
+        "how_the_event_graph_is_read":
+            "UEdGraph.Nodes is protected and "
+            "AnimationBlueprintLibrary.GetNodesOfClass refuses anything that "
+            "is not an AnimGraphNode, so neither of those is the door. "
+            "BlueprintEditorLibrary.find_event_graph returns the graph and "
+            "unreal.find_object(graph, name) returns a node inside it. "
+            "Variable setters are found by scanning K2Node_VariableSet_N, and "
+            "each is walked back through its input pins to the literals it is "
+            "computed from. That is how the 375 cm/s gait threshold below was "
+            "read out of the asset for the first time. See issue #430.",
         "the_flipped_boolean_sense":
             "A Blend Poses by bool node puts the TRUE pose on pin index 0 and "
             "the FALSE pose on pin 1, which is the opposite of how the node "
