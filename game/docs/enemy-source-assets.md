@@ -337,7 +337,7 @@ below is in use.
 | `SM_Rock_To_Hold` | `Characters/Heroes/Rampage/Meshes/Rocks/` | **In use.** The throw flies it. `ACataclysmBruteCharacter::RockMeshPath` names it and hands it to `ACataclysmProjectile::Fire`. Issue #404 |
 | `M_Rock_To_Throw` | `Characters/Heroes/Rampage/Materials/Rocks/` | In use without being named anywhere: a static mesh carries its own material slots |
 | `SM_Rampage_Rock_Rip_Crater` | `FX/Meshes/Debris/` | Not used. The hole left where the rock was torn out. Issue #421, with the carry state |
-| `SM_Rampage_Rock_FragA` to `FragE` | `FX/Meshes/Debris/` | Not used. Five fragments for the rock breaking on impact. Issue #422 |
+| `SM_Rampage_Rock_FragA` to `FragE` | `FX/Meshes/Debris/` | **In use.** The thrown rock breaks into them where it stops. Issue #422 |
 
 **Where the rock goes in the creature's hand, measured 2026-08-08.** The Rampage
 mesh has **no sockets at all** -- `find_socket` answers null for every name
@@ -361,6 +361,32 @@ had to make by eye, and the measurement removed it.
 
 **The skeleton also carries eleven `rock_spikes_*` bones.** They are body
 armour on the creature's arms, not the thrown rock, and nothing uses them.
+
+**The five fragments carry no material, and that is a trap.** Measured
+2026-08-08: every one of `SM_Rampage_Rock_FragA` through `FragE` has
+`/Engine/EngineMaterials/WorldGridMaterial` assigned, which is the engine's grey
+checkerboard placeholder. So does `SM_Rampage_Rock_Rip_Crater`. Spawning any of
+them as they come puts large checkered lumps on the floor, which is worse than
+nothing appearing at all.
+
+`ACataclysmDebrisBurst::Scatter` therefore takes the material as an argument, and
+`ACataclysmBruteCharacter` passes `M_Rock_To_Throw` -- the material on the rock
+the fragments are pieces of. Two other debris meshes beside them do carry real
+materials, which is what shows the placeholder is a property of these particular
+assets rather than of the pack:
+
+| Mesh | Material assigned |
+|---|---|
+| `SM_Rock_To_Hold` | `M_Rock_To_Throw` |
+| `SM_Rampage_Rock_FragA` to `FragE` | `WorldGridMaterial` (the engine placeholder) |
+| `SM_Rampage_Rock_Rip_Crater` | `WorldGridMaterial` (the engine placeholder) |
+| `SM_Rock_02` | `M_RockPile_MeshEmit_01` |
+| `SM_Boulders_1` | `M_RockSlab` |
+
+**The fragments are also large.** Their half-widths run from 56 to 96 cm against
+the whole rock's 103, so five of them at their authored size would be five more
+boulders rather than one rock broken up. `Scatter` sizes each piece from its own
+bounds to a width the caller asks for, which is why they come out consistent.
 
 The rock is scaled to the projectile's own body width rather than shown at its
 authored size, so what is drawn and what the sweep hits are one thing rather than

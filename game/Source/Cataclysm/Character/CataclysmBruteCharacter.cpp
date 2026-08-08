@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmBruteCharacter.h"
 #include "Cataclysm.h"
+#include "AbilitySystem/CataclysmDebrisBurst.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -13,6 +14,8 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "UObject/SoftObjectPath.h"
@@ -35,6 +38,17 @@ const FName ACataclysmBruteCharacter::AttackSlotName = TEXT("DefaultSlot");
 // answers null for every name -- and weapon_r is the rig's prop bone, animated
 // through the Rip and Toss clips for exactly this. See the header.
 const FName ACataclysmBruteCharacter::RockHoldBoneName = TEXT("weapon_r");
+
+// The five pieces the rock breaks into. %s is A through E.
+//
+// THEY CARRY NO MATERIAL. Measured 2026-08-08: every one of them has
+// /Engine/EngineMaterials/WorldGridMaterial, the engine grey checkerboard.
+// The material comes from the rock they are pieces of instead.
+const TCHAR* ACataclysmBruteCharacter::RockFragmentFolder =
+	TEXT("/Game/ParagonRampage/FX/Meshes/Debris");
+
+const TCHAR* ACataclysmBruteCharacter::RockFragmentBaseName =
+	TEXT("SM_Rampage_Rock_Frag");
 
 // THE TWO ABILITY MONTAGES LIVE BESIDE THE ANIMATION BLUEPRINT, NOT IN THE
 // PARAGON FOLDER. They are this project's own assets, built by
@@ -564,6 +578,22 @@ void ACataclysmBruteCharacter::UpdateAbilityMontage()
 	PlayAbilityMontage(Index);
 }
 
+void ACataclysmBruteCharacter::LeaveRockDebris(ACataclysmProjectile* Thrown)
+{
+	if (!Thrown)
+	{
+		return;
+	}
+
+	// WHERE IT GOT TO, NOT WHERE IT WAS AIMED. A rock stopped early by an enemy
+	// or by a wall breaks there. FurthestReached is what the projectile records
+	// for exactly this, and it is not the same as its final location for one
+	// that returns to the caster.
+	ACataclysmDebrisBurst::Scatter(
+		this, Thrown->FurthestReached, RockFragments, RockMaterial,
+		RockFragmentSpreadCm, RockFragmentRadiusCm);
+}
+
 void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 											   const FVector& AimedAt)
 {
@@ -619,11 +649,20 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		// bolt with one. RockMesh is null without the Paragon pack, which is the
 		// state on a fresh clone, and the projectile then keeps its engine
 		// sphere. Issue #404.
-		ACataclysmProjectile::Fire(
+		ACataclysmProjectile* Thrown = ACataclysmProjectile::Fire(
 			this, GetActorLocation(), AimedAt,
 			RockThrowRadiusCm, RockThrowSpeedCmPerSecond,
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
 			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh);
+
+		// THE ROCK BREAKS WHERE IT STOPS. Bound to the projectile's own
+		// OnFinished, which already exists and already reports where that was.
+		// The projectile stays generic: it knows nothing about rocks. Issue #422.
+		if (Thrown)
+		{
+			Thrown->OnFinished.AddUObject(
+				this, &ACataclysmBruteCharacter::LeaveRockDebris);
+		}
 		return;
 	}
 }
@@ -823,6 +862,34 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 	if (CarriedRock)
 	{
 		CarriedRock->SetStaticMesh(RockMesh);
+	}
+
+	// THE MATERIAL COMES FROM THE ROCK, NOT FROM THE FRAGMENTS. See the note on
+	// RockFragmentPathFormat: the fragments ship with the engine's checkerboard.
+	RockMaterial = RockMesh ? RockMesh->GetMaterial(0) : nullptr;
+
+	RockFragments.Reset();
+	for (int32 Piece = 0; Piece < RockFragmentCount; ++Piece)
+	{
+		const FString Letter = FString::Chr(static_cast<TCHAR>(TEXT('A') + Piece));
+		const FString Asset = FString(RockFragmentBaseName) + Letter;
+		// An Unreal object path repeats the asset name after the dot.
+		const FString Path = FString(RockFragmentFolder) + TEXT("/")
+			+ Asset + TEXT(".") + Asset;
+		if (UStaticMesh* Fragment = Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad()))
+		{
+			RockFragments.Add(Fragment);
+		}
+	}
+
+	if (RockFragments.Num() != RockFragmentCount)
+	{
+		// Expected without the Paragon pack. The throw is unaffected; it simply
+		// leaves nothing behind, which is what it did before issue #422.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Found %d of the Brute's %d rock fragments, so a thrown rock will "
+				 "leave less debris than designed."),
+			RockFragments.Num(), RockFragmentCount);
 	}
 	if (!RockMesh)
 	{
