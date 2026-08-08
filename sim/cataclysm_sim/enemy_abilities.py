@@ -188,9 +188,12 @@ def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
     smaller than 1 metre is not a telegraph. It is smaller than the creature
     standing in it, so there is nowhere to walk." That applies to the marker an
     ability actually draws, not only to the largest one its cycle would allow.
-    The Brute is the case that shows the difference: its 2.8 second attack
-    interval puts it in the telegraph table's Yes column, and its ordinary slam
-    still gets no marker because a slam reaches 0.9 metres.
+    The Brute is the case that shows the difference: its 1.6 second attack
+    interval allows a marker of up to 1.40 metres, which clears the one metre
+    floor, and its ordinary slam still gets no marker because a slam reaches
+    0.9 metres. The interval was 2.8 until play testing on 2026-08-07 and the
+    allowance was 3.50 metres then, so the margin is far thinner now than the
+    sentence used to imply -- but the conclusion is the same one.
 
     And the wind-up for that marker has to fit inside half the cycle.
     """
@@ -444,9 +447,10 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             shape="Strike",
             slot="Basic",
             # 0.9 metres is below the one metre floor for a marker, so this gets
-            # no telegraph even though the Brute's 2.8 second attack interval
-            # puts it in the telegraph table's Yes column. That column says how
-            # big a marker it COULD draw, not that everything it does draws one.
+            # no telegraph even though the Brute's 1.6 second attack interval
+            # would allow a marker of up to 1.40 metres. What the cycle allows is how
+            # big a marker COULD be, not that everything the creature does draws
+            # one.
             params={"Radius": 0.9, "Angle": 90, "MaxTargets": 1},
             note="A swing at whatever is in front of it. It does not stun: an "
                  "ordinary Brute hit lands at exactly 10% of the reference "

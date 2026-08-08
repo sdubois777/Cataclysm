@@ -3121,7 +3121,9 @@ This is the failure the genre is worst at. Diablo IV has shipped complaints that
 
   
 
-**The rule above solves it rather than needing a separate fix.** Only enemies with an attack interval of 2 seconds or more can telegraph anything, and the two swarm enemies — the Imp and the Hellhound — are excluded by their own attack speed. A pack cannot fill the screen with markers, because the creatures that come in packs do not produce any. The markers that do appear come from the slow, heavy, individually dangerous enemies, which are also the ones that arrive in small numbers.
+**The rule above solves it rather than needing a separate fix.** Only enemies with an attack interval of 1.37 seconds or more can telegraph anything, and the two swarm enemies — the Imp at 0.9 and the Hellhound at 1.1 — are excluded by their own attack speed. A pack cannot fill the screen with markers, because the creatures that come in packs do not produce any. The markers that do appear come from the slow, heavy, individually dangerous enemies, which are also the ones that arrive in small numbers.
+
+That 1.37 is not a chosen number; it falls out of the formula above. The smallest useful marker is 1 metre, so the smallest cycle that can carry one is `2 × (0.4 + 1 ÷ 3.5)`, which is 1.371 seconds. **This paragraph said 2 seconds until 2026-08-08 and that was wrong** — it excluded the Brute, whose interval moved to 1.6 after play testing, and the baseline enemy at 1.5. Both can telegraph. The conclusion about swarms was never affected, because the two enemies it names are below the real threshold as well as the stated one.
 
   
 
@@ -3667,7 +3669,7 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 
   
 
-**The Brute is the enemy the anti-stun-lock rule was written for**, and it is the first thing in the game that stuns the player. It has two abilities: a swing it uses constantly, and a stomp that stuns.
+**The Brute is the enemy the anti-stun-lock rule was written for**, and it is the first thing in the game that stuns the player. It has three abilities: a swing it uses constantly, a stomp that stuns, and a rock it tears out of the ground and throws at anything standing out of reach.
 
   
 
