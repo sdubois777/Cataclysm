@@ -38,7 +38,20 @@ times would fail on a correct run. `compiled_the_file()` accepts either.
 banner. The results go to `game/Saved/Logs/Cataclysm.log`. `run_automation_tests()`
 reads that file rather than the pipe.
 
-## Using it
+## Using it from the command line
+
+    python tools/unreal_build.py build            # compile the editor target
+    python tools/unreal_build.py tests            # compile, then run the tests
+    python tools/unreal_build.py tests --prefix Cataclysm.Brute
+    python tools/unreal_build.py tests --no-build
+
+It exits non-zero when the build fails, when a test fails, and when no test
+results could be read at all. `--build` and `--tests` are accepted as spellings
+of the first two. Until issue #436 there was no entry point here and every one
+of those commands exited 0 having done nothing, which is the fourth trap and the
+worst of them, because it looks exactly like success.
+
+## Using it as a library
 
     import sys
     sys.path.insert(0, "tools")
@@ -60,11 +73,13 @@ be closed: Live Coding holds the binaries and `Build.bat` refuses to start.
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import os
 import pathlib
 import re
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 
@@ -155,6 +170,12 @@ class BuildOutcome:
 @dataclasses.dataclass(frozen=True)
 class TestOutcome:
     """What one automation test run reported, read from the log rather than stdout."""
+
+    #: NOT A TEST CLASS, despite the name. pytest collects anything called
+    #: `Test*`, and warns that it cannot because this has a constructor. The
+    #: warning is harmless and the noise is not: a real collection error looks
+    #: the same in a run's output.
+    __test__ = False
 
     performed: int | None
     succeeded: tuple[str, ...]
@@ -397,3 +418,111 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
         if originals:
             restored_build = build(target)
             require_compiled(restored_build, list(edits))
+
+
+# ---------------------------------------------------------------------------
+# Running this from the command line
+#
+# WHY THIS SECTION EXISTS. Issue #436. Until it was added this file was a
+# library with no `__main__` block, so
+#
+#     python tools/unreal_build.py --tests
+#
+# imported the module, defined these functions, printed nothing and exited 0.
+# An exit code of 0 with no output cannot be told apart from a successful run
+# whose output was filtered away, which is what a caller doing `| tail -8` sees.
+# It was run that way three times -- twice through one shell, once through
+# another with output redirected to a file -- and reported `exit=0` and an empty
+# file every time. Nothing had run at all.
+#
+# THAT IS THE SAME CLASS OF FAULT THIS WHOLE FILE EXISTS TO PREVENT: a report of
+# success from something that did no work. Issue #139 is the build version of
+# it, `BuildDidNothing` is the guard against that, and this was the same hole in
+# the front door.
+# ---------------------------------------------------------------------------
+
+#: What a caller may write instead of the subcommand.
+#:
+#: BOTH SPELLINGS ARE ACCEPTED ON PURPOSE. `--tests` is how the command was
+#: written in issue #436 and in the notes that led to it, so somebody will type
+#: it. A usage error would at least be loud, but accepting it costs one line.
+COMMAND_ALIASES = {"--build": "build", "--tests": "tests"}
+
+
+def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
+    """Read the command line. Raises SystemExit(2) on anything unrecognised.
+
+    SEPARATE FROM `main` SO IT CAN BE TESTED, because the alternative is a test
+    that starts a real Unreal build in order to find out whether a flag was
+    spelled correctly.
+    """
+    normalised = [COMMAND_ALIASES.get(word, word) for word in argv]
+
+    parser = argparse.ArgumentParser(
+        prog="python tools/unreal_build.py",
+        description="Build the Unreal project and run its automation tests.")
+    parser.add_argument(
+        "command", choices=("build", "tests"),
+        help="build: compile the editor target. "
+             "tests: compile it and then run the automation tests.")
+    parser.add_argument(
+        "--prefix", default="Cataclysm",
+        help="only run tests whose name starts with this (default: Cataclysm)")
+    parser.add_argument(
+        "--target", default=DEFAULT_TARGET,
+        help=f"the build target (default: {DEFAULT_TARGET})")
+    parser.add_argument(
+        "--no-build", action="store_true",
+        help="with `tests`, run against the binaries already built")
+
+    return parser.parse_args(normalised)
+
+
+def exit_code_for(tests: TestOutcome | None) -> int:
+    """0 only when tests actually ran and every one of them passed.
+
+    NOTHING RAN IS A FAILURE, NOT A PASS, and that is the whole point of this
+    function. `TestOutcome(None, (), ())` is what comes back when the log could
+    not be read: the editor never started, the run crashed, the log was locked.
+    Zero tests performed is the same thing said differently. Reporting either as
+    success is exactly the fault issue #436 was opened about, one level further
+    in.
+    """
+    if tests is None or tests.performed is None or tests.performed == 0:
+        return 1
+    return 1 if tests.any_failed else 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Build, or build and test, reporting what happened and why."""
+    arguments = parse_arguments(
+        list(argv if argv is not None else sys.argv[1:]))
+
+    if not (arguments.command == "tests" and arguments.no_build):
+        outcome = build(arguments.target)
+        print(f"Build: {outcome.result}"
+              f"{' (nothing to do)' if outcome.up_to_date else ''}")
+
+        if not outcome.succeeded:
+            # THE COMPILER'S OWN WORDS, NOT A SUMMARY OF THEM. A compilation
+            # error is the thing the caller needs and there is no reading of it
+            # better than the one the compiler already wrote.
+            print(outcome.stdout)
+            return 1
+
+    if arguments.command == "build":
+        return 0
+
+    tests = run_automation_tests(arguments.prefix)
+    print(f"Tests: {tests.summary}")
+
+    code = exit_code_for(tests)
+    if code != 0 and not tests.any_failed:
+        print(f"No test results were read from {TEST_LOG}. Either the run did "
+              f"not happen or its log could not be read. That is reported as a "
+              f"failure rather than a pass on purpose; see issue #436.")
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
