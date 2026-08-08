@@ -3,6 +3,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputComponent.h"
 #include "Input/CataclysmInputConfig.h"
@@ -128,14 +129,39 @@ void ACataclysmPlayerController::OnUnPossess()
 	Super::OnUnPossess();
 }
 
+bool ACataclysmPlayerController::IsPawnStunned() const
+{
+	return UCataclysmSkillEffects::IsStunned(GetPawn());
+}
+
 void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const bool bGamePaused)
 {
+	// A STUN HAS TO CANCEL MOVEMENT ALREADY UNDER WAY, NOT ONLY REFUSE NEW
+	// MOVEMENT. A click-to-move order hands the pawn to the path following
+	// component, which keeps walking the route with no further input, so a
+	// player stunned mid-walk would stroll through the whole stun. This is the
+	// same reason Input_StandStillStarted calls StopMovement rather than only
+	// suppressing the handlers.
+	//
+	// HERE RATHER THAN IN THE HANDLERS because this runs every frame and the
+	// handlers only run when a key is down. A stun that lands while nothing is
+	// pressed still has to stop the pawn.
+	const bool bStunned = IsPawnStunned();
+	if (bStunned)
+	{
+		StopMovement();
+	}
+
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
-		if (bGamePaused)
+		if (bGamePaused || bStunned)
 		{
 			// Menus and the empire layer's day clock both pause the world. A key
-			// held across the pause must not activate on the far side of it.
+			// held across the pause must not activate on the far side of it, and
+			// a key held across a stun must not activate on the far side of the
+			// stun either -- the design's stun means the target cannot act at
+			// all, so a skill fired the instant it ends was not the player
+			// reacting.
 			ASC->ClearAbilityInput();
 		}
 		else
@@ -149,6 +175,13 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 
 void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 {
+	// A stunned character cannot act at all, and that includes skills. The
+	// press is dropped rather than queued, so nothing fires when it wears off.
+	if (IsPawnStunned())
+	{
+		return;
+	}
+
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
 		ASC->AbilityInputTagPressed(SlotTag);
@@ -166,7 +199,7 @@ void ACataclysmPlayerController::Input_AbilitySlotReleased(FGameplayTag SlotTag)
 void ACataclysmPlayerController::Input_Move(const FInputActionValue& Value)
 {
 	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn || bStandStill)
+	if (!ControlledPawn || bStandStill || IsPawnStunned())
 	{
 		return;
 	}
@@ -202,7 +235,7 @@ void ACataclysmPlayerController::Input_MoveToCursorHeld()
 	}
 
 	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn || bStandStill)
+	if (!ControlledPawn || bStandStill || IsPawnStunned())
 	{
 		return;
 	}
@@ -218,7 +251,7 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 {
 	// Released quickly: treat it as a click and path to the point. Released after
 	// a hold: the steering above already happened and there is nothing to add.
-	if (FollowTime <= ShortPressThreshold && !bStandStill)
+	if (FollowTime <= ShortPressThreshold && !bStandStill && !IsPawnStunned())
 	{
 		UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, CachedDestination);
 	}

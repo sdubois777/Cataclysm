@@ -153,6 +153,74 @@ public:
 	/** The Keyword.DoT.Burn tag, or an invalid tag if the vocabulary lacks it. */
 	static FGameplayTag BurnTag();
 
+	// --- Stun -----------------------------------------------------------------
+	//
+	// THE FIRST THING IN THE PROJECT THAT CAN HOLD A CHARACTER STILL. Section VI
+	// of docs/Cataclysm_GDD_v2.md defines a stun as "the target cannot act at
+	// all", separates it from a slow such as Cripple, and gives it three rules
+	// against stun-locking. sim/cataclysm_sim/damage.py is the model those rules
+	// are ported from and the names below follow it deliberately.
+	//
+	// The stun itself is a tag held for a duration, which is how every other
+	// timed effect in this project works. What the tag stops is decided by the
+	// things that read it: ACataclysmEnemyController refuses to act while it is
+	// up and ACataclysmPlayerController refuses to move or activate a skill.
+
+	/**
+	 * How much of a target's maximum health one hit must take to stun it.
+	 *
+	 * The first anti-stun-lock rule, and the reason small hits cannot interrupt
+	 * constantly. Measured against damage ACTUALLY DEALT rather than damage
+	 * swung, so a hit that armour reduced to a scratch is a scratch.
+	 * Mirrors STUN_DAMAGE_THRESHOLD in sim/cataclysm_sim/damage.py.
+	 */
+	static constexpr float StunDamageThresholdPercent = 10.0f;
+
+	/**
+	 * Seconds a target that has just been stunned cannot be stunned again for.
+	 *
+	 * The second anti-stun-lock rule. Mirrors STUN_IMMUNITY_SECONDS in
+	 * sim/cataclysm_sim/damage.py, and it is the same five seconds the design
+	 * reuses for displacement diminishing returns rather than a second number.
+	 *
+	 * NOTHING ENFORCED THIS BEFORE. damage.py says in terms that it resolves one
+	 * hit with no clock and that the game enforces the window; the game had no
+	 * stun at all, so this is the first implementation of it anywhere.
+	 */
+	static constexpr float StunImmunityWindowSeconds = 5.0f;
+
+	/**
+	 * Hold a target still for a duration, honouring the anti-stun-lock rules.
+	 *
+	 * THE THIRD RULE IS NOT CHECKED HERE, because it cannot be. "A boss cannot
+	 * be stunned at all" needs a boss, and no boss concept exists anywhere in
+	 * game/Source -- no flag, no class, no tag. Issue #395 covers adding one.
+	 * Until it exists this function would have nothing to ask.
+	 *
+	 * @param DamageDealt       the damage this hit actually did, after the
+	 *                          defender's mitigation. Ignored when the stun is
+	 *                          designed.
+	 * @param bStunIsDesigned   true for a stun that is the point of the attack,
+	 *                          such as the Brute's Stomp. A designed stun skips
+	 *                          the damage threshold, because an attack built to
+	 *                          stun should not fail to when it lands. It does
+	 *                          NOT skip the immunity window.
+	 * @return whether a stun was applied
+	 */
+	static bool ApplyStun(AActor* Instigator, AActor* Target,
+						  float DurationSeconds, float DamageDealt,
+						  bool bStunIsDesigned);
+
+	/** Whether this actor is stunned right now and may not act. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsStunned(const AActor* Actor);
+
+	/** The State.Stunned tag, or an invalid tag if the vocabulary lacks it. */
+	static FGameplayTag StunnedTag();
+
+	/** The State.StunImmune tag, or an invalid tag if the vocabulary lacks it. */
+	static FGameplayTag StunImmuneTag();
+
 private:
 	/** Where the imported status effect table lives. */
 	static const TCHAR* StatusEffectTableAssetPath;

@@ -46,6 +46,19 @@ enum class ECataclysmBrainAction : uint8
 	 * every value after it.
 	 */
 	WindingUp,
+
+	/**
+	 * Stunned. Not acting at all until it wears off.
+	 *
+	 * THIS IS THE FIFTH WIND-UP RULE ARRIVING. The entry above says interrupting
+	 * a wind-up cancels it and that nothing could interrupt anything; a stun is
+	 * the first thing that can, and Think abandons a wind-up in progress rather
+	 * than resuming it, so a stomp interrupted half a second in does not land.
+	 *
+	 * Appended, like Roaming and WindingUp, because this is a UENUM and
+	 * inserting renumbers every value after it.
+	 */
+	Stunned,
 };
 
 /**

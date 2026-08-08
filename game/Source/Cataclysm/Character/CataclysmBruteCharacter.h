@@ -25,12 +25,10 @@
  * convention. A Blueprint here would be legitimate; there has been no reason to
  * make one.
  *
- * WHAT IT DELIBERATELY DOES NOT DO. The Stomp -- the 3.5 metre, 360 degree,
- * 1.5 second stun on a 5 second cooldown that issue #351 designed -- is not
- * here. It has nothing to attach to: there is no stun in the project, no Stun
- * row in game/Data/StatusEffects.csv, and no wind-up state in
- * ECataclysmBrainAction for the telegraph to sit in. Issue #371 covers that.
- * This class is the Slam, the body and the movement.
+ * WHAT IT DELIBERATELY DOES NOT DO. Nothing draws a ground marker, so the only
+ * warning the player gets before a stomp or a thrown rock is the wind-up
+ * animation. The design's telegraph rules assume a marked area on the floor.
+ * Issue #396 covers that; the rest of the Stomp is here.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmBruteCharacter : public ACataclysmEnemyCharacter
@@ -97,6 +95,19 @@ public:
 
 	/** Percent of its damage one stomp deals. The Heavy slot's 250%. */
 	static constexpr float StompDamagePercent = 250.0f;
+
+	/**
+	 * Seconds everything caught in the ring is held still. StunSeconds=1.5.
+	 *
+	 * THIS IS WHAT THE FIVE SECOND COOLDOWN ABOVE IS FOR. The design's stun
+	 * immunity window is five seconds, so a stomp that came round sooner would
+	 * be refused by the window rather than limited by its slot -- which is why
+	 * StompCooldownSeconds is the window and not a figure from the Heavy band.
+	 *
+	 * A DESIGNED STUN, so it skips the ten percent damage threshold that stops
+	 * small hits interrupting. See UCataclysmSkillEffects::ApplyStun.
+	 */
+	static constexpr float StompStunSeconds = 1.5f;
 
 	//~ Rip and Toss, from the same table.
 

@@ -314,15 +314,20 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		// EVERYTHING IN THE RING, not just the target. Angle=360 in the model,
 		// which is what stops the answer to a Brute being "stand behind it".
 		//
-		// NO STUN, AND THAT IS THE ONE PIECE STILL MISSING. The design gives
-		// this 1.5 seconds of stun and nothing in the project can stun
-		// anything: there is no Stun row in game/Data/StatusEffects.csv and no
-		// stun, root or interrupt anywhere in the source. Issue #371. The
-		// damage and the telegraph are here; the hold is not.
+		// THE STUN IS THE POINT OF THIS ATTACK, NOT A RIDER ON IT. The Brute is
+		// the first thing in the game that stuns the player, and this is the
+		// attack that does it. It is applied after the damage rather than before
+		// so the hit is what the threshold rule would see if this were an
+		// ordinary stun -- it is not, it is a designed one, but ordering the two
+		// the other way round would make that distinction invisible.
 		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
 				World, this, GetActorLocation(), StompRadiusCm))
 		{
-			UCataclysmSkillEffects::ApplyHit(this, Caught, StompDamagePercent);
+			const float Dealt =
+				UCataclysmSkillEffects::ApplyHit(this, Caught, StompDamagePercent);
+
+			UCataclysmSkillEffects::ApplyStun(this, Caught, StompStunSeconds,
+											  Dealt, /*bStunIsDesigned=*/true);
 		}
 		return;
 	}

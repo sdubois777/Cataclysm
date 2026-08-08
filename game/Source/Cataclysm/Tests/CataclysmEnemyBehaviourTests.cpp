@@ -1859,4 +1859,233 @@ bool FCataclysmBruteAlwaysHasSomethingToDoTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Being stunned
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStompStunsWhatItCatchesTest,
+	"Cataclysm.AI.AStompStunsEverythingItCatchesAndNotWhatWalkedClear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStompStunsWhatItCatchesTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE BRUTE IS THE FIRST THING IN THE GAME THAT STUNS THE PLAYER, which the
+	// design states in terms at docs/Cataclysm_GDD_v2.md:3670. Until this the
+	// Stomp dealt its 250% and let go immediately, and the class comment said so.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// Two metres away: inside the 3.5 metre ring.
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	TestFalse(TEXT("the player starts unstunned"),
+		UCataclysmSkillEffects::IsStunned(Player.Actor));
+
+	TestEqual(TEXT("the Brute begins a stomp"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestFalse(TEXT("and beginning one stuns nobody -- the wind-up is a warning"),
+		UCataclysmSkillEffects::IsStunned(Player.Actor));
+
+	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
+	Brain->Think();
+
+	TestTrue(TEXT("when it lands the player is stunned"),
+		UCataclysmSkillEffects::IsStunned(Player.Actor));
+
+	// WALKING OUT AVOIDS THE STUN AND NOT ONLY THE DAMAGE. A telegraph that
+	// spared the health but took the control would be worse than no telegraph,
+	// because the player would have read it correctly and been punished anyway.
+	FScopedFighter Bystander(World, FVector(9 * M, 0, 0), ECataclysmTeam::Players,
+							 /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::StompCooldownSeconds + 0.1);
+	TestEqual(TEXT("it begins another stomp"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 0.1);
+	Brain->Think();
+
+	TestFalse(TEXT("and somebody nine metres away was not stunned"),
+		UCataclysmSkillEffects::IsStunned(Bystander.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStunnedBruteDoesNothingTest,
+	"Cataclysm.AI.AStunnedEnemyDoesNothingAndAbandonsAWindUpItHadStarted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStunnedBruteDoesNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE FIFTH WIND-UP RULE, WHICH NOTHING COULD SATISFY BEFORE. The design
+	// gives the wind-up five rules and ECataclysmBrainAction records that the
+	// fifth -- interrupting cancels it -- was not implemented because nothing in
+	// the project could interrupt anything. A stun is the first thing that can.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetHealth(1000.0f);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	TestEqual(TEXT("the Brute begins a stomp"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and it is committed to the stomp"),
+		Brain->WindingUpAbility, int32(ACataclysmBruteCharacter::StompAbility));
+
+	// Stunned half a second into a 1.4 second wind-up.
+	AdvanceWorldClock(World, 0.5);
+	TestTrue(TEXT("the player stuns it"),
+		UCataclysmSkillEffects::ApplyStun(
+			Player.Actor, Brute.Actor, /*DurationSeconds=*/1.5f,
+			/*DamageDealt=*/1000.0f, /*bStunIsDesigned=*/true));
+
+	TestEqual(TEXT("it now reports being stunned rather than winding up"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Stunned));
+	TestEqual(TEXT("and the wind-up was abandoned, not paused"),
+		Brain->WindingUpAbility, int32(INDEX_NONE));
+
+	// PAST WHEN THE STOMP WOULD HAVE LANDED. This is the half that matters: a
+	// stun that only blocked Think would leave WindUpLandsAt in the past, and
+	// the first pass after the stun ended would land a stomp whose telegraph the
+	// player had already survived.
+	const float Before = Player.Health();
+	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds + 1.0);
+
+	TestEqual(TEXT("it is still stunned"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Stunned));
+	TestEqual(TEXT("and the stomp it had started never landed"),
+		Player.Health(), Before);
+
+	// IT IS NOT ON COOLDOWN EITHER, because it was never spent. An interrupted
+	// attack did not happen; it did not happen AND cost the enemy its Heavy.
+	TestTrue(TEXT("the stomp it never landed is still available"),
+		Brain->IsAbilityReady(ACataclysmBruteCharacter::StompAbility));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStunnedBruteDoesNotSwingTest,
+	"Cataclysm.AI.AStunnedEnemyInReachDoesNotSwing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStunnedBruteDoesNotSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE ORDINARY SWING HAS NO COOLDOWN AND NO WIND-UP, so it is the attack a
+	// stun that only cancelled wind-ups would fail to stop. The design says a
+	// stunned target cannot act at all, not that it cannot use its abilities.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetHealth(1000.0f);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	// Spend the abilities, then stand in contact so only the swing is left.
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	SpendAbilities(World, Brain, 200.0f);
+
+	const float Contact = ACataclysmBruteCharacter::DesignedMeleeReachCm - 10.0f;
+	Player.Actor->SetActorLocation(FVector(Contact, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	// THE CLOCK IS NOT ADVANCED HERE, AND THAT IS DELIBERATE. Both abilities are
+	// cooling down for five seconds from when they landed inside SpendAbilities,
+	// and winding the clock forward far enough to be sure the attack interval
+	// had elapsed would also bring the stomp back -- at which point the Brute
+	// stomps rather than swinging and this stops being a test about the swing.
+	// It does not need to: the interval gate is `!bHasAttacked || ...`, and this
+	// Brute has not swung yet.
+	TestEqual(TEXT("with everything cooling down, only the swing is left"),
+		Brain->ChooseAbility(Contact), int32(INDEX_NONE));
+
+	const float BeforeUnstunned = Player.Health();
+	TestEqual(TEXT("unstunned and in reach, it attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(TEXT("and the player lost health"),
+		Player.Health() < BeforeUnstunned);
+
+	TestTrue(TEXT("the player stuns it"),
+		UCataclysmSkillEffects::ApplyStun(
+			Player.Actor, Brute.Actor, /*DurationSeconds=*/1.5f,
+			/*DamageDealt=*/1000.0f, /*bStunIsDesigned=*/true));
+
+	// Just past the attack interval, so the swing is due again and the stun is
+	// the only thing holding it. Short enough to leave the stomp cooling down.
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds + 0.1);
+	TestEqual(TEXT("and the stomp is still cooling down, so the swing is due"),
+		Brain->ChooseAbility(Contact), int32(INDEX_NONE));
+
+	const float BeforeStunned = Player.Health();
+
+	TestEqual(TEXT("stunned and in reach, it does nothing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Stunned));
+	TestEqual(TEXT("and the player took nothing"),
+		Player.Health(), BeforeStunned);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
