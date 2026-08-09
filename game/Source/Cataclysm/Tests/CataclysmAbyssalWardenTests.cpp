@@ -228,11 +228,11 @@ bool FCataclysmWardenOffersOnlyMoltenRoar::RunTest(const FString&)
 // --------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmWardenAlternatesItsTwoSwings,
-	"Cataclysm.Warden.ItAlternatesItsTwoSwings",
+	FCataclysmWardenSwingsLeftThenRightThenRecovers,
+	"Cataclysm.Warden.ItSwingsLeftThenRightThenRecovers",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmWardenAlternatesItsTwoSwings::RunTest(const FString&)
+bool FCataclysmWardenSwingsLeftThenRightThenRecovers::RunTest(const FString&)
 {
 	using namespace CataclysmWardenTest;
 
@@ -252,47 +252,70 @@ bool FCataclysmWardenAlternatesItsTwoSwings::RunTest(const FString&)
 		return false;
 	}
 
-	// CALLED DIRECTLY RATHER THAN INFERRED FROM BeginPlay, because whether
-	// BeginPlay ran at all depends on how the world was made, and a test that
-	// spawns into a synthetic world cannot otherwise tell "the art is missing"
-	// from "BeginPlay did not fire".
-	Warden->ResolveBody(/*bIncludeAnimation=*/true);
-
-	const bool bStartsLeft = Warden->bSwingLeftNext;
-
-	// THE ALTERNATION IS CHECKED WITHOUT THE ART, and that is deliberate. The
-	// Paragon Grux pack is gitignored, so on a machine without it both clips are
-	// null. The flag still has to flip, because it is the sequence that is being
-	// tested rather than the clip.
-	Warden->AttackTarget(nullptr);
-	TestNotEqual(TEXT("the next swing is the other arm"),
-		Warden->bSwingLeftNext, bStartsLeft);
-
-	Warden->AttackTarget(nullptr);
-	TestEqual(TEXT("and the one after that is the first arm again"),
-		Warden->bSwingLeftNext, bStartsLeft);
-
-	// WITH THE ART, the two clips must actually differ. Without it, both are
-	// null and there is nothing to compare, which is reported rather than
-	// skipped silently.
-	if (Warden->LeftSwingAnimation && Warden->RightSwingAnimation)
+	const bool bDressed = Warden->ResolveBody(/*bIncludeAnimation=*/true);
+	if (!bDressed || !Warden->LeftSwingAnimation)
 	{
-		TestNotEqual(TEXT("the two swing clips are different animations"),
-			Warden->LeftSwingAnimation.Get(), Warden->RightSwingAnimation.Get());
+		AddInfo(TEXT("SKIPPED: the Paragon Grux pack is not present, so there "
+					 "are no clips to sequence. The behaviour this checks was "
+					 "NOT verified on this machine."));
+		return true;
+	}
 
-		// AND BOTH FIT INSIDE ONE ATTACK INTERVAL TOGETHER, which is the claim
-		// the design makes about this creature and no other.
-		const float Pair = Warden->LeftSwingAnimation->GetPlayLength()
-						 + Warden->RightSwingAnimation->GetPlayLength();
-		TestTrue(TEXT("both swings together fit inside one attack interval"),
-			Pair <= ACataclysmAbyssalWardenCharacter::DesignedAttackIntervalSeconds);
-	}
-	else
+	// THREE CLIPS, IN ORDER, AS ONE BASIC ATTACK. Asked for by the project
+	// owner: "if he has an attack for both arms include them both so he gives a
+	// good left right", and the recovery is what stops the creature snapping
+	// back to neutral from a metre and a half of hand travel away.
+	const TArray<UAnimSequence*> Clips = Warden->BasicAttackClips();
+
+	if (!TestEqual(TEXT("one basic attack is three clips"), Clips.Num(), 3))
 	{
-		AddInfo(TEXT("SKIPPED the clip comparison: the Paragon Grux pack is not "
-					 "present, so both swing animations are null. The "
-					 "alternation itself was still checked."));
+		return false;
 	}
+
+	TestEqual(TEXT("the left swing comes first"),
+		Clips[0], Warden->LeftSwingAnimation.Get());
+	TestEqual(TEXT("the right swing comes second"),
+		Clips[1], Warden->RightSwingAnimation.Get());
+	TestEqual(TEXT("and the recovery comes last"),
+		Clips[2], Warden->SwingRecoveryAnimation.Get());
+
+	TestNotEqual(TEXT("the two swings are different animations"),
+		Clips[0], Clips[1]);
+
+	// AND THE WHOLE THING FITS INSIDE ONE ATTACK INTERVAL AT AUTHORED SPEED,
+	// which is the reason the fast swing variants were chosen over the
+	// full-speed ones. Measured 2026-08-09: 2.100 s against 2.4.
+	float Total = 0.0f;
+	for (UAnimSequence* Clip : Clips)
+	{
+		Total += Clip->GetPlayLength();
+	}
+	TestTrue(TEXT("the whole combo fits inside one attack interval"),
+		Total <= ACataclysmAbyssalWardenCharacter::DesignedAttackIntervalSeconds);
+
+	// THE SEQUENCE REALLY RUNS, one clip at a time, and ends back at rest.
+	Warden->AttackTarget(nullptr);
+
+	TestEqual(TEXT("the left swing is playing first"),
+		Warden->LastPlayedAnimation.Get(), Clips[0]);
+
+	for (int32 Step = 1; Step < Clips.Num(); ++Step)
+	{
+		// The clip's end is moved into the past rather than the world being
+		// ticked forward, which keeps the test instant and exercises the same
+		// branch.
+		Warden->OneShotEndsAtSeconds = 0.0f;
+		Warden->UpdateLoopingAnimation();
+		TestEqual(
+			FString::Printf(TEXT("clip %d of the combo follows"), Step + 1),
+			Warden->LastPlayedAnimation.Get(), Clips[Step]);
+	}
+
+	// AND THEN IT STANDS, rather than holding the recovery's last frame.
+	Warden->OneShotEndsAtSeconds = 0.0f;
+	Warden->UpdateLoopingAnimation();
+	TestEqual(TEXT("and then it stands in its idle again"),
+		Warden->CurrentLoopingAnimation.Get(), Warden->IdleAnimation.Get());
 
 	return true;
 }
@@ -505,13 +528,29 @@ bool FCataclysmWardenReturnsToARestingPoseAfterASwing::RunTest(const FString&)
 	TestNull(TEXT("the swing is left alone until it ends"),
 		Warden->CurrentLoopingAnimation.Get());
 
-	// AND ONCE IT HAS ENDED, THE RESTING POSE COMES BACK. The end time is moved
-	// into the past rather than the world being ticked forward a second, which
-	// keeps the test instant and tests the same branch.
-	Warden->OneShotEndsAtSeconds = 0.0f;
-	Warden->UpdateLoopingAnimation();
+	// AND ONCE THE WHOLE ATTACK HAS ENDED, THE RESTING POSE COMES BACK.
+	//
+	// DRAINED RATHER THAN STEPPED ONCE, and that is what this test learned on
+	// 2026-08-09. It used to clear the end time a single time and expect the
+	// idle, which was right when a basic attack was one clip. It is now three --
+	// a left swing, a right swing and a recovery -- so a single step just starts
+	// the next clip. The loop is bounded so a sequence that never finishes fails
+	// here rather than hanging.
+	//
+	// Each end time is moved into the past rather than the world being ticked
+	// forward, which keeps the test instant and exercises the same branch.
+	constexpr int32 MostClipsAnAttackMayHave = 8;
+	for (int32 Step = 0; Step < MostClipsAnAttackMayHave; ++Step)
+	{
+		if (Warden->CurrentLoopingAnimation)
+		{
+			break;
+		}
+		Warden->OneShotEndsAtSeconds = 0.0f;
+		Warden->UpdateLoopingAnimation();
+	}
 
-	TestEqual(TEXT("it returns to its idle once the swing has finished"),
+	TestEqual(TEXT("it returns to its idle once the whole attack has finished"),
 		Warden->CurrentLoopingAnimation.Get(), Warden->IdleAnimation.Get());
 
 	return true;

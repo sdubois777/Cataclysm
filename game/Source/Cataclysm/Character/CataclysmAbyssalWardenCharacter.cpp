@@ -26,13 +26,25 @@ const TCHAR* ACataclysmAbyssalWardenCharacter::AnimationBlueprintPath =
 	TEXT("/Game/Enemies/Demonic/AbyssalWarden/"
 		 "ABP_AbyssalWarden.ABP_AbyssalWarden_C");
 
+// THE FAST VARIANTS, BECAUSE THEY JOIN AT 0.01 cm AND THE FULL-SPEED PAIR
+// JOINS AT 12.57. Measured by tools/measure_warden_recovery.py on 2026-08-09.
+// They are also the only pairing that fits a recovery inside the 2.4 second
+// attack interval without compression: 2.100 s against 3.100 for the slow pair.
 const TCHAR* ACataclysmAbyssalWardenCharacter::LeftSwingAnimationPath =
 	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
-		 "PrimaryAttack_LA.PrimaryAttack_LA");
+		 "PrimaryAttack_LA_Fast.PrimaryAttack_LA_Fast");
 
 const TCHAR* ACataclysmAbyssalWardenCharacter::RightSwingAnimationPath =
 	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
-		 "PrimaryAttack_RA.PrimaryAttack_RA");
+		 "PrimaryAttack_RA_Fast.PrimaryAttack_RA_Fast");
+
+// THE RIGHT RECOVERY AFTER A FAST RIGHT SWING, at a 16.24 cm join. The left
+// recovery after a fast left swing is 80.73 cm, because the recoveries were
+// authored against the FULL-SPEED swings and only this one follows a fast swing
+// acceptably.
+const TCHAR* ACataclysmAbyssalWardenCharacter::SwingRecoveryAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
+		 "PrimaryAttack_RA_Recovery.PrimaryAttack_RA_Recovery");
 
 const TCHAR* ACataclysmAbyssalWardenCharacter::MoltenRoarAnimationPath =
 	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
@@ -169,6 +181,21 @@ void ACataclysmAbyssalWardenCharacter::UpdateLoopingAnimation()
 		return;
 	}
 
+	// THE NEXT CLIP OF AN ATTACK COMES BEFORE ANY LOCOMOTION. This is what
+	// turns three separate clips into one left-right-recover movement, and it
+	// is what a montage would do in one asset if this creature had an animation
+	// Blueprint to play one. Issue #387.
+	if (AttackSequence.IsValidIndex(AttackSequenceIndex))
+	{
+		UAnimSequence* Next = AttackSequence[AttackSequenceIndex].Get();
+		++AttackSequenceIndex;
+		if (Next)
+		{
+			PlayOneShot(Next);
+			return;
+		}
+	}
+
 	const bool bWalking = GetVelocity().Size2D() > WalkingThresholdCmPerSecond;
 	UAnimSequence* Wanted = bWalking ? JogAnimation.Get() : IdleAnimation.Get();
 
@@ -214,31 +241,37 @@ void ACataclysmAbyssalWardenCharacter::AttackTarget(AActor* Target)
 	PlayAttackAnimation();
 }
 
-UAnimSequence* ACataclysmAbyssalWardenCharacter::NextSwingAnimation() const
+TArray<UAnimSequence*> ACataclysmAbyssalWardenCharacter::BasicAttackClips() const
 {
-	// FALLS BACK TO WHICHEVER ONE LOADED. On a machine without the Paragon Grux
-	// pack both are null and this returns null, which PlayOneShot refuses
-	// quietly. With only one of the two present the creature swings with that
-	// one twice rather than swinging invisibly every other time.
-	UAnimSequence* Wanted = bSwingLeftNext ? LeftSwingAnimation
-										   : RightSwingAnimation;
-	if (Wanted)
+	// LEFT, RIGHT, THEN BACK TO NEUTRAL. Whichever of the three are present;
+	// on a machine without the Paragon Grux pack all are null and this returns
+	// an empty list, which PlayAttackAnimation handles by playing nothing.
+	TArray<UAnimSequence*> Clips;
+	for (UAnimSequence* Clip : {LeftSwingAnimation.Get(),
+								RightSwingAnimation.Get(),
+								SwingRecoveryAnimation.Get()})
 	{
-		return Wanted;
+		if (Clip)
+		{
+			Clips.Add(Clip);
+		}
 	}
-	return bSwingLeftNext ? RightSwingAnimation : LeftSwingAnimation;
+	return Clips;
 }
 
 void ACataclysmAbyssalWardenCharacter::PlayAttackAnimation()
 {
-	UAnimSequence* Swing = NextSwingAnimation();
+	// THE WHOLE COMBO IS QUEUED AND THE FIRST CLIP STARTS NOW.
+	// UpdateLoopingAnimation starts each of the rest as the one before it ends,
+	// and puts the creature back to standing or walking when the list runs out.
+	AttackSequence.Reset();
+	for (UAnimSequence* Clip : BasicAttackClips())
+	{
+		AttackSequence.Add(Clip);
+	}
+	AttackSequenceIndex = 0;
 
-	// FLIPPED WHETHER OR NOT ANYTHING PLAYED, so the alternation does not
-	// depend on the art being present. A test can check the sequence without
-	// the pack.
-	bSwingLeftNext = !bSwingLeftNext;
-
-	PlayOneShot(Swing);
+	UpdateLoopingAnimation();
 }
 
 float ACataclysmAbyssalWardenCharacter::PlayOneShot(UAnimSequence* Animation,
@@ -427,6 +460,8 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(LeftSwingAnimationPath).TryLoad());
 		RightSwingAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(RightSwingAnimationPath).TryLoad());
+		SwingRecoveryAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(SwingRecoveryAnimationPath).TryLoad());
 		MoltenRoarAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(MoltenRoarAnimationPath).TryLoad());
 		IdleAnimation = Cast<UAnimSequence>(

@@ -574,12 +574,32 @@ clip plays on it without retargeting.
 
 | Animation | Length | What plays it |
 |---|:-:|---|
-| `PrimaryAttack_LA` | 1.1333 | Its ordinary swing. Alternated with the one below |
-| `PrimaryAttack_RA` | 1.1333 | The other ordinary swing |
+| `PrimaryAttack_LA_Fast` | 0.6333 | The first half of its basic attack |
+| `PrimaryAttack_RA_Fast` | 0.6333 | The second half. Joins the clip above at **0.01 cm** |
+| `PrimaryAttack_RA_Recovery` | 0.8333 | Returns it to a neutral stance. **2.1000 s for all three**, inside the 2.4 s interval with 0.3 s to spare |
 | `Ultimate_Roar` | 1.4000 | Molten Roar. Fits inside the 2.0 s wind-up at authored speed, with 0.6 s of held pose after it |
 | `Idle` | 24.3333 | Standing |
-| `Jog_Fwd` | 1.5333 | Walking |
+| `Jog_Fwd` | 1.5333 | Walking, at a play rate of 280 / 281.6 = 0.994 |
 | `Death_A` | 1.6667 | Dying |
+
+**One basic attack is three clips, and the reason is measured.**
+`tools/measure_warden_recovery.py` compares each clip's last pose against the
+idle's first, which is the size of the jump a player sees when the animation
+switches:
+
+| Clip | How far its end is from the idle |
+|---|:-:|
+| `PrimaryAttack_LA` | 151.18 cm |
+| `PrimaryAttack_RA` | 161.78 cm |
+| `PrimaryAttack_LA_Recovery` | 16.92 cm |
+| `PrimaryAttack_RA_Recovery` | 24.12 cm |
+| `Ultimate_Roar` | **0.39 cm** — it already returns to neutral, so it needs no recovery |
+
+**The fast variants were chosen over the full-speed ones by measurement.**
+`LA_Fast` into `RA_Fast` joins at 0.01 cm; the full-speed pair joins at 12.57.
+And only the fast pair leaves room for a recovery: left, right and a recovery at
+full speed is 3.100 s against a 2.4 s interval and would need a play rate of
+1.29.
 
 **Two authored swings fit inside one attack interval, and this is the only one of
 the seven that manages it.** 1.1333 + 1.1333 is 2.2667 against a 2.4 second

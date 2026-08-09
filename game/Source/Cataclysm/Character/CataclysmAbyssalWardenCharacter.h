@@ -257,19 +257,57 @@ public:
 	static const TCHAR* AnimationBlueprintPath;
 
 	/**
-	 * The two ordinary swings, and the roar.
+	 * ONE BASIC ATTACK, PLAYED AS THREE CLIPS: a left swing, a right swing, and
+	 * a recovery that puts the creature back to a neutral stance.
 	 *
-	 * TWO SWINGS BECAUSE THIS CREATURE CAN AFFORD TWO, and it is the only one of
-	 * the seven that can. `PrimaryAttack_LA` and `PrimaryAttack_RA` are 1.1333
-	 * seconds each, measured 2026-08-09, and 2.2667 fits inside the 2.4 second
-	 * interval with a tenth of a second to spare. Alternating them is
-	 * presentation rather than a second ability.
+	 * ASKED FOR BY THE PROJECT OWNER on 2026-08-09: "if he has an attack for
+	 * both arms include them both so he gives a good left right", after
+	 * reporting that the creature "just kinda teleports back to the neutral
+	 * position".
 	 *
-	 * `Ultimate_Roar` is 1.4000 seconds, so the 2.0 second wind-up holds the
-	 * whole clip at its authored speed and nothing is compressed.
+	 * THE TELEPORT WAS REAL AND IT WAS MEASURED. `tools/measure_warden_recovery.py`
+	 * evaluates each clip's last pose against the idle's first, which is exactly
+	 * the size of the jump the player sees when the animation switches:
+	 *
+	 *     PrimaryAttack_LA            151.18 cm from the idle
+	 *     PrimaryAttack_LA_Recovery    16.92 cm
+	 *     PrimaryAttack_RA            161.78 cm
+	 *     PrimaryAttack_RA_Recovery    24.12 cm
+	 *     Ultimate_Roar                 0.39 cm
+	 *
+	 * So a swing ends a metre and a half of hand travel away from neutral and
+	 * its recovery ends within a hand's width of it. The roar needs no recovery
+	 * at all -- it already returns to neutral, which is why it has none in the
+	 * pack and none here.
+	 *
+	 * THE FAST VARIANTS, NOT THE FULL-SPEED ONES, AND THE MEASUREMENT CHOSE
+	 * THEM. `PrimaryAttack_LA_Fast` into `PrimaryAttack_RA_Fast` joins at
+	 * **0.01 cm** -- the pack authored those two as a chain. The full-speed pair
+	 * joins at 12.57 cm, which would be a visible hitch in the middle of the
+	 * combo.
+	 *
+	 * AND ONLY THE FAST PAIR FITS. Against the 2.4 second attack interval:
+	 *
+	 *     left, right, recovery at full speed   3.100 s   needs a 1.29 play rate
+	 *     the fast pair then a recovery         2.100 s   fits, 0.3 s to spare
+	 *
+	 * `PrimaryAttack_RA_Recovery` is used rather than the left one because
+	 * `RA_Fast` joins it at 16.24 cm where `LA_Fast` joins `LA_Recovery` at
+	 * 80.73: the recoveries are matched to the full-speed swings, and only that
+	 * one follows a fast swing acceptably.
+	 *
+	 * A MONTAGE WOULD BE THE RIGHT CONTAINER AND IS NOT AVAILABLE. The project
+	 * owner asked "we should be able to bundle that into a montage and call a
+	 * double swing the basic attack right?" -- yes, and the Brute does exactly
+	 * that. A montage needs a `UAnimInstance` to play it, which means an
+	 * animation Blueprint, and this creature has none. The three clips are
+	 * therefore queued in C++ and played one after another, which is why
+	 * `AttackSequence` exists. When #387 authors the Blueprint this becomes one
+	 * montage asset and the queue goes away.
 	 */
 	static const TCHAR* LeftSwingAnimationPath;
 	static const TCHAR* RightSwingAnimationPath;
+	static const TCHAR* SwingRecoveryAnimationPath;
 	static const TCHAR* MoltenRoarAnimationPath;
 
 	/**
@@ -324,21 +362,35 @@ public:
 	TObjectPtr<class UAnimSequence> RightSwingAnimation;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> SwingRecoveryAnimation;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> MoltenRoarAnimation;
 
-	/** Which swing comes next. Flipped by every swing, so the creature
-	 *  alternates rather than repeating one arm. */
+	/**
+	 * The clips still to play from the current attack, in order.
+	 *
+	 * THE STAND-IN FOR A MONTAGE. Each is started as the one before it ends,
+	 * from `UpdateLoopingAnimation`, and when the list runs out the creature
+	 * goes back to standing or walking. A montage would hold the same three
+	 * clips in one asset and blend between them; this cuts. The measured cuts
+	 * are 0.01 cm and 16.24 cm, against the 151 cm jump it replaces.
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	bool bSwingLeftNext = true;
+	TArray<TObjectPtr<class UAnimSequence>> AttackSequence;
+
+	/** How far through `AttackSequence` the creature is. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 AttackSequenceIndex = 0;
 
 	/** The clip the last call to PlayOneShot chose. Read by tests, which cannot
 	 *  otherwise see what was played. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> LastPlayedAnimation;
 
-	/** Which swing it would play next, without changing anything. Separated from
-	 *  PlayAttackAnimation so a test can ask without playing. */
-	class UAnimSequence* NextSwingAnimation() const;
+	/** The three clips one basic attack plays, in order, without starting them.
+	 *  Separated from PlayAttackAnimation so a test can ask without playing. */
+	TArray<class UAnimSequence*> BasicAttackClips() const;
 
 	/** Plays one clip once, and records it. Returns how long it will take,
 	 *  which is its length divided by whatever rate it needed. */
