@@ -452,6 +452,113 @@ bool FCataclysmWardenHidesItsPlaceholderOnceDressed::RunTest(const FString&)
 // --------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenReturnsToARestingPoseAfterASwing,
+	"Cataclysm.Warden.ItReturnsToARestingPoseAfterASwing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenReturnsToARestingPoseAfterASwing::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	const bool bDressed = Warden->ResolveBody(/*bIncludeAnimation=*/true);
+	if (!bDressed || !Warden->IdleAnimation || !Warden->LeftSwingAnimation)
+	{
+		AddInfo(TEXT("SKIPPED: the Paragon Grux pack is not present, so there "
+					 "are no clips to move between. The behaviour this checks "
+					 "was NOT verified on this machine."));
+		return true;
+	}
+
+	// STANDING TO BEGIN WITH.
+	Warden->UpdateLoopingAnimation();
+	TestEqual(TEXT("it stands in its idle before anything happens"),
+		Warden->CurrentLoopingAnimation.Get(), Warden->IdleAnimation.Get());
+
+	// A SWING TAKES THE MESH AND RECORDS WHEN IT WILL GIVE IT BACK. Without
+	// that the creature held the last frame of the swing until the next one,
+	// which the project owner reported on 2026-08-09.
+	Warden->AttackTarget(nullptr);
+
+	TestTrue(TEXT("a swing records when it will finish"),
+		Warden->OneShotEndsAtSeconds > World->GetTimeSeconds());
+	TestNull(TEXT("and nothing is looping while it plays"),
+		Warden->CurrentLoopingAnimation.Get());
+
+	// WHILE IT IS STILL PLAYING, NOTHING TAKES THE MESH BACK.
+	Warden->UpdateLoopingAnimation();
+	TestNull(TEXT("the swing is left alone until it ends"),
+		Warden->CurrentLoopingAnimation.Get());
+
+	// AND ONCE IT HAS ENDED, THE RESTING POSE COMES BACK. The end time is moved
+	// into the past rather than the world being ticked forward a second, which
+	// keeps the test instant and tests the same branch.
+	Warden->OneShotEndsAtSeconds = 0.0f;
+	Warden->UpdateLoopingAnimation();
+
+	TestEqual(TEXT("it returns to its idle once the swing has finished"),
+		Warden->CurrentLoopingAnimation.Get(), Warden->IdleAnimation.Get());
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenWalksRatherThanSlides,
+	"Cataclysm.Warden.ItWalksRatherThanSlides",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenWalksRatherThanSlides::RunTest(const FString&)
+{
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	// THE ARITHMETIC THAT STOPS THE FOOT SLIDING, checked without a world.
+	//
+	// A planted foot travels backwards at the clip's authored speed while the
+	// body travels forwards at the designed speed. Playing the clip at the
+	// ratio of the two makes them cancel. `tools/measure_animation_stride.py`
+	// measured Jog_Fwd at 281.6 cm/s on 2026-08-09 and the creature is designed
+	// at 280, so the rate is 0.994.
+	const float Expected = Warden_t::DesignedWalkSpeedCmPerSecond
+						 / Warden_t::AuthoredJogSpeedCmPerSecond;
+
+	TestEqual(TEXT("the walk plays at the ratio of designed to authored speed"),
+		Warden_t::JogPlayRate(), Expected);
+
+	// AND THE PRODUCT IS THE SPEED IT ACTUALLY MOVES AT, which is the thing
+	// that matters and is not the same statement. If either figure were read
+	// from the wrong place this would still pass the check above and fail here.
+	TestEqual(TEXT("so the foot travels backwards at the body's own speed"),
+		Warden_t::JogPlayRate() * Warden_t::AuthoredJogSpeedCmPerSecond,
+		Warden_t::DesignedWalkSpeedCmPerSecond);
+
+	// THE RATE IS INSIDE THE CLAMP, so it is not being silently corrected.
+	TestTrue(TEXT("the rate is not clamped"),
+		Warden_t::JogPlayRate() > Warden_t::MinimumPlayRate
+		&& Warden_t::JogPlayRate() < Warden_t::MaximumPlayRate);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmWardenCanRegisterContactDespiteItsHeight,
 	"Cataclysm.Warden.ItCanRegisterContactDespiteItsHeight",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
