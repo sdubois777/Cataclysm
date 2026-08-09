@@ -2872,4 +2872,196 @@ bool FCataclysmChasingRestoresTravelFacingTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * The two ability cooldowns can be set live, and setting one changes how often
+ * the creature actually uses that ability.
+ *
+ * WHAT THIS GUARDS. Issue #452. The project owner reported the Brute using two
+ * abilities for every one ordinary swing, and asked for the cooldowns to be
+ * raised. Which figure is right is a judgement made by playing, so what the code
+ * owes them is a way to try one without a rebuild.
+ *
+ * THE OVERRIDE HAS TO REACH THE DECISION, WHICH IS THE PART THAT CAN QUIETLY
+ * FAIL. `EnemyAbilities()` is rebuilt every time
+ * `ACataclysmEnemyController::IsAbilityReady` asks, so reading the console
+ * variable there is what makes a value set mid-fight take effect. A version that
+ * read the constant instead would compile, run, accept the console command, and
+ * change nothing at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteCooldownsCanBeSetLive,
+	"Cataclysm.AI.ABrutesAbilityCooldownsCanBeSetFromTheConsole",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteCooldownsCanBeSetLive::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	IConsoleVariable* StompCooldown = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.Brute.StompCooldown"));
+	IConsoleVariable* ThrowCooldown = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.Brute.RockThrowCooldown"));
+	if (!StompCooldown || !ThrowCooldown)
+	{
+		AddError(TEXT("Cataclysm.Brute.StompCooldown or "
+					  "Cataclysm.Brute.RockThrowCooldown is not registered."));
+		return false;
+	}
+	const float WasStomp = StompCooldown->GetFloat();
+	const float WasThrow = ThrowCooldown->GetFloat();
+	ON_SCOPE_EXIT { StompCooldown->Set(WasStomp); ThrowCooldown->Set(WasThrow); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+
+	// UNSET, IT IS THE DESIGNED FIGURE. Zero means "use the design", so an
+	// override of zero must not be read as a cooldown of zero -- which would
+	// make every ability always ready.
+	StompCooldown->Set(0.0f);
+	ThrowCooldown->Set(0.0f);
+	TestEqual(TEXT("with nothing set, the stomp uses its designed cooldown"),
+		Brute.Actor->StompCooldownSecondsInUse(),
+		ACataclysmBruteCharacter::StompCooldownSeconds);
+	TestEqual(TEXT("and so does the rock throw"),
+		Brute.Actor->RockThrowCooldownSecondsInUse(),
+		ACataclysmBruteCharacter::RockThrowCooldownSeconds);
+
+	// SET, IT IS THE OVERRIDE.
+	StompCooldown->Set(11.0f);
+	ThrowCooldown->Set(13.0f);
+	TestEqual(TEXT("set, the stomp uses the console figure"),
+		Brute.Actor->StompCooldownSecondsInUse(), 11.0f);
+	TestEqual(TEXT("and the rock throw uses its own"),
+		Brute.Actor->RockThrowCooldownSecondsInUse(), 13.0f);
+
+	// AND IT REACHES THE ABILITY TABLE THE BRAIN READS. This is the assertion
+	// the two above are worth nothing without: the accessor could be correct and
+	// simply not be called by EnemyAbilities, and every check so far would pass
+	// while the creature carried on at 5 seconds.
+	const TArray<FCataclysmEnemyAbility> Abilities = Brute.Actor->EnemyAbilities();
+	if (!TestTrue(TEXT("the Brute has both abilities"), Abilities.Num() >= 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the stomp's entry carries the override"),
+		Abilities[ACataclysmBruteCharacter::StompAbility].CooldownSeconds, 11.0f);
+	TestEqual(TEXT("and the rock throw's carries its own"),
+		Abilities[ACataclysmBruteCharacter::RockThrowAbility].CooldownSeconds,
+		13.0f);
+
+	return true;
+}
+
+/**
+ * A longer cooldown really does buy more ordinary swings.
+ *
+ * WHY THE COUNT AND NOT THE CONSTANT. The test above says the number arrives in
+ * the ability table. This says the number changes the creature's behaviour,
+ * which is what the project owner actually asked for: more swings between
+ * abilities. The two are different claims and the first does not imply the
+ * second -- the controller could hold a fourth rule that made cooldowns
+ * irrelevant.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmLongerCooldownsMeanMoreSwings,
+	"Cataclysm.AI.ALongerAbilityCooldownGivesTheBruteMoreOrdinarySwings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLongerCooldownsMeanMoreSwings::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	IConsoleVariable* StompCooldown = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.Brute.StompCooldown"));
+	IConsoleVariable* ThrowCooldown = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.Brute.RockThrowCooldown"));
+	if (!StompCooldown || !ThrowCooldown)
+	{
+		AddError(TEXT("The cooldown console variables are not registered."));
+		return false;
+	}
+	const float WasStomp = StompCooldown->GetFloat();
+	const float WasThrow = ThrowCooldown->GetFloat();
+	ON_SCOPE_EXIT { StompCooldown->Set(WasStomp); ThrowCooldown->Set(WasThrow); };
+
+	// Counts what the creature did over a fixed stretch of time, at a given
+	// cooldown. Returns swings ordered and abilities used, in that order.
+	auto RunFor = [this](float Cooldown, int32& OutSwings, int32& OutAbilities)
+	{
+		IConsoleManager::Get().FindConsoleVariable(
+			TEXT("Cataclysm.Brute.StompCooldown"))->Set(Cooldown);
+		IConsoleManager::Get().FindConsoleVariable(
+			TEXT("Cataclysm.Brute.RockThrowCooldown"))->Set(Cooldown);
+
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedBrute Brute(World, FVector::ZeroVector);
+		ACataclysmEnemyController* Brain = Brute.Brain();
+		if (!Brain)
+		{
+			return false;
+		}
+
+		// SPAWNED FAR OFF AND THEN MOVED TO EXACTLY CONTACT DISTANCE. Spawning
+		// it close instead lets the two capsules push each other apart, leaving
+		// the creature just outside its own reach so that it chases rather than
+		// swings. Written that way first, this measured zero swings at every
+		// cooldown, which looked like the cooldowns doing nothing.
+		FScopedFighter Player(World, FVector(20 * M, 0, 0),
+							  ECataclysmTeam::Players,
+							  /*Health=*/1000000.0f, /*AttackDamage=*/0.0f);
+		const float Contact = ACataclysmBruteCharacter::BruteCapsuleRadius
+			+ PlayerCapsuleRadiusCm;
+		Player.Actor->SetActorLocation(FVector(Contact, 0.0f,
+			Player.Actor->GetActorLocation().Z));
+
+		// Facing it, so the turn added by issue #457 does not consume passes.
+		Brute.Actor->SetActorRotation(FRotator::ZeroRotator);
+
+		// Thirty seconds at the thinking rate of four passes a second.
+		for (int32 Pass = 0; Pass < 120; ++Pass)
+		{
+			Brain->Think();
+			AdvanceWorldClock(World, 0.25);
+		}
+
+		OutSwings = Brain->AttacksOrdered;
+		OutAbilities = Brain->AbilitiesUsed;
+		return true;
+	};
+
+	int32 SwingsAtFive = 0, AbilitiesAtFive = 0;
+	int32 SwingsAtTwenty = 0, AbilitiesAtTwenty = 0;
+	if (!RunFor(5.0f, SwingsAtFive, AbilitiesAtFive)
+		|| !RunFor(20.0f, SwingsAtTwenty, AbilitiesAtTwenty))
+	{
+		AddError(TEXT("Could not run the creature for a stretch of time."));
+		return false;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("Over 30 seconds: at a 5 second cooldown %d swings and %d "
+			 "abilities; at 20 seconds %d swings and %d abilities."),
+		SwingsAtFive, AbilitiesAtFive, SwingsAtTwenty, AbilitiesAtTwenty));
+
+	TestTrue(TEXT("a longer cooldown means fewer abilities"),
+		AbilitiesAtTwenty < AbilitiesAtFive);
+	TestTrue(TEXT("and more ordinary swings"),
+		SwingsAtTwenty > SwingsAtFive);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

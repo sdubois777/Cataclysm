@@ -1121,3 +1121,72 @@ def test_the_facing_tolerance_is_not_zero() -> None:
         "FacingToleranceDegrees is zero or negative, so no creature can ever "
         "satisfy it and no directional ability will ever be used."
     )
+
+
+# --------------------------------------------------------------------------
+# The ability cooldowns can be judged by playing
+# --------------------------------------------------------------------------
+
+BRUTE_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+             / "CataclysmBruteCharacter.cpp")
+
+
+def test_the_ability_table_reads_the_cooldown_overrides() -> None:
+    """The console variables must reach the decision, not just exist.
+
+    WHAT CAN GO WRONG SILENTLY. `ACataclysmEnemyController::IsAbilityReady`
+    reads whatever `EnemyAbilities()` puts in `CooldownSeconds`. An accessor that
+    honours the console variable, and an ability table that fills itself from the
+    constant instead, both compile and run. The console command is accepted, the
+    variable holds the new value, and the creature carries on at its designed
+    cooldown. Issue #452.
+
+    WHY IT IS CHECKED HERE. There is an engine test that sets the variables and
+    reads the table back, and it is the better test.
+    `.github/workflows/ci.yml` is a single Linux job that builds no C++, so
+    nothing checks this on a pull request. This is a text comparison.
+    """
+    text = BRUTE_CPP.read_text(encoding="utf-8")
+
+    for ability, accessor in (
+        ("Stomp", "StompCooldownSecondsInUse"),
+        ("RockThrow", "RockThrowCooldownSecondsInUse"),
+    ):
+        assert re.search(
+            rf"{ability}\.CooldownSeconds\s*=\s*{accessor}\(\)\s*;", text
+        ), (
+            f"CataclysmBruteCharacter.cpp fills {ability}.CooldownSeconds from "
+            f"something other than {accessor}(), so setting "
+            f"Cataclysm.Brute.{'StompCooldown' if ability == 'Stomp' else 'RockThrowCooldown'} "
+            "would change nothing. Nothing reports an error: the console "
+            "accepts the value and the creature ignores it."
+        )
+
+
+def test_an_unset_cooldown_override_means_the_designed_figure() -> None:
+    """Zero must mean "use the design", never a cooldown of zero.
+
+    Every console override on this creature defaults to zero and treats zero as
+    "not set". Reading one straight through would give an ability with no
+    cooldown at all, which is always ready, and the creature would do nothing but
+    use abilities. Six existing tests fail when this is broken, which is what
+    says the convention is load-bearing rather than decorative.
+    """
+    text = BRUTE_CPP.read_text(encoding="utf-8")
+
+    for accessor, constant in (
+        ("StompCooldownSecondsInUse", "StompCooldownSeconds"),
+        ("RockThrowCooldownSecondsInUse", "RockThrowCooldownSeconds"),
+    ):
+        body = re.search(
+            rf"float ACataclysmBruteCharacter::{accessor}\(\) const\s*\{{(.*?)\n\}}",
+            text, re.S)
+        assert body is not None, (
+            f"CataclysmBruteCharacter.cpp no longer defines {accessor}."
+        )
+        assert re.search(r"Override\s*>\s*0\.0f\s*\?", body.group(1)), (
+            f"{accessor} does not test its override against zero before using "
+            f"it, so an unset console variable would be read as a cooldown of "
+            f"zero and {constant} would never apply. That makes the ability "
+            f"always ready."
+        )
