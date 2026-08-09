@@ -980,6 +980,23 @@ def test_the_stomp_cooldown_matches_the_model() -> None:
     )
 
 
+def test_the_rock_throw_cooldown_matches_the_model() -> None:
+    """The other half of the pair, which had no check at all until 2026-08-09.
+
+    HOW THAT WAS FOUND. Issue #452 changed both cooldowns, and the guard-proving
+    run for it broke the C++ copy of this one on purpose to watch a test notice.
+    Nothing did. The stomp's copy was checked by the test above and the rock
+    throw's was not, so the C++ could carry any figure at all and only a person
+    reading both files would see it.
+    """
+    assert constant(BRUTE_HEADER, "RockThrowCooldownSeconds") == pytest.approx(
+        brute_ability("Rip and Toss").cooldown
+    ), (
+        "The rock throw comes round at a different rate in the C++ than the "
+        "model designs. sim/cataclysm_sim/enemy_abilities.py is authoritative."
+    )
+
+
 def test_the_stomp_wind_up_is_the_designed_telegraph() -> None:
     """The wind-up is a formula, not a taste, so it is checked as one.
 
