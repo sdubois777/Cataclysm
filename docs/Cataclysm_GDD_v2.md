@@ -3052,12 +3052,16 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 | Corrupted Sentinel | 2.0 s | 2.1 m | Yes |
 | Abyssal Warden | 2.4 s | 2.8 m | Yes |
 | Succubus | 2.6 s | 3.2 m | Yes |
-| Brute | 1.6 s | 1.4 m | Yes |
+| Brute | 1.2 s | 0.7 m | **No**, for its basic attack |
 | Gatekeeper | 3.0 s | 3.9 m | Yes |
 
   
 
-**A marker smaller than 1 metre is not a telegraph.** It is smaller than the creature standing in it, so there is nowhere to walk. The Imp at 0.2 m and the Hellhound at 0.5 m fall below that, which is what puts them in the No column rather than a judgement about what those creatures are like.
+**A marker smaller than 1 metre is not a telegraph.** It is smaller than the creature standing in it, so there is nowhere to walk. The Imp at 0.2 m, the Hellhound at 0.5 m and the Brute at 0.7 m fall below that, which is what puts them in the No column rather than a judgement about what those creatures are like.
+
+  
+
+**The Brute joined that list on 2026-08-09, and it does still telegraph.** Its attack interval was shortened from 1.6 seconds to 1.2 by play testing, which took the largest marker its basic attack could draw from 1.4 metres down to 0.7. Its stomp is unaffected and still draws a 3.5 metre circle, because an ability on a cooldown is telegraphed against that cooldown rather than against the attack interval — the rule stated below. This column is about the basic attack alone.
 
   
 
@@ -3675,9 +3679,9 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
-| Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 1.6 s attack interval | No |
-| Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | a 5 s cooldown | Yes, 1.4 s wind-up |
-| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Flight=1.4` | a 5 s cooldown | Yes, 1.0 s wind-up |
+| Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 1.2 s attack interval | No |
+| Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | an 8 s cooldown | Yes, 1.4 s wind-up |
+| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Flight=1.4` | a 12 s cooldown | Yes, 1.0 s wind-up |
 
   
 
@@ -3701,7 +3705,7 @@ Its purpose is the one thing the other two cannot do. A Brute with only a Slam a
 
   
 
-**Radius 2.1 metres is set by the animation.** A telegraph has to last long enough to play the attack's own wind-up, the way the Stomp's 1.4 seconds covers the 0.83 second ground smash start. The toss animation is 0.87 seconds, and `0.4 + Radius ÷ 3.5 ≥ 0.87` needs at least 1.65 metres; 2.1 gives exactly a 1 second wind-up and clears the animation by 0.13. It is also well under the Stomp's 3.5, so the two markers read as different sizes, and well under the 7.35 its own cooldown would allow.
+**Radius 2.1 metres is set by the animation.** A telegraph has to last long enough to play the attack's own wind-up, the way the Stomp's 1.4 seconds covers the 0.83 second ground smash start. The toss animation is 0.87 seconds, and `0.4 + Radius ÷ 3.5 ≥ 0.87` needs at least 1.65 metres; 2.1 gives exactly a 1 second wind-up and clears the animation by 0.13. It is also well under the Stomp's 3.5, so the two markers read as different sizes, and well under the 19.6 metres its own 12 second cooldown would allow.
 
   
 
@@ -3717,7 +3721,7 @@ This replaced `Speed=600` on 2026-08-09. The rock had been moving at a constant 
 
   
 
-**A 5 second cooldown means one throw per approach.** The Brute crosses its own 10 metre throwing range in 2 seconds at its 5 metre per second chase speed, so a shorter cooldown would let it throw twice on the way in and it would read as a ranged enemy rather than a bruiser with a rock.
+**A 12 second cooldown means one throw per approach, with room to spare.** The Brute crosses its own 10 metre throwing range in 2 seconds at its 5 metre per second chase speed, so a cooldown under that would let it throw twice on the way in and it would read as a ranged enemy rather than a bruiser with a rock. The approach time is the floor; 12 seconds was settled by play on 2026-08-09, raised from 5, and makes the throw something that happens once as the creature comes in rather than a rhythm. It is longer than the stomp's 8 deliberately: the stomp answers somebody standing next to the Brute, which is the common case, so it comes round more often.
 
   
 
@@ -3744,7 +3748,7 @@ Section VI states them for a target, and a player is a target. The Brute is wher
 | Rule | What it does to the Brute |
 | :-- | :-- |
 | A hit must take at least 10% of the target's maximum health to stun | Its slam cannot stun. See below. |
-| A stunned target is immune for 5 seconds | Sets the stomp's cooldown, not its slot |
+| A stunned target is immune for 5 seconds | Sets the FLOOR under the stomp's cooldown, not its slot |
 | A boss cannot be stunned | Not engaged; the Brute is not a boss, and the player is not one either |
 
   
@@ -3757,7 +3761,7 @@ Section VI states them for a target, and a player is a target. The Brute is wher
 
   
 
-**Its cooldown is the 5 second immunity window, and that is a slot-independent rule.** The Heavy slot's cooldown band in `game/Data/SkillSlots.csv` is 1 to 4 seconds, and the whole band sits inside the window. A Brute stomping on the Heavy cadence would spend most of its stomps on a player who cannot be stunned. **Any ability whose stated effect is a stun sits at least 5 seconds apart, whatever slot it is in.**
+**Its cooldown is 8 seconds, and the 5 second immunity window is the floor under it rather than the figure itself.** The Heavy slot's cooldown band in `game/Data/SkillSlots.csv` is 1 to 4 seconds, and the whole band sits inside the window, so a Brute stomping on the Heavy cadence would spend most of its stomps on a player who cannot be stunned. **Any ability whose stated effect is a stun sits at least 5 seconds apart, whatever slot it is in**, and that is a slot-independent rule. The 8 seconds was settled by play on 2026-08-09, raised from the 5 it used to sit exactly on. Raising it is always legal, because a stomp arriving later than the window is refused by nothing. Going under the window is what is not.
 
   
 
@@ -3773,11 +3777,11 @@ Section VI states them for a target, and a player is a target. The Brute is wher
 
   
 
-**It runs on its 5 second cooldown, not on the attack interval**, which is the general rule stated above for any ability with a cooldown. That cooldown allows 7.35 metres and a 2.5 second wind-up, and the stomp deliberately takes half of it. Taking the maximum is legal and it is wrong here: the design document says the Movement-skill-sized telegraph "is what makes a mini-boss or a boss feel different from a Brute". The Brute gets the walk-out kind, and a marker that large on a creature this slow is unmissable rather than dodgeable.
+**It runs on its 8 second cooldown, not on the attack interval**, which is the general rule stated above for any ability with a cooldown. That cooldown allows 12.6 metres and a 4 second wind-up, and the stomp takes far less than that deliberately. Taking the maximum is legal and it is wrong here: the design document says the Movement-skill-sized telegraph "is what makes a mini-boss or a boss feel different from a Brute". The Brute gets the walk-out kind, and a marker that large on a creature this slow is unmissable rather than dodgeable.
 
   
 
-**This wording is a correction, made 2026-08-07.** It previously said the stomp took the largest marker its *attack interval* allowed, and that the 1.4 second wind-up being exactly half the 2.8 second interval was the point. Both facts were true and the reasoning was not: the stomp never ran on the attack interval. When that interval moved from 2.8 to 1.6 seconds, because 2.8 played as too slow to be a threat, the stomp did not move with it and nothing about it needed to.
+**This wording is a correction, made 2026-08-07.** It previously said the stomp took the largest marker its *attack interval* allowed, and that the 1.4 second wind-up being exactly half the 2.8 second interval was the point. Both facts were true and the reasoning was not: the stomp never ran on the attack interval. When that interval moved from 2.8 to 1.6 seconds, because 2.8 played as too slow to be a threat, the stomp did not move with it and nothing about it needed to. The same happened again on 2026-08-09 when the interval moved to 1.2.
 
   
 

@@ -125,6 +125,48 @@ def test_the_intervals_are_the_ones_the_model_designs(rows) -> None:
             f"verdict still holds at the real figure.")
 
 
+def test_the_brute_clears_the_clip_it_actually_plays() -> None:
+    """The table's column is the SHORTEST usable attack, not the one in use.
+
+    WHY THAT GAP MATTERS. Issue #452. The table records `Attack_Melee_A` at
+    0.97 s for the Brute, which is what decides whether the interval is
+    achievable at all. `ACataclysmBruteCharacter::AttackAnimationPath` names a
+    different and longer clip, `Attack_Biped_Melee_A`, measured at 1.0000 s. When
+    the project owner settled the interval at 1.2 seconds by playing it on
+    2026-08-09, the real margin was a fifth of a second while the table's figures
+    suggested 0.23 -- close enough that the difference is worth checking rather
+    than assuming.
+
+    NOTHING RATE-SCALES IT. `PlayAttackAnimation` passes no window, so the clip
+    runs at its authored speed, and an interval under the clip length starts a
+    swing the creature has not finished.
+
+    THE LENGTH IS READ OUT OF THE DOCUMENT rather than written here, so there is
+    one copy of the measurement and this fails if the document loses it.
+    """
+    if not ASSET_RECORD.is_file():
+        pytest.fail(f"{ASSET_RECORD.relative_to(REPO_ROOT)} does not exist")
+
+    stated = re.search(
+        r"`Attack_Biped_Melee_A`,?\s*measured at \*\*([\d.]+) seconds\*\*",
+        ASSET_RECORD.read_text(encoding="utf-8"))
+    if stated is None:
+        pytest.fail(
+            "game/docs/enemy-source-assets.md no longer records the measured "
+            "length of Attack_Biped_Melee_A, the clip the Brute actually swings "
+            "with. Without it nothing knows how short the attack interval may "
+            "be. Re-measure it in the editor rather than deleting the sentence.")
+
+    clip_seconds = float(stated.group(1))
+    interval = archetypes()["Brute"].attack_interval
+
+    assert clip_seconds <= interval, (
+        f"the Brute swings every {interval} s and the clip it plays, "
+        f"Attack_Biped_Melee_A, is {clip_seconds} s long. Nothing rate-scales "
+        f"it, so the creature starts a swing it has not finished."
+    )
+
+
 def test_each_verdict_is_the_arithmetic_rather_than_an_opinion(rows) -> None:
     """Recomputed from the two numbers in the same row.
 

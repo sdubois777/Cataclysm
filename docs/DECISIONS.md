@@ -20,6 +20,76 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — The Brute's pacing: swings every 1.2 s, stomps every 8, throws every 12
+
+**Affects:** `ARCHETYPES["Brute"]` in `sim/cataclysm_sim/enemy_stats.py`, both
+Brute abilities in `sim/cataclysm_sim/enemy_abilities.py`,
+`ACataclysmBruteCharacter`, and the Brute section of `docs/Cataclysm_GDD_v2.md`.
+Applied. Closes the question issue #452 was opened for.
+
+**All three were settled by playing, and they are one question rather than
+three.** The project owner reported on 2026-08-08 that the creature "basically
+uses an ability, waits a second, attacks once, uses another ability, waits a
+second, attacks once". What that describes is the number of ordinary swings
+falling between abilities, which no single number controls.
+
+**The arithmetic, so the next creature can be aimed rather than guessed.** Every
+attack is gated by the attack interval, and an ability that lands spends an
+interval slot exactly as a swing does. With an interval I and abilities on
+cooldowns C1 and C2, the ordinary swings between abilities are
+`(1/I - 1/C1 - 1/C2) / (1/C1 + 1/C2)`.
+
+| Interval | Stomp | Throw | Swings between abilities |
+|---|---|---|---|
+| 1.6 s | 5 s | 5 s | 0.56 — what was reported as the problem |
+| 1.6 s | 10 s | 10 s | 2.12 — tried live |
+| **1.2 s** | **8 s** | **12 s** | **3.00** — settled |
+
+**The two cooldowns are no longer equal, and that changes the shape as well as
+the count.** At 5 and 5 both abilities came up together and the creature used
+them as a pair, which is why the original report describes a pair. At 8 and 12
+they drift in and out of phase over a 24 second cycle, three stomps to every two
+throws, so what the player meets is not a repeating pattern.
+
+**Both cooldowns still clear their floors, and both floors are unchanged.** The
+stomp must sit at or above the 5 second stun immunity window or it spends stomps
+on a target that cannot be stunned; it now clears it by 3. The throw must sit
+above the 2 second approach time or the Brute throws twice on the way in and
+reads as a ranged enemy; it now clears it by 10.
+
+**The interval is close to a hard floor that was measured rather than argued.**
+`Attack_Biped_Melee_A`, the swing clip, is 1.0000 seconds long, measured in the
+editor on 2026-08-09. Nothing rate-scales it: `PlayAttackAnimation` passes no
+window, so it runs at its authored speed. At 1.2 seconds there is a fifth of a
+second between one swing ending and the next starting. Below 1.0 the creature
+would start a swing it had not finished.
+
+**Two properties were given up deliberately, and neither is flavour.**
+
+*The Brute no longer swings more slowly than a generic enemy.*
+`ACataclysmEnemyCharacter` carries 1.5 seconds as its class default, so at 1.6
+the Brute was slower than anything unconfigured and at 1.2 it is faster.
+"Heavily armored slow melee. Can be outmaneuvered" survives that, because the
+reading is carried by the 180 degree turn rate against every other enemy's 480,
+and by the 250 cm/s patrol speed. Swing speed was a third supporting property
+and has now been spent. The tests that asserted it now assert the direction it
+was moved in, so putting it back fails and sends the reader here.
+
+*The Brute's basic attack can no longer be telegraphed at any radius.* The
+wind-up rule caps a telegraph at half the cycle, so a 1.2 second interval allows
+a marker of only 0.70 metres against a 1.00 metre floor. At 1.6 it allowed 1.40.
+Nothing changes in practice — the Slam reaches 0.9 metres and was already under
+the floor — but the reason it draws no marker is now two independent reasons
+rather than one. The stomp is unaffected, because an ability on a cooldown is
+telegraphed against that cooldown.
+
+**What this does not change.** The balance sweep in `sim/experiments.py` does not
+read `enemy_stats.py` or `enemy_abilities.py` at all, checked by following the
+imports, so it did not need re-running. The Brute's damage per swing is
+unchanged; only how often it arrives.
+
+---
+
 ## 2026-08-09 — A lobbed attack is real projectile motion, measured by a fixed flight time
 
 **Affects:** `ACataclysmProjectile`, the Brute's Rip and Toss in

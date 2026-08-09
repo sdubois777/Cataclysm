@@ -352,6 +352,19 @@ def test_the_brute_is_slower_than_the_enemy_defaults_it_overrides() -> None:
     The C++ automation test asserts this against a live actor. This asserts it
     against the source, so it fails in continuous integration, which never opens
     the editor and so never runs the automation tests.
+
+    WHAT "SLOW" RESTS ON, AND WHAT IT NO LONGER RESTS ON. The archetype's role
+    line is "Heavily armored slow melee. Can be outmaneuvered", and until
+    2026-08-09 three properties carried it: the Brute moved more slowly than a
+    generic enemy, turned more slowly, and swung more slowly. The project owner
+    settled the swing at 1.2 seconds by playing it, against the generic default
+    of 1.5, so it now swings FASTER than anything unconfigured. That was
+    deliberate and it is recorded in docs/DECISIONS.md.
+
+    So this asserts the two properties that still carry the role, and asserts
+    the third in the direction it was deliberately moved -- which is a guard,
+    not a hole: putting the swing back above the default would fail here and
+    send whoever did it to the reasoning.
     """
     enemy_header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
                     / "CataclysmEnemyCharacter.h")
@@ -359,9 +372,36 @@ def test_the_brute_is_slower_than_the_enemy_defaults_it_overrides() -> None:
     base_interval = uproperty_default(enemy_header, "AttackIntervalSeconds")
     brute_interval = constant(BRUTE_HEADER, "DesignedAttackIntervalSeconds")
 
-    assert brute_interval > base_interval, (
-        "A Brute attacks no less often than an ordinary enemy, so nothing about "
-        "it reads as slow."
+    assert brute_interval < base_interval, (
+        f"A Brute swings every {brute_interval} seconds against the generic "
+        f"enemy default of {base_interval}, so it is no longer the faster of "
+        f"the two. If that is intended, the decision on 2026-08-09 that made it "
+        f"faster has been reversed and docs/DECISIONS.md needs to say so. If it "
+        f"is not intended, sim/cataclysm_sim/enemy_stats.py is authoritative."
+    )
+
+    # THE ORDINARY ENEMY'S TURN RATE IS A LITERAL IN ITS CONSTRUCTOR, not a
+    # header default like the others, so it is read out of the source rather
+    # than through uproperty_default.
+    enemy_cpp = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+                 / "CataclysmEnemyCharacter.cpp")
+    turn = re.search(
+        r"RotationRate\s*=\s*FRotator\(\s*[\d.]+f\s*,\s*([\d.]+)f",
+        enemy_cpp.read_text(encoding="utf-8"))
+    if turn is None:
+        pytest.fail(
+            "CataclysmEnemyCharacter.cpp no longer sets RotationRate as an "
+            "FRotator literal, so the ordinary enemy's turn rate cannot be read "
+            "here. If it moved to a named constant, read that instead.")
+    base_turn = float(turn.group(1))
+    brute_turn = constant(BRUTE_HEADER, "DesignedTurnRateDegreesPerSecond")
+
+    assert brute_turn < base_turn, (
+        f"A Brute turns at {brute_turn} degrees per second against an ordinary "
+        f"enemy's {base_turn}. Turn rate is what 'can be outmaneuvered' means: "
+        f"a player circling at the Brute's own reach sweeps 223 degrees per "
+        f"second even in the slowest class, so anything at or above that cannot "
+        f"be got behind."
     )
 
     base_reach = uproperty_default(enemy_header, "MeleeReachCm")
@@ -940,6 +980,23 @@ def test_the_stomp_cooldown_matches_the_model() -> None:
     )
 
 
+def test_the_rock_throw_cooldown_matches_the_model() -> None:
+    """The other half of the pair, which had no check at all until 2026-08-09.
+
+    HOW THAT WAS FOUND. Issue #452 changed both cooldowns, and the guard-proving
+    run for it broke the C++ copy of this one on purpose to watch a test notice.
+    Nothing did. The stomp's copy was checked by the test above and the rock
+    throw's was not, so the C++ could carry any figure at all and only a person
+    reading both files would see it.
+    """
+    assert constant(BRUTE_HEADER, "RockThrowCooldownSeconds") == pytest.approx(
+        brute_ability("Rip and Toss").cooldown
+    ), (
+        "The rock throw comes round at a different rate in the C++ than the "
+        "model designs. sim/cataclysm_sim/enemy_abilities.py is authoritative."
+    )
+
+
 def test_the_stomp_wind_up_is_the_designed_telegraph() -> None:
     """The wind-up is a formula, not a taste, so it is checked as one.
 
@@ -981,23 +1038,35 @@ def test_the_stomp_damage_is_its_slot() -> None:
     )
 
 
-def test_the_stomp_cooldown_is_the_stun_immunity_window() -> None:
-    """Why the cooldown is 5 and not something from the Heavy band.
+def test_the_stomp_cooldown_clears_the_stun_immunity_window() -> None:
+    """Why the cooldown is not a figure from the Heavy band.
 
     The whole Heavy band in game/Data/SkillSlots.csv is 1 to 4 seconds, and all
-    of it sits inside the 5 second stun immunity window. A stomp that came round
-    sooner would be refused by the window rather than limited by its slot, so
-    the window is what sets the rate.
+    of it sits inside the 5 second stun immunity window. A stomp coming round
+    sooner than the window would be refused by the window rather than limited by
+    its slot, so the window is the floor and the slot is not.
+
+    AT OR ABOVE, RATHER THAN EQUAL TO, SINCE 2026-08-09. This asserted equality
+    until then, because the cooldown was exactly the window. The project owner
+    raised it to 8 seconds by playing it, which is legal: a stomp arriving later
+    than the window is refused by nothing. Going under is what is not legal, so
+    that is what this checks now.
     """
     from cataclysm_sim.enemy_abilities import STUN_IMMUNITY_WINDOW
 
-    assert constant(BRUTE_HEADER, "StompCooldownSeconds") == pytest.approx(
-        STUN_IMMUNITY_WINDOW
-    ), (
-        "The stomp's cooldown is no longer the stun immunity window. If that "
-        "was deliberate, the enemy is now able to attempt a stun the window "
-        "will silently refuse, and the reason the cooldown is not a Heavy-slot "
-        "figure has been lost."
+    cooldown = constant(BRUTE_HEADER, "StompCooldownSeconds")
+
+    assert cooldown >= STUN_IMMUNITY_WINDOW, (
+        f"The stomp's cooldown is {cooldown} seconds, under the "
+        f"{STUN_IMMUNITY_WINDOW} second stun immunity window. The creature will "
+        f"attempt stuns the window silently refuses, and the stomp's rate ends "
+        f"up set by something other than what the design says sets it."
+    )
+
+    assert cooldown == pytest.approx(brute_ability("Stomp").cooldown), (
+        "The stomp's cooldown in the C++ has drifted from the one in "
+        "ABILITIES['Brute'] in sim/cataclysm_sim/enemy_abilities.py. The model "
+        "is authoritative; copy it rather than editing the C++ alone."
     )
 
 

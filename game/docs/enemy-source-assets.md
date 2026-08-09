@@ -94,11 +94,21 @@ every 0.9 seconds needs its whole attack to finish inside 0.9 seconds.
 |---|:-:|---|:-:|---|
 | Imp | 0.9 s | `Attack_A_SetA` | 0.80 s | Passes |
 | Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | Passes |
-| Brute | 1.6 s | `Attack_Melee_A` | 0.97 s | Passes |
+| Brute | 1.2 s | `Attack_Melee_A` | 0.97 s | Passes, by 0.23 s |
 | Corrupted Sentinel | 2.0 s | `Fire_Planted` | 2.40 s | **Fails.** See #369 |
 | Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | Passes |
 | Succubus | 2.6 s | `Primary_Attack_Normal` | 0.90 s | Passes |
 | Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | Passes |
+
+**The clip the Brute actually plays is not the shortest one, and it is longer
+than this table's figure.** The column above records the shortest usable attack
+for each enemy, which is what decides whether the interval is achievable at all.
+`ACataclysmBruteCharacter::AttackAnimationPath` names
+`Attack_Biped_Melee_A`, measured at **1.0000 seconds** in the editor on
+2026-08-09. Nothing rate-scales it: `PlayAttackAnimation` passes no window, so it
+runs at its authored speed. Against the 1.2 second interval that leaves a fifth
+of a second between one swing ending and the next starting, and it is the reason
+the interval must not go below 1.0.
 
 **Wind-up durations are not in this file because they have not been measured.**
 The attack telegraph rule in section X of `docs/Cataclysm_GDD_v2.md` caps the

@@ -286,7 +286,29 @@ ARCHETYPES: dict[str, Archetype] = {
             name="Brute",
             role="Heavily armored slow melee. Can be outmaneuvered",
             health_share=2.20, damage_share=1.75, armor_share=3.00,
-            attack_interval=1.6, crit_multiplier=200.0, move_speed=2.5,
+            # 1.2 SECONDS BETWEEN SWINGS, SET BY PLAYING IT on 2026-08-09. It
+            # was 1.6, and 2.8 before that. The project owner found the swing
+            # slow at 1.6 and settled 1.2 at the same time as the two ability
+            # cooldowns below, because the three are one question: how many
+            # ordinary swings fall between abilities.
+            #
+            # IT NO LONGER CLEARS THE SWING ANIMATION BY MUCH, and that is the
+            # hard bound. Attack_Biped_Melee_A is 1.0000 seconds long, measured
+            # in the editor on 2026-08-09, and nothing rate-scales it:
+            # ACataclysmBruteCharacter::PlayAttackAnimation passes no window, so
+            # the clip plays at its authored speed. At 1.2 there is a fifth of a
+            # second between one swing ending and the next starting. Below 1.0
+            # they would overlap.
+            #
+            # THE BRUTE NOW SWINGS FASTER THAN A GENERIC ENEMY, AND THAT
+            # PROPERTY WAS GIVEN UP DELIBERATELY. ACataclysmEnemyCharacter
+            # carries 1.5 seconds as its class default, so at 1.6 the Brute was
+            # slower than anything unconfigured and at 1.2 it is faster.
+            # "Heavily armored slow melee. Can be outmaneuvered" survives it:
+            # that reading is carried by the 180 degree turn rate against every
+            # other enemy's 480, and by the 2.5 m/s patrol speed. Swing speed
+            # was a third supporting property and is now spent.
+            attack_interval=1.2, crit_multiplier=200.0, move_speed=2.5,
             # Thick hide on top of the armour, which is its main defence.
             resistance=15.0,
             # 180 rather than every other enemy's 480, because "can be

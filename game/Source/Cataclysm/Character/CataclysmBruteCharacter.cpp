@@ -101,54 +101,73 @@ static TAutoConsoleVariable<float> CVarBruteChaseSpeed(
  * IT DOES NOT TOUCH THE STOMP, which was the obvious worry and is not one. An
  * ability with a cooldown is telegraphed against that cooldown rather than the
  * attack interval, which section X of docs/Cataclysm_GDD_v2.md states and
- * Ability.cycle_seconds implements. The Stomp runs on its 5 second cooldown.
+ * Ability.cycle_seconds implements. The Stomp runs on its 8 second cooldown.
  *
  * WHAT IT DOES SIZE is the marker the ordinary swing could draw, which is
  * nothing: the Slam's 0.9 m radius is under the one metre floor at any interval.
  *
- * Zero means use the designed interval, which is 1.6 as of 2026-08-07.
+ * DO NOT GO BELOW 1.0. Attack_Biped_Melee_A, the swing clip, is 1.0000 seconds
+ * long and PlayAttackAnimation passes no window, so it runs at its authored
+ * speed. Under a second the creature starts a swing it has not finished.
+ *
+ * Zero means use the designed interval, which is 1.2 as of 2026-08-09.
  */
 static TAutoConsoleVariable<float> CVarBruteAttackInterval(
 	TEXT("Cataclysm.Brute.AttackInterval"),
 	0.0f,
-	TEXT("Seconds between the Brute's swings. 0 uses its designed 1.6. This "
-		 "does NOT affect the Stomp, which is telegraphed against its own 5 "
-		 "second cooldown rather than the attack interval."),
+	TEXT("Seconds between the Brute's swings. 0 uses its designed 1.2. Do NOT "
+		 "go below 1.0: the swing clip is exactly a second long and is not "
+		 "rate-scaled, so a shorter interval starts a swing that has not "
+		 "finished. This does NOT affect the Stomp, which is telegraphed "
+		 "against its own 8 second cooldown rather than the attack interval."),
 	ECVF_Default);
 
-// THE TWO COOLDOWNS TOGETHER DECIDE HOW OFTEN THE CREATURE USES AN ABILITY
-// RATHER THAN SWINGING, which is what the project owner reported on 2026-08-08
-// as "he basically uses an ability, waits a second, attacks once, uses another
-// ability, waits a second, attacks once". Issue #452.
+// THE TWO COOLDOWNS AND THE ATTACK INTERVAL TOGETHER DECIDE HOW OFTEN THE
+// CREATURE USES AN ABILITY RATHER THAN SWINGING, which is what the project owner
+// reported on 2026-08-08 as "he basically uses an ability, waits a second,
+// attacks once, uses another ability, waits a second, attacks once". Issue #452.
 //
-// THE ARITHMETIC, so a figure can be aimed at rather than guessed. Any attack is
-// gated by the attack interval, and an ability that lands spends an interval
-// slot exactly as a swing does, so with two abilities on a shared cooldown C and
-// an interval I the creature fits about C / I - 2 ordinary swings between each
-// pair of abilities. At the designed 5 and 1.6 that is 1.1, which is the one
-// swing that was reported. 10 seconds gives about 4.
+// THE ARITHMETIC, so a figure can be aimed at rather than guessed. Every attack
+// is gated by the attack interval, and an ability that lands spends an interval
+// slot exactly as a swing does. With an interval I and abilities on cooldowns C1
+// and C2, the creature starts 1/C1 + 1/C2 abilities and 1/I attacks of any kind
+// per second, so the ordinary swings between abilities are
+//
+//     (1/I - 1/C1 - 1/C2) / (1/C1 + 1/C2)
+//
+//     stomp 5, throw 5, interval 1.6   ->  0.56   (what was reported)
+//     stomp 10, throw 10, interval 1.6 ->  2.12
+//     stomp 8, throw 12, interval 1.2  ->  3.00   (settled by play 2026-08-09)
+//
+// THE TWO COOLDOWNS ARE NO LONGER EQUAL, WHICH CHANGES THE SHAPE AS WELL AS THE
+// COUNT. At 5 and 5 both abilities came up together and the creature used them
+// as a pair, which is why the original report describes a pair. At 8 and 12 they
+// drift in and out of phase over a 24 second cycle, three stomps to every two
+// throws, so what the player meets is not a repeating pair.
 //
 // RAISING THEM IS LEGAL; LOWERING THEM IS NOT. Both designed figures are floors
-// rather than targets. The stomp's 5 seconds is the stun immunity window, and
+// rather than targets, and both floors now sit below the figures in use. The
+// stomp must stay at or above the 5 second stun immunity window, because
 // sim/cataclysm_sim/enemy_abilities.py records that stomping faster than that
-// spends stomps on a target that cannot be stunned. The rock throw's 5 seconds
-// is argued from approach time: the Brute crosses its own throwing range in 2
+// spends stomps on a target that cannot be stunned. The rock throw must stay
+// above the approach time: the Brute crosses its own throwing range in 2
 // seconds, so a shorter cooldown lets it throw twice per approach and it reads
 // as a ranged enemy rather than a bruiser with a rock.
 static TAutoConsoleVariable<float> CVarBruteStompCooldown(
 	TEXT("Cataclysm.Brute.StompCooldown"),
 	0.0f,
-	TEXT("Seconds before the Brute may stomp again. 0 uses its designed 5. "
-		 "Raising it makes the creature swing more often between abilities; "
-		 "roughly cooldown / 1.6 - 2 ordinary swings fit between each pair. "
-		 "Do NOT go below 5: that figure is the stun immunity window, and a "
-		 "faster stomp spends itself on a player who cannot be stunned yet."),
+	TEXT("Seconds before the Brute may stomp again. 0 uses its designed 8. "
+		 "Raising it makes the creature swing more often between abilities. "
+		 "With the throw at 12 and the interval at 1.2, three ordinary swings "
+		 "fall between abilities. Do NOT go below 5: that figure is the stun "
+		 "immunity window, and a faster stomp spends itself on a player who "
+		 "cannot be stunned yet."),
 	ECVF_Default);
 
 static TAutoConsoleVariable<float> CVarBruteRockThrowCooldown(
 	TEXT("Cataclysm.Brute.RockThrowCooldown"),
 	0.0f,
-	TEXT("Seconds before the Brute may throw again. 0 uses its designed 5. "
+	TEXT("Seconds before the Brute may throw again. 0 uses its designed 12. "
 		 "Do NOT go below 5: the creature crosses its own 10 metre throwing "
 		 "range in 2 seconds, so a shorter cooldown lets it throw twice per "
 		 "approach and it stops reading as a melee bruiser."),

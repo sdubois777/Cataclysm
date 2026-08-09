@@ -1151,15 +1151,22 @@ def test_the_stomp_clears_the_threshold_at_the_heavy_slot_percent(brute_section)
         "uses.")
 
 
-def test_the_stomp_cooldown_is_the_stun_immunity_window(brute_abilities,
-                                                        brute_section):
-    """Not the Heavy slot's cooldown, which sits entirely inside the window."""
+def test_the_stomp_cooldown_clears_the_stun_immunity_window(brute_abilities,
+                                                            brute_section):
+    """Not the Heavy slot's cooldown, which sits entirely inside the window.
+
+    AT OR ABOVE, RATHER THAN EQUAL TO, SINCE 2026-08-09. The cooldown was
+    exactly the window until then, so equality and "clears it" were the same
+    assertion. The project owner raised it to 8 seconds by playing it. A stomp
+    arriving LATER than the window is refused by nothing; arriving sooner is the
+    failure, so that is what this checks.
+    """
     import csv
 
     from cataclysm_sim.enemy_abilities import STUN_IMMUNITY_WINDOW
 
     stomp = next(a for a in brute_abilities if "StunSeconds" in a.params)
-    assert stomp.cooldown == pytest.approx(STUN_IMMUNITY_WINDOW), (
+    assert stomp.cooldown >= STUN_IMMUNITY_WINDOW, (
         f"the stomp comes round every {stomp.cooldown} s and the stun immunity "
         f"window is {STUN_IMMUNITY_WINDOW} s. A stun inside the window lands "
         "on a target that cannot be stunned.")
@@ -1273,26 +1280,51 @@ def test_every_other_enemy_still_turns_at_the_engine_default(brute):
             f"every enemy at {default}. Only the Brute is meant to differ.")
 
 
-def test_the_slam_gets_no_marker_even_though_the_brute_can_telegraph(
+def test_the_slam_gets_no_marker_while_the_stomp_does(
         brute, brute_abilities, brute_section):
     """The clarification this enemy forced: the telegraph table's Yes column is
-    about the largest marker an enemy could draw, not about every attack."""
+    about the largest marker an enemy could draw, not about every attack.
+
+    TWO INDEPENDENT REASONS THE SLAM GETS NONE, SINCE 2026-08-09. Its own 0.9
+    metre reach was always under the one metre floor. That day the attack
+    interval moved from 1.6 seconds to 1.2, and the largest marker a 1.2 second
+    cycle allows is 0.70 metres, so the cycle is under the floor as well.
+
+    THIS TEST USED TO OPT OUT WHEN THAT HAPPENED. Its first assertion was that
+    the interval still allowed a marker at all, with the message "this test has
+    nothing to say". A test that opts out reads in a run exactly like a test
+    that passed, so it now asserts what is true instead and names both reasons.
+    """
     from cataclysm_sim.enemy_abilities import (SMALLEST_USEFUL_MARKER_METRES,
                                                is_telegraphed,
                                                largest_telegraphed_radius)
 
     by_name = {a.name: a for a in brute_abilities}
+    slam = by_name["Slam"]
     allowed = largest_telegraphed_radius(brute.attack_interval)
-    assert allowed >= SMALLEST_USEFUL_MARKER_METRES, (
-        "the Brute's attack interval no longer allows a marker at all, so it "
-        "is not in the telegraph table's Yes column and this test has nothing "
-        "to say.")
-    assert not is_telegraphed(by_name["Slam"], brute), (
-        "the Brute's slam is now telegraphed. It reaches "
-        f"{by_name['Slam'].params['Radius']} m, under the "
-        f"{SMALLEST_USEFUL_MARKER_METRES} m floor, so it has no marker to draw "
-        "however much its attack interval would allow.")
-    assert is_telegraphed(by_name["Stomp"], brute)
+
+    assert not is_telegraphed(slam, brute), (
+        f"the Brute's slam is now telegraphed. It reaches "
+        f"{slam.params['Radius']} m and its {brute.attack_interval} s attack "
+        f"interval allows {allowed:.2f} m, against a "
+        f"{SMALLEST_USEFUL_MARKER_METRES} m floor. Both were under the floor "
+        f"when this was written, so something has grown.")
+
+    assert slam.params["Radius"] < SMALLEST_USEFUL_MARKER_METRES, (
+        f"the slam now reaches {slam.params['Radius']} m, at or over the "
+        f"{SMALLEST_USEFUL_MARKER_METRES} m floor. It is the example the "
+        f"Brute's subsection uses for an attack too small to mark, so if it has "
+        f"grown, that prose needs rewriting too.")
+
+    # AND THE STOMP STILL DOES GET ONE, which is what makes the slam's absence
+    # a statement about the slam rather than about the creature. The stomp is
+    # telegraphed against its own cooldown, so shortening the attack interval
+    # cannot take its marker away.
+    assert is_telegraphed(by_name["Stomp"], brute), (
+        "the Brute's stomp is no longer telegraphed, so the creature draws no "
+        "marker at all and its entry in the telegraph table's Yes column is "
+        "wrong.")
+
     assert "a marker under one metre is not drawn" in brute_section.lower(), (
         "the Brute subsection no longer states the rule its slam is the "
         "example of. Issue #351.")
