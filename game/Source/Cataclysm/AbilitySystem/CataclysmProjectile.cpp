@@ -116,13 +116,21 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	AActor* Instigator, const FVector& From, const FVector& To, float InRadiusCm,
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
 	const FGameplayTagContainer& InSkillTags, bool bInBurns,
-	UStaticMesh* InBodyMesh, float InApexHeightCm)
+	UStaticMesh* InBodyMesh, float InFlightSeconds)
 {
 	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
-	if (!World || InSpeed <= 0.0f || InRadiusCm <= 0.0f)
+	if (!World || InRadiusCm <= 0.0f)
+	{
+		return nullptr;
+	}
+	if (InSpeed <= 0.0f && InFlightSeconds <= 0.0f)
 	{
 		// A speed of zero is a beam, not a projectile. Infernal Lance is written
 		// that way and arrives at once, which the firing skill resolves itself.
+		//
+		// EITHER ONE WILL DO, because they are two ways of saying how quickly it
+		// gets there and a lob is given the second rather than the first. A
+		// caller passing neither has said nothing about how it moves.
 		return nullptr;
 	}
 
@@ -152,24 +160,57 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->FurthestReached = From;
 	Projectile->Direction = Along / RangeCm;
 	Projectile->RadiusCm = InRadiusCm;
+
+	// REPLACED BELOW FOR A LOB, which works its ground speed out from its
+	// flight time instead and does not use InSpeed at all.
 	Projectile->SpeedCmPerSecond = InSpeed;
 	Projectile->RemainingRangeCm = RangeCm;
 	Projectile->bPierces = InPierce > 0;
 	Projectile->PiercesLeft = FMath::Max(0, InPierce);
 
-	// THE ARC, AND IT IS OFF UNLESS ASKED FOR. Issue #459. Direction above is
-	// already flattened, so a projectile with no apex flies exactly the path it
-	// flew before this existed and every player skill is untouched.
+	// THE LOB, AND IT IS OFF UNLESS ASKED FOR. Issue #459. Direction above is
+	// already flattened, so a projectile with no flight time flies exactly the
+	// path it flew before this existed and every player skill is untouched.
 	//
-	// THE TWO HEIGHTS ARE KEPT BECAUSE AN ARC HAS TO LAND SOMEWHERE. A straight
+	// THE TWO HEIGHTS ARE KEPT BECAUSE A LOB HAS TO LAND SOMEWHERE. A straight
 	// shot ignores the height difference between where it was fired and what it
 	// was fired at, which is right for something travelling flat. One that
-	// arcs has to end at the height it was aimed at, or the Brute's rock would
+	// lobs has to end at the height it was aimed at, or the Brute's rock would
 	// finish its parabola in the air at hand height.
-	Projectile->ApexHeightCm = FMath::Max(0.0f, InApexHeightCm);
+	Projectile->FlightSeconds = FMath::Max(0.0f, InFlightSeconds);
 	Projectile->TotalRangeCm = RangeCm;
 	Projectile->LaunchZ = From.Z;
-	Projectile->LandingZ = InApexHeightCm > 0.0f ? To.Z : From.Z;
+	Projectile->LandingZ = InFlightSeconds > 0.0f ? To.Z : From.Z;
+
+	if (Projectile->FlightSeconds > 0.0f)
+	{
+		// THE WHOLE OF THE BALLISTIC SOLVE, AND IT IS TWO LINES. Issue #465.
+		// Given two ends, a gravity and a time, the launch velocity is
+		// `(delta - 0.5 * g * t * t) / t`. Unreal solves the same problem the
+		// same way in UGameplayStatics::SuggestProjectileVelocity_MovingTarget,
+		// at GameplayStatics.cpp:3140 in 5.8; it is not called here only
+		// because that function insists on a live AActor* to aim at and this
+		// aims at a point on the ground.
+		//
+		// SPLIT INTO THE TWO PARTS THIS CLASS ACTUALLY USES. The horizontal
+		// part is a constant speed, which is what Step advances by. The
+		// vertical part is folded into ApexHeightCm, because the height at any
+		// point is worked out from the distance covered rather than integrated
+		// step by step -- see ArcHeightAfter.
+		Projectile->SpeedCmPerSecond = RangeCm / Projectile->FlightSeconds;
+
+		// HOW FAR A PARABOLA SAGS BELOW ITS OWN CHORD, which over a flight of
+		// t seconds is `g * t * t / 8` at the midpoint whatever the two ends
+		// are. That makes the apex a function of the time alone: two lobs of
+		// different lengths taking the same time rise the same height above
+		// their chords.
+		Projectile->ApexHeightCm = LobGravityCmPerSecondSquared
+			* Projectile->FlightSeconds * Projectile->FlightSeconds / 8.0f;
+	}
+	else
+	{
+		Projectile->ApexHeightCm = 0.0f;
+	}
 
 	// A piercing skill's Radius is the half-width of the line it hits along, so
 	// for one of those the flying object IS that wide. One that does not pierce
@@ -221,29 +262,24 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 
 		const FVector Previous = GetActorLocation();
 
-		// THE SPEED IS THROUGH THE AIR, NOT ACROSS THE GROUND, and for an
-		// arcing shot those are different numbers. Issue #462.
+		// THE SPEED IS ACROSS THE GROUND, AND IT IS THE SAME AT EVERY POINT OF
+		// THE FLIGHT. Issue #465. That is the whole of what makes this
+		// projectile motion rather than a shape being traced out: gravity acts
+		// downward and nothing acts sideways, so the horizontal component of a
+		// thrown object's velocity never changes and only the vertical one
+		// does. `SpeedCmPerSecond` is already that number for both kinds of
+		// shot -- given directly for a flat one, worked out from the flight
+		// time in Fire for a lob.
 		//
-		// WHAT WENT WRONG. When the arc was added the step below advanced the
-		// projectile horizontally by speed times time and then set its height,
-		// so the height change was travel the speed never paid for. A rock
-		// climbing as fast as it flew forward moved at 1.41 times its stated
-		// speed, and the project owner reported it as blistering.
-		//
-		// HOW MUCH HORIZONTAL A STEP BUYS. Over a short step the path is
-		// straight, so a horizontal distance h with a slope s covers
-		// h * sqrt(1 + s * s) through the air. Dividing by that factor is what
-		// makes the distance actually flown equal the speed times the time.
-		//
-		// A STRAIGHT SHOT HAS A SLOPE OF ZERO and divides by one, so nothing
-		// about any player skill changes.
-		float WantedCm = SpeedCmPerSecond * ThisStep;
-		if (ApexHeightCm > 0.0f)
-		{
-			const float Slope = ArcSlopeAfter(TotalRangeCm - RemainingRangeCm);
-			WantedCm /= FMath::Sqrt(1.0f + Slope * Slope);
-		}
-		WantedCm = FMath::Min(WantedCm, RemainingRangeCm);
+		// WHAT THIS REPLACED. #462 divided the step by `sqrt(1 + slope*slope)`
+		// to hold the speed THROUGH THE AIR constant. That made the distance
+		// flown correct and the distribution of it wrong: a steep part of the
+		// path bought less ground than a shallow one, so the rock crossed most
+		// of the way early and then sank onto the marker at 62% of the ground
+		// speed it started with. The project owner reported it as throwing fast
+		// and then dropping slowly.
+		const float WantedCm =
+			FMath::Min(SpeedCmPerSecond * ThisStep, RemainingRangeCm);
 
 		FVector Wanted = Previous + Direction * WantedCm;
 
@@ -315,7 +351,7 @@ float ACataclysmProjectile::ArcHeightAfter(float HorizontalTravelledCm) const
 {
 	if (ApexHeightCm <= 0.0f || TotalRangeCm <= 0.0f)
 	{
-		// Not arcing. Whatever height it was fired at, it keeps, which is what
+		// Not lobbing. Whatever height it was fired at, it keeps, which is what
 		// this class did for every projectile before issue #459.
 		return LaunchZ;
 	}
@@ -329,28 +365,16 @@ float ACataclysmProjectile::ArcHeightAfter(float HorizontalTravelledCm) const
 	// halfway along. Splitting it this way is what lets the rock be thrown from
 	// a hand well above the ground and still finish at the height it was aimed
 	// at, rather than the arc being measured from one end.
+	//
+	// AND IT IS EXACTLY `z0 + vz*t - g*t*t/2`, WRITTEN IN THE OTHER VARIABLE.
+	// Issue #465. Substituting a constant horizontal speed into the textbook
+	// height-against-time turns it into this height-against-distance, with
+	// ApexHeightCm standing for `g * flight * flight / 8`. So this line was
+	// already real projectile motion before #465 and stayed unchanged by it;
+	// what changed is that the projectile now walks it at a constant ground
+	// speed, which is the other half of what makes a trajectory ballistic.
 	const float Straight = FMath::Lerp(LaunchZ, LandingZ, Along);
 	return Straight + ApexHeightCm * 4.0f * Along * (1.0f - Along);
-}
-
-float ACataclysmProjectile::ArcSlopeAfter(float HorizontalTravelledCm) const
-{
-	if (ApexHeightCm <= 0.0f || TotalRangeCm <= 0.0f)
-	{
-		return 0.0f;
-	}
-
-	const float Along = FMath::Clamp(HorizontalTravelledCm / TotalRangeCm,
-									 0.0f, 1.0f);
-
-	// The derivative of what ArcHeightAfter returns, with respect to horizontal
-	// distance. The straight line between the two ends contributes a constant,
-	// and the parabola contributes a term that is steepest at the launch, zero
-	// at the top, and equally steep downward at the landing.
-	const float FromChord = (LandingZ - LaunchZ) / TotalRangeCm;
-	const float FromArc = ApexHeightCm * 4.0f * (1.0f - 2.0f * Along)
-		/ TotalRangeCm;
-	return FromChord + FromArc;
 }
 
 FVector ACataclysmProjectile::TraceStep(const FVector& From, const FVector& To)

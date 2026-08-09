@@ -149,26 +149,18 @@ static TAutoConsoleVariable<float> CVarBruteRockThrowCooldown(
 		 "approach and it stops reading as a melee bruiser."),
 	ECVF_Default);
 
-static TAutoConsoleVariable<float> CVarBruteRockSpeed(
-	TEXT("Cataclysm.Brute.RockSpeed"),
+static TAutoConsoleVariable<float> CVarBruteRockHangTime(
+	TEXT("Cataclysm.Brute.RockHangTime"),
 	0.0f,
-	TEXT("Centimetres per second the thrown rock travels through the air. 0 "
-		 "uses its designed 600. Lower is a heavier, more readable lob; the "
-		 "flight time is the distance divided by this, so 600 puts a five "
-		 "metre throw in the air for about 0.8 seconds. Do NOT go above 1200: "
-		 "that is the slowest projectile any player skill uses, and a thrown "
-		 "rock should not outrun the slowest spell in the game."),
-	ECVF_Default);
-
-static TAutoConsoleVariable<float> CVarBruteRockArc(
-	TEXT("Cataclysm.Brute.RockArc"),
-	0.0f,
-	TEXT("How high the thrown rock rises above the straight line to where it "
-		 "lands, as a fraction of the distance thrown. 0 uses the designed "
-		 "0.25. That figure is what a projectile launched at 45 degrees "
-		 "reaches, so it is a real trajectory rather than a chosen one, but "
-		 "how it READS has to be judged by watching. Higher is a slower, "
-		 "loopier lob; below about 0.05 it is a flat throw again."),
+	TEXT("Seconds the thrown rock stays in the air, the same at every range. 0 "
+		 "uses its designed 1.4. THIS MOVES THE ARC AS WELL AS THE TIMING, and "
+		 "the two cannot be set apart: the rock falls under real gravity, so a "
+		 "flight of t seconds rises 980*t*t/8 centimetres above the straight "
+		 "line to where it lands -- 122 cm at 1.0, 240 at 1.4, 314 at 1.6. "
+		 "Higher is a slower, loopier, taller lob. Do NOT go below about 1.1: "
+		 "the rock lands faster the longer it has been falling, and at 1.0 a "
+		 "ten metre throw arrives at 1244 centimetres per second, past the "
+		 "1200 of the slowest projectile any player skill uses."),
 	ECVF_Default);
 
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
@@ -752,10 +744,10 @@ void ACataclysmBruteCharacter::UpdateAbilityMontage()
 	PlayAbilityMontage(Index);
 }
 
-float ACataclysmBruteCharacter::RockThrowSpeedCmPerSecondInUse() const
+float ACataclysmBruteCharacter::RockThrowFlightSecondsInUse() const
 {
-	const float Override = CVarBruteRockSpeed.GetValueOnAnyThread();
-	return Override > 0.0f ? Override : RockThrowSpeedCmPerSecond;
+	const float Override = CVarBruteRockHangTime.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : RockThrowFlightSeconds;
 }
 
 float ACataclysmBruteCharacter::StompCooldownSecondsInUse() const
@@ -790,17 +782,16 @@ FVector ACataclysmBruteCharacter::RockLaunchLocation() const
 	return GetActorLocation();
 }
 
-float ACataclysmBruteCharacter::RockThrowApexCmFor(const FVector& LandsAt) const
+float ACataclysmBruteCharacter::RockThrowApexCm() const
 {
-	const float Override = CVarBruteRockArc.GetValueOnAnyThread();
-	const float Fraction = Override > 0.0f ? Override : RockThrowApexFraction;
-
-	// A FRACTION OF THE DISTANCE THROWN, so a rock lobbed two metres is not
-	// given the same loop as one thrown ten. Measured across the ground rather
-	// than through the air, because that is what the fraction is a fraction of.
-	const float ThrownCm =
-		FVector::Dist2D(RockLaunchLocation(), LandsAt);
-	return Fraction * ThrownCm;
+	// HOW FAR A PARABOLA SAGS BELOW ITS OWN CHORD over a flight of t seconds,
+	// which is `g * t * t / 8` however far apart the two ends are. The same
+	// arithmetic runs inside ACataclysmProjectile::Fire, which is what actually
+	// shapes the throw; this exists so the figure can be read and tested
+	// without firing one.
+	const float Seconds = RockThrowFlightSecondsInUse();
+	return ACataclysmProjectile::LobGravityCmPerSecondSquared
+		* Seconds * Seconds / 8.0f;
 }
 
 void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
@@ -870,17 +861,23 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		// cm up, so the rock appeared at the creature's waist while the
 		// animation threw it overhead.
 		//
-		// AND IT ARCS, WHICH IS NOT SEPARABLE FROM THAT. Issue #459. Before
+		// AND IT LOBS, WHICH IS NOT SEPARABLE FROM THAT. Issue #459. Before
 		// this the projectile flattened every shot and flew level, so firing
 		// from a hand well above 250 cm would have sent the rock horizontally
 		// over the head of a player whose own is about 192. The launch point
 		// and the trajectory had to change together.
+		//
+		// A FLIGHT TIME, AND NO SPEED AT ALL. Issue #465. A ballistic shot has
+		// no single speed to give -- it is slowest at the top of its arc and
+		// fastest as it lands -- so the projectile is told how long it has and
+		// works the rest out. The zero here is not a beam: a projectile is a
+		// beam when it is given NEITHER a speed nor a flight time.
 		ACataclysmProjectile::Fire(
 			this, RockLaunchLocation(), AimedAt,
-			RockThrowRadiusCm, RockThrowSpeedCmPerSecondInUse(),
+			RockThrowRadiusCm, /*InSpeed=*/0.0f,
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
 			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh,
-			RockThrowApexCmFor(AimedAt));
+			RockThrowFlightSecondsInUse());
 		return;
 	}
 }

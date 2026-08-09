@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — A lobbed attack is real projectile motion, measured by a fixed flight time
+
+**Affects:** `ACataclysmProjectile`, the Brute's Rip and Toss in
+`sim/cataclysm_sim/enemy_abilities.py` and `docs/Cataclysm_GDD_v2.md`, and how
+every future lobbed enemy attack states its speed. Applied.
+
+**The shape was already right and the movement along it was not.** #459 gave the
+rock a parabola. #462 then held the speed THROUGH THE AIR constant along that
+parabola, so the steeper the path the less ground the rock covered per second.
+Over a ten metre throw from a hand to the floor its horizontal speed was 80% of
+the designed figure at launch, 97% halfway and 62% at the landing; over a two
+metre throw, 97% and 41%. It crossed the ground early and then sank slowly onto
+the marker. The project owner reported it from play: "it throws it super fast,
+and then it appears slowly dropping above the impact zone."
+
+**Nothing that is thrown moves that way.** Gravity acts downward and nothing acts
+sideways, so a projectile holds its HORIZONTAL velocity from launch to landing
+and only the vertical one changes. The visible consequences are the opposite of
+what was happening: steady ground speed throughout, and a descent that speeds up.
+
+**The rule.** A lobbed attack states a FLIGHT TIME, not a speed. Its ground speed
+is the distance divided by that time, its arc height is `g × t² ÷ 8`, and both
+follow from the one number. `Speed` remains the parameter for anything that
+travels flat, which is all 398 player projectile rows.
+
+**Why a time rather than a launch speed, an angle, or the minimum-speed
+solution.** A ballistic solve needs exactly one input beyond the two ends and
+gravity, and the four candidates are not equivalent. For a TELEGRAPHED attack the
+flight is part of the warning: the marker appears when the wind-up starts, so the
+player's window to leave is the wind-up plus the flight. Fixing the time makes
+that window a designed number instead of an accident of how far away the player
+happened to be standing. Under the old speed the same throw took 1.95 seconds at
+ten metres and 0.55 at two, so the warning shrank exactly as the danger closed in.
+
+Shipped games choose fixed delays deliberately for this. The Old School RuneScape
+wiki documents both models in one game: most ranged attacks scale their hit delay
+with distance, while the Tonalztics of Ralos, the Grasp and Demonbane spells and
+the Volatile and Eldritch staff specials are each given "a fixed hit delay of 2
+ticks regardless of the distance". Diablo 4's ground-circle attacks, already cited
+in the entry below for the marker itself, land a set moment after the circle
+appears rather than a moment that depends on range.
+
+**Why not the engine's own solvers, having read them.** Unreal 5.8 has three, in
+`Engine/Source/Runtime/Engine/Private/Kismet/GameplayStatics.cpp`.
+`SuggestProjectileVelocity` (line 2640) fixes a launch speed and solves for the
+angle; at earth gravity a 600 cm/s launch cannot reach ten metres at all, since
+its maximum range is `v² ÷ g`, 3.67 metres. `SuggestProjectileVelocity_CustomArc`
+(line 3035) fixes a direction and solves for the speed, which leaves the flight
+time free. `SuggestProjectileVelocity_MovingTarget` (line 3073) is the one that
+takes a flight time, and its solve is a single line — `(Δp − ½g t²) ÷ t` — but it
+insists on a live `AActor*` to aim at, and a lob aims at a point on the ground.
+The same two-line arithmetic is now in `ACataclysmProjectile::Fire`.
+
+- https://oldschool.runescape.wiki/w/Hit_delay
+- `C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Engine\Private\Kismet\GameplayStatics.cpp`
+
+**Mass does nothing, and it is deliberately absent.** The project owner asked
+whether projectile weight belonged here. In a vacuum every object falls at the
+same rate whatever it weighs, so mass changes nothing about where a rock goes or
+when it arrives; it matters only with air resistance, which this game does not
+model. Unreal agrees. `UProjectileMovementComponent`, the engine's own projectile
+mover, contains no reference to mass at all — a case-sensitive search of both its
+header and its implementation returns nothing — and even its `AddForce` is added
+straight to acceleration without being divided by one. What reads as weight is
+the shape of the arc and the accelerating descent, which is what a fixed flight
+time under real gravity produces. A weight field would have been a knob that did
+nothing.
+
+**The number, which is a judgement bounded on three sides.** Flight is 1.4
+seconds. Gravity is Unreal's own `DefaultGravityZ`, 980 cm/s². Together they set
+an arc of 240 cm above the chord, which over the full ten metre throw is 0.24 of
+the range — within rounding of the 0.25 the design carried before, so the longest
+throw kept its silhouette. They also set the landing speed, and the rock must not
+outrun the Succubus's Soulfire at 1200 cm/s: at 1.4 seconds a ten metre throw
+lands at 1121, and at 1.0 second it would land at 1244 and break that rule. And
+the flight must be long enough to see, which is what #463 was about.
+`Cataclysm.Brute.RockHangTime` moves it live. It replaced both
+`Cataclysm.Brute.RockSpeed` and `Cataclysm.Brute.RockArc`, because gravity ties
+the timing and the arc together and a second knob would have meant inventing a
+gravity to go with it.
+
+**What has not been judged by watching.** Short throws are now visibly steeper.
+The arc height depends only on the flight time, so it is the same 240 cm whether
+the rock travels two metres or ten; at two metres that is taller than the throw is
+long. That is what a thrown object does when its hang time is held fixed, and it
+is the one thing about this change that has to be looked at rather than argued.
+
+**Not decided here.** Whether a lobbed attack should lead a moving target. The
+project owner settled that on 2026-08-09: it should not. The marker promises a
+place and the rock honours it, which is the rule in the entry below, and leading
+the target would break the promise the circle makes.
+
+---
+
 ## 2026-08-09 — A telegraphed thrown attack arcs onto its marked circle
 
 **Affects:** the Brute's Rip and Toss in `sim/cataclysm_sim/enemy_abilities.py`,
@@ -62,12 +156,19 @@ becomes the reaction window every ground telegraph in the genre gives.
 **What is a judgement rather than derived.** The apex is one quarter of the
 distance thrown, which is what a projectile launched at 45 degrees reaches, so
 the trajectory is real rather than invented. Whether it READS as a heavy creature
-heaving a boulder is not settled by physics and has not yet been judged by
-watching. `Cataclysm.Brute.RockArc` sets the fraction live for that purpose.
+heaving a boulder is not settled by physics and had not been judged by watching
+when this was written. `Cataclysm.Brute.RockArc` set the fraction live for that
+purpose.
+
+**Superseded in part on the same day.** The apex is no longer stated as a
+fraction of the throw, and `Cataclysm.Brute.RockArc` no longer exists. The entry
+above replaced both with a flight time, from which the arc height follows. The
+rule this entry sets — that a telegraphed attack marking a place must arrive at
+that place — is unchanged and still holds.
 
 **Not decided here.** Whether a lobbed attack should lead a moving target. It
 does not today, and with the marker now honest there is an argument that it
-should never need to.
+should never need to. **Settled 2026-08-09:** it should not, for that reason.
 
 ---
 

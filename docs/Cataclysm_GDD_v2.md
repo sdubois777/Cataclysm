@@ -3677,7 +3677,7 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 1.6 s attack interval | No |
 | Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | a 5 s cooldown | Yes, 1.4 s wind-up |
-| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Speed=600` | a 5 s cooldown | Yes, 1.0 s wind-up |
+| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Flight=1.4` | a 5 s cooldown | Yes, 1.0 s wind-up |
 
   
 
@@ -3705,7 +3705,15 @@ Its purpose is the one thing the other two cannot do. A Brute with only a Slam a
 
   
 
-**Speed 1200 is the Succubus's Soulfire figure**, the slowest projectile any player skill uses. A thrown rock should not outrun the slowest spell in the game.
+**Flight 1.4 seconds is a time, not a speed, and it is the same at every range.** A lobbed rock follows real projectile motion, so there is no one speed to state: it is slowest at the top of its arc and fastest as it lands. Stating the time instead settles the whole trajectory, because gravity supplies the rest.
+
+  
+
+Three things meet at 1.4. **It is the reaction window.** The marker appears when the wind-up starts and the rock then has to travel, so the player has the 1 second telegraph plus the flight — a designed 2.4 seconds at every distance, rather than a window that shrinks as the player closes in. **It is the arc.** A parabola sags `g × t² ÷ 8` below the straight line between its two ends, which at 1.4 seconds is 240 centimetres; over the full 10 metre throw that is 0.24 of the range. **And it is bounded by the speed ceiling.** A thrown rock should not outrun the Succubus's Soulfire at 1200 centimetres per second, the slowest projectile any player skill uses. The rock is fastest as it lands, having fallen longest: at 1.4 seconds a 10 metre throw arrives at 1121, under the ceiling, and at 1.0 second it would arrive at 1244 and break it.
+
+  
+
+This replaced `Speed=600` on 2026-08-09. The rock had been moving at a constant speed *along its path*, which is not how anything thrown moves: the steeper the path, the less ground it covered per second, so it crossed the ground early and then sank slowly onto its marker. Real projectile motion holds the *horizontal* speed constant and lets only the vertical one change. See `docs/DECISIONS.md`.
 
   
 
