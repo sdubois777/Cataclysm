@@ -1,4 +1,4 @@
-"""Turn the design workbook into DataTable CSVs for Unreal.
+"""Turn the design into DataTable CSVs for Unreal.
 
     python tools/generate_datatables.py            # write the CSVs
     python tools/generate_datatables.py --check    # verify, change nothing
@@ -8,10 +8,25 @@ game/Source/Cataclysm/Data/CataclysmDataRows.h, and an Unreal automation test
 loads every CSV through its struct so a mismatch fails the build rather than
 being discovered when something silently reads nothing.
 
+THERE ARE TWO SOURCES, NOT ONE. Most tables come from the design workbook,
+docs/All_Things_Cataclysm.xlsx, which is what a person edits. The two enemy
+tables come instead from sim/cataclysm_sim/enemy_stats.py, because that is where
+the enemy stat block is designed and where its self-checks live. `TABLES` holds
+the workbook builders and `MODEL_TABLES` the Python-model ones; everything after
+that treats them alike.
+
+GENERATED FROM THE MODEL RATHER THAN COPIED OUT OF IT, deliberately. This project
+already keeps one copy of a model by hand -- sim/cataclysm_sim/scoring.py against
+the DungeonSimulator repository -- and CLAUDE.md records that it drifted silently
+twice, which is why sim/verify_scoring_port.py had to be written. A second
+hand-maintained copy would be the same mistake. Continuous integration runs
+`--check`, so editing enemy_stats.py without regenerating fails the pull request.
+
 WHY THIS IS NOT A LOOP OVER SHEETS
 
-Only six of the eleven tables come from a sheet that is already a plain table
-with one entity per row. The rest need reshaping, so each has its own handler:
+Only six of the fourteen workbook tables come from a sheet that is already a
+plain table with one entity per row. The rest need reshaping, so each has its own
+handler:
 
   Enchantments      two independent tables side by side in one sheet, positives
                     in columns A-D and negatives in F-I
@@ -43,12 +58,16 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 OUTPUT_DIR = REPO_ROOT / "game" / "Data"
 
+#: The simulation package. It is not installed, so the enemy builders below reach
+#: it by path, the same way tools/tests/test_brute_matches_the_model.py does.
+SIM_ROOT = REPO_ROOT / "sim"
+
 CATACLYSM_TYPES = ["Demonic", "Death", "War", "Pestilence", "Famine",
                    "Celestial", "Chaos", "Void", "Generic"]
 
 
 class DataError(Exception):
-    """A problem in the workbook that must stop generation."""
+    """A problem in the source data that must stop generation."""
 
 
 # --------------------------------------------------------------------------
@@ -928,6 +947,157 @@ def attributes(book) -> list[dict]:
     return unique(out, "Attributes")
 
 
+# --------------------------------------------------------------------------
+# the enemy tables, which come from the Python model rather than the workbook
+
+def _enemy_stats():
+    """Import `cataclysm_sim.enemy_stats`, adding sim/ to the path if needed.
+
+    Imported here rather than at the top of the file so that generating the
+    workbook tables does not depend on the simulation package being importable.
+
+    IMPORTING IT RUNS ITS OWN CHECKS. enemy_stats.py calls four self-checks at
+    module scope: every archetype deals a real damage type, none can reach the
+    70% resistance the design caps at, every body has a width, and every
+    creature can turn. So a model that contradicts itself raises here rather
+    than being written out to a CSV.
+    """
+    if str(SIM_ROOT) not in sys.path:
+        sys.path.insert(0, str(SIM_ROOT))
+    try:
+        from cataclysm_sim import enemy_stats
+    except ImportError as error:
+        raise DataError(
+            f"could not import cataclysm_sim.enemy_stats from {SIM_ROOT}, which "
+            f"is where the enemy stat block is designed: {error}") from error
+    return enemy_stats
+
+
+def _six_places(value: float) -> float:
+    """Round to six decimal places, so the written table stays readable.
+
+    Python writes the shortest string that reproduces a float exactly, and for a
+    rarity multiplier like 0.5 * 1.85 ** 3 that string is 3.1655562500000005.
+    Six places is a ten-millionth of a Common enemy's health multiplier, far
+    below anything a balance judgement can see, and it keeps the table legible
+    to the person reading the diff.
+
+    The drift guard does not depend on this: `--check` rebuilds the whole table
+    from the model and compares the text, so changing a model constant makes the
+    file stale whatever precision it is written at.
+    """
+    return round(value, 6)
+
+
+def enemy_archetypes(_book=None) -> list[dict]:
+    """One row per enemy archetype: what KIND of creature it is.
+
+    Source: `ARCHETYPES` in sim/cataclysm_sim/enemy_stats.py. One column per
+    field of the `Archetype` dataclass, and no derived values, because deriving
+    one here would put a second reading of the design in this file.
+
+    DISTANCES AND SPEEDS ARE IN METRES, as the model states them and as
+    game/Data/ClassStats.csv already states the player's movement speed. The
+    engine multiplies by `CentimetresPerMetre` when it reads one, the way
+    ACataclysmPlayerCharacter::ApplyMovementSpeed does.
+
+    A CHASE SPEED OF 0 IS A SENTINEL, not a creature that cannot move: the model
+    defines it as "use MoveSpeed in both states", which is what every enemy but
+    the Brute does. It is written out unchanged rather than expanded here,
+    because expanding it would mean this file deciding what the model meant.
+
+    THE BASELINE ROW IS NOT A CREATURE. It is in `ARCHETYPES` so the rarity
+    ladder can be read without an archetype's multipliers on top, and it is
+    written out because this table is the model and an exception here could hide
+    a real archetype going missing. Its Role column says so in words.
+    """
+    model = _enemy_stats()
+
+    out = []
+    for kind in model.ARCHETYPES.values():
+        out.append({
+            "Name": row_name(kind.name),
+            "ArchetypeName": kind.name,
+            "Role": kind.role,
+            "Cataclysm": kind.cataclysm,
+            "HealthShare": _six_places(kind.health_share),
+            "DamageShare": _six_places(kind.damage_share),
+            "ArmorShare": _six_places(kind.armor_share),
+            "AttackIntervalSeconds": _six_places(kind.attack_interval),
+            "CritChancePercent": _six_places(kind.crit_chance),
+            "CritMultiplierPercent": _six_places(kind.crit_multiplier),
+            "MoveSpeedMetresPerSecond": _six_places(kind.move_speed),
+            "ChaseSpeedMetresPerSecond": _six_places(kind.chase_speed),
+            "EvasionPercent": _six_places(kind.evasion),
+            "EnergyShieldFraction": _six_places(kind.energy_shield_fraction),
+            "BodyRadiusMetres": _six_places(kind.body_radius),
+            "TurnRateDegreesPerSecond": _six_places(kind.turn_rate_degrees),
+            "ResistancePercent": _six_places(kind.resistance),
+        })
+
+    if not out:
+        raise DataError("enemy_stats.ARCHETYPES is empty")
+    return unique(out, "Enemy Archetypes")
+
+
+def enemy_rarities(_book=None) -> list[dict]:
+    """One row per rarity: how much of an encounter's score each stat is worth.
+
+    Source: `RARITY_ORDER` and the six AT_COMMON and PER_STEP constants in
+    sim/cataclysm_sim/enemy_stats.py.
+
+    RARITY SCALES MAGNITUDE AND NOTHING ELSE. Attack interval, criticals,
+    movement and resistance belong to the archetype, so they are not here: a
+    Legendary Imp is a bigger Imp, not a slower or tougher kind of creature.
+    The model's own header explains why it used to be the other way round.
+
+    WHAT A COLUMN MEANS. `stats_for` computes each of the three as
+
+        score * <stat>PerScore * archetype.<stat>Share
+
+    so the multiplier here is already raised to the power of the rarity's step.
+    Written expanded rather than as a base and a growth rate so that reading an
+    enemy's stats is a table lookup and a multiply, with no exponent at runtime,
+    and so the ladder can be read straight off the file: a Cataclysm Boss has
+    about 21 times a Common enemy's health.
+
+    Health is additionally floored at 1 by `stats_for`, and energy shield is a
+    fraction of health set by the archetype. Neither is a rarity figure.
+    """
+    model = _enemy_stats()
+
+    # Read directly rather than through getattr with a default: a missing name
+    # must raise here. A check that quietly passes when the thing it reads has
+    # been renamed is worse than no check, because it reads as coverage.
+    weights = model.scoring.RARITY_WEIGHTS
+    if list(weights) != list(model.RARITY_ORDER):
+        raise DataError(
+            "enemy_stats.RARITY_ORDER is "
+            f"{list(model.RARITY_ORDER)} but scoring.RARITY_WEIGHTS, which its "
+            f"comment calls the authoritative list, is {list(weights)}. "
+            "scoring.py is a port that has drifted from its source twice, so "
+            "the two lists must be compared rather than assumed equal.")
+
+    out = []
+    for rarity in model.RARITY_ORDER:
+        step = model.rarity_step(rarity)
+        out.append({
+            "Name": row_name(rarity),
+            "RarityName": rarity,
+            "Step": step,
+            "HealthPerScore": _six_places(
+                model.HEALTH_AT_COMMON * model.HEALTH_PER_STEP ** step),
+            "DamagePerScore": _six_places(
+                model.DAMAGE_AT_COMMON * model.DAMAGE_PER_STEP ** step),
+            "ArmorPerScore": _six_places(
+                model.ARMOR_AT_COMMON * model.ARMOR_PER_STEP ** step),
+        })
+
+    if not out:
+        raise DataError("enemy_stats.RARITY_ORDER is empty")
+    return unique(out, "Enemy Rarities")
+
+
 TABLES = {
     "DungeonModifiers": dungeon_modifiers,
     "WeaponSkills": weapon_skills,
@@ -943,6 +1113,14 @@ TABLES = {
     "ClassStats": class_stats,
     "Attributes": attributes,
     "SkillSlots": skill_slots,
+}
+
+#: Tables built from sim/cataclysm_sim/enemy_stats.py rather than the workbook.
+#: Kept apart from TABLES only so a stale-file message can name the right source;
+#: everything downstream treats the two the same.
+MODEL_TABLES = {
+    "EnemyArchetypes": enemy_archetypes,
+    "EnemyRarities": enemy_rarities,
 }
 
 
@@ -1169,6 +1347,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         book = openpyxl.load_workbook(args.workbook, data_only=True)
         tables = {name: builder(book) for name, builder in TABLES.items()}
+        tables.update({name: builder()
+                       for name, builder in MODEL_TABLES.items()})
     except DataError as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
@@ -1214,9 +1394,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         if stale:
-            print(f"FAIL: out of date with {args.workbook.name}: "
-                  f"{', '.join(sorted(stale))}. Run without --check.",
-                  file=sys.stderr)
+            print(f"FAIL: {len(stale)} DataTable CSV(s) out of date. "
+                  "Run without --check.", file=sys.stderr)
+            for name in sorted(stale):
+                source = ("sim/cataclysm_sim/enemy_stats.py"
+                          if pathlib.Path(name).stem in MODEL_TABLES
+                          else args.workbook.name)
+                print(f"  {name:<28}behind {source}", file=sys.stderr)
             return 1
         print(f"All {len(tables)} DataTable CSVs are up to date.")
         return 0

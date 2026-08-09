@@ -117,6 +117,16 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 7: the seven skill slots from the design document's Skill Slots table.
 	// Six a player chooses between plus the automatic Basic Attack.
 	CHECK_TABLE(FCataclysmSkillSlotRow,         "SkillSlots.csv",              7)
+	// 8: the seven Demonic Cataclysm enemies the design names for the vertical
+	// slice, plus the Baseline row, which is not a creature anyone fights but
+	// the abstract average the rarity ladder is read against. It rises to 15
+	// when the second Cataclysm's enemies are designed, so this pin is what
+	// notices an archetype silently going missing in the meantime.
+	CHECK_TABLE(FCataclysmEnemyArchetypeRow,    "EnemyArchetypes.csv",         8)
+	// 6, not 7. The ladder is Common, Elite, Legendary, Herald, Boss and
+	// Cataclysm Boss, matching scoring.RARITY_WEIGHTS. There is no "Rare": the
+	// design document's older list is superseded, which is issue #30.
+	CHECK_TABLE(FCataclysmEnemyRarityRow,       "EnemyRarities.csv",           6)
 
 	#undef CHECK_TABLE
 
@@ -265,7 +275,9 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
 		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },
 		{ TEXT("DT_EnchantmentsPositive"),  TEXT("EnchantmentsPositive.csv") },
+		{ TEXT("DT_EnemyArchetypes"),       TEXT("EnemyArchetypes.csv") },
 		{ TEXT("DT_EnemyModifiers"),        TEXT("EnemyModifiers.csv") },
+		{ TEXT("DT_EnemyRarities"),         TEXT("EnemyRarities.csv") },
 		{ TEXT("DT_Gems"),                  TEXT("Gems.csv") },
 		{ TEXT("DT_ItemBases"),             TEXT("ItemBases.csv") },
 		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },
