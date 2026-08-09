@@ -32,6 +32,13 @@ identical bytes. The guarantee comes instead from the automation test
 Cataclysm.Data.EveryGeneratedTableHasAnAsset, which loads every asset and
 compares its contents against the CSV it came from.
 
+IT ONLY REBUILDS WHAT MOVED, as of issue #444. A table whose CSV hashes to what
+the record says it was built from, and whose asset is present, is left alone.
+Rebuilding all fourteen whatever changed left a reviewer thirteen modified
+binary files with no content change and no way to tell which one carried the
+change. Set the environment variable named by `REBUILD_ALL_VARIABLE` in
+`tools/datatable_freshness.py` to rebuild every asset regardless.
+
 AND A RECORD OF WHAT EACH ASSET WAS BUILT FROM, written at the end of a
 successful run. See RECORD_FILE. That automation test is correct and complete
 and needs the engine to run, so nothing on a pull request runs it: continuous
@@ -43,8 +50,20 @@ part of it a Python test can check.
 import hashlib
 import json
 import os
+import sys
 
 import unreal
+
+# THIS FILE'S OWN FOLDER, so `datatable_freshness` can be imported. The editor's
+# Python interpreter runs this script by path and does not put its directory on
+# the module search path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from datatable_freshness import (  # noqa: E402
+    REBUILD_ALL_VARIABLE,
+    needs_rebuilding,
+    rebuild_everything,
+)
 
 # --- what to build ----------------------------------------------------------
 
@@ -216,19 +235,85 @@ def write_record(rows_by_asset):
     log("wrote {}".format(path))
 
 
+def read_record():
+    """What the last successful run recorded, as {asset: entry}, or empty.
+
+    A missing, unreadable or malformed record is not an error: it means nothing
+    is known about what the assets were built from, and everything is rebuilt.
+    """
+    path = os.path.join(csv_dir(), RECORD_FILE)
+    if not os.path.isfile(path):
+        return {}
+
+    try:
+        with open(path) as handle:
+            record = json.load(handle)
+        return {entry["asset"]: entry for entry in record.get("tables", [])}
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        log("could not read {}, so every asset will be rebuilt: {}"
+            .format(RECORD_FILE, error))
+        return {}
+
+
 def main():
+    """Rebuild the assets whose CSV moved, and leave the rest alone.
+
+    WHY NOT ALL OF THEM EVERY TIME, which is what this did until issue #444. A
+    .uasset is binary and tracked with git LFS, so a pull request cannot show a
+    diff of one. Rebuilding fourteen when one CSV changed left a reviewer
+    thirteen modified binary files with no content change and no way to tell
+    which one mattered.
+    """
+    force = rebuild_everything()
+    if force:
+        log("{} is set, so every asset will be rebuilt."
+            .format(REBUILD_ALL_VARIABLE))
+
+    previous = read_record()
+
     total = 0
+    built = 0
+    skipped = 0
     rows_by_asset = {}
+
     for asset_name, csv_file, struct_name in TABLES:
+        entry = previous.get(asset_name) or {}
+        full = "{}/{}.{}".format(DATA_DIR, asset_name, asset_name)
+
+        # THE ROW COUNT HAS TO COME FROM SOMEWHERE FOR A SKIPPED TABLE, because
+        # the record holds one per asset and importing is what counts them. A
+        # record without one is a record this run cannot complete, so it is
+        # treated the same as no record at all.
+        recorded_rows = entry.get("rows")
+
+        rebuild, reason = needs_rebuilding(
+            current_digest=csv_digest(csv_file),
+            recorded_digest=entry.get("csv_sha256"),
+            asset_exists=editor_assets.does_asset_exist(full),
+            force=force or recorded_rows is None)
+
+        if not rebuild:
+            log("skipped {} -- {} ({} rows)"
+                .format(asset_name, reason, recorded_rows))
+            rows_by_asset[asset_name] = recorded_rows
+            total += recorded_rows
+            skipped += 1
+            continue
+
         full, rows = import_table(asset_name, csv_file, struct_name)
-        log("imported {} from {} with {} rows".format(full, csv_file, rows))
+        log("imported {} from {} with {} rows -- {}"
+            .format(full, csv_file, rows, reason))
         rows_by_asset[asset_name] = rows
         total += rows
+        built += 1
 
     editor_assets.save_directory(DATA_DIR, recursive=True)
     write_record(rows_by_asset)
-    log("wrote {} DataTable assets to {}, {} rows in total"
-        .format(len(TABLES), DATA_DIR, total))
+
+    # BOTH COUNTS, ALWAYS. "skipped 14" and "did nothing because it crashed"
+    # look identical unless the run says which it was.
+    log("rebuilt {} DataTable assets and left {} already current, {} rows in "
+        "total across {}".format(built, skipped, total, DATA_DIR))
     log("done")
 
 
