@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmMeshWidth.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -485,16 +486,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 {
-	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-									   /*bInformEngineOfWorld=*/false);
+	using namespace CataclysmProjectileBodyTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
 	{
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	FURL URL;
-	World->InitializeActorsForPlay(URL);
-	World->BeginPlay();
 
 	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
 		FVector::ZeroVector, FRotator::ZeroRotator);
@@ -502,6 +501,12 @@ bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 	{
 		return false;
 	}
+
+	// CALLED DIRECTLY RATHER THAN RELYING ON BeginPlay, without which there is
+	// no skeletal mesh and therefore no weapon_r bone, so the launch half of
+	// this test skipped itself. It did exactly that from the day it was written
+	// until 2026-08-09, on a machine that has the Paragon pack installed.
+	Brute->ResolveBody(/*bIncludeAnimation=*/false);
 
 	// THE ARC IS CHECKED WHETHER OR NOT THERE IS ART, because it is computed
 	// from the distance thrown and not from the skeleton.
@@ -529,12 +534,30 @@ bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 		return true;
 	}
 
+	// THE HAND BONE, WHEREVER THE POSE HAS PUT IT. An earlier version of this
+	// asserted the launch point was ABOVE the capsule centre, on the reasoning
+	// that the throw animation raises the arm overhead. That is true during the
+	// throw and false in the rest pose, where the arm hangs at the creature's
+	// side: measured 2026-08-09, weapon_r sits 9 cm BELOW the capsule centre
+	// with no animation playing. The claim worth making is pose-independent --
+	// the rock leaves the hand rather than the middle of the creature.
 	const FVector Hand = Brute->RockLaunchLocation();
+	const FVector Bone = Body->GetSocketLocation(
+		ACataclysmBruteCharacter::RockHoldBoneName);
+
 	TestTrue(FString::Printf(
-		TEXT("the rock leaves the hand, above the capsule centre "
-			 "(%.0f cm against %.0f)"),
-		Hand.Z, Brute->GetActorLocation().Z),
-		Hand.Z > Brute->GetActorLocation().Z);
+		TEXT("the rock leaves the hand bone (%.1f cm from it)"),
+		FVector::Dist(Hand, Bone)),
+		FVector::Dist(Hand, Bone) < 1.0f);
+
+	// AND IT IS NOT THE CAPSULE CENTRE, which is where it left from before
+	// issue #454 and what this whole change was about. Without this the
+	// assertion above would pass on a fallback that quietly returned the actor
+	// location, since that is what RockLaunchLocation does with no skeleton.
+	TestTrue(FString::Printf(
+		TEXT("and not the middle of the creature (%.1f cm from it)"),
+		FVector::Dist(Hand, Brute->GetActorLocation())),
+		FVector::Dist(Hand, Brute->GetActorLocation()) > 10.0f);
 
 	return true;
 }
@@ -629,6 +652,150 @@ bool FCataclysmArcingProjectileFliesAtItsSpeed::RunTest(const FString&)
 		TEXT("it travelled at about the speed it was given (%.0f cm/s against "
 			 "%.0f)"), Measured, Speed),
 		FMath::Abs(Measured - Speed) < Speed * 0.1);
+
+	return true;
+}
+
+/**
+ * The rock in the creature's hand is the same size as the one it throws.
+ *
+ * WHAT THIS GUARDS. Issue #453. The project owner reported the rock as huge.
+ * Measured with tools/measure_rock_sizes.py on 2026-08-09, SM_Rock_To_Hold is
+ * authored 206.6 x 180.9 x 512.2 cm. Nothing scaled the component in the
+ * creature's hand, so it drew at that authored size -- more than twice the width
+ * of the whole Brute, whose capsule is 96 cm across -- while the same asset in
+ * the air was scaled to 80 cm across by ACataclysmProjectile::SetBodyMesh.
+ *
+ * A comment in CataclysmBruteCharacter.cpp said the two "cannot become two
+ * different rocks". That was true of the ASSET and said nothing about the SIZE,
+ * which is exactly the kind of claim worth turning into a test.
+ *
+ * IT NEEDS THE ART. The Paragon packs are gitignored, so on a fresh clone there
+ * is no rock and nothing to measure. The test says which case it ran rather than
+ * passing quietly either way.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmHeldRockMatchesThrownRock,
+	"Cataclysm.Brute.TheRockInItsHandIsTheSizeOfTheRockItThrows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldRockMatchesThrownRock::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileBodyTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute"), Brute))
+	{
+		return false;
+	}
+
+	// CALLED DIRECTLY RATHER THAN RELYING ON BeginPlay. This is the trap
+	// Cataclysm.Brute.ItsThrowFliesTheRockRatherThanASphere already records
+	// having spent a run on: whether BeginPlay fires depends on how the world
+	// under test was built, and reading the result afterwards cannot tell "the
+	// art is missing" apart from "BeginPlay never ran". On its first run this
+	// test reported no rock on a machine that has the pack installed, and passed
+	// having compared nothing.
+	Brute->ResolveBody(/*bIncludeAnimation=*/false);
+
+	UStaticMeshComponent* Held = Brute->CarriedRock;
+	if (!TestNotNull(TEXT("it has a component for the rock it carries"), Held))
+	{
+		return false;
+	}
+
+	const UStaticMesh* Rock = RockOrNull();
+	if (!Rock)
+	{
+		AddInfo(TEXT("The Paragon Rampage pack is not installed, so there is no "
+					 "rock to measure and the size is not checked."));
+		TestNull(TEXT("and the Brute resolved no rock without the pack"),
+			Brute->RockMesh.Get());
+		return true;
+	}
+
+	if (!TestTrue(TEXT("the carried component is showing the pack's rock"),
+		Held->GetStaticMesh() == Rock))
+	{
+		return false;
+	}
+
+	// WHAT THE THROWN ONE WILL BE. ACataclysmProjectile::Fire gives a projectile
+	// that does not pierce its DefaultBodyRadiusCm, and the rock does not
+	// pierce, so this is the half-width it flies at.
+	const float ThrownRadiusCm = ACataclysmProjectile::DefaultBodyRadiusCm;
+
+	// WHAT THE HELD ONE IS. The component's scale applied to the mesh's own
+	// authored half-width, which is what the player sees.
+	const FVector Extent = Rock->GetBounds().BoxExtent;
+	const float AuthoredHalfWidth = FMath::Max(Extent.X, Extent.Y);
+	const float HeldRadiusCm =
+		AuthoredHalfWidth * Held->GetRelativeScale3D().X;
+
+	AddInfo(FString::Printf(
+		TEXT("The rock is authored %.1f cm across. In the hand it draws %.1f cm "
+			 "across; in the air it draws %.1f."),
+		AuthoredHalfWidth * 2.0f, HeldRadiusCm * 2.0f, ThrownRadiusCm * 2.0f));
+
+	TestTrue(FString::Printf(
+		TEXT("the held rock is the size of the thrown one (%.1f cm against "
+			 "%.1f)"), HeldRadiusCm * 2.0f, ThrownRadiusCm * 2.0f),
+		FMath::Abs(HeldRadiusCm - ThrownRadiusCm) < 1.0f);
+
+	// AND IT IS SMALLER THAN THE CREATURE HOLDING IT, which is the assertion
+	// that would have caught the original defect on its own. A rock wider than
+	// the whole Brute is wrong whatever the thrown one happens to be doing.
+	TestTrue(FString::Printf(
+		TEXT("and it is narrower than the creature (%.1f cm against %.1f)"),
+		HeldRadiusCm * 2.0f, ACataclysmBruteCharacter::BruteCapsuleRadius * 2.0f),
+		HeldRadiusCm < ACataclysmBruteCharacter::BruteCapsuleRadius);
+
+	return true;
+}
+
+/**
+ * The shared mesh-width helper refuses rather than dividing by nothing.
+ *
+ * Every caller applies what it returns as a uniform scale, so an answer of zero
+ * has to mean "leave it alone" and be returned for each way there is nothing to
+ * scale. Applying a zero would collapse the mesh instead of leaving it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmMeshWidthRefusesNothing,
+	"Cataclysm.Skills.TheMeshWidthHelperAnswersZeroWhenThereIsNothingToScale",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMeshWidthRefusesNothing::RunTest(const FString&)
+{
+	TestEqual(TEXT("a null mesh scales to nothing"),
+		CataclysmMeshWidth::ScaleFor(nullptr, 40.0f), 0.0f);
+
+	UStaticMesh* Sphere = Cast<UStaticMesh>(
+		FSoftObjectPath(TEXT("/Engine/BasicShapes/Sphere.Sphere")).TryLoad());
+	if (!Sphere)
+	{
+		AddError(TEXT("The engine's own sphere could not be loaded."));
+		return false;
+	}
+
+	TestEqual(TEXT("a radius of zero scales to nothing"),
+		CataclysmMeshWidth::ScaleFor(Sphere, 0.0f), 0.0f);
+	TestEqual(TEXT("and so does a negative one"),
+		CataclysmMeshWidth::ScaleFor(Sphere, -10.0f), 0.0f);
+
+	// THE ENGINE SPHERE IS 100 CM ACROSS, so a 40 cm radius is a scale of 0.8.
+	// A real answer as well as the refusals, or this test would pass on a helper
+	// that answered zero to everything.
+	TestTrue(TEXT("and a real mesh with a real radius scales to something"),
+		FMath::Abs(CataclysmMeshWidth::ScaleFor(Sphere, 40.0f) - 0.8f) < 0.01f);
 
 	return true;
 }
