@@ -4,6 +4,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -32,6 +33,83 @@ void ACataclysmGameMode::StartPlay()
 	// reviewable text rather than bytes inside L_Sandbox.umap.
 	SpawnTrainingDummies();
 	SpawnBrutes();
+	SpawnAbyssalWardens();
+}
+
+int32 ACataclysmGameMode::SpawnAbyssalWardens()
+{
+	UWorld* World = GetWorld();
+	if (!World || AbyssalWardenCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction
+	// SpawnBrutes makes. The player start sits at the height a default capsule
+	// needs, and this creature's is 34 cm taller than the base enemy's, so
+	// spawning at the same height buries its feet until the movement component
+	// pushes it out.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmAbyssalWardenCharacter::WardenCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < AbyssalWardenCount; ++Index)
+	{
+		// Spread around the same centre when there is more than one, and
+		// directly in front when there is one.
+		const float Angle = 2.0f * PI * static_cast<float>(Index)
+						  / static_cast<float>(FMath::Max(AbyssalWardenCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * AbyssalWardenDistanceCm,
+			FMath::Sin(Angle) * AbyssalWardenDistanceCm,
+			RiseCm);
+
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmAbyssalWardenCharacter* Warden =
+			World->SpawnActor<ACataclysmAbyssalWardenCharacter>(
+				ACataclysmAbyssalWardenCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Warden)
+		{
+			continue;
+		}
+
+		Warden->SetHealth(AbyssalWardenHealth);
+		Warden->SetAttackDamage(AbyssalWardenAttackDamage);
+
+		AbyssalWardens.Add(Warden);
+		++Spawned;
+	}
+
+	// THE LOG SAYS IT CANNOT CHASE, because that is the first thing anybody
+	// watching it will notice and it is designed rather than broken.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Abyssal Wardens %.0f cm from %s. Each has %.0f health, "
+			 "hits for %.0f every %.1f s, walks at %.0f cm/s and never runs. "
+			 "Its Molten Roar marks a %.0f cm ring every %.0f s. It has no "
+			 "charge and cannot close on a player who walks away: issue #491."),
+		Spawned, AbyssalWardenDistanceCm, *Centre.ToCompactString(),
+		AbyssalWardenHealth, AbyssalWardenAttackDamage,
+		ACataclysmAbyssalWardenCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmAbyssalWardenCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmAbyssalWardenCharacter::MoltenRoarRadiusCm,
+		ACataclysmAbyssalWardenCharacter::MoltenRoarCooldownSeconds);
+
+	return Spawned;
 }
 
 int32 ACataclysmGameMode::SpawnBrutes()

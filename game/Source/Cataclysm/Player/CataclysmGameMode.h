@@ -60,6 +60,24 @@ public:
 	TArray<TObjectPtr<class ACataclysmBruteCharacter>> Brutes;
 
 	/**
+	 * Puts Abyssal Wardens in the sandbox, on the same arrangement as the
+	 * Brutes and for the same reasons. Returns how many were placed.
+	 *
+	 * IT CANNOT CHASE, which changes what watching it is like. Its designed
+	 * movement speed is 2.8 metres per second and it has no chase speed at all,
+	 * against player classes at 3.5, 4.0 and 4.6, so a player who walks
+	 * backwards is never caught. Its charge, which is what the design gives it
+	 * to close with, cannot be executed by the current brain -- issue #491.
+	 * Stand still to see it fight.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnAbyssalWardens();
+
+	/** Every Abyssal Warden this game mode placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmAbyssalWardenCharacter>> AbyssalWardens;
+
+	/**
 	 * How many enemies to put in the level at the start of play.
 	 *
 	 * WHY THE GAME MODE SPAWNS THEM RATHER THAN THE LEVEL HOLDING THEM. Issue
@@ -157,4 +175,39 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float BruteAttackDamage = 35.0f;
+
+	/** How many Abyssal Wardens to place. Zero for none. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 AbyssalWardenCount = 1;
+
+	/**
+	 * How far from the player start each one is put.
+	 *
+	 * FURTHER OUT THAN THE BRUTES AT 1200, because this creature's Molten Roar
+	 * marks a ring 5.6 metres across and the two should not be standing inside
+	 * each other's telegraphs before the player has done anything.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float AbyssalWardenDistanceCm = 1800.0f;
+
+	/**
+	 * How much health each one has.
+	 *
+	 * SANDBOX SCAFFOLDING, NOT THE DESIGNED FIGURE, on exactly the reasoning
+	 * BruteHealth records: the training dummy's 5000 times this creature's
+	 * health_share of 3.50 from ARCHETYPES in sim/cataclysm_sim/enemy_stats.py.
+	 * The real figure comes from tier, floor and rarity through the enemy score
+	 * model, which has no port into the engine yet.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float AbyssalWardenHealth = 17500.0f;
+
+	/**
+	 * What one of its ordinary swings is worth. The dummy's 20 times its
+	 * damage_share of 1.90, on the same scaffolding reasoning.
+	 *
+	 * MOLTEN ROAR IS WORTH FOUR OF THESE, because the Ultimate slot is 400%.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float AbyssalWardenAttackDamage = 38.0f;
 };

@@ -119,12 +119,16 @@ by `git add` with no error and no warning. Guarded by
 
 ## What is not here yet
 
-- **One character has art. Everything else is an engine primitive.** The Brute
-  wears the Paragon Rampage model; the player, the summoned imp and the training
-  dummies are still primitive meshes from `/Engine/BasicShapes/`. The six free
+- **Two characters have art. Everything else is an engine primitive.** The Brute
+  wears the Paragon Rampage model and the Abyssal Warden wears GruxMolten from
+  the Paragon Grux pack; the player, the summoned imp and the training dummies
+  are still primitive meshes from `/Engine/BasicShapes/`. The six free
   Paragon packs that will play the seven vertical slice enemies are downloaded
-  into `Content/` but are excluded from git, so on a fresh clone the Brute falls
-  back to a primitive and says so in the log. Which pack plays which enemy, and
+  into `Content/` but are excluded from git, so on a fresh clone both fall back
+  to a primitive and say so in the log. **Only the Brute has an animation
+  Blueprint.** The Abyssal Warden plays single clips instead, so its swing and
+  its roar are visible but its walk does not blend and it slides rather than
+  steps. Which pack plays which enemy, and
   the animation durations measured from them, are in
   [`docs/enemy-source-assets.md`](docs/enemy-source-assets.md). There are still
   no authored materials, particle systems or sounds, and the asset and animation
