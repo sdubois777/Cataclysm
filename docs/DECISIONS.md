@@ -20,6 +20,123 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — An enemy's attack animation is played to fit its designed attack interval
+
+**Affects:** `game/docs/enemy-source-assets.md`, and the Corrupted Sentinel's row
+in its timing table. Applied. Closes #369. It changes no number in
+`sim/cataclysm_sim/enemy_stats.py` and no table in `docs/Cataclysm_GDD_v2.md`,
+which is part of the argument for it.
+
+### The question
+
+The Corrupted Sentinel is played by the siege lane minion from the Paragon
+Minions pack. Its only rooted firing animations, `Fire_Planted` and
+`Fire_Planted_B`, are **2.40 seconds**, and its designed attack interval is
+**2.0 seconds**. Its unrooted alternatives are 2.80, which is worse. There is
+nothing shorter in the pack. Re-measured 2026-08-09 with
+`tools/probe_sentinel_animation.py`, which reads each clip's play length inside
+the editor; every figure matched what was written on 2026-08-07.
+
+#369 set out three ways out and asked which:
+
+| Option | What it costs |
+|---|---|
+| Play the clip at 1.20 | A judgement about how a slow, heavy unit reads sped up |
+| Cut the clip | Art work, and the release moment has not been measured for any enemy |
+| Lengthen the interval to 2.4 s | Damage per second falls by 2.0 ÷ 2.4, so the damage share has to be re-derived, and the largest telegraph the creature may draw rises from 2.1 m to 2.8 m |
+
+### What the genre does, and it is nearly unanimous
+
+**Path of Exile makes the animation follow the rate.** Its action speed stat is
+described as the rate at which a character's animations play, and it is what
+changes how fast attacking, casting and moving actually happen. Attack speed and
+animation playback are one knob, not two that have to be reconciled.
+
+**Diablo IV does the same, and states the arithmetic.** An attack's baseline
+duration is a frame count, and the game divides that count by the effective
+attack speed multiplier to get the duration actually played. The animation is
+derived from the rate.
+
+**Diablo II is the counter-example, and it is the older one.** Monster attack
+animation speed is not in `MonStats.txt` at all — movement speed is, but the
+attack's pace lives in `animdata.d2` as frames per direction, so a monster's
+attack duration is whatever its animation was authored at. There the rate is
+derived from the animation.
+
+So two of the three derive the animation from the designed rate and the third,
+from 2000, derives the rate from the animation. **Modern practice is the first.**
+
+**On how far a clip may be sped up before it reads wrong**, the useful figure
+found was a developer's report that around 150% still looks fine, 200% starts to
+read as haste, and 250% and above looks ridiculous. 1.20 is 120%.
+
+Sources: [Path of Exile Wiki, Action speed](https://pathofexile.fandom.com/wiki/Action_speed);
+[Diablo 4 attack speed frame caps and breakpoints](https://diablodamagecalculator.com/attack-speed-frame-caps-dual-wielding-breakpoints-math.html);
+[Attack Speed Mechanics in Diablo 4, Maxroll](https://maxroll.gg/d4/resources/attack-speed-mechanics);
+[The Phrozen Keep, how to increase monster attack speed in Diablo II](https://d2mods.info/forum/viewtopic.php?t=9434);
+[Frames and Animations in Diablo II](https://www.mannm.org/d2library/faqtoids/frames_eng.html);
+[Hive Workshop, attack animation speed](https://www.hiveworkshop.com/threads/attack-animation-speed.290765/).
+
+### What was decided
+
+**The attack interval is the designed number. The animation is played to fit it**,
+at `clip length ÷ attack interval`, and never slowed down to fill a gap. For the
+Corrupted Sentinel that is 2.40 ÷ 2.00 = **1.20**.
+
+**This is not a new rule. It is the rule the project already has, written down.**
+`ACataclysmBruteCharacter::PlayOneShot` and `MontageRateFor` both compute
+`FMath::Clamp(FMath::Max(1.0f, Length / Hold), MinimumPlayRate, MaximumPlayRate)`.
+The Brute already plays its walk at 1.11, its chase at 1.43 and its rip-and-throw
+montage at 1.67. A rate of 1.20 on the Sentinel is the gentlest scaling anything
+in this project does, and the only reason the question arose at all is that the
+Sentinel has no C++ class yet for the existing rule to have been applied by.
+
+**The ceiling is `MaximumPlayRate`, 2.50.** That is a hard bound rather than an
+aesthetic one, and it is why the rule can still fail a creature: both functions
+clamp to it, so a clip needing more than 2.50 is played at 2.50 and still
+overruns its interval. The header's own words for it are that above this it reads
+as a blur, and the genre figure above agrees that somewhere past 200% is where a
+sped-up clip stops reading correctly.
+
+### Why not lengthen the interval, which is the honest-to-the-asset option
+
+**Because the asset is placeholder art and the interval is design.** The decision
+of 2026-08-06 casts all seven vertical slice enemies from free Paragon packs,
+which are stand-ins for models this project does not yet have.
+`sim/cataclysm_sim/enemy_stats.py` says in terms that the archetype supplies the
+profile — attack interval, criticals, movement, resistances — and that those are
+set on the enemy's own terms. Letting a free placeholder clip move a design figure
+is the wrong direction, and it would have to be moved back when the real art
+arrives.
+
+**And it would have moved four other things.** The damage share would need
+re-deriving by 2.0 ÷ 2.4 to keep the creature's contribution the same; the
+largest radius it may telegraph would rise from 2.1 m to 2.8 m, which is a
+different enemy to fight; the telegraph table in section X of
+`docs/Cataclysm_GDD_v2.md` would change; and #352, which designs this creature's
+abilities, would have to be designed against the new figure. The play rate moves
+none of them.
+
+### What this does not settle, and it is the next thing
+
+**Where the shot leaves the barrel inside `Fire_Planted` is unmeasured**, so
+nothing yet lines the release up with the end of the telegraph's wind-up. The
+Brute needed exactly this and it was measured rather than guessed:
+`tools/measure_animation_impact.py` found its throw releasing at 0.539 s into a
+0.87 s clip. Issue #478 is the Sentinel's.
+
+**At 1.20 there is no gap between one shot and the next.** 2.40 ÷ 1.20 is exactly
+2.00, so the clip ends as the next begins. Two rooted firing clips exist and
+alternating them is what stops that reading as one clip looping.
+
+**This has not been watched.** #369 was labelled `needs-operator` on the grounds
+that nobody had seen the creature sped up, and that is still true — there is no
+Corrupted Sentinel in the project to watch. The decision is reversible and costs
+one constant when the class is built. If it reads wrong in play, cutting the clip
+is the option to take next, and #478 is its prerequisite either way.
+
+---
+
 ## 2026-08-09 — A lob's arc is a fraction of the distance thrown, not a fixed flight time
 
 **Affects:** `ACataclysmBruteCharacter`, the Rip and Toss row in

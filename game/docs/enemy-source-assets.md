@@ -90,15 +90,51 @@ Attack intervals come from `ARCHETYPES` in `sim/cataclysm_sim/enemy_stats.py`,
 the file defining each enemy archetype's combat statistics. An enemy that attacks
 every 0.9 seconds needs its whole attack to finish inside 0.9 seconds.
 
-| Enemy | Interval | Shortest usable attack | Length | Verdict |
-|---|:-:|---|:-:|---|
-| Imp | 0.9 s | `Attack_A_SetA` | 0.80 s | Passes |
-| Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | Passes |
-| Brute | 1.2 s | `Attack_Melee_A` | 0.97 s | Passes, by 0.23 s |
-| Corrupted Sentinel | 2.0 s | `Fire_Planted` | 2.40 s | **Fails.** See #369 |
-| Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | Passes |
-| Succubus | 2.6 s | `Primary_Attack_Normal` | 0.90 s | Passes |
-| Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | Passes |
+**The interval is the designed number and the animation is played to fit it**,
+not the other way round. A clip longer than its interval is played faster, at
+`clip length ÷ attack interval`. A clip shorter than its interval is played at
+the speed it was authored at and the creature waits out the remainder; it is
+never slowed down to fill the gap. That is not a rule invented for this table —
+`ACataclysmBruteCharacter::PlayOneShot` and `MontageRateFor` already compute
+exactly `FMath::Clamp(FMath::Max(1.0f, Length / Hold), MinimumPlayRate,
+MaximumPlayRate)`. Issue #369 settled that it is the rule for every enemy;
+`docs/DECISIONS.md` carries the reasoning and the shipped games it was checked
+against, under the 2026-08-09 heading "An enemy's attack animation is played to
+fit its designed attack interval".
+
+**The play rate has a ceiling of 2.50.** That is `MaximumPlayRate` in
+`game/Source/Cataclysm/Character/CataclysmBruteCharacter.h`, and it is a hard
+limit rather than an opinion about how fast a clip may look: the engine clamps to
+it, so a clip needing more than 2.50 is still longer than its interval after
+being sped up, and the creature starts an attack it has not finished.
+
+| Enemy | Interval | Shortest usable attack | Length | Play rate | Verdict |
+|---|:-:|---|:-:|:-:|---|
+| Imp | 0.9 s | `Attack_A_SetA` | 0.80 s | 1.00 | Passes as authored |
+| Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | 1.00 | Passes as authored |
+| Brute | 1.2 s | `Attack_Melee_A` | 0.97 s | 1.00 | Passes as authored, by 0.23 s |
+| Corrupted Sentinel | 2.0 s | `Fire_Planted` | 2.40 s | **1.20** | Passes, sped up |
+| Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | 1.00 | Passes as authored |
+| Succubus | 2.6 s | `Primary_Attack_Normal` | 0.90 s | 1.00 | Passes as authored |
+| Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | 1.00 | Passes as authored |
+
+**The Corrupted Sentinel is the only one of the seven that needs any compression,
+and 1.20 is the gentlest rate scaling in the project.** Its two rooted firing
+clips are both 2.40 seconds against a 2.0 second interval, and the pack has
+nothing shorter — its unrooted alternatives are 2.80. For comparison the Brute
+plays its walk at 1.11, its chase at 1.43 and its rip-and-throw montage at 1.67.
+
+**At 1.20 there is no gap between one shot and the next.** 2.40 ÷ 1.20 is exactly
+2.00, so the clip finishes as the next one starts. The pack ships two rooted
+firing clips, `Fire_Planted` and `Fire_Planted_B`, and alternating them is what
+stops continuous fire reading as one clip looping. The Brute's fifth of a second
+of gap is not a designed margin to match: its clip happens to be 1.0 seconds
+against a 1.2 second interval.
+
+**Where the shot leaves the barrel inside `Fire_Planted` has not been measured**,
+so nothing yet lines the release up with the end of the telegraph's wind-up. That
+is the same gap this document records for every enemy below, and for the Sentinel
+it is issue #478.
 
 **The clip the Brute actually plays is not the shortest one, and it is longer
 than this table's figure.** The column above records the shortest usable attack
@@ -277,20 +313,32 @@ attacks do not, and should not be used for the basic attack.
 
 Under `ParagonMinions/Characters/Minions/Down_Minions/Animations/Siege/`.
 
+**Re-measured 2026-08-09** with `tools/probe_sentinel_animation.py`, because
+issue #369 derives a play rate from these figures and a derived number is only as
+good as the measurement under it. Every length below was read again from the
+asset and every one matched what was written here on 2026-08-07, except
+`Idle_Planted`, which had no figure at all.
+
 | Animation | Length | Note |
 |---|:-:|---|
-| `PlantedIntro` | 0.63 | Roots itself in place |
-| `Idle_Planted` | — | Looping rooted idle |
-| `Fire_Planted` | 2.40 | Rooted attack. Too slow for a 2.0 s interval |
-| `Fire_Planted_B` | 2.40 | Second rooted attack |
+| `Idle_Planted` | 0.03 | Rooted idle. **A single pose, not a loop** — one frame at 30 fps, the same shape as Rampage's `Ability_GroundSmash_Loop` |
 | `PlantedExit` | 0.50 | Unroots |
-| `Fire_A`, `Fire_B`, `Fire_C` | 2.80 | Unrooted, slower still |
+| `PlantedIntro` | 0.63 | Roots itself in place |
+| `Fire_Planted` | 2.40 | Rooted attack. Played at **1.20** to fit the 2.0 s interval. #369 |
+| `Fire_Planted_B` | 2.40 | Second rooted attack. Same length, so the same 1.20 |
 | `MeleeAttack_A` | 2.40 | Close-range fallback |
+| `Fire_A`, `Fire_B`, `Fire_C` | 2.80 | Unrooted, slower still. Would need 1.40 |
 
 It also carries `HitReact_Front_Planted`, `HitReact_Back_Planted`,
-`HitReact_Left_Planted` and `HitReact_Right_Planted`, so it can take hits without
-leaving the rooted state. This is the only Paragon character that roots itself to
-attack.
+`HitReact_Left_Planted` and `HitReact_Right_Planted`, **0.80 seconds each**, so it
+can take hits without leaving the rooted state. This is the only Paragon character
+that roots itself to attack.
+
+**The rooted idle being one frame is what makes the rooted state cheap to hold.**
+A telegraph needs a wind-up that can be held open for a variable time, and a
+single pose does that with no seam. Rampage's 0.03 second
+`Ability_GroundSmash_Loop` exists for the same purpose and the Brute's C++ notes
+say so.
 
 ### The Brute — Rampage
 
