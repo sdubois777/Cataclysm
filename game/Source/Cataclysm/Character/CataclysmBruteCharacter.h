@@ -230,24 +230,47 @@ public:
 	TObjectPtr<class UStaticMesh> RockMesh;
 
 	/**
-	 * The bone the carried rock hangs from.
+	 * The bone the carried rock hangs from, and the bone the thrown rock leaves.
 	 *
-	 * MEASURED OUT OF THE ASSET, NOT GUESSED, AND THE ANSWER IS A BONE RATHER
-	 * THAN A SOCKET. `tools/probe_brute_animation.py`-style reads on 2026-08-08
-	 * found that the Rampage mesh has NO sockets at all: `find_socket` answers
-	 * null for every name tried, including this one. So the rock attaches to a
-	 * bone.
+	 * A BONE RATHER THAN A SOCKET. Read out of the asset on 2026-08-08: the
+	 * Rampage mesh has NO sockets at all, `find_socket` answers null for every
+	 * name tried. So the rock attaches to a bone.
 	 *
-	 * WHY THIS BONE AND NOT `hand_r`. `weapon_r` is the rig's prop bone and it
-	 * is animated for exactly this purpose. Standing in `Idle_Biped` it sits 1.8
-	 * cm from `hand_r`, parked at the hand. Through the Rip and Toss clips the
-	 * two separate by 40 to 110 cm, because the animator is moving the prop
-	 * rather than the hand -- at the top of the throw's arc `hand_r` is at
-	 * (-60.5, 81.4, 209.6) and `weapon_r` is at (-45.2, 190.8, 211.1).
+	 * IT IS `hand_r`, AND IT WAS `weapon_r` UNTIL ISSUE #470. That was wrong in
+	 * a way that only shows up in motion, which is why it survived four issues.
+	 * `weapon_r` is the rig's PROP bone, and through these clips the animator is
+	 * driving it as THE ROCK rather than as the hand: it sits at ground level
+	 * during `Ability_RipNToss_Rip`, which is the rock being torn out of the
+	 * floor, and during `Ability_RipNToss_Toss` it is flung away from the
+	 * creature along the throw's own path.
 	 *
-	 * THAT IS WHY THE ROCK NEEDS NO OFFSET AND NO SCALE. Where it sits is
-	 * authored in the animation. Issue #421 expected this to be a judgement
-	 * somebody had to make by eye; the measurement removed it.
+	 * MEASURED, by `tools/measure_rock_launch_point.py` on 2026-08-09. Through
+	 * the toss clip `hand_r` never gets further than 255 cm from the creature's
+	 * root and `weapon_r` reaches 1253 cm. At the release, which
+	 * `RockThrowStrikeIntoReleaseSeconds` puts 0.539 seconds into that clip,
+	 * they are about 620 cm apart:
+	 *
+	 *     hand_r      0.89 m in front of the creature, 2.38 m above its feet
+	 *     weapon_r    6.68 m in front,                 4.55 m above
+	 *
+	 * The mesh is yawed -90 degrees, so its local +Y is the creature's forward;
+	 * see the rotation set in ResolveBody.
+	 *
+	 * WHAT THAT CAUSED. The rock was spawned nearly seven metres in front of the
+	 * Brute and then flew back to where the player was standing, which at close
+	 * range is behind them. The project owner reported it as the rock shooting
+	 * way behind them and then redirecting back. The rock in the HAND was on the
+	 * same bone, so it visibly streaked away before the throw as well.
+	 *
+	 * AN EARLIER MEASUREMENT SAID 40 TO 110 CM AND WAS NOT WRONG, ONLY EARLY. It
+	 * sampled the top of the hand's arc at 0.433 seconds. The two bones do
+	 * separate by about 110 cm there. They keep separating for another fifth of
+	 * a second, and the release is after that.
+	 *
+	 * `hand_r` WORKS FOR BOTH HALVES OF THE ANIMATION. It reaches the floor
+	 * during the rip -- 2.9 cm above the root at 0.264 seconds -- so the rock
+	 * still reads as being torn out of the ground, and it stays with the body
+	 * through the throw.
 	 */
 	static const FName RockHoldBoneName;
 

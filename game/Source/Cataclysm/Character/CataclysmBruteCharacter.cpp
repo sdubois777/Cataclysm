@@ -42,9 +42,14 @@ const TCHAR* ACataclysmBruteCharacter::RockCraterMeshPath =
 const FName ACataclysmBruteCharacter::AttackSlotName = TEXT("DefaultSlot");
 
 // A BONE, NOT A SOCKET. The Rampage mesh has no sockets at all -- find_socket
-// answers null for every name -- and weapon_r is the rig's prop bone, animated
-// through the Rip and Toss clips for exactly this. See the header.
-const FName ACataclysmBruteCharacter::RockHoldBoneName = TEXT("weapon_r");
+// answers null for every name -- so the rock hangs off a bone.
+//
+// THE HAND, NOT THE PROP BONE. This was weapon_r until issue #470. The animator
+// drives weapon_r as the ROCK rather than as the hand, and during the throw
+// flings it up to 1253 cm from the creature, so a rock launched from it left
+// nearly seven metres in front of the Brute. Measured by
+// tools/measure_rock_launch_point.py. See the header for the figures.
+const FName ACataclysmBruteCharacter::RockHoldBoneName = TEXT("hand_r");
 
 // THE TWO ABILITY MONTAGES LIVE BESIDE THE ANIMATION BLUEPRINT, NOT IN THE
 // PARAGON FOLDER. They are this project's own assets, built by

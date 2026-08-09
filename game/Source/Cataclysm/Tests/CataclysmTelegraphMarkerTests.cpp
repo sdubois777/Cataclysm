@@ -419,6 +419,140 @@ bool FCataclysmBruteMarksItsThrowWhereItLands::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * What the attack is aimed at is the point the marker is drawn at, height and all.
+ *
+ * WHAT THIS GUARDS. Issue #471. `WindUpAimedAt` is used twice: the marker is drawn
+ * at it, and it is handed to the pawn as the point to aim at. It used to be the
+ * target's `GetActorLocation()`, which for a character is the CAPSULE CENTRE --
+ * 96 cm above the floor for the player. Each marker then flattened it to the
+ * floor for its own drawing, and nothing flattened it for the attack. The Brute's
+ * lobbed rock therefore ended its flight about a metre above the circle that had
+ * been drawn for it, which breaks the rule `docs/DECISIONS.md` states: a
+ * telegraphed attack that marks a place must arrive at that place.
+ *
+ * WHY THE HEIGHT IS CHECKED AGAINST THE CREATURE'S FEET AND NOT AGAINST ZERO.
+ * Both characters are spawned at the world origin's height and pushed apart by
+ * their own capsules, so the floor in this world is wherever the Brute's feet
+ * are. Comparing against zero would pass for the wrong reason.
+ *
+ * AND WHY IT ALSO CHECKS WHAT IT IS NOT. A test that only asserted "the aim point
+ * is at the feet" would pass on a version that aimed at the CREATURE rather than
+ * the target. The second half asserts it is horizontally at the target, so both
+ * halves have to hold.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTheAimPointIsOnTheFloorItMarks,
+	"Cataclysm.Telegraph.WhatIsAimedAtIsWhereTheMarkerIsDrawn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheAimPointIsOnTheFloorItMarks::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute"), Brute))
+	{
+		return false;
+	}
+
+	// Outside the stomp's ring and inside the throw's range, so the lobbed rock
+	// is the ability that gets chosen and the marker is a circle.
+	const float Distance = 7.0f * M;
+	ACataclysmEnemyCharacter* Target =
+		SpawnTarget(World, FVector(Distance, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("something for it to attack"), Target))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Brute->GetController());
+	if (!TestNotNull(TEXT("the Brute has a controller"), Brain))
+	{
+		return false;
+	}
+
+	Brain->Think();
+
+	if (!TestEqual(TEXT("it starts winding up the rock throw"),
+		Brain->WindingUpAbility,
+		static_cast<int32>(ACataclysmBruteCharacter::RockThrowAbility)))
+	{
+		return false;
+	}
+
+	const UCapsuleComponent* BruteCapsule = Brute->GetCapsuleComponent();
+	const UCapsuleComponent* TargetCapsule = Target->GetCapsuleComponent();
+	if (!TestNotNull(TEXT("the Brute has a capsule"), BruteCapsule)
+		|| !TestNotNull(TEXT("the target has a capsule"), TargetCapsule))
+	{
+		return false;
+	}
+
+	// DOUBLE, NOT FLOAT. FVector components are double in Unreal 5 and mixing
+	// the two makes TestEqual an ambiguous overload.
+	const double FloorZ = Brute->GetActorLocation().Z
+		- static_cast<double>(BruteCapsule->GetScaledCapsuleHalfHeight());
+	const double TargetCentreZ = Target->GetActorLocation().Z;
+
+	// THE CHECK IS ONLY WORTH ANYTHING IF THE TWO HEIGHTS DIFFER. A target whose
+	// capsule centre happened to sit on the floor would satisfy everything below
+	// without the flattening existing at all.
+	if (!TestTrue(FString::Printf(
+			TEXT("the target's centre is above the floor, so there is something "
+				 "to get wrong (%.0f cm against %.0f)"), TargetCentreZ, FloorZ),
+			TargetCentreZ - FloorZ > 10.0))
+	{
+		return false;
+	}
+
+	TestTrue(FString::Printf(
+		TEXT("what it aims at is on the floor (%.1f cm against %.1f)"),
+		Brain->WindUpAimedAt.Z, FloorZ),
+		FMath::Abs(Brain->WindUpAimedAt.Z - FloorZ) < 1.0);
+
+	TestTrue(FString::Printf(
+		TEXT("and not at the target's capsule centre (%.1f cm against %.1f)"),
+		Brain->WindUpAimedAt.Z, TargetCentreZ),
+		FMath::Abs(Brain->WindUpAimedAt.Z - TargetCentreZ) > 10.0);
+
+	// AND IT IS STILL THE TARGET'S PLACE. Flattening the height must not have
+	// moved the point sideways onto the creature.
+	const float ToTarget = FVector::Dist2D(
+		Brain->WindUpAimedAt, Target->GetActorLocation());
+	TestTrue(FString::Printf(
+		TEXT("and it is still where the target is standing (%.0f cm from it)"),
+		ToTarget),
+		ToTarget < 100.0f);
+
+	// THE MARKER AGREES, WHICH IS THE WHOLE POINT. The rock is aimed at
+	// WindUpAimedAt and the circle is drawn at it, so if the two ever differ
+	// again the attack stops arriving where it was advertised.
+	ACataclysmTelegraphMarker* Marker = OnlyMarker(World);
+	if (!TestNotNull(TEXT("a marker appears"), Marker))
+	{
+		return false;
+	}
+
+	const double MarkerToAim =
+		FVector::Dist(Marker->GetActorLocation(), Brain->WindUpAimedAt);
+	TestTrue(FString::Printf(
+		TEXT("the marker is drawn at the point the attack is aimed at "
+			 "(%.1f cm apart, in all three axes)"), MarkerToAim),
+		MarkerToAim < 1.0);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmAnInterruptedWindUpTakesItsMarkerWithIt,
 	"Cataclysm.Telegraph.AnInterruptedWindUpTakesItsMarkerWithIt",

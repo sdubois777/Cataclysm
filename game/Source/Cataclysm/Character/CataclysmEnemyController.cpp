@@ -393,6 +393,33 @@ void ACataclysmEnemyController::FaceTravelDirection(
 	}
 }
 
+FVector ACataclysmEnemyController::FloorUnder(
+	const ACataclysmCharacterBase* Driven, const FVector& Point)
+{
+	// AN ACTOR'S LOCATION IS ITS CAPSULE CENTRE, so dropping by the capsule's
+	// half height is what turns a point about a character into a point on the
+	// ground it is standing on.
+	//
+	// FROM THE CREATURE'S OWN CAPSULE, not the target's, because everything that
+	// uses this has to agree with everything else that uses it and the creature
+	// is the one constant. On a floor that is not level this is the creature's
+	// floor rather than the target's, which is the same assumption the markers
+	// have always made.
+	float HalfHeightCm = 0.0f;
+	if (Driven)
+	{
+		if (const UCapsuleComponent* Capsule = Driven->GetCapsuleComponent())
+		{
+			HalfHeightCm = Capsule->GetScaledCapsuleHalfHeight();
+		}
+	}
+
+	const float FloorZ = Driven
+		? Driven->GetActorLocation().Z - HalfHeightCm
+		: Point.Z;
+	return FVector(Point.X, Point.Y, FloorZ);
+}
+
 void ACataclysmEnemyController::ShowWindUpMarker(
 	ACataclysmCharacterBase* Driven, const FCataclysmEnemyAbility& Ability)
 {
@@ -410,12 +437,7 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 	// capsule centre, which for a Brute is 130 cm up. A marker drawn there
 	// floats at chest height and reads as a wall rather than as a patch of
 	// floor.
-	float FeetOffsetCm = 0.0f;
-	if (const UCapsuleComponent* Capsule = Driven->GetCapsuleComponent())
-	{
-		FeetOffsetCm = Capsule->GetScaledCapsuleHalfHeight();
-	}
-	const FVector Feet = Driven->GetActorLocation() - FVector(0.0f, 0.0f, FeetOffsetCm);
+	const FVector Feet = FloorUnder(Driven, Driven->GetActorLocation());
 
 	// THE MARKER LASTS AS LONG AS THE WIND-UP REALLY DOES, NOT AS LONG AS IT
 	// IS DESIGNED TO. An ability lands on a whole thinking pass, so a
@@ -445,21 +467,26 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 			// between here and there. Marking the lane would tell the player to
 			// leave ground on which nothing is going to happen, and a marker
 			// that is wrong once is a marker they stop reading. Issue #459.
+			//
+			// DRAWN AT THE AIM POINT ITSELF, NOT AT A FLATTENED COPY OF IT.
+			// Issue #471. This used to read the X and Y and substitute the
+			// creature's floor height, which was right for the marker and left
+			// the SHOT still aimed at the target's capsule centre, 96 cm up.
+			// The rock therefore finished its flight a metre above the circle
+			// this drew. WindUpAimedAt is now on the floor when it is captured,
+			// so there is one point rather than two that have to agree.
 			WindUpMarker = ACataclysmTelegraphMarker::ShowCircle(
-				Driven,
-				FVector(WindUpAimedAt.X, WindUpAimedAt.Y, Feet.Z),
-				Ability.MarkerRadiusCm, ShownForSeconds);
+				Driven, WindUpAimedAt, Ability.MarkerRadiusCm, ShownForSeconds);
 			return;
 		}
 
-		// FROM THE CREATURE TO WHERE IT AIMED. Flattened to the ground at the
-		// creature's feet at both ends, so the lane lies on the floor rather
-		// than tilting toward wherever the target's capsule centre happened to
-		// be.
+		// FROM THE CREATURE TO WHERE IT AIMED. Both ends lie on the ground at
+		// the creature's feet, so the lane lies on the floor rather than tilting
+		// toward wherever the target's capsule centre happened to be. The far
+		// end needs no flattening here since issue #471, because WindUpAimedAt
+		// is captured on the floor.
 		WindUpMarker = ACataclysmTelegraphMarker::ShowLine(
-			Driven, Feet,
-			FVector(WindUpAimedAt.X, WindUpAimedAt.Y, Feet.Z),
-			Ability.MarkerRadiusCm, ShownForSeconds);
+			Driven, Feet, WindUpAimedAt, Ability.MarkerRadiusCm, ShownForSeconds);
 		return;
 
 	default:
@@ -736,8 +763,16 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 		WindingUpAbility = Chosen;
 		WindUpLandsAt = Now + Abilities[Chosen].WindUpSeconds;
 		WindUpPassesLeft = PassesForWindUp(Abilities[Chosen].WindUpSeconds);
-		WindUpAimedAt = Target ? Target->GetActorLocation()
-							   : Driven->GetActorLocation();
+		// ON THE FLOOR, NOT AT THE TARGET'S MIDDLE. Issue #471. A character's
+		// actor location is its capsule centre, which for the player is 96 cm
+		// up, and this value is BOTH what the marker is drawn at and what the
+		// shot is aimed at. Left unflattened, every marker flattened it for
+		// itself and the shot did not, so the Brute's lobbed rock ended its
+		// flight a metre above the circle it had drawn. `docs/DECISIONS.md`
+		// records the rule it broke: a telegraphed attack that marks a place
+		// must arrive at that place.
+		WindUpAimedAt = FloorUnder(Driven, Target ? Target->GetActorLocation()
+												  : Driven->GetActorLocation());
 
 		// DRAWN BEFORE THE ANIMATION STARTS, AND AFTER WindUpAimedAt IS FIXED.
 		// After, because a lane marker runs to the point the shot was aimed at
@@ -752,11 +787,15 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 		return LastAction;
 	}
 
-	// No wind-up, so it lands at once.
+	// No wind-up, so it lands at once. Aimed at the floor for the same reason
+	// the telegraphed path is, issue #471: an aim point is a place on the
+	// ground, and an ability that reads it should not get a different answer
+	// depending on whether it was telegraphed.
 	AbilityLastUsedAt[Chosen] = Now;
 	Driven->UseEnemyAbility(Chosen, Target,
-							Target ? Target->GetActorLocation()
-								   : Driven->GetActorLocation());
+							FloorUnder(Driven,
+									   Target ? Target->GetActorLocation()
+											  : Driven->GetActorLocation()));
 	++AbilitiesUsed;
 
 	LastAction = ECataclysmBrainAction::Attacking;

@@ -549,6 +549,23 @@ private:
 	bool ContinueWindUp(ACataclysmCharacterBase* Driven);
 
 	/**
+	 * The same point, moved down to the floor the creature is standing on.
+	 *
+	 * WHY EVERYTHING GOES THROUGH ONE FUNCTION. Issue #471. A character's actor
+	 * location is its capsule centre -- 96 cm up for the player, 110 for a Brute
+	 * -- and an aim point is a place on the GROUND. Before this, each marker
+	 * flattened the aim point for itself and the thing the marker promised did
+	 * not, so the Brute's lobbed rock ended its flight a metre above the circle
+	 * that had been drawn for it. Two expressions that have to agree will stop
+	 * agreeing; one expression cannot.
+	 *
+	 * FROM THE CREATURE'S CAPSULE rather than the target's, because every caller
+	 * has to get the same answer and the creature is the one constant.
+	 */
+	static FVector FloorUnder(const ACataclysmCharacterBase* Driven,
+							  const FVector& Point);
+
+	/**
 	 * Draw the ground marker for an ability that is starting its wind-up.
 	 *
 	 * Does nothing for an ability whose shape has no marker, and nothing for one

@@ -344,20 +344,44 @@ mesh has **no sockets at all** -- `find_socket` answers null for every name
 tried, including `weapon_r`, `hand_r` and `RockSocket`. So a held prop attaches
 to a bone.
 
-**The bone is `weapon_r`, and it is animated for exactly this.** Standing in
-`Idle_Biped` it sits 1.8 cm from `hand_r`, parked at the hand. Through the Rip
-and Toss clips the two separate by 40 to 110 cm, because the animator is moving
-the prop rather than the hand:
+**The bone is `hand_r`. It was `weapon_r` until issue #470, and that was wrong.**
 
-| Clip | Moment | `hand_r` | `weapon_r` |
-|---|---|---|---|
-| `Idle_Biped` | start | (-90.5, -17.8, 69.3) | (-92.3, -18.0, 70.1) |
-| `Ability_RipNToss_Idle` | start | (-88.0, -77.1, 76.6) | (-67.7, -31.0, 40.5) |
-| `Ability_RipNToss_Toss` | half way | (-60.5, 81.4, 209.6) | (-45.2, 190.8, 211.1) |
+`weapon_r` is the rig's prop bone, and through these clips the animator drives it
+as **the rock itself** rather than as the hand. It sits at ground level during
+`Ability_RipNToss_Rip`, which is the rock being torn out of the floor, and during
+`Ability_RipNToss_Toss` it is flung away from the creature along the throw's own
+path. Measured by `tools/measure_rock_launch_point.py` on 2026-08-09 it reaches
+**1253 cm** from the creature's root. `hand_r` never exceeds **255 cm**.
 
-That is why the carried rock needs no offset and no scale: where it sits is
-authored in the animation. Issue #421 expected that to be a judgement somebody
-had to make by eye, and the measurement removed it.
+| Clip | Moment | `hand_r` | `weapon_r` | Apart |
+|---|---|---|---|---|
+| `Idle_Biped` | start | (-90.5, -17.8, 69.3) | (-92.3, -18.0, 70.1) | 1.8 cm |
+| `Ability_RipNToss_Idle` | start | (-88.0, -77.1, 76.6) | (-67.7, -31.0, 40.5) | 60 cm |
+| `Ability_RipNToss_Toss` | 0.433 s | (-60.5, 81.4, 209.6) | (-45.2, 190.8, 211.1) | 110 cm |
+| `Ability_RipNToss_Toss` | **0.539 s, the release** | (-16, 89, 238) | (27, 668, 455) | **620 cm** |
+| `Ability_RipNToss_Toss` | 0.607 s | (-11.8, 96.3, 217.8) | (157.0, 1151.8, 468.6) | 1098 cm |
+
+**The 0.433 second row is what misled this document.** It was the only sample
+taken through the toss, it was labelled "half way", and at that moment the two
+bones differ by about a metre, which reads as an ordinary prop offset. They keep
+separating for another fifth of a second, and
+`ACataclysmBruteCharacter::RockThrowStrikeIntoReleaseSeconds` puts the release at
+0.539 seconds, after that. Launching from `weapon_r` therefore put the rock
+**6.68 metres in front of the creature and 4.55 metres above its feet**, so a
+throw at anything nearer than about 6.6 metres travelled BACKWARDS towards its
+target. The rock held in the hand hangs off the same bone, so it was flung the
+same way and the player watched it go.
+
+Forward is +Y here, so the second number in each triple is the one that matters
+and the third is height above the feet.
+
+`hand_r` works for both halves of the animation. It reaches the floor during the
+rip -- 2.9 cm above the root at 0.264 seconds -- so the rock still reads as being
+torn out of the ground, and it stays with the body through the throw.
+
+The carried rock still needs no offset and no scale: where it sits is authored in
+the animation. Issue #421 expected that to be a judgement somebody had to make by
+eye, and the measurement removed it.
 
 **The skeleton also carries eleven `rock_spikes_*` bones.** They are body
 armour on the creature's arms, not the thrown rock, and nothing uses them.
