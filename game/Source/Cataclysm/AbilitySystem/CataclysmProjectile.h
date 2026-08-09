@@ -90,7 +90,8 @@ public:
 									  float InDamagePercent,
 									  const FGameplayTagContainer& InSkillTags,
 									  bool bInBurns,
-									  UStaticMesh* InBodyMesh = nullptr);
+									  UStaticMesh* InBodyMesh = nullptr,
+									  float InApexHeightCm = 0.0f);
 
 	/**
 	 * Swap what the flying object looks like, and size it to BodyRadiusCm.
@@ -198,6 +199,25 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	float RemainingRangeCm = 0.0f;
 
+	/**
+	 * How high above the straight line from launch to landing it rises, in
+	 * centimetres. **Zero means it does not arc at all**, which is what every
+	 * player skill passes and what this class did before issue #459.
+	 *
+	 * WHY OPT-IN RATHER THAN ALWAYS ON. All 398 rows of
+	 * `game/Data/WeaponSkills.csv` fire through this class. An arc applied to
+	 * every one of them would turn each fire bolt into a mortar, so a caller
+	 * that wants one asks for it, exactly as the Brute passes its own mesh
+	 * rather than the class knowing about rocks.
+	 *
+	 * AT THE MIDPOINT OF THE FLIGHT, not above the launch point. The path is
+	 * the straight line between the two ends plus a parabola that is zero at
+	 * both ends and this tall halfway along, which is the shape a thrown object
+	 * actually follows.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	float ApexHeightCm = 0.0f;
+
 	/** How many more enemies it may pass through. One that does not pierce is zero. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	int32 PiercesLeft = 0;
@@ -286,6 +306,29 @@ private:
 
 	/** Unit vector along the direction of travel, on the ground plane. */
 	FVector Direction = FVector::ForwardVector;
+
+	/**
+	 * The whole horizontal distance from launch to landing, in centimetres.
+	 *
+	 * Kept because `RemainingRangeCm` counts down and an arc needs to know how
+	 * far ALONG the flight it is, which is the one minus the other.
+	 */
+	float TotalRangeCm = 0.0f;
+
+	/** The height it was launched from and the height it lands at, in that order. */
+	float LaunchZ = 0.0f;
+	float LandingZ = 0.0f;
+
+	/**
+	 * Where an arcing projectile should be, given how far it has travelled
+	 * horizontally.
+	 *
+	 * Returns the height only. The horizontal part of the flight is unchanged
+	 * by arcing: the projectile covers the same ground at the same speed and
+	 * lands in the same place, it simply passes over rather than through what
+	 * is between.
+	 */
+	float ArcHeightAfter(float HorizontalTravelledCm) const;
 
 	/** Whether it turns round at the far end. */
 	bool bWillReturn = false;

@@ -76,6 +76,28 @@ struct FCataclysmEnemyAbility
 	ECataclysmSkillShape Shape = ECataclysmSkillShape::None;
 
 	/**
+	 * Whether it flies in an arc and lands where it was aimed, rather than
+	 * travelling flat and hitting whatever it passes on the way.
+	 *
+	 * IT CHANGES WHAT THE MARKER MEANS, which is why it is here rather than
+	 * only inside the ability's own code. A flat projectile is warned about
+	 * with a lane, because everything along the lane is in danger. One that
+	 * arcs passes over all of that and endangers only where it comes down, so
+	 * it is warned about with a circle there instead.
+	 *
+	 * Pairing a ground marker with a flat projectile is a known mistake rather
+	 * than a matter of taste. Issue #459, and the sources are recorded with the
+	 * decision in docs/DECISIONS.md.
+	 *
+	 * THE SHAPE STAYS Projectile EITHER WAY. A lob is still a projectile, and
+	 * `ACataclysmEnemyController::AbilityNeedsFacing` reads that shape to decide
+	 * whether the creature must be pointed at its target before it may begin,
+	 * which a lob must be exactly as a flat throw must.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	bool bArcsOntoItsTarget = false;
+
+	/**
 	 * How wide the marked area is, in centimetres. A radius for a Strike, the
 	 * projectile's own radius for a Projectile.
 	 *

@@ -20,6 +20,57 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — A telegraphed thrown attack arcs onto its marked circle
+
+**Affects:** the Brute's Rip and Toss in `sim/cataclysm_sim/enemy_abilities.py`,
+`ACataclysmProjectile`, and how every future telegraphed ranged enemy attack is
+shaped. Applied.
+
+**A ground marker and a flat projectile are two different promises, and pairing
+them is a known mistake.** The Brute's rock throw drew a lane on the floor and
+then fired a flat, fast projectile at where the player stood a second earlier.
+The marker said "this place, shortly", which the player answers by leaving, and
+the attack delivered "this line, now", which the player answers by not standing
+in front of it. Neither answer worked, and the project owner reported it from
+play as the rock going in seemingly random directions.
+
+**The rule.** A telegraphed enemy attack that marks a place must ARRIVE at that
+place. If it is marked with a circle on the ground, it is lobbed and lands there.
+If it travels flat and hits what it passes, it is marked with a lane and not a
+circle. The shape of the warning and the shape of the delivery have to agree.
+
+**Why the genre settles this rather than taste.** Diablo 4 pairs a ground circle
+specifically with a lobbed, delayed-arrival attack: Mephisto's fire comets are
+telegraphed with red circles showing where they will land seconds later, and
+Mother's Judgement marks the player's position with a circular marker before
+firing. The Game Developer article on enemy attacks and telegraphing names the
+mismatch directly, observing that when players are trained to avoid ground
+indicators but projectiles do not follow that visual language, the result reads
+as inconsistent and unfair.
+
+- https://skycoach.gg/blog/diablo-4/articles/mephisto-guide
+- https://www.sportskeeda.com/mmo/how-beat-mother-s-judgement-diablo-4
+- https://www.gamedeveloper.com/design/enemy-attacks-and-telegraphing
+
+**What it settles that was previously a defect.** The aim point is fixed when the
+wind-up begins and does not follow the player. Against a flat projectile that was
+simply a miss, because a player walking at 4 metres per second leaves a 2.1 metre
+blast within the 1 second wind-up. Against a lob onto a marked circle it is
+correct: the marker promises the ground and the rock honours it, and the second
+becomes the reaction window every ground telegraph in the genre gives.
+
+**What is a judgement rather than derived.** The apex is one quarter of the
+distance thrown, which is what a projectile launched at 45 degrees reaches, so
+the trajectory is real rather than invented. Whether it READS as a heavy creature
+heaving a boulder is not settled by physics and has not yet been judged by
+watching. `Cataclysm.Brute.RockArc` sets the fraction live for that purpose.
+
+**Not decided here.** Whether a lobbed attack should lead a moving target. It
+does not today, and with the marker now honest there is an argument that it
+should never need to.
+
+---
+
 ## 2026-08-09 — The Succubus enemy modifier is renamed Beguiling
 
 **Affects:** the Enemy Modifiers sheet of `All_Things_Cataclysm.xlsx`, and

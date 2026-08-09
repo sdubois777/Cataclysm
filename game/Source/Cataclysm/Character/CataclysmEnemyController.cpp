@@ -439,6 +439,19 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 		return;
 
 	case ECataclysmSkillShape::Projectile:
+		if (Ability.bArcsOntoItsTarget)
+		{
+			// WHERE IT COMES DOWN, because a lobbed shot passes over everything
+			// between here and there. Marking the lane would tell the player to
+			// leave ground on which nothing is going to happen, and a marker
+			// that is wrong once is a marker they stop reading. Issue #459.
+			WindUpMarker = ACataclysmTelegraphMarker::ShowCircle(
+				Driven,
+				FVector(WindUpAimedAt.X, WindUpAimedAt.Y, Feet.Z),
+				Ability.MarkerRadiusCm, ShownForSeconds);
+			return;
+		}
+
 		// FROM THE CREATURE TO WHERE IT AIMED. Flattened to the ground at the
 		// creature's feet at both ends, so the lane lies on the floor rather
 		// than tilting toward wherever the target's capsule centre happened to

@@ -121,7 +121,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	AActor* Instigator, const FVector& From, const FVector& To, float InRadiusCm,
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
 	const FGameplayTagContainer& InSkillTags, bool bInBurns,
-	UStaticMesh* InBodyMesh)
+	UStaticMesh* InBodyMesh, float InApexHeightCm)
 {
 	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
 	if (!World || InSpeed <= 0.0f || InRadiusCm <= 0.0f)
@@ -161,6 +161,20 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->RemainingRangeCm = RangeCm;
 	Projectile->bPierces = InPierce > 0;
 	Projectile->PiercesLeft = FMath::Max(0, InPierce);
+
+	// THE ARC, AND IT IS OFF UNLESS ASKED FOR. Issue #459. Direction above is
+	// already flattened, so a projectile with no apex flies exactly the path it
+	// flew before this existed and every player skill is untouched.
+	//
+	// THE TWO HEIGHTS ARE KEPT BECAUSE AN ARC HAS TO LAND SOMEWHERE. A straight
+	// shot ignores the height difference between where it was fired and what it
+	// was fired at, which is right for something travelling flat. One that
+	// arcs has to end at the height it was aimed at, or the Brute's rock would
+	// finish its parabola in the air at hand height.
+	Projectile->ApexHeightCm = FMath::Max(0.0f, InApexHeightCm);
+	Projectile->TotalRangeCm = RangeCm;
+	Projectile->LaunchZ = From.Z;
+	Projectile->LandingZ = InApexHeightCm > 0.0f ? To.Z : From.Z;
 
 	// A piercing skill's Radius is the half-width of the line it hits along, so
 	// for one of those the flying object IS that wide. One that does not pierce
@@ -213,7 +227,17 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 		const FVector Previous = GetActorLocation();
 		const float WantedCm = FMath::Min(SpeedCmPerSecond * ThisStep,
 										  RemainingRangeCm);
-		const FVector Wanted = Previous + Direction * WantedCm;
+		FVector Wanted = Previous + Direction * WantedCm;
+
+		// THE HEIGHT IS SET, NOT ADDED TO. Direction is flat, so the horizontal
+		// part of the step above is the whole of the travel and an arcing
+		// projectile's height is a function of how far along it is rather than
+		// of where it was last frame. Working from the previous height instead
+		// would accumulate every rounding error of the flight.
+		//
+		// ArcHeightAfter returns the launch height unchanged when nothing asked
+		// for an arc, so this line does nothing at all to a straight shot.
+		Wanted.Z = ArcHeightAfter(TotalRangeCm - RemainingRangeCm + WantedCm);
 
 		// WORLD GEOMETRY FIRST, and only then who was standing there. A wall
 		// between the caster and an enemy behind it has to stop the projectile
@@ -222,7 +246,18 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 		const FVector Reached = TraceStep(Previous, Wanted);
 
 		SetActorLocation(Reached);
-		RemainingRangeCm -= FVector::Dist(Previous, Reached);
+
+		// THE HORIZONTAL DISTANCE, NOT THE DISTANCE THROUGH THE AIR. The range
+		// a projectile is given is a distance across the ground -- the Brute's
+		// rock reaches ten metres, meaning ten metres away, not ten metres of
+		// flight. An arc is longer through the air than across the ground, so
+		// counting the flown distance would land it short by the difference.
+		//
+		// IT CHANGES NOTHING FOR A STRAIGHT SHOT, because Direction is flattened
+		// for every projectile, so its two distances are the same number.
+		// Cataclysm.Skills.AStraightProjectileStillTravelsItsWholeRange is what
+		// says so.
+		RemainingRangeCm -= FVector::Dist2D(Previous, Reached);
 
 		// Tracked as it goes, so that a projectile which turns round still
 		// knows how far out it got. That is what the burning ground it leaves
@@ -256,6 +291,28 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 	}
 
 	return !bFinished;
+}
+
+float ACataclysmProjectile::ArcHeightAfter(float HorizontalTravelledCm) const
+{
+	if (ApexHeightCm <= 0.0f || TotalRangeCm <= 0.0f)
+	{
+		// Not arcing. Whatever height it was fired at, it keeps, which is what
+		// this class did for every projectile before issue #459.
+		return LaunchZ;
+	}
+
+	const float Along = FMath::Clamp(HorizontalTravelledCm / TotalRangeCm,
+									 0.0f, 1.0f);
+
+	// THE STRAIGHT LINE BETWEEN THE TWO ENDS, PLUS A PARABOLA ON TOP OF IT.
+	// 4 * t * (1 - t) is zero at both ends and one in the middle, so the
+	// parabola adds nothing at the launch or the landing and the full apex
+	// halfway along. Splitting it this way is what lets the rock be thrown from
+	// a hand well above the ground and still finish at the height it was aimed
+	// at, rather than the arc being measured from one end.
+	const float Straight = FMath::Lerp(LaunchZ, LandingZ, Along);
+	return Straight + ApexHeightCm * 4.0f * Along * (1.0f - Along);
 }
 
 FVector ACataclysmProjectile::TraceStep(const FVector& From, const FVector& To)

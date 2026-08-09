@@ -110,6 +110,17 @@ static TAutoConsoleVariable<float> CVarBruteAttackInterval(
 		 "second cooldown rather than the attack interval."),
 	ECVF_Default);
 
+static TAutoConsoleVariable<float> CVarBruteRockArc(
+	TEXT("Cataclysm.Brute.RockArc"),
+	0.0f,
+	TEXT("How high the thrown rock rises above the straight line to where it "
+		 "lands, as a fraction of the distance thrown. 0 uses the designed "
+		 "0.25. That figure is what a projectile launched at 45 degrees "
+		 "reaches, so it is a real trajectory rather than a chosen one, but "
+		 "how it READS has to be judged by watching. Higher is a slower, "
+		 "loopier lob; below about 0.05 it is a flat throw again."),
+	ECVF_Default);
+
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 {
 	// TICKS, UNLIKE EVERY OTHER CHARACTER IN THIS PROJECT, for two reasons.
@@ -246,10 +257,16 @@ TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
 	RockThrow.CooldownSeconds = RockThrowCooldownSeconds;
 	RockThrow.WindUpSeconds = RockThrowWindUpSeconds;
 
-	// A LANE, NOT A CIRCLE, and it is the same width as the rock. UseEnemyAbility
-	// passes RockThrowRadiusCm to ACataclysmProjectile::Fire, so the ground
-	// marked is the ground the rock passes over. Issue #396.
+	// A CIRCLE WHERE IT LANDS, NOT A LANE ALONG THE WAY, because it is lobbed.
+	// The rock rises over everything between the creature and its target and
+	// endangers only the ground it comes down on, so a lane would mark ground
+	// nothing is going to happen on. Issue #459; it was a lane until then.
+	//
+	// The radius is the same constant UseEnemyAbility passes to
+	// ACataclysmProjectile::Fire, so the circle drawn is the blast that follows.
+	// Issue #396.
 	RockThrow.Shape = ECataclysmSkillShape::Projectile;
+	RockThrow.bArcsOntoItsTarget = true;
 	RockThrow.MarkerRadiusCm = RockThrowRadiusCm;
 
 	// ORDER IS PRIORITY. See the StompAbility enumeration in the header.
@@ -681,6 +698,39 @@ void ACataclysmBruteCharacter::UpdateAbilityMontage()
 	PlayAbilityMontage(Index);
 }
 
+FVector ACataclysmBruteCharacter::RockLaunchLocation() const
+{
+	// THE SAME BONE THE CARRIED ROCK HANGS FROM, so what is in the hand and
+	// what leaves it start from the same place. CarriedRock is attached to
+	// RockHoldBoneName in the constructor.
+	if (const USkeletalMeshComponent* Body = GetMesh())
+	{
+		if (Body->DoesSocketExist(RockHoldBoneName))
+		{
+			return Body->GetSocketLocation(RockHoldBoneName);
+		}
+	}
+
+	// WITHOUT THE PARAGON PACK THERE IS NO SKELETON AND NO BONE, which is the
+	// state on a fresh clone and in every test world. Falling back to the
+	// capsule centre is what this did before issue #454, so the throw still
+	// works and still arcs; it simply starts lower.
+	return GetActorLocation();
+}
+
+float ACataclysmBruteCharacter::RockThrowApexCmFor(const FVector& LandsAt) const
+{
+	const float Override = CVarBruteRockArc.GetValueOnAnyThread();
+	const float Fraction = Override > 0.0f ? Override : RockThrowApexFraction;
+
+	// A FRACTION OF THE DISTANCE THROWN, so a rock lobbed two metres is not
+	// given the same loop as one thrown ten. Measured across the ground rather
+	// than through the air, because that is what the fraction is a fraction of.
+	const float ThrownCm =
+		FVector::Dist2D(RockLaunchLocation(), LandsAt);
+	return Fraction * ThrownCm;
+}
+
 void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 											   const FVector& AimedAt)
 {
@@ -742,11 +792,23 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		// unwanted, which is issue #455. The projectile's OnFinished delegate is
 		// untouched and still reports where a shot stopped; nothing on the Brute
 		// binds to it any more.
+		//
+		// FROM THE HAND, NOT FROM THE MIDDLE OF THE CREATURE. Issue #454. It
+		// used to leave GetActorLocation(), which is the capsule centre and 110
+		// cm up, so the rock appeared at the creature's waist while the
+		// animation threw it overhead.
+		//
+		// AND IT ARCS, WHICH IS NOT SEPARABLE FROM THAT. Issue #459. Before
+		// this the projectile flattened every shot and flew level, so firing
+		// from a hand well above 250 cm would have sent the rock horizontally
+		// over the head of a player whose own is about 192. The launch point
+		// and the trajectory had to change together.
 		ACataclysmProjectile::Fire(
-			this, GetActorLocation(), AimedAt,
+			this, RockLaunchLocation(), AimedAt,
 			RockThrowRadiusCm, RockThrowSpeedCmPerSecond,
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
-			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh);
+			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh,
+			RockThrowApexCmFor(AimedAt));
 		return;
 	}
 }
