@@ -77,6 +77,30 @@ public:
 	bool IsCharging() const { return bCharging; }
 
 	/**
+	 * Stop a charge where it is.
+	 *
+	 * THE ONLY CALLER IS A STUN, and that is the decision rather than an
+	 * incidental capability. `ACataclysmEnemyController::Think` treats a stun as
+	 * outranking everything, including a committed wind-up, because the design
+	 * says a stunned target cannot act at all. A creature that kept travelling
+	 * while stunned would be acting.
+	 *
+	 * IT IS NOT WHAT "COMMITTED" MEANS. The design's commitment rule says a
+	 * charge runs its full distance whether or not the TARGET is still there --
+	 * it is what stops the attack tracking the player, and it is the reason a
+	 * miss costs the creature the walk back. It says nothing about the creature
+	 * being immune to crowd control, and reading it that way would make a charge
+	 * the one attack in the game that interrupting cannot answer.
+	 *
+	 * WHAT IT COSTS THE CREATURE: the charge is spent. `AbilityLastUsedAt` is
+	 * stamped when an ability LANDS, and a charge lands at the moment it sets
+	 * off, so a charge stopped half way is on cooldown. That is deliberately
+	 * harsher than an interrupted wind-up, which is not spent at all, because
+	 * this one did happen -- it simply did not finish.
+	 */
+	void CancelCharge();
+
+	/**
 	 * Move one frame's worth along the lane, and hit whatever that step passed.
 	 *
 	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD, which is the same

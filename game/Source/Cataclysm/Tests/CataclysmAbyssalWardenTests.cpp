@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
@@ -457,6 +458,214 @@ bool FCataclysmWardenChargeHitsAlongTheWayOnce::RunTest(const FString&)
 		Warden->ChargeTravelledCm, Warden_t::StampedeRangeCm, 1.0f);
 	TestTrue(TEXT("so it finished past its target, not at it"),
 		Warden->GetActorLocation().X > InTheLane->GetActorLocation().X);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenDoesNotTurnWhileCharging,
+	"Cataclysm.Warden.TheBrainDoesNothingWhileAChargeIsInFlight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenDoesNotTurnWhileCharging::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	// THE GAP THAT LET THIS SHIP. The three other charge tests call BeginCharge
+	// and AdvanceCharge directly and never call Think at all, so the brain was
+	// not in the picture and nothing noticed it was still steering. Issue #499.
+	// This one drives the brain WHILE a charge is running, which is the only
+	// arrangement that can see the defect.
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Warden->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("the Warden has no brain"));
+		return false;
+	}
+
+	// A TARGET OFF TO THE SIDE, WHICH IS WHAT MAKES THIS TEST ABLE TO FAIL. The
+	// charge runs down +X and the target stands on +Y, so a brain that turned to
+	// face it would swing the creature a long way off the lane. A target
+	// straight ahead would leave the yaw unchanged either way and the test could
+	// not tell a fixed facing from a re-aimed one.
+	ACataclysmEnemyCharacter* OffToTheSide =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(),
+			FVector(20000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!OffToTheSide)
+	{
+		AddError(TEXT("could not spawn something for the brain to notice"));
+		return false;
+	}
+	OffToTheSide->SetGenericTeamId(
+		UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	OffToTheSide->SetActorLocation(FVector(0.0f, 400.0f, 0.0f));
+
+	// Charging down +X, away from the target on +Y.
+	const FVector LaneEnd = FVector(Warden_t::StampedeRangeCm, 0.0f, 0.0f);
+	Warden->BeginCharge(LaneEnd, Warden_t::StampedeSpeedCmPerSecond,
+						Warden_t::StampedeRadiusCm,
+						Warden_t::StampedeDamagePercent);
+
+	const FRotator FacingAtStart = Warden->GetActorRotation();
+	const FVector WhereItStarted = Warden->GetActorLocation();
+
+	// THE BRAIN THINKS WHILE THE CHARGE RUNS, which is what really happens: the
+	// thinking timer keeps firing four times a second throughout.
+	for (int32 Pass = 0; Pass < 3 && Warden->IsCharging(); ++Pass)
+	{
+		const ECataclysmBrainAction Action = Brain->Think();
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("pass %d reports it is charging, not chasing or attacking"),
+				Pass),
+			static_cast<int32>(Action),
+			static_cast<int32>(ECataclysmBrainAction::Charging));
+
+		// A FEW FRAMES OF TRAVEL BETWEEN PASSES, so the charge is genuinely
+		// mid-flight when the next pass runs rather than finished.
+		for (int32 Frame = 0; Frame < 15; ++Frame)
+		{
+			Warden->AdvanceCharge(1.0f / 60.0f);
+		}
+	}
+
+	// THE CONTROL ROTATION IS WHAT THE DEFECT MOVED. FaceTarget writes it and
+	// the movement component turns the pawn toward it over the following frames,
+	// so on a world that is never ticked the pawn's own rotation would not have
+	// moved yet even with the defect present. Reading the controller's rotation
+	// is what makes this test able to fail.
+	const FRotator Ordered = Brain->GetControlRotation();
+	const float OrderedOffLane = FMath::Abs(FRotator::NormalizeAxis(Ordered.Yaw));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the brain did not re-aim the creature during the charge; it "
+				 "ordered a yaw of %.1f degrees off the lane"), OrderedOffLane),
+		OrderedOffLane < 1.0f);
+
+	TestEqual(TEXT("and the creature's own facing is unchanged"),
+		Warden->GetActorRotation().Yaw, FacingAtStart.Yaw, 0.5);
+
+	// IT DID TRAVEL, so the passes above were not simply a charge that never
+	// started.
+	TestTrue(TEXT("the charge moved the creature while the brain thought"),
+		Warden->GetActorLocation().X > WhereItStarted.X + 100.0f);
+
+	// AND IT STAYED ON THE LANE. A brain that ordered a walk toward the target
+	// would show up here even if the facing did not move.
+	TestEqual(TEXT("it did not drift toward the target off the lane"),
+		Warden->GetActorLocation().Y, WhereItStarted.Y, 1.0);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenChargeStopsWhenStunned,
+	"Cataclysm.Warden.AStunStopsAChargeInFlight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenChargeStopsWhenStunned::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	// A STUN OUTRANKS A CHARGE, which is the one thing that does. The design
+	// says a stunned creature cannot act at all, and one still travelling would
+	// be acting. Issue #499.
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Warden->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("the Warden has no brain"));
+		return false;
+	}
+
+	Warden->BeginCharge(FVector(Warden_t::StampedeRangeCm, 0.0f, 0.0f),
+						Warden_t::StampedeSpeedCmPerSecond,
+						Warden_t::StampedeRadiusCm,
+						Warden_t::StampedeDamagePercent);
+
+	// PART WAY DOWN THE LANE, so there is a charge to interrupt rather than one
+	// that had already finished.
+	for (int32 Frame = 0; Frame < 15; ++Frame)
+	{
+		Warden->AdvanceCharge(1.0f / 60.0f);
+	}
+
+	if (!TestTrue(TEXT("it is charging before the stun"), Warden->IsCharging()))
+	{
+		return false;
+	}
+
+	const FVector StoppedAt = Warden->GetActorLocation();
+
+	// A DESIGNED STUN, so it lands regardless of the damage threshold. What is
+	// under test is what a stun does to a charge, not whether a stun applies.
+	if (!TestTrue(TEXT("the stun landed"),
+			UCataclysmSkillEffects::ApplyStun(Warden, Warden, /*Duration=*/1.0f,
+											  /*DamageDealt=*/0.0f,
+											  /*bStunIsDesigned=*/true)))
+	{
+		return false;
+	}
+
+	const ECataclysmBrainAction Action = Brain->Think();
+
+	TestEqual(TEXT("the brain reports it is stunned, not charging"),
+		static_cast<int32>(Action),
+		static_cast<int32>(ECataclysmBrainAction::Stunned));
+
+	TestFalse(TEXT("and the charge has been cancelled"), Warden->IsCharging());
+
+	// IT STAYS WHERE IT STOPPED. Advancing again must move nothing, which is
+	// what proves the charge is really over rather than merely paused.
+	Warden->AdvanceCharge(1.0f);
+	TestTrue(TEXT("a cancelled charge does not travel any further"),
+		Warden->GetActorLocation().Equals(StoppedAt, 1.0f));
 
 	return true;
 }

@@ -132,6 +132,18 @@ void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
 	bCharging = true;
 }
 
+void ACataclysmEnemyCharacter::CancelCharge()
+{
+	// WHERE IT STOPPED IS WHERE IT STOPS. The creature is left standing at the
+	// point it had reached, which is the honest outcome of being interrupted
+	// mid-run. Nothing is rewound and it does not slide on.
+	//
+	// THE HIT LIST GOES WITH IT. It belongs to this charge, and the next one has
+	// to be able to hit the same target again.
+	bCharging = false;
+	ChargeAlreadyHit.Reset();
+}
+
 void ACataclysmEnemyCharacter::AdvanceCharge(float DeltaSeconds)
 {
 	if (!bCharging || DeltaSeconds <= 0.0f)

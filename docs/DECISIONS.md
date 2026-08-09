@@ -20,6 +20,64 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — A charge in flight is committed, but a stun still stops it
+
+**Affects:** `ACataclysmEnemyController::Think` and `ACataclysmEnemyCharacter` in
+`game/Source/Cataclysm/Character/`. Applied. Closes #499.
+
+### What was wrong
+
+The brain had no idea a charge was running. `ContinueWindUp` returns true only
+while a creature is winding *up*; it clears the wind-up and returns on the pass
+that *lands* the ability, which for a charge is the pass the travel starts on. So
+for the whole of a charge — 0.70 seconds for the Abyssal Warden, two or three
+thinking passes — the brain ran its ordinary logic four times a second on a
+creature already in flight. It turned the creature to face its target, ordered a
+walk toward it, and stopped its movement when the target came within reach.
+
+The project owner saw the first of those while playing: "he turns around mid
+charge to face you as he's flying past".
+
+**It was not only cosmetic.** The design says a miss costs the creature because it
+ends up past the player **facing away** and has to turn before walking back. A
+creature that turned to track the player during the charge arrives already
+pointed at them, so it skips the turn the design counts as part of that cost.
+
+### The decision that had to be made
+
+Whether a stun stops a charge already travelling. Nothing in the design document
+answers it, because until #491 nothing could travel.
+
+**Decision: a stun stops the charge where it is.** Two rules pull in opposite
+directions and one of them turns out not to apply:
+
+- The design says a stunned target "cannot act at all". A creature still crossing
+  the ground would be acting.
+- The commitment rule says a charge runs its full distance whether or not
+  anything is still there. **That rule is about the target, not about the
+  creature.** It exists so the attack cannot track the player, and it is why a
+  miss costs the walk back. It says nothing about crowd control, and reading it
+  the other way would make a charge the one attack in the game that interrupting
+  cannot answer.
+
+**The charge is spent even though it did not finish.** An ability is stamped onto
+its cooldown when it lands, and a charge lands at the moment it sets off. That is
+deliberately harsher than an interrupted wind-up, which is not spent at all,
+because an interrupted wind-up did not happen and an interrupted charge did.
+
+### How it shipped in the first place
+
+**Every test of the charge drove it directly and none of them ran the brain.** The
+three automation tests written with #491 call `BeginCharge` and `AdvanceCharge`
+and never call `Think`, so the brain was not in the picture and nothing could
+notice it was still steering. The new test runs the brain while a charge is in
+flight, which is the only arrangement that can see it.
+
+That is the general lesson and it is worth carrying: a test that drives an ability
+directly does not test the creature that uses it.
+
+---
+
 ## 2026-08-09 — One telegraph tier, with a ceiling on the wind-up
 
 **Affects:** the Attack Telegraphs subsection and the Abyssal Warden's subsection

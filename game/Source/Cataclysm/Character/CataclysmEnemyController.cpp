@@ -6,6 +6,9 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "Character/CataclysmCharacterBase.h"
+// The charge lives on the enemy subclass rather than the shared base, so the
+// brain has to know about it to ask whether one is running. Issue #499.
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -153,6 +156,22 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		WindingUpAbility = INDEX_NONE;
 		WindUpPassesLeft = 0;
 
+		// AND A CHARGE ALREADY IN FLIGHT STOPS TOO. Issue #499. A stunned
+		// creature "cannot act at all" by the design's own words, and one that
+		// kept travelling would be acting.
+		//
+		// THE COMMITMENT RULE DOES NOT PROTECT IT, which is worth saying because
+		// it reads as though it might. That rule says a charge runs its full
+		// distance whether or not the TARGET is still there -- it is what stops
+		// the attack tracking the player -- and it says nothing about crowd
+		// control. Reading it the other way would make a charge the one attack
+		// in the game that interrupting cannot answer.
+		if (ACataclysmEnemyCharacter* Charger =
+				Cast<ACataclysmEnemyCharacter>(Driven))
+		{
+			Charger->CancelCharge();
+		}
+
 		// THE MARKER GOES WITH THE ATTACK IT WARNED OF. An interrupted wind-up
 		// did not happen, so leaving its circle on the floor would be telling
 		// the player to walk out of ground where nothing is now going to land.
@@ -166,6 +185,45 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 
 		LastAction = ECataclysmBrainAction::Stunned;
 		return LastAction;
+	}
+
+	// A CHARGE ALREADY IN FLIGHT OUTRANKS EVERYTHING BELOW, and the brain does
+	// NOTHING while it runs. Issue #499.
+	//
+	// WHY IT IS NEEDED. ContinueWindUp returns true only while the creature is
+	// winding UP; it clears the wind-up and returns on the pass that LANDS the
+	// ability, and for a charge that is the pass the travel STARTS on. Without
+	// this test every pass afterwards ran the ordinary logic four times a second
+	// on a creature in flight: it turned to face its target, ordered a walk
+	// toward it, and stopped movement when it came within reach. The project
+	// owner saw the first of those -- "he turns around mid charge to face you as
+	// he's flying past".
+	//
+	// DOING NOTHING IS THE WHOLE POINT, so there is deliberately no FaceTarget
+	// here. The control rotation was pointed down the lane by UseAbilitiesOn
+	// before the wind-up began and nothing has moved it since, so leaving it
+	// alone is what keeps the creature facing the way it is travelling. Setting
+	// it again from the target's CURRENT position is exactly the defect.
+	//
+	// THE TRAVEL ITSELF IS NOT DRIVEN FROM HERE. AdvanceCharge runs from the
+	// character's Tick, per frame, because a charge covers metres inside one
+	// quarter-second thinking pass.
+	//
+	// AFTER THE STUN TEST, NOT BEFORE, so a stun still cancels it.
+	if (const ACataclysmEnemyCharacter* Charger =
+			Cast<ACataclysmEnemyCharacter>(Driven))
+	{
+		if (Charger->IsCharging())
+		{
+			// STOPPED ONCE A PASS, for the same reason the stun branch does it:
+			// StopMovement is not sticky, and a charge moves the creature with
+			// SetActorLocation, so any velocity the movement component still
+			// carries would fight it.
+			StopMovement();
+
+			LastAction = ECataclysmBrainAction::Charging;
+			return LastAction;
+		}
 	}
 
 	// A WIND-UP ALREADY RUNNING OUTRANKS EVERYTHING, including looking for a
