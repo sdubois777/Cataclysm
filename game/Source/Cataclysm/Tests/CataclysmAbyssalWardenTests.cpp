@@ -501,11 +501,26 @@ bool FCataclysmWardenChargeMarksTheWholeLane::RunTest(const FString&)
 
 	using Warden_t = ACataclysmAbyssalWardenCharacter;
 
-	// SIX METRES AWAY, WHICH IS THE DISTANCE THAT MAKES THIS TEST WORK. It is
-	// past Molten Roar's 5.6 metre reach, so the ring is not the entry that
-	// fits, and inside the charge's 8 metres. It is also two metres SHORT of the
-	// charge's range, which is the gap the lane must not stop at.
-	constexpr float TargetAtCm = 600.0f;
+	// SEVEN METRES AWAY, WHICH IS THE DISTANCE THAT MAKES THIS TEST WORK. It is
+	// past Molten Roar's reach, so the ring is not the entry that fits, and
+	// inside the charge's 8 metres. It is also a metre SHORT of the charge's
+	// range, which is the gap the lane must not stop at.
+	//
+	// IT WAS 600 UNTIL 2026-08-09, when Molten Roar's radius grew from 5.6 to
+	// 6.5 metres and swallowed it: the ring became the ability the brain chose
+	// at that distance, so the marker drawn was a circle and this test failed.
+	// Issues #487 and #496. The static_assert below is what makes that a
+	// compile error next time rather than a puzzling test failure.
+	constexpr float TargetAtCm = 700.0f;
+
+	static_assert(TargetAtCm > Warden_t::MoltenRoarRadiusCm,
+		"this test needs a distance at which the charge is the ability the "
+		"brain chooses, which means past the ring's reach. Molten Roar has "
+		"grown past it.");
+	static_assert(TargetAtCm < Warden_t::StampedeRangeCm,
+		"this test needs the target to be SHORT of the charge's full range, "
+		"because the whole point is that the lane runs past the target rather "
+		"than stopping at it.");
 
 	ACataclysmEnemyCharacter* Quarry =
 		World->SpawnActor<ACataclysmEnemyCharacter>(

@@ -3005,11 +3005,15 @@ Those are the same `Shape` and `ShapeParams` columns that `game/Data/WeaponSkill
 
   
 
-**The player has two ways out of a telegraph: walking, and a Movement skill.** There is no dodge roll and no evade button, so those are the two, and they are not interchangeable. Walking is always available and covers a small area. A Movement skill covers a large one, is on a cooldown of 5 seconds typically and 3 at the shortest, and is one of the six skill slots the player chose to fill.
+**Every telegraph is escaped by walking.** There is no dodge roll and no evade button. Walking is always available to every class, so designing every marker to be walked out of is what makes the promise "every class can clear every telegraph" true rather than aspirational.
 
   
 
-That gives two sizes of telegraph, and both are used. **Small ones are walked out of and large ones cost a Movement skill.** The small ones are set out immediately below; the large ones follow, under Telegraphs that need a Movement skill.
+A Movement skill — one of the six skill slots, on a cooldown of 5 seconds typically and 3 at the shortest — is a **recovery**, not the intended answer. A player who read the marker too late can still cross it, because the largest legal marker is smaller than the shortest Movement-shape skill range. It is never required.
+
+  
+
+**Markers differ in how much time they leave, not in which button answers them.** The rules are set out immediately below, and the ceiling that makes a large marker genuinely harder follows under the heading after that.
 
   
 
@@ -3073,35 +3077,59 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 
   
 
-### **Telegraphs that need a Movement skill**
+### **The wind-up has a ceiling, and that is what makes radius mean difficulty**
 
   
 
-An area larger than the walk-out limit is legitimate, and is what makes a mini-boss or a boss feel different from a Brute. It is not a bigger version of the same thing; it is the case the Movement slot exists to answer. Two rules keep it fair.
+There is **one** wind-up formula and one kind of telegraph. Every marker is escaped by walking, and every class can clear every marker. What separates a mini-boss's signature attack from a Brute's stomp is not a different rule; it is that the big one leaves the player almost no time to spare.
 
   
 
-**A movement-skill telegraph caps at 8 metres of radius.** The ten Movement-shape skills in `game/Data/WeaponSkills.csv` have ranges of 8, 9, 10 and 12 metres, and 8 is the shortest — the Sword's charge and the Axe's leap. Designing against the shortest is the same choice as designing the walk-out limit against the slowest class: every build can clear it, and the longer-ranged ones clear it with margin. Anything above 8 metres cannot be escaped by any means the player has, which makes it a damage event rather than a telegraph.
+**The wind-up stops growing at 2 seconds.**
 
   
 
-**It may only appear on an ability with a cooldown of at least 5 seconds.** That is the Movement slot's typical cooldown. Below it the player would face a second large area with their escape still recharging, which is not a test of reading the telegraph — it is a test of whether the last one happened to be far enough back.
+    Wind-up seconds = the lesser of (0.4 + Radius ÷ 3.5) and 2.0
 
   
 
-Its wind-up uses the same formula with the Movement skill's speed rather than walking speed. A Movement skill crosses its 8 metre range in well under a second, so the wind-up is dominated by the reaction allowance and by the player recognising that this is the large kind:
+**Why a ceiling is needed at all.** Without one the formula hands the player back exactly as much ground as a bigger radius takes away — that is the property stated above, that the escape margin is 2.3 metres at every radius. A bigger marker denied more ground and warned for longer and was no harder to escape. Above the radius where the wind-up reaches 2 seconds the warning stops growing while the ground to cross keeps growing, so **the margin falls by one metre for every metre of radius.** Radius finally means difficulty.
 
   
 
-    Wind-up seconds = 0.8 + Radius ÷ 16
+**A telegraph caps at the radius where the slowest class still has its full reaction allowance and nothing more.**
 
   
 
-**0.8 rather than 0.4** because the player has to decide, not only react: this is the one that costs a cooldown, and spending it on a marker they could have walked out of is a mistake the telegraph should not force. **16 metres per second** is the 8 metre range crossed in half a second. At the 8 metre cap that gives a 1.3 second wind-up.
+    Cap = 3.5 × (2.0 − 0.4) + the contact distance
 
   
 
-**A large telegraph looks different from a small one.** The player has to know which one they are looking at before they decide whether to spend a cooldown, and radius alone is not readable at a glance in a fight.
+For a creature with the standard 0.48 metre body that is **6.5 metres**. Above it the slowest class cannot both react and walk clear, which is the point at which an attack stops being a telegraph and becomes a damage event. So the promise that every class clears every telegraph with at least the stated reaction allowance is now a property of the rules, true at every legal radius, rather than something to be checked attack by attack.
+
+  
+
+| Radius | Wind-up | Slowest class's spare time |
+| :-- | :-: | :-: |
+| 3.50 m (the Brute's stomp) | 1.40 s | 0.657 s |
+| 5.60 m | 2.00 s | 0.657 s |
+| **6.50 m (the cap)** | **2.00 s** | **0.400 s** |
+
+  
+
+**The 2 second ceiling is a judgement.** Nothing derives it. It was already the longest telegraph in the game when it was adopted, so it changed no existing attack, and no shipped game in the genre publishes a telegraph duration to check it against. `docs/DECISIONS.md` records the reasoning and what was rejected.
+
+  
+
+**The cap stays under the shortest Movement-shape skill range.** The ten Movement-shape skills in `game/Data/WeaponSkills.csv` have ranges of 8, 9, 10 and 12 metres, so the shortest escape any build can have is **8 metres** — the Sword's charge and the Axe's leap. At 6.5 metres the cap clears that by 1.5, so a player who read the marker too late can still cross the whole area with a Movement skill from dead centre. That is a recovery, not the intended answer.
+
+  
+
+**A large telegraph looks different from a small one.** The player has to read the size at a glance, and radius alone is not readable in a fight. That is presentation, and it no longer implies a different rule.
+
+  
+
+**There used to be a second tier here**, for areas larger than the walk-out limit, escaped with a Movement skill instead of by walking, with its own wind-up of `0.8 + Radius ÷ 16`, its own 8 metre cap and a 5 second minimum cooldown. It was deleted on 2026-08-09 for two reasons. It was unreachable: the walk-out limit grows with the cooldown and its cap did not, so above a 5.36 second cooldown every legal radius was already a walk-out radius, and no designed attack was ever in it. And it would not have done its job: its escape margin was 13.7 metres at every radius against the walk-out tier's 2.3, so it was between identical and twice as forgiving — never harder.
 
   
 
@@ -3972,7 +4000,7 @@ The word melee is doing work there. The Succubus moves at 3.5 metres per second 
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Sunder | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 2.4 s attack interval | No |
 | Stampede | Movement | Movement | `Mode=Charge; Range=8; Radius=1.5` | a 5 s cooldown | Yes, 0.83 s wind-up |
-| Molten Roar | Ultimate | Strike | `Radius=5.6; Angle=360` | a 12 s cooldown | Yes, 2.0 s wind-up |
+| Molten Roar | Ultimate | Strike | `Radius=6.5; Angle=360` | a 12 s cooldown | Yes, 2.0 s wind-up |
 
   
 
@@ -4061,7 +4089,19 @@ Two things bound it from below. It has to beat the fastest class at 4.6 metres p
 
   
 
-A ring 5.6 metres across at its feet, marked for 2 seconds, every 12 seconds. The Brute's stomp is 3.5 metres and the Succubus's bolt 3.15.
+A ring 6.5 metres across at its feet, marked for 2 seconds, every 12 seconds. The Brute's stomp is 3.5 metres and the Succubus's bolt 3.15.
+
+  
+
+**It sits exactly at the cap, and that is the point of the number.** 6.5 metres is the largest marker the rules permit for a creature with a 0.48 metre body: the radius at which the slowest class still has its full 0.4 second reaction allowance and not a moment more. Nothing in the game may be larger, so this is the hardest telegraph the rules allow.
+
+  
+
+**It was 5.6 metres until 2026-08-09**, and it was raised because the project owner played it and reported that it was too easy to escape. Raising it only means anything because the wind-up now stops growing at 2 seconds. Before that ceiling existed a bigger ring warned for proportionally longer and was no harder at all. What the change buys, against the slowest class: the escape margin falls from 2.30 metres to 1.40, and the spare time from 0.657 seconds to 0.400 — a 39% cut in both. The warning stays at 2 seconds, so the 1.4 second roar animation still fits inside it unchanged.
+
+  
+
+**The geometry is now exhausted.** If it still reads as too easy, the answer cannot be more radius, because 6.5 is the ceiling. The next lever is what the attack leaves behind, and it currently leaves nothing.
 
   
 
@@ -4077,15 +4117,19 @@ A ring 5.6 metres across at its feet, marked for 2 seconds, every 12 seconds. Th
 
   
 
-#### **A bigger marker is not harder to escape, and that is worth knowing**
+#### **A bigger marker was not harder to escape, until the wind-up got a ceiling**
 
   
 
-The wind-up is `0.4 + Radius ÷ 3.5`, so the slowest class walks `1.4 + Radius` metres during it, while a player standing at contact has to cross `Radius − 0.9`. **The difference is 2.3 metres at every radius.** Molten Roar at 5.6 metres and the Brute's stomp at 3.5 give the player exactly the same margin.
+Below the ceiling the wind-up is `0.4 + Radius ÷ 3.5`, so the slowest class walks `1.4 + Radius` metres during it, while a player standing at contact has to cross `Radius − 0.9`. **The difference is 2.3 metres at every radius.** The Brute's stomp at 3.5 metres and a 5.6 metre ring give the player exactly the same margin. Under the ceiling, a marker's size says how much ground it denies and how long it warns for, and says nothing about how hard it is to avoid.
 
   
 
-So a marker's size says how much ground it denies and how long it warns for. It does not say how hard it is to avoid. That reads as counter-intuitive and follows from the wind-up formula rather than from any choice made here.
+**Above the ceiling that stops being true, and that is the whole reason the ceiling exists.** The wind-up stops at 2 seconds, which it reaches at a radius of 5.6 metres. Past that the warning is fixed while the ground to cross keeps growing, so the margin falls one metre per metre. Molten Roar at 6.5 metres has a margin of 1.4 metres against the stomp's 2.3.
+
+  
+
+So the rule in one line: **up to 5.6 metres, size is ground denied; past it, size is difficulty.** The two ranges behave differently and the document should not be read as claiming otherwise.
 
   
 
@@ -4097,7 +4141,7 @@ Two things. Everything else is read off `game/Data/WeaponSkills.csv`, `game/Data
 
   
 
-- **Molten Roar's 5.6 metre radius.** Bounded below by the 2.80 metres its own attack interval allows, so it is categorically different from what the creature does every 2.4 seconds, and above by the 8 metre cap. Inside that window 5.6 is chosen because it is exactly twice the 2.80 and makes the wind-up exactly 2.0 seconds.
+- **Molten Roar's 6.5 metre radius.** No longer a judgement, since 2026-08-09: it is the cap, the largest marker the rules permit for a creature with a 0.48 metre body. It is bounded below by the 2.80 metres its own attack interval allows, so it is categorically different from what the creature does every 2.4 seconds. What is a judgement is the 2 second ceiling on the wind-up, from which the cap is derived.
 - **Three abilities rather than two.** The Corrupted Sentinel has two. The third here is the charge, and without it the creature can be walked away from and never fought.
 
   

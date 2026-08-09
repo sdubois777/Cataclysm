@@ -20,6 +20,138 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — One telegraph tier, with a ceiling on the wind-up
+
+**Affects:** the Attack Telegraphs subsection and the Abyssal Warden's subsection
+of `docs/Cataclysm_GDD_v2.md`, `fits_its_cycle` and the Warden's ability table in
+`sim/cataclysm_sim/enemy_abilities.py`, and
+`ACataclysmAbyssalWardenCharacter` in `game/Source/Cataclysm/Character/`.
+Applied. Closes #487 and #496.
+
+### What was wrong
+
+The design had two tiers of telegraph: small ones walked out of, and large ones
+that cost a Movement skill. Issue #487 reported the second tier was unreachable —
+the walk-out limit grows at 1.75 m per second of cooldown while its 8 metre cap
+did not grow at all, so above a 5.36 second cooldown every legal radius was
+already a walk-out radius. **Measured across all fourteen designed abilities of
+the six designed enemies: eight are telegraphed and all eight were in tier one.
+The tier was empty and always had been.**
+
+Issue #496 was the same defect seen from play. The project owner played the
+Abyssal Warden and said its 5.6 metre ring was "too easy to escape". Making it
+bigger could not help, because the wind-up formula returns exactly as much ground
+as a bigger radius takes away — the escape margin was 2.3 metres at every radius.
+
+### The finding that changed the answer
+
+**The second tier would not have worked either, and nobody had computed that.**
+Its formula is `0.8 + Radius / 16`, which is the same radius-cancelling shape with
+a more generous allowance and a faster assumed escape. Its escape margin is
+**13.7 metres at every radius**, against the walk-out tier's 2.3. It was between
+identical and twice as forgiving, never harder.
+
+So issue #496's own recommendation — fix #487, then move Molten Roar into tier two
+— would have made the attack *easier*, while shortening its warning from 2.00 s to
+1.15 s. It would also have broken the art: the longest wind-up tier two can
+produce at any radius is 1.30 s, and the `Ultimate_Roar` clip is 1.4000 s.
+
+### The decision
+
+**Delete the second tier. One wind-up formula, held to a ceiling.**
+
+```
+Wind-up seconds = min(0.4 + Radius / 3.5, 2.0)
+Cap on radius   = 3.5 x (2.0 - 0.4) + contact     = 6.50 m for a 0.48 m body
+```
+
+Below a 5.6 metre radius nothing changes at all. Above it the warning stops
+growing while the ground to cross keeps growing, so **the margin falls by one
+metre per metre of radius.** Radius finally means difficulty, which is the thing
+the second tier was supposed to buy and never did.
+
+The cap is not chosen. It is the radius at which the slowest class still has
+exactly the 0.4 second reaction allowance and nothing more, so "every class clears
+every telegraph with at least the stated reaction allowance" became a property of
+the rules rather than something to check attack by attack.
+
+**Zero abilities changed classification.** The largest existing marker was 5.6 m
+and the next largest 3.5 m, so no existing wind-up moved.
+
+### What is a judgement, and it is labelled one everywhere
+
+**The 2 second ceiling.** Nothing derives it. It was already the longest telegraph
+in the game, so adopting it changed no shipped attack, and no comparator publishes
+a telegraph duration to check it against.
+
+### What the research settled and did not
+
+**Settled: no shipped ARPG derives a telegraph class from arithmetic.** Path of
+Exile's monster abilities carry a cast time and an area and no category field.
+Diablo III's affix numbers are public and fit no single rule — escape margins run
+from about −6 yards through 0 to +9 — and that spread is deliberate.
+
+**Settled: nobody makes an attack un-walk-out-able by making it bigger.** The
+levers that appear repeatedly are a shorter wind-up on the same circle, persistent
+ground denial, removing or redirecting the escape, and covering everything while
+providing a safe spot.
+
+**Settled: a mandatory traversal skill is a known mistake.** Eleventh Hour Games
+wrote in the Last Epoch 1.1 dev blog that "most builds currently feel forced to
+include a traversal skill purely for evading incoming attacks, which has a
+limiting impact on potential build diversity", and answered it with a universal,
+slot-free Evade. Diablo IV does the same.
+
+**Not settled: any of this project's constants.** No published number validates
+0.4, 3.5, 8, or 2.0. Path of Exile's distance unit is explicitly not metres, and
+Blizzard publishes no telegraph radius or wind-up at all. Nothing outside this
+project can price the 2 second ceiling.
+
+**Sources.** [Last Epoch 1.1 *Harbingers of Ruin* dev
+blog](https://forum.lastepoch.com/t/harbingers-of-ruin-dev-blog/); [Diablo III
+monster affixes](https://www.purediablo.com/diablo4/Monster_Affixes); [PoE monster
+skill data, PoEDB](https://poedb.tw/us/Fighting_Bull); [Maxroll Aberroth
+guide](https://maxroll.gg/last-epoch/).
+
+### What this did for the Abyssal Warden's ring
+
+Its radius went from 5.6 to **6.5 metres**, which is the cap. Against the slowest
+class the escape margin falls from 2.30 m to 1.40 and the spare time from 0.657 s
+to 0.400 — a 39% cut in both. The warning stays 2 seconds, so the 1.4 second roar
+animation is untouched.
+
+**This is a modest change and that is stated rather than oversold.** The escape is
+still a walk. The geometry is now exhausted: 6.5 m is the ceiling, so if it still
+reads as too easy the answer cannot be more radius. The next lever is what the
+attack leaves behind, and it currently leaves nothing — the riders already exist
+and the Hellhound's charge already uses them. The project owner chose on
+2026-08-09 to ship the size change alone first and judge it by playing.
+
+### Rejected
+
+**Making the second tier reachable.** It would have made the attack more
+forgiving, shortened the warning below the length of its own animation, and bought
+a tier whose only effect is to forbid walking rather than to make escaping hard.
+
+**Declaring the tier by intent rather than geometry.** Same problem: it still
+promotes the attack into the more forgiving formula.
+
+**Crediting the player only for the ground they actually cross**
+(`0.4 + (Radius - 0.9) / 3.5`). It cuts the margin at every radius, which is
+tempting, and it breaks the result that the swarm enemies produce no markers — the
+smallest cycle that could carry a one metre marker drops to 0.857 s, which puts the
+Imp's 0.9 s attack interval above the threshold.
+
+### Still open
+
+**The cap is 6.5 metres for every creature, including a future boss.** Nothing in
+the game may mark a larger area, so a boss cannot have a bigger telegraph than
+this mini-boss. Raising the ceiling raises the cap — 2.43 seconds would give 8
+metres — but it also pushes the point where radius starts to matter upward, so it
+is a real trade and not a free dial. Worth revisiting when #395 designs a boss.
+
+---
+
 ## 2026-08-09 — A charge covers its range in the length of its own clip
 
 **Affects:** the Abyssal Warden's charge subsection of `docs/Cataclysm_GDD_v2.md`,

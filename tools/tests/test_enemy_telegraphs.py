@@ -62,10 +62,13 @@ NEXT_SECTION = "## **Enemy Modifiers**"
 
 #: Not derived from anything in this project. Published simple visual reaction
 #: time is 200-250 ms and reaction to a new on-screen stimulus is measured at
-#: 300-500 ms; 0.4 sits inside that band. The larger telegraphs use 0.8 because
-#: the player must also decide whether to spend a cooldown.
+#: 300-500 ms; 0.4 sits inside that band.
+#:
+#: THERE USED TO BE A SECOND, LONGER ALLOWANCE OF 0.8 for a tier of telegraph
+#: that had to be escaped with a Movement skill, on the grounds that the player
+#: had to decide as well as react. That tier was deleted on 2026-08-09; see
+#: issue #487.
 REACTION_ALLOWANCE = 0.4
-DECISION_ALLOWANCE = 0.8
 
 #: A marker smaller than this is smaller than the creature standing in it, so
 #: there is nowhere to walk. It is what excludes the two swarm enemies.
@@ -160,17 +163,60 @@ def test_the_section_states_the_reaction_allowance_and_that_it_is_not_derived(
         "as invented.")
 
 
-def test_the_section_states_the_movement_skill_wind_up_formula(section):
-    """The second tier, added because the player escapes with movement
-    abilities as well as by walking. A boss area larger than a walk can clear
-    is legitimate; it just costs a cooldown."""
-    assert "Wind-up seconds = 0.8 + Radius ÷ 16" in section, (
-        "the Attack Telegraphs section no longer states the wind-up formula "
-        "for telegraphs that need a Movement skill. It is 0.8 + Radius / 16.")
-    assert f"{DECISION_ALLOWANCE} rather than {REACTION_ALLOWANCE}" in section, (
-        "the section no longer says why the larger telegraphs get a longer "
-        "allowance. The player has to decide whether to spend a cooldown, not "
-        "only react.")
+def test_the_section_states_the_wind_up_ceiling(section):
+    """The ceiling replaced the second tier on 2026-08-09. Issue #487.
+
+    WHAT IT IS FOR. Without a ceiling the wind-up formula hands the player back
+    exactly as much ground as a bigger radius takes away, so the escape margin
+    is the same at every radius and a bigger marker is not a harder one. The
+    ceiling is what makes radius mean difficulty.
+    """
+    from cataclysm_sim.enemy_abilities import MAXIMUM_WIND_UP_SECONDS
+
+    assert "the lesser of (0.4 + Radius ÷ 3.5) and 2.0" in section, (
+        "the Attack Telegraphs section no longer states the wind-up rule as a "
+        "formula held to a ceiling. Without the ceiling a bigger marker warns "
+        "for proportionally longer and is no harder to escape, which is the "
+        "defect issue #487 recorded.")
+
+    assert str(MAXIMUM_WIND_UP_SECONDS) in section, (
+        f"the section no longer names the {MAXIMUM_WIND_UP_SECONDS} second "
+        "ceiling that sim/cataclysm_sim/enemy_abilities.py applies.")
+
+    # THE CEILING SPECIFICALLY, NOT THE WORD ANYWHERE IN THE SECTION. Written
+    # as `"judgement" in section` this could not fail: the section calls several
+    # other figures judgements, so removing the label from the ceiling left the
+    # word present and the check passed. Found by breaking it deliberately and
+    # watching nothing fail.
+    assert "ceiling is a judgement" in section, (
+        "the section states the wind-up ceiling without saying it is a "
+        "judgement. Nothing derives it and no shipped game publishes a "
+        "telegraph duration to check it against, so presenting it as derived "
+        "would be a claim the project cannot support.")
+
+
+def test_the_section_no_longer_describes_a_second_telegraph_tier(section):
+    """The deleted tier. The failure this catches is it coming back.
+
+    It was unreachable -- the walk-out limit grows with the cooldown and its
+    cap did not -- and it was more forgiving rather than harder: its escape
+    margin was 13.7 m at every radius against the walk-out tier's 2.3.
+
+    THE MENTION IN THE CLOSING PARAGRAPH IS ALLOWED and is why these match on
+    the formula and the gate rather than on the words. The section records what
+    was deleted and why, which is history rather than a live rule.
+    """
+    assert "Wind-up seconds = 0.8 + Radius ÷ 16" not in section, (
+        "the Attack Telegraphs section states the deleted second-tier wind-up "
+        "formula as a rule again. It was removed on 2026-08-09 by issue #487: "
+        "it was reachable only for cooldowns between 5.00 and 5.36 seconds, "
+        "and its escape margin was 13.7 m against the walk-out tier's 2.3, so "
+        "it was never harder.")
+
+    assert "caps at 8 metres of radius" not in section, (
+        "the Attack Telegraphs section caps telegraphs at 8 metres again. The "
+        "cap is now derived from the wind-up ceiling and is 6.5 m for a "
+        "standard body.")
 
 
 # --------------------------------------------------------------------------
@@ -289,11 +335,20 @@ def test_every_telegraph_shape_is_a_real_shape_in_the_skill_data(
             f"than adding a parallel set.")
 
 
-def test_the_eight_metre_cap_is_the_shortest_movement_skill_range(
+def test_the_cap_stays_under_the_shortest_movement_skill_range(
         section, skill_rows):
-    """The cap on the larger telegraphs, and the same argument as using the
-    slowest walking speed: design against the shortest escape so that every
-    build can make it, rather than only the long-ranged ones."""
+    """A player who read the marker too late must still be able to cross it.
+
+    THE CAP IS NO LONGER SET BY THIS FIGURE, and that changed on 2026-08-09.
+    Until then the cap WAS the shortest Movement-shape skill range, 8 metres,
+    on the argument that the largest marker should be exactly what the weakest
+    escape can clear. The cap is now derived from the wind-up ceiling instead,
+    which puts it at 6.5 m for a standard body -- so this checks the weaker
+    property that the cap sits at or under the shortest escape, leaving a
+    recovery for a player who reacted late. Issue #487.
+    """
+    from cataclysm_sim.enemy_abilities import telegraph_cap_metres
+
     ranges = []
     for row in skill_rows:
         if row.get("Shape") != "Movement":
@@ -302,35 +357,41 @@ def test_the_eight_metre_cap_is_the_shortest_movement_skill_range(
         if found:
             ranges.append(float(found.group(1)))
     assert ranges, "no Movement-shape skill in game/Data/WeaponSkills.csv has a Range"
-    assert min(ranges) == 8, (
-        f"the shortest Movement-shape skill range is now {min(ranges)} m, not "
-        f"8. The Attack Telegraphs section caps a movement-skill telegraph at "
-        f"8 metres because that is the shortest escape any build has, so the "
-        f"cap has to move with it.")
-    assert "caps at 8 metres of radius" in section, (
-        "the section no longer caps the larger telegraphs. Without a cap an "
-        "area can be marked that nothing the player has can escape, which is a "
-        "damage event with a warning rather than a telegraph.")
+
+    shortest_escape = min(ranges)
+    cap = telegraph_cap_metres("Abyssal Warden")
+
+    assert cap <= shortest_escape, (
+        f"the telegraph cap is {cap:.2f} m and the shortest Movement-shape "
+        f"skill range is {shortest_escape} m. A marker larger than the weakest "
+        "escape leaves a player who reacted late with no way out at all, which "
+        "the section calls a damage event rather than a telegraph.")
+
+    assert "8 metres" in section and "shortest" in section, (
+        "the section no longer records that the cap sits under the shortest "
+        "Movement-shape skill range. Without it the 6.5 m cap reads as "
+        "unrelated to what the player can actually cross.")
 
 
-def test_the_five_second_gate_is_the_movement_slot_cooldown(section):
-    """A large telegraph on a short cooldown tests whether the player's escape
-    happens to be up, not whether they read the marker."""
+def test_the_movement_slot_cooldown_is_still_five_seconds(skill_rows):
+    """Not a telegraph rule any more, and that is the point of keeping it.
+
+    The 5 second Movement slot cooldown used to gate the deleted second tier of
+    telegraph. That gate is gone -- no telegraph requires a Movement skill now
+    -- but the figure still matters, because the section describes a Movement
+    skill as the recovery available to a player who read a marker too late.
+    """
     if not SKILL_SLOTS.is_file():
         pytest.skip("game/Data/SkillSlots.csv is not present")
     with SKILL_SLOTS.open(encoding="utf-8-sig", newline="") as handle:
         slots = {row["Slot"]: row for row in csv.DictReader(handle)}
     assert "Movement" in slots, (
-        "game/Data/SkillSlots.csv no longer has a Movement slot. The whole "
-        "larger-telegraph tier assumes the player has one.")
+        "game/Data/SkillSlots.csv no longer has a Movement slot. The Attack "
+        "Telegraphs section names one as the player's recovery.")
     cooldown = float(slots["Movement"]["Cooldown"])
     assert cooldown == 5.0, (
         f"the Movement slot cooldown is now {cooldown} s, not 5. The Attack "
-        f"Telegraphs section gates the larger telegraphs on that figure.")
-    assert "cooldown of at least 5 seconds" in section, (
-        "the section no longer gates the larger telegraphs on a minimum "
-        "cooldown. Without it, two large areas can land with the player's "
-        "escape still recharging.")
+        f"Telegraphs section states that figure when describing the recovery.")
 
 
 # --------------------------------------------------------------------------

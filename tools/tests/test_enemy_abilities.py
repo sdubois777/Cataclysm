@@ -1947,8 +1947,8 @@ def test_the_ring_is_bigger_than_the_wardens_own_interval_allows(
     is not categorically different from what the creature does every 2.4
     seconds, which is the whole argument for it.
     """
-    from cataclysm_sim.enemy_abilities import (MOVEMENT_ESCAPE_CAP_METRES,
-                                               largest_telegraphed_radius)
+    from cataclysm_sim.enemy_abilities import (largest_telegraphed_radius,
+                                               telegraph_cap_metres)
 
     ring = next(a for a in warden_abilities if a.slot == "Ultimate")
     radius = float(ring.params["Radius"])
@@ -1959,10 +1959,17 @@ def test_the_ring_is_bigger_than_the_wardens_own_interval_allows(
         f"{warden.attack_interval} s attack interval already allows "
         f"{interval_allows:.2f} m. Below that it is not a different kind of "
         "attack from its ordinary swing.")
-    assert radius <= MOVEMENT_ESCAPE_CAP_METRES, (
-        f"the ring marks {radius} m and the design document caps any telegraph "
-        f"at {MOVEMENT_ESCAPE_CAP_METRES} m, above which it says an attack "
-        "cannot be escaped by any means the player has.")
+
+    # AT THE CAP, NOT MERELY UNDER IT. Since 2026-08-09 the ring sits exactly at
+    # the largest marker the rules permit, which is what makes it the hardest
+    # telegraph in the game to escape rather than only the widest. Issues #487
+    # and #496.
+    cap = telegraph_cap_metres(warden)
+    assert radius == pytest.approx(cap), (
+        f"the ring marks {radius} m and the cap for this creature is "
+        f"{cap:.2f} m. The ring is designed to sit exactly at the cap: above it "
+        "the slowest class cannot both react and walk clear, and below it the "
+        "ring is not the hardest telegraph the rules allow.")
 
 
 def test_the_ring_cooldown_is_five_swings_and_the_bottom_of_its_slot_band(
@@ -2151,20 +2158,44 @@ def test_the_movement_modes_match_the_datatable_generator():
 def test_a_marker_too_big_for_its_cycle_is_rejected():
     """The guard in enemy_abilities.py. A marker larger than the wind-up can
     cover cannot be escaped, which the design document calls a damage event
-    rather than a telegraph."""
-    from cataclysm_sim.enemy_abilities import Ability, fits_its_cycle
+    rather than a telegraph.
+
+    THE SECOND TIER IS GONE, and the middle case below is where it used to be.
+    A 7 metre marker on a 5 second cooldown was legal until 2026-08-09 "because
+    that is the tier the Movement slot answers"; it is now illegal because it is
+    past the cap. Issue #487 recorded that the tier was unreachable for almost
+    every cooldown and that it was more forgiving rather than harder.
+    """
+    from cataclysm_sim.enemy_abilities import (Ability, fits_its_cycle,
+                                               telegraph_cap_metres)
     from cataclysm_sim.enemy_stats import archetype
 
     brute = archetype("Brute")
+    cap = telegraph_cap_metres(brute)
+
+    # TOO SHORT A CYCLE FOR ITS OWN WIND-UP. A 3 second cooldown allows a 1.5
+    # second wind-up and 7 metres needs the full 2.0.
     too_big = Ability(name="Test", shape="Strike", slot="Heavy",
                       params={"Radius": 7.0}, cooldown=3.0)
     assert not fits_its_cycle(too_big, brute)
 
-    # The same radius on a 5 second cooldown is legal, because that is the tier
-    # the Movement slot answers.
-    movement_tier = Ability(name="Test", shape="Strike", slot="Heavy",
-                            params={"Radius": 7.0}, cooldown=5.0)
-    assert fits_its_cycle(movement_tier, brute)
+    # AND THE SAME RADIUS ON A LONGER COOLDOWN IS STILL ILLEGAL, because it is
+    # past the cap. This is the case that changed.
+    assert 7.0 > cap
+    former_movement_tier = Ability(name="Test", shape="Strike", slot="Heavy",
+                                   params={"Radius": 7.0}, cooldown=5.0)
+    assert not fits_its_cycle(former_movement_tier, brute)
+
+    # EITHER SIDE OF THE CAP, on a cooldown long enough that only the cap can be
+    # the thing refusing it. This is what makes the cap the operative rule
+    # rather than the half-cycle test.
+    at_the_cap = Ability(name="Test", shape="Strike", slot="Ultimate",
+                         params={"Radius": cap}, cooldown=12.0)
+    assert fits_its_cycle(at_the_cap, brute)
+
+    just_over = Ability(name="Test", shape="Strike", slot="Ultimate",
+                        params={"Radius": cap + 0.1}, cooldown=12.0)
+    assert not fits_its_cycle(just_over, brute)
 
     # And 9 metres is not legal at any cooldown: nothing the player has crosses
     # it.

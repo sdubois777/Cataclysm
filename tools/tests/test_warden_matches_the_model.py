@@ -198,18 +198,32 @@ def test_the_ring_wind_up_is_the_formula_rather_than_a_number():
     time. This is the same check from outside, so it fails on a pull request
     rather than only on a machine that builds.
     """
-    from cataclysm_sim.enemy_abilities import (REACTION_ALLOWANCE,
-                                               WALK_OUT_SPEED)
+    from cataclysm_sim.enemy_abilities import (MAXIMUM_WIND_UP_SECONDS,
+                                               REACTION_ALLOWANCE,
+                                               WALK_OUT_SPEED, wind_up_seconds)
 
     radius_metres = constant("MoltenRoarRadiusCm") / CM_PER_METRE
-    expected = REACTION_ALLOWANCE + radius_metres / WALK_OUT_SPEED
+    expected = wind_up_seconds(radius_metres)
 
     assert constant("MoltenRoarWindUpSeconds") == pytest.approx(expected), (
         f"MoltenRoarWindUpSeconds is {constant('MoltenRoarWindUpSeconds')} and "
         f"the wind-up rule gives {expected:.4f} for a "
-        f"{radius_metres} m marker. The rule is "
-        f"{REACTION_ALLOWANCE} + Radius / {WALK_OUT_SPEED}, from the Attack "
-        "Telegraphs subsection of docs/Cataclysm_GDD_v2.md.")
+        f"{radius_metres} m marker. The rule is the LESSER of "
+        f"{REACTION_ALLOWANCE} + Radius / {WALK_OUT_SPEED} and the "
+        f"{MAXIMUM_WIND_UP_SECONDS} second ceiling, from the Attack Telegraphs "
+        "subsection of docs/Cataclysm_GDD_v2.md.")
+
+    # AND IT IS THE CEILING THAT DECIDES IT, not the formula. If the ring's
+    # radius ever falls back below the crossover, this test would still pass
+    # while the whole reason the ring was made bigger had quietly gone. Issues
+    # #487 and #496.
+    uncapped = REACTION_ALLOWANCE + radius_metres / WALK_OUT_SPEED
+    assert uncapped > MAXIMUM_WIND_UP_SECONDS, (
+        f"the ring's {radius_metres} m radius gives an uncapped wind-up of "
+        f"{uncapped:.4f} s, which is under the {MAXIMUM_WIND_UP_SECONDS} s "
+        "ceiling. The ring is designed to sit past the crossover, where the "
+        "warning has stopped growing and extra radius is extra ground to cross "
+        "with no extra time. Below it, a bigger ring is not a harder one.")
 
 
 def test_the_ring_damage_is_the_ultimate_slots_percentage():
