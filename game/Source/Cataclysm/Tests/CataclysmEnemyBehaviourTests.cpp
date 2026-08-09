@@ -2604,4 +2604,272 @@ bool FCataclysmStunnedBruteDoesNotSwingTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A creature must be pointed at what it is about to throw at.
+ *
+ * WHAT THIS GUARDS. Issue #457, found by the project owner walking up behind a
+ * Brute and watching it throw a rock without turning round. Nothing anywhere
+ * rotated an enemy toward its target: the only thing that ever turned one was
+ * bOrientRotationToMovement, which faces the direction of TRAVEL, and
+ * ChooseAbility stops the creature before winding up, so a stationary creature
+ * had no movement to orient to and kept whatever facing it happened to have.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteTurnsBeforeThrowingTest,
+	"Cataclysm.AI.ABruteTurnsToFaceSomethingBehindItBeforeThrowing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteTurnsBeforeThrowingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// Spawned with the zero rotation, so it faces +X.
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// DIRECTLY BEHIND IT, and at five metres, which is past the stomp's reach
+	// and inside the throw's. So the rock is the ability it wants, and the rock
+	// is the one that has to be aimed.
+	FScopedFighter Player(World, FVector(-5 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	TestTrue(TEXT("it starts pointed away from the player"),
+		ACataclysmEnemyController::DegreesOffTarget(Brute.Actor, Player.Actor)
+			> ACataclysmEnemyController::FacingToleranceDegrees);
+
+	TestEqual(TEXT("so its first decision is to turn, not to throw"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Turning));
+
+	// THE REAL ASSERTION. Turning is only worth anything if it also refused to
+	// start the attack: an enum value on its own proves nothing.
+	TestEqual(TEXT("and no wind-up was started"),
+		Brain->WindingUpAbility, int32(INDEX_NONE));
+
+	// AND IT ACTUALLY AIMED THE BODY SOMEWHERE. The movement component turns the
+	// pawn toward the controller's rotation at RotationRate every movement tick,
+	// so what this class is responsible for is that rotation pointing at the
+	// target. A test world does not tick movement, so the rotation is what there
+	// is to check.
+	const FVector Aimed = Brain->GetControlRotation().Vector();
+	const FVector Toward =
+		(Player.Actor->GetActorLocation() - Brute.Actor->GetActorLocation())
+			.GetSafeNormal2D();
+	TestTrue(TEXT("and it pointed its controller at the player"),
+		FVector::DotProduct(Aimed.GetSafeNormal2D(), Toward) > 0.99f);
+
+	// NOW LET THE TURN FINISH, which in a world with no movement tick means
+	// putting the body where the movement component would have put it.
+	Brute.Actor->SetActorRotation(Toward.Rotation());
+
+	TestEqual(TEXT("facing it, the throw begins"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and it is the rock throw"),
+		Brain->WindingUpAbility,
+		int32(ACataclysmBruteCharacter::RockThrowAbility));
+
+	return true;
+}
+
+/**
+ * A ring at the creature's own feet must NOT wait to be faced.
+ *
+ * WHY THIS IS A TEST RATHER THAN AN OMISSION. The Stomp is written Angle=360 in
+ * sim/cataclysm_sim/enemy_abilities.py and the reason recorded there is that a
+ * full circle "stops the answer to a Brute being stand behind it and ignore the
+ * marker". Making every ability wait for facing would hand that answer straight
+ * back, and it would do so silently: the creature would simply never stomp at
+ * anything behind it and nothing would report why.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteStompsWithoutTurningTest,
+	"Cataclysm.AI.ABruteStompsSomethingBehindItWithoutTurningFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteStompsWithoutTurningTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// BEHIND IT AND WELL INSIDE THE RING, so the stomp is what it picks.
+	FScopedFighter Player(World, FVector(-1 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	TestTrue(TEXT("it is pointed away from the player"),
+		ACataclysmEnemyController::DegreesOffTarget(Brute.Actor, Player.Actor)
+			> ACataclysmEnemyController::FacingToleranceDegrees);
+
+	TestEqual(TEXT("it stomps anyway, without turning first"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and it is the stomp"),
+		Brain->WindingUpAbility,
+		int32(ACataclysmBruteCharacter::StompAbility));
+
+	return true;
+}
+
+/**
+ * The facing tolerance must be tight enough for every directional ability.
+ *
+ * WHY A DERIVED CHECK RATHER THAN A PINNED NUMBER. FacingToleranceDegrees is one
+ * constant serving every attack, and an attack added later that reaches further
+ * or is narrower than the rock throw would be allowed to fire while pointed far
+ * enough away that what it was aimed at is outside the area it marked. That
+ * would be silent: the attack fires, the marker is drawn, and the two simply do
+ * not agree.
+ *
+ * THE GEOMETRY. At a range R with a marked half-width W, being off by an angle A
+ * displaces the marked area sideways by R times sin(A). The target leaves the
+ * marked area once that exceeds W.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmFacingToleranceCoversEveryAbilityTest,
+	"Cataclysm.AI.TheFacingToleranceCoversEveryDirectionalAbility",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFacingToleranceCoversEveryAbilityTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+
+	const float Sine = FMath::Sin(FMath::DegreesToRadians(
+		ACataclysmEnemyController::FacingToleranceDegrees));
+
+	int32 Checked = 0;
+	for (const FCataclysmEnemyAbility& Ability : Brute.Actor->EnemyAbilities())
+	{
+		if (!ACataclysmEnemyController::AbilityNeedsFacing(Ability))
+		{
+			continue;
+		}
+		++Checked;
+
+		const float Drift = Ability.MaxRangeCm * Sine;
+		TestTrue(TEXT("the tolerance keeps the target inside the marked area"),
+			Drift <= Ability.MarkerRadiusCm);
+	}
+
+	// WITHOUT THIS THE LOOP ABOVE PASSES BY BEING EMPTY. If AbilityNeedsFacing
+	// ever stopped recognising a shape, every assertion here would be skipped and
+	// this test would read as coverage while checking nothing at all.
+	TestTrue(TEXT("and at least one directional ability was actually checked"),
+		Checked >= 1);
+
+	return true;
+}
+
+/**
+ * A creature that turned to aim must go back to facing where it walks.
+ *
+ * WHAT THIS GUARDS. Facing a target and facing the way you are going are two
+ * different settings on the movement component and only one may be on: the
+ * engine's PhysicsRotation checks bOrientRotationToMovement first and only falls
+ * through to the controller's rotation when it is off. So the code that aims has
+ * to turn the first one off, and something has to turn it back on, or a creature
+ * that once aimed an ability walks sideways for the rest of its life while still
+ * pointed at where its target used to be.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmChasingRestoresTravelFacingTest,
+	"Cataclysm.AI.ABruteThatAimedGoesBackToFacingWhereItWalks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChasingRestoresTravelFacingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	UCharacterMovementComponent* Movement = Brute.Actor->GetCharacterMovement();
+	if (!Brain || !Movement)
+	{
+		AddError(TEXT("A spawned Brute has no controller or no movement."));
+		return false;
+	}
+
+	TestTrue(TEXT("it starts out facing where it walks"),
+		Movement->bOrientRotationToMovement);
+
+	// Behind it and in throwing range, so it turns rather than throws.
+	FScopedFighter Player(World, FVector(-5 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+	Brain->Think();
+
+	TestFalse(TEXT("aiming turns off facing where it walks"),
+		Movement->bOrientRotationToMovement);
+	TestTrue(TEXT("and turns on facing where the controller points"),
+		Movement->bUseControllerDesiredRotation);
+
+	// NOW MAKE IT CHASE, WHICH TAKES SPENDING THE ABILITIES RATHER THAN WALKING
+	// AWAY. Moving the player out of range does not work: the rock throw's
+	// range IS the Brute's notice radius, both 10 metres, deliberately so that
+	// "there is no distance at which the Brute is aware of you and can do
+	// nothing". A player far enough away to be out of every ability's reach is
+	// therefore also out of sight, and the creature roams instead of chasing.
+	// Written that way first, this test failed with Roaming.
+	//
+	// Facing it first, or SpendAbilities would spend its eight passes turning.
+	Brute.Actor->SetActorRotation(
+		(Player.Actor->GetActorLocation() - Brute.Actor->GetActorLocation())
+			.GetSafeNormal2D().Rotation());
+	SpendAbilities(World, Brain, 5 * M);
+
+	TestEqual(TEXT("it chases"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestTrue(TEXT("and chasing put facing where it walks back on"),
+		Movement->bOrientRotationToMovement);
+	TestFalse(TEXT("and took the other one off"),
+		Movement->bUseControllerDesiredRotation);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

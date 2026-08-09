@@ -61,6 +61,21 @@ enum class ECataclysmBrainAction : uint8
 	 * inserting renumbers every value after it.
 	 */
 	Stunned,
+
+	/**
+	 * Standing still and turning to face the target, before a directional
+	 * ability it is not yet pointed at may begin.
+	 *
+	 * WHY IT IS ITS OWN STATE RATHER THAN PART OF Attacking. A creature that is
+	 * turning has chosen what to do and cannot do it yet, which is neither
+	 * "walking toward you" nor "hitting you". A test needs to tell a Brute that
+	 * is turning apart from a Brute that has stalled, and so does anyone reading
+	 * a log.
+	 *
+	 * Appended, like Roaming, WindingUp and Stunned, because this is a UENUM and
+	 * inserting renumbers every value after it.
+	 */
+	Turning,
 };
 
 /**
@@ -554,6 +569,93 @@ private:
 	/** Start an ability if one is in range and off cooldown. */
 	ECataclysmBrainAction UseAbilitiesOn(ACataclysmCharacterBase* Driven,
 										 AActor* Target, float DistanceCm);
+
+public:
+
+	/**
+	 * How far off a creature may be pointed and still be counted as facing its
+	 * target, in degrees.
+	 *
+	 * DERIVED, NOT PICKED. The widest a directional attack may miss by and still
+	 * cover what it was aimed at is set by the attack's own geometry: at a range
+	 * of R with a marked half-width of W, being off by an angle A displaces the
+	 * marked area by R * sin(A), so the target leaves it once
+	 * sin(A) > W / R. The Brute's rock throw is the longest-ranged directional
+	 * attack in the project at 1000 cm with a 210 cm half-width, which gives
+	 * 12.1 degrees. This is 10, which clears it with a little to spare.
+	 *
+	 * `Cataclysm.Enemy.TheFacingToleranceCoversEveryDirectionalAbility` checks
+	 * every ability of every enemy against its own geometry, so an attack added
+	 * later that is longer-ranged or narrower than the rock throw fails rather
+	 * than quietly firing while pointed away from what it is aimed at.
+	 *
+	 * IT CANNOT BE ZERO. A creature turns a whole number of degrees per frame
+	 * and a target moves between frames, so "exactly facing" is a condition that
+	 * would come true only by coincidence and the creature would turn for ever.
+	 */
+	static constexpr float FacingToleranceDegrees = 10.0f;
+
+	/**
+	 * Whether this ability has to be pointed at anything to be worth using.
+	 *
+	 * ONLY A PROJECTILE DOES, of the shapes any enemy has today. A Strike marks
+	 * a circle around the creature itself: the Brute's Stomp is written
+	 * `Angle=360` in `sim/cataclysm_sim/enemy_abilities.py` and the reason given
+	 * there is that a ring "stops the answer to a Brute being stand behind it
+	 * and ignore the marker". Making a ring wait to be faced would hand that
+	 * answer straight back, so a Strike must never require facing.
+	 *
+	 * Public and static so a test can ask the question without a world.
+	 */
+	static bool AbilityNeedsFacing(const FCataclysmEnemyAbility& Ability);
+
+	/**
+	 * The angle between where the creature is pointed and where the target is,
+	 * in degrees, ignoring height.
+	 *
+	 * HEIGHT IS IGNORED FOR THE SAME REASON REACH IGNORES IT. Facing is a
+	 * floor-plane question and capsule centres sit at different heights, so a
+	 * 3D angle would report a Brute standing against the player as pointed
+	 * downward at them rather than at them.
+	 *
+	 * Returns 0 when either actor is missing, which reads as "facing" and is the
+	 * safe direction: a missing actor must not leave a creature turning for ever.
+	 */
+	static float DegreesOffTarget(const AActor* Driven, const AActor* Target);
+
+protected:
+
+	/**
+	 * Point the creature at the target and let it turn there at its own rate.
+	 *
+	 * HOW THIS WORKS, BECAUSE THE OBVIOUS ROUTE SILENTLY DOES NOTHING.
+	 * `AAIController::SetFocus` is the usual way to make an AI look at
+	 * something, and it would have no effect here: `SetFocus` is only read by
+	 * `AAIController::UpdateControlRotation`, which runs from the controller's
+	 * `Tick`, and this controller sets `PrimaryActorTick.bCanEverTick = false`
+	 * because it thinks on a timer instead. Nothing would ever turn.
+	 *
+	 * So the control rotation is set directly. `UCharacterMovementComponent::
+	 * PhysicsRotation` reads `Controller->GetDesiredRotation()`, which is
+	 * `GetControlRotation()`, and turns toward it by `RotationRate * DeltaTime`
+	 * every movement tick. That gives smooth turning at the creature's designed
+	 * rate with no per-frame work in this class, and the rotation only has to be
+	 * refreshed on a thinking pass.
+	 *
+	 * `bOrientRotationToMovement` OVERRIDES `bUseControllerDesiredRotation` in
+	 * `PhysicsRotation`, in that order, so the two are swapped rather than both
+	 * set. See `FaceTravelDirection` for the other half.
+	 */
+	void FaceTarget(ACataclysmCharacterBase* Driven, const AActor* Target);
+
+	/**
+	 * Go back to facing whichever way the creature is walking.
+	 *
+	 * Called whenever it starts moving again, because the constructor's setting
+	 * is what makes a walking monster point where it is going, and `FaceTarget`
+	 * turns it off.
+	 */
+	void FaceTravelDirection(ACataclysmCharacterBase* Driven);
 
 	/**
 	 * Whether the anchor has been recorded. Distinct from the anchor being the
