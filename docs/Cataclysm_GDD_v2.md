@@ -3329,7 +3329,7 @@ The vertical slice will feature five to seven base enemy types from the Demonic 
 | The Hellhound | Aggressive charger that leaves fire trails. Trail can damage other enemies. |
 | The Brute | Heavily armored slow melee. Stomp stun attack. Can be outmaneuvered. |
 | The Corrupted Sentinel | Stationary ranged. Forces the player to stay mobile. |
-| The Abyssal Warden (Mini-Boss) | Massive stone and lava demon. High damage resistance but vulnerable at legs and back. |
+| The Abyssal Warden (Mini-Boss) | Massive stone and lava demon. High damage resistance. |
 | The Gatekeeper (Boss) | Multi-phase towering demon. Each phase introduces new mechanics. |
 
   
@@ -3356,7 +3356,11 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Brute, the Corrupted Sentinel, the Hellhound, the Imp and the Succubus are designed.** The other two are open work: the Abyssal Warden and the Gatekeeper each have their own issue.
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Abyssal Warden, the Brute, the Corrupted Sentinel, the Hellhound, the Imp and the Succubus are designed.** One is left: the Gatekeeper has its own issue.
+
+  
+
+**The Abyssal Warden's description used to end "but vulnerable at legs and back", and it no longer does.** The project owner ruled positional weak points out on 2026-08-09, in these words: "we don't do positional weak points. That's too tedious in a diablo like arpg". Nothing in the project ever implemented damage that varies by where a creature is hit, so the clause described behaviour that did not exist and was not going to. What "high damage resistance" means instead is set out in that creature's subsection below.
 
   
 
@@ -3949,6 +3953,132 @@ Three things. Everything else above is read off `game/Data/WeaponSkills.csv`, `g
 - **The mortar's 3.0 metre radius.** Bounded below by the bolt's 2.1, so the two markers differ, and above by the 8 metre cap and by what its cooldown allows. The value inside that window is chosen, and 3.0 is the second largest radius any player Projectile uses.
 - **Two abilities rather than one or three.** The Imp's subsection above argues that one ability can be a complete design, and that argument could have been made here. It was not, because nothing except the mortar answers cover.
 - **The 8 second cooldown.** Inside the slot's band, and it puts four bolts between shells, but the band is wide.
+
+  
+
+### **The Abyssal Warden**
+
+  
+
+**The Abyssal Warden is the hardest thing in the slice to hurt, and the only melee enemy that cannot catch anybody.** Those two facts are its whole design. It has three abilities: a swing it uses constantly, a charge that closes the gap it cannot close on foot, and a ring at its feet that is the largest telegraph in the game.
+
+  
+
+The word melee is doing work there. The Succubus moves at 3.5 metres per second and cannot catch the fastest class either, and does not need to — it reaches 8 metres. Being unable to close only matters for a creature that has to.
+
+  
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Sunder | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 2.4 s attack interval | No |
+| Stampede | Movement | Movement | `Mode=Charge; Range=8; Radius=1.5` | a 5 s cooldown | Yes, 0.83 s wind-up |
+| Molten Roar | Ultimate | Strike | `Radius=5.6; Angle=360` | a 12 s cooldown | Yes, 2.0 s wind-up |
+
+  
+
+#### **What "high damage resistance" means, in numbers**
+
+  
+
+It is not one figure. The project owner settled that on 2026-08-09: "'High damage resistance' can be a combination of things. Enemies get layers of defense just like the player. So armor/resistances/damage reduction/etc".
+
+  
+
+The Abyssal Warden's layers today are the two highest in the vertical slice, and no others:
+
+  
+
+| Layer | The Warden | Next highest |
+| :-- | :-: | :-- |
+| Armour share | **3.50** | the Brute at 3.00 |
+| Resistance | **35%** | the Gatekeeper at 30% |
+| Evasion | 0% | — |
+| Energy shield | 0% of health | — |
+
+  
+
+At Herald rarity on the last floor of a 50-floor Cataclysm dungeon that is 5,954 armour, worth 48.19% at tier 8, and 35% resistance: together **66.3% of a hit stopped**. The player's counter is the resistance penetration and armour penetration they already have.
+
+  
+
+**Two of the player's mitigation layers have no enemy equivalent at all** — block chance and flat damage reduction — and giving enemies them is a change to every enemy rather than to this one. It has its own issue.
+
+  
+
+#### **Its swing is not telegraphed, and the reason differs from the Brute's**
+
+  
+
+A 2.4 second attack interval allows a 2.80 metre marker, comfortably over the one metre floor. **So this creature can telegraph; its ordinary swing simply does not need to**, because a 0.9 metre reach is under that floor. The Brute fails both conditions and the Warden fails only the one about its own radius.
+
+  
+
+**Its interval is long enough for two authored swings, and it is the only one of the seven that is.** `PrimaryAttack_LA` and `PrimaryAttack_RA` are 1.1333 seconds each, measured 2026-08-09, and 2.2667 fits inside 2.4 with a tenth of a second to spare. That is presentation rather than a second ability.
+
+  
+
+#### **The charge is what stops it being walked away from**
+
+  
+
+**It moves at 2.8 metres per second and its chase speed is 0.0.** The three Demonic classes move at 3.5, 4.0 and 4.6. It is the only designed melee enemy that cannot catch anybody, so without a gap-closer a player walks backwards and it never fights. That is the rule the Brute's rock throw already states from the other side: there is no distance at which an enemy is aware of the player and can do nothing.
+
+  
+
+**Eight metres**, the shortest Movement-shape skill range in `game/Data/WeaponSkills.csv`. The shortest is the right one for the slowest creature, and it still passes the test the Hellhound's charge sets: during the 0.83 second wind-up this creature could walk 2.32 metres at its own speed, and eight metres is more than three times that.
+
+  
+
+**A 1.5 metre corridor**, the narrowest any player Charge-mode skill uses, so the marker is a lane to step out of rather than a wall. It leaves nothing behind — the burning lane belongs to the Hellhound, and this creature's job is to arrive.
+
+  
+
+**It repeats the Hellhound's Charge mode, and the art decided that.** A Leap was the first proposal, because a leap clears a ring of bodies where a charge meets it. Measuring the Grux pack settled it the other way: `Stampede` is a single 0.700 second clip that fits inside the 0.83 second wind-up at its authored speed, where a leap has to be stitched from five clips, which the current one-clip-at-a-time playback cannot do.
+
+  
+
+#### **Molten Roar is the largest telegraph in the game**
+
+  
+
+A ring 5.6 metres across at its feet, marked for 2 seconds, every 12 seconds. The Brute's stomp is 3.5 metres and the Succubus's bolt 3.15.
+
+  
+
+**The 12 second cooldown is derived from how long the creature needs to kill.** A Herald Abyssal Warden kills the reference geared character in 5 hits, which at a 2.4 second interval is 12.0 seconds. A cooldown longer than that could come round zero times in a fight the player is losing. It is also the bottom of the Ultimate slot's 12-to-40 second band, and exactly five swings apart.
+
+  
+
+**It is the first thing in the game to use the Ultimate slot.** At that slot's 400% it lands at about four of this creature's ordinary hits, which is four fifths of what the reference geared character survives. That is the right weight for something that warns for two seconds and is avoided completely by walking out of it.
+
+  
+
+**It does not stun.** The Brute's stomp is the one thing in this slice that holds the player still, and a second one would spend most of its uses inside the 5 second stun immunity window.
+
+  
+
+#### **A bigger marker is not harder to escape, and that is worth knowing**
+
+  
+
+The wind-up is `0.4 + Radius ÷ 3.5`, so the slowest class walks `1.4 + Radius` metres during it, while a player standing at contact has to cross `Radius − 0.9`. **The difference is 2.3 metres at every radius.** Molten Roar at 5.6 metres and the Brute's stomp at 3.5 give the player exactly the same margin.
+
+  
+
+So a marker's size says how much ground it denies and how long it warns for. It does not say how hard it is to avoid. That reads as counter-intuitive and follows from the wind-up formula rather than from any choice made here.
+
+  
+
+#### **What here is a judgement rather than a derivation**
+
+  
+
+Two things. Everything else is read off `game/Data/WeaponSkills.csv`, `game/Data/SkillSlots.csv`, the wind-up formula above, the stat block in `sim/cataclysm_sim/enemy_stats.py`, or measured from the art on 2026-08-09.
+
+  
+
+- **Molten Roar's 5.6 metre radius.** Bounded below by the 2.80 metres its own attack interval allows, so it is categorically different from what the creature does every 2.4 seconds, and above by the 8 metre cap. Inside that window 5.6 is chosen because it is exactly twice the 2.80 and makes the wind-up exactly 2.0 seconds.
+- **Three abilities rather than two.** The Corrupted Sentinel has two. The third here is the charge, and without it the creature can be walked away from and never fought.
 
   
 
