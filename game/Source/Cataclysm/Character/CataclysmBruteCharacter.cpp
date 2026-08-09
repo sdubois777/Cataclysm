@@ -45,17 +45,6 @@ const FName ACataclysmBruteCharacter::AttackSlotName = TEXT("DefaultSlot");
 // through the Rip and Toss clips for exactly this. See the header.
 const FName ACataclysmBruteCharacter::RockHoldBoneName = TEXT("weapon_r");
 
-// The five pieces the rock breaks into. %s is A through E.
-//
-// THEY CARRY NO MATERIAL. Measured 2026-08-08: every one of them has
-// /Engine/EngineMaterials/WorldGridMaterial, the engine grey checkerboard.
-// The material comes from the rock they are pieces of instead.
-const TCHAR* ACataclysmBruteCharacter::RockFragmentFolder =
-	TEXT("/Game/ParagonRampage/FX/Meshes/Debris");
-
-const TCHAR* ACataclysmBruteCharacter::RockFragmentBaseName =
-	TEXT("SM_Rampage_Rock_Frag");
-
 // THE TWO ABILITY MONTAGES LIVE BESIDE THE ANIMATION BLUEPRINT, NOT IN THE
 // PARAGON FOLDER. They are this project's own assets, built by
 // tools/generate_brute_montages.py out of the pack's clips, so they belong under
@@ -692,22 +681,6 @@ void ACataclysmBruteCharacter::UpdateAbilityMontage()
 	PlayAbilityMontage(Index);
 }
 
-void ACataclysmBruteCharacter::LeaveRockDebris(ACataclysmProjectile* Thrown)
-{
-	if (!Thrown)
-	{
-		return;
-	}
-
-	// WHERE IT GOT TO, NOT WHERE IT WAS AIMED. A rock stopped early by an enemy
-	// or by a wall breaks there. FurthestReached is what the projectile records
-	// for exactly this, and it is not the same as its final location for one
-	// that returns to the caster.
-	ACataclysmDebrisBurst::Scatter(
-		this, Thrown->FurthestReached, RockFragments, RockMaterial,
-		RockFragmentSpreadCm, RockFragmentRadiusCm);
-}
-
 void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 											   const FVector& AimedAt)
 {
@@ -763,20 +736,17 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		// bolt with one. RockMesh is null without the Paragon pack, which is the
 		// state on a fresh clone, and the projectile then keeps its engine
 		// sphere. Issue #404.
-		ACataclysmProjectile* Thrown = ACataclysmProjectile::Fire(
+		//
+		// IT LEAVES NOTHING WHERE IT LANDS. Issue #434 broke the rock into five
+		// pieces on impact and the project owner removed that on 2026-08-08 as
+		// unwanted, which is issue #455. The projectile's OnFinished delegate is
+		// untouched and still reports where a shot stopped; nothing on the Brute
+		// binds to it any more.
+		ACataclysmProjectile::Fire(
 			this, GetActorLocation(), AimedAt,
 			RockThrowRadiusCm, RockThrowSpeedCmPerSecond,
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
 			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh);
-
-		// THE ROCK BREAKS WHERE IT STOPS. Bound to the projectile's own
-		// OnFinished, which already exists and already reports where that was.
-		// The projectile stays generic: it knows nothing about rocks. Issue #422.
-		if (Thrown)
-		{
-			Thrown->OnFinished.AddUObject(
-				this, &ACataclysmBruteCharacter::LeaveRockDebris);
-		}
 		return;
 	}
 }
@@ -978,39 +948,17 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 		CarriedRock->SetStaticMesh(RockMesh);
 	}
 
-	// THE MATERIAL COMES FROM THE ROCK, NOT FROM THE FRAGMENTS. See the note on
-	// RockFragmentPathFormat: the fragments ship with the engine's checkerboard.
+	// THE MATERIAL COMES FROM THE ROCK ITSELF. The rip crater is the only thing
+	// that wears it now, and the crater mesh ships with the engine's grey
+	// checkerboard placeholder rather than a rock material of its own.
 	RockMaterial = RockMesh ? RockMesh->GetMaterial(0) : nullptr;
 
 	// THE HOLE IT CAME OUT OF. Null without the pack, which leaves the rip
 	// exactly as it was rather than breaking it -- UpdateRipCrater checks.
-	// It wears RockMaterial for the same reason the fragments do. Issue #432.
+	// It wears RockMaterial for the reason just above. Issue #432.
 	RockCraterMesh =
 		Cast<UStaticMesh>(FSoftObjectPath(RockCraterMeshPath).TryLoad());
 
-	RockFragments.Reset();
-	for (int32 Piece = 0; Piece < RockFragmentCount; ++Piece)
-	{
-		const FString Letter = FString::Chr(static_cast<TCHAR>(TEXT('A') + Piece));
-		const FString Asset = FString(RockFragmentBaseName) + Letter;
-		// An Unreal object path repeats the asset name after the dot.
-		const FString Path = FString(RockFragmentFolder) + TEXT("/")
-			+ Asset + TEXT(".") + Asset;
-		if (UStaticMesh* Fragment = Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad()))
-		{
-			RockFragments.Add(Fragment);
-		}
-	}
-
-	if (RockFragments.Num() != RockFragmentCount)
-	{
-		// Expected without the Paragon pack. The throw is unaffected; it simply
-		// leaves nothing behind, which is what it did before issue #422.
-		UE_LOG(LogCataclysm, Warning,
-			TEXT("Found %d of the Brute's %d rock fragments, so a thrown rock will "
-				 "leave less debris than designed."),
-			RockFragments.Num(), RockFragmentCount);
-	}
 	if (!RockMesh)
 	{
 		UE_LOG(LogCataclysm, Warning,

@@ -5,10 +5,6 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmDebrisBurst.h"
-#include "AbilitySystem/CataclysmProjectile.h"
-#include "AbilitySystem/CataclysmTeams.h"
-#include "Character/CataclysmBruteCharacter.h"
-#include "Character/CataclysmEnemyCharacter.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -17,19 +13,22 @@
 #include "Misc/ScopeExit.h"
 
 /**
- * Tests for the broken pieces left where something hit.
+ * Tests for `ACataclysmDebrisBurst`, which places meshes at a point and clears
+ * them up after itself.
  *
- * WHAT THESE GUARD. Issue #422. `ACataclysmProjectile` stopped, dealt its damage
- * and destroyed itself, so a thrown rock was gone from one frame to the next.
- * Nothing in the project had an impact effect of any kind.
+ * WHAT USES IT NOW. Only the Brute's rip crater, which passes a single mesh with
+ * no spread. It was written for the five pieces a thrown rock broke into, and
+ * the project owner had those removed on 2026-08-08 as unwanted, which is issue
+ * #455. The class stays because the crater needs it and because it is generic:
+ * it knows nothing about rocks.
  *
- * THE TRAP THAT IS NOT OBVIOUS. Measured 2026-08-08: all five
- * `SM_Rampage_Rock_Frag` meshes in the Paragon pack have
+ * THE TRAP THAT IS NOT OBVIOUS, and the reason a material is a separate
+ * argument. Measured 2026-08-08: the Paragon pack's debris meshes have
  * `/Engine/EngineMaterials/WorldGridMaterial` assigned -- the engine's grey
- * checkerboard placeholder. Spawning them as they come would put five large
- * checkered lumps on the floor, which is worse than the rock vanishing. The
- * material has to be supplied by whoever scatters them, and the test below is
- * what stops that being forgotten.
+ * checkerboard placeholder. Spawning one as it comes would put a large checkered
+ * lump on the floor, which is worse than nothing at all. The material has to be
+ * supplied by whoever scatters them, and the first test below is what stops that
+ * being forgotten.
  */
 
 namespace CataclysmDebrisTest
@@ -210,9 +209,9 @@ bool FCataclysmDebrisRefusesWhatIsNotAnEffect::RunTest(const FString&)
 	}
 
 	// THE CASE THIS EXISTS FOR IS A FRESH CLONE. The Paragon packs are
-	// gitignored, so the Brute's fragment array is empty and every entry a
-	// caller passes may be null. An empty actor sitting in the world for two
-	// seconds is something to clean up rather than an effect.
+	// gitignored, so a caller's mesh list may be empty and every entry in it may
+	// be null. An empty actor sitting in the world for two seconds is something
+	// to clean up rather than an effect.
 	TArray<UStaticMesh*> Nothing;
 	TestNull(TEXT("an empty list places nothing"),
 		ACataclysmDebrisBurst::Scatter(
@@ -255,110 +254,6 @@ bool FCataclysmDebrisRefusesWhatIsNotAnEffect::RunTest(const FString&)
 				Burst->PiecesPlaced, 1);
 		}
 	}
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmTheBrutesRockBreaksWhereItStops,
-	"Cataclysm.Brute.ItsThrownRockLeavesDebrisWhereItStops",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmTheBrutesRockBreaksWhereItStops::RunTest(const FString&)
-{
-	using namespace CataclysmDebrisTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("world"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
-		FVector::ZeroVector, FRotator::ZeroRotator);
-	if (!TestNotNull(TEXT("brute"), Brute))
-	{
-		return false;
-	}
-	Brute->ResolveBody(/*bIncludeAnimation=*/false);
-
-	if (Brute->RockFragments.IsEmpty())
-	{
-		AddInfo(TEXT("The Paragon Rampage pack is not installed, so there are no "
-					 "fragments and the throw leaves nothing behind. That is the "
-					 "expected state on a fresh clone."));
-	}
-	else
-	{
-		TestEqual(TEXT("the Brute resolved all five fragments"),
-			Brute->RockFragments.Num(),
-			ACataclysmBruteCharacter::RockFragmentCount);
-
-		// THE MATERIAL COMES FROM THE ROCK, NOT FROM THE FRAGMENTS, because the
-		// fragments carry the engine's checkerboard placeholder.
-		if (TestNotNull(TEXT("and a material to dress them in"),
-			Brute->RockMaterial.Get()))
-		{
-			TestTrue(TEXT("which is not the engine's placeholder"),
-				Brute->RockMaterial.Get() != CheckerboardPlaceholder());
-		}
-	}
-
-	TestEqual(TEXT("nothing is broken before the throw"), CountBursts(World), 0);
-
-	// Throw it, then run the projectile to its end so OnFinished fires.
-	Brute->UseEnemyAbility(ACataclysmBruteCharacter::RockThrowAbility,
-						   /*Target=*/nullptr, FVector(5.0f * M, 0.0f, 0.0f));
-
-	ACataclysmProjectile* Thrown = nullptr;
-	for (TActorIterator<ACataclysmProjectile> It(World); It; ++It)
-	{
-		if (IsValid(*It))
-		{
-			Thrown = *It;
-			break;
-		}
-	}
-	if (!TestNotNull(TEXT("the throw put a projectile in the world"), Thrown))
-	{
-		return false;
-	}
-
-	// Stepped by hand: a world made by UWorld::CreateWorld is never ticked, so
-	// the projectile is driven the way every other test in this project drives
-	// one.
-	for (int32 Step = 0; Step < 200 && Thrown->Step(0.05f); ++Step)
-	{
-	}
-
-	if (Brute->RockFragments.IsEmpty())
-	{
-		TestEqual(TEXT("without the pack the throw still leaves nothing"),
-			CountBursts(World), 0);
-		return true;
-	}
-
-	TestEqual(TEXT("the rock left one burst of debris"), CountBursts(World), 1);
-
-	ACataclysmDebrisBurst* Burst = nullptr;
-	for (TActorIterator<ACataclysmDebrisBurst> It(World); It; ++It)
-	{
-		Burst = *It;
-		break;
-	}
-	if (!TestNotNull(TEXT("the burst"), Burst))
-	{
-		return false;
-	}
-
-	TestEqual(TEXT("with all five pieces in it"),
-		Burst->PiecesPlaced, ACataclysmBruteCharacter::RockFragmentCount);
-
-	// WHERE IT GOT TO, NOT WHERE IT WAS AIMED. The two differ for a rock stopped
-	// early by an enemy or a wall.
-	TestEqual(TEXT("and it is where the rock actually stopped"),
-		Burst->GetActorLocation(), Thrown->FurthestReached);
 
 	return true;
 }
