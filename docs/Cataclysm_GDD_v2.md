@@ -3356,7 +3356,7 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Brute, the Hellhound, the Imp and the Succubus are designed.** The other three are open work: the Corrupted Sentinel, the Abyssal Warden and the Gatekeeper each have their own issue.
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Brute, the Corrupted Sentinel, the Hellhound, the Imp and the Succubus are designed.** The other two are open work: the Abyssal Warden and the Gatekeeper each have their own issue.
 
   
 
@@ -3830,6 +3830,125 @@ Three things, and all three come from figures that already exist.
   
 
 That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy attack was a cone would be answered once and never again.
+
+  
+
+### **The Corrupted Sentinel**
+
+  
+
+**The Corrupted Sentinel never moves, and everything about it follows from that.** It cannot close a gap, cannot retreat from one, and cannot re-position to see round an obstacle. It has two abilities: a bolt down a marked lane that it fires constantly, and a shell it lobs over cover on a cooldown.
+
+  
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Siege Bolt | Basic | Projectile | `Range=14; Radius=2.1; Pierce=0; Speed=1400` | its 2.0 s attack interval | Yes, 1.0 s wind-up |
+| Brimstone Mortar | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25` | an 8 s cooldown | Yes, 1.26 s wind-up |
+
+  
+
+#### **Its reach is the longest in the game, because reach is the only tool it has**
+
+  
+
+**14 metres**, which is the longest range any player attack reaches: Emberbolt on the wand and Hellbrand on the greatsword both state `Range=14` in `game/Data/WeaponSkills.csv`, and no attack states more.
+
+  
+
+It gets all of it because it has nothing else. Its movement speed is **0.0 at every rarity**, so a reach shorter than the player's longest would mean any ranged build could stand one metre outside it and kill the creature for nothing. That is the same rule the Brute's rock throw already states from the other side: there is no distance at which an enemy is aware of the player and can do nothing.
+
+  
+
+**Its notice radius has to be at least 14 metres**, or the reach is unreachable. No enemy has a designed notice radius yet — the Brute's 1000 cm was set by playing — and that is a separate open question.
+
+  
+
+#### **Its wind-up is exactly half its attack interval, and its speed falls out of the same sum**
+
+  
+
+The wind-up rule caps a telegraphed radius at `3.5 × (attack interval ÷ 2 − 0.4)`, which for 2.0 seconds is **2.1 metres**. The Sentinel takes all of it, so its wind-up is `0.4 + 2.1 ÷ 3.5` = **1.0 second**, exactly half the interval. That is the same place the Succubus sits, and for a related reason: a creature whose role is forcing the player to move should mark as much ground as the rule permits.
+
+  
+
+**The bolt's speed is then decided rather than chosen.** It has to land before the next one is marked, or the creature has a shot in the air and a marker on the ground at the same time and neither reads as a warning. The wind-up takes 1.0 second of the 2.0 second cycle, so the flight has the other 1.0. Fourteen metres in one second is **1400 centimetres per second**, and 1400 is one of the ten speeds `game/Data/WeaponSkills.csv` uses.
+
+  
+
+**So its cycle is exactly two seconds with nothing idle in it**: one second of marker on the ground, one second of flight, and the next marker appearing as the shot lands. That is what "forces the player to stay mobile" means as a number rather than as an adjective.
+
+  
+
+**It is faster than the Succubus's 1200 and that is deliberate.** The 1200 figure is the ceiling on the Brute's thrown rock, which is a lob and is fastest as it lands. This is a flat bolt and is not bound by it. 1400 is still the second slowest of the ten speeds in the player skill table, and what makes this shot readable is the second of ground marker in front of it, not its speed.
+
+  
+
+#### **It does not lead the player, and cover works**
+
+  
+
+**The lane is fixed when the wind-up starts.** That is the general rule the Attack Telegraphs subsection already sets for every telegraph, and it is what makes the marker mean something: an attack that tracks cannot be walked out of. Leading a moving target is the standard way to make a projectile land, which is exactly why this one does not do it.
+
+  
+
+**Geometry blocks the bolt and the Sentinel does not fire without line of sight.** Path of Exile's projectiles travel until they hit an enemy or an obstacle, and Diablo IV treats an enemy shooting through a wall as a bug rather than a feature. Breaking line of sight is therefore real counterplay against this creature, and it is the counterplay a stationary enemy should have.
+
+  
+
+#### **Standing on top of it is not safe, and no minimum range is needed to say so**
+
+  
+
+**A Projectile's marker is a lane, not a circle** — the telegraph table above says so: a line of width 2 × `Radius` running out to `Range`. A melee character who walks up and stands against the Sentinel is standing in that lane. So they have to step out of it every two seconds like everybody else, and at contact range stepping out of a 4.2 metre wide lane means walking around the creature.
+
+  
+
+**That is its whole answer to melee and it needs no new mechanic.** The rule that an attack must not mark the ground its own caster stands on was written for the Brute's rock, which is *lobbed* and marks a circle the creature would be standing inside. A lane starting at the caster does not do that: the caster is at the lane's origin, which is where a shooter stands.
+
+  
+
+**The rest of that answer is in the stat block rather than in an ability.** 2.20 armour share, an energy shield worth 35% of its health, 20% resistance and a 1.30 health share. A creature that cannot retreat has to be able to take hits, and this one survives being stood on rather than preventing it.
+
+  
+
+#### **The mortar is the only answer a creature that cannot walk has to cover**
+
+  
+
+A Sentinel that only shoots in straight lines is answered by one pillar, and it cannot step around it. The mortar is what stops that being the end of the fight.
+
+  
+
+| Question | Answer | Where it comes from |
+| :-- | :-- | :-- |
+| How it flies | an arc of 0.25 of the distance thrown | a projectile launched at 45 degrees, the angle that throws furthest, reaches an apex of a quarter of its range |
+| How long it is in the air | 1.69 s at full range | derived from the arc: `√(8 × Arc × range ÷ g)` |
+| How fast it lands | 1171 cm/s | under the 1200 ceiling the Brute's rock is held to, and a lob is fastest as it lands |
+| How near it will fire | 3.48 m | the marked circle's 3.0 m plus the creature's own 0.48 m body radius |
+| How often | every 8 seconds | inside the Special slot's 3 to 10 second band, and exactly four bolts between one shell and the next |
+
+  
+
+**The minimum range applies to this one and not to the bolt**, because this is the case the rule was written for: below `marked radius + body radius` the creature is standing inside the circle it is about to hit, which makes the attack a melee attack wearing a thrown attack's telegraph.
+
+  
+
+**Its marker is 3.0 metres against the bolt's 2.1**, so the two read as different sizes at a glance. Its wind-up is `0.4 + 3.0 ÷ 3.5` = 1.26 seconds, well inside the 12.6 metres its 8 second cooldown would allow and nowhere near the 8 metre cap that would make it cost a Movement skill.
+
+  
+
+#### **What here is a judgement rather than a derivation**
+
+  
+
+Three things. Everything else above is read off `game/Data/WeaponSkills.csv`, `game/Data/SkillSlots.csv`, the wind-up formula in the Attack Telegraphs subsection, or the stat block in `sim/cataclysm_sim/enemy_stats.py`.
+
+  
+
+- **The mortar's 3.0 metre radius.** Bounded below by the bolt's 2.1, so the two markers differ, and above by the 8 metre cap and by what its cooldown allows. The value inside that window is chosen, and 3.0 is the second largest radius any player Projectile uses.
+- **Two abilities rather than one or three.** The Imp's subsection above argues that one ability can be a complete design, and that argument could have been made here. It was not, because nothing except the mortar answers cover.
+- **The 8 second cooldown.** Inside the slot's band, and it puts four bolts between shells, but the band is wide.
 
   
 

@@ -20,6 +20,135 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — The Corrupted Sentinel: a bolt down a marked lane, and a shell lobbed over cover
+
+**Affects:** `ABILITIES` and `ATTACK_REACH` in
+`sim/cataclysm_sim/enemy_abilities.py`, and the Vertical Slice Enemy Behaviour
+section of `docs/Cataclysm_GDD_v2.md`. Applied. Closes #352.
+
+### The question
+
+Every one of the seven vertical slice enemies has had a full stat block since the
+enemy stat work landed, and none of them said what the creature DOES. #352 is the
+Corrupted Sentinel's turn, and it asked four things: what its projectile is, what
+it does when the player is out of range or behind cover, whether it has a minimum
+range, and whether its telegraph is a ground marker or a wind-up read off the
+creature.
+
+**One fact decides all four.** Its movement speed is **0.0 at every rarity**, so
+it cannot close a gap, cannot retreat from one, and cannot step round an obstacle
+to see past it.
+
+### What was decided
+
+Two abilities.
+
+| Ability | Slot | Shape | Parameters | Runs on |
+|---|:-:|:-:|---|:-:|
+| Siege Bolt | Basic | Projectile | `Range=14; Radius=2.1; Pierce=0; Speed=1400` | its 2.0 s attack interval |
+| Brimstone Mortar | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25` | an 8 s cooldown |
+
+**Its reach is 14 metres, the longest range any player attack has.** Emberbolt on
+the wand and Hellbrand on the greatsword both state `Range=14` in
+`game/Data/WeaponSkills.csv` and nothing states more. It gets all of it because
+reach is the only tool it has: at the Succubus's 8 metres, any ranged build could
+stand at 9 and kill it for nothing, which is the free kill #352 asked this design
+to prevent. Two rows do reach 15 metres — Subjugate, a Debuff, and Open the Rift,
+a Summon — and neither is an attack.
+
+**Its bolt's speed is decided rather than chosen.** The wind-up takes 1.0 second
+of the 2.0 second cycle, so the flight has the other 1.0, and fourteen metres in
+one second is 1400 centimetres per second. That is one of the ten speeds the
+player skill table uses, and it is the slowest of them that gets the shot there
+in time. **So the creature's cycle is exactly two seconds with nothing idle in
+it**: one second of marker on the ground, one second of flight, and the next
+marker appearing as the shot lands. That is "forces the player to stay mobile" as
+a number rather than as an adjective.
+
+**It does not lead the player.** The lane is fixed when the wind-up starts, which
+is already the rule for every telegraph in this game. The genre confirms it from
+the other side: leading a moving target is the standard way to make a projectile
+land, which is exactly why a telegraphed one must not do it.
+
+**Geometry blocks the bolt, so cover works.** Path of Exile's projectiles travel
+until they hit an enemy or an obstacle. Diablo IV players file enemies shooting
+through walls as bugs, so the expected behaviour there is that hiding works.
+Breaking line of sight is real counterplay, and it is the counterplay a
+stationary creature ought to have.
+
+**The mortar is the only answer it has to cover.** A creature that shoots in
+straight lines and cannot walk is answered by one pillar. The shell arcs over,
+using the `Arc` parameter established for the Brute's rock rather than a new
+mechanic. At its full fourteen metres it is in the air 1.69 seconds and lands at
+1171 cm/s, under the 1200 the Brute's rock is held to.
+
+**It has no minimum range on the bolt and needs none.** A Projectile's marker is
+a LANE running from the caster out to its range, so a melee character standing
+against the Sentinel is standing in that lane and has to step out of it every two
+seconds like everybody else. At contact range that means walking around the
+creature. **That is its whole answer to melee.** The rule that an attack must not
+mark the ground its own caster stands on was written for a LOB marking a circle,
+and it does apply to the mortar: 3.0 + 0.48 = **3.48 metres**.
+
+**The rest of its answer to melee is in the stat block rather than in an
+ability.** 2.20 armour share, an energy shield worth 35% of its health, 20%
+resistance and a 1.30 health share. `sim/cataclysm_sim/enemy_stats.py` already
+says in terms that a creature which cannot retreat has to be able to take hits.
+It survives being stood on rather than preventing it.
+
+### What is a judgement rather than a derivation
+
+`CLAUDE.md` asks for this to be separated out. Three things:
+
+- **The mortar's 3.0 metre radius.** Bounded below by the bolt's 2.1, so the two
+  markers read as different sizes, and above by the 8 metre escape cap and by
+  the 12.6 metres its cooldown allows. Inside that window 3.0 is chosen because
+  it is the second largest `Radius` any player Projectile uses, Blood Pyre's.
+- **Two abilities rather than one or three.** The Imp's section argues one
+  ability can be a complete design and the argument could have been made here.
+  It was not, because nothing but the mortar answers cover.
+- **The 8 second cooldown.** Inside the Special slot's 3 to 10 second band, and
+  it puts exactly four bolts between one shell and the next, but the band is
+  wide.
+
+### Two rules that were only in prose, and are now checked
+
+**A Projectile states `Speed` or `Arc` and never both.** The docstring on
+`SHAPE_PARAMS` has said so since #474 and nothing checked it. The Sentinel is the
+first enemy carrying one of each, which is what made the gap worth closing.
+`_check_every_projectile_states_a_speed_or_an_arc_but_not_both` now enforces it.
+
+**The lobbed minimum range had two definitions and now has one.** It lived in
+`ACataclysmBruteCharacter` as `RockThrowMinimumRangeCm = 258.0f` and in prose. It
+is now `lob_minimum_range` in `sim/cataclysm_sim/enemy_abilities.py`, and
+`tools/tests/test_the_rock_throw_minimum_range.py` holds the C++ constant to it.
+Before this the C++ was only checked against itself — three constants out of one
+header, confirming the arithmetic between them — which cannot catch the header
+drifting away from the design.
+
+### What this does not settle
+
+**Its notice radius.** The 14 metre reach is unreachable unless the creature
+notices at least that far, and no enemy has a designed notice radius: the Brute's
+1000 cm was set by playing. That is #383, and it now has a hard floor for one of
+the seven.
+
+**Nobody has played it.** There is no Corrupted Sentinel class in the project —
+`game/Source/Cataclysm/Character/` holds one enemy, the Brute. Every figure that
+turned out wrong on the Brute was wrong in a way no test could see, so none of
+these numbers should be treated as settled until somebody has fought one.
+
+**Where its shot leaves the barrel.** #478. Nothing has measured the release
+moment inside `Fire_Planted`, so the one second wind-up cannot yet be lined up
+with the animation. That blocks building the creature, not designing it.
+
+**Sources for the genre claims:**
+[Projectile, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Projectile);
+[Enemy shooting through walls, Diablo IV forums](https://us.forums.blizzard.com/en/d4/t/enemy-shooting-thru-walls/42337);
+[Predictive Aim Mathematics for AI Targeting, Game Developer](https://www.gamedeveloper.com/programming/predictive-aim-mathematics-for-ai-targeting).
+
+---
+
 ## 2026-08-09 — An enemy's attack animation is played to fit its designed attack interval
 
 **Affects:** `game/docs/enemy-source-assets.md`, and the Corrupted Sentinel's row
