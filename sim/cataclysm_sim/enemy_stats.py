@@ -69,11 +69,17 @@ mitigation layers deep. `reference_build.py` assembles a real geared character
 and `tests/test_survivability.py` measures the two damage constants against it.
 
 WHAT THIS DOES NOT COVER. Enemy abilities. The Hellhound's fire trail, the
-Brute's stomp stun, the Gatekeeper's phases and the Abyssal Warden's positional
-weak points are behaviour, not statistics. They belong with the enemy design work
-in issues #29 and #39. This is the stat block each of them stands on.
-`enemy_abilities.py` is where that behaviour goes as it is designed, one enemy at
-a time; the Imp is the only one filled in so far (#348).
+Brute's stomp stun, the Gatekeeper's phases and the Abyssal Warden's ring are
+behaviour, not statistics. They belong with the enemy design work in issues #29
+and #39. This is the stat block each of them stands on. `enemy_abilities.py` is
+where that behaviour goes as it is designed, one enemy at a time; six of the
+seven are filled in and only the Gatekeeper (#354) is left.
+
+THIS PARAGRAPH USED TO NAME THE ABYSSAL WARDEN'S POSITIONAL WEAK POINTS. The
+project owner ruled them out on 2026-08-09 -- "we don't do positional weak
+points. That's too tedious in a diablo like arpg" -- and nothing in the project
+ever implemented damage that varies by where a creature is hit. What that
+creature does instead is designed in `enemy_abilities.py` under issue #353.
 
 ONE FIELD HERE IS A BODY MEASUREMENT RATHER THAN A COMBAT STATISTIC.
 `body_radius` says how wide the creature is, and it exists because how many of a

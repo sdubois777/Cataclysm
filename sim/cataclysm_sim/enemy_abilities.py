@@ -6,9 +6,9 @@ an enemy does with its turn. Issue #29 is the epic that asks, and it is split on
 enemy at a time: #348 the Imp, #349 the Succubus, #350 the Hellhound, #351 the
 Brute, #352 the Corrupted Sentinel, #353 the Abyssal Warden, #354 the Gatekeeper.
 
-**Only the Imp, the Succubus, the Hellhound, the Brute and the Corrupted
-Sentinel are filled in.** The other two, the Abyssal Warden and the Gatekeeper,
-are open issues. An archetype with no entry here has no designed abilities yet,
+**Six of the seven are filled in: the Imp, the Succubus, the Hellhound, the
+Brute, the Corrupted Sentinel and the Abyssal Warden.** The Gatekeeper is still
+open, and it is #354. An archetype with no entry here has no designed abilities yet,
 and asking for one raises rather than returning an empty list, so a missing
 design cannot be mistaken for a finished one.
 
@@ -420,6 +420,12 @@ ATTACK_REACH: dict[str, float] = {
     # A notice radius below 14 metres would make this reach unreachable.
     # Issue #352.
     "Corrupted Sentinel": 14.0,
+
+    # Contact and no further: 0.42 for the player's body plus its own 0.48. The
+    # same figure the Brute and the Hellhound use, and for the same reason --
+    # this creature's threat is the ring at its feet and its weakness is that it
+    # cannot catch anybody, neither of which is about reach. Issue #353.
+    "Abyssal Warden": 0.90,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -826,6 +832,127 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                  "stopped moving behind something.",
         ),
     ),
+    "Abyssal Warden": (
+        Ability(
+            name="Sunder",
+            shape="Strike",
+            slot="Basic",
+            # NOT TELEGRAPHED, and unlike the Brute it is the attack's OWN reach
+            # that refuses the marker rather than the cycle. A 2.4 second attack
+            # interval allows 2.80 metres, which is comfortably over the one
+            # metre floor; the 0.9 metre swing is under it. So this creature can
+            # telegraph and simply does not need to for its ordinary swing.
+            params={"Radius": 0.9, "Angle": 90, "MaxTargets": 1},
+            note="A swing at whatever it is standing against. Its interval is "
+                 "long enough for two authored swings: PrimaryAttack_LA and "
+                 "PrimaryAttack_RA are 1.1333 seconds each and 2.2667 fits "
+                 "inside 2.4 with a tenth of a second to spare, measured "
+                 "2026-08-09. It is the only one of the seven that can do "
+                 "that, and it is presentation rather than a second ability.",
+        ),
+        Ability(
+            name="Stampede",
+            shape="Movement",
+            slot="Movement",
+            # WHY IT NEEDS ONE AT ALL. This is the only designed MELEE enemy
+            # that cannot catch anybody -- the Succubus cannot either and does
+            # not need to, because it reaches 8 metres, and being unable to
+            # close only matters for a creature that has to.
+            #
+            # It moves at 2.8 metres per second and its
+            # chase speed is 0.0, against player classes at 3.5, 4.0 and 4.6.
+            # Without this a player walks backwards and it never fights, which
+            # is the rule the Brute's rock throw already states from the other
+            # side: there must be no distance at which an enemy is aware of the
+            # player and can do nothing.
+            #
+            # MODE Charge, WHICH REPEATS THE HELLHOUND'S, AND THAT WAS DECIDED
+            # AGAINST THE ART RATHER THAN ASSUMED. A Leap was proposed first,
+            # because the Imp's section notes that a leap clears a ring of
+            # bodies where a charge meets it, and this is the slowest melee
+            # creature in the slice. Measuring the pack on 2026-08-09 settled it
+            # the other way: `Stampede` is a single 0.700 second clip that fits
+            # inside this ability's 0.83 second wind-up at its authored speed,
+            # while a leap has to be stitched from five -- Jump_Start 0.333,
+            # Jump_Up 0.333, Jump_Loop 1.333, Jump_Fall 1.333, Jump_Land 0.900 --
+            # which the shipped one-clip-at-a-time playback path cannot do
+            # without the animation Blueprint work in issue #387. `Bound` looked
+            # like the leap from its name and is 0.0333 seconds, a single pose.
+            #
+            # RANGE 8 METRES, the shortest Movement-shape skill range in
+            # game/Data/WeaponSkills.csv. The design document already uses that
+            # figure as the furthest a player can be made to travel. The
+            # shortest is right for the slowest creature, and it still passes
+            # the test the Hellhound's charge sets for whether a gap-closer is
+            # worth having: during the 0.83 second wind-up this creature could
+            # walk 2.32 metres at its own speed, and 8 is more than three times
+            # that.
+            #
+            # RADIUS 1.5, the narrowest corridor any player Charge-mode skill
+            # uses, so the marker is a lane to step out of rather than a wall.
+            # The same rule the Hellhound's charge is sized by, producing the
+            # same answer. It also keeps this ability clearly secondary to the
+            # 5.6 metre ring below, which is what the creature is really about.
+            params={"Mode": "Charge", "Range": 8, "Radius": 1.5},
+            # The Movement slot's cooldown in game/Data/SkillSlots.csv.
+            cooldown=5.0,
+            note="A charge in a straight line fixed when the wind-up starts, "
+                 "marked as a lane 1.5 metres to either side for 0.83 seconds. "
+                 "It leaves nothing behind: the burning lane is the "
+                 "Hellhound's, and this creature's job is to arrive.",
+        ),
+        Ability(
+            name="Molten Roar",
+            shape="Strike",
+            slot="Ultimate",
+            # THE LARGEST MARKER IN THE GAME. The Brute's stomp is 3.5 metres
+            # and the Succubus's bolt 3.15.
+            #
+            # RADIUS 5.6 IS A JUDGEMENT, AND IT IS BOUNDED. It has to be above
+            # the 2.80 metres this creature's own attack interval allows, or it
+            # is not categorically different from what it does every 2.4
+            # seconds. It has to be at or under the 8 metre absolute cap, above
+            # which the design document says an attack cannot be escaped by any
+            # means the player has. Inside that window 5.6 is chosen because it
+            # is exactly twice the 2.80, and because it makes the wind-up
+            # exactly 2.0 seconds.
+            #
+            # A BIGGER MARKER IS NOT HARDER TO ESCAPE, which is worth knowing
+            # before reading anything into the size. The wind-up is
+            # 0.4 + Radius / 3.5, so the slowest class walks 1.4 + Radius metres
+            # during it while a player at contact has to cross Radius - 0.9. The
+            # margin is 2.3 metres at EVERY radius. This ring and the Brute's
+            # stomp are equally escapable; this one denies more ground and warns
+            # for longer. Issue #487.
+            #
+            # ANGLE 360 because it is a ring at its feet, and because a cone on
+            # a creature that turns at the ordinary 480 degrees per second would
+            # simply be aimed.
+            #
+            # NO STUN. The Brute's stomp is the thing in this slice that stuns,
+            # and a second creature holding the player still would spend most of
+            # its uses inside the 5 second immunity window anyway.
+            params={"Radius": 5.6, "Angle": 360},
+            # 12 SECONDS, AND IT IS DERIVED RATHER THAN CHOSEN. docs/DECISIONS.md
+            # records that a Herald Abyssal Warden kills the reference geared
+            # character in 5 hits and 12.0 seconds. A cooldown longer than that
+            # could come round zero times in a fight the player is losing. It is
+            # also the bottom of the Ultimate slot's 12 to 40 second band in
+            # game/Data/SkillSlots.csv, and exactly five basic attacks apart.
+            #
+            # THE ULTIMATE SLOT IS THE ONLY ONE OF THE SEVEN NO ENEMY HAS USED.
+            # At its 400% this lands at about four of this creature's ordinary
+            # hits, which is four fifths of what the reference geared character
+            # survives. That is the right weight for something that warns for
+            # two seconds and is avoided completely by walking out.
+            cooldown=12.0,
+            note="It roars and the ground erupts in a ring 5.6 metres across, "
+                 "marked for 2 seconds first. The largest telegraph in the "
+                 "game and the first thing in it to use the Ultimate slot. "
+                 "Ultimate_Roar is 1.4000 seconds, measured 2026-08-09, so the "
+                 "wind-up holds the whole clip at its authored speed.",
+        ),
+    ),
 }
 
 
@@ -843,8 +970,7 @@ def abilities(name: str) -> tuple[Ability, ...]:
         raise ValueError(
             f"{name} has no designed abilities yet. The enemy design epic #29 "
             "is split one enemy at a time, and the ones that are done are "
-            f"{sorted(ABILITIES)}. The Abyssal Warden is #353 and the "
-            "Gatekeeper is #354.")
+            f"{sorted(ABILITIES)}. The Gatekeeper is #354.")
     return ABILITIES[name]
 
 

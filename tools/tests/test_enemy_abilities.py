@@ -1781,6 +1781,315 @@ def test_a_projectile_may_not_state_both_a_speed_and_an_arc():
 
 
 # --------------------------------------------------------------------------
+# The Abyssal Warden, issue #353
+# --------------------------------------------------------------------------
+#
+# Two facts carry this creature's whole design and both are recomputed here
+# rather than asserted: it is the hardest thing in the slice to hurt, and it is
+# the only designed enemy that cannot catch the player.
+
+
+@pytest.fixture(scope="module")
+def warden_section() -> str:
+    return subsection("Abyssal Warden")
+
+
+@pytest.fixture(scope="module")
+def warden():
+    from cataclysm_sim.enemy_stats import archetype
+    return archetype("Abyssal Warden")
+
+
+@pytest.fixture(scope="module")
+def warden_abilities():
+    from cataclysm_sim.enemy_abilities import abilities
+    return abilities("Abyssal Warden")
+
+
+def test_the_warden_ability_table_matches_the_data(warden_section,
+                                                   warden_abilities):
+    """Three abilities, and the document's table must carry all three exactly
+    as the data holds them."""
+    assert len(warden_abilities) == 3, (
+        f"the Abyssal Warden now has {len(warden_abilities)} abilities in "
+        "sim/cataclysm_sim/enemy_abilities.py. The design document describes "
+        "three: a swing, a charge and a ring at its feet.")
+    for ability in warden_abilities:
+        assert_row_matches(warden_section, ability, "Abyssal Warden")
+
+
+#: An enemy that has to close to attack. Every ranged enemy in the slice reaches
+#: 8 metres or more -- the Succubus 8, the Corrupted Sentinel 14 -- and every
+#: melee one 1.32 or less, so the gap is wide and this sits in it.
+MELEE_REACH_CEILING_METRES = 2.0
+
+
+def test_the_warden_is_the_only_melee_enemy_that_cannot_catch_the_player():
+    """The reason it has a charge at all, recomputed across every enemy.
+
+    NOT A STATEMENT ABOUT THE WARDEN ALONE. The claim in its subsection is that
+    it is the ONLY one, so every other designed enemy is checked too.
+
+    MELEE, WHICH IS THE WORD THIS TEST ADDED. A first version of this checked
+    every designed enemy and failed, because the Succubus also moves at 3.5 m/s
+    and cannot catch the fastest class. It does not need to: it reaches 8 metres.
+    Being unable to close only matters for a creature that has to.
+    """
+    from cataclysm_sim.enemy_abilities import ABILITIES, ATTACK_REACH
+    from cataclysm_sim.enemy_stats import archetype
+
+    # The fastest of the three Demonic classes, from the class stat table in
+    # the design document. An enemy has to beat it to catch anybody.
+    fastest_class = 4.6
+
+    cannot_catch = []
+    for name in ABILITIES:
+        if ATTACK_REACH.get(name, 0.0) > MELEE_REACH_CEILING_METRES:
+            continue
+        kind = archetype(name)
+        if max(kind.move_speed, kind.chase_speed) < fastest_class:
+            cannot_catch.append(name)
+
+    assert cannot_catch == ["Abyssal Warden"], (
+        f"these designed melee enemies cannot catch the fastest Demonic class "
+        f"at {fastest_class} m/s: {cannot_catch}. The Abyssal Warden's "
+        "subsection says it is the only one, and its charge exists because of "
+        "it.")
+
+
+def test_the_wardens_charge_goes_further_than_it_could_simply_walk(
+        warden, warden_abilities):
+    """The test the Hellhound's charge design sets, applied here.
+
+    A gap-closer that covers less ground than the creature would have covered by
+    walking during its own wind-up is strictly worse than not winding up at all.
+    """
+    from cataclysm_sim.enemy_abilities import REACTION_ALLOWANCE, WALK_OUT_SPEED
+
+    charge = next(a for a in warden_abilities if a.shape == "Movement")
+    wind_up = (REACTION_ALLOWANCE
+               + float(charge.params["Radius"]) / WALK_OUT_SPEED)
+    walked = warden.move_speed * wind_up
+
+    assert float(charge.params["Range"]) > walked, (
+        f"the Abyssal Warden's charge covers {charge.params['Range']} m and it "
+        f"could walk {walked:.2f} m during its own {wind_up:.2f} s wind-up. A "
+        "charge shorter than that is worse than not winding up.")
+
+
+def test_the_wardens_charge_range_is_the_shortest_movement_skill_range(
+        warden_abilities):
+    """The shortest, because this is the slowest creature in the slice.
+
+    Read out of the player skill table rather than written here, so adding a
+    shorter Movement skill fails this rather than silently making the sentence
+    in the design document false.
+    """
+    import csv
+
+    skills = REPO_ROOT / "game" / "Data" / "WeaponSkills.csv"
+    if not skills.is_file():
+        pytest.skip("game/Data/WeaponSkills.csv is not present")
+    ranges = []
+    with skills.open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["Shape"] != "Movement":
+                continue
+            params = dict(pair.strip().split("=", 1)
+                          for pair in row["ShapeParams"].split(";")
+                          if "=" in pair)
+            if "Range" in params:
+                ranges.append(float(params["Range"]))
+
+    assert ranges, "no Movement-shape skill in game/Data/WeaponSkills.csv"
+    charge = next(a for a in warden_abilities if a.shape == "Movement")
+    assert float(charge.params["Range"]) == pytest.approx(min(ranges)), (
+        f"the Abyssal Warden's charge covers {charge.params['Range']} m and the "
+        f"shortest Movement-shape skill range is {min(ranges)} m. The shortest "
+        "is the figure the design uses, because this is the slowest creature.")
+
+
+def test_the_ring_is_the_largest_marker_any_enemy_draws(warden_abilities):
+    """The claim its subsection makes, recomputed against every other ability.
+
+    A second enemy drawing something larger would make the sentence false, and
+    the Gatekeeper is still to be designed.
+
+    ONLY TELEGRAPHED ABILITIES COUNT, which is the correction this test needed.
+    A first version compared raw radii and failed on the Succubus's Dominion,
+    an 8 metre Aura. Dominion is held on rather than cast, so it has no cycle
+    and draws no marker at all. A radius that no marker is drawn from is not a
+    telegraph, and the claim is about telegraphs.
+    """
+    from cataclysm_sim.enemy_abilities import ABILITIES, is_telegraphed
+    from cataclysm_sim.enemy_stats import archetype
+
+    ring = next(a for a in warden_abilities if a.slot == "Ultimate")
+    mine = float(ring.params["Radius"])
+
+    for name, entries in ABILITIES.items():
+        kind = archetype(name)
+        for ability in entries:
+            if ability is ring or not is_telegraphed(ability, kind):
+                continue
+            other = float(ability.params.get("Radius", 0.0))
+            assert other <= mine, (
+                f"{name}'s {ability.name} draws a {other} m marker and the "
+                f"Abyssal Warden's ring draws {mine} m. Its subsection calls "
+                "the ring the largest telegraph in the game.")
+
+
+def test_the_ring_is_bigger_than_the_wardens_own_interval_allows(
+        warden, warden_abilities):
+    """The lower bound on the judgement, and the reason the number is not free.
+
+    Below the largest marker its ordinary attack interval could draw, the ring
+    is not categorically different from what the creature does every 2.4
+    seconds, which is the whole argument for it.
+    """
+    from cataclysm_sim.enemy_abilities import (MOVEMENT_ESCAPE_CAP_METRES,
+                                               largest_telegraphed_radius)
+
+    ring = next(a for a in warden_abilities if a.slot == "Ultimate")
+    radius = float(ring.params["Radius"])
+    interval_allows = largest_telegraphed_radius(warden.attack_interval)
+
+    assert radius > interval_allows, (
+        f"the ring marks {radius} m and the Abyssal Warden's "
+        f"{warden.attack_interval} s attack interval already allows "
+        f"{interval_allows:.2f} m. Below that it is not a different kind of "
+        "attack from its ordinary swing.")
+    assert radius <= MOVEMENT_ESCAPE_CAP_METRES, (
+        f"the ring marks {radius} m and the design document caps any telegraph "
+        f"at {MOVEMENT_ESCAPE_CAP_METRES} m, above which it says an attack "
+        "cannot be escaped by any means the player has.")
+
+
+def test_the_ring_cooldown_is_five_swings_and_the_bottom_of_its_slot_band(
+        warden, warden_abilities):
+    """Two independent derivations of the same 12 seconds.
+
+    The design says it is how long the creature needs to kill the reference
+    geared character -- 5 hits at a 2.4 second interval -- and that it is the
+    bottom of the Ultimate slot's band. Both are checked, because either one
+    alone could be a coincidence.
+    """
+    import csv
+
+    ring = next(a for a in warden_abilities if a.slot == "Ultimate")
+
+    assert ring.cooldown == pytest.approx(5 * warden.attack_interval), (
+        f"the ring comes round every {ring.cooldown} s and five of the "
+        f"Warden's {warden.attack_interval} s swings is "
+        f"{5 * warden.attack_interval} s. The design derives the cooldown from "
+        "the five hits it takes to kill the reference geared character.")
+
+    slots = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
+    if not slots.is_file():
+        pytest.skip("game/Data/SkillSlots.csv is not present")
+    with slots.open(encoding="utf-8-sig", newline="") as handle:
+        ultimate = next(row for row in csv.DictReader(handle)
+                        if row["Slot"] == "Ultimate")
+
+    assert ring.cooldown == pytest.approx(float(ultimate["CooldownLowest"])), (
+        f"the ring's cooldown is {ring.cooldown} s and the bottom of the "
+        f"Ultimate slot's band in game/Data/SkillSlots.csv is "
+        f"{ultimate['CooldownLowest']} s.")
+
+
+def test_the_warden_is_the_first_enemy_to_use_the_ultimate_slot():
+    """A claim its subsection makes, and the kind that goes stale silently."""
+    from cataclysm_sim.enemy_abilities import ABILITIES
+
+    users = sorted({name for name, entries in ABILITIES.items()
+                    for a in entries if a.slot == "Ultimate"})
+
+    assert users == ["Abyssal Warden"], (
+        f"these enemies use the Ultimate slot: {users}. The Abyssal Warden's "
+        "subsection says it is the first and only one.")
+
+
+def test_the_margin_for_walking_out_is_the_same_at_every_radius(warden):
+    """The property the design document now states, computed rather than quoted.
+
+    The wind-up is 0.4 + Radius / 3.5, so the slowest class walks 1.4 + Radius
+    metres during it, while a player at contact crosses Radius - 0.9. The
+    difference is constant. If the reaction allowance or the walk speed ever
+    changes, the constant changes and the document's figure goes stale, which is
+    what this catches.
+    """
+    from cataclysm_sim.enemy_abilities import (PLAYER_BODY_RADIUS,
+                                               REACTION_ALLOWANCE,
+                                               WALK_OUT_SPEED)
+
+    contact = PLAYER_BODY_RADIUS + warden.body_radius
+    margins = []
+    for radius in (1.0, 2.1, 3.5, 5.6, 8.0):
+        wind_up = REACTION_ALLOWANCE + radius / WALK_OUT_SPEED
+        margins.append(WALK_OUT_SPEED * wind_up - (radius - contact))
+
+    assert all(m == pytest.approx(margins[0]) for m in margins), (
+        f"the margin for walking out of a marker is no longer constant across "
+        f"radii: {[round(m, 3) for m in margins]}. The design document states "
+        "it is the same at every radius.")
+
+    stated = f"{margins[0]:.1f} metres"
+    text = GDD.read_text(encoding="utf-8")
+    assert stated in text, (
+        f"the design document no longer states the {stated} margin that the "
+        "wind-up formula gives at every radius. It is the thing that makes "
+        "'a bigger marker is not harder to escape' true.")
+
+
+def test_the_wardens_swing_is_not_telegraphed_but_its_interval_would_allow_one(
+        warden, warden_abilities):
+    """The distinction from the Brute, which fails both conditions.
+
+    The Warden's swing is refused a marker by its own 0.9 m reach, not by its
+    cycle. That is what the subsection claims, and it is a different sentence
+    from the Brute's.
+    """
+    from cataclysm_sim.enemy_abilities import (SMALLEST_USEFUL_MARKER_METRES,
+                                               is_telegraphed,
+                                               largest_telegraphed_radius)
+
+    swing = next(a for a in warden_abilities if a.is_basic_attack)
+
+    assert not is_telegraphed(swing, warden), (
+        "the Abyssal Warden's swing now draws a marker. A 0.9 m marker is "
+        "smaller than the creature standing in it.")
+    assert (largest_telegraphed_radius(warden.attack_interval)
+            >= SMALLEST_USEFUL_MARKER_METRES), (
+        f"the Abyssal Warden's {warden.attack_interval} s attack interval no "
+        "longer allows a marker of at least "
+        f"{SMALLEST_USEFUL_MARKER_METRES} m, so it now fails the same two "
+        "conditions the Brute does and its subsection's distinction is gone.")
+
+
+def test_no_vertical_slice_enemy_is_described_as_positionally_vulnerable():
+    """The project owner ruled positional weak points out on 2026-08-09.
+
+    THE FAILURE THIS CATCHES is the description coming back, in this table or in
+    a new creature's row. Nothing in the project implements damage that varies
+    by where a creature is hit, so a description that promises one is a promise
+    the game does not keep.
+    """
+    text = GDD.read_text(encoding="utf-8")
+    start = text.find("## **Vertical Slice Enemies (Demonic Cataclysm)**")
+    assert start != -1, (
+        "docs/Cataclysm_GDD_v2.md no longer has a Vertical Slice Enemies "
+        "section, which is where each of the seven is described in one line.")
+    table = text[start:text.find("\n## ", start + 1)]
+
+    for phrase in ("vulnerable at", "weak point", "weak spot"):
+        assert phrase not in table.lower(), (
+            f"the Vertical Slice Enemies table describes an enemy with "
+            f"{phrase!r}. Positional weak points were ruled out on 2026-08-09: "
+            '"we don\'t do positional weak points. That\'s too tedious in a '
+            'diablo like arpg". Nothing implements hit-location damage.')
+
+
+# --------------------------------------------------------------------------
 # The data guards themselves
 # --------------------------------------------------------------------------
 

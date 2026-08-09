@@ -20,6 +20,172 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — No positional weak points, and the Abyssal Warden instead
+
+**Affects:** the Vertical Slice Enemies table and the Vertical Slice Enemy
+Behaviour section of `docs/Cataclysm_GDD_v2.md`, `ABILITIES` and `ATTACK_REACH`
+in `sim/cataclysm_sim/enemy_abilities.py`, and the module docstring of
+`sim/cataclysm_sim/enemy_stats.py`. Applied. Closes #353.
+
+**This supersedes two earlier entries in this log** that describe the Abyssal
+Warden as having a positional weakness: the 2026-08-06 entry on not using
+Behaviour Trees, which lists "a mini-boss with a positional weakness" among the
+seven, and the entry recording what the enemy stat work did not settle, which
+names "the Abyssal Warden's positional weak points" as open behaviour. Both were
+true when written. Neither is now. They are left as written, in the way this log
+leaves its pre-2026-08-02 wording, rather than edited.
+
+### The decision that came first
+
+Asked of the project owner and answered on 2026-08-09, in these words:
+
+> "we don't do positional weak points. That's too tedious in a diablo like arpg"
+
+The design document's one-line description of this creature had been "Massive
+stone and lava demon. High damage resistance but vulnerable at legs and back"
+since the documents were first imported. **Nothing in the project ever
+implemented it.** `FCataclysmIncomingHit`, the struct that describes a hit to the
+mitigation pipeline, carries eight fields and not one of them is a position, a
+bone, a hit box or a facing angle. `UCataclysmDamageCalculation::Resolve` has no
+access to the attacker's location at all. No test anywhere would have failed if
+the phrase had been deleted.
+
+So the clause described behaviour that did not exist and was not going to. It is
+now removed, and the description reads "Massive stone and lava demon. High damage
+resistance."
+
+### The second decision, which reframed the rest
+
+Said immediately afterwards, and it is the more consequential of the two:
+
+> "'High damage resistance' can be a combination of things. Enemies get layers of
+> defense just like the player. So armor/resistances/damage reduction/etc"
+
+That is not a detail. It says the creature's defensive identity is however many
+mitigation layers it is given, in the same way the player has several — 53% off
+from armour, 70% resistance, 28% block chance and 16% flat reduction for a geared
+character at tier 8, multiplying to about a tenth of a hit landing.
+
+**The Abyssal Warden's layers are the two highest in the slice and no others:**
+a 3.50 armour share against the Brute's 3.00, and 35% resistance against the
+Gatekeeper's 30%. Zero evasion, zero energy shield. At Herald rarity on the last
+floor of a 50-floor Cataclysm dungeon that is 5,954 armour, worth 48.19% at tier
+8, plus 35% resistance: **66.3% of a hit stopped**.
+
+**Giving enemies the two layers only the player has** — block chance and flat
+damage reduction — is a change to every enemy rather than to this one, and it has
+its own issue.
+
+### What the creature does
+
+| Ability | Slot | Shape | Parameters | Runs on |
+|---|:-:|:-:|---|:-:|
+| Sunder | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 2.4 s attack interval |
+| Stampede | Movement | Movement | `Mode=Charge; Range=8; Radius=1.5` | a 5 s cooldown |
+| Molten Roar | Ultimate | Strike | `Radius=5.6; Angle=360` | a 12 s cooldown |
+
+**The charge exists because this is the only designed MELEE enemy that cannot
+catch anybody.** The Succubus cannot catch the fastest class either and does not
+need to, because it reaches 8 metres; being unable to close only matters for a
+creature that has to. It moves at 2.8 metres per second with a chase speed of 0.0, against
+player classes at 3.5, 4.0 and 4.6. Without it a player walks backwards and it
+never fights. Range 8 is the shortest Movement-shape skill range in
+`game/Data/WeaponSkills.csv`, which is the right one for the slowest creature,
+and it still passes the test the Hellhound's charge sets: the Warden could walk
+2.32 metres during the 0.83 second wind-up, and eight is more than three times
+that.
+
+**It repeats the Hellhound's Charge mode, and the art decided that rather than
+taste.** A Leap was proposed first, on the argument that a leap clears a ring of
+bodies where a charge meets it. Measuring the Grux pack on 2026-08-09 with
+`tools/probe_warden_animation.py` settled it the other way: `Stampede` is a
+single 0.700 second clip that fits inside the 0.83 second wind-up at its authored
+speed, where a leap has to be stitched from five — `Jump_Start` 0.333,
+`Jump_Up` 0.333, `Jump_Loop` 1.333, `Jump_Fall` 1.333 and `Jump_Land` 0.900 —
+which the current one-clip-at-a-time playback cannot do without the animation
+Blueprint work in #387. `Bound` read like the leap from its name and is 0.0333
+seconds, a single pose.
+
+**Molten Roar is the largest telegraph in the game**, 5.6 metres against the
+Brute's stomp at 3.5, and the first thing in the game to use the Ultimate slot.
+Its 12 second cooldown is derived: a Herald Abyssal Warden kills the reference
+geared character in 5 hits, which at a 2.4 second interval is 12.0 seconds, so a
+longer cooldown could come round zero times in a fight the player is losing. It
+is also the bottom of the Ultimate slot's 12-to-40 second band. At that slot's
+400% it lands at about four ordinary hits, four fifths of what the reference
+build survives, for something that warns for two seconds and is avoided
+completely by walking out. `Ultimate_Roar` is 1.4000 seconds, so the wind-up
+holds the whole clip at authored speed.
+
+### One property of the wind-up rule that nobody had stated
+
+**A bigger marker is not harder to escape.** The wind-up is
+`0.4 + Radius ÷ 3.5`, so the slowest class walks `1.4 + Radius` metres during it,
+while a player at contact has to cross `Radius − 0.9`. The difference is **2.3
+metres at every radius**. Molten Roar at 5.6 metres and the Brute's stomp at 3.5
+give exactly the same margin.
+
+A marker's size therefore says how much ground it denies and how long it warns
+for, and nothing about difficulty. It is now written in the design document,
+because "bigger marker" reads as "harder" and is not.
+
+### What is a judgement rather than a derivation
+
+- **Molten Roar's 5.6 metre radius.** Bounded below by the 2.80 metres its own
+  attack interval allows and above by the 8 metre cap. Inside that window 5.6 is
+  chosen because it is exactly twice the 2.80 and makes the wind-up exactly 2.0
+  seconds.
+- **Three abilities rather than two.** Without the charge the creature can be
+  walked away from and never fought.
+
+### What the research found that was bigger than this creature
+
+Thirteen readers went over the repository and the genre for this design. Seven
+defects were found, verified directly, and filed rather than fixed here:
+
+| Issue | What is wrong |
+|---|---|
+| #481 | The simulation never applies enemy armour, so "damage needed to kill" is too low — 3,929 against this creature where 7,584 is right |
+| #482 | Penetration past an enemy's resistance becomes a damage multiplier, which this document says it must not |
+| #483 | The guard against an immune enemy checks one layer where its own docstring says it should check the combination |
+| #484 | This document says enemy damage multiplies by 1.55 per rarity step; the model uses 1.40 |
+| #485 | An enemy's energy shield never reaches the engine |
+| #486 | Every hit resolves as untyped, so no resistance on either side does anything in the running game |
+| #487 | The Movement-skill telegraph tier is arithmetically almost empty |
+| #488 | Enemies have no block chance and no flat damage reduction |
+
+**#486 bears directly on this creature.** Its 35% resistance is the entire
+mechanical content of "high damage resistance", and in the editor today it does
+nothing. Its armour is the only defensive number it has that currently works.
+
+**#487 changed the shape of this design.** This document says a telegraph larger
+than walking can clear "is what makes a mini-boss or a boss feel different from a
+Brute", and the Abyssal Warden looked like that tier's first customer. Computing
+the window showed the tier is only reachable on a cooldown between 5.00 and 5.36
+seconds and is empty above that. Molten Roar is therefore a walk-out marker that
+is simply the biggest one, rather than the other tier.
+
+### Two mechanisms the genre recommended and this project had already refused
+
+**A stagger or heavy-stun meter.** Two independent researchers put it first;
+Path of Exile 2 and Diablo IV converged on it. Section VI of
+`docs/Cataclysm_GDD_v2.md` records the same survey and its conclusion: "Diablo IV
+routes crowd control into a separate stagger meter that must be filled before any
+of it applies. Outright immunity is the simplest of the four and it is what was
+chosen." Building one now would reverse a decision made on the same evidence.
+
+**Facing-gated damage reduction** — taking less damage from the front. That is
+positional counterplay under another name, and it is what the project owner ruled
+out.
+
+### What is not settled
+
+**Nobody has played it, and nobody can.** There is no Abyssal Warden class in
+`game/Source/Cataclysm/Character/`, which holds one enemy, the Brute. Every
+figure that turned out wrong on the Brute was wrong in a way no test could see.
+
+---
+
 ## 2026-08-09 — The Corrupted Sentinel: a bolt down a marked lane, and a shell lobbed over cover
 
 **Affects:** `ABILITIES` and `ATTACK_REACH` in
