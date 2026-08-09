@@ -139,8 +139,8 @@ def test_the_brute_asks_for_a_lob_when_it_throws() -> None:
     """
     text = source(BRUTE_CPP)
 
-    assert re.search(r"RockMesh\s*,\s*RockThrowFlightSecondsInUse\s*\(", text), (
-        "CataclysmBruteCharacter.cpp does not pass RockThrowFlightSecondsInUse() "
+    assert re.search(r"RockMesh\s*,\s*RockThrowFlightSecondsFor\s*\(", text), (
+        "CataclysmBruteCharacter.cpp does not pass RockThrowFlightSecondsFor(...) "
         "to ACataclysmProjectile::Fire, so the thrown rock travels flat. The "
         "parameter is optional and defaults to no lob, so nothing reports an "
         "error. The rock is fired from the hand, so flat means over the "

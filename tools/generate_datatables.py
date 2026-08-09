@@ -202,7 +202,7 @@ TEXT_PARAMS = frozenset({"Mode", "Effect"})
 #: Issue #465.
 SHAPE_PARAMS = {
     "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval", "Knockback"},
-    "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed", "Flight"},
+    "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed", "Arc"},
     "SelfBuff": {"Duration", "Radius", "IncreasePerBurning"},
     "Movement": {"Mode", "Range", "Radius"},
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval"},

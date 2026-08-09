@@ -20,6 +20,102 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — A lob's arc is a fraction of the distance thrown, not a fixed flight time
+
+**Affects:** `ACataclysmBruteCharacter`, the Rip and Toss row in
+`sim/cataclysm_sim/enemy_abilities.py`, and `docs/Cataclysm_GDD_v2.md`. Applied.
+This reverses half of the entry below, which was made the same day.
+
+**A fixed flight time fixes the whole vertical part of the trajectory, whatever
+the distance.** That is what the entry below did not account for. Gravity and the
+time together decide the launch's vertical speed and the height reached, and
+neither depends on how far the rock travels. Measured from the shipped code:
+
+| Range | Flight | Ground speed | Upward at launch | Rise above the hand |
+|---|---|---|---|---|
+| 1.5 m | 1.40 s | 107 cm/s | 570 cm/s | 166 cm |
+| 3.0 m | 1.40 s | 214 cm/s | 570 cm/s | 166 cm |
+| 10.0 m | 1.40 s | 714 cm/s | 570 cm/s | 166 cm |
+
+At three metres the rock rises 166 cm and crosses the ground at 214 cm/s. That is
+a near-vertical mortar, not a throw, and only the ten metre case — the one the
+figure was chosen against — read as a lob.
+
+**What is designed is now the arc: 0.25 of the distance thrown.** That is not a
+chosen number either; a projectile launched at 45 degrees, the angle that throws
+an object furthest, reaches an apex of one quarter of its range. It is what the
+design carried before #465.
+
+**The flight time is derived from it.** A parabola sags `g × t² ÷ 8` below its own
+chord, so an arc of `0.25 × range` is in the air for `√(8 × 0.25 × range ÷ g)`:
+1.43 seconds at ten metres, 0.78 at three, 0.55 at one and a half. The ten metre
+figure is within rounding of the 1.4 that was designed for a few hours, so the
+longest throw is unchanged and only the short ones moved.
+
+**Everything #465 established is kept.** Constant horizontal speed, an
+accelerating descent, real gravity, and the projectile still taking a flight
+time — the conversion from an arc to a time belongs on the creature, not in
+`ACataclysmProjectile`. The defect #465 fixed was real and its fix stands; only
+the choice of which quantity to hold fixed was wrong.
+
+**What is given up, and it is a real loss.** The reaction window is no longer
+constant. The player's time to move is the wind-up plus the flight, so it runs
+from about 1.6 seconds at close range to 2.4 at maximum range rather than a flat
+2.4. That was the whole argument for a fixed flight time, and it is worth less
+than a lob that reads as a throw at the ranges a melee creature actually fights
+at. The marker still promises the place, the wind-up is unchanged, and at close
+range the player is inside the Brute's melee reach with other things to react to.
+
+**The genre evidence in the entry below still stands and is simply outweighed
+here.** Shipped games do give some attacks a fixed delay regardless of distance.
+Those are attacks that arrive from off-screen or from nowhere in particular. This
+one is a creature visibly throwing a rock, and the visible throw is what the
+shape has to serve.
+
+**Not settled by watching.** The project owner has not seen either shape with the
+launch point corrected. That correction was large enough to mask everything else
+— the rock was being spawned 6.68 metres in front of the creature — so no
+judgement made before it landed is a judgement about the trajectory.
+
+---
+
+## 2026-08-09 — A lobbed attack will not be thrown at something standing against the creature
+
+**Affects:** `ACataclysmBruteCharacter::EnemyAbilities`, and the Brute section of
+`docs/Cataclysm_GDD_v2.md`. Applied.
+
+**Asked for by the project owner:** "I think we also need to implement a minimum
+range for the rock throw, so it's not trying to throw a rock at you from point
+blank range."
+
+**One existed and refused nothing.** `RockThrow.MinRangeCm` was
+`DesignedMeleeReachCm`, 90 cm. The Brute's capsule radius is 48 and the player's
+is 42, so 90 cm is exactly the distance at which the two bodies are touching. A
+minimum range set to contact distance can never turn an ability down.
+
+**The rule, which generalises to any future lobbed enemy attack: an attack that
+marks a circle must not mark the ground its own caster is standing on.** Below
+`marked radius + caster body radius` the creature is inside the area it is about
+to hit, which makes the attack a melee attack wearing a thrown attack's
+telegraph. For the Brute that is 210 + 48 = **258 centimetres**.
+
+**It is checked when the ability is chosen, not when it lands, and that is
+deliberate.** The wind-up runs for a second afterwards, during which a player
+walking at 400 cm/s can close four metres, so no minimum survives a determined
+approach. Letting the throw land where it was marked is the rule the entry below
+states for every telegraphed attack, and it is the same reasoning that settled
+`#454`: a player who walks inside the minimum range during the wind-up has dodged
+the throw, not found a special case.
+
+**What could not be established.** `CLAUDE.md` requires looking up how shipped
+games solve a problem before proposing a mechanic. That research was started and
+**failed part way through on a session token limit**, so this figure is derived
+from the project's own numbers and is not a genre answer. The derivation is
+sound and the comparison is missing; if the number is ever disputed, that is the
+work to do first.
+
+---
+
 ## 2026-08-09 — The Brute's pacing: swings every 1.2 s, stomps every 8, throws every 12
 
 **Affects:** `ARCHETYPES["Brute"]` in `sim/cataclysm_sim/enemy_stats.py`, both

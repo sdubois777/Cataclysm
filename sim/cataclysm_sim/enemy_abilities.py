@@ -54,18 +54,26 @@ SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Aura",
 #: against each other by `tools/tests/test_enemy_abilities.py`, because a copy
 #: in this project has silently drifted before.
 #:
-#: A PROJECTILE STATES `Speed` OR `Flight`, NOT BOTH. `Speed` is centimetres per
+#: A PROJECTILE STATES `Speed` OR `Arc`, NOT BOTH. `Speed` is centimetres per
 #: second and describes something travelling flat, which is every one of the 398
-#: player projectile rows. `Flight` is seconds in the air and describes a LOB
-#: following real projectile motion onto the point it was aimed at: steady speed
-#: across the ground, a descent that accelerates, and an arc height that falls
-#: out of the time rather than being stated separately. A lob has no single
-#: speed to state, because it is slowest at the top of its arc and fastest as it
-#: lands. Issue #465.
+#: player projectile rows. `Arc` describes a LOB following real projectile motion
+#: onto the point it was aimed at: steady speed across the ground and a descent
+#: that accelerates. It is how high the shot rises above the straight line to
+#: where it lands, as a fraction of the distance thrown, so the shape holds at
+#: every range.
+#:
+#: A LOB HAS NO SINGLE SPEED TO STATE, because it is slowest at the top of its
+#: arc and fastest as it lands. Issue #465 established that and stated a FLIGHT
+#: TIME instead. Issue #474 replaced the flight time with this, because gravity
+#: and a fixed time together fix the whole vertical part of the trajectory
+#: whatever the distance, so every short lob became a near-vertical mortar. The
+#: flight time is now derived: a parabola sags `g * t * t / 8` below its own
+#: chord, so an arc of `Arc * range` is in the air for
+#: `sqrt(8 * Arc * range / g)`.
 SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
                "Knockback"),
-    "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed", "Flight"),
+    "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed", "Arc"),
     "SelfBuff": ("Duration", "Radius", "IncreasePerBurning"),
     "Movement": ("Mode", "Range", "Radius"),
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval"),
@@ -553,27 +561,46 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # as different sizes, and well under the 7.35 m its own cooldown
             # would allow.
             #
-            # FLIGHT 1.4 SECONDS, AND NOT A SPEED AT ALL. Replaced Speed=600 on
-            # 2026-08-09, issue #465. A lob follows real projectile motion, so
-            # it has no one speed to state: it is slowest at the top of its arc
-            # and fastest as it lands. Stating the TIME instead settles the
-            # trajectory completely, because gravity supplies the rest.
+            # ARC 0.25, AND NOT A SPEED AT ALL. A lob follows real projectile
+            # motion, so it has no one speed to state: it is slowest at the top
+            # of its arc and fastest as it lands. What is stated is how high it
+            # rises above the straight line to where it lands, as a fraction of
+            # the distance thrown, and gravity supplies the rest.
             #
-            # THE FLIGHT IS PART OF THE WARNING for a lobbed attack. The marker
-            # appears when the wind-up starts and the rock then has to travel,
-            # so the player's time to move is the wind-up PLUS the flight. At
-            # 1.4 that window is a designed 2.4 seconds AT EVERY RANGE, rather
-            # than something that shrinks as the player closes in: under the old
-            # speed the same throw took 1.95 seconds at ten metres and 0.55 at
-            # two. Shipped games choose a fixed delay deliberately for exactly
-            # this. See docs/DECISIONS.md for the sources.
+            # A REAL TRAJECTORY RATHER THAN A CHOSEN NUMBER. A projectile
+            # launched at 45 degrees, the angle that throws an object furthest,
+            # reaches an apex of one quarter of its range.
             #
-            # IT SETS THE ARC AS WELL, because gravity ties them together: a
-            # parabola sags g*t*t/8 below its own chord, 240 cm at 1.4 seconds.
-            # Over the full 10 m throw that is 0.24 of the range, within
-            # rounding of the 0.25 this row carried before #465, so the longest
-            # throw kept the shape it already had. There is one number here now
-            # rather than a speed and an arc fraction.
+            # THIS ROW HAS CARRIED THREE DIFFERENT ANSWERS IN ONE DAY, and the
+            # middle one is the instructive failure. Speed=600 until issue #465,
+            # which showed that holding a speed constant along the path is not
+            # projectile motion at all. Flight=1.4 seconds from #465, on the
+            # argument that a telegraphed attack should take the same readable
+            # moment at every range. Arc=0.25 from issue #474, because gravity
+            # and a fixed time together fix the whole VERTICAL part of the
+            # trajectory independently of the distance: the rock left the hand
+            # at 570 cm/s straight up and rose 166 cm above it whether it was
+            # travelling two metres or ten, and every short throw was a
+            # near-vertical mortar.
+            #
+            # WHAT WAS GIVEN UP WITH THE FIXED TIME. The player's window to move
+            # is the wind-up plus the flight, and it is no longer constant:
+            # about 1.6 seconds at short range against 2.4 at maximum range. The
+            # marker still promises the place and the wind-up is unchanged, and
+            # at short range the player is inside the Brute's melee reach with
+            # other things to react to.
+            #
+            # THE FLIGHT TIME IS DERIVED FROM IT. A parabola sags g*t*t/8 below
+            # its own chord, so an arc of 0.25 * range is in the air for
+            # sqrt(8 * 0.25 * range / 980) seconds: 1.43 at ten metres, 0.78 at
+            # three. The ten metre figure is within rounding of the 1.4 this row
+            # stated between #465 and #474, so the longest throw is unchanged
+            # and only the short ones moved.
+            #
+            # THE SPEED CEILING STILL HOLDS. The rock must not outrun the
+            # Succubus's Soulfire at 1200 cm/s, the slowest projectile any
+            # player skill uses. It is fastest as it lands, and at the full ten
+            # metre throw it arrives at 1073.
             #
             # AND IT IS BOUNDED ABOVE BY THE SPEED CEILING. The rock must not
             # outrun the Succubus's Soulfire at 1200, the slowest projectile any
@@ -594,7 +621,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # THE MARKED AREA IS THE SAME 2.1 m RADIUS, so this row is unchanged
             # in what it says the attack covers. Only its shape moved: a circle
             # where it lands rather than a lane along the way.
-            params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Flight": 1.4},
+            params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Arc": 0.25},
             # 12 SECONDS, SET BY PLAYING IT on 2026-08-09, up from 5.
             #
             # THE FLOOR IS THE APPROACH TIME, and it is a floor rather than the

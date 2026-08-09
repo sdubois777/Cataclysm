@@ -131,37 +131,71 @@ public:
 	static constexpr float RockThrowRadiusCm = 210.0f;
 
 	/**
-	 * How long the rock is in the air, in seconds. Flight=1.4.
+	 * How close a target may be and still be thrown at, in centimetres.
 	 *
-	 * THE SAME FOR EVERY THROW, WHATEVER THE RANGE, and that is the point of
-	 * stating a time rather than a speed. The marker appears when the wind-up
-	 * starts and the rock then has to travel, so the player's window to move is
-	 * the 1 second telegraph plus this. Holding it fixed makes that window a
-	 * designed 2.4 seconds at every distance, instead of something that shrinks
-	 * as the player closes in. Issue #465, which replaced Speed=600 with this.
+	 * DERIVED, NOT PICKED, AND THE ARITHMETIC IS WRITTEN OUT IN
+	 * `EnemyAbilities()` RATHER THAN FOLDED INTO A LITERAL HERE. An attack that
+	 * marks a circle should not be marking the ground its own caster is standing
+	 * on. Below the marked radius plus the creature's own body radius the Brute
+	 * is inside the area it is about to hit, which makes the throw a melee
+	 * attack wearing a thrown attack's telegraph. 210 + 48 is 258 centimetres,
+	 * and this constant carries that sum so a test can read it; the terms are
+	 * declared further down the class, which is why it is not written as an
+	 * expression at this point in the file.
 	 *
-	 * WHY 1.4 RATHER THAN MORE OR LESS. Three bounds meet near it.
+	 * WHAT IT REPLACED. Issue #475. It was `DesignedMeleeReachCm`, 90 cm, which
+	 * is exactly the distance at which the two capsules touch -- so it refused
+	 * nothing, and the project owner reported the Brute throwing rocks at point
+	 * blank.
 	 *
-	 * It sets the arc, because gravity ties the two together: a parabola sags
-	 * `g * t * t / 8` below its own chord, which at 1.4 seconds is 240 cm. Over
-	 * the full 10 metre throw that is 0.24 of the range -- within rounding of
-	 * the 0.25 the design carried before #465, so the longest throw kept the
-	 * silhouette it already had.
-	 *
-	 * It sets the speed, and the rock must not outrun the slowest projectile
-	 * any player skill uses, which is the Succubus's Soulfire at 1200. A lob
-	 * has no single speed; it is fastest as it lands. At 1.4 seconds the ten
-	 * metre throw lands at 1121 centimetres per second, under the ceiling. At
-	 * 1.0 it would land at 1244 and break it.
-	 *
-	 * And it must be long enough to see. At the old Speed=1200 a five metre
-	 * throw was in the air for 0.42 seconds and a three metre one for 0.25 --
-	 * a single thinking pass -- and the project owner reported it as
-	 * blistering.
-	 *
-	 * `Cataclysm.Brute.RockHangTime` overrides it for judging by eye.
+	 * IT IS CHECKED WHEN THE ABILITY IS CHOSEN, NOT WHEN IT LANDS, and that is
+	 * deliberate rather than an omission. `ACataclysmEnemyController` reads it in
+	 * `ChooseAbility`; the wind-up then runs for a second, during which a player
+	 * walking at 400 cm/s can close four metres. Letting the throw land where it
+	 * was marked is the rule `docs/DECISIONS.md` states for every telegraphed
+	 * attack, and a player who walks inside the minimum range has dodged it.
 	 */
-	static constexpr float RockThrowFlightSeconds = 1.4f;
+	static constexpr float RockThrowMinimumRangeCm = 258.0f;
+
+	/**
+	 * How high the rock rises above the straight line from hand to landing
+	 * point, as a fraction of the distance thrown. Arc=0.25.
+	 *
+	 * A SHAPE THAT HOLDS AT EVERY RANGE, which is why the fraction is what is
+	 * designed rather than the flight time. A projectile launched at 45 degrees,
+	 * the angle that throws an object furthest, reaches an apex of one quarter
+	 * of its range, so this is a real trajectory rather than a chosen number.
+	 *
+	 * WHAT IT REPLACED, AND WHY THAT DID NOT WORK. Issue #474. Between #465 and
+	 * #474 the design stated a FIXED FLIGHT TIME of 1.4 seconds instead, on the
+	 * argument that a telegraphed attack should take the same readable moment
+	 * regardless of range. It does, and the cost was too high: gravity and the
+	 * flight time together fix the whole vertical part of the trajectory
+	 * independently of the distance, so the rock left the hand at 570 cm/s
+	 * straight up and rose 166 cm above it AT EVERY RANGE. Over a three metre
+	 * throw that is a near-vertical mortar rather than a throw. Only the ten
+	 * metre case, which the figure was chosen against, read as a lob.
+	 *
+	 * THE FLIGHT TIME IS NOW DERIVED FROM IT. A parabola sags `g * t * t / 8`
+	 * below its own chord, so a sag of `Arc * range` needs
+	 * `t = sqrt(8 * Arc * range / g)`. At the full 10 metre throw that is 1.43
+	 * seconds, within rounding of the 1.4 the design carried between #465 and
+	 * #474, so the longest throw is unchanged and only the short ones move.
+	 *
+	 * WHAT IS GIVEN UP. The player's window to move is the 1 second wind-up plus
+	 * the flight, so it is no longer constant: about 1.6 seconds at short range
+	 * against 2.4 at maximum range. The marker still promises the place and the
+	 * wind-up is unchanged, and at short range the player is inside the Brute's
+	 * melee reach with other things to react to.
+	 *
+	 * THE SPEED CEILING STILL HOLDS. The rock must not outrun the slowest
+	 * projectile any player skill uses, the Succubus's Soulfire at 1200. A lob
+	 * is fastest as it lands: at the full 10 metre throw it arrives at 1073
+	 * centimetres per second, under the ceiling.
+	 *
+	 * `Cataclysm.Brute.RockArc` overrides it for judging by eye.
+	 */
+	static constexpr float RockThrowApexFraction = 0.25f;
 
 	/**
 	 * Seconds between throws. Set by playing it on 2026-08-09, up from 5.
@@ -346,15 +380,23 @@ public:
 	float RockThrowCooldownSecondsInUse() const;
 
 	/**
-	 * How long the thrown rock is actually in the air, in seconds.
-	 * `Cataclysm.Brute.RockHangTime` overrides it; zero uses the design.
+	 * How long a rock thrown at this point will be in the air, in seconds.
 	 *
-	 * IT IS THE SAME NUMBER WHATEVER THE RANGE. A lob has no one speed -- it
-	 * is slowest at the top and fastest as it lands -- so the flight time is
-	 * what is stated, and `ACataclysmProjectile` derives the ground speed and
-	 * the arc height from it. Issue #465.
+	 * DERIVED FROM THE ARC AND THE DISTANCE, NOT STATED. Issue #474. A parabola
+	 * sags `g * t * t / 8` below its own chord, so an arc of
+	 * `RockThrowApexFraction * range` needs
+	 * `t = sqrt(8 * fraction * range / g)`. That makes a short throw quick and
+	 * shallow and a long one slow and high, which is what a thrown object does;
+	 * a fixed flight time made every throw rise the same 166 cm whatever its
+	 * length, and short ones were near-vertical.
+	 *
+	 * `ACataclysmProjectile` still takes a flight time, because that is what
+	 * makes the ballistic solve one line. The conversion belongs here, with the
+	 * creature whose design states an arc.
+	 *
+	 * Follows `Cataclysm.Brute.RockArc`; zero uses the design.
 	 */
-	float RockThrowFlightSecondsInUse() const;
+	float RockThrowFlightSecondsFor(const FVector& LandsAt) const;
 
 	/**
 	 * Where a thrown rock leaves the creature.
@@ -372,20 +414,21 @@ public:
 	FVector RockLaunchLocation() const;
 
 	/**
-	 * How high the thrown rock rises above the straight line to where it lands,
+	 * How high a rock thrown at this point rises above the straight line to it,
 	 * in centimetres.
 	 *
-	 * TAKES NO LANDING POINT, WHICH IS THE CHANGE ISSUE #465 MADE. It used to
-	 * be a fraction of the distance thrown and so differed for every throw. It
-	 * is now `g * t * t / 8` from the flight time alone, so a two metre lob and
-	 * a ten metre lob rise the same distance above their chords and the short
-	 * one is therefore the steeper. That is what a thrown object does when its
-	 * hang time is held fixed.
+	 * A FRACTION OF THE DISTANCE THROWN, so a rock lobbed two metres is not
+	 * given the same loop as one thrown ten. Measured across the ground rather
+	 * than through the air, because that is what the fraction is a fraction of.
 	 *
-	 * Follows `Cataclysm.Brute.RockHangTime` through the flight time, so the
-	 * shape of the lob can still be judged by playing rather than argued about.
+	 * IT TOOK NO LANDING POINT BETWEEN #465 AND #474, when the design stated a
+	 * fixed flight time and gravity fixed the apex at 240 cm for every throw.
+	 * That made short lobs near-vertical, and #474 put the fraction back.
+	 *
+	 * Follows `Cataclysm.Brute.RockArc`, so the shape of the lob can be judged
+	 * by playing rather than argued about.
 	 */
-	float RockThrowApexCm() const;
+	float RockThrowApexCmFor(const FVector& LandsAt) const;
 
 	/**
 	 * The rock's own material, taken off the rock mesh.
