@@ -239,57 +239,17 @@ public:
 	void UpdateCarriedRock();
 
 	/**
-	 * The pieces the thrown rock breaks into, and their material.
+	 * The rock's own material, taken off the rock mesh.
 	 *
-	 * THE MATERIAL IS CARRIED SEPARATELY BECAUSE THE FRAGMENTS HAVE NONE.
-	 * Measured 2026-08-08: all five SM_Rampage_Rock_Frag meshes have
-	 * /Engine/EngineMaterials/WorldGridMaterial assigned, the engine's grey
-	 * checkerboard placeholder. The rock they are pieces of has a real one,
-	 * M_Rock_To_Throw, so they wear that.
+	 * CARRIED SEPARATELY BECAUSE THE THING THAT WEARS IT HAS NONE OF ITS OWN.
+	 * The rip crater mesh ships with /Engine/EngineMaterials/WorldGridMaterial,
+	 * the engine's grey checkerboard placeholder, and the rock it is a hole for
+	 * has a real one, M_Rock_To_Throw.
 	 *
-	 * Empty without the Paragon pack, which leaves the throw exactly as it was.
-	 * Read by tests.
+	 * Null without the Paragon pack. Read by tests.
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TArray<TObjectPtr<class UStaticMesh>> RockFragments;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UMaterialInterface> RockMaterial;
-
-	/**
-	 * Leaves broken pieces where a thrown rock stopped.
-	 *
-	 * BOUND TO THE PROJECTILE'S OWN OnFinished, which already exists and already
-	 * reports where it stopped. That is what keeps ACataclysmProjectile generic:
-	 * it knows nothing about rocks, and a skill that wants sparks instead binds
-	 * something else to the same delegate. Issue #422.
-	 */
-	void LeaveRockDebris(class ACataclysmProjectile* Thrown);
-
-	/**
-	 * Where the five fragments live in the pack, as a folder and a base name.
-	 *
-	 * TWO PIECES RATHER THAN A FORMAT STRING. Unreal 5.8 checks FString::Printf
-	 * format strings at compile time, so one held in a variable is rejected
-	 * outright. The path is built by joining instead.
-	 */
-	static const TCHAR* RockFragmentFolder;
-	static const TCHAR* RockFragmentBaseName;
-
-	/** How many of them there are. */
-	static constexpr int32 RockFragmentCount = 5;
-
-	/**
-	 * How far from the impact the pieces are placed, and how large each is, in
-	 * centimetres.
-	 *
-	 * BOTH JUDGEMENTS, AND NEITHER HAS BEEN WATCHED. The piece size is a third
-	 * of the flying rock's own body width, so five of them read as one rock
-	 * broken up rather than five more rocks. The spread is twice that, so they
-	 * do not overlap.
-	 */
-	static constexpr float RockFragmentRadiusCm = 13.0f;
-	static constexpr float RockFragmentSpreadCm = 26.0f;
 
 	/**
 	 * The hole the rock was torn out of.
