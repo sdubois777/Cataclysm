@@ -246,6 +246,12 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// this comes from and why no other enemy needs it.
 	if (Distance > Reach + ContactToleranceCm)
 	{
+		// BACK TO FACING WHERE IT WALKS. An ability that made it turn on the
+		// spot left the movement component pointed at the controller's
+		// rotation, and a creature that then chases would walk forward while
+		// still facing wherever it last aimed. Issue #457.
+		FaceTravelDirection(Driven);
+
 		FAIMoveRequest Request = MakeChaseMoveRequest(Target, Reach);
 
 		// A STRAIGHT LINE WHEN THERE IS NO NAVIGATION MESH. Pathfinding needs a
@@ -269,6 +275,18 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// In reach. Stop walking before hitting, so that a pawn does not push its
 	// target along in front of it while attacking.
 	StopMovement();
+
+	// TURNS TO FACE, BUT DOES NOT WAIT TO BE FACING. Issue #457 asked for
+	// directional ABILITIES to wait, and an ordinary swing is deliberately not
+	// held to that: the Brute turns at 180 degrees per second and a player
+	// circling at its reach sweeps 223, so a swing that waited for facing would
+	// make a Brute unable to land any melee hit at all on a player who keeps
+	// circling. That is a balance change nobody asked for, and it should be a
+	// decision rather than a side effect of this one. Turning without waiting
+	// fixes the thing that was actually wrong -- a creature visibly swinging at
+	// nothing while its target stands behind it.
+	FaceTarget(Driven, Target);
+
 	LastAction = ECataclysmBrainAction::Attacking;
 
 	const UWorld* World = GetWorld();
@@ -282,6 +300,97 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	}
 
 	return LastAction;
+}
+
+bool ACataclysmEnemyController::AbilityNeedsFacing(
+	const FCataclysmEnemyAbility& Ability)
+{
+	// A PROJECTILE IS THE ONLY DIRECTIONAL SHAPE ANY ENEMY HAS. See the header
+	// for why a Strike must not require facing: the Brute's Stomp is a full
+	// ring precisely so that standing behind it is not the answer to it.
+	return Ability.Shape == ECataclysmSkillShape::Projectile;
+}
+
+float ACataclysmEnemyController::DegreesOffTarget(const AActor* Driven,
+												  const AActor* Target)
+{
+	if (!Driven || !Target)
+	{
+		// Reads as "facing". A missing actor must not leave a creature turning
+		// on the spot for ever waiting for an angle that can never be measured.
+		return 0.0f;
+	}
+
+	FVector ToTarget = Target->GetActorLocation() - Driven->GetActorLocation();
+	ToTarget.Z = 0.0f;
+	if (ToTarget.IsNearlyZero())
+	{
+		// Standing on the same spot. There is no direction to face, so any
+		// facing is as correct as any other.
+		return 0.0f;
+	}
+
+	FVector Forward = Driven->GetActorForwardVector();
+	Forward.Z = 0.0f;
+	if (Forward.IsNearlyZero())
+	{
+		return 0.0f;
+	}
+
+	const float Cosine = FVector::DotProduct(ToTarget.GetSafeNormal(),
+											 Forward.GetSafeNormal());
+	return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Cosine, -1.0f, 1.0f)));
+}
+
+void ACataclysmEnemyController::FaceTarget(ACataclysmCharacterBase* Driven,
+										   const AActor* Target)
+{
+	if (!Driven || !Target)
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = Driven->GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// THE ORDER MATTERS. PhysicsRotation checks bOrientRotationToMovement first
+	// and only falls through to the controller's rotation when it is off, so
+	// leaving it on would make every line below do nothing.
+	Movement->bOrientRotationToMovement = false;
+	Movement->bUseControllerDesiredRotation = true;
+
+	FVector ToTarget = Target->GetActorLocation() - Driven->GetActorLocation();
+	ToTarget.Z = 0.0f;
+	if (ToTarget.IsNearlyZero())
+	{
+		return;
+	}
+
+	// YAW ONLY. The creature stands upright whatever height its target is at,
+	// and RotationRate carries zero for pitch and roll in any case, so a pitch
+	// here would be a value nothing could ever turn toward.
+	FRotator Facing = ToTarget.Rotation();
+	Facing.Pitch = 0.0f;
+	Facing.Roll = 0.0f;
+	SetControlRotation(Facing);
+}
+
+void ACataclysmEnemyController::FaceTravelDirection(
+	ACataclysmCharacterBase* Driven)
+{
+	if (!Driven)
+	{
+		return;
+	}
+
+	if (UCharacterMovementComponent* Movement = Driven->GetCharacterMovement())
+	{
+		Movement->bUseControllerDesiredRotation = false;
+		Movement->bOrientRotationToMovement = true;
+	}
 }
 
 void ACataclysmEnemyController::ShowWindUpMarker(
@@ -576,6 +685,39 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 
 	StopMovement();
 
+	// TURN FIRST, THEN WIND UP. Issue #457, and the project owner chose this
+	// shape over turning during the wind-up on 2026-08-08.
+	//
+	// WHAT IT COSTS THE CREATURE, WHICH IS THE POINT. The Brute turns at 180
+	// degrees per second, so a player who gets directly behind it costs it up
+	// to a full second of turning BEFORE a wind-up that is itself a second.
+	// That is two seconds of free hits for outmanoeuvring it, and it is the
+	// design's "can be outmaneuvered" being worth something rather than being a
+	// number in a file.
+	//
+	// WHAT IT BUYS THE PLAYER. The ground marker is drawn below, after this,
+	// so a marker is only ever drawn by a creature already pointed at what it
+	// is about to hit. A telegraph that appears while the creature faces
+	// elsewhere is a telegraph that has lied once, and once is enough for a
+	// player to stop reading the next one.
+	//
+	// ONLY A DIRECTIONAL ABILITY WAITS. A Strike is a ring around the creature
+	// and requiring facing for one would hand back exactly the answer its full
+	// circle exists to remove. See AbilityNeedsFacing.
+	if (AbilityNeedsFacing(Abilities[Chosen])
+		&& DegreesOffTarget(Driven, Target) > FacingToleranceDegrees)
+	{
+		FaceTarget(Driven, Target);
+		LastAction = ECataclysmBrainAction::Turning;
+		return LastAction;
+	}
+
+	// STILL FACED EVEN WHEN IT DID NOT HAVE TO WAIT, so that a creature which
+	// was already pointed the right way holds that facing through the wind-up
+	// instead of drifting, and so that a Strike faces its target while it
+	// stomps even though it does not wait to.
+	FaceTarget(Driven, Target);
+
 	if (Abilities[Chosen].WindUpSeconds > 0.0f)
 	{
 		WindingUpAbility = Chosen;
@@ -802,6 +944,12 @@ ECataclysmBrainAction ACataclysmEnemyController::Roam()
 
 	RoamTarget = Chosen;
 	bHasRoamTarget = true;
+
+	// BACK TO FACING WHERE IT WALKS, for the same reason the chase does it. A
+	// creature that aimed an ability, lost its target and then wandered off
+	// would otherwise walk sideways for ever, still pointed at where the player
+	// used to be. Issue #457.
+	FaceTravelDirection(Driven);
 
 	FAIMoveRequest Request(RoamTarget);
 	Request.SetAcceptanceRadius(RoamAcceptanceRadiusCm);

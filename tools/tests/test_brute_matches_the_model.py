@@ -1063,3 +1063,61 @@ def test_no_stun_outlasts_the_immunity_it_grants() -> None:
     assert damage.BLUNT_STUN_SECONDS < damage.STUN_IMMUNITY_SECONDS, (
         "The incidental blunt-weapon stun outlasts the immunity window."
     )
+
+
+# --------------------------------------------------------------------------
+# How far off a creature may be pointed and still throw
+# --------------------------------------------------------------------------
+
+CONTROLLER_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+                     / "CataclysmEnemyController.h")
+
+
+def test_the_facing_tolerance_keeps_a_thrown_rock_on_its_target() -> None:
+    """A creature may start a directional attack while slightly off-target, and
+    "slightly" has to be small enough that the attack still covers what it was
+    aimed at.
+
+    WHY THIS IS CHECKED HERE AS WELL AS IN THE ENGINE.
+    `Cataclysm.AI.TheFacingToleranceCoversEveryDirectionalAbility` makes the
+    same comparison against every ability of every enemy and is the better test,
+    and it needs the engine. `.github/workflows/ci.yml` is a single Linux job
+    that builds no C++ at all, so nothing checks this on a pull request. This
+    reads the same three numbers out of the headers as text.
+
+    THE GEOMETRY. At a range R with a marked half-width W, being off by an angle
+    A displaces the marked area sideways by R * sin(A), so the target leaves it
+    once that exceeds W. Issue #457.
+    """
+    import math
+
+    tolerance = constant(CONTROLLER_HEADER, "FacingToleranceDegrees")
+    reach = constant(BRUTE_HEADER, "RockThrowRangeCm")
+    half_width = constant(BRUTE_HEADER, "RockThrowRadiusCm")
+
+    drift = reach * math.sin(math.radians(tolerance))
+
+    assert drift <= half_width, (
+        f"a creature may be up to {tolerance} degrees off its target before it "
+        f"has to turn, which at the rock throw's {reach} cm range moves the "
+        f"thrown rock {drift:.1f} cm sideways. The marked area is only "
+        f"{half_width} cm wide, so the rock would land outside the ground "
+        f"marker that warned about it. Lower FacingToleranceDegrees in "
+        f"game/Source/Cataclysm/Character/CataclysmEnemyController.h to at most "
+        f"{math.degrees(math.asin(half_width / reach)):.1f}."
+    )
+
+
+def test_the_facing_tolerance_is_not_zero() -> None:
+    """Zero would mean a creature that turns for ever.
+
+    A creature turns a whole number of degrees per frame and its target moves
+    between frames, so "pointed exactly at it" is a condition that comes true
+    only by coincidence. A tolerance of zero would leave a Brute turning on the
+    spot and never throwing, which reads as the creature being broken rather
+    than as a number being wrong.
+    """
+    assert constant(CONTROLLER_HEADER, "FacingToleranceDegrees") > 0.0, (
+        "FacingToleranceDegrees is zero or negative, so no creature can ever "
+        "satisfy it and no directional ability will ever be used."
+    )
