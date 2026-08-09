@@ -3681,7 +3681,7 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 1.2 s attack interval | No |
 | Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | an 8 s cooldown | Yes, 1.4 s wind-up |
-| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Flight=1.4` | a 12 s cooldown | Yes, 1.0 s wind-up |
+| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Arc=0.25` | a 12 s cooldown | Yes, 1.0 s wind-up |
 
   
 
@@ -3705,19 +3705,35 @@ Its purpose is the one thing the other two cannot do. A Brute with only a Slam a
 
   
 
+**It will not throw at anything closer than 2.58 metres**, which is the marked circle's 2.1 metre radius plus the creature's own 0.48 metre body radius. That figure is derived rather than picked: below it the circle the throw marks covers the ground the Brute is standing on, which makes the throw a melee attack wearing a thrown attack's telegraph. Until 2026-08-09 the minimum was the creature's 0.9 metre melee reach, which is exactly the distance at which the two bodies touch, so it refused nothing and the Brute threw rocks at point blank.
+
+  
+
+**The minimum is checked when the ability is chosen, not when it lands.** The wind-up then runs for a second, during which a player walking at 4 metres per second can close four metres. That is deliberate: the rule for every telegraphed attack is that it arrives where it marked, so a player who walks inside the minimum range during the wind-up has dodged the throw rather than triggered a special case.
+
+  
+
 **Radius 2.1 metres is set by the animation.** A telegraph has to last long enough to play the attack's own wind-up, the way the Stomp's 1.4 seconds covers the 0.83 second ground smash start. The toss animation is 0.87 seconds, and `0.4 + Radius ÷ 3.5 ≥ 0.87` needs at least 1.65 metres; 2.1 gives exactly a 1 second wind-up and clears the animation by 0.13. It is also well under the Stomp's 3.5, so the two markers read as different sizes, and well under the 19.6 metres its own 12 second cooldown would allow.
 
   
 
-**Flight 1.4 seconds is a time, not a speed, and it is the same at every range.** A lobbed rock follows real projectile motion, so there is no one speed to state: it is slowest at the top of its arc and fastest as it lands. Stating the time instead settles the whole trajectory, because gravity supplies the rest.
+**Arc 0.25 is a shape, not a speed.** A lobbed rock follows real projectile motion, so there is no one speed to state: it is slowest at the top of its arc and fastest as it lands. What is stated is how high it rises above the straight line to where it lands, as a fraction of the distance thrown, and gravity supplies the rest. The figure is not chosen — a projectile launched at 45 degrees, the angle that throws an object furthest, reaches an apex of one quarter of its range.
 
   
 
-Three things meet at 1.4. **It is the reaction window.** The marker appears when the wind-up starts and the rock then has to travel, so the player has the 1 second telegraph plus the flight — a designed 2.4 seconds at every distance, rather than a window that shrinks as the player closes in. **It is the arc.** A parabola sags `g × t² ÷ 8` below the straight line between its two ends, which at 1.4 seconds is 240 centimetres; over the full 10 metre throw that is 0.24 of the range. **And it is bounded by the speed ceiling.** A thrown rock should not outrun the Succubus's Soulfire at 1200 centimetres per second, the slowest projectile any player skill uses. The rock is fastest as it lands, having fallen longest: at 1.4 seconds a 10 metre throw arrives at 1121, under the ceiling, and at 1.0 second it would arrive at 1244 and break it.
+**The flight time follows from it.** A parabola sags `g × t² ÷ 8` below the straight line between its two ends, so an arc of `0.25 × range` is in the air for `√(8 × 0.25 × range ÷ 980)` seconds: 1.43 at the full 10 metres, 0.78 at 3 metres, 0.55 at 1.5. The player's window to move is the 1 second wind-up plus that flight, so it runs from about 1.6 seconds at close range to 2.4 at maximum range.
 
   
 
-This replaced `Speed=600` on 2026-08-09. The rock had been moving at a constant speed *along its path*, which is not how anything thrown moves: the steeper the path, the less ground it covered per second, so it crossed the ground early and then sank slowly onto its marker. Real projectile motion holds the *horizontal* speed constant and lets only the vertical one change. See `docs/DECISIONS.md`.
+**It is bounded by the speed ceiling.** A thrown rock should not outrun the Succubus's Soulfire at 1200 centimetres per second, the slowest projectile any player skill uses. The rock is fastest as it lands, having fallen longest: at the full 10 metre throw it arrives at 1073, under the ceiling.
+
+  
+
+**This row has carried three answers, and the middle one is the instructive failure.** It was `Speed=600` until 2026-08-09. The rock had been moving at a constant speed *along its path*, which is not how anything thrown moves: the steeper the path, the less ground it covered per second, so it crossed the ground early and then sank slowly onto its marker. Real projectile motion holds the *horizontal* speed constant and lets only the vertical one change.
+
+  
+
+The first replacement was `Flight=1.4`, a fixed flight time, on the argument that a telegraphed attack should take the same readable moment at every range. It does, and the cost is too high: gravity and a fixed time together fix the whole *vertical* part of the trajectory independently of the distance, so the rock left the hand at 570 centimetres per second straight up and rose 166 centimetres above it whether it was travelling 2 metres or 10. Every short throw was a near-vertical mortar. A constant reaction window is worth less than a lob that reads as a throw at the ranges a melee creature actually fights at. See `docs/DECISIONS.md`.
 
   
 

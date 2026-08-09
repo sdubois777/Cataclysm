@@ -2000,14 +2000,25 @@ bool FCataclysmProjectileIsVisibleTest::RunTest(const FString&)
 
 	// FIRED THE WAY THE BRUTE FIRES ONE since issue #465: a flight time and no
 	// speed at all, because a lob has no single speed to give.
+	//
+	// THE FLIGHT TIME IS DERIVED FROM THE ARC, exactly as
+	// ACataclysmBruteCharacter::RockThrowFlightSecondsFor derives it, because
+	// issue #474 made the arc the designed figure and the time the consequence.
+	// A parabola sags g * t * t / 8 below its chord, so an arc of
+	// fraction * range is in the air for sqrt(8 * fraction * range / g).
+	const float ThrownCm = 10.0f * M;
+	const float FlightSeconds = FMath::Sqrt(
+		8.0f * ACataclysmBruteCharacter::RockThrowApexFraction * ThrownCm
+		/ ACataclysmProjectile::LobGravityCmPerSecondSquared);
+
 	ACataclysmProjectile* Rock = ACataclysmProjectile::Fire(
-		Thrower.Actor, FVector::ZeroVector, FVector(10 * M, 0.0f, 0.0f),
+		Thrower.Actor, FVector::ZeroVector, FVector(ThrownCm, 0.0f, 0.0f),
 		ACataclysmBruteCharacter::RockThrowRadiusCm,
 		/*InSpeed=*/0.0f,
 		/*InPierce=*/0, /*bInReturns=*/false,
 		ACataclysmBruteCharacter::RockThrowDamagePercent,
 		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
-		ACataclysmBruteCharacter::RockThrowFlightSeconds);
+		FlightSeconds);
 
 	if (!Rock)
 	{

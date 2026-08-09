@@ -173,18 +173,21 @@ static TAutoConsoleVariable<float> CVarBruteRockThrowCooldown(
 		 "approach and it stops reading as a melee bruiser."),
 	ECVF_Default);
 
-static TAutoConsoleVariable<float> CVarBruteRockHangTime(
-	TEXT("Cataclysm.Brute.RockHangTime"),
+static TAutoConsoleVariable<float> CVarBruteRockArc(
+	TEXT("Cataclysm.Brute.RockArc"),
 	0.0f,
-	TEXT("Seconds the thrown rock stays in the air, the same at every range. 0 "
-		 "uses its designed 1.4. THIS MOVES THE ARC AS WELL AS THE TIMING, and "
-		 "the two cannot be set apart: the rock falls under real gravity, so a "
-		 "flight of t seconds rises 980*t*t/8 centimetres above the straight "
-		 "line to where it lands -- 122 cm at 1.0, 240 at 1.4, 314 at 1.6. "
-		 "Higher is a slower, loopier, taller lob. Do NOT go below about 1.1: "
-		 "the rock lands faster the longer it has been falling, and at 1.0 a "
-		 "ten metre throw arrives at 1244 centimetres per second, past the "
-		 "1200 of the slowest projectile any player skill uses."),
+	TEXT("How high the thrown rock rises above the straight line to where it "
+		 "lands, as a fraction of the distance thrown. 0 uses the designed "
+		 "0.25, which is what a projectile launched at 45 degrees reaches, so "
+		 "it is a real trajectory rather than a chosen one. THIS MOVES THE "
+		 "FLIGHT TIME TOO, and the two cannot be set apart: the rock falls "
+		 "under real gravity, so an arc of f times the range takes "
+		 "sqrt(8*f*range/980) seconds. At 0.25 a ten metre throw is in the air "
+		 "1.43 seconds and a three metre one 0.78. Higher is a slower, loopier, "
+		 "taller lob; below about 0.05 it is a flat throw again. Do NOT go far "
+		 "above 0.3: the rock lands faster the longer it has been falling, and "
+		 "it must not outrun the 1200 centimetres per second of the slowest "
+		 "projectile any player skill uses."),
 	ECVF_Default);
 
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
@@ -322,7 +325,26 @@ TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
 	// NOT AT SOMETHING IT COULD HIT INSTEAD. There is no sense throwing a rock
 	// at a target already within swinging distance, and the model says so: the
 	// ability exists to answer standing off, not to replace the swing.
-	RockThrow.MinRangeCm = DesignedMeleeReachCm;
+	//
+	// FAR ENOUGH THAT THE CREATURE IS NOT INSIDE ITS OWN BLAST. Issue #475. This
+	// was DesignedMeleeReachCm, 90 cm, until 2026-08-09 -- which is the distance
+	// at which the two capsules are already touching, so it was a minimum range
+	// in name only and the project owner reported the Brute throwing rocks at
+	// point blank. The figure is derived rather than picked: below
+	// `marker radius + own body radius` the circle the attack marks covers the
+	// ground the caster is standing on, which is a melee attack wearing a
+	// thrown attack's telegraph.
+	//
+	// THE SUM IS WRITTEN OUT HERE so that changing either term moves the
+	// minimum with it. RockThrowMinimumRangeCm carries the same figure for
+	// tests to read, and a static_assert below holds the two together.
+	RockThrow.MinRangeCm = RockThrowRadiusCm + BruteCapsuleRadius;
+	static_assert(
+		RockThrowMinimumRangeCm == RockThrowRadiusCm + BruteCapsuleRadius,
+		"RockThrowMinimumRangeCm has drifted from the marked radius plus the "
+		"creature's body radius that it is supposed to be. Issue #475 records "
+		"why the minimum is that sum: below it the Brute stands inside the "
+		"circle its own throw marks.");
 	RockThrow.MaxRangeCm = RockThrowRangeCm;
 	RockThrow.CooldownSeconds = RockThrowCooldownSecondsInUse();
 	RockThrow.WindUpSeconds = RockThrowWindUpSeconds;
@@ -768,10 +790,22 @@ void ACataclysmBruteCharacter::UpdateAbilityMontage()
 	PlayAbilityMontage(Index);
 }
 
-float ACataclysmBruteCharacter::RockThrowFlightSecondsInUse() const
+float ACataclysmBruteCharacter::RockThrowFlightSecondsFor(
+	const FVector& LandsAt) const
 {
-	const float Override = CVarBruteRockHangTime.GetValueOnAnyThread();
-	return Override > 0.0f ? Override : RockThrowFlightSeconds;
+	// A PARABOLA SAGS g * t * t / 8 BELOW ITS OWN CHORD, so a sag of
+	// `fraction * range` is in the air for sqrt(8 * fraction * range / g).
+	// Inverting it here rather than stating the time is issue #474: a stated
+	// time fixes the whole vertical part of the trajectory whatever the
+	// distance, which made every short throw a near-vertical mortar.
+	const float ApexCm = RockThrowApexCmFor(LandsAt);
+	if (ApexCm <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return FMath::Sqrt(
+		8.0f * ApexCm / ACataclysmProjectile::LobGravityCmPerSecondSquared);
 }
 
 float ACataclysmBruteCharacter::StompCooldownSecondsInUse() const
@@ -806,16 +840,15 @@ FVector ACataclysmBruteCharacter::RockLaunchLocation() const
 	return GetActorLocation();
 }
 
-float ACataclysmBruteCharacter::RockThrowApexCm() const
+float ACataclysmBruteCharacter::RockThrowApexCmFor(const FVector& LandsAt) const
 {
-	// HOW FAR A PARABOLA SAGS BELOW ITS OWN CHORD over a flight of t seconds,
-	// which is `g * t * t / 8` however far apart the two ends are. The same
-	// arithmetic runs inside ACataclysmProjectile::Fire, which is what actually
-	// shapes the throw; this exists so the figure can be read and tested
-	// without firing one.
-	const float Seconds = RockThrowFlightSecondsInUse();
-	return ACataclysmProjectile::LobGravityCmPerSecondSquared
-		* Seconds * Seconds / 8.0f;
+	const float Override = CVarBruteRockArc.GetValueOnAnyThread();
+	const float Fraction = Override > 0.0f ? Override : RockThrowApexFraction;
+
+	// A FRACTION OF THE DISTANCE THROWN, so a rock lobbed two metres is not
+	// given the same loop as one thrown ten. Measured across the ground rather
+	// than through the air, because that is what the fraction is a fraction of.
+	return Fraction * FVector::Dist2D(RockLaunchLocation(), LandsAt);
 }
 
 void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
@@ -901,7 +934,7 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 			RockThrowRadiusCm, /*InSpeed=*/0.0f,
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
 			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh,
-			RockThrowFlightSecondsInUse());
+			RockThrowFlightSecondsFor(AimedAt));
 		return;
 	}
 }

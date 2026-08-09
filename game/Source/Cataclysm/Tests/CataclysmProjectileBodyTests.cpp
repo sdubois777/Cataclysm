@@ -517,20 +517,51 @@ bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 	// until 2026-08-09, on a machine that has the Paragon pack installed.
 	Brute->ResolveBody(/*bIncludeAnimation=*/false);
 
-	// THE ARC IS CHECKED WHETHER OR NOT THERE IS ART, because it comes out of
-	// the designed flight time and not from the skeleton.
-	const float Apex = Brute->RockThrowApexCm();
+	// THE ARC IS CHECKED WHETHER OR NOT THERE IS ART, because it is a fraction
+	// of the distance thrown rather than something read off the skeleton.
+	const FVector LandsAt(1000.0f, 0.0f, 0.0f);
+	const float Apex = Brute->RockThrowApexCmFor(LandsAt);
+	const float ThrownCm =
+		FVector::Dist2D(Brute->RockLaunchLocation(), LandsAt);
 
 	TestTrue(FString::Printf(TEXT("the throw lobs at all (apex %.0f cm)"), Apex),
 		Apex > 0.0f);
 
-	// 980 * 1.4 * 1.4 / 8 is 240.1 centimetres. Written out rather than
-	// recomputed from the two constants the code multiplies together, because a
-	// guard built from the number it checks cannot fail. Issue #465.
+	// A QUARTER OF THE DISTANCE THROWN, which is the designed fraction.
 	TestTrue(FString::Printf(
-		TEXT("and the apex is what the designed 1.4 second flight implies "
-			 "(%.1f cm, expected 240.1)"), Apex),
-		FMath::Abs(Apex - 240.1f) < 1.0f);
+		TEXT("and the apex is the designed fraction of the throw "
+			 "(%.0f cm of %.0f)"), Apex, ThrownCm),
+		FMath::Abs(Apex - ThrownCm * 0.25f) < 1.0f);
+
+	// AND IT SCALES WITH THE THROW, which is the whole of issue #474. Between
+	// #465 and #474 the apex came out of a fixed flight time, so a two metre lob
+	// and a ten metre lob both rose 240 cm and the short one was near-vertical.
+	// Half the distance must now give half the arc.
+	// THE TRUE MIDPOINT BETWEEN THE LAUNCH POINT AND THE LANDING POINT, so the
+	// horizontal distance really is half. Stepping half of ThrownCm along X
+	// instead is only half the distance when the launch point happens to sit on
+	// the same line, and it does not: RockLaunchLocation falls back to the
+	// capsule centre here, which the spawn has nudged off the origin.
+	const FVector HalfAsFar =
+		Brute->RockLaunchLocation() + (LandsAt - Brute->RockLaunchLocation()) * 0.5f;
+	const float ShorterApex = Brute->RockThrowApexCmFor(HalfAsFar);
+	TestTrue(FString::Printf(
+		TEXT("and half the throw gives half the arc (%.0f cm against %.0f)"),
+		ShorterApex, Apex),
+		FMath::Abs(ShorterApex - Apex * 0.5f) < 2.0f);
+
+	// AND THE FLIGHT TIME FOLLOWS THE ARC RATHER THAN BEING STATED. A parabola
+	// sags g * t * t / 8 below its chord, so a 250 cm arc over a 1000 cm throw
+	// is sqrt(8 * 250 / 980) = 1.43 seconds in the air.
+	const float FlightSeconds = Brute->RockThrowFlightSecondsFor(LandsAt);
+	TestTrue(FString::Printf(
+		TEXT("and the ten metre throw is in the air about 1.43 s (%.2f)"),
+		FlightSeconds),
+		FMath::Abs(FlightSeconds - 1.43f) < 0.05f);
+	TestTrue(FString::Printf(
+		TEXT("while a throw half as far is quicker (%.2f s against %.2f)"),
+		Brute->RockThrowFlightSecondsFor(HalfAsFar), FlightSeconds),
+		Brute->RockThrowFlightSecondsFor(HalfAsFar) < FlightSeconds);
 
 	// THE LAUNCH POINT NEEDS THE SKELETON, so say which case ran.
 	const USkeletalMeshComponent* Body = Brute->GetMesh();
