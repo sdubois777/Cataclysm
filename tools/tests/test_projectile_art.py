@@ -112,11 +112,36 @@ def test_the_brute_passes_its_rock_to_the_projectile() -> None:
     """
     text = source(BRUTE_CPP)
 
-    assert re.search(r"bInBurns\s*=\s*\*/\s*false\s*,\s*RockMesh\s*\)", text), (
+    assert re.search(r"bInBurns\s*=\s*\*/\s*false\s*,\s*RockMesh\s*[,)]", text), (
         "CataclysmBruteCharacter.cpp does not pass RockMesh to "
         "ACataclysmProjectile::Fire. Without it the rock throw flies the "
         "placeholder sphere again, and nothing reports an error because the "
         "parameter is optional."
+    )
+
+
+def test_the_brute_asks_for_an_arc_when_it_throws() -> None:
+    """The same failure as the mesh above, in the parameter added after it.
+
+    `Fire`'s apex parameter defaults to zero so that all 398 player skills keep
+    flying straight without knowing it exists. That default is what makes losing
+    it silent here: the rock would still be thrown, still be the right mesh,
+    still deal its damage, and would go back to travelling flat.
+
+    IT WOULD ALSO BE WORSE THAN THE FLAT THROW EVER WAS, which is why this is
+    worth a test of its own rather than left to engine tests that cannot run on
+    a pull request. The rock now leaves the creature's hand, well above 250 cm.
+    Flat from there it sails over the head of a player whose own is about 192
+    cm, at every range. Issues #454 and #459.
+    """
+    text = source(BRUTE_CPP)
+
+    assert re.search(r"RockMesh\s*,\s*RockThrowApexCmFor\s*\(", text), (
+        "CataclysmBruteCharacter.cpp does not pass RockThrowApexCmFor(...) to "
+        "ACataclysmProjectile::Fire, so the thrown rock travels flat. The "
+        "parameter is optional and defaults to no arc, so nothing reports an "
+        "error. The rock is fired from the hand, so flat means over the "
+        "player's head."
     )
 
 

@@ -334,11 +334,11 @@ bool FCataclysmBruteMarksItsStompAndClearsIt::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmBruteMarksItsThrowAsALane,
-	"Cataclysm.Telegraph.TheBruteMarksItsRockThrowAsALaneToWhereItAimed",
+	FCataclysmBruteMarksItsThrowWhereItLands,
+	"Cataclysm.Telegraph.TheBruteMarksItsRockThrowAsACircleWhereItWillLand",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmBruteMarksItsThrowAsALane::RunTest(const FString&)
+bool FCataclysmBruteMarksItsThrowWhereItLands::RunTest(const FString&)
 {
 	using namespace CataclysmTelegraphTest;
 
@@ -387,27 +387,34 @@ bool FCataclysmBruteMarksItsThrowAsALane::RunTest(const FString&)
 		return false;
 	}
 
-	TestTrue(TEXT("and it is a lane rather than a circle"), Marker->IsLane());
-	TestEqual(TEXT("as wide as the rock that will travel down it"),
+	// A CIRCLE, NOT A LANE, BECAUSE THE ROCK IS LOBBED. Issue #459. It was a
+	// lane until 2026-08-08, when the throw became an arc. A lobbed rock rises
+	// over everything between the creature and its target and endangers only
+	// the ground it comes down on, so a lane marked floor on which nothing was
+	// going to happen.
+	TestFalse(TEXT("it is a circle rather than a lane"), Marker->IsLane());
+	TestEqual(TEXT("as wide as the blast where the rock lands"),
 		Marker->RadiusCm, ACataclysmBruteCharacter::RockThrowRadiusCm);
 
-	// TO WHERE IT AIMED, NOT TO THE ABILITY'S MAXIMUM RANGE. The projectile
-	// stops where it was aimed -- ACataclysmProjectile::Fire takes its range
-	// from the distance between the two points it is given -- so a lane drawn
-	// out to the full 10 metres would cover ground nothing happens on.
+	// WHERE IT LANDS, NOT WHERE IT IS THROWN FROM, and this is the assertion
+	// that makes the two above worth anything. A circle of exactly the right
+	// size drawn at the creature's own feet satisfies both of them and warns
+	// the player about entirely the wrong patch of floor.
+	//
+	// Within a capsule radius of the target, which is as exact as this can be:
+	// both characters are pushed apart by their own capsules as they spawn.
+	const float ToTarget = FVector::Dist2D(
+		Marker->GetActorLocation(), Target->GetActorLocation());
 	TestTrue(FString::Printf(
-		TEXT("and reaches the target rather than the ability's full range "
-			 "(%.0f cm of %.0f)"),
-		Marker->LengthCm, ACataclysmBruteCharacter::RockThrowRangeCm),
-		Marker->LengthCm < ACataclysmBruteCharacter::RockThrowRangeCm);
+		TEXT("and it is centred on the target (%.0f cm from it)"), ToTarget),
+		ToTarget < 100.0f);
 
-	// Within a capsule radius of the gap between the two, which is as exact as
-	// this can be: both characters are pushed apart by their own capsules as
-	// they spawn.
+	const float ToCreature = FVector::Dist2D(
+		Marker->GetActorLocation(), Brute->GetActorLocation());
 	TestTrue(FString::Printf(
-		TEXT("and it is as long as the gap it crosses (%.0f cm against %.0f)"),
-		Marker->LengthCm, Distance),
-		FMath::Abs(Marker->LengthCm - Distance) < 100.0f);
+		TEXT("and nowhere near the creature (%.0f cm of the %.0f cm gap)"),
+		ToCreature, Distance),
+		ToCreature > Distance * 0.5f);
 
 	return true;
 }

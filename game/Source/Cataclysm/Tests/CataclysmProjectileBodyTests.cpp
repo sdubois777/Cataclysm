@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -301,6 +302,239 @@ bool FCataclysmBruteThrowsTheRock::RunTest(const FString&)
 		TestEqual(TEXT("and without the pack it falls back to the engine sphere"),
 			MeshOf(Thrown)->GetName(), FString(TEXT("Sphere")));
 	}
+
+	return true;
+}
+
+/**
+ * A projectile nobody asked to arc must fly exactly as it always did.
+ *
+ * WHY THIS IS THE FIRST OF THESE TESTS. `ACataclysmProjectile` is fired by all
+ * 398 rows of `game/Data/WeaponSkills.csv`. Issue #459 added an arc for the
+ * Brute's rock, and the danger in that change is not that the arc is wrong: it
+ * is that every player skill quietly becomes a mortar. A projectile given no
+ * apex must keep the height it was fired at, for the whole flight.
+ *
+ * IT ALSO GUARDS THE DISTANCE BOOKKEEPING. The step loop now counts down the
+ * range by the horizontal distance covered rather than the distance flown,
+ * because a range is a distance across the ground. For a straight shot those are
+ * the same number, and this is what says so.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmStraightProjectileIsUnchanged,
+	"Cataclysm.Skills.AStraightProjectileStillTravelsItsWholeRange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStraightProjectileIsUnchanged::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FURL URL;
+	World->InitializeActorsForPlay(URL);
+	World->BeginPlay();
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	// Fired from 300 cm up at a point on the floor 1000 cm away. A straight
+	// shot ignores the height difference entirely and flies level, which is
+	// what it has always done.
+	const FVector From(0.0f, 0.0f, 300.0f);
+	const FVector To(1000.0f, 0.0f, 0.0f);
+
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+		Caster, From, To, /*InRadiusCm=*/50.0f, /*InSpeed=*/1200.0f,
+		/*InPierce=*/0, /*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!TestNotNull(TEXT("it fired"), Shot))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("nothing asked it to arc"), Shot->ApexHeightCm, 0.0f);
+
+	double Highest = Shot->GetActorLocation().Z;
+	for (int32 Step = 0; Step < 100 && Shot->Step(0.05f); ++Step)
+	{
+		Highest = FMath::Max(Highest, Shot->GetActorLocation().Z);
+	}
+
+	TestEqual(TEXT("it stayed at the height it was fired from"),
+		Shot->GetActorLocation().Z, From.Z);
+	TestEqual(TEXT("and never rose above it at any point"), Highest, From.Z);
+
+	// AND IT COVERED THE WHOLE GROUND DISTANCE. Counting the flown distance
+	// instead of the horizontal one would land a straight shot in the same
+	// place, so this passes either way for a level shot -- which is exactly why
+	// it is here: it says the change to that bookkeeping did no harm.
+	const float Covered = FVector::Dist2D(From, Shot->GetActorLocation());
+	TestTrue(FString::Printf(
+		TEXT("and travelled its whole range (%.0f cm of 1000)"), Covered),
+		FMath::Abs(Covered - 1000.0f) < 10.0f);
+
+	return true;
+}
+
+/**
+ * A projectile asked to arc rises, comes back down, and lands where it was
+ * aimed.
+ *
+ * WHAT THIS GUARDS. Issue #459. The rock is thrown from the creature's hand,
+ * well above the ground, at a target on the floor. The parabola is built as the
+ * straight line between those two heights plus a bump, so it is possible to get
+ * the two halves right separately and still have the rock finish its flight in
+ * mid-air, or start it underground.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmArcingProjectileLandsWhereAimed,
+	"Cataclysm.Skills.AnArcingProjectileRisesAndLandsWhereItWasAimed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmArcingProjectileLandsWhereAimed::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FURL URL;
+	World->InitializeActorsForPlay(URL);
+	World->BeginPlay();
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	const FVector From(0.0f, 0.0f, 300.0f);
+	const FVector To(1000.0f, 0.0f, 0.0f);
+	const float Apex = 250.0f;
+
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+		Caster, From, To, /*InRadiusCm=*/50.0f, /*InSpeed=*/1200.0f,
+		/*InPierce=*/0, /*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
+		Apex);
+	if (!TestNotNull(TEXT("it fired"), Shot))
+	{
+		return false;
+	}
+
+	double Highest = Shot->GetActorLocation().Z;
+	for (int32 Step = 0; Step < 100 && Shot->Step(0.05f); ++Step)
+	{
+		Highest = FMath::Max(Highest, Shot->GetActorLocation().Z);
+	}
+
+	// IT WENT UP. The midpoint of the straight line between 300 and 0 is 150,
+	// and the apex adds 250 on top of that, so it should reach about 400 --
+	// which is HIGHER than it was launched from. A rock that only ever fell
+	// would satisfy "it landed correctly" without ever having been a lob.
+	TestTrue(FString::Printf(
+		TEXT("it rose above the hand it left (%.0f cm against %.0f)"),
+		Highest, From.Z),
+		Highest > From.Z);
+	TestTrue(FString::Printf(
+		TEXT("and reached about the apex it was given (%.0f cm, expected 400)"),
+		Highest),
+		FMath::Abs(Highest - 400.0f) < 30.0f);
+
+	// AND IT CAME BACK DOWN TO WHERE IT WAS AIMED, in all three axes.
+	const FVector Landed = Shot->GetActorLocation();
+	TestTrue(FString::Printf(
+		TEXT("and landed at the height it was aimed at (%.0f cm, expected 0)"),
+		Landed.Z),
+		FMath::Abs(Landed.Z - To.Z) < 20.0f);
+	TestTrue(FString::Printf(
+		TEXT("and at the place it was aimed at (%.0f cm away)"),
+		FVector::Dist2D(Landed, To)),
+		FVector::Dist2D(Landed, To) < 20.0f);
+
+	return true;
+}
+
+/**
+ * The Brute throws its rock from its hand, and the rock arcs.
+ *
+ * WHY THE TWO ARE ONE TEST. They are one change. Issue #454 asked for the rock
+ * to leave the hand rather than the creature's waist; doing that alone would
+ * have been worse than leaving it, because the projectile flew level, so a rock
+ * launched from a hand above 250 cm would have sailed over the head of a player
+ * whose own is about 192. The launch point is only correct with a trajectory
+ * that comes back down.
+ *
+ * WITHOUT THE PARAGON PACK THERE IS NO SKELETON, so RockLaunchLocation falls
+ * back to the capsule centre and the height half of this cannot be checked. The
+ * test says which path it took rather than passing quietly either way.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteLobsFromItsHand,
+	"Cataclysm.Brute.ItLobsTheRockFromItsHandRatherThanItsWaist",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FURL URL;
+	World->InitializeActorsForPlay(URL);
+	World->BeginPlay();
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute"), Brute))
+	{
+		return false;
+	}
+
+	// THE ARC IS CHECKED WHETHER OR NOT THERE IS ART, because it is computed
+	// from the distance thrown and not from the skeleton.
+	const FVector LandsAt(1000.0f, 0.0f, 0.0f);
+	const float Apex = Brute->RockThrowApexCmFor(LandsAt);
+	const float Thrown = FVector::Dist2D(Brute->RockLaunchLocation(), LandsAt);
+
+	TestTrue(FString::Printf(TEXT("the throw arcs at all (apex %.0f cm)"), Apex),
+		Apex > 0.0f);
+	TestTrue(FString::Printf(
+		TEXT("and the apex is the designed fraction of the throw "
+			 "(%.0f cm of %.0f)"), Apex, Thrown),
+		FMath::Abs(Apex
+			- Thrown * ACataclysmBruteCharacter::RockThrowApexFraction) < 1.0f);
+
+	// THE LAUNCH POINT NEEDS THE SKELETON, so say which case ran.
+	const USkeletalMeshComponent* Body = Brute->GetMesh();
+	const bool bHasBone =
+		Body && Body->DoesSocketExist(ACataclysmBruteCharacter::RockHoldBoneName);
+	if (!bHasBone)
+	{
+		AddInfo(TEXT("No skeleton with a weapon_r bone, which is expected "
+					 "without the Paragon Rampage pack. The launch height is "
+					 "not checked; the arc above is."));
+		return true;
+	}
+
+	const FVector Hand = Brute->RockLaunchLocation();
+	TestTrue(FString::Printf(
+		TEXT("the rock leaves the hand, above the capsule centre "
+			 "(%.0f cm against %.0f)"),
+		Hand.Z, Brute->GetActorLocation().Z),
+		Hand.Z > Brute->GetActorLocation().Z);
 
 	return true;
 }

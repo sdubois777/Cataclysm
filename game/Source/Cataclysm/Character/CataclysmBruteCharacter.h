@@ -133,6 +133,29 @@ public:
 
 	/** Percent of its damage one rock deals. The Special slot's 150%. */
 	static constexpr float RockThrowDamagePercent = 150.0f;
+
+	/**
+	 * How high the rock rises above the straight line from hand to landing
+	 * point, as a fraction of the distance thrown.
+	 *
+	 * A REAL TRAJECTORY RATHER THAN A CHOSEN NUMBER. A projectile launched at
+	 * 45 degrees, which is the angle that throws an object furthest, reaches an
+	 * apex of one quarter of its range. Taking the same fraction here makes a
+	 * short throw shallow and a long one high without either being decided
+	 * separately.
+	 *
+	 * IT STILL HAS TO BE JUDGED BY WATCHING, which is why
+	 * `Cataclysm.Brute.RockArc` exists. Whether an arc READS as a heavy
+	 * creature heaving a boulder is not something the physics settles, and this
+	 * project sets figures of that kind by playing them -- the chase speed and
+	 * both authored animation speeds were set that way.
+	 *
+	 * WHY THE ROCK ARCS AT ALL. Issue #459. A ground marker promises a place
+	 * and a flat projectile delivers a line, and pairing the two is a known
+	 * mistake rather than a matter of taste. Arcing onto the marked circle
+	 * makes the warning true.
+	 */
+	static constexpr float RockThrowApexFraction = 0.25f;
 	//~ End designed ability numbers
 
 	//~ Each ability is ONE MONTAGE holding two clips back to back: the wind-up,
@@ -237,6 +260,30 @@ public:
 	 * without this function knowing what any of them are.
 	 */
 	void UpdateCarriedRock();
+
+	/**
+	 * Where a thrown rock leaves the creature.
+	 *
+	 * THE HAND, and specifically the same bone the carried rock hangs from, so
+	 * that what is visibly held and what is thrown start from one place.
+	 *
+	 * FALLS BACK TO THE CAPSULE CENTRE when there is no skeleton, which is a
+	 * fresh clone with no Paragon pack and every headless test world. That is
+	 * where the rock left from before issue #454, so nothing breaks; the throw
+	 * simply starts lower.
+	 *
+	 * Public so a test can compare it against the bone without a play session.
+	 */
+	FVector RockLaunchLocation() const;
+
+	/**
+	 * How high a rock thrown at this point should rise above the straight line
+	 * to it, in centimetres.
+	 *
+	 * Reads `Cataclysm.Brute.RockArc` if it has been set, so the shape of the
+	 * lob can be judged by playing rather than argued about.
+	 */
+	float RockThrowApexCmFor(const FVector& LandsAt) const;
 
 	/**
 	 * The rock's own material, taken off the rock mesh.

@@ -537,6 +537,17 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # slowest spell in the game.
             #
             # PIERCE 0 BECAUSE IT IS ONE ROCK. It stops at what it hits.
+            #
+            # AND IT IS LOBBED, WHICH IS WHY PIERCE 0 IS NOT ONLY A DETAIL. From
+            # 2026-08-09 the rock rises in an arc and comes down on the marked
+            # circle rather than travelling flat down a marked lane. A telegraph
+            # that marks a place has to deliver to that place; the two were
+            # different promises before. See docs/DECISIONS.md, which records why
+            # the genre settles this rather than taste, and issue #459.
+            #
+            # THE MARKED AREA IS THE SAME 2.1 m RADIUS, so this row is unchanged
+            # in what it says the attack covers. Only its shape moved: a circle
+            # where it lands rather than a lane along the way.
             params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Speed": 1200},
             # THE SPECIAL SLOT'S TYPICAL COOLDOWN, and the approach time
             # confirms it is the right side of the constraint that matters. The
@@ -546,13 +557,15 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # bruiser with a rock. At 5 seconds it throws once and then it is on
             # you.
             cooldown=5.0,
-            note="It tears a rock out of the ground and throws it, marked as a "
-                 "line 4.2 metres wide for 1 second first. At the Special "
-                 "slot's 150% it is worth half a Stomp. Added 2026-08-07 when "
-                 "the project owner settled the Brute at three abilities -- "
-                 "this, the Slam and the Stomp -- on the grounds that it is a "
-                 "basic mob and that rarities and modifiers are where extra "
-                 "abilities belong.",
+            note="It tears a rock out of the ground and lobs it, marked as a "
+                 "circle 2.1 metres across where it will land, for 1 second "
+                 "first. At the Special slot's 150% it is worth half a Stomp. "
+                 "Added 2026-08-07 when the project owner settled the Brute at "
+                 "three abilities -- this, the Slam and the Stomp -- on the "
+                 "grounds that it is a basic mob and that rarities and "
+                 "modifiers are where extra abilities belong. Became an arc "
+                 "onto a landing circle on 2026-08-09, from a flat throw down "
+                 "a marked lane.",
         ),
     ),
 }
