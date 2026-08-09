@@ -1410,6 +1410,377 @@ def test_the_stomp_can_be_walked_out_of_from_contact(brute, brute_abilities,
 
 
 # --------------------------------------------------------------------------
+# The Corrupted Sentinel, issue #352
+# --------------------------------------------------------------------------
+#
+# Everything here is recomputed from somewhere else rather than compared against
+# a copy: the reach from the player skill table, the bolt's speed from the
+# wind-up rule and that reach, the mortar's minimum range from its own marker
+# and the creature's body, and its landing speed from its arc and real gravity.
+
+
+@pytest.fixture(scope="module")
+def sentinel_section() -> str:
+    return subsection("Corrupted Sentinel")
+
+
+@pytest.fixture(scope="module")
+def sentinel():
+    from cataclysm_sim.enemy_stats import archetype
+    return archetype("Corrupted Sentinel")
+
+
+@pytest.fixture(scope="module")
+def sentinel_abilities():
+    from cataclysm_sim.enemy_abilities import abilities
+    return abilities("Corrupted Sentinel")
+
+
+def player_attack_ranges() -> list[float]:
+    """Every `Range` a damaging player skill states, in metres.
+
+    DEBUFF AND SUMMON ARE EXCLUDED, and that is the point of the function rather
+    than an oversight. Two rows reach 15 metres -- Subjugate, a Debuff, and Open
+    the Rift, a Summon -- and neither is an attack. The Sentinel's reach is set
+    against the furthest anything can HIT it from.
+    """
+    import csv
+
+    skills = REPO_ROOT / "game" / "Data" / "WeaponSkills.csv"
+    if not skills.is_file():
+        pytest.skip("game/Data/WeaponSkills.csv is not present")
+
+    attacking = {"Projectile", "Strike", "Movement"}
+    ranges = []
+    with skills.open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["Shape"] not in attacking:
+                continue
+            params = dict(pair.strip().split("=", 1)
+                          for pair in row["ShapeParams"].split(";")
+                          if "=" in pair)
+            if "Range" in params:
+                ranges.append(float(params["Range"]))
+    assert ranges, "no player attack in game/Data/WeaponSkills.csv states a Range"
+    return ranges
+
+
+def player_projectile_speeds() -> list[float]:
+    """Every non-zero `Speed` a player Projectile states, in centimetres/second."""
+    import csv
+
+    skills = REPO_ROOT / "game" / "Data" / "WeaponSkills.csv"
+    if not skills.is_file():
+        pytest.skip("game/Data/WeaponSkills.csv is not present")
+
+    speeds = []
+    with skills.open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["Shape"] != "Projectile":
+                continue
+            params = dict(pair.strip().split("=", 1)
+                          for pair in row["ShapeParams"].split(";")
+                          if "=" in pair)
+            speed = float(params.get("Speed", 0.0))
+            if speed > 0.0:
+                speeds.append(speed)
+    assert speeds, "no player Projectile states a non-zero Speed"
+    return speeds
+
+
+def test_the_sentinel_ability_table_matches_the_data(sentinel_section,
+                                                     sentinel_abilities):
+    """Two abilities, and the document's table must carry both exactly as the
+    data holds them."""
+    assert len(sentinel_abilities) == 2, (
+        f"the Corrupted Sentinel now has {len(sentinel_abilities)} abilities "
+        "in sim/cataclysm_sim/enemy_abilities.py. The design document describes "
+        "two: a bolt down a marked lane and a shell lobbed over cover.")
+    for ability in sentinel_abilities:
+        assert_row_matches(sentinel_section, ability, "Corrupted Sentinel")
+
+
+def test_the_sentinel_never_moves_which_is_what_its_reach_rests_on(sentinel):
+    """Every argument in its subsection starts here.
+
+    A creature that could walk would not need the longest reach in the game,
+    would not need a mortar to answer cover, and would not have to survive being
+    stood on. If this figure ever stops being zero the subsection has to be
+    re-argued rather than adjusted.
+    """
+    assert sentinel.move_speed == 0.0, (
+        f"the Corrupted Sentinel now moves at {sentinel.move_speed} m/s. Its "
+        "reach, its mortar and its answer to a melee character are all "
+        "arguments from it being unable to move at all. Issue #352.")
+    assert sentinel.chase_speed == 0.0, (
+        f"the Corrupted Sentinel now has a chase speed of "
+        f"{sentinel.chase_speed} m/s, so it moves once it has noticed the "
+        "player. Same problem.")
+
+
+def test_the_sentinel_reach_is_the_longest_range_any_player_attack_has():
+    """Read out of the skill table, not written down here.
+
+    THE FAILURE THIS CATCHES: somebody gives a player skill a longer range and
+    the Sentinel silently becomes free to kill from outside its own reach, which
+    is exactly what issue #352 asked this design to prevent.
+    """
+    from cataclysm_sim.enemy_abilities import ATTACK_REACH
+
+    longest = max(player_attack_ranges())
+    assert ATTACK_REACH["Corrupted Sentinel"] == pytest.approx(longest), (
+        f"the Corrupted Sentinel reaches "
+        f"{ATTACK_REACH['Corrupted Sentinel']} m and the longest range any "
+        f"player attack has in game/Data/WeaponSkills.csv is {longest} m. A "
+        "creature that cannot move and can be out-ranged is a free kill.")
+
+
+def test_the_bolt_uses_the_largest_telegraph_its_interval_allows(
+        sentinel, sentinel_abilities):
+    """Its wind-up is then exactly half its attack interval, which is the most
+    the rule permits. The same place the Succubus sits."""
+    from cataclysm_sim.enemy_abilities import (REACTION_ALLOWANCE,
+                                               WALK_OUT_SPEED,
+                                               largest_telegraphed_radius)
+
+    bolt = next(a for a in sentinel_abilities if a.is_basic_attack)
+    largest = largest_telegraphed_radius(sentinel.attack_interval)
+
+    assert float(bolt.params["Radius"]) == pytest.approx(largest), (
+        f"the Siege Bolt marks {bolt.params['Radius']} m and a "
+        f"{sentinel.attack_interval} s attack interval allows {largest:.2f} m. "
+        "The design takes all of it, because a creature whose role is forcing "
+        "the player to move should mark as much ground as the rule permits.")
+
+    wind_up = REACTION_ALLOWANCE + float(bolt.params["Radius"]) / WALK_OUT_SPEED
+    assert wind_up == pytest.approx(sentinel.attack_interval / 2.0), (
+        f"the Siege Bolt's wind-up is {wind_up:.2f} s against a "
+        f"{sentinel.attack_interval} s interval, so it is no longer exactly "
+        "half. Taking the largest allowed radius is what makes those two the "
+        "same number.")
+
+
+def test_the_bolt_lands_exactly_as_the_next_one_is_marked(sentinel,
+                                                          sentinel_abilities):
+    """The whole of its rhythm, and the reason its speed is what it is.
+
+    The cycle is one second of marker plus one second of flight. A longer flight
+    puts a shot in the air while the next marker is already on the ground; a
+    shorter one leaves a gap in which nothing is happening, and the design of
+    this creature is that there is not one.
+    """
+    from cataclysm_sim.enemy_abilities import (REACTION_ALLOWANCE,
+                                               WALK_OUT_SPEED)
+
+    bolt = next(a for a in sentinel_abilities if a.is_basic_attack)
+    wind_up = REACTION_ALLOWANCE + float(bolt.params["Radius"]) / WALK_OUT_SPEED
+    flight = (float(bolt.params["Range"]) * CM_PER_METRE
+              / float(bolt.params["Speed"]))
+
+    assert wind_up + flight == pytest.approx(sentinel.attack_interval), (
+        f"the Siege Bolt winds up for {wind_up:.2f} s and flies for "
+        f"{flight:.2f} s, which is {wind_up + flight:.2f} s against a "
+        f"{sentinel.attack_interval} s attack interval. The two are meant to "
+        "add up to exactly the interval.")
+
+
+def test_the_bolt_speed_is_the_slowest_in_the_table_that_still_lands_in_time():
+    """It is a floor met exactly, not a number picked off a list.
+
+    NOT A COMPARISON AGAINST ITS OWN DEFINITION. The floor is recomputed from
+    the range and the flight budget, and then every speed the player skill table
+    offers is tested against it. A slower one that also worked would fail this,
+    because the design claims 1400 is the slowest that does.
+    """
+    from cataclysm_sim.enemy_abilities import (REACTION_ALLOWANCE,
+                                               WALK_OUT_SPEED, abilities)
+    from cataclysm_sim.enemy_stats import archetype
+
+    kind = archetype("Corrupted Sentinel")
+    bolt = next(a for a in abilities("Corrupted Sentinel") if a.is_basic_attack)
+    wind_up = REACTION_ALLOWANCE + float(bolt.params["Radius"]) / WALK_OUT_SPEED
+    budget = kind.attack_interval - wind_up
+    floor = float(bolt.params["Range"]) * CM_PER_METRE / budget
+
+    workable = [speed for speed in player_projectile_speeds() if speed >= floor]
+    assert workable, (
+        f"no speed in game/Data/WeaponSkills.csv reaches the {floor:.0f} cm/s "
+        f"the Siege Bolt needs to cross {bolt.params['Range']} m in "
+        f"{budget:.2f} s.")
+
+    assert float(bolt.params["Speed"]) == pytest.approx(min(workable)), (
+        f"the Siege Bolt is {bolt.params['Speed']} cm/s and the slowest speed "
+        f"in game/Data/WeaponSkills.csv that still crosses "
+        f"{bolt.params['Range']} m inside {budget:.2f} s is {min(workable)}. A "
+        "slower readable option existing means the design should be using it.")
+
+
+def test_the_bolt_has_no_minimum_range_and_the_mortar_has_one(
+        sentinel, sentinel_abilities):
+    """The distinction the whole melee answer rests on.
+
+    A lane starts at the caster, so the caster is at its origin. A circle can
+    cover the caster, so it needs a floor. Asking a flat shot for a minimum
+    range raises rather than returning a number, because a number returned for
+    one is a limit somebody could apply by mistake.
+    """
+    from cataclysm_sim.enemy_abilities import (PLAYER_BODY_RADIUS, is_lobbed,
+                                               lob_minimum_range)
+
+    bolt = next(a for a in sentinel_abilities if a.is_basic_attack)
+    mortar = next(a for a in sentinel_abilities if not a.is_basic_attack)
+
+    assert not is_lobbed(bolt), (
+        "the Siege Bolt now carries an Arc, so it is a lob. The design says a "
+        "melee character standing against the Sentinel is standing in its "
+        "lane, which is only true of a flat shot.")
+    with pytest.raises(ValueError):
+        lob_minimum_range(bolt, sentinel)
+
+    assert is_lobbed(mortar), (
+        "the Brimstone Mortar no longer carries an Arc, so it is a flat shot "
+        "and cannot reach over cover, which is the only reason it exists.")
+
+    minimum = lob_minimum_range(mortar, sentinel)
+    assert minimum == pytest.approx(float(mortar.params["Radius"])
+                                    + sentinel.body_radius), (
+        f"the mortar's minimum range is {minimum} m and its marked circle plus "
+        f"the creature's body radius is {mortar.params['Radius']} + "
+        f"{sentinel.body_radius}. Below that sum it stands inside its own "
+        "blast.")
+
+    contact = PLAYER_BODY_RADIUS + sentinel.body_radius
+    assert minimum > contact, (
+        f"the mortar's minimum range is {minimum} m and the two bodies already "
+        f"touch at {contact} m, so it refuses nothing. That is the state issue "
+        "#475 was filed about on the Brute.")
+
+
+def test_the_mortar_lands_slower_than_the_ceiling_the_rock_is_held_to(
+        sentinel_abilities):
+    """A lob is fastest as it lands, so that is where the ceiling bites.
+
+    The ceiling is the Succubus's Soulfire, which is the slowest projectile any
+    player skill uses. It is read out of the design rather than written here, so
+    retuning the Succubus moves it.
+    """
+    import math
+
+    from cataclysm_sim.enemy_abilities import abilities
+
+    ceiling = float(next(a for a in abilities("Succubus")
+                         if a.is_basic_attack).params["Speed"])
+    mortar = next(a for a in sentinel_abilities if not a.is_basic_attack)
+
+    gravity = 980.0
+    reach = float(mortar.params["Range"]) * CM_PER_METRE
+    flight = math.sqrt(8.0 * float(mortar.params["Arc"]) * reach / gravity)
+    landing = math.hypot(reach / flight, gravity * flight / 2.0)
+
+    assert landing <= ceiling, (
+        f"the Brimstone Mortar lands at {landing:.0f} cm/s at its full "
+        f"{mortar.params['Range']} m and the slowest projectile any player "
+        f"skill uses is {ceiling:.0f} cm/s. An enemy shot arriving faster than "
+        "anything the player has ever seen is not readable.")
+
+
+def test_the_two_sentinel_markers_are_different_sizes(sentinel_abilities):
+    """A player has to tell them apart at a glance, and radius is the only
+    thing that distinguishes them: both are Projectiles from one creature."""
+    bolt = next(a for a in sentinel_abilities if a.is_basic_attack)
+    mortar = next(a for a in sentinel_abilities if not a.is_basic_attack)
+
+    assert float(mortar.params["Radius"]) > float(bolt.params["Radius"]), (
+        f"the mortar marks {mortar.params['Radius']} m and the bolt marks "
+        f"{bolt.params['Radius']} m. The heavier ability drawing the smaller or "
+        "equal marker means the player cannot tell which one is coming.")
+
+
+def test_both_sentinel_abilities_are_telegraphed(sentinel, sentinel_abilities):
+    """Nothing this creature does is read off its body, which is the answer to
+    the question issue #352 asks about its telegraph."""
+    from cataclysm_sim.enemy_abilities import fits_its_cycle, is_telegraphed
+
+    for ability in sentinel_abilities:
+        assert is_telegraphed(ability, sentinel), (
+            f"the Corrupted Sentinel's {ability.name} no longer draws a ground "
+            "marker. Its whole design is that the player reads the ground.")
+        assert fits_its_cycle(ability, sentinel), (
+            f"the Corrupted Sentinel's {ability.name} draws a marker too large "
+            "for its cycle, which by the design document's own words makes it "
+            "a damage event rather than a telegraph.")
+
+
+def test_the_mortar_cooldown_is_inside_the_special_slot_band(
+        sentinel_abilities):
+    import csv
+
+    slots = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
+    if not slots.is_file():
+        pytest.skip("game/Data/SkillSlots.csv is not present")
+    with slots.open(encoding="utf-8-sig", newline="") as handle:
+        special = next(row for row in csv.DictReader(handle)
+                       if row["Slot"] == "Special")
+
+    mortar = next(a for a in sentinel_abilities if not a.is_basic_attack)
+    lowest = float(special["CooldownLowest"])
+    highest = float(special["CooldownHighest"])
+
+    assert lowest <= mortar.cooldown <= highest, (
+        f"the Brimstone Mortar's cooldown is {mortar.cooldown} s and the "
+        f"Special slot's band in game/Data/SkillSlots.csv is {lowest} to "
+        f"{highest} s.")
+
+
+def test_the_document_says_cover_works_and_that_the_bolt_does_not_track(
+        sentinel_section):
+    """Two claims a reader needs and no number carries.
+
+    Neither can be recomputed, so what is checked is that the section still
+    makes them. Losing either changes what the creature is: one that tracks
+    makes its own marker decorative, and one that shoots through walls removes
+    the only counterplay a stationary creature offers.
+    """
+    lowered = sentinel_section.lower()
+
+    assert "fixed when the wind-up starts" in lowered, (
+        "the Corrupted Sentinel's subsection no longer says its lane is fixed "
+        "when the wind-up starts. An attack that follows the player cannot be "
+        "walked out of, which makes the telegraph decorative.")
+
+    assert "line of sight" in lowered and "geometry blocks" in lowered, (
+        "the subsection no longer says geometry blocks the bolt and that it "
+        "does not fire without line of sight. Breaking line of sight is the "
+        "counterplay a creature that cannot move is supposed to have.")
+
+
+def test_a_projectile_may_not_state_both_a_speed_and_an_arc():
+    """The two describe different motion, so an ability carrying both states
+    two trajectories and whichever the engine reads first silently wins.
+
+    The exclusivity has been in the `SHAPE_PARAMS` docstring since issue #474
+    and nothing checked it until the Corrupted Sentinel arrived with one of
+    each.
+    """
+    import dataclasses
+
+    from cataclysm_sim import enemy_abilities
+
+    both = dataclasses.replace(
+        next(a for a in enemy_abilities.abilities("Corrupted Sentinel")
+             if a.is_basic_attack),
+        params={"Range": 14, "Radius": 2.1, "Speed": 1400, "Arc": 0.25})
+
+    original = enemy_abilities.ABILITIES["Corrupted Sentinel"]
+    enemy_abilities.ABILITIES["Corrupted Sentinel"] = (both,)
+    try:
+        with pytest.raises(AssertionError, match="Speed"):
+            enemy_abilities._check_every_projectile_states_a_speed_or_an_arc_but_not_both()
+    finally:
+        enemy_abilities.ABILITIES["Corrupted Sentinel"] = original
+
+
+# --------------------------------------------------------------------------
 # The data guards themselves
 # --------------------------------------------------------------------------
 

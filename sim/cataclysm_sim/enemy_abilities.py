@@ -6,8 +6,9 @@ an enemy does with its turn. Issue #29 is the epic that asks, and it is split on
 enemy at a time: #348 the Imp, #349 the Succubus, #350 the Hellhound, #351 the
 Brute, #352 the Corrupted Sentinel, #353 the Abyssal Warden, #354 the Gatekeeper.
 
-**Only the Imp, the Succubus, the Hellhound and the Brute are filled in.** The
-other three are open issues. An archetype with no entry here has no designed abilities yet,
+**Only the Imp, the Succubus, the Hellhound, the Brute and the Corrupted
+Sentinel are filled in.** The other two, the Abyssal Warden and the Gatekeeper,
+are open issues. An archetype with no entry here has no designed abilities yet,
 and asking for one raises rather than returning an empty list, so a missing
 design cannot be mistaken for a finished one.
 
@@ -259,6 +260,50 @@ def fits_its_cycle(ability: Ability, kind: Archetype | str) -> bool:
     return ability.cooldown >= MOVEMENT_ESCAPE_MINIMUM_COOLDOWN
 
 
+def is_lobbed(ability: Ability) -> bool:
+    """Whether this ability follows a real trajectory onto a marked circle.
+
+    A Projectile states `Speed` or `Arc` and not both, so carrying `Arc` is
+    what makes it a lob. See `SHAPE_PARAMS` above for why the two are
+    exclusive.
+    """
+    return ability.shape == "Projectile" and "Arc" in ability.params
+
+
+def lob_minimum_range(ability: Ability, kind: Archetype | str) -> float:
+    """The nearest a lobbed attack may be aimed, in metres.
+
+    THE RULE, from `docs/DECISIONS.md` under the 2026-08-09 heading "A lobbed
+    attack will not be thrown at something standing against the creature": an
+    attack that marks a circle must not mark the ground its own caster is
+    standing on. Below `marked radius + caster body radius` the creature is
+    inside the area it is about to hit, which makes the attack a melee attack
+    wearing a thrown attack's telegraph.
+
+    IT APPLIES TO A LOB AND NOT TO A FLAT SHOT. A flat Projectile's marker is a
+    LANE running from the caster out to its range, so the caster stands at the
+    lane's origin rather than inside a circle. That is why the Corrupted
+    Sentinel's bolt has no minimum range and its mortar does.
+
+    THE BRUTE'S 2.58 METRES IS THIS FUNCTION'S ANSWER FOR RIP AND TOSS, and the
+    C++ carries it as `RockThrowMinimumRangeCm = 258.0f` in
+    `game/Source/Cataclysm/Character/CataclysmBruteCharacter.h` with a
+    `static_assert` beside its use. `tools/tests/test_the_rock_throw_minimum_range.py`
+    holds that constant to this function, so the rule has one definition rather
+    than a C++ copy and a Python copy that can drift apart.
+
+    Raises for an ability that is not lobbed, because a number returned for a
+    flat shot would be a limit somebody could apply by mistake.
+    """
+    kind = archetype(kind) if isinstance(kind, str) else kind
+    if not is_lobbed(ability):
+        raise ValueError(
+            f"{ability.name} is a {ability.shape} with no Arc, so it is not "
+            "lobbed and has no minimum range. Only an attack that marks a "
+            "circle can mark the ground its own caster stands on.")
+    return float(ability.params["Radius"]) + kind.body_radius
+
+
 # --------------------------------------------------------------------------
 # How many of a swarm can reach one player at once
 # --------------------------------------------------------------------------
@@ -357,6 +402,24 @@ ATTACK_REACH: dict[str, float] = {
     # the stomp and its weakness is that it can be got behind, neither of which
     # is about reach. Issue #351.
     "Brute": 0.90,
+
+    # 14 metres, WHICH IS THE LONGEST RANGE ANY PLAYER ATTACK REACHES.
+    # Emberbolt on the wand and Hellbrand on the greatsword both state Range=14
+    # in game/Data/WeaponSkills.csv, and nothing states more. Two Debuff and
+    # Summon rows reach 15, and neither is an attack.
+    #
+    # IT GETS ALL OF IT BECAUSE REACH IS THE ONLY TOOL IT HAS. Its move_speed
+    # is 0.0 at every rarity, so it cannot close a gap and cannot retreat from
+    # one. At the Succubus's 8 metres any ranged build could stand at 9 and
+    # kill it for nothing, which is the free kill issue #352 asks this design
+    # to prevent. This is also the Brute's own rule generalised: there is no
+    # distance at which an enemy is aware of the player and can do nothing.
+    #
+    # ITS NOTICE RADIUS MUST BE AT LEAST THIS, and no enemy has a designed
+    # notice radius yet -- the Brute's 1000 cm was set by playing. Issue #383.
+    # A notice radius below 14 metres would make this reach unreachable.
+    # Issue #352.
+    "Corrupted Sentinel": 14.0,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -650,6 +713,119 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                  "speed.",
         ),
     ),
+    "Corrupted Sentinel": (
+        Ability(
+            name="Siege Bolt",
+            shape="Projectile",
+            slot="Basic",
+            # RADIUS 2.1 IS THE LARGEST A 2.0 SECOND INTERVAL ALLOWS, so its
+            # wind-up is 0.4 + 2.1 / 3.5 = exactly 1.0 second, which is exactly
+            # half the interval. That is the same place the Succubus sits and
+            # for the same reason: a creature whose whole role is forcing the
+            # player to move should mark as much ground as the rule permits.
+            #
+            # RANGE 14 IS ITS ATTACK REACH. See ATTACK_REACH above: the longest
+            # range any player attack reaches, taken because reach is the only
+            # tool a creature that cannot move has.
+            #
+            # SPEED 1400 FALLS OUT OF THE OTHER TWO RATHER THAN BEING CHOSEN.
+            # The bolt should land before the next one is marked, or the
+            # creature has a shot in the air and a marker on the ground at once
+            # and neither means anything. The wind-up takes 1.0 second of the
+            # 2.0 second interval, so the flight has the other 1.0. Fourteen
+            # metres in one second is 1400 cm/s, and 1400 is one of the ten
+            # speeds game/Data/WeaponSkills.csv uses -- Blood Pyre's.
+            #
+            # SO THE RHYTHM IS EXACTLY TWO SECONDS WITH NOTHING IDLE IN IT: one
+            # second of marker, one second of flight, and the next marker
+            # appears as the shot lands. That is "forces the player to stay
+            # mobile" written as a number rather than as an adjective.
+            #
+            # IT IS FASTER THAN THE SUCCUBUS'S 1200 AND THAT IS DELIBERATE. The
+            # 1200 ceiling in Rip and Toss's comment above is reasoning about a
+            # LOB, which is fastest as it lands; this is a flat bolt and is not
+            # bound by it. 1400 is still the second slowest of the ten speeds
+            # in the player skill table, and what makes this shot readable is
+            # the second of ground marker in front of it rather than its speed.
+            #
+            # PIERCE 0 BECAUSE IT IS ONE BOLT. It stops at what it hits.
+            #
+            # NO MINIMUM RANGE, AND IT NEEDS NONE. The Brute's rule -- an
+            # attack must not mark the ground its own caster stands on -- was
+            # written for a LOB marking a circle, where the caster ends up
+            # inside the area it is about to hit. A Projectile's marker is a
+            # LANE running from the caster out to Range, so the caster is at
+            # the lane's origin, which is where a shooter stands. A melee
+            # player standing against this creature is standing in that lane
+            # and has to step out of it every two seconds like everybody else.
+            # That is its answer to being stood on, and it needs no new
+            # mechanic. Issue #352.
+            params={"Range": 14, "Radius": 2.1, "Pierce": 0, "Speed": 1400},
+            note="A bolt down a marked lane 2.1 metres to either side, on the "
+                 "ground for 1 second first. It does not lead the player: the "
+                 "area is fixed when the wind-up starts, which is the rule for "
+                 "every telegraph. Geometry blocks it, so cover works.",
+        ),
+        Ability(
+            name="Brimstone Mortar",
+            shape="Projectile",
+            slot="Special",
+            # WHAT IT IS FOR, AND IT IS THE ONLY THING THAT CAN DO IT. A
+            # creature that shoots only in straight lines and cannot walk is
+            # answered by one pillar. Issue #352 asks what it does about a
+            # player behind cover, and a lobbed shell that comes down from
+            # above is the answer. This is the second reason the Sentinel is
+            # not simply a Succubus that stands still.
+            #
+            # ARC 0.25 AND NOT A SPEED, exactly as Rip and Toss above: a
+            # projectile launched at 45 degrees, the angle that throws an
+            # object furthest, reaches an apex of one quarter of its range. The
+            # flight time is derived from it, sqrt(8 * Arc * range / g), which
+            # is 1.69 seconds at the full fourteen metres.
+            #
+            # IT RESPECTS THE SPEED CEILING RIP AND TOSS IS BOUND BY. A lob is
+            # fastest as it lands, and at fourteen metres this one arrives at
+            # 1171 cm/s, under the Succubus's Soulfire at 1200.
+            #
+            # RADIUS 3.0 IS A JUDGEMENT, and it is bounded rather than free. It
+            # has to be larger than the bolt's 2.1 so the two markers read as
+            # different sizes, which is the mistake the Brute's two markers
+            # were sized to avoid. It has to be under the 8 metre cap that
+            # would make it cost a Movement skill, and under the 12.6 metres
+            # its own cooldown allows. Inside that window 3.0 is chosen because
+            # it is the second largest Radius any player Projectile uses, Blood
+            # Pyre's, so an enemy shell the size of the player's own heavy shot
+            # reads as heavy without exceeding anything they have seen.
+            #
+            # ITS WIND-UP IS 0.4 + 3.0 / 3.5 = 1.26 SECONDS, well inside the
+            # half of its cooldown the rule allows.
+            #
+            # THE BRUTE'S MINIMUM RANGE RULE DOES APPLY TO THIS ONE, because it
+            # is lobbed and marks a circle: below marked radius plus body
+            # radius the creature is inside the area it is about to hit. That
+            # is 3.0 + 0.48 = 3.48 metres. The bolt has no such limit; see the
+            # note on it above.
+            #
+            # RANGE 14, THE SAME AS THE BOLT. A shorter-ranged answer to cover
+            # would answer only the cover nearby, and the cover a stationary
+            # creature most needs to answer is the cover a player retreats to.
+            params={"Range": 14, "Radius": 3.0, "Pierce": 0, "Arc": 0.25},
+            # 8 SECONDS. Inside the Special slot's 3 to 10 second band in
+            # game/Data/SkillSlots.csv, which is the slot for traps,
+            # deployables and grenades.
+            #
+            # WHAT IT IS REALLY SETTING is how many ordinary shots fall between
+            # shells, which is the cooldown divided by the attack interval.
+            # Eight against 2.0 is exactly four bolts between one shell and the
+            # next -- the same measure the Brute's two cooldowns were settled
+            # by playing against.
+            cooldown=8.0,
+            note="A shell lobbed over cover onto a marked circle 3 metres "
+                 "across, on the ground for 1.26 seconds first. It is what a "
+                 "creature that cannot walk does about a player who has "
+                 "stopped moving behind something.",
+        ),
+    ),
 }
 
 
@@ -666,7 +842,9 @@ def abilities(name: str) -> tuple[Ability, ...]:
     if name not in ABILITIES:
         raise ValueError(
             f"{name} has no designed abilities yet. The enemy design epic #29 "
-            "is split one enemy at a time and only the Imp (#348) is done.")
+            "is split one enemy at a time, and the ones that are done are "
+            f"{sorted(ABILITIES)}. The Abyssal Warden is #353 and the "
+            "Gatekeeper is #354.")
     return ABILITIES[name]
 
 
@@ -792,6 +970,55 @@ def _check_no_stun_outlasts_the_longest_the_player_has() -> None:
                 "designed player skill grants.")
 
 
+def _check_every_projectile_states_a_speed_or_an_arc_but_not_both() -> None:
+    """The two describe different motion and only one can be true at a time.
+
+    `Speed` is centimetres per second along a flat path. `Arc` is a lob
+    following real projectile motion, whose speed changes throughout the
+    flight. An ability carrying both states two trajectories, and whichever the
+    engine reads first silently wins. An ability carrying neither is a
+    projectile with no way to work out when it arrives.
+
+    The docstring on `SHAPE_PARAMS` has said the two are exclusive since issue
+    #474 and nothing checked it. The Corrupted Sentinel is the first enemy with
+    one of each, which is what made the gap worth closing.
+    """
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            if ability.shape != "Projectile":
+                continue
+            stated = [key for key in ("Speed", "Arc") if key in ability.params]
+            assert len(stated) == 1, (
+                f"{name}'s {ability.name} is a Projectile stating {stated}. It "
+                "must state exactly one of Speed and Arc: Speed is a flat path "
+                "at a constant rate, Arc is a lob under gravity whose speed "
+                "changes throughout, and they describe different motion.")
+
+
+def _check_no_lobbed_attack_marks_the_ground_its_caster_stands_on() -> None:
+    """Its minimum range must be further than the creature's own body.
+
+    The rule is from `docs/DECISIONS.md` under the 2026-08-09 heading "A lobbed
+    attack will not be thrown at something standing against the creature", and
+    `lob_minimum_range` computes it. What this asserts is the thing that made
+    the Brute's original minimum useless: a minimum at or below the distance at
+    which the two bodies touch can never refuse anything.
+    """
+    for name, entries in ABILITIES.items():
+        kind = archetype(name)
+        contact = PLAYER_BODY_RADIUS + kind.body_radius
+        for ability in entries:
+            if not is_lobbed(ability):
+                continue
+            minimum = lob_minimum_range(ability, kind)
+            assert minimum > contact, (
+                f"{name}'s {ability.name} is lobbed with a minimum range of "
+                f"{minimum:.2f} m, and the player's body touches this "
+                f"creature's at {contact:.2f} m. A minimum at or inside "
+                "contact distance refuses nothing, which is the state issue "
+                "#475 was filed about on the Brute.")
+
+
 def _check_reach_and_pack_are_only_set_for_designed_enemies() -> None:
     """A reach or a pack size for an enemy with no abilities is a half-design
     that would read as finished."""
@@ -812,6 +1039,8 @@ _check_every_movement_ability_names_a_real_mode()
 _check_every_telegraphed_marker_fits_its_cycle()
 _check_every_stun_is_spaced_by_the_immunity_window()
 _check_no_stun_outlasts_the_longest_the_player_has()
+_check_every_projectile_states_a_speed_or_an_arc_but_not_both()
+_check_no_lobbed_attack_marks_the_ground_its_caster_stands_on()
 _check_reach_and_pack_are_only_set_for_designed_enemies()
 
 

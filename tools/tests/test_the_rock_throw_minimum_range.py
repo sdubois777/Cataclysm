@@ -27,10 +27,13 @@ from __future__ import annotations
 
 import pathlib
 import re
+import sys
 
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+sys.path.insert(0, str(REPO_ROOT / "sim"))
 BRUTE_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
              / "CataclysmBruteCharacter.cpp")
 BRUTE_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
@@ -72,6 +75,37 @@ def test_the_minimum_is_the_marked_circle_plus_the_creatures_own_body() -> None:
         f"minimum is meant to be something else now, the derivation in the "
         f"header comment and in docs/Cataclysm_GDD_v2.md has to change with it."
     )
+
+
+def test_the_cpp_constant_is_what_the_design_model_computes() -> None:
+    """The C++ against `lob_minimum_range` in the simulation, added with #352.
+
+    WHY THIS APPEARED. The test above checks the C++ against ITSELF: it reads
+    three constants out of one header and confirms the arithmetic between them.
+    That catches somebody editing one and not the others, which is real, but it
+    cannot catch the header drifting away from the design.
+
+    Issue #352 gave the Corrupted Sentinel a lobbed mortar, which needs the same
+    rule, so the rule moved into `sim/cataclysm_sim/enemy_abilities.py` as
+    `lob_minimum_range`. That created a second definition of one rule, and this
+    holds the two together rather than leaving them to drift -- which is the
+    failure `CLAUDE.md` opens with, and which this repository has had twice.
+
+    THE MODEL IS AUTHORITATIVE. When this fails, the usual fix is to change the
+    C++ to match.
+    """
+    from cataclysm_sim.enemy_abilities import abilities, lob_minimum_range
+
+    throw = next(a for a in abilities("Brute") if a.name == "Rip and Toss")
+    designed_cm = lob_minimum_range(throw, "Brute") * 100.0
+
+    assert constant("RockThrowMinimumRangeCm") == pytest.approx(designed_cm), (
+        f"CataclysmBruteCharacter.h says the rock throw's minimum range is "
+        f"{constant('RockThrowMinimumRangeCm')} cm and "
+        f"lob_minimum_range in sim/cataclysm_sim/enemy_abilities.py computes "
+        f"{designed_cm} cm from Rip and Toss's marked radius and the Brute's "
+        f"body radius. The simulation is where the creature is designed; change "
+        f"the C++ to match it.")
 
 
 def test_the_minimum_actually_refuses_something() -> None:
