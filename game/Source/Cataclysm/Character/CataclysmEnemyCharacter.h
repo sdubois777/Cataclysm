@@ -63,6 +63,46 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetAttackDamage(float NewAttackDamage);
 
+	/**
+	 * Sets how much armour it has, before or after BeginPlay.
+	 *
+	 * SUPPLIED RATHER THAN DECLARED, which is why this is a setter and not one
+	 * of the per-enemy properties below. Issue #372. Armour is a SHARE in the
+	 * design model, not an absolute: `stats_for` in
+	 * `sim/cataclysm_sim/enemy_stats.py` computes it as
+	 *
+	 *     score * ARMOR_AT_COMMON * ARMOR_PER_STEP ** rarity_step * armor_share
+	 *
+	 * so the Brute's `armor_share` of 3.00 is a multiplier on a base that
+	 * depends on what the encounter is worth. Nothing in the engine knows an
+	 * enemy's score, so this class cannot compute the number and has to be told
+	 * it -- exactly as it is told its health and its attack damage, which are
+	 * shares for the same reason.
+	 *
+	 * Issue #355 publishes the archetype numbers as game data, after which the
+	 * spawner reads a row and calls this rather than inventing a figure.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetArmour(float NewArmour);
+
+	/**
+	 * Writes the whole designed stat block onto the attributes, if they are
+	 * ready for it. Safe to call repeatedly and safe to call too early.
+	 *
+	 * Called from every setter above and from InitAbilityActorInfo, so it does
+	 * not matter which happens first.
+	 *
+	 * PUBLIC SO A TEST CAN CALL IT, which is the same reason
+	 * ACataclysmBruteCharacter::ResolveBody is public. Whether InitAbilityActorInfo
+	 * runs at all depends on how the world was built, and it does not run for an
+	 * actor spawned into a world from UWorld::CreateWorld -- so a test that
+	 * spawned an enemy and read its crit chance would read the attribute set's
+	 * own default and could not tell that apart from the values never being
+	 * applied. Measured: before this was public, two of the three tests in
+	 * CataclysmEnemyAttributeTests.cpp failed for exactly that reason.
+	 */
+	void ApplyStartingAttributes();
+
 	/** A stand-in body, so an enemy is visible before there is any art. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
 	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
@@ -99,6 +139,38 @@ public:
 	float AttackIntervalSeconds = 1.5f;
 
 	/**
+	 * The four designed figures that are the same at every rarity. Issue #372.
+	 *
+	 * DECLARED HERE RATHER THAN SUPPLIED, unlike health, damage and armour. The
+	 * design model splits its enemy statistics in two: `stats_for` in
+	 * `sim/cataclysm_sim/enemy_stats.py` scales health, damage and armour by the
+	 * encounter's score and the enemy's rarity, and takes these four "unchanged
+	 * from the archetype". A creature's crit chance does not depend on which
+	 * floor it is standing on, so it belongs to the class the way its attack
+	 * interval and its reach do.
+	 *
+	 * THE DEFAULTS ARE THE MODEL'S BASELINE ARCHETYPE, so an enemy that has not
+	 * had its own figures decided carries the same ones the model gives an
+	 * undesigned creature. `tools/tests/test_enemy_profile_defaults.py` holds
+	 * the two together.
+	 *
+	 * ONE RESISTANCE FIGURE, NOT EIGHT. The model states it plainly: "percent of
+	 * all incoming damage resisted, whatever its type. One figure, not eight."
+	 * So this one number is written onto all eight damage-type resistances.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float ResistancePercent = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy", meta = (ClampMin = "0.0"))
+	float CritChancePercent = 5.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy", meta = (ClampMin = "0.0"))
+	float CritMultiplierPercent = 150.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy", meta = (ClampMin = "0.0"))
+	float EvasionPercent = 0.0f;
+
+	/**
 	 * What one attack deals, as a percent of its own attack damage.
 	 *
 	 * 100, because the Skill Slots sheet of the design workbook gives the basic
@@ -112,13 +184,13 @@ protected:
 	virtual void InitAbilityActorInfo() override;
 
 	/**
-	 * Writes StartingMaxHealth and StartingAttackDamage onto the attributes, if
-	 * they are ready for it.
+	/**
+	 * Writes one attribute, if the ability system is holding it yet.
 	 *
-	 * Called both from the setters and from InitAbilityActorInfo, so it does not
-	 * matter which happens first.
+	 * Thirteen attributes are written on spawn and every one needs the same
+	 * guard, so it is a helper rather than thirteen copies of the same `if`.
 	 */
-	void ApplyStartingAttributes();
+	void ApplyIfHeld(const struct FGameplayAttribute& Attribute, float Value);
 
 	/** What SetHealth was last asked for. Zero means the attribute set's own default. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
@@ -127,6 +199,16 @@ protected:
 	/** What SetAttackDamage was last asked for. Zero means it deals nothing. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float StartingAttackDamage = 0.0f;
+
+	/**
+	 * What SetArmour was last asked for. Zero means no armour.
+	 *
+	 * ZERO IS A REAL ANSWER HERE, unlike for health. The Imp's `armor_share` is
+	 * 0.0 in the design model, so an unarmoured enemy is designed rather than
+	 * unconfigured, and nothing should treat it as missing.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float StartingArmour = 0.0f;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;

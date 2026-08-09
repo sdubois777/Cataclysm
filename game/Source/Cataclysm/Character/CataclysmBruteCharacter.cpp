@@ -143,6 +143,13 @@ ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 	MeleeReachCm = DesignedMeleeReachCm;
 	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
 
+	// The rest of the designed stat block, which nothing carried until issue
+	// #372. Armour is not here because it depends on the encounter's score; see
+	// the header, and ACataclysmEnemyCharacter::SetArmour.
+	ResistancePercent = DesignedResistancePercent;
+	CritChancePercent = DesignedCritChancePercent;
+	CritMultiplierPercent = DesignedCritMultiplierPercent;
+
 	// SEVEN METRES, NOT THE BASE'S FIFTEEN. The header derives it: the distance
 	// this enemy covers in one attack cycle, 250 cm/s x 2.8 s. The base's 1500
 	// is the longest range a designed player skill reaches, which is a sound
