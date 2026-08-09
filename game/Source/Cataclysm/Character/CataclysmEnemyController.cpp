@@ -305,10 +305,16 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 bool ACataclysmEnemyController::AbilityNeedsFacing(
 	const FCataclysmEnemyAbility& Ability)
 {
-	// A PROJECTILE IS THE ONLY DIRECTIONAL SHAPE ANY ENEMY HAS. See the header
-	// for why a Strike must not require facing: the Brute's Stomp is a full
-	// ring precisely so that standing behind it is not the answer to it.
-	return Ability.Shape == ECataclysmSkillShape::Projectile;
+	// A PROJECTILE AND A CHARGE ARE THE DIRECTIONAL SHAPES. See the header for
+	// why a Strike must not require facing: the Brute's Stomp is a full ring
+	// precisely so that standing behind it is not the answer to it.
+	//
+	// A CHARGE MUST WAIT TO BE FACING, AND MORE SO THAN A SHOT. The lane is
+	// fixed when the wind-up starts and the creature travels down it, so a
+	// charge begun while turned away does not merely miss -- it carries the
+	// creature further from its target than it started. Issue #491.
+	return Ability.Shape == ECataclysmSkillShape::Projectile
+		|| Ability.Shape == ECataclysmSkillShape::Movement;
 }
 
 float ACataclysmEnemyController::DegreesOffTarget(const AActor* Driven,
@@ -420,6 +426,51 @@ FVector ACataclysmEnemyController::FloorUnder(
 	return FVector(Point.X, Point.Y, FloorZ);
 }
 
+FVector ACataclysmEnemyController::AimPointFor(
+	const ACataclysmCharacterBase* Driven, const AActor* Target,
+	const FCataclysmEnemyAbility& Ability)
+{
+	if (!Driven)
+	{
+		return FVector::ZeroVector;
+	}
+
+	// A CHARGE AIMS AT THE END OF ITS OWN LANE, NOT AT ITS TARGET, and that is
+	// the whole difference between this shape and the other two. Issue #491.
+	//
+	// The design says the creature is committed and runs the full distance
+	// whether or not anything is still there -- "it ends up ten metres past the
+	// player, facing away, and covering that ground again ... is the window the
+	// telegraph buys". So the point that both the marker and the travel are
+	// built from has to be the far end of the range, not wherever the target
+	// happened to be standing.
+	//
+	// ALONG THE CREATURE'S FACING, WHICH IS WHY IT WAITED TO BE FACING.
+	// AbilityNeedsFacing returns true for this shape, so UseAbilitiesOn has
+	// already turned the creature at its target and returned Turning until it
+	// was pointed there. Read here, that forward vector IS the aim.
+	if (Ability.Shape == ECataclysmSkillShape::Movement)
+	{
+		FVector Forward = Driven->GetActorForwardVector();
+		Forward.Z = 0.0f;
+		Forward = Forward.GetSafeNormal();
+
+		return FloorUnder(Driven,
+						  Driven->GetActorLocation()
+							  + Forward * Ability.MaxRangeCm);
+	}
+
+	// ON THE FLOOR, NOT AT THE TARGET'S MIDDLE. Issue #471. A character's actor
+	// location is its capsule centre, which for the player is 96 cm up, and this
+	// value is BOTH what the marker is drawn at and what the shot is aimed at.
+	// Left unflattened, every marker flattened it for itself and the shot did
+	// not, so the Brute's lobbed rock ended its flight a metre above the circle
+	// it had drawn. `docs/DECISIONS.md` records the rule it broke: a telegraphed
+	// attack that marks a place must arrive at that place.
+	return FloorUnder(Driven, Target ? Target->GetActorLocation()
+									 : Driven->GetActorLocation());
+}
+
 void ACataclysmEnemyController::ShowWindUpMarker(
 	ACataclysmCharacterBase* Driven, const FCataclysmEnemyAbility& Ability)
 {
@@ -489,12 +540,34 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 			Driven, Feet, WindUpAimedAt, Ability.MarkerRadiusCm, ShownForSeconds);
 		return;
 
+	case ECataclysmSkillShape::Movement:
+		// THE GROUND THE CREATURE WILL RUN OVER. The design's telegraph table
+		// gives the Movement shape "the path the enemy will travel, of width
+		// 2 x Radius", which is the same lane a flat projectile draws and is
+		// drawn by the same call.
+		//
+		// TO THE END OF THE LANE, NOT TO THE TARGET. WindUpAimedAt holds the far
+		// end of the charge for a Movement ability rather than the target's
+		// feet -- see UseAbilitiesOn -- because a charge runs its full range and
+		// ends PAST whatever it was aimed at. A lane drawn only as far as the
+		// player would stop short of where the creature finishes, so the marker
+		// would be telling the truth about the beginning of the charge and not
+		// about the end of it.
+		//
+		// AND IT IS THE SAME POINT THE CHARGE ITSELF RUNS TO, which is the
+		// discipline issue #471 established after the Brute's rock landed a
+		// metre above the circle it had drawn: one point, read twice, rather
+		// than two that have to agree.
+		WindUpMarker = ACataclysmTelegraphMarker::ShowLine(
+			Driven, Feet, WindUpAimedAt, Ability.MarkerRadiusCm, ShownForSeconds);
+		return;
+
 	default:
-		// SelfBuff, Summon, Debuff, Aura, Movement and None. The first three
-		// have no marker in the design at all and are answered by interrupting
-		// rather than by walking out of. Aura and Movement do have one in
+		// SelfBuff, Summon, Debuff, Aura and None. The first three have no
+		// marker in the design at all and are answered by interrupting rather
+		// than by walking out of. Aura does have one in
 		// sim/cataclysm_sim/enemy_abilities.py and no enemy in the project has
-		// either yet, so neither is built; when one is, it lands here.
+		// one yet, so it is not built; when one is, it lands here.
 		return;
 	}
 }
@@ -771,8 +844,7 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 		// flight a metre above the circle it had drawn. `docs/DECISIONS.md`
 		// records the rule it broke: a telegraphed attack that marks a place
 		// must arrive at that place.
-		WindUpAimedAt = FloorUnder(Driven, Target ? Target->GetActorLocation()
-												  : Driven->GetActorLocation());
+		WindUpAimedAt = AimPointFor(Driven, Target, Abilities[Chosen]);
 
 		// DRAWN BEFORE THE ANIMATION STARTS, AND AFTER WindUpAimedAt IS FIXED.
 		// After, because a lane marker runs to the point the shot was aimed at
@@ -787,15 +859,13 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 		return LastAction;
 	}
 
-	// No wind-up, so it lands at once. Aimed at the floor for the same reason
-	// the telegraphed path is, issue #471: an aim point is a place on the
-	// ground, and an ability that reads it should not get a different answer
-	// depending on whether it was telegraphed.
+	// No wind-up, so it lands at once. Aimed through the same helper as the
+	// telegraphed path for the reason issue #471 records: an ability that reads
+	// the aim point must not get a different answer depending on whether it was
+	// telegraphed.
 	AbilityLastUsedAt[Chosen] = Now;
 	Driven->UseEnemyAbility(Chosen, Target,
-							FloorUnder(Driven,
-									   Target ? Target->GetActorLocation()
-											  : Driven->GetActorLocation()));
+							AimPointFor(Driven, Target, Abilities[Chosen]));
 	++AbilitiesUsed;
 
 	LastAction = ECataclysmBrainAction::Attacking;

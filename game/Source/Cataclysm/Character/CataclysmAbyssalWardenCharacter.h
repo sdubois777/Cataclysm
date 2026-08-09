@@ -15,27 +15,24 @@
  * and `ABILITIES["Abyssal Warden"]` in `sim/cataclysm_sim/enemy_abilities.py`.
  * Issue #353 designed it; issue #490 is this class.
  *
- * TWO OF ITS THREE DESIGNED ABILITIES ARE HERE. The third is not, and leaving it
- * out is deliberate rather than unfinished:
+ * ALL THREE OF ITS DESIGNED ABILITIES ARE HERE:
  *
  *   Sunder       Basic     Strike    the ordinary attack, on the 2.4 s interval
+ *   Stampede     Movement  Movement  an 8 m charge down a 1.5 m lane, every 5 s
  *   Molten Roar  Ultimate  Strike    a 5.6 m ring at its feet, every 12 s
- *   Stampede     Movement  Movement  ABSENT. Issue #491
  *
- * WHY STAMPEDE IS ABSENT RATHER THAN STUBBED, and this matters because adding it
- * "so it is there" would be worse than useless.
+ * STAMPEDE IS WHAT LETS IT FIGHT AT ALL. It walks at 2.8 metres per second and
+ * has no chase speed, against player classes at 3.5, 4.0 and 4.6, so a player
+ * who walks backwards is never caught on foot. Issue #491 built the Movement
+ * shape into the engine for exactly this; before that this creature could be
+ * walked away from indefinitely and never fought.
+ *
+ * ORDER IN EnemyAbilities IS PRIORITY AND IT MATTERS HERE.
  * `ACataclysmEnemyController::ChooseAbility` reads an ability's MinRangeCm,
  * MaxRangeCm and CooldownSeconds and NOTHING ELSE -- it never looks at Shape --
- * and returns the first entry that fits. A Stampede entry spanning 0 to 800 cm
- * would therefore be chosen ahead of Molten Roar everywhere inside eight metres,
- * draw no marker at all because the marker switch's `default:` case returns
- * silently for a Movement shape, hold the creature still for the length of its
- * wind-up, and then do nothing. It would fail without complaining.
- *
- * SO THIS CREATURE CANNOT CLOSE ON THE PLAYER. It walks at 2.8 metres per second
- * and has no chase speed at all, against player classes at 3.5, 4.0 and 4.6. A
- * player who walks backwards is never caught. That is the known consequence of
- * #491 and not a defect in this class.
+ * and returns the first entry that fits. Molten Roar is listed first so that the
+ * 12 second ring is not permanently crowded out by the 5 second charge in the
+ * 2.32 to 5.60 metre band where both are legal.
  *
  * WHAT SUNDER IS AND IS NOT. It is the ordinary attack, so it is not an entry in
  * EnemyAbilities at all -- it is `MeleeReachCm` plus `AttackIntervalSeconds` and
@@ -81,10 +78,16 @@ public:
 	virtual void BeginEnemyAbilityWindUp(int32 Index, AActor* Target) override;
 
 	/**
-	 * Which entry of EnemyAbilities is which. Order in that array is priority,
-	 * and there is only one thing in it.
+	 * Which entry of EnemyAbilities is which. ORDER IN THAT ARRAY IS PRIORITY,
+	 * and `ACataclysmEnemyController::ChooseAbility` takes the first entry whose
+	 * range and cooldown both allow it, without looking at the shape.
+	 *
+	 * MOLTEN ROAR IS FIRST DELIBERATELY. Both abilities are available at 2.32 to
+	 * 5.60 metres. The ring is on a 12 second cooldown against the charge's 5,
+	 * so it comes round less than half as often and would otherwise almost never
+	 * be the entry that fits first.
 	 */
-	enum : int32 { MoltenRoarAbility = 0 };
+	enum : int32 { MoltenRoarAbility = 0, StampedeAbility = 1 };
 
 	// ----------------------------------------------------------------------
 	// The designed figures
@@ -180,6 +183,144 @@ public:
 	 *  row of `game/Data/SkillSlots.csv`. It is the first thing in the game to
 	 *  use that slot. */
 	static constexpr float MoltenRoarDamagePercent = 400.0f;
+
+	// ----------------------------------------------------------------------
+	// Stampede, the charge
+	// ----------------------------------------------------------------------
+	//
+	// WHY IT EXISTS. This creature walks at 2.8 metres per second with no chase
+	// speed, against player classes at 3.5, 4.0 and 4.6. Without a gap-closer a
+	// player walks backwards and it never fights. Issue #491 built the engine
+	// side; this is the ability.
+
+	/** How far it charges. 8 metres, the shortest Movement-shape skill range in
+	 *  `game/Data/WeaponSkills.csv`, which is the right one for the slowest
+	 *  creature. */
+	static constexpr float StampedeRangeCm = 800.0f;
+
+	/** Half the lane's width. 1.5 metres, the narrowest radius any player
+	 *  Charge-mode skill uses, so the marker is a lane to step out of rather
+	 *  than a wall. */
+	static constexpr float StampedeRadiusCm = 150.0f;
+
+	/** Seconds before it may be used again. The Movement slot's cooldown in
+	 *  `game/Data/SkillSlots.csv`, and the 5 second minimum the telegraph rules
+	 *  set for anything that draws a large marker. */
+	static constexpr float StampedeCooldownSeconds = 5.0f;
+
+	/**
+	 * How long the lane is on the ground before the creature sets off.
+	 *
+	 * DERIVED FROM THE RADIUS, exactly as Molten Roar's is. The rule is
+	 * `0.4 + Radius / 3.5`, and 0.4 + 1.5 / 3.5 is 0.8286. The design document
+	 * and the model both round it to 0.83, so that is what is carried here and
+	 * the assert below allows the rounding.
+	 */
+	static constexpr float StampedeWindUpSeconds = 0.83f;
+
+	static_assert(
+		StampedeWindUpSeconds
+			> 0.4f + StampedeRadiusCm / 100.0f / 3.5f - 0.002f
+		&& StampedeWindUpSeconds
+			< 0.4f + StampedeRadiusCm / 100.0f / 3.5f + 0.002f,
+		"Stampede's wind-up has drifted from the radius it is derived from. The "
+		"rule is 0.4 + Radius / 3.5 seconds, from the Attack Telegraphs "
+		"subsection of docs/Cataclysm_GDD_v2.md. Change both or neither.");
+
+	/**
+	 * How long the `Stampede` animation clip runs, in seconds.
+	 *
+	 * MEASURED, NOT CHOSEN. `game/docs/enemy-source-assets.md` records the Grux
+	 * pack's `Stampede` at 0.7000 seconds, measured 2026-08-09. The model's note
+	 * on the ability names the same figure, and it is the reason the design
+	 * picked a Charge over a Leap: this is one clip where a leap is five.
+	 */
+	static constexpr float StampedeAnimationSeconds = 0.700f;
+
+	/**
+	 * How fast it travels while charging, in centimetres per second.
+	 *
+	 * THIS IS A JUDGEMENT AND IT IS LABELLED ONE. No charge speed is stated in
+	 * the design document, in the model, or in any shipped game that publishes
+	 * its numbers -- Path of Exile's monster charge publishes a 4 second
+	 * cooldown and a 2.75 second cast time and no travel speed, and neither Last
+	 * Epoch nor Diablo publishes one either. So it is derived from this
+	 * project's own figures rather than read off another game.
+	 *
+	 * THE RULE: A CHARGE COVERS ITS RANGE IN THE LENGTH OF ITS OWN CLIP. That is
+	 * the same rule every other timing in this project already follows -- the
+	 * Brute's montage delays, this creature's jog play rate against its measured
+	 * stride -- and it makes the speed derived rather than invented. 800 cm in
+	 * 0.700 s is 1142.9 cm/s.
+	 *
+	 * WHAT BOUNDS IT FROM BELOW, TWICE OVER.
+	 *
+	 * It must beat the fastest class or the charge closes nothing: 11.43 metres
+	 * per second against 4.6 is two and a half times.
+	 *
+	 * And it must be far quicker than walking, or winding up is strictly worse
+	 * than not. That is the design's own test, stated for the Hellhound's
+	 * charge: "a charge shorter than that would be strictly worse than not
+	 * winding up at all". At this creature's own 2.8 metres per second the same
+	 * 8 metres would take 2.86 seconds -- longer than its whole attack interval.
+	 *
+	 * WHAT IT COSTS THE CREATURE, WHICH IS WHAT MAKES IT FAIR. It runs the full
+	 * 8 metres whether or not anything is still there, so a miss leaves it up to
+	 * 8 metres past the player facing away, and walking that back takes 2.86
+	 * seconds before it has even turned. 0.70 seconds of closing bought with
+	 * 2.86 seconds of walking back is the window the telegraph buys.
+	 *
+	 * A LITERAL WITH AN ASSERT BESIDE IT, NOT THE EXPRESSION, and that is the
+	 * pattern `ACataclysmBruteCharacter::RockThrowMinimumRangeCm` uses for the
+	 * same reason. Continuous integration builds no C++ at all, so a
+	 * `static_assert` is unchecked on a pull request. Written as a number,
+	 * `tools/tests/test_warden_matches_the_model.py` can read it out of the
+	 * source as text and recompute the division, and that test DOES run.
+	 */
+	static constexpr float StampedeSpeedCmPerSecond = 1142.86f;
+
+	// A TOLERANCE RATHER THAN EQUALITY, for the reason Molten Roar's wind-up
+	// assert records: 800 / 0.7 is 1142.857142... and no rounding of it is
+	// exactly representable in binary floating point.
+	static_assert(
+		StampedeSpeedCmPerSecond
+			> StampedeRangeCm / StampedeAnimationSeconds - 0.01f
+		&& StampedeSpeedCmPerSecond
+			< StampedeRangeCm / StampedeAnimationSeconds + 0.01f,
+		"Stampede's speed has drifted from the range and clip length it is "
+		"derived from. The rule is that a charge covers its range in the "
+		"length of its own animation clip. Change both or neither.");
+
+	/**
+	 * The nearest target worth charging, in centimetres.
+	 *
+	 * DERIVED FROM THE DESIGN'S OWN TEST, not picked. The Hellhound's charge
+	 * section states the rule: a charge is only worth winding up for if it beats
+	 * simply walking during that wind-up, because otherwise "a charge shorter
+	 * than that would be strictly worse than not winding up at all". This
+	 * creature walks 2.8 metres per second for 0.83 seconds, which is 2.32
+	 * metres. Inside that it should take the step rather than the charge.
+	 *
+	 * A LITERAL WITH AN ASSERT BESIDE IT, for the reason the speed above gives:
+	 * continuous integration builds no C++, so only a number a Python test can
+	 * read out of the source is really checked on a pull request.
+	 */
+	static constexpr float StampedeMinimumRangeCm = 232.4f;
+
+	static_assert(
+		StampedeMinimumRangeCm
+			> DesignedWalkSpeedCmPerSecond * StampedeWindUpSeconds - 0.01f
+		&& StampedeMinimumRangeCm
+			< DesignedWalkSpeedCmPerSecond * StampedeWindUpSeconds + 0.01f,
+		"StampedeMinimumRangeCm has drifted from the distance the creature "
+		"walks during its own wind-up, which is what it is derived from. Below "
+		"that figure it arrives sooner by taking a step, so the charge is "
+		"strictly worse than not winding up.");
+
+	/** What one pass is worth, as a percentage of an ordinary hit. The Movement
+	 *  row of `game/Data/SkillSlots.csv`, whose note says "the design says some
+	 *  also deal damage, so a basic attack's worth is the right middle". */
+	static constexpr float StampedeDamagePercent = 100.0f;
 
 	// ----------------------------------------------------------------------
 	// The body
@@ -311,6 +452,16 @@ public:
 	static const TCHAR* MoltenRoarAnimationPath;
 
 	/**
+	 * The charge.
+	 *
+	 * `Stampede` RATHER THAN `Stampede_Knockup`. The pack has both, at 0.7000
+	 * and 1.5333 seconds. The knock-up variant is the wrong one twice over:
+	 * nothing in this project can knock a target up or back, issue #310, and its
+	 * length does not fit the 0.83 second wind-up.
+	 */
+	static const TCHAR* StampedeAnimationPath;
+
+	/**
 	 * Standing still, and walking.
 	 *
 	 * WHY A CREATURE WITH NO ANIMATION BLUEPRINT NEEDS THESE NAMED. With a
@@ -366,6 +517,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> MoltenRoarAnimation;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> StampedeAnimation;
 
 	/**
 	 * The clips still to play from the current attack, in order.
@@ -439,6 +593,14 @@ public:
 
 	/** The seconds between swings really in use, same arrangement. */
 	static float AttackIntervalSecondsInUse();
+
+	/** The Stampede cooldown really in use, same arrangement. */
+	static float StampedeCooldownSecondsInUse();
+
+	/** The charge speed really in use, same arrangement. This is the figure the
+	 *  header labels a judgement, so it is the one most likely to move in a play
+	 *  session. */
+	static float StampedeSpeedCmPerSecondInUse();
 
 	/** Play rate floor and ceiling, the same two figures the Brute clamps to.
 	 *  Below the floor an animation reads as frozen; above the ceiling it reads

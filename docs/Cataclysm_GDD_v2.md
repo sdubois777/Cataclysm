@@ -4033,6 +4033,26 @@ A 2.4 second attack interval allows a 2.80 metre marker, comfortably over the on
 
   
 
+**It travels at 11.43 metres per second, and that figure is a judgement rather than something this document derives.** No charge speed is stated anywhere here, and no shipped game in the genre publishes one — Path of Exile's monster charge publishes a 4 second cooldown and a 2.75 second cast time and no travel speed. The rule chosen instead is that **a charge covers its range in the length of its own animation clip**: eight metres in the 0.700 second `Stampede` clip. That is the rule every other timing in the project already follows, so the speed follows from two measured numbers rather than being picked.
+
+  
+
+Two things bound it from below. It has to beat the fastest class at 4.6 metres per second or the charge closes nothing, and 11.43 is two and a half times that. And it has to be far quicker than walking, or winding up is strictly worse than not — the same test the Hellhound's charge is judged by. At this creature's own 2.8 metres per second those eight metres would take 2.86 seconds, longer than its whole attack interval.
+
+  
+
+**A miss costs it 2.86 seconds and buys 0.70.** It is committed once the wind-up starts and runs the full eight metres whether or not anything is still there, so a player who steps out of the lane leaves it up to eight metres away facing the wrong way, and walking that back takes 2.86 seconds before it has even turned. That exchange is what the telegraph buys, and it is the same one the Hellhound's charge is written around.
+
+  
+
+**It hits everything it passes, once each, and does not stop on what it hits.** Hitting along the way is what separates a charge from a leap in the shape table above. Not stopping is what makes the overshoot real: a charge that halted on contact would arrive in melee range, which would be a reward for missing rather than a cost. It is stopped by the level, not by bodies.
+
+  
+
+**It refuses a target closer than 2.32 metres**, which is how far the creature walks during its own 0.83 second wind-up. Inside that it arrives sooner by taking a step, so charging would be strictly worse than not winding up — the rule stated for the Hellhound, applied to the minimum range rather than to the range.
+
+  
+
 **It repeats the Hellhound's Charge mode, and the art decided that.** A Leap was the first proposal, because a leap clears a ring of bodies where a charge meets it. Measuring the Grux pack settled it the other way: `Stampede` is a single 0.700 second clip that fits inside the 0.83 second wind-up at its authored speed, where a leap has to be stitched from five clips, which the current one-clip-at-a-time playback cannot do.
 
   

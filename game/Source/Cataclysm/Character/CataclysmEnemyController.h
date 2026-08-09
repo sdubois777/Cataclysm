@@ -566,6 +566,29 @@ private:
 							  const FVector& Point);
 
 	/**
+	 * Where an ability is aimed: the one point its marker is drawn at and its
+	 * own code is given.
+	 *
+	 * TWO ANSWERS, AND THE SHAPE DECIDES WHICH. Issue #491.
+	 *
+	 * For a Strike or a Projectile it is the target's feet, which is what every
+	 * ability in the project meant by an aim point before a charge existed.
+	 *
+	 * FOR A MOVEMENT ABILITY IT IS THE FAR END OF THE CHARGE, taken along the
+	 * creature's facing at its full range. A charge is committed and runs the
+	 * whole distance, ending past whatever it was aimed at, so aiming it at the
+	 * target would draw a lane that stops short of where the creature actually
+	 * finishes.
+	 *
+	 * ONE POINT RATHER THAN TWO, which is the rule issue #471 established after
+	 * a marker and the attack it warned of were computed separately and drifted
+	 * apart by a metre.
+	 */
+	static FVector AimPointFor(const ACataclysmCharacterBase* Driven,
+							   const AActor* Target,
+							   const FCataclysmEnemyAbility& Ability);
+
+	/**
 	 * Draw the ground marker for an ability that is starting its wind-up.
 	 *
 	 * Does nothing for an ability whose shape has no marker, and nothing for one

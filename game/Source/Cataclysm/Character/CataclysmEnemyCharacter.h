@@ -30,6 +30,83 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+
+	// ----------------------------------------------------------------------
+	// A charge: the Movement shape, executed
+	// ----------------------------------------------------------------------
+	//
+	// WHY IT IS HERE AND NOT ON ONE CREATURE. Two of the seven vertical slice
+	// enemies are designed with a charge -- the Abyssal Warden's Stampede and
+	// the Hellhound's Hellrush -- so the second one would otherwise copy the
+	// first. Issue #491.
+	//
+	// WHAT THE DESIGN ALREADY FIXES, so that none of it is decided here. All of
+	// it is from section X of `docs/Cataclysm_GDD_v2.md`:
+	//
+	//   - "A charge hits everything on the way", where a leap hits only where it
+	//     lands. So this damages along the path rather than at the end.
+	//   - The lane is fixed when the wind-up starts and does not follow the
+	//     player, which is the general telegraph rule.
+	//   - The creature is committed and RUNS THE FULL DISTANCE whether or not
+	//     anything is still there. "It ends up ten metres past the player,
+	//     facing away, and covering that ground again ... is the window the
+	//     telegraph buys." So arriving at the target is not a stopping
+	//     condition, and passing through it is the designed outcome.
+	//   - "The player leaves the lane when their centre leaves it", which is how
+	//     UCataclysmTargeting::IsInLine already measures one.
+
+	/**
+	 * Set off along a straight lane, hitting what it passes.
+	 *
+	 * @param ToPoint            where the lane ends. The controller captures
+	 *   this at the moment the wind-up starts and draws the marker to the SAME
+	 *   point, so the lane shown and the lane run cannot disagree.
+	 * @param SpeedCmPerSecond   how fast it travels. See the Abyssal Warden's
+	 *   header for how a charge speed is arrived at; it is not a general rule.
+	 * @param HalfWidthCm        the lane's half-width, which is the ability's
+	 *   own Radius and the same figure the marker was drawn with.
+	 * @param DamagePercent      what one pass is worth, as a percent of the
+	 *   creature's attack damage.
+	 */
+	void BeginCharge(const FVector& ToPoint, float SpeedCmPerSecond,
+					 float HalfWidthCm, float DamagePercent);
+
+	/** Whether a charge is running now. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Enemy")
+	bool IsCharging() const { return bCharging; }
+
+	/**
+	 * Move one frame's worth along the lane, and hit whatever that step passed.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD, which is the same
+	 * reason ACataclysmAbyssalWardenCharacter::UpdateLoopingAnimation is public.
+	 * Every automation test in this project builds its world with
+	 * UWorld::CreateWorld and advances the clock by hand rather than letting the
+	 * engine tick, so a charge that could only be advanced by Tick could not be
+	 * checked at all.
+	 *
+	 * PER FRAME RATHER THAN PER THINKING PASS, and that is not a preference. The
+	 * brain thinks four times a second; a charge at the Warden's speed covers
+	 * 2.86 metres in one of those, so a charge advanced by the brain would move
+	 * in visible jumps and could step straight over the player without the lane
+	 * ever containing them.
+	 */
+	void AdvanceCharge(float DeltaSeconds);
+
+	/** How far this charge has travelled so far, in centimetres. Read by tests,
+	 *  which cannot otherwise tell a charge that moved from one that did not. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float ChargeTravelledCm = 0.0f;
+
+	/** Where the running charge ends. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	FVector ChargeEndPoint = FVector::ZeroVector;
+
+	/** How many separate actors this charge has hit. Read by tests, and what
+	 *  proves a charge hits each target once rather than once per frame. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 ChargeHitCount = 0;
 
 	/**
 	 * Sets both maximum health and current health, before or after BeginPlay.
@@ -223,6 +300,55 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UCataclysmResistanceAttributeSet> ResistanceAttributes;
 
+	/**
+	 * How far a charge may step in one frame before it is split into several,
+	 * in centimetres.
+	 *
+	 * WHY A CHARGE IS STEPPED AT ALL. Damage is applied to whatever lies within
+	 * the lane's half-width of the segment travelled this frame. On a slow frame
+	 * that segment is long, and at a low frame rate a single step could jump
+	 * from one side of a target to the other -- but the segment still contains
+	 * it, so that alone is safe. What is NOT safe is the geometry sweep: a very
+	 * long step swept in one go can tunnel a thin wall. Splitting the frame into
+	 * steps no longer than this bounds both.
+	 *
+	 * HALF THE NARROWEST DESIGNED LANE. The narrowest Charge-mode radius any
+	 * ability uses is 1.5 metres, so a 75 cm step cannot skip past a lane's
+	 * width. It costs at most two sweeps a frame at 60 frames a second and the
+	 * Warden's speed.
+	 */
+	static constexpr float LongestChargeStepCm = 75.0f;
+
 private:
 	FCataclysmAbilitySetHandles GrantedHandles;
+
+	/** Whether a charge is running. See BeginCharge. */
+	bool bCharging = false;
+
+	/** How fast the running charge travels, in centimetres per second. */
+	float ChargeSpeedCmPerSecond = 0.0f;
+
+	/** The running charge's lane half-width, in centimetres. */
+	float ChargeHalfWidthCm = 0.0f;
+
+	/** What one pass of the running charge is worth, as a percent. */
+	float ChargeDamagePercent = 0.0f;
+
+	/**
+	 * Who this charge has already hit.
+	 *
+	 * ONCE PER CHARGE, NOT ONCE PER FRAME, and this is what enforces it. The
+	 * lane is re-tested every step, so a target standing still inside it would
+	 * otherwise be hit sixty times a second. "A charge hits everything on the
+	 * way" is one hit each.
+	 *
+	 * WEAK POINTERS BECAUSE A TARGET CAN DIE MID-CHARGE, and a raw pointer to a
+	 * destroyed actor would be compared against a later allocation at the same
+	 * address.
+	 */
+	TArray<TWeakObjectPtr<AActor>> ChargeAlreadyHit;
+
+	/** One step of a charge: move, then hit what the step passed. Returns false
+	 *  when the charge ended, either by arriving or by meeting geometry. */
+	bool StepCharge(float StepCm);
 };
