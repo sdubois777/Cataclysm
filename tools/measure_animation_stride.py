@@ -49,6 +49,15 @@ ANIMATIONS = [
     "/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Jog_Quad_Fwd",
     "/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Run_Fwd",
     "/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Idle_Biped",
+    # The Abyssal Warden, added 2026-08-09 for issue #490. The project owner
+    # reported the creature sliding rather than walking, and the play rate its
+    # walk needs is this clip's authored speed divided by the designed 280 cm/s.
+    # Idle is the control: standing still must read as zero and it is what shows
+    # the method is measuring the right axis on this rig.
+    "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Jog_Fwd",
+    "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Run_Fwd",
+    "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/TravelMode_Fwd",
+    "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Idle",
 ]
 
 FOOT_BONES = ["ik_foot_l", "ik_foot_r"]

@@ -38,6 +38,16 @@ const TCHAR* ACataclysmAbyssalWardenCharacter::MoltenRoarAnimationPath =
 	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
 		 "Ultimate_Roar.Ultimate_Roar");
 
+const TCHAR* ACataclysmAbyssalWardenCharacter::IdleAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Idle.Idle");
+
+// `Run_Fwd` MEASURES THE SAME 281.6 cm/s AS THIS CLIP, which is the same trap
+// issue #386 records for Rampage: a pack realising a sprint by playing the jog
+// faster rather than animating a second gait. Only the stride estimate has been
+// compared, not the bone data, so that is a suspicion rather than a finding.
+const TCHAR* ACataclysmAbyssalWardenCharacter::JogAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Jog_Fwd.Jog_Fwd");
+
 const FName ACataclysmAbyssalWardenCharacter::AttackSlotName =
 	FName(TEXT("DefaultSlot"));
 
@@ -73,6 +83,13 @@ static TAutoConsoleVariable<float> CVarWardenRoarCooldown(
 
 ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
 {
+	// ACataclysmCharacterBase TURNS TICKING OFF, so this has to turn it back on.
+	// UpdateLoopingAnimation runs from Tick and is what returns the mesh to a
+	// resting pose after an attack and what puts the walk on while it moves.
+	// Without it the creature holds the last frame of its swing until the next
+	// one, which the project owner reported on 2026-08-09.
+	PrimaryActorTick.bCanEverTick = true;
+
 	MeleeReachCm = DesignedMeleeReachCm;
 	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
 	ResistancePercent = DesignedResistancePercent;
@@ -98,6 +115,80 @@ void ACataclysmAbyssalWardenCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	ResolveBody(/*bIncludeAnimation=*/true);
+
+	// STANDING RATHER THAN THE REFERENCE POSE, from the first frame. Without
+	// this the creature holds its bind pose until it first moves or attacks.
+	UpdateLoopingAnimation();
+}
+
+void ACataclysmAbyssalWardenCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	UpdateLoopingAnimation();
+}
+
+float ACataclysmAbyssalWardenCharacter::JogPlayRate()
+{
+	if (AuthoredJogSpeedCmPerSecond <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	// THE RATIO OF WHAT IT MOVES AT TO WHAT THE CLIP WAS AUTHORED FOR. A planted
+	// foot travels backwards at the clip's authored speed; the body travels
+	// forwards at the designed speed; playing at the ratio makes the two cancel
+	// and the foot stay put. 280 / 281.6 is 0.994.
+	return FMath::Clamp(
+		DesignedWalkSpeedCmPerSecond / AuthoredJogSpeedCmPerSecond,
+		MinimumPlayRate, MaximumPlayRate);
+}
+
+void ACataclysmAbyssalWardenCharacter::UpdateLoopingAnimation()
+{
+	// THE GRAPH OWNS THE MESH WHEN THERE IS ONE. Two things setting the same
+	// component's animation would fight, and the graph is the better of the two
+	// because it can blend. This whole function is the fallback for not having
+	// one. Issue #387.
+	if (bAnimationBlueprintBound)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!World || !MeshComponent)
+	{
+		return;
+	}
+
+	// A ONE-SHOT KEEPS THE MESH UNTIL IT ENDS. Its end is recorded rather than
+	// asked of the component, because a single-node instance reports its own
+	// position and not whether the caller considers it finished.
+	if (World->GetTimeSeconds() < OneShotEndsAtSeconds)
+	{
+		return;
+	}
+
+	const bool bWalking = GetVelocity().Size2D() > WalkingThresholdCmPerSecond;
+	UAnimSequence* Wanted = bWalking ? JogAnimation.Get() : IdleAnimation.Get();
+
+	if (!Wanted)
+	{
+		return;
+	}
+
+	// ONLY ON A CHANGE. PlayAnimation restarts the clip from the beginning, so
+	// calling it every frame would freeze the creature on the first pose of
+	// whichever loop it is in -- which looks exactly like the held final frame
+	// this function exists to stop.
+	if (Wanted == CurrentLoopingAnimation)
+	{
+		return;
+	}
+
+	CurrentLoopingAnimation = Wanted;
+	MeshComponent->PlayAnimation(Wanted, /*bLooping=*/true);
+	MeshComponent->SetPlayRate(bWalking ? JogPlayRate() : 1.0f);
 }
 
 float ACataclysmAbyssalWardenCharacter::AttackIntervalSecondsInUse()
@@ -203,6 +294,23 @@ float ACataclysmAbyssalWardenCharacter::PlayOneShot(UAnimSequence* Animation,
 		// from its pose to the swing and back.
 		MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
 		MeshComponent->SetPlayRate(Rate);
+
+		// AND THE MESH IS OWED BACK WHEN IT FINISHES. A one-shot in single-node
+		// mode plays once and then HOLDS ITS LAST FRAME forever, which is what
+		// the project owner reported on 2026-08-09: "at the end of his basic
+		// attack animation he holds the final frame till he attacks again".
+		// Recording when it ends is what lets UpdateLoopingAnimation take the
+		// mesh back and put a resting pose on.
+		if (const UWorld* World = GetWorld())
+		{
+			OneShotEndsAtSeconds = World->GetTimeSeconds() + Length / Rate;
+		}
+
+		// CLEARED SO THE LOOP RESTARTS AFTERWARDS. UpdateLoopingAnimation only
+		// acts on a change, and without this the creature would still be
+		// "already playing" the loop it was on before the swing interrupted it,
+		// so nothing would put it back.
+		CurrentLoopingAnimation = nullptr;
 	}
 
 	return Length / Rate;
@@ -321,6 +429,10 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(RightSwingAnimationPath).TryLoad());
 		MoltenRoarAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(MoltenRoarAnimationPath).TryLoad());
+		IdleAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(IdleAnimationPath).TryLoad());
+		JogAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(JogAnimationPath).TryLoad());
 
 		if (!LeftSwingAnimation || !RightSwingAnimation || !MoltenRoarAnimation)
 		{

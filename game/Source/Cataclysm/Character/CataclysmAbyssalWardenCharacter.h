@@ -60,6 +60,7 @@ public:
 	ACataclysmAbyssalWardenCharacter();
 
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 
 	virtual void AttackTarget(AActor* Target) override;
 	virtual float SecondsBetweenAttacks() const override;
@@ -271,6 +272,22 @@ public:
 	static const TCHAR* RightSwingAnimationPath;
 	static const TCHAR* MoltenRoarAnimationPath;
 
+	/**
+	 * Standing still, and walking.
+	 *
+	 * WHY A CREATURE WITH NO ANIMATION BLUEPRINT NEEDS THESE NAMED. With a
+	 * Blueprint the animation graph picks a locomotion clip and blends it. There
+	 * is none, so nothing picks one and nothing returns the mesh to a resting
+	 * pose after an attack. The project owner reported both on 2026-08-09: "he
+	 * doesn't walk, he slides", and "at the end of his basic attack animation he
+	 * holds the final frame till he attacks again".
+	 *
+	 * `UpdateLoopingAnimation` is what plays these, and it is the whole of the
+	 * fallback's state machine: standing, walking, or held by a one-shot.
+	 */
+	static const TCHAR* IdleAnimationPath;
+	static const TCHAR* JogAnimationPath;
+
 	/** The montage slot an attack clip is played into when an animation
 	 *  Blueprint is present. The same slot name the Brute uses. */
 	static const FName AttackSlotName;
@@ -327,6 +344,41 @@ public:
 	 *  which is its length divided by whatever rate it needed. */
 	float PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
 
+	/**
+	 * The ground speed `Jog_Fwd` was authored for, in centimetres per second.
+	 *
+	 * MEASURED, NOT GUESSED. `tools/measure_animation_stride.py` samples the two
+	 * IK foot bones every frame, takes whichever is lower as the planted one,
+	 * and averages how fast it travels backwards over the gait cycle. Run
+	 * 2026-08-09 it reports **281.6 cm/s** on the -Y axis for this clip, with
+	 * `Idle` reading 0.0 as the control that shows the method is on the right
+	 * axis for this rig.
+	 *
+	 * SO THE PLAY RATE IS 280 / 281.6 = 0.994, which is as close to the authored
+	 * speed as any of the seven gets. The Brute needs 1.11 for its walk and 1.43
+	 * for its chase. That is luck rather than design, and it is why this
+	 * creature's walk can be made to stop sliding without an animation Blueprint.
+	 *
+	 * TREAT IT AS GOOD TO ROUGHLY TEN PERCENT. The script's own documentation
+	 * says so, because the IK foot bones never quite touch the ground, so "the
+	 * lower foot" is an approximation of "the planted foot". If it still slides
+	 * visibly, this is the number to tune by eye, the way the Brute's 225 was.
+	 */
+	static constexpr float AuthoredJogSpeedCmPerSecond = 281.6f;
+
+	/**
+	 * Above this the creature is walking, below it is standing.
+	 *
+	 * A THRESHOLD RATHER THAN ZERO, because a character's velocity is rarely
+	 * exactly zero while it settles against the floor or turns on the spot, and
+	 * a walk clip flickering on for a frame at a time reads worse than either
+	 * state does on its own.
+	 */
+	static constexpr float WalkingThresholdCmPerSecond = 10.0f;
+
+	/** The play rate the walk needs so its planted foot does not slide. */
+	static float JogPlayRate();
+
 	/** The cooldown Molten Roar is really using, which is the console override
 	 *  when one is set and the designed figure otherwise. Read through this
 	 *  rather than off the constant, so a console variable set mid-fight takes
@@ -342,6 +394,39 @@ public:
 	 *  a 2.0 second wind-up -- so these only bite if a clip is ever replaced. */
 	static constexpr float MinimumPlayRate = 0.2f;
 	static constexpr float MaximumPlayRate = 2.5f;
+
+	/** Standing and walking, once loaded. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> IdleAnimation;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> JogAnimation;
+
+	/** Which looping clip is on now, or null while a one-shot has the mesh.
+	 *  Read by tests, which cannot otherwise see what is playing. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> CurrentLoopingAnimation;
+
+	/**
+	 * When the clip a one-shot started will finish, in world seconds.
+	 *
+	 * THIS IS WHAT STOPS THE HELD FINAL FRAME. Without it nothing knew a swing
+	 * had ended, so the mesh sat on the last pose of the attack until the next
+	 * one began. Zero means nothing is playing.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float OneShotEndsAtSeconds = 0.0f;
+
+	/**
+	 * Puts the right looping clip on, or leaves a one-shot alone to finish.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD, which is what makes
+	 * the standing-and-walking behaviour checkable at all.
+	 *
+	 * DOES NOTHING WHEN AN ANIMATION BLUEPRINT IS BOUND. The graph owns the mesh
+	 * then, and two things setting the same component's animation would fight.
+	 */
+	void UpdateLoopingAnimation();
 
 private:
 	void PlayAttackAnimation();
