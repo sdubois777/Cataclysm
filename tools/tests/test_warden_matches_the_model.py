@@ -384,6 +384,60 @@ def test_it_is_spawned_further_out_than_the_brutes():
         "each other's telegraphs.")
 
 
+def test_every_dressed_enemy_hides_its_placeholder_cylinder():
+    """A creature that puts a real mesh on must turn the placeholder off.
+
+    THE DEFECT THIS WAS WRITTEN FOR, reported by the project owner on 2026-08-09
+    within minutes of first seeing the Abyssal Warden: "the cylinder base is
+    appearing over him". `ACataclysmEnemyCharacter` creates a `PlaceholderBody`
+    static mesh component in its constructor -- an engine cylinder -- and
+    assigning a skeletal mesh does not remove it. The Brute hides it and the
+    Warden did not.
+
+    WHY IT WAS MISSED. In `ACataclysmBruteCharacter::ResolveBody` those four
+    lines sit after two screens of rock, crater and montage loading that the
+    Warden has none of, so the shorter function looked complete.
+
+    WRITTEN FOR EVERY ENEMY RATHER THAN THIS ONE, because the next creature
+    dressed from a Paragon pack will hit exactly the same thing. "Dressed" is
+    the same proxy `tools/tests/test_game_readme_is_true.py` uses: a character
+    class naming a Paragon content path.
+
+    A TEXT CHECK RATHER THAN A BEHAVIOUR ONE, because continuous integration
+    never builds the C++. `Cataclysm.Warden.ItHidesItsPlaceholderOnceDressed` is
+    the behaviour check and it only runs on a machine with the editor.
+    """
+    character_dir = REPO_ROOT / "game" / "Source" / "Cataclysm"
+
+    dressed = [
+        path for path in character_dir.rglob("*.cpp")
+        if "Tests" not in path.parts
+        and "/Game/Paragon" in path.read_text(encoding="utf-8", errors="replace")
+    ]
+
+    assert dressed, (
+        "no character class names a Paragon content path any more, so this "
+        "check has nothing to look at. If the art was removed, say so; if the "
+        "paths moved, point this at them.")
+
+    for path in dressed:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        assert "PlaceholderBody" in text, (
+            f"{path.name} puts a real skeletal mesh on but never mentions "
+            "PlaceholderBody. ACataclysmEnemyCharacter creates a placeholder "
+            "cylinder in its constructor and assigning a mesh does not remove "
+            "it, so the cylinder renders on top of the creature.")
+
+        assert re.search(
+            r"PlaceholderBody\s*\)\s*\{?\s*(?://[^\n]*\n\s*)*"
+            r"PlaceholderBody->SetVisibility\(\s*false\s*\)",
+            text, re.MULTILINE) or (
+            "PlaceholderBody->SetVisibility(false)" in text), (
+            f"{path.name} mentions PlaceholderBody but never calls "
+            "SetVisibility(false) on it. The placeholder cylinder will render "
+            "on top of the creature's real mesh.")
+
+
 def test_the_attack_interval_clears_the_swing_clip_it_plays():
     """Nothing rate-scales an ordinary swing, so the interval is a hard floor.
 
