@@ -563,15 +563,72 @@ the design gives this enemy.
 
 ### The Abyssal Warden — Grux, molten
 
+**Re-measured 2026-08-09** with `tools/probe_warden_animation.py`, and extended
+past the attack clips because issue #490 builds this creature and two of its
+three animations were not recorded here at all. Every figure below was read from
+the asset. `GruxMolten` shares `Grux_Skeleton` with the base Grux mesh, so every
+clip plays on it without retargeting.
+
+**What the creature actually plays**, from
+`ACataclysmAbyssalWardenCharacter`:
+
+| Animation | Length | What plays it |
+|---|:-:|---|
+| `PrimaryAttack_LA` | 1.1333 | Its ordinary swing. Alternated with the one below |
+| `PrimaryAttack_RA` | 1.1333 | The other ordinary swing |
+| `Ultimate_Roar` | 1.4000 | Molten Roar. Fits inside the 2.0 s wind-up at authored speed, with 0.6 s of held pose after it |
+| `Idle` | 24.3333 | Standing |
+| `Jog_Fwd` | 1.5333 | Walking |
+| `Death_A` | 1.6667 | Dying |
+
+**Two authored swings fit inside one attack interval, and this is the only one of
+the seven that manages it.** 1.1333 + 1.1333 is 2.2667 against a 2.4 second
+interval, so the pair fits with 0.1333 seconds to spare and neither clip is
+compressed.
+
+**The rest of the attack set**, measured and unused:
+
 | Animation | Length | Note |
 |---|:-:|---|
-| `PrimaryAttack_LA_Fast` / `RA_Fast` | 0.63 | |
-| `PrimaryAttack_RB` | 0.87 | |
-| `PrimaryAttack_LB` | 1.07 | |
-| `PrimaryAttack_LA` / `RA` | 1.13 | |
-| `PrimaryAttack_LA_Recovery` | 0.83 | |
-| `PrimaryAttack_FourStrikes` | 3.70 | Exceeds the 2.4 s interval; use as a special |
-| `PrimaryAttack_Start` | 0.57 | |
+| `PrimaryAttack_Start` | 0.5667 | |
+| `PrimaryAttack_LA_Fast` / `RA_Fast` | 0.6333 | |
+| `PrimaryAttack_RB` | 0.8667 | |
+| `PrimaryAttack_LA_Recovery` / `RA_Recovery` | 0.8333 | |
+| `PrimaryAttack_LB` | 1.0667 | |
+| `PrimaryAttack_FourStrikes` | 3.7000 | Exceeds the 2.4 s interval. Usable at a play rate of 1.54, under the 2.50 ceiling |
+
+**The charge clip exists and nothing can play it.** `Stampede` is 0.7000 seconds
+and `Stampede_Knockup` is 1.5333. The design gives this creature a charge, and
+`ACataclysmEnemyController` cannot execute a Movement-shape ability at all —
+issue #491. The 0.7000 second clip is what decided the design should be a charge
+rather than a leap: a leap has to be stitched from five clips.
+
+| Animation | Length | Note |
+|---|:-:|---|
+| `Bound` | 0.0333 | **A single pose, not a leap.** Its name suggests otherwise |
+| `Jump_Start` | 0.3333 | |
+| `Jump_Up` | 0.3333 | |
+| `JumpApex` | 0.2000 | |
+| `Jump_Mid` | 0.3000 | |
+| `Jump_Loop` | 1.3333 | |
+| `Jump_Fall` | 1.3333 | |
+| `Jump_Land` | 0.9000 | |
+| `Attack_Melee_Air` | 1.0000 | |
+| `Stampede` | 0.7000 | The charge. Fits an 0.83 s wind-up as authored |
+| `Stampede_Knockup` | 1.5333 | A charge that knocks the target up. Nothing can knock the player back yet, issue #310 |
+
+**The four hit reactions are additive and one thing is not.** `HitReact_Front`
+and `HitReact_Back` are 0.8667 seconds and both are
+`AAT_LOCAL_SPACE_BASE`, so the one-clip-at-a-time playback path cannot play them
+on their own — they need a layer to be added onto, which is animation Blueprint
+work. `Knock_Up` is 2.0000 seconds and `AAT_NONE`, so it can be played directly.
+
+**No animation Blueprint exists for this creature.** `ABP_Brute` was authored by
+hand in the editor, and `tools/probe_brute_animation.py` established that
+Unreal's Python exposes no way to connect two animation graph pins, so one
+cannot be generated. `ACataclysmAbyssalWardenCharacter::ResolveAnimationBlueprint`
+therefore falls back to the single-clip animation mode: the swing and the roar are
+visible, and walking does not blend, so the creature slides rather than steps.
 
 ### The Gatekeeper — Sevarog
 

@@ -1,0 +1,377 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Character/CataclysmAbyssalWardenCharacter.h"
+#include "Cataclysm.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimSequence.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "UObject/SoftObjectPath.h"
+
+const TCHAR* ACataclysmAbyssalWardenCharacter::BodyMeshPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Skins/Tier_2/"
+		 "Grux_Beetle_Molten/Meshes/GruxMolten.GruxMolten");
+
+// THE GENERATED CLASS, NOT THE ASSET, which is what the _C suffix is. Copied
+// character for character from the Brute's, because without it
+// TryLoadClass<UAnimInstance> returns null and the creature silently holds its
+// reference pose. This asset does not exist yet; see the header.
+const TCHAR* ACataclysmAbyssalWardenCharacter::AnimationBlueprintPath =
+	TEXT("/Game/Enemies/Demonic/AbyssalWarden/"
+		 "ABP_AbyssalWarden.ABP_AbyssalWarden_C");
+
+const TCHAR* ACataclysmAbyssalWardenCharacter::LeftSwingAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
+		 "PrimaryAttack_LA.PrimaryAttack_LA");
+
+const TCHAR* ACataclysmAbyssalWardenCharacter::RightSwingAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
+		 "PrimaryAttack_RA.PrimaryAttack_RA");
+
+const TCHAR* ACataclysmAbyssalWardenCharacter::MoltenRoarAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
+		 "Ultimate_Roar.Ultimate_Roar");
+
+const FName ACataclysmAbyssalWardenCharacter::AttackSlotName =
+	FName(TEXT("DefaultSlot"));
+
+// --------------------------------------------------------------------------
+// Console overrides
+// --------------------------------------------------------------------------
+//
+// ZERO MEANS "USE THE DESIGNED FIGURE" for every one of these, which is the
+// pattern the Brute's five follow. That is what lets a figure be tried in a
+// play session and then abandoned by setting it back to zero, rather than
+// needing the designed number remembered and retyped.
+
+static TAutoConsoleVariable<float> CVarWardenAttackInterval(
+	TEXT("Cataclysm.Warden.AttackInterval"),
+	0.0f,
+	TEXT("Seconds between the Abyssal Warden's swings. 0 uses its designed "
+		 "2.4. Do NOT go below 1.14: PrimaryAttack_LA and PrimaryAttack_RA are "
+		 "1.1333 s each and are not rate-scaled, so a shorter interval starts a "
+		 "swing that has not finished. This does NOT affect Molten Roar, which "
+		 "is telegraphed against its own 12 second cooldown."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarWardenRoarCooldown(
+	TEXT("Cataclysm.Warden.RoarCooldown"),
+	0.0f,
+	TEXT("Seconds between the Abyssal Warden's Molten Roar. 0 uses its designed "
+		 "12, which is five of its swings and is how long the creature takes to "
+		 "kill the reference geared character. Below 5 it would come round "
+		 "faster than a player's Movement skill recharges."),
+	ECVF_Default);
+
+// --------------------------------------------------------------------------
+
+ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
+{
+	MeleeReachCm = DesignedMeleeReachCm;
+	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
+	ResistancePercent = DesignedResistancePercent;
+	CritChancePercent = DesignedCritChancePercent;
+	CritMultiplierPercent = DesignedCritMultiplierPercent;
+	EvasionPercent = DesignedEvasionPercent;
+	NoticeRadiusCm = WardenNoticeRadiusCm;
+
+	GetCapsuleComponent()->InitCapsuleSize(WardenCapsuleRadius,
+										   WardenCapsuleHalfHeight);
+
+	// NEITHER OF THESE IS SET BY ACataclysmEnemyCharacter. It sets the rotation
+	// mode and a 480 degree turn rate and stops. An enemy that does not set
+	// MaxWalkSpeed here moves at Unreal's default 600 cm/s, which for this
+	// creature would silently repair the very problem issue #491 describes: it
+	// is designed to be unable to catch the player.
+	GetCharacterMovement()->MaxWalkSpeed = DesignedWalkSpeedCmPerSecond;
+	GetCharacterMovement()->RotationRate =
+		FRotator(0.0f, DesignedTurnRateDegreesPerSecond, 0.0f);
+}
+
+void ACataclysmAbyssalWardenCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	ResolveBody(/*bIncludeAnimation=*/true);
+}
+
+float ACataclysmAbyssalWardenCharacter::AttackIntervalSecondsInUse()
+{
+	const float Override = CVarWardenAttackInterval.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : DesignedAttackIntervalSeconds;
+}
+
+float ACataclysmAbyssalWardenCharacter::MoltenRoarCooldownSecondsInUse()
+{
+	const float Override = CVarWardenRoarCooldown.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : MoltenRoarCooldownSeconds;
+}
+
+float ACataclysmAbyssalWardenCharacter::SecondsBetweenAttacks() const
+{
+	return AttackIntervalSecondsInUse();
+}
+
+void ACataclysmAbyssalWardenCharacter::AttackTarget(AActor* Target)
+{
+	Super::AttackTarget(Target);
+	PlayAttackAnimation();
+}
+
+UAnimSequence* ACataclysmAbyssalWardenCharacter::NextSwingAnimation() const
+{
+	// FALLS BACK TO WHICHEVER ONE LOADED. On a machine without the Paragon Grux
+	// pack both are null and this returns null, which PlayOneShot refuses
+	// quietly. With only one of the two present the creature swings with that
+	// one twice rather than swinging invisibly every other time.
+	UAnimSequence* Wanted = bSwingLeftNext ? LeftSwingAnimation
+										   : RightSwingAnimation;
+	if (Wanted)
+	{
+		return Wanted;
+	}
+	return bSwingLeftNext ? RightSwingAnimation : LeftSwingAnimation;
+}
+
+void ACataclysmAbyssalWardenCharacter::PlayAttackAnimation()
+{
+	UAnimSequence* Swing = NextSwingAnimation();
+
+	// FLIPPED WHETHER OR NOT ANYTHING PLAYED, so the alternation does not
+	// depend on the art being present. A test can check the sequence without
+	// the pack.
+	bSwingLeftNext = !bSwingLeftNext;
+
+	PlayOneShot(Swing);
+}
+
+float ACataclysmAbyssalWardenCharacter::PlayOneShot(UAnimSequence* Animation,
+													float HoldSeconds)
+{
+	LastPlayedAnimation = Animation;
+
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!Animation || !MeshComponent)
+	{
+		return 0.0f;
+	}
+
+	const float Length = Animation->GetPlayLength();
+	if (Length <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// No window asked for means play it at its authored speed for as long as it
+	// is.
+	const float Hold = HoldSeconds > 0.0f ? HoldSeconds : Length;
+
+	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
+	// same rule and the same two clamps as the Brute, for the reason recorded
+	// there: stretching a short clip across a long window was tried and read as
+	// slow motion. A clip shorter than its window holds its last pose instead.
+	//
+	// NOTHING HERE NEEDS IT TODAY. Ultimate_Roar is 1.4 seconds inside a 2.0
+	// second wind-up and the swings are 1.1333 inside a 2.4 second interval, so
+	// every rate is 1. This exists so that replacing a clip cannot silently
+	// start a movement the creature does not finish.
+	const float Rate = FMath::Clamp(FMath::Max(1.0f, Length / Hold),
+									MinimumPlayRate, MaximumPlayRate);
+
+	if (bAnimationBlueprintBound)
+	{
+		// THROUGH A SLOT, so the graph keeps driving locomotion underneath and
+		// the swing blends in and out rather than cutting.
+		if (UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance())
+		{
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(
+				Animation, AttackSlotName, AttackBlendInSeconds,
+				AttackBlendOutSeconds, Rate, /*LoopCount=*/1);
+		}
+	}
+	else
+	{
+		// THE FALLBACK, AND IT IS WHAT RUNS TODAY. With no animation Blueprint
+		// there is no anim instance and therefore no slot to play into, so the
+		// clip is played straight onto the component in single-node mode. The
+		// attack is visible; what is lost is the blend, so the creature cuts
+		// from its pose to the swing and back.
+		MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
+		MeshComponent->SetPlayRate(Rate);
+	}
+
+	return Length / Rate;
+}
+
+TArray<FCataclysmEnemyAbility>
+ACataclysmAbyssalWardenCharacter::EnemyAbilities() const
+{
+	FCataclysmEnemyAbility MoltenRoar;
+	MoltenRoar.Name = TEXT("Molten Roar");
+
+	// FROM ITS OWN FEET OUT, so no minimum: a target pressed against the
+	// creature is inside the ring and should be hit by it. The same reasoning
+	// the Brute's stomp records. The minimum-range rule that governs a lobbed
+	// attack does not apply, because this marks a circle the caster stands at
+	// the centre of rather than one it would be standing inside.
+	MoltenRoar.MinRangeCm = 0.0f;
+	MoltenRoar.MaxRangeCm = MoltenRoarRadiusCm;
+
+	// READ THROUGH THE OVERRIDE RATHER THAN OFF THE CONSTANT. This array is
+	// rebuilt every time the brain asks, so a console variable set mid-fight
+	// takes effect on the next thinking pass rather than needing a restart.
+	MoltenRoar.CooldownSeconds = MoltenRoarCooldownSecondsInUse();
+	MoltenRoar.WindUpSeconds = MoltenRoarWindUpSeconds;
+
+	// A RING ON THE GROUND, DRAWN FROM THE SAME CONSTANT THE DAMAGE USES.
+	// UseEnemyAbility below sweeps at MoltenRoarRadiusCm, so the circle the
+	// player sees is exactly the circle that hits them.
+	MoltenRoar.Shape = ECataclysmSkillShape::Strike;
+	MoltenRoar.MarkerRadiusCm = MoltenRoarRadiusCm;
+
+	// ONE ENTRY. Stampede, the designed charge, is deliberately not here: the
+	// brain chooses by range and cooldown without looking at the shape, so a
+	// Movement entry would be picked ahead of this one and then do nothing at
+	// all. Issue #491. The header says why at length.
+	return {MoltenRoar};
+}
+
+void ACataclysmAbyssalWardenCharacter::UseEnemyAbility(int32 Index, AActor*,
+													   const FVector&)
+{
+	UWorld* World = GetWorld();
+	if (!World || Index != MoltenRoarAbility)
+	{
+		return;
+	}
+
+	// EVERYTHING IN THE RING, FROM ITS OWN LOCATION. The same sweep the marker
+	// was drawn from, so what was promised is what lands.
+	//
+	// IT DOES NOT STUN. The Brute's stomp is the one thing in this slice that
+	// holds the player still, and a second would spend most of its uses inside
+	// the five second stun immunity window.
+	for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
+			World, this, GetActorLocation(), MoltenRoarRadiusCm))
+	{
+		UCataclysmSkillEffects::ApplyHit(this, Caught, MoltenRoarDamagePercent);
+	}
+}
+
+void ACataclysmAbyssalWardenCharacter::BeginEnemyAbilityWindUp(int32 Index,
+															   AActor*)
+{
+	if (Index != MoltenRoarAbility)
+	{
+		return;
+	}
+
+	// THE CLIP IS SHORTER THAN THE WIND-UP AND THAT IS FINE. Ultimate_Roar is
+	// 1.4000 seconds inside a 2.0 second telegraph, so it plays at its authored
+	// speed and then holds its last pose for the remaining six tenths. That is
+	// the same arrangement the Brute's ground smash uses and it is the clearest
+	// warning the player gets: a creature poised with the roar finished and the
+	// ring still on the floor.
+	PlayOneShot(MoltenRoarAnimation);
+}
+
+bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
+	{
+		return false;
+	}
+
+	USkeletalMesh* Body =
+		Cast<USkeletalMesh>(FSoftObjectPath(BodyMeshPath).TryLoad());
+	if (!Body)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Abyssal Warden art not found at %s, so it is keeping the "
+				 "placeholder cylinder. This is expected without the Paragon "
+				 "Grux pack; see game/docs/enemy-source-assets.md."),
+			BodyMeshPath);
+		return false;
+	}
+
+	MeshComponent->SetSkeletalMesh(Body);
+
+	// FEET ON THE CAPSULE BOTTOM, AND THE ENGINE'S YAW. A skeletal mesh is
+	// authored with its origin at the feet and the capsule's origin is its
+	// centre, so the mesh drops by the half-height. The -90 degree yaw is the
+	// engine's convention for character meshes, which face -Y while the actor
+	// faces +X. The same two lines the Brute uses.
+	MeshComponent->SetRelativeLocationAndRotation(
+		FVector(0.0f, 0.0f, -WardenCapsuleHalfHeight),
+		FRotator(0.0f, -90.0f, 0.0f));
+
+	if (bIncludeAnimation)
+	{
+		bAnimationBlueprintBound = ResolveAnimationBlueprint(MeshComponent);
+
+		LeftSwingAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(LeftSwingAnimationPath).TryLoad());
+		RightSwingAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(RightSwingAnimationPath).TryLoad());
+		MoltenRoarAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(MoltenRoarAnimationPath).TryLoad());
+
+		if (!LeftSwingAnimation || !RightSwingAnimation || !MoltenRoarAnimation)
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Abyssal Warden animations missing: swings %s and %s, "
+					 "roar %s. It will fight with nothing to show for it. This "
+					 "is expected without the Paragon Grux pack."),
+				LeftSwingAnimation ? TEXT("found") : TEXT("MISSING"),
+				RightSwingAnimation ? TEXT("found") : TEXT("MISSING"),
+				MoltenRoarAnimation ? TEXT("found") : TEXT("MISSING"));
+		}
+	}
+
+	return true;
+}
+
+bool ACataclysmAbyssalWardenCharacter::ResolveAnimationBlueprint(
+	USkeletalMeshComponent* MeshComponent)
+{
+	if (!MeshComponent)
+	{
+		return false;
+	}
+
+	UClass* AnimationClass =
+		FSoftClassPath(AnimationBlueprintPath).TryLoadClass<UAnimInstance>();
+
+	if (!AnimationClass)
+	{
+		// EXPECTED TODAY, NOT AN ERROR. No ABP_AbyssalWarden has been authored:
+		// one has to be built by hand in the editor, because Unreal's Python
+		// exposes no way to connect two animation graph pins. The creature
+		// still fights and its attacks are still visible, through the
+		// single-clip mode set below; what is lost is blending, so it slides
+		// rather than steps while walking. Issue #387 is that work.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Abyssal Warden animation Blueprint not found at %s, so it "
+				 "will play single clips instead of blending. Its swing and "
+				 "its roar are still visible; its walk will slide. See "
+				 "game/docs/enemy-source-assets.md."),
+			AnimationBlueprintPath);
+
+		// SAID OUTRIGHT RATHER THAN LEFT AT THE DEFAULT. A skeletal mesh
+		// component starts in single-node mode, so this line changes nothing
+		// today -- and it is what stops the fallback silently breaking if that
+		// default ever changes, and what makes the intent readable.
+		MeshComponent->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+		return false;
+	}
+
+	MeshComponent->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	MeshComponent->SetAnimInstanceClass(AnimationClass);
+
+	return true;
+}

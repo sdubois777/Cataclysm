@@ -165,17 +165,46 @@ def test_no_empire_runtime_claim_is_still_true() -> None:
     )
 
 
+#: How the readme may spell each count of dressed characters. Only the numbers
+#: that have ever been true are listed; adding a third character means adding a
+#: word here, which is a deliberate speed bump rather than an oversight.
+ART_CLAIM_WORDS = {
+    "No character has art": 0,
+    "One character has art": 1,
+    "Two characters have art": 2,
+    "Three characters have art": 3,
+}
+
+
 def test_the_art_claim_matches_how_many_characters_have_a_mesh() -> None:
-    """The readme says exactly one character wears real art.
+    """The readme says how many characters wear real art. It has to be right.
 
     THIS BULLET HAD NO GUARD AND THE TWO AROUND IT DID, which is how it stayed
     saying "No art assets of any kind" while the Brute was given the Paragon
     Rampage model. Counting characters that name a content path is a proxy, but
-    it is a proxy that moves the moment a second one is dressed.
+    it is a proxy that moves the moment another one is dressed.
+
+    IT USED TO SKIP WHEN THE WORDING CHANGED, and that was a hole rather than a
+    kindness. The check was `if "One character has art" not in text: skip`, so
+    dressing a second character and updating the sentence to say so turned the
+    test off instead of re-aiming it. That happened on 2026-08-09 when the
+    Abyssal Warden was given the Paragon Grux model: the suite went from one
+    skip to two and the guard on this bullet stopped running. It now reads
+    whichever count the readme claims and fails if the readme claims none of
+    them, so there is no wording that silently disables it.
     """
     text = readme_text()
-    if "One character has art" not in text:
-        pytest.skip("The readme no longer claims exactly one character has art.")
+
+    claimed = [count for phrase, count in ART_CLAIM_WORDS.items()
+               if phrase in text]
+
+    assert len(claimed) == 1, (
+        "game/README.md's 'What is not here yet' section must say exactly one "
+        f"of {sorted(ART_CLAIM_WORDS)}, and it says "
+        f"{len(claimed)} of them. That sentence is the only statement of how "
+        "much art the project has, and a wording this test does not recognise "
+        "would leave it unchecked."
+    )
 
     character_dir = GAME_DIR / "Source" / "Cataclysm"
     dressed = sorted(
@@ -185,11 +214,11 @@ def test_the_art_claim_matches_how_many_characters_have_a_mesh() -> None:
         and "/Game/Paragon" in path.read_text(encoding="utf-8", errors="replace")
     )
 
-    assert dressed == ["CataclysmBruteCharacter"], (
-        "game/README.md says one character has art, but the classes naming a "
-        f"Paragon content path are: {', '.join(dressed) or 'none'}. Update the "
-        "'What is not here yet' section to match, and update "
-        "game/docs/enemy-source-assets.md."
+    assert len(dressed) == claimed[0], (
+        f"game/README.md says {claimed[0]} character(s) have art, but the "
+        f"classes naming a Paragon content path are: "
+        f"{', '.join(dressed) or 'none'}. Update the 'What is not here yet' "
+        "section to match, and update game/docs/enemy-source-assets.md."
     )
 
 
