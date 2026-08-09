@@ -197,12 +197,14 @@ def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
     smaller than 1 metre is not a telegraph. It is smaller than the creature
     standing in it, so there is nowhere to walk." That applies to the marker an
     ability actually draws, not only to the largest one its cycle would allow.
-    The Brute is the case that shows the difference: its 1.6 second attack
-    interval allows a marker of up to 1.40 metres, which clears the one metre
-    floor, and its ordinary slam still gets no marker because a slam reaches
-    0.9 metres. The interval was 2.8 until play testing on 2026-08-07 and the
-    allowance was 3.50 metres then, so the margin is far thinner now than the
-    sentence used to imply -- but the conclusion is the same one.
+    The Brute used to be the case that showed the difference, and no longer is.
+    Its attack interval has been shortened twice by play testing -- 2.8 to 1.6
+    on 2026-08-07, and 1.6 to 1.2 on 2026-08-09 -- and the marker its cycle
+    allows shrank with it each time: 3.50 metres, then 1.40, and now 0.70. At
+    0.70 the interval is below the one metre floor on its own, so the Brute's
+    ordinary slam now fails BOTH conditions rather than only the one about its
+    own radius. The distinction this paragraph draws is still real; the Brute is
+    simply no longer an example of it.
 
     And the wind-up for that marker has to fit inside half the cycle.
     """
@@ -460,11 +462,13 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             name="Slam",
             shape="Strike",
             slot="Basic",
-            # 0.9 metres is below the one metre floor for a marker, so this gets
-            # no telegraph even though the Brute's 1.6 second attack interval
-            # would allow a marker of up to 1.40 metres. What the cycle allows is how
-            # big a marker COULD be, not that everything the creature does draws
-            # one.
+            # NO TELEGRAPH, FOR TWO INDEPENDENT REASONS SINCE 2026-08-09. Its
+            # 0.9 metre reach is below the one metre floor for a marker, and the
+            # Brute's 1.2 second attack interval now allows only 0.70 metres,
+            # which is below that floor as well. Either one alone would settle
+            # it. Until the interval moved from 1.6 to 1.2 only the first did:
+            # 1.6 allowed 1.40 metres, so the cycle would have permitted a
+            # marker and the slam's own radius was what refused it.
             params={"Radius": 0.9, "Angle": 90, "MaxTargets": 1},
             note="A swing at whatever is in front of it. It does not stun: an "
                  "ordinary Brute hit lands at exactly 10% of the reference "
@@ -500,12 +504,21 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # grants -- Shield Bash's. An enemy's hold should not be longer than
             # the best one the player has.
             params={"Radius": 3.5, "Angle": 360, "StunSeconds": 1.5},
-            # The stun immunity window, NOT the Heavy slot's cooldown. The whole
-            # Heavy band in game/Data/SkillSlots.csv is 1 to 4 seconds, which is
-            # inside the 5 second window, so a Brute stomping on the Heavy
-            # cadence would spend most of its stomps on a target that cannot be
-            # stunned.
-            cooldown=STUN_IMMUNITY_WINDOW,
+            # 8 SECONDS, SET BY PLAYING IT on 2026-08-09, up from the 5 second
+            # stun immunity window it used to sit exactly on.
+            #
+            # THE FLOOR IS STILL THE STUN IMMUNITY WINDOW, and it is a floor
+            # rather than the figure. The whole Heavy band in
+            # game/Data/SkillSlots.csv is 1 to 4 seconds, which is inside the 5
+            # second window, so a Brute stomping on the Heavy cadence would
+            # spend most of its stomps on a target that cannot be stunned. 8
+            # clears that by 3.
+            #
+            # WHAT IT IS REALLY SETTING is how many ordinary swings fall between
+            # abilities, which is roughly the cooldown divided by the attack
+            # interval. At 8 seconds against the 1.2 second interval that is
+            # about six swings between one stomp and the next.
+            cooldown=8.0,
             note="A ring at its feet, marked for 1.4 seconds, stunning for 1.5. "
                  "At the Heavy slot's 250% it lands at 25% of the reference "
                  "build's effective health, which clears the 10% stun damage "
@@ -582,14 +595,21 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # in what it says the attack covers. Only its shape moved: a circle
             # where it lands rather than a lane along the way.
             params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Flight": 1.4},
-            # THE SPECIAL SLOT'S TYPICAL COOLDOWN, and the approach time
-            # confirms it is the right side of the constraint that matters. The
-            # Brute crosses its own 10 m throwing range in 2 seconds at its 5
-            # m/s chase speed, so a cooldown under that would let it throw twice
-            # per approach and it would read as a ranged enemy rather than a
-            # bruiser with a rock. At 5 seconds it throws once and then it is on
-            # you.
-            cooldown=5.0,
+            # 12 SECONDS, SET BY PLAYING IT on 2026-08-09, up from 5.
+            #
+            # THE FLOOR IS THE APPROACH TIME, and it is a floor rather than the
+            # figure. The Brute crosses its own 10 m throwing range in 2 seconds
+            # at its 5 m/s chase speed, so a cooldown under that would let it
+            # throw twice per approach and it would read as a ranged enemy
+            # rather than a bruiser with a rock. 12 clears that by a wide
+            # margin: the throw is now something that happens once as it comes
+            # in, not a rhythm.
+            #
+            # LONGER THAN THE STOMP'S 8, WHICH IS THE POINT OF HAVING TWO. The
+            # stomp is what a Brute does to somebody standing next to it and the
+            # throw is what it does to somebody who will not come close, so the
+            # one that answers the common case comes round more often.
+            cooldown=12.0,
             note="It tears a rock out of the ground and lobs it, marked as a "
                  "circle 2.1 metres across where it will land, for 1 second "
                  "first. At the Special slot's 150% it is worth half a Stomp. "

@@ -92,8 +92,16 @@ public:
 	/** Radius in centimetres. Radius=3.5 metres. */
 	static constexpr float StompRadiusCm = 350.0f;
 
-	/** Seconds between stomps. Its own cooldown, the stun immunity window. */
-	static constexpr float StompCooldownSeconds = 5.0f;
+	/**
+	 * Seconds between stomps. Set by playing it on 2026-08-09, up from 5.
+	 *
+	 * THE STUN IMMUNITY WINDOW IS THE FLOOR, NOT THE FIGURE. That window is 5
+	 * seconds, and the whole Heavy band in `game/Data/SkillSlots.csv` is 1 to 4,
+	 * which sits inside it -- so a Brute stomping on the Heavy cadence would
+	 * spend most of its stomps on a target that cannot be stunned again yet.
+	 * This clears the window by 3 seconds.
+	 */
+	static constexpr float StompCooldownSeconds = 8.0f;
 
 	/** Seconds of telegraph. 0.4 + 3.5 / 3.5, from the wind-up rule. */
 	static constexpr float StompWindUpSeconds = 1.4f;
@@ -155,8 +163,20 @@ public:
 	 */
 	static constexpr float RockThrowFlightSeconds = 1.4f;
 
-	/** Seconds between throws. */
-	static constexpr float RockThrowCooldownSeconds = 5.0f;
+	/**
+	 * Seconds between throws. Set by playing it on 2026-08-09, up from 5.
+	 *
+	 * THE APPROACH TIME IS THE FLOOR, NOT THE FIGURE. The Brute crosses its own
+	 * 10 metre throwing range in 2 seconds at its 5 metre per second chase
+	 * speed, so a cooldown under that would let it throw twice on the way in and
+	 * it would read as a ranged enemy rather than a bruiser with a rock.
+	 *
+	 * LONGER THAN THE STOMP'S 8, WHICH IS WHY IT HAS TWO ABILITIES. The stomp
+	 * answers somebody standing next to it and the throw answers somebody who
+	 * will not come close, so the one that covers the common case comes round
+	 * more often.
+	 */
+	static constexpr float RockThrowCooldownSeconds = 12.0f;
 
 	/** Seconds of telegraph. 0.4 + 2.1 / 3.5. */
 	static constexpr float RockThrowWindUpSeconds = 1.0f;
@@ -926,25 +946,41 @@ public:
 	// silently drifted from its own source twice before; see CLAUDE.md.
 
 	/**
-	 * Seconds between attacks. enemy_stats.py, attack_interval=1.6.
+	 * Seconds between attacks. enemy_stats.py, attack_interval=1.2.
 	 *
-	 * WAS 2.8, CHANGED ON 2026-08-07 BY PLAYING IT. At 2.8 the Brute swung for
-	 * one second and then stood still for one point eight, and the project
-	 * owner's judgement was that an enemy that is not attacking might as well
-	 * be scenery. 1.6 was found by trying values live with
-	 * Cataclysm.Brute.AttackInterval.
+	 * WAS 2.8, THEN 1.6, NOW 1.2, EACH TIME BY PLAYING IT. At 2.8 the Brute
+	 * swung for one second and then stood still for one point eight, and the
+	 * project owner's judgement was that an enemy that is not attacking might as
+	 * well be scenery. 1.6 followed on 2026-08-07 and 1.2 on 2026-08-09, both
+	 * found by trying values live with `Cataclysm.Brute.AttackInterval`.
 	 *
-	 * IT DOES NOT TOUCH THE STOMP, which was the obvious worry and is not one.
-	 * An ability with a cooldown is telegraphed against that cooldown rather
-	 * than the attack interval -- the rule is stated in section X of
-	 * docs/Cataclysm_GDD_v2.md -- and the Stomp's 5 second cooldown allows a
-	 * 7.35 metre marker. It draws 3.5, which was well inside the allowance
-	 * before and still is. Its wind-up is unchanged at 1.4 seconds.
+	 * THE SWING ANIMATION IS THE FLOOR, AND 1.2 IS CLOSE TO IT.
+	 * `Attack_Biped_Melee_A` is 1.0000 seconds long, measured in the editor on
+	 * 2026-08-09, and nothing rate-scales it: `PlayAttackAnimation` passes no
+	 * window, so the clip runs at its authored speed. At 1.2 there is a fifth of
+	 * a second between one swing ending and the next starting. Below 1.0 they
+	 * would overlap, and the creature would be starting a swing it had not
+	 * finished.
+	 *
+	 * IT DOES NOT TOUCH EITHER TELEGRAPH. An ability with a cooldown is
+	 * telegraphed against that cooldown rather than against the attack interval
+	 * -- the rule is in section X of `docs/Cataclysm_GDD_v2.md` -- so shortening
+	 * the interval cannot shorten a marker. The Stomp's 8 second cooldown allows
+	 * far more than the 3.5 metres it draws.
 	 *
 	 * WHAT IT DOES CHANGE is how hard this creature hits over time: the same
-	 * damage per swing arrives 75% more often.
+	 * damage per swing now arrives 133% more often than it did at 2.8, and 33%
+	 * more often than at 1.6.
+	 *
+	 * AND IT GIVES UP ONE READING OF "SLOW". `ACataclysmEnemyCharacter` carries
+	 * 1.5 seconds as its class default, so at 1.6 the Brute swung more slowly
+	 * than anything unconfigured and at 1.2 it swings faster. "Heavily armored
+	 * slow melee. Can be outmaneuvered" is unaffected, because that reading is
+	 * carried by `DesignedTurnRateDegreesPerSecond` at 180 against every other
+	 * enemy's 480, and by the 250 cm/s patrol speed. Swing speed was a third
+	 * supporting property and has now been spent deliberately.
 	 */
-	static constexpr float DesignedAttackIntervalSeconds = 1.6f;
+	static constexpr float DesignedAttackIntervalSeconds = 1.2f;
 
 	/**
 	 * How close it must be to hit, centre to centre, in centimetres.

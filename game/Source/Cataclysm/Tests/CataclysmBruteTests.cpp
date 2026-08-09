@@ -138,6 +138,14 @@ bool FCataclysmBruteCarriesItsDesignedNumbers::RunTest(const FString&)
 	// THE POINT OF THE WHOLE CLASS, stated as an inequality rather than a value.
 	// "Heavily armored slow melee. Can be outmaneuvered" is a claim about being
 	// slower than other things, so it is tested against another thing.
+	//
+	// WHICH PROPERTIES CARRY THAT CLAIM CHANGED ON 2026-08-09. Three did:
+	// moving, turning and swinging. The project owner settled the swing at 1.2
+	// seconds by playing it, against the generic enemy's 1.5, so the Brute now
+	// swings FASTER than anything unconfigured. Moving and turning still carry
+	// the claim, and turning is the one that means "outmanoeuvred": a player
+	// circling at the Brute's own reach sweeps 223 degrees per second even in
+	// the slowest class, against this creature's 180.
 	ACataclysmEnemyCharacter* Ordinary = World->SpawnActor<ACataclysmEnemyCharacter>(
 		FVector(1000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
 	if (!TestNotNull(TEXT("ordinary enemy spawned"), Ordinary))
@@ -151,8 +159,24 @@ bool FCataclysmBruteCarriesItsDesignedNumbers::RunTest(const FString&)
 	TestTrue(TEXT("a Brute turns strictly slower than an ordinary enemy"),
 		Brute->GetCharacterMovement()->RotationRate.Yaw
 			< Ordinary->GetCharacterMovement()->RotationRate.Yaw);
-	TestTrue(TEXT("a Brute attacks strictly less often than an ordinary enemy"),
-		Brute->SecondsBetweenAttacks() > Ordinary->SecondsBetweenAttacks());
+
+	// ASSERTED IN THE DIRECTION IT WAS DELIBERATELY MOVED, which is a guard
+	// rather than a hole: putting the swing back above the generic default
+	// would fail here and send whoever did it to docs/DECISIONS.md.
+	TestTrue(FString::Printf(
+		TEXT("a Brute swings faster than an ordinary enemy, which was decided "
+			 "by play on 2026-08-09 (%.2f s against %.2f)"),
+		Brute->SecondsBetweenAttacks(), Ordinary->SecondsBetweenAttacks()),
+		Brute->SecondsBetweenAttacks() < Ordinary->SecondsBetweenAttacks());
+
+	// AND IT STILL CLEARS ITS OWN SWING ANIMATION. Attack_Biped_Melee_A is
+	// 1.0000 seconds long and nothing rate-scales it, so an interval under a
+	// second would start a swing the creature had not finished.
+	TestTrue(FString::Printf(
+		TEXT("and its interval still clears the 1.0 s swing clip (%.2f s)"),
+		Brute->SecondsBetweenAttacks()),
+		Brute->SecondsBetweenAttacks() >= 1.0f);
+
 	TestTrue(TEXT("a Brute stands taller than an ordinary enemy"),
 		Brute->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()
 			> BaseEnemyCapsuleHalfHeight);
