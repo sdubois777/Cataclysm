@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmDebrisBurst.h"
+#include "AbilitySystem/CataclysmMeshWidth.h"
 #include "Cataclysm.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -85,14 +86,13 @@ ACataclysmDebrisBurst* ACataclysmDebrisBurst::Scatter(
 			Component->SetMaterial(0, Material);
 		}
 
-		// SCALED FROM EACH MESH'S OWN BOUNDS, so that five pieces of five
-		// different sizes come out consistent with one another rather than at
-		// whatever size they happen to have been authored.
-		const FVector Extent = Piece->GetBounds().BoxExtent;
-		const float HalfWidth = FMath::Max(Extent.X, Extent.Y);
-		if (HalfWidth > UE_SMALL_NUMBER && PieceRadiusCm > 0.0f)
+		// SCALED FROM EACH MESH'S OWN BOUNDS, so that pieces of different sizes
+		// come out consistent with one another rather than at whatever size they
+		// happen to have been authored. Shared with the projectile's flying body
+		// and the rock the Brute carries; see CataclysmMeshWidth.h and #453.
+		const float Scale = CataclysmMeshWidth::ScaleFor(Piece, PieceRadiusCm);
+		if (Scale > 0.0f)
 		{
-			const float Scale = PieceRadiusCm / HalfWidth;
 			Component->SetRelativeScale3D(FVector(Scale, Scale, Scale));
 		}
 

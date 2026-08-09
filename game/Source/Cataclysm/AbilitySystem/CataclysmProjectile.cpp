@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmMeshWidth.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -97,23 +98,17 @@ void ACataclysmProjectile::SetBodyMesh(UStaticMesh* Mesh)
 	}
 
 	// FROM THE MESH'S OWN BOUNDS, so that a rock out of an art pack and an
-	// engine primitive both come out at BodyRadiusCm.
-	//
-	// THE HORIZONTAL HALF-EXTENT, not the bounding sphere radius. A bounding
-	// sphere takes in the corners of the box, so scaling by it would leave the
-	// engine's sphere -- whose box is 50 cm each way and whose bounding sphere
-	// is 86.6 -- noticeably smaller than the width the sweep uses. The two
-	// horizontal axes are what a projectile's width means.
-	const FVector Extent = Shown->GetBounds().BoxExtent;
-	const float HalfWidth = FMath::Max(Extent.X, Extent.Y);
-	if (HalfWidth <= UE_SMALL_NUMBER)
+	// engine primitive both come out at BodyRadiusCm. The arithmetic is shared
+	// with the debris burst and with the rock the Brute carries, because the
+	// three of them drawing the same asset at different sizes is issue #453.
+	const float Scale = CataclysmMeshWidth::ScaleFor(Shown, BodyRadiusCm);
+	if (Scale <= 0.0f)
 	{
-		// A mesh with no width cannot be scaled to one. Left alone rather than
-		// divided by, which would be a scale of infinity.
+		// Nothing to scale: no width, or no radius asked for. Left alone rather
+		// than collapsed to nothing.
 		return;
 	}
 
-	const float Scale = BodyRadiusCm / HalfWidth;
 	PlaceholderBody->SetRelativeScale3D(FVector(Scale, Scale, Scale));
 }
 

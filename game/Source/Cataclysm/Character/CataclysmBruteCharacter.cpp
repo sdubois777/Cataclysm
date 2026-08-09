@@ -3,6 +3,7 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmDebrisBurst.h"
+#include "AbilitySystem/CataclysmMeshWidth.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -1074,11 +1075,28 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 	// engine sphere and the throw still works. Issue #404.
 	RockMesh = Cast<UStaticMesh>(FSoftObjectPath(RockMeshPath).TryLoad());
 
-	// THE SAME MESH THE THROW FLIES. One asset, so what the creature is holding
-	// and what leaves its hand cannot become two different rocks.
+	// THE SAME MESH THE THROW FLIES, AND NOW THE SAME SIZE. One asset was never
+	// enough on its own: until issue #453 nothing scaled this component, so it
+	// drew at whatever the artist authored while the thrown rock was scaled to
+	// the width the projectile acts at. Measured 2026-08-09 with
+	// tools/measure_rock_sizes.py, SM_Rock_To_Hold is authored 206.6 cm across
+	// against a Brute whose whole capsule is 96, so the creature held a rock
+	// twice its own width and then threw one 80 cm across.
+	//
+	// SCALED TO WHAT THE THROWN ONE WILL BE. ACataclysmProjectile::Fire gives a
+	// projectile that does not pierce its DefaultBodyRadiusCm, and the rock does
+	// not pierce, so that is the width it will fly at. Sharing the arithmetic
+	// through CataclysmMeshWidth is what stops the two drifting again.
 	if (CarriedRock)
 	{
 		CarriedRock->SetStaticMesh(RockMesh);
+
+		const float Scale = CataclysmMeshWidth::ScaleFor(
+			RockMesh, ACataclysmProjectile::DefaultBodyRadiusCm);
+		if (Scale > 0.0f)
+		{
+			CarriedRock->SetRelativeScale3D(FVector(Scale, Scale, Scale));
+		}
 	}
 
 	// THE MATERIAL COMES FROM THE ROCK ITSELF. The rip crater is the only thing
