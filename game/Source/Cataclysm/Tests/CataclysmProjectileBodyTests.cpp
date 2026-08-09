@@ -539,4 +539,98 @@ bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * An arcing projectile must travel at the speed it was given.
+ *
+ * WHAT THIS GUARDS. Issue #462. When the arc was added for #459 the step loop
+ * advanced the projectile horizontally by speed times time and then set its
+ * height, so every centimetre of climb or fall was travel the speed never paid
+ * for. A rock climbing as fast as it flew forward moved at 1.41 times its own
+ * stated speed. The project owner reported it from play as arriving at
+ * blistering speed, and none of the tests written for #459 noticed, because they
+ * all checked WHERE it went and none checked HOW FAST.
+ *
+ * MEASURED BY ADDING UP THE PATH, not by reading a field. The distance flown is
+ * summed step by step in three dimensions, and divided by the time those steps
+ * took. That is what a stopwatch on the rock would give.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmArcingProjectileFliesAtItsSpeed,
+	"Cataclysm.Skills.AnArcingProjectileTravelsAtTheSpeedItWasGiven",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmArcingProjectileFliesAtItsSpeed::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FURL URL;
+	World->InitializeActorsForPlay(URL);
+	World->BeginPlay();
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	const FVector From(0.0f, 0.0f, 300.0f);
+	const FVector To(1000.0f, 0.0f, 0.0f);
+	const float Speed = 600.0f;
+
+	// A TALL ARC ON PURPOSE. The error this catches grows with the slope, so a
+	// shallow arc would let a broken version pass by a margin small enough to
+	// look like rounding. At an apex of 400 over a 1000 cm throw the launch
+	// slope is steep enough that the difference is unmistakable.
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+		Caster, From, To, /*InRadiusCm=*/50.0f, Speed,
+		/*InPierce=*/0, /*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
+		/*InApexHeightCm=*/400.0f);
+	if (!TestNotNull(TEXT("it fired"), Shot))
+	{
+		return false;
+	}
+
+	const float StepSeconds = 0.02f;
+	double Flown = 0.0;
+	float Elapsed = 0.0f;
+	FVector Was = Shot->GetActorLocation();
+	for (int32 Step = 0; Step < 500 && Shot->Step(StepSeconds); ++Step)
+	{
+		const FVector Now = Shot->GetActorLocation();
+		Flown += FVector::Dist(Was, Now);
+		Was = Now;
+		Elapsed += StepSeconds;
+	}
+	// The step that finished the flight returns false, so its travel is added
+	// here rather than being left out of the total.
+	Flown += FVector::Dist(Was, Shot->GetActorLocation());
+	Elapsed += StepSeconds;
+
+	if (!TestTrue(TEXT("it flew for a measurable time"), Elapsed > 0.1f))
+	{
+		return false;
+	}
+
+	const double Measured = Flown / Elapsed;
+	AddInfo(FString::Printf(
+		TEXT("Flew %.0f cm in %.2f s, which is %.0f cm/s against a designed "
+			 "%.0f."), Flown, Elapsed, Measured, Speed));
+
+	// WITHIN A TENTH. The last step is cut short when the projectile arrives,
+	// so a measurement over a whole flight cannot be exact; a tenth is far
+	// tighter than the 41% error this exists to catch.
+	TestTrue(FString::Printf(
+		TEXT("it travelled at about the speed it was given (%.0f cm/s against "
+			 "%.0f)"), Measured, Speed),
+		FMath::Abs(Measured - Speed) < Speed * 0.1);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

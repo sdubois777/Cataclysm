@@ -148,6 +148,17 @@ static TAutoConsoleVariable<float> CVarBruteRockThrowCooldown(
 		 "approach and it stops reading as a melee bruiser."),
 	ECVF_Default);
 
+static TAutoConsoleVariable<float> CVarBruteRockSpeed(
+	TEXT("Cataclysm.Brute.RockSpeed"),
+	0.0f,
+	TEXT("Centimetres per second the thrown rock travels through the air. 0 "
+		 "uses its designed 600. Lower is a heavier, more readable lob; the "
+		 "flight time is the distance divided by this, so 600 puts a five "
+		 "metre throw in the air for about 0.8 seconds. Do NOT go above 1200: "
+		 "that is the slowest projectile any player skill uses, and a thrown "
+		 "rock should not outrun the slowest spell in the game."),
+	ECVF_Default);
+
 static TAutoConsoleVariable<float> CVarBruteRockArc(
 	TEXT("Cataclysm.Brute.RockArc"),
 	0.0f,
@@ -740,6 +751,12 @@ void ACataclysmBruteCharacter::UpdateAbilityMontage()
 	PlayAbilityMontage(Index);
 }
 
+float ACataclysmBruteCharacter::RockThrowSpeedCmPerSecondInUse() const
+{
+	const float Override = CVarBruteRockSpeed.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : RockThrowSpeedCmPerSecond;
+}
+
 float ACataclysmBruteCharacter::StompCooldownSecondsInUse() const
 {
 	const float Override = CVarBruteStompCooldown.GetValueOnAnyThread();
@@ -859,7 +876,7 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		// and the trajectory had to change together.
 		ACataclysmProjectile::Fire(
 			this, RockLaunchLocation(), AimedAt,
-			RockThrowRadiusCm, RockThrowSpeedCmPerSecond,
+			RockThrowRadiusCm, RockThrowSpeedCmPerSecondInUse(),
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
 			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh,
 			RockThrowApexCmFor(AimedAt));

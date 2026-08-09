@@ -225,8 +225,31 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 		SecondsLeft -= ThisStep;
 
 		const FVector Previous = GetActorLocation();
-		const float WantedCm = FMath::Min(SpeedCmPerSecond * ThisStep,
-										  RemainingRangeCm);
+
+		// THE SPEED IS THROUGH THE AIR, NOT ACROSS THE GROUND, and for an
+		// arcing shot those are different numbers. Issue #462.
+		//
+		// WHAT WENT WRONG. When the arc was added the step below advanced the
+		// projectile horizontally by speed times time and then set its height,
+		// so the height change was travel the speed never paid for. A rock
+		// climbing as fast as it flew forward moved at 1.41 times its stated
+		// speed, and the project owner reported it as blistering.
+		//
+		// HOW MUCH HORIZONTAL A STEP BUYS. Over a short step the path is
+		// straight, so a horizontal distance h with a slope s covers
+		// h * sqrt(1 + s * s) through the air. Dividing by that factor is what
+		// makes the distance actually flown equal the speed times the time.
+		//
+		// A STRAIGHT SHOT HAS A SLOPE OF ZERO and divides by one, so nothing
+		// about any player skill changes.
+		float WantedCm = SpeedCmPerSecond * ThisStep;
+		if (ApexHeightCm > 0.0f)
+		{
+			const float Slope = ArcSlopeAfter(TotalRangeCm - RemainingRangeCm);
+			WantedCm /= FMath::Sqrt(1.0f + Slope * Slope);
+		}
+		WantedCm = FMath::Min(WantedCm, RemainingRangeCm);
+
 		FVector Wanted = Previous + Direction * WantedCm;
 
 		// THE HEIGHT IS SET, NOT ADDED TO. Direction is flat, so the horizontal
@@ -313,6 +336,26 @@ float ACataclysmProjectile::ArcHeightAfter(float HorizontalTravelledCm) const
 	// at, rather than the arc being measured from one end.
 	const float Straight = FMath::Lerp(LaunchZ, LandingZ, Along);
 	return Straight + ApexHeightCm * 4.0f * Along * (1.0f - Along);
+}
+
+float ACataclysmProjectile::ArcSlopeAfter(float HorizontalTravelledCm) const
+{
+	if (ApexHeightCm <= 0.0f || TotalRangeCm <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Along = FMath::Clamp(HorizontalTravelledCm / TotalRangeCm,
+									 0.0f, 1.0f);
+
+	// The derivative of what ArcHeightAfter returns, with respect to horizontal
+	// distance. The straight line between the two ends contributes a constant,
+	// and the parabola contributes a term that is steepest at the launch, zero
+	// at the top, and equally steep downward at the landing.
+	const float FromChord = (LandingZ - LaunchZ) / TotalRangeCm;
+	const float FromArc = ApexHeightCm * 4.0f * (1.0f - 2.0f * Along)
+		/ TotalRangeCm;
+	return FromChord + FromArc;
 }
 
 FVector ACataclysmProjectile::TraceStep(const FVector& From, const FVector& To)

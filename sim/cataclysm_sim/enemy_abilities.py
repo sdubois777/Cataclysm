@@ -531,10 +531,23 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # as different sizes, and well under the 7.35 m its own cooldown
             # would allow.
             #
-            # SPEED 1200 IS THE SAME AS THE SUCCUBUS'S SOULFIRE, which is the
-            # slowest projectile any player skill uses in
-            # game/Data/WeaponSkills.csv. A thrown rock should not outrun the
-            # slowest spell in the game.
+            # SPEED 600, WHICH IS HALF THE SLOWEST PLAYER PROJECTILE. The
+            # ceiling is the Succubus's Soulfire at 1200, the slowest projectile
+            # any player skill uses in game/Data/WeaponSkills.csv: a thrown rock
+            # must not outrun the slowest spell in the game. That argument sets
+            # a MAXIMUM and says nothing about how far below it to sit.
+            #
+            # LOWERED FROM 1200 ON 2026-08-09 BECAUSE THE FLIGHT WAS INVISIBLE.
+            # The project owner reported the rock arriving at blistering speed.
+            # At 1200 a five metre throw is in the air for 0.42 seconds and a
+            # three metre one for 0.25, which is a single thinking pass: the arc
+            # is over before it can be read. At 600 the same five metre throw
+            # takes 0.83 seconds.
+            #
+            # THE FLIGHT IS PART OF THE WARNING for a lobbed attack. The marker
+            # appears when the wind-up starts and the rock then has to travel,
+            # so the player's time to move is the wind-up PLUS the flight. A
+            # flight too short to see gives back the second the telegraph bought.
             #
             # PIERCE 0 BECAUSE IT IS ONE ROCK. It stops at what it hits.
             #
@@ -548,7 +561,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # THE MARKED AREA IS THE SAME 2.1 m RADIUS, so this row is unchanged
             # in what it says the attack covers. Only its shape moved: a circle
             # where it lands rather than a lane along the way.
-            params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Speed": 1200},
+            params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Speed": 600},
             # THE SPECIAL SLOT'S TYPICAL COOLDOWN, and the approach time
             # confirms it is the right side of the constraint that matters. The
             # Brute crosses its own 10 m throwing range in 2 seconds at its 5
