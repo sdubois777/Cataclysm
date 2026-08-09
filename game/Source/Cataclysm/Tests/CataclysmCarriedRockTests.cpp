@@ -97,11 +97,11 @@ namespace CataclysmCarriedRockTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmTheRockHangsFromThePropBone,
-	"Cataclysm.Brute.TheCarriedRockHangsFromThePropBone",
+	FCataclysmTheRockHangsFromTheHandBone,
+	"Cataclysm.Brute.TheCarriedRockHangsFromTheHandBone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmTheRockHangsFromThePropBone::RunTest(const FString&)
+bool FCataclysmTheRockHangsFromTheHandBone::RunTest(const FString&)
 {
 	using namespace CataclysmCarriedRockTest;
 
@@ -137,11 +137,27 @@ bool FCataclysmTheRockHangsFromThePropBone::RunTest(const FString&)
 	// THE LITERAL, NOT THE CONSTANT, AND THE DIFFERENCE IS THE WHOLE TEST.
 	// Comparing the component's attachment against RockHoldBoneName asks
 	// whether the class agrees with itself, which it always does: changing
-	// the constant changes both sides and the test passes. Proved by doing
-	// exactly that -- it was changed to hand_r and this test did not
-	// notice. The measured answer is written here as its own copy.
-	TestEqual(TEXT("the prop bone is the one the animation moves"),
-		ACataclysmBruteCharacter::RockHoldBoneName, FName(TEXT("weapon_r")));
+	// the constant changes both sides and the test passes. The measured
+	// answer is written here as its own copy.
+	//
+	// THE MEASURED ANSWER CHANGED FROM `weapon_r` TO `hand_r` IN ISSUE #470,
+	// AND THIS TEST IS WHY IT HAD TO BE CHANGED DELIBERATELY. `weapon_r` is
+	// the rig's PROP bone, and the animator drives it as the ROCK rather than
+	// as the hand: through `Ability_RipNToss_Toss` it is flung up to 1253 cm
+	// from the creature, against 255 cm for `hand_r`. At the release, 0.539
+	// seconds into that clip, `weapon_r` is 6.68 m in front of the Brute and
+	// `hand_r` is 0.89 m in front. The thrown rock left from the same bone, so
+	// it was spawned nearly seven metres away and flew backwards to its target.
+	// Measured by `tools/measure_rock_launch_point.py`.
+	//
+	// A NOTE FOR WHOEVER READS THIS NEXT. The comment here used to say the
+	// author had proved this assertion works by changing the constant to
+	// `hand_r` and watching it fail. That was true, and it did not help,
+	// because what it guards is that somebody changes the bone DELIBERATELY --
+	// not that the bone is right. Nothing measured the bone in motion until
+	// #470.
+	TestEqual(TEXT("the rock hangs from the hand bone, not the prop bone"),
+		ACataclysmBruteCharacter::RockHoldBoneName, FName(TEXT("hand_r")));
 	TestEqual(TEXT("and the rock hangs from it"),
 		Brute->CarriedRock->GetAttachSocketName(),
 		ACataclysmBruteCharacter::RockHoldBoneName);
