@@ -120,28 +120,56 @@ def test_the_brute_passes_its_rock_to_the_projectile() -> None:
     )
 
 
-def test_the_brute_asks_for_an_arc_when_it_throws() -> None:
+def test_the_brute_asks_for_a_lob_when_it_throws() -> None:
     """The same failure as the mesh above, in the parameter added after it.
 
-    `Fire`'s apex parameter defaults to zero so that all 398 player skills keep
-    flying straight without knowing it exists. That default is what makes losing
-    it silent here: the rock would still be thrown, still be the right mesh,
-    still deal its damage, and would go back to travelling flat.
+    `Fire`'s flight time parameter defaults to zero so that all 398 player
+    skills keep flying straight without knowing it exists. That default is what
+    makes losing it silent here: the rock would still be thrown, still be the
+    right mesh, still deal its damage, and would go back to travelling flat.
 
     IT WOULD ALSO BE WORSE THAN THE FLAT THROW EVER WAS, which is why this is
     worth a test of its own rather than left to engine tests that cannot run on
     a pull request. The rock now leaves the creature's hand, well above 250 cm.
     Flat from there it sails over the head of a player whose own is about 192
     cm, at every range. Issues #454 and #459.
+
+    THE PARAMETER WAS AN APEX HEIGHT UNTIL ISSUE #465 and is now a flight time,
+    from which the projectile derives both its ground speed and its arc height.
     """
     text = source(BRUTE_CPP)
 
-    assert re.search(r"RockMesh\s*,\s*RockThrowApexCmFor\s*\(", text), (
-        "CataclysmBruteCharacter.cpp does not pass RockThrowApexCmFor(...) to "
-        "ACataclysmProjectile::Fire, so the thrown rock travels flat. The "
-        "parameter is optional and defaults to no arc, so nothing reports an "
+    assert re.search(r"RockMesh\s*,\s*RockThrowFlightSecondsInUse\s*\(", text), (
+        "CataclysmBruteCharacter.cpp does not pass RockThrowFlightSecondsInUse() "
+        "to ACataclysmProjectile::Fire, so the thrown rock travels flat. The "
+        "parameter is optional and defaults to no lob, so nothing reports an "
         "error. The rock is fired from the hand, so flat means over the "
         "player's head."
+    )
+
+
+def test_the_brute_does_not_also_pass_a_speed() -> None:
+    """A lob has no one speed, so passing one would be two answers to one question.
+
+    WHY THIS IS WORTH CHECKING RATHER THAN OBVIOUS. Issue #465. Before it, the
+    Brute passed a designed speed of 600 centimetres per second AND an apex, and
+    the projectile held the speed along the path constant while tracing the
+    shape. Holding the wrong quantity constant is what made the rock cross the
+    ground early and then sink slowly onto its marker.
+
+    A ballistic shot is fastest as it lands and slowest at the top of its arc,
+    so there is no single figure to state. The flight time is what is designed
+    and `ACataclysmProjectile::Fire` works the constant ground speed out from
+    it. A speed put back here would be silently ignored, which is worse than
+    being wrong: it would read as a tuning knob and do nothing.
+    """
+    text = source(BRUTE_CPP)
+
+    assert "RockThrowSpeedCmPerSecond" not in text, (
+        "CataclysmBruteCharacter.cpp still names RockThrowSpeedCmPerSecond. A "
+        "lobbed rock is given a flight time, not a speed; see issue #465. If a "
+        "speed is genuinely wanted again, ACataclysmProjectile::Fire has to be "
+        "told which of the two governs, because it cannot use both."
     )
 
 

@@ -420,17 +420,26 @@ bool FCataclysmArcingProjectileLandsWhereAimed::RunTest(const FString&)
 
 	const FVector From(0.0f, 0.0f, 300.0f);
 	const FVector To(1000.0f, 0.0f, 0.0f);
-	const float Apex = 250.0f;
+	const float FlightSeconds = 1.4f;
 
 	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
-		Caster, From, To, /*InRadiusCm=*/50.0f, /*InSpeed=*/1200.0f,
+		Caster, From, To, /*InRadiusCm=*/50.0f, /*InSpeed=*/0.0f,
 		/*InPierce=*/0, /*bInReturns=*/false, /*InDamagePercent=*/100.0f,
 		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
-		Apex);
+		FlightSeconds);
 	if (!TestNotNull(TEXT("it fired"), Shot))
 	{
 		return false;
 	}
+
+	// THE APEX IS DERIVED FROM THE FLIGHT TIME since issue #465, and the figure
+	// is written out here rather than recomputed from the same constant the
+	// code uses, because a guard built from the number it checks cannot fail.
+	// 980 * 1.4 * 1.4 / 8 is 240.1 centimetres.
+	TestTrue(FString::Printf(
+		TEXT("the apex came out of the flight time (%.1f cm, expected 240.1)"),
+		Shot->ApexHeightCm),
+		FMath::Abs(Shot->ApexHeightCm - 240.1f) < 1.0f);
 
 	double Highest = Shot->GetActorLocation().Z;
 	for (int32 Step = 0; Step < 100 && Shot->Step(0.05f); ++Step)
@@ -439,7 +448,7 @@ bool FCataclysmArcingProjectileLandsWhereAimed::RunTest(const FString&)
 	}
 
 	// IT WENT UP. The midpoint of the straight line between 300 and 0 is 150,
-	// and the apex adds 250 on top of that, so it should reach about 400 --
+	// and the apex adds 240 on top of that, so it should reach about 390 --
 	// which is HIGHER than it was launched from. A rock that only ever fell
 	// would satisfy "it landed correctly" without ever having been a lob.
 	TestTrue(FString::Printf(
@@ -447,9 +456,9 @@ bool FCataclysmArcingProjectileLandsWhereAimed::RunTest(const FString&)
 		Highest, From.Z),
 		Highest > From.Z);
 	TestTrue(FString::Printf(
-		TEXT("and reached about the apex it was given (%.0f cm, expected 400)"),
-		Highest),
-		FMath::Abs(Highest - 400.0f) < 30.0f);
+		TEXT("and reached about the apex the flight time implies "
+			 "(%.0f cm, expected 390)"), Highest),
+		FMath::Abs(Highest - 390.0f) < 30.0f);
 
 	// AND IT CAME BACK DOWN TO WHERE IT WAS AIMED, in all three axes.
 	const FVector Landed = Shot->GetActorLocation();
@@ -508,19 +517,20 @@ bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 	// until 2026-08-09, on a machine that has the Paragon pack installed.
 	Brute->ResolveBody(/*bIncludeAnimation=*/false);
 
-	// THE ARC IS CHECKED WHETHER OR NOT THERE IS ART, because it is computed
-	// from the distance thrown and not from the skeleton.
-	const FVector LandsAt(1000.0f, 0.0f, 0.0f);
-	const float Apex = Brute->RockThrowApexCmFor(LandsAt);
-	const float Thrown = FVector::Dist2D(Brute->RockLaunchLocation(), LandsAt);
+	// THE ARC IS CHECKED WHETHER OR NOT THERE IS ART, because it comes out of
+	// the designed flight time and not from the skeleton.
+	const float Apex = Brute->RockThrowApexCm();
 
-	TestTrue(FString::Printf(TEXT("the throw arcs at all (apex %.0f cm)"), Apex),
+	TestTrue(FString::Printf(TEXT("the throw lobs at all (apex %.0f cm)"), Apex),
 		Apex > 0.0f);
+
+	// 980 * 1.4 * 1.4 / 8 is 240.1 centimetres. Written out rather than
+	// recomputed from the two constants the code multiplies together, because a
+	// guard built from the number it checks cannot fail. Issue #465.
 	TestTrue(FString::Printf(
-		TEXT("and the apex is the designed fraction of the throw "
-			 "(%.0f cm of %.0f)"), Apex, Thrown),
-		FMath::Abs(Apex
-			- Thrown * ACataclysmBruteCharacter::RockThrowApexFraction) < 1.0f);
+		TEXT("and the apex is what the designed 1.4 second flight implies "
+			 "(%.1f cm, expected 240.1)"), Apex),
+		FMath::Abs(Apex - 240.1f) < 1.0f);
 
 	// THE LAUNCH POINT NEEDS THE SKELETON, so say which case ran.
 	const USkeletalMeshComponent* Body = Brute->GetMesh();
@@ -563,26 +573,30 @@ bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 }
 
 /**
- * An arcing projectile must travel at the speed it was given.
+ * A lobbed projectile must be in the air for the time it was given.
  *
- * WHAT THIS GUARDS. Issue #462. When the arc was added for #459 the step loop
- * advanced the projectile horizontally by speed times time and then set its
- * height, so every centimetre of climb or fall was travel the speed never paid
- * for. A rock climbing as fast as it flew forward moved at 1.41 times its own
- * stated speed. The project owner reported it from play as arriving at
- * blistering speed, and none of the tests written for #459 noticed, because they
- * all checked WHERE it went and none checked HOW FAST.
+ * WHAT THIS GUARDS, AND WHAT IT REPLACED. Issue #465. Until then a lob was
+ * given a speed and this test measured it, because issue #462 had shipped a 41%
+ * speed defect that every #459 test missed by checking only WHERE the rock went.
+ * #465 changed what a lob is given: a flight time, from which the ground speed
+ * and the arc height both follow. The measurement it was worth making is the
+ * same measurement, of the quantity that is now designed.
  *
- * MEASURED BY ADDING UP THE PATH, not by reading a field. The distance flown is
- * summed step by step in three dimensions, and divided by the time those steps
- * took. That is what a stopwatch on the rock would give.
+ * WHY THE TIME IS THE THING WORTH GUARDING. The marker appears when the wind-up
+ * starts and the rock then has to travel, so the player's window to move is the
+ * telegraph plus this. A lob that quietly took half as long would give back half
+ * the warning, and the rock would still land exactly on the circle, so nothing
+ * about where it went would look wrong.
+ *
+ * MEASURED WITH A STOPWATCH, not by reading a field. The steps are counted until
+ * the flight ends.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmArcingProjectileFliesAtItsSpeed,
-	"Cataclysm.Skills.AnArcingProjectileTravelsAtTheSpeedItWasGiven",
+	FCataclysmLobbedProjectileTakesTheTimeItWasGiven,
+	"Cataclysm.Skills.ALobbedProjectileIsInTheAirForTheTimeItWasGiven",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmArcingProjectileFliesAtItsSpeed::RunTest(const FString&)
+bool FCataclysmLobbedProjectileTakesTheTimeItWasGiven::RunTest(const FString&)
 {
 	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
 									   /*bInformEngineOfWorld=*/false);
@@ -601,57 +615,249 @@ bool FCataclysmArcingProjectileFliesAtItsSpeed::RunTest(const FString&)
 		return false;
 	}
 
+	// TWO THROWS OF VERY DIFFERENT LENGTHS, because "the same time whatever the
+	// range" is the actual claim and one throw cannot show it. A model that
+	// derived the time from a speed -- which is what this class did before
+	// issue #465 -- would give these two wildly different flights while still
+	// landing both of them exactly on target.
+	struct FCase
+	{
+		float RangeCm;
+		const TCHAR* What;
+	};
+	const FCase Cases[] =
+	{
+		{200.0f, TEXT("a two metre lob")},
+		{1000.0f, TEXT("a ten metre lob")},
+	};
+
+	const float FlightSeconds = 1.4f;
+	const float StepSeconds = 0.01f;
+
+	for (const FCase& Case : Cases)
+	{
+		const FVector From(0.0f, 0.0f, 300.0f);
+		const FVector To(Case.RangeCm, 0.0f, 0.0f);
+
+		ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+			Caster, From, To, /*InRadiusCm=*/50.0f, /*InSpeed=*/0.0f,
+			/*InPierce=*/0, /*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+			FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
+			FlightSeconds);
+		if (!TestNotNull(TEXT("it fired"), Shot))
+		{
+			return false;
+		}
+
+		float Elapsed = 0.0f;
+		for (int32 Step = 0; Step < 1000 && Shot->Step(StepSeconds); ++Step)
+		{
+			Elapsed += StepSeconds;
+		}
+		// The step that finished the flight returns false, so its time is added
+		// here rather than being left out of the total.
+		Elapsed += StepSeconds;
+
+		AddInfo(FString::Printf(
+			TEXT("%s was in the air %.2f s against a designed %.2f."),
+			Case.What, Elapsed, FlightSeconds));
+
+		// WITHIN A TWENTIETH OF A SECOND. The last step is cut short when the
+		// projectile arrives, so a stopwatch over a whole flight cannot be
+		// exact; at a hundredth of a second per step the slack is at most one
+		// step. That is far tighter than the difference this exists to catch,
+		// which for these two ranges under a speed-driven model would be 1.3
+		// seconds.
+		TestTrue(FString::Printf(
+			TEXT("%s took the time it was given (%.2f s against %.2f)"),
+			Case.What, Elapsed, FlightSeconds),
+			FMath::Abs(Elapsed - FlightSeconds) < 0.05f);
+
+		// AND IT REALLY ARRIVED, so a flight cut short by a bad arrival test
+		// cannot pass this by never having gone anywhere.
+		TestTrue(FString::Printf(
+			TEXT("%s reached where it was aimed (%.0f cm away)"),
+			Case.What, FVector::Dist(Shot->GetActorLocation(), To)),
+			FVector::Dist(Shot->GetActorLocation(), To) < 20.0f);
+	}
+
+	return true;
+}
+
+/**
+ * A lobbed projectile covers ground at a steady rate and falls faster and
+ * faster.
+ *
+ * WHAT THIS GUARDS. Issue #465, and it is the property NEITHER of the two tests
+ * before it checked. #459's tests checked WHERE the rock went. #462's test
+ * checked HOW FAST it went overall. Both passed while the speed was distributed
+ * along the flight in a way no thrown object has ever moved: the step held the
+ * speed THROUGH THE AIR constant, so a steep part of the path bought less ground
+ * than a shallow one. Over a ten metre throw from a hand to the floor the
+ * horizontal speed was 80% of the designed figure at launch, 97% halfway and 62%
+ * at the landing, and over a two metre throw, 97% and 41%. The rock crossed most
+ * of the ground early and then sank slowly onto the marker, which is what the
+ * project owner reported.
+ *
+ * THE TWO HALVES OF WHAT MAKES A TRAJECTORY BALLISTIC. Gravity acts downward and
+ * nothing acts sideways, so the horizontal speed never changes and the vertical
+ * one changes at a constant rate. Both are measured here, from positions, over
+ * three windows of the same flight.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmLobbedProjectileHoldsItsGroundSpeed,
+	"Cataclysm.Skills.ALobbedProjectileHoldsItsGroundSpeedAndAcceleratesDownward",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLobbedProjectileHoldsItsGroundSpeed::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FURL URL;
+	World->InitializeActorsForPlay(URL);
+	World->BeginPlay();
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	// FROM A HAND TO THE FLOOR, which is the case that produced the defect. A
+	// lob whose two ends are at the same height is symmetric and hides it: the
+	// old model's error came from the chord being tilted, so launching and
+	// landing at the same height would have made the launch and landing slopes
+	// equal and opposite and the two speeds equal.
 	const FVector From(0.0f, 0.0f, 300.0f);
 	const FVector To(1000.0f, 0.0f, 0.0f);
-	const float Speed = 600.0f;
+	const float FlightSeconds = 1.4f;
+	const float StepSeconds = 0.01f;
 
-	// A TALL ARC ON PURPOSE. The error this catches grows with the slope, so a
-	// shallow arc would let a broken version pass by a margin small enough to
-	// look like rounding. At an apex of 400 over a 1000 cm throw the launch
-	// slope is steep enough that the difference is unmistakable.
 	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
-		Caster, From, To, /*InRadiusCm=*/50.0f, Speed,
+		Caster, From, To, /*InRadiusCm=*/50.0f, /*InSpeed=*/0.0f,
 		/*InPierce=*/0, /*bInReturns=*/false, /*InDamagePercent=*/100.0f,
 		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
-		/*InApexHeightCm=*/400.0f);
+		FlightSeconds);
 	if (!TestNotNull(TEXT("it fired"), Shot))
 	{
 		return false;
 	}
 
-	const float StepSeconds = 0.02f;
-	double Flown = 0.0;
-	float Elapsed = 0.0f;
-	FVector Was = Shot->GetActorLocation();
-	for (int32 Step = 0; Step < 500 && Shot->Step(StepSeconds); ++Step)
+	// Every position it occupied, so any window of the flight can be measured
+	// afterwards rather than deciding in advance which one matters.
+	TArray<FVector> Track;
+	Track.Add(Shot->GetActorLocation());
+	for (int32 Step = 0; Step < 1000 && Shot->Step(StepSeconds); ++Step)
 	{
-		const FVector Now = Shot->GetActorLocation();
-		Flown += FVector::Dist(Was, Now);
-		Was = Now;
-		Elapsed += StepSeconds;
+		Track.Add(Shot->GetActorLocation());
 	}
-	// The step that finished the flight returns false, so its travel is added
-	// here rather than being left out of the total.
-	Flown += FVector::Dist(Was, Shot->GetActorLocation());
-	Elapsed += StepSeconds;
+	Track.Add(Shot->GetActorLocation());
 
-	if (!TestTrue(TEXT("it flew for a measurable time"), Elapsed > 0.1f))
+	if (!TestTrue(FString::Printf(
+			TEXT("it flew for enough steps to measure (%d)"), Track.Num()),
+			Track.Num() > 30))
 	{
 		return false;
 	}
 
-	const double Measured = Flown / Elapsed;
-	AddInfo(FString::Printf(
-		TEXT("Flew %.0f cm in %.2f s, which is %.0f cm/s against a designed "
-			 "%.0f."), Flown, Elapsed, Measured, Speed));
+	// A tenth of the flight at each end and a tenth across the middle. Windows
+	// rather than single steps, so one short final step cannot decide the
+	// answer.
+	const int32 Window = FMath::Max(2, Track.Num() / 10);
+	const int32 Middle = Track.Num() / 2;
 
-	// WITHIN A TENTH. The last step is cut short when the projectile arrives,
-	// so a measurement over a whole flight cannot be exact; a tenth is far
-	// tighter than the 41% error this exists to catch.
+	auto GroundSpeedOver = [&Track, StepSeconds](int32 First, int32 Last)
+	{
+		return FVector::Dist2D(Track[First], Track[Last])
+			/ (static_cast<float>(Last - First) * StepSeconds);
+	};
+	auto FallSpeedOver = [&Track, StepSeconds](int32 First, int32 Last)
+	{
+		return static_cast<float>(Track[First].Z - Track[Last].Z)
+			/ (static_cast<float>(Last - First) * StepSeconds);
+	};
+
+	// Stops one step short of the end, because the step that arrives is cut off
+	// part way through and covers less ground in the time it is charged for.
+	const int32 LandingWindowFirst = Track.Num() - 2 - Window;
+	const int32 LandingWindowLast = Track.Num() - 2;
+
+	const float GroundAtLaunch = GroundSpeedOver(0, Window);
+	const float GroundInMiddle =
+		GroundSpeedOver(Middle - Window / 2, Middle + Window / 2);
+	const float GroundAtLanding =
+		GroundSpeedOver(LandingWindowFirst, LandingWindowLast);
+
+	AddInfo(FString::Printf(
+		TEXT("Ground speed launch/middle/landing: %.0f / %.0f / %.0f cm/s. "
+			 "The designed figure is %.0f."),
+		GroundAtLaunch, GroundInMiddle, GroundAtLanding,
+		Shot->SpeedCmPerSecond));
+
+	// WITHIN A TWENTIETH OF EACH OTHER. The old model was out by 18% at launch
+	// and 38% at the landing over exactly this throw, so five percent separates
+	// a correct flight from that one without being so tight that the step
+	// boundaries decide it.
+	const float Tolerance = Shot->SpeedCmPerSecond * 0.05f;
 	TestTrue(FString::Printf(
-		TEXT("it travelled at about the speed it was given (%.0f cm/s against "
-			 "%.0f)"), Measured, Speed),
-		FMath::Abs(Measured - Speed) < Speed * 0.1);
+		TEXT("it left the hand at its ground speed (%.0f against %.0f)"),
+		GroundAtLaunch, Shot->SpeedCmPerSecond),
+		FMath::Abs(GroundAtLaunch - Shot->SpeedCmPerSecond) < Tolerance);
+	TestTrue(FString::Printf(
+		TEXT("and still had it halfway (%.0f against %.0f)"),
+		GroundInMiddle, Shot->SpeedCmPerSecond),
+		FMath::Abs(GroundInMiddle - Shot->SpeedCmPerSecond) < Tolerance);
+	TestTrue(FString::Printf(
+		TEXT("and still had it as it landed (%.0f against %.0f)"),
+		GroundAtLanding, Shot->SpeedCmPerSecond),
+		FMath::Abs(GroundAtLanding - Shot->SpeedCmPerSecond) < Tolerance);
+
+	// AND THE DESCENT SPEEDS UP, which is the other half of projectile motion
+	// and the half the player actually sees. The old model did the opposite: it
+	// arrived slowly. Measured as a fall rate, so climbing is negative.
+	const float FallAtLaunch = FallSpeedOver(0, Window);
+	const float FallAtLanding =
+		FallSpeedOver(LandingWindowFirst, LandingWindowLast);
+
+	AddInfo(FString::Printf(
+		TEXT("Fall rate launch/landing: %.0f / %.0f cm/s."),
+		FallAtLaunch, FallAtLanding));
+
+	TestTrue(FString::Printf(
+		TEXT("it was still climbing when it left the hand (%.0f cm/s of fall)"),
+		FallAtLaunch),
+		FallAtLaunch < 0.0f);
+	TestTrue(FString::Printf(
+		TEXT("and was falling faster at the end than at any point before "
+			 "(%.0f cm/s against %.0f)"), FallAtLanding, FallAtLaunch),
+		FallAtLanding > FallAtLaunch);
+
+	// AT THE RATE GRAVITY PULLS. Over the whole flight the fall rate goes from
+	// its launch value to its landing value, and that change divided by the
+	// time it took is the acceleration. 980 centimetres per second squared is
+	// what Unreal's own DefaultGravityZ is, and it is written out here rather
+	// than read off the class, because a guard built from the number it checks
+	// cannot fail.
+	//
+	// BETWEEN THE MIDDLES OF THE TWO WINDOWS, not between their edges. An
+	// average rate over a window is the instantaneous rate at the middle of it,
+	// so measuring the span any other way biases the answer by half a window.
+	const float Span = (0.5f * static_cast<float>(
+			LandingWindowFirst + LandingWindowLast) - 0.5f
+		* static_cast<float>(Window)) * StepSeconds;
+	const float Measured = (FallAtLanding - FallAtLaunch) / Span;
+	AddInfo(FString::Printf(
+		TEXT("Measured downward acceleration %.0f cm/s^2 over %.2f s."),
+		Measured, Span));
+	TestTrue(FString::Printf(
+		TEXT("and it fell at gravity (%.0f cm/s^2, expected about 980)"),
+		Measured),
+		FMath::Abs(Measured - 980.0f) < 120.0f);
 
 	return true;
 }

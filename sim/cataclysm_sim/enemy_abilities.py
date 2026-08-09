@@ -53,10 +53,19 @@ SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Aura",
 #: table and is what validates the player skill sheet. The two are checked
 #: against each other by `tools/tests/test_enemy_abilities.py`, because a copy
 #: in this project has silently drifted before.
+#:
+#: A PROJECTILE STATES `Speed` OR `Flight`, NOT BOTH. `Speed` is centimetres per
+#: second and describes something travelling flat, which is every one of the 398
+#: player projectile rows. `Flight` is seconds in the air and describes a LOB
+#: following real projectile motion onto the point it was aimed at: steady speed
+#: across the ground, a descent that accelerates, and an arc height that falls
+#: out of the time rather than being stated separately. A lob has no single
+#: speed to state, because it is slowest at the top of its arc and fastest as it
+#: lands. Issue #465.
 SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
                "Knockback"),
-    "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed"),
+    "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed", "Flight"),
     "SelfBuff": ("Duration", "Radius", "IncreasePerBurning"),
     "Movement": ("Mode", "Range", "Radius"),
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval"),
@@ -531,23 +540,34 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # as different sizes, and well under the 7.35 m its own cooldown
             # would allow.
             #
-            # SPEED 600, WHICH IS HALF THE SLOWEST PLAYER PROJECTILE. The
-            # ceiling is the Succubus's Soulfire at 1200, the slowest projectile
-            # any player skill uses in game/Data/WeaponSkills.csv: a thrown rock
-            # must not outrun the slowest spell in the game. That argument sets
-            # a MAXIMUM and says nothing about how far below it to sit.
-            #
-            # LOWERED FROM 1200 ON 2026-08-09 BECAUSE THE FLIGHT WAS INVISIBLE.
-            # The project owner reported the rock arriving at blistering speed.
-            # At 1200 a five metre throw is in the air for 0.42 seconds and a
-            # three metre one for 0.25, which is a single thinking pass: the arc
-            # is over before it can be read. At 600 the same five metre throw
-            # takes 0.83 seconds.
+            # FLIGHT 1.4 SECONDS, AND NOT A SPEED AT ALL. Replaced Speed=600 on
+            # 2026-08-09, issue #465. A lob follows real projectile motion, so
+            # it has no one speed to state: it is slowest at the top of its arc
+            # and fastest as it lands. Stating the TIME instead settles the
+            # trajectory completely, because gravity supplies the rest.
             #
             # THE FLIGHT IS PART OF THE WARNING for a lobbed attack. The marker
             # appears when the wind-up starts and the rock then has to travel,
-            # so the player's time to move is the wind-up PLUS the flight. A
-            # flight too short to see gives back the second the telegraph bought.
+            # so the player's time to move is the wind-up PLUS the flight. At
+            # 1.4 that window is a designed 2.4 seconds AT EVERY RANGE, rather
+            # than something that shrinks as the player closes in: under the old
+            # speed the same throw took 1.95 seconds at ten metres and 0.55 at
+            # two. Shipped games choose a fixed delay deliberately for exactly
+            # this. See docs/DECISIONS.md for the sources.
+            #
+            # IT SETS THE ARC AS WELL, because gravity ties them together: a
+            # parabola sags g*t*t/8 below its own chord, 240 cm at 1.4 seconds.
+            # Over the full 10 m throw that is 0.24 of the range, within
+            # rounding of the 0.25 this row carried before #465, so the longest
+            # throw kept the shape it already had. There is one number here now
+            # rather than a speed and an arc fraction.
+            #
+            # AND IT IS BOUNDED ABOVE BY THE SPEED CEILING. The rock must not
+            # outrun the Succubus's Soulfire at 1200, the slowest projectile any
+            # player skill uses in game/Data/WeaponSkills.csv. It lands fastest,
+            # having fallen longest: at 1.4 seconds a ten metre throw arrives at
+            # 1121 cm/s, under the ceiling. At 1.0 it would arrive at 1244 and
+            # break it, so the flight cannot be shortened much below 1.4.
             #
             # PIERCE 0 BECAUSE IT IS ONE ROCK. It stops at what it hits.
             #
@@ -561,7 +581,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # THE MARKED AREA IS THE SAME 2.1 m RADIUS, so this row is unchanged
             # in what it says the attack covers. Only its shape moved: a circle
             # where it lands rather than a lane along the way.
-            params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Speed": 600},
+            params={"Range": 10, "Radius": 2.1, "Pierce": 0, "Flight": 1.4},
             # THE SPECIAL SLOT'S TYPICAL COOLDOWN, and the approach time
             # confirms it is the right side of the constraint that matters. The
             # Brute crosses its own 10 m throwing range in 2 seconds at its 5
@@ -578,7 +598,9 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                  "grounds that it is a basic mob and that rarities and "
                  "modifiers are where extra abilities belong. Became an arc "
                  "onto a landing circle on 2026-08-09, from a flat throw down "
-                 "a marked lane.",
+                 "a marked lane, and on the same day became real projectile "
+                 "motion measured by a fixed 1.4 second flight rather than a "
+                 "speed.",
         ),
     ),
 }

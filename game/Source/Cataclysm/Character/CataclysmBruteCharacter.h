@@ -123,19 +123,37 @@ public:
 	static constexpr float RockThrowRadiusCm = 210.0f;
 
 	/**
-	 * Centimetres per second the rock travels THROUGH THE AIR. Speed=600.
+	 * How long the rock is in the air, in seconds. Flight=1.4.
 	 *
-	 * Lowered from 1200 on 2026-08-09. The ceiling is 1200, the slowest
-	 * projectile any player skill uses, because a thrown rock must not outrun
-	 * the slowest spell in the game; that argument sets a maximum and says
-	 * nothing about how far below it to sit. At 1200 a five metre throw was in
-	 * the air for 0.42 seconds and a three metre one for 0.25, which is a
-	 * single thinking pass, so the arc was over before it could be read and the
-	 * project owner reported it as blistering.
+	 * THE SAME FOR EVERY THROW, WHATEVER THE RANGE, and that is the point of
+	 * stating a time rather than a speed. The marker appears when the wind-up
+	 * starts and the rock then has to travel, so the player's window to move is
+	 * the 1 second telegraph plus this. Holding it fixed makes that window a
+	 * designed 2.4 seconds at every distance, instead of something that shrinks
+	 * as the player closes in. Issue #465, which replaced Speed=600 with this.
 	 *
-	 * `Cataclysm.Brute.RockSpeed` overrides it for judging by eye.
+	 * WHY 1.4 RATHER THAN MORE OR LESS. Three bounds meet near it.
+	 *
+	 * It sets the arc, because gravity ties the two together: a parabola sags
+	 * `g * t * t / 8` below its own chord, which at 1.4 seconds is 240 cm. Over
+	 * the full 10 metre throw that is 0.24 of the range -- within rounding of
+	 * the 0.25 the design carried before #465, so the longest throw kept the
+	 * silhouette it already had.
+	 *
+	 * It sets the speed, and the rock must not outrun the slowest projectile
+	 * any player skill uses, which is the Succubus's Soulfire at 1200. A lob
+	 * has no single speed; it is fastest as it lands. At 1.4 seconds the ten
+	 * metre throw lands at 1121 centimetres per second, under the ceiling. At
+	 * 1.0 it would land at 1244 and break it.
+	 *
+	 * And it must be long enough to see. At the old Speed=1200 a five metre
+	 * throw was in the air for 0.42 seconds and a three metre one for 0.25 --
+	 * a single thinking pass -- and the project owner reported it as
+	 * blistering.
+	 *
+	 * `Cataclysm.Brute.RockHangTime` overrides it for judging by eye.
 	 */
-	static constexpr float RockThrowSpeedCmPerSecond = 600.0f;
+	static constexpr float RockThrowFlightSeconds = 1.4f;
 
 	/** Seconds between throws. */
 	static constexpr float RockThrowCooldownSeconds = 5.0f;
@@ -146,28 +164,17 @@ public:
 	/** Percent of its damage one rock deals. The Special slot's 150%. */
 	static constexpr float RockThrowDamagePercent = 150.0f;
 
-	/**
-	 * How high the rock rises above the straight line from hand to landing
-	 * point, as a fraction of the distance thrown.
-	 *
-	 * A REAL TRAJECTORY RATHER THAN A CHOSEN NUMBER. A projectile launched at
-	 * 45 degrees, which is the angle that throws an object furthest, reaches an
-	 * apex of one quarter of its range. Taking the same fraction here makes a
-	 * short throw shallow and a long one high without either being decided
-	 * separately.
-	 *
-	 * IT STILL HAS TO BE JUDGED BY WATCHING, which is why
-	 * `Cataclysm.Brute.RockArc` exists. Whether an arc READS as a heavy
-	 * creature heaving a boulder is not something the physics settles, and this
-	 * project sets figures of that kind by playing them -- the chase speed and
-	 * both authored animation speeds were set that way.
-	 *
-	 * WHY THE ROCK ARCS AT ALL. Issue #459. A ground marker promises a place
-	 * and a flat projectile delivers a line, and pairing the two is a known
-	 * mistake rather than a matter of taste. Arcing onto the marked circle
-	 * makes the warning true.
-	 */
-	static constexpr float RockThrowApexFraction = 0.25f;
+	//~ WHY THE ROCK LOBS AT ALL. Issue #459. A ground marker promises a place
+	// and a flat projectile delivers a line, and pairing the two is a known
+	// mistake rather than a matter of taste. Lobbing onto the marked circle
+	// makes the warning true.
+	//
+	// THERE IS NO APEX CONSTANT HERE ANY MORE. Until issue #465 the arc was
+	// stated as a fraction of the distance thrown, 0.25, and the flight time
+	// fell out of it. It is now the other way round: the flight time above is
+	// the designed number and the apex falls out of it as `g * t * t / 8`. One
+	// figure rather than two, because gravity is what ties them together and a
+	// second knob would mean inventing a gravity to go with it.
 	//~ End designed ability numbers
 
 	//~ Each ability is ONE MONTAGE holding two clips back to back: the wind-up,
@@ -296,15 +303,15 @@ public:
 	float RockThrowCooldownSecondsInUse() const;
 
 	/**
-	 * How fast the thrown rock is actually travelling, in centimetres per
-	 * second. `Cataclysm.Brute.RockSpeed` overrides it; zero uses the design.
+	 * How long the thrown rock is actually in the air, in seconds.
+	 * `Cataclysm.Brute.RockHangTime` overrides it; zero uses the design.
 	 *
-	 * IT IS A SPEED THROUGH THE AIR. An arcing shot covers more air than
-	 * ground, and `ACataclysmProjectile::Step` accounts for that, so this is
-	 * the figure a stopwatch on the rock would measure rather than the rate it
-	 * crosses the floor at.
+	 * IT IS THE SAME NUMBER WHATEVER THE RANGE. A lob has no one speed -- it
+	 * is slowest at the top and fastest as it lands -- so the flight time is
+	 * what is stated, and `ACataclysmProjectile` derives the ground speed and
+	 * the arc height from it. Issue #465.
 	 */
-	float RockThrowSpeedCmPerSecondInUse() const;
+	float RockThrowFlightSecondsInUse() const;
 
 	/**
 	 * Where a thrown rock leaves the creature.
@@ -322,13 +329,20 @@ public:
 	FVector RockLaunchLocation() const;
 
 	/**
-	 * How high a rock thrown at this point should rise above the straight line
-	 * to it, in centimetres.
+	 * How high the thrown rock rises above the straight line to where it lands,
+	 * in centimetres.
 	 *
-	 * Reads `Cataclysm.Brute.RockArc` if it has been set, so the shape of the
-	 * lob can be judged by playing rather than argued about.
+	 * TAKES NO LANDING POINT, WHICH IS THE CHANGE ISSUE #465 MADE. It used to
+	 * be a fraction of the distance thrown and so differed for every throw. It
+	 * is now `g * t * t / 8` from the flight time alone, so a two metre lob and
+	 * a ten metre lob rise the same distance above their chords and the short
+	 * one is therefore the steeper. That is what a thrown object does when its
+	 * hang time is held fixed.
+	 *
+	 * Follows `Cataclysm.Brute.RockHangTime` through the flight time, so the
+	 * shape of the lob can still be judged by playing rather than argued about.
 	 */
-	float RockThrowApexCmFor(const FVector& LandsAt) const;
+	float RockThrowApexCm() const;
 
 	/**
 	 * The rock's own material, taken off the rock mesh.

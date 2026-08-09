@@ -33,6 +33,18 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmProjectileFinished, ACataclysmProj
  * asks who is inside the capsule from where it was to where it now is, which is
  * the volume it actually passed through.
  *
+ * A LOB IS REAL PROJECTILE MOTION, AND THAT IS A STATEMENT ABOUT SPEED, NOT
+ * ABOUT SHAPE. Issue #465. The shape was already a parabola; what was wrong was
+ * how the projectile moved along it. The old step held the speed THROUGH THE
+ * AIR constant, so the steeper the path the less ground it covered per second:
+ * over a ten metre throw from a hand to the floor its horizontal speed was 80%
+ * of the figure at launch, 97% halfway and 62% at the landing, and over a two
+ * metre one, 97% and 41%. It crossed the ground early and then sank slowly onto
+ * the marker, which the project owner reported from play. Gravity acts downward
+ * and nothing acts sideways, so a thrown object holds its HORIZONTAL speed and
+ * lets only the vertical one change -- meaning it covers ground at a steady
+ * rate and its descent speeds up. That is what happens here now.
+ *
  * PIERCE DECIDES WHAT A HIT DOES TO IT. One that pierces passes through and
  * keeps its speed, hitting each enemy once, until its pierce budget runs out.
  * One that does not pierce stops at the first enemy it touches and hits in a
@@ -82,7 +94,13 @@ public:
 	 * @param bInBurns       whether it sets what it hits alight
 	 * @param InBodyMesh     what the flying object looks like. Null keeps the
 	 *   placeholder sphere, which is what every player skill uses today.
-	 * @return the projectile, or null if the world, the caster or the speed is missing
+	 * @param InFlightSeconds how long a LOBBED shot stays in the air. Zero, which
+	 *   is what every player skill passes, means it does not lob: it travels
+	 *   flat at InSpeed. Above zero it follows real projectile motion onto
+	 *   `To` and InSpeed is not used, because a ballistic shot does not have
+	 *   one speed. See ApexHeightCm.
+	 * @return the projectile, or null if the world or the caster is missing, or if
+	 *   it was given neither a speed nor a flight time
 	 */
 	static ACataclysmProjectile* Fire(AActor* Instigator, const FVector& From,
 									  const FVector& To, float InRadiusCm,
@@ -91,7 +109,7 @@ public:
 									  const FGameplayTagContainer& InSkillTags,
 									  bool bInBurns,
 									  UStaticMesh* InBodyMesh = nullptr,
-									  float InApexHeightCm = 0.0f);
+									  float InFlightSeconds = 0.0f);
 
 	/**
 	 * Swap what the flying object looks like, and size it to BodyRadiusCm.
@@ -191,7 +209,20 @@ public:
 	 */
 	static constexpr float DefaultBodyRadiusCm = 40.0f;
 
-	/** Centimetres per second. */
+	/**
+	 * Centimetres per second ACROSS THE GROUND, and it does not change during
+	 * the flight.
+	 *
+	 * FOR A FLAT SHOT it is simply the speed it was fired at, which is the
+	 * whole of its motion.
+	 *
+	 * FOR A LOB it is worked out rather than given: the horizontal distance
+	 * divided by FlightSeconds. That is not a detail of bookkeeping, it is the
+	 * definition of projectile motion. Gravity acts downward and nothing acts
+	 * sideways, so the horizontal component of a thrown object's velocity is
+	 * constant from launch to landing while only the vertical one changes.
+	 * Issue #465.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	float SpeedCmPerSecond = 0.0f;
 
@@ -200,23 +231,76 @@ public:
 	float RemainingRangeCm = 0.0f;
 
 	/**
-	 * How high above the straight line from launch to landing it rises, in
-	 * centimetres. **Zero means it does not arc at all**, which is what every
-	 * player skill passes and what this class did before issue #459.
+	 * How long a lobbed shot is in the air, in seconds. **Zero means it does
+	 * not lob at all**, which is what every player skill passes and what this
+	 * class did for everything before issue #459.
 	 *
 	 * WHY OPT-IN RATHER THAN ALWAYS ON. All 398 rows of
-	 * `game/Data/WeaponSkills.csv` fire through this class. An arc applied to
+	 * `game/Data/WeaponSkills.csv` fire through this class. A lob applied to
 	 * every one of them would turn each fire bolt into a mortar, so a caller
 	 * that wants one asks for it, exactly as the Brute passes its own mesh
 	 * rather than the class knowing about rocks.
 	 *
-	 * AT THE MIDPOINT OF THE FLIGHT, not above the launch point. The path is
-	 * the straight line between the two ends plus a parabola that is zero at
-	 * both ends and this tall halfway along, which is the shape a thrown object
-	 * actually follows.
+	 * WHY TIME IS THE NUMBER GIVEN, rather than a speed or an angle or an
+	 * apex. A ballistic solve needs exactly one input beyond the two ends and
+	 * gravity, and the four candidates are not equivalent. Time is the one that
+	 * matters for a TELEGRAPHED attack: the marker appears, and the player's
+	 * window to leave is the wind-up plus the flight. Fixing the flight makes
+	 * that window a designed number instead of an accident of how far away the
+	 * player happened to be standing. Shipped games choose this deliberately --
+	 * the Old School RuneScape wiki documents most ranged attacks scaling their
+	 * hit delay with distance and specific weapons given "a fixed hit delay of
+	 * 2 ticks regardless of distance" -- and Diablo 4's ground-circle attacks
+	 * land a set moment after the circle appears. Issue #465.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	float FlightSeconds = 0.0f;
+
+	/**
+	 * How high above the straight line from launch to landing it rises, in
+	 * centimetres. Zero for a shot that does not lob.
+	 *
+	 * DERIVED, NOT GIVEN, since issue #465. It is `g * t * t / 8`, which is how
+	 * far a parabola sags below its own chord over a flight of t seconds. Two
+	 * things follow that are worth knowing before reading a number off it:
+	 *
+	 * IT IS THE SAME HEIGHT AT EVERY RANGE, because it depends only on the
+	 * flight time. A two metre lob and a ten metre lob taking the same time
+	 * rise the same distance above their chords, so the short one looks steep
+	 * and the long one shallow. That is what real thrown objects do.
+	 *
+	 * IT IS NOT SEPARATELY TUNABLE. Before #465 the apex was passed in and the
+	 * flight time fell out of it; now the flight time is passed in and the apex
+	 * falls out. There is one knob rather than two because gravity ties them
+	 * together, and inventing a second would mean inventing a gravity.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	float ApexHeightCm = 0.0f;
+
+	/**
+	 * The downward acceleration a lobbed shot falls under, in centimetres per
+	 * second squared.
+	 *
+	 * UNREAL'S OWN DEFAULT, which is `DefaultGravityZ=-980.0` in
+	 * `Engine/Config/BaseEngine.ini`, so a thrown rock falls at the rate
+	 * everything else in the engine falls at.
+	 *
+	 * A CONSTANT RATHER THAN THE WORLD'S GRAVITY, deliberately. A projectile
+	 * fired by a telegraphed attack has to arrive when the telegraph promised,
+	 * and reading `UWorld::GetGravityZ` would let a level with altered gravity
+	 * silently change how high every enemy's lob rises. The flight time is a
+	 * design number; this is what turns it into a shape.
+	 *
+	 * MASS DOES NOT APPEAR HERE AND NOTHING IS MISSING. In a vacuum every
+	 * object falls at the same rate whatever it weighs, so a projectile weight
+	 * would change nothing about where this rock goes or when it arrives.
+	 * Unreal agrees: `UProjectileMovementComponent` -- the engine's own
+	 * projectile mover -- contains no reference to mass at all, and even its
+	 * `AddForce` is added straight to acceleration without being divided by
+	 * one. What reads as weight is the shape of the arc and the fact that the
+	 * descent accelerates, which is what this produces.
+	 */
+	static constexpr float LobGravityCmPerSecondSquared = 980.0f;
 
 	/** How many more enemies it may pass through. One that does not pierce is zero. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
@@ -320,30 +404,17 @@ private:
 	float LandingZ = 0.0f;
 
 	/**
-	 * Where an arcing projectile should be, given how far it has travelled
+	 * Where a lobbed projectile should be, given how far it has travelled
 	 * horizontally.
 	 *
-	 * Returns the height only. The horizontal part of the flight is unchanged
-	 * by arcing: the projectile covers the same ground at the same speed and
-	 * lands in the same place, it simply passes over rather than through what
-	 * is between.
+	 * Returns the height only, and taking horizontal distance rather than
+	 * elapsed time is not a shortcut: the two are interchangeable here because
+	 * a lob's horizontal speed is constant, so the fraction of the ground it
+	 * has covered IS the fraction of the flight that has passed. Working from
+	 * distance keeps the landing point exact rather than the accumulation of
+	 * however many steps the frame rate happened to produce.
 	 */
 	float ArcHeightAfter(float HorizontalTravelledCm) const;
-
-	/**
-	 * How steeply an arcing projectile is climbing or falling, as a rise over a
-	 * horizontal run.
-	 *
-	 * WHAT IT IS FOR. The speed a projectile is given is a speed THROUGH THE
-	 * AIR. An arc covers more air than ground, so a step that advanced it
-	 * horizontally by speed times time would move it faster than its own speed.
-	 * The step is divided by `sqrt(1 + slope * slope)` to correct for that.
-	 * Issue #462.
-	 *
-	 * Zero for a projectile that does not arc, which divides by one and leaves
-	 * every player skill exactly as it was.
-	 */
-	float ArcSlopeAfter(float HorizontalTravelledCm) const;
 
 	/** Whether it turns round at the far end. */
 	bool bWillReturn = false;

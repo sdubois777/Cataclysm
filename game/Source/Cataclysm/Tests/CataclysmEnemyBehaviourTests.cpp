@@ -1998,13 +1998,16 @@ bool FCataclysmProjectileIsVisibleTest::RunTest(const FString&)
 
 	FScopedFighter Thrower(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
 
+	// FIRED THE WAY THE BRUTE FIRES ONE since issue #465: a flight time and no
+	// speed at all, because a lob has no single speed to give.
 	ACataclysmProjectile* Rock = ACataclysmProjectile::Fire(
 		Thrower.Actor, FVector::ZeroVector, FVector(10 * M, 0.0f, 0.0f),
 		ACataclysmBruteCharacter::RockThrowRadiusCm,
-		ACataclysmBruteCharacter::RockThrowSpeedCmPerSecond,
+		/*InSpeed=*/0.0f,
 		/*InPierce=*/0, /*bInReturns=*/false,
 		ACataclysmBruteCharacter::RockThrowDamagePercent,
-		FGameplayTagContainer(), /*bInBurns=*/false);
+		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
+		ACataclysmBruteCharacter::RockThrowFlightSeconds);
 
 	if (!Rock)
 	{

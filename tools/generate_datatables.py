@@ -193,9 +193,16 @@ TEXT_PARAMS = frozenset({"Mode", "Effect"})
 #: Path of Exile draws the same line: its gems.json carries `types` (the internal
 #: list, whose stated purpose is deciding which support gems may support a skill)
 #: separately from the behaviour the skill's own ActiveSkills.dat id names.
+#: A PROJECTILE STATES `Speed` OR `Flight`, NOT BOTH. `Speed` is centimetres per
+#: second and describes something travelling flat, which is what all 398 player
+#: projectile rows use. `Flight` is seconds in the air and describes a LOB
+#: following real projectile motion onto the point it was aimed at, whose speed
+#: and arc height both fall out of the time. `SHAPE_PARAMS` in
+#: `sim/cataclysm_sim/enemy_abilities.py` is the same table and says the same.
+#: Issue #465.
 SHAPE_PARAMS = {
     "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval", "Knockback"},
-    "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed"},
+    "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed", "Flight"},
     "SelfBuff": {"Duration", "Radius", "IncreasePerBurning"},
     "Movement": {"Mode", "Range", "Radius"},
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval"},
