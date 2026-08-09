@@ -11,25 +11,34 @@ WHICH IS AUTHORITATIVE. The Python. `ARCHETYPES["Brute"]` in
 When this test fails, the usual fix is to change the C++ to match, not the other
 way round.
 
-WHY THE C++ HOLDS A COPY AT ALL. There is no enemy stat DataTable. Nothing
-carries `enemy_stats.py` into the engine: `game/Data/` has fourteen CSVs and none
-of them is about enemy statistics, and the generator has no handler for one.
-Building that pipeline is issue #355 and is a change of its own. Until it lands,
-the engine needs the numbers written down somewhere, and a second copy guarded by
-a test is the shape this repository already uses for class stats and affixes.
+WHY THE C++ STILL HOLDS A COPY. There is now an enemy stat DataTable:
+`game/Data/EnemyArchetypes.csv` and `game/Data/EnemyRarities.csv` are generated
+from `enemy_stats.py` and imported as `DT_EnemyArchetypes` and `DT_EnemyRarities`,
+which is issue #355. **Publishing the numbers is not the same as reading them.**
+Nothing in the engine loads either table yet: `ACataclysmBruteCharacter` still
+takes its figures from the constants in its own header, and moving it onto the
+DataTable is the wiring #39 asks for.
+
+So this test keeps its job unchanged for now. It compares the header against the
+model, which is the same comparison whether the number also exists in a CSV. When
+the Brute reads the table instead, these constants go away and so does this file.
 
 UNITS DIFFER ON PURPOSE. The model works in metres and metres per second because
 the design document does. Unreal works in centimetres. The factor of 100 is
 applied here in the open rather than hidden on either side.
 
-WHAT IS NOT COMPARED, AND WHY. `health_share`, `damage_share`, `armor_share`,
-`resistance`, `crit_chance` and `crit_multiplier` are all designed and all absent
-from the C++. `ACataclysmEnemyCharacter::ApplyStartingAttributes` writes only
-maximum health, current health and attack damage, so armour, resistance and crit
-have nowhere to go: issue #372. The sandbox health and damage figures on
-`ACataclysmGameMode` are scaffolding derived from the training dummy's numbers
-rather than from the model, and are checked separately below only for the share
-ratio they claim to apply.
+WHAT IS NOT COMPARED, AND WHY. `resistance`, `crit_chance` and `crit_multiplier`
+used to be absent from the C++ and are not any more: issue #372 added them and
+they are compared below. What remains absent is the three SHARES --
+`health_share`, `damage_share` and `armor_share`. A share is a multiplier on a
+score-scaled base, and nothing in the engine knows an encounter's Power Score, so
+a figure for one declared on a C++ class would be invented rather than designed.
+They reach the engine through `DT_EnemyArchetypes` instead, which is issue #355,
+and whatever finally reads that table is what will use them.
+
+The sandbox health and damage figures on `ACataclysmGameMode` are scaffolding
+derived from the training dummy's numbers rather than from the model, and are
+checked separately below only for the share ratio they claim to apply.
 """
 
 from __future__ import annotations

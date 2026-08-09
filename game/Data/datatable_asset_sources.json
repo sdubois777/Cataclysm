@@ -50,10 +50,22 @@
       "csv_sha256": "bdcc33639d1b6f3d1f5b056be0b4b402edcd4af70012fde89a59cee16409cab3"
     },
     {
+      "asset": "DT_EnemyArchetypes",
+      "csv": "EnemyArchetypes.csv",
+      "rows": 8,
+      "csv_sha256": "80a8677da26d97ad6aedc776829c29278dfc43ba2b02e6ca1feff829d1a3344a"
+    },
+    {
       "asset": "DT_EnemyModifiers",
       "csv": "EnemyModifiers.csv",
       "rows": 79,
       "csv_sha256": "dbcd28a6f8734bd2296a51192baff32c384295da68462e26a5fd14df7ee56323"
+    },
+    {
+      "asset": "DT_EnemyRarities",
+      "csv": "EnemyRarities.csv",
+      "rows": 6,
+      "csv_sha256": "9044ee54bbd783732844522a639aed7505b2ef49dd88d763710601f77ad1f481"
     },
     {
       "asset": "DT_Gems",

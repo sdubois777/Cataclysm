@@ -1,0 +1,9 @@
+Name,ArchetypeName,Role,Cataclysm,HealthShare,DamageShare,ArmorShare,AttackIntervalSeconds,CritChancePercent,CritMultiplierPercent,MoveSpeedMetresPerSecond,ChaseSpeedMetresPerSecond,EvasionPercent,EnergyShieldFraction,BodyRadiusMetres,TurnRateDegreesPerSecond,ResistancePercent
+Baseline,Baseline,"The average enemy, for reading the rarity ladder on its own",Demonic,1.0,1.0,1.0,1.5,5.0,150.0,4.5,0.0,0.0,0.0,0.48,480.0,0.0
+Imp,Imp,"Fast, swarming melee. Weak individually",Demonic,0.35,0.45,0.0,0.9,5.0,150.0,6.5,0.0,25.0,0.0,0.3,480.0,0.0
+Succubus,Succubus,Ranged caster. Slow but powerful attacks,Demonic,0.6,1.6,0.2,2.6,10.0,200.0,3.5,0.0,10.0,0.5,0.48,480.0,10.0
+Hellhound,Hellhound,Aggressive charger that leaves fire trails,Demonic,0.75,0.95,0.3,1.1,15.0,175.0,7.5,0.0,20.0,0.0,0.48,480.0,10.0
+Brute,Brute,Heavily armored slow melee. Can be outmaneuvered,Demonic,2.2,1.75,3.0,1.6,5.0,200.0,2.5,5.0,0.0,0.0,0.48,180.0,15.0
+Corrupted_Sentinel,Corrupted Sentinel,Stationary ranged. Forces the player to stay mobile,Demonic,1.3,1.1,2.2,2.0,5.0,150.0,0.0,0.0,0.0,0.35,0.48,480.0,20.0
+Abyssal_Warden,Abyssal Warden,Massive stone and lava demon. High damage resistance,Demonic,3.5,1.9,3.5,2.4,10.0,200.0,2.8,0.0,0.0,0.0,0.48,480.0,35.0
+Gatekeeper,Gatekeeper,Multi-phase towering demon,Demonic,5.0,2.1,2.5,3.0,15.0,250.0,3.0,0.0,0.0,0.0,0.48,480.0,30.0

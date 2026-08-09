@@ -604,3 +604,158 @@ struct FCataclysmCraftingMaterialRow : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString Outcome;
 };
+
+/**
+ * What KIND of creature an enemy is. Source: sim/cataclysm_sim/enemy_stats.py.
+ *
+ * NOT THE WORKBOOK, unlike every struct above. The enemy stat block is designed
+ * in the simulation package, where its own self-checks live, and
+ * tools/generate_datatables.py builds this table straight out of it. Editing
+ * EnemyArchetypes.csv by hand achieves nothing: the next run overwrites it and
+ * continuous integration fails in the meantime.
+ *
+ * TWO LAYERS, AND THEY OWN DIFFERENT THINGS. This struct is the profile, which
+ * does not change with rarity: how fast the creature is, what it resists, how
+ * often it crits, how wide its body is. FCataclysmEnemyRarityRow is the other
+ * layer and scales magnitude only. A Legendary Imp is a bigger Imp; it is not a
+ * different creature.
+ *
+ * THE THREE SHARE FIELDS ARE MULTIPLIERS ON A SCORE-SCALED BASE, not values. An
+ * enemy's health is the encounter's Power Score times the rarity's HealthPerScore
+ * times this archetype's HealthShare. A share is meaningless on its own, which is
+ * why nothing here is a health figure.
+ *
+ * DISTANCES AND SPEEDS ARE IN METRES, as the model states them and as
+ * ClassStats.csv already states the player's movement speed. Multiply by
+ * ACataclysmPlayerCharacter's CentimetresPerMetre before giving one to the
+ * movement component.
+ *
+ * ONE RESISTANCE FIGURE COVERS ALL EIGHT DAMAGE TYPES. That is deliberate and
+ * the model's header explains it: player damage is adaptive, so a per-type enemy
+ * profile changes no outcome. The PLAYER still has all eight defensively.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEnemyArchetypeRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "Brute", "Imp", and so on. "Baseline" is not a creature anyone fights:
+	 *  it exists so the rarity ladder can be read with every share at 1. Its
+	 *  Role column says so. Do not spawn it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	FString ArchetypeName;
+
+	/** The design document's own words for what this creature is for. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	FString Role;
+
+	/** Which Cataclysm this enemy belongs to, and also the damage type it
+	 *  deals, which decides which of the player's eight resistances applies
+	 *  when it lands a hit. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	FString Cataclysm;
+
+	/** Multiplier on the rarity's health per point of score. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float HealthShare = 1.0f;
+
+	/** Multiplier on the rarity's damage per point of score. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float DamageShare = 1.0f;
+
+	/** Multiplier on the rarity's armour per point of score. Zero means the
+	 *  creature is unarmoured whatever its rarity, which is the Imp. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float ArmorShare = 1.0f;
+
+	/** Seconds between attacks. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float AttackIntervalSeconds = 1.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float CritChancePercent = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float CritMultiplierPercent = 150.0f;
+
+	/** How fast it moves before it has noticed the player. Zero is a creature
+	 *  that never moves, which is the Corrupted Sentinel. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float MoveSpeedMetresPerSecond = 4.5f;
+
+	/** How fast it moves once it has noticed the player. ZERO IS A SENTINEL
+	 *  MEANING "the same as MoveSpeed", not a creature that stops when it sees
+	 *  you. Every enemy but the Brute reads zero here. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float ChaseSpeedMetresPerSecond = 0.0f;
+
+	/** Chance to avoid a direct attack outright. Direct attacks only. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float EvasionPercent = 0.0f;
+
+	/** Energy shield as a fraction of this enemy's own health, so it scales
+	 *  with rarity through health rather than carrying a figure of its own. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float EnergyShieldFraction = 0.0f;
+
+	/** How wide the creature is. It decides how many of a swarm can stand
+	 *  around one player at once, which is the whole of the Imp's design. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float BodyRadiusMetres = 0.48f;
+
+	/** How fast it can turn on the spot. This, not footspeed, is what the
+	 *  design means when it says a creature can be outmanoeuvred: a player
+	 *  circling at the Brute's reach sweeps 223 degrees per second. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float TurnRateDegreesPerSecond = 480.0f;
+
+	/** Percent of all incoming damage resisted, whatever its type. Capped
+	 *  below 70 by the model, because no combination of defensive layers may
+	 *  reach immunity. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
+	float ResistancePercent = 0.0f;
+};
+
+/**
+ * How much of an encounter's Power Score each stat is worth, per rarity.
+ * Source: sim/cataclysm_sim/enemy_stats.py, the same as the archetype table.
+ *
+ * RARITY SCALES MAGNITUDE AND NOTHING ELSE. Attack interval, criticals,
+ * movement and resistance are on FCataclysmEnemyArchetypeRow instead, because
+ * they say what kind of creature this is rather than how big it is.
+ *
+ * HOW TO READ ONE. An enemy's health is
+ *
+ *     Score * Rarity.HealthPerScore * Archetype.HealthShare
+ *
+ * and damage and armour follow the same shape. The multiplier is already raised
+ * to the power of the rarity's step, so nothing needs an exponent at runtime.
+ *
+ * NOTE THE LIST IS SIX RARITIES WITH NO "Rare". It has Herald and Cataclysm
+ * Boss, matching scoring.RARITY_WEIGHTS, which is authoritative. The design
+ * document's older list is superseded; see issue #30.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEnemyRarityRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "Common", "Elite", "Legendary", "Herald", "Boss", "Cataclysm Boss". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
+	FString RarityName;
+
+	/** How far above Common this rarity sits. Common is 0, Cataclysm Boss 5.
+	 *  Carried so the ladder's order survives into the engine: a DataTable is
+	 *  a map and its rows have no inherent order. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
+	int32 Step = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
+	float HealthPerScore = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
+	float DamagePerScore = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
+	float ArmorPerScore = 0.0f;
+};
