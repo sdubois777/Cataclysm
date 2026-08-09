@@ -122,8 +122,20 @@ public:
 	/** Half the width of the marked line, in centimetres. Radius=2.1 metres. */
 	static constexpr float RockThrowRadiusCm = 210.0f;
 
-	/** Centimetres per second the rock travels. Speed=1200. */
-	static constexpr float RockThrowSpeedCmPerSecond = 1200.0f;
+	/**
+	 * Centimetres per second the rock travels THROUGH THE AIR. Speed=600.
+	 *
+	 * Lowered from 1200 on 2026-08-09. The ceiling is 1200, the slowest
+	 * projectile any player skill uses, because a thrown rock must not outrun
+	 * the slowest spell in the game; that argument sets a maximum and says
+	 * nothing about how far below it to sit. At 1200 a five metre throw was in
+	 * the air for 0.42 seconds and a three metre one for 0.25, which is a
+	 * single thinking pass, so the arc was over before it could be read and the
+	 * project owner reported it as blistering.
+	 *
+	 * `Cataclysm.Brute.RockSpeed` overrides it for judging by eye.
+	 */
+	static constexpr float RockThrowSpeedCmPerSecond = 600.0f;
 
 	/** Seconds between throws. */
 	static constexpr float RockThrowCooldownSeconds = 5.0f;
@@ -282,6 +294,17 @@ public:
 	 */
 	float StompCooldownSecondsInUse() const;
 	float RockThrowCooldownSecondsInUse() const;
+
+	/**
+	 * How fast the thrown rock is actually travelling, in centimetres per
+	 * second. `Cataclysm.Brute.RockSpeed` overrides it; zero uses the design.
+	 *
+	 * IT IS A SPEED THROUGH THE AIR. An arcing shot covers more air than
+	 * ground, and `ACataclysmProjectile::Step` accounts for that, so this is
+	 * the figure a stopwatch on the rock would measure rather than the rate it
+	 * crosses the floor at.
+	 */
+	float RockThrowSpeedCmPerSecondInUse() const;
 
 	/**
 	 * Where a thrown rock leaves the creature.

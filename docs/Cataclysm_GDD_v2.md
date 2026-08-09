@@ -3677,7 +3677,7 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 1.6 s attack interval | No |
 | Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | a 5 s cooldown | Yes, 1.4 s wind-up |
-| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Speed=1200` | a 5 s cooldown | Yes, 1.0 s wind-up |
+| Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Speed=600` | a 5 s cooldown | Yes, 1.0 s wind-up |
 
   
 

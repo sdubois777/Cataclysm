@@ -330,6 +330,21 @@ private:
 	 */
 	float ArcHeightAfter(float HorizontalTravelledCm) const;
 
+	/**
+	 * How steeply an arcing projectile is climbing or falling, as a rise over a
+	 * horizontal run.
+	 *
+	 * WHAT IT IS FOR. The speed a projectile is given is a speed THROUGH THE
+	 * AIR. An arc covers more air than ground, so a step that advanced it
+	 * horizontally by speed times time would move it faster than its own speed.
+	 * The step is divided by `sqrt(1 + slope * slope)` to correct for that.
+	 * Issue #462.
+	 *
+	 * Zero for a projectile that does not arc, which divides by one and leaves
+	 * every player skill exactly as it was.
+	 */
+	float ArcSlopeAfter(float HorizontalTravelledCm) const;
+
 	/** Whether it turns round at the far end. */
 	bool bWillReturn = false;
 
