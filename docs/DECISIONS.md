@@ -72,10 +72,16 @@ Those are attacks that arrive from off-screen or from nowhere in particular. Thi
 one is a creature visibly throwing a rock, and the visible throw is what the
 shape has to serve.
 
-**Not settled by watching.** The project owner has not seen either shape with the
-launch point corrected. That correction was large enough to mask everything else
-— the rock was being spawned 6.68 metres in front of the creature — so no
-judgement made before it landed is a judgement about the trajectory.
+**Settled by watching, later the same day.** The project owner played it with the
+launch point corrected and reported "the rock throw looks much better". That
+judgement is the one that counts, and it could not have been made earlier: the
+launch point fault was large enough to mask everything else, because the rock was
+being spawned 6.68 metres in front of the creature.
+
+So the shape now stands on play rather than on argument, and the four figures it
+rests on are settled unless somebody plays it again and disagrees: an arc of 0.25
+of the distance thrown, real gravity at 980 centimetres per second squared, a
+launch from the `hand_r` bone, and a landing on the floor the marker is drawn on.
 
 ---
 
