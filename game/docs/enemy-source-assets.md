@@ -94,10 +94,10 @@ every 0.9 seconds needs its whole attack to finish inside 0.9 seconds.
 |---|:-:|---|:-:|---|
 | Imp | 0.9 s | `Attack_A_SetA` | 0.80 s | Passes |
 | Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | Passes |
+| Brute | 1.6 s | `Attack_Melee_A` | 0.97 s | Passes |
 | Corrupted Sentinel | 2.0 s | `Fire_Planted` | 2.40 s | **Fails.** See #369 |
 | Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | Passes |
 | Succubus | 2.6 s | `Primary_Attack_Normal` | 0.90 s | Passes |
-| Brute | 2.8 s | `Attack_Melee_A` | 0.97 s | Passes |
 | Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | Passes |
 
 **Wind-up durations are not in this file because they have not been measured.**
