@@ -232,35 +232,201 @@ def test_the_ring_damage_is_the_ultimate_slots_percentage():
         f"{ultimate['DamagePercent']}.")
 
 
-def test_the_charge_is_absent_from_the_cpp_and_the_reason_is_recorded():
-    """Stampede is designed and deliberately not built. Issue #491.
+# --------------------------------------------------------------------------
+# Stampede, the charge. Issue #491 built the Movement shape and this creature
+# is its first customer.
+#
+# CONTINUOUS INTEGRATION RUNS NO C++ AT ALL, so every static_assert in the
+# header is unchecked on a pull request. These read the numbers out of the
+# source as text, which is what actually runs.
+# --------------------------------------------------------------------------
 
-    THE FAILURE THIS CATCHES is somebody adding it to EnemyAbilities to be
-    helpful. `ACataclysmEnemyController::ChooseAbility` picks by range and
-    cooldown without looking at the shape and takes the first entry that fits, so
-    a Movement entry spanning 0 to 800 cm would be chosen ahead of Molten Roar
-    everywhere inside eight metres, draw no marker, and do nothing.
+def stampede():
+    return next(a for a in warden_abilities() if a.slot == "Movement")
 
-    THE MODEL STILL DESIGNS THREE ABILITIES and that is correct -- the design is
-    not what is missing. This checks only that the C++ implements one of them and
-    says why.
-    """
+
+def test_the_model_still_designs_three_abilities():
+    """The assumption every test below rests on."""
     designed = warden_abilities()
     assert len(designed) == 3, (
         f"the model now designs {len(designed)} abilities for the Abyssal "
-        "Warden. This test assumes three: a swing, a charge and a ring.")
+        "Warden. These tests assume three: a swing, a charge and a ring.")
 
+
+def test_the_charge_range_matches_the_designed_ability():
+    designed = stampede().params["Range"] * CM_PER_METRE
+    assert constant("StampedeRangeCm") == pytest.approx(designed), (
+        f"StampedeRangeCm is {constant('StampedeRangeCm')} and the model "
+        f"designs Range={stampede().params['Range']} metres, which is "
+        f"{designed} cm. The model is authoritative.")
+
+
+def test_the_charge_lane_half_width_matches_the_designed_ability():
+    designed = stampede().params["Radius"] * CM_PER_METRE
+    assert constant("StampedeRadiusCm") == pytest.approx(designed), (
+        f"StampedeRadiusCm is {constant('StampedeRadiusCm')} and the model "
+        f"designs Radius={stampede().params['Radius']} metres, which is "
+        f"{designed} cm. That figure is both the half-width of the marker and "
+        f"the half-width the charge hits within, so they cannot differ.")
+
+
+def test_the_charge_cooldown_matches_the_designed_ability():
+    assert constant("StampedeCooldownSeconds") == pytest.approx(
+        stampede().cooldown), (
+        f"StampedeCooldownSeconds is {constant('StampedeCooldownSeconds')} and "
+        f"the model designs {stampede().cooldown}.")
+
+
+def test_the_charge_is_a_charge_and_not_a_leap_or_a_blink():
+    """The mode the art decided, recorded in the model.
+
+    A Leap or a Blink would need different code: a leap hits only where it
+    lands and a blink is not travel at all, where this hits along the way.
+    """
+    assert stampede().params["Mode"] == "Charge", (
+        f"the model now designs Mode={stampede().params['Mode']} for Stampede. "
+        "The C++ implements a Charge -- it travels along the ground hitting "
+        "what it passes. A Leap hits only where it lands and a Blink hits at "
+        "both ends and nothing between, so neither is this code.")
+
+
+def test_the_charge_wind_up_is_the_formula_rather_than_a_number():
+    """`0.4 + Radius / 3.5`, recomputed from the model's own constants."""
+    from cataclysm_sim.enemy_abilities import (
+        REACTION_ALLOWANCE, WALK_OUT_SPEED)
+
+    radius_metres = constant("StampedeRadiusCm") / CM_PER_METRE
+    expected = REACTION_ALLOWANCE + radius_metres / WALK_OUT_SPEED
+
+    # THE DESIGN DOCUMENT AND THE MODEL BOTH ROUND IT TO 0.83, where the formula
+    # gives 0.828571. The header carries the rounded figure and says so, so this
+    # allows the rounding rather than demanding the full expansion.
+    assert constant("StampedeWindUpSeconds") == pytest.approx(expected,
+                                                              abs=0.002), (
+        f"StampedeWindUpSeconds is {constant('StampedeWindUpSeconds')} and the "
+        f"rule 0.4 + Radius / 3.5 gives {expected:.6f} for a "
+        f"{radius_metres} metre radius. Change both or neither.")
+
+
+def test_the_charge_damage_is_the_movement_slots_percentage():
+    with (REPO_ROOT / "game" / "Data" / "SkillSlots.csv").open(
+            encoding="utf-8-sig", newline="") as handle:
+        rows = {row["Slot"]: row for row in csv.DictReader(handle)}
+
+    movement = rows["Movement"]
+    assert constant("StampedeDamagePercent") == pytest.approx(
+        float(movement["DamagePercent"])), (
+        f"StampedeDamagePercent is {constant('StampedeDamagePercent')} and the "
+        f"Movement row of game/Data/SkillSlots.csv gives "
+        f"{movement['DamagePercent']}.")
+
+
+def test_the_charge_speed_covers_its_range_in_its_own_clip():
+    """The rule the header states, recomputed rather than trusted.
+
+    THE SPEED IS A JUDGEMENT and the header labels it one -- no shipped game
+    publishes a monster charge speed. What is NOT a judgement is that it follows
+    from the range and the clip length, which is the rule chosen. This checks the
+    arithmetic, not the choice.
+    """
+    expected = constant("StampedeRangeCm") / constant("StampedeAnimationSeconds")
+    assert constant("StampedeSpeedCmPerSecond") == pytest.approx(expected,
+                                                                 abs=0.01), (
+        f"StampedeSpeedCmPerSecond is {constant('StampedeSpeedCmPerSecond')} "
+        f"and its range of {constant('StampedeRangeCm')} cm covered in the "
+        f"{constant('StampedeAnimationSeconds')} second Stampede clip is "
+        f"{expected:.4f}. The header's rule is that a charge covers its range "
+        f"in the length of its own clip.")
+
+
+def test_the_charge_outruns_the_fastest_player_class():
+    """The bound that makes the charge worth having at all.
+
+    A gap-closer slower than the thing it is closing on closes nothing. This is
+    the reason the creature has the ability, so it is checked rather than
+    assumed.
+    """
+    from cataclysm_sim.character import DEFAULT_STAT_LINE
+    from cataclysm_sim.classes import MASOCHIST, RAVAGER, RITUALIST
+
+    # THE THREE DEMONIC CLASSES, read off their own definitions rather than
+    # copied. A class that does not override its movement speed uses the base
+    # stat line's 4.0, which is why this falls back rather than indexing --
+    # only two of the three state one.
+    def speed_of(cls):
+        scaling = cls.overrides.get("movement_speed")
+        if scaling is None:
+            scaling = DEFAULT_STAT_LINE["movement_speed"]
+        return scaling.base
+
+    fastest = max(speed_of(cls)
+                  for cls in (RAVAGER, RITUALIST, MASOCHIST)) * CM_PER_METRE
+    assert constant("StampedeSpeedCmPerSecond") > fastest, (
+        f"StampedeSpeedCmPerSecond is {constant('StampedeSpeedCmPerSecond')} "
+        f"and the fastest player class moves at {fastest} cm/s. A charge no "
+        f"faster than the player cannot close a gap, which is the only reason "
+        f"this creature has one -- it walks at "
+        f"{constant('DesignedWalkSpeedCmPerSecond')} cm/s with no chase speed.")
+
+
+def test_the_charge_beats_walking_during_its_own_wind_up():
+    """The design's own test for whether a charge is worth winding up for.
+
+    Stated in the Hellhound's section of the design document: "a charge shorter
+    than that would be strictly worse than not winding up at all". The creature
+    could simply walk during the wind-up, so the charge has to cover more ground
+    than that walk would.
+    """
+    walked = (constant("DesignedWalkSpeedCmPerSecond")
+              * constant("StampedeWindUpSeconds"))
+    assert constant("StampedeRangeCm") > walked, (
+        f"Stampede covers {constant('StampedeRangeCm')} cm and the creature "
+        f"could walk {walked:.1f} cm during its own "
+        f"{constant('StampedeWindUpSeconds')} second wind-up. A charge that "
+        f"covers less than that is strictly worse than not winding up.")
+
+
+def test_the_charge_refuses_a_target_it_could_simply_walk_to():
+    """The minimum range, derived from the same walk. Not a picked number."""
+    walked = (constant("DesignedWalkSpeedCmPerSecond")
+              * constant("StampedeWindUpSeconds"))
+    assert constant("StampedeMinimumRangeCm") == pytest.approx(walked,
+                                                               abs=0.01), (
+        f"StampedeMinimumRangeCm is {constant('StampedeMinimumRangeCm')} and "
+        f"the creature walks {walked:.4f} cm during its own wind-up. Inside "
+        f"that distance it arrives sooner by taking a step, so charging is "
+        f"strictly worse. Change the walk speed or the wind-up and this moves "
+        f"with them.")
+
+
+def test_the_charge_is_built_and_is_reached_by_the_brain():
+    """The C++ side: it exists, it is a Movement shape, and it is not first.
+
+    THE ORDERING IS LOAD-BEARING. `ACataclysmEnemyController::ChooseAbility`
+    takes the first entry whose range and cooldown fit, without looking at the
+    shape. Stampede is legal from 2.32 to 8.00 metres on a 5 second cooldown and
+    Molten Roar from 0 to 5.60 on a 12 second one, so listing the charge first
+    would crowd the ring out of the band where both are legal.
+    """
     text = source(WARDEN_CPP)
 
-    assert "Stampede" not in text.replace("Stampede, the designed charge", ""), (
-        "CataclysmAbyssalWardenCharacter.cpp now implements Stampede. Nothing "
-        "can execute a Movement-shape ability: ChooseAbility does not look at "
-        "the shape and the marker switch returns silently for one, so it would "
-        "be chosen ahead of Molten Roar and then do nothing. Issue #491.")
+    assert "BeginCharge(" in text, (
+        "CataclysmAbyssalWardenCharacter.cpp no longer calls BeginCharge, so "
+        "its Stampede entry would be chosen by the brain and then do nothing. "
+        "Issue #491 is the whole reason the Movement shape exists.")
 
-    assert "#491" in text, (
-        "CataclysmAbyssalWardenCharacter.cpp no longer cites issue #491 as the "
-        "reason its charge is missing, so the omission reads as an oversight.")
+    assert "ECataclysmSkillShape::Movement" in text, (
+        "Stampede is no longer declared as a Movement shape. The controller "
+        "draws its lane and captures the far end of the charge as the aim point "
+        "by reading that shape, so any other shape silently changes both.")
+
+    roar_at = text.index("MoltenRoar.Name")
+    charge_at = text.index("Stampede.Name")
+    assert roar_at < charge_at, (
+        "Stampede is now built before Molten Roar in EnemyAbilities. Order in "
+        "that array is priority and ChooseAbility takes the first entry that "
+        "fits without looking at the shape, so the 5 second charge would crowd "
+        "out the 12 second ring everywhere both are legal.")
 
 
 # --------------------------------------------------------------------------

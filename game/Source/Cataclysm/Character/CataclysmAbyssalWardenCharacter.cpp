@@ -50,6 +50,13 @@ const TCHAR* ACataclysmAbyssalWardenCharacter::MoltenRoarAnimationPath =
 	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
 		 "Ultimate_Roar.Ultimate_Roar");
 
+// `Stampede`, NOT `Stampede_Knockup`. See the header: the knock-up variant is
+// 1.5333 seconds against an 0.83 second wind-up, and nothing in this project can
+// knock a target back yet.
+const TCHAR* ACataclysmAbyssalWardenCharacter::StampedeAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
+		 "Stampede.Stampede");
+
 const TCHAR* ACataclysmAbyssalWardenCharacter::IdleAnimationPath =
 	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Idle.Idle");
 
@@ -91,15 +98,41 @@ static TAutoConsoleVariable<float> CVarWardenRoarCooldown(
 		 "faster than a player's Movement skill recharges."),
 	ECVF_Default);
 
+static TAutoConsoleVariable<float> CVarWardenStampedeCooldown(
+	TEXT("Cataclysm.Warden.StampedeCooldown"),
+	0.0f,
+	TEXT("Seconds between the Abyssal Warden's charge. 0 uses its designed 5, "
+		 "which is the Movement slot's cooldown and the minimum any large "
+		 "telegraph may run on -- below it the player faces a second lane with "
+		 "their own Movement skill still recharging."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarWardenStampedeSpeed(
+	TEXT("Cataclysm.Warden.StampedeSpeed"),
+	0.0f,
+	TEXT("How fast the Abyssal Warden charges, in centimetres per second. 0 "
+		 "uses its designed 1142.9, which is its 8 metre range covered in the "
+		 "0.700 second Stampede clip. Below 460 it cannot catch the fastest "
+		 "class and the charge closes nothing; at its own 280 walking speed the "
+		 "charge would take longer than its whole attack interval. This is the "
+		 "figure the header labels a judgement, so it is the one to try."),
+	ECVF_Default);
+
 // --------------------------------------------------------------------------
 
 ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
 {
-	// ACataclysmCharacterBase TURNS TICKING OFF, so this has to turn it back on.
+	// ACataclysmCharacterBase TURNS TICKING OFF. `ACataclysmEnemyCharacter` now
+	// turns it back on for every enemy, because a charge advances per frame, so
+	// this line is a second assignment of the same value.
+	//
+	// IT IS KEPT RATHER THAN DELETED because this creature needs ticking for a
+	// reason of its own that has nothing to do with charging:
 	// UpdateLoopingAnimation runs from Tick and is what returns the mesh to a
 	// resting pose after an attack and what puts the walk on while it moves.
 	// Without it the creature holds the last frame of its swing until the next
-	// one, which the project owner reported on 2026-08-09.
+	// one, which the project owner reported on 2026-08-09. Deleted, that would
+	// break silently if the base ever stopped ticking.
 	PrimaryActorTick.bCanEverTick = true;
 
 	MeleeReachCm = DesignedMeleeReachCm;
@@ -135,6 +168,7 @@ void ACataclysmAbyssalWardenCharacter::BeginPlay()
 
 void ACataclysmAbyssalWardenCharacter::Tick(float DeltaSeconds)
 {
+	// Super FIRST, because that is what advances a running charge. Issue #491.
 	Super::Tick(DeltaSeconds);
 	UpdateLoopingAnimation();
 }
@@ -228,6 +262,18 @@ float ACataclysmAbyssalWardenCharacter::MoltenRoarCooldownSecondsInUse()
 {
 	const float Override = CVarWardenRoarCooldown.GetValueOnAnyThread();
 	return Override > 0.0f ? Override : MoltenRoarCooldownSeconds;
+}
+
+float ACataclysmAbyssalWardenCharacter::StampedeCooldownSecondsInUse()
+{
+	const float Override = CVarWardenStampedeCooldown.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : StampedeCooldownSeconds;
+}
+
+float ACataclysmAbyssalWardenCharacter::StampedeSpeedCmPerSecondInUse()
+{
+	const float Override = CVarWardenStampedeSpeed.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : StampedeSpeedCmPerSecond;
 }
 
 float ACataclysmAbyssalWardenCharacter::SecondsBetweenAttacks() const
@@ -375,50 +421,107 @@ ACataclysmAbyssalWardenCharacter::EnemyAbilities() const
 	MoltenRoar.Shape = ECataclysmSkillShape::Strike;
 	MoltenRoar.MarkerRadiusCm = MoltenRoarRadiusCm;
 
-	// ONE ENTRY. Stampede, the designed charge, is deliberately not here: the
-	// brain chooses by range and cooldown without looking at the shape, so a
-	// Movement entry would be picked ahead of this one and then do nothing at
-	// all. Issue #491. The header says why at length.
-	return {MoltenRoar};
+	FCataclysmEnemyAbility Stampede;
+	Stampede.Name = TEXT("Stampede");
+
+	// NOT AT SOMETHING IT COULD SIMPLY WALK TO. The design's own test for
+	// whether a charge is worth winding up for, stated in the Hellhound's
+	// section: a charge that covers less ground than the creature could walk
+	// during its own wind-up is strictly worse than not winding up at all.
+	//
+	// THE HEADER HOLDS THE DERIVATION, in a static_assert beside the constant,
+	// so the walk speed and the wind-up cannot move without moving this.
+	Stampede.MinRangeCm = StampedeMinimumRangeCm;
+
+	Stampede.MaxRangeCm = StampedeRangeCm;
+	Stampede.CooldownSeconds = StampedeCooldownSecondsInUse();
+	Stampede.WindUpSeconds = StampedeWindUpSeconds;
+
+	// A LANE, DRAWN FROM THE SAME HALF-WIDTH THE CHARGE HITS WITH.
+	// UseEnemyAbility below passes StampedeRadiusCm to BeginCharge as the lane's
+	// half-width, so the corridor the player sees is the corridor that hurts.
+	Stampede.Shape = ECataclysmSkillShape::Movement;
+	Stampede.MarkerRadiusCm = StampedeRadiusCm;
+
+	// MOLTEN ROAR FIRST. Order is priority and ChooseAbility takes the first
+	// entry that fits without looking at the shape, so the 12 second ring has to
+	// come before the 5 second charge or it would almost never be reached in the
+	// band where both are legal. See the enumeration in the header.
+	return {MoltenRoar, Stampede};
 }
 
-void ACataclysmAbyssalWardenCharacter::UseEnemyAbility(int32 Index, AActor*,
-													   const FVector&)
+void ACataclysmAbyssalWardenCharacter::UseEnemyAbility(int32 Index,
+													   AActor* /*Target*/,
+													   const FVector& AimedAt)
 {
 	UWorld* World = GetWorld();
-	if (!World || Index != MoltenRoarAbility)
+	if (!World)
 	{
 		return;
 	}
 
-	// EVERYTHING IN THE RING, FROM ITS OWN LOCATION. The same sweep the marker
-	// was drawn from, so what was promised is what lands.
-	//
-	// IT DOES NOT STUN. The Brute's stomp is the one thing in this slice that
-	// holds the player still, and a second would spend most of its uses inside
-	// the five second stun immunity window.
-	for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
-			World, this, GetActorLocation(), MoltenRoarRadiusCm))
+	if (Index == MoltenRoarAbility)
 	{
-		UCataclysmSkillEffects::ApplyHit(this, Caught, MoltenRoarDamagePercent);
+		// EVERYTHING IN THE RING, FROM ITS OWN LOCATION. The same sweep the
+		// marker was drawn from, so what was promised is what lands.
+		//
+		// IT DOES NOT STUN. The Brute's stomp is the one thing in this slice
+		// that holds the player still, and a second would spend most of its uses
+		// inside the five second stun immunity window.
+		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
+				World, this, GetActorLocation(), MoltenRoarRadiusCm))
+		{
+			UCataclysmSkillEffects::ApplyHit(this, Caught,
+											 MoltenRoarDamagePercent);
+		}
+		return;
+	}
+
+	if (Index == StampedeAbility)
+	{
+		// TO THE POINT THE MARKER WAS DRAWN TO, WHICH IS THE END OF THE LANE
+		// AND NOT THE TARGET. `ACataclysmEnemyController::AimPointFor` returns
+		// the far end of the charge for a Movement ability, so this is handed
+		// the same point the lane was drawn to. One point rather than two that
+		// have to agree -- the rule issue #471 established.
+		//
+		// THE TARGET IS DELIBERATELY UNUSED. The creature is committed and runs
+		// the full distance whether or not anything is still there; reading the
+		// target here would be the charge following the player, which is exactly
+		// what makes a telegraph unwalkable.
+		BeginCharge(AimedAt, StampedeSpeedCmPerSecondInUse(), StampedeRadiusCm,
+					StampedeDamagePercent);
 	}
 }
 
 void ACataclysmAbyssalWardenCharacter::BeginEnemyAbilityWindUp(int32 Index,
 															   AActor*)
 {
-	if (Index != MoltenRoarAbility)
+	if (Index == MoltenRoarAbility)
 	{
+		// THE CLIP IS SHORTER THAN THE WIND-UP AND THAT IS FINE. Ultimate_Roar
+		// is 1.4000 seconds inside a 2.0 second telegraph, so it plays at its
+		// authored speed and then holds its last pose for the remaining six
+		// tenths. That is the same arrangement the Brute's ground smash uses and
+		// it is the clearest warning the player gets: a creature poised with the
+		// roar finished and the ring still on the floor.
+		PlayOneShot(MoltenRoarAnimation);
 		return;
 	}
 
-	// THE CLIP IS SHORTER THAN THE WIND-UP AND THAT IS FINE. Ultimate_Roar is
-	// 1.4000 seconds inside a 2.0 second telegraph, so it plays at its authored
-	// speed and then holds its last pose for the remaining six tenths. That is
-	// the same arrangement the Brute's ground smash uses and it is the clearest
-	// warning the player gets: a creature poised with the roar finished and the
-	// ring still on the floor.
-	PlayOneShot(MoltenRoarAnimation);
+	if (Index == StampedeAbility)
+	{
+		// THE CLIP RUNS DURING THE WIND-UP, NOT DURING THE TRAVEL, and that is
+		// worth stating because it reads backwards at first. Every ability in
+		// this project plays its animation across the telegraph and resolves at
+		// the end of it, and a charge is no exception: the creature digs in and
+		// gathers itself while the lane is on the floor, then sets off.
+		//
+		// 0.700 SECONDS INSIDE 0.83, so it plays at its authored speed and holds
+		// its last pose for the remaining tenth. PlayOneShot clamps a rate
+		// upwards only, so nothing here is stretched.
+		PlayOneShot(StampedeAnimation);
+	}
 }
 
 bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
@@ -464,20 +567,27 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(SwingRecoveryAnimationPath).TryLoad());
 		MoltenRoarAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(MoltenRoarAnimationPath).TryLoad());
+		StampedeAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(StampedeAnimationPath).TryLoad());
 		IdleAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(IdleAnimationPath).TryLoad());
 		JogAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(JogAnimationPath).TryLoad());
 
-		if (!LeftSwingAnimation || !RightSwingAnimation || !MoltenRoarAnimation)
+		if (!LeftSwingAnimation || !RightSwingAnimation || !MoltenRoarAnimation
+			|| !StampedeAnimation)
 		{
 			UE_LOG(LogCataclysm, Warning,
 				TEXT("Abyssal Warden animations missing: swings %s and %s, "
-					 "roar %s. It will fight with nothing to show for it. This "
-					 "is expected without the Paragon Grux pack."),
+					 "roar %s, charge %s. It will fight with nothing to show "
+					 "for it. This is expected without the Paragon Grux pack. "
+					 "The charge still MOVES the creature without its clip -- "
+					 "BeginCharge does not need one -- so a missing charge clip "
+					 "reads as sliding rather than as nothing happening."),
 				LeftSwingAnimation ? TEXT("found") : TEXT("MISSING"),
 				RightSwingAnimation ? TEXT("found") : TEXT("MISSING"),
-				MoltenRoarAnimation ? TEXT("found") : TEXT("MISSING"));
+				MoltenRoarAnimation ? TEXT("found") : TEXT("MISSING"),
+				StampedeAnimation ? TEXT("found") : TEXT("MISSING"));
 		}
 	}
 

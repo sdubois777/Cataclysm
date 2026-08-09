@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — A charge covers its range in the length of its own clip
+
+**Affects:** the Abyssal Warden's charge subsection of `docs/Cataclysm_GDD_v2.md`,
+`ACataclysmEnemyCharacter` and `ACataclysmAbyssalWardenCharacter` in
+`game/Source/Cataclysm/Character/`. Applied. Closes #491.
+
+### What was missing
+
+Two of the seven vertical slice enemies are designed with a charge — the Abyssal
+Warden's Stampede and the Hellhound's Hellrush — and the engine could not execute
+one. The marker code had a case for a Strike and a case for a Projectile and none
+for a Movement shape, and nothing anywhere moved a creature along a fixed path.
+
+The consequence was specific rather than cosmetic. The Abyssal Warden walks at
+2.8 metres per second with no chase speed, against player classes at 3.5, 4.0 and
+4.6, so **a player who walked backwards was never caught and the creature could
+never be fought at all.** That is exactly the failure its charge exists to
+prevent.
+
+### What the design already fixed, so none of it was decided here
+
+All of it from section X of `Cataclysm_GDD_v2.md`:
+
+- A charge hits everything on the way, where a leap hits only where it lands.
+- The lane is fixed when the wind-up starts and does not follow the player.
+- The creature is committed and runs the full distance whether or not anything is
+  still there. The overshoot is the window the telegraph buys.
+- The player leaves the lane when their centre leaves it.
+- The marker is a lane of width 2 × `Radius` running to `Range`.
+
+### The one thing that had to be decided: how fast a charge travels
+
+**The research did not settle it, and that is said plainly rather than glossed
+over.** Path of Exile's monster charge (`BullCharge`, used by the Fighting Bull
+and the Bull variants) publishes a 4 second cooldown, a 2.75 second cast time and
+"deals 15% more Damage", and **no travel speed**. Neither Last Epoch nor Diablo
+publishes one either.
+
+What the research did settle is the surrounding shape, and it agreed with what
+this design already said: a charge is a cooldown ability with a long wind-up
+rather than free movement, it is worth barely more than a basic attack, and it
+passes through bodies rather than stopping on them — Path of Exile's monster
+Shield Charge "pushes enemies in the way to the side".
+
+**Decision: a charge covers its designed range in the length of its own animation
+clip.** For the Warden that is 8 metres in the 0.700 second `Stampede` clip,
+which is 11.43 metres per second.
+
+**This is a judgement and it is labelled one** in the header, in the design
+document and here. What makes it defensible rather than invented:
+
+- It is the rule the project already follows everywhere else — the Brute's
+  montage delays, the Warden's jog play rate against its measured stride — so the
+  speed follows from two measured numbers rather than being chosen.
+- It must beat the fastest class or the charge closes nothing. 11.43 against 4.6
+  is two and a half times.
+- It must beat walking during the wind-up, which is the design's own test, stated
+  for the Hellhound: "a charge shorter than that would be strictly worse than not
+  winding up at all". At the creature's own 2.8 metres per second the same 8
+  metres would take 2.86 seconds, longer than its whole attack interval.
+- The exchange it produces is the one the design describes: 0.70 seconds of
+  closing bought with 2.86 seconds of walking back after a miss.
+
+`Cataclysm.Warden.StampedeSpeed` sets it from the console, with 0 meaning the
+designed figure, because a judgement is what a play session is for.
+
+**Sources.** [BullCharge on the Fighting Bull,
+PoEDB](https://poedb.tw/us/Fighting_Bull); [Skill:SpikerBullCharge, PoE
+Wiki](https://www.poewiki.net/wiki/Skill:SpikerBullCharge); [Shield Charge, PoE
+Wiki](https://www.poewiki.net/wiki/Shield_Charge).
+
+### Two smaller decisions the issue asked for
+
+**What stops a charge: the level, not bodies.** It is swept by object type against
+`WorldStatic` rather than by the `WorldStatic` *channel*. That distinction is
+load-bearing and it cost a build to find: a Pawn capsule blocks the WorldStatic
+channel, so a channel sweep stopped the creature dead on its own capsule and
+travelled nothing, and would have stopped it on the player too — the opposite of
+the committed overshoot the design describes.
+
+**A charge advances per frame, not per thinking pass.** The brain thinks four
+times a second and this charge covers 2.86 metres in one of those, so a
+brain-driven charge would move in visible jumps and could step straight over the
+player without the lane ever containing them. Every enemy therefore ticks; one
+that never charges pays a single boolean test per frame.
+
+### What is deliberately not built
+
+`Leap` and `Blink` modes. Only `Charge` has a customer: the Warden's design chose
+`Charge` over `Leap` because the art is one clip rather than five, so neither of
+the other two modes has anything to execute yet.
+
+---
+
 ## 2026-08-09 — No positional weak points, and the Abyssal Warden instead
 
 **Affects:** the Vertical Slice Enemies table and the Vertical Slice Enemy

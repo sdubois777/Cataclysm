@@ -3,6 +3,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -12,6 +13,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -85,6 +87,177 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 	{
 		PlaceholderBody->SetStaticMesh(CylinderMesh.Object);
 	}
+
+	// EVERY ENEMY TICKS, BECAUSE A CHARGE ADVANCES PER FRAME.
+	// `ACataclysmCharacterBase` turns ticking off, and AdvanceCharge cannot be
+	// driven by the brain instead: the brain thinks four times a second and a
+	// charge covers metres in one of those. Issue #491.
+	//
+	// WHAT IT COSTS A CREATURE THAT NEVER CHARGES: one boolean test a frame.
+	// Tick below returns immediately unless a charge is running.
+	PrimaryActorTick.bCanEverTick = true;
+}
+
+void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	AdvanceCharge(DeltaSeconds);
+}
+
+void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
+										   float SpeedCmPerSecond,
+										   float HalfWidthCm,
+										   float DamagePercent)
+{
+	if (SpeedCmPerSecond <= 0.0f)
+	{
+		// A charge with no speed would never end, because nothing else finishes
+		// one. Refused rather than started, so the creature keeps walking.
+		return;
+	}
+
+	// ON THE CREATURE'S OWN HEIGHT, NOT THE POINT'S. The lane is a floor-plane
+	// thing and ToPoint arrives flattened onto the ground -- the controller
+	// captures it through FloorUnder for the same reason issue #471 flattened
+	// the aim point. Charging toward a point at floor height would drag the
+	// capsule down through the floor by its own half-height.
+	ChargeEndPoint = FVector(ToPoint.X, ToPoint.Y, GetActorLocation().Z);
+
+	ChargeSpeedCmPerSecond = SpeedCmPerSecond;
+	ChargeHalfWidthCm = HalfWidthCm;
+	ChargeDamagePercent = DamagePercent;
+	ChargeTravelledCm = 0.0f;
+	ChargeHitCount = 0;
+	ChargeAlreadyHit.Reset();
+	bCharging = true;
+}
+
+void ACataclysmEnemyCharacter::AdvanceCharge(float DeltaSeconds)
+{
+	if (!bCharging || DeltaSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	// SPLIT INTO STEPS NO LONGER THAN LongestChargeStepCm. See the header: one
+	// long sweep can tunnel a thin wall. A whole frame's travel is covered
+	// either way, so this changes where the charge is checked and not how far
+	// it goes.
+	float RemainingThisFrameCm = ChargeSpeedCmPerSecond * DeltaSeconds;
+
+	while (bCharging && RemainingThisFrameCm > 0.0f)
+	{
+		const float StepCm = FMath::Min(RemainingThisFrameCm, LongestChargeStepCm);
+		RemainingThisFrameCm -= StepCm;
+
+		if (!StepCharge(StepCm))
+		{
+			return;
+		}
+	}
+}
+
+bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		bCharging = false;
+		return false;
+	}
+
+	const FVector From = GetActorLocation();
+
+	// HOW FAR IS LEFT, IN THE FLOOR PLANE. The lane is horizontal, so the
+	// remaining distance is a 2D one; a 3D measure would charge the creature for
+	// a height difference that the charge never crosses.
+	const float RemainingCm = FVector::Dist2D(From, ChargeEndPoint);
+	if (RemainingCm <= KINDA_SMALL_NUMBER)
+	{
+		bCharging = false;
+		return false;
+	}
+
+	FVector Direction = ChargeEndPoint - From;
+	Direction.Z = 0.0f;
+	Direction = Direction.GetSafeNormal();
+
+	// NEVER PAST THE END OF ITS OWN LANE. The marker was drawn to exactly this
+	// point, so a step that overshot would take the creature onto ground it
+	// never warned about.
+	const float ThisStepCm = FMath::Min(StepCm, RemainingCm);
+	const FVector To = From + Direction * ThisStepCm;
+
+	// STOPPED BY THE LEVEL, NOT BY BODIES, AND THE DESIGN ASKS FOR BOTH HALVES.
+	//
+	// Not by bodies: the creature is committed and runs the full distance,
+	// ending past its target -- "it ends up ten metres past the player, facing
+	// away", which is the window the telegraph buys. A charge that stopped on
+	// contact would arrive in melee range instead, which is the opposite of what
+	// the design says a miss costs.
+	//
+	// By the level: a charge that ran through a wall would be the marker lying
+	// about where the creature ends up.
+	//
+	// BY OBJECT TYPE, NOT BY CHANNEL, AND THAT DISTINCTION IS THE WHOLE THING.
+	// SweepSingleByChannel(ECC_WorldStatic) asks "what BLOCKS the WorldStatic
+	// channel", and a Pawn capsule blocks it -- so the first version of this
+	// stopped dead on the creature's own capsule and travelled nothing, and
+	// would have stopped on the player too. SweepSingleByObjectType asks "what
+	// IS a WorldStatic object", which is the question actually being asked here.
+	//
+	// A SPHERE RATHER THAN THE CAPSULE, AND IT IS SMALLER ON PURPOSE. A capsule
+	// sweep would be more faithful and is wrong here: the capsule's bottom rests
+	// ON the floor, and the floor is WorldStatic, so a capsule swept along it
+	// grazes the ground and every charge would stop on its first step. A sphere
+	// of the capsule's radius centred at the capsule's centre sits well clear of
+	// the floor -- 66 cm clear for the Warden -- and still meets a wall at body
+	// height, which is what a charge should be stopped by.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CataclysmCharge),
+								 /*bInTraceComplex=*/false, this);
+
+	FHitResult Hit;
+	const bool bBlocked = World->SweepSingleByObjectType(
+		Hit, From, To, FQuat::Identity,
+		FCollisionObjectQueryParams(ECC_WorldStatic),
+		FCollisionShape::MakeSphere(GetCapsuleComponent()
+			? GetCapsuleComponent()->GetScaledCapsuleRadius()
+			: 0.0f),
+		Params);
+
+	const FVector Landed = bBlocked ? Hit.Location : To;
+
+	// NO SWEEP ON THE MOVE ITSELF, because the sweep above already decided where
+	// it may go and a second one against Pawn would stop it on the very target
+	// it is meant to run through.
+	SetActorLocation(Landed, /*bSweep=*/false);
+	ChargeTravelledCm += FVector::Dist2D(From, Landed);
+
+	// EVERYTHING THIS STEP PASSED, ONCE EACH. "A charge hits everything on the
+	// way" -- section X of docs/Cataclysm_GDD_v2.md, which distinguishes it from
+	// a leap that hits only where it lands. Tested against the segment actually
+	// travelled rather than the whole lane, so nothing is hit before the
+	// creature reaches it.
+	for (AActor* Caught : UCataclysmTargeting::FindEnemiesInLine(
+			World, this, From, Landed, ChargeHalfWidthCm))
+	{
+		if (!Caught || ChargeAlreadyHit.Contains(Caught))
+		{
+			continue;
+		}
+
+		ChargeAlreadyHit.Add(Caught);
+		++ChargeHitCount;
+		UCataclysmSkillEffects::ApplyHit(this, Caught, ChargeDamagePercent);
+	}
+
+	if (bBlocked || FVector::Dist2D(Landed, ChargeEndPoint) <= KINDA_SMALL_NUMBER)
+	{
+		bCharging = false;
+		return false;
+	}
+
+	return true;
 }
 
 void ACataclysmEnemyCharacter::SetHealth(float NewMaxHealth)

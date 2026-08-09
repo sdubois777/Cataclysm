@@ -6,6 +6,8 @@
 
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "EngineUtils.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
@@ -25,10 +27,14 @@
  *    assertion on a designed figure also asserts it differs from the base
  *    enemy's, because a test that would pass on the base class proves nothing.
  *
- * 2. Offering exactly one ability. Its designed charge cannot be executed by
- *    the current brain and is deliberately absent -- issue #491 -- and the
- *    failure mode is somebody adding it back, which would take priority over
- *    the ring everywhere inside eight metres and then do nothing at all.
+ * 2. Offering its ring and its charge, IN THAT ORDER. ChooseAbility takes the
+ *    first entry whose range and cooldown fit and never looks at the shape, so
+ *    listing the 5 second charge before the 12 second ring would crowd the ring
+ *    out of the band where both are legal. Issue #491.
+ *
+ * 2a. The charge going where it said it would, at the speed it said, hitting
+ *    what it passes once each, and RUNNING PAST rather than stopping at what it
+ *    hit. The overshoot is what the design says a miss costs.
  *
  * 3. Never being able to catch the player. That is designed, and one line in
  *    the constructor would undo it.
@@ -156,11 +162,11 @@ bool FCataclysmWardenCarriesItsDesignedProfile::RunTest(const FString&)
 // --------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmWardenOffersOnlyMoltenRoar,
-	"Cataclysm.Warden.ItOffersOnlyMoltenRoar",
+	FCataclysmWardenOffersItsRingThenItsCharge,
+	"Cataclysm.Warden.ItOffersItsRingThenItsCharge",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmWardenOffersOnlyMoltenRoar::RunTest(const FString&)
+bool FCataclysmWardenOffersItsRingThenItsCharge::RunTest(const FString&)
 {
 	using namespace CataclysmWardenTest;
 
@@ -184,20 +190,24 @@ bool FCataclysmWardenOffersOnlyMoltenRoar::RunTest(const FString&)
 
 	const TArray<FCataclysmEnemyAbility> Abilities = Warden->EnemyAbilities();
 
-	// ONE, AND THE COUNT IS THE POINT. Its designed charge is a Movement shape
-	// and nothing can execute one: ChooseAbility picks by range and cooldown
-	// without looking at the shape and takes the first entry that fits, so a
-	// charge spanning 0 to 800 cm would be chosen ahead of this ring everywhere
-	// inside eight metres, draw no marker, and do nothing. Issue #491.
-	if (!TestEqual(TEXT("it offers exactly one ability"), Abilities.Num(), 1))
+	// TWO, IN THIS ORDER, AND THE ORDER IS THE POINT. ChooseAbility takes the
+	// first entry whose range and cooldown both fit and never looks at the
+	// shape. Both are legal from 2.32 to 5.60 metres; the ring is on 12 seconds
+	// against the charge's 5, so listing the charge first would crowd it out
+	// almost entirely. Issue #491.
+	if (!TestEqual(TEXT("it offers exactly two abilities"), Abilities.Num(), 2))
 	{
 		return false;
 	}
 
-	const FCataclysmEnemyAbility& Roar = Abilities[0];
+	const FCataclysmEnemyAbility& Roar = Abilities[Warden_t::MoltenRoarAbility];
+	const FCataclysmEnemyAbility& Charge = Abilities[Warden_t::StampedeAbility];
 
-	TestEqual(TEXT("it is Molten Roar"), Roar.Name, FName(TEXT("Molten Roar")));
-	TestEqual(TEXT("it is a Strike, which the brain can draw a marker for"),
+	TestEqual(TEXT("the ring comes first"), Roar.Name, FName(TEXT("Molten Roar")));
+	TestEqual(TEXT("the charge comes second"), Charge.Name,
+		FName(TEXT("Stampede")));
+
+	TestEqual(TEXT("the ring is a Strike"),
 		static_cast<int32>(Roar.Shape),
 		static_cast<int32>(ECataclysmSkillShape::Strike));
 	TestEqual(TEXT("it reaches its designed radius"),
@@ -212,7 +222,7 @@ bool FCataclysmWardenOffersOnlyMoltenRoar::RunTest(const FString&)
 	// FROM ITS OWN FEET OUT. A target pressed against the creature is inside
 	// the ring and must be hit by it, so a minimum range would be wrong here in
 	// a way it is not wrong for a lobbed attack.
-	TestEqual(TEXT("it has no minimum range"), Roar.MinRangeCm, 0.0f);
+	TestEqual(TEXT("the ring has no minimum range"), Roar.MinRangeCm, 0.0f);
 
 	TestFalse(TEXT("it is not lobbed, so its marker is a ring at the feet"),
 		Roar.bArcsOntoItsTarget);
@@ -221,6 +231,334 @@ bool FCataclysmWardenOffersOnlyMoltenRoar::RunTest(const FString&)
 	// says a marker is smaller than the creature standing in it.
 	TestTrue(TEXT("its marker is larger than the smallest useful one"),
 		Roar.MarkerRadiusCm >= 100.0f);
+
+	// THE CHARGE. A Movement shape, which is what makes the controller draw a
+	// lane and capture the far end of the charge as the aim point rather than
+	// the target's feet.
+	TestEqual(TEXT("the charge is a Movement shape"),
+		static_cast<int32>(Charge.Shape),
+		static_cast<int32>(ECataclysmSkillShape::Movement));
+	TestEqual(TEXT("it runs its designed range"),
+		Charge.MaxRangeCm, Warden_t::StampedeRangeCm);
+	TestEqual(TEXT("its lane is its designed half-width"),
+		Charge.MarkerRadiusCm, Warden_t::StampedeRadiusCm);
+	TestEqual(TEXT("it comes round on its designed cooldown"),
+		Charge.CooldownSeconds, Warden_t::StampedeCooldownSeconds);
+	TestEqual(TEXT("it warns for its designed wind-up"),
+		Charge.WindUpSeconds, Warden_t::StampedeWindUpSeconds);
+
+	// IT REFUSES A TARGET IT COULD SIMPLY WALK TO, which is the design's own
+	// test for whether a charge is worth winding up for.
+	TestEqual(TEXT("it refuses a target inside its walking distance"),
+		Charge.MinRangeCm, Warden_t::StampedeMinimumRangeCm);
+	TestTrue(TEXT("and that minimum is beyond the creature's own reach"),
+		Charge.MinRangeCm > Warden_t::DesignedMeleeReachCm);
+
+	// THE TWO DO NOT SHADOW EACH OTHER COMPLETELY. There has to be ground the
+	// charge covers that the ring does not, or the charge could never be the
+	// entry that fits.
+	TestTrue(TEXT("the charge reaches beyond the ring"),
+		Charge.MaxRangeCm > Roar.MaxRangeCm);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenChargeTravelsItsLane,
+	"Cataclysm.Warden.StampedeTravelsItsWholeLaneAtItsDesignedSpeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenChargeTravelsItsLane::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	// WHERE IT STARTED, HOW FAST IT GOES, HOW THAT SPEED IS DISTRIBUTED, AND
+	// WHERE IT ENDS. Four separate things, because the Brute's rock throw
+	// shipped four defects in a row each of which was adjacent to what the
+	// previous test had proved.
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	const FVector Started = Warden->GetActorLocation();
+	const float Speed = Warden_t::StampedeSpeedCmPerSecond;
+
+	// DOWN +X, which is the actor's forward with no rotation applied.
+	const FVector LaneEnd =
+		Started + FVector(Warden_t::StampedeRangeCm, 0.0f, 0.0f);
+
+	Warden->BeginCharge(LaneEnd, Speed, Warden_t::StampedeRadiusCm,
+						Warden_t::StampedeDamagePercent);
+
+	TestTrue(TEXT("it is charging once told to"), Warden->IsCharging());
+
+	// WHERE IT STARTED: it has not moved yet.
+	TestEqual(TEXT("it has travelled nothing before the first step"),
+		Warden->ChargeTravelledCm, 0.0f);
+	TestTrue(TEXT("and it is still where it began"),
+		Warden->GetActorLocation().Equals(Started, 0.01f));
+
+	// HOW FAST, AND HOW THE SPEED IS DISTRIBUTED. A tenth of a second at a time,
+	// each of which must cover exactly the same ground. A charge that
+	// accelerated, or that moved the whole distance on the first frame, would
+	// pass a test that only looked at where it ended up.
+	constexpr float Slice = 0.1f;
+	const float ExpectedPerSlice = Speed * Slice;
+
+	float PreviousTravelled = 0.0f;
+	for (int32 Step = 1; Step <= 3; ++Step)
+	{
+		Warden->AdvanceCharge(Slice);
+
+		const float MovedThisSlice = Warden->ChargeTravelledCm - PreviousTravelled;
+		PreviousTravelled = Warden->ChargeTravelledCm;
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("slice %d covers the same ground as every other"), Step),
+			MovedThisSlice, ExpectedPerSlice, 0.5f);
+
+		TestTrue(
+			*FString::Printf(TEXT("it is still charging after slice %d"), Step),
+			Warden->IsCharging());
+	}
+
+	// IT IS ON THE LANE, NOT MERELY THE RIGHT DISTANCE ALONG IT. A charge that
+	// drifted sideways would satisfy every distance check above.
+	// A DOUBLE TOLERANCE, NOT A FLOAT ONE. FVector's components are doubles in
+	// Unreal 5, and a float tolerance beside them is an ambiguous overload --
+	// error C2666, which names eight candidates rather than saying so.
+	TestEqual(TEXT("it has not drifted off the lane"),
+		Warden->GetActorLocation().Y, Started.Y, 0.01);
+	TestEqual(TEXT("and it has not risen or sunk"),
+		Warden->GetActorLocation().Z, Started.Z, 0.01);
+
+	// WHERE IT ENDS. Enough time for the whole 8 metres and more, to prove it
+	// stops at the end of its lane rather than running on.
+	Warden->AdvanceCharge(5.0f);
+
+	TestFalse(TEXT("it stops charging once the lane is run"),
+		Warden->IsCharging());
+	TestEqual(TEXT("it travelled exactly its designed range"),
+		Warden->ChargeTravelledCm, Warden_t::StampedeRangeCm, 0.5f);
+	TestTrue(TEXT("and it finished at the end of the lane it was given"),
+		Warden->GetActorLocation().Equals(LaneEnd, 1.0f));
+
+	// FURTHER ADVANCES DO NOTHING, so a charge that ended cannot be nudged on
+	// by the next frame.
+	const FVector Rested = Warden->GetActorLocation();
+	Warden->AdvanceCharge(1.0f);
+	TestTrue(TEXT("a finished charge does not move again"),
+		Warden->GetActorLocation().Equals(Rested, 0.01f));
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenChargeHitsAlongTheWayOnce,
+	"Cataclysm.Warden.StampedeHitsAlongItsLaneOnceAndRunsPast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenChargeHitsAlongTheWayOnce::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	// ONE IN THE LANE AND ONE BESIDE IT. Spawned far away and then moved,
+	// because two capsules created at contact distance push each other apart.
+	// Both on the players' side, because FindEnemiesInLine finds actors hostile
+	// to the one asking and a second enemy would be the Warden's ALLY.
+	ACataclysmEnemyCharacter* InTheLane =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(),
+			FVector(20000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* BesideIt =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(),
+			FVector(20000.0f, 500.0f, 0.0f), FRotator::ZeroRotator);
+
+	if (!InTheLane || !BesideIt)
+	{
+		AddError(TEXT("could not spawn something to stand in the lane"));
+		return false;
+	}
+
+	InTheLane->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	BesideIt->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+
+	// HALF WAY DOWN THE LANE, so the charge must still be travelling when it
+	// reaches them rather than meeting them at either end.
+	const float HalfWay = Warden_t::StampedeRangeCm / 2.0f;
+	InTheLane->SetActorLocation(FVector(HalfWay, 0.0f, 0.0f));
+
+	// JUST OUTSIDE THE LANE'S HALF-WIDTH, which is what makes the hit above
+	// mean something rather than proving the charge hits everything.
+	BesideIt->SetActorLocation(
+		FVector(HalfWay, Warden_t::StampedeRadiusCm + 100.0f, 0.0f));
+
+	const FVector LaneEnd = FVector(Warden_t::StampedeRangeCm, 0.0f, 0.0f);
+	Warden->BeginCharge(LaneEnd, Warden_t::StampedeSpeedCmPerSecond,
+						Warden_t::StampedeRadiusCm,
+						Warden_t::StampedeDamagePercent);
+
+	// MANY SMALL STEPS, WHICH IS THE POINT OF THIS TEST. The lane is re-tested
+	// every step, so a target standing still inside it would be hit on every one
+	// of them unless the charge remembers who it has already hit. Sixty steps
+	// against one expected hit.
+	for (int32 Frame = 0; Frame < 60 && Warden->IsCharging(); ++Frame)
+	{
+		Warden->AdvanceCharge(1.0f / 60.0f);
+	}
+
+	TestEqual(TEXT("it hit exactly one thing, once"), Warden->ChargeHitCount, 1);
+
+	// IT DID NOT STOP AT WHAT IT HIT. The design says the creature is committed
+	// and runs the full distance, ending past its target -- that overshoot is
+	// the window the telegraph buys. A charge that stopped on contact would end
+	// half way down the lane, in melee range, which is the opposite.
+	TestFalse(TEXT("it is no longer charging"), Warden->IsCharging());
+	TestEqual(TEXT("it ran the whole lane rather than stopping at what it hit"),
+		Warden->ChargeTravelledCm, Warden_t::StampedeRangeCm, 1.0f);
+	TestTrue(TEXT("so it finished past its target, not at it"),
+		Warden->GetActorLocation().X > InTheLane->GetActorLocation().X);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenChargeMarksTheWholeLane,
+	"Cataclysm.Warden.StampedeMarksItsWholeLaneAndNotJustAsFarAsTheTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenChargeMarksTheWholeLane::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	// THE DEFECT THIS EXISTS FOR. A charge runs its full range and ends PAST
+	// whatever it was aimed at. A lane drawn only as far as the target would be
+	// telling the truth about the start of the charge and lying about the end,
+	// and the player would learn to trust it and then be run over on ground it
+	// never marked. This is the same class of defect issue #471 records, where
+	// the Brute's rock landed a metre above the circle it had drawn.
+	//
+	// IT IS CHECKED AGAINST THE MARKER ACTUALLY IN THE WORLD, not against the
+	// number the controller was given. A test that compared the aim point to the
+	// expression that computes it could not fail.
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	// SIX METRES AWAY, WHICH IS THE DISTANCE THAT MAKES THIS TEST WORK. It is
+	// past Molten Roar's 5.6 metre reach, so the ring is not the entry that
+	// fits, and inside the charge's 8 metres. It is also two metres SHORT of the
+	// charge's range, which is the gap the lane must not stop at.
+	constexpr float TargetAtCm = 600.0f;
+
+	ACataclysmEnemyCharacter* Quarry =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(),
+			FVector(20000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!Quarry)
+	{
+		AddError(TEXT("could not spawn something to charge at"));
+		return false;
+	}
+	Quarry->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	Quarry->SetActorLocation(FVector(TargetAtCm, 0.0f, 0.0f));
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Warden->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("the Warden has no brain"));
+		return false;
+	}
+
+	// THE CREATURE ALREADY FACES +X with no rotation applied, and the target is
+	// down +X, so the charge does not spend a pass turning first. That is
+	// arranged rather than assumed: AbilityNeedsFacing returns true for a
+	// Movement shape, so a creature pointed elsewhere would return Turning here
+	// and draw nothing.
+	Brain->Think();
+
+	const ACataclysmTelegraphMarker* Lane = nullptr;
+	for (TActorIterator<ACataclysmTelegraphMarker> It(World); It; ++It)
+	{
+		Lane = *It;
+		break;
+	}
+
+	if (!Lane)
+	{
+		AddError(TEXT("the charge's wind-up drew no marker at all, which is the "
+					  "failure issue #491 describes: the marker switch used to "
+					  "return silently for a Movement shape"));
+		return false;
+	}
+
+	TestTrue(TEXT("a charge marks a lane, not a circle"), Lane->IsLane());
+
+	// THE WHOLE RANGE, NOT THE DISTANCE TO THE TARGET. 800, not 600.
+	TestEqual(TEXT("the lane runs the charge's full range"),
+		Lane->LengthCm, Warden_t::StampedeRangeCm, 1.0f);
+	TestTrue(TEXT("which is further than the target it was aimed at"),
+		Lane->LengthCm > TargetAtCm);
+
+	TestEqual(TEXT("and it is as wide as the corridor that hits"),
+		Lane->RadiusCm, Warden_t::StampedeRadiusCm);
 
 	return true;
 }
