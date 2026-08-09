@@ -449,17 +449,28 @@ def test_the_attack_interval_clears_the_swing_clip_it_plays():
     if not record.is_file():
         pytest.fail("game/docs/enemy-source-assets.md does not exist")
 
-    stated = re.search(
-        r"`PrimaryAttack_LA`\s*\|\s*([\d.]+)\s*\|",
-        record.read_text(encoding="utf-8"))
-    if stated is None:
-        pytest.fail(
-            "game/docs/enemy-source-assets.md no longer records the length of "
-            "PrimaryAttack_LA, the clip the Abyssal Warden swings with.")
+    # ALL THREE CLIPS, NOT ONE. A basic attack became a left swing, a right
+    # swing and a recovery on 2026-08-09, so checking one clip against the
+    # interval would prove something adjacent to the thing that matters.
+    played = ["PrimaryAttack_LA_Fast", "PrimaryAttack_RA_Fast",
+              "PrimaryAttack_RA_Recovery"]
 
-    clip = float(stated.group(1))
-    assert clip <= constant("DesignedAttackIntervalSeconds"), (
-        f"the Abyssal Warden swings every "
-        f"{constant('DesignedAttackIntervalSeconds')} s and PrimaryAttack_LA is "
-        f"{clip} s long. Nothing rate-scales it, so the creature starts a swing "
-        "it has not finished.")
+    text = record.read_text(encoding="utf-8")
+    total = 0.0
+    for name in played:
+        stated = re.search(rf"`{re.escape(name)}`\s*\|\s*([\d.]+)\s*\|", text)
+        if stated is None:
+            pytest.fail(
+                f"game/docs/enemy-source-assets.md no longer records the length "
+                f"of {name}, one of the three clips the Abyssal Warden's basic "
+                f"attack plays. Without it nothing knows whether the combo fits "
+                f"inside the attack interval.")
+        total += float(stated.group(1))
+
+    assert total <= constant("DesignedAttackIntervalSeconds"), (
+        f"the Abyssal Warden attacks every "
+        f"{constant('DesignedAttackIntervalSeconds')} s and the three clips of "
+        f"its basic attack are {total:.4f} s together. Nothing rate-scales "
+        f"them, so the creature starts an attack it has not finished. The "
+        f"full-speed swings would be 3.1 s, which is why the fast variants are "
+        f"the ones in use.")
