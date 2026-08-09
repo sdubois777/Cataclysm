@@ -262,6 +262,28 @@ public:
 	void UpdateCarriedRock();
 
 	/**
+	 * The cooldowns this creature is actually using, in seconds.
+	 *
+	 * THE DESIGNED FIGURE UNLESS SOMEBODY IS JUDGING IT BY PLAYING.
+	 * `Cataclysm.Brute.StompCooldown` and `Cataclysm.Brute.RockThrowCooldown`
+	 * override them; zero, the default, means use the designed number. The same
+	 * shape as `SecondsBetweenAttacks` and `ApplyChaseSpeed` already use.
+	 *
+	 * WHY THESE EXIST. Issue #452. The project owner reported the creature using
+	 * two abilities for every one ordinary swing, and the two cooldowns are what
+	 * decide that ratio: with both at C and an attack interval of I, about
+	 * C / I - 2 swings fit between each pair of abilities. Which value feels
+	 * right is a judgement made by playing, not one that can be argued to.
+	 *
+	 * BOTH DESIGNED FIGURES ARE FLOORS. Raising either is legal; lowering either
+	 * breaks an argument recorded in `sim/cataclysm_sim/enemy_abilities.py`. The
+	 * console variables say so in their own help text, which is what a person
+	 * setting one actually reads.
+	 */
+	float StompCooldownSecondsInUse() const;
+	float RockThrowCooldownSecondsInUse() const;
+
+	/**
 	 * Where a thrown rock leaves the creature.
 	 *
 	 * THE HAND, and specifically the same bone the carried rock hangs from, so

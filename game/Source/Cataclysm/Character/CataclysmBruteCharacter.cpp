@@ -110,6 +110,44 @@ static TAutoConsoleVariable<float> CVarBruteAttackInterval(
 		 "second cooldown rather than the attack interval."),
 	ECVF_Default);
 
+// THE TWO COOLDOWNS TOGETHER DECIDE HOW OFTEN THE CREATURE USES AN ABILITY
+// RATHER THAN SWINGING, which is what the project owner reported on 2026-08-08
+// as "he basically uses an ability, waits a second, attacks once, uses another
+// ability, waits a second, attacks once". Issue #452.
+//
+// THE ARITHMETIC, so a figure can be aimed at rather than guessed. Any attack is
+// gated by the attack interval, and an ability that lands spends an interval
+// slot exactly as a swing does, so with two abilities on a shared cooldown C and
+// an interval I the creature fits about C / I - 2 ordinary swings between each
+// pair of abilities. At the designed 5 and 1.6 that is 1.1, which is the one
+// swing that was reported. 10 seconds gives about 4.
+//
+// RAISING THEM IS LEGAL; LOWERING THEM IS NOT. Both designed figures are floors
+// rather than targets. The stomp's 5 seconds is the stun immunity window, and
+// sim/cataclysm_sim/enemy_abilities.py records that stomping faster than that
+// spends stomps on a target that cannot be stunned. The rock throw's 5 seconds
+// is argued from approach time: the Brute crosses its own throwing range in 2
+// seconds, so a shorter cooldown lets it throw twice per approach and it reads
+// as a ranged enemy rather than a bruiser with a rock.
+static TAutoConsoleVariable<float> CVarBruteStompCooldown(
+	TEXT("Cataclysm.Brute.StompCooldown"),
+	0.0f,
+	TEXT("Seconds before the Brute may stomp again. 0 uses its designed 5. "
+		 "Raising it makes the creature swing more often between abilities; "
+		 "roughly cooldown / 1.6 - 2 ordinary swings fit between each pair. "
+		 "Do NOT go below 5: that figure is the stun immunity window, and a "
+		 "faster stomp spends itself on a player who cannot be stunned yet."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarBruteRockThrowCooldown(
+	TEXT("Cataclysm.Brute.RockThrowCooldown"),
+	0.0f,
+	TEXT("Seconds before the Brute may throw again. 0 uses its designed 5. "
+		 "Do NOT go below 5: the creature crosses its own 10 metre throwing "
+		 "range in 2 seconds, so a shorter cooldown lets it throw twice per "
+		 "approach and it stops reading as a melee bruiser."),
+	ECVF_Default);
+
 static TAutoConsoleVariable<float> CVarBruteRockArc(
 	TEXT("Cataclysm.Brute.RockArc"),
 	0.0f,
@@ -238,7 +276,11 @@ TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
 	// is inside the ring and should be hit by it.
 	Stomp.MinRangeCm = 0.0f;
 	Stomp.MaxRangeCm = StompRadiusCm;
-	Stomp.CooldownSeconds = StompCooldownSeconds;
+	// READ THROUGH THE OVERRIDE, NOT STRAIGHT OFF THE CONSTANT. This array is
+	// rebuilt every time ACataclysmEnemyController::IsAbilityReady asks, so a
+	// console variable set mid-fight takes effect on the next thinking pass
+	// rather than needing a restart. Issue #452.
+	Stomp.CooldownSeconds = StompCooldownSecondsInUse();
 	Stomp.WindUpSeconds = StompWindUpSeconds;
 
 	// A RING ON THE GROUND, DRAWN FROM THE SAME CONSTANT THE DAMAGE USES.
@@ -254,7 +296,7 @@ TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
 	// ability exists to answer standing off, not to replace the swing.
 	RockThrow.MinRangeCm = DesignedMeleeReachCm;
 	RockThrow.MaxRangeCm = RockThrowRangeCm;
-	RockThrow.CooldownSeconds = RockThrowCooldownSeconds;
+	RockThrow.CooldownSeconds = RockThrowCooldownSecondsInUse();
 	RockThrow.WindUpSeconds = RockThrowWindUpSeconds;
 
 	// A CIRCLE WHERE IT LANDS, NOT A LANE ALONG THE WAY, because it is lobbed.
@@ -696,6 +738,18 @@ void ACataclysmBruteCharacter::UpdateAbilityMontage()
 	const int32 Index = PendingAbilityMontage;
 	PendingAbilityMontage = INDEX_NONE;
 	PlayAbilityMontage(Index);
+}
+
+float ACataclysmBruteCharacter::StompCooldownSecondsInUse() const
+{
+	const float Override = CVarBruteStompCooldown.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : StompCooldownSeconds;
+}
+
+float ACataclysmBruteCharacter::RockThrowCooldownSecondsInUse() const
+{
+	const float Override = CVarBruteRockThrowCooldown.GetValueOnAnyThread();
+	return Override > 0.0f ? Override : RockThrowCooldownSeconds;
 }
 
 FVector ACataclysmBruteCharacter::RockLaunchLocation() const
