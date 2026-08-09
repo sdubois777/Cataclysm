@@ -220,6 +220,58 @@ def test_turn_rate_matches() -> None:
     )
 
 
+def test_the_defences_that_do_not_depend_on_the_encounter_match() -> None:
+    """Resistance and the two crit figures, which are the same at every rarity.
+
+    WHY THESE THREE AND NOT ARMOUR, which is the Brute's defining trait. The
+    design model splits its stat block: `stats_for` scales health, damage and
+    armour by the encounter's score and the enemy's rarity, and takes these
+    "unchanged from the archetype". So these belong on the class and armour does
+    not -- nothing in the engine knows a score, and a figure invented to stand in
+    for one would look designed and be nothing of the kind. Issue #372.
+
+    WHAT WENT WRONG BEFORE. All three were inert. The engine held three
+    attributes out of roughly twenty, so a Brute had extra health, a slow walk
+    and no defences at all.
+    """
+    kind = brute_archetype()
+
+    for constant_name, designed in (
+            ("DesignedResistancePercent", kind.resistance),
+            ("DesignedCritChancePercent", kind.crit_chance),
+            ("DesignedCritMultiplierPercent", kind.crit_multiplier)):
+        assert constant(BRUTE_HEADER, constant_name) == pytest.approx(designed), (
+            f"CataclysmBruteCharacter.h says {constant_name} is "
+            f"{constant(BRUTE_HEADER, constant_name)} and "
+            f"sim/cataclysm_sim/enemy_stats.py designs {designed}. The model is "
+            f"authoritative.")
+
+
+def test_the_brutes_crit_multiplier_is_not_the_baseline_one() -> None:
+    """Otherwise the test above passes while the Brute inherits the default.
+
+    A HIT HARDER THAN EVERY OTHER ENEMY'S IS THE DESIGN. The model gives an
+    undesigned creature 150 and the Brute 200, because a slow, heavily armoured
+    thing that swings rarely should hurt when it lands. If the two ever became
+    the same number, the check above would still pass and the Brute would have
+    quietly lost a designed trait.
+    """
+    import dataclasses
+
+    from cataclysm_sim.enemy_stats import Archetype
+
+    baseline = {field.name: field.default
+                for field in dataclasses.fields(Archetype)}
+
+    assert brute_archetype().crit_multiplier != pytest.approx(
+        baseline["crit_multiplier"]), (
+        f"the Brute's crit multiplier is now {brute_archetype().crit_multiplier}, "
+        f"the same as the model's default for an undesigned creature. Either it "
+        f"lost a designed trait, or the default moved onto it. Both make the "
+        f"engine's DesignedCritMultiplierPercent a copy of something it should "
+        f"be distinguishable from.")
+
+
 def test_melee_reach_matches_in_centimetres() -> None:
     assert constant(BRUTE_HEADER, "DesignedMeleeReachCm") == pytest.approx(
         brute_reach_metres() * 100.0

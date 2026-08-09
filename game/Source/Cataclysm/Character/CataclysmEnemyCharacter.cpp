@@ -147,6 +147,81 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	{
 		AbilitySystemComponent->SetNumericAttributeBase(Damage, StartingAttackDamage);
 	}
+
+	// --- the rest of the designed stat block. Issue #372 ---
+	//
+	// UNTIL THIS LANDED AN ENEMY HELD THREE ATTRIBUTES OUT OF ROUGHLY TWENTY.
+	// Armour, every resistance, evasion and both crit figures sat at the
+	// attribute sets' own defaults and nothing ever wrote to them, so the Brute
+	// -- which the design document calls heavily armoured and gives the
+	// second-highest armour share of the seven vertical slice enemies -- was a
+	// slow enemy with extra health and nothing else.
+	//
+	// WRITTEN DIRECTLY RATHER THAN THROUGH A GameplayEffect, which was the open
+	// question on that issue. These are BASE values, and a modifier layers on
+	// top of the base either way, so the effect's one real advantage does not
+	// apply here. It would need an asset per enemy or a programmatic effect, and
+	// issue #355 rebuilds this transport anyway once the archetype numbers are
+	// game data. Two mechanisms for one job is worse than one.
+	//
+	// NO ZERO CHECKS BELOW, unlike the two writes above. Zero armour, zero
+	// resistance and zero evasion are all designed values -- the Imp's armour
+	// share really is 0.0 -- so treating zero as "not configured" would make an
+	// unarmoured creature impossible to express.
+	ApplyIfHeld(UCataclysmCombatAttributeSet::GetArmorAttribute(), StartingArmour);
+	ApplyIfHeld(UCataclysmCombatAttributeSet::GetEvasionAttribute(), EvasionPercent);
+	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritChanceAttribute(),
+				CritChancePercent);
+	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(),
+				CritMultiplierPercent);
+
+	// ONE FIGURE ONTO ALL EIGHT. The design model says so in as many words:
+	// "percent of all incoming damage resisted, whatever its type. One figure,
+	// not eight." A per-type enemy profile is not something the design has, and
+	// inventing one here would be inventing design.
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetWarResistanceAttribute(),
+				ResistancePercent);
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+				ResistancePercent);
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(),
+				ResistancePercent);
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetPestilenceResistanceAttribute(),
+				ResistancePercent);
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetFamineResistanceAttribute(),
+				ResistancePercent);
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetCelestialResistanceAttribute(),
+				ResistancePercent);
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetChaosResistanceAttribute(),
+				ResistancePercent);
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetVoidResistanceAttribute(),
+				ResistancePercent);
+}
+
+void ACataclysmEnemyCharacter::ApplyIfHeld(const FGameplayAttribute& Attribute,
+										   float Value)
+{
+	// THE CHECK IS THE WHOLE POINT OF THE HELPER. Writing to an attribute the
+	// ability system does not hold yet raises an engine ensure rather than
+	// failing quietly, and HasAttributeSetForAttribute is false until the
+	// component has been initialised. ApplyStartingAttributes runs both from the
+	// setters and from InitAbilityActorInfo, so it really does run before that
+	// sometimes.
+	if (AbilitySystemComponent
+		&& AbilitySystemComponent->HasAttributeSetForAttribute(Attribute))
+	{
+		AbilitySystemComponent->SetNumericAttributeBase(Attribute, Value);
+	}
+}
+
+void ACataclysmEnemyCharacter::SetArmour(float NewArmour)
+{
+	if (NewArmour < 0.0f)
+	{
+		return;
+	}
+
+	StartingArmour = NewArmour;
+	ApplyStartingAttributes();
 }
 
 void ACataclysmEnemyCharacter::AttackTarget(AActor* Target)

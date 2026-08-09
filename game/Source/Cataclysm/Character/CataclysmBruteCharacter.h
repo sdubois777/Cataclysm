@@ -869,6 +869,28 @@ public:
 	 */
 	static constexpr float DesignedMeleeReachCm = 90.0f;
 
+	/**
+	 * The three designed figures that do not depend on the encounter. Issue #372.
+	 *
+	 * FROM `ARCHETYPES["Brute"]` in `sim/cataclysm_sim/enemy_stats.py`, and
+	 * `tools/tests/test_brute_matches_the_model.py` holds them against it.
+	 *
+	 * WHY THESE THREE AND NOT ARMOUR, which is the Brute's defining trait. The
+	 * model scales armour by the encounter's score and the enemy's rarity --
+	 * `armor_share` of 3.00 is a multiplier, not a number of points -- and
+	 * nothing in the engine knows a score. So armour arrives through
+	 * `ACataclysmEnemyCharacter::SetArmour` from whoever spawns the creature,
+	 * exactly as its health and its attack damage do. These three are taken
+	 * unchanged from the archetype at every rarity, so they belong to the class.
+	 *
+	 * THE CRIT MULTIPLIER IS 200 AND NOT THE 150 EVERY OTHER ENEMY CARRIES.
+	 * That is designed: a slow, heavily armoured creature that swings rarely
+	 * hits harder when it does.
+	 */
+	static constexpr float DesignedResistancePercent = 15.0f;
+	static constexpr float DesignedCritChancePercent = 5.0f;
+	static constexpr float DesignedCritMultiplierPercent = 200.0f;
+
 	/** Centimetres per second. enemy_stats.py, move_speed=2.5 metres. */
 	static constexpr float DesignedWalkSpeedCmPerSecond = 250.0f;
 
