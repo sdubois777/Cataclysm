@@ -46,6 +46,8 @@ GAME_MODE_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player"
                     / "CataclysmGameMode.h")
 CONTROLLER_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
                      / "CataclysmEnemyController.h")
+CONTROLLER_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+                  / "CataclysmEnemyController.cpp")
 PLAYER_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
               / "CataclysmPlayerCharacter.cpp")
 
@@ -441,6 +443,54 @@ def test_the_charge_is_built_and_is_reached_by_the_brain():
         "that array is priority and ChooseAbility takes the first entry that "
         "fits without looking at the shape, so the 5 second charge would crowd "
         "out the 12 second ring everywhere both are legal.")
+
+
+def test_the_brain_stops_deciding_while_a_charge_is_in_flight():
+    """Issue #499, checked as text because continuous integration builds no C++.
+
+    THE DEFECT. `ContinueWindUp` returns true only while a creature is winding
+    UP; it clears the wind-up and returns on the pass that LANDS the ability,
+    which for a charge is the pass the travel starts on. Without a separate
+    test for a running charge the brain ran its ordinary logic four times a
+    second on a creature in flight, so it turned to face its target, ordered a
+    walk toward it, and stopped movement when it came within reach. The project
+    owner saw the turning while playing the Abyssal Warden on 2026-08-09.
+
+    THE AUTOMATION TESTS THAT REALLY CHECK THE BEHAVIOUR are
+    `Cataclysm.Warden.TheBrainDoesNothingWhileAChargeIsInFlight` and
+    `Cataclysm.Warden.AStunStopsAChargeInFlight`, and both were proved to fail
+    when the guard is removed. Neither runs on a pull request, because
+    `.github/workflows/ci.yml` is a single Linux job that compiles no C++. This
+    is the weaker check that does run.
+    """
+    text = source(CONTROLLER_CPP)
+
+    assert "IsCharging()" in text, (
+        "CataclysmEnemyController.cpp no longer asks whether a charge is "
+        "running, so the brain has gone back to steering a creature in flight: "
+        "turning it to face its target, ordering a walk toward it, and stopping "
+        "its movement. Issue #499.")
+
+    assert "ECataclysmBrainAction::Charging" in text, (
+        "the brain no longer reports Charging as a state of its own. Without "
+        "it a creature in flight reads as Chasing or Attacking, and nothing "
+        "can tell a committed charge apart from a decision to walk.")
+
+    assert "CancelCharge()" in text, (
+        "CataclysmEnemyController.cpp no longer cancels a charge when the "
+        "creature is stunned. A stunned creature that keeps travelling is "
+        "acting, which the design says a stunned creature cannot do.")
+
+    # THE ORDER IS THE RULE, NOT JUST THE PRESENCE. A stun has to outrank a
+    # charge, so the charge test must come after the stun test. Written the
+    # other way round a stun could never interrupt one.
+    stun_at = text.index("UCataclysmSkillEffects::IsStunned(Driven)")
+    charge_at = text.index("Charger->IsCharging()")
+    assert stun_at < charge_at, (
+        "the running-charge test now comes before the stun test in Think. A "
+        "stun outranks everything, including a committed attack, so a charge "
+        "checked first would make a charging creature immune to being "
+        "interrupted.")
 
 
 # --------------------------------------------------------------------------

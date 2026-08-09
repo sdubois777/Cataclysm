@@ -76,6 +76,33 @@ enum class ECataclysmBrainAction : uint8
 	 * inserting renumbers every value after it.
 	 */
 	Turning,
+
+	/**
+	 * Travelling down a charge that has already begun. Not deciding anything.
+	 *
+	 * WHAT IT FIXED. Until 2026-08-09 the brain had no idea a charge was
+	 * running. `ContinueWindUp` returns true only while a creature is winding
+	 * UP; it clears the wind-up and returns on the pass that LANDS the ability,
+	 * which is the pass that starts the charge. Every pass after that ran the
+	 * ordinary logic four times a second while the creature was in flight, so it
+	 * turned to face its target, issued walk-toward-you orders, and called
+	 * StopMovement when the target came within reach.
+	 *
+	 * The visible symptom was reported by the project owner playing the Abyssal
+	 * Warden: "he turns around mid charge to face you as he's flying past".
+	 *
+	 * AND IT WAS NOT ONLY COSMETIC. The design says a charge is committed and
+	 * that a miss costs the creature because it ends up past the player FACING
+	 * AWAY and has to turn before walking back. A creature that turned to track
+	 * the player during the charge arrives already pointed at them, so it skips
+	 * the turn the design counts as part of that cost.
+	 *
+	 * A STUN STILL OUTRANKS THIS, and cancels the charge. See Think.
+	 *
+	 * Appended, like Roaming, WindingUp, Stunned and Turning, because this is a
+	 * UENUM and inserting renumbers every value after it.
+	 */
+	Charging,
 };
 
 /**
