@@ -20,6 +20,42 @@ applied or still pending.
 
 ---
 
+## 2026-08-09 — The Succubus enemy modifier is renamed Beguiling
+
+**Affects:** the Enemy Modifiers sheet of `All_Things_Cataclysm.xlsx`, and
+therefore `game/Data/EnemyModifiers.csv` and `DT_EnemyModifiers`. Applied.
+
+**A creature and a modifier must not share a name.** A Demonic enemy modifier
+was called Succubus, and so is one of the seven vertical slice enemies. A
+modifier is rolled onto an individual enemy, one per rarity above Common, from
+its own Cataclysm's pool and the Generic one — so an Elite Succubus could roll
+the Succubus modifier and be named "Succubus Succubus" anywhere both are shown.
+That is not a display problem to hide: the two mean different things, and the
+modifier does something the creature does not do innately.
+
+**The modifier moved, not the creature.** The archetype name comes from the
+design document's own enemy table and is used in `sim/cataclysm_sim/enemy_stats.py`
+and in two test files. The modifier name exists in one workbook cell and what is
+generated from it.
+
+**Beguiling, because it matches the naming already in the sheet.** Most modifier
+names are a descriptive noun phrase — Hellfire Aura, Unholy Sigils, Sacrificial
+Bond — and Haunting shows a single adjective-as-noun is already in use. Beguiling
+is the same form as Haunting and says what the modifier does without taking a
+creature's name. The effect text is unchanged.
+
+**The general rule this sets:** no enemy modifier may be named after an enemy
+archetype, in any Cataclysm. That is stricter than the existing rule about
+abilities duplicating a modifier's effect, which permits a clash across
+Cataclysms because the creature can never roll it. A name is read by a person,
+and two different things called the same thing are confusing either way.
+`test_no_enemy_modifier_is_named_after_an_enemy` holds it.
+
+**A shared word is not a shared name.** Abyssal Aura is a modifier and the
+Abyssal Warden is an enemy. Names are compared whole, so that stands.
+
+---
+
 ## 2026-08-08 — Where the Brute's rip crater goes, and how craters avoid accumulating
 
 **Affects:** nothing in the design documents. Implementation detail, recorded

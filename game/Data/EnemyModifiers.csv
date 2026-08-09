@@ -1,6 +1,6 @@
 Name,CataclysmType,ModifierName,Description
 Demonic_Hellfire_Aura,Demonic,Hellfire Aura,Emits a burning aura that deals constant fire damage to nearby players
-Demonic_Succubus,Demonic,Succubus,"When taking damage from a player, charm them for 2 seconds. Players cannot deal direct damage to you while charmed."
+Demonic_Beguiling,Demonic,Beguiling,"When taking damage from a player, charm them for 2 seconds. Players cannot deal direct damage to you while charmed."
 Demonic_Infernal_Sacrifice,Demonic,Infernal Sacrifice,Sacrifice nearby allies to heal yourself and gain temporary damage buffs.
 Demonic_Unholy_Sigils,Demonic,Unholy Sigils,Create a large demonic sigil on the ground. Allies in this sigil cannot be killed.
 Demonic_Abyssal_Aura,Demonic,Abyssal Aura,This enemy is surrounded by an aura of pure demonic energy. Players within the aura's radius will have their Demonic resistance reduced by 25%.
