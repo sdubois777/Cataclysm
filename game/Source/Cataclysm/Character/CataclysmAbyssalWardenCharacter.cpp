@@ -8,6 +8,7 @@
 #include "Animation/AnimSequence.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -332,6 +333,25 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 				MoltenRoarAnimation ? TEXT("found") : TEXT("MISSING"));
 		}
 	}
+
+	// OTHERWISE THE CYLINDER SITS INSIDE THE DEMON. `ACataclysmEnemyCharacter`
+	// creates PlaceholderBody in its constructor and nothing about assigning a
+	// skeletal mesh removes it.
+	//
+	// THIS WAS MISSED WHEN THE CLASS WAS FIRST WRITTEN and the project owner
+	// saw it immediately: the placeholder rendered on top of the creature. It is
+	// not visible from the Brute's ResolveBody at a glance, because there it
+	// sits after two screens of rock and montage loading that this class has
+	// none of. `test_every_dressed_enemy_hides_its_placeholder` in
+	// `tools/tests/test_warden_matches_the_model.py` now refuses a dressed enemy
+	// that does not do this, for every enemy rather than only this one.
+	if (PlaceholderBody)
+	{
+		PlaceholderBody->SetVisibility(false);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Abyssal Warden is wearing %s."), BodyMeshPath);
 
 	return true;
 }

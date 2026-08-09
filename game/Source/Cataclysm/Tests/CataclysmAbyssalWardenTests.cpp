@@ -388,6 +388,70 @@ bool FCataclysmWardenRingReachesItsWholeMarker::RunTest(const FString&)
 // --------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenHidesItsPlaceholderOnceDressed,
+	"Cataclysm.Warden.ItHidesItsPlaceholderOnceDressed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenHidesItsPlaceholderOnceDressed::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	if (!Warden->PlaceholderBody)
+	{
+		AddError(TEXT("the enemy base no longer creates a PlaceholderBody, so "
+					  "there is nothing to hide and this check is meaningless"));
+		return false;
+	}
+
+	// IT STARTS VISIBLE, which is what makes the rest of this mean something. A
+	// placeholder that was hidden from birth would pass the check below on a
+	// creature that never turns it off.
+	TestTrue(TEXT("the placeholder cylinder starts visible"),
+		Warden->PlaceholderBody->IsVisible());
+
+	const bool bDressed = Warden->ResolveBody(/*bIncludeAnimation=*/true);
+
+	// THE RELATIONSHIP RATHER THAN AN ABSOLUTE, so this runs the same on a
+	// machine with the Paragon Grux pack and on one without. With the art the
+	// mesh resolves and the cylinder must go; without it, ResolveBody returns
+	// false and the cylinder is all there is, so it must stay.
+	//
+	// THE PROJECT OWNER SAW THIS FAIL ON 2026-08-09: "the cylinder base is
+	// appearing over him". The class set the skeletal mesh and left the
+	// placeholder visible on top of it.
+	TestEqual(
+		TEXT("the placeholder is hidden exactly when the real mesh resolved"),
+		Warden->PlaceholderBody->IsVisible(), !bDressed);
+
+	if (!bDressed)
+	{
+		AddInfo(TEXT("the Paragon Grux pack is not present, so what was checked "
+					 "is that the placeholder is KEPT rather than that it is "
+					 "hidden. Both directions matter; only one ran here."));
+	}
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmWardenCanRegisterContactDespiteItsHeight,
 	"Cataclysm.Warden.ItCanRegisterContactDespiteItsHeight",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
