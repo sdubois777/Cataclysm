@@ -633,6 +633,60 @@ def test_the_curse_effect_is_taken_from_the_status_effect_table(
         "the Succubus subsection no longer says where its effects come from.")
 
 
+def test_no_enemy_modifier_is_named_after_an_enemy() -> None:
+    """A creature and a modifier must not share a name. Issue #358.
+
+    WHAT WENT WRONG. A Demonic enemy modifier was called Succubus, and so is one
+    of the seven vertical slice enemies. A modifier is rolled onto an individual
+    enemy, one per rarity above Common, so an Elite Succubus could roll the
+    Succubus modifier and be named "Succubus Succubus" anywhere both are shown.
+    That is not a display problem to hide: the two mean different things, and the
+    modifier does something the creature does not do innately. It was renamed to
+    Beguiling.
+
+    THE SAME SHAPE AS THE TEST BELOW, one level up. That one stops an innate
+    ability duplicating a modifier's EFFECT; this stops a modifier taking a
+    creature's NAME.
+
+    EVERY CATACLYSM, NOT ONLY THE CREATURE'S OWN, which is stricter than the
+    test below and deliberately so. That one can argue a War modifier is safe on
+    a Demonic enemy because it can never be rolled there. A name is read by a
+    person, and two different things called the same thing are confusing whether
+    or not one creature can hold both.
+
+    A SHARED WORD IS NOT A SHARED NAME. Abyssal Aura is a modifier and the
+    Abyssal Warden is an enemy; the two are compared whole, so that passes.
+    Issue #358 raises it and reaches the same conclusion.
+    """
+    import csv
+
+    from cataclysm_sim.enemy_stats import ARCHETYPES
+
+    modifiers = REPO_ROOT / "game" / "Data" / "EnemyModifiers.csv"
+    if not modifiers.is_file():
+        pytest.fail("game/Data/EnemyModifiers.csv is not present, so nothing "
+                    "here is checked. Regenerate it with "
+                    "python tools/generate_datatables.py")
+
+    with modifiers.open(encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert rows, "game/Data/EnemyModifiers.csv has no rows to check."
+
+    creatures = set(ARCHETYPES)
+    clashes = sorted(
+        (row["ModifierName"], row["CataclysmType"])
+        for row in rows if row["ModifierName"] in creatures)
+
+    assert not clashes, (
+        f"these enemy modifiers are named after an enemy archetype: {clashes}. "
+        f"A modifier is rolled onto an individual enemy, so a creature of that "
+        f"name carrying a modifier of the same name is named twice over, and "
+        f"the two mean different things. Rename the modifier: the archetype "
+        f"name comes from the design document's own enemy table and is the more "
+        f"expensive side to move. Issue #358.")
+
+
 def test_no_effect_duplicates_a_modifier_its_own_cataclysm_can_roll(
         succubus_section):
     """A modifier is what an individual enemy carries one of per rarity above
