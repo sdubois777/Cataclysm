@@ -226,38 +226,101 @@ def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
             >= SMALLEST_USEFUL_MARKER_METRES)
 
 
-#: The largest marker an ability may have if it is escaped with a Movement skill
-#: rather than by walking, and the cooldown that tier requires. Both from the
-#: Attack Telegraphs subsection: 8 metres is the shortest Movement-shape skill
-#: range and 5 seconds is the Movement slot's cooldown.
-MOVEMENT_ESCAPE_CAP_METRES = 8.0
-MOVEMENT_ESCAPE_MINIMUM_COOLDOWN = 5.0
+#: The longest any telegraph may warn for, in seconds.
+#:
+#: THIS IS THE ONE NUMBER IN THE TELEGRAPH RULES THAT NOTHING DERIVES, and it is
+#: a judgement rather than a calculation. It was chosen on 2026-08-09 and
+#: `docs/DECISIONS.md` records why: 2.0 seconds is already the longest telegraph
+#: in the game, so adopting it as the ceiling changed no existing ability, and no
+#: shipped game in the genre publishes a telegraph duration to check it against.
+#:
+#: WHAT IT IS FOR. Without a ceiling the wind-up formula gives the player back
+#: exactly as much ground as a bigger radius takes away, so the escape margin is
+#: 2.3 metres at EVERY radius and a bigger marker is not harder to escape. That
+#: property is stated in the Attack Telegraphs subsection of
+#: `docs/Cataclysm_GDD_v2.md` and it is what made "make the ring bigger" a
+#: request the rules could not satisfy. Above the radius at which the wind-up
+#: reaches this ceiling the warning stops growing while the ground to cross keeps
+#: growing, so the margin falls by one metre per metre of radius. That is what
+#: makes radius mean difficulty.
+MAXIMUM_WIND_UP_SECONDS = 2.0
+
+
+def wind_up_seconds(radius: float) -> float:
+    """How long a marker of this radius is on the ground before its attack lands.
+
+    The Attack Telegraphs subsection of `docs/Cataclysm_GDD_v2.md` states the
+    wind-up as 0.4 + Radius / 3.5 seconds, held to a ceiling of
+    `MAXIMUM_WIND_UP_SECONDS`.
+    """
+    return min(REACTION_ALLOWANCE + radius / WALK_OUT_SPEED,
+               MAXIMUM_WIND_UP_SECONDS)
+
+
+def telegraph_cap_metres(kind: Archetype | str) -> float:
+    """The largest marker this creature may draw, in metres.
+
+    DERIVED, NOT CHOSEN. It is the radius at which the slowest class still has
+    exactly the reaction allowance and not a moment more. During a wind-up of
+    `MAXIMUM_WIND_UP_SECONDS` that class covers `WALK_OUT_SPEED` times it; a
+    player standing at contact has to cross the radius less the contact
+    distance; and requiring the difference to leave `REACTION_ALLOWANCE`
+    seconds of walking spare rearranges to this.
+
+    SO "EVERY CLASS CAN CLEAR EVERY TELEGRAPH WITH THE STATED REACTION
+    ALLOWANCE" IS A PROPERTY OF THE RULES rather than something checked ability
+    by ability. Above this radius the slowest class cannot both react and walk
+    clear, which is the line the design document draws when it says an area that
+    cannot be escaped "is a damage event rather than a telegraph".
+
+    PER CREATURE, BECAUSE CONTACT IS PER CREATURE. A player stands at their own
+    radius plus the creature's, so a wider creature holds its target further out
+    and that target has less ground to cross. Every enemy that can telegraph
+    today has the same 0.48 m body, so this is 6.50 m for all of them.
+    """
+    kind = archetype(kind) if isinstance(kind, str) else kind
+    contact = PLAYER_BODY_RADIUS + kind.body_radius
+    return (WALK_OUT_SPEED * (MAXIMUM_WIND_UP_SECONDS - REACTION_ALLOWANCE)
+            + contact)
 
 
 def fits_its_cycle(ability: Ability, kind: Archetype | str) -> bool:
-    """Whether a telegraphed ability's marker is small enough for its cycle.
+    """Whether a telegraphed ability's marker is legal for its cycle.
 
-    Eight metres is an absolute ceiling. The design document says of it that
-    "anything above 8 metres cannot be escaped by any means the player has,
-    which makes it a damage event rather than a telegraph", and that is a
-    statement about the player's reach rather than about any one tier.
+    TWO CONDITIONS, NOT THREE, AND THERE ARE NO LONGER TWO TIERS. The marker
+    must be within `telegraph_cap_metres`, and its wind-up must fit inside half
+    the cycle.
 
-    Under that ceiling there are two tiers and passing either is enough. A
-    marker the player walks out of has to fit inside half the cycle. A larger
-    one is legal only on a cooldown of at least 5 seconds, because that is what
-    the Movement slot can answer.
+    WHAT WENT AND WHY. Until 2026-08-09 there was a second tier for markers
+    escaped with a Movement skill rather than by walking, with its own wind-up
+    formula and a 5 second minimum cooldown. Issue #487 recorded that the tier
+    was unreachable: the walk-out limit grows at 1.75 metres per second of
+    cooldown while its 8 metre cap did not grow at all, so above a 5.36 second
+    cooldown every legal radius was a walk-out radius, and no designed ability
+    was ever in it. Measuring it also showed it would not have done its job: its
+    escape margin was 13.7 metres at every radius against the walk-out tier's
+    2.3, so it was between identical and twice as forgiving, never harder.
 
-    An ability that is not telegraphed has no marker and so no limit.
+    AN ABILITY THAT IS NOT TELEGRAPHED IS STILL EXEMPT FROM THE CAP, and that
+    is a known hole rather than a decision: issue #500. "Can the player cross
+    this at all" does not depend on whether a marker was drawn, so the cap
+    should apply to everything. It is left alone here because closing it is a
+    separate concern with its own casualty -- the Succubus's Dominion is an Aura
+    with a radius of 8.0 metres and no cycle, so it draws no marker and would be
+    refused outright by a cap applied here. Whether an Aura is exempt by shape
+    is the question #500 has to answer, and answering it inside this change
+    would mean two decisions in one.
     """
     kind = archetype(kind) if isinstance(kind, str) else kind
     if not is_telegraphed(ability, kind):
         return True
+
     radius = float(ability.params.get("Radius", 0.0))
-    if radius > MOVEMENT_ESCAPE_CAP_METRES:
+    if radius > telegraph_cap_metres(kind):
         return False
-    if radius <= largest_telegraphed_radius(ability.cycle_seconds(kind)):
-        return True
-    return ability.cooldown >= MOVEMENT_ESCAPE_MINIMUM_COOLDOWN
+
+    return (wind_up_seconds(radius)
+            <= ability.cycle_seconds(kind) / 2.0)
 
 
 def is_lobbed(ability: Ability) -> bool:
@@ -908,22 +971,28 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # THE LARGEST MARKER IN THE GAME. The Brute's stomp is 3.5 metres
             # and the Succubus's bolt 3.15.
             #
-            # RADIUS 5.6 IS A JUDGEMENT, AND IT IS BOUNDED. It has to be above
-            # the 2.80 metres this creature's own attack interval allows, or it
-            # is not categorically different from what it does every 2.4
-            # seconds. It has to be at or under the 8 metre absolute cap, above
-            # which the design document says an attack cannot be escaped by any
-            # means the player has. Inside that window 5.6 is chosen because it
-            # is exactly twice the 2.80, and because it makes the wind-up
-            # exactly 2.0 seconds.
+            # RADIUS 6.5 IS THE CAP, AND SITTING AT IT IS THE POINT. It is
+            # `telegraph_cap_metres` for a 0.48 m body: the largest marker at
+            # which the slowest class still has exactly the 0.4 second reaction
+            # allowance and not a moment more. Nothing in the game may be
+            # larger, so this is the hardest ring the rules permit.
             #
-            # A BIGGER MARKER IS NOT HARDER TO ESCAPE, which is worth knowing
-            # before reading anything into the size. The wind-up is
-            # 0.4 + Radius / 3.5, so the slowest class walks 1.4 + Radius metres
-            # during it while a player at contact has to cross Radius - 0.9. The
-            # margin is 2.3 metres at EVERY radius. This ring and the Brute's
-            # stomp are equally escapable; this one denies more ground and warns
-            # for longer. Issue #487.
+            # IT WAS 5.6 UNTIL 2026-08-09, and it was raised because the project
+            # owner played it and said it was too easy to escape. Raising it
+            # only means something because the wind-up is now capped at 2.0
+            # seconds. Before that cap the wind-up grew with the radius and
+            # handed back exactly as much ground as the bigger ring took away,
+            # so the escape margin was 2.3 metres at EVERY radius and a bigger
+            # marker was not a harder one. Issues #487 and #496.
+            #
+            # WHAT THE CHANGE BOUGHT, for the slowest class: the margin falls
+            # from 2.30 m to 1.40 m and the spare time from 0.657 s to 0.400 s,
+            # a 39% cut in both. The warning stays 2.0 seconds, so the 1.4
+            # second `Ultimate_Roar` clip still fits inside it unchanged.
+            #
+            # THE GEOMETRY IS NOW EXHAUSTED. If this still reads as too easy,
+            # the answer is not more radius -- 6.5 is the ceiling -- but what
+            # the attack leaves behind. It currently leaves nothing.
             #
             # ANGLE 360 because it is a ring at its feet, and because a cone on
             # a creature that turns at the ordinary 480 degrees per second would
@@ -932,7 +1001,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # NO STUN. The Brute's stomp is the thing in this slice that stuns,
             # and a second creature holding the player still would spend most of
             # its uses inside the 5 second immunity window anyway.
-            params={"Radius": 5.6, "Angle": 360},
+            params={"Radius": 6.5, "Angle": 360},
             # 12 SECONDS, AND IT IS DERIVED RATHER THAN CHOSEN. docs/DECISIONS.md
             # records that a Herald Abyssal Warden kills the reference geared
             # character in 5 hits and 12.0 seconds. A cooldown longer than that
@@ -1054,15 +1123,16 @@ def _check_every_telegraphed_marker_fits_its_cycle() -> None:
     for name, entries in ABILITIES.items():
         kind = archetype(name)
         for ability in entries:
+            radius = float(ability.params.get("Radius", 0.0))
             assert fits_its_cycle(ability, kind), (
-                f"{name}'s {ability.name} draws a "
-                f"{ability.params.get('Radius')} m marker on a "
-                f"{ability.cycle_seconds(kind)} s cycle, which allows at most "
-                f"{largest_telegraphed_radius(ability.cycle_seconds(kind)):.2f}"
-                " m. Nothing larger can be walked out of, and the Movement "
-                "skill tier needs a cooldown of at least "
-                f"{MOVEMENT_ESCAPE_MINIMUM_COOLDOWN} s and a radius of at most "
-                f"{MOVEMENT_ESCAPE_CAP_METRES} m.")
+                f"{name}'s {ability.name} draws a {radius} m marker whose "
+                f"wind-up is {wind_up_seconds(radius):.2f} s, on a "
+                f"{ability.cycle_seconds(kind)} s cycle which allows a wind-up "
+                f"of {ability.cycle_seconds(kind) / 2.0:.2f} s. The cap on the "
+                f"marker itself is {telegraph_cap_metres(kind):.2f} m, above "
+                "which the slowest class cannot both react and walk clear, "
+                "which the design document calls a damage event rather than a "
+                "telegraph.")
 
 
 def _check_every_stun_is_spaced_by_the_immunity_window() -> None:

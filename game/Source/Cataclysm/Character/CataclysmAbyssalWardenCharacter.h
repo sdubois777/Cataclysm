@@ -143,8 +143,21 @@ public:
 	// Molten Roar
 	// ----------------------------------------------------------------------
 
-	/** The ring's radius. 5.6 metres, the largest marker in the game. */
-	static constexpr float MoltenRoarRadiusCm = 560.0f;
+	/**
+	 * The ring's radius, in centimetres.
+	 *
+	 * 6.5 METRES IS THE CAP, AND SITTING AT IT IS THE DESIGN. It is
+	 * `telegraph_cap_metres` in `sim/cataclysm_sim/enemy_abilities.py` for a
+	 * 0.48 m body: the largest marker at which the slowest class still has its
+	 * full 0.4 second reaction allowance and nothing more. Nothing in the game
+	 * may be larger, so this is the hardest telegraph the rules permit.
+	 *
+	 * IT WAS 560 UNTIL 2026-08-09. The project owner played it and reported the
+	 * ring was too easy to escape. Raising it only means anything because the
+	 * wind-up is now capped at 2 seconds: before that a bigger ring warned for
+	 * proportionally longer and was no harder. Issues #487 and #496.
+	 */
+	static constexpr float MoltenRoarRadiusCm = 650.0f;
 
 	/** Seconds before it may be used again. Derived twice over in the design:
 	 *  five of its 2.4 second swings, which is how long it takes to kill the
@@ -155,29 +168,49 @@ public:
 	/**
 	 * How long the marker is on the ground before the ring goes off.
 	 *
-	 * DERIVED FROM THE RADIUS, NOT CHOSEN. The wind-up rule in section X of
-	 * `docs/Cataclysm_GDD_v2.md` is `0.4 + Radius / 3.5` seconds, and
-	 * 0.4 + 5.6 / 3.5 is exactly 2.0. A `static_assert` beside this holds the
-	 * two together.
+	 * THE CEILING, NOT THE FORMULA, AND THAT CHANGED ON 2026-08-09. The wind-up
+	 * rule in section X of `docs/Cataclysm_GDD_v2.md` is the LESSER of
+	 * `0.4 + Radius / 3.5` and 2.0 seconds. At this ring's 6.5 metre radius the
+	 * formula alone would give 2.257, so the ceiling is what decides it.
 	 *
-	 * IT IS THE LONGEST TELEGRAPH IN THE GAME. The Brute's stomp is 1.4 seconds
-	 * and nothing else is over one.
+	 * THAT IS THE WHOLE REASON THE RING GOT BIGGER. Under the formula alone a
+	 * wider ring warns for proportionally longer and hands the player back
+	 * exactly the ground it took away. Held at 2 seconds, the extra 0.9 metres
+	 * of radius is 0.9 metres the player must cross with no extra time to do it.
+	 * Issues #487 and #496.
+	 *
+	 * IT IS STILL THE LONGEST TELEGRAPH IN THE GAME, and now it is the longest
+	 * any telegraph may ever be. The Brute's stomp is 1.4 seconds.
 	 */
 	static constexpr float MoltenRoarWindUpSeconds = 2.0f;
 
-	// A TOLERANCE RATHER THAN EQUALITY, DELIBERATELY. 0.4 + 5.6 / 3.5 is exactly
-	// 2 in decimal and is not exactly 2 in binary floating point: neither 5.6
-	// nor 0.4 is representable, so the sum lands a fraction either side. An
-	// equality assert here would either fail on a correct number or pass by
-	// luck, and which of the two would depend on the compiler.
+	// AT THE CEILING, so the assert is against the ceiling rather than against
+	// the formula. A tolerance rather than equality for the reason the charge's
+	// speed assert records: neither 0.4 nor 3.5 divides exactly in binary
+	// floating point, so the formula side lands a fraction either way.
 	static_assert(
 		MoltenRoarWindUpSeconds
-			> 0.4f + MoltenRoarRadiusCm / 100.0f / 3.5f - 0.001f
-		&& MoltenRoarWindUpSeconds
-			< 0.4f + MoltenRoarRadiusCm / 100.0f / 3.5f + 0.001f,
-		"Molten Roar's wind-up has drifted from the radius it is derived from. "
-		"The rule is 0.4 + Radius / 3.5 seconds, from the Attack Telegraphs "
-		"subsection of docs/Cataclysm_GDD_v2.md. Change both or neither.");
+			<= 0.4f + MoltenRoarRadiusCm / 100.0f / 3.5f + 0.001f,
+		"Molten Roar's wind-up is longer than the uncapped formula allows, "
+		"which cannot happen: the rule is the LESSER of 0.4 + Radius / 3.5 and "
+		"the 2 second ceiling. See the Attack Telegraphs subsection of "
+		"docs/Cataclysm_GDD_v2.md.");
+
+	// AND THE RADIUS IS AT THE CAP THE CEILING IMPLIES. The cap is
+	// 3.5 * (ceiling - 0.4) + contact, where contact is the player's 0.42 m plus
+	// this creature's 0.48 m body. Written out so that changing the ceiling
+	// moves the radius with it rather than leaving the two to drift.
+	static_assert(
+		MoltenRoarRadiusCm
+			> (3.5f * (MoltenRoarWindUpSeconds - 0.4f) + 0.42f + 0.48f)
+				* 100.0f - 0.1f
+		&& MoltenRoarRadiusCm
+			< (3.5f * (MoltenRoarWindUpSeconds - 0.4f) + 0.42f + 0.48f)
+				* 100.0f + 0.1f,
+		"Molten Roar's radius is no longer the cap its own wind-up ceiling "
+		"implies. The ring is designed to sit exactly at the largest marker the "
+		"rules permit, which is where the slowest class still has its full 0.4 "
+		"second reaction allowance and nothing more. Issues #487 and #496.");
 
 	/** What one use is worth, as a percentage of an ordinary hit. The Ultimate
 	 *  row of `game/Data/SkillSlots.csv`. It is the first thing in the game to

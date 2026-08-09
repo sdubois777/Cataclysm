@@ -183,12 +183,19 @@ protected:
 	/**
 	 * How far from the player start each one is put.
 	 *
-	 * FURTHER OUT THAN THE BRUTES AT 1200, because this creature's Molten Roar
-	 * marks a ring 5.6 metres across and the two should not be standing inside
-	 * each other's telegraphs before the player has done anything.
+	 * FURTHER OUT THAN THE BRUTES AT 1200 BY MORE THAN ITS OWN RING, because
+	 * this creature's Molten Roar marks a ring 6.5 metres across and the two
+	 * should not be standing inside each other's telegraphs before the player
+	 * has done anything.
+	 *
+	 * IT WAS 1800 UNTIL 2026-08-09, and the ring growing from 5.6 to 6.5 metres
+	 * closed the gap: 1800 less the Brutes' 1200 is 600 cm, which the 650 cm
+	 * ring now reaches across. `test_it_is_spawned_further_out_than_the_brutes`
+	 * in `tools/tests/test_warden_matches_the_model.py` failed on exactly that
+	 * and is what caught it. Issues #487 and #496.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
-	float AbyssalWardenDistanceCm = 1800.0f;
+	float AbyssalWardenDistanceCm = 1900.0f;
 
 	/**
 	 * How much health each one has.
