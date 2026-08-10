@@ -1824,11 +1824,13 @@ def test_the_warden_ability_table_matches_the_data(warden_section,
 MELEE_REACH_CEILING_METRES = 2.0
 
 
-def test_the_warden_is_the_only_melee_enemy_that_cannot_catch_the_player():
-    """The reason it has a charge at all, recomputed across every enemy.
+def test_exactly_two_melee_enemies_cannot_catch_the_player():
+    """The reason the Warden has a charge and the Gatekeeper a mortar.
 
-    NOT A STATEMENT ABOUT THE WARDEN ALONE. The claim in its subsection is that
-    it is the ONLY one, so every other designed enemy is checked too.
+    RECOMPUTED ACROSS EVERY ENEMY, because the claim in the Warden's subsection
+    is that these two are the only ones, and the two answers exist because of
+    it. A third enemy joining this list without its own answer would be one the
+    player walks away from and never fights.
 
     MELEE, WHICH IS THE WORD THIS TEST ADDED. A first version of this checked
     every designed enemy and failed, because the Succubus also moves at 3.5 m/s
@@ -1850,11 +1852,12 @@ def test_the_warden_is_the_only_melee_enemy_that_cannot_catch_the_player():
         if max(kind.move_speed, kind.chase_speed) < fastest_class:
             cannot_catch.append(name)
 
-    assert cannot_catch == ["Abyssal Warden"], (
+    assert cannot_catch == ["Abyssal Warden", "Gatekeeper"], (
         f"these designed melee enemies cannot catch the fastest Demonic class "
-        f"at {fastest_class} m/s: {cannot_catch}. The Abyssal Warden's "
-        "subsection says it is the only one, and its charge exists because of "
-        "it.")
+        f"at {fastest_class} m/s: {cannot_catch}. The design says exactly two "
+        "-- the Abyssal Warden, whose answer is its charge, and the "
+        "Gatekeeper, whose answer is its mortar. A new name here needs its own "
+        "answer or it can be walked away from and never fought.")
 
 
 def test_the_wardens_charge_goes_further_than_it_could_simply_walk(
@@ -2011,9 +2014,12 @@ def test_the_warden_is_the_first_enemy_to_use_the_ultimate_slot():
     users = sorted({name for name, entries in ABILITIES.items()
                     for a in entries if a.slot == "Ultimate"})
 
-    assert users == ["Abyssal Warden"], (
-        f"these enemies use the Ultimate slot: {users}. The Abyssal Warden's "
-        "subsection says it is the first and only one.")
+    # THE WARDEN WAS FIRST AND THE GATEKEEPER FOLLOWED, which its subsection's
+    # word "first" still allows. Both rings are the 6.5 metre cap; what differs
+    # is the cooldown and what else is on the floor when they land.
+    assert users == ["Abyssal Warden", "Gatekeeper"], (
+        f"these enemies use the Ultimate slot: {users}. The design gives it to "
+        "exactly two: the Abyssal Warden first, then the Gatekeeper's phase 3.")
 
 
 def test_the_margin_for_walking_out_is_the_same_at_every_radius(warden):
@@ -2204,12 +2210,16 @@ def test_a_marker_too_big_for_its_cycle_is_rejected():
     assert not fits_its_cycle(beyond_reach, brute)
 
 def test_an_undesigned_enemy_raises_rather_than_returning_nothing():
-    """Six of the seven have no abilities. Returning an empty list would let a
-    caller treat an undesigned enemy as a finished one that does nothing."""
+    """Returning an empty list would let a caller treat an undesigned enemy as
+    a finished one that does nothing.
+
+    ALL SEVEN SLICE ENEMIES ARE NOW DESIGNED, so the undesigned example is the
+    Baseline archetype -- the model's stand-in for an enemy nobody has worked
+    on, which is exactly the thing this guard protects."""
     from cataclysm_sim.enemy_abilities import abilities
 
     with pytest.raises(ValueError, match="no designed abilities"):
-        abilities("Gatekeeper")
+        abilities("Baseline")
 
     with pytest.raises(ValueError, match="unknown archetype"):
         abilities("Wyvern")

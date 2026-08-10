@@ -155,6 +155,20 @@ class Ability:
     #: on the archetype's attack interval, and for an Aura, which is held on.
     cooldown: float = 0.0
 
+    #: The first phase this ability is available from. 1 for every ability of
+    #: every single-phase enemy, which is six of the seven.
+    #:
+    #: WHAT A PHASE IS ALLOWED TO OWN, AND IT IS ONLY THIS. Research across ten
+    #: bosses in Path of Exile 1 and 2 and Last Epoch (recorded with issue #354
+    #: in docs/DECISIONS.md) found not one that gains damage, armour, attack
+    #: speed or crit at a phase transition. Escalation is done by adding a named
+    #: ability or using an existing one more often. So a phase selects WHICH
+    #: abilities are in the rotation and nothing else, and the two-layer rule --
+    #: rarity scales magnitude, archetype sets behaviour -- survives a
+    #: multi-phase boss untouched. An ability available from phase N stays
+    #: available in every later phase; phases add, they do not take away.
+    phase: int = 1
+
     #: What it does, in one line. This is the design, not flavour text.
     note: str = ""
 
@@ -489,6 +503,13 @@ ATTACK_REACH: dict[str, float] = {
     # this creature's threat is the ring at its feet and its weakness is that it
     # cannot catch anybody, neither of which is about reach. Issue #353.
     "Abyssal Warden": 0.90,
+
+    # 2.0 metres, which is Dread Cleave's own radius: this creature's ordinary
+    # attack is a telegraphed cone rather than a contact swing, so its reach IS
+    # the cone's reach. The engine comparison is centre to centre, and the cone
+    # is measured from the creature's centre too, so the two agree by
+    # construction. Issue #354.
+    "Gatekeeper": 2.0,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -917,10 +938,12 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             name="Stampede",
             shape="Movement",
             slot="Movement",
-            # WHY IT NEEDS ONE AT ALL. This is the only designed MELEE enemy
-            # that cannot catch anybody -- the Succubus cannot either and does
-            # not need to, because it reaches 8 metres, and being unable to
-            # close only matters for a creature that has to.
+            # WHY IT NEEDS ONE AT ALL. This is a MELEE enemy that cannot catch
+            # anybody -- the Succubus cannot either and does not need to,
+            # because it reaches 8 metres, and being unable to close only
+            # matters for a creature that has to. The Gatekeeper shares the
+            # problem and answers it differently, with a mortar; two enemies
+            # with the same answer would be the same enemy at two sizes.
             #
             # It moves at 2.8 metres per second and its
             # chase speed is 0.0, against player classes at 3.5, 4.0 and 4.6.
@@ -1015,13 +1038,153 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # survives. That is the right weight for something that warns for
             # two seconds and is avoided completely by walking out.
             cooldown=12.0,
-            note="It roars and the ground erupts in a ring 5.6 metres across, "
+            note="It roars and the ground erupts in a ring 6.5 metres across, "
                  "marked for 2 seconds first. The largest telegraph in the "
                  "game and the first thing in it to use the Ultimate slot. "
                  "Ultimate_Roar is 1.4000 seconds, measured 2026-08-09, so the "
                  "wind-up holds the whole clip at its authored speed.",
         ),
     ),
+    "Gatekeeper": (
+        Ability(
+            name="Dread Cleave",
+            shape="Strike",
+            slot="Basic",
+            # THE ONLY BASIC ATTACK IN THE SLICE THAT IS TELEGRAPHED, and the
+            # whole fight rests on that. This creature kills the reference
+            # geared character in 2 hits and 6.0 seconds -- the table in
+            # docs/Cataclysm_GDD_v2.md -- so its ordinary swing cannot be an
+            # untelegraphed contact hit the way the other six enemies' are. A
+            # 2.0 metre cone warns for 0.97 seconds, which its 3.0 second
+            # interval holds with half a cycle to spare (1.5 allowed).
+            #
+            # RADIUS 2.0 IS A JUDGEMENT, bounded twice. Above the 1 metre
+            # marker floor, or nothing is drawn and a 2-hit kill arrives
+            # unannounced. Under the 3.85 metres its own interval allows, so
+            # the basic swing stays visibly smaller than everything on a
+            # cooldown. NO MaxTargets, unlike the other six basics: a boss
+            # swing hits everything standing in it.
+            params={"Radius": 2.0, "Angle": 120},
+            note="A hammer sweep across a 120 degree arc, 2 metres out, marked "
+                 "for 0.97 seconds first. The only telegraphed basic attack in "
+                 "the slice, because two of these kill the reference geared "
+                 "character. Sevarog's three swing chains at their slow speeds "
+                 "(1.70 s) fit inside the 3.0 second interval.",
+        ),
+        Ability(
+            name="Soulfall",
+            shape="Projectile",
+            slot="Special",
+            # WHY IT NEEDS ONE. It moves at 3.0 metres per second with no
+            # chase speed, against classes at 3.5, 4.0 and 4.6: like the
+            # Abyssal Warden it can never catch anybody. The Warden's answer
+            # is a charge; giving the boss the same answer would make it a
+            # bigger Warden. Its answer is the Corrupted Sentinel's instead --
+            # a lobbed mortar that makes standing off more dangerous than
+            # closing -- plus what the mortar leaves behind.
+            #
+            # THE GROUND IS THE ARENA CHANGING, which is what the research
+            # (recorded with #354 in docs/DECISIONS.md) found real bosses do:
+            # persistence, not replacement. GroundDuration equals the cooldown,
+            # so in steady state one patch of burning ground is always down and
+            # the arena shrinks by exactly one patch per cycle until the old
+            # one expires. GroundHitsAllies=1, the Hellhound's rider, so the
+            # summoned Imps of phase 2 burn in it too -- kiting adds through
+            # the fire is deliberate counterplay.
+            #
+            # RANGE 14 AND ARC 0.25 ARE THE SENTINEL'S MORTAR FIGURES, reused
+            # rather than invented: both abilities exist to answer a player who
+            # stands off, and the Sentinel's were settled first. Radius 3.0 the
+            # same. Wind-up 0.4 + 3.0 / 3.5 = 1.26 s inside a 4.0 s half-cycle.
+            params={"Range": 14, "Radius": 3.0, "Pierce": 0, "Arc": 0.25},
+            # The top of the Special slot's 3-to-10 band in
+            # game/Data/SkillSlots.csv, because the burning ground it leaves
+            # must not accumulate faster than one patch per expiry.
+            cooldown=10.0,
+            note="A lobbed gout of soulfire that bursts 3 metres wide where it "
+                 "lands and leaves burning ground the same size for 10 "
+                 "seconds, which also burns the Gatekeeper's own summons. "
+                 "Marked at the landing circle for 1.26 seconds. It is what a "
+                 "boss that cannot walk anybody down does about a player who "
+                 "stands off, and it shrinks the arena one patch at a time.",
+        ),
+        Ability(
+            name="Call the Damned",
+            shape="Summon",
+            slot="Special",
+            # PHASE 2. The first use of the Summon shape by any enemy, and the
+            # genre-standard second-phase addition: the fight stops being a
+            # duel and the burning ground starts mattering twice over, because
+            # the Imps chase the player through it and burn in it.
+            #
+            # IMPS, NOT A NEW CREATURE. A boss is built from the vocabulary
+            # the other six establish, and the Imp is the swarm. Count 3 per
+            # use against MaxActive 6: two uses of headroom, and killing adds
+            # is worthwhile because the cap means dead Imps are replaced only
+            # on the next cast.
+            phase=2,
+            params={"Range": 4, "Radius": 2, "Count": 3, "MaxActive": 6},
+            cooldown=10.0,
+            note="It drives its hammer down and 3 Imps claw out of the ground "
+                 "within 4 metres of it, to a cap of 6 alive at once. Not "
+                 "telegraphed -- a Summon draws no marker -- and answered by "
+                 "killing the Imps, who burn in Soulfall's ground like "
+                 "anything else.",
+        ),
+        Ability(
+            name="Soul Harvest",
+            shape="Strike",
+            slot="Ultimate",
+            # PHASE 3, AND THE PROMISE THE DESIGN DOCUMENT MAKES -- "phases can
+            # stack area attacks" -- KEPT: in the last third of the fight the
+            # floor holds burning patches, the Imps are loose, the cleave keeps
+            # coming, and this ring lands on top.
+            #
+            # RADIUS 6.5 IS THE CAP, the same ring as the Abyssal Warden's
+            # Molten Roar and for the same reason: the largest marker the
+            # rules permit, at which the slowest class has exactly the 0.4
+            # second reaction allowance. A boss finale should be the hardest
+            # legal telegraph, and 6.5 is what "hardest legal" is.
+            #
+            # AT THE ULTIMATE SLOT'S 400% IT KILLS FROM FULL HEALTH. Four of
+            # this creature's ordinary hits, and the reference geared character
+            # survives two. That is stated as designed rather than discovered:
+            # the genre's rule for a long-telegraph boss ultimate is that
+            # standing in it is death, and the answer is the 2.0 second
+            # warning, not surviving the hit.
+            phase=3,
+            params={"Radius": 6.5, "Angle": 360},
+            # Inside the Ultimate slot's 12-to-40 band. 20 rather than the
+            # Warden's 12 because this creature's kill time is 6.0 seconds:
+            # a shorter cooldown would put a second ring inside almost every
+            # fight the player is already losing.
+            cooldown=20.0,
+            note="It plants the hammer and the ground erupts in a ring 6.5 "
+                 "metres across, marked for 2 seconds first. The same largest-"
+                 "legal ring as the Abyssal Warden's, at 400%: standing in it "
+                 "is death from full health, and the warning is the answer. "
+                 "Sevarog's ultimate is authored as targeting (0.87 s), a hold "
+                 "loop (2.23 s) and the swing (2.63 s), which is exactly the "
+                 "start-hold-release a 2 second wind-up needs.",
+        ),
+    ),
+}
+
+#: Where each multi-phase enemy's phases begin, as fractions of maximum health,
+#: highest first. An enemy absent from this table has one phase.
+#:
+#: HEALTH THRESHOLDS AND NOTHING ELSE. The research recorded with issue #354 in
+#: docs/DECISIONS.md found no shipped ARPG boss whose phases are triggered by a
+#: timer, and mechanic completion only ever EXITS a transition. Path of Exile
+#: uses quarters; Last Epoch's Aberroth runs uneven bands with a long opening.
+#:
+#: 0.60 AND 0.30 ARE A JUDGEMENT, bounded by the shape the research settled: a
+#: long first band (40%) to teach the base kit, then two shorter ones (30% each)
+#: that each add exactly one thing. The genre figures they sit between are
+#: community-derived, not developer-published, so there is nothing published to
+#: copy exactly.
+PHASE_TRANSITIONS: dict[str, tuple[float, ...]] = {
+    "Gatekeeper": (0.60, 0.30),
 }
 
 
@@ -1135,6 +1298,41 @@ def _check_every_telegraphed_marker_fits_its_cycle() -> None:
                 "telegraph.")
 
 
+def _check_every_phase_is_reachable_and_starts_at_one() -> None:
+    """A phase nothing transitions into is dead design.
+
+    Three rules. Every ability's phase is at least 1. An enemy whose abilities
+    name a phase above 1 must have transitions in PHASE_TRANSITIONS, and the
+    highest phase named must be exactly one more than the number of transitions
+    -- N transitions make N+1 phases, and a phase beyond that can never begin.
+    And phase 1 must not be empty, because the fight has to open with something.
+    """
+    for name, entries in ABILITIES.items():
+        phases = [ability.phase for ability in entries]
+        transitions = PHASE_TRANSITIONS.get(name, ())
+
+        assert min(phases) == 1, (
+            f"{name}'s first phase has no abilities: the lowest phase named is "
+            f"{min(phases)}. The fight has to open with something.")
+
+        assert max(phases) == len(transitions) + 1, (
+            f"{name} names phase {max(phases)} and has {len(transitions)} "
+            f"transitions in PHASE_TRANSITIONS, which make "
+            f"{len(transitions) + 1} phases. A phase beyond that can never "
+            "begin, and a transition into a phase that adds nothing is dead "
+            "design.")
+
+    for name, thresholds in PHASE_TRANSITIONS.items():
+        assert name in ABILITIES, (
+            f"PHASE_TRANSITIONS names {name}, which has no designed abilities.")
+        assert all(0.0 < t < 1.0 for t in thresholds) and all(
+            a > b for a, b in zip(thresholds, thresholds[1:],
+                                  strict=False)), (
+            f"{name}'s phase transitions {thresholds} must fall strictly "
+            "between 1 and 0 and strictly descend: each is the health fraction "
+            "a later phase begins at.")
+
+
 def _check_every_stun_is_spaced_by_the_immunity_window() -> None:
     """An ability that stuns more often than every 5 seconds wastes its uses.
 
@@ -1233,6 +1431,7 @@ _check_every_designed_enemy_has_exactly_one_basic_attack()
 _check_only_the_held_on_and_basic_abilities_lack_a_cooldown()
 _check_every_movement_ability_names_a_real_mode()
 _check_every_telegraphed_marker_fits_its_cycle()
+_check_every_phase_is_reachable_and_starts_at_one()
 _check_every_stun_is_spaced_by_the_immunity_window()
 _check_no_stun_outlasts_the_longest_the_player_has()
 _check_every_projectile_states_a_speed_or_an_arc_but_not_both()

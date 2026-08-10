@@ -3400,7 +3400,7 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Abyssal Warden, the Brute, the Corrupted Sentinel, the Hellhound, the Imp and the Succubus are designed.** One is left: the Gatekeeper has its own issue.
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Abyssal Warden, the Brute, the Corrupted Sentinel, the Gatekeeper, the Hellhound, the Imp and the Succubus are designed** — which is all seven. The Gatekeeper was the last, in issue #354.
 
   
 
@@ -4004,7 +4004,7 @@ Three things. Everything else above is read off `game/Data/WeaponSkills.csv`, `g
 
   
 
-**The Abyssal Warden is the hardest thing in the slice to hurt, and the only melee enemy that cannot catch anybody.** Those two facts are its whole design. It has three abilities: a swing it uses constantly, a charge that closes the gap it cannot close on foot, and a ring at its feet that is the largest telegraph in the game.
+**The Abyssal Warden is the hardest thing in the slice to hurt, and one of two melee enemies that cannot catch anybody — the other is the Gatekeeper, whose answer is a mortar where this one's is a charge.** Those two facts are its whole design. It has three abilities: a swing it uses constantly, a charge that closes the gap it cannot close on foot, and a ring at its feet that is the largest telegraph in the game.
 
   
 
@@ -4159,6 +4159,88 @@ Two things. Everything else is read off `game/Data/WeaponSkills.csv`, `game/Data
 
 - **Molten Roar's 6.5 metre radius.** No longer a judgement, since 2026-08-09: it is the cap, the largest marker the rules permit for a creature with a 0.48 metre body. It is bounded below by the 2.80 metres its own attack interval allows, so it is categorically different from what the creature does every 2.4 seconds. What is a judgement is the 2 second ceiling on the wind-up, from which the cap is derived.
 - **Three abilities rather than two.** The Corrupted Sentinel has two. The third here is the charge, and without it the creature can be walked away from and never fought.
+
+  
+
+### **The Gatekeeper**
+
+  
+
+**The Gatekeeper is the boss, and its whole fight is the promise that two hits kill.** It kills the reference geared character in 2 hits and 6.0 seconds — the fastest of the seven — on the slowest attack interval in the slice, 3.0 seconds. So every attack it has is readable, including the ordinary one, and the fight is about never being hit rather than about trading.
+
+  
+
+| Ability | Phase | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-: | :-- | :-: | :-: |
+| Dread Cleave | 1 | Basic | Strike | `Radius=2.0; Angle=120` | its 3.0 s attack interval | Yes, 0.97 s wind-up |
+| Soulfall | 1 | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25; Burn=1; GroundRadius=3.0; GroundDuration=10; GroundHitsAllies=1` | a 10 s cooldown | Yes, 1.26 s wind-up |
+| Call the Damned | 2 | Special | Summon | `Range=4; Radius=2; Count=3; MaxActive=6` | a 10 s cooldown | No |
+| Soul Harvest | 3 | Ultimate | Strike | `Radius=6.5; Angle=360` | a 20 s cooldown | Yes, 2.0 s wind-up |
+
+  
+
+#### **Three phases, on health, adding and never taking away**
+
+  
+
+**Phase 2 begins at 60% health and phase 3 at 30%.** The bands are 40, 30 and 30 percent of the bar: a long opening that teaches the base kit, then two additions. Each phase adds exactly one ability and removes nothing, so the last third of the fight is everything at once — which is what the Attack Telegraphs subsection already promises when it says phases can stack area attacks.
+
+  
+
+**The stat block does not change per phase, and that is the genre's answer as well as this design's.** Research across ten bosses in Path of Exile 1 and 2 and Last Epoch, recorded in `docs/DECISIONS.md`, found not one that gains damage, armour, attack speed or critical strike at a transition. Escalation is adding a named ability or using one more often. So a phase owns only which abilities are in the rotation, and the two-layer rule — rarity scales magnitude, archetype sets behaviour — is untouched by the boss having phases.
+
+  
+
+**A transition is brief and partial, never a stop.** At each threshold the creature channels its soul-siphon animation for about 2 seconds and takes 90% reduced damage while it plays. It stays killable and it stays interruptible by nothing — a boss cannot be stunned. Last Epoch shipped full invulnerability windows and removed them after player backlash; the lesson is recorded with the research. Health is not reset or refilled at any transition.
+
+  
+
+#### **Dread Cleave is the only telegraphed basic attack in the slice**
+
+  
+
+A hammer sweep across a 120 degree cone, 2 metres out, warned for 0.97 seconds, every 3.0 seconds. The other six enemies' ordinary attacks are contact swings under the 1 metre marker floor; this one is drawn, because a hit that takes half the player's survivable damage cannot arrive unannounced. Its 2.0 metre radius is a judgement bounded twice — above the 1 metre floor, below the 3.85 metres its own interval would allow — so the basic swing stays visibly smaller than anything on a cooldown. Unlike every other basic attack it has no target cap: everything standing in the cone is hit.
+
+  
+
+#### **Soulfall is how a boss that cannot walk anybody down fights at range**
+
+  
+
+The Gatekeeper moves at 3.0 metres per second against classes at 3.5, 4.0 and 4.6: like the Abyssal Warden it can never catch anybody on foot. The Warden's answer is a charge. Giving the boss the same answer would make it a bigger Warden, so its answer is the Corrupted Sentinel's instead: a lobbed mortar, `Range=14` and `Arc=0.25` exactly as the Sentinel's, bursting 3 metres wide where it lands, marked at the landing circle for 1.26 seconds.
+
+  
+
+**What it leaves behind is the arena changing.** The burst leaves burning ground the same 3 metres wide for 10 seconds — equal to its cooldown, so in steady state one patch is always on the floor and standing ground is lost one circle at a time. That is the persistence lever the genre research found real bosses use, and it is the Hellhound's existing riders (`Burn`, `GroundRadius`, `GroundDuration`) rather than a new mechanic. `GroundHitsAllies=1`: the Gatekeeper's own summons burn in it, and kiting them through the fire is intended counterplay.
+
+  
+
+#### **Call the Damned is the first use of the Summon shape**
+
+  
+
+From phase 2, it drives its hammer down and 3 Imps claw out of the ground within 4 metres, to a cap of 6 alive. The Imp is the slice's swarm enemy and arrives here unchanged — a boss is built from the vocabulary the other six establish, not from new creatures. A Summon draws no marker and is answered by killing the adds; the cap makes killing them worth it, because dead Imps are only replaced on the next cast, 10 seconds later.
+
+  
+
+#### **Soul Harvest is the Warden's ring at a boss's weight**
+
+  
+
+From phase 3, the ground erupts in a ring 6.5 metres across at its feet, marked for 2.0 seconds, every 20 seconds. The radius is the cap — the largest marker the rules permit, identical to Molten Roar and for the same reason: a boss finale should be the hardest legal telegraph, and the cap is what hardest-legal means. **At the Ultimate slot's 400% it kills from full health**: four of this creature's ordinary hits against a character who survives two. That is designed, not incidental — the genre's rule for a long-telegraph boss ultimate is that standing in it is death and the 2 second warning is the answer. The 20 second cooldown sits inside the Ultimate slot's 12-to-40 band, above the Warden's 12, because this creature kills in 6 seconds and a shorter cooldown would put a second ring inside almost every fight the player is already losing.
+
+  
+
+#### **What here is a judgement rather than a derivation**
+
+  
+
+- **The phase thresholds, 60% and 30%.** The shape — a long opening band, then additions — is the genre's, but the exact figures are a judgement: the genre's own numbers are community-derived, not developer-published, and vary per boss.
+- **Dread Cleave's 2.0 metre radius**, bounded by the 1 metre floor and the 3.85 metre interval allowance.
+- **Soul Harvest's 20 second cooldown**, inside the Ultimate band and above the Warden's 12 for the reason its subsection gives.
+- **Three phases rather than two.** The research supports either; three is chosen because the design document promises "each phase introduces new mechanics", plural, and two phases introduce one.
+
+Everything else is reused: Soulfall's figures are the Sentinel's mortar's, the ground riders are the Hellhound's, the summons are Imps, and the ring is the Warden's at a longer cooldown.
 
   
 
