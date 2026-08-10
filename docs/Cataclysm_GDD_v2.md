@@ -2406,7 +2406,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
 
   
 
-**Consumed does not mean destroyed.** The character survives with its levels, its equipment, its class passive trees and its empire upgrade tree, and plays the next run at the same tier, exactly as any other run ending works. What "consumed" names is that a snapshot of the character is written to the shared library of corrupted characters described in section VIII, where it joins the pool that The Corrupted dungeon modifier draws from and becomes an enemy other players fight. The character is taken into that pool; it is not taken from the player.
+**Consumed does not mean destroyed.** The character survives with its levels, its equipment, its class passive trees and its empire upgrade tree, and plays the next run at the same tier, exactly as any other run ending works. What "consumed" names is that a snapshot of the character is written to the shared library of corrupted characters described in section VIII, where it joins the pool that the Corrupted Stalker dungeon modifier draws from and becomes an enemy other players fight. The character is taken into that pool; it is not taken from the player.
 
   
 
