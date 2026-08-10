@@ -170,6 +170,95 @@ on the receiving client, not only validated on the server. #179 carries this.
 
 ---
 
+## 2026-08-09 — The Gatekeeper: three phases that add and never take away
+
+**Affects:** the Vertical Slice Enemy Behaviour section of
+`docs/Cataclysm_GDD_v2.md` (new Gatekeeper subsection, and the Abyssal Warden's
+"only melee enemy" and "only designed" sentences), `ABILITIES`,
+`PHASE_TRANSITIONS`, the `phase` field on `Ability` and `ATTACK_REACH` in
+`sim/cataclysm_sim/enemy_abilities.py`. Applied. Closes #354.
+
+### What was designed
+
+The boss. Four abilities across three phases; the full table and prose are in
+the design document and the machine-readable copy is the model. In one line
+each: a telegraphed 2 m cone every 3 s that is half a kill; a lobbed mortar
+that leaves burning ground and shrinks the arena; a summon of 3 Imps to a cap
+of 6 from phase 2; and the Warden's 6.5 m cap-sized ring at 400% from phase 3.
+
+### What the research settled, with sources
+
+Run before designing, as `CLAUDE.md` requires. Two of four research passes
+completed (Path of Exile 1 and 2, and Last Epoch); the Diablo pass and the
+general-craft pass died with the tool that ran them and were NOT completed. The
+two that finished agreed independently on every structural question:
+
+- **Phases trigger on health percentage.** Timers trigger phases nowhere in
+  either game; a timer appears only as a fail-window inside a transition, and
+  mechanic completion is an exit condition, not an entry condition. (PoE:
+  quarters at 75/50/25 — Atziri, Sirus, Uber Elder; PoE2 pinnacle at 50. LE:
+  Aberroth at 77/63/49/35, community-derived.)
+- **Two or three phases** for a boss of this scope. Higher counts in PoE are
+  inflated by intermission fights against separate creatures.
+- **The stat block does not change per phase.** Across ten bosses, not one
+  gains damage, armour, attack speed or crit at a transition. Escalation is
+  adding a named ability or using an existing one more often. **This is the
+  finding the design leans on hardest: a phase owns only which abilities are in
+  the rotation, so the two-layer rule survives a multi-phase boss untouched.**
+- **A transition is brief and partial, never a stop.** LE removed its full
+  invulnerability system (Boss Ward) after player backlash; its replacement is
+  90% damage reduction for 4.5 s with the boss still killable.
+- **Phase bands are uneven**, with a long opening that teaches the base kit.
+- **Arena change means persistence** — ground that accumulates — not
+  replacement.
+
+Sources: Maxroll's Aberroth, Shaper and boss guides; poe-vault; the Last Epoch
+1.1 *Harbingers of Ruin* dev blog (the Boss Ward removal). All phase figures
+are community-derived from play, not developer-published; poewiki.net and
+pathofexile.fandom.com were unreachable during the research, so most PoE claims
+rest on a single guide site.
+
+### What is a judgement, labelled
+
+- **Thresholds 60% and 30%.** The shape is the genre's; the figures are not
+  published anywhere to copy.
+- **Dread Cleave's 2.0 m radius**, bounded by the 1 m floor and the 3.85 m its
+  interval allows.
+- **Soul Harvest's 20 s cooldown**, inside the Ultimate band, above the
+  Warden's 12 because this creature kills in 6.0 seconds.
+- **Three phases rather than two.** The document promises "each phase
+  introduces new mechanics", plural; two phases introduce one.
+
+Everything else is reused from the other six enemies: the mortar figures are
+the Sentinel's, the ground riders the Hellhound's, the adds are Imps, the ring
+is the Warden's.
+
+### How the model gained phases without gaining a phase system
+
+An `Ability` now carries `phase: int = 1`, meaning "available from phase N
+onward", and `PHASE_TRANSITIONS` maps an enemy to its thresholds as health
+fractions. That is the whole representation, and it is deliberately the
+smallest one the research finding permits: since a phase may only select the
+rotation, it needs no stat block, no per-phase overrides and no new tables. Six
+of the seven enemies never mention it and are unchanged. An import-time check
+(`_check_every_phase_is_reachable_and_starts_at_one`) refuses a phase nothing
+transitions into, an empty first phase, and thresholds that do not strictly
+descend within (0, 1).
+
+### What this deliberately does not decide
+
+- **How the engine represents a phase.** Nothing in `game/Source/` can express
+  a boss or a phase today; #395 records that even "a boss cannot be stunned" is
+  unenforceable. Building the Gatekeeper needs #395 first and an engine phase
+  mechanism second, and both are build-time concerns the design does not
+  constrain beyond the model's own shape.
+- **The transition visual.** The design says the soul-siphon channel plays for
+  about 2 seconds at 90% damage reduction; the exact figure is tuned by play.
+  Sevarog's `Stage_1..Stage_4` clips are 0.03 s marker poses, not animations,
+  so they are not the transition visual on their own.
+
+---
+
 ## 2026-08-09 — A charge in flight is committed, but a stun still stops it
 
 **Affects:** `ACataclysmEnemyController::Think` and `ACataclysmEnemyCharacter` in
