@@ -59,7 +59,7 @@ FORGE_SECTION = "# **VII. Crafting — The Cataclysmic Forge**"
 CONSUMPTION_SECTION = "## **Worn Residue and Consumption**"
 
 #: The dungeon modifier that draws from the pool a consumed character joins.
-CORRUPTED_SECTION = "## **The Corrupted (Dungeon Modifier)**"
+CORRUPTED_SECTION = "## **Corrupted Stalker (Dungeon Modifier)**"
 
 #: The section holding the empire tree survival rule from issue #286.
 OWNERSHIP_SECTION = "## **Empire-Wide Upgrades**"
@@ -357,11 +357,11 @@ def test_the_corrupted_section_no_longer_says_a_character_is_lost(corrupted):
     could lose a high-tier character on purpose". Nothing is lost; the exploit
     is now cheaper, not impossible, so the rule matters more."""
     assert "lose a high-tier character on purpose" not in corrupted, (
-        "The Corrupted section still says a player could lose a high-tier "
+        "the Corrupted Stalker section still says a player could lose a high-tier "
         "character on purpose. Since issue #315 the character is not lost -- "
         "only the run is.")
     assert "consumed on purpose" in corrupted, (
-        "The Corrupted section no longer gives a reason for the Scaling rule. "
+        "the Corrupted Stalker section no longer gives a reason for the Scaling rule. "
         "The reason still holds and is stronger than before: getting a "
         "character consumed on purpose now costs only the run. Issue #315.")
 

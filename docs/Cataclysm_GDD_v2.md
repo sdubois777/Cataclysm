@@ -2383,11 +2383,11 @@ Worn Residue grants nothing. It is not a resource and it does not make the chara
 
   
 
-**What crossing it does.** The character is marked. On entering the next dungeon floor, a corrupted double of the character is placed in the dungeon and hunts the player: same class, same level, same equipment, same skills. It is the same enemy described under The Corrupted in section VIII, aimed at the character it was copied from.
+**What crossing it does.** The character is marked. On entering the next dungeon floor, a corrupted double of the character is placed in the dungeon and hunts the player: same class, same level, same equipment, same skills. It is the same enemy described under Corrupted Stalker in section VIII, aimed at the character it was copied from.
 
   
 
-**This half needs no connection.** The double is built from the player's own character, on the player's own machine. Nothing about crossing the threshold, being hunted, winning or being consumed requires a network connection or the shared table. Only The Corrupted dungeon modifier, which draws a character somebody else had consumed, needs either.
+**This half needs no connection.** The double is built from the player's own character, on the player's own machine. Nothing about crossing the threshold, being hunted, winning or being consumed requires a network connection or the shared table. Only the Corrupted Stalker dungeon modifier, which draws a character somebody else had consumed, needs either.
 
   
 
@@ -2514,7 +2514,7 @@ A dungeon carries **one modifier per difficulty tier**, so a tier 8 dungeon carr
 
   
 
-## **The Corrupted (Dungeon Modifier)**
+## **Corrupted Stalker (Dungeon Modifier)**
 
 While this modifier is active, one corrupted former player character is placed in the dungeon. It hunts the player across floors rather than waiting to be found.
 
@@ -2524,19 +2524,35 @@ While this modifier is active, one corrupted former player character is placed i
 
   
 
-**Scaling.** The drawn character is rebuilt at the tier of the dungeon it appears in, not the tier it was consumed at. Level, item level, affix tiers and residue all scale to the dungeon's tier. Without this, a player could get a high-tier character consumed on purpose and then farm its equipment at a tier where the fight is trivial. That matters more than it looks: being consumed costs the run and not the character, so deliberately feeding a character into this table is cheap.
+**Scaling.** The drawn character is rebuilt at the tier of the dungeon it appears in, not the tier it was consumed at. The target is the peak of player power for that tier: level, item level, affix tiers and residue are all set so that the rebuilt character's Power Score matches what a character at the top of that tier would have.
 
   
 
-**Drops.** On death it drops its equipped items, scaled by the same rule. This follows the Rogue Exiles in Path of Exile, which drop one item from every equipment slot and are one of that game's most reliably interesting random encounters.
+**This works in both directions.** A character consumed at tier 8 and met at tier 1 is brought down to peak tier 1. A character consumed at tier 3 and met at tier 7 is brought up to peak tier 7. The downward direction stops a player getting a high-tier character consumed on purpose and then farming its equipment at a tier where the fight is trivial, which matters more than it looks: being consumed costs the run and not the character, so deliberately feeding a character into this table is cheap. The upward direction is the more common case, and it is what stops a tier 1 player being handed a peak tier 8 enemy.
 
   
 
-**Network.** The game requires a network connection by default. Co-operative multiplayer is already a Phase 2 item in the roadmap in section XV, so this modifier adds no commitment the game had not already made. The modifier reads the shared table and is therefore online only.
+**Drops.** On death it drops its equipped items, at the tier it was rebuilt to rather than the tier it was consumed at. This follows the Rogue Exiles in Path of Exile, which drop one item from every equipment slot and are one of that game's most reliably interesting random encounters.
 
   
 
-If an offline mode is offered, this modifier is excluded from dungeon generation in it. The over-corruption mechanic in section VII still works there in full, because the double a player fights at their own threshold is built locally from their own character.
+**The snapshot supplies the shape of the equipment and none of its numbers.** Which affixes sit on which base item comes from the consumed character, as do its class, level, passive allocation and skill setup. Every affix value is generated at the encountering player's tier from the game's own affix tables.
+
+  
+
+**That is forced by the scaling rule rather than added to it.** Equipment cannot be raised from a low tier to a high one by multiplying stored numbers, because affix tiers have defined value ranges, so raising an item means rolling new values inside the higher tier's range. Running the same generation downward costs nothing and buys something else: an entry in the shared table can never carry a number the game would not itself have produced, so the table is not a route by which an item with impossible values reaches another player's game. Matching a target Power Score does not achieve that on its own, because a target can be met with one extreme value offset by weak ones elsewhere, and a single extreme value is worth having by itself once the auction house exists.
+
+  
+
+**Network.** The game ships an offline mode. It is a commitment rather than a possibility, and it covers the whole game rather than parts of it. This modifier reads the shared table, which offline play has no access to, so an offline character never contributes a snapshot to that table and never draws one from it.
+
+  
+
+**Offline, the slot is filled from the authored pool rather than left empty.** The dungeon still carries the modifier and the encounter still happens; only the source of the character changes. The authored entries described under Seeding below exist for the launch case and serve this one as well. Nioh, Dragon's Dogma 2 and Deathloop all substitute an authored or game-controlled stand-in for missing player data rather than removing the content, and this follows them.
+
+  
+
+The over-corruption mechanic in section VII works offline in full, because the double a player fights at their own threshold is built locally from their own character.
 
   
 
@@ -2544,7 +2560,7 @@ If an offline mode is offered, this modifier is excluded from dungeon generation
 
   
 
-**Weight.** To be set when the dungeon modifier list is entered into the workbook. That list does not exist yet in either document.
+**Weight.** Not set. The Dungeon Modifiers sheet in `docs/All_Things_Cataclysm.xlsx` holds 116 modifiers, with weights of 5, 10, 15 and 20, and this modifier is not one of them. It also has no Cataclysm Type, where every one of the 116 belongs to exactly one of the eight. Issue #504 covers adding the row and setting both values.
 
   
 

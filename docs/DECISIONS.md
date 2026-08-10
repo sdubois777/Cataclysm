@@ -20,6 +20,156 @@ applied or still pending.
 
 ---
 
+## 2026-08-10 — Offline play is a commitment, and the corrupted character table carries build shapes rather than numbers
+
+**Affects:** Section VIII of `Cataclysm_GDD_v2.md`, the Corrupted Stalker dungeon
+modifier and its cross-references in section VII. Applied. Leaves #179 open for
+the backend work and #504 open for the missing workbook row.
+
+### What was decided
+
+1. **The game ships an offline mode.** It was previously conditional — section
+   VIII said "the game requires a network connection by default" and "if an
+   offline mode is offered". Both are gone.
+2. **A character is created as either offline or online and never changes**, in
+   either direction. Offline characters have no auction house, no ladder, and
+   never contribute a snapshot to or draw one from the shared table of corrupted
+   characters.
+3. **The Corrupted dungeon modifier is renamed Corrupted Stalker.**
+4. **A corrupted character's drops carry the shape of a build and none of its
+   numbers.** Every affix value is generated at the encountering player's tier
+   from the game's own affix tables.
+5. **Offline, the modifier is filled from the authored pool** rather than being
+   excluded from dungeon generation, which is what the section previously said.
+
+### Why offline play survives, when the reason for dropping it was cheating
+
+The concern was real: a local save file can be edited, and a ladder fed from
+edited saves is worthless. Diablo III's console versions are the worked example
+— they ship local hero saves and their leaderboards were permanently polluted,
+which Blizzard never fixed.
+
+But deleting offline play is not the genre's answer to that, and it is not
+necessary. Last Epoch ships a true offline mode alongside online leaderboards and
+a trading Bazaar, and keeps them honest by making the two character populations
+permanently non-transferable — the stated reason being precisely that local files
+can be edited. Diablo II did the same thing in 2000 with its open and closed
+realms. The cost of this rule is one flag set at character creation and two gates,
+on ladder submission and on auction house access.
+
+There is a second reason to want it. Last Epoch's 1.0 launch on 2024-02-21 spent
+roughly five days in cascading failure — 1.4 million logins in the first week, a
+server matcher that crashed under load and capped capacity at an estimated
+120,000 to 150,000 players, and a point at which their own deployment tooling
+broke so fixes could not be shipped. That was a team of about 105 people. Offline
+mode was the only thing that kept the game playable.
+
+### Why the rename
+
+"The Corrupted" collided with three things already in `Cataclysm_GDD_v2.md`: the
+Corrupted Sentinel enemy archetype, the Corrupted Mote crafting material, and the
+corrupted double in section VII, which is a different mechanic — the player's own
+character, built locally, needing no network. "Stalker" names the behaviour the
+section already describes, that it hunts the player across floors rather than
+waiting to be found. This follows the Magic Find precedent recorded on
+2026-08-05: one thing gets one name, because two names in the shipped tables is a
+defect.
+
+### Why the drops carry shapes rather than numbers
+
+**The problem this does not solve, and the one it does.** Nioh and Nioh 2 ship
+this mechanic almost exactly — a dead player's character appears in other
+players' worlds and drops copies of the equipment it was wearing — and it became
+a deliberate item transfer channel. The documented technique is to strip to a
+single item, die in a known place, and have a friend farm that grave, which
+carries a visible marker when it belongs to someone on your friends list.
+
+**That attack does not exist here and no defence against it was adopted.** This
+game draws an entry at random from a global pool into a procedurally generated
+dungeon. There is no way to select a specific entry, so there is no channel to
+hand an item to a chosen person. An earlier proposal to have the enemy drop
+server-rolled loot instead of the player's equipment was rejected by the project
+owner on exactly this ground, and rejected correctly — it would have removed the
+point of the feature, which is that a real player's build drops real top-tier
+equipment.
+
+**The narrower risk is item fabrication, and the scaling rule already closes it.**
+If the game client is what creates items, a modified client could fabricate an
+item, cross the Consumption Threshold on purpose, lose to its double on purpose,
+and inject that item into the pool, where it reaches strangers and then the
+auction house. That needs no targeting.
+
+The rule that closes it is not a new one. Scaling has to work upward as well as
+downward, because a character consumed at tier 3 and met at tier 7 must be raised
+to peak tier 7 power. Equipment cannot be raised by multiplying stored numbers,
+because affix tiers have defined value ranges; raising an item means rolling new
+values inside the higher tier's range, from the game's own tables. Running that
+same generation in the downward direction costs nothing and means the shared
+table cannot carry a number the game would not itself have produced.
+
+Matching a target Power Score is not sufficient on its own. A target can be met
+with one extreme value offset by weak values elsewhere, and a single extreme
+affix is worth having by itself once items can be traded.
+
+### Why the authored pool fills the slot offline
+
+Three shipped games substitute an authored or game-controlled stand-in for
+missing player data rather than removing the content: Nioh uses developer-placed
+graves, Dragon's Dogma 2 keeps official Capcom pawns hireable, and Deathloop has
+Julianna invade under game control. In all three the encounter still happens and
+only the source of the character changes. The authored entries needed for launch,
+described under Seeding, serve this case at no extra cost.
+
+Caution on that evidence: two forum sources disagree about whether Nioh's
+developer graves actually appear with the network disconnected, and Nioh 2 has a
+setting that disables graves outright. Treat it as a design pattern worth
+copying, not as proof the slot is always filled.
+
+### Two things this creates and does not settle
+
+**The scaling rule requires inverting the power model.** Given a target Power
+Score, produce a gear set. `sim/cataclysm_sim/scoring.py` is already a copy of
+`calculateScores.tsx` in the separate DungeonSimulator repository, and `CLAUDE.md`
+records that this copy has silently drifted twice. Whatever performs this scaling
+is a third implementation that has to agree with both.
+
+**A snapshot parser is a place other people's data enters your process.**
+CVE-2022-24126 is a 9.8-severity out-of-bounds write in Dark Souls III's parser
+for other players' session data, allowing remote code execution through the
+matchmaking servers. The snapshot format must be fixed-width and bounds-checked
+on the receiving client, not only validated on the server. #179 carries this.
+
+### Still open after this entry
+
+- Whether co-operative multiplayer runs on dedicated servers or on a host among
+  the party. Dragonkin: The Banished was researched as a candidate model and its
+  co-op architecture is attractive — host-based, friends only, no matchmaking, no
+  dedicated servers, and fully playable offline — but its rule that characters
+  move freely between offline and online cities is only safe because it has no
+  global marketplace, no leaderboards and no seasons. That specific rule is
+  rejected here for the reason in the section above.
+- Whether combat runs on the server. This is the expensive question and it is not
+  answered by wanting a marketplace: a marketplace needs a server-authoritative
+  item ledger, which is a web service and a database, not a fleet of game servers.
+- The auction house design in #57, and whether it ships at all.
+
+### Sources
+
+[Last Epoch characters cannot switch between offline and online — Prima Games](https://primagames.com/news/psa-last-epoch-characters-cant-switch-between-offline-and-online),
+[Last Epoch 1.0 launch retrospective — Eleventh Hour Games](https://forum.lastepoch.com/t/1-0-launch-retrospective/69374),
+[Diablo III console leaderboards topped by modified saves — Blizzard forums](https://us.forums.blizzard.com/en/d3/t/playstation-leader-boards-topped-by-cheaters/49097),
+[Diablo II realms: closed characters are stored on the realm — Battle.net](https://classic.battle.net/diablo2exp/faq/realms.shtml),
+[Nioh 2 Revenants and what they drop — Fextralife](https://nioh2.wiki.fextralife.com/Multiplayer),
+[Nioh item transfer through graves — Steam discussions](https://steamcommunity.com/app/485510/discussions/0/1488866180607648818/),
+[Dragon's Dogma 2 offline pawns — DualShockers](https://www.dualshockers.com/dragons-dogma-2-how-to-play-offline/),
+[Deathloop single-player Julianna — TheGamer](https://www.thegamer.com/deathloop-turn-off-pvp-invasions/),
+[FromSoftware servers do matchmaking and asynchronous data, never gameplay — Tim Leonard](https://timleonard.uk/2022/05/29/reverse-engineering-dark-souls-3-networking),
+[CVE-2022-24126, remote code execution in the Dark Souls III session parser — NVD](https://nvd.nist.gov/vuln/detail/CVE-2022-24126),
+[Dragonkin is designed to be fully playable offline — developer statement](https://x.com/DragonkinGame/status/1886082149612147070),
+[Dragonkin characters transfer between offline and online cities — developer, Steam discussions](https://steamcommunity.com/app/1863430/discussions/0/797838547624287910/).
+
+---
+
 ## 2026-08-09 — A charge in flight is committed, but a stun still stops it
 
 **Affects:** `ACataclysmEnemyController::Think` and `ACataclysmEnemyCharacter` in
