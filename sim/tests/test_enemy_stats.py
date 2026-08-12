@@ -8,9 +8,11 @@ creature, which is the thing the split exists to prevent.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
-from cataclysm_sim import combat, enemy_stats as es, scoring
+from cataclysm_sim import combat, damage as dmg, enemy_stats as es, scoring
 from cataclysm_sim.character import DAMAGE_TYPES
 
 ORDER = es.RARITY_ORDER
@@ -55,8 +57,8 @@ def test_the_superseded_rare_tier_is_not_present():
 
 
 def test_magnitude_scales_with_the_score():
-    small = es.stats_for("Boss", 1000.0, "Succubus")
-    big = es.stats_for("Boss", 2000.0, "Succubus")
+    small = es.stats_for("Boss", 1000.0, "Succubus", tier=8)
+    big = es.stats_for("Boss", 2000.0, "Succubus", tier=8)
     for stat in MAGNITUDE:
         assert getattr(big, stat) == pytest.approx(2 * getattr(small, stat)), stat
 
@@ -80,11 +82,11 @@ def test_every_magnitude_stat_rises_strictly_with_rarity(stat):
 
 def test_an_enemy_always_has_at_least_one_health():
     """Guards against a zero-score enemy being unkillable through division."""
-    assert es.stats_for("Common", 0.0).health >= 1.0
+    assert es.stats_for("Common", 0.0, tier=8).health >= 1.0
 
 
 def test_a_negative_score_is_treated_as_zero():
-    assert es.stats_for("Common", -500.0).damage_per_hit == 0.0
+    assert es.stats_for("Common", -500.0, tier=8).damage_per_hit == 0.0
 
 
 # --------------------------------------------------------------------------
@@ -102,8 +104,8 @@ def test_rarity_does_not_touch_the_profile(stat, kind):
 
 @pytest.mark.parametrize("stat", PROFILE)
 def test_the_profile_does_not_scale_with_the_score_either(stat):
-    small = es.stats_for("Elite", 100.0, "Hellhound")
-    big = es.stats_for("Elite", 10_000.0, "Hellhound")
+    small = es.stats_for("Elite", 100.0, "Hellhound", tier=8)
+    big = es.stats_for("Elite", 10_000.0, "Hellhound", tier=8)
     assert getattr(small, stat) == getattr(big, stat)
 
 
@@ -251,7 +253,7 @@ def test_every_enemy_the_design_document_names_is_here():
 
 def test_an_unknown_archetype_is_rejected():
     with pytest.raises(ValueError, match="unknown archetype"):
-        es.stats_for("Common", 1000.0, "Skeleton")
+        es.stats_for("Common", 1000.0, "Skeleton", tier=8)
 
 
 def test_the_baseline_is_an_average_enemy_and_not_a_creature():
@@ -394,32 +396,243 @@ def test_resistance_is_counted_when_reporting_what_gear_has_to_deliver():
     """Otherwise the figure would understate what a player needs against
     anything that resists."""
     warden = at_tier_eight("Herald", "Abyssal Warden")
-    raw = warden.effective_health / 30.0
-    assert es.player_damage_to_kill_in(warden, 30.0) == pytest.approx(
-        raw / 0.65)
-    unresisted = at_tier_eight("Common", "Imp")
-    assert es.player_damage_to_kill_in(unresisted, 30.0) == pytest.approx(
-        unresisted.effective_health / 30.0)
+    without_resistance = dmg.armor_reduction(warden.armor, warden.tier)
+    assert warden.damage_taken_fraction() == pytest.approx(
+        (1.0 - without_resistance / 100.0) * 0.65)
 
 
 def test_player_penetration_cuts_into_enemy_resistance():
     """Which is what gives the player's resistance penetration stat a target on
-    the enemy side."""
+    the enemy side. Measured as a RATIO so it tests the resistance layer alone:
+    the creature's armour is unchanged by resistance penetration, so it divides
+    out and the ratio is exactly (100 - 15) / (100 - 35)."""
     warden = at_tier_eight("Herald", "Abyssal Warden")
-    assert warden.damage_taken_fraction(0.0) == pytest.approx(0.65)
-    assert warden.damage_taken_fraction(20.0) == pytest.approx(0.85)
+    assert warden.damage_taken_fraction(20.0) / warden.damage_taken_fraction(
+        0.0) == pytest.approx(0.85 / 0.65)
     assert es.player_damage_to_kill_in(warden, 30.0, penetration=20.0) < \
         es.player_damage_to_kill_in(warden, 30.0)
 
 
 def test_penetration_beyond_an_enemys_resistance_does_not_grant_bonus_damage():
     """Otherwise over-stacking penetration would turn into a damage multiplier
-    against the enemies that need it least."""
+    against the enemies that need it least.
+
+    ASSERTED AGAINST THE CREATURE'S OWN UNRESISTED FRACTION rather than against
+    1.0, because armour is applied now too and the Abyssal Warden's removes 48%
+    of the hit whatever the player's penetration is. What must not happen is
+    penetration pushing the fraction ABOVE what an identical creature with no
+    resistance at all would take, and that is what this checks.
+
+    `enemy_stats` clamps penetration at the enemy's own resistance to get this.
+    `damage.effective_resistance` does not, and lets penetration overshoot into
+    negative resistance -- that is issue #482, still open, and this test is what
+    stops routing through `damage.resolve` importing it.
+    """
     warden = at_tier_eight("Herald", "Abyssal Warden")
-    assert warden.damage_taken_fraction(35.0) == pytest.approx(1.0)
-    assert warden.damage_taken_fraction(200.0) == pytest.approx(1.0)
+    unresisted = 1.0 - dmg.armor_reduction(warden.armor, warden.tier) / 100.0
+    assert warden.damage_taken_fraction(35.0) == pytest.approx(unresisted)
+    assert warden.damage_taken_fraction(200.0) == pytest.approx(unresisted)
+    assert warden.damage_taken_fraction(200.0) <= 1.0
     imp = at_tier_eight("Common", "Imp")
-    assert imp.damage_taken_fraction(50.0) == pytest.approx(1.0)
+    assert imp.damage_taken_fraction(50.0) == pytest.approx(
+        imp.damage_taken_fraction(0.0))
+
+
+# --------------------------------------------------------------------------
+# Every defensive layer reaches the arithmetic. Issue #481.
+# --------------------------------------------------------------------------
+
+def test_armour_is_applied_to_what_a_player_needs_to_kill_an_enemy():
+    """THE DEFECT IN ISSUE #481. `player_damage_to_kill_in` applied the enemy's
+    resistance and nothing else, so every figure it produced was too low, worst
+    against the most armoured creatures in the slice.
+
+    Pinned to the arithmetic rather than to a stored number: armour removes
+    `armor / (armor + 800 x tier)` capped at 75%, and it multiplies with
+    resistance rather than adding to it.
+    """
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    assert warden.armor > 0.0
+
+    removed = dmg.armor_reduction(warden.armor, warden.tier)
+    together = (1.0 - removed / 100.0) * (1.0 - warden.resistance / 100.0)
+    assert warden.damage_taken_fraction() == pytest.approx(together)
+
+    needed = es.player_damage_to_kill_in(warden, 30.0)
+    assert needed == pytest.approx(warden.effective_health / 30.0 / together)
+
+    # What the resistance-only answer was, and how far out it was.
+    resistance_only = (warden.effective_health / 30.0
+                       / (1.0 - warden.resistance / 100.0))
+    assert needed > 1.9 * resistance_only
+
+
+def test_the_two_most_armoured_creatures_are_the_ones_this_moved_most():
+    """Armour is the layer that was missing, so the size of the correction has
+    to track the armour share and nothing else. The Imp carries no armour at
+    all, so its figure must be unchanged by armour."""
+    imp = at_tier_eight("Common", "Imp")
+    assert imp.armor == 0.0
+    assert dmg.armor_reduction(imp.armor, imp.tier) == 0.0
+
+    ranked = sorted(
+        (at_tier_eight(rarity, name) for name, rarity in
+         (("Imp", "Common"), ("Hellhound", "Common"), ("Succubus", "Elite"),
+          ("Brute", "Elite"), ("Corrupted Sentinel", "Legendary"),
+          ("Abyssal Warden", "Herald"), ("Gatekeeper", "Cataclysm Boss"))),
+        key=lambda e: dmg.armor_reduction(e.armor, e.tier))
+    assert ranked[0].archetype.name == "Imp"
+    assert ranked[-1].archetype.name == "Gatekeeper"
+
+
+def test_an_enemys_armour_is_worth_less_at_a_higher_tier():
+    """The reason the tier is carried on the stat block. The same creature with
+    the same armour figure takes markedly more damage at tier 8 than at tier 1,
+    because the armour constant rises 800 a tier."""
+    low = es.stats_on_floor("Herald", 1, "Cataclysm", kind="Abyssal Warden")
+    high = es.stats_on_floor("Herald", 8, "Cataclysm", kind="Abyssal Warden")
+    same_armour = es.stats_for("Herald", low.score, "Abyssal Warden", tier=8)
+
+    assert same_armour.armor == pytest.approx(low.armor)
+    assert same_armour.damage_taken_fraction() > low.damage_taken_fraction()
+    assert high.tier == 8 and low.tier == 1
+
+
+def test_the_tier_has_to_be_stated_because_a_wrong_one_is_wrong_by_half():
+    """A defaulted tier would be a silent error rather than a loud one. At tier
+    1 the Abyssal Warden's armour hits its 75% cap; at tier 8 it removes 48%.
+    That is more than a factor of two in what gets through."""
+    with pytest.raises(TypeError, match="tier"):
+        es.stats_for("Herald", 1000.0, "Abyssal Warden")
+
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    at_one = es.stats_for("Herald", warden.score, "Abyssal Warden", tier=1)
+    assert dmg.armor_reduction(at_one.armor, 1) == pytest.approx(75.0)
+    assert warden.damage_taken_fraction() > 2 * at_one.damage_taken_fraction()
+
+
+def test_evasion_is_counted_and_only_against_a_direct_attack():
+    """Evasion is the Imp's and the Hellhound's designed defence. Folded in as
+    its expectation, which is what `damage.average_damage_taken` does on the
+    player's side. Area damage lands regardless, which is the design's rule."""
+    imp = at_tier_eight("Common", "Imp")
+    assert imp.evasion == 25.0
+    assert imp.damage_taken_fraction() == pytest.approx(0.75)
+    assert imp.damage_taken_fraction(is_area=True) == pytest.approx(1.0)
+
+    direct = es.player_damage_to_kill_in(imp, 30.0)
+    area = es.player_damage_to_kill_in(imp, 30.0, is_area=True)
+    assert direct == pytest.approx(area / 0.75)
+
+
+def test_armour_penetration_cuts_into_armour_and_nothing_else():
+    """Armour is a live layer now, so the enchantment family that ignores it --
+    'Your skills ignore 10%-25% of enemy armor' -- has somewhere to land. It
+    must not touch resistance: ignoring all of the armour leaves exactly the
+    resistance behind."""
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    none = warden.damage_taken_fraction()
+    some = warden.damage_taken_fraction(armor_penetration=25.0)
+    total = warden.damage_taken_fraction(armor_penetration=100.0)
+
+    assert none < some < total
+    assert total == pytest.approx(1.0 - warden.resistance / 100.0)
+
+
+def test_the_energy_shield_is_counted_once_and_not_twice():
+    """A shield sits after every mitigation layer and is part of the pool a
+    player chews through, so it belongs to `effective_health` and must not also
+    reduce the per-hit fraction. Counting it in both places would make the
+    Corrupted Sentinel look far tougher than it is."""
+    sentinel = at_tier_eight("Legendary", "Corrupted Sentinel")
+    assert sentinel.energy_shield > 0.0
+
+    bare = es.stats_for("Legendary", sentinel.score, "Brute", tier=8)
+    assert bare.energy_shield == 0.0
+
+    # The fraction ignores the shield entirely: it is the same whether the
+    # creature has one or not, once armour and resistance are matched.
+    probe = sentinel.defender_for()
+    assert probe.energy_shield == sentinel.energy_shield
+    assert es.player_damage_to_kill_in(sentinel, 30.0) == pytest.approx(
+        sentinel.effective_health / 30.0 / sentinel.damage_taken_fraction())
+
+
+# --------------------------------------------------------------------------
+# The handoff into the damage model
+# --------------------------------------------------------------------------
+
+def test_the_defender_carries_every_layer_the_stat_block_has():
+    """`defender_for` is the ONLY route from this file into `damage.py`. A stat
+    a defender does not carry is a stat nothing applies, which is the whole of
+    issue #481."""
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    d = warden.defender_for()
+
+    assert d.health == warden.health
+    assert d.energy_shield == warden.energy_shield
+    assert d.armor == warden.armor
+    assert d.evasion == warden.evasion
+    assert d.tier == warden.tier
+
+
+def test_one_enemy_resistance_becomes_the_same_figure_for_all_eight_types():
+    """An enemy has ONE resistance applied to all incoming damage, and
+    `damage.Defender` holds one per type because the player needs eight. The
+    mapping is the same number in every slot, so a player switching damage type
+    changes nothing about how hard an enemy is to kill."""
+    warden = at_tier_eight("Herald", "Abyssal Warden")
+    d = warden.defender_for()
+    assert set(d.resistances) == set(DAMAGE_TYPES)
+    for kind in DAMAGE_TYPES:
+        assert d.resistance_to(kind) == pytest.approx(warden.resistance)
+
+
+def test_the_defender_knows_whether_it_is_a_boss():
+    """`is_boss_rarity` exists to feed `Defender.is_boss`, which is what makes a
+    boss immune to stun. Before `defender_for` there was nothing to feed."""
+    assert at_tier_eight("Cataclysm Boss", "Gatekeeper").defender_for().is_boss
+    assert at_tier_eight("Boss", "Gatekeeper").defender_for().is_boss
+    assert not at_tier_eight("Herald", "Abyssal Warden").defender_for().is_boss
+
+
+def test_enemies_have_no_block_and_no_flat_reduction_yet():
+    """Stated rather than assumed. Issue #488 proposes both, and `defender_for`
+    is the single place they have to be wired in. If they are added to
+    `EnemyStats` and not to the defender they do nothing, which is exactly the
+    failure #481 was."""
+    for name, rarity in (("Imp", "Common"), ("Abyssal Warden", "Herald"),
+                         ("Gatekeeper", "Cataclysm Boss")):
+        d = at_tier_eight(rarity, name).defender_for()
+        assert d.block_chance == 0.0
+        assert d.damage_reduction == 0.0
+
+
+def test_the_probe_hit_is_never_clamped_by_the_probe_pool():
+    """`damage.resolve` clamps a hit to the health remaining, and this is
+    reading a ratio rather than killing anything. A creature whose real health
+    is far below the probe hit must still report its true fraction."""
+    tiny = es.stats_for("Common", 1.0, "Imp", tier=8)
+    assert tiny.health < es._PROBE_DAMAGE
+    assert tiny.damage_taken_fraction() == pytest.approx(0.75)
+
+
+def test_the_fraction_matches_resolving_a_hit_against_the_enemy_directly():
+    """The fraction must be what the damage model itself says, not a second
+    implementation of the same arithmetic that could drift from it. Resolved
+    here against the creature's own defender with its real health, which is
+    what the engine does."""
+    for name, rarity in (("Imp", "Common"), ("Hellhound", "Common"),
+                         ("Brute", "Elite"), ("Abyssal Warden", "Herald"),
+                         ("Gatekeeper", "Cataclysm Boss")):
+        e = at_tier_eight(rarity, name)
+        probe = 1.0  # far below any of these creatures' health, so no clamp
+        # Emptied of shield, because the fraction is a pre-pool figure and a
+        # shield would absorb the whole probe where there is one.
+        against = dataclasses.replace(e.defender_for(), energy_shield=0.0)
+        landed = dmg.average_damage_taken(
+            dmg.Attacker(damage=probe, damage_type=e.damage_type), against)
+        assert landed / probe == pytest.approx(e.damage_taken_fraction())
 
 
 # --------------------------------------------------------------------------

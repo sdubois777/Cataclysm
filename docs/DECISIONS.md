@@ -20,6 +20,95 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — Every defensive layer an enemy has now reaches the arithmetic
+
+**Affects:** `Cataclysm_GDD_v2.md` section X, the paragraph on enemy resistance
+and penetration. Applied in the same change. Issue #481.
+
+An enemy's armour, evasion and energy shield were computed by
+`sim/cataclysm_sim/enemy_stats.py`, exported to `game/Data/EnemyArchetypes.csv`,
+written onto engine attributes, checked for sanity by the tests, and **applied to
+no arithmetic anywhere**. Nothing in `sim/` ever built a `damage.Defender` from an
+`EnemyStats`, so `player_damage_to_kill_in` — the function that says what damage
+gear has to produce — applied resistance and nothing else.
+
+Every "damage needed to kill" figure this project has derived was therefore too
+low, in proportion to how armoured the creature is:
+
+| Enemy, tier 8, last floor of 50 | Armour | Evasion | Was | Is | |
+| :-- | --: | --: | --: | --: | --: |
+| Common Imp | 0 | 25% | 39 | 52 | 1.33x |
+| Common Hellhound | 202 | 20% | 94 | 121 | 1.29x |
+| Elite Succubus | 183 | 10% | 209 | 239 | 1.14x |
+| Elite Brute | 2,751 | 0% | 542 | 775 | 1.43x |
+| Legendary Corrupted Sentinel | 2,748 | 0% | 858 | 1,226 | 1.43x |
+| Herald Abyssal Warden | 5,954 | 0% | 3,929 | 7,584 | 1.93x |
+| Cataclysm Boss Gatekeeper | 8,224 | 0% | 18,925 | 43,243 | 2.28x |
+
+Damage per swing to kill in 30 swings. **The Gatekeeper's real figure is more
+than twice what the model reported.**
+
+### No new formula was invented here
+
+The mitigation order — evasion, block, armour, resistance, flat reduction, mana,
+energy shield, health — was settled under issue #93 and is what
+`sim/cataclysm_sim/damage.py` and `UCataclysmDamageCalculation::ResolveHit`
+already run. This change routes the enemy side into that existing order rather
+than proposing a second one. The armour curve, `armor / (armor + 800 x tier)`
+capped at 75%, is likewise unchanged.
+
+### What was genuinely a judgement
+
+**Evasion is counted, as its expectation.** Evasion is a per-hit avoidance roll
+rather than a proportional reduction, so folding it into a single "share of a hit
+that gets through" figure means averaging over the roll. Three reasons it is in
+rather than out:
+
+- The figure answers "damage per swing needed to kill in so many swings", and a
+  player counts swings. An Imp that avoids a quarter of them genuinely needs a
+  third more damage per swing to die on schedule.
+- `damage.average_damage_taken` already averages over the same roll on the
+  player's side. Two conventions for one question would be worse than either.
+- Evasion is the Imp's and the Hellhound's designed defence, at 25% and 20%.
+  Leaving it out makes swarm fodder that dodges identical to swarm fodder that
+  does not.
+
+Area damage still ignores it, which is the design's own rule, so the figure takes
+a flag saying whether the hit can be evaded.
+
+**The difficulty tier is carried on the stat block, and has no default.** Armour
+is worth `armor / (armor + 800 x tier)`, so the same armour figure means very
+different things at different tiers: the Abyssal Warden's 5,954 hits the 75% cap
+at tier 1 and removes 48.19% at tier 8. Asking the caller to supply a tier at the
+moment of use would let a block built at tier 8 be judged at tier 1 with nothing
+to notice, and would be wrong by more than a factor of two. There is now one tier
+per stat block and it cannot disagree with itself.
+
+**Penetration is clamped at the enemy's own resistance inside `enemy_stats.py`,
+and #482 is still open.** `damage.effective_resistance` lets penetration overshoot
+into negative resistance, which turns over-stacked penetration into a damage
+multiplier — the thing section X of the design document forbids. `enemy_stats.py`
+has always clamped, so routing it through `damage.resolve` without a local clamp
+would have imported the defect rather than fixed it. The clamp is local on
+purpose: the shared fix belongs in `damage.py` under #482, and it is a design
+question with three answers rather than a one-line correction.
+
+### What this does not change
+
+**Enemy damage to the player is untouched.** `DAMAGE_AT_COMMON` at 0.65 and
+`DAMAGE_PER_STEP` at 1.40 are fitted against the reference geared character in
+`reference_build.py` and are about how hard an enemy hits, not how hard it is to
+hit. `sim/tests/test_survivability.py` still measures them unchanged.
+
+**The player's own damage target is still wrong, and is issue #511.**
+`damage_target` in `sim/cataclysm_sim/affixes.py` divides the average Common
+enemy's health by how many hits it should take and applies no mitigation at all,
+so it is 10.5% low. It was left alone deliberately: it anchors every offensive
+number in the affix pool, and moving it means re-checking the flat and increased
+damage constants fitted to it.
+
+---
+
 ## 2026-08-12 — The Abyssal Warden was judged by play and accepted
 
 **Affects:** nothing. This entry records a judgement so that it is not asked
@@ -761,7 +850,7 @@ defects were found, verified directly, and filed rather than fixed here:
 
 | Issue | What is wrong |
 |---|---|
-| #481 | The simulation never applies enemy armour, so "damage needed to kill" is too low — 3,929 against this creature where 7,584 is right |
+| #481 | The simulation never applies enemy armour, so "damage needed to kill" is too low — 3,929 against this creature where 7,584 is right. **Fixed on 2026-08-12**; the entry at the top of this log records what changed |
 | #482 | Penetration past an enemy's resistance becomes a damage multiplier, which this document says it must not |
 | #483 | The guard against an immune enemy checks one layer where its own docstring says it should check the combination |
 | #484 | This document says enemy damage multiplies by 1.55 per rarity step; the model uses 1.40 |

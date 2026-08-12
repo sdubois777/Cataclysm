@@ -86,13 +86,30 @@ ONE FIELD HERE IS A BODY MEASUREMENT RATHER THAN A COMBAT STATISTIC.
 swarm can stand around one player at once is a geometry question, not a combat
 one. It lives here because it is fixed per archetype exactly like movement speed
 and attack interval are.
+
+EVERY DEFENSIVE LAYER LEAVES THIS FILE THROUGH `defender_for`, AND THAT IS THE
+POINT OF IT. Until issue #481 there was no route at all: an enemy's armour,
+evasion and energy shield were computed here, exported to
+`game/Data/EnemyArchetypes.csv`, written onto engine attributes, checked for
+sanity by the tests, and then consumed by no arithmetic anywhere, because nothing
+in `sim/` ever built a `damage.Defender` from an `EnemyStats`. Only resistance
+was applied, so "damage needed to kill" understated by 48% against the Abyssal
+Warden and by 56% against the Gatekeeper.
+
+`defender_for` is that route. `EnemyStats.damage_taken_fraction` resolves a probe
+hit through `damage.resolve` against it, so it runs the same eight steps in the
+same order as the player's side and as `UCataclysmDamageCalculation::ResolveHit`
+in the engine. A defensive layer added to enemies later -- block chance and flat
+damage reduction are issue #488 -- is wired in `defender_for` alone and every
+figure downstream picks it up. Adding it to `EnemyStats` and not to
+`defender_for` puts it back on the dead path.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from . import scoring
+from . import damage, scoring
 from .character import DAMAGE_TYPES
 
 # --------------------------------------------------------------------------
@@ -469,6 +486,17 @@ def archetype(name: str) -> Archetype:
 # The stat block
 # --------------------------------------------------------------------------
 
+#: The hit `damage_taken_fraction` resolves to read the mitigation multiplier off,
+#: and the health it resolves against.
+#:
+#: THE HEALTH IS ENORMOUS ON PURPOSE. `damage.resolve` reports what one hit
+#: actually dealt, so it clamps the answer to the health remaining. That clamp is
+#: correct there and would silently cap the multiplier here, which is reading a
+#: ratio rather than killing anything. A pool far above the probe cannot clamp.
+_PROBE_DAMAGE = 1000.0
+_PROBE_HEALTH = 1e12
+
+
 @dataclass(frozen=True)
 class EnemyStats:
     """One enemy's complete stat block."""
@@ -476,6 +504,19 @@ class EnemyStats:
     archetype: Archetype
     rarity: str
     score: float
+
+    #: The difficulty tier this enemy stands at. CARRIED RATHER THAN USED to set
+    #: any magnitude here: the score already contains the tier, so nothing in the
+    #: block below is computed from it.
+    #:
+    #: IT IS HERE BECAUSE ARMOUR HAS NO VALUE WITHOUT IT. `damage.armor_reduction`
+    #: divides by `800 x tier`, so the same armour figure means very different
+    #: things at different tiers -- the Abyssal Warden's 5,954 removes 75.00% of a
+    #: hit at tier 1 and 48.19% at tier 8. Asking the caller to supply a tier at
+    #: the moment of use instead would allow a block built at tier 8 to be judged
+    #: at tier 1 with nothing to notice, and would be wrong by a factor of two.
+    #: There is one tier per stat block and it cannot disagree with itself.
+    tier: int
 
     # Scaled by rarity.
     health: float
@@ -518,21 +559,96 @@ class EnemyStats:
         """What this enemy deals, which says which player resistance applies."""
         return self.archetype.cataclysm
 
-    def damage_taken_fraction(self, penetration: float = 0.0) -> float:
-        """Share of a player's hit that gets through this enemy's resistance.
+    def defender_for(self) -> damage.Defender:
+        """This enemy in the shape `damage.resolve` resolves hits against.
 
-        Player resistance penetration is subtracted before anything else, the
-        same way it is on the player's own side of the calculation.
+        THE ONLY ROUTE FROM THIS FILE INTO THE DAMAGE MODEL. See the note at the
+        top of the file: before issue #481 there was none, so armour, evasion and
+        the energy shield were computed and never applied to anything.
+
+        ONE RESISTANCE BECOMES EIGHT IDENTICAL ENTRIES. `damage.Defender` holds a
+        resistance per damage type because the player needs eight; an enemy has
+        one figure applied to all incoming damage, so the same number goes in
+        every slot. That is the mapping, not a loss of information.
+
+        BLOCK CHANCE AND FLAT DAMAGE REDUCTION ARE LEFT AT ZERO, deliberately and
+        not by omission: enemies have neither today. Issue #488 proposes giving
+        them both, and this is the single line it has to change.
         """
-        return 1.0 - max(0.0, self.resistance - penetration) / 100.0
+        return damage.Defender(
+            health=self.health,
+            energy_shield=self.energy_shield,
+            armor=self.armor,
+            evasion=self.evasion,
+            resistances={kind: self.resistance for kind in DAMAGE_TYPES},
+            tier=self.tier,
+            is_boss=is_boss_rarity(self.rarity),
+        )
+
+    def damage_taken_fraction(self, penetration: float = 0.0,
+                              armor_penetration: float = 0.0,
+                              is_area: bool = False) -> float:
+        """Share of a player's hit that reaches this enemy's health and shield.
+
+        Every mitigation layer the enemy has, in the order `damage.resolve`
+        applies them, which is the order the engine applies them in too. Before
+        issue #481 this applied resistance alone and nothing else.
+
+        THE SHIELD IS NOT COUNTED HERE, and that is not an oversight. An energy
+        shield sits after all of these layers and is part of the pool a player
+        chews through rather than a per-hit reduction, so it belongs to
+        `effective_health` and counting it in both places would count it twice.
+
+        EVASION IS COUNTED, AS ITS EXPECTATION. It is a per-hit avoidance roll
+        and not a proportional reduction, so folding it into a single fraction
+        means averaging over the roll, which is what `damage.average_damage_taken`
+        already does on the player's side. Two reasons for including it. The
+        figure this feeds answers "damage per swing needed to kill in so many
+        swings", and a player counts swings: an Imp that avoids a quarter of them
+        genuinely takes a third more damage per swing to kill on schedule. And
+        evasion is the Imp's and the Hellhound's designed defence -- leaving it
+        out would make swarm fodder that dodges identical to swarm fodder that
+        does not.
+
+        `is_area` is how a caller says the hit cannot be evaded. The design gives
+        evasion to direct attacks only and lets area damage land regardless, so
+        an area attack against the same enemy gets a larger share through.
+
+        PENETRATION IS CLAMPED AT THE ENEMY'S OWN RESISTANCE before it is handed
+        over. `damage.effective_resistance` lets penetration overshoot into
+        negative resistance, which turns over-stacked penetration into a damage
+        multiplier -- that is issue #482, and the design document forbids it. This
+        file has always clamped, and routing through `damage.resolve` without
+        clamping here would import the defect rather than fix it. The clamp is
+        local on purpose: the shared fix belongs in `damage.py` under #482, and
+        this enemy's own resistance is known here, which is what makes clamping
+        possible at all.
+        """
+        against = replace(self.defender_for(),
+                          health=_PROBE_HEALTH, energy_shield=0.0)
+        hit = damage.Attacker(
+            damage=_PROBE_DAMAGE,
+            damage_type=self.damage_type,
+            penetration=min(penetration, max(0.0, self.resistance)),
+            armor_penetration=armor_penetration,
+            is_area=is_area,
+        )
+        return damage.average_damage_taken(hit, against) / _PROBE_DAMAGE
 
 
 def stats_for(rarity: str, score: float,
-              kind: Archetype | str = BASELINE) -> EnemyStats:
+              kind: Archetype | str = BASELINE, *, tier: int) -> EnemyStats:
     """The whole stat block for one enemy.
 
     `rarity` sets how big it is, `kind` sets what it is, `score` is what
-    `scoring.py` says the encounter is worth.
+    `scoring.py` says the encounter is worth, and `tier` is the difficulty tier
+    it stands at.
+
+    `tier` CHANGES NOTHING THIS FUNCTION COMPUTES, and it has no default anyway.
+    See the field's own note on `EnemyStats`: armour is worth twice as much at
+    tier 1 as at tier 8, so a defaulted tier would be a wrong answer that looks
+    like a right one. Requiring it means every caller states which tier its
+    figures are about.
     """
     kind = archetype(kind) if isinstance(kind, str) else kind
     n = rarity_step(rarity)
@@ -545,6 +661,7 @@ def stats_for(rarity: str, score: float,
         archetype=kind,
         rarity=rarity,
         score=score,
+        tier=tier,
         health=health,
         damage_per_hit=(score * DAMAGE_AT_COMMON * DAMAGE_PER_STEP ** n
                         * kind.damage_share),
@@ -569,7 +686,7 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
     floor = total_floors if floor is None else floor
     scores = scoring.enemy_scores(tier, dungeon_type, subtype, total_floors,
                                   floor, modifier_score)
-    return stats_for(rarity, scores[rarity], kind)
+    return stats_for(rarity, scores[rarity], kind, tier=tier)
 
 
 # --------------------------------------------------------------------------
@@ -589,18 +706,29 @@ def hits_to_kill_player(enemy: EnemyStats, player_effective_health: float,
 
 
 def player_damage_to_kill_in(enemy: EnemyStats, hits: float,
-                             penetration: float = 0.0) -> float:
+                             penetration: float = 0.0,
+                             armor_penetration: float = 0.0,
+                             is_area: bool = False) -> float:
     """The damage per hit a player needs to kill this enemy in so many hits.
 
     This is the number gear has to produce, and it is an OUTPUT of the enemy
-    design rather than an input to it. The enemy's resistance is counted, and
-    the player's own resistance penetration reduces it.
+    design rather than an input to it. EVERY defensive layer the enemy has is
+    counted, and the player's resistance penetration and armour penetration each
+    cut into the layer they are for.
+
+    `hits` MEANS SWINGS ATTEMPTED, NOT BLOWS LANDED, because evasion is counted.
+    Against an enemy that avoids nothing the two are the same thing.
+
+    IT USED TO COUNT RESISTANCE AND NOTHING ELSE, which understated it by 48%
+    against the Abyssal Warden and by 56% against the Gatekeeper -- the two most
+    armoured creatures in the vertical slice. Issue #481.
 
     It used to take a damage type, because enemies resisted the eight types
     separately. They do not any more: player damage is adaptive, so one enemy
     resistance figure applies whatever the player is wielding.
     """
-    through = enemy.damage_taken_fraction(penetration)
+    through = enemy.damage_taken_fraction(penetration, armor_penetration,
+                                          is_area)
     return enemy.effective_health / (max(hits, 1e-9) * max(through, 1e-9))
 
 
@@ -668,6 +796,30 @@ if __name__ == "__main__":
               f"hit lands, {player_damage_to_kill_in(warden, 30.0, pen):>7,.0f} "
               "needed to kill it in 30")
     print()
+    print("    Resistance is not the only layer, and until issue #481 it was")
+    print("    the only one anything read. Every layer this creature has, in")
+    print("    the order a hit meets them:")
+    print()
+    bare = warden.defender_for()
+    for label, effect in (
+        (f"armour {warden.armor:,.0f} at tier {TIER}",
+         f"removes {damage.armor_reduction(warden.armor, TIER):.1f}% of the hit"),
+        (f"resistance {warden.resistance:.0f}%",
+         f"removes {warden.resistance:.1f}% of what is left"),
+        (f"evasion {warden.evasion:.0f}%",
+         f"avoids {warden.evasion:.1f}% of direct attacks entirely"),
+        (f"block {bare.block_chance:.0f}%, "
+         f"flat reduction {bare.damage_reduction:.0f}%",
+         "enemies have neither yet, issue #488"),
+    ):
+        print(f"      {label:<34} {effect}")
+    print(f"      {'TOGETHER':<34} {warden.damage_taken_fraction():.1%} of the "
+          "hit reaches its health and shield")
+    print()
+    print("    Armour alone is why the figure below nearly doubled. Reading")
+    print("    resistance and nothing else said 3,929 where the answer is "
+          f"{player_damage_to_kill_in(warden, 30.0):,.0f}.")
+    print()
 
     print("=" * 78)
     print("What this implies for the player. REPORTED, NOT ASSERTED.")
@@ -681,14 +833,22 @@ if __name__ == "__main__":
     print(f"    A level 100 Ravager with no gear has {pool:,.0f} effective health,")
     print("    and no gear is not a real state at tier 8. It is a floor.")
     print()
-    print(f"    {'enemy':<28} {'its hits you survive':>21} {'per hit to kill it in 30':>26}")
-    print("    " + "-" * 78)
+    print(f"    {'enemy':<28} {'its hits you survive':>21} {'lands for':>11} "
+          f"{'per hit to kill it in 30':>26}")
+    print("    " + "-" * 90)
     for name, rarity in AT:
         e = stats_on_floor(rarity, TIER, "Cataclysm", kind=name)
         print(f"    {e.name:<28} {hits_to_kill_player(e, pool):>21.1f} "
+              f"{e.damage_taken_fraction():>10.1%} "
               f"{player_damage_to_kill_in(e, 30.0):>26,.0f}")
     print()
     print("    The Gatekeeper one-shots a gearless character several times over,")
     print("    which is what the project owner asked for. What gear has to")
     print("    supply is the last column, and it is an output of this file")
     print("    rather than an input to it.")
+    print()
+    print("    The middle column is every mitigation layer the creature has,")
+    print("    multiplied together. Until issue #481 it read resistance alone,")
+    print("    so the last column was too low everywhere and worst against the")
+    print("    two most armoured creatures: the Abyssal Warden by 48% and the")
+    print("    Gatekeeper by 56%.")

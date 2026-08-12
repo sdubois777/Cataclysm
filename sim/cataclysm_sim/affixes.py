@@ -675,6 +675,15 @@ def damage_target(tier: int = 8) -> float:
 
     Measured against the baseline archetype, which is the average enemy of a
     rarity rather than any particular creature.
+
+    IT APPLIES NO MITIGATION AT ALL, WHICH IS WRONG AND IS ISSUE #511. The
+    average Common enemy carries 673 armour at tier 8, which removes 9.52% of a
+    hit, so the damage needed to kill it in two hits is 1,860 and this returns
+    1,683. It was left alone when issue #481 gave `player_damage_to_kill_in` the
+    full mitigation order, because this figure anchors every offensive number in
+    this file -- `damage_for_slot`, `weapon_base_damage_needed`, and the fitted
+    values of `FLAT_DAMAGE` and `INCREASED_DAMAGE` -- and moving it means
+    re-checking all of them rather than editing one line.
     """
     common = enemy_stats.stats_on_floor("Common", tier, "Cataclysm")
     return common.effective_health / HITS_TO_KILL_A_COMMON_ENEMY
