@@ -20,6 +20,64 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — Animation is shared by weapon and slot, not by damage type
+
+**Affects:** adds `Animation_Plan.md` to this folder. Nothing in
+`Cataclysm_GDD_v2.md` changes. Issue #18. Confirmed by the project owner.
+
+### What was decided
+
+**One animation set per weapon-and-slot combination, shared across all eight
+damage types.** There are 15 weapon types and 6 slots, giving **71 combinations**,
+measured from the Weapon Skills sheet. Damage type identity comes from effects,
+audio, meshes, impacts and mechanical behaviour rather than from the body motion.
+A reserve of roughly 24 signature animations, about three weapons per damage type,
+is held back for the moments identity matters most — most likely Ultimates.
+
+**Roughly 135 to 150 animations for the full game**, against 398 if every skill
+row were bespoke.
+
+### Why it costs nothing the design had not already spent
+
+The condition attached to approving re-use on 2026-08-02 was that classes must not
+feel like the same thing in a different colour.
+
+**Classes were never differentiated by their skills.** Skills come from weapon
+type plus damage type; classes come from damage type, three per type. The Ravager,
+the Ritualist and the Masochist are all Demonic and all draw from the same Demonic
+skill pool, so sharing an animation between them costs nothing they did not
+already share. What separates them is the passive tree and the class resource —
+the Masochist spends health and its resource is Anguish — and none of that lives
+in an attack animation.
+
+**So the risk the condition names is about the eight damage types, not the 24
+classes.**
+
+### The check that should happen before any tooling is bought
+
+War and Demonic are both fully designed now, 61 of 61 and 51 of 51. The rule
+claims a Demonic Greataxe Heavy attack and a War Greataxe Heavy attack are the
+same physical motion, and **both of those skills already exist as written
+descriptions**. So the rule can be falsified by reading 112 skill descriptions and
+asking whether each matched pair implies the same body motion. No tooling, no art,
+no spend.
+
+### Still open
+
+The player skeleton standard, recommended as the Unreal mannequin because this
+project is already committed to retargeting — every Paragon character carries its
+own skeleton, 39 to 207 bones. And the animation tooling, which should wait for
+the reading check.
+
+### Two figures in issue #18 were wrong
+
+It says 558 skill rows and a 7.9 times reduction; the sheet holds **398**, so the
+reduction is **5.61**. The 71 combinations the rule rests on are correct. And its
+closing note says Phase 1 proves the rule with War skills — Phase 1 uses
+**Demonic** skills, corrected by issue #61.
+
+---
+
 ## 2026-08-12 — The game is bought once, not free to play
 
 **Affects:** section XIV of `Cataclysm_GDD_v2.md`, rewritten and applied. Confirms
