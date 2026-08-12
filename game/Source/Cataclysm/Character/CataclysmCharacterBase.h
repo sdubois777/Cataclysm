@@ -204,6 +204,21 @@ public:
 	virtual void AttackTarget(AActor* Target) {}
 
 	/**
+	 * Called once when this character's health first reaches zero.
+	 *
+	 * INERT ON THE BASE, so the player character is unaffected. A player's death
+	 * is a much larger question than an enemy's -- it owes a death penalty, a
+	 * corruption cost and the Last Stand mechanic, none of which is designed --
+	 * so issue #517 does the enemy half alone and this default is what leaves the
+	 * other half untouched rather than half-built.
+	 *
+	 * CALLED FROM UCataclysmVitalAttributeSet::PostGameplayEffectExecute, which
+	 * is the one place in the project that knows a hit has landed and what it
+	 * left behind.
+	 */
+	virtual void HandleDeath() {}
+
+	/**
 	 * What this character can do beyond its ordinary attack, in the order it
 	 * would rather use them. Empty means it only has AttackTarget.
 	 *

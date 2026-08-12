@@ -419,6 +419,34 @@ bool UCataclysmSkillEffects::IsStunned(const AActor* Actor)
 	return HasTag(Actor, StunnedTag());
 }
 
+FGameplayTag UCataclysmSkillEffects::DeadTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Dead")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::IsDead(const AActor* Actor)
+{
+	return HasTag(Actor, DeadTag());
+}
+
+bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
+{
+	UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+	const FGameplayTag Dead = DeadTag();
+	if (!System || !Dead.IsValid() || System->HasMatchingGameplayTag(Dead))
+	{
+		return false;
+	}
+
+	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
+	// granted for a duration and this one must never expire. A duration effect
+	// with an infinite duration would do the same thing with more moving parts
+	// and one more way to get the duration wrong.
+	System->AddLooseGameplayTag(Dead);
+	return true;
+}
+
 bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 									   float DurationSeconds, float DamageDealt,
 									   bool bStunIsDesigned)

@@ -136,6 +136,25 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		return LastAction;
 	}
 
+	// DEATH OUTRANKS EVERYTHING, INCLUDING A STUN. A dead creature does nothing
+	// at all: it does not chase, does not swing, and does not finish a wind-up it
+	// had committed to. Checked before the stun below, because being stunned is a
+	// state a creature comes back from and being dead is not, and because
+	// ACataclysmEnemyCharacter::HandleDeath has already stopped its movement -- a
+	// pass that then asked it to chase would be arguing with that.
+	//
+	// IT IS ONLY BRIEFLY TRUE. The creature is destroyed on the next tick, so
+	// this catches the passes between the killing blow and its removal. Before
+	// issue #517 there were no such passes, because nothing ever died.
+	if (UCataclysmSkillEffects::IsDead(Driven))
+	{
+		WindingUpAbility = INDEX_NONE;
+		WindUpPassesLeft = 0;
+		CurrentTarget = nullptr;
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
 	// A STUN OUTRANKS EVEN A COMMITTED WIND-UP, and it is the only thing that
 	// does. The design says a stunned target cannot act at all, and the wind-up
 	// rules say interrupting one cancels it -- the rule ECataclysmBrainAction

@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
@@ -156,12 +158,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			{
 				SetHealth(FMath::Clamp(GetHealth() - Outcome.DealtToHealth,
 									   0.0f, GetMaxHealth()));
+				NotifyIfHealthReachedZero();
 			}
 		}
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
 		SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
+		NotifyIfHealthReachedZero();
 	}
 	else if (Data.EvaluatedData.Attribute == GetManaAttribute())
 	{
@@ -171,6 +175,27 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	{
 		SetEnergyShield(FMath::Clamp(GetEnergyShield(), 0.0f, GetMaxEnergyShield()));
 	}
+}
+
+void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()
+{
+	if (GetHealth() > 0.0f)
+	{
+		return;
+	}
+
+	// ONCE, WHICH IS WHAT THE TAG IS FOR HERE AS WELL AS FOR ASKING. Health can
+	// be written repeatedly at zero -- a burn ticking on a corpse, two hits in
+	// the same frame -- and HandleDeath removes the character from the level, so
+	// running it twice would be running it on something already leaving.
+	ACataclysmCharacterBase* Character =
+		Cast<ACataclysmCharacterBase>(GetOwningActor());
+	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return;
+	}
+
+	Character->HandleDeath();
 }
 
 TArray<FGameplayAttribute> UCataclysmVitalAttributeSet::GetAllAttributes()

@@ -14,6 +14,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -96,6 +97,46 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 	// WHAT IT COSTS A CREATURE THAT NEVER CHARGES: one boolean test a frame.
 	// Tick below returns immediately unless a charge is running.
 	PrimaryActorTick.bCanEverTick = true;
+}
+
+void ACataclysmEnemyCharacter::HandleDeath()
+{
+	if (!UCataclysmSkillEffects::MarkDead(this))
+	{
+		// Already dead. Nothing here is safe to run twice.
+		return;
+	}
+
+	// WHATEVER IT WAS DOING STOPS. A charge already in flight is the one that
+	// matters: it advances per frame from Tick and would otherwise carry the
+	// corpse across the room. The same reasoning as being stunned mid-charge,
+	// issue #499.
+	CancelCharge();
+
+	// DisableMovement CLEARS THE VELOCITY TOO, so there is no separate call to
+	// stop it. UCharacterMovementComponent::OnMovementModeChanged runs
+	// StopMovementKeepPathing when the new mode is MOVE_None -- "Kill velocity
+	// and clear queued up events". A StopMovementImmediately beside this was
+	// written first and proved to be doing nothing: removing it failed no test,
+	// which is how it was found.
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->DisableMovement();
+	}
+
+	// The capsule stops blocking, so a corpse on its way out cannot push the
+	// player around or stand in the way of another creature for the frame it
+	// has left.
+	SetActorEnableCollision(false);
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				Destroy();
+			}));
+	}
 }
 
 void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
