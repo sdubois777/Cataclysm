@@ -1,0 +1,304 @@
+# Save System and Empire Persistence
+
+This is the design for what the game writes to disk, how it is partitioned, and
+how it survives the schema changing. It answers issue #21.
+
+**Nothing here is implemented.** A search of `game/Source/` on 2026-08-12 for
+`USaveGame`, `SaveGameToSlot`, `LoadGameFromSlot` and `SaveSystem` returns
+nothing. This document is the design that implementation is built to.
+
+---
+
+## 1. Three records, not one save file
+
+The design forces three separate persistence scopes, because three different
+things have three different lifetimes and, in co-operative play, three different
+owners.
+
+| Record | Lifetime | Owner in co-op | Roughly one per |
+| :-- | :-- | :-- | :-- |
+| **Account** | Permanent | Each player has their own | Lethality mode |
+| **Character** | Permanent, survives a failed run | Each player has their own | Character |
+| **Run** | Discarded when the run ends | **Shared by the party** | Active run |
+
+Putting these in one file makes co-operative play impossible to retrofit, which
+is the specific risk issue #21 raises. Keeping them apart costs nothing now.
+
+### Why the run record is separate and shared
+
+`docs/Cataclysm_GDD_v2.md`, section "Co-operative Play", states that the death
+penalty "is paid once for the party, not once per player" and is "charged once
+against the **shared empire clock**". Section XVI's risk table states the intent
+directly: "Design empire as shared resource in co-op with individual character
+builds."
+
+So the empire, the day count and the dungeon timers belong to the run, and the
+run belongs to the party. Character level, passive tree, inventory and equipment
+belong to the individual and travel with them out of somebody else's session.
+
+**That split is the co-op split.** It is not an extra feature bolted on for
+Phase 2; it is the same boundary the solo game already has, with more than one
+character record attached to one run record.
+
+---
+
+## 2. What each record holds
+
+### Account record — permanent
+
+One per lethality mode per player, see the partition rules in section 3.
+
+- Empire upgrade points, banked and unspent
+- Empire upgrade tree allocation
+- Shared stash contents
+- The list of characters belonging to this partition
+- Schema version
+
+### Character record — permanent, and it survives a failed run
+
+Issue #315 settled that **nothing in the design destroys a character**. A run
+ending — defeating the boss dungeon, losing the capital, dying in the Last Stand,
+or being killed by the corrupted double — costs the run and not the character. So
+this record is never deleted as a consequence of play.
+
+- Character level and experience
+- Attribute allocation
+- Passive class tree allocation
+- Class resource state where it persists between runs
+- Inventory contents
+- Equipped items, all 18 slots, with their rolled affixes
+- Cataclysmic Residue held
+- **Lethality mode**, set at creation, never changes
+- **Solo Self-Found flag**, set at creation, never comes off
+- **Offline or online flag**, set at creation, never changes, from #505
+- For a Solo Self-Found character only: its own private empire upgrade points and
+  tree allocation, because it shares a tree with no other character at all
+- Schema version
+
+### Run record — discarded when the run ends
+
+- Current day
+- Empire graph: which cities stand, each city's population, defence, and its
+  filled upgrade slots — 3 slots, or 2 under Heretic
+- Active dungeons, their modifiers, their depth and their resolve timers
+- Surge schedule and pending surges
+- Cataclysm quest progress, for example rifts sealed of the ten Hell on Earth
+  requires
+- The identifiers of the character records taking part, one in solo play and up
+  to four in co-operative play
+- Schema version
+
+---
+
+## 3. How saves are partitioned
+
+Partitioning is not a storage convenience here. It is a rule the design already
+made, and the save layout has to enforce it because it is the only place it can
+be enforced.
+
+`docs/Cataclysm_GDD_v2.md`, section "Difficulty Options":
+
+> **Each lethality mode has its own empire upgrade tree.** A character's empire
+> meta-progression is shared with every other character in the same mode and with
+> no character in another one.
+
+> **The shared stash and the auction house are partitioned the same way.**
+> Standard characters share one stash and one market, Hardcore characters share a
+> second pair, and Heretic characters share a third. Nothing moves between them.
+
+> **Solo Self-Found is stricter than that** [...] A Solo Self-Found character has
+> its own empire upgrade tree shared with no other character at all — not with the
+> others in its lethality mode, and not with another Solo Self-Found character.
+
+### The rule as it applies to storage
+
+| Character is | Reads and writes which account record | Stash |
+| :-- | :-- | :-- |
+| Standard, not Solo Self-Found | The Standard account record | Shared Standard stash |
+| Hardcore, not Solo Self-Found | The Hardcore account record | Shared Hardcore stash |
+| Heretic, not Solo Self-Found | The Heretic account record | Shared Heretic stash |
+| Any mode, **Solo Self-Found** | **None.** Its empire tree lives in its own character record | **None.** It has no stash |
+
+**A Solo Self-Found character touches no account record at all.** That is the
+cleanest expression of the design rule, and it means the strictest mode is also
+the simplest to store: one file, self-contained.
+
+### The offline and online split, and a gap in the design
+
+#505, landed 2026-08-10, settled that a character is created offline or online
+and never changes in either direction, and that offline characters have no
+auction house and no ladder. The reasoning follows Last Epoch and Diablo II's
+open and closed realms: local files can be edited, so the two populations are
+kept permanently non-transferable.
+
+**The design document does not say whether the offline and online populations
+also have separate stashes and separate empire trees.** A search of
+`docs/Cataclysm_GDD_v2.md` for any statement linking offline play to the stash or
+the empire tree returns nothing.
+
+**This design assumes they are separate**, and it is filed as issue #528. The
+assumption is forced rather than chosen: a shared stash that both an offline
+and an online character can reach is a transfer route between the two
+populations, which is exactly what the non-transferability rule exists to
+prevent. An item edited into an offline character's stash would otherwise reach
+the auction house.
+
+So the real partition key is **offline-or-online × lethality mode**, giving up to
+six account records per player, plus one self-contained record per Solo
+Self-Found character.
+
+**If the operator decides otherwise, this section changes and nothing else in
+this document does.**
+
+---
+
+## 4. Storage format
+
+**Use Unreal's `USaveGame` subclasses, serialised as JSON, with an explicit
+schema version as the first field.**
+
+### Why `USaveGame` rather than writing files directly
+
+It is the engine's own mechanism, it works through `UGameplayStatics::SaveGameToSlot`
+and `LoadGameFromSlot`, and it is the only route that works unchanged on consoles,
+where raw file access is restricted. Section XV lists platform ports, so writing
+straight to a file path would have to be undone later.
+
+Mark persisted fields `UPROPERTY(SaveGame)` and serialise with an archive that has
+`ArIsSaveGame = true`, so the set of persisted fields is declared on the field
+rather than maintained in a separate list that drifts.
+
+### Why JSON rather than the engine's default binary
+
+The two ends of this trade are both occupied by shipped games in this genre.
+**Last Epoch writes JSON**, in `AppData\LocalLow\Eleventh Hour Games\Last Epoch\Saves`,
+with a short magic prefix. **Grim Dawn writes a custom binary format**, `.gdc`
+files under `Documents\My Games\Grim Dawn\save`.
+
+JSON is right here for three reasons specific to this project:
+
+1. **This game will change constantly through development and Early Access**, which
+   issue #21 names as the reason to design migration from the start. A migration
+   written against a readable format can be inspected, diffed and tested by hand.
+   A migration written against binary cannot, and every bug in one produces a
+   corrupt save rather than an error.
+2. **The project already follows Last Epoch's architecture.** #505 adopted its
+   offline and online split by name. Following its storage choice too is
+   consistent, and its offline saves are the closest working example of exactly
+   what this document describes.
+3. **The cost of JSON is size and load time**, and both are affordable at this
+   scale. The largest record is a stash, and the alternative only matters at sizes
+   this game does not reach.
+
+`FJsonObjectConverter::UStructToJsonObjectString` and `JsonObjectStringToUStruct`
+do the conversion, so the JSON path is engine-supported rather than hand-rolled.
+
+**Binary becomes the right answer if load time is measured and found to be a
+problem.** Measure before switching; do not switch on principle.
+
+### Where saves live
+
+`FPlatformMisc::GetProjectSavedDirectory()` — that is `Saved/SaveGames/` under the
+project during development, and the platform's own location in a packaged build.
+Do not hard-code a path.
+
+Suggested slot names, one record per slot:
+
+```
+Account_Online_Standard
+Account_Online_Hardcore
+Account_Online_Heretic
+Account_Offline_Standard
+Account_Offline_Hardcore
+Account_Offline_Heretic
+Character_<guid>
+Run_<guid>
+```
+
+A character is identified by a generated `FGuid` and not by its name, so renaming
+is free and two characters may share a name.
+
+---
+
+## 5. Schema versioning and migration
+
+This is the part issue #21 is most worried about, and it is right to be: a format
+that cannot migrate means discarding player progress at every patch, and the
+design calls empire meta-progression "the primary meta-progression system".
+
+### The rules
+
+1. **Every record carries an integer `SchemaVersion` as its first field.** First,
+   so it can be read without parsing the rest, which is what lets a migration run
+   before the record is interpreted.
+2. **The version is per record type.** An account record and a character record
+   version independently. Bumping one does not touch the other.
+3. **Migration is a chain of single-step functions**, `Migrate_3_to_4`,
+   `Migrate_4_to_5`, applied in order from the file's version to the current one.
+   Never write a migration that jumps versions; a chain of small steps is testable
+   and a jump is not.
+4. **A migration never reads the game's current data tables.** It transforms one
+   schema into the next using only what is in the record and constants frozen into
+   the migration itself. A migration that reads `game/Data/` breaks the moment
+   that data changes, which is the thing most likely to change.
+5. **A record from a newer version than the build understands is refused, not
+   guessed at.** Report it plainly to the player. Silently loading a newer save
+   loses data.
+6. **Migration writes a backup first**, alongside the original, and only replaces
+   the original once the migrated record has been read back successfully.
+
+### What a version bump means in practice
+
+Adding a field with a sensible default is not a version bump — `UPROPERTY(SaveGame)`
+already handles a missing field by leaving the default. A version bump is for
+changes that need transformation: renaming a field, changing its type, splitting
+one field into two, or changing the meaning of a value.
+
+### Testing it
+
+Issue #21's third acceptance criterion is a test that loads a save written by a
+previous schema version. The way to make that real rather than decorative:
+
+**Commit example save files, one per historical schema version, as test fixtures.**
+A test loads each and asserts the result matches what the current schema should
+produce. When a version is added, its example file is added and the older ones
+stay. This is the only form of the test that cannot quietly stop testing
+anything — a test that writes a save with the current code and reads it back
+proves only that the code agrees with itself.
+
+Per `CLAUDE.md`, confirm the test fails when it should: change one migration step
+to drop a field and check the test that covers that version fails, using
+`tools/prove_guard.py`.
+
+---
+
+## 6. What this design deliberately does not settle
+
+- **Whether offline and online share a stash and empire tree.** Assumed separate,
+  section 3. Filed as issue #528.
+- **Anti-tamper for offline saves.** #505 accepted that local files can be edited
+  and answered it by making offline and online populations non-transferable, so
+  the save format does not need to resist editing. If a checksum is wanted anyway,
+  it is additive and does not change anything above.
+- **Cloud saves and how conflicts resolve.** Depends on the answer to #501, the
+  business model question. Not designed here.
+- **Auction house and ladder storage.** Server-side, not a save file, and
+  downstream of #501. #57, #58 and #179 cover them.
+- **How often the run record is written.** An autosave cadence is a tuning
+  question that needs a measured write cost, and there is nothing to measure yet.
+
+---
+
+## Sources
+
+The format comparison was taken from how shipped games in the genre solve it:
+
+- Last Epoch's offline saves are JSON, at `AppData\LocalLow\Eleventh Hour Games\Last Epoch\Saves`
+  — [save file location](https://steamcommunity.com/app/899770/discussions/0/4338725580143851622/),
+  [save editor thread describing the JSON format](https://fearlessrevolution.com/viewtopic.php?t=17089)
+- Grim Dawn uses a custom binary `.gdc` format, at `Documents\My Games\Grim Dawn\save`
+  — [PCGamingWiki](https://www.pcgamingwiki.com/wiki/Grim_Dawn)
+
+The partition rules are not from research. They are read directly out of
+`docs/Cataclysm_GDD_v2.md`, section "Difficulty Options", and `docs/DECISIONS.md`,
+the 2026-08-10 entry on offline play.
