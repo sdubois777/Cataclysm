@@ -41,6 +41,7 @@ python tools/reformat_google_docs_artefacts.py
 | `DECISIONS.md` | Not from Drive | The log of design decisions and the reasoning behind them, newest first. Written in this repository. |
 | `Save_System_Design.md` | Not from Drive | What the game writes to disk: the three persistence records, how saves are partitioned by lethality mode and by offline or online, the storage format, and schema migration. Written in this repository for issue #21. |
 | `Audio_Design_Plan.md` | Not from Drive | How the audio design in section XIII gets built: MetaSounds rather than middleware, the six mixing buses, naming, and how a telegraph cue is authored by animation notify so it survives a play rate change. Written in this repository for issue #33. |
+| `Animation_Plan.md` | Not from Drive | How much animation the game needs and what decides whether two skills share a motion: one set per weapon and slot shared across all eight damage types, identity from effects and behaviour, plus a signature reserve. Written in this repository for issue #18. |
 
 ## Sheets in `All_Things_Cataclysm.xlsx`
 
