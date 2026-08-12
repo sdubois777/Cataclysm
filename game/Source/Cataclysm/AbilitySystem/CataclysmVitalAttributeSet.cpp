@@ -112,11 +112,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			//   any one blow, so it is read off the attacker at the moment the
 			//   blow lands, which is also the moment it is true
 			//
-			// FOUR STILL DO NOT: armour penetration, whether the hit is area
-			// damage, whether it is damage over time, and its weapon sub-type. So
-			// an area attack can still be evaded, which the design says it cannot,
-			// and the slashing and magic bonuses still do nothing. See the issue
-			// filed alongside #486 for those four.
+			// HOW IT ARRIVED RIDES ON THE EFFECT TOO, as two more tags. Whether
+			// the hit swept a volume decides the evasion step, and whether it is
+			// damage over time decides whether an energy shield absorbs it.
+			// Issue #513.
+			//
+			// TWO STILL DO NOT REACH IT: armour penetration, which no attribute
+			// holds anywhere, and the weapon sub-type, which decides the slashing
+			// and magic bonuses. See the issue filed alongside #513.
 			FCataclysmIncomingHit Hit;
 			Hit.Damage = LocalDamage;
 
@@ -124,6 +127,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Data.EffectSpec.GetAllAssetTags(AssetTags);
 			Hit.DamageType =
 				UCataclysmDamageCalculation::DamageTypeFromTags(AssetTags);
+			Hit.bIsArea = AssetTags.HasTag(
+				UCataclysmDamageCalculation::AreaDamageTag());
+			Hit.bIsDamageOverTime = AssetTags.HasTag(
+				UCataclysmDamageCalculation::DamageOverTimeTag());
 
 			if (const UAbilitySystemComponent* Attacker =
 					Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent())

@@ -886,8 +886,13 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
 				World, this, GetActorLocation(), StompRadiusCm))
 		{
+			// AREA DAMAGE, so it cannot be evaded. The design says evasion
+			// avoids a direct attack only and that area damage lands
+			// regardless, and this swept a sphere. Issue #513.
 			const float Dealt =
-				UCataclysmSkillEffects::ApplyHit(this, Caught, StompDamagePercent);
+				UCataclysmSkillEffects::ApplyHit(this, Caught, StompDamagePercent,
+												 FGameplayTagContainer(),
+												 FCataclysmHitDelivery::Area());
 
 			UCataclysmSkillEffects::ApplyStun(this, Caught, StompStunSeconds,
 											  Dealt, /*bStunIsDesigned=*/true);

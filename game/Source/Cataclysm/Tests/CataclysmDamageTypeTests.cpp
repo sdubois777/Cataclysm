@@ -43,10 +43,14 @@
  *     an ENEMY'S hit says which of the player's eight applies
  *     a PLAYER'S hit says nothing, because there is nothing to choose
  *
- * WHAT THESE DELIBERATELY DO NOT COVER: armour penetration, whether a hit is
- * area damage, whether it is damage over time, and its weapon sub-type. Those
- * four fields of FCataclysmIncomingHit are still never populated. See the issue
- * filed alongside #486.
+ * TWO MORE PROPERTIES TRAVEL THE SAME WAY, added under issue #513: whether the
+ * hit landed on ground rather than touching a target, which decides the evasion
+ * step, and whether it is damage over time, which decides whether an energy
+ * shield absorbs it.
+ *
+ * WHAT THESE DELIBERATELY DO NOT COVER: armour penetration, which no attribute
+ * in the project holds, and the weapon sub-type, which decides the slashing and
+ * magic bonuses. Both are in the issue filed alongside #513.
  */
 
 namespace CataclysmDamageTypeTest
@@ -497,6 +501,301 @@ CATACLYSM_TEST(FCataclysmPlayerHitMeetsTheGenericResistanceEndToEndTest,
 	}
 
 	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// How a hit arrived: area damage and damage over time. Issue #513.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmDeliveryTagsExistTest,
+	"Cataclysm.DamageType.TheTwoDeliveryTagsExistInTheVocabulary")
+{
+	// The same silent-failure risk the element tags have. Both are requested by
+	// name with ErrorIfNotFound false, so a vocabulary that has lost one returns
+	// an invalid tag, nothing is put on the effect, and the property stops
+	// travelling with no error anywhere. `Type.AOE` and `Keyword.DoT` are PARENTS
+	// rather than leaves -- the vocabulary declares Type.AOE.Aura and
+	// Keyword.DoT.Burn and the rest -- so this also checks that a parent tag
+	// resolves at all, which the whole scheme rests on.
+	TestTrue(TEXT("Type.AOE is a known tag"),
+		UCataclysmDamageCalculation::AreaDamageTag().IsValid());
+	TestTrue(TEXT("Keyword.DoT is a known tag"),
+		UCataclysmDamageCalculation::DamageOverTimeTag().IsValid());
+
+	TestNotEqual(TEXT("and they are two different tags"),
+		UCataclysmDamageCalculation::AreaDamageTag(),
+		UCataclysmDamageCalculation::DamageOverTimeTag());
+
+	// A parent has to match its children, because that is how a burn carrying
+	// Keyword.DoT.Burn is recognised as damage over time.
+	FGameplayTagContainer Burn;
+	Burn.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Burn")), /*ErrorIfNotFound=*/false));
+	TestTrue(TEXT("Keyword.DoT.Burn counts as Keyword.DoT"),
+		Burn.HasTag(UCataclysmDamageCalculation::DamageOverTimeTag()));
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmAreaDamageCannotBeEvadedTest,
+	"Cataclysm.DamageType.AreaDamageCannotBeEvadedAndADirectHitCan")
+{
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an attacking enemy"), Attacker))
+	{
+		Attacker->SetAttackDamage(1000.0f);
+
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		// Evades everything it is allowed to evade, so the roll cannot decide the
+		// outcome and this measures the rule rather than the dice.
+		Defender.Combat->SetEvasion(100.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		// THE DEFECT IN ISSUE #513. Every hit arrived as a direct one, so an
+		// evasive character dodged an explosion centred on itself.
+		FCataclysmHitDelivery Area;
+		Area.bIsArea = true;
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), Area);
+		TestEqual(TEXT("area damage lands on a character that evades everything"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+
+		// AND A DIRECT HIT IS STILL EVADED. Without this the check above would
+		// pass against a build that had simply stopped evading anything, which is
+		// the opposite mistake and just as wrong.
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+		TestEqual(TEXT("a direct hit on the same character is avoided entirely"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
+
+		Attacker->Destroy();
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmAreaDamageIsStillMitigatedTest,
+	"Cataclysm.DamageType.AreaDamageSkipsEvasionAndNothingElse")
+{
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an attacking enemy"), Attacker))
+	{
+		Attacker->SetAttackDamage(1000.0f);
+
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Resistances->SetDemonicResistance(40.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		// "Cannot be evaded" is not "cannot be mitigated". Resistance, armour,
+		// block and flat reduction all still apply to area damage, and only the
+		// evasion roll is skipped.
+		FCataclysmHitDelivery Area;
+		Area.bIsArea = true;
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), Area);
+		TestEqual(TEXT("resistance still applies to area damage"),
+			Defender.TakeDamageReading(), 600.0f, 1.0f);
+
+		Attacker->Destroy();
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmDamageOverTimeBypassesTheShieldTest,
+	"Cataclysm.DamageType.AnEnergyShieldDoesNotAbsorbDamageOverTime")
+{
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an attacking enemy"), Attacker))
+	{
+		Attacker->SetAttackDamage(1000.0f);
+
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Vitals->SetMaxEnergyShield(100000.0f);
+		Defender.Vitals->SetEnergyShield(100000.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		// AN ORDINARY HIT IS ABSORBED WHOLE, because the shield is far larger than
+		// the hit. That is the control for the case below.
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+		TestEqual(TEXT("a direct hit is absorbed by the shield"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
+
+		// DAMAGE OVER TIME GOES STRAIGHT PAST IT. That is what makes an energy
+		// shield a distinct defence rather than a second health bar, and it is the
+		// design's answer to shield stacking.
+		FCataclysmHitDelivery OverTime;
+		OverTime.bIsDamageOverTime = true;
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), OverTime);
+		TestEqual(TEXT("damage over time reaches health through a full shield"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+
+		Attacker->Destroy();
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmAnOrdinaryHitCarriesNeitherTest,
+	"Cataclysm.DamageType.AnOrdinaryHitIsNeitherAreaNorOverTime")
+{
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an attacking enemy"), Attacker))
+	{
+		Attacker->SetAttackDamage(1000.0f);
+
+		// A CHARACTER THAT EVADES EVERYTHING AND HAS A HUGE SHIELD takes nothing
+		// from an ordinary blow. It would take damage if either property leaked
+		// onto a hit that should not carry it, which is the failure this catches:
+		// the default has to be a direct hit that a shield absorbs.
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Combat->SetEvasion(100.0f);
+		Defender.Vitals->SetMaxEnergyShield(100000.0f);
+		Defender.Vitals->SetEnergyShield(100000.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+		TestEqual(TEXT("an ordinary hit is evaded and reaches no health"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
+
+		Attacker->Destroy();
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmAreaComesFromTheSkillsTagsTest,
+	"Cataclysm.DamageType.ASkillTaggedForAreaDamageCannotBeEvaded")
+{
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an attacking enemy"), Attacker))
+	{
+		Attacker->SetAttackDamage(1000.0f);
+
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Combat->SetEvasion(100.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		UGameplayTagsManager& Tags = UGameplayTagsManager::Get();
+
+		// TAGGED FOR AREA DAMAGE, AND NOTHING AT THE CALL SITE SAYS SO. This is the
+		// route 37 designed skills already take: `game/Data/WeaponSkills.csv` gives
+		// 33 of them Type.AOE.PointBlank and 4 of them Type.AOE.Aura, and the tags
+		// travel to ApplyHit with the hit.
+		FGameplayTagContainer PointBlank;
+		PointBlank.AddTag(Tags.RequestGameplayTag(
+			FName(UCataclysmSkillEffects::PointBlankAreaTagName),
+			/*ErrorIfNotFound=*/false));
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f, PointBlank);
+		TestEqual(TEXT("an explosion lands on a character that evades everything"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+
+		FGameplayTagContainer Aura;
+		Aura.AddTag(Tags.RequestGameplayTag(
+			FName(UCataclysmSkillEffects::AuraAreaTagName),
+			/*ErrorIfNotFound=*/false));
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f, Aura);
+		TestEqual(TEXT("and so does an aura"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+
+		// A GROUND-LEAVING TAG IS NOT AN AREA HIT. Type.AOE.Persistent is defined
+		// as "Ground effects, clouds, zones", so it describes the patch a skill
+		// leaves rather than the blow it lands. Flamedart carries it and is a
+		// charge: the charge makes contact and must stay evadable. Without this
+		// check, matching on the Type.AOE parent would look correct and would make
+		// 26 designed skills unevadable by accident.
+		FGameplayTagContainer Persistent;
+		Persistent.AddTag(Tags.RequestGameplayTag(
+			FName(TEXT("Type.AOE.Persistent")), /*ErrorIfNotFound=*/false));
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f, Persistent);
+		TestEqual(TEXT("a skill that leaves burning ground still lands an evadable blow"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
+
+		// AND A SKILL WITH NO AREA TAG IS EVADED. Cinderslash is Type.Strike and
+		// Type.Melee and nothing else: one sword blow.
+		FGameplayTagContainer Melee;
+		Melee.AddTag(Tags.RequestGameplayTag(FName(TEXT("Type.Strike")),
+											  /*ErrorIfNotFound=*/false));
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f, Melee);
+		TestEqual(TEXT("a plain strike is avoided entirely"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
+
+		Attacker->Destroy();
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmAreaTagsAreReadCorrectlyTest,
+	"Cataclysm.DamageType.OnlyTwoOfTheThreeAreaTagsMeanTheHitIsArea")
+{
+	UGameplayTagsManager& Tags = UGameplayTagsManager::Get();
+
+	auto Container = [&Tags](const TCHAR* Name)
+	{
+		FGameplayTagContainer Held;
+		Held.AddTag(Tags.RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false));
+		return Held;
+	};
+
+	// The vocabulary declares three Type.AOE tags and only two of them describe
+	// the blow. Checked here as well as through a real hit above, because this is
+	// the whole of the rule and it is one line of code.
+	TestTrue(TEXT("Type.AOE.PointBlank is area damage"),
+		UCataclysmSkillEffects::IsAreaDamage(
+			Container(UCataclysmSkillEffects::PointBlankAreaTagName)));
+	TestTrue(TEXT("Type.AOE.Aura is area damage"),
+		UCataclysmSkillEffects::IsAreaDamage(
+			Container(UCataclysmSkillEffects::AuraAreaTagName)));
+	TestFalse(TEXT("Type.AOE.Persistent is the ground it leaves, not the blow"),
+		UCataclysmSkillEffects::IsAreaDamage(Container(TEXT("Type.AOE.Persistent"))));
+
+	TestFalse(TEXT("a skill with no tags at all deals a direct hit"),
+		UCataclysmSkillEffects::IsAreaDamage(FGameplayTagContainer()));
+	TestFalse(TEXT("and so does an ordinary strike"),
+		UCataclysmSkillEffects::IsAreaDamage(Container(TEXT("Type.Strike"))));
+
 	return true;
 }
 

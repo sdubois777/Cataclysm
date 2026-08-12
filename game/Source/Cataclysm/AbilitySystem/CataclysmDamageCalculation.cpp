@@ -77,6 +77,35 @@ namespace
 }
 
 const TCHAR* UCataclysmDamageCalculation::ElementTagPrefix = TEXT("Element.");
+const TCHAR* UCataclysmDamageCalculation::AreaDamageTagName = TEXT("Type.AOE");
+const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTagName = TEXT("Keyword.DoT");
+
+namespace
+{
+	/**
+	 * Requested by name rather than declared natively, for the same reason
+	 * UCataclysmSkillEffects::BurnTag is: a native declaration would create the
+	 * tag whether or not the vocabulary still lists it, which hides exactly the
+	 * disagreement worth catching. `CataclysmDamageTypeTests.cpp` checks each of
+	 * these is valid, because an invalid one would silently stop a property
+	 * travelling and every test that did not look would still pass.
+	 */
+	FGameplayTag TagNamed(const TCHAR* Name)
+	{
+		return UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(Name), /*ErrorIfNotFound=*/false);
+	}
+}
+
+FGameplayTag UCataclysmDamageCalculation::AreaDamageTag()
+{
+	return TagNamed(AreaDamageTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::DamageOverTimeTag()
+{
+	return TagNamed(DamageOverTimeTagName);
+}
 
 FGameplayTag UCataclysmDamageCalculation::ElementTagFor(FName DamageType)
 {

@@ -121,6 +121,14 @@ protected:
 	 *
 	 * @param DamagePercent  negative takes the slot's figure
 	 * @return how much damage was sent, summed, before mitigation
+	 *
+	 * WHETHER THIS IS AREA DAMAGE IS NOT AN ARGUMENT, and it was briefly. The
+	 * skill's own tags already say -- `Type.AOE.PointBlank` and `Type.AOE.Aura`
+	 * are on 37 designed skills -- and `SkillTags` is passed through to
+	 * `UCataclysmSkillEffects::ApplyHit`, which reads them. Deciding it here from
+	 * the shape instead treated every Strike as area damage, which would have
+	 * made Cinderslash, one sword blow tagged `Type.Strike, Type.Melee`,
+	 * impossible to evade. Issue #513.
 	 */
 	float HitTargets(const TArray<AActor*>& Targets, float DamagePercent = -1.0f);
 

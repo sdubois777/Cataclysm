@@ -471,8 +471,12 @@ void ACataclysmAbyssalWardenCharacter::UseEnemyAbility(int32 Index,
 		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
 				World, this, GetActorLocation(), MoltenRoarRadiusCm))
 		{
+			// AREA DAMAGE, so it cannot be evaded. This is the largest
+			// telegraph in the game and it swept a sphere. Issue #513.
 			UCataclysmSkillEffects::ApplyHit(this, Caught,
-											 MoltenRoarDamagePercent);
+											 MoltenRoarDamagePercent,
+											 FGameplayTagContainer(),
+											 FCataclysmHitDelivery::Area());
 		}
 		return;
 	}

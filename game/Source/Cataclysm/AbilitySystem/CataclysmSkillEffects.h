@@ -11,6 +11,48 @@ class UDataTable;
 class UGameplayEffect;
 struct FGameplayEffectContextHandle;
 
+/**
+ * How a hit reached its target, which decides two steps of the mitigation order.
+ *
+ * NOT WHAT THE HIT IS -- its damage and its damage type are elsewhere. This is
+ * how it arrived, and it is the caller's to state because only the caller knows.
+ *
+ * THE RULE FOR `bIsArea` IS ABOUT HOW THE TARGET WAS FOUND, not about which
+ * skill shape produced it. A hit that swept a volume and caught whatever was
+ * inside is area damage; a hit that made contact with one target is direct. That
+ * distinction is already in the code at every damage site, so nothing has to be
+ * guessed from a shape's name: a projectile hits one thing while it travels and
+ * sweeps a sphere when it detonates, and those are the same projectile.
+ *
+ * Both default to false, so a caller that says nothing deals an ordinary direct
+ * blow. That is the common case and the safe one: the wrong default here would
+ * make an attack unevadable rather than evadable.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmHitDelivery
+{
+	GENERATED_BODY()
+
+	/** Area damage cannot be evaded. It can still be blocked. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bIsArea = false;
+
+	/**
+	 * Bleed, poison, burn and the rest. An energy shield does not absorb it,
+	 * which is what makes a shield a distinct defence rather than extra health.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bIsDamageOverTime = false;
+
+	/** A hit that covers ground rather than touching one target. */
+	static FCataclysmHitDelivery Area()
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		return Delivery;
+	}
+};
+
 /** How long an effect lasts and what it is worth. Read from the DoTs sheet. */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmStatusEffectNumbers
@@ -81,7 +123,8 @@ public:
 	 *         either side is missing or the caster has no weapon damage.
 	 */
 	static float ApplyHit(AActor* Instigator, AActor* Target, float DamagePercent,
-						  const FGameplayTagContainer& SkillTags = FGameplayTagContainer());
+						  const FGameplayTagContainer& SkillTags = FGameplayTagContainer(),
+						  const FCataclysmHitDelivery& Delivery = FCataclysmHitDelivery());
 
 	/**
 	 * What one hit of this size, from this caster, is worth after the caster's
@@ -103,7 +146,9 @@ public:
 	 *
 	 * @return whether damage was sent
 	 */
-	static bool ApplyDirectDamage(AActor* Instigator, AActor* Target, float Damage);
+	static bool ApplyDirectDamage(AActor* Instigator, AActor* Target, float Damage,
+								  const FCataclysmHitDelivery& Delivery =
+									  FCataclysmHitDelivery());
 
 	/**
 	 * Set a target alight, for the duration and share the DoTs sheet states.
@@ -121,6 +166,39 @@ public:
 
 	/** Burn's duration and damage share, or bUsable false if it has none. */
 	static FCataclysmStatusEffectNumbers BurnNumbers();
+
+	/**
+	 * Whether a skill carrying these tags deals AREA damage, which cannot be
+	 * evaded.
+	 *
+	 * READ OFF THE SKILL'S OWN TAGS, which is where the answer already lived.
+	 * `game/Data/WeaponSkills.csv` gives every designed skill a tag list and 37
+	 * of them already say this: 33 carry `Type.AOE.PointBlank` and 4 carry
+	 * `Type.AOE.Aura`. Nothing had to be invented and no call site has to decide.
+	 *
+	 * `Type.AOE.Persistent` DOES NOT COUNT, and that is the whole subtlety. The
+	 * vocabulary defines it as "Ground effects, clouds, zones", so it describes
+	 * the patch of burning ground a skill LEAVES rather than the blow it lands.
+	 * Flamedart carries it and is a charge: the charge makes contact and is
+	 * evadable, and the fire trail it leaves is a separate thing that damages
+	 * whatever stands in it. The zone marks its own ticks as area damage where it
+	 * deals them, in ACataclysmGroundZone.
+	 *
+	 * A SKILL WITH NO AREA TAG DEALS A DIRECT HIT. Cinderslash is
+	 * `Type.Strike, Type.Melee` and nothing else, so it is one sword blow and can
+	 * be evaded -- which is right, and is what an earlier version of this got
+	 * wrong by treating every Strike as area damage.
+	 *
+	 * AN ENEMY'S ABILITY HAS NO TAG LIST, because enemy abilities are C++
+	 * constants rather than rows in the skill matrix. Those pass
+	 * `FCataclysmHitDelivery::Area()` instead, which sets the same flag. The
+	 * Brute's stomp and the Abyssal Warden's ring are the two that do.
+	 */
+	static bool IsAreaDamage(const FGameplayTagContainer& SkillTags);
+
+	/** The two tags that make a skill's hit area damage. */
+	static const TCHAR* PointBlankAreaTagName;
+	static const TCHAR* AuraAreaTagName;
 
 	/**
 	 * Which of the defender's eight resistances this attacker's damage is met by.
@@ -246,5 +324,6 @@ private:
 	static void ApplyTypedSpec(UGameplayEffect* Effect,
 							   const FGameplayEffectContextHandle& Context,
 							   UAbilitySystemComponent* Defender,
-							   const AActor* Attacker);
+							   const AActor* Attacker,
+							   const FCataclysmHitDelivery& Delivery);
 };
