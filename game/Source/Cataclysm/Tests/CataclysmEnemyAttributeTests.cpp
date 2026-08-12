@@ -113,16 +113,24 @@ bool FCataclysmABruteCarriesItsDesignedDefences::RunTest(const FString&)
 		Held(Brute, UCataclysmCombatAttributeSet::GetCritMultiplierAttribute()),
 		ACataclysmBruteCharacter::DesignedCritMultiplierPercent, 0.01f);
 
-	// ALL EIGHT, because the design model gives an enemy one resistance figure
-	// rather than a per-type profile, and applying it to only some types would
-	// make a creature's defence depend on what happened to be tested.
+	// ON THE GENERIC RESISTANCE, WHICH A HIT OF ANY TYPE MEETS. The design model
+	// gives an enemy one resistance figure rather than a per-type profile, and
+	// the project owner ruled on 2026-08-12 that this stays generic while only
+	// enemy damage carries a type.
+	TestEqual(TEXT("its generic resistance is the designed 15 percent"),
+		Held(Brute, UCataclysmResistanceAttributeSet::GetAllResistanceAttribute()),
+		ACataclysmBruteCharacter::DesignedResistancePercent, 0.01f);
+
+	// AND ON NONE OF THE EIGHT TYPED ONES. This used to be the other way round --
+	// the same figure written into all eight and nothing in the generic slot --
+	// and it resisted nothing at all, because a player's hit carries no damage
+	// type and so selected none of the eight. Issue #486.
 	for (const TPair<const TCHAR*, FGameplayAttribute>& Resistance : EveryResistance())
 	{
 		TestEqual(
-			*FString::Printf(TEXT("its %s resistance is the designed 15 percent"),
+			*FString::Printf(TEXT("its %s resistance is left at none"),
 							 Resistance.Key),
-			Held(Brute, Resistance.Value),
-			ACataclysmBruteCharacter::DesignedResistancePercent, 0.01f);
+			Held(Brute, Resistance.Value), 0.0f, 0.01f);
 	}
 
 	// AND THE CRIT MULTIPLIER IS NOT THE BASE ENEMY'S. Without this the test
@@ -140,8 +148,8 @@ bool FCataclysmABruteCarriesItsDesignedDefences::RunTest(const FString&)
 			Held(Ordinary, UCataclysmCombatAttributeSet::GetCritMultiplierAttribute()));
 
 		TestNotEqual(TEXT("and so does its resistance"),
-			Held(Brute, UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute()),
-			Held(Ordinary, UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute()));
+			Held(Brute, UCataclysmResistanceAttributeSet::GetAllResistanceAttribute()),
+			Held(Ordinary, UCataclysmResistanceAttributeSet::GetAllResistanceAttribute()));
 	}
 
 	return true;
@@ -241,12 +249,22 @@ bool FCataclysmAnOrdinaryEnemyCarriesTheBaselineProfile::RunTest(const FString&)
 		Held(Enemy, UCataclysmCombatAttributeSet::GetEvasionAttribute()),
 		0.0f, 0.01f);
 
+	TestEqual(TEXT("generic resistance defaults to none"),
+		Held(Enemy, UCataclysmResistanceAttributeSet::GetAllResistanceAttribute()),
+		0.0f, 0.01f);
+
 	for (const TPair<const TCHAR*, FGameplayAttribute>& Resistance : EveryResistance())
 	{
 		TestEqual(
 			*FString::Printf(TEXT("%s resistance defaults to none"), Resistance.Key),
 			Held(Enemy, Resistance.Value), 0.0f, 0.01f);
 	}
+
+	// DEMONIC, BECAUSE THE WHOLE VERTICAL SLICE IS. An enemy that dealt an
+	// untyped hit would meet none of the player's eight resistances, which is
+	// the state issue #486 describes and the one thing that has to stay typed.
+	TestEqual(TEXT("an enemy deals Demonic damage by default"),
+		Enemy->DamageType, FName(TEXT("Demonic")));
 
 	return true;
 }

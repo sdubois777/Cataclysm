@@ -418,6 +418,15 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
                         edit that changes nothing raises, because a break that
                         did not break anything makes a working guard look
                         worthless.
+
+                        THE TEXT AN EDIT SEES HAS "\\n" LINE ENDINGS, whatever
+                        the file on disk has. It is read with Python's universal
+                        newlines, and every file under `game/Source/Cataclysm/`
+                        is CRLF, so a multi-line break string written with
+                        "\\r\\n" matches nothing at all. That raises the "changed
+                        nothing" error above rather than passing quietly, which
+                        is the right failure and still costs a cycle. Prefer a
+                        break with no line ending in it.
     @param test_prefix  which automation tests to run, for example
                         `Cataclysm.Skills`. Narrower is much faster.
     @param builder      what runs a build. ONLY EVER PASSED BY TESTS, so that

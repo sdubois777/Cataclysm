@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -164,11 +165,6 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 	// UCataclysmDamageCalculation::Resolve -- evasion, block, armor, resistance,
 	// flat reduction, mana, energy shield, health, in that order. Nothing here
 	// decides how much of it lands.
-	//
-	// The hit's own properties -- its damage type, whether it is area damage,
-	// the weapon sub-type -- are still not carried on the effect, so every hit
-	// resolves as an untyped direct hit and resistances do nothing. That gap is
-	// older than this change and is recorded on the attribute set.
 	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
 		GetTransientPackage(), FName(TEXT("CataclysmSkillHit")));
 	Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
@@ -182,9 +178,46 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
-	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+	ApplyTypedSpec(Effect, Context, Defender, Instigator);
 
 	return true;
+}
+
+FName UCataclysmSkillEffects::DamageTypeOf(const AActor* Attacker)
+{
+	// ONLY AN ENEMY'S DAMAGE IS TYPED. The project owner settled this on
+	// 2026-08-12: a player has eight resistances because eight Cataclysms attack
+	// them, so an enemy's hit has to say which one applies. An enemy has ONE
+	// generic resistance that meets every hit whatever it is, so a player's hit
+	// has nothing to choose between and carries no type at all.
+	//
+	// A minion's or a projectile's hit is typed by whoever fired it, because the
+	// instigator passed down the chain is that character rather than the thing it
+	// sent. So an enemy's projectile is Demonic and a player's is untyped, which
+	// is the same rule and not a special case.
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	return Enemy ? Enemy->DamageType : NAME_None;
+}
+
+void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
+											 const FGameplayEffectContextHandle& Context,
+											 UAbilitySystemComponent* Defender,
+											 const AActor* Attacker)
+{
+	// BUILT AS A SPEC RATHER THAN HANDED TO ApplyGameplayEffectToSelf, purely so
+	// a tag can be put on it. That overload builds the spec itself and gives no
+	// chance to add one, and a dynamic asset tag is how the hit's damage type
+	// reaches the defender: see UCataclysmDamageCalculation::ElementTagFor.
+	FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
+
+	const FGameplayTag Element =
+		UCataclysmDamageCalculation::ElementTagFor(DamageTypeOf(Attacker));
+	if (Element.IsValid())
+	{
+		Spec.AddDynamicAssetTag(Element);
+	}
+
+	Defender->ApplyGameplayEffectSpecToSelf(Spec);
 }
 
 FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BurnNumbers()
@@ -273,7 +306,10 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
-	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+	// Typed the same way a direct hit is. A burn left by an enemy is that
+	// enemy's damage type, so the player's resistance to it applies to every
+	// tick and not only to the blow that started it.
+	ApplyTypedSpec(Effect, Context, Defender, Instigator);
 
 	return true;
 }

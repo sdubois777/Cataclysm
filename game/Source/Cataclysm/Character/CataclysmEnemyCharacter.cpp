@@ -368,25 +368,18 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(),
 				CritMultiplierPercent);
 
-	// ONE FIGURE ONTO ALL EIGHT. The design model says so in as many words:
-	// "percent of all incoming damage resisted, whatever its type. One figure,
-	// not eight." A per-type enemy profile is not something the design has, and
-	// inventing one here would be inventing design.
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetWarResistanceAttribute(),
-				ResistancePercent);
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
-				ResistancePercent);
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(),
-				ResistancePercent);
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetPestilenceResistanceAttribute(),
-				ResistancePercent);
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetFamineResistanceAttribute(),
-				ResistancePercent);
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetCelestialResistanceAttribute(),
-				ResistancePercent);
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetChaosResistanceAttribute(),
-				ResistancePercent);
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetVoidResistanceAttribute(),
+	// ONE GENERIC FIGURE, NOT EIGHT TYPED ONES. The design model says so in as
+	// many words: "percent of all incoming damage resisted, whatever its type.
+	// One figure, not eight." A per-type enemy profile is not something the
+	// design has, and inventing one here would be inventing design.
+	//
+	// IT USED TO BE THE SAME NUMBER WRITTEN INTO ALL EIGHT TYPED SLOTS, and that
+	// resisted nothing. `ResistanceFor` in CataclysmDamageCalculation.cpp picks a
+	// slot from the incoming hit's damage type, and player damage carries no type
+	// -- deliberately, because this creature resists everything equally, so a type
+	// would be choosing between eight copies of one number. With no type there was
+	// no slot to pick and all eight were skipped. Issue #486.
+	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetAllResistanceAttribute(),
 				ResistancePercent);
 }
 

@@ -306,10 +306,34 @@ public:
 	 *
 	 * ONE RESISTANCE FIGURE, NOT EIGHT. The model states it plainly: "percent of
 	 * all incoming damage resisted, whatever its type. One figure, not eight."
-	 * So this one number is written onto all eight damage-type resistances.
+	 * It is written onto `UCataclysmResistanceAttributeSet::AllResistance`, the
+	 * generic resistance that a hit of any type meets, including an untyped one.
+	 * It used to be written onto all eight typed resistances instead, which meant
+	 * it was never met at all: see issue #486 and the comment at the write.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float ResistancePercent = 0.0f;
+
+	/**
+	 * Which of the player's eight resistances this creature's attacks are met by.
+	 *
+	 * DEMONIC, BECAUSE THE WHOLE VERTICAL SLICE IS. The design gives each
+	 * Cataclysm one damage type and says its enemies deal it; all seven Demonic
+	 * creatures therefore share this. `Archetype.cataclysm` in
+	 * `sim/cataclysm_sim/enemy_stats.py` is the same field with the same default,
+	 * and `EnemyArchetypes.csv` carries it per archetype for when this is read
+	 * from data rather than declared.
+	 *
+	 * THIS IS THE ONLY DAMAGE IN THE GAME THAT CARRIES A TYPE, and that is a
+	 * ruling rather than an omission. The project owner settled it on 2026-08-12:
+	 * "the only damage that should actually be typed is enemy damage so the
+	 * player's resistances can take effect". A player has eight resistances
+	 * because eight Cataclysms attack them, so an enemy's hit has to say which one
+	 * applies. An enemy has one generic resistance, so a player's hit has nothing
+	 * to select and stays untyped.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	FName DamageType = FName(TEXT("Demonic"));
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy", meta = (ClampMin = "0.0"))
 	float CritChancePercent = 5.0f;

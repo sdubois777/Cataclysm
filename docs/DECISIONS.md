@@ -20,6 +20,76 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — Enemies resist generically; only enemy damage carries a type
+
+**Affects:** `Cataclysm_GDD_v2.md` section X, the enemy resistance subsection.
+Applied in the same change. Issue #486.
+
+**The ruling, from the project owner:**
+
+> "for this issue, enemies will have a generic all res. The only damage that
+> should actually be typed is enemy damage so the player's resistances can take
+> effect."
+
+### What was wrong
+
+Every hit in the running game resolved as an untyped hit.
+`FCataclysmIncomingHit` was built with only its damage assigned, so its damage
+type stayed empty, the resistance lookup selected none of the defender's eight
+resistances and returned zero, and step four of the eight-step mitigation order
+multiplied by one. **No resistance on either side of a fight did anything.**
+
+Three separate pieces of design were decoration in the editor because of it:
+
+- **The Abyssal Warden's 35%**, which is the entire mechanical content of the
+  phrase "high damage resistance" in its description.
+- **The player's eight resistances**, which exist because eight Cataclysms
+  attack them.
+- **Resistance penetration**, a whole player stat with affixes behind it,
+  reducing a number that was already zero.
+
+### What the ruling settles
+
+The two sides of a fight need different things from a damage type, and only one
+of them needs one at all:
+
+| | How it resists | How its damage is typed |
+| :-- | :-- | :-- |
+| Enemy | one generic figure, met by a hit of any type | as its Cataclysm's damage type |
+| Player | eight figures, one per damage type | not typed at all |
+
+**A player's hit stays untyped and that is the point, not a gap.** An enemy
+resists everything equally, so naming a type on a player's hit would be choosing
+between eight copies of one number.
+
+### The one thing that had to be built rather than only wired
+
+**A generic resistance, as a ninth attribute.** An enemy used to write its one
+figure into all eight typed resistances, which is the same thing as a generic
+resistance *only as long as every hit names a type*. Player damage deliberately
+names none, so the lookup had no slot to pick and skipped all eight — the
+creature resisted nothing. One generic figure is met by every hit whatever it is.
+
+It is off the character sheet, like attack damage, because no player has one.
+
+### What this does not touch
+
+**Four fields of an incoming hit are still never populated**, and that is issue
+#513. Armour penetration, whether the hit is area damage, whether it is damage
+over time, and its weapon sub-type. **The live consequence is that an area attack
+can still be evaded**, which this document says it cannot: the Brute's stomp and
+the Abyssal Warden's ring are both dodged outright by an evasive character today.
+#486 said to split itself if it turned out to be two jobs, and it did.
+
+**Every hit still resolves at difficulty tier 1**, and that is issue #514. Armour
+is `armor / (armor + 800 x tier)`, so the Abyssal Warden's 5,954 hits the 75% cap
+at tier 1 where it removes 48.19% at tier 8. Every armoured creature in the
+running game is 2.07 times harder to hurt on the armour layer than its design
+says. There is no difficulty tier anywhere in `game/Source/` to read instead,
+which is why it is filed rather than fixed here.
+
+---
+
 ## 2026-08-12 — Every defensive layer an enemy has now reaches the arithmetic
 
 **Affects:** `Cataclysm_GDD_v2.md` section X, the paragraph on enemy resistance

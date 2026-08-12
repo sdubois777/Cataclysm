@@ -5,15 +5,36 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "GameplayTagsManager.h"
 
 namespace
 {
-	/** The resistance attribute matching a damage type name. */
+	/**
+	 * How much of a hit of this type the defender resists.
+	 *
+	 * TWO PARTS ADDED TOGETHER: a generic figure that applies whatever the hit is,
+	 * and the one of eight the hit's own type selects. That shape is what lets the
+	 * two sides of a fight use one attribute set differently, which the project
+	 * owner ruled for on 2026-08-12: an enemy carries one generic figure, a player
+	 * carries eight typed ones.
+	 *
+	 * AN UNTYPED HIT STILL MEETS THE GENERIC PART. That is the whole reason the
+	 * generic part exists. Player damage is deliberately untyped -- the enemy
+	 * resists everything equally, so a type would select between eight copies of
+	 * one number -- and before issue #486 an untyped hit returned zero here and
+	 * the enemy's resistance did nothing at all.
+	 */
 	float ResistanceFor(const UCataclysmResistanceAttributeSet* Set, FName DamageType)
 	{
-		if (!Set || DamageType.IsNone())
+		if (!Set)
 		{
 			return 0.0f;
+		}
+
+		const float Generic = Set->GetAllResistance();
+		if (DamageType.IsNone())
+		{
+			return Generic;
 		}
 
 		static const TMap<FName, TFunction<float(const UCataclysmResistanceAttributeSet*)>> Lookup = {
@@ -29,10 +50,46 @@ namespace
 
 		if (const auto* Getter = Lookup.Find(DamageType))
 		{
-			return (*Getter)(Set);
+			return Generic + (*Getter)(Set);
 		}
-		return 0.0f;
+
+		// A damage type nobody has heard of. The generic part still applies,
+		// because it applies to everything by definition.
+		return Generic;
 	}
+}
+
+const TCHAR* UCataclysmDamageCalculation::ElementTagPrefix = TEXT("Element.");
+
+FGameplayTag UCataclysmDamageCalculation::ElementTagFor(FName DamageType)
+{
+	if (DamageType.IsNone())
+	{
+		return FGameplayTag();
+	}
+
+	// Requested by name rather than declared natively, for the same reason
+	// UCataclysmSkillEffects::BurnTag is: a native declaration would create the
+	// tag whether or not the vocabulary still lists it, which hides exactly the
+	// disagreement worth catching.
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(*FString::Printf(TEXT("%s%s"), ElementTagPrefix, *DamageType.ToString())),
+		/*ErrorIfNotFound=*/false);
+}
+
+FName UCataclysmDamageCalculation::DamageTypeFromTags(const FGameplayTagContainer& Tags)
+{
+	for (const FGameplayTag& Tag : Tags)
+	{
+		const FString Name = Tag.ToString();
+		if (Name.StartsWith(ElementTagPrefix))
+		{
+			// The leaf, so `Element.Demonic` gives `Demonic`, which is what the
+			// resistance lookup above is keyed by.
+			return FName(*Name.RightChop(FCString::Strlen(ElementTagPrefix)));
+		}
+	}
+	return NAME_None;
 }
 
 float UCataclysmDamageCalculation::ArmorReduction(float Armor, int32 Tier)

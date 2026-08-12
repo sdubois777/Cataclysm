@@ -2982,6 +2982,19 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
+**Only enemy damage carries a damage type. Player damage does not, and that is deliberate.** A player has eight resistances because eight Cataclysms attack them, so an enemy's hit has to say which one applies. An enemy resists everything equally, so a player's hit has nothing to choose between and says nothing. The enemy's one figure is a **generic resistance** met by a hit of any type, including an untyped one — not the same figure written into eight typed slots, which would be met by nothing at all once player damage stopped naming a type.
+
+  
+
+The two sides therefore use the same set of resistance values differently, and this is the whole of it:
+
+| | How it resists | How its damage is typed |
+| :-- | :-- | :-- |
+| Enemy | one generic figure, met by any hit | as its Cataclysm's damage type |
+| Player | eight figures, one per damage type | not typed at all |
+
+  
+
 **Enemy resistance is what the player's resistance penetration works on.** Against an Abyssal Warden at 35%, a player with no penetration lands 65% of a hit and one with 20 penetration lands 85%. Penetration beyond an enemy's resistance grants no bonus, so over-stacking it does not become a damage multiplier against the enemies that need it least.
 
   
