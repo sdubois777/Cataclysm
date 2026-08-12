@@ -20,6 +20,39 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — The Abyssal Warden was judged by play and accepted
+
+**Affects:** nothing. This entry records a judgement so that it is not asked
+again. No number changes.
+
+The project owner played the Abyssal Warden after four changes landed and said:
+
+> "the abyssal warden looks good for now"
+
+That covers all four, and each is now settled unless play says otherwise:
+
+| Change | What it did |
+|---|---|
+| #491, #498 | Gave it a charge, so a creature that moves at 2.8 m/s against player classes at 3.5, 4.0 and 4.6 can close the gap at all. Before this it could be walked away from and never fought. |
+| #499, #503 | Stopped the monster brain steering the creature mid-charge. It no longer turns to face the player as it passes. |
+| #487, #496, #502 | Grew its ring from 5.6 to 6.5 metres, the largest the telegraph rules allow, cutting the slowest class's spare time from 0.657 s to 0.400 s. |
+
+**The charge speed rule is accepted**, stated separately because it was the one
+figure no shipped game could settle: a charge covers its designed range in the
+length of its own animation clip, which is 11.43 m/s here. Judged on 2026-08-09
+as "the speed is pretty good".
+
+**"For now" is doing work in that sentence and the reserve lever is recorded so
+it is not lost.** The ring's geometry is exhausted — 6.5 m is the cap, so it
+cannot be made bigger. If it later reads as too easy, the next lever is what the
+attack leaves behind: it currently leaves nothing, and the riders already exist
+and are used by the Hellhound's charge. `GroundRadius: 6.5, GroundDuration: 6,
+Burn: 1` would deny the melee ground for half of every 12 second cycle. The
+project owner chose on 2026-08-09 to ship the size change alone and judge it
+first, which is what this entry closes.
+
+---
+
 ## 2026-08-10 — "Is a boss" derives from rarity, and rarity lives on the enemy
 
 **Affects:** `ACataclysmEnemyCharacter` and `UCataclysmSkillEffects::ApplyStun`
