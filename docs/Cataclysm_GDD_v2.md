@@ -2374,10 +2374,115 @@ Every modification made to an item adds Cataclysmic Residue (CR). This residue r
 
   
 
+**The penalty is one global rule, not a property of any material.** Two formulas
+apply to every craft, whatever material it uses:
+
+  - **Gold cost multiplier: `(CR / 50) + 1`**
+  - **Craft time penalty in days: `CR / 100`, rounded down**
+
+  
+
+The residue used is the item's own residue at the moment the craft begins, before
+the craft's own CR is added.
+
+  
+
+| Item's current CR | Gold cost multiplier | Craft time penalty |
+| :-: | :-: | :-: |
+| 0 (new item) | 1x | +0 days |
+| 50 | 2x | +0 days |
+| 99 (maximum before the time penalty) | 3x | +0 days |
+| **100 (the break point)** | 3x | **+1 day** |
+| 200 | 5x | +2 days |
+| 500 | 11x | +5 days |
+
+  
+
+Both formulas reproduce every row of that table. The 99 row is `(99/50)+1 = 2.98`,
+shown rounded; every other row is exact. **Whether the multiplier is rounded for
+display only or rounded in the calculation is not settled**, and it matters below
+100 where the two readings differ — at CR 10 the multiplier is either 1.2 or 2.
+
+  
+
+## **What a Player Can Do at the Forge**
+
+Eighteen operations. Each names the material it consumes, the residue it adds to
+the item, and its base craft time in days before the CR time penalty above is
+applied.
+
+  
+
+| Action | Material | CR added | Base days | Note |
+| :-- | :-- | :-: | :-: | :-- |
+| Reroll Affix Value | Corrupted Mote | 2 | 0 | Low-risk, high-frequency action |
+| Unsocket Gem | Dismantling Dust | 3 | 1 | |
+| Imprint Enchantment | Aetherial Shard | 5 | 2 | |
+| Socket Gem | Jeweler's Setting Agent | 5 | 1 | |
+| Deterministic Affix | Schematic Fragments | 5 per affix tier | 1 per affix tier, maximum 8 | Guaranteed affix |
+| Change Socket Type | Focusing Lens | 10 | 2 | |
+| Infuse Random Damage Type | Elemental Cinder | 10 | 1 | |
+| Upgrade Affix Tier | Potency Crystal | 10 × current affix tier | Current affix tier | Raises an affix by one tier, to a maximum of 7 |
+| Affix Shifting | Crystal of Instability | 15 | 1 | Rerolls the stat type, not its value. Cannot be used on enchantments |
+| Add Socket | Shattered Core | 15 | 3 | |
+| Change Damage Type | Prismatic Catalyst | 20 | 0 | |
+| Upgrade Item Level | Upgrade Stone | 25 per tier | 1 per tier, maximum 10 | Consumes two upgrade stones |
+| Perfect Roll Attempt | Primal Spark | 50 | 5 | Forces the maximum stat roll |
+| Infuse Specific Damage Type | Sovereign Ingot | 50 | 5 | |
+| Change Enchantment Negative | Regret Essence | 100 | 7 | |
+| Accelerate Craft | Tainted Shard | 0 | −1 | Removes one day of the accumulated time penalty per shard |
+| Reduce CR Gain | Chaos Stabilizer | −50% of the next craft's CR | 0 | Applies to one craft |
+| CR Cleanse | Purified Essence | −50% of accumulated CR | 1 per 500 CR removed | The resource-heavy safety valve |
+
+  
+
+**The last three are the tools that manage residue rather than add it**, and they
+are what makes the Consumption Threshold below avoidable. Accelerate Craft buys
+back time, Chaos Stabilizer halves what the next craft costs in residue, and
+Purified Essence halves what has already accumulated.
+
+  
+
+**Ordering the table by CR is deliberate.** The cheapest operations are the ones a
+player repeats — rerolling a value costs 2 — and the ones that change what an item
+fundamentally is cost an order of magnitude more. Changing an enchantment's
+negative effect is the most expensive single action in the game at 100 CR, which
+by itself takes a new item to the break point where days start being charged.
+
+  
+
 ## **Crafting Materials**
 
-  - **Accelerate Craft — reduces crafting time by 1 day per shard. Counters the CR Time Penalty.** Tainted Shard
-  - **CR Cleanse — instantly reduces accumulated CR by 50%. Resource-heavy safety valve.** Purified Essence
+Eighteen materials. Tier is the rarity band it drops in, not an item level.
+
+  
+
+| Material | Tier | Source | What it does |
+| :-- | :-: | :-- | :-- |
+| Corrupted Mote | 1 (Common) | | Affix reroll currency |
+| Dismantling Dust | 1 (Common) | Dismantling items with sockets | Safe unsocketing |
+| Schematic Fragments | 1 (Common) | Dismantling items | Deterministic crafting |
+| Tainted Shard | 2 (Uncommon) | | Removes one day of crafting time |
+| Upgrade Stone | 2 (Uncommon) | | Raises item level by one tier |
+| Elemental Cinder | 2 (Uncommon) | | Adds a random damage type to a weapon |
+| Potency Crystal | 2 (Uncommon) | | Raises an affix to the next tier, to a maximum of 7 |
+| Aetherial Shard | 3 (Rare) | Dungeon bosses and elites | Imprinting catalyst |
+| Chaos Stabilizer | 3 (Rare) | Dungeon bosses and elites | Halves the next craft's CR gain |
+| Shattered Core | 3 (Rare) | | Adds a socket |
+| Prismatic Catalyst | 3 (Rare) | | Changes a weapon's damage type |
+| Purified Essence | 3 (Rare) | | Halves accumulated CR |
+| Jeweler's Setting Agent | 3 (Rare) | | Sockets a gem |
+| Crystal of Instability | 4 (Very Rare) | | Affix shifting |
+| Focusing Lens | 4 (Very Rare) | | Changes a socket's type |
+| Sovereign Ingot | 4 (Very Rare) | | Adds a specific damage type to a weapon |
+| Primal Spark | 4 (Very Rare) | | Forces a maximum stat roll |
+| Regret Essence | 5 (Extremely Rare) | | Changes an enchantment's negative effect |
+
+  
+
+**Seven of the eighteen have no stated source.** Where a material drops is not
+designed yet for those, and the loot tables that would answer it do not exist.
+That is issue #531, and it does not block the operations above.
 
   
 
