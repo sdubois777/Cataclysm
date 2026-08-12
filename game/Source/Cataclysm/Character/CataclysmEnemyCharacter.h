@@ -187,6 +187,55 @@ public:
 	void SetArmour(float NewArmour);
 
 	/**
+	 * Which rung of the rarity ladder this enemy was spawned at.
+	 *
+	 * THE STEP FROM `game/Data/EnemyRarities.csv`, whose rows are generated from
+	 * `RARITY_ORDER` in `sim/cataclysm_sim/enemy_stats.py`: Common 0, Elite 1,
+	 * Legendary 2, Herald 3, Boss 4, Cataclysm Boss 5. Supplied by whoever
+	 * spawns the enemy, exactly as health, damage and armour are, because
+	 * rarity is the encounter's business and not the class's -- the same Brute
+	 * class is a Common in one room and an Elite in the next.
+	 *
+	 * WHY IT LIVES HERE AND NOT AS A TAG OR A STANDALONE BOSS FLAG. Decided by
+	 * the project owner's steer on 2026-08-10 and recorded in
+	 * `docs/DECISIONS.md`: the enemy generator has to assign each enemy a
+	 * rarity from the pool weights anyway, so boss-ness DERIVES from the rarity
+	 * it already sets -- see IsBoss below -- and there is no second thing to
+	 * remember. A tag or a separate boolean could be forgotten; a Cataclysm
+	 * Boss row cannot fail to be a boss.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetRarityStep(int32 NewStep);
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 RarityStep = 0;
+
+	/**
+	 * The first rung of the ladder that is a boss.
+	 *
+	 * 4 IS "Boss", AND THE TWO RUNGS FROM IT UP ARE THE BOSSES: Boss and
+	 * Cataclysm Boss. Herald, at 3, is deliberately below the line -- the
+	 * Abyssal Warden's reference rarity is Herald and it is a mini-boss the
+	 * player may stun. `tools/tests/test_enemy_tables_match_the_model.py` pins
+	 * this figure to `RARITY_ORDER.index("Boss")` in the model, because
+	 * continuous integration builds no C++ and a drifted copy here would
+	 * silently move the stun rule.
+	 */
+	static constexpr int32 FirstBossRarityStep = 4;
+
+	/**
+	 * Whether the anti-stun-lock rule "a boss cannot be stunned at all"
+	 * applies to this enemy.
+	 *
+	 * DERIVED, NEVER SET. Section VI of `docs/Cataclysm_GDD_v2.md` states the
+	 * rule and `UCataclysmSkillEffects::ApplyStun` is its one caller. The
+	 * Python model's copy is `is_boss_rarity` in
+	 * `sim/cataclysm_sim/enemy_stats.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Enemy")
+	bool IsBoss() const { return RarityStep >= FirstBossRarityStep; }
+
+	/**
 	 * Writes the whole designed stat block onto the attributes, if they are
 	 * ready for it. Safe to call repeatedly and safe to call too early.
 	 *

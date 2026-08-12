@@ -114,6 +114,28 @@ def rarity_step(rarity: str) -> int:
     return RARITY_ORDER.index(rarity)
 
 
+#: The first rung of the ladder that is a boss for the anti-stun-lock rule "a
+#: boss cannot be stunned at all", section VI of the design document. Boss and
+#: Cataclysm Boss are above the line; Herald -- the Abyssal Warden's reference
+#: rarity, a mini-boss -- is deliberately below it.
+FIRST_BOSS_RARITY = "Boss"
+
+
+def is_boss_rarity(rarity: str) -> bool:
+    """Whether the anti-stun-lock boss rule applies at this rarity.
+
+    DERIVED FROM RARITY, NOT DECLARED PER ENEMY, and that is the decision
+    rather than a convenience: the enemy generator assigns each enemy a rarity
+    from the pool weights anyway, so boss-ness follows from what it already
+    sets and there is no second flag to forget. Decided by the project owner on
+    2026-08-10; `docs/DECISIONS.md` records it. The engine copy is
+    `ACataclysmEnemyCharacter::IsBoss`, whose `FirstBossRarityStep` a test in
+    `tools/tests/test_enemy_tables_match_the_model.py` pins to this ladder.
+    `damage.py` consumes the answer through `Defender.is_boss`.
+    """
+    return rarity_step(rarity) >= rarity_step(FIRST_BOSS_RARITY)
+
+
 #: Health as a fraction of score for an average Common enemy, multiplied per step
 #: of rarity. 1.85 per step takes a Cataclysm Boss to roughly 21 times a Common
 #: enemy's health, which is what makes a boss fight last rather than a boss

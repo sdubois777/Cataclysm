@@ -20,6 +20,66 @@ applied or still pending.
 
 ---
 
+## 2026-08-10 — "Is a boss" derives from rarity, and rarity lives on the enemy
+
+**Affects:** `ACataclysmEnemyCharacter` and `UCataclysmSkillEffects::ApplyStun`
+in `game/Source/Cataclysm/`, and `enemy_stats.py` in `sim/cataclysm_sim/`.
+Applied. Closes #395.
+
+### The question
+
+Section VI of the design document gives stun three anti-stun-lock rules. The
+third — "a boss cannot be stunned at all" — was unenforceable because nothing in
+the engine could identify a boss: no flag, no subclass, no tag, no data column.
+Issue #395 listed the candidates and asked for a decision.
+
+### The decision, and whose it was
+
+The project owner delegated the choice on 2026-08-10 with one steer, quoted:
+
+> "I'll let you decide where 'is a boss' lives. I'm personally not sure if it
+> should be a tag or a boolean on the characterbase. But, the enemy generator
+> should be creating x of each rarity based on the pool weights so wherever
+> that would work best for that. I think the initial weights are in the
+> DungeonSimulator app."
+
+**Decision: rarity lives on the enemy as an integer step — the `Step` column of
+`game/Data/EnemyRarities.csv`, set by whoever spawns it, exactly as health,
+damage and armour are — and boss-ness DERIVES from it.** Steps 4 (Boss) and 5
+(Cataclysm Boss) are bosses; Herald at step 3, the Abyssal Warden's reference
+rarity, is deliberately below the line because a mini-boss is not a boss.
+
+Neither a tag nor a standalone boolean, and the steer is the reason: the enemy
+generator has to assign each enemy a rarity from the pool weights anyway, so
+boss-ness follows from what it already sets and there is no second thing to
+forget. A generator cannot create a Cataclysm Boss that is stunnable.
+
+It also keeps the two-layer rule intact in the only defensible way. Rarity
+scales magnitude and archetype sets behaviour; this rule is the one behaviour
+the design itself states in rarity language — the hits-to-kill table says
+"Cataclysm Boss Gatekeeper" — so hanging it on rarity is reading the design as
+written rather than adding a third layer.
+
+### The boundary
+
+`FirstBossRarityStep = 4` in `CataclysmEnemyCharacter.h`, pinned to
+`RARITY_ORDER.index("Boss")` in the model by a test that runs on every pull
+request, because continuous integration builds no C++. The rule outranks
+`bStunIsDesigned`: that flag skips the damage threshold, not this. "At all"
+means at all.
+
+### The finding about the weights, stated plainly
+
+The steer said the initial pool weights are in the DungeonSimulator app.
+**Checked: they are not.** The only rarity weights in that app are POWER
+weights — `rarityWeights` in `src/utils/calculateScores.tsx` line 56, the
+fraction of a tier's power gap each rarity adds — and those are already ported
+as `scoring.RARITY_WEIGHTS`. No spawn-pool, count or distribution table exists
+anywhere in that app. The spawn-pool weights the generator needs still have to
+be decided, and that has its own issue rather than an invented number here.
+
+---
+
 ## 2026-08-10 — Offline play is a commitment, and the corrupted character table carries build shapes rather than numbers
 
 **Affects:** Section VIII of `Cataclysm_GDD_v2.md`, the Corrupted Stalker dungeon

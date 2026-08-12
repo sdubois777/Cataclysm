@@ -399,4 +399,61 @@ bool FCataclysmZeroLengthStunIsNoStunTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmABossCannotBeStunnedTest,
+	"Cataclysm.Stun.ABossCannotBeStunnedAtAllAndAHeraldStillCan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmABossCannotBeStunnedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStunTest;
+
+	// RULE THREE OF THE ANTI-STUN-LOCK RULES, the last to arrive. Issue #395.
+	// Boss-ness derives from the rarity step the spawner set: 4 (Boss) and up.
+	//
+	// THE BOUNDARY IS TESTED FROM BOTH SIDES, because the rule is a threshold
+	// and a threshold checked from one side only cannot fail off by one.
+	// Herald, at step 3, is the highest rarity the player may still stun --
+	// the Abyssal Warden's reference rarity, and a mini-boss is not a boss.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Attacker(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+
+	FScopedFighter Herald(World, FVector(100.0f, 0.0f, 0.0f),
+						  ECataclysmTeam::Players, /*Health=*/1000.0f);
+	Herald.Actor->SetRarityStep(
+		ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+
+	TestFalse(TEXT("a Herald is not a boss"), Herald.Actor->IsBoss());
+	TestTrue(TEXT("and a designed stun still lands on it"),
+		UCataclysmSkillEffects::ApplyStun(
+			Attacker.Actor, Herald.Actor, /*DurationSeconds=*/1.5f,
+			/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true));
+
+	FScopedFighter Boss(World, FVector(200.0f, 0.0f, 0.0f),
+						ECataclysmTeam::Players, /*Health=*/1000.0f);
+	Boss.Actor->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+
+	TestTrue(TEXT("step 4 is a boss"), Boss.Actor->IsBoss());
+
+	// A DESIGNED STUN WITH FULL-HEALTH DAMAGE, the strongest stun the game can
+	// express. bStunIsDesigned skips only the damage threshold; "a boss cannot
+	// be stunned AT ALL" outranks it.
+	TestFalse(TEXT("a boss refuses the strongest stun the game can express"),
+		UCataclysmSkillEffects::ApplyStun(
+			Attacker.Actor, Boss.Actor, /*DurationSeconds=*/1.5f,
+			/*DamageDealt=*/1000.0f, /*bStunIsDesigned=*/true));
+	TestFalse(TEXT("and it is not stunned afterwards"),
+		UCataclysmSkillEffects::IsStunned(Boss.Actor));
+
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS

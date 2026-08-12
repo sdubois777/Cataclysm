@@ -238,6 +238,44 @@ def test_every_rarity_in_the_ladder_has_a_row(rarity_rows) -> None:
         f"{designed}. Run `python tools/generate_datatables.py`.")
 
 
+def test_the_engines_first_boss_step_is_the_models() -> None:
+    """`ACataclysmEnemyCharacter::FirstBossRarityStep` against the ladder.
+
+    THE STUN RULE HANGS ON THIS ONE INTEGER. "A boss cannot be stunned at all"
+    is checked in the engine as `RarityStep >= FirstBossRarityStep`, and
+    continuous integration builds no C++, so a drifted copy would silently
+    move which rarities are stun-immune. Read out of the header as text, the
+    way every other C++ constant is pinned. Issue #395.
+    """
+    import re
+
+    from cataclysm_sim.enemy_stats import (FIRST_BOSS_RARITY, is_boss_rarity,
+                                           rarity_step)
+
+    header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+              / "CataclysmEnemyCharacter.h").read_text(encoding="utf-8")
+    found = re.search(
+        r"static\s+constexpr\s+int32\s+FirstBossRarityStep\s*=\s*(\d+)\s*;",
+        header)
+    assert found, (
+        "CataclysmEnemyCharacter.h no longer carries "
+        "'static constexpr int32 FirstBossRarityStep = <n>;'. If it was "
+        "renamed, rename it here; if deleted, the boss stun rule is unpinned "
+        "and can drift from the rarity ladder unnoticed.")
+
+    designed = rarity_step(FIRST_BOSS_RARITY)
+    assert int(found.group(1)) == designed, (
+        f"FirstBossRarityStep is {found.group(1)} in the engine and the model "
+        f"puts {FIRST_BOSS_RARITY!r} at step {designed}. The stun rule's boss "
+        "line has drifted between the two copies.")
+
+    # AND THE BOUNDARY MEANS WHAT THE DESIGN SAYS: Herald -- the Abyssal
+    # Warden's reference rarity, a mini-boss -- is stunnable, and both Boss
+    # tiers are not.
+    assert not is_boss_rarity("Herald")
+    assert is_boss_rarity("Boss") and is_boss_rarity("Cataclysm Boss")
+
+
 def test_the_ladder_has_no_rare_tier(rarity_rows) -> None:
     """Six rarities, with Herald and Cataclysm Boss and no Rare.
 
