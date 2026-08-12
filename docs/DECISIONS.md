@@ -20,7 +20,65 @@ applied or still pending.
 
 ---
 
-## 2026-08-12 — Saves are three records, partitioned by lethality mode and by offline or online
+## 2026-08-12 — The Forge's residue penalty is one global rule, and the Crafting sheet is three tables
+
+**Affects:** section VII of `Cataclysm_GDD_v2.md`, applied. Issue #28. No design
+changed — this reconciles a document that was thinner than the data behind it.
+
+### The sheet is not what it looks like
+
+`docs/All_Things_Cataclysm.xlsx`, the Crafting sheet, reads as 37 materials. It
+is **three tables stacked in one sheet**:
+
+- Rows 1 to 18, the **materials**, with tier, source and use.
+- Rows 5 to 11, in columns 7 to 9 only, a six-row table of the **global residue
+  penalty scale**. Those columns have nothing to do with the material on the same
+  row; the inner table's own header sits on the Dismantling Dust row.
+- Row 19, a header row whose first cell is the literal word "Action".
+- Rows 20 to 37, the eighteen **Forge operations**, each with its material, the
+  residue it adds and its base days.
+
+**Issue #28 read it at face value and drew the wrong conclusion**, which is worth
+recording because anyone else will: it suspected that materials each carry their
+own residue formula, because `(CR / 50) + 1` and `CR / 100` appear on the
+Aetherial Shard and Chaos Stabilizer rows.
+
+### What was decided
+
+**They are the global rule.** Both formulas reproduce every row of the inner
+scale table exactly:
+
+| Item's CR | `(CR/50)+1` | Sheet says | `CR//100` | Sheet says |
+| --: | --: | --: | --: | --: |
+| 0 | 1.00 | 1x | 0 | +0 days |
+| 50 | 2.00 | 2x | 0 | +0 days |
+| 99 | 2.98 | 3x | 0 | +0 days |
+| 100 | 3.00 | 3x | 1 | +1 day |
+| 200 | 5.00 | 5x | 2 | +2 days |
+| 500 | 11.00 | 11x | 5 | +5 days |
+
+Six rows out of six, on both formulas. A material does not change the penalty; it
+chooses which operation is available and how much residue that operation adds.
+
+**Section VII now carries all eighteen operations and all eighteen materials**,
+with the two formulas stated beside the scale so the scale is derivable rather
+than a copy. Copies drift, and this drift is what #28 found.
+
+`tools/tests/test_crafting_section_matches_the_sheet.py` holds it, in both
+directions: an operation in the sheet and not the document fails, and a material
+named in the document that the sheet does not have fails. Both were proven to
+fail by breaking them with `tools/prove_guard.py`.
+
+### What this leaves open
+
+**Whether the gold multiplier is rounded in the calculation or only for
+display.** The 99 row is 2.98 shown as 3x and every other row is exact, so the
+scale does not disambiguate it. It matters below 100 CR: at 10 CR the multiplier
+is either 1.2 or 2. Stated as unsettled in section VII rather than guessed at.
+
+**Seven of the eighteen materials have no stated source.** Where they drop is not
+designed, and the loot tables that would answer it do not exist. Filed as issue
+#531, blocked on #44.
 
 **Affects:** adds `Save_System_Design.md` to this folder. Nothing in
 `Cataclysm_GDD_v2.md` changes. Issue #21. Nothing is implemented yet — a search of
