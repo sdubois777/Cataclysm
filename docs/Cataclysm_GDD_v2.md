@@ -4679,15 +4679,53 @@ in this folder.
 
 ## **Base Game**
 
-Cataclysm is free to play. The full game — all 8 Cataclysms, all 24 classes, empire management, city upgrades, the capital hub, all crafting systems, and all weapon types — is available to all players at no cost. There are no paywalls on gameplay content, no pay-to-win mechanics, and no stash or storage fees of any kind.
+**Cataclysm is bought once and owned.** It is sold at Early Access for $25 to $30.
+There is no free client, no subscription, and no trial.
+
+  
+
+**Buying the game buys all of it.** All 8 Cataclysms, all 24 classes, empire
+management, city upgrades, the capital hub, all crafting systems and all weapon
+types are included in the purchase. There are no paywalls on gameplay content, no
+pay-to-win mechanics, and no stash or storage fees of any kind.
+
+  
+
+**Why bought rather than free.** A free client earns nothing until a cosmetics
+shop exists, and a cosmetics shop earns nothing without a very large returning
+audience. Path of Exile sustains that model at roughly 100,000 concurrent players
+at a league launch, with thirteen years of league cadence behind it. This game has
+no route to that audience before it has been played, and the free-to-play plan
+would have built the most server-expensive configuration in the genre and taken
+payment last. `DECISIONS.md` records the reasoning and its sources.
+
+  
+
+**Nothing about this reduces what a player gets.** The two things free-to-play
+games normally sell alongside cosmetics — stash space and anything affecting
+gameplay — were already ruled out above and stay ruled out.
 
   
 
 ## **Seasonal / League Updates (Free)**
 
+**Seasons are free content patches that are added permanently to the game, and
+they work offline.** A season is not a server-side ladder that the game needs a
+connection to reach. An online ladder runs alongside it for online characters,
+and it is optional.
+
+  
+
+That follows from the offline commitment in section VIII: offline play covers the
+whole game rather than parts of it, so a season that existed only online would
+make offline a second-class version of the game.
+
+  
+
   - New temporary league mechanic resetting or changing the core loop for 3-4 months.
   - A few new powerful non-set unique items or generic enchantments.
   - Class/skill rebalances and QoL improvements.
+  - Permanently added to the game when the season ends, rather than removed.
 
   
 
@@ -4703,7 +4741,20 @@ Each expansion adds a permanent new Cataclysm to the game. The base game remains
 
 ## **Cosmetics**
 
-All revenue outside of expansions comes from purely cosmetic purchases. Nothing in the cosmetics shop affects gameplay in any way.
+**Cosmetics are a supplement to the purchase price, not the thing that funds the
+game.** The game is paid for when it is bought and again at each expansion. A
+cosmetics shop is optional revenue on top, and the game has to be viable without
+it.
+
+  
+
+That is the practical difference the business model makes here: under the previous
+free-to-play plan the shop was the only revenue outside expansions, which made it
+a launch requirement. It is now a Phase 3 item that can stay in Phase 3.
+
+  
+
+Nothing in the cosmetics shop affects gameplay in any way.
 
   - Armor and weapon skins
   - Skill visual effects

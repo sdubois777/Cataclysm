@@ -20,6 +20,109 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — The game is bought once, not free to play
+
+**Affects:** section XIV of `Cataclysm_GDD_v2.md`, rewritten and applied. Confirms
+rather than changes the stash partition reasoning further down this log. Issue
+#501. Decided by the project owner.
+
+### What was decided
+
+**Cataclysm is bought once, at $25 to $30, sold from Early Access.** No free
+client, no subscription, no trial. Buying it buys all of it.
+
+**Seasons are free content patches added permanently to the game, and they work
+offline.** An online ladder runs alongside for online characters and is optional.
+
+**Cosmetics are a supplement, not the funding model.** The game is paid for when
+it is bought and again at each expansion. Expansions stay as they were, $10 to
+$20 every 6 to 12 months.
+
+### The contradiction this resolves
+
+Two documents described two different products. Section XIV committed to a free
+client, seasonal leagues and a cosmetics shop as the only revenue outside
+expansions — the Path of Exile model. This log, in the reasoning for partitioning
+the stash three ways, called the game "a single-player-first design with co-op
+listed as a Phase 2 feature, so the market was never going to be deep".
+
+**The real disagreement was about the size of the player base each one assumed**,
+and each used its assumption to justify something. Section XIV assumed a
+population large enough that a cosmetics shop pays for continuous development. The
+stash decision assumed one small enough that an auction house was never going to
+be liquid. Both could not be planned for.
+
+**A second contradiction sat inside the design document alone**, and it was the
+more urgent one: section XIV said all revenue outside expansions comes from
+cosmetics, and section XV puts the full cosmetic system in Phase 3 while Phase 2
+is the Early Access launch. So the plan as written took no money at Early Access
+— it shipped the free client, the ladder, the shared stash and the auction house
+first and built the only thing that charges anybody last.
+
+### Why bought rather than free
+
+**Free-to-play with a cosmetics shop is not a model that scales down.** It
+converts a small percentage of a very large audience, so it needs the audience
+first. Path of Exile reaches roughly 100,000 concurrent players at a league
+launch, peaking at 229,000, on thirteen years of league cadence and a studio owned
+by Tencent; it earned about $105 million in the 2024 financial year. A cosmetics
+shop attached to a small population earns approximately nothing — and this design
+had already ruled out the two other things such games sell, stash space and
+anything affecting gameplay.
+
+**Last Epoch is the closer comparable and it is bought once.** $35 on Steam, three
+million copies since its 2024 launch, about $12 million in its first three days,
+and the studio was acquired by Krafton for $96 million initial consideration in
+July 2025. Its ongoing development is funded by cosmetics on top of the purchase
+price, which is exactly the structure adopted here.
+
+**Grim Dawn shows the model works at a much smaller scale**: an indie studio under
+thirty people, sustained across a decade on buy-to-play plus paid expansions, with
+an offline-focused single-player design. Its final expansion shipped 2026-07-23.
+
+Three further reasons, in order of weight:
+
+1. **It matches the architecture already chosen.** The 2026-08-10 decision on
+   offline play adopted Last Epoch's offline and online split by name. Adopting
+   its revenue model too makes the product coherent instead of half of one game
+   and half of another.
+2. **It takes revenue at Phase 2 instead of Phase 3.** The Early Access launch is
+   already on the roadmap, which removes the phase during which the previous plan
+   earned nothing.
+3. **It does not require a population that does not exist yet.**
+
+### The price
+
+$25 to $30 against Last Epoch's $35, and below it deliberately: this has less
+content at Early Access than Last Epoch had at 1.0.
+
+### The risk being accepted
+
+**A price is a barrier that free-to-play does not have**, so the audience is
+smaller and grows more slowly. The seasonal ladder and the shared table of
+corrupted characters are worth less with fewer online players. **If the empire
+layer turns out to be a draw that would have pulled six figures of concurrent
+players, this leaves money on the table.** That is the accepted risk, stated
+rather than discovered later.
+
+### Sources
+
+- [Last Epoch statistics, LEVVVEL](https://levvvel.com/last-epoch-statistics/)
+- [Krafton acquires Eleventh Hour Games, Variety, July 2025](https://variety.com/2025/gaming/news/krafton-acquires-last-epoch-developer-eleventh-hour-games-1236470366)
+- [Last Epoch on Steam](https://store.steampowered.com/app/899770/Last_Epoch/)
+- [The mechanics and ethics of free-to-play in Path of Exile, Game Developer](https://www.gamedeveloper.com/business/the-mechanics-and-ethics-of-free-to-play-in-i-path-of-exile-i-)
+- [Path of Exile supporter packs, PoE Wiki](https://www.poewiki.net/wiki/Supporter_pack)
+- [Grim Dawn's final expansion, Massively Overpowered, 2026-07-23](https://massivelyop.com/2026/07/23/oarpg-grim-dawns-biggest-and-final-expansion-fangs-of-asterkarn-is-live-today-as-crate-eyes-new-projects/)
+- [Grim Dawn, Wikipedia](https://en.wikipedia.org/wiki/Grim_Dawn)
+
+### What this unblocks
+
+#31 co-op design, #56 co-op implementation, #57 the auction house, #58 seasonal
+league infrastructure, #59 cosmetics, and #179 the shared table of corrupted
+characters. All six were waiting on which product this is.
+
+---
+
 ## 2026-08-12 — Audio is part of the readability system, and it is built on MetaSounds
 
 **Affects:** adds an Audio subsection to section XIII of `Cataclysm_GDD_v2.md`,
@@ -4390,6 +4493,13 @@ smaller here than in the games above because this is a single-player-first desig
 with co-op listed as a Phase 2 feature, so the market was never going to be deep,
 and because the harder modes will hold a minority of players — which means the
 Heretic market is the one that will feel thin.
+
+**Confirmed 2026-08-12.** Issue #501 challenged this sentence, because section XIV
+of the design document described a free-to-play live service at the time and that
+is not a single-player-first product. The business model decision that day settled
+it the other way: the game is bought once, following Last Epoch rather than Path
+of Exile. **So this reasoning stands as written**, and the premise it rests on is
+now stated in section XIV rather than contradicted by it.
 
 **Nothing was migrated, because there is nothing to migrate.** No save format
 exists, no player has a stash, and the partition is being written before any
