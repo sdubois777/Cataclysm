@@ -4519,6 +4519,162 @@ A mode that hides the heads-up display is a difficulty choice the player opts in
 
   
 
+## **Audio**
+
+**Audio is part of the readability system, not decoration.** Two things in this
+design make that literal rather than a general sentiment about immersion.
+
+  
+
+**The art direction fights the combat design.** The world is deliberately dark and
+low-light, and the combat requires players to read and dodge telegraphed attacks.
+An attack that is off-screen, behind the character, or lost in a crowd of twenty
+Imps is not readable by sight. Audio is the channel that still works.
+
+  
+
+**Two of the three lethality modes hide the interface.** Hardcore shows the map
+overlay only and Heretic hides the heads-up display entirely. A Heretic player has
+no health bar, so **the low-health warning is the only channel telling them they
+are about to die**. That is not an accessibility concession; it is the mode
+working as designed, and it only works if the audio exists.
+
+  
+
+The reduced ability effect opacity option above has the same consequence. A player
+who turns it on has deliberately weakened the visual channel and is relying on
+this one.
+
+  
+
+### **The telegraph rule**
+
+**An audio telegraph carries the same information as its visual telegraph, in the
+same window, and never more.** It begins when the marker appears and ends when the
+marker ends.
+
+  
+
+That follows from the wind-up cap in section X, which limits an enemy's wind-up to
+half its attack interval. **The audio cue lives inside the same cap.** A cue that
+fires late is worse than no cue, because it teaches the player to trust a signal
+that does not give them time to act.
+
+  
+
+An audio telegraph never announces something the marker does not. If a player can
+hear an attack coming that they could not have seen coming, the two channels
+disagree and the visual one becomes the unreliable half.
+
+  
+
+**Positional, always.** A telegraph is placed in the world at its source, so
+direction and distance are audible. This is what makes the off-screen case work,
+and it is the reason telegraphs are not played as flat interface sounds.
+
+  
+
+### **Per-damage-type identity**
+
+Each of the eight damage types has its own audio identity, matching the visual
+identity in the style guide, so a player can name what hit them without seeing it.
+The thematic anchors are the ones the Tags sheet already gives — Demonic is fire,
+lava and rage; Void is abyss, gravity and erasure.
+
+  
+
+**The identity lives in timbre, not in pitch or volume.** Pitch and volume are
+already spoken for: pitch carries enemy size and volume carries distance. A damage
+type that announced itself by being louder would be indistinguishable from one
+that is closer.
+
+  
+
+### **Combat audio, in priority order**
+
+When several of these want to be heard at once, the earlier one wins. The order is
+the design, not a mixing convenience.
+
+  
+
+| Priority | Cue | Why it is where it is |
+| :-: | :-- | :-- |
+| 1 | Enemy attack telegraph | The only one the player can still act on |
+| 2 | Low health | In Heretic it is the only warning that exists |
+| 3 | Damage taken | Confirms the thing that just went wrong |
+| 4 | Hit confirmation | Confirms the thing that went right |
+| 5 | Class resource full or spent | A build decision, not a survival one |
+| 6 | Everything else | Ambience, footsteps, loot |
+
+  
+
+**A telegraph ducks everything below it.** In a fight against twenty Imps the
+telegraph is the sound that must survive, and the crowd is what would otherwise
+bury it.
+
+  
+
+### **Empire layer audio**
+
+The empire runs on a day clock, and its events are the ones a player can miss by
+looking at the wrong part of the screen. These interrupt rather than blend.
+
+  
+
+  - **Surge warning** — the strategy layer's equivalent of a telegraph. It has to
+    arrive with enough time to act, on the same principle as a combat wind-up.
+  - **A city falling** — a permanent loss inside the run. It is heard once and it
+    is unmistakable.
+  - **A dungeon resolving** — the timer the player has been spending days on
+    completing.
+
+  
+
+### **Music**
+
+Three states, following where the player is rather than what they are doing.
+
+  
+
+| Where | Direction |
+| :-- | :-- |
+| The capital | The only place that is not under threat. Sparse and low, but not dread — this is where the player plans |
+| The empire map | Time passing and pressure building. Tied to the day clock, so it tightens as a surge approaches |
+| A dungeon | Dread, and it gets worse with depth. One floor is one day, so descending and running out of time are the same movement |
+
+  
+
+**Music yields to combat audio.** It is the first thing ducked and the last thing
+restored, because nothing in it is load-bearing.
+
+  
+
+### **Voice**
+
+**Enemy vocalisations only. No dialogue, and no narration.** The design has no
+dialogue system and no branching conversation anywhere, so there is nothing for
+voice acting to attach to.
+
+  
+
+Enemy vocalisation is not flavour here: a creature's voice is part of its
+telegraph, and it is the part that works when the creature is off-screen. The
+seven Demonic enemies each need one, and the Paragon packs the vertical slice is
+cast from ship them.
+
+  
+
+**This keeps localisation cheap.** Section XIII commits to multiple language
+support, and a game with no spoken dialogue localises as text alone.
+
+  
+
+The implementation plan — middleware, naming conventions, mixing buses, and how a
+telegraph cue is authored alongside its animation — is in `Audio_Design_Plan.md`
+in this folder.
+
+  
+
 # **XIV. Monetization**
 
 ## **Base Game**

@@ -20,6 +20,89 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — Audio is part of the readability system, and it is built on MetaSounds
+
+**Affects:** adds an Audio subsection to section XIII of `Cataclysm_GDD_v2.md`,
+applied, and adds `Audio_Design_Plan.md` to this folder. Issue #33. Nothing is
+implemented: `game/Source/` has no audio code and `game/Content/` no authored
+sound.
+
+### Why audio is load-bearing here rather than decoration
+
+Two facts in this design make that literal, and both are read out of the design
+document rather than argued from taste.
+
+**The art direction fights the combat design.** The world is deliberately dark and
+low-light, and combat requires reading and dodging telegraphed attacks. An attack
+that is off-screen, behind the character, or lost among twenty Imps is not
+readable by sight.
+
+**Two of the three lethality modes hide the interface.** Hardcore shows the map
+overlay only; Heretic hides the heads-up display entirely. **A Heretic player has
+no health bar, so the low-health cue is the only warning they get that they are
+about to die.** That is the mode working as designed, and it only works if the
+audio exists. The reduced ability effect opacity option has the same consequence
+for anyone who turns it on.
+
+This is why the priority order puts the telegraph first and low health second,
+and why the order lives in the bus structure rather than in per-sound volume
+values, which drift.
+
+### What was decided
+
+**An audio telegraph carries the same information as its visual telegraph, in the
+same window, and never more.** It follows the section X wind-up cap of half the
+attack interval, and it is positional so direction and distance are audible —
+which is what makes the off-screen case work. A cue that announces something the
+marker does not makes the visual channel the unreliable half.
+
+**Damage-type identity lives in timbre, not pitch or volume.** Those two are
+already spoken for: pitch carries enemy size and volume carries distance. A damage
+type that announced itself by being louder would be indistinguishable from one
+that is closer.
+
+**Enemy vocalisations only. No dialogue and no narration**, because the design has
+no dialogue system for voice to attach to. This also keeps the multiple-language
+commitment in section XIII cheap, since a game with no spoken dialogue localises
+as text alone.
+
+**MetaSounds, and no middleware.** Three reasons: there is no audio budget line
+and #501 has not settled whether the game is even sold, so a per-title licence
+tied to budget or revenue is a commitment that cannot be made yet; Audio Insights
+became production ready in Unreal 5.8, which is the version already committed and
+was the tooling gap that historically argued for middleware; and the case that
+dominates everything is twenty Imps attacking at once, where twenty copies of one
+sample is a machine-gun artefact and procedural variation is what MetaSounds is
+best at. The cost is engineering time and no authoring application for a
+non-programmer, and that cost is real.
+
+### A dependency worth knowing before anyone starts
+
+**Audio telegraph authoring is blocked on #526.** A telegraph cue is fired by an
+animation notify rather than a timer, because enemy attack animations are
+retimed constantly — each is played to fit its designed attack interval — and a
+timer would drift silently the moment a play rate changed. But nothing has
+measured where inside a clip the damage lands, for any of the seven enemies. The
+window cannot be filled before it is measured, so the blocker is the measurement
+and not the sound design.
+
+The low-health cue and hit confirmation need neither animation work nor
+measurement, which is why the build order starts there.
+
+### Sources
+
+- Middleware comparison for Unreal 5 in 2026:
+  [StraySpark](https://www.strayspark.studio/blog/wwise-fmod-metasounds-audio-middleware-comparison),
+  [Aircada on Wwise](https://aircada.com/blog/metasounds-vs-wwise),
+  [Aircada on FMOD](https://aircada.com/blog/metasounds-vs-fmod)
+- Audio telegraphing and readability:
+  [Designing for Difficulty: Readability in ARPGs, Game Developer](https://www.gamedeveloper.com/game-platforms/designing-for-difficulty-readability-in-arpgs),
+  [Sound design for Wolcen, Oliver Smith](https://www.oliversmithsound.com/blog/sound-design-for-an-arpg-wolcen-lords-of-mayhem)
+- Positional audio for off-screen threats:
+  [Xbox Accessibility Guideline 103](https://learn.microsoft.com/en-us/gaming/accessibility/xbox-accessibility-guidelines/103)
+
+---
+
 ## 2026-08-12 — The Forge's residue penalty is one global rule, and the Crafting sheet is three tables
 
 **Affects:** section VII of `Cataclysm_GDD_v2.md`, applied. Issue #28. No design
