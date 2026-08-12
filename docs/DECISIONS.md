@@ -20,6 +20,78 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — The empire's cities are Outposts, Bulwarks, Sanctuaries and the Pillar
+
+**Affects:** section II and section VIII of `Cataclysm_GDD_v2.md`,
+`Empire_Skill_Tree_Keystones.md` and `Empire_Development_Tree_Final.json`, all
+applied. Issue #534. Decided by the project owner.
+
+### What was decided
+
+**The simulation's names win.** `Cataclysm_GDD_v2.md` was out of date.
+
+| Ring | Canonical name | Was called | Count |
+| :-: | :-- | :-- | --: |
+| 0 | **Pillar** | Capital | 1 |
+| 1 | **Sanctuary** | Metropolis | 4 |
+| 2 | **Bulwark** | City | 8 |
+| 3 | **Outpost** | Village | 12 |
+
+**The mapping was never actually in doubt.** `sim/cataclysm_sim/world.py` has
+carried it in its module docstring the whole time, and `config.py` says outright
+that "GDD v0.3 still calls these Village / City / Metropolis / Capital … and the
+newer names win". Nobody had applied it to the design document.
+
+**The counts were never in dispute either.** Both documents already said
+1/4/8/12. The simulation explains why: the map is a taxicab ball of radius 3, and
+ring N holds exactly 4N cells, so the counts are a property of the geometry rather
+than a separate design decision. That explanation is now in the design document.
+
+### Two problems this fixes that were not merely cosmetic
+
+**The design document's own table contradicted itself.** It counted villages and
+metropolises as "cities" while "City" was also one of the four tier names. "City"
+is now the general word for a place on the map at any tier, and it is not a tier
+name — which is how the simulation has always used it.
+
+**Two passive tree nodes granted a bonus that could not be computed.** Beacon of
+Hope and Fortified Pillar both read "cities within 2 hexes". **The lattice has no
+hexes.** It is a taxicab ball with orthogonal adjacency, so a distance in hexes
+has no meaning on it, and whoever implemented the empire tree would have had to
+guess or stop.
+
+The translation is exact rather than a judgement: every orthogonal step changes
+the ring by one, so a city's ring *is* its distance from the Pillar. **"Within 2
+rings of the Pillar" is the four Sanctuaries and the eight Bulwarks, twelve
+cities** — the set the author meant.
+
+### One word kept, with a narrower job
+
+**"The capital" now means the hub inside the Pillar, not another name for it.**
+The Pillar is the city at ring 0, with defence and population like any other city.
+The capital is the settlement the player walks around between runs, holding the
+NPC services in section IX. Losing the Pillar ends the run and takes the capital
+with it.
+
+That distinction is stated in the City Tiers section rather than left to be
+inferred. **If the intent was that "capital" should disappear entirely, that is a
+one-line change** — but two words naming two different things is not the problem
+this issue was about.
+
+The node "Venture Capital" is untouched. It is about gold and magic find, not
+about a city.
+
+### Held by a test
+
+`tools/tests/test_empire_vocabulary_is_one_set_of_words.py` reads the four
+canonical names from `sim/cataclysm_sim/config.py` rather than restating them, so
+this file cannot become one more place that drifts. It fails if any design
+document uses a superseded tier name, if anything measures empire distance in
+hexes, or if a passive tree node does either. All three were proven to fail with
+`tools/prove_guard.py`.
+
+---
+
 ## 2026-08-12 — Animation is shared by weapon and slot, not by damage type
 
 **Affects:** adds `Animation_Plan.md` to this folder. Nothing in

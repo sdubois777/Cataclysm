@@ -464,7 +464,7 @@
       "data": {
         "kind": "basic",
         "name": "Supply Lines",
-        "description": "-1.5% damage taken by cities adjacent to the Capital per point (multiplicative).",
+        "description": "-1.5% damage taken by cities adjacent to the Pillar per point (multiplicative).",
         "currentPoints": 0,
         "color": "#6366f1",
         "maxPoints": 10
@@ -662,7 +662,7 @@
       "data": {
         "kind": "basic",
         "name": "Monument Building",
-        "description": "+10% Max Health for Metropolises per point.",
+        "description": "+10% Max Health for Sanctuaries per point.",
         "currentPoints": 0,
         "color": "#6366f1",
         "maxPoints": 10
@@ -881,8 +881,8 @@
       },
       "data": {
         "kind": "basic",
-        "name": "Fortified Capital",
-        "description": "-2% Population loss from dungeon resolutions for all cities within 2 hexes of the Capital per point (multiplicative).",
+        "name": "Fortified Pillar",
+        "description": "-2% Population loss from dungeon resolutions for all cities within 2 rings of the Pillar per point (multiplicative).",
         "currentPoints": 0,
         "color": "#6366f1",
         "maxPoints": 10
@@ -948,7 +948,7 @@
       "data": {
         "kind": "keystone",
         "name": "Beacon of Hope",
-        "description": "Cities within 2 hexes of The Capital have +50% Max Health.",
+        "description": "Cities within 2 rings of the Pillar have +50% Max Health.",
         "currentPoints": 0,
         "color": "#6366f1",
         "maxPoints": 1

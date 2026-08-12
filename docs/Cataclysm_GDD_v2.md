@@ -21,7 +21,7 @@ Cataclysm is a dark fantasy ARPG dungeon crawler fused with real-time empire man
 
   
 
-Between dungeon runs, players manage a layered empire of villages, cities, and metropolises, making strategic decisions about which cities to defend, when to sacrifice resources, and how to spend limited upgrade slots. Character power comes from a deep itemization system — weapon type and damage type determine available skills, passive class trees unlock unique identities and resources, and enchantments provide high-variance build-defining modifiers.
+Between dungeon runs, players manage a layered empire of Outposts, Bulwarks, and Sanctuaries ringed around a central Pillar, making strategic decisions about which cities to defend, when to sacrifice resources, and how to spend limited upgrade slots. Character power comes from a deep itemization system — weapon type and damage type determine available skills, passive class trees unlock unique identities and resources, and enchantments provide high-variance build-defining modifiers.
 
   
 
@@ -2549,7 +2549,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - Every dungeon has a boss on the final floor.
   - If a dungeon resolves undefeated, its listed consequence occurs (usually city damage or population loss).
   - If a city falls, it becomes a Dungeon City — a staging ground with more floors and multiple boss fights, triggering a Surge.
-  - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for village/city/metropolis).
+  - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary).
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
   - Every dungeon defeated adds one floor to the Cataclysm boss dungeon.
 
@@ -2747,18 +2747,42 @@ The reasoning behind these choices, and the measurements still needed to confirm
 
 ## **Overview**
 
-A major aspect of Cataclysm is the management of the player's empire. The empire consists of 12 villages, 8 cities, 4 metropolises, and the capital. Players must fight off dungeons to prevent city loss while working toward the Cataclysm boss dungeon. This requires strategic city upgrade decisions, empire tree investment, and time management to ensure the capital isn't overrun.
+A major aspect of Cataclysm is the management of the player's empire. The empire consists of 12 Outposts, 8 Bulwarks, 4 Sanctuaries, and the Pillar at its centre. Players must fight off dungeons to prevent city loss while working toward the Cataclysm boss dungeon. This requires strategic city upgrade decisions, empire tree investment, and time management to ensure the capital isn't overrun.
 
   
 
 ## **City Tiers**
 
-| Tier | Count / Min Floors on Fall |
-| :-: | :-: |
-| Village | 12 cities — minimum 20 floors if captured |
-| City | 8 cities — minimum 40 floors if captured |
-| Metropolis | 4 cities — minimum 60 floors if captured |
-| Capital | 1 — losing this ends the run |
+**The empire is a diamond lattice of 25 cities, four rings deep, with the Pillar
+at the centre.** Ring N holds exactly 4N cells, so the counts below are a property
+of the geometry rather than a separate decision.
+
+| Ring | Tier | Count | Minimum floors if captured |
+| :-: | :-- | :-: | :-: |
+| 0 | **Pillar** | 1 | losing this ends the run |
+| 1 | **Sanctuary** | 4 | 60 |
+| 2 | **Bulwark** | 8 | 40 |
+| 3 | **Outpost** | 12 | 20 |
+
+  
+
+**"City" is the general word for a place on the map at any tier. It is not a tier
+name.** A Bulwark is a city and so is an Outpost.
+
+  
+
+**"The capital" is the hub inside the Pillar, not another name for it.** The
+Pillar is the city at ring 0, with defence and population like any other city.
+The capital is the settlement the player walks around between runs, where the
+NPC services in section IX are. Losing the Pillar ends the run and takes the
+capital with it.
+
+  
+
+**Distance is counted in rings.** Adjacency is orthogonal in lattice space, and
+every step changes the ring by exactly one, so a city's ring is also its distance
+from the Pillar. "Within 2 rings of the Pillar" means the four Sanctuaries and
+the eight Bulwarks — twelve cities.
 
   
 
