@@ -40,6 +40,7 @@ python tools/reformat_google_docs_artefacts.py
 | `Masochist_Class_Tree_Final.json` | Not from Drive | Same schema. Written in this repository for issue #63, from the prose in the Drive doc "Masochist Passive Tree". It is the only class tree here that Drive does not hold, so re-exporting the folder will not overwrite it and will not restore it either. |
 | `DECISIONS.md` | Not from Drive | The log of design decisions and the reasoning behind them, newest first. Written in this repository. |
 | `Save_System_Design.md` | Not from Drive | What the game writes to disk: the three persistence records, how saves are partitioned by lethality mode and by offline or online, the storage format, and schema migration. Written in this repository for issue #21. |
+| `Audio_Design_Plan.md` | Not from Drive | How the audio design in section XIII gets built: MetaSounds rather than middleware, the six mixing buses, naming, and how a telegraph cue is authored by animation notify so it survives a play rate change. Written in this repository for issue #33. |
 
 ## Sheets in `All_Things_Cataclysm.xlsx`
 
