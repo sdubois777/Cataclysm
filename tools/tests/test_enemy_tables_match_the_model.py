@@ -341,7 +341,7 @@ def test_a_written_multiplier_reproduces_the_models_own_stat_block() -> None:
     score = 1000.0
     for rarity in stats.RARITY_ORDER:
         for name in stats.ARCHETYPES:
-            block = stats.stats_for(rarity, score, name)
+            block = stats.stats_for(rarity, score, name, tier=8)
 
             from_table = (score
                           * float(rows[rarity]["DamagePerScore"])
