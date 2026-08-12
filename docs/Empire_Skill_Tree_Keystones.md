@@ -48,7 +48,7 @@
 
 ## The Empire Development Tree: Final Design
 
-The Empire Development Tree is a circular, four-branched skill tree that visually represents an empire expanding outwards from a central capital. The player invests points to progress through the tree, with each branch offering a unique path to victory.
+The Empire Development Tree is a circular, four-branched skill tree that visually represents an empire expanding outwards from a central Pillar. The player invests points to progress through the tree, with each branch offering a unique path to victory.
 
 The tree is divided into four distinct "pie slices," with each slice representing a core strategic path. The passives within each slice are tiered, radiating outwards from the center of the tree.
 
@@ -100,7 +100,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Sovereign's Might (Max 25 pts):** +2% Global Damage Reduction for all cities per point.
 - **Manifest Destiny (Max 20 pts):** +2% Total Empire Population per point (Multiplicative).
 - **NOTABLE: Imperial Command:** Cities with 2+ upgrades take 40% less Surge damage.
-- **NOTABLE: Beacon of Hope:** Cities within 2 hexes of The Pillar have +50% Max Health.
+- **NOTABLE: Beacon of Hope:** Cities within 2 rings of the Pillar have +50% Max Health.
 - **NOTABLE: Last Stand Protocols:** Sanctuary defenses survive at 1 on first fatal dungeon resolution. (Resets every tier.)
 - **NOTABLE: The Architect's Legacy:** Reclaiming a fallen city now restores it to **75%** of its original Population/Defense instead of 50%.
 - **NOTABLE: The Mason's Guild:** Every 20 days, the Outpost or Bulwark with the lowest defense restores 20% of its Max Defense and 15% of its Max Population. This can target the same city multiple times.
