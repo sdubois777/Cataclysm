@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "CataclysmDamageCalculation.generated.h"
 
 class UAbilitySystemComponent;
@@ -114,6 +115,34 @@ public:
 
 	/** Seconds after taking damage before an energy shield starts refilling. */
 	static constexpr float EnergyShieldRechargeDelay = 3.0f;
+
+	/** What every damage type's gameplay tag begins with. `Element.` */
+	static const TCHAR* ElementTagPrefix;
+
+	/**
+	 * A damage type as the gameplay tag that carries it on an effect.
+	 *
+	 * "Demonic" becomes `Element.Demonic`. Returns an invalid tag for a name the
+	 * tag vocabulary has no `Element.*` entry for, and for `NAME_None`.
+	 *
+	 * WHY A TAG RATHER THAN THE NAME ITSELF: a gameplay effect can carry tags and
+	 * cannot carry an FName, and the eight `Element.*` tags already exist in
+	 * `game/Config/Tags/CataclysmTags.ini` because stat modifiers scope to them.
+	 * See `DamageTypeFromTags` for the way back.
+	 */
+	static FGameplayTag ElementTagFor(FName DamageType);
+
+	/**
+	 * The damage type an effect's tags say it is, or `NAME_None` for an untyped
+	 * hit.
+	 *
+	 * THE INVERSE OF `ElementTagFor`, AND IT LIVES BESIDE IT ON PURPOSE. The two
+	 * are the only encoding and decoding of a damage type in the project, and if
+	 * they ever disagreed the type would vanish silently and every resistance
+	 * would go back to doing nothing, which is exactly the state issue #486
+	 * describes.
+	 */
+	static FName DamageTypeFromTags(const FGameplayTagContainer& Tags);
 
 	/** Armor as a percentage of damage removed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")

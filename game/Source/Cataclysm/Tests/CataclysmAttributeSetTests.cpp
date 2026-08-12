@@ -133,8 +133,22 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 */
 	constexpr int32 OffSheetCombatStats = 1;
 
+	/**
+	 * Resistances that exist but are NOT on the character sheet.
+	 *
+	 * The generic resistance is the only one, and it is off the sheet because no
+	 * player has one. It is how an ENEMY resists: one figure met by a hit of any
+	 * type, including an untyped one. The project owner ruled on 2026-08-12 that
+	 * "enemies will have a generic all res" while a player keeps the eight, so
+	 * the two sides use one attribute set differently and only the eight are a
+	 * character's own stats. Issue #486.
+	 */
+	constexpr int32 OffSheetResistanceStats = 1;
+
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
-	TestEqual(TEXT("Eight resistances, one per damage type"), Resist, 8);
+	TestEqual(TEXT("Eight resistances on the sheet, one per damage type, "
+				   "plus the generic one off it"),
+		Resist - OffSheetResistanceStats, 8);
 	// Twenty-five since the eight increased-damage-against-a-type stats were
 	// added for #213. Seventeen before that. Twenty-seven since damage over time
 	// damage and damage over time duration joined damage over time frequency
@@ -151,7 +165,8 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// eight increased-damage-against-a-type figures, which are the offensive
 	// mirror of the eight resistances, and the three damage over time levers.
 	TestEqual(TEXT("Forty-five stats on the character sheet"),
-		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 45);
+		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats)
+			+ (Resist - OffSheetResistanceStats) + (Resource - 1), 45);
 	return true;
 }
 

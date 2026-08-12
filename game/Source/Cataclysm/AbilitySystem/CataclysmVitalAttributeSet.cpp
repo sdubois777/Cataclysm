@@ -1,7 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
 
@@ -99,14 +101,39 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// tested by passing numbers in rather than by building an effect
 			// spec for every case.
 			//
-			// The hit's own properties -- its damage type, its penetration,
-			// whether it is area damage or damage over time, and its weapon
-			// sub-type -- are not yet carried on the effect that delivers the
-			// damage. Until they are, every hit resolves as an untyped direct
-			// hit, which means resistances and the sub-type bonuses do nothing.
-			// Armor, evasion, block, flat reduction and energy shield all work.
+			// TWO OF THE HIT'S PROPERTIES NOW REACH IT, and they arrive by two
+			// different routes because they are two different kinds of thing.
+			// Issue #486.
+			//
+			//   the DAMAGE TYPE belongs to the hit, and rides on the effect as an
+			//   `Element.*` tag, put there by UCataclysmSkillEffects
+			//
+			//   the RESISTANCE PENETRATION belongs to the attacker rather than to
+			//   any one blow, so it is read off the attacker at the moment the
+			//   blow lands, which is also the moment it is true
+			//
+			// FOUR STILL DO NOT: armour penetration, whether the hit is area
+			// damage, whether it is damage over time, and its weapon sub-type. So
+			// an area attack can still be evaded, which the design says it cannot,
+			// and the slashing and magic bonuses still do nothing. See the issue
+			// filed alongside #486 for those four.
 			FCataclysmIncomingHit Hit;
 			Hit.Damage = LocalDamage;
+
+			FGameplayTagContainer AssetTags;
+			Data.EffectSpec.GetAllAssetTags(AssetTags);
+			Hit.DamageType =
+				UCataclysmDamageCalculation::DamageTypeFromTags(AssetTags);
+
+			if (const UAbilitySystemComponent* Attacker =
+					Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent())
+			{
+				if (const UCataclysmCombatAttributeSet* Offence =
+						Attacker->GetSet<UCataclysmCombatAttributeSet>())
+				{
+					Hit.ResistancePenetration = Offence->GetPenetration();
+				}
+			}
 
 			const FCataclysmDamageResult Outcome =
 				UCataclysmDamageCalculation::Resolve(

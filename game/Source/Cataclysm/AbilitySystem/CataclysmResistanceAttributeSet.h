@@ -40,6 +40,33 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 
+	/**
+	 * Resistance that applies to a hit of ANY damage type, including an untyped
+	 * one, and is added to whichever of the eight below the hit's type selects.
+	 *
+	 * WHAT IT IS FOR: ENEMIES. The project owner ruled on 2026-08-12 that "enemies
+	 * will have a generic all res" and that "the only damage that should actually
+	 * be typed is enemy damage so the player's resistances can take effect". So
+	 * the two sides of a fight use this set differently and deliberately:
+	 *
+	 *     an ENEMY carries one figure, here, and zero in all eight below
+	 *     a PLAYER carries eight figures below, and zero here
+	 *
+	 * WHY A NINTH ATTRIBUTE RATHER THAN WRITING ONE FIGURE INTO EIGHT SLOTS,
+	 * which is what an enemy used to do. The two are the same number as long as
+	 * every incoming hit is typed. They stop being the same the moment one is not,
+	 * and player damage is deliberately untyped: `ResistanceFor` in
+	 * CataclysmDamageCalculation.cpp cannot pick a slot from an empty type, so
+	 * eight identical figures would all be skipped and the enemy would resist
+	 * nothing. One generic figure is met by every hit, whatever it is.
+	 *
+	 * It is also one number to write rather than eight, and one to read when the
+	 * archetype table starts supplying it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Resistances", ReplicatedUsing = OnRep_AllResistance)
+	FGameplayAttributeData AllResistance;
+	ATTRIBUTE_ACCESSORS(UCataclysmResistanceAttributeSet, AllResistance)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Resistances", ReplicatedUsing = OnRep_WarResistance)
 	FGameplayAttributeData WarResistance;
 	ATTRIBUTE_ACCESSORS(UCataclysmResistanceAttributeSet, WarResistance)
@@ -75,6 +102,7 @@ public:
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 protected:
+	UFUNCTION() void OnRep_AllResistance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_WarResistance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DemonicResistance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DeathResistance(const FGameplayAttributeData& OldValue);

@@ -8,6 +8,8 @@
 
 class UAbilitySystemComponent;
 class UDataTable;
+class UGameplayEffect;
+struct FGameplayEffectContextHandle;
 
 /** How long an effect lasts and what it is worth. Read from the DoTs sheet. */
 USTRUCT(BlueprintType)
@@ -121,6 +123,14 @@ public:
 	static FCataclysmStatusEffectNumbers BurnNumbers();
 
 	/**
+	 * Which of the defender's eight resistances this attacker's damage is met by.
+	 *
+	 * An enemy's own damage type, and `NAME_None` for anything else. See the
+	 * definition for why only one side of a fight is typed.
+	 */
+	static FName DamageTypeOf(const AActor* Attacker);
+
+	/**
 	 * Apply damage over a duration, in even ticks one second apart.
 	 *
 	 * @param TotalDamage  spread across the whole duration
@@ -226,4 +236,15 @@ private:
 	static const TCHAR* StatusEffectTableAssetPath;
 
 	static const UDataTable* LoadStatusEffectTable();
+
+	/**
+	 * Apply a damage-carrying effect with the attacker's damage type on it.
+	 *
+	 * Every path that damages anything goes through here, so there is one place
+	 * a hit's properties are attached and one place they can be forgotten.
+	 */
+	static void ApplyTypedSpec(UGameplayEffect* Effect,
+							   const FGameplayEffectContextHandle& Context,
+							   UAbilitySystemComponent* Defender,
+							   const AActor* Attacker);
 };
