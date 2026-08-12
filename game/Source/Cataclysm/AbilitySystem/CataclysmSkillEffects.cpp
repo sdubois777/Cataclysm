@@ -8,6 +8,9 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
+// For the boss check in ApplyStun: boss-ness lives on the enemy as its rarity
+// step, so rule three has to ask the enemy class. Issue #395.
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "GameplayEffect.h"
@@ -375,9 +378,25 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 		}
 	}
 
-	// RULE THREE, A BOSS CANNOT BE STUNNED, IS NOT CHECKED. There is no boss in
-	// this project to ask -- no flag, no class, no tag. Issue #395. This is the
-	// line it goes on when there is.
+	// RULE THREE: A BOSS CANNOT BE STUNNED AT ALL. Section VI of the design
+	// document, and the last of its three anti-stun-lock rules to arrive --
+	// issue #395. Boss-ness derives from the rarity the spawner set, steps 4
+	// and 5 of the ladder: Boss and Cataclysm Boss. See
+	// ACataclysmEnemyCharacter::IsBoss for why it is rarity rather than a flag
+	// or a tag.
+	//
+	// UNCONDITIONALLY, INCLUDING FOR A DESIGNED STUN. bStunIsDesigned exists to
+	// skip the damage THRESHOLD above, because an attack built to stun should
+	// not fail to when it lands; it does not skip the immunity window and it
+	// does not skip this. "At all" means at all.
+	if (const ACataclysmEnemyCharacter* Enemy =
+			Cast<ACataclysmEnemyCharacter>(Target))
+	{
+		if (Enemy->IsBoss())
+		{
+			return false;
+		}
+	}
 
 	if (!ApplyTagForDuration(Instigator, Target, StunnedTag(), DurationSeconds))
 	{

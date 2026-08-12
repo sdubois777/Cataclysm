@@ -300,6 +300,14 @@ void ACataclysmEnemyCharacter::SetAttackDamage(float NewAttackDamage)
 	ApplyStartingAttributes();
 }
 
+void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
+{
+	// A NEGATIVE STEP IS A CALLER ERROR, ANSWERED WITH COMMON. There is nothing
+	// below Common on the ladder, and clamping beats letting a bad value make
+	// IsBoss's comparison quietly meaningless.
+	RarityStep = FMath::Max(0, NewStep);
+}
+
 void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 {
 	if (!AbilitySystemComponent)
