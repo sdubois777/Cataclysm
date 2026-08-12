@@ -2982,16 +2982,18 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
-**Only enemy damage carries a damage type. Player damage does not, and that is deliberate.** A player has eight resistances because eight Cataclysms attack them, so an enemy's hit has to say which one applies. An enemy resists everything equally, so a player's hit has nothing to choose between and says nothing. The enemy's one figure is a **generic resistance** met by a hit of any type, including an untyped one — not the same figure written into eight typed slots, which would be met by nothing at all once player damage stopped naming a type.
+**Only enemy damage carries a damage type. Player damage does not, and that is deliberate.** A player has eight resistances because eight Cataclysms attack them, so an enemy's hit has to say which one applies. An enemy resists everything equally, so a player's hit has nothing to choose between and says nothing.
 
   
 
-The two sides therefore use the same set of resistance values differently, and this is the whole of it:
+**An enemy does not have the eight resistances at all.** It has a single all-damage resistance instead, met by a hit of any type including an untyped one. The two are not interchangeable: one figure written into eight typed slots is met by nothing once player damage stops naming a type, because there is no slot to select.
+
+  
 
 | | How it resists | How its damage is typed |
 | :-- | :-- | :-- |
-| Enemy | one generic figure, met by any hit | as its Cataclysm's damage type |
-| Player | eight figures, one per damage type | not typed at all |
+| Enemy | one all-damage figure, and no typed resistances | as its Cataclysm's damage type |
+| Player | eight typed figures, and no all-damage one | not typed at all |
 
   
 

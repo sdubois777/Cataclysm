@@ -10,7 +10,7 @@
 class UCataclysmAbilitySystemComponent;
 class UCataclysmVitalAttributeSet;
 class UCataclysmCombatAttributeSet;
-class UCataclysmResistanceAttributeSet;
+class UCataclysmAllResistanceAttributeSet;
 class UStaticMeshComponent;
 
 /**
@@ -306,10 +306,12 @@ public:
 	 *
 	 * ONE RESISTANCE FIGURE, NOT EIGHT. The model states it plainly: "percent of
 	 * all incoming damage resisted, whatever its type. One figure, not eight."
-	 * It is written onto `UCataclysmResistanceAttributeSet::AllResistance`, the
-	 * generic resistance that a hit of any type meets, including an untyped one.
-	 * It used to be written onto all eight typed resistances instead, which meant
-	 * it was never met at all: see issue #486 and the comment at the write.
+	 * An enemy holds `UCataclysmAllResistanceAttributeSet`, which is that one
+	 * figure and nothing else, where a player holds
+	 * `UCataclysmResistanceAttributeSet`, which is eight and nothing else. No
+	 * character holds both. It used to be one figure written onto all eight typed
+	 * resistances, which meant it was never met at all: see issue #486 and the
+	 * comment at the write.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float ResistancePercent = 0.0f;
@@ -395,7 +397,7 @@ protected:
 	TObjectPtr<UCataclysmCombatAttributeSet> CombatAttributes;
 
 	UPROPERTY()
-	TObjectPtr<UCataclysmResistanceAttributeSet> ResistanceAttributes;
+	TObjectPtr<UCataclysmAllResistanceAttributeSet> ResistanceAttributes;
 
 	/**
 	 * How far a charge may step in one frame before it is split into several,

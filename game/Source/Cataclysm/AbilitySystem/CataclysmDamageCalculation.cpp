@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
@@ -12,29 +13,45 @@ namespace
 	/**
 	 * How much of a hit of this type the defender resists.
 	 *
-	 * TWO PARTS ADDED TOGETHER: a generic figure that applies whatever the hit is,
-	 * and the one of eight the hit's own type selects. That shape is what lets the
-	 * two sides of a fight use one attribute set differently, which the project
-	 * owner ruled for on 2026-08-12: an enemy carries one generic figure, a player
-	 * carries eight typed ones.
+	 * IT ASKS THE DEFENDER WHICH KIND OF RESISTANCE IT HAS, because the two sides
+	 * of a fight hold different attribute sets and never both. The project owner
+	 * ruled it on 2026-08-12:
 	 *
-	 * AN UNTYPED HIT STILL MEETS THE GENERIC PART. That is the whole reason the
-	 * generic part exists. Player damage is deliberately untyped -- the enemy
-	 * resists everything equally, so a type would select between eight copies of
-	 * one number -- and before issue #486 an untyped hit returned zero here and
-	 * the enemy's resistance did nothing at all.
+	 *     an ENEMY holds UCataclysmAllResistanceAttributeSet: one figure, met by
+	 *     a hit of any type including an untyped one
+	 *
+	 *     a PLAYER holds UCataclysmResistanceAttributeSet: eight figures, and the
+	 *     hit's own damage type selects which one applies
+	 *
+	 * The two are added rather than one winning, so a character that somehow held
+	 * both would get a defined answer instead of an accidental one. Nothing holds
+	 * both today.
+	 *
+	 * AN UNTYPED HIT STILL MEETS THE GENERIC FIGURE. That is what the generic
+	 * figure is for. Player damage carries no type -- the enemy resists everything
+	 * equally, so a type would be choosing between copies of one number -- and
+	 * before issue #486 an untyped hit found no slot to read, so every resistance
+	 * on either side did nothing at all.
 	 */
-	float ResistanceFor(const UCataclysmResistanceAttributeSet* Set, FName DamageType)
+	float ResistanceFor(const UAbilitySystemComponent* Defender, FName DamageType)
 	{
-		if (!Set)
+		if (!Defender)
 		{
 			return 0.0f;
 		}
 
-		const float Generic = Set->GetAllResistance();
-		if (DamageType.IsNone())
+		float Total = 0.0f;
+		if (const UCataclysmAllResistanceAttributeSet* Generic =
+				Defender->GetSet<UCataclysmAllResistanceAttributeSet>())
 		{
-			return Generic;
+			Total += Generic->GetAllResistance();
+		}
+
+		const UCataclysmResistanceAttributeSet* Set =
+			Defender->GetSet<UCataclysmResistanceAttributeSet>();
+		if (!Set || DamageType.IsNone())
+		{
+			return Total;
 		}
 
 		static const TMap<FName, TFunction<float(const UCataclysmResistanceAttributeSet*)>> Lookup = {
@@ -50,12 +67,12 @@ namespace
 
 		if (const auto* Getter = Lookup.Find(DamageType))
 		{
-			return Generic + (*Getter)(Set);
+			Total += (*Getter)(Set);
 		}
 
-		// A damage type nobody has heard of. The generic part still applies,
-		// because it applies to everything by definition.
-		return Generic;
+		// A damage type nobody has heard of adds nothing, and the generic figure
+		// still applies, because it applies to everything by definition.
+		return Total;
 	}
 }
 
@@ -125,8 +142,6 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		Defender->GetSet<UCataclysmVitalAttributeSet>();
 	const UCataclysmCombatAttributeSet* Combat =
 		Defender->GetSet<UCataclysmCombatAttributeSet>();
-	const UCataclysmResistanceAttributeSet* Resistances =
-		Defender->GetSet<UCataclysmResistanceAttributeSet>();
 
 	if (!Vitals)
 	{
@@ -170,7 +185,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 
 	// 4. Resistance, penetrated first and capped second.
 	const float Resist = EffectiveResistance(
-		ResistanceFor(Resistances, Hit.DamageType), Hit.ResistancePenetration);
+		ResistanceFor(Defender, Hit.DamageType), Hit.ResistancePenetration);
 	Damage *= 1.0f - Resist / 100.0f;
 
 	// 5. Flat damage reduction.

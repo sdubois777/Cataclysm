@@ -64,13 +64,25 @@ between eight copies of one number.
 
 ### The one thing that had to be built rather than only wired
 
-**A generic resistance, as a ninth attribute.** An enemy used to write its one
-figure into all eight typed resistances, which is the same thing as a generic
-resistance *only as long as every hit names a type*. Player damage deliberately
-names none, so the lookup had no slot to pick and skipped all eight — the
-creature resisted nothing. One generic figure is met by every hit whatever it is.
+**An enemy stops holding the eight typed resistances and holds a single
+all-damage one instead.** It used to write its one figure into all eight typed
+slots, which is the same thing as an all-damage resistance *only as long as every
+hit names a type*. Player damage deliberately names none, so the lookup had no
+slot to pick and skipped all eight — the creature resisted nothing.
 
-It is off the character sheet, like attack damage, because no player has one.
+**It is a separate attribute set, not a ninth attribute on the existing one.**
+The first attempt was the ninth attribute and the project owner rejected it:
+
+> "noooo not a ninth resistance. Either remove all of the 8 resistance types on
+> enemies and give them an all res, or make all 8 values the same. The first is
+> probably the better option."
+
+A separate set is the only shape that expresses "an enemy does not have the
+eight". An attribute set is all-or-nothing — a character that registers one gets
+every attribute in it — so a ninth attribute would have given every player an
+all-damage resistance no player can have, and left every enemy holding the eight
+typed resistances it must not have. The character sheet is 45 stats either way,
+and with two sets it needs no exception written into the count.
 
 ### What this does not touch
 
