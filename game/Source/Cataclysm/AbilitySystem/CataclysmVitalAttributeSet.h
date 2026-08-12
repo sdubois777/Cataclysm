@@ -33,6 +33,19 @@ public:
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
+protected:
+	/**
+	 * Tell the owning character its health has reached zero, once.
+	 *
+	 * HERE RATHER THAN IN THE CHARACTER, because this is the only place in the
+	 * project that sees a hit land and what it left behind. Nothing watched
+	 * health before issue #517, so a creature at zero health kept chasing and
+	 * kept swinging.
+	 */
+	void NotifyIfHealthReachedZero();
+
+public:
+
 	UPROPERTY(BlueprintReadOnly, Category = "Vitals", ReplicatedUsing = OnRep_Health)
 	FGameplayAttributeData Health;
 	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, Health)

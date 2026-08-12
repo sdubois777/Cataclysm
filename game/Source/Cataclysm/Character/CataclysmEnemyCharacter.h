@@ -29,6 +29,31 @@ public:
 	ACataclysmEnemyCharacter();
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	/**
+	 * Stop acting and leave the level.
+	 *
+	 * WHAT DYING IS FOR AN ENEMY, and until issue #517 it was nothing at all: a
+	 * creature at zero health kept chasing, kept swinging and could not be
+	 * removed, so a fight had no outcome.
+	 *
+	 * THREE THINGS, IN THIS ORDER. It is marked dead, which is what
+	 * ACataclysmEnemyController asks before driving it and what stops a second
+	 * call doing any of this twice. Anything it was in the middle of is stopped:
+	 * a charge is cancelled and its movement is halted, so it does not slide on
+	 * after it dies. Then it is destroyed on the next tick.
+	 *
+	 * ON THE NEXT TICK RATHER THAN NOW, because this runs inside the gameplay
+	 * effect callback that dealt the killing blow. Destroying the actor there
+	 * would tear down the ability system component that is still running.
+	 *
+	 * IT PLAYS NO DEATH ANIMATION, which is a gap rather than a decision. The
+	 * Paragon packs ship Death_A and Death_B, and playing one means measuring its
+	 * length and holding the creature for it -- per creature, because the Abyssal
+	 * Warden has no animation Blueprint and queues clips in C++ (issue #387). See
+	 * the issue filed alongside #517.
+	 */
+	virtual void HandleDeath() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 

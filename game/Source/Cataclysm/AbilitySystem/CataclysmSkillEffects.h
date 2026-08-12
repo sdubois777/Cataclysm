@@ -303,6 +303,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsStunned(const AActor* Actor);
 
+	/**
+	 * Whether this actor's health has reached zero.
+	 *
+	 * A TAG RATHER THAN A FLAG, for the reason a stun is one: the two controllers
+	 * that have to refuse to drive a dead character already ask about state this
+	 * way, and anything else that needs to know can ask without holding a pointer
+	 * to the character's own class.
+	 *
+	 * IT IS NOT TIMED, unlike every other state tag here. `ApplyTagForDuration`
+	 * grants a tag that expires; this one is added loosely and never removed,
+	 * because the character it is on is being taken out of the level. Issue #517.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsDead(const AActor* Actor);
+
+	/** Mark this actor dead. Does nothing to one already marked. */
+	static bool MarkDead(AActor* Actor);
+
+	/** The State.Dead tag, or an invalid tag if the vocabulary lacks it. */
+	static FGameplayTag DeadTag();
+
 	/** The State.Stunned tag, or an invalid tag if the vocabulary lacks it. */
 	static FGameplayTag StunnedTag();
 

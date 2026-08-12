@@ -20,6 +20,73 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — An enemy at zero health dies; a player's death is still undesigned
+
+**Affects:** nothing in the design documents yet. It builds behaviour the design
+assumed and never stated. Issue #517.
+
+**Nothing in the project reacted to health reaching zero.** Damage was dealt and
+health did drop — the automation tests measured it — and then nothing happened.
+An enemy at zero health kept chasing, kept swinging and could not be removed from
+the level. The project owner reported it while playing:
+
+> "None of the actual combat is implemented I don't think. Or at least I can't
+> tell when playing it. There's no health bars or damage numbers"
+
+That reading was correct in effect even though the arithmetic ran. **A fight that
+cannot end is indistinguishable from a fight that is not happening**, and it also
+made every combat figure impossible to judge by play, which is how this project
+settles them.
+
+### What an enemy's death is
+
+Three things, in order, when its health first reaches zero:
+
+1. **It is marked dead**, with a new `State.Dead` gameplay tag.
+2. **Whatever it was doing stops.** A charge is cancelled, its movement is
+   halted, and its collision is turned off so a corpse cannot push the player.
+3. **It is destroyed on the next tick.**
+
+**On the next tick rather than immediately**, because the killing blow is
+resolved inside a gameplay effect callback and destroying the actor there would
+tear down the ability system component still running.
+
+### Why a tag rather than a flag
+
+A stun is a tag, and the two controllers that must refuse to drive a dead
+character already ask about state that way. A flag would have needed both of them
+to know the creature's own class.
+
+**It is the one state tag here that is not timed.** Every other is granted for a
+duration and expires; this one is added loosely and never removed, because the
+character carrying it is being taken out of the level. It is also what makes
+dying happen once — health can be written at zero repeatedly, by a burn ticking
+on a corpse or by two hits in one frame.
+
+### A player's death is deliberately not built
+
+`ACataclysmCharacterBase::HandleDeath` is inert on the base and only the enemy
+overrides it, so a player at zero health is exactly as before.
+
+**That is a scope decision, not an oversight.** A player's death owes a death
+penalty, a corruption cost and the Last Stand mechanic (#43), none of which is
+designed. The enemy half needs none of that and is what unblocks judging every
+creature by play.
+
+### What is still missing
+
+**A death animation.** The creature vanishes in one frame. The Paragon packs ship
+death clips — `ParagonGrux` has `Death_A` and `Death_B` — and playing one is
+per-creature work, because the Abyssal Warden queues clips in C++ with no
+animation Blueprint (#387), the Brute uses generated montages, and five of the
+seven creatures have no art at all. Issue #522.
+
+**Health bars and damage numbers**, which is issue #518 and the other half of why
+combat could not be judged in play. There is no user interface code anywhere in
+`game/Source/`.
+
+---
+
 ## 2026-08-12 — A skill's own tags say whether it can be evaded
 
 **Affects:** `Cataclysm_GDD_v2.md`, the Avoidance subsection. Applied in the same
