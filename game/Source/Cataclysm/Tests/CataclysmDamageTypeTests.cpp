@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -29,11 +30,16 @@
  *
  * THE SHAPE THE PROJECT OWNER RULED FOR, on 2026-08-12: "enemies will have a
  * generic all res. The only damage that should actually be typed is enemy damage
- * so the player's resistances can take effect." So the two sides of a fight use
- * one attribute set differently and one direction of damage carries a type:
+ * so the player's resistances can take effect", and then, on the first attempt at
+ * it: "noooo not a ninth resistance. Either remove all of the 8 resistance types
+ * on enemies and give them an all res, or make all 8 values the same. The first
+ * is probably the better option."
  *
- *     an ENEMY resists everything equally, through AllResistance
- *     a PLAYER resists eight types separately, through the eight
+ * So the two sides of a fight hold DIFFERENT ATTRIBUTE SETS and never both, and
+ * one direction of damage carries a type:
+ *
+ *     an ENEMY holds UCataclysmAllResistanceAttributeSet, one figure, no types
+ *     a PLAYER holds UCataclysmResistanceAttributeSet, eight figures, no generic
  *     an ENEMY'S hit says which of the player's eight applies
  *     a PLAYER'S hit says nothing, because there is nothing to choose
  *
@@ -63,7 +69,14 @@ namespace CataclysmDamageTypeTest
 		return World;
 	}
 
-	/** A bare actor that can hold attributes and be an instigator. */
+	/**
+	 * A bare actor that can hold attributes and be an instigator.
+	 *
+	 * IT HOLDS BOTH KINDS OF RESISTANCE, which no real character does: an enemy
+	 * holds the all-damage one and a player holds the eight. Holding both lets one
+	 * helper stand in for either side, and it is also the only way to check that
+	 * the two ADD rather than one silently winning.
+	 */
 	struct FScopedCombatant
 	{
 		explicit FScopedCombatant(UWorld* World)
@@ -80,14 +93,18 @@ namespace CataclysmDamageTypeTest
 				NewObject<UCataclysmCombatAttributeSet>(Actor);
 			UCataclysmResistanceAttributeSet* NewResist =
 				NewObject<UCataclysmResistanceAttributeSet>(Actor);
+			UCataclysmAllResistanceAttributeSet* NewAllResist =
+				NewObject<UCataclysmAllResistanceAttributeSet>(Actor);
 
 			AbilitySystem->AddAttributeSetSubobject(NewVitals);
 			AbilitySystem->AddAttributeSetSubobject(NewCombat);
 			AbilitySystem->AddAttributeSetSubobject(NewResist);
+			AbilitySystem->AddAttributeSetSubobject(NewAllResist);
 
 			Vitals = NewVitals;
 			Combat = NewCombat;
 			Resistances = NewResist;
+			AllResistance = NewAllResist;
 
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
@@ -117,6 +134,7 @@ namespace CataclysmDamageTypeTest
 		TObjectPtr<UCataclysmVitalAttributeSet> Vitals = nullptr;
 		TObjectPtr<UCataclysmCombatAttributeSet> Combat = nullptr;
 		TObjectPtr<UCataclysmResistanceAttributeSet> Resistances = nullptr;
+		TObjectPtr<UCataclysmAllResistanceAttributeSet> AllResistance = nullptr;
 		float LastHealth = 1'000'000.0f;
 	};
 
@@ -265,7 +283,7 @@ CATACLYSM_TEST(FCataclysmGenericResistanceMeetsAnUntypedHitTest,
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	{
 		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
-		Defender.Resistances->SetAllResistance(35.0f);
+		Defender.AllResistance->SetAllResistance(35.0f);
 
 		// THE DEFECT IN ISSUE #486, IN ONE ASSERTION. A player's hit carries no
 		// damage type, so before this the lookup selected none of the eight
@@ -286,7 +304,7 @@ CATACLYSM_TEST(FCataclysmGenericResistanceMeetsEveryTypeTest,
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	{
 		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
-		Defender.Resistances->SetAllResistance(35.0f);
+		Defender.AllResistance->SetAllResistance(35.0f);
 
 		// The word "generic" has to mean every type and not merely the untyped
 		// case, or a creature would resist a player's plain hit and not its
@@ -316,7 +334,7 @@ CATACLYSM_TEST(FCataclysmTypedResistanceAddsToTheGenericOneTest,
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	{
 		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
-		Defender.Resistances->SetAllResistance(20.0f);
+		Defender.AllResistance->SetAllResistance(20.0f);
 		Defender.Resistances->SetDemonicResistance(30.0f);
 
 		// The two parts add, so a character can carry both. No creature does

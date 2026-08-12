@@ -7,7 +7,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
-#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -60,7 +60,7 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 	// great many enemies.
 	VitalAttributes = CreateDefaultSubobject<UCataclysmVitalAttributeSet>(TEXT("VitalAttributes"));
 	CombatAttributes = CreateDefaultSubobject<UCataclysmCombatAttributeSet>(TEXT("CombatAttributes"));
-	ResistanceAttributes = CreateDefaultSubobject<UCataclysmResistanceAttributeSet>(TEXT("ResistanceAttributes"));
+	ResistanceAttributes = CreateDefaultSubobject<UCataclysmAllResistanceAttributeSet>(TEXT("ResistanceAttributes"));
 
 	// A stand-in body, for the same reason the player has one: this project's
 	// own Content folder holds no meshes at all, so without it an enemy is an
@@ -368,10 +368,11 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(),
 				CritMultiplierPercent);
 
-	// ONE GENERIC FIGURE, NOT EIGHT TYPED ONES. The design model says so in as
-	// many words: "percent of all incoming damage resisted, whatever its type.
-	// One figure, not eight." A per-type enemy profile is not something the
-	// design has, and inventing one here would be inventing design.
+	// ONE FIGURE, AND THIS CREATURE HAS NO TYPED RESISTANCES AT ALL -- it does not
+	// hold the attribute set they live in. The design model says so in as many
+	// words: "percent of all incoming damage resisted, whatever its type. One
+	// figure, not eight." A per-type enemy profile is not something the design
+	// has, and inventing one here would be inventing design.
 	//
 	// IT USED TO BE THE SAME NUMBER WRITTEN INTO ALL EIGHT TYPED SLOTS, and that
 	// resisted nothing. `ResistanceFor` in CataclysmDamageCalculation.cpp picks a
@@ -379,7 +380,7 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// -- deliberately, because this creature resists everything equally, so a type
 	// would be choosing between eight copies of one number. With no type there was
 	// no slot to pick and all eight were skipped. Issue #486.
-	ApplyIfHeld(UCataclysmResistanceAttributeSet::GetAllResistanceAttribute(),
+	ApplyIfHeld(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(),
 				ResistancePercent);
 }
 

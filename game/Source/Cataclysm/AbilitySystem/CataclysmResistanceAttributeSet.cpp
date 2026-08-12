@@ -7,7 +7,6 @@ UCataclysmResistanceAttributeSet::UCataclysmResistanceAttributeSet()
 {
 	// No class starts resistant to anything. Resistance comes from gear,
 	// passives and, where a class chooses it, its own stat line.
-	InitAllResistance(0.0f);
 	InitWarResistance(0.0f);
 	InitDemonicResistance(0.0f);
 	InitDeathResistance(0.0f);
@@ -23,7 +22,6 @@ void UCataclysmResistanceAttributeSet::GetLifetimeReplicatedProps(
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	CATACLYSM_REPLICATE(UCataclysmResistanceAttributeSet, AllResistance);
 	CATACLYSM_REPLICATE(UCataclysmResistanceAttributeSet, WarResistance);
 	CATACLYSM_REPLICATE(UCataclysmResistanceAttributeSet, DemonicResistance);
 	CATACLYSM_REPLICATE(UCataclysmResistanceAttributeSet, DeathResistance);
@@ -52,7 +50,6 @@ void UCataclysmResistanceAttributeSet::PreAttributeChange(
 TArray<FGameplayAttribute> UCataclysmResistanceAttributeSet::GetAllAttributes()
 {
 	return {
-		GetAllResistanceAttribute(),
 		GetWarResistanceAttribute(), GetDemonicResistanceAttribute(),
 		GetDeathResistanceAttribute(), GetPestilenceResistanceAttribute(),
 		GetFamineResistanceAttribute(), GetCelestialResistanceAttribute(),
@@ -60,7 +57,6 @@ TArray<FGameplayAttribute> UCataclysmResistanceAttributeSet::GetAllAttributes()
 	};
 }
 
-CATACLYSM_ON_REP(UCataclysmResistanceAttributeSet, AllResistance)
 CATACLYSM_ON_REP(UCataclysmResistanceAttributeSet, WarResistance)
 CATACLYSM_ON_REP(UCataclysmResistanceAttributeSet, DemonicResistance)
 CATACLYSM_ON_REP(UCataclysmResistanceAttributeSet, DeathResistance)
