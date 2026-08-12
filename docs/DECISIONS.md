@@ -20,6 +20,101 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — Saves are three records, partitioned by lethality mode and by offline or online
+
+**Affects:** adds `Save_System_Design.md` to this folder. Nothing in
+`Cataclysm_GDD_v2.md` changes. Issue #21. Nothing is implemented yet — a search of
+`game/Source/` for `USaveGame` returns nothing.
+
+### What was decided
+
+**One save file was never possible.** The game persists three things with three
+different lifetimes, and in co-operative play with three different owners:
+
+| Record | Lifetime | Owner in co-op |
+| :-- | :-- | :-- |
+| Account | Permanent | Each player their own |
+| Character | Permanent, survives a failed run | Each player their own |
+| Run | Discarded when the run ends | **Shared by the party** |
+
+**The co-op split is not a Phase 2 addition, it is this boundary.** The design
+already says the empire is shared in co-op and builds are individual — section
+XVI's risk table says so directly, and the co-operative play section charges the
+death penalty "once against the shared empire clock". So the run record is the
+shared thing and the character record is the individual thing, in solo play as
+well. A four-player session is one run record with four character records
+attached, not a different shape.
+
+That is why this was worth designing before Phase 2. Splitting a single save file
+into shared and per-player halves later is the retrofit issue #21 warned about;
+starting split costs nothing.
+
+**Partitioning enforces a rule the design already made.** Each lethality mode has
+its own empire tree, its own stash and its own market, and nothing moves between
+them. A Solo Self-Found character has its own tree shared with nothing at all and
+no stash. The save layout is the only place that rule can be enforced, so the
+partition key is the lethality mode, and a Solo Self-Found character touches no
+account record — its tree lives inside its own character record and its file is
+self-contained.
+
+**JSON, not the engine's default binary.** `USaveGame` subclasses for the engine
+integration and console support, serialised as JSON, with an integer schema
+version as the first field of every record.
+
+### Why JSON, when the engine's default is binary
+
+Both ends of this trade are occupied by shipped games in the genre. **Last Epoch
+writes JSON** for its offline saves; **Grim Dawn writes a custom binary `.gdc`
+format**. Neither is wrong.
+
+JSON is right for this project for a reason specific to it rather than general:
+issue #21's real worry is that a format which cannot migrate means discarding
+player progress at every patch, and this game will change constantly through
+development and Early Access. A migration written against a readable format can
+be inspected, diffed and tested by hand. A migration written against binary
+cannot, and every bug in one produces a corrupt save rather than an error.
+
+There is a consistency argument too. Decision #505 adopted Last Epoch's offline
+and online split by name; its saves are the closest working example of exactly
+this design.
+
+**The cost is size and load time**, and the decision is to accept it and measure.
+If load time is measured and found to be a problem, binary is the answer — but
+measure first rather than switching on principle.
+
+### Migration rules that are not obvious
+
+- **A migration never reads `game/Data/`.** It transforms one schema into the
+  next using only what is in the record and constants frozen into the migration
+  itself. A migration that reads the current data tables breaks the moment those
+  tables change, which is the thing most likely to change.
+- **Migrations are a chain of single-step functions**, never a jump between
+  distant versions. A chain is testable; a jump is not.
+- **A save newer than the build is refused, not guessed at.**
+- **The version test uses committed example saves, one per historical schema
+  version.** A test that writes a save with the current code and reads it back
+  proves only that the code agrees with itself, which is the failure mode this
+  criterion exists to prevent.
+
+### What this leaves open
+
+Whether the offline and online populations also have separate stashes and
+separate empire trees. **The design document does not say**, and the design
+assumes they are separate because a shared stash both can reach is a transfer
+route between two populations that decision #505 made deliberately
+non-transferable. Filed as issue #528. If it is decided the other way, only the
+partition section changes.
+
+### Sources
+
+- Last Epoch offline saves are JSON, in `AppData\LocalLow\Eleventh Hour Games\Last Epoch\Saves`:
+  [save location](https://steamcommunity.com/app/899770/discussions/0/4338725580143851622/),
+  [save editor thread describing the format](https://fearlessrevolution.com/viewtopic.php?t=17089)
+- Grim Dawn uses a custom binary `.gdc` format, in `Documents\My Games\Grim Dawn\save`:
+  [PCGamingWiki](https://www.pcgamingwiki.com/wiki/Grim_Dawn)
+
+---
+
 ## 2026-08-12 — An enemy at zero health dies; a player's death is still undesigned
 
 **Affects:** nothing in the design documents yet. It builds behaviour the design
