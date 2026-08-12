@@ -462,6 +462,10 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 		return;
 	}
 
+	// WHETHER THIS CAN BE EVADED COMES FROM SkillTags, which is carried from the
+	// skill that fired it. Emberhurl is `Type.Projectile` and nothing else, so it
+	// is a direct hit; a projectile whose skill is tagged `Type.AOE.PointBlank`
+	// detonates and cannot be evaded. Issue #513.
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Firer, Target, DamagePercent, SkillTags);
 	if (Dealt > 0.0f)

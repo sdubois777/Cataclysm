@@ -111,7 +111,14 @@ void ACataclysmGroundZone::Sweep()
 
 	for (AActor* Target : Inside)
 	{
-		UCataclysmSkillEffects::ApplyDirectDamage(Source, Target, DamagePerTick);
+		// AREA AND OVER TIME BOTH. A zone catches whatever is standing in it
+		// rather than striking one target, so it cannot be evaded; and it is
+		// damage over time, so an energy shield does not absorb it. Issue #513.
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		Delivery.bIsDamageOverTime = true;
+		UCataclysmSkillEffects::ApplyDirectDamage(Source, Target, DamagePerTick,
+												  Delivery);
 	}
 
 	LastSweepCount = Inside.Num();

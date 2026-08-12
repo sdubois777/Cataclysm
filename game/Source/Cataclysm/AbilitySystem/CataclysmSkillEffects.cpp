@@ -114,7 +114,8 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 									   float DamagePercent,
-									   const FGameplayTagContainer& SkillTags)
+									   const FGameplayTagContainer& SkillTags,
+									   const FCataclysmHitDelivery& Delivery)
 {
 	if (DamagePercent <= 0.0f)
 	{
@@ -142,11 +143,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
-	return ApplyDirectDamage(Instigator, Target, Damage) ? Damage : 0.0f;
+	// THE SKILL'S OWN TAGS DECIDE WHETHER THIS IS AREA DAMAGE, and a caller may
+	// also say so outright. The two are combined rather than one overriding the
+	// other, because a skill row and an enemy's C++ ability answer the same
+	// question by different routes and neither should be able to cancel the other.
+	FCataclysmHitDelivery Arrived = Delivery;
+	Arrived.bIsArea = Arrived.bIsArea || IsAreaDamage(SkillTags);
+
+	return ApplyDirectDamage(Instigator, Target, Damage, Arrived) ? Damage : 0.0f;
 }
 
 bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Target,
-											   float Damage)
+											   float Damage,
+											   const FCataclysmHitDelivery& Delivery)
 {
 	if (Damage <= 0.0f)
 	{
@@ -178,9 +187,33 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
-	ApplyTypedSpec(Effect, Context, Defender, Instigator);
+	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery);
 
 	return true;
+}
+
+const TCHAR* UCataclysmSkillEffects::PointBlankAreaTagName =
+	TEXT("Type.AOE.PointBlank");
+const TCHAR* UCataclysmSkillEffects::AuraAreaTagName = TEXT("Type.AOE.Aura");
+
+bool UCataclysmSkillEffects::IsAreaDamage(const FGameplayTagContainer& SkillTags)
+{
+	if (SkillTags.IsEmpty())
+	{
+		return false;
+	}
+
+	UGameplayTagsManager& Tags = UGameplayTagsManager::Get();
+	for (const TCHAR* Name : { PointBlankAreaTagName, AuraAreaTagName })
+	{
+		const FGameplayTag Tag =
+			Tags.RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+		if (Tag.IsValid() && SkillTags.HasTag(Tag))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 FName UCataclysmSkillEffects::DamageTypeOf(const AActor* Attacker)
@@ -202,7 +235,8 @@ FName UCataclysmSkillEffects::DamageTypeOf(const AActor* Attacker)
 void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 											 const FGameplayEffectContextHandle& Context,
 											 UAbilitySystemComponent* Defender,
-											 const AActor* Attacker)
+											 const AActor* Attacker,
+											 const FCataclysmHitDelivery& Delivery)
 {
 	// BUILT AS A SPEC RATHER THAN HANDED TO ApplyGameplayEffectToSelf, purely so
 	// a tag can be put on it. That overload builds the spec itself and gives no
@@ -215,6 +249,26 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Element.IsValid())
 	{
 		Spec.AddDynamicAssetTag(Element);
+	}
+
+	// HOW THE HIT ARRIVED, as two more tags on the same spec. Added only when
+	// true, so an ordinary direct blow carries nothing extra.
+	if (Delivery.bIsArea)
+	{
+		const FGameplayTag Area = UCataclysmDamageCalculation::AreaDamageTag();
+		if (Area.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Area);
+		}
+	}
+	if (Delivery.bIsDamageOverTime)
+	{
+		const FGameplayTag OverTime =
+			UCataclysmDamageCalculation::DamageOverTimeTag();
+		if (OverTime.IsValid())
+		{
+			Spec.AddDynamicAssetTag(OverTime);
+		}
 	}
 
 	Defender->ApplyGameplayEffectSpecToSelf(Spec);
@@ -309,7 +363,14 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// Typed the same way a direct hit is. A burn left by an enemy is that
 	// enemy's damage type, so the player's resistance to it applies to every
 	// tick and not only to the blow that started it.
-	ApplyTypedSpec(Effect, Context, Defender, Instigator);
+	//
+	// AND MARKED AS DAMAGE OVER TIME, which is what stops an energy shield
+	// absorbing it. A shield that soaked burn would be a second health bar rather
+	// than a distinct defence, and damage over time is the design's answer to
+	// shield stacking. Issue #513.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsDamageOverTime = true;
+	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery);
 
 	return true;
 }

@@ -20,6 +20,84 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — A skill's own tags say whether it can be evaded
+
+**Affects:** `Cataclysm_GDD_v2.md`, the Avoidance subsection. Applied in the same
+change. Issue #513.
+
+Evasion has always been defined as avoiding a direct attack only, with area
+damage landing regardless. **Nothing in the game had ever said which attacks were
+which**, so every hit arrived as a direct one and an evasive character dodged
+explosions centred on itself. The Brute's stomp and the Abyssal Warden's ring
+were both affected.
+
+### What decides it
+
+**The skill's own gameplay tag list**, which already carried the answer:
+
+| Tag | On | Meaning | Evadable? |
+| :-- | --: | :-- | :-- |
+| `Type.AOE.PointBlank` | 33 skills | an explosion centred on the caster or target | no |
+| `Type.AOE.Aura` | 4 skills | a radius that moves with the caster | no |
+| `Type.AOE.Persistent` | 26 skills | ground effects, clouds, zones | **yes** |
+| no area tag | the rest | one blow at one target | yes |
+
+**`Type.AOE.Persistent` describes the ground a skill leaves, not the blow it
+lands**, and that is the whole subtlety. Flamedart is tagged `Keyword.Charge,
+Type.AOE.Persistent`: the charge makes contact and can be evaded, and the fire
+trail damages whatever stands in it afterwards. A zone's own ticks are area
+damage, decided where the zone deals them. Matching on the `Type.AOE` parent
+instead would look correct and would silently make 26 designed skills
+unevadable.
+
+### The shape this was almost built as
+
+The first attempt decided it in C++ at each damage site, from the skill's shape:
+every Strike was area damage, every charge was contact, a projectile was direct
+in flight and area when it detonated. **That was wrong and the data said so.**
+Cinderslash is `Type.Strike, Type.Melee` and nothing else — one sword blow — and
+a shape-based rule would have made it, and every other melee skill, impossible to
+evade.
+
+The project owner asked whether the gameplay tag system was being used for this,
+which is what surfaced it:
+
+> "Just to clarify, you're using the GAS tagging system for this work right?
+> Basically, if an ability is tagged with AOE evade doesn't trigger kinda thing?"
+
+**The lesson is narrower than "use tags".** The answer was already authored in
+`game/Data/WeaponSkills.csv` for 37 skills, and a rule was being invented in code
+beside it. Checking what the data already said should have come first.
+
+### Enemy abilities are the exception, and it is temporary
+
+An enemy ability is C++ constants on the creature class and carries no tag list,
+so the Brute's stomp and the Abyssal Warden's ring set the flag directly at the
+call site. That is a second route to one answer, which this repository usually
+treats as worth removing. **Issue #519 is that removal**, requested by the
+project owner in the same exchange: "enemy skills should carry tags as well".
+
+### One more property travels the same way
+
+**Whether a hit is damage over time**, which decides whether an energy shield
+absorbs it. A shield that soaked burn would be a second health bar rather than a
+distinct defence, and damage over time is the design's stated answer to shield
+stacking. It is NOT read from a skill's tags: a skill tagged `Keyword.DoT.Burn`
+applies a burn, and its own direct hit is still a direct hit. It is set by the
+two paths that genuinely deal damage over time — the periodic effect and the
+burning ground zone.
+
+### What is still not carried
+
+**Armour penetration and the weapon sub-type**, which is issue #520. Armour
+penetration has no attribute anywhere in the project to read, even though three
+enchantments and the piercing weapon sub-type all grant it, and enemy armour is
+now the largest mitigation layer on the most armoured creatures. The weapon
+sub-type needs the equipped weapon's row joined to the hit, and its four values
+land in four different places.
+
+---
+
 ## 2026-08-12 — Enemies resist generically; only enemy damage carries a type
 
 **Affects:** `Cataclysm_GDD_v2.md` section X, the enemy resistance subsection.

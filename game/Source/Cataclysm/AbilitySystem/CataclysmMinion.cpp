@@ -179,8 +179,11 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 
 		for (AActor* Target : Caught)
 		{
+			// AREA DAMAGE: an explosion swept a sphere. The melee attack
+			// above is a single blow and stays evadable. Issue #513.
 			const float Dealt = UCataclysmSkillEffects::ApplyHit(
-				Summoner, Target, DamagePercent);
+				Summoner, Target, DamagePercent, FGameplayTagContainer(),
+				FCataclysmHitDelivery::Area());
 			if (bBurnsWhatItHits && Dealt > 0.0f)
 			{
 				UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt);

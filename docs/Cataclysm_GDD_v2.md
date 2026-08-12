@@ -1009,6 +1009,18 @@ Over-capping resistance matters because Overwhelm reduces effective resistance w
 
   
 
+**What makes a hit area damage is its tags, not its shape.** A skill deals area damage when its tag list carries `Type.AOE.PointBlank`, an explosion centred on the caster or the target, or `Type.AOE.Aura`, a radius that moves with the caster. 37 of the designed skills already carry one of the two.
+
+  
+
+**`Type.AOE.Persistent` does not make a hit unevadable.** It means the skill leaves a zone behind — burning ground, a cloud — and describes that zone rather than the blow. Flamedart is tagged `Keyword.Charge, Type.AOE.Persistent`: the charge makes contact and can be evaded, and the fire trail it leaves damages whatever stands in it. A zone's own damage is area damage, decided where the zone deals it.
+
+  
+
+**A skill with no area tag deals a direct hit.** Cinderslash is `Type.Strike, Type.Melee` and nothing else, so it is one sword blow and evasion applies to it. Being a Strike does not by itself make an attack unevadable, or every melee skill in the game would ignore evasion.
+
+  
+
 ### **The Damage Calculation**
 
 One incoming hit is resolved in this order. Each step operates on what the previous step left.

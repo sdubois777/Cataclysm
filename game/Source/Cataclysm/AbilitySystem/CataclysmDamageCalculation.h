@@ -120,6 +120,29 @@ public:
 	static const TCHAR* ElementTagPrefix;
 
 	/**
+	 * The tag that says a hit swept a volume rather than touching one target.
+	 *
+	 * `Type.AOE`, the parent of the three the vocabulary declares -- Aura,
+	 * Persistent and PointBlank. A parent matches any of its children, so an
+	 * effect carrying a specific one is area damage without having to list them.
+	 */
+	static const TCHAR* AreaDamageTagName;
+
+	/**
+	 * The tag that says a hit is damage over time.
+	 *
+	 * `Keyword.DoT`, the parent of Bleed, Burn, Disease, Generic, Necrosis,
+	 * Poison and VoidSplinter.
+	 */
+	static const TCHAR* DamageOverTimeTagName;
+
+	/** `Type.AOE`, or an invalid tag if the vocabulary has lost it. */
+	static FGameplayTag AreaDamageTag();
+
+	/** `Keyword.DoT`, or an invalid tag if the vocabulary has lost it. */
+	static FGameplayTag DamageOverTimeTag();
+
+	/**
 	 * A damage type as the gameplay tag that carries it on an effect.
 	 *
 	 * "Demonic" becomes `Element.Demonic`. Returns an invalid tag for a name the
