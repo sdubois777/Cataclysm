@@ -20,6 +20,108 @@ applied or still pending.
 
 ---
 
+## 2026-08-13 — Particle effects are one system per shape, not one per damage type
+
+**Affects:** adds `Niagara_Conventions.md` to this folder. Nothing in
+`Cataclysm_GDD_v2.md` changes. Issue #19. Nothing is implemented: the project has
+zero Niagara assets.
+
+### Why this was written before the first effect exists
+
+The full game needs effects for roughly 400 skill rows, built by one person with
+no visual effects background. **Eight effect shapes times eight damage types is
+64 assets if built the wrong way and 8 assets plus 8 data rows if built the right
+way.** That difference decides whether the work is possible, and it is cheap to
+choose now and expensive to change later.
+
+### What was decided
+
+**One Niagara system per effect *shape*.** An impact, a projectile, a beam, an
+aura, a death. The eight damage types are eight rows in a new table,
+`DT_ElementVisuals`, keyed by the gameplay tags that already exist. No damage
+type ever appears in an asset name; typing `NS_Impact_Demonic` means the template
+has failed.
+
+**Asset prefixes use the `N` family — `NS_`, `NE_`, `NMS_` — not Epic's
+documented `FXS_`, `FXE_`, `FXF_`.** This one is worth recording because it goes
+against Epic's own published page.
+
+**Epic does not follow its own recommendation.** A search of the local Unreal
+5.8 install found 23,140 asset files and **not one** using `FXS_`, `FXE_` or
+`FXF_`. What Epic ships is `NS_`, 40 times, in the Third Person and Top Down
+templates among others. The same search finds 560 `BP_` and 1,251 `M_`, so it
+works. Since this project has no visual effects artist and will import bought
+asset packs that all ship `NS_`, choosing `FXS_` would guarantee a permanently
+mixed project for no benefit.
+
+Everything that is not Niagara stays on Epic's page, which this project already
+follows.
+
+**Four effect type assets, authored before the first system.** This is the part
+that decides whether twenty enemies attacking at once holds frame rate.
+
+### The finding that matters most
+
+**A newly created Niagara effect type performs no culling whatsoever, and a
+project ships with no default effect type at all.** Verified by reading the
+engine source in the local 5.8.1 install rather than from documentation: every
+culling switch is false, every limit is zero, there is no significance handler,
+and the update frequency is "spawn only".
+
+**So "use the default" means "no scalability".**
+
+Two of those defaults are traps rather than off switches:
+
+- The default cull reaction is the **most aggressive** one, not a disabled
+  safeguard. It is simply inert until a cull switch is turned on.
+- **"Spawn only" survives turning the cull switches on.** Ticking "cull by
+  distance" on an otherwise default effect type still will not remove a running
+  effect as the player walks away. The update frequency must be raised *and* a
+  significance handler assigned.
+
+A third structural fact: the cull reaction **cannot be overridden per effect**,
+so one-shot and looping effects must be separate effect types. That is why there
+are four rather than one.
+
+### What this does not change
+
+**The attack warning marker is not becoming a particle system.** It is four
+meshes with an unlit material and a measured contrast guarantee pinned to the
+design document by two test files. Niagara would buy nothing and put that
+guarantee at risk. The sweep section XIII promises is a material parameter driven
+by elapsed time, not a particle system — issue #544.
+
+**The rule: Niagara is for effects, not for readability guarantees.** Anything the
+player must see to survive is geometry and a material with a measured contrast
+figure.
+
+### How it was researched, and what verification caught
+
+Four independent research passes, every finding adversarially checked before use,
+three refuted and dropped. The checking earned its place again: it caught "Epic's
+only official asset-naming document" when a second official page exists, and a
+claim that several prefixes came from one table when they come from three tables
+on the same page.
+
+**One section is explicitly marked unverified.** The research did not cover
+Niagara's reuse features, so the section on module scripts and emitter
+inheritance says so rather than presenting general knowledge as sourced.
+
+### What is left open
+
+The eight effect hues are not chosen — the design document fixes eight
+*environment* themes but no effect palette, and that decision comes before
+anything can be built. Emitter inheritance behaviour in 5.8 is unverified. There
+is no performance budget and no profiling method, and the 8 GB graphics card is
+the binding constraint on this machine.
+
+### Sources
+
+Named in full in `Niagara_Conventions.md`. The engine defaults were read from
+`Engine/Plugins/FX/Niagara/` in the local install, not from documentation.
+
+---
+
 ## 2026-08-13 — The telegraph is red on three rings with a see-through middle, and Chaos is achromatic motion
 
 **Affects:** section XIII of `Cataclysm_GDD_v2.md`, applied, and

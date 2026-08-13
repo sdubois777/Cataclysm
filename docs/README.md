@@ -42,6 +42,7 @@ python tools/reformat_google_docs_artefacts.py
 | `Save_System_Design.md` | Not from Drive | What the game writes to disk: the three persistence records, how saves are partitioned by lethality mode and by offline or online, the storage format, and schema migration. Written in this repository for issue #21. |
 | `Audio_Design_Plan.md` | Not from Drive | How the audio design in section XIII gets built: MetaSounds rather than middleware, the six mixing buses, naming, and how a telegraph cue is authored by animation notify so it survives a play rate change. Written in this repository for issue #33. |
 | `Animation_Plan.md` | Not from Drive | How much animation the game needs and what decides whether two skills share a motion: one set per weapon and slot shared across all eight damage types, identity from effects and behaviour, plus a signature reserve. Written in this repository for issue #18. |
+| `Niagara_Conventions.md` | Not from Drive | How particle effects are named, parameterised, reused and budgeted: one system per effect shape rather than per damage type, and the culling settings that decide whether twenty enemies attacking at once is playable. Written in this repository for issue #19. |
 
 ## Sheets in `All_Things_Cataclysm.xlsx`
 
