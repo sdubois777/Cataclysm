@@ -4543,6 +4543,74 @@ A mode that hides the heads-up display is a difficulty choice the player opts in
 
   
 
+## **Visual Identity per Cataclysm**
+
+Each of the eight Cataclysms has a colour and material theme. **The environment
+follows the theme directly** — a Demonic dungeon is lava, fire and smoke — so the
+art direction for a Cataclysm falls out of its theme rather than being designed
+separately.
+
+  
+
+| Cataclysm | Theme | The environment is |
+| :-- | :-- | :-- |
+| Demonic | Red, fire, lava | Lava, fire, smoke |
+| War | Grey, steel, pride | Steel, banners, fortification |
+| Death | Black, shadows | Shadow, bone, cold |
+| Famine | Brown, dying | Withered, cracked, drained |
+| Void | Black and purple, nothingness | Absence, erasure, warped space |
+| Celestial | Gold and white, holy | Light, gilding, ward |
+| Pestilence | Putrid green and brown, rot | Rot, spores, wet decay |
+| Chaos | Black and white, random | Unstable, shifting, inconsistent |
+
+  
+
+### **A telegraph is not coloured by its Cataclysm's theme**
+
+**What makes an attack warning visible is its shape and its edge, not its
+colour.** A telegraph is a hard-edged geometric shape — a circle, a cone, a line,
+a ring — with a fill that sweeps as the wind-up runs out. Nothing in an
+environment has that shape or that motion, which is what lets it be seen against
+lava, against shadow, or against a crowd of twenty enemies.
+
+  
+
+Colour tells the player *which* damage type a telegraph belongs to. **It is not
+what makes the telegraph visible in the first place**, and it cannot be, for three
+reasons this design produces directly:
+
+  - **A Demonic environment is already full of glowing orange.** Lava and fire
+    occupy the same brightness and hue a warm telegraph would use, so a telegraph
+    tinted to the Demonic theme competes with the floor.
+  - **Death, Void and Chaos are all built on black.** A dark telegraph in a dark
+    room is not a telegraph.
+  - **Some themes are close to each other.** Death and Void are both darkness;
+    Famine and Pestilence share brown.
+
+  
+
+So the environment carries the theme and the telegraph carries the shape. A
+telegraph is drawn with an **unlit, emissive** material, so its brightness is
+fixed by its own material rather than by whatever light the room happens to have.
+This is what makes a brightness rule possible at all.
+
+  
+
+### **Three things this leaves open**
+
+  - **The eight telegraph colours have not been chosen.** They must be
+    distinguishable from each other and from every environment, which means they
+    are chosen as one set rather than one per Cataclysm.
+  - **Chaos is described as black and white flashing, and this document commits to
+    an epilepsy-safe mode that reduces flashing effects.** A Cataclysm whose
+    identity is flashing is the one case that mode exists to suppress. Either
+    Chaos expresses randomness some other way, or the mode has to state what it
+    does to a Chaos dungeon specifically.
+  - **How Death and Void are told apart**, given both are darkness, and how Famine
+    and Pestilence are told apart, given both are brown.
+
+  
+
 ## **Audio**
 
 **Audio is part of the readability system, not decoration.** Two things in this
