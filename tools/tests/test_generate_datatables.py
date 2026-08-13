@@ -466,6 +466,116 @@ class TestShapeParams:
         assert rows[0]["Shape"] == "" and rows[0]["ShapeParams"] == ""
 
 
+class TestElementVisuals:
+    """The eight damage types' effect palette. Issue #549.
+
+    THE SILENT FAILURE HERE IS A COLOUR NOBODY ASKED FOR. `FColor::FromHex` does
+    not report bad input, which is how a length-only check in
+    ACataclysmTelegraphMarker accepted the word "nonsense" -- eight characters --
+    and produced a colour out of it. So the hex is checked character by
+    character, and these tests are what say that check works.
+    """
+
+    HEADERS = ["Element Tag", "Primary", "Secondary",
+               "Emissive Multiplier", "Spawn Rate Scale", "Velocity Scale"]
+
+    def sheet(self, tmp_path, *rows):
+        path = workbook_with(tmp_path / "b.xlsx",
+                             {"Element Visuals": [self.HEADERS, *rows]})
+        return openpyxl.load_workbook(path, data_only=True)
+
+    def test_reads_a_row_and_keys_it_on_the_tags_leaf(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Element.War", "#FFFFFF", "#000000", 1, 1, 1])
+        assert gen.element_visuals(book) == [{
+            "Name": "War",
+            "ElementTag": "Element.War",
+            "PrimaryColour": "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)",
+            "SecondaryColour": "(R=0.000000,G=0.000000,B=0.000000,A=1.000000)",
+            "EmissiveMultiplier": 1.0,
+            "SpawnRateScale": 1.0,
+            "VelocityScale": 1.0,
+        }]
+
+    def test_the_design_documents_srgb_becomes_linear(self, tmp_path):
+        """#FF7A2E is Demonic's primary. Its middle channel is 0x7A, which is
+        122/255 = 0.478 in sRGB and 0.195 in linear. Writing the sRGB figure
+        into an FLinearColor would render a visibly paler orange."""
+        book = self.sheet(tmp_path,
+                          ["Element.War", "#FF7A2E", "#000000", 1, 1, 1])
+        primary = gen.element_visuals(book)[0]["PrimaryColour"]
+        assert primary == "(R=1.000000,G=0.194618,B=0.027321,A=1.000000)"
+
+    def test_a_leading_hash_is_optional(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Element.War", "FFFFFF", "#000000", 1, 1, 1])
+        assert gen.element_visuals(book)[0]["PrimaryColour"].startswith("(R=1.0")
+
+    def test_six_characters_that_are_not_hex_digits_are_refused(self, tmp_path):
+        """The real bug this guards. "wrong!" is six characters, so a check on
+        the length alone would accept it and produce some colour."""
+        book = self.sheet(tmp_path,
+                          ["Element.War", "wrong!", "#000000", 1, 1, 1])
+        with pytest.raises(gen.DataError, match="not six hex digits"):
+            gen.element_visuals(book)
+
+    @pytest.mark.parametrize("text", ["#FFF", "#FFFFFFFF", ""])
+    def test_a_hex_of_the_wrong_length_is_refused(self, tmp_path, text):
+        book = self.sheet(tmp_path,
+                          ["Element.War", text, "#000000", 1, 1, 1])
+        with pytest.raises(gen.DataError, match="not six hex digits"):
+            gen.element_visuals(book)
+
+    def test_a_key_that_is_not_a_damage_type_tag_is_refused(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Slot.Ultimate", "#FFFFFF", "#000000", 1, 1, 1])
+        with pytest.raises(gen.DataError, match="must start with 'Element.'"):
+            gen.element_visuals(book)
+
+    @pytest.mark.parametrize("column", [3, 4, 5])
+    @pytest.mark.parametrize("scale", [0, -1])
+    def test_a_scale_of_zero_or_less_is_refused(self, tmp_path, column, scale):
+        """Each of the three fails as a broken-looking effect rather than as
+        bad data: no particles, particles that never move, or a black effect."""
+        row = ["Element.War", "#FFFFFF", "#000000", 1, 1, 1]
+        row[column] = scale
+        book = self.sheet(tmp_path, row)
+        with pytest.raises(gen.DataError, match="makes the effect invisible"):
+            gen.element_visuals(book)
+
+    def test_an_empty_scale_is_refused(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Element.War", "#FFFFFF", "#000000", None, 1, 1])
+        with pytest.raises(gen.DataError, match="Emissive Multiplier is empty"):
+            gen.element_visuals(book)
+
+    def test_a_damage_type_with_no_row_is_reported(self):
+        tables = {"ElementVisuals": [{"Name": "War",
+                                      "ElementTag": "Element.War"}]}
+        problems = gen.validate_element_visuals(
+            tables, {"Element.War", "Element.Void", "Slot.Ultimate"})
+        assert len(problems) == 1
+        assert "Element.Void" in problems[0]
+
+    def test_a_row_naming_an_undeclared_tag_is_reported(self):
+        tables = {"ElementVisuals": [{"Name": "Sparkly",
+                                      "ElementTag": "Element.Sparkly"}]}
+        assert gen.validate_element_visuals(tables, {"Element.Sparkly"}) == []
+
+        problems = gen.validate_element_visuals(tables, {"Element.War"})
+        assert len(problems) == 2, problems
+        assert any("Element.War" in p and "no effect palette row" in p
+                   for p in problems)
+        assert any("Element.Sparkly" in p and "not declared" in p
+                   for p in problems)
+
+    def test_a_matching_set_reports_nothing(self):
+        tables = {"ElementVisuals": [{"Name": "War",
+                                      "ElementTag": "Element.War"}]}
+        assert gen.validate_element_visuals(
+            tables, {"Element.War", "Slot.Ultimate"}) == []
+
+
 class TestAgainstTheRealWorkbook:
     def test_the_committed_csvs_are_current(self):
         if not gen.WORKBOOK.is_file():

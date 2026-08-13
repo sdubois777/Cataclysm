@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagContainer.h"
 #include "CataclysmDataRows.generated.h"
 
 /**
@@ -603,6 +604,87 @@ struct FCataclysmCraftingMaterialRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString Formula;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString Outcome;
+};
+
+/**
+ * What one damage type's effects look like. Source: Element Visuals.
+ *
+ * EIGHT ROWS INSTEAD OF EIGHT COPIES OF EVERY EFFECT. Section 5 of
+ * docs/Niagara_Conventions.md is the reason this table exists: there are eight
+ * effect shapes and eight damage types, and authoring one asset per pair is 64
+ * assets that all have to be changed together. Authoring one asset per shape and
+ * reading its colours from here is 8 assets and these 8 rows. A Niagara system
+ * looks up the row for the damage type it was spawned with and takes its colours
+ * from it, so nothing in the system knows which damage type it is drawing.
+ *
+ * THE ROW KEY IS THE TAG'S LEAF. `Element.Demonic` keys the row `Demonic`, so
+ * anything holding the tag can reach the row with FGameplayTag::GetTagLeafName
+ * and no second lookup table.
+ *
+ * THE COLOURS ARE LINEAR AND THE DESIGN DOCUMENT'S ARE sRGB. Section XIII of
+ * docs/Cataclysm_GDD_v2.md writes `#FF7A2E` because that is what a colour picker
+ * shows. tools/generate_datatables.py converts each one on the way into the CSV,
+ * the same conversion ACataclysmTelegraphMarker::ResolveColour does with
+ * FLinearColor::FromSRGBColor. Feeding a material the sRGB figures directly
+ * renders a visibly different colour from the one that was designed.
+ *
+ * WHY THE SECONDARY IS NOT DECORATION. Each damage type's effects are seen most
+ * often against that damage type's own environment -- Demonic effects on lava,
+ * Celestial effects on gold. An effect coloured like its damage type is at its
+ * least readable in the environment that damage type generates, so the dark
+ * anchor is what carries the contrast when the primary matches the floor. The
+ * design's rule behind both figures is that a world surface may not exceed 30%
+ * brightness and an effect's primary may not fall below 60%.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmElementVisualRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** One of the eight Element.* tags declared in
+	 *  game/Config/Tags/CataclysmTags.ini. It is the key, and every declared
+	 *  damage type has exactly one row: tools/generate_datatables.py refuses to
+	 *  generate this table if one is missing. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Element Visuals")
+	FGameplayTag ElementTag;
+
+	/**
+	 * EVERY DEFAULT BELOW IS A VALUE THE TABLE NEVER CARRIES, deliberately.
+	 *
+	 * A CSV column whose name does not match a property imports as that
+	 * property's default with no error at all, so a default equal to the real
+	 * data makes a test asserting the real data vacuous. No designed primary is
+	 * pure white, no designed secondary is pure black, and the generator refuses
+	 * a scale of zero outright -- so a row showing any of these did not import,
+	 * and Cataclysm.Data.ElementVisualsCarryTheDesignedValues says so.
+	 */
+
+	/** The hue the effect reads as. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Element Visuals")
+	FLinearColor PrimaryColour = FLinearColor::White;
+
+	/** The dark anchor that stays legible when the primary matches the floor. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Element Visuals")
+	FLinearColor SecondaryColour = FLinearColor::Black;
+
+	/**
+	 * How far above the system's own value the effect glows.
+	 *
+	 * Gameplay-critical effects break physically based rendering and ambient
+	 * ones do not, and this column is where that break is quantified per damage
+	 * type. All eight rows read 1.0 today, meaning the Niagara system's authored
+	 * value is used unchanged; they are tuned once the first system exists.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Element Visuals")
+	float EmissiveMultiplier = 0.0f;
+
+	/** Denser for Pestilence, sparser for Void, once these are tuned. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Element Visuals")
+	float SpawnRateScale = 0.0f;
+
+	/** Fast for War, slow-drifting for Famine, once these are tuned. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Element Visuals")
+	float VelocityScale = 0.0f;
 };
 
 /**

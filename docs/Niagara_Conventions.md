@@ -520,9 +520,15 @@ does. Death is bone and cold and settles downward; Void erases and pulls inward.
 A shape and motion difference survives twenty simultaneous instances better than a
 subtle hue difference does.
 
-**Unsettled. The eight hues are not chosen.** The design document fixes eight
-*environment* themes but no per-damage-type effect palette. That decision comes
-before anything in this section can be built.
+**Settled on 2026-08-13, in issue #546.** The project owner chose all eight
+pairs and they are recorded in section XIII of `docs/Cataclysm_GDD_v2.md`, under
+"The effect palette, which is not the environment palette". They are not the
+eight environment themes and are deliberately different from them.
+
+They are also in the game, as `DT_ElementVisuals`, built by issue #549. The
+design document states them as sRGB hex because that is what a colour picker
+shows; `tools/generate_datatables.py` converts each one to linear on the way
+into the table, because that is what an `FLinearColor` is.
 
 ### The conflict this creates
 
@@ -597,10 +603,14 @@ figure.
 
 **Judgement.** Each step proves something the next depends on.
 
-1. **Decide the eight hues.** Nothing else can be built correctly first. It is a
-   design decision and it needs the project owner.
-2. **Build `DT_ElementVisuals` and its test.** Eight rows against the existing
-   tags. No Niagara yet.
+**Steps 1 and 2 are done. Step 3 is what to build next.**
+
+1. ~~**Decide the eight hues.**~~ Done in issue #546. Nothing else could be
+   built correctly first, and it was a design decision that needed the project
+   owner.
+2. ~~**Build `DT_ElementVisuals` and its test.**~~ Done in issue #549. Eight
+   rows against the existing tags, generated from the design workbook's
+   "Element Visuals" sheet. No Niagara yet.
 3. **Build the four effect type assets**, with every switch explicitly set. An
    hour of work, and the difference between twenty enemies being playable and
    not. Build them *before* the first system, so no system can be authored
@@ -625,7 +635,6 @@ figure.
 
 Each of these is worth an issue rather than a guess.
 
-- **The eight effect hues.** Not in the design document and not in the research.
 - **How emitter inheritance behaves in Unreal 5.8.** Section 3 is unverified.
 - **Whether an effect type can be overridden per spawned component.** It decides
   whether one system asset can serve both enemy and player spawns.
