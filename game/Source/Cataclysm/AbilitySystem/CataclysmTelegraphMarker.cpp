@@ -10,8 +10,10 @@
 #include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
 
-const TCHAR* const ACataclysmTelegraphMarker::DesignedFillHex = TEXT("00B8C4");
 const TCHAR* const ACataclysmTelegraphMarker::DesignedOutlineHex = TEXT("0A0F12");
+const TCHAR* const ACataclysmTelegraphMarker::DesignedRingHex = TEXT("FF3020");
+const TCHAR* const ACataclysmTelegraphMarker::DesignedInnerHex = TEXT("FFD9CF");
+const TCHAR* const ACataclysmTelegraphMarker::DesignedFillHex = TEXT("FF3020");
 
 namespace
 {
@@ -35,6 +37,7 @@ namespace
 	 *  every marker at the material's default, which is the fill colour -- so
 	 *  the rim would silently become a second fill. */
 	const TCHAR* TelegraphColourParameter = TEXT("Colour");
+	const TCHAR* TelegraphOpacityParameter = TEXT("Opacity");
 
 	/**
 	 * Live overrides for the two colours, as sRGB hex without a leading hash.
@@ -56,22 +59,46 @@ namespace
 	 * Empty uses the designed value, matching the other live overrides in this
 	 * project, where zero means "use the design".
 	 */
-	TAutoConsoleVariable<FString> CVarTelegraphFillColour(
-		TEXT("Cataclysm.Telegraph.FillColour"),
+	TAutoConsoleVariable<FString> CVarTelegraphRingColour(
+		TEXT("Cataclysm.Telegraph.RingColour"),
 		TEXT(""),
-		TEXT("sRGB hex, no leading hash, for the telegraph's fill. Empty uses "
-			 "the designed 00B8C4. Try FF3020 for the red the genre uses; note "
-			 "that red is at its worst against Demonic lava, which is the only "
-			 "environment art this project has."),
+		TEXT("sRGB hex, no leading hash, for the telegraph's bright ring and "
+			 "its fill. Empty uses the designed FF3020."),
 		ECVF_Default);
 
 	TAutoConsoleVariable<FString> CVarTelegraphOutlineColour(
 		TEXT("Cataclysm.Telegraph.OutlineColour"),
 		TEXT(""),
-		TEXT("sRGB hex, no leading hash, for the telegraph's rim. Empty uses "
-			 "the designed 0A0F12. The rim is what makes the shape readable "
-			 "against a bright environment; the fill alone reaches only 1.91:1 "
-			 "against Celestial's gold and white."),
+		TEXT("sRGB hex, no leading hash, for the telegraph's outermost ring. "
+			 "Empty uses the designed 0A0F12. This ring is what keeps the shape "
+			 "readable against Celestial's gold and white, where the red ring "
+			 "alone reaches 1.33:1."),
+		ECVF_Default);
+
+	TAutoConsoleVariable<FString> CVarTelegraphInnerColour(
+		TEXT("Cataclysm.Telegraph.InnerColour"),
+		TEXT(""),
+		TEXT("sRGB hex, no leading hash, for the light line just outside the "
+			 "fill. Empty uses the designed FFD9CF. This line is what keeps the "
+			 "shape readable on War's mid grey and on Demonic lava, and without "
+			 "it the worst case across the eight environments is 2.47:1, below "
+			 "the 3:1 threshold."),
+		ECVF_Default);
+
+	/**
+	 * Live override for how see-through the innermost band is.
+	 *
+	 * A NEGATIVE VALUE MEANS "USE THE DESIGN", rather than zero, because zero is
+	 * a legitimate setting here: it makes the fill invisible and leaves the
+	 * three rings, which is a real look worth being able to try.
+	 */
+	TAutoConsoleVariable<float> CVarTelegraphFillOpacity(
+		TEXT("Cataclysm.Telegraph.FillOpacity"),
+		-1.0f,
+		TEXT("How opaque the telegraph's innermost band is, 0 to 1. Negative "
+			 "uses the designed 0.35. Zero leaves only the three rings, which "
+			 "is a legitimate look, which is why zero does not mean 'use the "
+			 "design' here."),
 		ECVF_Default);
 
 	/**
@@ -167,14 +194,24 @@ ACataclysmTelegraphMarker::ACataclysmTelegraphMarker()
 	RootComponent = Patch;
 	Patch->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// THE RIM IS A SIBLING OF THE FILL, NOT A CHILD OF IT. The fill is scaled to
-	// the marker's size, and a child would inherit that scale -- so a rim sized
-	// as a fraction of its parent would grow with the marker instead of staying
-	// a constant edge, which is the thing OutlineThicknessCm exists to avoid.
+	// THE RINGS ARE SIBLINGS OF THE FILL, NOT CHILDREN OF IT. The fill is scaled
+	// to the marker's size, and a child would inherit that scale -- so a ring
+	// sized as a fraction of its parent would grow with the marker instead of
+	// staying a constant edge, which is what the three widths exist to avoid.
 	Edge = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Edge"));
 	Edge->SetupAttachment(RootComponent);
 	Edge->SetAbsolute(false, false, /*bInAbsoluteScale=*/true);
 	Edge->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	Ring = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Ring"));
+	Ring->SetupAttachment(RootComponent);
+	Ring->SetAbsolute(false, false, /*bInAbsoluteScale=*/true);
+	Ring->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	Inner = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Inner"));
+	Inner->SetupAttachment(RootComponent);
+	Inner->SetAbsolute(false, false, /*bInAbsoluteScale=*/true);
+	Inner->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	// BOTH FOUND HERE, EVEN THOUGH ONLY ONE IS USED PER MARKER. The static
 	// ShowCircle and ShowLine below cannot look an asset up themselves: every
@@ -203,6 +240,39 @@ ACataclysmTelegraphMarker::ACataclysmTelegraphMarker()
 	}
 }
 
+void ACataclysmTelegraphMarker::BuildCircleBand(UStaticMeshComponent* Component,
+											   float BandRadiusCm, int32 StepsDown)
+{
+	if (!Component)
+	{
+		return;
+	}
+	Component->SetStaticMesh(CircleMesh);
+	Component->SetWorldScale3D(FVector(
+		(BandRadiusCm * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(BandRadiusCm * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		MarkerThicknessCm / ACataclysmCharacterBase::BasicShapeSize));
+	Component->SetRelativeLocation(
+		FVector(0.0f, 0.0f, -MarkerThicknessCm * 0.2f * StepsDown));
+}
+
+void ACataclysmTelegraphMarker::BuildLaneBand(UStaticMeshComponent* Component,
+											  float LaneLengthCm, float HalfWidthCm,
+											  float GrowByCm, int32 StepsDown)
+{
+	if (!Component)
+	{
+		return;
+	}
+	Component->SetStaticMesh(LaneMesh);
+	Component->SetWorldScale3D(FVector(
+		(LaneLengthCm + GrowByCm * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(HalfWidthCm * 2.0f + GrowByCm * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		MarkerThicknessCm / ACataclysmCharacterBase::BasicShapeSize));
+	Component->SetRelativeLocation(
+		FVector(0.0f, 0.0f, -MarkerThicknessCm * 0.2f * StepsDown));
+}
+
 void ACataclysmTelegraphMarker::ApplyColours()
 {
 	if (!MarkerMaterial)
@@ -217,31 +287,45 @@ void ACataclysmTelegraphMarker::ApplyColours()
 		return;
 	}
 
-	const FLinearColor Fill = ResolveColour(
-		CVarTelegraphFillColour.GetValueOnAnyThread(), DesignedFillHex);
+	const FLinearColor Ring3020 = ResolveColour(
+		CVarTelegraphRingColour.GetValueOnAnyThread(), DesignedRingHex);
 	const FLinearColor Outline = ResolveColour(
 		CVarTelegraphOutlineColour.GetValueOnAnyThread(), DesignedOutlineHex);
+	const FLinearColor InnerLine = ResolveColour(
+		CVarTelegraphInnerColour.GetValueOnAnyThread(), DesignedInnerHex);
 
-	// ONE MATERIAL, TWO INSTANCES. The fill and the rim differ only in the value
-	// of one parameter, so they share the asset and each gets its own dynamic
-	// instance to set it on.
-	if (Patch)
-	{
-		if (UMaterialInstanceDynamic* FillMaterial =
-				Patch->CreateDynamicMaterialInstance(0, MarkerMaterial))
-		{
-			FillMaterial->SetVectorParameterValue(TelegraphColourParameter, Fill);
-		}
-	}
+	const float OpacityOverride = CVarTelegraphFillOpacity.GetValueOnAnyThread();
+	const float FillOpacity = OpacityOverride < 0.0f
+		? DesignedFillOpacity
+		: FMath::Clamp(OpacityOverride, 0.0f, 1.0f);
 
-	if (Edge)
+	// ONE MATERIAL, FOUR INSTANCES. The bands differ only in two parameter
+	// values, so they share the asset and each gets its own dynamic instance to
+	// set them on.
+	//
+	// THE THREE RINGS ARE FULLY OPAQUE and the fill is not. That split is the
+	// whole arrangement: the rings carry the measured contrast and the fill only
+	// tints the ground that hurts.
+	auto Paint = [this](UStaticMeshComponent* Component,
+						const FLinearColor& Colour, float Opacity)
 	{
-		if (UMaterialInstanceDynamic* OutlineMaterial =
-				Edge->CreateDynamicMaterialInstance(0, MarkerMaterial))
+		if (!Component)
 		{
-			OutlineMaterial->SetVectorParameterValue(TelegraphColourParameter, Outline);
+			return;
 		}
-	}
+		if (UMaterialInstanceDynamic* Instance =
+				Component->CreateDynamicMaterialInstance(0, MarkerMaterial))
+		{
+			Instance->SetVectorParameterValue(TelegraphColourParameter, Colour);
+			Instance->SetScalarParameterValue(TelegraphOpacityParameter, Opacity);
+		}
+	};
+
+	Paint(Edge, Outline, 1.0f);
+	Paint(Ring, Ring3020, 1.0f);
+	Paint(Inner, InnerLine, 1.0f);
+	Paint(Patch, ResolveColour(CVarTelegraphRingColour.GetValueOnAnyThread(),
+							   DesignedFillHex), FillOpacity);
 }
 
 ACataclysmTelegraphMarker* ACataclysmTelegraphMarker::ShowCircle(
@@ -279,20 +363,13 @@ ACataclysmTelegraphMarker* ACataclysmTelegraphMarker::ShowCircle(
 			MarkerThicknessCm / ACataclysmCharacterBase::BasicShapeSize));
 	}
 
-	if (Marker->Edge)
-	{
-		Marker->Edge->SetStaticMesh(Marker->CircleMesh);
-
-		// The same circle, one rim wider all round, and pushed down by a
-		// fraction of the marker's own thickness so the fill wins where they
-		// overlap without the two fighting over the same depth.
-		const float EdgeRadius = RadiusCm + OutlineThicknessCm;
-		Marker->Edge->SetWorldScale3D(FVector(
-			(EdgeRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
-			(EdgeRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
-			MarkerThicknessCm / ACataclysmCharacterBase::BasicShapeSize));
-		Marker->Edge->SetRelativeLocation(FVector(0.0f, 0.0f, -MarkerThicknessCm * 0.25f));
-	}
+	// FOUR CONCENTRIC DISCS, EACH SMALLER AND HIGHER THAN THE ONE BELOW, so what
+	// shows of each is a ring of its own width. Stacking solid discs draws the
+	// bands without the material needing to know the shape's texture
+	// coordinates, which the cylinder and the cube map differently.
+	Marker->BuildCircleBand(Marker->Edge, RadiusCm + OutlineThicknessCm, 3);
+	Marker->BuildCircleBand(Marker->Ring, RadiusCm + RimBrightCm + RimLightCm, 2);
+	Marker->BuildCircleBand(Marker->Inner, RadiusCm + RimLightCm, 1);
 
 	Marker->ApplyColours();
 
@@ -353,20 +430,13 @@ ACataclysmTelegraphMarker* ACataclysmTelegraphMarker::ShowLine(
 			MarkerThicknessCm / ACataclysmCharacterBase::BasicShapeSize));
 	}
 
-	if (Marker->Edge)
-	{
-		Marker->Edge->SetStaticMesh(Marker->LaneMesh);
-
-		// One rim wider on both axes. The lane grows at both ends as well as
-		// both sides, which is right: the rim marks the edge of the danger, and
-		// the danger has an end.
-		Marker->Edge->SetWorldScale3D(FVector(
-			(Length + OutlineThicknessCm * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
-			(HalfWidthCm * 2.0f + OutlineThicknessCm * 2.0f)
-				/ ACataclysmCharacterBase::BasicShapeSize,
-			MarkerThicknessCm / ACataclysmCharacterBase::BasicShapeSize));
-		Marker->Edge->SetRelativeLocation(FVector(0.0f, 0.0f, -MarkerThicknessCm * 0.25f));
-	}
+	// The same three rings as a circle gets. A lane grows at both ends as well
+	// as both sides, which is right: the rings mark the edge of the danger, and
+	// the danger has an end.
+	Marker->BuildLaneBand(Marker->Edge, Length, HalfWidthCm, OutlineThicknessCm, 3);
+	Marker->BuildLaneBand(Marker->Ring, Length, HalfWidthCm,
+						  RimBrightCm + RimLightCm, 2);
+	Marker->BuildLaneBand(Marker->Inner, Length, HalfWidthCm, RimLightCm, 1);
 
 	Marker->ApplyColours();
 

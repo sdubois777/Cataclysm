@@ -20,6 +20,115 @@ applied or still pending.
 
 ---
 
+## 2026-08-13 — The telegraph is red on three rings with a see-through middle, and Chaos is achromatic motion
+
+**Affects:** section XIII of `Cataclysm_GDD_v2.md`, applied, and
+`CataclysmTelegraphMarker.cpp`, built. Issue #19 for the design, #539 for the
+implementation.
+
+### The colour changed from cyan to red
+
+**Settled by the project owner by looking at it in the sandbox**, which is what
+the live console override was added for the day before. Their words: "I like the
+orange one better personally… blue just doesn't feel threatening."
+
+The measured objection to red was raised once and is real: `FF3020` on the
+previous two-band arrangement reaches only **2.47:1** at worst, below the 3:1
+threshold, and its weakest environment is Demonic lava, which is the one this
+project has any art direction for.
+
+**It was resolved by changing the structure rather than the colour.** Adding a
+warm near-white line between the red ring and the fill takes the worst case to
+**3.92:1** — better than the cyan arrangement it replaced, which was 3.22:1. The
+project owner gets the colour they judged by eye and the marker is more readable
+than it was.
+
+| Band | Width | Colour | Which environments it carries |
+| :-- | :-: | :-- | :-- |
+| Outer ring | 6 cm | `#0A0F12` | Celestial, Chaos |
+| Bright ring | 8 cm | `#FF3020` | Death, Void, Demonic rock, Famine |
+| Inner line | 4 cm | `#FFD9CF` | War steel, Demonic lava |
+| Fill | — | `#FF3020` at 35% | none — it only tints |
+
+### The fill is see-through, and only the fill
+
+Reported as "it's really solid". **A translucent band cannot carry a contrast
+guarantee**: its contrast against the ground beneath it falls toward 1:1 as it
+fades, reaching 1.54:1 at 25% over War's steel grey. So the three rings stay
+fully opaque and carry it, and the fill is free to be light because it carries
+nothing.
+
+**Shipped practice agrees, and treats the opposite as a bug.** Diablo IV's
+general manager Rod Fergusson said of the Necromancer's Blighted Corpse
+Explosion: "We know that because of the opaqueness of that effect, sometimes
+there can be an explosion waiting for you underneath there and you can die."
+Blizzard shipped an opacity reduction around patch 1.0.3. WildStar composed
+telegraphs from a border, a background and a fill with separate alpha values,
+which is the same split adopted here.
+
+**One caveat worth keeping.** WildStar's layering did not survive density — its
+10v10 arenas are remembered as an unintelligible wash. Alpha layers alone do not
+solve overlap, and this design commits to twenty Imps at once. That is not
+settled here.
+
+### Chaos is achromatic motion at constant brightness
+
+The project owner's first description was "black and white flashing", then
+corrected: "I think you're thinking too literally when I said flashing… more like
+black/white streaking".
+
+**The buildable version: light moves across the surface and the amount of light
+on screen does not change.** Chaos is the only damage type with no hue, and that
+absence is what identifies it.
+
+**The randomness lives in the per-cast roll, not the per-frame animation.** One
+instability value per instance drives movement speed, ramp contrast, displacement
+and streak density. One instance looks stable; two look different. The player
+reads the roll before the damage lands, which suits Chaos having the widest
+damage range in the game. Risk of Rain 2's Void Fiend is the shipped precedent —
+a Corruption gauge whose value is continuously readable as shake amplitude.
+
+**The streaking is made by moving textures against each other rather than
+switching between states**: two greyscale samples multiplied at mismatched tiling
+rates and scroll speeds, read through a gradient driven by elapsed time. That is
+Destiny 2's method, described by Senior Visual Effects Artist Mike Stavrides.
+Nothing pops, because nothing steps.
+
+### The safety rule that is not about flashing
+
+Three rules follow from the published flash thresholds: never a full black-to-
+white swap, keep any one point alternating below twice a second, and displace
+geometry rather than spawning and removing it.
+
+**The fourth is the one that would have been missed.** Xbox's accessibility
+guidance fails alternating high-contrast bands with **no flashing at all**, when
+the contrast difference exceeds 10% and the pattern covers about a fifth of the
+screen. **"Black and white streaking across a floor" is literally that pattern.**
+So Chaos streaks must be irregular in spacing and direction and must never settle
+into parallel bands.
+
+The epilepsy-safe mode therefore clamps Chaos rather than disabling it.
+
+### How this was researched
+
+Three independent research passes, each finding adversarially verified before
+being used. **The verification mattered**: it caught a claim that Bungie "does not
+use flipbooks" when the source says "currently don't" and a later Bungie source
+says "very rare", and it caught a time-driven scroll being described as
+"unpredictable" when it is deterministic and periodic. Both corrections are
+reflected above.
+
+### Sources
+
+- Destiny 2 visual effects method, Mike Stavrides: <https://80.lv/articles/destiny-2-vfx-production-tips>
+- Diablo IV ground effect opacity: <https://www.pcgamesn.com/diablo-4/ground-effects>
+- WildStar telegraph composition: <https://www.greenyneko.com/2019/07/wildstars-legacy-telegraph-based-combat.html>
+- Xbox Accessibility Guideline 118, including the no-flashing band failure: <https://learn.microsoft.com/en-us/xbox/accessibility/xbox-accessibility-guidelines/118>
+- Flash thresholds: <https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold.html>
+- Risk of Rain 2 Void Fiend Corruption gauge: <https://riskofrain2.wiki.gg/wiki/Void_Fiend>
+
+---
+
 ## 2026-08-12 — Each Cataclysm has a colour theme, and the environment follows it; telegraphs do not
 
 **Affects:** section XIII of `Cataclysm_GDD_v2.md`, applied. Issue #19, partly —

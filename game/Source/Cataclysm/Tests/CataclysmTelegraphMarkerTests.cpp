@@ -21,6 +21,8 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/ScopeExit.h"
 
+#include <utility>
+
 /**
  * Tests for the ground marker an enemy draws while it winds up.
  *
@@ -649,6 +651,23 @@ namespace CataclysmTelegraphTest
 			FMaterialParameterInfo(TEXT("Colour")), OutColour);
 	}
 
+	/** How opaque a component's material was actually told to be. */
+	static bool OpacityOf(UStaticMeshComponent* Component, float& OutOpacity)
+	{
+		if (!Component)
+		{
+			return false;
+		}
+		UMaterialInstanceDynamic* Instance =
+			Cast<UMaterialInstanceDynamic>(Component->GetMaterial(0));
+		if (!Instance)
+		{
+			return false;
+		}
+		return Instance->GetScalarParameterValue(
+			FMaterialParameterInfo(TEXT("Opacity")), OutOpacity);
+	}
+
 	/** The designed colour for a hex string, the same conversion the marker
 	 *  does. Written out here rather than shared, so a change to the marker's
 	 *  conversion is caught rather than followed. */
@@ -816,42 +835,49 @@ bool FCataclysmTelegraphMarkerUsesTheDesignedColours::RunTest(const FString&)
 		return false;
 	}
 
-	const FLinearColor ExpectedFill =
-		Designed(ACataclysmTelegraphMarker::DesignedFillHex);
+	const FLinearColor ExpectedRing =
+		Designed(ACataclysmTelegraphMarker::DesignedRingHex);
 	const FLinearColor ExpectedRim =
 		Designed(ACataclysmTelegraphMarker::DesignedOutlineHex);
+	const FLinearColor ExpectedInner =
+		Designed(ACataclysmTelegraphMarker::DesignedInnerHex);
 
 	for (ACataclysmTelegraphMarker* Marker : {Circle, Lane})
 	{
 		const TCHAR* Which = Marker->IsLane() ? TEXT("lane") : TEXT("circle");
 
-		FLinearColor Fill;
 		FLinearColor Rim;
-		if (!TestTrue(FString::Printf(TEXT("the %s's fill has a colour set"), Which),
-					  ColourOf(Marker->GetPatch(), Fill))
-			|| !TestTrue(FString::Printf(TEXT("and the %s's rim does"), Which),
-						 ColourOf(Marker->GetEdge(), Rim)))
+		FLinearColor Ring;
+		FLinearColor Inner;
+		if (!TestTrue(FString::Printf(TEXT("the %s's outer ring has a colour"), Which),
+					  ColourOf(Marker->GetEdge(), Rim))
+			|| !TestTrue(FString::Printf(TEXT("and the %s's bright ring does"), Which),
+						 ColourOf(Marker->GetRing(), Ring))
+			|| !TestTrue(FString::Printf(TEXT("and the %s's inner line does"), Which),
+						 ColourOf(Marker->GetInner(), Inner)))
 		{
 			return false;
 		}
 
-		TestTrue(FString::Printf(
-			TEXT("the %s's fill is the designed %s"),
-			Which, ACataclysmTelegraphMarker::DesignedFillHex),
-			NearlyEqual(Fill, ExpectedFill));
-
-		TestTrue(FString::Printf(
-			TEXT("and the %s's rim is the designed %s"),
+		TestTrue(FString::Printf(TEXT("the %s's outer ring is the designed %s"),
 			Which, ACataclysmTelegraphMarker::DesignedOutlineHex),
 			NearlyEqual(Rim, ExpectedRim));
 
-		// THE TWO ARE NOT THE SAME COLOUR, which is the failure that would
-		// follow from the material's parameter being renamed on one side only:
-		// both would silently fall back to the material's default, which is the
-		// fill, and the rim would stop being a rim.
+		TestTrue(FString::Printf(TEXT("the %s's bright ring is the designed %s"),
+			Which, ACataclysmTelegraphMarker::DesignedRingHex),
+			NearlyEqual(Ring, ExpectedRing));
+
+		TestTrue(FString::Printf(TEXT("the %s's inner line is the designed %s"),
+			Which, ACataclysmTelegraphMarker::DesignedInnerHex),
+			NearlyEqual(Inner, ExpectedInner));
+
+		// ALL THREE ARE DIFFERENT COLOURS. If the material's parameter were
+		// renamed on one side only, every band would silently fall back to the
+		// material's default and the rings would stop being rings. Three bands
+		// the same colour is a solid disc with extra draw calls.
 		TestFalse(FString::Printf(
-			TEXT("and the %s's rim is not simply the fill again"), Which),
-			NearlyEqual(Rim, Fill));
+			TEXT("and the %s's rings are not all the same colour"), Which),
+			NearlyEqual(Rim, Ring) || NearlyEqual(Ring, Inner));
 	}
 
 	return true;
@@ -866,13 +892,14 @@ bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
 {
 	using namespace CataclysmTelegraphTest;
 
-	// WHY THIS IS TESTED. The project owner accepted cyan with a stated
-	// reservation that red is the genre's colour for danger. Settling that needs
-	// both to be one console command apart in the sandbox, so the override is a
-	// feature rather than a debugging leftover and is worth holding.
+	// WHY THIS IS TESTED. The colour was argued twice and settled by looking at
+	// it in the sandbox rather than by measurement -- cyan first, then FF3020 on
+	// 2026-08-13 once the project owner had seen both. The override is what made
+	// that possible, so it is a feature rather than a debugging leftover and is
+	// worth holding.
 	IConsoleVariable* Variable =
-		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.Telegraph.FillColour"));
-	if (!TestNotNull(TEXT("the fill colour console variable exists"), Variable))
+		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.Telegraph.RingColour"));
+	if (!TestNotNull(TEXT("the ring colour console variable exists"), Variable))
 	{
 		return false;
 	}
@@ -893,7 +920,7 @@ bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
 		return false;
 	}
 
-	Variable->Set(TEXT("FF3020"), ECVF_SetByCode);
+	Variable->Set(TEXT("22C9D6"), ECVF_SetByCode);
 
 	ACataclysmTelegraphMarker* Overridden = ACataclysmTelegraphMarker::ShowCircle(
 		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
@@ -902,14 +929,14 @@ bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
 		return false;
 	}
 
-	FLinearColor Fill;
-	if (!TestTrue(TEXT("and its fill has a colour"),
-				  ColourOf(Overridden->GetPatch(), Fill)))
+	FLinearColor Ring;
+	if (!TestTrue(TEXT("and its bright ring has a colour"),
+				  ColourOf(Overridden->GetRing(), Ring)))
 	{
 		return false;
 	}
-	TestTrue(TEXT("which is the red that was asked for"),
-		NearlyEqual(Fill, Designed(TEXT("FF3020"))));
+	TestTrue(TEXT("which is the cyan that was asked for"),
+		NearlyEqual(Ring, Designed(TEXT("22C9D6"))));
 
 	// A TYPO PUTS THE DESIGN BACK rather than leaving a marker black or
 	// refusing to draw the warning at all. This reads a value a person typed.
@@ -922,14 +949,78 @@ bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
 		return false;
 	}
 
-	FLinearColor FallbackFill;
-	if (!TestTrue(TEXT("and its fill has a colour"),
-				  ColourOf(Fallback->GetPatch(), FallbackFill)))
+	FLinearColor FallbackRing;
+	if (!TestTrue(TEXT("and its bright ring has a colour"),
+				  ColourOf(Fallback->GetRing(), FallbackRing)))
 	{
 		return false;
 	}
 	TestTrue(TEXT("which is the designed colour, not the typo"),
-		NearlyEqual(FallbackFill, Designed(ACataclysmTelegraphMarker::DesignedFillHex)));
+		NearlyEqual(FallbackRing, Designed(ACataclysmTelegraphMarker::DesignedRingHex)));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTelegraphMarkerFillIsSeeThroughAndRingsAreNot,
+	"Cataclysm.Telegraph.OnlyTheInnermostBandIsSeeThrough",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTelegraphMarkerFillIsSeeThroughAndRingsAreNot::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	// WHAT THIS GUARDS. The project owner asked on 2026-08-13 for the marker to
+	// stop reading as a solid plate. The answer was to make only the innermost
+	// band see-through and leave the three rings opaque, because a translucent
+	// band's contrast against the ground beneath it falls toward 1:1 as it
+	// fades. If the rings ever became translucent too, every contrast figure in
+	// section XIII of the design document would stop being true and nothing
+	// else would notice.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	ACataclysmTelegraphMarker* Circle = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
+	if (!TestNotNull(TEXT("a circle is drawn"), Circle))
+	{
+		return false;
+	}
+
+	float FillOpacity = -1.0f;
+	if (!TestTrue(TEXT("the innermost band has an opacity set"),
+				  OpacityOf(Circle->GetPatch(), FillOpacity)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the designed 0.35, so the ground reads through it"),
+		FillOpacity, ACataclysmTelegraphMarker::DesignedFillOpacity, 0.001f);
+	TestTrue(TEXT("which is less than fully opaque"), FillOpacity < 1.0f);
+
+	for (auto Band : {std::make_pair(Circle->GetEdge(), TEXT("outer ring")),
+					  std::make_pair(Circle->GetRing(), TEXT("bright ring")),
+					  std::make_pair(Circle->GetInner(), TEXT("inner line"))})
+	{
+		float Opacity = -1.0f;
+		if (!TestTrue(FString::Printf(TEXT("the %s has an opacity set"), Band.second),
+					  OpacityOf(Band.first, Opacity)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(
+			TEXT("and the %s is fully opaque, because it carries the contrast"),
+			Band.second), Opacity, 1.0f, 0.001f);
+	}
 
 	return true;
 }
