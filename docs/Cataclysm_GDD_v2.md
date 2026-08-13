@@ -4647,6 +4647,135 @@ paper.
 
   
 
+### **The effect palette, which is not the environment palette**
+
+The table above says what a **place** looks like. This one says what a **skill's
+effect** looks like, and they are deliberately different.
+
+  
+
+**Every damage type gets two colours.** The primary is the hue the effect reads
+as. The secondary is a dark anchor in the same family, and it is not decoration —
+it is what keeps the effect legible when the primary matches the floor it is
+standing on.
+
+  
+
+| Damage type | Primary | Secondary | Reads as |
+| :-- | :-- | :-- | :-- |
+| Demonic | `#FF7A2E` | `#3A0A02` | Fire and lava |
+| Death | `#8FD8EC` | `#0C1418` | Icy blue, cold, bone |
+| War | `#9AA7B4` | `#1C2229` | Gunmetal and steel |
+| Famine | `#BCA95F` | `#221A0E` | Dying leaves, drained |
+| Pestilence | `#B4E84A` | `#16200A` | Toxic, putrid, acid |
+| Void | `#B978F5` | `#140A20` | Erasure |
+| Celestial | `#FFE9A8` | `#3A2A08` | Light and gilding |
+| Chaos | `#D6D6D6` | `#232323` | No hue at all |
+
+  
+
+### **The one rule that generates the rest**
+
+**A world surface may not exceed 30% brightness. An effect's primary may not fall
+below 60%.** Those two numbers are the whole readability guarantee, and they
+replace checking eight colours against eight environments one pair at a time.
+
+  
+
+The arithmetic: to reach the 3:1 accessibility threshold for a graphical object
+that is not text, against the brightest surface the world is allowed to have, a
+colour has to reach **60.5%** brightness. Every primary above does. The darkest is
+Void at 61.9%.
+
+  
+
+**This is why the environment cap is load-bearing rather than a style
+preference.** If a floor is ever built brighter than 30%, it does not look
+slightly wrong — it silently breaks the readability of every effect in the game,
+and nothing would report it.
+
+  
+
+### **These are base values, not the finished look**
+
+**A flat swatch of one of these colours is not what the game will look like, and
+judging the palette from one is misleading.** The project owner said so directly
+on 2026-08-13: "there's just something wrong with looking at a flat color and
+trying to envision it as part of a video game. Needs a material and texture and
+all that."
+
+  
+
+That is correct, and it is the same objection that produced the attack warning
+marker's rework. What the table above fixes is the **starting constraint** — the
+hue an effect reads as, and the guarantee that it stays visible. The finished
+appearance comes from the material on top of it: how far the emissive pushes past
+the base value, how the surface moves, how dense it is, and how fast.
+
+  
+
+`Niagara_Conventions.md` in this folder carries those as separate per-damage-type
+values alongside the two colours, exactly so the colour is one axis of five rather
+than the whole identity:
+
+  
+
+| Value | What it varies |
+| :-- | :-- |
+| `EmissiveMultiplier` | how far above the base value the effect glows |
+| `SpawnRateScale` | denser for Pestilence, sparser for Void |
+| `VelocityScale` | fast for War, slow-drifting for Famine |
+| `MotionCurve` | the damage type's characteristic movement |
+
+  
+
+**So the palette cannot be signed off from a swatch and is not being asked to
+be.** It becomes judgeable when the first effect exists in the sandbox, which is
+step 4 of the build order in `Niagara_Conventions.md`. Expect to adjust these
+values then; the two brightness numbers are what must not move.
+
+  
+
+### **Two of these are deliberately not what they were asked for**
+
+**Void was asked for as "darker purple" and is not dark.** A dark effect on a
+dark floor cannot be seen, and Void's own environment is the darkest of the eight.
+Its darkness lives in its secondary and in its **form** — erasure, pulling inward,
+a centre darker than the floor — rather than in its primary. This is the same
+conclusion the attack warning marker reached: what reads as absence is a bright
+rim around a dark centre, not a dark shape.
+
+  
+
+**War was asked for as "basic looking" and is gunmetal rather than white.** A
+neutral white steel measured as confusable with Chaos, which is defined as having
+no hue at all. Gunmetal keeps War reading as armour rather than as an element,
+and separates the two. Blood red stays as War's accent for bleeding effects
+specifically; it is not the damage type's colour.
+
+  
+
+### **Where hue cannot separate a pair, form does**
+
+Three damage types are built on darkness and two share brown, so some pairs are
+separated by shape and motion rather than by colour:
+
+  
+
+  - **Death settles downward.** Bone, frost, things falling still.
+  - **Void pulls inward.** Erasure, geometry warping toward a point.
+  - **Chaos never settles.** It is the only one with no hue, and it is the only
+    one whose surface is always moving.
+  - **Famine drains and drifts.** Slow, desaturating, falling apart.
+  - **Pestilence spreads and clings.** Fast, dense, wet.
+
+  
+
+A shape and motion difference survives twenty enemies attacking at once. A subtle
+hue difference does not.
+
+  
+
 ### **What Chaos looks like**
 
 Chaos is the hardest of the eight to state, because "black and white, random" is
