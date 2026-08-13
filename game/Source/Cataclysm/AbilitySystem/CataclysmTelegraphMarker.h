@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "CataclysmTelegraphMarker.generated.h"
 
+class UMaterialInterface;
 class UStaticMesh;
 class UStaticMeshComponent;
 
@@ -37,14 +38,30 @@ class UStaticMeshComponent;
  * sim/cataclysm_sim/enemy_abilities.py and no enemy in the project has either
  * yet, so neither is built here.
  *
- * NO MATERIAL AND NO PARTICLE SYSTEM. This project's own Content folder holds
- * no materials and no particle assets, so a marker built from either would be
- * the first authored art asset in the repository and would land in Git LFS. It
- * is built instead from /Engine/BasicShapes, exactly as the placeholder bodies
- * on the player, the enemies and the projectiles already are: a flattened
- * cylinder for a circle and a flattened cube for a lane. That reads correctly
- * and costs the repository nothing. Replacing it with a decal or a Niagara
- * system is a content change and does not touch any of the behaviour here.
+ * THE SHAPES ARE ENGINE CONTENT, THE MATERIAL IS OURS. The meshes are
+ * /Engine/BasicShapes, exactly as the placeholder bodies on the player, the
+ * enemies and the projectiles are: a flattened cylinder for a circle and a
+ * flattened cube for a lane. The material is `/Game/Effects/M_TelegraphMarker`,
+ * built by `tools/generate_telegraph_material.py`.
+ *
+ * IT IS UNLIT, AND THAT IS THE POINT OF HAVING ONE. Until issue #539 there was
+ * no material at all, so both shapes took the engine default, which is lit. A
+ * lit warning gets darker exactly when the world does, and the design commits to
+ * a deliberately dark world in which the player has to see and dodge these
+ * shapes. Section XIII of docs/Cataclysm_GDD_v2.md states the telegraph's
+ * contrast against each of the eight Cataclysm themes, and those figures are
+ * only true of the game if the shape's brightness comes from its own material.
+ *
+ * An earlier version of this comment said a material would be the repository's
+ * first authored art asset and argued against one on that basis. That stopped
+ * being true: game/Content already holds animation and DataTable assets, and
+ * .gitattributes already routes .uasset to Git LFS.
+ *
+ * TWO TONES, BECAUSE NO ONE COLOUR SURVIVES BOTH EXTREMES. Death and Void are
+ * built on black and Celestial is gold and white, so a colour bright enough to
+ * read on the first disappears into the second. The cyan fill carries the dark
+ * environments and a near-black rim carries the bright ones. Measured, the
+ * weakest case across all eight themes is 3.22:1, against War's steel grey.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmTelegraphMarker : public AActor
@@ -72,6 +89,38 @@ public:
 	/** How thick the drawn patch is, in centimetres. Enough to be visible on the
 	 *  floor without standing up far enough to read as an object. */
 	static constexpr float MarkerThicknessCm = 4.0f;
+
+	/**
+	 * How far the near-black rim extends past the fill, in centimetres.
+	 *
+	 * WHAT IT IS FOR. Contrast against a bright environment. The cyan fill
+	 * reaches 8.16:1 against Death's black and only 1.91:1 against Celestial's
+	 * gold and white; the rim is the reverse, 1.03:1 and 15.20:1. One of the two
+	 * is always in strong contrast with whatever is behind the marker.
+	 *
+	 * TWELVE CENTIMETRES IS A JUDGEMENT, not a derivation. The smallest marker
+	 * the design draws at all has a one metre radius, so the rim is a little over
+	 * a tenth of the smallest shape's radius and proportionally less on anything
+	 * larger. It is deliberately not scaled with the marker: a rim is there to be
+	 * seen at a constant thickness on screen, and one that grew with the shape
+	 * would be a band rather than an edge on a boss's six metre ring.
+	 */
+	static constexpr float OutlineThicknessCm = 12.0f;
+
+	/**
+	 * The fill and the rim, as sRGB hex, matching section XIII of
+	 * docs/Cataclysm_GDD_v2.md.
+	 *
+	 * KEPT AS HEX RATHER THAN AS LINEAR FLOATS so they can be read against the
+	 * design document without conversion. FLinearColor::FromSRGBColor does the
+	 * conversion where they are used, because a material parameter is linear.
+	 *
+	 * tools/tests/test_every_cataclysm_has_a_visual_theme.py holds the same two
+	 * values against the design document, so a change in one place that is not
+	 * made in the other fails rather than going unnoticed.
+	 */
+	static const TCHAR* const DesignedFillHex;
+	static const TCHAR* const DesignedOutlineHex;
 
 	/**
 	 * Draw a circle on the ground and take it away after Seconds.
@@ -128,6 +177,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Telegraph")
 	bool IsLane() const { return LengthCm > 0.0f; }
 
+	/** The drawn fill. Read by tests, which check what it is coloured with and
+	 *  that the material it uses is unlit. */
+	UStaticMeshComponent* GetPatch() const { return Patch; }
+
+	/** The near-black rim drawn behind the fill. Read by tests. */
+	UStaticMeshComponent* GetEdge() const { return Edge; }
+
 protected:
 	/**
 	 * The drawn patch.
@@ -140,6 +196,39 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Telegraph")
 	TObjectPtr<UStaticMeshComponent> Patch;
+
+	/**
+	 * The near-black rim, drawn as the same shape a little larger and a little
+	 * lower so the fill sits on top of it.
+	 *
+	 * A SECOND MESH RATHER THAN A RING IN THE MATERIAL. Drawing the rim in the
+	 * material means reading the shape's own texture coordinates, and the two
+	 * meshes here map theirs differently -- a cylinder's cap is radial, a cube's
+	 * face is not -- so one material could not draw a rim on both without a
+	 * branch per shape. A second component costs one draw call and works on
+	 * anything.
+	 *
+	 * NO COLLISION, for the reason the fill has none.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Telegraph")
+	TObjectPtr<UStaticMeshComponent> Edge;
+
+	/**
+	 * The unlit material both components are drawn with, found in the
+	 * constructor.
+	 *
+	 * A missing material is not fatal, and is handled the way a missing mesh is:
+	 * the marker still spawns, still measures and still goes away on time. It
+	 * falls back to the engine default, which is lit -- so it is visible in the
+	 * editor and wrong in exactly the way issue #539 describes, rather than
+	 * invisible.
+	 */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> MarkerMaterial;
+
+	/** Set the colour on both components. Called once per marker, after the
+	 *  meshes and scales are set. */
+	void ApplyColours();
 
 	/**
 	 * The two engine shapes a marker is drawn with, found in the constructor.

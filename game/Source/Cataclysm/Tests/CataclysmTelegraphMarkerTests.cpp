@@ -9,10 +9,16 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "HAL/IConsoleManager.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -605,6 +611,325 @@ bool FCataclysmAnInterruptedWindUpTakesItsMarkerWithIt::RunTest(const FString&)
 	TestEqual(TEXT("the wind-up was abandoned"), Brain->WindingUpAbility, -1);
 	TestEqual(TEXT("and its marker went with it"), CountMarkers(World), 0);
 	TestEqual(TEXT("and no ability landed"), Brain->AbilitiesUsed, 0);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// What it is drawn with
+//
+// WHAT THESE GUARD. Issue #539. Until it, neither mesh had a material at all,
+// so both took the engine default, which is lit. A warning that takes the
+// room's lighting gets darker exactly when the world does, and section XIII of
+// docs/Cataclysm_GDD_v2.md states the telegraph's contrast against each of the
+// eight Cataclysm themes on the assumption that it does not.
+//
+// THE ASSERTION THAT MATTERS MOST is that the material is unlit. The colour
+// checks below are worth having, but a lit marker with exactly the right colour
+// is still the defect #539 describes.
+// --------------------------------------------------------------------------
+
+namespace CataclysmTelegraphTest
+{
+	/** The colour a component's material was actually given, or black with a
+	 *  failed flag when there is no dynamic instance to ask. */
+	static bool ColourOf(UStaticMeshComponent* Component, FLinearColor& OutColour)
+	{
+		if (!Component)
+		{
+			return false;
+		}
+		UMaterialInstanceDynamic* Instance =
+			Cast<UMaterialInstanceDynamic>(Component->GetMaterial(0));
+		if (!Instance)
+		{
+			return false;
+		}
+		return Instance->GetVectorParameterValue(
+			FMaterialParameterInfo(TEXT("Colour")), OutColour);
+	}
+
+	/** The designed colour for a hex string, the same conversion the marker
+	 *  does. Written out here rather than shared, so a change to the marker's
+	 *  conversion is caught rather than followed. */
+	static FLinearColor Designed(const TCHAR* Hex)
+	{
+		return FLinearColor::FromSRGBColor(FColor::FromHex(Hex));
+	}
+
+	static bool NearlyEqual(const FLinearColor& A, const FLinearColor& B)
+	{
+		return A.Equals(B, /*Tolerance=*/1.0f / 255.0f);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTelegraphMarkerIsDrawnUnlit,
+	"Cataclysm.Telegraph.ItIsDrawnWithAnUnlitMaterialSoTheRoomCannotDimIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTelegraphMarkerIsDrawnUnlit::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	ACataclysmTelegraphMarker* Circle = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
+	if (!TestNotNull(TEXT("a circle is drawn"), Circle))
+	{
+		return false;
+	}
+
+	UStaticMeshComponent* Fill = Circle->GetPatch();
+	if (!TestNotNull(TEXT("it has a fill"), Fill))
+	{
+		return false;
+	}
+
+	UMaterialInterface* Material = Fill->GetMaterial(0);
+	if (!TestNotNull(TEXT("and the fill has a material at all"), Material))
+	{
+		return false;
+	}
+
+	// THE WHOLE POINT OF ISSUE #539. A lit material would make every contrast
+	// figure in section XIII a statement about a swatch rather than about the
+	// game.
+	TestTrue(TEXT("and that material is unlit, so the room's lighting cannot "
+				  "change how bright the warning is"),
+		Material->GetShadingModels().HasShadingModel(MSM_Unlit));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTelegraphMarkerHasARimAroundItsFill,
+	"Cataclysm.Telegraph.ItHasANearBlackRimWiderThanItsFill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTelegraphMarkerHasARimAroundItsFill::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	ACataclysmTelegraphMarker* Circle = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
+	if (!TestNotNull(TEXT("a circle is drawn"), Circle))
+	{
+		return false;
+	}
+
+	UStaticMeshComponent* Fill = Circle->GetPatch();
+	UStaticMeshComponent* Rim = Circle->GetEdge();
+	if (!TestNotNull(TEXT("it has a fill"), Fill)
+		|| !TestNotNull(TEXT("and a rim"), Rim))
+	{
+		return false;
+	}
+
+	TestNotNull(TEXT("the rim has a mesh, so it is actually drawn"),
+		Rim->GetStaticMesh().Get());
+
+	// WIDER BY EXACTLY THE DESIGNED RIM, on both axes. Measured in world scale
+	// because the rim is deliberately not a child of the fill: a child would
+	// inherit the fill's scale and the rim would grow with the marker instead
+	// of staying a constant edge.
+	// DOUBLES, because a component's scale is an FVector and UE5's FVector is
+	// double precision. Mixing the two makes TestEqual ambiguous rather than
+	// wrong, which is a compile error and not a silent problem.
+	const double ShapeSize = ACataclysmCharacterBase::BasicShapeSize;
+	const double ExpectedFill = (3.5 * M * 2.0) / ShapeSize;
+	const double ExpectedRim =
+		((3.5 * M + ACataclysmTelegraphMarker::OutlineThicknessCm) * 2.0) / ShapeSize;
+
+	TestEqual(TEXT("the fill is the ability's own radius across"),
+		Fill->GetComponentScale().X, ExpectedFill, /*Tolerance=*/0.001);
+	TestEqual(TEXT("and the rim is one rim thickness wider"),
+		Rim->GetComponentScale().X, ExpectedRim, /*Tolerance=*/0.001);
+	TestTrue(TEXT("so the rim shows all the way around the fill"),
+		Rim->GetComponentScale().X > Fill->GetComponentScale().X);
+
+	// UNDERNEATH, so the fill wins where they overlap rather than the two
+	// fighting over the same depth.
+	TestTrue(TEXT("and it sits below the fill"),
+		Rim->GetRelativeLocation().Z < 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTelegraphMarkerUsesTheDesignedColours,
+	"Cataclysm.Telegraph.ItsFillAndRimAreTheColoursTheDesignDocumentStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTelegraphMarkerUsesTheDesignedColours::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	// BOTH SHAPES, because each sets its own meshes and scales and could just
+	// as easily forget to colour them.
+	ACataclysmTelegraphMarker* Circle = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
+	ACataclysmTelegraphMarker* Lane = ACataclysmTelegraphMarker::ShowLine(
+		Caster, FVector::ZeroVector, FVector(10.0f * M, 0.0f, 0.0f),
+		/*HalfWidthCm=*/2.1f * M, /*Seconds=*/1.0f);
+	if (!TestNotNull(TEXT("a circle is drawn"), Circle)
+		|| !TestNotNull(TEXT("and a lane"), Lane))
+	{
+		return false;
+	}
+
+	const FLinearColor ExpectedFill =
+		Designed(ACataclysmTelegraphMarker::DesignedFillHex);
+	const FLinearColor ExpectedRim =
+		Designed(ACataclysmTelegraphMarker::DesignedOutlineHex);
+
+	for (ACataclysmTelegraphMarker* Marker : {Circle, Lane})
+	{
+		const TCHAR* Which = Marker->IsLane() ? TEXT("lane") : TEXT("circle");
+
+		FLinearColor Fill;
+		FLinearColor Rim;
+		if (!TestTrue(FString::Printf(TEXT("the %s's fill has a colour set"), Which),
+					  ColourOf(Marker->GetPatch(), Fill))
+			|| !TestTrue(FString::Printf(TEXT("and the %s's rim does"), Which),
+						 ColourOf(Marker->GetEdge(), Rim)))
+		{
+			return false;
+		}
+
+		TestTrue(FString::Printf(
+			TEXT("the %s's fill is the designed %s"),
+			Which, ACataclysmTelegraphMarker::DesignedFillHex),
+			NearlyEqual(Fill, ExpectedFill));
+
+		TestTrue(FString::Printf(
+			TEXT("and the %s's rim is the designed %s"),
+			Which, ACataclysmTelegraphMarker::DesignedOutlineHex),
+			NearlyEqual(Rim, ExpectedRim));
+
+		// THE TWO ARE NOT THE SAME COLOUR, which is the failure that would
+		// follow from the material's parameter being renamed on one side only:
+		// both would silently fall back to the material's default, which is the
+		// fill, and the rim would stop being a rim.
+		TestFalse(FString::Printf(
+			TEXT("and the %s's rim is not simply the fill again"), Which),
+			NearlyEqual(Rim, Fill));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTelegraphMarkerColourCanBeOverriddenLive,
+	"Cataclysm.Telegraph.TheFillColourCanBeChangedWithoutARebuild",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	// WHY THIS IS TESTED. The project owner accepted cyan with a stated
+	// reservation that red is the genre's colour for danger. Settling that needs
+	// both to be one console command apart in the sandbox, so the override is a
+	// feature rather than a debugging leftover and is worth holding.
+	IConsoleVariable* Variable =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.Telegraph.FillColour"));
+	if (!TestNotNull(TEXT("the fill colour console variable exists"), Variable))
+	{
+		return false;
+	}
+
+	const FString Original = Variable->GetString();
+	ON_SCOPE_EXIT { Variable->Set(*Original, ECVF_SetByCode); };
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	Variable->Set(TEXT("FF3020"), ECVF_SetByCode);
+
+	ACataclysmTelegraphMarker* Overridden = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
+	if (!TestNotNull(TEXT("a circle is drawn with the override set"), Overridden))
+	{
+		return false;
+	}
+
+	FLinearColor Fill;
+	if (!TestTrue(TEXT("and its fill has a colour"),
+				  ColourOf(Overridden->GetPatch(), Fill)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("which is the red that was asked for"),
+		NearlyEqual(Fill, Designed(TEXT("FF3020"))));
+
+	// A TYPO PUTS THE DESIGN BACK rather than leaving a marker black or
+	// refusing to draw the warning at all. This reads a value a person typed.
+	Variable->Set(TEXT("nonsense"), ECVF_SetByCode);
+
+	ACataclysmTelegraphMarker* Fallback = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector(1000.0f, 0.0f, 0.0f), /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
+	if (!TestNotNull(TEXT("a circle is still drawn after a bad override"), Fallback))
+	{
+		return false;
+	}
+
+	FLinearColor FallbackFill;
+	if (!TestTrue(TEXT("and its fill has a colour"),
+				  ColourOf(Fallback->GetPatch(), FallbackFill)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("which is the designed colour, not the typo"),
+		NearlyEqual(FallbackFill, Designed(ACataclysmTelegraphMarker::DesignedFillHex)));
 
 	return true;
 }
