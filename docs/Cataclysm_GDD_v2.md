@@ -4565,7 +4565,7 @@ separately.
 
   
 
-### **A telegraph is not coloured by its Cataclysm's theme**
+### **The telegraph is one colour everywhere, and it is not the Cataclysm's**
 
 **What makes an attack warning visible is its shape and its edge, not its
 colour.** A telegraph is a hard-edged geometric shape — a circle, a cone, a line,
@@ -4575,39 +4575,65 @@ lava, against shadow, or against a crowd of twenty enemies.
 
   
 
-Colour tells the player *which* damage type a telegraph belongs to. **It is not
-what makes the telegraph visible in the first place**, and it cannot be, for three
-reasons this design produces directly:
-
-  - **A Demonic environment is already full of glowing orange.** Lava and fire
-    occupy the same brightness and hue a warm telegraph would use, so a telegraph
-    tinted to the Demonic theme competes with the floor.
-  - **Death, Void and Chaos are all built on black.** A dark telegraph in a dark
-    room is not a telegraph.
-  - **Some themes are close to each other.** Death and Void are both darkness;
-    Famine and Pestilence share brown.
+**There is one telegraph colour for the whole game.** It does not vary by
+Cataclysm, by damage type, or by enemy. The creature's own art and its
+Cataclysm's environment already say what is attacking; the warning shape only has
+to say *where* and *when*, and it has to do that everywhere.
 
   
 
-So the environment carries the theme and the telegraph carries the shape. A
-telegraph is drawn with an **unlit, emissive** material, so its brightness is
+| Part | Value | What it is for |
+| :-- | :-- | :-- |
+| Fill | **`#00B8C4`** | A saturated cyan. It reads against every dark environment. |
+| Outline | **`#0A0F12`** | A near-black edge on both sides of the fill. It reads against every bright environment. |
+
+  
+
+**Two tones rather than one, because no single colour survives both extremes.**
+Death and Void are built on black, and Celestial is gold and white. A colour
+bright enough for the first disappears into the second. The cyan carries the dark
+environments and the near-black outline carries the bright ones, so at least one
+part of the shape is always in strong contrast with whatever is behind it.
+
+  
+
+Measured against the extreme of each of the eight themes, the weakest case is
+**3.22:1** against War's steel grey, and every other environment is better. Three
+to one is the accessibility threshold for a graphical object that is not text.
+
+  
+
+**Cyan because no Cataclysm uses it.** The eight themes occupy red, grey, black,
+brown, purple, gold, white and green. Cyan is the one hue left, and it is the
+opposite of orange, which matters because Demonic lava is the environment most
+likely to swallow a warning.
+
+  
+
+**The genre does not settle this.** Shipped action role-playing games use red or
+orange for danger, and that convention cannot be borrowed here, because this
+game's own fire Cataclysm already owns those colours. This choice is a judgement
+from the constraints above rather than a shape read off another game.
+
+  
+
+A telegraph is drawn with an **unlit, emissive** material, so its brightness is
 fixed by its own material rather than by whatever light the room happens to have.
-This is what makes a brightness rule possible at all.
+This is what makes the measured contrasts above hold in play rather than only on
+paper.
 
   
 
-### **Three things this leaves open**
+### **Two things this leaves open**
 
-  - **The eight telegraph colours have not been chosen.** They must be
-    distinguishable from each other and from every environment, which means they
-    are chosen as one set rather than one per Cataclysm.
   - **Chaos is described as black and white flashing, and this document commits to
     an epilepsy-safe mode that reduces flashing effects.** A Cataclysm whose
     identity is flashing is the one case that mode exists to suppress. Either
     Chaos expresses randomness some other way, or the mode has to state what it
     does to a Chaos dungeon specifically.
-  - **How Death and Void are told apart**, given both are darkness, and how Famine
-    and Pestilence are told apart, given both are brown.
+  - **How Death and Void environments are told apart**, given both are darkness,
+    and how Famine and Pestilence are told apart, given both are brown. This is an
+    environment and enemy question. It no longer affects telegraphs.
 
   
 

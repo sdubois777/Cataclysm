@@ -111,3 +111,48 @@ def test_the_section_states_that_shape_carries_the_telegraph(identity_section):
         "with an unlit emissive material. Without that, their brightness is "
         "whatever the room's lighting produces and no brightness rule can hold."
     )
+
+
+#: The one telegraph colour, fill and outline. Stated here as well as in the
+#: design document on purpose: these two values are what
+#: game/Source/Cataclysm/AbilitySystem/CataclysmTelegraphMarker.cpp will be
+#: built to under issue #539, so a silent edit to either should fail loudly
+#: rather than leaving the document and the material disagreeing.
+TELEGRAPH_FILL = "#00B8C4"
+TELEGRAPH_OUTLINE = "#0A0F12"
+
+
+def test_there_is_exactly_one_telegraph_colour(identity_section):
+    """The project owner settled this on 2026-08-12: one colour for the whole
+    game, not one per damage type, because the creature's own art already says
+    what is attacking."""
+    assert TELEGRAPH_FILL in identity_section, (
+        f"The telegraph fill colour {TELEGRAPH_FILL} is not stated in the "
+        "Visual Identity section."
+    )
+    assert TELEGRAPH_OUTLINE in identity_section, (
+        f"The telegraph outline colour {TELEGRAPH_OUTLINE} is not stated in the "
+        "Visual Identity section. The outline is not decoration: it is what "
+        "makes the shape readable against Celestial's gold and white, where the "
+        "cyan fill alone reaches only 1.91:1."
+    )
+    assert "one telegraph colour for the whole game" in identity_section, (
+        "The Visual Identity section no longer states that there is a single "
+        "telegraph colour. If this became per damage type again, the eight "
+        "colours would each need checking against all eight environments."
+    )
+
+
+def test_no_per_damage_type_telegraph_colour_crept_back(damage_types, identity_section):
+    """A telegraph colour named after a damage type would mean the single-colour
+    rule had quietly been reversed."""
+    start = identity_section.index("one telegraph colour for the whole game")
+    after = identity_section[start:]
+    offenders = [
+        name for name in damage_types
+        if f"{name} telegraph" in after or f"telegraph is {name}" in after
+    ]
+    assert not offenders, (
+        f"These damage types are given their own telegraph colour: {offenders}. "
+        "There is one telegraph colour for the whole game."
+    )
