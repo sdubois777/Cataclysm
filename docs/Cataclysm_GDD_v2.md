@@ -4561,7 +4561,7 @@ separately.
 | Void | Black and purple, nothingness | Absence, erasure, warped space |
 | Celestial | Gold and white, holy | Light, gilding, ward |
 | Pestilence | Putrid green and brown, rot | Rot, spores, wet decay |
-| Chaos | Black and white, random | Unstable, shifting, inconsistent |
+| Chaos | Black and white, no hue at all | Unstable, streaking, never settling. See below |
 
   
 
@@ -4582,38 +4582,61 @@ to say *where* and *when*, and it has to do that everywhere.
 
   
 
-| Part | Value | What it is for |
-| :-- | :-- | :-- |
-| Fill | **`#00B8C4`** | A saturated cyan. It reads against every dark environment. |
-| Outline | **`#0A0F12`** | A near-black edge on both sides of the fill. It reads against every bright environment. |
+**It is four concentric bands: three opaque rings around a see-through middle.**
+Outermost first, with the widths in centimetres:
 
   
 
-**Two tones rather than one, because no single colour survives both extremes.**
-Death and Void are built on black, and Celestial is gold and white. A colour
-bright enough for the first disappears into the second. The cyan carries the dark
-environments and the near-black outline carries the bright ones, so at least one
-part of the shape is always in strong contrast with whatever is behind it.
+| Band | Width | Value | What it is for |
+| :-- | :-: | :-- | :-- |
+| Outer ring | 6 | **`#0A0F12`** | Near-black. Carries Celestial and Chaos, where everything else is brighter than the ground. |
+| Bright ring | 8 | **`#FF3020`** | Red. Carries the dark environments, and is the colour the marker reads as. |
+| Inner line | 4 | **`#FFD9CF`** | Warm near-white. Carries War's mid grey and Demonic's lava, where the other two are close to the ground's own brightness. |
+| Fill | — | **`#FF3020` at 35% opacity** | Covers exactly the ground that hurts. Tints it rather than covering it. |
+
+  
+
+**Three rings rather than one, because no single colour survives every
+environment.** Death and Void are built on black, Celestial is gold and white,
+and War's steel sits in the middle where both a bright colour and a near-black
+one are close to the ground. Which ring does the work changes with the ground,
+and at least one is always in strong contrast.
 
   
 
 Measured against the extreme of each of the eight themes, the weakest case is
-**3.22:1** against War's steel grey, and every other environment is better. Three
-to one is the accessibility threshold for a graphical object that is not text.
+**3.92:1** against Demonic lava, and every other environment is better. Three to
+one is the accessibility threshold for a graphical object that is not text.
 
   
 
-**Cyan because no Cataclysm uses it.** The eight themes occupy red, grey, black,
-brown, purple, gold, white and green. Cyan is the one hue left, and it is the
-opposite of orange, which matters because Demonic lava is the environment most
-likely to swallow a warning.
+**The inner line is what makes the red work.** Without it the worst case is
+2.47:1, which fails. The red ring and the near-black ring are both close to War's
+mid grey, and adding a light band gives that environment something to contrast
+against. It is also why the red is more readable than the cyan it replaced, whose
+two-band worst case was 3.22:1.
 
   
 
-**The genre does not settle this.** Shipped action role-playing games use red or
-orange for danger, and that convention cannot be borrowed here, because this
-game's own fire Cataclysm already owns those colours. This choice is a judgement
-from the constraints above rather than a shape read off another game.
+**The fill carries none of the readability, and that is why it can be
+see-through.** A translucent band's contrast against the ground beneath it falls
+toward 1:1 as it fades — at 25% over War's steel grey it is 1.54:1 — so it could
+never have been the thing the guarantee rested on. At 35% the marked ground is
+tinted and the floor still reads through it.
+
+  
+
+**Red because it is the genre's colour for danger.** Shipped action role-playing
+games use red or orange for an incoming attack, and a cool colour does not read
+as threatening. The cost is real and is accepted: red is at its weakest against
+Demonic lava, which is the one environment this project has any art direction
+for, and the inner line is what keeps it above the threshold there.
+
+  
+
+**The exact value is a judgement rather than a derivation.** It was chosen by
+looking at it in the sandbox, which is what the console variables under Live
+Tuning exist for.
 
   
 
@@ -4624,16 +4647,87 @@ paper.
 
   
 
-### **Two things this leaves open**
+### **What Chaos looks like**
 
-  - **Chaos is described as black and white flashing, and this document commits to
-    an epilepsy-safe mode that reduces flashing effects.** A Cataclysm whose
-    identity is flashing is the one case that mode exists to suppress. Either
-    Chaos expresses randomness some other way, or the mode has to state what it
-    does to a Chaos dungeon specifically.
+Chaos is the hardest of the eight to state, because "black and white, random" is
+a description of a feeling rather than of a surface. The buildable version:
+
+  
+
+**Light moves across the surface and the amount of light on screen does not
+change.** Chaos is the only damage type with no hue at all, and that absence is
+what identifies it — not brightness swinging up and down.
+
+  
+
+**The randomness is in the roll, not in the animation.** Each Chaos effect gets
+one instability value when it is cast. A single instance looks stable for as long
+as it exists; two instances look different from each other. That one value drives
+how fast the surface moves, how far apart its lightest and darkest points are,
+how far the geometry displaces, and how dense the streaking is. A low roll reads
+calm and grey, a high roll reads violent, and **the player can see which they got
+before the damage lands** — which is worth having, because section IV gives Chaos
+the widest damage range in the game.
+
+  
+
+Risk of Rain 2's Void Fiend is the shipped precedent: one Corruption gauge from 0
+to 100% swaps its abilities at the ends, and the character's shake amplitude
+scales continuously with the gauge, so the number is readable as motion before it
+matters mechanically.
+
+  
+
+**The streaking is made by moving textures against each other, not by switching
+between states.** Two greyscale samples multiplied together at mismatched tiling
+rates and mismatched scroll speeds, read through a gradient whose position is
+driven by elapsed time. That is Destiny 2's method, described by one of its
+senior visual effects artists, and its point is that nothing pops — the surface
+is always moving and never steps.
+
+  
+
+### **Three rules that keep Chaos safe, and one that is not about flashing**
+
+This document commits to an epilepsy-safe mode. Chaos is the theme that mode
+exists for, and the rules below are what let it be built at all rather than
+softened afterwards.
+
+  
+
+  - **Never a full black-to-white swap.** Run the light and dark ends of the
+    ramp between roughly 8% and 85% brightness rather than 0% and 100%. A true
+    black-to-white change is the largest possible, and about ten times the
+    published general-flash threshold.
+  - **Keep the alternation slow.** Any one point on the surface should cross
+    from light to dark fewer than twice a second. The published limit is three
+    general flashes per second.
+  - **Displace geometry, do not spawn and remove it.** A particle appearing or
+    disappearing is a step change in brightness. Moving vertices is not.
+
+  
+
+**The fourth rule is the one that is easy to miss, because it has nothing to do
+with flashing.** Xbox's accessibility guidance fails alternating high-contrast
+bands with **no flashing at all**, when the contrast difference is more than 10%
+and the pattern covers about a fifth of the screen or more. **Black and white
+streaking across a floor is exactly that pattern.** So Chaos streaks must be
+irregular in spacing and direction and must never settle into parallel bands.
+
+  
+
+**The epilepsy-safe mode clamps Chaos rather than disabling it**: it caps the
+instability value, reduces the distance between the ramp's ends, halves the
+movement speed, and turns off geometry displacement. A Chaos dungeon still looks
+like Chaos.
+
+  
+
+### **One thing this leaves open**
+
   - **How Death and Void environments are told apart**, given both are darkness,
     and how Famine and Pestilence are told apart, given both are brown. This is an
-    environment and enemy question. It no longer affects telegraphs.
+    environment and enemy question. It does not affect telegraphs.
 
   
 

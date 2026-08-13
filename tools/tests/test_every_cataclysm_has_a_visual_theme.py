@@ -113,33 +113,54 @@ def test_the_section_states_that_shape_carries_the_telegraph(identity_section):
     )
 
 
-#: The one telegraph colour, fill and outline. Stated here as well as in the
-#: design document on purpose: these two values are what
-#: game/Source/Cataclysm/AbilitySystem/CataclysmTelegraphMarker.cpp will be
-#: built to under issue #539, so a silent edit to either should fail loudly
-#: rather than leaving the document and the material disagreeing.
-TELEGRAPH_FILL = "#00B8C4"
+#: The telegraph's three ring colours, outermost first. Stated here as well as
+#: in the design document on purpose: these are the values
+#: game/Source/Cataclysm/AbilitySystem/CataclysmTelegraphMarker.cpp is built to,
+#: so a silent edit to either side should fail loudly rather than leaving the
+#: document and the material disagreeing.
 TELEGRAPH_OUTLINE = "#0A0F12"
+TELEGRAPH_RING = "#FF3020"
+TELEGRAPH_INNER = "#FFD9CF"
 
 
 def test_there_is_exactly_one_telegraph_colour(identity_section):
     """The project owner settled this on 2026-08-12: one colour for the whole
     game, not one per damage type, because the creature's own art already says
-    what is attacking."""
-    assert TELEGRAPH_FILL in identity_section, (
-        f"The telegraph fill colour {TELEGRAPH_FILL} is not stated in the "
-        "Visual Identity section."
-    )
-    assert TELEGRAPH_OUTLINE in identity_section, (
-        f"The telegraph outline colour {TELEGRAPH_OUTLINE} is not stated in the "
-        "Visual Identity section. The outline is not decoration: it is what "
-        "makes the shape readable against Celestial's gold and white, where the "
-        "cyan fill alone reaches only 1.91:1."
-    )
+    what is attacking. The colour itself was settled on 2026-08-13 by looking at
+    it, after cyan was tried first."""
+    for colour, why in (
+        (TELEGRAPH_RING, "the ring, which is the colour the marker reads as"),
+        (TELEGRAPH_OUTLINE, "the outer ring, which carries Celestial and Chaos "
+                            "where everything else is brighter than the ground"),
+        (TELEGRAPH_INNER, "the inner line, without which the worst case is "
+                          "2.47:1 and fails the 3:1 threshold"),
+    ):
+        assert colour in identity_section, (
+            f"{colour} is not stated in the Visual Identity section. It is "
+            f"{why}."
+        )
+
     assert "one telegraph colour for the whole game" in identity_section, (
         "The Visual Identity section no longer states that there is a single "
         "telegraph colour. If this became per damage type again, the eight "
         "colours would each need checking against all eight environments."
+    )
+
+
+def test_the_fill_is_stated_as_see_through(identity_section):
+    """The project owner asked on 2026-08-13 for the marker to stop reading as
+    a solid plate. If the document stopped saying the fill is see-through,
+    nothing would connect the C++ opacity to a design decision."""
+    assert "35% opacity" in identity_section, (
+        "The Visual Identity section no longer states the fill's opacity. "
+        "ACataclysmTelegraphMarker::DesignedFillOpacity is 0.35 and this is "
+        "the only place that says why."
+    )
+    assert "carries none of the readability" in identity_section, (
+        "The Visual Identity section no longer explains that the fill carries "
+        "none of the readability. That is the reason it is allowed to be "
+        "see-through at all, and without it somebody will make the rings "
+        "translucent too and quietly break every contrast figure above."
     )
 
 

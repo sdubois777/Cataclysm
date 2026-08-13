@@ -91,36 +91,69 @@ public:
 	static constexpr float MarkerThicknessCm = 4.0f;
 
 	/**
-	 * How far the near-black rim extends past the fill, in centimetres.
+	 * The three ring widths, in centimetres, outermost first. Their sum is how
+	 * far the marker's decoration extends past the area that actually hurts.
 	 *
-	 * WHAT IT IS FOR. Contrast against a bright environment. The cyan fill
-	 * reaches 8.16:1 against Death's black and only 1.91:1 against Celestial's
-	 * gold and white; the rim is the reverse, 1.03:1 and 15.20:1. One of the two
-	 * is always in strong contrast with whatever is behind the marker.
+	 * WHY THERE ARE THREE RINGS AND NOT ONE. No single colour stays readable
+	 * against all eight Cataclysm environments, because Death and Void are built
+	 * on black while Celestial is gold and white. Measured against the extreme of
+	 * each theme, the red ring alone reaches only 2.47:1 at worst and the
+	 * near-black rim alone is worse; **together with a light inner line the worst
+	 * case is 3.92:1**, above the 3:1 accessibility threshold for a graphical
+	 * object that is not text.
 	 *
-	 * TWELVE CENTIMETRES IS A JUDGEMENT, not a derivation. The smallest marker
-	 * the design draws at all has a one metre radius, so the rim is a little over
-	 * a tenth of the smallest shape's radius and proportionally less on anything
-	 * larger. It is deliberately not scaled with the marker: a rim is there to be
-	 * seen at a constant thickness on screen, and one that grew with the shape
-	 * would be a band rather than an edge on a boss's six metre ring.
+	 * Which ring is doing the work changes with the ground. The near-black rim
+	 * carries Celestial and Chaos, the light line carries War's mid grey and
+	 * Demonic's lava, and the red ring carries the dark environments.
+	 *
+	 * THE WIDTHS ARE A JUDGEMENT, not a derivation. They total 18 cm against a
+	 * smallest drawn marker of one metre radius. They are deliberately not scaled
+	 * with the marker: a ring is meant to be seen at a constant thickness, and
+	 * one that grew with the shape would be a band rather than an edge on a
+	 * boss's six metre circle.
 	 */
-	static constexpr float OutlineThicknessCm = 12.0f;
+	static constexpr float RimDarkCm = 6.0f;
+	static constexpr float RimBrightCm = 8.0f;
+	static constexpr float RimLightCm = 4.0f;
+
+	/** How far the rings reach past the area that hurts, in centimetres. */
+	static constexpr float OutlineThicknessCm = RimDarkCm + RimBrightCm + RimLightCm;
 
 	/**
-	 * The fill and the rim, as sRGB hex, matching section XIII of
+	 * The four colours, as sRGB hex, matching section XIII of
 	 * docs/Cataclysm_GDD_v2.md.
 	 *
 	 * KEPT AS HEX RATHER THAN AS LINEAR FLOATS so they can be read against the
 	 * design document without conversion. FLinearColor::FromSRGBColor does the
 	 * conversion where they are used, because a material parameter is linear.
 	 *
-	 * tools/tests/test_every_cataclysm_has_a_visual_theme.py holds the same two
+	 * tools/tests/test_every_cataclysm_has_a_visual_theme.py holds the same
 	 * values against the design document, so a change in one place that is not
 	 * made in the other fails rather than going unnoticed.
 	 */
-	static const TCHAR* const DesignedFillHex;
 	static const TCHAR* const DesignedOutlineHex;
+	static const TCHAR* const DesignedRingHex;
+	static const TCHAR* const DesignedInnerHex;
+
+	/** The innermost band, which covers exactly the ground that hurts. The same
+	 *  colour as the ring, drawn see-through. */
+	static const TCHAR* const DesignedFillHex;
+
+	/**
+	 * How opaque the innermost band is.
+	 *
+	 * WHY IT IS NOT 1. The project owner reported on 2026-08-13 that a fully
+	 * opaque marker "is really solid". At 0.35 the marked ground is tinted rather
+	 * than covered, so the floor and anything standing on it still read through
+	 * it.
+	 *
+	 * IT CARRIES NONE OF THE READABILITY, and that is why it is free to be this
+	 * light. A translucent band's contrast against the ground beneath it falls
+	 * toward 1:1 as it fades -- at 0.25 over War's steel grey it is 1.54:1 -- so
+	 * it could never have been the thing the guarantee rested on. The three
+	 * opaque rings carry it.
+	 */
+	static constexpr float DesignedFillOpacity = 0.35f;
 
 	/**
 	 * Draw a circle on the ground and take it away after Seconds.
@@ -177,12 +210,19 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Telegraph")
 	bool IsLane() const { return LengthCm > 0.0f; }
 
-	/** The drawn fill. Read by tests, which check what it is coloured with and
-	 *  that the material it uses is unlit. */
+	/** The innermost band, covering the ground that hurts. Read by tests, which
+	 *  check what it is coloured with, how opaque it is, and that the material
+	 *  it uses is unlit. */
 	UStaticMeshComponent* GetPatch() const { return Patch; }
 
-	/** The near-black rim drawn behind the fill. Read by tests. */
+	/** The outermost, near-black ring. Read by tests. */
 	UStaticMeshComponent* GetEdge() const { return Edge; }
+
+	/** The bright ring between the two. Read by tests. */
+	UStaticMeshComponent* GetRing() const { return Ring; }
+
+	/** The light line just outside the fill. Read by tests. */
+	UStaticMeshComponent* GetInner() const { return Inner; }
 
 protected:
 	/**
@@ -213,6 +253,16 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Telegraph")
 	TObjectPtr<UStaticMeshComponent> Edge;
 
+	/** The bright ring, inside the near-black one. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Telegraph")
+	TObjectPtr<UStaticMeshComponent> Ring;
+
+	/** The light line, inside the bright ring and immediately outside the fill.
+	 *  It is what keeps the marker readable on mid-grey and on lava, where the
+	 *  other two rings are both close to the ground's own brightness. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Telegraph")
+	TObjectPtr<UStaticMeshComponent> Inner;
+
 	/**
 	 * The unlit material both components are drawn with, found in the
 	 * constructor.
@@ -226,8 +276,25 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> MarkerMaterial;
 
-	/** Set the colour on both components. Called once per marker, after the
-	 *  meshes and scales are set. */
+	/**
+	 * Give one ring its mesh, its size and its height.
+	 *
+	 * @param BandRadiusCm  the ring's outer radius. What shows of it is the
+	 *   difference between this and the next ring in, because each smaller disc
+	 *   sits on top of it.
+	 * @param StepsDown  how many steps below the fill this sits, so the four
+	 *   discs stack in the right order rather than fighting over one depth.
+	 */
+	void BuildCircleBand(UStaticMeshComponent* Component, float BandRadiusCm,
+						 int32 StepsDown);
+
+	/** The same for a lane. @param GrowByCm how far past the danger this ring
+	 *  reaches, on both axes. */
+	void BuildLaneBand(UStaticMeshComponent* Component, float LaneLengthCm,
+					   float HalfWidthCm, float GrowByCm, int32 StepsDown);
+
+	/** Set the colour and opacity on all four bands. Called once per marker,
+	 *  after the meshes and scales are set. */
 	void ApplyColours();
 
 	/**
