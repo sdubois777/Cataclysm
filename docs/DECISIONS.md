@@ -80,17 +80,51 @@ understood as a lighting result rather than a colour choice, the only way to fix
 a telegraph's visibility is to stop it being lit — and once it is not lit, what
 distinguishes it from the world is its geometry rather than its value.
 
-### Three things left open
+### The telegraph is one colour for the whole game
 
-- **The eight telegraph colours are not chosen.** They must be distinguishable
-  from each other and from every environment, so they are picked as one set
-  rather than one per Cataclysm.
+**Settled by the project owner the same day**, after the eight themes were
+recorded: there is no per-damage-type telegraph colour. Their reasoning is that
+eight would be tedious to author and unnecessary, because the creature's own art
+and its Cataclysm's environment already say what is attacking. The warning shape
+only has to say where and when.
+
+| Part | Value |
+| :-- | :-- |
+| Fill | `#00B8C4`, a saturated cyan |
+| Outline | `#0A0F12`, near-black, on both sides of the fill |
+
+**Two tones rather than one, because no single colour survives both extremes.**
+Death and Void are built on black and Celestial is gold and white. A colour
+bright enough for the first disappears into the second. Measured against the
+extreme of each theme, the cyan fill reaches 8.16:1 on Death's black but only
+1.91:1 on Celestial; the near-black outline is the reverse, 1.03:1 on Death and
+15.20:1 on Celestial. Taking the better of the two per environment, **the worst
+case across all eight themes is 3.22:1, against War's steel grey** — above the
+3:1 accessibility threshold for a graphical object that is not text.
+
+**Cyan because no Cataclysm uses it.** The themes occupy red, grey, black, brown,
+purple, gold, white and green. Cyan is the hue left over, and it is the opposite
+of orange, which matters because Demonic lava is the environment most likely to
+swallow a warning.
+
+**The genre does not settle this one.** A search for telegraph colour conventions
+returned material about damage number colours instead, and what it did show is
+that conventions vary between games. Shipped action role-playing games generally
+use red or orange for danger, and that cannot be borrowed here because this
+game's own fire Cataclysm already owns those colours. **This is a judgement from
+the constraints, not a shape read off another game**, and it is labelled as one in
+section XIII.
+
+### Two things left open
+
 - **Chaos is described as black and white flashing, and section XIII commits to
   an epilepsy-safe mode that reduces flashing effects.** A Cataclysm whose
   identity is flashing is the one case that mode exists to suppress. Either
   Chaos expresses randomness another way, or the mode states what it does to a
   Chaos dungeon specifically.
-- **How Death and Void are told apart**, and Famine and Pestilence.
+- **How Death and Void environments are told apart**, and Famine and Pestilence.
+  This is now an environment and enemy question only; it no longer affects
+  telegraphs.
 
 ---
 
