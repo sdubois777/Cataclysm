@@ -20,6 +20,97 @@ applied or still pending.
 
 ---
 
+## 2026-08-13 — The eight damage types have an effect palette, and one rule generates it
+
+**Affects:** section XIII of `Cataclysm_GDD_v2.md`, applied. Issue #546. Colours
+given by the project owner; two were changed and the changes are recorded below.
+
+### The rule, which matters more than the eight colours
+
+**A world surface may not exceed 30% brightness. An effect's primary may not fall
+below 60%.**
+
+To clear 3:1 — the accessibility threshold for a graphical object that is not
+text — against the brightest surface the world is allowed to have, a colour must
+reach **60.5%** brightness. That single derivation replaces checking eight
+colours against eight environments one pair at a time.
+
+**It makes the environment cap load-bearing rather than a style preference.** A
+floor built brighter than 30% does not look slightly wrong; it silently breaks
+the readability of every effect in the game.
+
+### The palette
+
+| Damage type | Primary | Secondary |
+| :-- | :-- | :-- |
+| Demonic | `#FF7A2E` | `#3A0A02` |
+| Death | `#8FD8EC` | `#0C1418` |
+| War | `#9AA7B4` | `#1C2229` |
+| Famine | `#BCA95F` | `#221A0E` |
+| Pestilence | `#B4E84A` | `#16200A` |
+| Void | `#B978F5` | `#140A20` |
+| Celestial | `#FFE9A8` | `#3A2A08` |
+| Chaos | `#D6D6D6` | `#232323` |
+
+Two colours each, because an effect coloured like its damage type is at its least
+readable in the environment that damage type generates. The secondary is a dark
+anchor, not decoration — the same conclusion the attack warning marker reached
+when a single colour could not survive both black and gold environments.
+
+### Two colours are not what was asked for
+
+**Void was asked for as "darker purple" and is not dark.** A dark effect on a dark
+floor cannot be seen, and Void's own environment is the darkest of the eight. Its
+darkness lives in its secondary and its form — erasure, pulling inward, a centre
+darker than the floor — rather than in its primary. This is the attack warning
+marker's lesson applied again: what reads as absence is a bright rim around a dark
+centre.
+
+**War was asked for as "basic looking" and is gunmetal rather than white.** A
+neutral white steel measured as confusable with Chaos at a perceptual difference
+of **5.0**, where 15 is the line. Chaos is defined as having no hue at all, so War
+is the one that moves. Gunmetal takes the pair to **19.7** and keeps War reading
+as armour rather than as an element. Blood red stays as War's accent for bleeding
+specifically; it is not the damage type's colour.
+
+### Where hue cannot separate a pair, form does
+
+Three damage types are built on darkness and two share brown. Death settles
+downward, Void pulls inward, Chaos never settles; Famine drains and drifts,
+Pestilence spreads and clings. **A shape and motion difference survives twenty
+enemies attacking at once and a subtle hue difference does not.** That is Final
+Fantasy XIV's approach, where Sage is separated from White Mage by form rather
+than by colour.
+
+### These are base values, not the finished look
+
+The project owner made the point plainly: "there's just something wrong with
+looking at a flat color and trying to envision it as part of a video game. Needs
+a material and texture and all that."
+
+**That is correct and the document now says so.** The palette fixes the starting
+constraint — the hue an effect reads as, and the guarantee it stays visible. The
+finished appearance comes from the material: emissive multiplier, spawn rate,
+velocity and motion curve, which `Niagara_Conventions.md` already carries as
+separate per-damage-type values so colour is one axis of five.
+
+**So the palette cannot be signed off from a swatch and is not being asked to be.**
+Expect the values to move once the first effect exists in the sandbox. The two
+brightness numbers are what must not.
+
+### Held by a test
+
+`tools/tests/test_effect_palette_stays_readable.py` reads the palette out of the
+design document's own table rather than restating it, and reads the eight damage
+types from the workbook. It fails if a primary drops below the floor, if two
+become confusable, if a secondary stops being dark enough to anchor, if any
+clashes with the attack warning red, or if the two numbers stop being stated.
+
+All three guards were proven to fail, including making Void dark as originally
+asked for.
+
+---
+
 ## 2026-08-13 — Particle effects are one system per shape, not one per damage type
 
 **Affects:** adds `Niagara_Conventions.md` to this folder. Nothing in
