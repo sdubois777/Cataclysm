@@ -20,6 +20,80 @@ applied or still pending.
 
 ---
 
+## 2026-08-12 — Each Cataclysm has a colour theme, and the environment follows it; telegraphs do not
+
+**Affects:** section XIII of `Cataclysm_GDD_v2.md`, applied. Issue #19, partly —
+it does not close it. Themes given by the project owner.
+
+### What was decided
+
+| Cataclysm | Theme |
+| :-- | :-- |
+| Demonic | Red, fire, lava |
+| War | Grey, steel, pride |
+| Death | Black, shadows |
+| Famine | Brown, dying |
+| Void | Black and purple, nothingness |
+| Celestial | Gold and white, holy |
+| Pestilence | Putrid green and brown, rot |
+| Chaos | Black and white, random |
+
+**The environment follows the theme directly.** A Demonic dungeon is lava, fire
+and smoke. So a Cataclysm's art direction falls out of its theme rather than
+being designed separately, which removes most of what issue #34 was asking for on
+the environment side.
+
+### The part that does not fall out naturally
+
+**A telegraph is not coloured by its Cataclysm's theme**, and cannot be. Three
+reasons the design produces directly:
+
+- **A Demonic environment is already full of glowing orange.** Lava and fire
+  occupy the same brightness and hue a warm telegraph would use, so a
+  theme-tinted telegraph competes with the floor.
+- **Death, Void and Chaos are all built on black.** A dark telegraph in a dark
+  room is not a telegraph.
+- **Some themes sit next to each other.** Death and Void are both darkness;
+  Famine and Pestilence share brown.
+
+**So what makes a telegraph visible is its shape and its edge, not its colour.**
+A hard-edged circle, cone, line or ring with a fill that sweeps as the wind-up
+runs out. Nothing in an environment has that shape or that motion, which is what
+lets it read against lava, against shadow, and against twenty enemies at once.
+Colour then says which damage type a telegraph belongs to; it is not what makes
+it visible.
+
+Telegraphs are drawn with an **unlit, emissive** material so their brightness is
+fixed by their own material rather than by the room's lighting. Without that no
+brightness rule can hold, because the value would be whatever the lighting
+produced. Issue #539 covers making that true — today
+`CataclysmTelegraphMarker.cpp` assigns no material at all.
+
+### How this got here, which is worth recording
+
+The first attempt measured contrast ratios between flat colour swatches. The
+project owner rejected the framing: a floor is a texture under dynamic lighting,
+not a flat fill, so swatch contrast measures something that will not exist.
+
+**That correction is what produced the shape rule.** Once world brightness is
+understood as a lighting result rather than a colour choice, the only way to fix
+a telegraph's visibility is to stop it being lit — and once it is not lit, what
+distinguishes it from the world is its geometry rather than its value.
+
+### Three things left open
+
+- **The eight telegraph colours are not chosen.** They must be distinguishable
+  from each other and from every environment, so they are picked as one set
+  rather than one per Cataclysm.
+- **Chaos is described as black and white flashing, and section XIII commits to
+  an epilepsy-safe mode that reduces flashing effects.** A Cataclysm whose
+  identity is flashing is the one case that mode exists to suppress. Either
+  Chaos expresses randomness another way, or the mode states what it does to a
+  Chaos dungeon specifically.
+- **How Death and Void are told apart**, and Famine and Pestilence.
+
+---
+
 ## 2026-08-12 — The empire's cities are Outposts, Bulwarks, Sanctuaries and the Pillar
 
 **Affects:** section II and section VIII of `Cataclysm_GDD_v2.md`,
