@@ -261,6 +261,31 @@ gh issue close 12 --comment "Fixed in #34"
 - **Closing an issue needs a manual `gh issue close`.** GitHub only honours
   `Closes #N` in a pull request body when it merges into the repository's
   *default* branch. This project merges into `development`, so it does not fire.
+- **Delete the branch as part of merging, locally and on GitHub.** Not later, not
+  in a cleanup pass. Use `git branch -D` rather than `-d`: a squash merge leaves
+  the branch commit outside `development`'s history, so `-d` refuses.
+
+  ```bash
+  gh pr merge <N> --squash
+  git checkout development && git pull --ff-only
+  git branch -D <branch> && git push origin --delete <branch>
+  ```
+
+  Skipping this is how the repository reached 107 local branches, 77 of them
+  already merged, by 2026-08-14.
+
+  **To find stale branches later, ask GitHub which pull requests merged.** Do not
+  decide by comparing trees: `git diff --quiet <branch> development` only means
+  "identical right now", so it answers no for every branch once `development`
+  moves on, and it reported 0 of 105 as safe when 77 were.
+
+  ```bash
+  gh pr list --state merged --limit 500 --json headRefName --jq '.[].headRefName'
+  ```
+
+  Never delete a branch whose pull request is open, or was closed without
+  merging. A branch checked out in a git worktree cannot be deleted anyway; git
+  refuses, which is the safe outcome.
 - Continuous integration runs lint and the fast tests on every pull request into
   either branch. Do not open one you know is failing; run `pytest` and
   `ruff check .` first.
