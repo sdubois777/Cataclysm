@@ -44,6 +44,21 @@ protected:
 	 */
 	void NotifyIfHealthReachedZero();
 
+	/**
+	 * Play the hit effect where the blow landed.
+	 *
+	 * HERE FOR THE SAME REASON NotifyIfHealthReachedZero IS: this is the one
+	 * place in the project that sees a hit land, knows its damage type and knows
+	 * who took it. Every blow from either side arrives through the Damage meta
+	 * attribute, so one call covers player and enemy attacks alike.
+	 *
+	 * Draws nothing for a blow that was evaded or wholly mitigated, which is
+	 * what makes the effect mean "that connected".
+	 */
+	void PlayImpactEffect(const FGameplayEffectModCallbackData& Data,
+						  FName DamageType,
+						  const struct FCataclysmDamageResult& Outcome);
+
 public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Vitals", ReplicatedUsing = OnRep_Health)

@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystemComponent.h"
@@ -160,6 +161,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 									   0.0f, GetMaxHealth()));
 				NotifyIfHealthReachedZero();
 			}
+
+			PlayImpactEffect(Data, Hit.DamageType, Outcome);
 		}
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealthAttribute())
@@ -175,6 +178,44 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	{
 		SetEnergyShield(FMath::Clamp(GetEnergyShield(), 0.0f, GetMaxEnergyShield()));
 	}
+}
+
+void UCataclysmVitalAttributeSet::PlayImpactEffect(
+	const FGameplayEffectModCallbackData& Data,
+	FName DamageType,
+	const FCataclysmDamageResult& Outcome)
+{
+	// A blow that was evaded, or that armour and resistance took down to
+	// nothing, draws nothing. Both are already distinguishable in the outcome,
+	// so this needs no second opinion about whether the hit connected.
+	if (Outcome.DealtToHealth <= 0.0f && Outcome.AbsorbedByShield <= 0.0f)
+	{
+		return;
+	}
+
+	const AActor* Struck = GetOwningActor();
+	if (!Struck)
+	{
+		return;
+	}
+
+	// WHERE THE BLOW LANDED, when the hit carried that. A swept attack or a
+	// projectile puts a real impact point and surface normal into the effect's
+	// context. A gameplay effect applied without one -- a burn ticking, a stat
+	// line being set -- does not, and the creature's own location is the honest
+	// fallback rather than a guess at geometry that was never measured.
+	FVector Location = Struck->GetActorLocation();
+	FVector Normal = FVector::UpVector;
+	if (const FHitResult* Landed = Data.EffectSpec.GetContext().GetHitResult())
+	{
+		Location = Landed->ImpactPoint;
+		if (!Landed->ImpactNormal.IsNearlyZero())
+		{
+			Normal = Landed->ImpactNormal;
+		}
+	}
+
+	UCataclysmImpactEffect::SpawnAt(Struck, Location, Normal, DamageType);
 }
 
 void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()
