@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Misc/AutomationTest.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystemComponent.h"
 #include "Components/SceneComponent.h"
@@ -464,5 +465,72 @@ bool FCataclysmImpactDrawsOnTheAvatarNotTheOwner::RunTest(const FString& Paramet
 
 	GEngine->DestroyWorldContext(World);
 	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The regression test for issue #563.
+ *
+ * One player attack drew seven bursts in five seconds. Two were the strike
+ * itself. The other five were a burn ticking once a second, each one reaching
+ * health through the same meta attribute a blow does, and each one therefore
+ * drawing the same full impact burst as the strike that started it.
+ *
+ * A burn ticking is not a blow landing. docs/Niagara_Conventions.md gives
+ * ailments their own shape, NS_Status_Applied, which is what a burn should use
+ * once it exists.
+ *
+ * The other two bursts, 0.21 seconds apart, are CORRECT and are deliberately
+ * left alone. The project owner identified them as the returning projectile
+ * ability: it strikes once going out and once coming back, so two strikes
+ * should draw two bursts. An earlier reading of the same log called that a
+ * combat fault. It was not.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactSkipsWhatIsNotABlow,
+	"Cataclysm.Effects.ImpactIsNotDrawnForAnythingButABlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmImpactSkipsWhatIsNotABlow::RunTest(const FString& Parameters)
+{
+	// A blow that connected. Everything below is this, with one thing changed,
+	// so each assertion isolates the reason it was refused.
+	FCataclysmIncomingHit Landed;
+	Landed.Damage = 52.1f;
+
+	FCataclysmDamageResult Connected;
+	Connected.DealtToHealth = 52.1f;
+
+	TestTrue(TEXT("a blow that took health is drawn"),
+		UCataclysmImpactEffect::ShouldDrawFor(Landed, Connected));
+
+	// Stopped by an energy shield rather than health, and still a blow.
+	FCataclysmDamageResult OntoShield;
+	OntoShield.AbsorbedByShield = 30.0f;
+	TestTrue(TEXT("a blow a shield absorbed is still drawn"),
+		UCataclysmImpactEffect::ShouldDrawFor(Landed, OntoShield));
+
+	// THE ONE THAT MATTERS. Same damage arriving, same health lost, but it is a
+	// burn ticking rather than something striking.
+	FCataclysmIncomingHit Burning;
+	Burning.Damage = 2.6f;
+	Burning.bIsDamageOverTime = true;
+
+	FCataclysmDamageResult Ticked;
+	Ticked.DealtToHealth = 2.6f;
+
+	TestFalse(TEXT("a burn ticking is not a blow and draws no impact"),
+		UCataclysmImpactEffect::ShouldDrawFor(Burning, Ticked));
+
+	// And a burn ticking into a shield is refused for the same reason, not
+	// accidentally allowed through the shield branch.
+	TestFalse(TEXT("a burn ticking into a shield draws no impact either"),
+		UCataclysmImpactEffect::ShouldDrawFor(Burning, OntoShield));
+
+	// Nothing arrived at all: evaded, or mitigated to nothing. Without this the
+	// effect would mean "an attack happened" rather than "that landed".
+	const FCataclysmDamageResult Nothing;
+	TestFalse(TEXT("a blow that was stopped entirely draws nothing"),
+		UCataclysmImpactEffect::ShouldDrawFor(Landed, Nothing));
+
 	return true;
 }

@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmImpactEffect.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "AbilitySystemComponent.h"
@@ -70,6 +71,25 @@ const UDataTable* UCataclysmImpactEffect::LoadElementVisuals()
 		CachedElementVisuals = Table;
 	}
 	return Table;
+}
+
+bool UCataclysmImpactEffect::ShouldDrawFor(const FCataclysmIncomingHit& Hit,
+										   const FCataclysmDamageResult& Outcome)
+{
+	// Nothing arrived. Evaded, or mitigated to nothing.
+	if (Outcome.DealtToHealth <= 0.0f && Outcome.AbsorbedByShield <= 0.0f)
+	{
+		return false;
+	}
+
+	// Something arrived, but it was a burn or a poison ticking rather than a
+	// blow. Issue #563.
+	if (Hit.bIsDamageOverTime)
+	{
+		return false;
+	}
+
+	return true;
 }
 
 const AActor* UCataclysmImpactEffect::ActorToDrawOn(

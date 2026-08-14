@@ -186,10 +186,10 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 	const FCataclysmIncomingHit& Hit,
 	const FCataclysmDamageResult& Outcome)
 {
-	// A blow that was evaded, or that armour and resistance took down to
-	// nothing, draws nothing. Both are already distinguishable in the outcome,
-	// so this needs no second opinion about whether the hit connected.
-	if (Outcome.DealtToHealth <= 0.0f && Outcome.AbsorbedByShield <= 0.0f)
+	// Whether this is worth drawing at all lives in UCataclysmImpactEffect, so a
+	// test can reach it without a world or a rendering device. It refuses a blow
+	// that never connected, and a burn ticking, which is not a blow at all.
+	if (!UCataclysmImpactEffect::ShouldDrawFor(Hit, Outcome))
 	{
 		return;
 	}
