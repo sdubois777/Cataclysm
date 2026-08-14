@@ -8,6 +8,8 @@
 
 class UAbilitySystemComponent;
 class UDataTable;
+struct FCataclysmDamageResult;
+struct FCataclysmIncomingHit;
 struct FHitResult;
 
 /**
@@ -81,6 +83,26 @@ public:
 	static FVector ImpactLocationFor(const FHitResult* Landed,
 									 const AActor* Struck,
 									 FVector& OutNormal);
+
+	/**
+	 * Whether a landed hit should draw an impact burst at all.
+	 *
+	 * TWO REASONS TO DRAW NOTHING, and they are different kinds of thing.
+	 *
+	 * A blow that was evaded, or that armour and resistance took down to
+	 * nothing, never connected. Drawing for it would make the effect mean "an
+	 * attack happened" rather than "that landed".
+	 *
+	 * A BURN TICKING IS NOT A BLOW LANDING. Damage over time reaches health
+	 * through the same meta attribute as a hit, so without this check every tick
+	 * drew a full impact burst. Issue #563 measured one player attack producing
+	 * seven bursts in five seconds: two direct hits and five burn ticks a second
+	 * apart, each one drawing the same burst as the strike that started it.
+	 * docs/Niagara_Conventions.md gives ailments their own shape,
+	 * NS_Status_Applied, which is what a burn should eventually use.
+	 */
+	static bool ShouldDrawFor(const FCataclysmIncomingHit& Hit,
+							  const FCataclysmDamageResult& Outcome);
 
 	/**
 	 * Which actor an effect is drawn on: the AVATAR, never the owner.
