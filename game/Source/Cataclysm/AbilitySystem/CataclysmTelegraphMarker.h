@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "CataclysmTelegraphMarker.generated.h"
 
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -57,11 +58,29 @@ class UStaticMeshComponent;
  * being true: game/Content already holds animation and DataTable assets, and
  * .gitattributes already routes .uasset to Git LFS.
  *
- * TWO TONES, BECAUSE NO ONE COLOUR SURVIVES BOTH EXTREMES. Death and Void are
+ * FOUR COLOURS, BECAUSE NO ONE COLOUR SURVIVES BOTH EXTREMES. Death and Void are
  * built on black and Celestial is gold and white, so a colour bright enough to
- * read on the first disappears into the second. The cyan fill carries the dark
- * environments and a near-black rim carries the bright ones. Measured, the
- * weakest case across all eight themes is 3.22:1, against War's steel grey.
+ * read on the first disappears into the second. Three opaque rings carry it
+ * between them: the red ring carries the dark environments, the near-black rim
+ * carries the bright ones, and the light inner line carries War's mid grey and
+ * Demonic's lava. Measured across all eight themes the worst case is 3.92:1,
+ * above the 3:1 accessibility threshold. The fourth colour is the see-through
+ * fill, which carries none of that.
+ *
+ * An earlier version of this comment described a cyan fill, said there were two
+ * tones, and quoted 3.22:1. All three were left behind by issue #543, which
+ * replaced the cyan with red #FF3020 and added the third ring.
+ *
+ * THE FILL SWEEPS, AND THAT IS WHAT IT IS FOR. The design calls a telegraph "a
+ * hard-edged geometric shape ... with a fill that sweeps as the wind-up runs
+ * out", so the interior is how a player reads time-to-impact without watching
+ * the creature. It grows from the middle of a circle, or from the caster's end
+ * of a lane, and reaches the edge as the attack lands. Issue #544.
+ *
+ * NO PER-FRAME WORK IS DONE FOR IT. The marker sets a start time and a duration
+ * on the fill's material once, when it is created, and the material works out
+ * how far through the wind-up it is. See tools/generate_telegraph_material.py
+ * for the arithmetic.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmTelegraphMarker : public AActor
@@ -206,6 +225,19 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Telegraph")
 	float LengthCm = 0.0f;
 
+	/**
+	 * The wind-up this marker was drawn for, in seconds. How long the fill has
+	 * to sweep from the middle to the edge.
+	 *
+	 * HELD RATHER THAN READ BACK OFF THE ACTOR'S LIFESPAN, which is set to the
+	 * same figure. The lifespan is a second guarantee that a marker goes away
+	 * even if nothing dismisses it, so it is free to change independently; the
+	 * sweep needs the ability's stated wind-up and should not silently start
+	 * following a safety net instead.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Telegraph")
+	float WindUpSeconds = 0.0f;
+
 	/** Whether this marks a lane rather than a circle. Read by tests. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Telegraph")
 	bool IsLane() const { return LengthCm > 0.0f; }
@@ -296,6 +328,18 @@ protected:
 	/** Set the colour and opacity on all four bands. Called once per marker,
 	 *  after the meshes and scales are set. */
 	void ApplyColours();
+
+	/**
+	 * Tell the fill's material where the sweep starts, how far it has to go,
+	 * when it began and how long it has. Called once, by ApplyColours.
+	 *
+	 * ON THE FILL AND ON NOTHING ELSE. The three rings say where the danger is
+	 * and have to be visible from the first frame; only the interior says how
+	 * much time is left. The rings are left on the material's own all-zero
+	 * SweepScale, which draws every pixel immediately, and
+	 * Cataclysm.Telegraph.OnlyTheFillSweeps checks that default has not moved.
+	 */
+	void ApplySweep(UMaterialInstanceDynamic* Fill) const;
 
 	/**
 	 * The two engine shapes a marker is drawn with, found in the constructor.
