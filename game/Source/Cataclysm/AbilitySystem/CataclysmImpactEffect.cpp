@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "AbilitySystemComponent.h"
 #include "Engine/HitResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -69,6 +70,14 @@ const UDataTable* UCataclysmImpactEffect::LoadElementVisuals()
 		CachedElementVisuals = Table;
 	}
 	return Table;
+}
+
+const AActor* UCataclysmImpactEffect::ActorToDrawOn(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	// GetAvatarActor and NOT GetOwnerActor, and not the attribute set's own
+	// GetOwningActor either, which answers with the owner. Issue #562.
+	return AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr;
 }
 
 FVector UCataclysmImpactEffect::ImpactLocationFor(const FHitResult* Landed,

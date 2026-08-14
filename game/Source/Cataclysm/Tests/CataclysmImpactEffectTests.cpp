@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
+#include "AbilitySystemComponent.h"
 #include "Components/SceneComponent.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
@@ -396,6 +397,70 @@ bool FCataclysmImpactIsPlacedOnWhatWasHit::RunTest(const FString& Parameters)
 	TestEqual(TEXT("with no actor and no hit, the origin is all that is left"),
 		UCataclysmImpactEffect::ImpactLocationFor(nullptr, nullptr, Normal),
 		FVector::ZeroVector);
+
+	GEngine->DestroyWorldContext(World);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The second half of issue #562, and the half that actually caused it.
+ *
+ * An attribute set's GetOwningActor answers with the ability system's OWNER.
+ * For the player, ACataclysmPlayerCharacter::InitAbilityActorInfo makes the
+ * owner the player state -- deliberately, because it survives death -- and the
+ * avatar the pawn. A player state is not placed in the world and reports the
+ * origin, so every blow an enemy landed on the player drew its effect in the
+ * middle of the level.
+ *
+ * An enemy puts its ability system on the character itself, so owner and avatar
+ * are the same object and enemy-facing effects were placed correctly. That is
+ * why the fault was invisible in one direction and obvious in the other, and it
+ * is why this test uses two DIFFERENT actors: with one actor it would pass no
+ * matter which accessor the code called.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactDrawsOnTheAvatarNotTheOwner,
+	"Cataclysm.Effects.ImpactDrawsOnTheAvatarNotTheOwner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmImpactDrawsOnTheAvatarNotTheOwner::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, /*bInformEngineOfWorld=*/false);
+	if (!World)
+	{
+		AddError(TEXT("could not create a test world."));
+		return false;
+	}
+	FWorldContext& Context = GEngine->CreateNewWorldContext(EWorldType::Game);
+	Context.SetCurrentWorld(World);
+
+	// Stands in for the player state: holds the component, is not in the world.
+	AActor* Owner = World->SpawnActor<AActor>();
+
+	// Stands in for the pawn: the thing that is actually somewhere.
+	AActor* Avatar = World->SpawnActor<AActor>();
+	USceneComponent* Root = NewObject<USceneComponent>(Avatar);
+	Avatar->SetRootComponent(Root);
+	Root->RegisterComponent();
+	Avatar->SetActorLocation(FVector(800.0f, 300.0f, 50.0f));
+
+	UAbilitySystemComponent* AbilitySystem =
+		NewObject<UAbilitySystemComponent>(Owner);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->InitAbilityActorInfo(Owner, Avatar);
+
+	const AActor* Chosen = UCataclysmImpactEffect::ActorToDrawOn(AbilitySystem);
+
+	TestEqual(TEXT("the effect is drawn on the avatar, the thing standing in "
+				   "the world"), Chosen, (const AActor*)Avatar);
+	TestNotEqual(TEXT("and never on the owner, which for the player is the "
+					  "player state and has no position"),
+		Chosen, (const AActor*)Owner);
+
+	// Without an ability system there is nothing to draw on, and guessing a
+	// position is what caused the original fault.
+	TestNull(TEXT("no ability system means no actor to draw on"),
+		UCataclysmImpactEffect::ActorToDrawOn(nullptr));
 
 	GEngine->DestroyWorldContext(World);
 	World->DestroyWorld(false);

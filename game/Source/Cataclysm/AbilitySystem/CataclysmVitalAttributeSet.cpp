@@ -194,7 +194,11 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 		return;
 	}
 
-	const AActor* Struck = GetOwningActor();
+	// THE AVATAR, NOT THE OWNER. GetOwningActor answers with the ability
+	// system's owner, and for the player that is the player state, which is not
+	// placed in the world and reports the origin. Issue #562.
+	const AActor* Struck =
+		UCataclysmImpactEffect::ActorToDrawOn(GetOwningAbilitySystemComponent());
 	if (!Struck)
 	{
 		return;

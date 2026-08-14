@@ -6,6 +6,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmImpactEffect.generated.h"
 
+class UAbilitySystemComponent;
 class UDataTable;
 struct FHitResult;
 
@@ -80,6 +81,26 @@ public:
 	static FVector ImpactLocationFor(const FHitResult* Landed,
 									 const AActor* Struck,
 									 FVector& OutNormal);
+
+	/**
+	 * Which actor an effect is drawn on: the AVATAR, never the owner.
+	 *
+	 * THE TWO ARE DIFFERENT OBJECTS FOR THE PLAYER AND THE SAME OBJECT FOR AN
+	 * ENEMY, which is why getting this wrong looked correct half the time.
+	 * ACataclysmPlayerCharacter::InitAbilityActorInfo makes the player state the
+	 * owner, because it survives death, and the pawn the avatar, because it is
+	 * what stands in the world. A player state is not placed in the world at all
+	 * and reports the origin.
+	 *
+	 * That was issue #562: every blow an enemy landed on the player drew its
+	 * effect at the world origin, in the middle of the level, while the player's
+	 * own attacks on enemies were placed correctly.
+	 *
+	 * Returns null when there is no ability system or no avatar, and a caller
+	 * that gets null should draw nothing rather than guess a position.
+	 */
+	static const AActor* ActorToDrawOn(
+		const UAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * The two colours for a damage type, looked up by the leaf of its
