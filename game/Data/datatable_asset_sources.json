@@ -52,8 +52,8 @@
     {
       "asset": "DT_EnchantmentsPositive",
       "csv": "EnchantmentsPositive.csv",
-      "rows": 380,
-      "csv_sha256": "bdcc33639d1b6f3d1f5b056be0b4b402edcd4af70012fde89a59cee16409cab3"
+      "rows": 379,
+      "csv_sha256": "3c59cdb65ffa045dd49652788b64d0c7f1be7e6d87bc994a06e53967c0b53ad6"
     },
     {
       "asset": "DT_EnemyArchetypes",

@@ -132,7 +132,6 @@ Positive_Each_unique_debuff_on_an_enemy_increases_your_cr,Each unique debuff on 
 Positive_Healing_skills_restore_30_60_more_HP,Healing skills restore 30%-60% more HP,Generic,2.0,"Type.Heal, Stat.Defense.Life",False
 Positive_Overheal_converts_to_a_temporary_shield_absorbin,Overheal converts to a temporary shield absorbing up to 10%-20% of your max HP,Generic,2.0,"Type.Heal, Keyword.Shield, Stat.Defense.EnergyShield",False
 Positive_Summon_skills_have_30_60_reduced_cooldown,Summon skills have 30%-60% reduced cooldown,Generic,2.0,"Type.Summon, Keyword.Summon",False
-Positive_You_can_have_1_2_additional_minions_active_simul,You can have 1-2 additional minions active simultaneously,Generic,2.0,"Type.Summon, Type.Minion",False
 Positive_When_a_minion_dies_it_automatically_re_summons_a,When a minion dies it automatically re-summons after 3-6 seconds,Generic,2.0,"Type.Summon, Type.Minion",False
 Positive_Burn_effects_you_apply_deal_30_60_increased_da,Burn effects you apply deal 30%-60% increased damage per second,Generic,2.0,Keyword.DoT.Burn,False
 Positive_Burn_effects_you_apply_spread_to_1_2_nearby_enem,Burn effects you apply spread to 1-2 nearby enemies,Generic,2.0,"Keyword.DoT.Burn, Type.AOE.PointBlank",False
@@ -309,7 +308,7 @@ Positive_Your_persistent_AOE_zones_also_slow_enemies_with,Your persistent AOE zo
 Positive_Enemies_that_enter_your_persistent_AOE_zones_are,Enemies that enter your persistent AOE zones are briefly staggered,Generic,3.0,"Type.AOE.Persistent, Keyword.Stagger, Keyword.CC",False
 Positive_Persistent_AOE_zones_apply_a_DoT_to_enemies_stan,Persistent AOE zones apply a DoT to enemies standing in them,Generic,3.0,"Type.AOE.Persistent, Keyword.DoT.Generic",False
 Positive_Increase_your_auras_AOE_by_100,Increase your auras AOE by 100%,Generic,4.0,"Type.AOE.Aura, Slot.Aura",False
-Positive_Add_2_4_to_your_maximum_minion_count,Add 2-4 to your maximum minion count,Generic,4.0,Type.Minion,False
+Positive_Add_2_4_to_your_maximum_minion_count,Add 2-4 to your maximum minion count,Generic,2.0,"Type.Summon, Type.Minion",False
 Positive_Your_minions_leave_behind_chaos_pools_when_they,Your minions leave behind chaos pools when they die,Generic,4.0,"Type.Minion, Element.Chaos",False
 Positive_Gain_5_10_attack_speed_on_basic_attack_for_4_s,Gain 5%-10% attack speed on basic attack for 4 seconds,Generic,4.0,"Stat.Offense.Speed, Scope.BasicOnly, Slot.Basic",False
 Positive_Teleport_to_a_random_location_within_4_meters_wh,Teleport to a random location within 4 meters when hit,Generic,4.0,"Slot.Movement, Trigger.OnHit",False

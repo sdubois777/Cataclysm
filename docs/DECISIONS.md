@@ -20,6 +20,68 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — One enchantment raises minion count, not two, and gear contributes +2 to +4
+
+**Affects:** the Enchantments sheet of `All_Things_Cataclysm.xlsx`, and the minion
+section of `Cataclysm_GDD_v2.md`. Applied. Issue #339.
+
+### What was wrong
+
+Two enchantments both raised the number of minions a player can have active, and
+**the rarer one was strictly weaker**:
+
+| Enchantment | Weight | Grants |
+|---|--:|---|
+| You can have 1-2 additional minions active simultaneously | 2 | +1 to +2 |
+| Add 2-4 to your maximum minion count | 4 | +2 to +4 |
+
+For enchantments a lower weight is rarer — the design document says so plainly:
+"The maximum resistance enchantment is weight 1, which is the rarest and most
+powerful tier." So a player who found the rarer of these two was worse off than
+one who found the common one, and nothing said why.
+
+### What was decided
+
+Asked whether to merge them, swap the weights, or keep both and state a reason,
+the project owner chose on 2026-08-14: **merge into one at weight 2, granting +2
+to +4.**
+
+So the surviving enchantment is "Add 2-4 to your maximum minion count" at weight
+2, carrying the tags of both. The other was removed.
+
+### Why merging rather than swapping
+
+The two said the same thing in different words. Swapping the weights would have
+fixed the inversion and left two near-duplicate entries in a table of 379, which
+is how the inversion became possible in the first place.
+
+**The bound changed and it matters.** Each enchantment can appear only once
+across all equipped gear, so two of them bounded gear-granted minion count at +3
+to +6. One bounds it at **+2 to +4**. That figure is load-bearing: minion count
+multiplies damage, effective health and every rider at once, which is the whole
+reason issue #209 put count in the enchantment table rather than letting it be an
+affix — there are eight ring slots, so a "+1 minion" suffix would be eight from
+rings alone.
+
+### How the workbook was edited, which is worth recording
+
+The Enchantments sheet holds **two independent tables side by side**: positives
+in columns A to D and negatives in F to I. They are not paired; a row in one has
+no relationship to the row beside it.
+
+**So the removed enchantment was cleared, not deleted.** Deleting spreadsheet row
+135 would have taken the negative enchantment sharing that row — "Melee skills
+cost 5%-10% of your maximum HP to use" — which has nothing to do with minions.
+`tools/generate_datatables.py` skips a row whose text cell is empty, so clearing
+A135 to D135 removes the positive and leaves the negative intact. The generated
+negative table stayed at 195 rows, which confirms it.
+
+Row keys are derived from an enchantment's own text rather than its position, so
+clearing a row renames nothing else. Only `EnchantmentsPositive.csv` changed, and
+only one DataTable asset was rebuilt.
+
+---
+
 ## 2026-08-14 — A zero in a class stat line is a starting value, not a gate
 
 **Affects:** section IV of `Cataclysm_GDD_v2.md`, under The Three Demonic Class
