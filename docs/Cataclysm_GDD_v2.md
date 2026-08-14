@@ -131,6 +131,25 @@ than any number of empire upgrade points, so sealing the tree alone would close
 the smaller route and leave the larger one open. A Solo Self-Found character is
 unaffected, because it has neither.
 
+**Offline and online are a second partition, crossing the first.** A character is
+created as either offline or online and never changes, in either direction.
+Those two populations share nothing at all: an offline character and an online
+character never share an empire upgrade tree, a stash, a market or a balance of
+gold, even when both are Standard. So the partition key is the population
+together with the lethality mode, and a player who plays both holds up to six of
+everything the account shares rather than three.
+
+**That is forced by the rule that separated the populations, not added to it.**
+An offline save is a local file and a local file can be edited, which is why
+offline characters have no auction house and no ladder and never exchange
+snapshots with the shared table of corrupted characters. A stash that both an
+offline and an online character could open would be a route straight through
+that rule: an item edited into a local save, placed in the stash, and withdrawn
+by an online character reaches the auction house and the ladder. Sealing the
+market against offline characters and leaving a shared container open beside it
+would close the smaller route and leave the larger one open, which is the same
+mistake the lethality mode partition above exists to avoid.
+
 **No mode grants increased loot.** Drop rate belongs to the difficulty tier,
 which is the axis this game already scales content on. That is where every
 shipped game in the genre puts it: Path of Exile's Solo Self-Found league has
@@ -2852,10 +2871,12 @@ already the harshest flag and already the mode where the tree took longest to
 build. It would also make the tree worth less the more of it a player has, which
 inverts the reason to invest in it at all.
 
-**So an account holds three shared trees plus one for every Solo Self-Found
-character.** Each of them persists across every run and every character that
-feeds it, exactly as before. The scope narrows which characters share a tree; it
-does not shorten how long a tree lasts.
+**So an account holds three shared trees per population, plus one for every Solo
+Self-Found character.** A player who plays only online, or only offline, has
+three; a player who plays both has six, because offline and online characters
+share nothing with each other either. Each tree persists across every run and
+every character that feeds it, exactly as before. The scope narrows which
+characters share a tree; it does not shorten how long a tree lasts.
 
 **The tree can be respecced, at a cost in days.** The Trainer at the capital
 moves empire upgrade points as well as class passive skill points, and like every
@@ -2901,6 +2922,15 @@ trade in. The rule generalises: **anything the account shares between characters
 is held once per lethality mode, never once for the account.** Anything a
 character holds by itself needs no rule, because a character never changes mode.
 
+**And once per population as well.** Offline and online characters never share
+any of it either, so the full key is the population together with the lethality
+mode: up to six of everything the account shares, for a player who plays both.
+That partition holds for the same reason this one does — the population is fixed
+at character creation and never changes — and it exists for a different reason,
+which section II states: an offline save is a local file that can be edited, and
+a container both populations could open would carry an edited item into the
+auction house and the ladder.
+
 **Gold is one of the things the account shares**, so it is held once per
 lethality mode like the rest. Three balances, and nothing moves between them; a
 Standard character cannot fund a Heretic one. The Storage section states it in
@@ -2923,10 +2953,10 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 | Enchanter | Adds or modifies enchantments on gear |
 | Smith (Cataclysmic Forge) | Crafting, upgrading gear, Forge interactions |
 | Jeweler | Combines and sockets gems |
-| Auction House | Buy and sell items. One market per lethality mode (disabled in SSF) |
+| Auction House | Buy and sell items. One market per lethality mode, and offline characters have none at all (disabled in SSF) |
 | Trainer | Respec class passive skill points, and respec the empire upgrade tree. Both cost days. |
 | Side Quests | Random missions for crafting materials, gear, and gold |
-| Stash | Shared storage. One stash per lethality mode (disabled in SSF) |
+| Stash | Shared storage. One stash per lethality mode per population, offline and online never sharing one (disabled in SSF) |
 
   
 
@@ -2962,6 +2992,13 @@ third, with nothing passing between them. That is the general rule stated in the
 Empire-Wide Upgrades section: anything the account shares between characters is
 held once per lethality mode. A Solo Self-Found character has no stash at all,
 which is what its table row says, so everything it owns is carried.
+
+**Offline and online characters never open the same stash**, whatever their
+lethality mode, so a player who plays both has up to six stashes rather than
+three. This is the partition that protects the auction house: an offline save is
+a local file that can be edited, and a stash both populations could reach would
+carry an edited item into the market. Gold is partitioned the same way, for the
+same reason.
 
 **Size: 600 slots, as six tabs of 100.** Every tab is the same 10 by 10 grid, and
 one item takes one slot whatever it is. The tabs can be renamed and colour-coded

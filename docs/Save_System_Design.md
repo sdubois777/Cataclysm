@@ -114,16 +114,19 @@ be enforced.
 
 | Character is | Reads and writes which account record | Stash |
 | :-- | :-- | :-- |
-| Standard, not Solo Self-Found | The Standard account record | Shared Standard stash |
-| Hardcore, not Solo Self-Found | The Hardcore account record | Shared Hardcore stash |
-| Heretic, not Solo Self-Found | The Heretic account record | Shared Heretic stash |
-| Any mode, **Solo Self-Found** | **None.** Its empire tree lives in its own character record | **None.** It has no stash |
+| Online Standard, not Solo Self-Found | The online Standard account record | Shared online Standard stash |
+| Online Hardcore, not Solo Self-Found | The online Hardcore account record | Shared online Hardcore stash |
+| Online Heretic, not Solo Self-Found | The online Heretic account record | Shared online Heretic stash |
+| Offline Standard, not Solo Self-Found | The offline Standard account record | Shared offline Standard stash |
+| Offline Hardcore, not Solo Self-Found | The offline Hardcore account record | Shared offline Hardcore stash |
+| Offline Heretic, not Solo Self-Found | The offline Heretic account record | Shared offline Heretic stash |
+| Any mode, either population, **Solo Self-Found** | **None.** Its empire tree lives in its own character record | **None.** It has no stash |
 
 **A Solo Self-Found character touches no account record at all.** That is the
 cleanest expression of the design rule, and it means the strictest mode is also
 the simplest to store: one file, self-contained.
 
-### The offline and online split, and a gap in the design
+### The offline and online split
 
 #505, landed 2026-08-10, settled that a character is created offline or online
 and never changes in either direction, and that offline characters have no
@@ -131,24 +134,22 @@ auction house and no ladder. The reasoning follows Last Epoch and Diablo II's
 open and closed realms: local files can be edited, so the two populations are
 kept permanently non-transferable.
 
-**The design document does not say whether the offline and online populations
-also have separate stashes and separate empire trees.** A search of
-`docs/Cataclysm_GDD_v2.md` for any statement linking offline play to the stash or
-the empire tree returns nothing.
+**#505 did not say whether the two populations also have separate stashes and
+separate empire trees, and neither did the design document.** That was issue
+#528, and it was answered by the project owner on 2026-08-14: **separate.** An
+offline character and an online character share no empire upgrade tree, no
+stash, no market and no balance of gold, whatever their lethality mode.
+`docs/Cataclysm_GDD_v2.md` states it in section II beside the lethality mode
+partition rules, and `docs/DECISIONS.md` carries the reasoning and the sources.
 
-**This design assumes they are separate**, and it is filed as issue #528. The
-assumption is forced rather than chosen: a shared stash that both an offline
-and an online character can reach is a transfer route between the two
-populations, which is exactly what the non-transferability rule exists to
-prevent. An item edited into an offline character's stash would otherwise reach
-the auction house.
+The answer was forced rather than chosen. A shared stash that both an offline and
+an online character can reach is a transfer route between the two populations,
+which is exactly what the non-transferability rule exists to prevent: an item
+edited into a local save would reach the auction house and the ladder through it.
 
-So the real partition key is **offline-or-online × lethality mode**, giving up to
+So the partition key is **offline-or-online × lethality mode**, giving up to
 six account records per player, plus one self-contained record per Solo
 Self-Found character.
-
-**If the operator decides otherwise, this section changes and nothing else in
-this document does.**
 
 ---
 
@@ -274,8 +275,9 @@ to drop a field and check the test that covers that version fails, using
 
 ## 6. What this design deliberately does not settle
 
-- **Whether offline and online share a stash and empire tree.** Assumed separate,
-  section 3. Filed as issue #528.
+- **Whether an offline character can be converted to an online one**, one way,
+  leaving everything behind. Diablo II allows the safe direction and blocks the
+  unsafe one. Nobody has asked for it and nothing here depends on it.
 - **Anti-tamper for offline saves.** #505 accepted that local files can be edited
   and answered it by making offline and online populations non-transferable, so
   the save format does not need to resist editing. If a checksum is wanted anyway,
