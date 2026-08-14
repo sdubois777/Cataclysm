@@ -157,6 +157,13 @@ SHAPE_RIDERS = {
     "Burn": "1 if the skill sets what it hits alight, 0 or absent if not",
     "GroundRadius": "metres of burning ground left behind, 0 for none",
     "GroundDuration": "seconds that ground burns",
+    "GroundPercent": "percent of the skill's damage that ground deals per "
+                     "second. Decided 2026-08-14 on issue #361: standing in it "
+                     "for its whole GroundDuration costs one hit of the skill "
+                     "that left it, so this is 100 divided by GroundDuration. "
+                     "It keeps burning ground area denial rather than a second "
+                     "damage source, and stops a longer patch being "
+                     "automatically a bigger one",
     "GroundHitsAllies": "1 if that ground burns everything standing in it "
                         "whatever side it is on, including whatever left it. "
                         "Absent or 0 means it burns only the caster's enemies, "

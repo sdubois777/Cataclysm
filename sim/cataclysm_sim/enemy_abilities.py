@@ -84,8 +84,9 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 
 #: Riders any shape may carry, from the same section of the design document.
 #: Also a copy of `SHAPE_RIDERS` in `tools/generate_datatables.py`.
-RIDERS = ("GroundRadius", "GroundDuration", "GroundHitsAllies", "Burn",
-          "Effect", "StunSeconds", "FinalHitPercent", "HealthCostPercent")
+RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
+          "Burn", "Effect", "StunSeconds", "FinalHitPercent",
+          "HealthCostPercent")
 
 #: How long a target is immune to being stunned again, from the anti-stun-lock
 #: rule in section VI of `docs/Cataclysm_GDD_v2.md`. Any ability that stuns has
@@ -609,6 +610,11 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # thing that is new in the whole slice: GroundHitsAllies.
             params={"Mode": "Charge", "Range": 10, "Radius": 1.5, "Burn": 1,
                     "GroundRadius": 1.5, "GroundDuration": 4,
+                    # 25% per second for 4 seconds, so standing in the trail
+                    # for its whole life costs one bite. That was already the
+                    # design's number and it was prose only; issue #361 made it
+                    # a rider, and the general rule is 100 / GroundDuration.
+                    "GroundPercent": 25,
                     "GroundHitsAllies": 1},
             # The Movement slot's typical cooldown in game/Data/SkillSlots.csv.
             cooldown=5.0,

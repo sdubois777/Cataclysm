@@ -1512,7 +1512,15 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius` and `GroundDuration`. Six other riders work the same way: `GroundHitsAllies` makes that ground burn everything standing in it whatever side it is on, `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `StunSeconds` is how long a stun lasts, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius`, `GroundDuration` and `GroundPercent`. Six other riders work the same way: `GroundHitsAllies` makes that ground burn everything standing in it whatever side it is on, `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `StunSeconds` is how long a stun lasts, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+
+  
+
+**Standing in burning ground for its whole life costs one hit of the skill that left it.** That is what `GroundPercent` states: the percent of the skill's damage the ground deals per second, which is 100 divided by `GroundDuration`. A 10 second Ultimate patch deals 10% per second, a 3 second Movement patch 33.3%, and both add up to one hit for a target that never leaves.
+
+  
+
+**The rule exists so that burning ground is area denial rather than a second damage source.** Two consequences follow, and both are the point. A longer-lasting patch is not automatically a bigger one, so duration is a positioning choice rather than a damage multiplier — otherwise the Ultimates, which already have the largest radii and the longest durations, would gain the most from it twice over. And burning ground cannot become a build's primary damage, which is deliberate: `Burn` is already this game's fire damage-over-time path and it does not need a second one. `docs/DECISIONS.md` records what that forecloses.
 
   
 
@@ -3902,7 +3910,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Maul | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1; Burn=1` | its 1.1 s attack interval | No |
-| Hellrush | Movement | Movement | `Mode=Charge; Range=10; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundHitsAllies=1` | a 5 s cooldown | Yes, 0.83 s wind-up |
+| Hellrush | Movement | Movement | `Mode=Charge; Range=10; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25; GroundHitsAllies=1` | a 5 s cooldown | Yes, 0.83 s wind-up |
 
   
 
@@ -3950,7 +3958,7 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 
   
 
-**The trail is not a third ability.** It is the same three riders the player's Flamedart already carries — `Burn`, `GroundRadius` and `GroundDuration` — on the charge itself, plus one that is new.
+**The trail is not a third ability.** It is the same four riders the player's Flamedart already carries — `Burn`, `GroundRadius`, `GroundDuration` and `GroundPercent` — on the charge itself, plus one that is new.
 
   
 
@@ -3963,7 +3971,7 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 
   
 
-**That last figure has nowhere to live in data yet.** No rider states what burning ground deals per tick, and the eight player skills that leave some do not state it either, so it is prose here and issue #361 is where the field gets added.
+**That figure is now data rather than prose.** It is `GroundPercent=25`, in the ability's parameters above. Issue #361 added the rider on 2026-08-14 and gave it a general rule — standing in burning ground for its whole life costs one hit of whatever left it, so the figure is 100 divided by `GroundDuration`. The Hellhound's trail already followed that rule; what changed is that all 22 player skills leaving ground now follow it too, and none of them stated anything before.
 
   
 
@@ -4444,7 +4452,7 @@ Two things. Everything else is read off `game/Data/WeaponSkills.csv`, `game/Data
 | Ability | Phase | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-: | :-- | :-: | :-: |
 | Dread Cleave | 1 | Basic | Strike | `Radius=2.0; Angle=120` | its 3.0 s attack interval | Yes, 0.97 s wind-up |
-| Soulfall | 1 | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25; Burn=1; GroundRadius=3.0; GroundDuration=10; GroundHitsAllies=1` | a 10 s cooldown | Yes, 1.26 s wind-up |
+| Soulfall | 1 | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25; Burn=1; GroundRadius=3.0; GroundDuration=10; GroundPercent=10; GroundHitsAllies=1` | a 10 s cooldown | Yes, 1.26 s wind-up |
 | Call the Damned | 2 | Special | Summon | `Range=4; Radius=2; Count=3; MaxActive=6` | a 10 s cooldown | No |
 | Soul Harvest | 3 | Ultimate | Strike | `Radius=6.5; Angle=360` | a 20 s cooldown | Yes, 2.0 s wind-up |
 
