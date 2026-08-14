@@ -3146,11 +3146,15 @@ Enemy Score is a power rating. It says what an encounter is worth, not how much 
 
   
 
-**Rarity scales magnitude and nothing else.** A Legendary Imp is a bigger Imp. It does not start critting more often, resisting more, or moving differently, because none of those describe how large something is. Per step of rarity above Common, health is multiplied by 1.85, damage by 1.55 and armor by 1.35.
+**Rarity scales magnitude and nothing else.** A Legendary Imp is a bigger Imp. It does not start critting more often, resisting more, or moving differently, because none of those describe how large something is. Per step of rarity above Common, health is multiplied by 1.85, damage by 1.40 and armor by 1.35.
 
   
 
 **Health grows faster than damage.** Across the six rarities a Cataclysm Boss ends up with roughly 23 times a Common enemy's health and hits about 6 times as hard. Growing both together would produce something both unkillable and instantly lethal, which is a wall rather than a fight.
+
+  
+
+**Those two figures are not the per-step multipliers raised to the fifth power**, and reading them that way is how the damage multiplier above went stale. Every enemy's statistic is a share of an archetype average with a floor under it, so the ratio between the top and bottom of the ladder is not the step multiplier compounded five times. Measured from `sim/cataclysm_sim/enemy_stats.py` at difficulty tier 8: health 23.6 times, damage 5.86 times, armour 4.89 times. `tools/tests/test_rarity_scaling_matches_the_model.py` recomputes all of it rather than trusting either the constants or this paragraph.
 
   
 
