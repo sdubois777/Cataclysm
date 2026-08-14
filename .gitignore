@@ -103,3 +103,16 @@ Crashes/
 .DS_Store
 Thumbs.db
 .claude/handoff.md
+
+# The editor's own copy of the asset-viewer preview scene profiles. Running the
+# interactive editor rewrites game/Config/DefaultEditor.ini with about 57
+# kilobytes of `[/Script/AdvancedPreviewScene.SharedProfiles]`, written by
+# `USharedProfiles`, which is declared `UCLASS(config = Editor, defaultconfig)`.
+# `defaultconfig` is what sends it to the PROJECT's ini rather than the user's,
+# so the engine owns the file and will keep rewriting it. Issue #414.
+#
+# Its only committed content was `bAllowMultiplePIEInstances=True`, and issue
+# #427 established that line did nothing: the name appears nowhere in Unreal
+# 5.8, and `UEditorEngine` is declared `config=Engine` so it would not read this
+# file anyway. Nothing was lost by dropping it.
+game/Config/DefaultEditor.ini

@@ -40,13 +40,20 @@ silent case: an editor that gave up before reaching the Python plugin never logs
     success. See SCRIPT_STARTED.
 
 **AFTER, SECOND**: report every file the run left changed. Issue #414. Running the
-editor dirties the working tree in ways the script did not ask for: it rewrites
-`game/Config/DefaultEditor.ini` with about 57 kilobytes of asset-viewer preview
-scene profiles, and it re-saves assets it merely happened to load. Both are
-committed files and `.uasset` is stored in git LFS, so an incidental re-save is a
-new binary object rather than a readable diff. Somebody who runs a generator and
-then types `git add -A` commits an engine version bump to a Blueprint they never
-opened, inside a pull request about something else, and no reviewer can read it.
+editor dirties the working tree in ways the script did not ask for: it re-saves
+assets it merely happened to load. `.uasset` is stored in git LFS, so an
+incidental re-save is a new binary object rather than a readable diff. Somebody
+who runs a generator and then types `git add -A` commits an engine version bump
+to a Blueprint they never opened, inside a pull request about something else, and
+no reviewer can read it.
+
+    IT USED TO REPORT `game/Config/DefaultEditor.ini` AS WELL, which the editor
+    rewrites with about 57 kilobytes of asset-viewer preview scene profiles. That
+    file is gitignored as of issue #427, so it can no longer appear in the report
+    at all: `git status --porcelain --untracked-files=all` does not list ignored
+    files. Ignoring it was held up until #427 because its one committed line,
+    `bAllowMultiplePIEInstances=True`, would have gone with it. That line did
+    nothing -- the name appears nowhere in Unreal 5.8's source.
 
     IT REPORTS RATHER THAN REVERTS, and that is deliberate. The script's own
     output is a change to the working tree as well, and this runner has no way of
@@ -119,29 +126,6 @@ SCRIPT_FAILED = ("LogPythonScriptCommandlet: Error: "
                  "Python script executed with errors")
 
 
-#: Files the editor rewrites as its own bookkeeping, whatever the script did.
-#:
-#: NAMED SO THE REPORT CAN SAY WHICH IS WHICH. Everything else in the report may
-#: be the script's intended output; this one never is.
-#:
-#: WHY IT IS REPORTED RATHER THAN GITIGNORED. Committing the expanded version was
-#: the other suggestion on issue #414 and does not settle anything: the 57
-#: kilobytes are `[/Script/AdvancedPreviewScene.SharedProfiles]`, written by
-#: `USharedProfiles`, which is declared `UCLASS(config = Editor, defaultconfig)`
-#: in Engine/Source/Editor/AdvancedPreviewScene/Public/AssetViewerSettings.h --
-#: `defaultconfig` is what sends it to the PROJECT's ini rather than the user's.
-#: The engine owns that section and will write it again.
-#:
-#: Gitignoring the file outright would drop its one committed line,
-#: `bAllowMultiplePIEInstances=True`. Whether that line does anything is issue
-#: #427: the property does not appear in Unreal 5.8's editor classes -- the
-#: similarly named one is `bAllowMultiplePIEWorlds` -- and `UEditorEngine` is
-#: declared `config=Engine`, so it would not read this file anyway. Until that is
-#: confirmed by observation rather than by reading headers, this reports the file
-#: instead of hiding it.
-EDITOR_BOOKKEEPING_FILES = ("game/Config/DefaultEditor.ini",)
-
-
 class CannotRunEditorScript(RuntimeError):
     """A precondition failed, or the script did not run. The message says which."""
 
@@ -197,11 +181,8 @@ def describe_changes(changes: list[tuple[str, str]]) -> str:
 
     lines = [f"The editor run left {len(changes)} file(s) changed:"]
     for path, code in changes:
-        note = ""
-        if path in EDITOR_BOOKKEEPING_FILES:
-            note = "   <- editor bookkeeping, not your script"
-        elif path.endswith((".uasset", ".umap")):
-            note = "   <- binary, stored in git LFS"
+        note = "   <- binary, stored in git LFS" if path.endswith(
+            (".uasset", ".umap")) else ""
         lines.append(f"  {code} {path}{note}")
 
     lines += [
