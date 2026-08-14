@@ -1203,6 +1203,43 @@ bool FCataclysmTelegraphFillSweeps::RunTest(const FString&)
 	TestEqual(TEXT("and a lane's width does not decide when a pixel is drawn"),
 		LaneReach.G, 0.0f, 0.0001f);
 
+	// --- the band is a constant thickness on screen ------------------------
+	//
+	// WHY THIS IS NOT SIMPLY THE DESIGNED FIGURE. The material works in
+	// fractions of the distance the sweep has to cross and the design states a
+	// thickness in centimetres, so the marker divides. Getting that division
+	// wrong is the kind of mistake that looks fine on the one marker size
+	// somebody happened to test: a band expressed as a fraction would be a
+	// hairline on a small circle and a wide swathe on a boss's.
+	float CircleBand = -1.0f;
+	if (!TestTrue(TEXT("the circle's fill was told how thick the band is"),
+				  ScalarOf(Circle->GetPatch(), TEXT("SweepBand"), CircleBand)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a circle's band is the designed centimetres over the "
+				   "radius the sweep crosses"),
+		CircleBand,
+		ACataclysmTelegraphMarker::DesignedSweepBandCm / (3.5f * M), 0.0001f);
+
+	float LaneBand = -1.0f;
+	if (!TestTrue(TEXT("the lane's fill was told how thick the band is"),
+				  ScalarOf(Lane->GetPatch(), TEXT("SweepBand"), LaneBand)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a lane's band is the designed centimetres over its whole "
+				   "length, because that is what its sweep crosses"),
+		LaneBand,
+		ACataclysmTelegraphMarker::DesignedSweepBandCm / (10.0f * M), 0.0001f);
+
+	// The two markers are different sizes, so a band expressed as a fraction
+	// rather than converted would give them the same figure here. Without this
+	// the two assertions above would both pass on a marker that ignored its
+	// own size.
+	TestTrue(TEXT("and the two differ, because they are different sizes"),
+		!FMath::IsNearlyEqual(CircleBand, LaneBand, 0.0001f));
+
 	return true;
 }
 

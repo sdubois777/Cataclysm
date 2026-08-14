@@ -38,7 +38,7 @@ The cost is that every band goes through the translucent pass, which does not
 write depth. They are concentric and sit at different heights, so they sort
 against each other correctly.
 
-WHAT IT MAKES. One material with six parameters. No value is baked in here --
+WHAT IT MAKES. One material with seven parameters. No value is baked in here --
 `ACataclysmTelegraphMarker` builds a dynamic instance per band and sets them, so
 every band of a marker shares this one material.
 
@@ -49,6 +49,8 @@ every band of a marker shares this one material.
                   zero on an axis the sweep ignores. ALL ZERO MEANS NO SWEEP.
   SweepStartTime  scalar, the world time the wind-up began
   SweepDuration   scalar, how long the wind-up lasts, in seconds
+  SweepBand       scalar, how thick the moving band is, as a fraction of the
+                  distance from the sweep's origin to the edge
 
 ## The sweep, added for issue #544
 
@@ -61,12 +63,20 @@ The material computes, per pixel:
 
     Progress = saturate((Time - SweepStartTime) / SweepDuration)
     Where    = length((LocalPosition - SweepOrigin) * SweepScale)
-    Revealed = 1 - ceil(saturate(Where - Progress))
+    Revealed = (Where <= Progress) AND (Where >= Progress - SweepBand)
     Opacity  = Opacity * Revealed
 
 `Where` is 0 at the point the sweep starts from and 1 at the edge it finishes on,
-so a pixel is drawn once the wind-up has run far enough to reach it. The fill
-grows outward and reaches the marker's edge as the attack lands.
+so a band of ground is drawn while the sweep's leading edge is passing over it,
+and the ground behind the band goes clear again. The band leaves the middle as
+the wind-up starts and arrives at the marker's edge as the attack lands.
+
+**A BAND AND NOT A GROWING DISC.** The first version of this filled everything
+behind the leading edge, so by the moment of impact the whole marker was tinted.
+The project owner looked at that on 2026-08-14 and asked for the interior back:
+"We don't need the giant pink circle if we're also showing an expanding one."
+A band gives the same reading of how much time is left and hides almost none of
+the floor.
 
 **ALL-ZERO `SweepScale` IS WHAT SWITCHES THE SWEEP OFF, and it needs no parameter
 of its own.** With every axis zeroed, `Where` is 0 everywhere, which is never
@@ -127,6 +137,7 @@ SWEEP_ORIGIN_PARAMETER_NAME = "SweepOrigin"
 SWEEP_SCALE_PARAMETER_NAME = "SweepScale"
 SWEEP_START_PARAMETER_NAME = "SweepStartTime"
 SWEEP_DURATION_PARAMETER_NAME = "SweepDuration"
+SWEEP_BAND_PARAMETER_NAME = "SweepBand"
 
 #: The designed ring colour, #FF3020, as linear. Section XIII of the design
 #: document. Stated as sRGB there because that is what a colour picker shows;
@@ -261,21 +272,55 @@ def build_sweep_mask(material):
     wire(scaled, distance)
 
     # --- drawn yet? --------------------------------------------------------
-    # 1 - ceil(saturate(Where - Progress)). Written this way round rather than
-    # as ceil(Progress - Where) because the two differ exactly where the rings
-    # sit: both are 0 there, and ceil(0) is 0, which would hide every ring.
-    beyond = add(material, unreal.MaterialExpressionSubtract, -300, 640)
+    # A BAND, NOT EVERYTHING BEHIND THE EDGE. The project owner looked at the
+    # filled version on 2026-08-14 and asked for the interior back: "We don't
+    # need the giant pink circle if we're also showing an expanding one." So a
+    # pixel is drawn only while the sweep's leading edge is passing over it, and
+    # the ground it has already crossed goes clear again.
+    #
+    # Two comparisons, multiplied:
+    #
+    #     inside  Where <= Progress                  behind the leading edge
+    #     after   Where >= Progress - SweepBand      ahead of the trailing one
+    #
+    # BOTH ARE WRITTEN AS 1 - ceil(saturate(x)) rather than as ceil of the
+    # opposite, and that is not a style choice. The two differ exactly where the
+    # three rings sit: every term there is 0, and ceil(0) is 0, so the other
+    # form would hide all three rings and the marker would have no edge at all.
+    beyond = add(material, unreal.MaterialExpressionSubtract, -300, 560)
     wire(distance, beyond, "A")
     wire(progress, beyond, "B")
 
-    clamped = add(material, unreal.MaterialExpressionSaturate, -150, 640)
-    wire(beyond, clamped)
+    past_edge = add(material, unreal.MaterialExpressionSaturate, -150, 560)
+    wire(beyond, past_edge)
 
-    hidden = add(material, unreal.MaterialExpressionCeil, 0, 640)
-    wire(clamped, hidden)
+    not_yet = add(material, unreal.MaterialExpressionCeil, 0, 560)
+    wire(past_edge, not_yet)
 
-    revealed = add(material, unreal.MaterialExpressionOneMinus, 150, 640)
-    wire(hidden, revealed)
+    inside = add(material, unreal.MaterialExpressionOneMinus, 150, 560)
+    wire(not_yet, inside)
+
+    band = scalar(material, SWEEP_BAND_PARAMETER_NAME, 0.0, -700, 1180)
+    trailing = add(material, unreal.MaterialExpressionSubtract, -500, 1120)
+    wire(progress, trailing, "A")
+    wire(band, trailing, "B")
+
+    behind = add(material, unreal.MaterialExpressionSubtract, -300, 1120)
+    wire(trailing, behind, "A")
+    wire(distance, behind, "B")
+
+    crossed = add(material, unreal.MaterialExpressionSaturate, -150, 1120)
+    wire(behind, crossed)
+
+    gone = add(material, unreal.MaterialExpressionCeil, 0, 1120)
+    wire(crossed, gone)
+
+    after = add(material, unreal.MaterialExpressionOneMinus, 150, 1120)
+    wire(gone, after)
+
+    revealed = add(material, unreal.MaterialExpressionMultiply, 300, 840)
+    wire(inside, revealed, "A")
+    wire(after, revealed, "B")
     return revealed
 
 
@@ -357,11 +402,12 @@ def build() -> None:
 
     unreal.log(f"Built {ASSET_PATH}: unlit, translucent, a vector parameter "
                f"named {PARAMETER_NAME!r} wired to emissive colour, and a "
-               f"scalar named {OPACITY_PARAMETER_NAME!r} multiplied by a sweep "
-               f"mask built from {SWEEP_ORIGIN_PARAMETER_NAME!r}, "
+               f"scalar named {OPACITY_PARAMETER_NAME!r} multiplied by a "
+               f"moving-band mask built from {SWEEP_ORIGIN_PARAMETER_NAME!r}, "
                f"{SWEEP_SCALE_PARAMETER_NAME!r}, "
-               f"{SWEEP_START_PARAMETER_NAME!r} and "
-               f"{SWEEP_DURATION_PARAMETER_NAME!r}, wired to opacity.")
+               f"{SWEEP_START_PARAMETER_NAME!r}, "
+               f"{SWEEP_DURATION_PARAMETER_NAME!r} and "
+               f"{SWEEP_BAND_PARAMETER_NAME!r}, wired to opacity.")
 
 
 if __name__ == "__main__":

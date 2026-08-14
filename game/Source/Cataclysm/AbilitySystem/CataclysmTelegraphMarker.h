@@ -159,20 +159,45 @@ public:
 	static const TCHAR* const DesignedFillHex;
 
 	/**
-	 * How opaque the innermost band is.
+	 * How opaque the moving band is.
 	 *
 	 * WHY IT IS NOT 1. The project owner reported on 2026-08-13 that a fully
-	 * opaque marker "is really solid". At 0.35 the marked ground is tinted rather
-	 * than covered, so the floor and anything standing on it still read through
-	 * it.
+	 * opaque marker "is really solid", so the marked ground is tinted rather
+	 * than covered and the floor still reads through it.
 	 *
-	 * IT CARRIES NONE OF THE READABILITY, and that is why it is free to be this
+	 * WHY IT ROSE FROM 0.35 TO 0.6. The 0.35 was chosen when this band covered
+	 * the whole marked area for the whole wind-up, where the objection was how
+	 * much floor it hid. Since #544 it is a band a few tens of centimetres wide
+	 * that crosses the marker once, so it hides almost nothing whatever its
+	 * opacity, and 0.35 on a thin moving band is faint enough to lose against a
+	 * busy floor. A JUDGEMENT, not a measurement, and one console command away:
+	 *
+	 *     Cataclysm.Telegraph.FillOpacity 0.35
+	 *
+	 * IT CARRIES NONE OF THE READABILITY, and that is why it is free to be
 	 * light. A translucent band's contrast against the ground beneath it falls
 	 * toward 1:1 as it fades -- at 0.25 over War's steel grey it is 1.54:1 -- so
 	 * it could never have been the thing the guarantee rested on. The three
 	 * opaque rings carry it.
 	 */
-	static constexpr float DesignedFillOpacity = 0.35f;
+	static constexpr float DesignedFillOpacity = 0.6f;
+
+	/**
+	 * How thick the moving band is, in centimetres.
+	 *
+	 * IN CENTIMETRES RATHER THAN AS A FRACTION OF THE MARKER, for the same
+	 * reason the three ring widths are: a band meant to be seen at a constant
+	 * thickness would become a wide swathe on a boss's six metre circle and a
+	 * hairline on a one metre one. The marker divides this by its own size
+	 * before handing it to the material, which works in fractions.
+	 *
+	 * A JUDGEMENT. The three static rings total 18 cm and read as an edge; this
+	 * is the moving element and has to read as a band, so it is larger. It has
+	 * not been tuned against anything and is one console command away:
+	 *
+	 *     Cataclysm.Telegraph.SweepBandCm 50
+	 */
+	static constexpr float DesignedSweepBandCm = 30.0f;
 
 	/**
 	 * Draw a circle on the ground and take it away after Seconds.

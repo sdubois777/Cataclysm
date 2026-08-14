@@ -57,6 +57,24 @@ namespace
 	const TCHAR* TelegraphSweepScaleParameter = TEXT("SweepScale");
 	const TCHAR* TelegraphSweepStartParameter = TEXT("SweepStartTime");
 	const TCHAR* TelegraphSweepDurationParameter = TEXT("SweepDuration");
+	const TCHAR* TelegraphSweepBandParameter = TEXT("SweepBand");
+
+	/**
+	 * Live override for how thick the moving band is, in centimetres.
+	 *
+	 * A NEGATIVE VALUE MEANS "USE THE DESIGN", rather than zero, because zero is
+	 * a legitimate setting here: it makes the band vanish and leaves the three
+	 * rings, which is the look this replaced and is worth being able to compare
+	 * against without a rebuild.
+	 */
+	TAutoConsoleVariable<float> CVarTelegraphSweepBandCm(
+		TEXT("Cataclysm.Telegraph.SweepBandCm"),
+		-1.0f,
+		TEXT("How thick the telegraph's moving band is, in centimetres. "
+			 "Negative uses the designed 30. Zero removes the band and leaves "
+			 "the three rings, which is why zero does not mean 'use the "
+			 "design' here."),
+		ECVF_Default);
 
 	/**
 	 * Live overrides for the two colours, as sRGB hex without a leading hash.
@@ -404,9 +422,28 @@ void ACataclysmTelegraphMarker::ApplySweep(UMaterialInstanceDynamic* Fill) const
 
 	// The world's clock, because the material's Time node reads the same one.
 	Fill->SetScalarParameterValue(TelegraphSweepStartParameter,
-								  World->GetTimeSeconds());
+								  static_cast<float>(World->GetTimeSeconds()));
 	Fill->SetScalarParameterValue(TelegraphSweepDurationParameter,
 								  WindUpSeconds);
+
+	// HOW THICK THE BAND IS, CONVERTED FROM CENTIMETRES HERE because the
+	// material works in fractions of the distance the sweep has to cross and
+	// only this end knows how far that is in the world. A circle's sweep
+	// crosses its radius; a lane's crosses its whole length.
+	const float BandOverride = CVarTelegraphSweepBandCm.GetValueOnAnyThread();
+	const float BandCm = BandOverride < 0.0f
+		? DesignedSweepBandCm
+		: BandOverride;
+
+	const float CrossesCm = IsLane() ? LengthCm : RadiusCm;
+	if (CrossesCm > 0.0f)
+	{
+		// Clamped to 1, which is the whole sweep. A band wider than the
+		// distance it travels would be a filled marker again, which is what
+		// #544 removed.
+		Fill->SetScalarParameterValue(TelegraphSweepBandParameter,
+									  FMath::Min(BandCm / CrossesCm, 1.0f));
+	}
 }
 
 ACataclysmTelegraphMarker* ACataclysmTelegraphMarker::ShowCircle(
