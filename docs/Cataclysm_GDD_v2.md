@@ -2762,7 +2762,11 @@ The over-corruption mechanic in section VII works offline in full, because the d
 
   
 
-**Weight.** Not set. The Dungeon Modifiers sheet in `docs/All_Things_Cataclysm.xlsx` holds 116 modifiers, with weights of 5, 10, 15 and 20, and this modifier is not one of them. It also has no Cataclysm Type, where every one of the 116 belongs to exactly one of the eight. Issue #504 covers adding the row and setting both values.
+**Weight 20, the top band.** The Dungeon Modifiers sheet in `docs/All_Things_Cataclysm.xlsx` holds 117 modifiers with weights of 5, 10, 15 and 20, and this is one of the thirteen at 20. That band holds the modifiers that change how a floor is played rather than how hard it hits — Edict of Silence stops all skill use for 15 seconds at a time, Reality Twister adds a random modifier to the dungeon every 30 seconds — and an enemy carrying a real player's class, level, passive allocation, equipment and skills belongs with those.
+
+  
+
+**Its Cataclysm Type is Generic**, which means it can appear in a dungeon of any of the eight. That is not a new category: the enemy modifier table already uses Generic for the ten modifiers that are not tied to one Cataclysm. It is the right value here because the pool this modifier draws from holds characters consumed in every Cataclysm, so tying it to one would misdescribe it. It is the first dungeon modifier to use Generic, and the only one.
 
   
 
