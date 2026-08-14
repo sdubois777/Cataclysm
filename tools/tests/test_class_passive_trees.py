@@ -98,16 +98,24 @@ POINT_BUDGET = 230
 #: an issue number to carry. An empty set states that there are none today.
 KNOWN_DUPLICATE_NAMES: set[tuple[str, str]] = set()
 
-#: Issue #344. One Saboteur basic node uses a "more" multiplier. Remove the
-#: entry when the issue is fixed.
-KNOWN_MAGNITUDE_WORDING = {("Saboteur", "Reinforced Housing")}
-
-#: "20% more damage" and "50% less damage" are separate multipliers and the
-#: design document reserves them for gems, keystones and enchantments. The
-#: pattern requires a number and a percent sign so that ordinary English --
-#: "5 or more bleed stacks", "no more than once every 10 seconds" -- does not
-#: match. Three nodes across the four trees say those things and are correct.
+#: "20% more damage" and "50% less damage" are separate multipliers, where
+#: "increased" joins one additive bucket. Since issue #344 the design document
+#: permits both on any passive tree node; it still refuses them on a gear affix,
+#: which `test_what_affixes_do_not_grant.py` holds.
+#:
+#: The pattern requires a number and a percent sign so that ordinary English --
+#: "5 or more bleed stacks", "no more than once every 10 seconds", "more than 10
+#: meters" -- does not match. Measured 2026-08-14: twenty-five nodes across the
+#: five trees contain the word and only ten are magnitudes.
 MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
+
+#: How many non-keystone nodes used that wording on 2026-08-14, when issue #344
+#: widened the rule to cover them. Four basic nodes and four capstone options,
+#: across the Bulwark, Masochist, Saboteur and empire trees.
+#:
+#: Pinned exactly rather than as a floor, for the reason
+#: `test_the_widened_rule_is_actually_relied_on` gives.
+NODES_RELYING_ON_THE_WIDENED_RULE = 8
 
 
 def load(tree_name: str) -> dict:
@@ -339,25 +347,112 @@ def test_node_names_are_unique_within_a_tree(tree):
         f"KNOWN_DUPLICATE_NAMES.")
 
 
-def test_basic_nodes_do_not_use_more_or_less_as_a_magnitude(tree):
-    """`docs/Cataclysm_GDD_v2.md`, section IV: "more" and "less" multiply
-    separately from everything else, and that wording "is reserved for gems,
-    passive tree keystones and enchantments". A basic node is none of those, so
-    a basic node saying "20% more damage" is either mis-worded or an
-    undocumented exception. The difference is large: "increased" joins one
-    additive bucket, "more" multiplies the whole result.
+def nodes_relying_on_the_widened_wording_rule() -> list[str]:
+    """Non-keystone nodes that use "more" or "less" as a magnitude.
 
-    KNOWN_MAGNITUDE_WORDING holds the one real violation, issue #344."""
-    name, data = tree
-    offenders = sorted(
-        n["data"]["name"] for n in nodes_of(data, "basic")
-        if MAGNITUDE_WORDING.search(n["data"]["description"])
-        and (name, n["data"]["name"]) not in KNOWN_MAGNITUDE_WORDING)
-    assert not offenders, (
-        f"{name}: these BASIC nodes use 'more' or 'less' as a magnitude: "
-        f"{offenders}. The design document reserves that wording for gems, "
-        f"keystones and enchantments. Use 'increased' or 'reduced' on a basic "
-        f"node, or record the exception in section IV.")
+    Every one of these was an undocumented exception until issue #344 was
+    answered on 2026-08-14. Capstone option text is read as well as the node's
+    own description, because a capstone's effects live in its options.
+
+    The EMPIRE tree is included, unlike everywhere else in this file. Two of the
+    four are there, and nothing else in the repository scans it for this.
+    """
+    found: list[str] = []
+    paths = sorted(DOCS.glob("*_Class_Tree_Final.json"))
+    paths.append(DOCS / "Empire_Development_Tree_Final.json")
+
+    for path in paths:
+        if not path.is_file():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for node in data["nodes"]:
+            if node["type"] == "keystone":
+                continue
+            body = node["data"]
+            texts = [body.get("description", "")]
+            texts += [o.get("description", "")
+                      for o in body.get("options", []) or []]
+            if any(MAGNITUDE_WORDING.search(t or "") for t in texts):
+                found.append(f"{path.stem.split('_')[0]}/{body['name']}")
+    return sorted(found)
+
+
+def test_the_design_document_permits_the_nodes_that_rely_on_it():
+    """WHAT THIS USED TO ASSERT. Until 2026-08-14 this was
+    test_basic_nodes_do_not_use_more_or_less_as_a_magnitude, and it forbade a
+    basic node from saying "20% more damage", because section IV reserved that
+    wording for "gems, passive tree KEYSTONES and enchantments". One Saboteur
+    node broke it and was exempted by name in KNOWN_MAGNITUDE_WORDING.
+
+    Issue #344 was answered on 2026-08-14 by widening the rule rather than
+    rewording the node: every node in a passive tree may use it. So the old
+    assertion now forbids something the design allows, and the property worth
+    holding is the reverse one.
+
+    THIS IS NOT A RESTATEMENT OF THE DOCUMENT. It finds the nodes first and only
+    then requires the permission, so it fails in both directions: narrowing the
+    rule back to keystones fails while those nodes exist, and it stops holding
+    on its own if every one of them is reworded.
+    """
+    if not GDD.is_file():
+        pytest.skip("the design document is not present")
+
+    relying = nodes_relying_on_the_widened_wording_rule()
+    if not relying:
+        pytest.skip(
+            "no node outside a keystone uses 'more' or 'less' as a magnitude, "
+            "so nothing depends on the widened rule. If that is deliberate, "
+            "this test has nothing left to hold.")
+
+    gdd = GDD.read_text(encoding="utf-8")
+
+    # THE ABSENCE CHECK IS THE LOAD-BEARING ONE. The permitted-sources phrase
+    # appears TWICE -- once in section IV and once restated in the affix section
+    # -- so requiring the wide form only would pass while one of the two had
+    # been narrowed back. An adversarial run of exactly that break is what found
+    # this: it changed section IV alone and every assertion still passed.
+    assert "passive tree keystones" not in gdd, (
+        f"{GDD.name} says the 'more' and 'less' wording is reserved for passive "
+        f"tree KEYSTONES. It was widened to all passive nodes on 2026-08-14, "
+        f"issue #344, and these {len(relying)} non-keystone nodes rely on the "
+        f"wider rule: {relying}. Narrowing it makes every one of them an "
+        f"undocumented exception.")
+    assert gdd.count("gems, passive tree nodes and enchantments") == 2, (
+        f"{GDD.name} states the permitted sources for 'more' and 'less' in two "
+        f"places -- section IV and the affix section that restates it -- and "
+        f"{gdd.count('gems, passive tree nodes and enchantments')} of them now "
+        f"say 'gems, passive tree nodes and enchantments'. Both have to, or a "
+        f"reader arriving at one of them gets a different rule. Issue #344.")
+    assert "Every node in a passive tree may use that wording" in gdd, (
+        f"section IV of {GDD.name} names the permitted sources without saying "
+        f"plainly that basic nodes and capstones are included. That sentence "
+        f"stops the next reader taking 'passive tree nodes' as shorthand for "
+        f"keystones, which is what the rule used to say. Issue #344.")
+
+
+def test_the_widened_rule_is_actually_relied_on():
+    """A permission nothing uses is worth deleting, and the test above skips
+    when nothing uses it. This says the skip is not the normal case, so a silent
+    skip cannot quietly become the way that test always ends.
+
+    PINNED EXACTLY rather than as a floor. A floor is what went wrong in issue
+    #550: a number chosen once, never revisited, and eventually so far below the
+    real count that the check could not fail. An exact count cannot rot that
+    way, and the cost is a deliberate failure whenever a node is added or
+    reworded -- which is the moment somebody should look at whether the rule
+    still earns its place.
+
+    It takes no tree fixture on purpose: the count is over all five trees at
+    once, so running it per tree would assert the same thing four times."""
+    relying = nodes_relying_on_the_widened_wording_rule()
+    assert len(relying) == NODES_RELYING_ON_THE_WIDENED_RULE, (
+        f"{len(relying)} non-keystone node(s) use 'more' or 'less' as a "
+        f"magnitude, where {NODES_RELYING_ON_THE_WIDENED_RULE} did when issue "
+        f"#344 widened the rule for them on 2026-08-14. Found: {relying}.\n\n"
+        f"If a node was added, update the count here and check the new node "
+        f"really wants a separate multiplier rather than 'increased'. If one "
+        f"was reworded away, update the count and ask whether the widened rule "
+        f"still has enough relying on it to be worth keeping.")
 
 
 def test_every_node_has_a_name_and_a_description(tree):

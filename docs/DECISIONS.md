@@ -20,6 +20,97 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — Every passive tree node may use a "more" multiplier, not only keystones
+
+**Affects:** section IV of `Cataclysm_GDD_v2.md`, where the wording rule is
+stated, and the restatement in the affix section. Applied. Issue #344.
+
+### What was decided
+
+The wording "more" and "less" — the multipliers that apply separately instead of
+joining the additive bucket — was reserved for "gems, passive tree **keystones**
+and enchantments". It now reads "gems, passive tree **nodes** and enchantments".
+Basic nodes and capstone options are covered as well as keystones.
+
+Asked whether to reword the offending node, record an exception for it, or move
+the effect onto a keystone, the project owner answered on 2026-08-14:
+
+> add an exception for passive nodes as well.
+
+### Why the wider rule rather than a node-level exception
+
+**Issue #344 described one node. Eight broke the rule.** Every node in the four
+class trees and the empire tree was scanned for a number, a percent sign and then
+the word "more" or "less", which is the test
+`tools/tests/test_class_passive_trees.py` already applies so that ordinary
+English does not match — "3 or more enemies", "more than 10 meters", "5 or more
+affixes" and the like are not magnitudes and are correct as written.
+
+The eight that were not allowed under the old rule:
+
+| Tree | Node kind | Node | The magnitude |
+|---|---|---|---|
+| Saboteur | basic | Reinforced Housing | 20% more damage per trap trigger |
+| Empire | basic | Economic Zones | +5% more Gold per point |
+| Empire | basic | Salvage Protocol | 25% more crafting materials |
+| Empire | basic | Thrifty | 1% less gold per point in the Market |
+| Bulwark | capstone option | Second Oath, Thornwall | 5% more retaliation damage per stack |
+| Masochist | capstone option | The Second Vow, The Immortal Champion | 50% less damage |
+| Masochist | capstone option | The Final Vow, Apotheosis | 1% more damage per 100 Anguish |
+| Empire | capstone option | The Imperial Vanguard, The Midas Touch | 50% more gold |
+
+Nine keystones also use it and were always allowed to.
+
+**The first count taken during this work was four, and it was wrong**; it read
+each node's own description and not the option text hanging off a capstone, which
+is where a capstone's effects actually live. The corrected figure is eight, and
+`NODES_RELYING_ON_THE_WIDENED_RULE` in that test file pins it so the next change
+to any of them is deliberate.
+
+A node-level exception would have needed eight entries across three files. The
+rule was simply drawn in the wrong place.
+
+**The line that carries the weight is gear, not node kind.** A gear affix is
+rolled and can arrive by accident; a passive node is chosen and paid for out of a
+fixed 230 point budget. That is the distinction worth enforcing, and it is
+unchanged: no ordinary affix is a "more" multiplier.
+
+### Where this diverges from the genre, and it does
+
+Path of Exile is the closest comparison and it draws the line differently.
+"Increased" is additive and "more" is multiplicative there in exactly the same
+way, but **its small passive nodes typically grant "increased"**, and "more"
+multipliers come from notables, keystones and other sources. A small passive is
+the closest thing there to a basic node here.
+
+**So this decision goes further than the genre does, and that is a judgement
+rather than a finding.** The argument for it is the point budget: this game's
+basic node holds up to 8 points and a player spends 230 in total across every
+tree, so a basic node is a larger commitment relative to the budget than a Path
+of Exile small passive is. The argument against it is that the additive bucket
+is what keeps damage readable, and widening the set of things that escape it
+makes the ceiling harder to reason about.
+
+`CLAUDE.md` says constants are tuned against real play rather than argued to
+death first, and this is a wording rule rather than a constant, but the same
+applies to how many nodes end up using it. If the ceiling turns out to be the
+problem, the narrower rule is one sentence away.
+
+### What this does not settle
+
+**Saboteur's keystone Overwhelming Presence says "increased by 50% more"**, which
+is both magnitude words for one number and cannot be read either way. It is a
+keystone, so it was always allowed the multiplier; the sentence just has to pick
+a word. Filed as #582, because it is a wording defect rather than a rule
+question.
+
+Sources:
+
+- [Damage Scaling — Path of Exile 2, Maxroll](https://maxroll.gg/poe2/getting-started/damage-scaling)
+- [Passive Skills — Path of Exile 2 Wiki](https://pathofexile2.wiki.fextralife.com/Passive+Skills)
+
+---
+
 ## 2026-08-14 — A player can delete a character, and that is the only thing that destroys an empire tree
 
 **Affects:** section II of `Cataclysm_GDD_v2.md`, where a new "Deleting a

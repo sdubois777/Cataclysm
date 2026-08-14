@@ -963,7 +963,15 @@ Final Value = Base Value × (1 + Sum of Increases) × Product of More Multiplier
 
   
 
-Attribute points and every gear affix worded "increased" add together into one bucket per stat, and that bucket multiplies the base once. Only sources worded "more" or "less" multiply separately, and that wording is reserved for **gems, passive tree keystones and enchantments**, where the design already wants outsized effects.
+Attribute points and every gear affix worded "increased" add together into one bucket per stat, and that bucket multiplies the base once. Only sources worded "more" or "less" multiply separately, and that wording is reserved for **gems, passive tree nodes and enchantments**, where the design already wants outsized effects.
+
+  
+
+**Every node in a passive tree may use that wording, not only its keystones.** Basic nodes, keystones and capstone options are all spent from the same 230 point budget, and a point spent in a tree is a point not spent anywhere else, so the tree as a whole is the place where a player has already paid for an outsized effect. The rule that matters is the one above it: **a gear affix never uses it.** Gear is where a "more" multiplier would be unreadable, because a drop can carry one by accident and a passive node cannot — a node is chosen.
+
+  
+
+This covers the empire upgrade tree as well as the four class trees, it covers capstone options as well as basic nodes, and it covers the things a passive node grants that are not damage. `Economic Zones` gives "+5% more Gold from all sources per point", `Salvage Protocol` gives "25% more crafting materials" and `Thrifty` makes Market items cost "1% less gold per point"; all three are empire basic nodes and all three are correct as written.
 
   
 
@@ -2313,7 +2321,7 @@ That is the whole point of the design. An attribute affix is worth little to a c
 
   
 
-**No ordinary affix is a "more" multiplier.** An affix is flat or increased. Multiplicative sources come from gems, passive tree keystones and enchantments, as section IV states.
+**No ordinary affix is a "more" multiplier.** An affix is flat or increased. Multiplicative sources come from gems, passive tree nodes and enchantments, as section IV states. Every node in a passive tree may carry one, not only its keystones, because a node is chosen and paid for out of a fixed point budget; a gear affix is rolled, which is why gear is the one place the wording is refused.
 
   
 
