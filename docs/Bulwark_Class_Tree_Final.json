@@ -660,7 +660,7 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Immovable Object",
+        "name": "Unyielding Guard",
         "description": "Every block within 3 seconds of the last increases Block Chance by 5% and generates 3 Resolve, stacking up to 4 times. Resets if you stop blocking for 3 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
