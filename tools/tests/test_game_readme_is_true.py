@@ -26,6 +26,7 @@ pass, and is the right one once the system is real.
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 
@@ -308,3 +309,110 @@ def test_the_readme_only_names_files_that_exist() -> None:
         "game/README.md names files that do not exist, relative to either "
         f"game/ or the repository root: {', '.join(missing)}"
     )
+
+
+# --------------------------------------------------------------------------
+# Counts the readme states, checked against the generators that produce them.
+# --------------------------------------------------------------------------
+#
+# WHY THESE ARE HERE. Issue #449. The readme said the DataTable asset generator
+# "rewrites all fourteen assets even when one CSV changed". Both halves were
+# wrong: it has rebuilt only what moved since issue #444, and there were
+# seventeen tables by then, not fourteen. The same sentence was repeated in
+# `tools/tests/test_datatable_assets_are_current.py`, where it is printed into
+# every failure message that file produces, so the one person guaranteed to read
+# it was the person who had just hit the failure and did not know the procedure.
+#
+# A count written into prose has now been wrong twice, so it is read out of the
+# generators instead of being trusted.
+
+#: How the readme spells the counts it states. Only the values these tests need.
+NUMBER_WORDS = {
+    2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+    8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+    13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
+    17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
+}
+
+DATATABLE_GENERATOR = REPO_ROOT / "tools" / "generate_datatables.py"
+ASSET_GENERATOR = REPO_ROOT / "tools" / "generate_datatable_assets.py"
+
+
+def _assignment(path: pathlib.Path, name: str) -> ast.expr:
+    """The value assigned to a module-level name, read without importing.
+
+    `generate_datatable_assets.py` imports `unreal` and cannot be imported at
+    all here, and `generate_datatables.py` maps table names to functions, so
+    neither can be read any other way.
+    """
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == name
+                for target in node.targets):
+            return node.value
+    pytest.fail(f"{path.name} no longer has a module-level {name}")
+
+
+def workbook_table_count() -> int:
+    return len(_assignment(DATATABLE_GENERATOR, "TABLES").keys)
+
+
+def model_table_count() -> int:
+    return len(_assignment(DATATABLE_GENERATOR, "MODEL_TABLES").keys)
+
+
+def asset_count() -> int:
+    return len(_assignment(ASSET_GENERATOR, "TABLES").elts)
+
+
+def test_the_two_generators_agree_on_how_many_tables_there_are() -> None:
+    """Otherwise the counts below could both be right and still disagree."""
+    assert asset_count() == workbook_table_count() + model_table_count(), (
+        f"tools/generate_datatable_assets.py builds an asset for "
+        f"{asset_count()} tables, but tools/generate_datatables.py writes "
+        f"{workbook_table_count()} CSV files from the workbook and "
+        f"{model_table_count()} from the simulation's enemy model. One of them "
+        f"has a table the other does not.")
+
+
+def test_the_readme_states_the_right_number_of_datatable_assets() -> None:
+    """The `Content/Data/` row, which has been wrong twice. Issue #449."""
+    total = NUMBER_WORDS[asset_count()]
+    from_workbook = NUMBER_WORDS[workbook_table_count()]
+    from_model = NUMBER_WORDS[model_table_count()]
+
+    expected = (f"{total.capitalize()} DataTable assets: {from_workbook} "
+                f"imported from the design workbook, and {from_model} from the "
+                f"simulation package's enemy model.")
+    assert expected in readme_text(), (
+        f"game/README.md does not describe Content/Data/ as it now is. It "
+        f"should say: {expected}")
+
+
+def test_the_readme_states_the_right_number_of_tables_not_from_the_workbook() -> None:
+    """The sentence just above the regeneration commands."""
+    expected = (f"{NUMBER_WORDS[model_table_count()].capitalize()} of the "
+                f"{NUMBER_WORDS[asset_count()]} do not come from the workbook.")
+    assert expected in readme_text(), (
+        f"game/README.md does not say how many tables come from somewhere other "
+        f"than the design workbook. It should say: {expected}")
+
+
+def test_the_readme_does_not_tell_the_reader_to_restore_untouched_assets() -> None:
+    """The instruction that was wrong rather than merely stale. Issue #449.
+
+    The generator has rebuilt only the tables whose CSV moved since issue #444,
+    so there are no untouched assets to restore. Following the old instruction
+    meant opening thirteen or more binary files looking for changes that were
+    not in them.
+    """
+    text = readme_text()
+    for wrong in ("rewrites all", "restore the ones whose CSV did not change",
+                  "`git restore` every asset whose"):
+        assert wrong not in text, (
+            f"game/README.md still says {wrong!r}, which describes the DataTable "
+            f"asset generator as it behaved before issue #444. It now rebuilds "
+            f"only the tables whose CSV changed, so there is nothing to restore.")

@@ -38,9 +38,9 @@ do not produce identical bytes. An asset hash would fail on every regeneration
 and teach people to ignore this file.
 
 HOW TO FIX A FAILURE HERE. Run the DataTable asset generator. The command is in
-`game/README.md`. It rewrites all fourteen assets even when one CSV changed, so
-restore the ones whose CSV did not change before committing, or every run adds
-Git LFS storage for nothing.
+`game/README.md`. It rebuilds only the tables whose CSV changed, so there is
+nothing to restore afterwards. Close the interactive editor first: it holds the
+asset files, and a run that cannot write one now fails and says which.
 """
 
 from __future__ import annotations
@@ -61,9 +61,9 @@ RECORD = DATA_DIR / "datatable_asset_sources.json"
 #: The command that fixes every failure in this file. Repeated in each message
 #: rather than left to the reader, because the whole point is that the person who
 #: hits this did not know the step existed.
-FIX = ("Run `python tools/run_editor_python.py "
-       "tools/generate_datatable_assets.py`. It rewrites all fourteen assets, so "
-       "restore the ones whose CSV did not change before committing. From a git "
+FIX = ("Close the Unreal editor, then run `python tools/run_editor_python.py "
+       "tools/generate_datatable_assets.py`. It rebuilds only the tables whose "
+       "CSV changed, so there is nothing to restore afterwards. From a git "
        "worktree it refuses to start and says why; game/README.md gives the way "
        "round that.")
 
@@ -194,6 +194,54 @@ class TestTheRecordIsSelfDescribing:
         CSV's columns. The generator already fails on that; this records it."""
         for entry in record["tables"]:
             assert entry["rows"] > 0, entry["asset"]
+
+
+class TestTheInstructionsAreStillTrue:
+    """The `FIX` string is the one thing a reader here is guaranteed to read.
+
+    Issue #449. It told them to restore the assets whose CSV did not change,
+    which the generator has not touched since issue #444. Following it meant
+    opening thirteen or more binary files looking for changes that were not in
+    them. It also named a count of the tables, which had been wrong twice.
+    """
+
+    def test_it_does_not_say_the_generator_rewrites_every_asset(self):
+        for wrong in ("rewrites all", "restore the ones whose CSV did not change"):
+            assert wrong not in FIX, (
+                f"the fix instruction says {wrong!r}, which describes the "
+                f"generator as it behaved before issue #444. It now rebuilds only "
+                f"the tables whose CSV changed.")
+
+    def test_it_does_not_state_a_count_of_the_tables(self):
+        """A number in this sentence has gone stale twice. It adds nothing here:
+        the reader needs the command, not the size of the job."""
+        numbers = [word for word in ("fourteen", "fifteen", "sixteen",
+                                     "seventeen", "eighteen")
+                   if word in FIX]
+        assert not numbers, (
+            f"the fix instruction states a count of the tables ({numbers}), "
+            f"which has gone stale twice. There are {len(generator_tables())} "
+            f"today. Say 'only the tables whose CSV changed' instead, which "
+            f"stays true as tables are added.")
+
+    def test_it_says_to_close_the_editor(self):
+        """Issue #587. An open editor holds the asset files and the save fails.
+
+        That was silent until #587 and is now a hard failure, but the reader
+        hitting a failure in this file is about to run the generator, and the
+        precondition belongs with the command rather than in a log they have not
+        read yet.
+
+        THE CHECK IS FOR THE WHOLE INSTRUCTION, not for the word "editor". The
+        first version of this test looked for "editor" alone and could not fail:
+        the command it tells you to run is `tools/run_editor_python.py`, so the
+        word is in every version of this string, including the one from before
+        issue #587. Proving the guard is what found that.
+        """
+        assert "close the unreal editor" in FIX.lower(), (
+            "the fix instruction does not tell the reader to close the editor "
+            "first. An open editor holds the .uasset files, Windows refuses the "
+            "rename with error code 32, and the run fails. Issue #587.")
 
 
 class TestTheGeneratorStillWritesIt:
