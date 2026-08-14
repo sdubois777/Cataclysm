@@ -56,7 +56,7 @@ protected:
 	 * what makes the effect mean "that connected".
 	 */
 	void PlayImpactEffect(const FGameplayEffectModCallbackData& Data,
-						  FName DamageType,
+						  const struct FCataclysmIncomingHit& Hit,
 						  const struct FCataclysmDamageResult& Outcome);
 
 public:
