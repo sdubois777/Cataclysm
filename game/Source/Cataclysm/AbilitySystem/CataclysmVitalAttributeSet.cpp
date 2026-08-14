@@ -189,17 +189,44 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 	// Whether this is worth drawing at all lives in UCataclysmImpactEffect, so a
 	// test can reach it without a world or a rendering device. It refuses a blow
 	// that never connected, and a burn ticking, which is not a blow at all.
-	if (!UCataclysmImpactEffect::ShouldDrawFor(Hit, Outcome))
-	{
-		return;
-	}
+	const bool bWorthDrawing =
+		UCataclysmImpactEffect::ShouldDrawFor(Hit, Outcome);
 
 	// THE AVATAR, NOT THE OWNER. GetOwningActor answers with the ability
 	// system's owner, and for the player that is the player state, which is not
 	// placed in the world and reports the origin. Issue #562.
 	const AActor* Struck =
 		UCataclysmImpactEffect::ActorToDrawOn(GetOwningAbilitySystemComponent());
-	if (!Struck)
+
+	// EVERY LANDED HIT IS LOGGED, INCLUDING THE ONES THAT DRAW NOTHING, and that
+	// ordering is the point. An earlier version logged only after deciding to
+	// draw, so a hit that arrived and did nothing left no trace at all -- which
+	// is precisely the case somebody hit while playing: the effect stopped
+	// appearing and there was no way to tell whether hits had stopped landing or
+	// had stopped counting.
+	//
+	// healthLeft is what answers it. A character at zero health takes no further
+	// damage, because UCataclysmDamageCalculation::Resolve ends with
+	// FMath::Min(Damage, Vitals->GetHealth()) and that is zero from then on. It
+	// keeps being hit and nothing happens, because a player's death is
+	// deliberately not built -- see ACataclysmCharacterBase::HandleDeath.
+	//
+	// Counted is a running total for the session, so a burst of hits can be
+	// counted without timestamps. Issue #563 needed exactly that.
+	static int32 Counted = 0;
+	++Counted;
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("hit %d: on=%s type=%s dot=%s area=%s toHealth=%.1f toShield=%.1f "
+			 "healthLeft=%.1f drawn=%s"),
+		Counted, Struck ? *Struck->GetName() : TEXT("(no avatar)"),
+		Hit.DamageType.IsNone() ? TEXT("(none)") : *Hit.DamageType.ToString(),
+		Hit.bIsDamageOverTime ? TEXT("yes") : TEXT("no"),
+		Hit.bIsArea ? TEXT("yes") : TEXT("no"),
+		Outcome.DealtToHealth, Outcome.AbsorbedByShield, GetHealth(),
+		bWorthDrawing ? TEXT("yes") : TEXT("no"));
+
+	if (!bWorthDrawing || !Struck)
 	{
 		return;
 	}
@@ -211,31 +238,6 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 	FVector Normal = FVector::UpVector;
 	const FVector Location =
 		UCataclysmImpactEffect::ImpactLocationFor(Landed, Struck, Normal);
-
-	// COUNTED, BECAUSE ISSUE #563 IS ABOUT HOW MANY OF THESE THERE ARE. One
-	// player attack drew the effect three to five times, and whether that is the
-	// effect firing too often or the attack really dealing damage that many
-	// times cannot be told apart without counting the damage applications
-	// themselves. Every line here is one application; nothing else spawns the
-	// effect.
-	static int32 Counted = 0;
-	++Counted;
-
-	// KEPT, AND AT VERBOSE SO IT COSTS NOTHING UNTIL ASKED FOR. Issue #562 was
-	// an effect drawn in the wrong place, and nothing in the game could report
-	// where it had been put or why, so it took a play session and a person
-	// watching to notice. Raise this category to Verbose to see both.
-	UE_LOG(LogCataclysm, Verbose,
-		TEXT("impact %d: on=%s type=%s dot=%s area=%s health=%.1f shield=%.1f "
-			 "at=%s blockingHit=%s actorAt=%s"),
-		Counted, *Struck->GetName(),
-		Hit.DamageType.IsNone() ? TEXT("(none)") : *Hit.DamageType.ToString(),
-		Hit.bIsDamageOverTime ? TEXT("yes") : TEXT("no"),
-		Hit.bIsArea ? TEXT("yes") : TEXT("no"),
-		Outcome.DealtToHealth, Outcome.AbsorbedByShield,
-		*Location.ToString(),
-		Landed ? (Landed->bBlockingHit ? TEXT("yes") : TEXT("no")) : TEXT("none"),
-		*Struck->GetActorLocation().ToString());
 
 	UCataclysmImpactEffect::SpawnAt(Struck, Location, Normal, Hit.DamageType);
 }
