@@ -348,3 +348,97 @@ CATACLYSM_TEST(FCataclysmDyingHappensOnceTest,
 #undef CATACLYSM_TEST
 
 #endif  // WITH_AUTOMATION_TESTS
+
+// --------------------------------------------------------------------------
+// Whose death is it
+// --------------------------------------------------------------------------
+
+/**
+ * The regression test for issue #565.
+ *
+ * An attribute set's GetOwningActor answers with the ability system's OWNER, not
+ * its avatar. Every creature in this file has the two as the same object, so
+ * every test above passes whichever accessor the code reads -- which is exactly
+ * how this survived.
+ *
+ * THE PLAYER IS THE CASE WHERE THEY DIFFER.
+ * ACataclysmPlayerCharacter::InitAbilityActorInfo makes the player state the
+ * owner, because it survives death, and the pawn the avatar. A player state is
+ * not a character, so the cast in NotifyIfHealthReachedZero failed and the
+ * function returned early.
+ *
+ * IT COSTS NOTHING TODAY. HandleDeath is inert on the base by design, and a
+ * player's death is not built -- see the note at the top of this file. This test
+ * exists so that when somebody does build one, it fires, instead of failing
+ * silently in an actor lookup two files away from the code they are writing.
+ *
+ * The arrangement below is artificial on purpose: an enemy is given an ability
+ * system whose owner is some other actor, so that owner and avatar differ the
+ * way they do for the player. It is the only way to exercise the distinction
+ * while a player's death does nothing.
+ */
+// Spelled out rather than using this file's CATACLYSM_TEST macro, which is
+// undefined at a line above where this test sits.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathFollowsTheAvatarNotTheOwnerTest,
+	"Cataclysm.Death.DeathFollowsTheAvatarNotTheOwner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathFollowsTheAvatarNotTheOwnerTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = CataclysmDeathTest::SpawnEnemy(
+		World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	ACataclysmEnemyCharacter* Victim = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(500.0f, 0.0f, 0.0f), ECataclysmTeam::Players);
+
+	// Stands in for the player state: holds the ability system, is not a
+	// character, and would fail the cast.
+	AActor* NotACharacter = World->SpawnActor<AActor>();
+
+	if (TestNotNull(TEXT("an attacker"), Attacker)
+		&& TestNotNull(TEXT("a victim"), Victim)
+		&& TestNotNull(TEXT("something to own the ability system"), NotACharacter))
+	{
+		UAbilitySystemComponent* AbilitySystem =
+			UCataclysmTargeting::AbilitySystemOf(Victim);
+		if (!TestNotNull(TEXT("the victim has an ability system"), AbilitySystem))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// Split them apart, the way the player has them.
+		AbilitySystem->InitAbilityActorInfo(NotACharacter, Victim);
+
+		if (!TestEqual(TEXT("the owner is now something that is not a character"),
+				AbilitySystem->GetOwnerActor(), (AActor*)NotACharacter))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		TestEqual(TEXT("and the avatar is still the creature in the world"),
+			AbilitySystem->GetAvatarActor(), (AActor*)Victim);
+
+		TestFalse(TEXT("it starts alive"),
+			UCataclysmSkillEffects::IsDead(Victim));
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Victim, 100.0f);
+
+		TestEqual(TEXT("its health reached zero"),
+			CataclysmDeathTest::HealthOf(Victim), 0.0f, 0.01f);
+
+		// THE ASSERTION THAT MATTERS. Reading the owner finds an actor that is
+		// not a character, the cast fails, and nothing dies.
+		TestTrue(TEXT("and it is marked dead, even though the ability system is "
+					  "owned by something that is not a character"),
+			UCataclysmSkillEffects::IsDead(Victim));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
