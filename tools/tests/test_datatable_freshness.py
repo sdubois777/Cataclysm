@@ -33,6 +33,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 from datatable_freshness import (  # noqa: E402
     REBUILD_ALL_VARIABLE,
+    entry_for_table,
     needs_rebuilding,
     rebuild_everything,
 )
@@ -128,6 +129,101 @@ def test_any_non_empty_value_turns_the_rebuild_switch_on(value, expected) -> Non
 
 def test_the_switch_is_off_when_the_variable_is_absent() -> None:
     assert rebuild_everything({}) is False
+
+
+#: What the record held about one table before the run. The hash is the old one,
+#: so a test can tell a preserved entry from a rewritten one by looking at it.
+PREVIOUS = {"asset": "DT_StatusEffects", "csv": "StatusEffects.csv",
+            "rows": 50, "csv_sha256": SAME}
+
+
+def test_an_asset_that_reached_disk_is_recorded_against_the_current_csv() -> None:
+    """The ordinary case: this is what the record is for."""
+    entry = entry_for_table(
+        asset="DT_StatusEffects", csv="StatusEffects.csv", rows=52,
+        current_digest=DIFFERENT, previous_entry=PREVIOUS, saved=True)
+
+    assert entry == {"asset": "DT_StatusEffects", "csv": "StatusEffects.csv",
+                     "rows": 52, "csv_sha256": DIFFERENT}
+
+
+def test_an_asset_the_editor_could_not_write_keeps_its_previous_entry() -> None:
+    """The failure issue #587 exists for, and the reason this function exists.
+
+    The editor failed to write `DT_StatusEffects.uasset` -- the interactive
+    editor was open and held the file -- and the generator recorded the new row
+    count and the new hash regardless. `test_datatable_assets_are_current.py`
+    then passed, because the record matched the CSV, while the asset on disk was
+    six days old. The next run read that record, decided the table was already
+    current and skipped it, which made the staleness permanent.
+
+    KEEPING THE PREVIOUS ENTRY IS WHAT MAKES THE NEXT RUN REBUILD IT. The old
+    hash no longer matches the current CSV, so `needs_rebuilding` answers "its
+    source changed".
+    """
+    entry = entry_for_table(
+        asset="DT_StatusEffects", csv="StatusEffects.csv", rows=52,
+        current_digest=DIFFERENT, previous_entry=PREVIOUS, saved=False)
+
+    assert entry == PREVIOUS, (
+        "an asset the editor could not write is being recorded as though it "
+        "was written. The record then says the asset was built from the current "
+        "CSV when it holds the previous numbers, the Python test passes over it, "
+        "and the next run skips the table as already current. Issue #587.")
+
+    rebuild, reason = needs_rebuilding(
+        current_digest=DIFFERENT, recorded_digest=entry["csv_sha256"],
+        asset_exists=True)
+    assert rebuild, (
+        "the entry kept for a failed save does not make the next run rebuild "
+        f"the table ({reason}), which is the whole point of keeping it")
+
+
+def test_a_new_table_whose_first_save_failed_is_recorded_not_at_all() -> None:
+    """There is no previous entry to keep, so nothing truthful can be said.
+
+    A table missing from the record is one the next run rebuilds, and
+    `test_every_table_the_generator_builds_is_recorded` fails and names it. Both
+    are the wanted behaviour; the wrong answer would be an entry claiming a
+    build that did not happen.
+    """
+    entry = entry_for_table(
+        asset="DT_EnemyRarities", csv="EnemyRarities.csv", rows=6,
+        current_digest=DIFFERENT, previous_entry=None, saved=False)
+
+    assert entry is None
+
+
+def test_the_generator_records_only_what_it_managed_to_save() -> None:
+    """Otherwise the three tests above pass against code nothing calls.
+
+    READ FROM THE SOURCE, for the same reason as the check below it: the
+    generator imports `unreal` and cannot be imported here.
+    """
+    if not GENERATOR.is_file():
+        pytest.fail(f"{GENERATOR.name} does not exist")
+
+    tree = ast.parse(GENERATOR.read_text(encoding="utf-8"))
+
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "datatable_freshness"
+        for alias in node.names
+    }
+    assert "entry_for_table" in imported, (
+        "the DataTable asset generator no longer imports entry_for_table, so "
+        "nothing stops it recording an asset the editor failed to write. "
+        "Issue #587.")
+
+    called = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "entry_for_table" in called, (
+        "the DataTable asset generator imports entry_for_table but never calls "
+        "it, so every table is recorded whether or not it was written.")
 
 
 def test_the_generator_actually_uses_the_decision() -> None:
