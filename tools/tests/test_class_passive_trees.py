@@ -26,16 +26,22 @@ point budget is 230." The keystone rule is separate and exact: keystones
 "require full investment in a parent node".
 
 TWO REAL DEFECTS IN THE EXISTING TREES WERE FOUND BY WRITING THIS FILE, and both
-are exempted by name below rather than hidden, so that the check still runs over
-everything else and a NEW instance of either fails.
+were exempted by name below rather than hidden, so that the check still ran over
+everything else and a NEW instance of either failed.
 
-    #343  Two different Bulwark keystones are both named "Immovable Object".
+    #343  Two different Bulwark keystones were both named "Immovable Object".
+          FIXED on 2026-08-14. The crowd control immunity keystone
+          (`keystone_jg_t1`) kept the name, because that is what immovable
+          plainly means, and the consecutive-block keystone (`keystone_ic_t2`)
+          became "Unyielding Guard". `KNOWN_DUPLICATE_NAMES` is now empty and
+          every tree is covered.
     #344  Saboteur's "Reinforced Housing" is a basic node using a "more"
           multiplier, which the design document reserves for gems, keystones
-          and enchantments.
+          and enchantments. Still exempted.
 
-Both exemptions are single named entries. Delete the entry when the issue is
-fixed; the test then covers that tree too.
+An exemption is a single named entry. Delete the entry when the issue is fixed;
+the test then covers that tree too. The set itself stays, so a future deliberate
+duplicate has somewhere to be declared with its issue number.
 
 WHAT IS ASSERTED HERE.
 
@@ -82,9 +88,15 @@ CAPSTONE_THRESHOLDS = (25, 50, 100, 200)
 #: The per-character budget, from the same sentence.
 POINT_BUDGET = 230
 
-#: Issue #343. Two different Bulwark keystones share this name. Remove the
-#: entry when the issue is fixed.
-KNOWN_DUPLICATE_NAMES = {("Bulwark", "Immovable Object")}
+#: Empty since issue #343 was fixed on 2026-08-14. Two different Bulwark
+#: keystones were both called "Immovable Object"; the crowd control immunity one
+#: kept the name and the consecutive-block one became "Unyielding Guard".
+#:
+#: KEPT AS AN EMPTY SET rather than deleted with the entry. The test below reads
+#: it, so removing it means rewriting the test, and the mechanism is the thing
+#: worth keeping: a future deliberate duplicate has somewhere to be declared and
+#: an issue number to carry. An empty set states that there are none today.
+KNOWN_DUPLICATE_NAMES: set[tuple[str, str]] = set()
 
 #: Issue #344. One Saboteur basic node uses a "more" multiplier. Remove the
 #: entry when the issue is fixed.
