@@ -251,8 +251,21 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()
 	// be written repeatedly at zero -- a burn ticking on a corpse, two hits in
 	// the same frame -- and HandleDeath removes the character from the level, so
 	// running it twice would be running it on something already leaving.
-	ACataclysmCharacterBase* Character =
-		Cast<ACataclysmCharacterBase>(GetOwningActor());
+	// THE AVATAR, NOT THE OWNER, and for the same reason the hit effect needs it
+	// in issue #562. GetOwningActor answers with the ability system's owner, and
+	// ACataclysmPlayerCharacter::InitAbilityActorInfo makes that the player
+	// state -- deliberately, because it survives death -- while the pawn is the
+	// avatar. A player state is not a character, so the cast below failed and
+	// this returned early.
+	//
+	// IT COSTS NOTHING TODAY, because HandleDeath is inert on the base by design
+	// and a player's death is not built. It would silently stop that death ever
+	// firing the moment somebody builds it, with no error to follow. Issue #565.
+	const UAbilitySystemComponent* AbilitySystem =
+		GetOwningAbilitySystemComponent();
+	ACataclysmCharacterBase* Character = AbilitySystem
+		? Cast<ACataclysmCharacterBase>(AbilitySystem->GetAvatarActor())
+		: nullptr;
 	if (!Character || UCataclysmSkillEffects::IsDead(Character))
 	{
 		return;
