@@ -1548,7 +1548,11 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**Minion count is gear-modifiable, and only through enchantments. It is never an affix.** Two enchantments raise it and the unique-per-character rule means each can appear once across all equipped gear, so the total a player can reach is bounded permanently. That placement follows the same rule as maximum resistance, stated earlier in this document: an affix has seven tiers and can appear on several pieces, and a modifier that does not tolerate that range belongs in the enchantment table. Count tolerates it least of all — there are eight ring slots, so a "+1 minion" suffix would be eight from rings alone before any other piece — and count multiplies every other minion investment at once, because damage, effective health and rider uptime all scale with how many minions are alive.
+**Minion count is gear-modifiable, and only through enchantments. It is never an affix.** **One** enchantment raises it — "Add 2-4 to your maximum minion count", at weight 2 — and the unique-per-character rule means it can appear once across all equipped gear, so **gear contributes between +2 and +4 minions and can never contribute more**. That placement follows the same rule as maximum resistance, stated earlier in this document: an affix has seven tiers and can appear on several pieces, and a modifier that does not tolerate that range belongs in the enchantment table. Count tolerates it least of all — there are eight ring slots, so a "+1 minion" suffix would be eight from rings alone before any other piece — and count multiplies every other minion investment at once, because damage, effective health and rider uptime all scale with how many minions are alive.
+
+  
+
+**There used to be two count enchantments and the rarer one was weaker.** "You can have 1-2 additional minions active simultaneously" sat at weight 2, the rarer tier, beside "Add 2-4 to your maximum minion count" at weight 4. A player finding the rarer one got half as much. They said the same thing in different words, so they were merged into the single enchantment above on 2026-08-14 rather than re-priced. The bound that sentence states moved from +3 to +6 down to +2 to +4 as a result. Issue #339.
 
   
 
