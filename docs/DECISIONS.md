@@ -20,6 +20,87 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — Standing in burning ground for its whole life costs one hit of the skill that left it
+
+**Affects:** section V's rider list in `Cataclysm_GDD_v2.md`, the Weapon Skills
+sheet of `All_Things_Cataclysm.xlsx`, `tools/generate_datatables.py` and
+`sim/cataclysm_sim/enemy_abilities.py`. Applied. Issue #361.
+
+### What was wrong
+
+`ACataclysmGroundZone::SpawnRound` and `SpawnLine` take a `DamagePerTick`
+parameter and the zone ticks once a second. **Nothing supplied that number from
+data.** Twenty-two player skills leave burning ground and every one of them
+stated only `GroundRadius` and `GroundDuration`, so a skill that says it "leaves
+a pool of lava" left a pool dealing whatever the caller happened to pass, and two
+skills with identical radius and duration could silently deal different amounts.
+
+Issue #361 says eight skills. **It is 22**, counted from
+`game/Data/WeaponSkills.csv` on 2026-08-14.
+
+### What was decided
+
+A new rider, `GroundPercent`: the percent of the skill's damage the ground deals
+per second. Its value is **100 divided by `GroundDuration`**, so standing in the
+ground for its whole life costs exactly one hit of the skill that left it.
+
+Chosen by the project owner on 2026-08-14 from three options.
+
+In practice that runs from 10% per second for the four 10-second Ultimate patches
+to 33.3% for the two 3-second Movement patches.
+
+### What the genre settles, and what it does not
+
+**Settled: fire damage over time in this genre is priced as a share of the hit
+that caused it, per second, rather than as a flat number.** Path of Exile's
+ignite deals 50% of the hit's base fire damage per second, over a base 4 second
+duration — so 200% of the hit in total. Its *burning ground* from map modifiers
+is different again: a flat figure per second by map tier, 800, 1200 or 1600,
+independent of anything the player did.
+
+**Not settled, and this is the part that mattered: how a player skill's leftover
+ground patch should be priced against that same skill's hit.** A search for that
+specific comparison in Path of Exile, Diablo IV and Last Epoch returned general
+burn mechanics and no direct answer. So the rule below is a judgement, not a
+finding, and it is deliberately more conservative than Path of Exile's ignite.
+
+### Why "one hit over the full duration"
+
+**Duration stops being a damage multiplier.** Under a flat percent per second, a
+10-second Ultimate patch would be worth three times a 3-second Movement patch —
+and the Ultimates already have the largest radii and the longest durations, so
+they would gain from the same lever twice.
+
+**Burning ground stays area denial rather than a second damage source.** `Burn`
+is already this game's fire damage-over-time path. A second one overlapping it
+would make fire skills scale on two axes at once.
+
+**It is one rule rather than two.** The Hellhound's fire trail already worked
+this way and said so in prose: "a quarter of one of its bites per tick, so that
+standing in it for the whole 4 seconds costs exactly one bite". That is
+`GroundPercent=25` over a 4-second duration, which the general rule produces
+exactly. The trail's figure is now data rather than prose.
+
+### What this forecloses, stated plainly
+
+**A burning-ground build cannot exist.** No amount of investment makes ground the
+main damage of a build, because the ground is always worth one hit and the hit
+scales with everything the ground does. That is a real design space closed off,
+and it was the third option on the table: Path of Exile's shape, where a fixed
+50% per second makes the full duration worth twice the hit and ignite builds are
+built entirely on it.
+
+If a burning-ground archetype is ever wanted, this rule is what would have to
+change, and the place to change it is the one sentence in section V rather than
+22 rows.
+
+Sources:
+
+- [Ignite — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Ignite)
+- [Burning ground — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Burning_ground)
+
+---
+
 ## 2026-08-14 — The Corrupted Stalker is a Generic dungeon modifier at weight 20
 
 **Affects:** the Dungeon Modifiers sheet of `All_Things_Cataclysm.xlsx`, and the
