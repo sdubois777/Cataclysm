@@ -635,51 +635,93 @@ def survival_entry() -> str:
     return unwrapped(text[start:end if end != -1 else len(text)])
 
 
-def test_the_tree_is_never_destroyed_in_any_mode(ownership):
-    """The rule itself, stated generally rather than only for the Solo
-    Self-Found case, because the general form is what the owner answered and it
-    covers whatever else can destroy a character later."""
-    assert "never destroyed, in any mode, including Solo Self-Found" in ownership, (
+def test_the_tree_is_never_destroyed_by_anything_in_play(ownership):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-14 the rule was unqualified --
+    "never destroyed, in any mode, including Solo Self-Found" -- because nothing
+    in the design could lose a character at all.
+
+    Issue #325 was answered on 2026-08-14: a player can delete a character, and
+    deleting a Solo Self-Found one takes its private tree with it. So the
+    unqualified claim is now false, and the property that holds is the narrower
+    one. The qualifier is load-bearing rather than hedging: it is what separates
+    an outcome of play from the player's own act."""
+    assert ("never destroyed by anything that happens in play, in any mode, "
+            "including Solo Self-Found") in ownership, (
         "the Empire-Wide Upgrades section no longer states that an empire tree "
-        "survives losing the character that earned it. For a Solo Self-Found "
+        "survives everything that happens in play. For a Solo Self-Found "
         "character that character is the tree's only owner, so without this "
-        "rule 'Empire progress is kept' has no referent. Issue #286.")
+        "rule 'Empire progress is kept' has no referent. Issues #286 and #325.")
 
 
-def test_it_says_who_inherits_a_lost_solo_self_found_tree(ownership):
-    """Saying the tree is not destroyed is half an answer. A tree nobody can
-    ever spend is reading B from the issue, which is destruction with extra
-    bookkeeping. The section has to name the character that receives it."""
-    assert ("the next Solo Self-Found character created in the same lethality "
-            "mode inherits it rather than starting from nothing") in ownership, (
-        "the section says a lost Solo Self-Found tree is kept without saying "
-        "who inherits it. A tree no character can spend is the same as a "
-        "destroyed one. Issue #286.")
+def test_it_says_what_deleting_a_character_does_to_its_tree(ownership):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-14 this was
+    test_it_says_who_inherits_a_lost_solo_self_found_tree, and it required the
+    section to name the character that receives a lost Solo Self-Found tree,
+    because the rule from #286 held the tree for a successor.
+
+    The owner answered #325 on 2026-08-14: "If you actually delete your
+    character, that's when the tree is removed." There is no successor and
+    nothing is held, so the old assertion checks for a rule that no longer
+    exists. Both halves are asserted here, because the answer differs by flag
+    and a reader given only one half would generalise the wrong way."""
+    assert ("Deleting an ordinary character leaves its lethality mode's tree "
+            "untouched") in ownership, (
+        "the section does not say what deleting an ordinary character does to "
+        "its lethality mode's tree. It does nothing, because that tree belongs "
+        "to the account and never belonged to the character. Issue #325.")
+    assert ("Deleting a Solo Self-Found character takes its private tree with "
+            "it") in ownership, (
+        "the section does not say what deleting a Solo Self-Found character "
+        "does to its private tree. It destroys it: there is no account holding "
+        "it and no successor. Issue #325.")
+    assert "no successor that inherits it" in ownership, (
+        "the section destroys a Solo Self-Found tree on deletion without ruling "
+        "out a successor inheriting it. That successor rule existed until "
+        "2026-08-14 and a reader may remember it. Issue #325.")
 
 
-def test_it_separates_the_successor_from_a_second_concurrent_character(ownership):
-    """This is the sentence that stops the new rule reading as a contradiction
-    of the old one. The section still says a second Solo Self-Found character
-    starts from nothing, and that stays true: it is about a character played
-    ALONGSIDE the first, not the replacement for one that was lost."""
-    assert "still alive still starts from nothing" in ownership, (
-        "the section grants a lost Solo Self-Found character's tree to the next "
-        "one without saying that a second character created while the first is "
-        "alive still starts from nothing. Those are different cases and the "
-        "section states both rules, so it has to say which is which. "
-        "Issue #286.")
+def test_every_solo_self_found_character_starts_from_nothing(ownership):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-14 this was
+    test_it_separates_the_successor_from_a_second_concurrent_character, and it
+    checked the sentence distinguishing a successor to a lost character from a
+    second character played alongside a live one. The two cases had different
+    answers, so the distinction was load-bearing.
+
+    With inheritance gone the two cases have the same answer, and the rule is
+    simpler than the sentence that separated them. Stating it as one absolute is
+    what stops the distinction being reinvented."""
+    assert ("Every Solo Self-Found character starts its tree from nothing, "
+            "always") in ownership, (
+        "the section no longer states that every Solo Self-Found character "
+        "starts its tree from nothing without exception. Until #325 there was "
+        "one exception -- the successor to a lost character -- and a reader who "
+        "remembers it needs to be told it is gone. Issue #325.")
+    assert "still alive still starts from nothing" not in ownership, (
+        "the section still distinguishes a successor from a second concurrent "
+        "Solo Self-Found character. Since issue #325 there is no successor "
+        "case, so the distinction describes nothing.")
 
 
 def test_the_survival_rule_says_why_rather_than_only_what(ownership):
-    """Same argument as the exception above. A rule with no reason gets deleted
-    by the next reader who thinks it is an oversight -- and this one looks like
-    a softening of the game's harshest mechanic, so it will attract that."""
-    assert "Why the tree survives its owner" in ownership, (
-        "the section states that a tree outlives its owner without saying why. "
-        "The reason is that nothing else in the design destroys empire upgrade "
-        "points, and that destroying them would fall only on Solo Self-Found, "
-        "which is already the harshest flag. Issue #286.")
+    """A rule with no reason gets deleted by the next reader who thinks it is an
+    oversight -- and this one looks like a softening of the game's harshest
+    mechanic, so it will attract that.
+
+    THE HEADING CHANGED ON 2026-08-14, from "Why the tree survives its owner" to
+    "Why the tree survives everything else". The tree no longer survives its
+    owner unconditionally: deleting the owner destroys it. What it survives is
+    everything that happens in play."""
+    assert "Why the tree survives everything else" in ownership, (
+        "the section states that a tree outlives every failure without saying "
+        "why. The reason is that nothing that happens in play destroys empire "
+        "upgrade points, and that destroying them would fall only on Solo "
+        "Self-Found, which is already the harshest flag. Issues #286 and #325.")
     assert "run is never wasted" in ownership
+    assert "the player chooses it" in ownership, (
+        "the section does not say why deletion is treated differently from "
+        "every failure. It is different because the player chooses it, from "
+        "outside a run, knowing what is in the tree. Without that the rule "
+        "reads as an inconsistency. Issue #325.")
 
 
 def test_the_consumption_bullet_no_longer_says_kept_without_saying_by_whom(
@@ -705,31 +747,43 @@ def test_the_consumption_bullet_points_at_the_rule(consumption):
         "tree outright. Issue #286.")
 
 
-def test_the_summary_section_no_longer_says_it_inherits_nothing_at_all(summary):
-    """WHAT THIS USED TO BE. The summary section said a Solo Self-Found
-    character "has its own tree and inherits nothing at all". That is now false
-    in one case: the successor to a lost Solo Self-Found character inherits its
-    tree. A reader who lands on this section and not the other must not be told
-    the old rule."""
-    assert "inherits nothing at all" not in summary, (
+def test_the_summary_section_states_that_nothing_is_inherited(summary):
+    """WHAT THIS USED TO ASSERT, twice over. Before #286 the summary said a Solo
+    Self-Found character "inherits nothing at all"; #286 made that false in one
+    case, so the test required "takes over its tree" instead. #325 removed that
+    case again on 2026-08-14, so the test requires the absolute back -- in
+    different words, because a reader arriving here has to be told about the
+    other Solo Self-Found characters as well as about the account."""
+    assert "inherits nothing from the account" in summary, (
+        "the Roguelike Meta Progression section no longer says a Solo "
+        "Self-Found character inherits nothing from the account. Issue #273.")
+    assert "nothing from another Solo Self-Found character either" in summary, (
+        "the section says a Solo Self-Found character inherits nothing from the "
+        "account without ruling out inheriting from another Solo Self-Found "
+        "character. Between #286 and #325 it could, so this is the reading a "
+        "returning reader is most likely to have. Issue #325.")
+    assert "takes over its tree" not in summary, (
         "the Roguelike Meta Progression section still says a Solo Self-Found "
-        "character inherits nothing at all. Since issue #286 it inherits the "
-        "tree of a lost Solo Self-Found character in the same lethality mode.")
-    assert "inherits nothing from the account" in summary
-    assert "takes over its tree" in summary, (
-        "the Roguelike Meta Progression section no longer carries the "
-        "inheritance rule. It is the section that promises no run is wasted, so "
-        "a reader who lands there must learn that losing a character does not "
-        "lose the tree. Issue #286.")
+        "character takes over a lost one's tree. Issue #325 removed that on "
+        "2026-08-14: deleting the character destroys the tree.")
 
 
-def test_the_no_run_is_wasted_promise_covers_losing_the_character(summary):
-    """The promise is the reason this decision went the way it did, so the
-    section that makes the promise should say it survives losing a character."""
-    assert "losing the character does not destroy the tree it built" in summary, (
-        "the 'no run is wasted' paragraph does not say that losing the "
-        "character keeps the tree. That is the strongest case for the rule and "
-        "the section making the promise is where it belongs. Issue #286.")
+def test_the_no_run_is_wasted_promise_says_what_can_destroy_a_tree(summary):
+    """WHAT THIS USED TO ASSERT. That "losing the character does not destroy the
+    tree it built". Since #325 that is false for a deleted Solo Self-Found
+    character, and this is the section making the promise, so it is the section
+    that has to carry the one exception rather than leaving a reader to find it
+    three thousand lines earlier."""
+    assert ("nothing that happens in play destroys the tree a run built"
+            in summary), (
+        "the 'no run is wasted' paragraph does not say that no outcome of play "
+        "destroys the tree. That is the strongest case for the rule and the "
+        "section making the promise is where it belongs. Issues #286 and #325.")
+    assert "deleting the Solo Self-Found character that owns" in summary, (
+        "the 'no run is wasted' paragraph states the promise without its one "
+        "exception. Deleting a Solo Self-Found character destroys its tree, and "
+        "a reader who lands here and not on section II would not learn that. "
+        "Issue #325.")
 
 
 def test_the_decision_log_quotes_the_owner_rather_than_paraphrasing(

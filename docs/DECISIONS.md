@@ -20,6 +20,109 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — A player can delete a character, and that is the only thing that destroys an empire tree
+
+**Affects:** section II of `Cataclysm_GDD_v2.md`, where a new "Deleting a
+Character" subsection sits beside "Ending a Run"; section IX "Empire-Wide
+Upgrades"; and the "Roguelike Meta Progression" summary in section XII. Applied.
+Issue #325.
+
+### What was decided
+
+Asked on 2026-08-14 whether a player can delete a character, the project owner
+answered:
+
+> Yes you can delete a character. Your tree progression persists, but within game
+> mode, with the exception of SSF. That tree is individual per ssf character,
+> same with their stash.
+
+Asked to separate that from the inheritance rule already in the document, they
+added:
+
+> Weird wording. If you actually delete your character, that's when the tree is
+> removed. Dying doesn't delete a character in any game mode. The run resets,
+> they keep their gear/levels/passive trees/empire tree and try again.
+
+So:
+
+1. **A player can delete a character**, and it is the only thing that removes
+   one.
+2. **Deleting an ordinary character costs that character and nothing else.** The
+   lethality mode's tree, stash, gold and market belong to the account and are
+   untouched.
+3. **Deleting a Solo Self-Found character destroys its private empire tree with
+   it.** That character was the tree's only owner.
+4. **Every Solo Self-Found character starts its tree from nothing, always.**
+   There is no successor case.
+5. **Dying never deletes a character, in any lethality mode**, which the document
+   already said and now says beside the rule it is most confused with.
+
+### What this replaced
+
+The document carried a rule from issue #286: "When a Solo Self-Found character is
+lost, its private tree is held, and the next Solo Self-Found character created in
+the same lethality mode inherits it rather than starting from nothing." Issue
+#315 then settled that nothing loses a character, which left that rule labelled a
+safeguard with no trigger.
+
+**#325 was raised to find the trigger. The answer removed the rule instead.**
+Deletion is what loses a character, and deleting is when the tree is removed
+rather than when it is handed on. The document no longer describes inheritance
+between Solo Self-Found characters in any form.
+
+The owner's word for the old rule was "weird wording", and it was: "when a Solo
+Self-Found character is lost" was written to be neutral about what could lose one,
+and read as though something could.
+
+### What the genre settles, and what it does not
+
+**Settled: deleting a character does not touch account-level progression.**
+Deleting a Path of Exile character leaves the account's stash tabs and their
+contents intact, and leaves atlas progression intact, because both are held per
+account and per league rather than per character. A stash on a permanent league
+keeps its contents even when no character remains on that league. That is exactly
+rule 2 above.
+
+**Not settled, and specific to this game: what deletion does to a
+character-owned meta-progression tree.** No shipped game in the genre has one.
+Path of Exile's atlas is per account and per league; Diablo III's Paragon is per
+account and per mode; Diablo IV's altars and season journey are per account and
+per realm. Solo Self-Found in those games restricts trading, not progression
+ownership. **So rule 3 is a judgement, not a finding**, and it should be labelled
+as one. The judgement is that a tree with exactly one owner ends when that owner
+is deliberately removed, because there is nothing left to hold it and holding it
+for a stranger is the reading issue #286 already called "destruction with extra
+bookkeeping".
+
+### What argues against it
+
+**A player can lose an arbitrary amount of meta-progression with one click**, and
+Solo Self-Found is the flag where the tree took longest to build. Nothing else in
+this design destroys empire upgrade points.
+
+The answer is that deletion is different in kind from every other loss in the
+game: the player chooses it, from outside a run, knowing what is in the tree. It
+is not an outcome the game imposes. Whether the interface should make that cost
+visible at the moment of deletion is a user-interface question and is not decided
+here.
+
+### What this does not settle
+
+**How many character slots an account has.** The document has never said, and
+deletion existing makes the question live, because freeing a slot is one of the
+reasons to delete. Filed as #577.
+
+**What deleting a Solo Self-Found character does to its private stash**, which
+the same answer created. Filed as #576, because the stash change is its own
+concern and contradicts two sentences the document currently carries.
+
+Sources:
+
+- [Stash — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Stash)
+- [Atlas Progression Guide — Maxroll](https://maxroll.gg/poe/getting-started/atlas-progression-guide)
+
+---
+
 ## 2026-08-14 — Offline and online characters share nothing, so the partition key is the population times the lethality mode
 
 **Affects:** section II "Difficulty Options", section IX "Empire-Wide Upgrades"
