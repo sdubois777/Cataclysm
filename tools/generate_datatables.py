@@ -24,8 +24,8 @@ hand-maintained copy would be the same mistake. Continuous integration runs
 
 WHY THIS IS NOT A LOOP OVER SHEETS
 
-Only six of the fourteen workbook tables come from a sheet that is already a
-plain table with one entity per row. The rest need reshaping, so each has its own
+Not every workbook table comes from a sheet that is already a plain table with
+one entity per row. Several sheets need reshaping, so each table has its own
 handler:
 
   Enchantments      two independent tables side by side in one sheet, positives

@@ -34,10 +34,11 @@ compares its contents against the CSV it came from.
 
 IT ONLY REBUILDS WHAT MOVED, as of issue #444. A table whose CSV hashes to what
 the record says it was built from, and whose asset is present, is left alone.
-Rebuilding all fourteen whatever changed left a reviewer thirteen modified
-binary files with no content change and no way to tell which one carried the
-change. Set the environment variable named by `REBUILD_ALL_VARIABLE` in
-`tools/datatable_freshness.py` to rebuild every asset regardless.
+Rebuilding every asset whatever changed left a reviewer one modified binary file
+per table, all but one of them with no content change and no way to tell which
+one carried the change. Set the environment variable named by
+`REBUILD_ALL_VARIABLE` in `tools/datatable_freshness.py` to rebuild every asset
+regardless.
 
 AND A RECORD OF WHAT EACH ASSET WAS BUILT FROM, written at the end of a
 successful run. See RECORD_FILE. That automation test is correct and complete
@@ -263,9 +264,9 @@ def main():
 
     WHY NOT ALL OF THEM EVERY TIME, which is what this did until issue #444. A
     .uasset is binary and tracked with git LFS, so a pull request cannot show a
-    diff of one. Rebuilding fourteen when one CSV changed left a reviewer
-    thirteen modified binary files with no content change and no way to tell
-    which one mattered.
+    diff of one. Rebuilding every table when one CSV changed left a reviewer one
+    modified binary file per table, all but one of them with no content change
+    and no way to tell which one mattered.
     """
     force = rebuild_everything()
     if force:
