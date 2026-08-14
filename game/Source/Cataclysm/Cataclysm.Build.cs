@@ -45,6 +45,14 @@ public class Cataclysm : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"NetCore",
+
+			// Particle effects. Private rather than public, and deliberately:
+			// no header in this module exposes a Niagara type, and the only
+			// thing that needs it is the automation test reading the four
+			// effect type assets built by tools/generate_effect_types.py.
+			// Making it public would put Niagara on every module that depends
+			// on this one. Issue #555.
+			"Niagara",
 		});
 	}
 }
