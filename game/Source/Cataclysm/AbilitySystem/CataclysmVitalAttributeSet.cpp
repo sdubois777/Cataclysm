@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmCharacterBase.h"
+#include "Cataclysm.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
@@ -199,21 +200,24 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 		return;
 	}
 
-	// WHERE THE BLOW LANDED, when the hit carried that. A swept attack or a
-	// projectile puts a real impact point and surface normal into the effect's
-	// context. A gameplay effect applied without one -- a burn ticking, a stat
-	// line being set -- does not, and the creature's own location is the honest
-	// fallback rather than a guess at geometry that was never measured.
-	FVector Location = Struck->GetActorLocation();
+	// WHERE THE BLOW LANDED. The choice lives in UCataclysmImpactEffect so a
+	// test can reach it without a world or a rendering device, which is the only
+	// way any of this is covered -- see issue #559.
+	const FHitResult* Landed = Data.EffectSpec.GetContext().GetHitResult();
 	FVector Normal = FVector::UpVector;
-	if (const FHitResult* Landed = Data.EffectSpec.GetContext().GetHitResult())
-	{
-		Location = Landed->ImpactPoint;
-		if (!Landed->ImpactNormal.IsNearlyZero())
-		{
-			Normal = Landed->ImpactNormal;
-		}
-	}
+	const FVector Location =
+		UCataclysmImpactEffect::ImpactLocationFor(Landed, Struck, Normal);
+
+	// KEPT, AND AT VERBOSE SO IT COSTS NOTHING UNTIL ASKED FOR. Issue #562 was
+	// an effect drawn in the wrong place, and nothing in the game could report
+	// where it had been put or why, so it took a play session and a person
+	// watching to notice. Raise this category to Verbose to see both.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("impact: type=%s at=%s blockingHit=%s hitPoint=%s actorAt=%s"),
+		*DamageType.ToString(), *Location.ToString(),
+		Landed ? (Landed->bBlockingHit ? TEXT("yes") : TEXT("no")) : TEXT("none"),
+		Landed ? *Landed->ImpactPoint.ToString() : TEXT("-"),
+		*Struck->GetActorLocation().ToString());
 
 	UCataclysmImpactEffect::SpawnAt(Struck, Location, Normal, DamageType);
 }

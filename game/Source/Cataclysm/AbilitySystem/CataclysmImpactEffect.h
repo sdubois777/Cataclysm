@@ -7,6 +7,7 @@
 #include "CataclysmImpactEffect.generated.h"
 
 class UDataTable;
+struct FHitResult;
 
 /**
  * Forward declared rather than included, so this header pulls in no Niagara
@@ -57,6 +58,28 @@ public:
 
 	/** Null when the table asset is missing. Loaded once and kept. */
 	static const UDataTable* LoadElementVisuals();
+
+	/**
+	 * Where the effect plays, and which way up it faces.
+	 *
+	 * A HIT RESULT BEING PRESENT IS NOT THE SAME AS IT DESCRIBING A HIT, and
+	 * assuming otherwise is issue #562: every blow an enemy landed on the player
+	 * drew its effect in the middle of the level rather than on the player. A
+	 * hit result that never blocked anything carries a zero impact point, and
+	 * the zero impact point is the world origin. A player's own attack sweeps
+	 * the world and produces a real one, which is why that direction looked
+	 * correct and hid the fault.
+	 *
+	 * So the damaged actor's own location is used unless the hit result actually
+	 * blocked something.
+	 *
+	 * SEPARATE AND STATIC SO A TEST CAN REACH IT. Nothing here needs a world, a
+	 * component or a rendering device, so the automation harness can exercise it
+	 * -- which issue #559 records it cannot do for the spawn itself.
+	 */
+	static FVector ImpactLocationFor(const FHitResult* Landed,
+									 const AActor* Struck,
+									 FVector& OutNormal);
 
 	/**
 	 * The two colours for a damage type, looked up by the leaf of its

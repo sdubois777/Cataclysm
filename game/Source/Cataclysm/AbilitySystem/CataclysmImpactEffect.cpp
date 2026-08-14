@@ -3,7 +3,9 @@
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "Engine/HitResult.h"
 #include "Engine/World.h"
+#include "GameFramework/Actor.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -67,6 +69,31 @@ const UDataTable* UCataclysmImpactEffect::LoadElementVisuals()
 		CachedElementVisuals = Table;
 	}
 	return Table;
+}
+
+FVector UCataclysmImpactEffect::ImpactLocationFor(const FHitResult* Landed,
+												  const AActor* Struck,
+												  FVector& OutNormal)
+{
+	OutNormal = FVector::UpVector;
+
+	const FVector OnTheActor =
+		Struck ? Struck->GetActorLocation() : FVector::ZeroVector;
+
+	// bBlockingHit IS THE WHOLE CHECK, and its absence was issue #562. An
+	// effect context can carry a hit result that never hit anything; reading its
+	// impact point then gives (0,0,0), which is not "no answer" but a specific
+	// wrong answer -- the world origin, in the middle of the level.
+	if (!Landed || !Landed->bBlockingHit)
+	{
+		return OnTheActor;
+	}
+
+	if (!Landed->ImpactNormal.IsNearlyZero())
+	{
+		OutNormal = Landed->ImpactNormal;
+	}
+	return Landed->ImpactPoint;
 }
 
 bool UCataclysmImpactEffect::ColoursFor(FName DamageType,
