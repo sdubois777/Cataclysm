@@ -2,8 +2,12 @@
 
 #include "Misc/AutomationTest.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
+#include "AbilitySystemComponent.h"
+#include "Components/SceneComponent.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "Engine/HitResult.h"
+#include "GameFramework/Actor.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "NiagaraComponent.h"
@@ -282,5 +286,183 @@ bool FCataclysmImpactParametersAreTheRightTypes::RunTest(const FString& Paramete
 			*Actual == One.Type);
 	}
 
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Where the effect is placed
+// --------------------------------------------------------------------------
+
+/**
+ * The regression test for issue #562.
+ *
+ * Every blow an enemy landed on the player drew its effect in the middle of the
+ * level instead of on the player. The cause was reading the impact point of a
+ * hit result that never blocked anything: that point is (0,0,0), which is not
+ * "no answer" but a specific wrong one, because the world origin is a real place
+ * and the player start sits near it.
+ *
+ * The player's own attacks looked correct throughout, because a swept attack
+ * produces a genuine blocking hit. That is what hid the fault, and it is why the
+ * non-blocking case is the one worth pinning.
+ *
+ * THIS RUNS WHERE THE OTHERS CANNOT. It touches no Niagara component, so the
+ * -nullrhi automation harness described in #559 can execute it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactIsPlacedOnWhatWasHit,
+	"Cataclysm.Effects.ImpactIsPlacedOnWhatWasHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmImpactIsPlacedOnWhatWasHit::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, /*bInformEngineOfWorld=*/false);
+	if (!World)
+	{
+		AddError(TEXT("could not create a test world."));
+		return false;
+	}
+	FWorldContext& Context = GEngine->CreateNewWorldContext(EWorldType::Game);
+	Context.SetCurrentWorld(World);
+
+	// Deliberately far from the origin, so "on the actor" and "at the world
+	// origin" cannot be confused for one another. The whole bug was that they
+	// were.
+	const FVector Somewhere(1500.0f, -2400.0f, 90.0f);
+	AActor* Struck = World->SpawnActor<AActor>();
+
+	// A BARE AActor CANNOT BE MOVED. It spawns with no root component, so
+	// SetActorLocation has nothing to move and GetActorLocation answers with the
+	// origin -- which is the exact value this test has to tell a real location
+	// apart from. The first version of this test spawned one, and every
+	// assertion below failed against the test's own setup rather than against
+	// the code it was written to check.
+	USceneComponent* Root = NewObject<USceneComponent>(Struck);
+	Struck->SetRootComponent(Root);
+	Root->RegisterComponent();
+	Struck->SetActorLocation(Somewhere);
+
+	if (!Struck->GetActorLocation().Equals(Somewhere))
+	{
+		AddError(TEXT("the test actor could not be moved, so nothing below "
+					  "would distinguish 'on the actor' from 'at the origin'."));
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	FVector Normal = FVector::ZeroVector;
+
+	// 1. A hit result that never blocked anything. This is what an enemy's blow
+	// carries, and reading its impact point is what put the effect in the middle
+	// of the level.
+	const FHitResult NeverHitAnything;
+	const FVector Unblocked =
+		UCataclysmImpactEffect::ImpactLocationFor(&NeverHitAnything, Struck, Normal);
+	TestEqual(TEXT("a hit result that blocked nothing places the effect on the "
+				   "damaged actor, not at the world origin"), Unblocked, Somewhere);
+	TestFalse(TEXT("and that case is not the world origin"),
+		Unblocked.IsNearlyZero());
+	TestEqual(TEXT("with no surface to read, the effect faces up"),
+		Normal, FVector::UpVector);
+
+	// 2. No hit result at all, which a burn tick or a stat line carries.
+	Normal = FVector::ZeroVector;
+	TestEqual(TEXT("no hit result at all places the effect on the damaged actor"),
+		UCataclysmImpactEffect::ImpactLocationFor(nullptr, Struck, Normal),
+		Somewhere);
+
+	// 3. A real blocking hit is used, which is the case that already worked and
+	// must keep working. Without this the guard could be satisfied by ignoring
+	// hit results altogether.
+	FHitResult Blocked;
+	Blocked.bBlockingHit = true;
+	Blocked.ImpactPoint = FVector(10.0f, 20.0f, 30.0f);
+	Blocked.ImpactNormal = FVector(0.0f, 1.0f, 0.0f);
+	Normal = FVector::ZeroVector;
+	TestEqual(TEXT("a hit that really blocked places the effect where it landed"),
+		UCataclysmImpactEffect::ImpactLocationFor(&Blocked, Struck, Normal),
+		FVector(10.0f, 20.0f, 30.0f));
+	TestEqual(TEXT("and the effect faces the surface it struck"),
+		Normal, FVector(0.0f, 1.0f, 0.0f));
+
+	// 4. A blocking hit carrying no normal still has to face somewhere.
+	Blocked.ImpactNormal = FVector::ZeroVector;
+	Normal = FVector::ZeroVector;
+	UCataclysmImpactEffect::ImpactLocationFor(&Blocked, Struck, Normal);
+	TestEqual(TEXT("a blocking hit with no surface normal still faces up"),
+		Normal, FVector::UpVector);
+
+	// 5. Nothing to place it on and nothing that hit. It must not crash, and
+	// the origin is the only answer left.
+	Normal = FVector::ZeroVector;
+	TestEqual(TEXT("with no actor and no hit, the origin is all that is left"),
+		UCataclysmImpactEffect::ImpactLocationFor(nullptr, nullptr, Normal),
+		FVector::ZeroVector);
+
+	GEngine->DestroyWorldContext(World);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The second half of issue #562, and the half that actually caused it.
+ *
+ * An attribute set's GetOwningActor answers with the ability system's OWNER.
+ * For the player, ACataclysmPlayerCharacter::InitAbilityActorInfo makes the
+ * owner the player state -- deliberately, because it survives death -- and the
+ * avatar the pawn. A player state is not placed in the world and reports the
+ * origin, so every blow an enemy landed on the player drew its effect in the
+ * middle of the level.
+ *
+ * An enemy puts its ability system on the character itself, so owner and avatar
+ * are the same object and enemy-facing effects were placed correctly. That is
+ * why the fault was invisible in one direction and obvious in the other, and it
+ * is why this test uses two DIFFERENT actors: with one actor it would pass no
+ * matter which accessor the code called.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactDrawsOnTheAvatarNotTheOwner,
+	"Cataclysm.Effects.ImpactDrawsOnTheAvatarNotTheOwner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmImpactDrawsOnTheAvatarNotTheOwner::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, /*bInformEngineOfWorld=*/false);
+	if (!World)
+	{
+		AddError(TEXT("could not create a test world."));
+		return false;
+	}
+	FWorldContext& Context = GEngine->CreateNewWorldContext(EWorldType::Game);
+	Context.SetCurrentWorld(World);
+
+	// Stands in for the player state: holds the component, is not in the world.
+	AActor* Owner = World->SpawnActor<AActor>();
+
+	// Stands in for the pawn: the thing that is actually somewhere.
+	AActor* Avatar = World->SpawnActor<AActor>();
+	USceneComponent* Root = NewObject<USceneComponent>(Avatar);
+	Avatar->SetRootComponent(Root);
+	Root->RegisterComponent();
+	Avatar->SetActorLocation(FVector(800.0f, 300.0f, 50.0f));
+
+	UAbilitySystemComponent* AbilitySystem =
+		NewObject<UAbilitySystemComponent>(Owner);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->InitAbilityActorInfo(Owner, Avatar);
+
+	const AActor* Chosen = UCataclysmImpactEffect::ActorToDrawOn(AbilitySystem);
+
+	TestEqual(TEXT("the effect is drawn on the avatar, the thing standing in "
+				   "the world"), Chosen, (const AActor*)Avatar);
+	TestNotEqual(TEXT("and never on the owner, which for the player is the "
+					  "player state and has no position"),
+		Chosen, (const AActor*)Owner);
+
+	// Without an ability system there is nothing to draw on, and guessing a
+	// position is what caused the original fault.
+	TestNull(TEXT("no ability system means no actor to draw on"),
+		UCataclysmImpactEffect::ActorToDrawOn(nullptr));
+
+	GEngine->DestroyWorldContext(World);
+	World->DestroyWorld(false);
 	return true;
 }
