@@ -53,7 +53,7 @@ or if a sheet is added or removed without this table changing.
 
 | Sheet | Rows | First columns |
 |---|---|---|
-| Dungeon Modifiers | 116 | Cataclysm Type, Modifier Name, Weight, Description |
+| Dungeon Modifiers | 117 | Cataclysm Type, Modifier Name, Weight, Description |
 | Gems | 27 | Column 1, Everyday / Quality / Superb / Masterful / Legendary / Mythical Gemstone |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3 |
 | Enchantments | 380 | Positives, Type, Weight / Negatives, Type, Weight |

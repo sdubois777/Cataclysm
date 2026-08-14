@@ -20,6 +20,68 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — The Corrupted Stalker is a Generic dungeon modifier at weight 20
+
+**Affects:** the Dungeon Modifiers sheet of `All_Things_Cataclysm.xlsx`, and the
+Corrupted Stalker section of `Cataclysm_GDD_v2.md`. Applied. Issue #504.
+
+### What was wrong
+
+The Corrupted Stalker is described in full in section VIII of
+`Cataclysm_GDD_v2.md` — a corrupted former player character, drawn from a shared
+table of characters consumed by Worn Residue, that hunts the player across a
+dungeon's floors. **It was the only dungeon modifier described in prose and
+absent from the data.** The Dungeon Modifiers sheet held 116 modifiers and none
+of them was this one.
+
+That mattered for a specific reason. Every dungeon modifier carries a weight, and
+the sum of the weights on a dungeon is the Modifier Score in the Enemy Score
+formula. A modifier with no weight cannot be scored, so a dungeon carrying this
+one could not have its difficulty computed at all.
+
+### What was decided
+
+Asked on 2026-08-14, the project owner chose **weight 20** and **applies to all
+eight Cataclysms**.
+
+**Weight 20 is the top band**, shared with twelve existing modifiers. Those are
+the ones that change how a floor is played rather than how hard it hits: Edict of
+Silence stops all skill use for 15 seconds at a time, Reality Twister adds a
+random modifier to the dungeon every 30 seconds, The Reaper kills instantly on
+contact. An enemy carrying a real player's class, level, passive allocation,
+equipment and skills belongs with those rather than below them.
+
+### "Applies to all eight" already had a name, and it is Generic
+
+The issue expected this to be a new category the sheet had no column for. It is
+not. **`Generic` is already a Cataclysm Type in this project**, used by ten
+entries in the enemy modifier table to mean exactly this, and
+`tools/generate_datatables.py` already lists it in `CATACLYSM_TYPES`, which is the
+same list the dungeon modifier handler validates against.
+
+So no code changed. The row was added with `Generic` and the generator accepted
+it. This is the first dungeon modifier to use that value and currently the only
+one.
+
+Choosing an existing word over a new one matters here for the reason the Magic
+Find decision of 2026-08-05 gives: one thing gets one name, because two names for
+one concept in the shipped tables is a defect.
+
+### What this does not settle
+
+**Whether the Corrupted Stalker competes for one of a dungeon's modifier slots or
+is granted separately.** A dungeon carries one modifier per difficulty tier, so a
+tier 8 dungeon carries eight, drawn from a pool of 12 to 15 per Cataclysm. A
+Generic modifier is drawable by every Cataclysm, which makes it the only entry
+that can appear alongside any of the others, and nothing states whether it takes
+a slot. Nothing depends on the answer yet.
+
+**The uneven modifier counts.** Six Cataclysms have 15, Demonic has 14 and Void
+has 12. Whether 15 is the intended target is recorded nowhere and was not decided
+here.
+
+---
+
 ## 2026-08-14 — One enchantment raises minion count, not two, and gear contributes +2 to +4
 
 **Affects:** the Enchantments sheet of `All_Things_Cataclysm.xlsx`, and the minion
