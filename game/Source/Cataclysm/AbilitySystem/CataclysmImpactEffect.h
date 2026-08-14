@@ -78,8 +78,21 @@ public:
 	 * set this" value -- no designed row is white -- so an untyped hit looks
 	 * exactly like what it is.
 	 *
-	 * Returns the component so a test can read back what it was given. Null when
-	 * there is no world, or the system asset is missing.
+	 * Returns the component so a caller can inspect what it was given. Null when
+	 * there is no world, the system asset is missing, or the effect type's
+	 * scalability rejected the spawn.
+	 *
+	 * THAT LAST ONE IS NOT A FAILURE. It is FXT_Enemy working: past 4000 cm, or
+	 * outside the view frustum, or beyond twenty live instances of this system,
+	 * the effect is refused before it starts and the blow lands unseen. That is
+	 * the whole reason the effect type exists.
+	 *
+	 * IT ALSO RETURNS NULL IN EVERY AUTOMATION TEST, and that is a property of
+	 * the harness rather than of this code. Niagara's CreateNiagaraSystem checks
+	 * FApp::CanEverRender() before it does anything at all, and the test command
+	 * in tools/unreal_build.py passes -nullrhi. So no automation test can
+	 * observe a spawned component, and none of them try. Issue #559 is what
+	 * would be needed to cover the spawn itself.
 	 */
 	static UNiagaraComponent* SpawnAt(const UObject* WorldContextObject,
 									  const FVector& Location,

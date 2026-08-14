@@ -205,118 +205,82 @@ bool FCataclysmImpactColoursComeFromTheTable::RunTest(const FString& Parameters)
 }
 
 // --------------------------------------------------------------------------
-// End to end, through the spawn the game actually uses
+// The types, which are the other half of a name matching
 // --------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactCarriesItsRowToTheComponent,
-	"Cataclysm.Effects.ImpactPointCarriesItsRowColoursToTheComponent",
+/**
+ * A parameter can carry the right name and still refuse the value.
+ *
+ * SetVariableLinearColor writes into a store keyed by name AND type. A
+ * parameter called ElementColour that is a float, because somebody rebuilt the
+ * asset and picked the wrong type in the dropdown, matches the name check above
+ * and silently discards every colour written to it. Nothing reports that
+ * either, so it is checked here.
+ *
+ * WHAT THIS FILE CANNOT CHECK, stated plainly rather than left to be assumed:
+ * no test here spawns the effect. Niagara's CreateNiagaraSystem returns null
+ * unless FApp::CanEverRender(), and tools/unreal_build.py runs the automation
+ * tests with -nullrhi, so a spawned component cannot exist in this harness at
+ * all. That was established by reading NiagaraFunctionLibrary.cpp after a first
+ * version of this file tried it and got null for all eight damage types. Issue
+ * #559 carries what covering the spawn itself would take.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactParametersAreTheRightTypes,
+	"Cataclysm.Effects.ImpactPointParametersAreTheRightTypes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmImpactCarriesItsRowToTheComponent::RunTest(const FString& Parameters)
+bool FCataclysmImpactParametersAreTheRightTypes::RunTest(const FString& Parameters)
 {
-	const UDataTable* Table = UCataclysmImpactEffect::LoadElementVisuals();
-	if (!Table)
+	UNiagaraSystem* System = CataclysmImpactEffectTest::LoadImpactSystem();
+	if (!System)
 	{
-		AddError(TEXT("DT_ElementVisuals does not exist."));
+		AddError(TEXT("NS_Impact_Point does not exist."));
 		return false;
 	}
 
-	UWorld* World = UWorld::CreateWorld(EWorldType::Game, /*bInformEngineOfWorld=*/false);
-	if (!World)
+	TMap<FString, FNiagaraTypeDefinition> Types;
+	for (const FNiagaraVariableWithOffset& Variable :
+			System->GetExposedParameters().ReadParameterVariables())
 	{
-		AddError(TEXT("could not create a test world."));
-		return false;
+		Types.Add(Variable.GetName().ToString(), Variable.GetType());
 	}
-	FWorldContext& Context = GEngine->CreateNewWorldContext(EWorldType::Game);
-	Context.SetCurrentWorld(World);
-	FURL URL;
-	World->InitializeActorsForPlay(URL);
-	World->BeginPlay();
 
-	AActor* Struck = World->SpawnActor<AActor>();
-
-	// THIS IS THE ONE THAT PROVES THE HEADLINE CLAIM. Everything above checks a
-	// link in the chain; this walks the whole of it -- table row, lookup, the
-	// FName setter, the component -- through the same call the attribute set
-	// makes when a blow lands. If a parameter name stops matching the asset, or
-	// a setter stops being called, only this notices.
-	int32 Checked = 0;
-	for (const TCHAR* TypeName : CataclysmImpactEffectTest::EveryDamageType)
+	struct FExpected
 	{
-		const FName DamageType(TypeName);
-		const FCataclysmElementVisualRow* Row =
-			Table->FindRow<FCataclysmElementVisualRow>(
-				DamageType, TEXT("impact effect test"), /*bWarnIfMissing=*/false);
-		if (!Row)
-		{
-			continue;
-		}
+		const TCHAR* Name;
+		const FNiagaraTypeDefinition& Type;
+		const TCHAR* Written;
+	};
 
-		UNiagaraComponent* Component = UCataclysmImpactEffect::SpawnAt(
-			Struck, FVector(100.0f, 200.0f, 300.0f), FVector::UpVector,
-			DamageType);
-		if (!Component)
+	// TargetPosition is a Position and not a Vector deliberately. The Vector
+	// setters are single precision underneath and lose accuracy far from the
+	// world origin, which is a dungeon-sized problem rather than a theoretical
+	// one. docs/Niagara_Conventions.md section 2 records the trap.
+	const FExpected Expected[] = {
+		{ TEXT("User.ElementColour"),     FNiagaraTypeDefinition::GetColorDef(),    TEXT("SetVariableLinearColor") },
+		{ TEXT("User.ElementColourDark"), FNiagaraTypeDefinition::GetColorDef(),    TEXT("SetVariableLinearColor") },
+		{ TEXT("User.Intensity"),         FNiagaraTypeDefinition::GetFloatDef(),    TEXT("SetVariableFloat") },
+		{ TEXT("User.Scale"),             FNiagaraTypeDefinition::GetFloatDef(),    TEXT("SetVariableFloat") },
+		{ TEXT("User.Duration"),          FNiagaraTypeDefinition::GetFloatDef(),    TEXT("SetVariableFloat") },
+		{ TEXT("User.ImpactNormal"),      FNiagaraTypeDefinition::GetVec3Def(),     TEXT("SetVariableVec3") },
+		{ TEXT("User.TargetPosition"),    FNiagaraTypeDefinition::GetPositionDef(), TEXT("SetVariablePosition") },
+	};
+
+	for (const FExpected& One : Expected)
+	{
+		const FNiagaraTypeDefinition* Actual = Types.Find(FString(One.Name));
+		if (!Actual)
 		{
 			AddError(FString::Printf(
-				TEXT("a %s hit spawned no component."), TypeName));
+				TEXT("NS_Impact_Point does not expose %s at all."), One.Name));
 			continue;
 		}
 
-		bool bPrimaryRead = false;
-		const FLinearColor Primary = Component->GetVariableColor(
-			UCataclysmImpactEffect::ElementColourParameter, bPrimaryRead);
-		bool bSecondaryRead = false;
-		const FLinearColor Secondary = Component->GetVariableColor(
-			UCataclysmImpactEffect::ElementColourDarkParameter, bSecondaryRead);
-
 		TestTrue(FString::Printf(
-			TEXT("the %s impact's primary colour parameter can be read back, "
-				 "which it cannot be if the asset does not expose it"), TypeName),
-			bPrimaryRead);
-		TestTrue(FString::Printf(
-			TEXT("the %s impact's dark colour parameter can be read back"),
-			TypeName), bSecondaryRead);
-
-		TestTrue(FString::Printf(
-			TEXT("the %s impact carries its row's primary colour. Row says %s, "
-				 "component holds %s"), TypeName,
-			*Row->PrimaryColour.ToString(), *Primary.ToString()),
-			Primary.Equals(Row->PrimaryColour, 1.0e-4f));
-		TestTrue(FString::Printf(
-			TEXT("the %s impact carries its row's dark colour. Row says %s, "
-				 "component holds %s"), TypeName,
-			*Row->SecondaryColour.ToString(), *Secondary.ToString()),
-			Secondary.Equals(Row->SecondaryColour, 1.0e-4f));
-
-		// Two damage types holding the same colour would pass every check above
-		// while meaning the lookup returned something constant. The palette
-		// test already proves the eight rows differ, so it is enough here that
-		// the component's colour tracks the row it was given.
-		++Checked;
+			TEXT("%s is the type %s writes. Expected %s, asset has %s"),
+			One.Name, One.Written, *One.Type.GetName(), *Actual->GetName()),
+			*Actual == One.Type);
 	}
 
-	TestEqual(TEXT("every damage type reached a component"), Checked, 8);
-
-	// An untyped hit leaves the asset's own default alone. White is that
-	// default and no designed row is white, so a white impact on screen means
-	// exactly one thing: nothing set a colour.
-	UNiagaraComponent* Untyped = UCataclysmImpactEffect::SpawnAt(
-		Struck, FVector::ZeroVector, FVector::UpVector, NAME_None);
-	if (Untyped)
-	{
-		bool bRead = false;
-		const FLinearColor Colour = Untyped->GetVariableColor(
-			UCataclysmImpactEffect::ElementColourParameter, bRead);
-		TestTrue(TEXT("an untyped hit keeps the asset's authored white default"),
-			Colour.Equals(FLinearColor::White, 1.0e-4f));
-	}
-	else
-	{
-		AddError(TEXT("an untyped hit spawned no component. It should still "
-					  "play, with the system's own defaults."));
-	}
-
-	GEngine->DestroyWorldContext(World);
-	World->DestroyWorld(false);
 	return true;
 }
