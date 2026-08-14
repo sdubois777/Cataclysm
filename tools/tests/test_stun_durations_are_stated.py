@@ -73,6 +73,34 @@ IMMUNITY = (
 DURATION = re.compile(r"stun\w*[^.]{0,60}?for\s+([\d.]+)(?:\s*-\s*[\d.]+)?\s*seconds?",
                       re.IGNORECASE)
 
+#: Rows that DEFINE a hard stop rather than apply one, as (table, row key).
+#:
+#: WHY THEY NEED AN EXEMPTION. Issue #363 added Stun and Knockdown to the status
+#: effect table, so that `Effect=Stun` is writable and so the anti-stun-lock
+#: rules live somewhere the data can reference. Those two rows state the rules,
+#: and stating a rule mentions stun without applying one. Requiring them to
+#: carry a duration would ask the definition of stun to fix a number that every
+#: source sets for itself: designed skills run 0.75 to 1.5 seconds and the two
+#: knockdown Ultimates run 2 and 3.
+#:
+#: THE STUN ROW WOULD OTHERWISE HAVE PASSED FOR THE WRONG REASON. Its text
+#: contains "cannot be stunned again for 5 seconds", which is the immunity
+#: window rather than a duration, and the pattern above would have read it as
+#: one. Naming the row here makes the exemption deliberate instead of accidental.
+#:
+#: THIS IS NOT A HOLE. `test_a_definition_row_says_where_its_duration_comes_from`
+#: below requires each of these to say so in words, so an exempted row cannot
+#: simply say nothing.
+DEFINITIONS = {
+    ("StatusEffects", "Debuff_Stun"),
+    ("StatusEffects", "Debuff_Knockdown"),
+}
+
+#: What a definition row has to say in place of a duration.
+FROM_THE_SOURCE = re.compile(
+    r"stated by whatever applies it|a stated number of seconds",
+    re.IGNORECASE)
+
 
 def rows_of(name: str) -> list[dict[str, str]]:
     path = DATA / f"{name}.csv"
@@ -126,15 +154,72 @@ def test_the_data_still_mentions_stun_somewhere():
 
 
 def test_everything_that_applies_a_stun_states_how_long():
-    """The whole of issue #271, as a rule rather than as one fixed row."""
+    """The whole of issue #271, as a rule rather than as one fixed row.
+
+    DEFINITION ROWS ARE EXEMPT, and only the two named in DEFINITIONS. See the
+    comment there for why, and for the test that stops the exemption being a
+    hole."""
     missing = [(table, key) for table, key, text in stun_rows()
-               if not DURATION.search(text)]
+               if (table, key) not in DEFINITIONS and not DURATION.search(text)]
     assert not missing, (
         f"{missing} apply a stun without saying how long it lasts. Since the "
         "anti-stun-lock rule gave stun a 5 second immunity window, a duration "
         "is a number that interacts with another number and 'briefly' is not "
         "enough. Add the duration to docs/All_Things_Cataclysm.xlsx and "
         "regenerate. Issue #271.")
+
+
+@pytest.mark.parametrize(("table", "key"), sorted(DEFINITIONS))
+def test_a_definition_row_says_where_its_duration_comes_from(table, key):
+    """What stops DEFINITIONS being a way to say nothing.
+
+    A row exempted from stating a duration has to state that the duration is set
+    by whatever applies the effect. Otherwise "Stun: a hard stop" would satisfy
+    the exemption and a reader would be no better off than before issue #363,
+    which is the state that made the Brute's stomp express its stun as a
+    standalone rider instead of as this effect.
+    """
+    row = next((r for r in rows_of(table) if r["Name"] == key), None)
+    assert row is not None, (
+        f"game/Data/{table}.csv has no row {key}. It is exempted from stating a "
+        f"stun duration on the grounds that it defines the effect, so if it is "
+        f"gone the exemption in DEFINITIONS should go with it. Issue #363.")
+    assert FROM_THE_SOURCE.search(row["Description"]), (
+        f"{key} is exempt from stating a stun duration because it defines the "
+        f"effect rather than applying one, and it does not say where the "
+        f"duration comes from either. It has to say that the duration is set by "
+        f"whatever applies it. Issue #363.")
+
+
+def test_the_definition_rows_carry_the_three_anti_stun_lock_rules():
+    """The reason for putting these effects in the data at all. `Effect=Stun`
+    is only useful if a reader arriving at the row learns what a stun does, and
+    the three rules are what a stun does beyond stopping the target."""
+    rows = {r["Name"]: r["Description"] for r in rows_of("StatusEffects")}
+    stun = rows.get("Debuff_Stun")
+    assert stun, (
+        "game/Data/StatusEffects.csv has no Debuff_Stun row. Issue #363 added "
+        "it so that Effect=Stun is writable and the rules are findable.")
+    for rule in ("10% of the target maximum health",
+                 "cannot be stunned again for 5 seconds",
+                 "boss cannot be stunned at all"):
+        assert rule in stun, (
+            f"the Stun status effect row does not state {rule!r}. All three "
+            f"anti-stun-lock rules belong on it, because it is the row anything "
+            f"applying a stun points at. Issues #216 and #363.")
+
+
+def test_stun_and_knockdown_say_they_share_one_immunity_window():
+    """The rule most easily lost, and the design document argues for it
+    explicitly: two 3-second holds taken in turn is exactly the failure the
+    window exists to stop, so one window rather than one each."""
+    rows = {r["Name"]: r["Description"] for r in rows_of("StatusEffects")}
+    for key in ("Debuff_Stun", "Debuff_Knockdown"):
+        assert "share one" in rows.get(key, "") and "window" in rows.get(key, ""), (
+            f"{key} does not say that Stun and Knockdown share one immunity "
+            f"window rather than one each. Both rows have to, because a reader "
+            f"arriving at either must not conclude they have separate windows. "
+            f"Issue #363.")
 
 
 @pytest.mark.parametrize(("key", "seconds"), sorted(SKILL_STUN_SECONDS.items()))

@@ -61,7 +61,7 @@ or if a sheet is added or removed without this table changing.
 | Enemy Modifiers | 11 | Demonic / Death / War / Pestilence / Famine / Celestial / Chaos Modifiers |
 | Weapon Skills | 398 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape |
 | Buffs | 18 | one description per row, no heading row |
-| Debuffs | 24 | one description per row, no heading row |
+| Debuffs | 26 | one description per row, no heading row |
 | DoTs | 8 | one description per row, no heading row |
 | Crafting | 37 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
