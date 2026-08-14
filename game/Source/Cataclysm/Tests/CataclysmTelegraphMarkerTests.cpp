@@ -680,6 +680,51 @@ namespace CataclysmTelegraphTest
 	{
 		return A.Equals(B, /*Tolerance=*/1.0f / 255.0f);
 	}
+
+	/**
+	 * A vector parameter's value on a component's material.
+	 *
+	 * IT RESOLVES THROUGH THE PARENT MATERIAL when the instance does not
+	 * override the parameter. That is deliberate and is the whole point of the
+	 * ring assertions below: the rings are never told anything about the sweep,
+	 * so what this returns for them IS the material's own default, and a
+	 * default that moved off zero would make every ring sweep with no code
+	 * change anywhere.
+	 */
+	static bool VectorOf(UStaticMeshComponent* Component, const TCHAR* Name,
+						 FLinearColor& OutValue)
+	{
+		if (!Component)
+		{
+			return false;
+		}
+		UMaterialInstanceDynamic* Instance =
+			Cast<UMaterialInstanceDynamic>(Component->GetMaterial(0));
+		if (!Instance)
+		{
+			return false;
+		}
+		return Instance->GetVectorParameterValue(
+			FMaterialParameterInfo(Name), OutValue);
+	}
+
+	/** The same for a scalar parameter. */
+	static bool ScalarOf(UStaticMeshComponent* Component, const TCHAR* Name,
+						 float& OutValue)
+	{
+		if (!Component)
+		{
+			return false;
+		}
+		UMaterialInstanceDynamic* Instance =
+			Cast<UMaterialInstanceDynamic>(Component->GetMaterial(0));
+		if (!Instance)
+		{
+			return false;
+		}
+		return Instance->GetScalarParameterValue(
+			FMaterialParameterInfo(Name), OutValue);
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1021,6 +1066,291 @@ bool FCataclysmTelegraphMarkerFillIsSeeThroughAndRingsAreNot::RunTest(const FStr
 			TEXT("and the %s is fully opaque, because it carries the contrast"),
 			Band.second), Opacity, 1.0f, 0.001f);
 	}
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The sweeping fill
+//
+// WHAT THESE GUARD. Issue #544. The design calls a telegraph "a hard-edged
+// geometric shape ... with a fill that sweeps as the wind-up runs out", and
+// until #544 the fill was a plate at full size for the whole wind-up. It hid
+// the floor for longer than it needed to, and it threw away the one thing the
+// interior is for, which is saying how much time is left.
+//
+// The sweep is computed in the material from four parameters the marker sets
+// once. Nothing ticks. So what can be checked here is that the four parameters
+// carry the right figures, and that the three rings are left out of it -- which
+// is what these do. What they cannot check is what the shader draws; that needs
+// an eye, and it is step 4 of the issue.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTelegraphFillSweeps,
+	"Cataclysm.Telegraph.TheFillSweepsOverTheWindUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTelegraphFillSweeps::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	// The Brute's designed wind-up for a 3.5 metre slam, from the rule in the
+	// marker's own header: 0.4 + Radius / 3.5.
+	const float WindUp = 1.4f;
+	const float Whole = ACataclysmCharacterBase::BasicShapeSize;
+	const float Half = Whole * 0.5f;
+
+	// --- a circle sweeps outward from its middle ---------------------------
+	ACataclysmTelegraphMarker* Circle = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, WindUp);
+	if (!TestNotNull(TEXT("a circle is drawn"), Circle))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the marker kept the wind-up it was drawn for"),
+		Circle->WindUpSeconds, WindUp, 0.001f);
+
+	float Duration = -1.0f;
+	if (!TestTrue(TEXT("the fill was told how long the wind-up is"),
+				  ScalarOf(Circle->GetPatch(), TEXT("SweepDuration"), Duration)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the ability's wind-up, so the fill reaches the "
+				   "edge as the attack lands"), Duration, WindUp, 0.001f);
+
+	float StartTime = -1.0f;
+	if (!TestTrue(TEXT("the fill was told when the wind-up began"),
+				  ScalarOf(Circle->GetPatch(), TEXT("SweepStartTime"), StartTime)))
+	{
+		return false;
+	}
+	// Cast because the world's clock is a double and a material parameter is a
+	// float. Comparing them without it is an ambiguous overload rather than a
+	// precision problem.
+	TestEqual(TEXT("and it is the world clock the material's Time node reads"),
+		StartTime, static_cast<float>(World->GetTimeSeconds()), 0.05f);
+
+	FLinearColor Origin = FLinearColor::White;
+	if (!TestTrue(TEXT("the circle's fill was told where its sweep starts"),
+				  VectorOf(Circle->GetPatch(), TEXT("SweepOrigin"), Origin)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a circle sweeps from the middle of the mesh, X"), Origin.R, 0.0f, 0.001f);
+	TestEqual(TEXT("a circle sweeps from the middle of the mesh, Y"), Origin.G, 0.0f, 0.001f);
+
+	FLinearColor Reach = FLinearColor::White;
+	if (!TestTrue(TEXT("the circle's fill was told how far the sweep goes"),
+				  VectorOf(Circle->GetPatch(), TEXT("SweepScale"), Reach)))
+	{
+		return false;
+	}
+	// One over the mesh's own half-width on both axes, so the sweep reaches
+	// exactly the rim rather than stopping short or running past it.
+	TestEqual(TEXT("a circle's sweep reaches the rim across X"),
+		Reach.R, 1.0f / Half, 0.0001f);
+	TestEqual(TEXT("a circle's sweep reaches the rim across Y"),
+		Reach.G, 1.0f / Half, 0.0001f);
+	TestEqual(TEXT("and does not sweep through the marker's thickness"),
+		Reach.B, 0.0f, 0.0001f);
+
+	// --- a lane sweeps from the caster's end toward the target -------------
+	ACataclysmTelegraphMarker* Lane = ACataclysmTelegraphMarker::ShowLine(
+		Caster, FVector::ZeroVector, FVector(10.0f * M, 0.0f, 0.0f),
+		/*HalfWidthCm=*/1.0f * M, WindUp);
+	if (!TestNotNull(TEXT("a lane is drawn"), Lane))
+	{
+		return false;
+	}
+
+	FLinearColor LaneOrigin = FLinearColor::White;
+	if (!TestTrue(TEXT("the lane's fill was told where its sweep starts"),
+				  VectorOf(Lane->GetPatch(), TEXT("SweepOrigin"), LaneOrigin)))
+	{
+		return false;
+	}
+	// NEGATIVE, AND THAT IS THE WHOLE POINT. ShowLine rotates the marker so
+	// local +X runs from the caster toward the point aimed at, so the caster's
+	// end is at minus half the mesh. A positive value here would sweep the fill
+	// backwards, from the target toward the creature.
+	TestEqual(TEXT("a lane sweeps from the caster's end of the mesh"),
+		LaneOrigin.R, -Half, 0.001f);
+
+	FLinearColor LaneReach = FLinearColor::White;
+	if (!TestTrue(TEXT("the lane's fill was told how far the sweep goes"),
+				  VectorOf(Lane->GetPatch(), TEXT("SweepScale"), LaneReach)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a lane's sweep reaches the far end over the whole mesh"),
+		LaneReach.R, 1.0f / Whole, 0.0001f);
+	TestEqual(TEXT("and a lane's width does not decide when a pixel is drawn"),
+		LaneReach.G, 0.0f, 0.0001f);
+
+	// --- the fill is a growing disc, not a travelling band -----------------
+	//
+	// The project owner compared the two on 2026-08-14 and chose the disc: it
+	// says how much ground is already committed, where a band says only where
+	// its edge is. In the material that is the whole area behind the leading
+	// edge, which is a band width of 1.
+	for (auto Shape : {std::make_pair(Circle->GetPatch(), TEXT("circle")),
+					   std::make_pair(Lane->GetPatch(), TEXT("lane"))})
+	{
+		float Covered = -1.0f;
+		if (!TestTrue(FString::Printf(
+				TEXT("the %s's fill was told how much it covers"), Shape.second),
+				ScalarOf(Shape.first, TEXT("SweepBand"), Covered)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(
+			TEXT("a %s's fill covers everything behind its leading edge"),
+			Shape.second),
+			Covered,
+			ACataclysmTelegraphMarker::FillCoversEverythingBehindTheEdge,
+			0.0001f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTelegraphOnlyTheFillSweeps,
+	"Cataclysm.Telegraph.OnlyTheFillSweeps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTelegraphOnlyTheFillSweeps::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	// TWO THINGS ABOUT THE THREE BOUNDARY BANDS, AND BOTH MATTER.
+	//
+	// THEY ARE THERE FROM THE FIRST FRAME. A band that swept in with the fill
+	// would mean the player cannot see the edge of the danger until it is
+	// nearly too late to leave it, and every contrast figure in section XIII of
+	// the design document is about those bands. So their progress is pinned
+	// past 1 rather than following the wind-up.
+	//
+	// AND THEY ARE RINGS, NOT DISCS. This is the one that was wrong for months.
+	// The four bands are concentric solid discs stacked smallest-on-top, and
+	// each reads as a ring only because the disc above covers its middle -- but
+	// the disc above is the see-through fill, so an opaque near-white disc
+	// covered every marked area in the game. That is what hid the floor's
+	// texture, not the fill's opacity. A band width below 1 is what makes each
+	// one hollow.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	ACataclysmTelegraphMarker* Circle = ACataclysmTelegraphMarker::ShowCircle(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
+	if (!TestNotNull(TEXT("a circle is drawn"), Circle))
+	{
+		return false;
+	}
+
+	const float Radius = 3.5f * M;
+	struct FBand { UStaticMeshComponent* Component; const TCHAR* Name;
+				   float OwnRadiusCm; float WidthCm; };
+
+	const FBand Bands[] = {
+		{ Circle->GetEdge(), TEXT("outer ring"),
+		  Radius + ACataclysmTelegraphMarker::OutlineThicknessCm,
+		  ACataclysmTelegraphMarker::RimDarkCm },
+		{ Circle->GetRing(), TEXT("bright ring"),
+		  Radius + ACataclysmTelegraphMarker::RimBrightCm
+				 + ACataclysmTelegraphMarker::RimLightCm,
+		  ACataclysmTelegraphMarker::RimBrightCm },
+		{ Circle->GetInner(), TEXT("inner line"),
+		  Radius + ACataclysmTelegraphMarker::RimLightCm,
+		  ACataclysmTelegraphMarker::RimLightCm },
+	};
+
+	for (const FBand& Band : Bands)
+	{
+		// Fully drawn from the first frame: the wind-up must not decide when
+		// the edge of the danger becomes visible.
+		float StartTime = 0.0f;
+		float Duration = 0.0f;
+		if (!TestTrue(FString::Printf(
+				TEXT("the %s's material answers about its progress"), Band.Name),
+				ScalarOf(Band.Component, TEXT("SweepStartTime"), StartTime)
+					&& ScalarOf(Band.Component, TEXT("SweepDuration"), Duration)))
+		{
+			continue;
+		}
+		TestTrue(FString::Printf(
+			TEXT("the %s is finished before the wind-up starts, so it is there "
+				 "from the first frame. Its start is %.4f and its duration "
+				 "%.6f, which must divide to well past 1."),
+			Band.Name, StartTime, Duration),
+			Duration > 0.0f && (-StartTime) / Duration >= 1.0f);
+
+		// AND HOLLOW. A width of 1 is a solid disc, which is what covered the
+		// floor before #544 and is the failure this whole test exists for.
+		float Covered = -1.0f;
+		if (!TestTrue(FString::Printf(
+				TEXT("the %s's material answers about its width"), Band.Name),
+				ScalarOf(Band.Component, TEXT("SweepBand"), Covered)))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(
+			TEXT("the %s shows only its own %.0f cm of its own %.0f cm radius, "
+				 "so the ground inside it is left alone"),
+			Band.Name, Band.WidthCm, Band.OwnRadiusCm),
+			Covered, Band.WidthCm / Band.OwnRadiusCm, 0.0001f);
+		TestTrue(FString::Printf(
+			TEXT("which is less than the whole disc, or the %s would be one"),
+			Band.Name), Covered < 1.0f);
+	}
+
+	// The fill DOES sweep, so this test cannot pass by the sweep being switched
+	// off everywhere.
+	FLinearColor FillReach = FLinearColor::Black;
+	if (!TestTrue(TEXT("the fill's material answers about SweepScale"),
+				  VectorOf(Circle->GetPatch(), TEXT("SweepScale"), FillReach)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the fill DOES sweep, so this test is comparing two "
+				   "different things rather than zero with zero"),
+		FMath::IsNearlyZero(FillReach.R) && FMath::IsNearlyZero(FillReach.G));
+
+	float FillDuration = -1.0f;
+	if (!TestTrue(TEXT("the fill's material answers about its duration"),
+				  ScalarOf(Circle->GetPatch(), TEXT("SweepDuration"),
+						   FillDuration)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the fill's progress follows the wind-up, unlike the "
+				   "three bands above"), FillDuration, 1.4f, 0.001f);
 
 	return true;
 }

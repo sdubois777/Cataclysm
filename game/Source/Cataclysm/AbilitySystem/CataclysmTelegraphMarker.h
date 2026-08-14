@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "CataclysmTelegraphMarker.generated.h"
 
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -57,11 +58,29 @@ class UStaticMeshComponent;
  * being true: game/Content already holds animation and DataTable assets, and
  * .gitattributes already routes .uasset to Git LFS.
  *
- * TWO TONES, BECAUSE NO ONE COLOUR SURVIVES BOTH EXTREMES. Death and Void are
+ * FOUR COLOURS, BECAUSE NO ONE COLOUR SURVIVES BOTH EXTREMES. Death and Void are
  * built on black and Celestial is gold and white, so a colour bright enough to
- * read on the first disappears into the second. The cyan fill carries the dark
- * environments and a near-black rim carries the bright ones. Measured, the
- * weakest case across all eight themes is 3.22:1, against War's steel grey.
+ * read on the first disappears into the second. Three opaque rings carry it
+ * between them: the red ring carries the dark environments, the near-black rim
+ * carries the bright ones, and the light inner line carries War's mid grey and
+ * Demonic's lava. Measured across all eight themes the worst case is 3.92:1,
+ * above the 3:1 accessibility threshold. The fourth colour is the see-through
+ * fill, which carries none of that.
+ *
+ * An earlier version of this comment described a cyan fill, said there were two
+ * tones, and quoted 3.22:1. All three were left behind by issue #543, which
+ * replaced the cyan with red #FF3020 and added the third ring.
+ *
+ * THE FILL SWEEPS, AND THAT IS WHAT IT IS FOR. The design calls a telegraph "a
+ * hard-edged geometric shape ... with a fill that sweeps as the wind-up runs
+ * out", so the interior is how a player reads time-to-impact without watching
+ * the creature. It grows from the middle of a circle, or from the caster's end
+ * of a lane, and reaches the edge as the attack lands. Issue #544.
+ *
+ * NO PER-FRAME WORK IS DONE FOR IT. The marker sets a start time and a duration
+ * on the fill's material once, when it is created, and the material works out
+ * how far through the wind-up it is. See tools/generate_telegraph_material.py
+ * for the arithmetic.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmTelegraphMarker : public AActor
@@ -140,20 +159,38 @@ public:
 	static const TCHAR* const DesignedFillHex;
 
 	/**
-	 * How opaque the innermost band is.
+	 * How opaque the moving band is.
 	 *
 	 * WHY IT IS NOT 1. The project owner reported on 2026-08-13 that a fully
-	 * opaque marker "is really solid". At 0.35 the marked ground is tinted rather
-	 * than covered, so the floor and anything standing on it still read through
-	 * it.
+	 * opaque marker "is really solid", so the marked ground is tinted rather
+	 * than covered and the floor still reads through it.
 	 *
-	 * IT CARRIES NONE OF THE READABILITY, and that is why it is free to be this
+	 * IT IS BACK AT 0.35 AFTER A BRIEF 0.6, and the reason is worth keeping.
+	 * The floor's texture disappearing under a marker was never caused by this
+	 * figure. It was caused by the light line below being a solid disc rather
+	 * than a line, which covered the whole marked area opaquely; see the
+	 * comment on ApplyRingShapes. With that fixed, 0.35 tints real floor.
+	 *
+	 *     Cataclysm.Telegraph.FillOpacity 0.5
+	 *
+	 * IT CARRIES NONE OF THE READABILITY, and that is why it is free to be
 	 * light. A translucent band's contrast against the ground beneath it falls
 	 * toward 1:1 as it fades -- at 0.25 over War's steel grey it is 1.54:1 -- so
 	 * it could never have been the thing the guarantee rested on. The three
 	 * opaque rings carry it.
 	 */
 	static constexpr float DesignedFillOpacity = 0.35f;
+
+	/**
+	 * How much of the shape the fill covers behind the sweep's leading edge, as
+	 * a fraction. 1 is everything, so the fill is a disc that grows.
+	 *
+	 * IT WAS BRIEFLY A NARROW BAND and the project owner rejected that on
+	 * 2026-08-14: "we already had it before with the previous version, you had
+	 * the expanding fill". A growing disc says how much ground is already
+	 * committed; a band only says where the edge is.
+	 */
+	static constexpr float FillCoversEverythingBehindTheEdge = 1.0f;
 
 	/**
 	 * Draw a circle on the ground and take it away after Seconds.
@@ -205,6 +242,19 @@ public:
 	 *  tells the two apart. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Telegraph")
 	float LengthCm = 0.0f;
+
+	/**
+	 * The wind-up this marker was drawn for, in seconds. How long the fill has
+	 * to sweep from the middle to the edge.
+	 *
+	 * HELD RATHER THAN READ BACK OFF THE ACTOR'S LIFESPAN, which is set to the
+	 * same figure. The lifespan is a second guarantee that a marker goes away
+	 * even if nothing dismisses it, so it is free to change independently; the
+	 * sweep needs the ability's stated wind-up and should not silently start
+	 * following a safety net instead.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Telegraph")
+	float WindUpSeconds = 0.0f;
 
 	/** Whether this marks a lane rather than a circle. Read by tests. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Telegraph")
@@ -296,6 +346,48 @@ protected:
 	/** Set the colour and opacity on all four bands. Called once per marker,
 	 *  after the meshes and scales are set. */
 	void ApplyColours();
+
+	/**
+	 * Tell the fill's material where the sweep starts, how far it has to go,
+	 * when it began and how long it has. Called once, by ApplyColours.
+	 *
+	 * ON THE FILL AND ON NOTHING ELSE. The three rings say where the danger is
+	 * and have to be visible from the first frame; only the interior says how
+	 * much time is left. The rings are left on the material's own all-zero
+	 * SweepScale, which draws every pixel immediately, and
+	 * Cataclysm.Telegraph.OnlyTheFillSweeps checks that default has not moved.
+	 */
+	void ApplySweep(UMaterialInstanceDynamic* Fill) const;
+
+	/**
+	 * Cut the middle out of one boundary band, so it draws as a ring of its own
+	 * width rather than as a solid disc.
+	 *
+	 * WHY THIS HAD TO EXIST. The four bands are concentric SOLID DISCS, each
+	 * smaller and higher than the one below, and each only reads as a ring
+	 * because the disc above covers its middle. That works while the disc above
+	 * is opaque. The innermost one is the see-through fill and never was, so a
+	 * fully opaque near-white disc has been covering every marked area in the
+	 * game, underneath the fill, since the bands were built.
+	 *
+	 * THAT, AND NOT THE FILL'S OPACITY, IS WHY THE FLOOR'S TEXTURE VANISHED
+	 * under a marker. Issue #544's first report -- "the floor inside it is a
+	 * uniform pale pink with the texture largely gone" -- is that disc showing
+	 * through a 35% red tint. An earlier measurement on that issue blamed the
+	 * blend arithmetic and was wrong.
+	 *
+	 * IT REUSES THE SWEEP'S OWN MASK with progress pinned at 1, because a ring
+	 * is the shape a finished sweep leaves behind. No new material maths.
+	 *
+	 * CIRCLES ONLY. A lane's bands are rectangles and the mask measures
+	 * distance radially, so hollowing one would cut an oval out of a rectangle.
+	 * Lanes keep the stacked discs they have always had. See issue #553.
+	 *
+	 * @param BandRadiusCm  this band's own outer radius
+	 * @param WidthCm       how much of it should show
+	 */
+	void ApplyRingShapes(UMaterialInstanceDynamic* Band, float BandRadiusCm,
+						 float WidthCm) const;
 
 	/**
 	 * The two engine shapes a marker is drawn with, found in the constructor.

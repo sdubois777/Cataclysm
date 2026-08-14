@@ -40,6 +40,27 @@ namespace
 	const TCHAR* TelegraphOpacityParameter = TEXT("Opacity");
 
 	/**
+	 * The four the sweeping fill is built from, named by
+	 * tools/generate_telegraph_material.py.
+	 *
+	 * SweepOrigin and SweepScale are in the MESH's own space, not the world's
+	 * and not the marker's. That is what lets one material serve both shapes:
+	 * the cylinder and the cube map their texture coordinates differently, and
+	 * local position does not. The scale is one over the distance from the
+	 * origin to the edge along each axis, so the material's `Where` reaches
+	 * exactly 1 at the edge, and an axis set to zero is one the sweep ignores.
+	 *
+	 * AN ALL-ZERO SweepScale MEANS NO SWEEP, which is the material's default and
+	 * therefore what the three rings get without being told anything.
+	 */
+	const TCHAR* TelegraphSweepOriginParameter = TEXT("SweepOrigin");
+	const TCHAR* TelegraphSweepScaleParameter = TEXT("SweepScale");
+	const TCHAR* TelegraphSweepStartParameter = TEXT("SweepStartTime");
+	const TCHAR* TelegraphSweepDurationParameter = TEXT("SweepDuration");
+	const TCHAR* TelegraphSweepBandParameter = TEXT("SweepBand");
+
+
+	/**
 	 * Live overrides for the two colours, as sRGB hex without a leading hash.
 	 *
 	 * WHY THEY ARE WANTED. The project owner accepted cyan on 2026-08-12 with a
@@ -180,6 +201,10 @@ namespace
 		// ending a wind-up is ever added and forgets to, the worst that happens
 		// is a marker that outstays its attack by nothing rather than one that
 		// stays on the floor for the rest of the level.
+		// The ability's stated wind-up, kept because the sweeping fill needs it.
+		// Set before ApplyColours runs, which is what reads it.
+		Marker->WindUpSeconds = Seconds;
+
 		Marker->SetLifeSpan(Seconds);
 		return Marker;
 	}
@@ -307,25 +332,129 @@ void ACataclysmTelegraphMarker::ApplyColours()
 	// whole arrangement: the rings carry the measured contrast and the fill only
 	// tints the ground that hurts.
 	auto Paint = [this](UStaticMeshComponent* Component,
-						const FLinearColor& Colour, float Opacity)
+						const FLinearColor& Colour,
+						float Opacity) -> UMaterialInstanceDynamic*
 	{
 		if (!Component)
 		{
-			return;
+			return nullptr;
 		}
-		if (UMaterialInstanceDynamic* Instance =
-				Component->CreateDynamicMaterialInstance(0, MarkerMaterial))
+		UMaterialInstanceDynamic* Instance =
+			Component->CreateDynamicMaterialInstance(0, MarkerMaterial);
+		if (Instance)
 		{
 			Instance->SetVectorParameterValue(TelegraphColourParameter, Colour);
 			Instance->SetScalarParameterValue(TelegraphOpacityParameter, Opacity);
 		}
+		return Instance;
 	};
 
-	Paint(Edge, Outline, 1.0f);
-	Paint(Ring, Ring3020, 1.0f);
-	Paint(Inner, InnerLine, 1.0f);
-	Paint(Patch, ResolveColour(CVarTelegraphRingColour.GetValueOnAnyThread(),
-							   DesignedFillHex), FillOpacity);
+	// THE THREE BOUNDARY BANDS ARE NOT SWEPT. They mark where the danger is and
+	// have to be visible from the first frame. They are hollowed out instead,
+	// so each draws as a ring of its own width and the ground inside the
+	// marker is left alone. See ApplyRingShapes for why that was not always so.
+	ApplyRingShapes(Paint(Edge, Outline, 1.0f),
+					RadiusCm + OutlineThicknessCm, RimDarkCm);
+	ApplyRingShapes(Paint(Ring, Ring3020, 1.0f),
+					RadiusCm + RimBrightCm + RimLightCm, RimBrightCm);
+	ApplyRingShapes(Paint(Inner, InnerLine, 1.0f),
+					RadiusCm + RimLightCm, RimLightCm);
+
+	ApplySweep(Paint(Patch,
+					 ResolveColour(CVarTelegraphRingColour.GetValueOnAnyThread(),
+								   DesignedFillHex),
+					 FillOpacity));
+}
+
+void ACataclysmTelegraphMarker::ApplySweep(UMaterialInstanceDynamic* Fill) const
+{
+	const UWorld* World = GetWorld();
+	if (!Fill || !World || WindUpSeconds <= 0.0f)
+	{
+		// Nothing to sweep over. Left on the material's all-zero SweepScale,
+		// which draws the whole fill from the first frame -- which is the right
+		// answer for a marker with no stated wind-up, rather than one that
+		// never appears.
+		return;
+	}
+
+	// THE MESH'S OWN SIZE, NOT THE MARKER'S. Local position is read before the
+	// component's scale is applied, so these are the same two vectors whether a
+	// marker is drawn at one metre or at six. Both engine basic shapes occupy a
+	// BasicShapeSize cube centred on their own origin.
+	const float Whole = ACataclysmCharacterBase::BasicShapeSize;
+	const float Half = Whole * 0.5f;
+
+	// A LANE SWEEPS FROM THE CASTER'S END, NOT FROM ITS MIDDLE. ShowLine rotates
+	// the marker so local +X runs from the caster toward the point that was
+	// aimed at, so local -X is the end the shot leaves from. Sweeping that way
+	// means the fill travels the way the projectile will.
+	//
+	// A CIRCLE SWEEPS FROM ITS MIDDLE OUTWARDS, so the Y axis counts too and the
+	// distance is radial.
+	const FVector Origin = IsLane()
+		? FVector(-Half, 0.0f, 0.0f)
+		: FVector::ZeroVector;
+
+	// One over the distance from the origin to the edge, per axis. Zero on an
+	// axis the sweep ignores: a lane's width does not decide when a pixel is
+	// drawn, and neither shape sweeps through its own thickness.
+	const FVector Reach = IsLane()
+		? FVector(1.0f / Whole, 0.0f, 0.0f)
+		: FVector(1.0f / Half, 1.0f / Half, 0.0f);
+
+	Fill->SetVectorParameterValue(TelegraphSweepOriginParameter,
+								  FLinearColor(Origin));
+	Fill->SetVectorParameterValue(TelegraphSweepScaleParameter,
+								  FLinearColor(Reach));
+
+	// The world's clock, because the material's Time node reads the same one.
+	Fill->SetScalarParameterValue(TelegraphSweepStartParameter,
+								  static_cast<float>(World->GetTimeSeconds()));
+	Fill->SetScalarParameterValue(TelegraphSweepDurationParameter,
+								  WindUpSeconds);
+
+	// EVERYTHING BEHIND THE LEADING EDGE, so the fill is a disc that grows
+	// rather than a band that travels. The project owner compared the two on
+	// 2026-08-14 and chose this: a growing disc says how much ground is already
+	// committed, where a band only says where its edge is.
+	Fill->SetScalarParameterValue(TelegraphSweepBandParameter,
+								  FillCoversEverythingBehindTheEdge);
+}
+
+void ACataclysmTelegraphMarker::ApplyRingShapes(UMaterialInstanceDynamic* Band,
+												float BandRadiusCm,
+												float WidthCm) const
+{
+	// A LANE'S BANDS ARE RECTANGLES and the material measures distance
+	// radially, so hollowing one out would cut an oval from a rectangle. Lanes
+	// keep the stacked discs they have always had; issue #553 covers it.
+	if (!Band || IsLane() || BandRadiusCm <= 0.0f || WidthCm <= 0.0f)
+	{
+		return;
+	}
+
+	const float Half = ACataclysmCharacterBase::BasicShapeSize * 0.5f;
+
+	Band->SetVectorParameterValue(TelegraphSweepOriginParameter,
+								  FLinearColor(FVector::ZeroVector));
+	Band->SetVectorParameterValue(
+		TelegraphSweepScaleParameter,
+		FLinearColor(FVector(1.0f / Half, 1.0f / Half, 0.0f)));
+
+	// PROGRESS PINNED AT 1, because a ring is not a sweep -- it is the shape a
+	// finished sweep leaves behind. A start time in the past divided by almost
+	// no duration lands the material's saturate() on 1 whatever the world clock
+	// happens to read, which a duration of zero would not: the clock is near
+	// zero at the start of a session.
+	Band->SetScalarParameterValue(TelegraphSweepStartParameter, -1.0f);
+	Band->SetScalarParameterValue(TelegraphSweepDurationParameter, 0.0001f);
+
+	// What shows is the outermost WidthCm of this band's own radius. Clamped,
+	// because a width at or past the radius is a solid disc again, which is the
+	// thing this exists to stop.
+	Band->SetScalarParameterValue(TelegraphSweepBandParameter,
+								  FMath::Min(WidthCm / BandRadiusCm, 1.0f));
 }
 
 ACataclysmTelegraphMarker* ACataclysmTelegraphMarker::ShowCircle(
