@@ -53,6 +53,7 @@ def rebuild_everything(environment: dict[str, str] | None = None) -> bool:
 def needs_rebuilding(current_digest: str,
                      recorded_digest: str | None,
                      asset_exists: bool,
+                     recorded_rows: int | None,
                      force: bool = False) -> tuple[bool, str]:
     """Whether one table must be rebuilt, and why, in words.
 
@@ -60,12 +61,23 @@ def needs_rebuilding(current_digest: str,
     @param recorded_digest  what the record says it was when the asset was
                             built, or None if the record has no entry for it
     @param asset_exists     whether the asset is actually there
+    @param recorded_rows    how many rows the record says the asset has, or None
+                            if it does not say
     @param force            the caller asked for everything
 
     THE REASON IS RETURNED, NOT LOGGED HERE, so that the generator prints one
     line per table saying what it did and why. A run that quietly skips
     everything looks exactly like a run that did nothing because it was broken,
     which is the fault issue #436 was about in a different file.
+
+    THE REASON IS ALSO THE ONLY ACCOUNT OF WHY A BINARY FILE CHANGED. Issue #450.
+    A `.uasset` is stored in git LFS and cannot be reviewed by reading it, so a
+    reviewer asking why one changed has this line and nothing else. It named the
+    wrong cause for a table that had never been built: the generator folded "the
+    record says nothing about its row count" into `force`, and `force` is checked
+    first, so a brand-new table was reported as `asked to rebuild everything`
+    with no environment variable set. `recorded_rows` is its own argument now so
+    that each case says what actually happened.
     """
     if force:
         return True, "asked to rebuild everything"
@@ -78,6 +90,12 @@ def needs_rebuilding(current_digest: str,
 
     if recorded_digest is None:
         return True, "nothing recorded about what it was built from"
+
+    if recorded_rows is None:
+        # A SEPARATE CASE FROM THE ONE ABOVE, because something IS recorded. The
+        # row count matters because the generator has to put one in the record
+        # for a table it skips, and importing is the only thing that counts them.
+        return True, "the record does not say how many rows it has"
 
     if recorded_digest != current_digest:
         return True, "its source changed"

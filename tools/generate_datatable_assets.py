@@ -377,9 +377,9 @@ def main():
         full = "{}/{}.{}".format(DATA_DIR, asset_name, asset_name)
 
         # THE ROW COUNT HAS TO COME FROM SOMEWHERE FOR A SKIPPED TABLE, because
-        # the record holds one per asset and importing is what counts them. A
-        # record without one is a record this run cannot complete, so it is
-        # treated the same as no record at all.
+        # the record holds one per asset and importing is what counts them. It is
+        # passed on rather than folded into `force`, which is what made a
+        # brand-new table report `asked to rebuild everything`. Issue #450.
         recorded_rows = entry.get("rows")
         digest = csv_digest(csv_file)
 
@@ -387,7 +387,8 @@ def main():
             current_digest=digest,
             recorded_digest=entry.get("csv_sha256"),
             asset_exists=editor_assets.does_asset_exist(full),
-            force=force or recorded_rows is None)
+            recorded_rows=recorded_rows,
+            force=force)
 
         if not rebuild:
             log("skipped {} -- {} ({} rows)"

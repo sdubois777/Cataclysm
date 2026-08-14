@@ -42,6 +42,10 @@ from datatable_freshness import (  # noqa: E402
 SAME = "a" * 64
 DIFFERENT = "b" * 64
 
+#: A row count the record does hold. Any positive number will do; only whether
+#: there is one at all changes what `needs_rebuilding` answers.
+ROWS = 8
+
 
 def test_an_unchanged_table_with_its_asset_present_is_left_alone() -> None:
     """The whole point of issue #444.
@@ -51,7 +55,8 @@ def test_an_unchanged_table_with_its_asset_present_is_left_alone() -> None:
     unrelated binary files then reappear in every data pull request.
     """
     rebuild, reason = needs_rebuilding(
-        current_digest=SAME, recorded_digest=SAME, asset_exists=True)
+        current_digest=SAME, recorded_digest=SAME, asset_exists=True,
+        recorded_rows=ROWS)
 
     assert not rebuild, (
         f"a table whose CSV has not changed is being rebuilt anyway ({reason}), "
@@ -62,7 +67,8 @@ def test_an_unchanged_table_with_its_asset_present_is_left_alone() -> None:
 
 def test_a_changed_table_is_rebuilt() -> None:
     rebuild, reason = needs_rebuilding(
-        current_digest=DIFFERENT, recorded_digest=SAME, asset_exists=True)
+        current_digest=DIFFERENT, recorded_digest=SAME, asset_exists=True,
+        recorded_rows=ROWS)
 
     assert rebuild, (
         "a table whose CSV changed is not being rebuilt, so the asset keeps the "
@@ -79,7 +85,8 @@ def test_a_missing_asset_is_rebuilt_even_when_the_hash_matches() -> None:
     #436 was about: work reported as done that was never done.
     """
     rebuild, reason = needs_rebuilding(
-        current_digest=SAME, recorded_digest=SAME, asset_exists=False)
+        current_digest=SAME, recorded_digest=SAME, asset_exists=False,
+        recorded_rows=ROWS)
 
     assert rebuild, (
         "a table whose asset is missing is not being rebuilt, because its "
@@ -91,7 +98,8 @@ def test_a_missing_asset_is_rebuilt_even_when_the_hash_matches() -> None:
 def test_a_table_the_record_says_nothing_about_is_rebuilt() -> None:
     """A new table, or a record written before that table existed."""
     rebuild, reason = needs_rebuilding(
-        current_digest=SAME, recorded_digest=None, asset_exists=True)
+        current_digest=SAME, recorded_digest=None, asset_exists=True,
+        recorded_rows=None)
 
     assert rebuild
     assert "nothing recorded" in reason
@@ -104,10 +112,116 @@ def test_forcing_rebuilds_a_table_that_is_already_current() -> None:
     "build them all anyway".
     """
     rebuild, reason = needs_rebuilding(
-        current_digest=SAME, recorded_digest=SAME, asset_exists=True, force=True)
+        current_digest=SAME, recorded_digest=SAME, asset_exists=True,
+        recorded_rows=ROWS, force=True)
 
     assert rebuild
     assert "everything" in reason
+
+
+#: The reason a run gives when the operator set the environment variable. Issue
+#: #450 is that this was also the reason given when they had not.
+ASKED_FOR = "asked to rebuild everything"
+
+
+def test_a_table_that_has_never_been_built_does_not_blame_the_operator() -> None:
+    """Issue #450. A brand-new table was reported as `asked to rebuild everything`.
+
+    WHY THE WORDS MATTER MORE THAN THE ANSWER HERE. The boolean was already
+    right: a table with no asset and no record does need building. The reason
+    string is the only account of why a binary file changed, because a `.uasset`
+    is stored in git LFS and cannot be reviewed by reading it. Naming an
+    operator action that did not happen sends a reviewer looking for a
+    `CATACLYSM_REBUILD_ALL_DATATABLES` nobody set.
+    """
+    rebuild, reason = needs_rebuilding(
+        current_digest=SAME, recorded_digest=None, asset_exists=False,
+        recorded_rows=None, force=False)
+
+    assert rebuild
+    assert reason != ASKED_FOR, (
+        "a table that has never been built is reported as though somebody asked "
+        "for every asset to be rebuilt. Nobody did: force is False here. "
+        "Issue #450.")
+    assert "does not exist" in reason, reason
+
+
+def test_a_record_with_no_row_count_says_that_rather_than_blaming_the_operator() -> None:
+    """The other way the row count used to reach `force`.
+
+    The asset is there and the record names a hash for it, but no row count. The
+    generator cannot skip a table it has no row count for, because the record it
+    writes needs one per asset and importing is the only thing that counts them.
+    So it rebuilds -- and must say that is why.
+    """
+    rebuild, reason = needs_rebuilding(
+        current_digest=SAME, recorded_digest=SAME, asset_exists=True,
+        recorded_rows=None, force=False)
+
+    assert rebuild
+    assert reason != ASKED_FOR, (
+        "a record with no row count is reported as though somebody asked for "
+        "every asset to be rebuilt. Issue #450.")
+    assert "how many rows" in reason, reason
+
+
+def test_only_the_force_argument_produces_the_asked_for_everything_reason() -> None:
+    """The reason exists for exactly one cause, so nothing else may claim it."""
+    causes = [
+        dict(current_digest=SAME, recorded_digest=None, asset_exists=False,
+             recorded_rows=None),
+        dict(current_digest=SAME, recorded_digest=SAME, asset_exists=True,
+             recorded_rows=None),
+        dict(current_digest=SAME, recorded_digest=None, asset_exists=True,
+             recorded_rows=ROWS),
+        dict(current_digest=DIFFERENT, recorded_digest=SAME, asset_exists=True,
+             recorded_rows=ROWS),
+        dict(current_digest=SAME, recorded_digest=SAME, asset_exists=True,
+             recorded_rows=ROWS),
+    ]
+    for arguments in causes:
+        _, reason = needs_rebuilding(force=False, **arguments)
+        assert reason != ASKED_FOR, arguments
+
+    _, reason = needs_rebuilding(
+        current_digest=SAME, recorded_digest=SAME, asset_exists=True,
+        recorded_rows=ROWS, force=True)
+    assert reason == ASKED_FOR
+
+
+def test_the_generator_passes_the_row_count_instead_of_folding_it_into_force() -> None:
+    """Otherwise the three tests above pass against a call site that lies.
+
+    The defect in issue #450 was entirely at the call site: `needs_rebuilding`
+    already had accurate branches for both cases, and the generator made them
+    unreachable by passing `force=force or recorded_rows is None`. Since the
+    generator imports `unreal` and cannot be imported here, this reads the call
+    out of the source.
+    """
+    if not GENERATOR.is_file():
+        pytest.fail(f"{GENERATOR.name} does not exist")
+
+    tree = ast.parse(GENERATOR.read_text(encoding="utf-8"))
+
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == "needs_rebuilding"]
+    assert calls, f"{GENERATOR.name} no longer calls needs_rebuilding"
+
+    for call in calls:
+        keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+        assert "recorded_rows" in keywords, (
+            "the generator does not pass recorded_rows to needs_rebuilding, so "
+            "a missing row count has to reach it some other way -- which is how "
+            "a brand-new table came to be reported as `asked to rebuild "
+            "everything`. Issue #450.")
+
+        force = keywords.get("force")
+        assert isinstance(force, ast.Name), (
+            "the generator passes something other than the force flag itself as "
+            f"`force` ({ast.dump(force) if force else 'nothing'}). Folding "
+            "another condition into it makes that condition report the wrong "
+            "reason, because force is checked first. Issue #450.")
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -173,7 +287,7 @@ def test_an_asset_the_editor_could_not_write_keeps_its_previous_entry() -> None:
 
     rebuild, reason = needs_rebuilding(
         current_digest=DIFFERENT, recorded_digest=entry["csv_sha256"],
-        asset_exists=True)
+        asset_exists=True, recorded_rows=entry["rows"])
     assert rebuild, (
         "the entry kept for a failed save does not make the next run rebuild "
         f"the table ({reason}), which is the whole point of keeping it")
