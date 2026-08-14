@@ -165,14 +165,13 @@ public:
 	 * opaque marker "is really solid", so the marked ground is tinted rather
 	 * than covered and the floor still reads through it.
 	 *
-	 * WHY IT ROSE FROM 0.35 TO 0.6. The 0.35 was chosen when this band covered
-	 * the whole marked area for the whole wind-up, where the objection was how
-	 * much floor it hid. Since #544 it is a band a few tens of centimetres wide
-	 * that crosses the marker once, so it hides almost nothing whatever its
-	 * opacity, and 0.35 on a thin moving band is faint enough to lose against a
-	 * busy floor. A JUDGEMENT, not a measurement, and one console command away:
+	 * IT IS BACK AT 0.35 AFTER A BRIEF 0.6, and the reason is worth keeping.
+	 * The floor's texture disappearing under a marker was never caused by this
+	 * figure. It was caused by the light line below being a solid disc rather
+	 * than a line, which covered the whole marked area opaquely; see the
+	 * comment on ApplyRingShapes. With that fixed, 0.35 tints real floor.
 	 *
-	 *     Cataclysm.Telegraph.FillOpacity 0.35
+	 *     Cataclysm.Telegraph.FillOpacity 0.5
 	 *
 	 * IT CARRIES NONE OF THE READABILITY, and that is why it is free to be
 	 * light. A translucent band's contrast against the ground beneath it falls
@@ -180,24 +179,18 @@ public:
 	 * it could never have been the thing the guarantee rested on. The three
 	 * opaque rings carry it.
 	 */
-	static constexpr float DesignedFillOpacity = 0.6f;
+	static constexpr float DesignedFillOpacity = 0.35f;
 
 	/**
-	 * How thick the moving band is, in centimetres.
+	 * How much of the shape the fill covers behind the sweep's leading edge, as
+	 * a fraction. 1 is everything, so the fill is a disc that grows.
 	 *
-	 * IN CENTIMETRES RATHER THAN AS A FRACTION OF THE MARKER, for the same
-	 * reason the three ring widths are: a band meant to be seen at a constant
-	 * thickness would become a wide swathe on a boss's six metre circle and a
-	 * hairline on a one metre one. The marker divides this by its own size
-	 * before handing it to the material, which works in fractions.
-	 *
-	 * A JUDGEMENT. The three static rings total 18 cm and read as an edge; this
-	 * is the moving element and has to read as a band, so it is larger. It has
-	 * not been tuned against anything and is one console command away:
-	 *
-	 *     Cataclysm.Telegraph.SweepBandCm 50
+	 * IT WAS BRIEFLY A NARROW BAND and the project owner rejected that on
+	 * 2026-08-14: "we already had it before with the previous version, you had
+	 * the expanding fill". A growing disc says how much ground is already
+	 * committed; a band only says where the edge is.
 	 */
-	static constexpr float DesignedSweepBandCm = 30.0f;
+	static constexpr float FillCoversEverythingBehindTheEdge = 1.0f;
 
 	/**
 	 * Draw a circle on the ground and take it away after Seconds.
@@ -365,6 +358,36 @@ protected:
 	 * Cataclysm.Telegraph.OnlyTheFillSweeps checks that default has not moved.
 	 */
 	void ApplySweep(UMaterialInstanceDynamic* Fill) const;
+
+	/**
+	 * Cut the middle out of one boundary band, so it draws as a ring of its own
+	 * width rather than as a solid disc.
+	 *
+	 * WHY THIS HAD TO EXIST. The four bands are concentric SOLID DISCS, each
+	 * smaller and higher than the one below, and each only reads as a ring
+	 * because the disc above covers its middle. That works while the disc above
+	 * is opaque. The innermost one is the see-through fill and never was, so a
+	 * fully opaque near-white disc has been covering every marked area in the
+	 * game, underneath the fill, since the bands were built.
+	 *
+	 * THAT, AND NOT THE FILL'S OPACITY, IS WHY THE FLOOR'S TEXTURE VANISHED
+	 * under a marker. Issue #544's first report -- "the floor inside it is a
+	 * uniform pale pink with the texture largely gone" -- is that disc showing
+	 * through a 35% red tint. An earlier measurement on that issue blamed the
+	 * blend arithmetic and was wrong.
+	 *
+	 * IT REUSES THE SWEEP'S OWN MASK with progress pinned at 1, because a ring
+	 * is the shape a finished sweep leaves behind. No new material maths.
+	 *
+	 * CIRCLES ONLY. A lane's bands are rectangles and the mask measures
+	 * distance radially, so hollowing one would cut an oval out of a rectangle.
+	 * Lanes keep the stacked discs they have always had. See issue #553.
+	 *
+	 * @param BandRadiusCm  this band's own outer radius
+	 * @param WidthCm       how much of it should show
+	 */
+	void ApplyRingShapes(UMaterialInstanceDynamic* Band, float BandRadiusCm,
+						 float WidthCm) const;
 
 	/**
 	 * The two engine shapes a marker is drawn with, found in the constructor.

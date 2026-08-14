@@ -59,22 +59,6 @@ namespace
 	const TCHAR* TelegraphSweepDurationParameter = TEXT("SweepDuration");
 	const TCHAR* TelegraphSweepBandParameter = TEXT("SweepBand");
 
-	/**
-	 * Live override for how thick the moving band is, in centimetres.
-	 *
-	 * A NEGATIVE VALUE MEANS "USE THE DESIGN", rather than zero, because zero is
-	 * a legitimate setting here: it makes the band vanish and leaves the three
-	 * rings, which is the look this replaced and is worth being able to compare
-	 * against without a rebuild.
-	 */
-	TAutoConsoleVariable<float> CVarTelegraphSweepBandCm(
-		TEXT("Cataclysm.Telegraph.SweepBandCm"),
-		-1.0f,
-		TEXT("How thick the telegraph's moving band is, in centimetres. "
-			 "Negative uses the designed 30. Zero removes the band and leaves "
-			 "the three rings, which is why zero does not mean 'use the "
-			 "design' here."),
-		ECVF_Default);
 
 	/**
 	 * Live overrides for the two colours, as sRGB hex without a leading hash.
@@ -365,12 +349,16 @@ void ACataclysmTelegraphMarker::ApplyColours()
 		return Instance;
 	};
 
-	// THE THREE RINGS ARE NOT SWEPT. They mark where the danger is and have to
-	// be visible from the first frame. They are left on the material's own
-	// all-zero SweepScale, which draws every pixel immediately.
-	Paint(Edge, Outline, 1.0f);
-	Paint(Ring, Ring3020, 1.0f);
-	Paint(Inner, InnerLine, 1.0f);
+	// THE THREE BOUNDARY BANDS ARE NOT SWEPT. They mark where the danger is and
+	// have to be visible from the first frame. They are hollowed out instead,
+	// so each draws as a ring of its own width and the ground inside the
+	// marker is left alone. See ApplyRingShapes for why that was not always so.
+	ApplyRingShapes(Paint(Edge, Outline, 1.0f),
+					RadiusCm + OutlineThicknessCm, RimDarkCm);
+	ApplyRingShapes(Paint(Ring, Ring3020, 1.0f),
+					RadiusCm + RimBrightCm + RimLightCm, RimBrightCm);
+	ApplyRingShapes(Paint(Inner, InnerLine, 1.0f),
+					RadiusCm + RimLightCm, RimLightCm);
 
 	ApplySweep(Paint(Patch,
 					 ResolveColour(CVarTelegraphRingColour.GetValueOnAnyThread(),
@@ -426,24 +414,47 @@ void ACataclysmTelegraphMarker::ApplySweep(UMaterialInstanceDynamic* Fill) const
 	Fill->SetScalarParameterValue(TelegraphSweepDurationParameter,
 								  WindUpSeconds);
 
-	// HOW THICK THE BAND IS, CONVERTED FROM CENTIMETRES HERE because the
-	// material works in fractions of the distance the sweep has to cross and
-	// only this end knows how far that is in the world. A circle's sweep
-	// crosses its radius; a lane's crosses its whole length.
-	const float BandOverride = CVarTelegraphSweepBandCm.GetValueOnAnyThread();
-	const float BandCm = BandOverride < 0.0f
-		? DesignedSweepBandCm
-		: BandOverride;
+	// EVERYTHING BEHIND THE LEADING EDGE, so the fill is a disc that grows
+	// rather than a band that travels. The project owner compared the two on
+	// 2026-08-14 and chose this: a growing disc says how much ground is already
+	// committed, where a band only says where its edge is.
+	Fill->SetScalarParameterValue(TelegraphSweepBandParameter,
+								  FillCoversEverythingBehindTheEdge);
+}
 
-	const float CrossesCm = IsLane() ? LengthCm : RadiusCm;
-	if (CrossesCm > 0.0f)
+void ACataclysmTelegraphMarker::ApplyRingShapes(UMaterialInstanceDynamic* Band,
+												float BandRadiusCm,
+												float WidthCm) const
+{
+	// A LANE'S BANDS ARE RECTANGLES and the material measures distance
+	// radially, so hollowing one out would cut an oval from a rectangle. Lanes
+	// keep the stacked discs they have always had; issue #553 covers it.
+	if (!Band || IsLane() || BandRadiusCm <= 0.0f || WidthCm <= 0.0f)
 	{
-		// Clamped to 1, which is the whole sweep. A band wider than the
-		// distance it travels would be a filled marker again, which is what
-		// #544 removed.
-		Fill->SetScalarParameterValue(TelegraphSweepBandParameter,
-									  FMath::Min(BandCm / CrossesCm, 1.0f));
+		return;
 	}
+
+	const float Half = ACataclysmCharacterBase::BasicShapeSize * 0.5f;
+
+	Band->SetVectorParameterValue(TelegraphSweepOriginParameter,
+								  FLinearColor(FVector::ZeroVector));
+	Band->SetVectorParameterValue(
+		TelegraphSweepScaleParameter,
+		FLinearColor(FVector(1.0f / Half, 1.0f / Half, 0.0f)));
+
+	// PROGRESS PINNED AT 1, because a ring is not a sweep -- it is the shape a
+	// finished sweep leaves behind. A start time in the past divided by almost
+	// no duration lands the material's saturate() on 1 whatever the world clock
+	// happens to read, which a duration of zero would not: the clock is near
+	// zero at the start of a session.
+	Band->SetScalarParameterValue(TelegraphSweepStartParameter, -1.0f);
+	Band->SetScalarParameterValue(TelegraphSweepDurationParameter, 0.0001f);
+
+	// What shows is the outermost WidthCm of this band's own radius. Clamped,
+	// because a width at or past the radius is a solid disc again, which is the
+	// thing this exists to stop.
+	Band->SetScalarParameterValue(TelegraphSweepBandParameter,
+								  FMath::Min(WidthCm / BandRadiusCm, 1.0f));
 }
 
 ACataclysmTelegraphMarker* ACataclysmTelegraphMarker::ShowCircle(
