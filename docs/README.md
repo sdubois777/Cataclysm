@@ -32,7 +32,7 @@ python tools/reformat_google_docs_artefacts.py
 |---|---|---|
 | `Cataclysm_GDD_v2.md` | Doc "Cataclysm\_GDD\_v2(1)" | Converted to Markdown so it produces readable diffs. No version number: see below. |
 | `Empire_Skill_Tree_Keystones.md` | Doc "Empire Skill Tree Keystones" | The 12 keystones plus all four empire quadrants (Architect, Treasury, Explorer, Artisan). Converted to Markdown. |
-| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 11 sheets. Exported unchanged as `.xlsx`. |
+| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 17 sheets, listed below. Exported unchanged as `.xlsx`, and edited in place since. |
 | `Empire_Development_Tree_Final.json` | Passive Trees/ | Node graph: `version`, `metadata`, `viewport`, `nodes`, `uiElements`, `edges`. |
 | `Berserker_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
 | `Bulwark_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
@@ -46,21 +46,49 @@ python tools/reformat_google_docs_artefacts.py
 
 ## Sheets in `All_Things_Cataclysm.xlsx`
 
+**Rows means rows that hold data, not the padded range.** Every count here is
+measured from the file rather than typed, and
+`tools/tests/test_docs_readme_sheet_table_is_true.py` fails if any of them drifts
+or if a sheet is added or removed without this table changing.
+
 | Sheet | Rows | First columns |
 |---|---|---|
-| Dungeon Modifiers | 1012 | Cataclysm Type, Modifier Name, Weight, Description |
-| Gems | 26 | Everyday / Quality / Superb / Master Gemstone |
-| City Upgrades | 1007 | Type, Tier 1, Tier 2, Tier 3 |
-| Enchantments | 961 | Positives, Type, Weight / Negatives, Type, Weight |
-| **Tags** | **118** | **Tag Name, Description** |
-| Enemy Modifiers | 1000 | Demonic / Death / War / Pestilence Modifiers |
-| Weapon Skills | 1000 | Weapon Type, Damage Type, Slot, Skill Name, Description, Tags |
-| Buffs | 18 | one description per row |
-| Debuffs | 20 | one description per row |
-| DoTs | 8 | one description per row |
-| Crafting | 1005 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
+| Dungeon Modifiers | 116 | Cataclysm Type, Modifier Name, Weight, Description |
+| Gems | 27 | Column 1, Everyday / Quality / Superb / Masterful / Legendary / Mythical Gemstone |
+| City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3 |
+| Enchantments | 380 | Positives, Type, Weight / Negatives, Type, Weight |
+| **Tags** | **123** | **Tag Name, Description** |
+| Enemy Modifiers | 11 | Demonic / Death / War / Pestilence / Famine / Celestial / Chaos Modifiers |
+| Weapon Skills | 398 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape |
+| Buffs | 18 | one description per row, no heading row |
+| Debuffs | 24 | one description per row, no heading row |
+| DoTs | 8 | one description per row, no heading row |
+| Crafting | 37 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
+| Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
+| Affixes | 80 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
+| Class Stats | 33 | Class, Stat, Base, Per Level |
+| Attributes | 17 | Attribute, Stat, Percent Per Point |
+| Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown |
+| Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale |
 
-The **Tags** sheet is the intended source for the Unreal `GameplayTag` table.
+**A row is one entity on eleven of these sheets and not on the other six.** Do not
+read a row count as a count of the things the sheet describes without checking
+which group it is in:
+
+- **Enchantments** holds two tables side by side. Its 380 rows carry 380 positive
+  enchantments in columns A to D and 195 negative ones in columns F to I.
+- **Enemy Modifiers** is a matrix, one column per Cataclysm and each cell holding
+  `Name: Description`. Its 11 rows across 8 columns hold 79 modifiers.
+- **Crafting** is three tables stacked: 18 materials, a heading row whose first
+  cell is the word "Action", and 18 Forge operations. Rows 5 to 11 also carry an
+  unrelated six-row table in columns 7 to 9.
+  `tools/tests/test_crafting_section_matches_the_sheet.py` explains that shape in
+  full.
+- **Buffs**, **Debuffs** and **DoTs** have no heading row at all, so the first row
+  is data. A count that assumes a heading is one short on each of them.
+
+The **Tags** sheet is the intended source for the Unreal `GameplayTag` table, and
+is the only sanctioned place to add a gameplay tag.
 
 ## Why these documents carry no version number
 
