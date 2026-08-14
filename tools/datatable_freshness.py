@@ -1,11 +1,11 @@
-"""Decide which DataTable assets actually need rebuilding.
+"""Decide which DataTable assets need rebuilding, and what to record about them.
 
 WHY THIS IS ITS OWN MODULE. `tools/generate_datatable_assets.py` imports
 `unreal` at module level and runs inside the editor's Python interpreter, so no
 ordinary test can import it -- `tools/tests/test_datatable_assets_are_current.py`
-parses its source with `ast` for exactly that reason. The decision below is
-plain arithmetic on hashes and has nothing to do with the engine, so it lives
-here where a test can call it directly instead of reading it.
+parses its source with `ast` for exactly that reason. The two decisions below are
+plain arithmetic on hashes and have nothing to do with the engine, so they live
+here where a test can call them directly instead of reading them.
 
 WHY THE DECISION EXISTS AT ALL. Issue #444. The generator rebuilt all fourteen
 assets whenever it ran, whatever had changed. Renaming one enemy modifier for
@@ -83,3 +83,47 @@ def needs_rebuilding(current_digest: str,
         return True, "its source changed"
 
     return False, "already current"
+
+
+def entry_for_table(asset: str,
+                    csv: str,
+                    rows: int | None,
+                    current_digest: str,
+                    previous_entry: dict | None,
+                    saved: bool) -> dict | None:
+    """What to record about one table, or None to record nothing about it.
+
+    @param asset           the DataTable asset's name, e.g. `DT_StatusEffects`
+    @param csv             the CSV it is built from, e.g. `StatusEffects.csv`
+    @param rows            how many rows it has now, or None if unknown
+    @param current_digest  the SHA-256 of the CSV as it is now
+    @param previous_entry  what the record already said about this table
+    @param saved           whether the asset was actually written to disk
+
+    THE POINT OF THIS FUNCTION IS THE `saved` ARGUMENT. Issue #587. The editor
+    can fail to write a `.uasset` -- the usual cause is the interactive editor
+    being open and holding the file, which makes Windows refuse the rename with
+    error code 32 -- and the generator recorded the new hash anyway. The record
+    then said the asset had been built from the current CSV when the asset on
+    disk was six days old, `tools/tests/test_datatable_assets_are_current.py`
+    passed over it, and the next run read the record, decided the table was
+    already current, and skipped it. The staleness became permanent and nothing
+    reported it.
+
+    SO A FAILED SAVE KEEPS THE PREVIOUS ENTRY RATHER THAN THE NEW ONE, and that
+    is deliberate rather than merely conservative. The previous entry is the
+    truthful account of what the asset on disk was built from. Keeping it means
+    the next run compares the current CSV against the OLD hash, sees they differ,
+    and rebuilds -- and means the Python test fails with the accurate message,
+    that this CSV changed since its asset was built, rather than with a vaguer
+    one about a missing entry.
+
+    A table that has never been built has no previous entry, so a first build
+    that fails to save records nothing at all. That is also correct: a table
+    missing from the record is one the next run rebuilds, and the test that
+    every table is recorded fails and names it.
+    """
+    if not saved:
+        return previous_entry
+
+    return {"asset": asset, "csv": csv, "rows": rows, "csv_sha256": current_digest}

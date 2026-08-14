@@ -213,6 +213,59 @@ class TestTheGeneratorStillWritesIt:
             f"{GENERATOR.name} writes its record somewhere other than "
             f"{RECORD.name}, which is what this file reads")
 
+    def test_it_checks_the_bytes_on_disk_before_recording_an_asset(self):
+        """Issue #587. The engine's own report of a save is not the last word.
+
+        The editor can fail to write a `.uasset` and carry on: an open
+        interactive editor holds the file, Windows refuses the rename with error
+        code 32, the failure reaches the log only as a warning, and the
+        commandlet exits normally. The generator recorded the new hash anyway,
+        which made every check in this file pass over an asset six days old.
+
+        The check that would have caught it regardless of what the engine said is
+        the file's own modification time and size, compared either side of the
+        import. This is a source check because the generator imports `unreal` and
+        cannot be imported here.
+        """
+        source = GENERATOR.read_text(encoding="utf-8")
+        for name in ("def stat_of(", "def save_problem("):
+            assert name in source, (
+                f"{GENERATOR.name} no longer has {name.split('(')[0][4:]}, so "
+                f"nothing compares the asset file on disk before and after the "
+                f"import and {RECORD.name} can record an asset the editor "
+                f"failed to write. Issue #587.")
+
+    def test_a_run_that_could_not_write_an_asset_stops_and_says_which(self):
+        """Reporting success for work that did not happen is the fault here.
+
+        The run that produced issue #587 printed "rebuilt 1 DataTable assets",
+        exited 0, and left the asset untouched. `main` must call `fail`, which
+        logs an error and raises `SystemExit(1)`, with the message that names the
+        assets it could not write.
+        """
+        tree = ast.parse(GENERATOR.read_text(encoding="utf-8"))
+
+        main = next((node for node in ast.walk(tree)
+                     if isinstance(node, ast.FunctionDef) and node.name == "main"),
+                    None)
+        assert main is not None, f"{GENERATOR.name} no longer has a main()"
+
+        def calls_named(node) -> set[str]:
+            return {inner.func.id for inner in ast.walk(node)
+                    if isinstance(inner, ast.Call)
+                    and isinstance(inner.func, ast.Name)}
+
+        failing = [node for node in ast.walk(main)
+                   if isinstance(node, ast.Call)
+                   and isinstance(node.func, ast.Name) and node.func.id == "fail"
+                   and any("unwritten_assets_message" in calls_named(argument)
+                           for argument in node.args)]
+
+        assert failing, (
+            "main() in {} does not call fail(unwritten_assets_message(...)), so "
+            "a run that could not write an asset reports success and exits 0. "
+            "That is what happened in issue #587.".format(GENERATOR.name))
+
     def test_the_two_hashes_are_computed_the_same_way(self):
         """Both sides must normalise line endings before hashing.
 

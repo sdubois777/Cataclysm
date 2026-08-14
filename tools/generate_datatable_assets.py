@@ -40,12 +40,22 @@ one carried the change. Set the environment variable named by
 `REBUILD_ALL_VARIABLE` in `tools/datatable_freshness.py` to rebuild every asset
 regardless.
 
-AND A RECORD OF WHAT EACH ASSET WAS BUILT FROM, written at the end of a
-successful run. See RECORD_FILE. That automation test is correct and complete
-and needs the engine to run, so nothing on a pull request runs it: continuous
-integration runs the Python tests only. Two pull requests changed a CSV without
-running this script, and both merged. Issue #226 is that gap; the record is the
-part of it a Python test can check.
+AND A RECORD OF WHAT EACH ASSET WAS BUILT FROM, written at the end of the run.
+See RECORD_FILE. That automation test is correct and complete and needs the
+engine to run, so nothing on a pull request runs it: continuous integration runs
+the Python tests only. Two pull requests changed a CSV without running this
+script, and both merged. Issue #226 is that gap; the record is the part of it a
+Python test can check.
+
+ONLY ASSETS THAT REACHED DISK GO INTO THAT RECORD, as of issue #587. The editor
+can fail to write a `.uasset` and carry on: an open interactive editor holds the
+file, Windows refuses the rename with error code 32, the failure is logged as a
+warning, and the commandlet exits normally. This script used to record the new
+hash anyway, which made the record lie, made the Python test pass over a stale
+asset, and made the NEXT run skip the table as already current. Each import is
+now checked against the bytes on disk, a table that did not get written keeps
+whatever the record said about it before, and the run exits non-zero naming the
+asset.
 """
 
 import hashlib
@@ -62,6 +72,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from datatable_freshness import (  # noqa: E402
     REBUILD_ALL_VARIABLE,
+    entry_for_table,
     needs_rebuilding,
     rebuild_everything,
 )
@@ -137,6 +148,39 @@ def csv_dir():
     return os.path.join(unreal.Paths.project_dir(), "Data")
 
 
+def asset_file(asset_name):
+    """Where one table's `.uasset` sits on disk.
+
+    `/Game/` is the project's `Content/` folder. This project has no plugin
+    content, so that mapping is the whole of it.
+
+    NEEDED BECAUSE THE ENGINE'S OWN REPORT OF A SAVE IS NOT THE LAST WORD. See
+    `stat_of`.
+    """
+    content = unreal.Paths.convert_relative_path_to_full(
+        unreal.Paths.project_content_dir())
+    inside_content = DATA_DIR[len("/Game/"):]
+    return os.path.join(content, inside_content, asset_name + ".uasset")
+
+
+def stat_of(path):
+    """A file's modification time and size, or None when it is not there.
+
+    WHAT THIS IS FOR. Issue #587. Comparing this before and after an import is
+    direct evidence about the bytes on disk, and it is independent of everything
+    the engine reports. In the run that produced that issue the editor logged the
+    save failure only as a warning, the commandlet exited normally, and the file
+    was left untouched: still 17,240 bytes, still dated six days earlier. A pair
+    that has not moved means the write did not happen, whatever anything else
+    says.
+    """
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    return (info.st_mtime, info.st_size)
+
+
 def row_struct(name):
     """The ScriptStruct for a row type, checked rather than assumed.
 
@@ -152,7 +196,14 @@ def row_struct(name):
 
 
 def import_table(asset_name, csv_file, struct_name):
-    """Builds one DataTable asset from one CSV, replacing any existing one."""
+    """Build one DataTable asset from one CSV, replacing any existing one.
+
+    Returns (asset path, row count, problem). `problem` is None when the asset
+    reached disk, and otherwise says in words why it did not. It is not raised
+    here: a save that failed for one table says nothing about the next one, and
+    the run is more useful if it tries them all and then reports every table it
+    could not write.
+    """
     path = os.path.join(csv_dir(), csv_file)
     if not os.path.isfile(path):
         fail("{} does not exist. Run tools/generate_datatables.py first."
@@ -172,6 +223,11 @@ def import_table(asset_name, csv_file, struct_name):
     task.replace_existing = True
     task.save = True
 
+    # BEFORE THE IMPORT, so that "the file did not change" can be told from "the
+    # file was already like that". Issue #587.
+    on_disk = asset_file(asset_name)
+    was = stat_of(on_disk)
+
     asset_tools.import_asset_tasks([task])
 
     full = "{}/{}.{}".format(DATA_DIR, asset_name, asset_name)
@@ -184,7 +240,40 @@ def import_table(asset_name, csv_file, struct_name):
         fail("{} imported with no rows at all. The row struct {} probably does "
              "not match the CSV's columns.".format(csv_file, struct_name))
 
-    return full, rows
+    return full, rows, save_problem(asset_name, on_disk, was)
+
+
+def save_problem(asset_name, on_disk, was):
+    """Why the asset did not reach disk, or None when it did. Issue #587.
+
+    TWO INDEPENDENT CHECKS, because either one alone has been enough to be
+    fooled.
+
+    The first is the engine's own answer. `task.save = True` above has already
+    tried once; asking the subsystem to save again costs nothing when that
+    worked, because a package that is not dirty is not written a second time,
+    and it retries and reports honestly when it did not.
+
+    The second is the file itself. That is the check that would have caught the
+    run in issue #587 whatever the engine had said, because in that run the
+    failure reached the log only as a warning under `LogFileManager` and
+    `LogSavePackage`, the commandlet exited normally, and the bytes on disk never
+    moved.
+    """
+    if not editor_assets.save_asset("{}/{}".format(DATA_DIR, asset_name),
+                                    only_if_is_dirty=True):
+        return ("the editor reported that it could not save {}"
+                .format(os.path.basename(on_disk)))
+
+    now = stat_of(on_disk)
+    if now is None:
+        return "{} is not on disk after the import".format(on_disk)
+    if now == was:
+        return ("{} was not written: it is still {} bytes with the same "
+                "modification time it had before the import"
+                .format(os.path.basename(on_disk), now[1]))
+
+    return None
 
 
 def csv_digest(csv_file):
@@ -206,11 +295,21 @@ def csv_digest(csv_file):
             handle.read().replace(b"\r\n", b"\n")).hexdigest()
 
 
-def write_record(rows_by_asset):
-    """Record what each asset was just built from. See RECORD_FILE.
+def write_record(entries):
+    """Record what each asset was built from. See RECORD_FILE.
 
-    Written only after every import has succeeded, so a run that failed part way
-    through does not leave a record claiming otherwise.
+    @param entries  one entry per table whose asset is on disk, already in the
+        order of TABLES. A table whose asset could not be written is not in this
+        list, so the record keeps whatever it said about that table before, or
+        says nothing about it if it never had an entry. `entry_for_table` in
+        `tools/datatable_freshness.py` makes that decision and explains it.
+
+    WRITTEN EVEN WHEN A SAVE FAILED, which is a change from issue #587. Not
+    writing it at all would leave the record still naming the OLD hashes for the
+    tables this run did rebuild successfully, so the next run would rebuild those
+    again for nothing. Writing it with the failed table's previous entry left
+    alone records the truth about every table: the ones that were written, and
+    the one that was not.
     """
     record = {
         "what_this_is": (
@@ -219,15 +318,7 @@ def write_record(rows_by_asset):
             "at the time it was built. tools/tests/"
             "test_datatable_assets_are_current.py fails when a CSV has changed "
             "since. Regenerate with the command in game/README.md."),
-        "tables": [
-            {
-                "asset": asset_name,
-                "csv": csv_file,
-                "rows": rows_by_asset[asset_name],
-                "csv_sha256": csv_digest(csv_file),
-            }
-            for asset_name, csv_file, _ in TABLES
-        ],
+        "tables": entries,
     }
 
     path = os.path.join(csv_dir(), RECORD_FILE)
@@ -278,7 +369,8 @@ def main():
     total = 0
     built = 0
     skipped = 0
-    rows_by_asset = {}
+    entries = []
+    problems = []
 
     for asset_name, csv_file, struct_name in TABLES:
         entry = previous.get(asset_name) or {}
@@ -289,9 +381,10 @@ def main():
         # record without one is a record this run cannot complete, so it is
         # treated the same as no record at all.
         recorded_rows = entry.get("rows")
+        digest = csv_digest(csv_file)
 
         rebuild, reason = needs_rebuilding(
-            current_digest=csv_digest(csv_file),
+            current_digest=digest,
             recorded_digest=entry.get("csv_sha256"),
             asset_exists=editor_assets.does_asset_exist(full),
             force=force or recorded_rows is None)
@@ -299,26 +392,67 @@ def main():
         if not rebuild:
             log("skipped {} -- {} ({} rows)"
                 .format(asset_name, reason, recorded_rows))
-            rows_by_asset[asset_name] = recorded_rows
+            entries.append(entry)
             total += recorded_rows
             skipped += 1
             continue
 
-        full, rows = import_table(asset_name, csv_file, struct_name)
-        log("imported {} from {} with {} rows -- {}"
-            .format(full, csv_file, rows, reason))
-        rows_by_asset[asset_name] = rows
-        total += rows
-        built += 1
+        full, rows, problem = import_table(asset_name, csv_file, struct_name)
+        if problem is None:
+            log("imported {} from {} with {} rows -- {}"
+                .format(full, csv_file, rows, reason))
+            total += rows
+            built += 1
+        else:
+            unreal.log_error("FAILED TO SAVE {} -- {}".format(asset_name, problem))
+            problems.append((asset_name, problem))
+
+        recorded = entry_for_table(
+            asset=asset_name, csv=csv_file, rows=rows, current_digest=digest,
+            previous_entry=previous.get(asset_name), saved=problem is None)
+        if recorded is not None:
+            entries.append(recorded)
 
     editor_assets.save_directory(DATA_DIR, recursive=True)
-    write_record(rows_by_asset)
+    write_record(entries)
 
     # BOTH COUNTS, ALWAYS. "skipped 14" and "did nothing because it crashed"
     # look identical unless the run says which it was.
     log("rebuilt {} DataTable assets and left {} already current, {} rows in "
         "total across {}".format(built, skipped, total, DATA_DIR))
+
+    if problems:
+        fail(unwritten_assets_message(problems))
+
     log("done")
+
+
+def unwritten_assets_message(problems):
+    """What to say when the editor could not write an asset. Issue #587.
+
+    IT NAMES THE CAUSE, because in this project there is one common cause and
+    the reader has no way to guess it from a Windows error number. The
+    interactive editor holds a `.uasset` open, usually because that data table is
+    open in an editor window, and Windows then refuses to rename the file. It is
+    the same class of problem as `Build.bat` refusing to run while the editor is
+    open, which `CLAUDE.md` and `game/README.md` already record.
+    """
+    lines = ["{} DataTable asset(s) were NOT written:".format(len(problems))]
+    lines += ["  {} -- {}".format(asset, why) for asset, why in problems]
+    lines += [
+        "",
+        "The record in game/Data/{} was left saying what those assets were "
+        "really built from, so they are still marked as needing a rebuild and "
+        "tools/tests/test_datatable_assets_are_current.py will fail until they "
+        "are.".format(RECORD_FILE),
+        "",
+        "CLOSE THE UNREAL EDITOR AND RUN THIS AGAIN. An open editor holds the "
+        "asset file, and Windows refuses the rename with error code 32, 'the "
+        "process cannot access the file because it is being used by another "
+        "process'. Whether it happens depends on which assets the editor has "
+        "loaded, so a run that worked yesterday is not evidence.",
+    ]
+    return "\n".join(lines)
 
 
 main()
