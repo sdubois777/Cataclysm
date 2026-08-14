@@ -38,6 +38,12 @@
       "csv_sha256": "7d2d78da27e4f189c7b7bbe7ca3ac4ec75d2b2c528156d1a4a8126605e3e9a4f"
     },
     {
+      "asset": "DT_ElementVisuals",
+      "csv": "ElementVisuals.csv",
+      "rows": 8,
+      "csv_sha256": "610b18d95ab301584e75d0b493147d68eee84afecade9f3c2a1988253f132967"
+    },
+    {
       "asset": "DT_EnchantmentsNegative",
       "csv": "EnchantmentsNegative.csv",
       "rows": 195,

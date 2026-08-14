@@ -954,6 +954,126 @@ def attributes(book) -> list[dict]:
     return unique(out, "Attributes")
 
 
+#: The prefix every damage type's tag carries. The eight are declared on the
+#: Tags sheet and generated into game/Config/Tags/CataclysmTags.ini.
+ELEMENT_TAG_PREFIX = "Element."
+
+#: The three material scales, and what one of them being 1.0 means: leave the
+#: Niagara system's own authored value alone. None of them may be zero or
+#: negative -- see the check in `element_visuals`.
+ELEMENT_SCALES = ("EmissiveMultiplier", "SpawnRateScale", "VelocityScale")
+
+
+def srgb_to_linear(channel: int) -> float:
+    """One 0-255 sRGB channel as linear 0-1, the same curve the engine uses.
+
+    The same function as `srgb_to_linear` in tools/generate_telegraph_material.py
+    and as `FLinearColor::FromSRGBColor`, which is what
+    ACataclysmTelegraphMarker::ResolveColour calls on the design document's hex.
+    """
+    c = channel / 255.0
+    if c <= 0.04045:
+        return c / 12.92
+    return ((c + 0.055) / 1.055) ** 2.4
+
+
+def linear_colour(value, field: str, where: str) -> str:
+    """A design document sRGB hex as the text Unreal imports into FLinearColor.
+
+    THE DESIGN STATES sRGB AND THE ENGINE WANTS LINEAR. Section XIII writes
+    `#FF7A2E` because that is what a colour picker shows; an FLinearColor is
+    linear, so a material fed the raw 0-255 figures divided by 255 renders a
+    visibly different colour from the one that was designed. The conversion
+    happens here so the workbook keeps the notation a person can copy straight
+    out of the design document.
+
+    THE LENGTH IS NOT ENOUGH ON ITS OWN. That was a real bug in this project:
+    `FColor::FromHex` does not report bad input, and the word "nonsense" is
+    eight characters, so a length-only check accepted it and produced a colour
+    nobody asked for. Every character is checked here for the same reason.
+    """
+    text = clean(value).lstrip("#")
+    if not re.fullmatch(r"[0-9A-Fa-f]{6}", text):
+        raise DataError(
+            f"{where}: {field} is {clean(value)!r}, which is not six hex digits "
+            "with an optional leading hash. Section XIII of "
+            "docs/Cataclysm_GDD_v2.md states every one of these as sRGB hex.")
+
+    channels = (int(text[i:i + 2], 16) for i in (0, 2, 4))
+    red, green, blue = (srgb_to_linear(c) for c in channels)
+    return (f"(R={red:.6f},G={green:.6f},B={blue:.6f},A=1.000000)")
+
+
+def element_visuals(book) -> list[dict]:
+    """What each damage type's effects look like. Source: Element Visuals.
+
+    WHY THIS SHEET EXISTS. Issue #549. The eight damage types have an effect
+    palette, settled by the project owner and recorded in section XIII of
+    docs/Cataclysm_GDD_v2.md, and nothing in the game could read it. Section 5
+    of docs/Niagara_Conventions.md specifies this table: eight rows against the
+    existing tags, so one Niagara system serves all eight damage types instead
+    of eight copies of it. Eight shapes times eight damage types is 64 assets
+    built the wrong way and 8 assets plus 8 rows built this one.
+
+    THE ROW KEY IS THE TAG'S LEAF, so `Element.Demonic` keys the row `Demonic`
+    and anything holding a tag can reach its row without a lookup table.
+
+    BRIGHTNESS IS NOT CHECKED HERE, deliberately, and this is the one thing
+    about this table that is easy to get wrong twice. The design's readability
+    rule -- a world surface may not exceed 30% brightness, an effect's primary
+    may not fall below 60% -- is already enforced against the design document by
+    tools/tests/test_effect_palette_stays_readable.py, and this table is pinned
+    to that same document by
+    tools/tests/test_element_visuals_match_the_design.py. So the rule reaches
+    this table through those two, and a second copy of the CIE lightness formula
+    here would be a second thing to keep in step for no extra coverage.
+    """
+    rows = list(book["Element Visuals"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Element Visuals")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        tag = _cell(raw, headers, "Element Tag")
+        if not tag:
+            continue
+
+        where = f"Element Visuals row {index} ({tag})"
+        if not tag.startswith(ELEMENT_TAG_PREFIX):
+            raise DataError(
+                f"{where}: the key is {tag!r}, and this table is keyed by a "
+                f"damage type's tag, so it must start with "
+                f"{ELEMENT_TAG_PREFIX!r}.")
+
+        entry = {
+            "Name": row_name(tag[len(ELEMENT_TAG_PREFIX):]),
+            "ElementTag": tag,
+            "PrimaryColour": linear_colour(
+                _cell(raw, headers, "Primary"), "Primary", where),
+            "SecondaryColour": linear_colour(
+                _cell(raw, headers, "Secondary"), "Secondary", where),
+        }
+
+        # A SCALE OF ZERO IS A FORGOTTEN NUMBER, NOT A DECISION, and each of the
+        # three fails in a way that looks like a broken effect rather than like
+        # bad data: no particles at all, particles that never move, or an effect
+        # rendered black. That is the shape of issue #155, where a cooldown of
+        # zero went unnoticed across 77 skills because zero read as a value.
+        for column, field in zip(("Emissive Multiplier", "Spawn Rate Scale",
+                                  "Velocity Scale"), ELEMENT_SCALES,
+                                 strict=True):
+            scale = number(_cell(raw, headers, column), column, index)
+            if scale <= 0:
+                raise DataError(
+                    f"{where}: {column} is {scale}. A scale of zero or less "
+                    "makes the effect invisible rather than neutral; 1.0 is "
+                    "what leaves the Niagara system's own value alone.")
+            entry[field] = scale
+
+        out.append(entry)
+
+    return unique(out, "Element Visuals")
+
+
 # --------------------------------------------------------------------------
 # the enemy tables, which come from the Python model rather than the workbook
 
@@ -1120,6 +1240,7 @@ TABLES = {
     "ClassStats": class_stats,
     "Attributes": attributes,
     "SkillSlots": skill_slots,
+    "ElementVisuals": element_visuals,
 }
 
 #: Tables built from sim/cataclysm_sim/enemy_stats.py rather than the workbook.
@@ -1144,12 +1265,16 @@ def render_csv(rows: list[dict]) -> str:
     return buffer.getvalue()
 
 
+def declared_tags(book) -> set[str]:
+    """Exactly what the Tags sheet declares, with no implied parents."""
+    return {clean(r[0]) for r in book["Tags"].iter_rows(values_only=True)
+            if r and clean(r[0])} - {"Tag Name"}
+
+
 def known_tags(book) -> set[str]:
     """Every declared tag plus the parents Unreal creates implicitly."""
-    declared = {clean(r[0]) for r in book["Tags"].iter_rows(values_only=True)
-                if r and clean(r[0])} - {"Tag Name"}
     known: set[str] = set()
-    for tag in declared:
+    for tag in declared_tags(book):
         parts = tag.split(".")
         for i in range(1, len(parts) + 1):
             known.add(".".join(parts[:i]))
@@ -1331,6 +1456,43 @@ def validate_stat_names(tables: dict[str, list[dict]]) -> list[str]:
             for stat in sorted(from_attributes - from_classes - RATE_STATS)]
 
 
+def validate_element_visuals(tables: dict[str, list[dict]],
+                             declared: set[str]) -> list[str]:
+    """Every damage type has exactly one effect palette row, and no row invents
+    a damage type.
+
+    BOTH DIRECTIONS MATTER AND THE FIRST IS THE QUIET ONE. A damage type with no
+    row is a skill whose effects fall back to whatever the Niagara system was
+    authored with, so every Void skill would look like whichever damage type the
+    artist happened to build the system against. Nothing would report it: the
+    table would load, the lookup would miss, and the effect would still play.
+
+    Cross-checked against the Tags sheet rather than against a list written
+    here, so adding a ninth damage type to the design needs no change in this
+    file -- it fails generation until the palette row exists.
+    """
+    rows = tables.get("ElementVisuals")
+    if not rows:
+        return []
+
+    wanted = {tag for tag in declared if tag.startswith(ELEMENT_TAG_PREFIX)}
+    have = {row["ElementTag"] for row in rows}
+
+    problems = [
+        f"ElementVisuals: {tag} is a declared damage type with no effect "
+        f"palette row, so its effects would take whatever colour the Niagara "
+        f"system was authored with"
+        for tag in sorted(wanted - have)
+    ]
+    problems += [
+        f"ElementVisuals/{row['Name']}: ElementTag {row['ElementTag']!r} is not "
+        f"declared on the Tags sheet. The declared damage types are "
+        f"{sorted(wanted)}."
+        for row in rows if row["ElementTag"] not in wanted
+    ]
+    return problems
+
+
 def validate_weights(tables: dict[str, list[dict]]) -> list[str]:
     problems = []
     for table, rows in tables.items():
@@ -1379,7 +1541,8 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_affix_slots(tables)
                 + validate_weapon_skill_types(tables)
                 + validate_skill_effects(tables)
-                + validate_hybrid_parts(tables))
+                + validate_hybrid_parts(tables)
+                + validate_element_visuals(tables, declared_tags(book)))
     if problems:
         print(f"FAIL: {len(problems)} validation problem(s):", file=sys.stderr)
         for line in problems[:40]:

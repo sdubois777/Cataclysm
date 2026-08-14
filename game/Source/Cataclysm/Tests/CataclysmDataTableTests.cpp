@@ -127,6 +127,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Cataclysm Boss, matching scoring.RARITY_WEIGHTS. There is no "Rare": the
 	// design document's older list is superseded, which is issue #30.
 	CHECK_TABLE(FCataclysmEnemyRarityRow,       "EnemyRarities.csv",           6)
+	// 8: one per damage type, and it is the same eight for good. The generator
+	// refuses to build this table unless every Element.* tag on the workbook's
+	// Tags sheet has exactly one row, so a ninth damage type raises this number
+	// and a missing one fails generation before it reaches here.
+	CHECK_TABLE(FCataclysmElementVisualRow,     "ElementVisuals.csv",          8)
 
 	#undef CHECK_TABLE
 
@@ -273,6 +278,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_ClassStats"),            TEXT("ClassStats.csv") },
 		{ TEXT("DT_CraftingMaterials"),     TEXT("CraftingMaterials.csv") },
 		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
+		{ TEXT("DT_ElementVisuals"),        TEXT("ElementVisuals.csv") },
 		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },
 		{ TEXT("DT_EnchantmentsPositive"),  TEXT("EnchantmentsPositive.csv") },
 		{ TEXT("DT_EnemyArchetypes"),       TEXT("EnemyArchetypes.csv") },
@@ -457,6 +463,152 @@ bool FCataclysmItemBaseMaxDamageTypesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the table has one-handed weapons"), OneHanders > 0);
 	TestTrue(TEXT("the table has two-handed weapons"), TwoHanders > 0);
 	TestTrue(TEXT("the table has bases that are not weapons"), NotWeapons > 0);
+
+	return true;
+}
+
+/**
+ * The effect palette arrives in the engine as colours and tags, not as defaults.
+ *
+ * WHAT THIS ADDS THAT THE PYTHON TESTS CANNOT. Two things, and both need the
+ * engine.
+ *
+ * FIRST, THE TYPES. FCataclysmElementVisualRow is the only row struct in this
+ * project holding an FLinearColor or an FGameplayTag, and both are imported from
+ * text by code that reports nothing when it fails: a cell Unreal cannot parse
+ * leaves the property at its C++ default and the row still imports. Comparing
+ * CSV headers against property names, which is what
+ * tools/tests/test_csv_columns_match_their_row_structs.py does, cannot see that
+ * -- the names match perfectly and the values are gone. So every default on that
+ * struct is deliberately a value the table never carries, and this test is what
+ * makes that arrangement worth having.
+ *
+ * SECOND, THE CONVERSION. tools/generate_datatables.py converts the design
+ * document's sRGB hex to linear in Python. The engine has its own conversion,
+ * FLinearColor::FromSRGBColor, which is what ACataclysmTelegraphMarker uses on
+ * the same document's hex. Those are two implementations of one curve, and
+ * nothing compared them until here. One row is checked in full against the
+ * engine's own function, which is all it takes to catch a curve that disagrees;
+ * tools/tests/test_element_visuals_match_the_design.py pins all eight rows to
+ * the design document, so the palette itself is covered there and is not copied
+ * into this file.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmElementVisualsTest,
+	"Cataclysm.Data.ElementVisualsCarryTheDesignedValues",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmElementVisualsTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table = LoadObject<UDataTable>(
+		nullptr, TEXT("/Game/Data/DT_ElementVisuals.DT_ElementVisuals"));
+	if (!Table)
+	{
+		AddError(TEXT("DT_ElementVisuals does not exist. Run "
+					  "tools/generate_datatable_assets.py through "
+					  "tools/run_editor_python.py."));
+		return false;
+	}
+
+	// The CSV is written to six decimal places, so the engine's own conversion
+	// and the generator's agree to about a millionth. A tolerance and not an
+	// equality for that reason alone.
+	const float Tolerance = 1.0e-4f;
+
+	const TCHAR* ElementPrefix = TEXT("Element.");
+
+	TSet<FString> PrimariesSeen;
+	int32 Checked = 0;
+
+	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+	{
+		const FCataclysmElementVisualRow* Row =
+			reinterpret_cast<const FCataclysmElementVisualRow*>(Pair.Value);
+		const FString Key = Pair.Key.ToString();
+
+		// An FGameplayTag that failed to import, or that names something the
+		// engine does not declare, is invalid. A skill asking an invalid tag for
+		// its colours matches no row and still plays, with no complaint.
+		if (!Row->ElementTag.IsValid())
+		{
+			AddError(FString::Printf(
+				TEXT("row %s has no valid ElementTag, so nothing holding a "
+					 "damage type tag can find it."), *Key));
+			continue;
+		}
+
+		const FString TagText = Row->ElementTag.ToString();
+		TestTrue(FString::Printf(TEXT("%s is keyed on a damage type"), *Key),
+			TagText.StartsWith(ElementPrefix));
+
+		// The row key is the tag's leaf, which is what lets anything holding a
+		// tag reach its row without a second lookup table.
+		FString Leaf;
+		TagText.Split(TEXT("."), nullptr, &Leaf, ESearchCase::CaseSensitive,
+					  ESearchDir::FromEnd);
+		TestEqual(FString::Printf(
+			TEXT("row %s is named after the leaf of %s"), *Key, *TagText),
+			Leaf, Key);
+
+		// EVERY ROW HAVING A DIFFERENT PRIMARY IS THE CHECK THAT CATCHES THE
+		// WHOLE TABLE FAILING TO IMPORT. Eight rows all sitting on the struct's
+		// white default would pass every per-row check that only asks whether a
+		// colour is present.
+		const FString Primary = Row->PrimaryColour.ToString();
+		TestFalse(FString::Printf(
+			TEXT("%s has a primary colour no other damage type has"), *Key),
+			PrimariesSeen.Contains(Primary));
+		PrimariesSeen.Add(Primary);
+
+		// The secondary's job is to stay readable where the primary matches the
+		// floor, which it can only do by being much darker.
+		TestTrue(FString::Printf(
+			TEXT("%s's secondary is darker than its primary"), *Key),
+			Row->SecondaryColour.GetLuminance() < Row->PrimaryColour.GetLuminance());
+
+		// 1.0 and not 0.0. The struct defaults these to zero precisely so that
+		// this assertion can fail: the generator refuses a zero, so a row
+		// reading zero here did not import.
+		TestEqual(FString::Printf(TEXT("%s emissive multiplier"), *Key),
+			Row->EmissiveMultiplier, 1.0f, Tolerance);
+		TestEqual(FString::Printf(TEXT("%s spawn rate scale"), *Key),
+			Row->SpawnRateScale, 1.0f, Tolerance);
+		TestEqual(FString::Printf(TEXT("%s velocity scale"), *Key),
+			Row->VelocityScale, 1.0f, Tolerance);
+
+		++Checked;
+	}
+
+	// Without this the loop above passes on an empty table, which is what a
+	// stale or unbuilt asset actually looks like.
+	TestEqual(TEXT("every damage type was checked"), Checked, 8);
+
+	// The two conversions compared. Demonic, from the effect palette table in
+	// section XIII of docs/Cataclysm_GDD_v2.md.
+	const FCataclysmElementVisualRow* Demonic =
+		Table->FindRow<FCataclysmElementVisualRow>(
+			FName(TEXT("Demonic")), TEXT("ElementVisuals conversion check"));
+	if (!Demonic)
+	{
+		AddError(TEXT("DT_ElementVisuals has no row named Demonic."));
+		return false;
+	}
+
+	const FLinearColor ExpectedPrimary =
+		FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("FF7A2E")));
+	const FLinearColor ExpectedSecondary =
+		FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3A0A02")));
+
+	TestTrue(FString::Printf(
+		TEXT("Demonic's primary is #FF7A2E converted to linear. Expected %s, "
+			 "got %s"), *ExpectedPrimary.ToString(),
+		*Demonic->PrimaryColour.ToString()),
+		Demonic->PrimaryColour.Equals(ExpectedPrimary, Tolerance));
+
+	TestTrue(FString::Printf(
+		TEXT("Demonic's secondary is #3A0A02 converted to linear. Expected %s, "
+			 "got %s"), *ExpectedSecondary.ToString(),
+		*Demonic->SecondaryColour.ToString()),
+		Demonic->SecondaryColour.Equals(ExpectedSecondary, Tolerance));
 
 	return true;
 }
