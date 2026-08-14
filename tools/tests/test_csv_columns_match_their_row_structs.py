@@ -61,9 +61,22 @@ BASE = "FTableRowBase"
 #: in every CSV and in no struct.
 KEY_COLUMN = "Name"
 
-#: Below this, assume the parser broke rather than that the project shrank. The
-#: project has fourteen structs today and has never had fewer than ten.
-FEWEST_CREDIBLE_STRUCTS = 10
+def fewest_credible_structs(tables) -> int:
+    """Below this many parsed structs, assume the parser broke.
+
+    DERIVED RATHER THAN CHOSEN, since issue #550. This was a hand-picked 10,
+    written when the header held fourteen structs, and it stayed 10 while the
+    header grew to sixteen. A floor of 10 against 16 means the parser could stop
+    matching six of them and every test in this file would still pass, having
+    compared only the ten it happened to find. That is the exact failure the
+    floor exists to catch.
+
+    Every struct `TABLES` names has to be declared in the header --
+    `test_every_table_names_a_struct_that_exists` asserts precisely that -- so
+    the count of distinct structs it names is a floor that is correct by
+    construction and rises on its own when a table is added.
+    """
+    return len({struct for _asset, _csv_file, struct in tables})
 
 
 def read_structs() -> dict[str, list[str]]:
@@ -133,7 +146,7 @@ def csv_columns(csv_file: str) -> list[str]:
 # the guard on the parser itself
 # --------------------------------------------------------------------------
 
-def test_the_parser_actually_found_the_structs(structs) -> None:
+def test_the_parser_actually_found_the_structs(structs, tables) -> None:
     """Without this, a broken regular expression makes the whole file vacuous.
 
     Every test below iterates over what the parser produced. If it produced
@@ -141,10 +154,12 @@ def test_the_parser_actually_found_the_structs(structs) -> None:
     coverage while providing none. So the parser's own output is asserted first:
     enough structs, and every one of them with properties in it.
     """
-    assert len(structs) >= FEWEST_CREDIBLE_STRUCTS, (
+    floor = fewest_credible_structs(tables)
+    assert len(structs) >= floor, (
         f"only {len(structs)} row struct(s) were parsed out of "
-        f"{ROW_HEADER.name}: {sorted(structs)}. The project has more than that, "
-        "so the parser in this file has stopped matching the header's layout. "
+        f"{ROW_HEADER.name}: {sorted(structs)}. The generator's TABLES names "
+        f"{floor} distinct struct(s), all of which must be declared there, so "
+        "the parser in this file has stopped matching the header's layout. "
         "Every other test here would pass without comparing anything.")
 
     empty = sorted(name for name, props in structs.items() if not props)

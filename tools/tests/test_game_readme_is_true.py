@@ -95,7 +95,9 @@ def test_the_readme_does_not_say_the_ability_system_is_missing() -> None:
 
 
 def test_the_readme_does_not_say_the_content_folder_is_empty() -> None:
-    """`game/Content/` holds a map, fourteen data tables and the input assets."""
+    """`game/Content/` holds a map, the generated data tables and the input
+    assets. The count is read from disk below rather than stated here, because a
+    stated one goes stale every time a table is added. Issue #550."""
     assets = sorted(
         path.relative_to(GAME_DIR).as_posix()
         for suffix in ("*.uasset", "*.umap")
