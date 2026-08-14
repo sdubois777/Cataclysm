@@ -22,14 +22,16 @@ exist.
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 
 import pytest
 
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from run_editor_python import (  # noqa: E402
-    EDITOR_BOOKKEEPING_FILES,
     EDITOR_CMD,
     REQUIRED_MODULE_LIBRARIES,
     RUN_LOG,
@@ -222,12 +224,15 @@ def test_the_run_log_is_not_the_editors_own_log():
 # What the run left changed
 #
 # WHY THIS EXISTS. Issue #414. Running the editor dirties the working tree in
-# ways the script did not ask for: it rewrites game/Config/DefaultEditor.ini with
-# about 57 kilobytes of asset-viewer preview scene profiles, and it re-saves
-# assets it merely happened to load. Both are committed files and .uasset is
-# stored in git LFS, so an incidental re-save is a new binary object rather than
-# a readable diff. It was caught once by checking the working tree by hand before
-# committing, and would be very easy to miss.
+# ways the script did not ask for: it re-saves assets it merely happened to
+# load. .uasset is stored in git LFS, so an incidental re-save is a new binary
+# object rather than a readable diff. It was caught once by checking the working
+# tree by hand before committing, and would be very easy to miss.
+#
+# It also used to rewrite game/Config/DefaultEditor.ini with about 57 kilobytes
+# of asset-viewer preview scene profiles. That file is gitignored as of issue
+# #427 and can no longer reach this report at all, so the annotation that named
+# it went with it.
 # ---------------------------------------------------------------------------
 
 
@@ -243,13 +248,13 @@ class TestWhatTheRunChanged:
 
     def test_a_file_the_run_touched_is_reported(self):
         before = {}
-        after = {"game/Config/DefaultEditor.ini": " M"}
+        after = {"game/Config/DefaultEngine.ini": " M"}
 
         changed = changes_between(before, after)
-        assert changed == [("game/Config/DefaultEditor.ini", " M")]
+        assert changed == [("game/Config/DefaultEngine.ini", " M")]
 
         report = describe_changes(changed)
-        assert "game/Config/DefaultEditor.ini" in report
+        assert "game/Config/DefaultEngine.ini" in report
         assert "1 file(s) changed" in report
 
     def test_a_file_that_was_already_dirty_is_not_blamed_on_the_run(self):
@@ -277,16 +282,6 @@ class TestWhatTheRunChanged:
         assert changes_between(before, after) == [
             ("game/Content/Enemies/Demonic/Brute/AM_Brute_Stomp.uasset", " M")]
 
-    def test_the_editor_bookkeeping_file_is_named_as_such(self):
-        """It is the one entry that is never the script's own output.
-
-        Everything else in the report may be exactly what the generator was run
-        to produce, and the runner cannot tell. This one cannot be.
-        """
-        report = describe_changes([(EDITOR_BOOKKEEPING_FILES[0], " M")])
-        assert "editor bookkeeping" in report
-        assert "not your script" in report
-
     def test_a_binary_asset_is_flagged_as_unreviewable(self):
         """The whole reason an incidental re-save matters more than a text change."""
         for path in ("game/Content/Enemies/Demonic/Brute/ABP_Brute.uasset",
@@ -299,7 +294,7 @@ class TestWhatTheRunChanged:
 
     def test_the_report_says_how_to_discard_a_tracked_change(self):
         """A list with nothing to do about it is only half of a report."""
-        report = describe_changes([("game/Config/DefaultEditor.ini", " M")])
+        report = describe_changes([("game/Config/DefaultEngine.ini", " M")])
         assert "git checkout --" in report
         assert "git clean" not in report, (
             "a run that modified only tracked files was told how to remove an "
@@ -319,7 +314,7 @@ class TestWhatTheRunChanged:
 
     def test_a_run_with_both_kinds_is_given_both_commands(self):
         report = describe_changes([
-            ("game/Config/DefaultEditor.ini", " M"),
+            ("game/Config/DefaultEngine.ini", " M"),
             ("game/Content/Enemies/Demonic/Brute/AM_New.uasset", "??"),
         ])
         assert "git checkout --" in report
@@ -374,10 +369,61 @@ class TestWhatTheRunChanged:
         def refuse(*args, **kwargs):
             return subprocess.CompletedProcess(
                 args=[], returncode=128,
-                stdout=" M game/Config/DefaultEditor.ini\n",
+                stdout=" M game/Config/DefaultEngine.ini\n",
                 stderr="fatal: not a git repository")
 
         monkeypatch.setattr(run_editor_python.subprocess, "run", refuse)
         assert working_tree_state() == {}, (
             "a git that reported failure was believed anyway, so a run could "
             "report changes read out of a broken answer")
+
+
+# ---------------------------------------------------------------------------
+# The editor's own config file stays out of git
+# ---------------------------------------------------------------------------
+
+
+class TestTheEditorConfigFileIsNotCommitted:
+    """Issue #427.
+
+    `game/Config/DefaultEditor.ini` held one line,
+    `[/Script/UnrealEd.EditorEngine] bAllowMultiplePIEInstances=True`, and it did
+    nothing. The name appears nowhere in Unreal 5.8's source, so no UPROPERTY
+    could match it, and `UEditorEngine` is declared `UCLASS(config=Engine)` at
+    Engine/Source/Editor/UnrealEd/Classes/Editor/EditorEngine.h:399, so it reads
+    the Engine ini hierarchy rather than the Editor one. Two independent reasons
+    it could not take effect.
+
+    With that line gone the file has no content this project needs, and the
+    engine rewrites it with about 57 kilobytes of asset-viewer preview scene
+    profiles every interactive run. That was issue #414's noise.
+
+    WHAT WOULD BRING IT BACK. Somebody running the editor, seeing an untracked
+    file appear in a folder full of committed ones, and adding it. The ignore
+    rule stops `git add -A`; this catches a deliberate `git add -f`.
+    """
+
+    CONFIG = "game/Config/DefaultEditor.ini"
+
+    def _git(self, *arguments: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *arguments], cwd=REPO_ROOT,
+                              capture_output=True, text=True, check=False)
+
+    def test_it_is_not_tracked(self) -> None:
+        listed = self._git("ls-files", "--error-unmatch", self.CONFIG)
+        if listed.returncode == 128 and "not a git repository" in listed.stderr:
+            pytest.skip("not a git checkout")
+        assert listed.returncode != 0, (
+            f"{self.CONFIG} is tracked again. The engine rewrites it with about "
+            f"57 kilobytes of preview scene profiles on every interactive editor "
+            f"run, so it lands in whatever pull request is open at the time. "
+            f"Issues #414 and #427.")
+
+    def test_it_is_ignored(self) -> None:
+        ignored = self._git("check-ignore", "-q", self.CONFIG)
+        if ignored.returncode == 128:
+            pytest.skip("not a git checkout")
+        assert ignored.returncode == 0, (
+            f"{self.CONFIG} is not covered by .gitignore, so the next person to "
+            f"run the editor and type `git add -A` commits it. Issues #414 and "
+            f"#427.")
