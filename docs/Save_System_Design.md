@@ -73,6 +73,9 @@ this record is never deleted as a consequence of play.
 - **Offline or online flag**, set at creation, never changes, from #505
 - For a Solo Self-Found character only: its own private empire upgrade points and
   tree allocation, because it shares a tree with no other character at all
+- For a Solo Self-Found character only: its own private stash, 600 slots in six
+  tabs, for the same reason. An ordinary character's stash is in an account
+  record instead
 - Schema version
 
 ### Run record — discarded when the run ends
@@ -120,11 +123,19 @@ be enforced.
 | Offline Standard, not Solo Self-Found | The offline Standard account record | Shared offline Standard stash |
 | Offline Hardcore, not Solo Self-Found | The offline Hardcore account record | Shared offline Hardcore stash |
 | Offline Heretic, not Solo Self-Found | The offline Heretic account record | Shared offline Heretic stash |
-| Any mode, either population, **Solo Self-Found** | **None.** Its empire tree lives in its own character record | **None.** It has no stash |
+| Any mode, either population, **Solo Self-Found** | **None.** Its empire tree lives in its own character record | **Its own private stash**, 600 slots, shared with nobody. It lives in the same character record |
 
 **A Solo Self-Found character touches no account record at all.** That is the
 cleanest expression of the design rule, and it means the strictest mode is also
-the simplest to store: one file, self-contained.
+the simplest to store: one file, self-contained. The private stash does not
+change that, because it lives in the character record beside the private empire
+tree rather than in an account record.
+
+**It does make that file much larger**, and anybody implementing this should
+expect it. An ordinary character record holds 48 inventory slots and 18 equipped
+items; a Solo Self-Found one holds those plus 600 stash slots, so the worst case
+is about ten times the item data. Every one of those items carries its rolled
+affixes.
 
 ### The offline and online split
 

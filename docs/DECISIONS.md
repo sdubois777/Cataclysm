@@ -20,6 +20,96 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — A Solo Self-Found character gets its own 600-slot stash
+
+**Affects:** the Solo Self-Found table row, the Capital Services table and the
+Storage section of `Cataclysm_GDD_v2.md`, and the storage table and character
+record list in `Save_System_Design.md`. Applied. Issue #576.
+
+### The decision
+
+Asked while answering #325 about character deletion, the project owner said "that
+tree is individual per ssf character, same with their stash", and then confirmed,
+when shown the two places the design document said the opposite, that the
+document should follow **own private stash, 600 slots**: each Solo Self-Found
+character opens a stash of its own, the same size and shape as the shared one,
+shared with no other character at all — not with the others in its lethality
+mode, and not with another Solo Self-Found character.
+
+### What the document used to say
+
+Three places said it had none, and one implied it:
+
+- the Solo Self-Found table row: "No auction house, no shared stash"
+- the Storage section: "A Solo Self-Found character has no stash at all, which is
+  what its table row says, so everything it owns is carried"
+- the Capital Services table: Stash "(disabled in SSF)"
+- `Save_System_Design.md`'s storage table: "**None.** It has no stash"
+
+### The genre, which is not unanimous, and that is the finding
+
+The issue expected the genre to be unanimous that a self-found flag restricts
+trading and never storage, and said that if so, this design was the outlier. **It
+is not unanimous.** One shipped game does exactly what was decided here, and it is
+the closest comparison available.
+
+| Game | What its self-found flag does to storage | Source |
+| :-- | :-- | :-- |
+| Path of Exile | Restricts trading and partying only. SSF characters on an account still share stash space with each other. Official as of 2.6.0. | https://pathofexile.fandom.com/wiki/Solo_Self-Found |
+| Last Epoch, **Solo Account Found** | No grouping, no items from other players — but "you can still share your own items and materials with your other Solo Account Found characters". Storage untouched. | https://dotesports.com/last-epoch/news/what-does-solo-account-found-mean-in-last-epoch |
+| Last Epoch, **Solo Character Found** | All of the above **plus** it "prevents you from using your other characters' stash": "anything you find on a character can only be used and seen by that Character", and each character keeps its own stash. | https://thenaturehero.com/last-epoch-ssf/ |
+
+So Last Epoch ships both readings as two separate difficulty tiers, and the
+stricter one is the decision taken here. That is worth recording for two reasons.
+It means this rule has been played by real players rather than being invented,
+and it names what the mode is actually strict about: **who can reach an item, not
+how much of it can be put down.**
+
+What the research does not settle: whether Last Epoch's Solo Character Found
+stash is the same size as an ordinary one. One guide describes the per-character
+stash as six tabs of a 10 by 10 grid, which is the same shape this design already
+uses, but a secondary source is not enough to lean on and nothing here depends on
+it. Matching the shared stash exactly is a judgement, taken because a private
+stash of a different size would be a second number to tune for no stated reason.
+
+**The old design was the outlier, not the new one.** No game found in this survey
+removes storage from a self-found character. Removing the container entirely was
+this project's invention.
+
+### What this softens, and it is a real loss
+
+The design used "no stash at all" as part of why Solo Self-Found is the harsher
+choice. A character that carries everything has nowhere to put an item it cannot
+use yet, and with a dungeon floor costing a day, that pressure was real. Six
+hundred slots removes it. The mode keeps its two other constraints — no auction
+house and no shared storage of any kind — and those are what the promise is
+actually made of.
+
+### One argument had to be rewritten rather than only its facts corrected
+
+The Storage section derived the missing auction house from the missing stash: the
+market lists from the stash, a Solo Self-Found character has no stash, so it can
+have no market. The first half is still true and the second is not.
+
+The market follows from the mode's promise that nothing reaches this character
+from another player, which is a statement about trading and not about storage.
+**It never needed the storage argument**, which only looked load-bearing because
+both facts happened to be true at once. `tools/tests/test_storage.py` now asserts
+that the old derivation is gone and that its replacement is present, so neither
+can be dropped quietly.
+
+### Where it is stored
+
+The private stash lives in the character's own record, beside its private empire
+upgrade tree, so a Solo Self-Found character still touches no account record and
+its save file stays self-contained. That makes the file roughly ten times larger
+in item data than an ordinary character's: 600 stash slots against 48 inventory
+slots and 18 equipped items, every item carrying its rolled affixes.
+`Save_System_Design.md` says so, because it is the kind of thing that is only
+surprising once it is being implemented.
+
+---
+
 ## 2026-08-14 — Standing in burning ground for its whole life costs one hit of the skill that left it
 
 **Affects:** section V's rider list in `Cataclysm_GDD_v2.md`, the Weapon Skills

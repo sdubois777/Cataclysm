@@ -180,12 +180,37 @@ def test_it_says_what_the_stash_holds(storage):
         "the Storage section does not say what the stash can hold. Issue #305.")
 
 
-def test_it_says_a_character_has_no_private_stash(storage):
+def test_it_says_an_ordinary_character_has_no_private_stash(storage):
     """The fourth question. A reader who assumes a per-character stash exists
-    would design a save format with one in it."""
-    assert "A character has no private stash" in storage, (
+    would design a save format with one in it.
+
+    THE SENTENCE GAINED AN EXCEPTION ON 2026-08-14. Issue #576: a Solo
+    Self-Found character does have one. What it says about every other character
+    is unchanged, so this still asserts the same sentence and the test below
+    asserts the exception, rather than one loose test covering both.
+    """
+    assert "A character has no private stash, unless it is Solo Self-Found" in storage, (
         "the Storage section does not say whether a character has a stash of "
-        "its own separate from the shared one. It does not. Issue #305.")
+        "its own separate from the shared one. Ordinary characters do not; a "
+        "Solo Self-Found character does. Issues #305 and #576.")
+
+
+def test_it_says_a_solo_self_found_character_gets_a_private_stash(storage):
+    """Issue #576, decided by the project owner on 2026-08-14.
+
+    WHAT THIS SECTION USED TO SAY: "A Solo Self-Found character has no stash at
+    all, which is what its table row says, so everything it owns is carried."
+    That sentence is gone. A design document that says a mode has no storage,
+    when it has 600 slots of it, sends whoever builds the save format to leave
+    the container out.
+    """
+    assert "opens a private stash instead of a shared one" in storage, (
+        "the Storage section does not say that a Solo Self-Found character gets "
+        "a stash of its own. It gets 600 slots, shared with nobody. Issue #576.")
+
+    assert "has no stash at all" not in storage, (
+        "the Storage section still says a Solo Self-Found character has no "
+        "stash. It has a private one as of 2026-08-14. Issue #576.")
 
 
 def test_it_says_where_the_auction_house_lists_from(storage):
@@ -194,14 +219,28 @@ def test_it_says_where_the_auction_house_lists_from(storage):
         "the shared stash or from the carried inventory. Issue #305.")
 
 
-def test_it_explains_why_solo_self_found_loses_both_together(storage):
-    """The rule that makes the auction house answer more than an arbitrary
-    choice: a market can only offer what its stash can hold, so removing the
-    stash removes the market."""
-    assert "Solo Self-Found character loses both together" in storage, (
-        "the Storage section states where the auction house lists from without "
-        "connecting it to Solo Self-Found losing both. That connection is what "
-        "makes the answer follow from something. Issue #305.")
+def test_it_no_longer_derives_the_missing_market_from_the_missing_stash(storage):
+    """The argument that stopped following when the stash arrived. Issue #576.
+
+    It used to run: the market lists from the stash, a Solo Self-Found character
+    has no stash, so it can have no market. The first half is still true and the
+    second is not. The market follows instead from the mode's promise that
+    nothing reaches the character from another player, which is a statement about
+    trading rather than about storage, and it never needed the storage argument.
+
+    THIS IS THE CHECK ISSUE #576 ASKED FOR BY NAME: "whoever does this should
+    check whether the surrounding arguments still hold once the constraint is
+    gone, rather than only editing the sentences that state it".
+    """
+    assert "Solo Self-Found character loses both together" not in storage, (
+        "the Storage section still derives the missing auction house from the "
+        "missing stash. A Solo Self-Found character now has a stash, so that "
+        "argument no longer follows. Issue #576.")
+
+    assert "never needed the storage argument" in storage, (
+        "the Storage section dropped the old reasoning without saying what "
+        "replaces it, so a reader is left with an auction house rule that "
+        "follows from nothing. Issue #576.")
 
 
 # --------------------------------------------------------------------------
@@ -286,9 +325,15 @@ def test_it_carries_the_lethality_mode_partition(storage):
     assert "once per lethality mode" in storage, (
         "the Storage section describes the stash without saying it is held once "
         "per lethality mode. Issues #285 and #305.")
-    assert "no stash at all" in storage, (
-        "the Storage section does not say a Solo Self-Found character has no "
-        "stash. Issue #305.")
+    # THIS USED TO ASSERT "no stash at all", the Solo Self-Found exception as it
+    # read before issue #576 gave that character a private stash. The exception
+    # still has to be stated here, or a reader lands on "one stash per lethality
+    # mode" and takes it as covering everybody. What changed is what the
+    # exception says, not whether the section has to carry one.
+    assert "shared with no other character at all" in storage, (
+        "the Storage section states the lethality mode partition without saying "
+        "that a Solo Self-Found character sits outside it. It opens a private "
+        "stash instead. Issues #285, #305 and #576.")
 
 
 def test_it_says_the_number_is_a_tuning_value(storage):
