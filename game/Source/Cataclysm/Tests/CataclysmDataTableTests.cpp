@@ -79,19 +79,32 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 		{ AddError(Error); } \
 		else { TestEqual(TEXT(File) TEXT(" row count"), Rows, Expected); }
 
-	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      116)
+	// 117, not 116. The Corrupted Stalker was added for issue #504. It was the
+	// only dungeon modifier described in prose and missing from the data, and a
+	// modifier with no weight cannot contribute to a dungeon's Modifier Score.
+	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      117)
 	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          398)
+	// 379, not 380. The two minion count enchantments were merged into one for
+	// issue #339: the rarer of the two granted half as much, and they said the
+	// same thing in different words.
+	//
 	// 380, not 381. One weight 1 positive enchantment was removed: it read "Your
 	// block chance applies to AOE damage at 50% effectiveness", which became
 	// strictly harmful once block was decided to apply to area damage by
 	// default at full effectiveness.
-	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsPositive.csv",  380)
+	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsPositive.csv",  379)
 	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsNegative.csv",  195)
 	CHECK_TABLE(FCataclysmEnemyModifierRow,     "EnemyModifiers.csv",         79)
+	// 52, not 50. Stun and Knockdown were added for issue #363. Both are hard
+	// stops that section VI of the design document gives three rules to, and
+	// neither existed as a named effect the data could reference -- which is
+	// why the Brute's stomp states its stun as a standalone StunSeconds rider
+	// rather than as Effect=Stun.
+	//
 	// 50, not 46. Four player-applied debuffs were defined: Madness, Cripple,
 	// Shred and Weaken. All four were already applied by gems and by affixes,
 	// and none of them said what they did.
-	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          50)
+	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          52)
 	// 27, not 26. The Of Wasting gem was added to apply Necrosis, which was the
 	// one status effect in the data that nothing applied, and the Of Embers gem
 	// to apply Burn, which every designed Demonic skill applies and which no gem
@@ -170,9 +183,23 @@ bool FCataclysmDataTableValuesTest::RunTest(const FString& Parameters)
 		if (!Row->CataclysmType.IsEmpty()) { ++WithCataclysm; }
 	}
 
-	TestEqual(TEXT("every dungeon modifier has a non-zero weight"), WithWeight, 116);
-	TestEqual(TEXT("every dungeon modifier has a description"), WithDescription, 116);
-	TestEqual(TEXT("every dungeon modifier names a Cataclysm"), WithCataclysm, 116);
+	// COMPARED AGAINST THE TABLE'S OWN ROW COUNT, not against a literal.
+	//
+	// All three of these read 116 until issue #363. Adding the Corrupted
+	// Stalker for issue #504 took the table to 117 and made all three false,
+	// and the number said nothing about what the test is for: the claim is that
+	// EVERY modifier carries these, not that 116 of them do. Written this way
+	// the assertion states the claim and cannot go stale when a modifier is
+	// added.
+	//
+	// The row count itself is pinned separately, by the CHECK_TABLE line above,
+	// so a table that silently lost rows is still caught. The guard here is
+	// only against comparing zero with zero if the table failed to load at all.
+	const int32 Total = Table->GetRowMap().Num();
+	TestTrue(TEXT("the dungeon modifier table loaded rows"), Total > 0);
+	TestEqual(TEXT("every dungeon modifier has a non-zero weight"), WithWeight, Total);
+	TestEqual(TEXT("every dungeon modifier has a description"), WithDescription, Total);
+	TestEqual(TEXT("every dungeon modifier names a Cataclysm"), WithCataclysm, Total);
 
 	return true;
 }

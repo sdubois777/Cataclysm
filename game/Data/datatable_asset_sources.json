@@ -94,8 +94,8 @@
     {
       "asset": "DT_StatusEffects",
       "csv": "StatusEffects.csv",
-      "rows": 50,
-      "csv_sha256": "f87ee32db690d9a99a0fdae4337cb6017cf29f886ad9474a96679052aa7f2fec"
+      "rows": 52,
+      "csv_sha256": "1fca4d477a4721a517a52a6dd4d0c55685c10cb5bbc5576267e32ddaf6cd407f"
     },
     {
       "asset": "DT_WeaponSkills",
