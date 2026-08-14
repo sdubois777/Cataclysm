@@ -335,21 +335,33 @@ def test_the_tree_survival_rule_no_longer_rests_on_residue(ownership):
         "the Empire-Wide Upgrades section still says Worn Residue can consume a "
         "character outright. Since issue #315 being consumed ends the run and "
         "leaves the character intact.")
-    assert "Nothing in this design currently destroys a character" in ownership, (
-        "the Empire-Wide Upgrades section does not say that nothing destroys a "
-        "character. Without it the inheritance rule below reads as covering a "
-        "live case, and there is none. Issue #315.")
+    assert "never destroyed by anything that happens in play" in ownership, (
+        "the Empire-Wide Upgrades section does not say that nothing which "
+        "happens in play destroys a tree. That is the rule issue #315 produced. "
+        "Issue #325 narrowed it from 'ever' to 'in play', because deleting a "
+        "Solo Self-Found character does destroy one.")
 
 
-def test_the_inheritance_rule_is_labelled_a_safeguard(ownership):
-    """The rule from issue #286 is kept, because the owner stated it generally.
-    But a reader has to be told it has no trigger today, or they will go looking
-    for the thing that loses a character."""
-    assert "safeguard covering any later rule that does lose a character" in ownership, (
-        "the Empire-Wide Upgrades section grants a lost Solo Self-Found "
-        "character's tree to its successor without saying that nothing can lose "
-        "a character. Issue #315, and issue #325 asks whether deleting one "
-        "should be possible.")
+def test_the_only_thing_that_destroys_a_tree_is_deletion(ownership):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-14 this was
+    test_the_inheritance_rule_is_labelled_a_safeguard, and it required the
+    section to call the rule a safeguard with no trigger, because at that point
+    nothing in the design could lose a character.
+
+    Issue #325 was answered on 2026-08-14. A player can delete a character, and
+    the owner's words were: "If you actually delete your character, that's when
+    the tree is removed." So there is now something that loses a character, the
+    safeguard language would be false, and the property to hold is the real
+    rule."""
+    assert ("The one thing that destroys a tree is the player deleting the "
+            "character that owns it, and only under Solo Self-Found") in ownership, (
+        "the Empire-Wide Upgrades section does not say what destroys a tree. "
+        "Deleting a Solo Self-Found character takes its private tree with it; "
+        "deleting an ordinary character takes nothing, because the tree never "
+        "belonged to it. Issue #325.")
+    assert "safeguard covering any later rule" not in ownership, (
+        "the section still calls the rule a safeguard with no trigger. Since "
+        "issue #325 it has one: the player deleting the character.")
 
 
 def test_the_corrupted_section_no_longer_says_a_character_is_lost(corrupted):
@@ -455,18 +467,46 @@ def _delete_the_ending_section(text: str) -> str:
     return text[:start] + text[end + 1:]
 
 
+#: The line that opens the tree-survival rule. Every anchor in this block is
+#: chosen to sit inside ONE line of the hard-wrapped Markdown, because a search
+#: string spanning a line wrap matches nothing and `break_and_run` then raises
+#: instead of proving anything.
+_SURVIVAL_OPENING = ("**A tree is never destroyed by anything that happens in "
+                     "play, in any mode,")
+
+#: The line that opens the deletion rule, added for issue #325.
+_DELETION_OPENING = ("**The one thing that destroys a tree is the player "
+                     "deleting the character that")
+
+
 def _put_the_residue_reason_back(text: str) -> str:
-    """Both anchors are chosen to sit inside a single line of the hard-wrapped
-    Markdown, because a search string that spans a line wrap matches nothing and
-    `break_and_run` then raises instead of proving anything."""
-    start = text.find("character is the only owner of its tree, so it is the")
-    assert start != -1, "the ownership section does not read as expected"
-    end = text.find("**When a Solo Self-Found character is lost", start)
-    assert end != -1, "the inheritance rule is not where it was"
-    return (text[:start]
-            + "character is the only owner of its tree, and Worn Residue can\n"
-              "consume a character outright. "
-            + text[end:])
+    """The pre-#315 wording, which blamed Worn Residue for losing a character."""
+    assert _SURVIVAL_OPENING in text, (
+        "the tree-survival rule does not open as expected")
+    return text.replace(
+        _SURVIVAL_OPENING,
+        "**A tree is never destroyed, in any mode,")
+
+
+def _blame_residue_in_the_body(text: str) -> str:
+    """The other half of the same regression: the reason, not the claim."""
+    assert "consumed by Worn Residue keeps it:" in text, (
+        "the tree-survival rule no longer names Worn Residue at all")
+    return text.replace(
+        "consumed by Worn Residue keeps it:",
+        "Worn Residue can consume a character outright:")
+
+
+def _restore_the_safeguard_wording(text: str) -> str:
+    """The pre-#325 wording, which said nothing could ever lose a character so
+    the inheritance rule was a safeguard with no trigger. Issue #325 gave it
+    one."""
+    assert _DELETION_OPENING in text, (
+        "the deletion rule does not open as expected")
+    return text.replace(
+        _DELETION_OPENING,
+        "The rule below is a safeguard covering any later rule that does lose a\n"
+        "character, rather than a case that arises today. The next character that")
 
 
 @pytest.mark.parametrize("name, edit, expected", [
@@ -476,13 +516,19 @@ def _put_the_residue_reason_back(text: str) -> str:
     ("the Ending a Run section is deleted",
      _delete_the_ending_section,
      "test_the_document_has_a_section_saying_what_a_run_ending_costs"),
-    ("the ownership section blames Worn Residue again",
+    ("the survival rule drops the 'in play' qualifier",
      _put_the_residue_reason_back,
      "test_the_tree_survival_rule_no_longer_rests_on_residue"),
+    ("the ownership section blames Worn Residue again",
+     _blame_residue_in_the_body,
+     "test_the_tree_survival_rule_no_longer_rests_on_residue"),
+    ("the deletion rule is called a safeguard with no trigger again",
+     _restore_the_safeguard_wording,
+     "test_the_only_thing_that_destroys_a_tree_is_deletion"),
 ])
 def test_the_guards_fail_when_the_document_regresses(name, edit, expected):
-    """A check that cannot fail is worthless. Each case puts the pre-issue-#315
-    wording back and confirms the test that should catch it does."""
+    """A check that cannot fail is worthless. Each case puts an earlier wording
+    back and confirms the test that should catch it does."""
     result = break_and_run(
         {"docs/Cataclysm_GDD_v2.md": edit},
         ["python", "-m", "pytest", "tools/tests/test_what_a_run_ending_costs.py",

@@ -261,8 +261,9 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 defeating the Cataclysm boss dungeon, losing the capital, dying in the Last Stand
 dungeon, and being killed by the corrupted double that Worn Residue produces. In
 every one of them the same character plays the next run, keeping its levels, its
-equipment, its class passive trees and its empire upgrade tree. Nothing in this
-design destroys a character.
+equipment, its class passive trees and its empire upgrade tree. Nothing that
+happens in play destroys a character. The one thing that removes a character is
+the player deleting it, which is described under Deleting a Character below.
 
   
 
@@ -284,6 +285,47 @@ primary meta-progression system: a failed run still fed it.
 **Ordinary death inside a dungeon is not a run ending.** It costs the days listed
 in the lethality mode table in section II and, in Hardcore and Heretic, some
 equipped items. The run continues.
+
+  
+
+### **Deleting a Character**
+
+**A player can delete a character, and that is the only thing that removes one.**
+Nothing that happens in play does. Dying costs days, and in Hardcore and Heretic
+some equipped items, and the run continues. A run ending costs the run. Both
+leave the character to play again. Deletion is deliberate, it is chosen from
+outside a run, and it is the whole of the answer to what can lose a character.
+
+  
+
+**Deleting an ordinary character costs that character and nothing else.** Its
+lethality mode's empire upgrade tree, stash, gold and market are untouched,
+because none of them ever belonged to the character: they belong to the account,
+held once per lethality mode per population. A player who deletes every character
+in a mode and then makes a new one there finds the tree exactly as it was left.
+That is what the genre does — deleting a Path of Exile character leaves the
+account's stash and its atlas progression intact.
+
+  
+
+**Deleting a Solo Self-Found character destroys its private empire tree with
+it.** That character is the only owner of its tree, so there is no account left
+holding it and no successor that takes it over. Everything belonging to that
+character alone goes with it.
+
+  
+
+**Every Solo Self-Found character starts its tree from nothing, always.** There
+is no case in which one inherits another's, whether the earlier character is
+still being played or was deleted.
+
+  
+
+**So a tree survives everything except the player choosing to end it.** A failed
+run feeds it, a death keeps it, and being consumed by Worn Residue keeps it.
+Deletion is the single exception, it applies only to a Solo Self-Found
+character's private tree, and it is the player's own act rather than an outcome
+of play.
 
   
 
@@ -2848,28 +2890,32 @@ house and no shared stash, and inheriting a mature account's empire tree would b
 the largest handout of the three. A player running Solo Self-Found is starting
 the whole game over, which is the point of the flag.
 
-**A tree is never destroyed, in any mode, including Solo Self-Found.** Losing the
-character that earned a tree does not lose the tree. That matters for Solo
-Self-Found in a way it does not for the others, because a Solo Self-Found
-character is the only owner of its tree, so it is the only case where the
-question can arise at all. **Nothing in this design currently destroys a
-character**, which section II states under Ending a Run: being consumed by Worn
-Residue ends the run and leaves the character intact. So the rule below is a
-safeguard covering any later rule that does lose a character, rather than a case
-that arises today. **When a Solo Self-Found character is lost, its private tree
-is held, and the next Solo Self-Found character created in the same lethality mode
-inherits it rather than starting from nothing.** That character is the successor
-of the lost one; a second Solo Self-Found character created while the first is
-still alive still starts from nothing, which is what the rule above means.
+**A tree is never destroyed by anything that happens in play, in any mode,
+including Solo Self-Found.** A failed run keeps it, a death keeps it, and being
+consumed by Worn Residue keeps it: section II states under Ending a Run that a
+run ending costs the run and not the character. That matters for Solo Self-Found
+in a way it does not for the others, because a Solo Self-Found character is the
+only owner of its tree, so it is the only case where the question can arise at
+all.
 
-**Why the tree survives its owner.** Nothing else in this design destroys empire
-upgrade points. A failed run keeps them, a death keeps them, and the whole
+**The one thing that destroys a tree is the player deleting the character that
+owns it, and only under Solo Self-Found.** Deleting an ordinary character leaves
+its lethality mode's tree untouched, because that tree belongs to the account and
+never belonged to the character. **Deleting a Solo Self-Found character takes its
+private tree with it**: there is no account holding it and no successor that
+inherits it. **Every Solo Self-Found character starts its tree from nothing,
+always**, whether an earlier one is still being played or was deleted. Section II
+states the rule in full under Deleting a Character.
+
+**Why the tree survives everything else.** Nothing that happens in play destroys
+empire upgrade points. A failed run keeps them, a death keeps them, and the whole
 meta-progression system is built on the promise that a run is never wasted.
-Destroying the tree would make being consumed the one failure in the game that
-costs meta-progression, and it would fall only on Solo Self-Found, which is
-already the harshest flag and already the mode where the tree took longest to
-build. It would also make the tree worth less the more of it a player has, which
-inverts the reason to invest in it at all.
+Destroying the tree on a failed run would make failure the one thing in the game
+that costs meta-progression, and under Solo Self-Found it would fall on the
+harshest flag and on the tree that took longest to build. It would also make the
+tree worth less the more of it a player has, which inverts the reason to invest
+in it at all. Deletion is different in kind: the player chooses it, from outside
+a run, knowing what is in the tree.
 
 **So an account holds three shared trees per population, plus one for every Solo
 Self-Found character.** A player who plays only online, or only offline, has
@@ -4528,14 +4574,16 @@ but only from characters in the same mode. Standard, Hardcore and Heretic each
 have their own tree, and a character starting in a mode the account has not
 played before starts that tree from nothing. The one exception is a Solo
 Self-Found character, which has its own tree and inherits nothing from the
-account. It does inherit one thing: if a Solo Self-Found character is lost, the
-next Solo Self-Found character created in that lethality mode takes over its
-tree. The Empire-Wide Upgrades section states the rule in full.
+account and nothing from another Solo Self-Found character either. Every Solo
+Self-Found character starts its tree from nothing. The Empire-Wide Upgrades
+section states the rule in full.
 
 **So "no run is wasted" means no run within a mode is wasted.** Every run feeds
 the tree of the mode it was played in, whether it was won or lost. What a run
-never does is feed a different mode's tree. No run feeds nothing: losing the
-character does not destroy the tree it built, in any mode.
+never does is feed a different mode's tree. No run feeds nothing: nothing that
+happens in play destroys the tree a run built, in any mode. The only thing that
+destroys a tree is the player deleting the Solo Self-Found character that owns
+it, which is their own act and not an outcome of play.
 
   
 
