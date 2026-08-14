@@ -81,6 +81,7 @@ game/Content/Developers/
 #
 # THIRD-PARTY-PACKS-BEGIN
 game/Content/Paragon*/
+game/Content/_SplineVFX/
 # THIRD-PARTY-PACKS-END
 
 # Unreal crash and log output
