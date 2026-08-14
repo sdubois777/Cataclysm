@@ -349,13 +349,24 @@ def test_the_points_are_scoped_and_not_only_the_tree(ownership):
 
 def test_it_states_how_many_trees_an_account_holds(ownership):
     """The rule is expressed as a sharing relation and a reader has to derive
-    the count. The count is what makes the size of the change visible: three
-    shared trees plus one per Solo Self-Found character, at 1,248 allocatable
-    points each."""
-    assert "three shared trees plus one for every Solo Self-Found" in ownership, (
+    the count. The count is what makes the size of the change visible.
+
+    WHAT THIS USED TO ASSERT. Until 2026-08-14 the count was "three shared trees
+    plus one for every Solo Self-Found character", and this test matched that
+    sentence. Issue #528 added a second partition axis: offline and online
+    characters share nothing either, so the count is three per population, or
+    six for a player who plays both. The old sentence is now an undercount for
+    that player, which is exactly the reading the count exists to prevent."""
+    assert ("three shared trees per population, plus one for every Solo "
+            "Self-Found") in ownership, (
         "the section no longer states how many empire trees an account holds. "
-        "It is three shared, one per lethality mode, plus one per Solo "
-        "Self-Found character. Issue #277.")
+        "It is three per population -- one per lethality mode, and offline and "
+        "online never share -- plus one per Solo Self-Found character. "
+        "Issues #277 and #528.")
+    assert "a player who plays both has six" in ownership, (
+        "the section gives the count per population without saying what it "
+        "totals for a player who plays both offline and online. Six is the "
+        "number that makes the size of the commitment visible. Issue #528.")
 
 
 def test_the_partition_is_storage_rather_than_content(ownership):

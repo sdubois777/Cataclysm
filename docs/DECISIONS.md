@@ -20,6 +20,103 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — Offline and online characters share nothing, so the partition key is the population times the lethality mode
+
+**Affects:** section II "Difficulty Options", section IX "Empire-Wide Upgrades"
+and the Storage section of `Cataclysm_GDD_v2.md`, and section 3 of
+`Save_System_Design.md`. Applied. Issue #528.
+
+### What was decided
+
+**Separate.** An offline character and an online character never share an empire
+upgrade tree, a stash, a market or a balance of gold, whatever their lethality
+mode. The partition key becomes the population together with the lethality mode,
+so a player who plays both holds up to six of everything the account shares
+rather than three, plus one self-contained record per Solo Self-Found character.
+
+Answered by the project owner on 2026-08-14, choosing the recommended option.
+
+### Why this was not really a new decision
+
+Decision #505 on 2026-08-10 already made the two populations permanently
+non-transferable, and gave the reason: an offline save is a local file and a
+local file can be edited. It listed three things an offline character does not
+get — the auction house, the ladder, and the shared table of corrupted
+characters. **It did not mention the stash or the empire tree, and neither did
+the design document.**
+
+That gap was not neutral. A shared stash both populations could open is a
+transfer route through the rule #505 made, and it is the shortest one: edit an
+item into a local save, put it in the stash, withdraw it on an online character,
+sell it in the auction house. Sealing the market and leaving the container open
+beside it closes the smaller route and leaves the larger one open. The design
+document already uses that exact argument one section earlier, to explain why the
+lethality mode partition covers the stash and not only the tree.
+
+So the answer was forced by a rule already made rather than chosen, and the
+asymmetry would have been the wrong way round otherwise.
+
+### What the genre does
+
+Both games #505 cited for the non-transferability rule also partition storage on
+the same axis, which is the specific question this issue asked and #505 did not.
+
+**Last Epoch.** Offline characters are saved locally; online characters are
+stored on the servers. Importing an online character to offline or the reverse is
+impossible, and each population has its own stash — items cannot move between
+them. The stated reason is the one this decision rests on: local save files can
+be edited, and the developers did not want players gaining an advantage by
+editing character data.
+
+**Diablo II.** Open Battle.net characters are stored on the player's own
+computer; closed realm characters are stored on Blizzard's servers. An open
+character may never become a closed one. The Arreat Summit's own description of
+open characters is that they were left in for players who cannot resist duping
+items or hacking their character.
+
+**Diablo III on console**, already recorded under #505, is the counter-example
+that shows the cost of not doing this: local hero saves, and leaderboards that
+were permanently polluted as a result.
+
+**Confidence is not uniform.** The Last Epoch finding is well attested across
+several independent write-ups and matches the developers' stated reasoning. The
+Diablo II detail that a closed character can be exported to open, while an open
+one can never become closed, comes from a fan wiki archive rather than a primary
+Blizzard source; the direction that matters here — local to server — is blocked
+in every account of it, and that is the part this decision leans on.
+
+### What it costs
+
+A player who plays both offline and online keeps two unrelated sets of empire
+progress and two stashes, and the second starts from nothing. **That is the same
+cost the design already accepts for choosing Hardcore**, and it is defended there
+in the same words. It is charged twice for a player who does both, which is the
+honest description of it.
+
+The alternative was cheaper for that player and left a hole in a rule made four
+days earlier. Closing that hole later would have meant taking a filled stash away
+from players, which is the failure mode Diablo IV's Altars of Lilith produced on
+a neighbouring question.
+
+### What this does not settle
+
+**Whether an offline character can be converted to an online one, one way, at the
+cost of leaving everything behind.** Diablo II allows the safe direction and
+blocks the unsafe one. Nobody has asked for it here and nothing depends on it, so
+it is not written into the design; it is recorded here so the next reader knows
+it was considered rather than missed.
+
+Sources:
+
+- [Last Epoch 1.0 — Can You Transfer Offline Character to Online Mode?](https://www.gamepressure.com/newsroom/last-epoch-10-can-you-transfer-offline-character-to-online-mode/z769a7)
+- [Can you play Last Epoch offline? — PCGamesN](https://www.pcgamesn.com/last-epoch/offline)
+- [Your Stash. Offline and Online… — Last Epoch Steam discussion](https://steamcommunity.com/app/899770/discussions/0/4338725867372498041/)
+- [The Arreat Summit — F.A.Q.: Realms](https://classic.battle.net/diablo2exp/faq/realms.shtml)
+- [Battle.net — Diablo Wiki](https://diablo2.diablowiki.net/Battle.net)
+- [Archive: Realm FAQ — Diablo Wiki](https://diablo2.diablowiki.net/Archive:_Realm_FAQ)
+
+---
+
 ## 2026-08-13 — The eight damage types have an effect palette, and one rule generates it
 
 **Affects:** section XIII of `Cataclysm_GDD_v2.md`, applied. Issue #546. Colours
