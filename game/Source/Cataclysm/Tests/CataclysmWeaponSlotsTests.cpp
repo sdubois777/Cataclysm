@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Data/CataclysmDataRows.h"
+#include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -220,12 +222,12 @@ bool FCataclysmWeaponSwapTest::RunTest(const FString& Parameters)
 		Fixture.GrantedCount(), 0);
 
 	const int32 DaggerFilled = Fixture.Slots->EquipWeaponType(TEXT("Dagger"));
-	TestEqual(TEXT("a Dagger fills six slots"), DaggerFilled, 6);
-	TestEqual(TEXT("and grants exactly six abilities"), Fixture.GrantedCount(), 6);
+	TestEqual(TEXT("a Dagger fills seven slots"), DaggerFilled, 7);
+	TestEqual(TEXT("and grants exactly seven abilities"), Fixture.GrantedCount(), 7);
 
 	const TSet<FGameplayTag> DaggerTags = Fixture.GrantedSlotTags();
-	TestEqual(TEXT("six distinct slot tags, so no key fires two abilities"),
-		DaggerTags.Num(), 6);
+	TestEqual(TEXT("seven distinct slot tags, so no key fires two abilities"),
+		DaggerTags.Num(), 7);
 
 	TArray<FString> DaggerSkills;
 	for (const FCataclysmWeaponSkill& Skill : Fixture.Slots->GetAvailableSkills())
@@ -236,17 +238,17 @@ bool FCataclysmWeaponSwapTest::RunTest(const FString& Parameters)
 	// A different weapon type. No code below names a skill; the change comes
 	// entirely from the matrix.
 	const int32 WarhammerFilled = Fixture.Slots->EquipWeaponType(TEXT("Warhammer"));
-	TestEqual(TEXT("a Warhammer also fills six slots"), WarhammerFilled, 6);
+	TestEqual(TEXT("a Warhammer also fills seven slots"), WarhammerFilled, 7);
 
 	TestEqual(TEXT("and the Dagger's abilities are gone, not still granted"),
-		Fixture.GrantedCount(), 6);
+		Fixture.GrantedCount(), 7);
 
-	TestEqual(TEXT("still six distinct slot tags"),
-		Fixture.GrantedSlotTags().Num(), 6);
+	TestEqual(TEXT("still seven distinct slot tags"),
+		Fixture.GrantedSlotTags().Num(), 7);
 
-	// The same six slots are filled, by different skills. That is what makes a
+	// The same seven slots are filled, by different skills. That is what makes a
 	// weapon drop change how the character plays rather than only its numbers.
-	TestTrue(TEXT("the same six slots are filled"),
+	TestTrue(TEXT("the same seven slots are filled"),
 		Fixture.GrantedSlotTags().Includes(DaggerTags));
 
 	int32 Shared = 0;
@@ -258,9 +260,14 @@ bool FCataclysmWeaponSwapTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// One shared: the Aura is weapon-independent, so both weapons offer it. If
-	// this were six, equipping a different weapon would have changed nothing.
-	TestEqual(TEXT("only the weapon-independent Aura skill is shared"), Shared, 1);
+	// TWO SHARED, AND THEY ARE SHARED FOR DIFFERENT REASONS. The Aura is
+	// weapon-independent, so both weapons offer the same one. The basic attack is
+	// generic rather than designed per weapon, so both carry the same name while
+	// swinging at different reaches -- the Dagger's 1.5 metres and the
+	// Warhammer's 2.1. Issue #524. If this were seven, equipping a different
+	// weapon would have changed nothing.
+	TestEqual(TEXT("the Aura and the basic attack are shared, and nothing else"),
+		Shared, 2);
 
 	Fixture.Slots->UnequipWeapon();
 	TestEqual(TEXT("unequipping takes every ability back"), Fixture.GrantedCount(), 0);
@@ -269,11 +276,17 @@ bool FCataclysmWeaponSwapTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A weapon with no skills grants nothing and leaves nothing behind.
+ * A weapon with no matrix skills keeps only its basic attack and leaves nothing
+ * else behind.
  *
  * The dangerous shape is equipping a covered weapon and then an uncovered one:
  * if unequipping did not happen first, the character would keep the old
  * weapon's abilities while holding a weapon that offers none.
+ *
+ * IT KEEPS ONE RATHER THAN NONE, SINCE ISSUE #524. The basic attack comes from
+ * the weapon's own base row and not from the matrix, so a War Wand -- a
+ * combination the design says has no skills -- still swings. What must not
+ * survive is any of the Sword's six.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponWithoutSkillsTest,
 	"Cataclysm.WeaponSlots.EquippingAWeaponWithNoSkillsClearsTheOldOnes",
@@ -292,15 +305,33 @@ bool FCataclysmWeaponWithoutSkillsTest::RunTest(const FString& Parameters)
 	CataclysmWeaponSlotsTest::FScopedWeaponFixture Fixture(World);
 
 	Fixture.Slots->EquipWeaponType(TEXT("Sword"));
-	TestEqual(TEXT("a Sword fills six slots"), Fixture.GrantedCount(), 6);
+	TestEqual(TEXT("a Sword fills seven slots"), Fixture.GrantedCount(), 7);
 
-	// War covers no magic weapons, so this grants nothing.
+	// War covers no magic weapons, so the matrix gives this nothing.
 	const int32 Filled = Fixture.Slots->EquipWeaponType(TEXT("Wand"));
-	TestEqual(TEXT("a War Wand fills none"), Filled, 0);
-	TestEqual(TEXT("and the Sword's abilities went with it"),
-		Fixture.GrantedCount(), 0);
-	TestEqual(TEXT("and it reports no available skills"),
-		Fixture.Slots->GetAvailableSkills().Num(), 0);
+	TestEqual(TEXT("a War Wand fills only its basic attack"), Filled, 1);
+	TestEqual(TEXT("and the Sword's seven went with it"),
+		Fixture.GrantedCount(), 1);
+
+	const TArray<FCataclysmWeaponSkill>& Wand = Fixture.Slots->GetAvailableSkills();
+	TestEqual(TEXT("it reports exactly one available skill"), Wand.Num(), 1);
+	if (Wand.Num() == 1)
+	{
+		TestEqual(TEXT("and that one is the basic attack"),
+			Wand[0].Slot, ECataclysmAbilitySlot::BasicAttack);
+	}
+
+	// The Shield is the one weapon that arms nobody, so it is the one that still
+	// fills nothing at all. Without this the check above would pass for a change
+	// that granted a basic attack to everything holdable.
+	const int32 ShieldFilled = Fixture.Slots->EquipWeaponType(TEXT("Shield"));
+	TestEqual(TEXT("a War Shield fills its six matrix slots and no basic attack"),
+		ShieldFilled, 6);
+	for (const FCataclysmWeaponSkill& Skill : Fixture.Slots->GetAvailableSkills())
+	{
+		TestNotEqual(TEXT("no Shield skill sits in the basic attack slot"),
+			Skill.Slot, ECataclysmAbilitySlot::BasicAttack);
+	}
 
 	return true;
 }
@@ -522,9 +553,16 @@ bool FCataclysmBadStartingWeaponGrantsNothingTest::RunTest(const FString& Parame
 
 	// The Crossbow is a real weapon base that Demonic does not roll on, so this
 	// is the realistic version of the mistake rather than a nonsense string.
+	// It fills its basic attack and nothing else, because that comes from the
+	// weapon base rather than from the matrix. Issue #524.
 	Slots->SetStartingWeaponType(TEXT("Crossbow"));
-	TestEqual(TEXT("Beginning with a Demonic Crossbow fills no slot"),
-		Slots->EquipStartingWeapon(), 0);
+	TestEqual(TEXT("Beginning with a Demonic Crossbow fills only a basic attack"),
+		Slots->EquipStartingWeapon(), 1);
+	for (const FCataclysmWeaponSkill& Skill : Slots->GetAvailableSkills())
+	{
+		TestEqual(TEXT("and that one slot is the basic attack, not a designed skill"),
+			Skill.Slot, ECataclysmAbilitySlot::BasicAttack);
+	}
 
 	// And a name that is not a weapon at all does the same, rather than
 	// erroring or filling something arbitrary.
@@ -583,7 +621,7 @@ bool FCataclysmSliceShipsDemonicTest::RunTest(const FString& Parameters)
 	{
 		const int32 Filled = Slots->EquipWeaponType(Weapon);
 		TestEqual(FString::Printf(
-			TEXT("a Demonic %s fills all six slots"), Weapon), Filled, 6);
+			TEXT("a Demonic %s fills all seven slots"), Weapon), Filled, 7);
 	}
 
 	// ALL TEN OF DEMONIC'S WEAPONS ARE NOW DESIGNED. This test used to assert the
@@ -599,16 +637,232 @@ bool FCataclysmSliceShipsDemonicTest::RunTest(const FString& Parameters)
 	{
 		const int32 Filled = Slots->EquipWeaponType(Weapon);
 		TestEqual(FString::Printf(
-			TEXT("a Demonic %s fills all six slots"), Weapon), Filled, 6);
+			TEXT("a Demonic %s fills all seven slots"), Weapon), Filled, 7);
 	}
 
-	// A weapon type Demonic does not cover still grants nothing, which is what
-	// keeps the check above from passing for any string at all.
+	// A weapon type Demonic does not cover grants only its basic attack, which is
+	// what keeps the check above from passing for any string at all. It was zero
+	// before issue #524, because the basic attack did not exist.
 	const int32 NotCovered = Slots->EquipWeaponType(TEXT("Crossbow"));
-	TestEqual(TEXT("Demonic does not cover the Crossbow, so it grants nothing"),
-		NotCovered, 0);
+	TestEqual(TEXT("Demonic does not cover the Crossbow, so it grants only a "
+				   "basic attack"),
+		NotCovered, 1);
+
+	// And a name that is no weapon at all still grants nothing, so the line above
+	// is not merely reporting that everything gets one.
+	const int32 NotAWeapon = Slots->EquipWeaponType(TEXT("Greetaxe"));
+	TestEqual(TEXT("a misspelled weapon type grants nothing at all"),
+		NotAWeapon, 0);
 
 	Actor->Destroy();
+	return true;
+}
+
+/**
+ * Every weapon that arms its holder grants a basic attack, and it carries the
+ * reach written on that weapon's own base row.
+ *
+ * WHAT WENT WRONG. Issue #524: game/Data/WeaponSkills.csv held 398 rows across
+ * six slots and not one Basic row, so no character had an ordinary attack at all.
+ * The project owner found it by playing -- two abilities and nothing in between.
+ *
+ * WHY IT IS READ FROM ItemBases RATHER THAN FROM THE MATRIX. The basic attack is
+ * weapon damage itself, so it does not vary by damage type. One entry per weapon
+ * rather than one per weapon-and-damage-type pair, and the matrix keeps holding
+ * one skill per non-basic slot exactly as the design document states.
+ *
+ * THE NUMBERS ARE NOT REPEATED HERE. Asserting 1.5 metres for a Dagger in C++
+ * would only prove the CSV was copied twice. What is checked is that the granted
+ * ability's parameters are the ones on the base row, that no two weapons swing
+ * the same distance, and that every armed weapon has one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicAttackTest,
+	"Cataclysm.WeaponSlots.EveryArmedWeaponGrantsABasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBasicAttackTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!Bases)
+	{
+		AddError(TEXT("DT_ItemBases does not exist. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	// Read from the table rather than written here, so a weapon added to the
+	// workbook is covered without editing this test.
+	TArray<FString> Armed;
+	TArray<FString> Unarmed;
+	Bases->ForeachRow<FCataclysmItemBaseRow>(TEXT("FCataclysmBasicAttackTest"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (Row.WeaponType.IsEmpty())
+			{
+				return;
+			}
+			(Row.BasicShape.IsEmpty() ? Unarmed : Armed).AddUnique(Row.WeaponType);
+		});
+
+	TestEqual(TEXT("thirteen weapons state a basic attack"), Armed.Num(), 13);
+	TestEqual(TEXT("and one states none, which is the Shield"), Unarmed.Num(), 1);
+	if (Unarmed.Num() == 1)
+	{
+		TestEqual(TEXT("the weapon with no basic attack is the Shield"),
+			Unarmed[0], FString(TEXT("Shield")));
+	}
+
+	// Every armed weapon's basic attack is found, has a shape a template
+	// implements, and states a reach. A shape with no template would fill the
+	// slot and do nothing, which is the failure this catches.
+	TSet<float> Reaches;
+	for (const FString& Weapon : Armed)
+	{
+		const FCataclysmWeaponSkill Basic =
+			UCataclysmWeaponSkills::BasicAttackFor(Bases, Weapon);
+
+		TestEqual(FString::Printf(TEXT("the %s's basic attack fills the Basic slot"),
+			*Weapon), Basic.Slot, ECataclysmAbilitySlot::BasicAttack);
+		TestNotEqual(FString::Printf(TEXT("the %s's basic attack has a real shape"),
+			*Weapon), Basic.Shape, ECataclysmSkillShape::None);
+		TestTrue(FString::Printf(TEXT("a template runs the %s's basic attack"),
+			*Weapon), UCataclysmWeaponSkills::TemplateFor(Basic.Shape) != nullptr);
+
+		// A Strike states how far it reaches as a Radius and a Projectile as a
+		// Range, so whichever the shape uses must be there and above zero. A
+		// reach of zero hits nothing and looks exactly like a reach nobody wrote.
+		const bool bMelee = Basic.Shape == ECataclysmSkillShape::Strike;
+		const float Reach = bMelee ? Basic.Params.RadiusCm : Basic.Params.RangeCm;
+		TestTrue(FString::Printf(
+			TEXT("the %s's basic attack reaches further than nothing, got %.2f cm"),
+			*Weapon, Reach), Reach > 0.0f);
+
+		Reaches.Add(Reach);
+	}
+
+	// SEVERAL WEAPONS SHARE A REACH ON PURPOSE -- the Dagger and the Fist are both
+	// 1.5 metres -- so this is not one distinct value per weapon. What it refuses
+	// is every weapon reading the same number, which is what a lookup that always
+	// found the first row would produce.
+	TestTrue(FString::Printf(
+		TEXT("weapons swing different distances, found %d distinct reaches"),
+		Reaches.Num()), Reaches.Num() >= 8);
+
+	// The Shield asks and gets nothing, rather than getting a shapeless skill
+	// that fills the slot.
+	const FCataclysmWeaponSkill None =
+		UCataclysmWeaponSkills::BasicAttackFor(Bases, TEXT("Shield"));
+	TestEqual(TEXT("the Shield's basic attack fills no slot"),
+		None.Slot, ECataclysmAbilitySlot::None);
+
+	// A weapon type that does not exist does the same, rather than returning the
+	// first row it read.
+	const FCataclysmWeaponSkill Misspelled =
+		UCataclysmWeaponSkills::BasicAttackFor(Bases, TEXT("Greetaxe"));
+	TestEqual(TEXT("a misspelled weapon type gets no basic attack"),
+		Misspelled.Slot, ECataclysmAbilitySlot::None);
+
+	// And a null table is survivable, because LoadBaseTable can fail.
+	const FCataclysmWeaponSkill NoTable =
+		UCataclysmWeaponSkills::BasicAttackFor(nullptr, TEXT("Dagger"));
+	TestEqual(TEXT("no table means no basic attack rather than a crash"),
+		NoTable.Slot, ECataclysmAbilitySlot::None);
+
+	return true;
+}
+
+/**
+ * The granted ability carries the base row's own numbers, not a default.
+ *
+ * The failure this catches is a basic attack that is granted into its slot and
+ * reaches zero, which looks identical to a working one from every other angle.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicAttackReachesWhatTheBaseSaysTest,
+	"Cataclysm.WeaponSlots.TheBasicAttackCarriesTheWeaponsOwnReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBasicAttackReachesWhatTheBaseSaysTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!Bases)
+	{
+		AddError(TEXT("DT_ItemBases does not exist. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	CataclysmWeaponSlotsTest::FScopedWeaponFixture Fixture(World);
+
+	// A melee weapon and a ranged one, so both shapes are covered. Both are War,
+	// which the fixture pins.
+	const TCHAR* Weapons[] = { TEXT("Dagger"), TEXT("Crossbow") };
+	for (const TCHAR* Weapon : Weapons)
+	{
+		Fixture.Slots->EquipWeaponType(Weapon);
+
+		const FCataclysmWeaponSkill* Granted = nullptr;
+		for (const FCataclysmWeaponSkill& Skill : Fixture.Slots->GetAvailableSkills())
+		{
+			if (Skill.Slot == ECataclysmAbilitySlot::BasicAttack)
+			{
+				Granted = &Skill;
+				break;
+			}
+		}
+
+		if (!Granted)
+		{
+			AddError(FString::Printf(
+				TEXT("the %s granted no basic attack at all"), Weapon));
+			continue;
+		}
+
+		const FCataclysmWeaponSkill FromBase =
+			UCataclysmWeaponSkills::BasicAttackFor(Bases, Weapon);
+
+		TestEqual(FString::Printf(
+			TEXT("the granted %s basic attack has the base row's shape"), Weapon),
+			Granted->Shape, FromBase.Shape);
+
+		const bool bMelee = FromBase.Shape == ECataclysmSkillShape::Strike;
+		const float GrantedReach =
+			bMelee ? Granted->Params.RadiusCm : Granted->Params.RangeCm;
+		const float BaseReach =
+			bMelee ? FromBase.Params.RadiusCm : FromBase.Params.RangeCm;
+
+		TestTrue(FString::Printf(
+			TEXT("the %s's basic attack reaches further than nothing, got %.2f cm"),
+			Weapon, BaseReach), BaseReach > 0.0f);
+		TestEqual(FString::Printf(
+			TEXT("the granted %s basic attack reaches what the base row says"),
+			Weapon), GrantedReach, BaseReach);
+
+		// NOTHING ELSE RIDES ON IT. A basic attack is 100% weapon damage, which
+		// is what makes it the anchor every other slot is a percentage of, so a
+		// burn or a patch of ground here would move that anchor. The generator
+		// refuses one; this confirms none arrived by another route.
+		TestFalse(FString::Printf(
+			TEXT("the %s's basic attack sets nothing alight"), Weapon),
+			Granted->Params.bBurns);
+		TestFalse(FString::Printf(
+			TEXT("the %s's basic attack leaves no ground behind"), Weapon),
+			Granted->Params.LeavesGround());
+		TestEqual(FString::Printf(
+			TEXT("the %s's basic attack knocks nothing back"), Weapon),
+			Granted->Params.KnockbackCm, 0.0f);
+		TestEqual(FString::Printf(
+			TEXT("the %s's basic attack applies no status effect"), Weapon),
+			Granted->Params.Effect, FString());
+	}
+
 	return true;
 }
 

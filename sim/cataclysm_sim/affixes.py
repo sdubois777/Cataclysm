@@ -1348,6 +1348,16 @@ class Implicit:
 #: for 0.75 seconds, and Magic strips 10% more energy shield.
 WEAPON_SUB_TYPES = ("Piercing", "Slashing", "Blunt", "Magic")
 
+#: The two shapes a basic attack may take, because the design document says the
+#: basic attack is the weapon's own swing: a Strike for a melee weapon, a
+#: Projectile for a ranged one. Issue #524.
+#:
+#: THIS IS A COPY. `BASIC_ATTACK_SHAPES` in `tools/generate_datatables.py` is the
+#: same set and refuses the same cells at generation time.
+#: `test_the_two_basic_attack_shape_vocabularies_agree` compares them, the same
+#: way the two copies of the full shape vocabulary are compared.
+BASIC_ATTACK_SHAPES = frozenset({"Strike", "Projectile"})
+
 
 @dataclass(frozen=True)
 class ItemBase:
@@ -1445,6 +1455,34 @@ class WeaponBase(ItemBase):
     #: `MaxDamageTypes`; see issue #218 for the rename.
     max_damage_types_on_base: int = 4
 
+    #: The basic attack's shape and its parameters, written the way the Item
+    #: Bases sheet writes them and carried through to `game/Data/ItemBases.csv`
+    #: as `BasicShape` and `BasicShapeParams`.
+    #:
+    #: IT LIVES ON THE WEAPON RATHER THAN IN THE SKILL MATRIX because it does not
+    #: vary by damage type. Every other slot names a designed skill per weapon
+    #: AND damage type; the basic attack is weapon damage itself, so there are 13
+    #: of these rather than 75 near-identical matrix rows. Decided 2026-08-15 on
+    #: issue #524, and it keeps the design document's statement that the matrix
+    #: holds one skill per non-basic slot true. Path of Exile stores melee reach
+    #: the same way, as a property of the weapon base type rather than of the
+    #: skill.
+    #:
+    #: EMPTY ON A WEAPON THAT ARMS NOBODY, which is the Shield. Issue #619.
+    basic_shape: str = ""
+    basic_shape_params: str = ""
+
+    @property
+    def arms_the_holder(self) -> bool:
+        """Whether this weapon supplies attack damage, so a hit can be composed.
+
+        Read off the implicits rather than off the name, the same way
+        `player_damage.armed_weapons_in` decides it, so a second weapon like the
+        Shield needs no edit here.
+        """
+        return any(i.stat == "attack_damage" and i.kind == "flat"
+                   for i in self.implicits)
+
     @property
     def value_multiplier(self) -> float:
         """A two-hander is worth double per implicit and per affix.
@@ -1472,6 +1510,22 @@ class WeaponBase(ItemBase):
             raise ValueError(
                 f"{self.name} holds at most {self.max_damage_types_on_base} "
                 f"damage types; there are only {len(DAMAGE_TYPES)}")
+        if self.arms_the_holder and not self.basic_shape:
+            raise ValueError(
+                f"{self.name} supplies attack damage and has no basic attack "
+                "shape, so a character holding it has nothing between its "
+                "cooldowns. See issue #524.")
+        if self.basic_shape and not self.arms_the_holder:
+            raise ValueError(
+                f"{self.name} supplies no attack damage but states a basic "
+                "attack, which would deal 100% of nothing. See issue #619.")
+        if self.basic_shape and self.basic_shape not in BASIC_ATTACK_SHAPES:
+            raise ValueError(
+                f"{self.name} has a basic attack shaped {self.basic_shape!r}; "
+                f"expected one of {sorted(BASIC_ATTACK_SHAPES)}")
+        if self.basic_shape_params and not self.basic_shape:
+            raise ValueError(
+                f"{self.name} has basic attack parameters but no shape")
 
 
 #: THE MOST damage types a weapon of each kind can ever hold, not how many it
@@ -1595,11 +1649,63 @@ def max_damage_types(hands: int, tier: int) -> int:
     return min(own_limit, tier)
 
 
+#: The basic attack each weapon type composes from its own swing, keyed on the
+#: weapon type so a base picks its own up. Mirrors the Basic Shape and Basic
+#: Shape Params columns of the Item Bases sheet, and
+#: `test_affix_sheets_match_the_model.py` compares the two.
+#:
+#: MELEE REACH IS `0.9 + the weapon's length past the fist`, on a 0.3 m grid. The
+#: 0.9 is not chosen: it is this project's own contact distance, the 0.42 m
+#: player capsule from `CataclysmPlayerCharacter.cpp` plus a 0.48 m baseline enemy
+#: body, and it is literally the Radius of Maul, Slam and Sunder, the three enemy
+#: basic attacks the design document designs. Path of Exile computes melee reach
+#: the same way, as weapon range plus the character's own hitbox radius.
+#:
+#: THE ARC IS THAT WEAPON'S DESIGNED HEAVY ARC, CARRIED OVER UNCHANGED, because
+#: the arc is the animation and the reach is the power. Every angle below is the
+#: weapon's own Heavy angle from `game/Data/WeaponSkills.csv`.
+#:
+#: THAT LANDS ON EXACTLY 0.6 x THE DESIGNED HEAVY RADIUS for all ten weapons that
+#: have a designed Heavy to check against -- eight Strikes and the Staff and Wand
+#: Projectiles -- verified to three decimals by two derivations that were not
+#: fitted to each other. So every one of those basics covers 36% of its Heavy's
+#: area, since 0.6 squared is 0.36 and the angle is untouched.
+#:
+#: THREE ARE JUDGEMENTS WITH NOTHING TO CHECK AGAINST. The Spear, the Crossbow
+#: and the two-handed Crossbow have no designed Heavy of any shape anywhere in
+#: the matrix, so 3.3, 10 and 12 could not be cross-checked. Issue #524.
+#:
+#: NO RIDERS, ON ANY OF THEM. A basic attack is 100% weapon damage and nothing
+#: else, which is what makes it the anchor every other slot is measured against.
+#: Six of the seven designed enemy basics are `MaxTargets=1` and none carries a
+#: burn, a stun or a patch of ground, so the shape of these follows the content
+#: the design document already has rather than a new convention.
+BASIC_ATTACKS: dict[str, tuple[str, str]] = {
+    "Dagger":      ("Strike",     "Radius=1.5; Angle=60; MaxTargets=1"),
+    "Fist":        ("Strike",     "Radius=1.5; Angle=60; MaxTargets=1"),
+    "Sword":       ("Strike",     "Radius=1.8; Angle=90; MaxTargets=1"),
+    "Axe":         ("Strike",     "Radius=1.8; Angle=100; MaxTargets=1"),
+    "Warhammer":   ("Strike",     "Radius=2.1; Angle=80; MaxTargets=1"),
+    "Greataxe":    ("Strike",     "Radius=2.4; Angle=120; MaxTargets=1"),
+    "Greatsword":  ("Strike",     "Radius=2.7; Angle=140; MaxTargets=1"),
+    "Whip":        ("Strike",     "Radius=3; Angle=45; MaxTargets=1"),
+    "Spear":       ("Strike",     "Radius=3.3; Angle=40; MaxTargets=1"),
+    "Staff":       ("Projectile", "Range=7.2; Radius=0.9; Pierce=0; Speed=2000"),
+    "Wand":        ("Projectile", "Range=8.4; Radius=0.6; Pierce=0; Speed=2600"),
+    "Crossbow":    ("Projectile", "Range=10; Radius=0.4; Pierce=0; Speed=2400"),
+    "2H Crossbow": ("Projectile", "Range=12; Radius=0.9; Pierce=0; Speed=1800"),
+    # The Shield is deliberately absent. It is a one-handed weapon that grants no
+    # attack damage, so there is no hit to compose from it. Issue #619.
+}
+
+
 def _weapon(name: str, weapon_type: str, hands: int, sub_type: str,
             attack_speed: float, *implicits: Implicit) -> WeaponBase:
+    basic_shape, basic_shape_params = BASIC_ATTACKS.get(weapon_type, ("", ""))
     return WeaponBase(
         name=name, slot="Weapon", implicits=implicits, hands=hands,
         sub_type=sub_type, weapon_type=weapon_type, attack_speed=attack_speed,
+        basic_shape=basic_shape, basic_shape_params=basic_shape_params,
         max_damage_types_on_base=(DAMAGE_TYPES_ON_ONE_HANDED if hands == 1
                                   else DAMAGE_TYPES_ON_TWO_HANDED))
 

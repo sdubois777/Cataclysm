@@ -8,6 +8,8 @@
 
 const TCHAR* UCataclysmWeaponSkills::WeaponIndependent = TEXT("All");
 
+const TCHAR* UCataclysmWeaponSkills::BasicAttackName = TEXT("Basic Attack");
+
 const TCHAR* UCataclysmWeaponSkills::TableAssetPath =
 	TEXT("/Game/Data/DT_WeaponSkills.DT_WeaponSkills");
 
@@ -46,8 +48,9 @@ ECataclysmAbilitySlot UCataclysmWeaponSkills::SlotFromName(const FString& SlotNa
 	// what the data actually says.
 	//
 	// This went unnoticed until the Skill Slots sheet arrived, because the Weapon
-	// Skills matrix has no basic attack row at all -- basic attacks are
-	// automatic, so nothing ever asked this function about one.
+	// Skills matrix has no basic attack row at all and still has none: the basic
+	// attack comes from the weapon base instead, through BasicAttackFor, which
+	// names the slot directly and never asks this function. Issue #524.
 	for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
 	{
 		const FGameplayTag Tag = CataclysmAbilitySlots::Tag(Slot);
@@ -185,4 +188,64 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 	}
 
 	return Found;
+}
+
+FCataclysmWeaponSkill UCataclysmWeaponSkills::BasicAttackFor(
+	const UDataTable* BaseTable, const FString& WeaponType)
+{
+	FCataclysmWeaponSkill Basic;
+	if (!BaseTable || WeaponType.IsEmpty())
+	{
+		return Basic;
+	}
+
+	BaseTable->ForeachRow<FCataclysmItemBaseRow>(
+		TEXT("UCataclysmWeaponSkills::BasicAttackFor"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (Basic.Slot != ECataclysmAbilitySlot::None
+				|| !Row.WeaponType.Equals(WeaponType, ESearchCase::IgnoreCase))
+			{
+				return;
+			}
+
+			// An empty shape is the Shield, which grants no attack damage and so
+			// has no hit to compose. Left as None, so the caller grants nothing
+			// rather than granting an ability that does nothing.
+			if (Row.BasicShape.IsEmpty())
+			{
+				return;
+			}
+
+			Basic.Slot = ECataclysmAbilitySlot::BasicAttack;
+			Basic.Name = BasicAttackName;
+			Basic.Shape = UCataclysmSkillShapes::ShapeFromName(Row.BasicShape);
+
+			// NO TAGS, DELIBERATELY. Tags scope which of the character's gear
+			// modifiers reach a skill, and the basic attack is weapon damage
+			// itself: it carries the weapon's damage type rather than a damage
+			// type of its own, so there is no element tag to write here that
+			// would be true for every weapon holding it.
+
+			FString Error;
+			Basic.Params = UCataclysmSkillShapes::ParseParams(
+				Row.BasicShapeParams, &Error);
+			if (!Error.IsEmpty())
+			{
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("The %s's basic attack has unreadable shape "
+						 "parameters: %s"),
+					*Row.WeaponType, *Error);
+			}
+			if (Basic.Shape == ECataclysmSkillShape::None)
+			{
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("The %s's basic attack names the shape '%s', which no "
+						 "template implements. It will fill the slot and do "
+						 "nothing."),
+					*Row.WeaponType, *Row.BasicShape);
+			}
+		});
+
+	return Basic;
 }

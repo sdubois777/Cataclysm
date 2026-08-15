@@ -103,6 +103,35 @@ public:
 												   const FString& WeaponType,
 												   const FString& DamageType);
 
+	/** The name every basic attack carries. See BasicAttackFor for why it is one name. */
+	static const TCHAR* BasicAttackName;
+
+	/**
+	 * The basic attack the weapon itself supplies, read from the item base table.
+	 *
+	 * NOT FROM THE MATRIX, AND THAT IS THE DESIGN. The other six slots name a
+	 * skill per weapon type AND damage type; this one does not vary by damage
+	 * type, because the design document says the basic attack IS weapon damage.
+	 * So it is one entry per weapon on the Item Bases sheet rather than 75
+	 * near-identical matrix rows, and the matrix keeps holding one skill per
+	 * non-basic slot exactly as the design document states. Issue #524.
+	 *
+	 * IT IS ALSO WHY THIS TAKES NO DAMAGE TYPE. A weapon its damage type does not
+	 * cover -- a War Wand -- has no matrix skills at all and still swings, so it
+	 * still gets this.
+	 *
+	 * ONE NAME FOR ALL THIRTEEN. The design document says the basic attack is
+	 * generic and automatic rather than designed per weapon, so inventing 13
+	 * names would state a design the document does not have.
+	 *
+	 * @param BaseTable   the ItemBases DataTable
+	 * @param WeaponType  as ItemBases spells it, for example "Greatsword"
+	 * @return a skill in the BasicAttack slot, or one whose Slot is None when the
+	 *         weapon supplies no basic attack, which today is the Shield
+	 */
+	static FCataclysmWeaponSkill BasicAttackFor(const UDataTable* BaseTable,
+												const FString& WeaponType);
+
 	/** The slot named by a Slot column value, or None if it names no slot. */
 	static ECataclysmAbilitySlot SlotFromName(const FString& SlotName);
 

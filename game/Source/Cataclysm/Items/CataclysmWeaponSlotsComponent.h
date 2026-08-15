@@ -12,16 +12,23 @@ class UCataclysmAbilitySystemComponent;
 class UDataTable;
 
 /**
- * Fills the six ability slots from the equipped weapon, and refills them when
+ * Fills the seven ability slots from the equipped weapon, and refills them when
  * the weapon changes.
  *
  * WHAT MAKES A GEAR DROP MEAN SOMETHING. Issue #36: which ability sits in each
  * slot is decided entirely by the equipped weapon's type and damage type.
- * Picking up a different weapon replaces all six abilities. Nothing in C++ names
+ * Picking up a different weapon replaces every ability. Nothing in C++ names
  * a skill and nothing decides which skill fills which slot -- both come out of
  * game/Data/WeaponSkills.csv, generated from the Weapon Skills sheet of
  * docs/All_Things_Cataclysm.xlsx. Changing what a Dagger offers is a workbook
  * edit.
+ *
+ * SIX OF THE SEVEN COME FROM THE MATRIX AND THE SEVENTH DOES NOT. The basic
+ * attack is weapon damage itself, so it does not vary by damage type and is read
+ * from the weapon's own row on the Item Bases sheet instead. Issue #524. That
+ * makes it the one slot a weapon fills even when its damage type covers none of
+ * its skills, and the one slot a Shield does not fill, because a Shield grants no
+ * attack damage. Issue #619.
  *
  * WHAT IT GRANTS TODAY. UCataclysmUndesignedSkill, one per filled slot. The 61
  * designed skills have names, descriptions and tags but no numbers, so there is
