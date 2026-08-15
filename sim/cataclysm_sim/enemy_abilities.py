@@ -6,9 +6,9 @@ an enemy does with its turn. Issue #29 is the epic that asks, and it is split on
 enemy at a time: #348 the Imp, #349 the Succubus, #350 the Hellhound, #351 the
 Brute, #352 the Corrupted Sentinel, #353 the Abyssal Warden, #354 the Gatekeeper.
 
-**Six of the seven are filled in: the Imp, the Succubus, the Hellhound, the
-Brute, the Corrupted Sentinel and the Abyssal Warden.** The Gatekeeper is still
-open, and it is #354. An archetype with no entry here has no designed abilities yet,
+**All seven are filled in: the Imp, the Succubus, the Hellhound, the Brute, the
+Corrupted Sentinel, the Abyssal Warden and the Gatekeeper.** An archetype with no
+entry here has no designed abilities yet,
 and asking for one raises rather than returning an empty list, so a missing
 design cannot be mistaken for a finished one.
 

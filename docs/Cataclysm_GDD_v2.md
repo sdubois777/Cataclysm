@@ -1808,7 +1808,7 @@ Halving is also the only option under which no skill ever visibly does nothing. 
 | Superb | 0 | 3 | Better affix rolls |
 | Masterful | 0 | 4 | Strong affixes, good base |
 | Legendary | 1 | 3 | Requires gear level 4+. |
-| Mythic | 2 | 2 | Requires gear level 6+. |
+| Mythical | 2 | 2 | Requires gear level 6+. |
 | Ascendant | 3 | 1 | Requires gear level 8+. |
 | Cataclysmic | 4 | 0 | Requires gear level 10. |
 | Sets | — | — | Legendary and above can be part of a named set with 2/6/10 piece bonuses. |
@@ -3163,6 +3163,31 @@ carried is part of how deep it is worth going.
 with a free town portal at the end of them, and here a dungeon is many floors at
 a day each. Diablo III used 60. The number is a tuning value; the rule is that it
 does not change.
+
+**When the inventory fills partway down a dungeon, the player cannot leave.**
+There is no town portal and no way out except clearing the dungeon or dying. So a
+full inventory is a choice about what to leave behind: an item that will not fit
+stays on the floor, and the player decides what is worth a slot. That pressure is
+the point, and it is what makes depth cost something beyond time.
+
+**A Stash appears inside a dungeon at the entrance to its middle floor**, on
+every dungeon, with no empire upgrade needed. It is the same container the capital
+holds — the shared one, or the character's own if it is Solo Self-Found — and
+using it does not end the run. Without this a player with no Explorer investment
+would have no answer at all on a dungeon a hundred floors deep, which is a dead
+end rather than a difficulty choice.
+
+**The Explorer branch of the empire upgrade tree makes them more frequent.** Three
+ranked keystones, each replacing the one before: Field Depot I puts a Stash every
+30 floors, Field Depot II every 15 floors, and Field Depot III every 5 floors.
+They stack with the middle-floor default rather than replacing it. On a short dungeon only the
+default applies unless the player has Field Depot III, which is the right shape:
+48 slots is not under pressure over ten floors, and it is under real pressure over
+the 100 to 150 a Cataclysm dungeon spans.
+
+**Supply Caches is a different thing and is not an answer to a full inventory.**
+That basic node gives each floor a chance to contain a loot chest, which adds
+items to carry rather than somewhere to put them.
 
 **The stash is shared between characters, once per lethality mode.** Standard
 characters open one stash, Hardcore characters a second and Heretic characters a
