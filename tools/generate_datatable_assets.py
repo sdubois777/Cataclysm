@@ -103,6 +103,7 @@ TABLES = [
     ("DT_EnemyRarities", "EnemyRarities.csv", "CataclysmEnemyRarityRow"),
     ("DT_Gems", "Gems.csv", "CataclysmGemRow"),
     ("DT_ItemBases", "ItemBases.csv", "CataclysmItemBaseRow"),
+    ("DT_MinionTypes", "MinionTypes.csv", "CataclysmMinionTypeRow"),
     ("DT_SkillSlots", "SkillSlots.csv", "CataclysmSkillSlotRow"),
     ("DT_StatusEffects", "StatusEffects.csv", "CataclysmStatusEffectRow"),
     ("DT_WeaponSkills", "WeaponSkills.csv", "CataclysmWeaponSkillRow"),

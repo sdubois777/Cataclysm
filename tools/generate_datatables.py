@@ -916,6 +916,116 @@ def class_stats(book) -> list[dict]:
     return unique(out, "Class Stats")
 
 
+#: Which primary attribute each minion family scales its damage from. Settled in
+#: issue #335: "a minion's scaling attribute is per type -- Spirit for creatures,
+#: Agility for machines". Held here so a row cannot quietly disagree with it.
+MINION_FAMILY_ATTRIBUTE = {"Creature": "spirit", "Machine": "agility"}
+
+#: Which enemy a minion picks. The Ballista deliberately targets the furthest,
+#: which is the whole reason this is a column rather than one global rule.
+MINION_TARGET_MODES = ("Nearest", "Furthest")
+
+
+def minion_types(book) -> list[dict]:
+    """One row per minion type: its own stat block. Issue #336.
+
+    WHY A TABLE OF ITS OWN, rather than numbers in each skill's Shape Params.
+    Two skills can produce the same creature -- Summon Imp and Open the Rift both
+    make a lesser imp -- and one skill can produce two, as Iron Fortress makes
+    ballistae and spike traps. Numbers in the skill row would exist twice for the
+    first case and could not be expressed at all for the second. A skill decides
+    how many, how often and how long; the type decides what the thing IS.
+
+    HEALTH AND DAMAGE ARE ABSOLUTE, NOT A SHARE OF THE SUMMONER.
+    `docs/Cataclysm_GDD_v2.md` line 1588: "Every minion type has its own stats. A
+    minion is not a percentage of its summoner." Each is the type's own base
+    raised by the summoner's level, in the same `Base` and `Per Level` shape
+    `Class Stats` already uses for character stats.
+
+    THE SUMMONER'S LEVEL IS THE ONLY THING THAT RAISES THEM. Gear does not cross
+    unless a modifier names minions, so a minion's damage rises more slowly than
+    its summoner's, whose gear rises too. That gap is what minion affixes and
+    points in the scaling attribute exist to close, and it is intended rather
+    than a fitting error.
+    """
+    rows = list(book["Minion Types"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Minion Types")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        name = _cell(raw, headers, "Minion Type")
+        if not name:
+            continue
+
+        family = _cell(raw, headers, "Family")
+        if family not in MINION_FAMILY_ATTRIBUTE:
+            raise DataError(
+                f"Minion Types row {index}: {name} is family {family!r}; "
+                f"expected one of {sorted(MINION_FAMILY_ATTRIBUTE)}")
+
+        attribute = _cell(raw, headers, "Scaling Attribute")
+        expected = MINION_FAMILY_ATTRIBUTE[family]
+        if attribute != expected:
+            raise DataError(
+                f"Minion Types row {index}: {name} is a {family} and scales "
+                f"from {attribute!r}, but issue #335 settled that a {family} "
+                f"scales from {expected!r}")
+
+        mode = _cell(raw, headers, "Target Mode")
+        if mode not in MINION_TARGET_MODES:
+            raise DataError(
+                f"Minion Types row {index}: {name} targets {mode!r}; expected "
+                f"one of {list(MINION_TARGET_MODES)}")
+
+        interval = number(_cell(raw, headers, "Attack Interval Seconds"),
+                          "Attack Interval Seconds", index)
+        if interval <= 0:
+            raise DataError(
+                f"Minion Types row {index}: {name} attacks every {interval}s, "
+                "which is never or continuously rather than at a rate")
+
+        health = number(_cell(raw, headers, "Base Health"), "Base Health", index)
+        damage = number(_cell(raw, headers, "Base Damage"), "Base Damage", index)
+        if health <= 0:
+            raise DataError(
+                f"Minion Types row {index}: {name} has {health} base health, so "
+                "it dies to anything at level 1")
+        if damage < 0:
+            raise DataError(
+                f"Minion Types row {index}: {name} has {damage} base damage")
+
+        threat = number(_cell(raw, headers, "Threat Percent"),
+                        "Threat Percent", index)
+        if threat < 0:
+            raise DataError(
+                f"Minion Types row {index}: {name} draws {threat}% attention")
+
+        out.append({
+            "Name": name,
+            "Family": family,
+            "BaseHealth": health,
+            "HealthPerLevel": number(_cell(raw, headers, "Health Per Level"),
+                                     "Health Per Level", index),
+            "BaseDamage": damage,
+            "DamagePerLevel": number(_cell(raw, headers, "Damage Per Level"),
+                                     "Damage Per Level", index),
+            "AttackIntervalSeconds": interval,
+            "MoveSpeed": number(_cell(raw, headers, "Move Speed"),
+                                "Move Speed", index),
+            "ThreatPercent": threat,
+            "ReachCm": number(_cell(raw, headers, "Reach Cm"), "Reach Cm", index),
+            "NoticeRadiusCm": number(_cell(raw, headers, "Notice Radius Cm"),
+                                     "Notice Radius Cm", index),
+            "TargetMode": mode,
+            "ScalingAttribute": attribute,
+        })
+
+    if not out:
+        raise DataError("Minion Types has no rows, so no skill can summon "
+                        "anything with stats")
+    return unique(out, "Minion Types")
+
+
 def attributes(book) -> list[dict]:
     """What one point of an attribute is worth, one stat per row.
 
@@ -1245,6 +1355,7 @@ TABLES = {
     "ItemBases": item_bases,
     "Affixes": affixes,
     "ClassStats": class_stats,
+    "MinionTypes": minion_types,
     "Attributes": attributes,
     "SkillSlots": skill_slots,
     "ElementVisuals": element_visuals,

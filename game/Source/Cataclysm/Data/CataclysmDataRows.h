@@ -493,6 +493,78 @@ struct FCataclysmClassStatRow : public FTableRowBase
 };
 
 /**
+ * One minion type's own stat block. Source: Minion Types.
+ *
+ * A MINION IS NOT A PERCENTAGE OF ITS SUMMONER. Each named type carries its own
+ * health, damage, attack interval, movement, reach and threat, and the summoner's
+ * LEVEL is the only thing that raises them. Gear does not cross unless a modifier
+ * names minions.
+ *
+ * WHY THIS IS A TABLE AND NOT NUMBERS IN THE SKILL ROW. Two skills can produce
+ * the same creature -- Summon Imp and Open the Rift both make a lesser imp -- so
+ * numbers held on the skill would exist twice and drift apart. One skill can also
+ * produce two kinds, as Iron Fortress deploys ballistae and spike traps, which a
+ * flat list of skill parameters cannot express at all. A skill decides how many,
+ * how often and how long; this decides what the thing is.
+ *
+ * Health and damage read Base + PerLevel * SummonerLevel, the same shape
+ * FCataclysmClassStatRow uses for character stats.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmMinionTypeRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "Creature" or "Machine". Decides which attribute scales its damage. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	FString Family;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float BaseHealth = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float HealthPerLevel = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float BaseDamage = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float DamagePerLevel = 0.0f;
+
+	/** Seconds between this minion's attacks. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float AttackIntervalSeconds = 0.0f;
+
+	/** Metres per second, matching movement_speed on the character sheet. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float MoveSpeed = 0.0f;
+
+	/**
+	 * How much attention this minion draws, as a percentage. A turret sits near
+	 * zero and an imp at 100, which is how a decoy and a turret are one number
+	 * rather than two behaviours.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float ThreatPercent = 0.0f;
+
+	/** How far it can hit, in centimetres. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float ReachCm = 0.0f;
+
+	/** How far it notices an enemy, in centimetres. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float NoticeRadiusCm = 0.0f;
+
+	/** "Nearest" or "Furthest". The Ballista deliberately picks the furthest. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	FString TargetMode;
+
+	/** The primary attribute granting this type increased damage. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	FString ScalingAttribute;
+};
+
+/**
  * What one point of an attribute is worth. Source: Attributes.
  *
  * ATTRIBUTES ONLY EVER SCALE. A point adds to a stat's sum of increases and the

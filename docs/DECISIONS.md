@@ -20,6 +20,74 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — The Imp and Mote stat blocks, and three imps beat the basic attack
+
+**Affects:** `All_Things_Cataclysm.xlsx`, new sheet "Minion Types". Applied.
+Partly answers issue #336.
+
+### The decisions
+
+Three, all from the project owner:
+
+1. **A mote is a weaker body in larger numbers** than an imp.
+2. **The two should produce different total output.** Left to me; set so a full
+   swarm of four motes deals about three quarters of what a full squad of three
+   imps deals.
+3. **Three permanent imps should out-damage the summoner's own basic attack.**
+
+### What the third one reverses
+
+Issue #336 proposed the opposite floor: "A player who has geared for nothing
+minion-related should get less from three imps than from their basic attack."
+The project owner decided against it. Three imps now beat the basic attack at
+every difficulty tier, from 1.14x at the level cap to about 2.0x in the middle
+tiers.
+
+### The numbers, and how they were reached
+
+Summon Imp and Open the Rift are both Staff skills, so the summoner holds a
+Staff. Three imps are permanent in normal play: Summon Imp holds 3 for 20 seconds
+against a 5 second cooldown.
+
+| | Imp | Mote |
+| :-- | --: | --: |
+| Base health, per level | 200, 90 | 100, 45 |
+| Base damage, per level | 10, 10.0 | 5, 4.5 |
+| Attack interval | 1.0s | 0.8s |
+| Most active | 3 | 4 |
+| Threat | 100% | 40% |
+| Reach | 200cm | 350cm |
+
+Damage was set from the top down: at level 100 a Staff character's basic attack
+deals 2,652 a second, so three imps were sized at 1.15x that.
+
+### The mid-game bulge is stated rather than hidden
+
+Three imps are worth 1.14x the basic attack at difficulty tier 8 and about 2.0x
+at tiers 2 and 3. **This cannot be removed while the storage shape stays as it
+is.** A minion's damage rises with the summoner's level alone, while the
+summoner's own damage rises with level *and* affix tier *and* gear upgrade level,
+so the player's curve climbs about 12 times from level 12 to level 100 where a
+linear-in-level minion climbs at most 8. A straight line cannot track it.
+
+That is not only an artefact. It is the shape the design asks for: a minion falls
+behind a geared summoner, and closing that gap is what minion affixes (issue
+#337) and points in Spirit are for. An uninvested summoner is therefore not the
+balance case. The figures are expected to move once the game is playable.
+
+### What is NOT in this change
+
+`docs/Cataclysm_GDD_v2.md` says the rows granting increased minion damage per
+attribute point land with issue #336. They are not here. Adding them means adding
+`minion_damage` to the character sheet in `sim/cataclysm_sim/character.py`, which
+touches the stat groups, the default stat line and the gameplay tags, and is
+larger than a stat block table. Issue #336 stays open for it.
+
+The three War deployables — bolt turret, ballista and spike trap — are on Crossbow
+and Spear and are outside the vertical slice, which is Demonic only.
+
+---
+
 ## 2026-08-15 — A Shield is an offhand, and a single one-handed weapon is a legal loadout
 
 **Affects:** the Weapon Types section and the Dual Wielding section of

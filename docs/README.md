@@ -32,7 +32,7 @@ python tools/reformat_google_docs_artefacts.py
 |---|---|---|
 | `Cataclysm_GDD_v2.md` | Doc "Cataclysm\_GDD\_v2(1)" | Converted to Markdown so it produces readable diffs. No version number: see below. |
 | `Empire_Skill_Tree_Keystones.md` | Doc "Empire Skill Tree Keystones" | The 12 keystones plus all four empire quadrants (Architect, Treasury, Explorer, Artisan). Converted to Markdown. |
-| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 17 sheets, listed below. Exported unchanged as `.xlsx`, and edited in place since. |
+| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 18 sheets, listed below. Exported unchanged as `.xlsx`, and edited in place since. |
 | `Empire_Development_Tree_Final.json` | Passive Trees/ | Node graph: `version`, `metadata`, `viewport`, `nodes`, `uiElements`, `edges`. |
 | `Berserker_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
 | `Bulwark_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
@@ -67,6 +67,7 @@ or if a sheet is added or removed without this table changing.
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
 | Affixes | 80 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
 | Class Stats | 33 | Class, Stat, Base, Per Level |
+| Minion Types | 2 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Scaling Attribute |
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
 | Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown |
 | Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale |
