@@ -179,7 +179,40 @@ SHAPE_RIDERS = {
 }
 
 #: The parameters whose value is a name rather than a number.
-TEXT_PARAMS = frozenset({"Mode", "Effect"})
+#:
+#: `Minions` is a comma-separated list of `Type:Count` pairs naming what a skill
+#: produces, added with issue #338. It is a list rather than one name because
+#: Iron Fortress deploys two ballistae AND three spike traps, which no single
+#: key and value can say. Every type it names must exist in the Minion Types
+#: sheet, and `validate_minion_references` refuses one that does not.
+TEXT_PARAMS = frozenset({"Mode", "Effect", "Minions"})
+
+#: How a `Minions` entry is written: `Imp:1`, or `Ballista:2, SpikeTrap:3`.
+MINION_ENTRY = re.compile(r"^\s*([A-Za-z][A-Za-z0-9]*)\s*:\s*(\d+)\s*$")
+
+
+def parse_minions(text: str, where: str) -> dict[str, int]:
+    """Read a `Minions` value into {type name: how many}."""
+    out: dict[str, int] = {}
+    for piece in text.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        match = MINION_ENTRY.match(piece)
+        if not match:
+            raise DataError(
+                f"{where}: minion entry {piece!r} is not Type:Count")
+        name, count = match.group(1), int(match.group(2))
+        if name in out:
+            raise DataError(f"{where}: {name} is listed twice")
+        if count < 1:
+            raise DataError(
+                f"{where}: {name} is produced {count} times, so naming it says "
+                "nothing")
+        out[name] = count
+    if not out:
+        raise DataError(f"{where}: Minions is set and names nothing")
+    return out
 
 #: The closed list of shapes, and which parameters each one reads.
 #:
@@ -212,7 +245,19 @@ SHAPE_PARAMS = {
     "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed", "Arc"},
     "SelfBuff": {"Duration", "Radius", "IncreasePerBurning"},
     "Movement": {"Mode", "Range", "Radius"},
-    "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval"},
+    "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
+               "Minions"},
+    # AN EIGHTH SHAPE, added with issue #338. A summon spawns things that walk to
+    # the enemy; a deployable places things that stay where they are put. The
+    # split is behavioural and the data already carried it as a tag -- Bolt
+    # Turret, Ballista and Iron Fortress all have Type.Deployable and the three
+    # summons have Type.Summon -- but the Shape column was empty for all three,
+    # so every number they state lived only in their prose description where no
+    # code could read it.
+    #
+    # The name matches the existing tag rather than inventing a new word.
+    "Deployable": {"Range", "Radius", "Count", "MaxActive", "Duration",
+                   "Interval", "Minions", "HealthPercent"},
     "Aura": {"Radius", "Duration", "Interval"},
     "Debuff": {"Range", "Radius", "MaxTargets", "Duration"},
 }
@@ -1605,6 +1650,53 @@ def validate_skill_effects(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
+    """A skill's `Minions` must name types the minion table defines. Issue #338.
+
+    THE WHOLE POINT OF THE MINION TYPE TABLE is that a creature's numbers live in
+    one place, so two skills producing the same creature cannot disagree about
+    it. That only holds if the skill names the type; a name with no row is a
+    skill that summons something with no stats.
+
+    IT ALSO CHECKS COUNT AGREES. A skill naming one type states how many twice --
+    in `Count` and in the `Minions` entry -- and this makes that redundancy a
+    guard rather than a chance to drift. Iron Fortress is the reason `Minions`
+    carries counts at all: it deploys two ballistae and three spike traps, which
+    a single `Count` cannot express, so it states no `Count`.
+    """
+    skills = tables.get("WeaponSkills")
+    types = tables.get("MinionTypes")
+    if not skills or not types:
+        return []
+
+    known = {row["Name"] for row in types}
+    problems = []
+    for row in skills:
+        if not row["Shape"] or not row["ShapeParams"]:
+            continue
+        where = f"WeaponSkills/{row['Name']}"
+        params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
+        written = params.get("Minions")
+        if not written:
+            continue
+
+        produced = parse_minions(written, where)
+        for name in produced:
+            if name not in known:
+                problems.append(
+                    f"{where}: produces {name!r}, which has no row in the "
+                    f"Minion Types sheet. It reads {sorted(known)}.")
+
+        count = params.get("Count")
+        if count and len(produced) == 1:
+            only = next(iter(produced.values()))
+            if float(count) != float(only):
+                problems.append(
+                    f"{where}: Count is {count} and Minions says {only}. One "
+                    "of the two is wrong, and nothing would notice at runtime.")
+    return problems
+
+
 def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
     """A hybrid affix must name two affixes that exist.
 
@@ -1754,6 +1846,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_affix_slots(tables)
                 + validate_weapon_skill_types(tables)
                 + validate_skill_effects(tables)
+                + validate_minion_references(tables)
                 + validate_hybrid_parts(tables)
                 + validate_element_visuals(tables, declared_tags(book)))
     if problems:

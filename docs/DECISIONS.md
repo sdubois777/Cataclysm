@@ -20,6 +20,76 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — Deployable is the eighth shape, and a skill names what it produces
+
+**Affects:** the shapes section and the Succubus telegraph note of
+`Cataclysm_GDD_v2.md`; the Weapon Skills and Minion Types sheets of
+`All_Things_Cataclysm.xlsx`. Applied. Closes issue #338.
+
+### The decision
+
+**An eighth shape, `Deployable`.** A summon spawns things that walk to the enemy;
+a deployable places machines that stay where they are put. The name matches the
+`Type.Deployable` tag the three skills already carried, rather than inventing a
+word — the split was already in the data, it just had no Shape.
+
+**A `Minions` parameter naming what a skill produces**, as `Type:Count` pairs. It
+is a list rather than one name because Iron Fortress deploys **two ballistae and
+three spike traps**, which no single key and value can say. All six minion skills
+now carry it, so a skill can be traced to its stat block and back.
+
+### Three stat blocks that had to exist first
+
+`game/Data/MinionTypes.csv` went from two rows to five: the bolt turret, the
+ballista and the spike trap joined the imp and the mote. Without them Iron
+Fortress had nothing to name.
+
+| | Bolt Turret | Ballista | Spike Trap |
+| :-- | --: | --: | --: |
+| Base health, per level | 80, 36 | 200, 90 | 40, 18 |
+| Base damage, per level | 45, 45 | 60, 60 | 10, 10 |
+| Attack interval | 1.5s | 2.0s | 3.0s |
+| Move speed | 0 | 0 | 0 |
+| Target mode | Nearest | **Furthest** | Nearest |
+
+**Health keeps the ratio the prose states.** The descriptions say 200 and 500
+health, which is 1 to 2.5, and the turret and ballista are 3,680 and 9,200 at
+level 100. The flat figures themselves are superseded: the design document cites
+them as evidence that minions needed their own stats, not as final values.
+
+**Damage comes from one stated rule** — a deployable squad at full count matches
+the Demonic summon squad, which is three imps at 1,010 each per second at level
+100. A turret firing every 1.5 seconds hits for 4,545, a ballista every 2 seconds
+for 6,060, and a spike trap hits like an imp on a 3 second cycle.
+
+**These three are provisional.** War is not in the vertical slice, so nothing has
+played them. They exist because issue #338 could not be finished without them.
+
+### Two latent problems this surfaced
+
+**A test counted every designed skill and called them Demonic.** It was
+accidentally correct while all 51 designed skills were Demonic. Giving three War
+skills a Shape took the unfiltered count to 54 while the sentence in the design
+document — which is about what a Demonic player carries — was still right at 51.
+The test was wrong and is now filtered; the document was not touched.
+
+**A fourth shape now has no telegraph marker.** The Succubus note said three
+—SelfBuff, Summon and Debuff — and Deployable makes four. Both the note and the
+test that checks it were updated, and the test now derives the total from the
+shape list rather than hard-coding seven.
+
+### Two things stated in prose that still have no home
+
+**The ballista's one-second pin.** `game/Data/StatusEffects.csv` has Stun and
+Bleed and no Pin, so there is no effect for the skill to name. This is the same
+gap issue #363 filled for Stun and Knockdown, and it is not filled here.
+
+**How far a deployable can be placed.** The descriptions give the turret's and
+ballista's reach — 10 and 15 metres, now in the minion table — but never say how
+far from the caster they can be put down. No number was invented for it.
+
+---
+
 ## 2026-08-15 — The four minion affixes, and accepting the pool dilution
 
 **Affects:** `All_Things_Cataclysm.xlsx`, the Affixes sheet, which gains four

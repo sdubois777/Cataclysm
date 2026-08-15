@@ -1566,9 +1566,9 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 
   
 
-## **How a Skill Behaves: the Seven Shapes**
+## **How a Skill Behaves: the Eight Shapes**
 
-A skill is a row in the Weapon Skills sheet, not a piece of code. Two columns decide what it does: **Shape** names which of seven shared behaviours runs it, and **Shape Params** carries that behaviour's numbers as `Key=Value` pairs. Adding a skill of an existing shape is a workbook edit and needs no programming at all.
+A skill is a row in the Weapon Skills sheet, not a piece of code. Two columns decide what it does: **Shape** names which of eight shared behaviours runs it, and **Shape Params** carries that behaviour's numbers as `Key=Value` pairs. Adding a skill of an existing shape is a workbook edit and needs no programming at all.
 
   
 
@@ -1582,7 +1582,8 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 | Projectile | Sends something out toward where the player is aiming. One that pierces travels a line and hits what it passes; one that does not lands and hits in a radius there. | Range, Radius, Pierce, Returns, Speed |
 | Self Buff | Grants the caster an effect for a duration. | Duration, Radius |
 | Movement | Moves the caster. A leap hits where it lands, a charge hits everything on the way, a blink hits at both ends and nothing between. | Mode, Range, Radius |
-| Summon | Spawns minions that fight for the caster. With a duration and an interval it spawns over time and collapses at the end, which is what a rift is. | Range, Radius, Count, MaxActive, Duration, Interval |
+| Summon | Spawns minions that fight for the caster. They walk to the enemy. With a duration and an interval it spawns over time and collapses at the end, which is what a rift is. | Range, Radius, Count, MaxActive, Duration, Interval, Minions |
+| Deployable | Places machines that stay where they are put. A turret, a ballista, a spike trap. `HealthPercent` raises what it deploys above that type's own health, which is how Iron Fortress gives its gadgets 50% more. | Range, Radius, Count, MaxActive, Duration, Interval, Minions, HealthPercent |
 | Aura | A radius around the caster. Held as a toggle when it has no duration, and timed when it has one. | Radius, Duration, Interval |
 | Debuff | Applies a named effect to enemies within range, nearest the cursor first, without necessarily damaging them. | Range, Radius, MaxTargets, Duration |
 
@@ -4162,7 +4163,7 @@ That is what "slow but powerful attacks" has to mean mechanically. Its damage sh
 
   
 
-The telegraph table above draws a marker for Strike, Projectile, Aura and Movement. It draws nothing for SelfBuff, Summon or Debuff, and that is not an omission: **there is no ground for a curse to be drawn on.** An ability in one of those three shapes is read off the caster's animation rather than off the floor, and the counter to it is the one the Attack Telegraphs subsection already names — interrupting the enemy cancels the attack. That is what makes crowd control the answer to a Succubus rather than footwork.
+The telegraph table above draws a marker for Strike, Projectile, Aura and Movement. It draws nothing for SelfBuff, Summon, Deployable or Debuff, and that is not an omission: **there is no ground for a curse to be drawn on.** An ability in one of those four shapes is read off the caster's animation rather than off the floor, and the counter to it is the one the Attack Telegraphs subsection already names — interrupting the enemy cancels the attack. That is what makes crowd control the answer to a Succubus rather than footwork.
 
   
 

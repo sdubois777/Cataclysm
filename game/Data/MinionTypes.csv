@@ -1,3 +1,6 @@
 Name,Family,BaseHealth,HealthPerLevel,BaseDamage,DamagePerLevel,AttackIntervalSeconds,MoveSpeed,ThreatPercent,ReachCm,NoticeRadiusCm,TargetMode,Tags
 Imp,Creature,200.0,90.0,10.0,10.0,1.0,4.4,100.0,200.0,1500.0,Nearest,"Type.Minion, Type.Summon, Minion.Creature, Minion.Melee"
 Mote,Creature,100.0,45.0,5.0,4.5,0.8,5.5,40.0,350.0,1000.0,Nearest,"Type.Minion, Type.Summon, Minion.Creature, Minion.Spell"
+BoltTurret,Machine,80.0,36.0,45.0,45.0,1.5,0.0,5.0,1000.0,1000.0,Nearest,"Type.Minion, Type.Deployable, Minion.Machine, Minion.Projectile"
+Ballista,Machine,200.0,90.0,60.0,60.0,2.0,0.0,5.0,1500.0,1500.0,Furthest,"Type.Minion, Type.Deployable, Minion.Machine, Minion.Projectile"
+SpikeTrap,Machine,40.0,18.0,10.0,10.0,3.0,0.0,0.0,150.0,200.0,Nearest,"Type.Minion, Type.Deployable, Minion.Machine"

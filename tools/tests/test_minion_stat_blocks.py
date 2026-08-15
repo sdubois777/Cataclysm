@@ -62,13 +62,16 @@ def squad_per_second(row: dict, level: int, count: int) -> float:
 # What is in the table
 # --------------------------------------------------------------------------
 
-def test_the_table_holds_the_two_demonic_minion_types():
-    """Only the vertical slice is designed, and the vertical slice is Demonic.
+def test_the_table_holds_every_minion_type_a_skill_produces():
+    """Two summoned creatures and three deployed machines.
 
-    The three War deployables -- bolt turret, ballista and spike trap -- sit on
-    Crossbow and Spear and are deliberately absent.
+    The Demonic pair landed with issue #336, for the vertical slice. The three
+    War deployables followed with issue #338, because their numbers lived only
+    in prose and a skill deploying two ballistae and three spike traps cannot
+    say so without them.
     """
-    assert set(minion_rows()) == {"Imp", "Mote"}
+    assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
+                                  "SpikeTrap"}
 
 
 def test_every_demonic_minion_skill_produces_a_type_the_table_defines():
@@ -133,11 +136,36 @@ def test_a_creature_is_raised_by_spirit_and_a_machine_by_agility():
 
 
 def test_every_minion_carries_its_familys_tag_and_only_its_familys_tag():
+    """Carrying both would let both families' scaling reach one minion."""
     for name, row in minion_rows().items():
         tags = tags_of(row)
+        mine = f"Minion.{row['Family']}"
+        others = {f"Minion.{f}" for f in ("Creature", "Machine")} - {mine}
         assert "Type.Minion" in tags, name
-        assert "Minion.Creature" in tags, name
-        assert "Minion.Machine" not in tags, name
+        assert mine in tags, name
+        assert not (others & tags), name
+
+
+def test_a_deployed_machine_does_not_move_and_a_summoned_creature_does():
+    """The design says move speed is how the two are told apart without a rule
+    of its own: zero for a deployable, non-zero for a summon."""
+    for name, row in minion_rows().items():
+        speed = float(row["MoveSpeed"])
+        if row["Family"] == "Machine":
+            assert speed == 0.0, f"{name} is a machine and moves at {speed}"
+            assert "Type.Deployable" in tags_of(row), name
+        else:
+            assert speed > 0.0, f"{name} is a creature and does not move"
+            assert "Type.Summon" in tags_of(row), name
+
+
+def test_a_turret_draws_far_less_attention_than_a_creature():
+    """The design's own example of what the threat column is for: a turret near
+    zero, an imp at 100."""
+    imp = float(minion_rows()["Imp"]["ThreatPercent"])
+    for name, row in minion_rows().items():
+        if row["Family"] == "Machine":
+            assert float(row["ThreatPercent"]) < imp / 4, name
 
 
 def test_agility_does_nothing_for_a_creature():
@@ -170,11 +198,16 @@ def test_only_damage_is_decided_and_health_is_expressible():
     assert "health" in gen.MINION_SCALABLE_STATS
 
 
-def test_both_types_attack_the_nearest_enemy():
-    """Both skill descriptions say nearest. The column exists because the
-    Ballista, which is not in this table yet, deliberately picks the furthest."""
-    for name, row in minion_rows().items():
-        assert row["TargetMode"] == "Nearest", name
+def test_the_ballista_is_the_one_that_picks_the_furthest_enemy():
+    """Which is the whole reason target mode is a column rather than one global
+    rule. Its skill description says it "fires massive bolts at the furthest
+    enemy within 15 meters"."""
+    rows = minion_rows()
+    furthest = [n for n, r in rows.items() if r["TargetMode"] == "Furthest"]
+    assert furthest == ["Ballista"]
+    for name, row in rows.items():
+        if name != "Ballista":
+            assert row["TargetMode"] == "Nearest", name
 
 
 # --------------------------------------------------------------------------
