@@ -437,10 +437,25 @@ bool FCataclysmStartingWeaponGrantsSkillsTest::RunTest(const FString& Parameters
 	const int32 Filled = Slots->EquipStartingWeapon();
 
 	TestEqual(FString::Printf(
-		TEXT("Beginning with a %s and damage type %s fills all six slots"),
-		*Starting, *Slots->GetDamageType()), Filled, 6);
+		TEXT("Beginning with a %s and damage type %s fills all seven slots"),
+		*Starting, *Slots->GetDamageType()), Filled, 7);
 
-	// And it really equipped the type it names, rather than filling six slots
+	// SIX OF THE SEVEN ARE THE MATRIX'S AND THE SEVENTH IS THE WEAPON'S OWN.
+	// Counted separately because the basic attack is granted whatever the damage
+	// type covers, so a starting weapon with no designed skills at all would
+	// still report one filled slot. That is the case issue #169 was about, and
+	// the count alone no longer distinguishes it. Issue #524.
+	int32 Designed = 0;
+	int32 BasicAttacks = 0;
+	for (const FCataclysmWeaponSkill& Skill : Slots->GetAvailableSkills())
+	{
+		(Skill.Slot == ECataclysmAbilitySlot::BasicAttack ? BasicAttacks : Designed)++;
+	}
+	TestEqual(TEXT("six of them are designed skills from the matrix"), Designed, 6);
+	TestEqual(TEXT("and exactly one is the weapon's own basic attack"),
+		BasicAttacks, 1);
+
+	// And it really equipped the type it names, rather than filling seven slots
 	// from something else.
 	TestEqual(TEXT("The equipped type is the starting type"),
 		Slots->GetEquippedWeaponType(), Starting);
