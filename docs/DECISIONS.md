@@ -20,6 +20,65 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — A Shield is a one-handed weapon that grants no attack damage
+
+**Affects:** the Weapon Types, Power Score and Dual Wielding sections of
+`Cataclysm_GDD_v2.md`. Applied. **Supersedes the entry below dated the same day
+that made a Shield an offhand.**
+
+### The decision
+
+The project owner, asked whether an offhand should grant skills:
+
+> "shields will have skills so you know what, for our purposes we can probably
+> just classify them as a weapon, I don't think there's much of a difference
+> between calling them a weapon or an offhand. Except they wont have base damage
+> on them, they're a defensive item."
+
+So there is **no offhand category**. A Shield is one of the one-handed weapons.
+It grants block chance and armor and no attack damage, and it has its own skills
+— Shield Bash, Shield Charge, Shield Wall, all already in the skill matrix.
+
+### Why the simpler classification is better, not just shorter
+
+Every consequence the offhand category needed a rule for now follows from being a
+one-handed weapon, with no clause of its own:
+
+| Question | Under the offhand category | As a one-handed weapon |
+| :-- | :-- | :-- |
+| Gem sockets | A stated rule: three, like a second weapon | Three, because one-handers carry three |
+| Power Score pieces | A stated rule: counts like a second weapon | Counts, because it is a weapon |
+| Affix slots | A stated rule: four, like a second weapon | Four, because it is a piece |
+| Does it grant skills? | Open question, nothing tracked it | Yes, because weapons do |
+
+Three rules and an open question collapse into nothing.
+
+### The one rule that replaces them
+
+**A held weapon that grants no attack damage contributes nothing to the basic
+attack** — neither damage nor swing rate. `sim/cataclysm_sim/player_damage.py`
+decides this by reading the base's own implicits rather than by checking for the
+name "Shield", so a future weapon of the same kind needs no change.
+
+A character holding a weapon and a Shield therefore hits exactly as hard as that
+weapon alone, at exactly the same rate, and keeps a dual wielder's nineteenth
+equipped piece, four extra affix slots and three extra sockets. That is the whole
+trade: slots and defence for a second weapon's damage.
+
+### Three legal loadouts, not four
+
+One two-handed weapon; two one-handed weapons; a single one-handed weapon. A
+weapon with a Shield is not a fourth shape — it is the second one.
+
+### What this cost
+
+Half a day modelling an offhand category that was then removed. The decision it
+recorded — that a Shield counts for Power Score and sockets just like a second
+one-handed weapon, which closed issue #612 — is unchanged and correct. Only the
+classification moved.
+
+---
+
 ## 2026-08-15 — Deployable is the eighth shape, and a skill names what it produces
 
 **Affects:** the shapes section and the Succubus telegraph note of

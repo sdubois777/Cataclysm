@@ -53,7 +53,7 @@ def test_a_shield_buys_defence_by_giving_up_a_second_weapons_damage():
     one-hander with a Shield hits exactly as hard as that one-hander alone and
     strictly less hard than a pair."""
     alone = pd.damage_per_hit(8, "Axe")
-    with_shield = pd.damage_per_hit(8, ("Axe", pd.OFFHAND))
+    with_shield = pd.damage_per_hit(8, ("Axe", pd.UNARMED_WEAPON))
     paired = pd.damage_per_hit(8, ("Axe", "Sword"))
 
     assert with_shield == pytest.approx(alone)
@@ -72,29 +72,32 @@ def test_a_shield_is_the_only_held_item_that_grants_no_attack_damage():
 
     no_damage = [b.name for b in af.ITEM_BASES
                  if isinstance(b, af.WeaponBase) and attack_damage(b) == 0.0]
-    assert no_damage == [pd.OFFHAND]
+    assert no_damage == [pd.UNARMED_WEAPON]
 
 
-def test_a_shield_on_its_own_is_not_a_loadout():
-    with pytest.raises(ValueError, match="holds no weapon"):
-        pd.damage_per_hit(8, (pd.OFFHAND,))
+def test_a_loadout_that_arms_nobody_is_refused():
+    """A Shield on its own, or two of them. Legal to hold in the sense that the
+    hand count works; refused here because there is no basic attack to compose."""
+    for loadout in ((pd.UNARMED_WEAPON,), (pd.UNARMED_WEAPON, pd.UNARMED_WEAPON)):
+        with pytest.raises(ValueError, match="grants no attack damage"):
+            pd.damage_per_hit(8, loadout)
 
 
 def test_a_shield_grants_block_and_armor_and_no_weapon_does():
-    shield = af.base_named(pd.OFFHAND).implicit_values()
+    shield = af.base_named(pd.UNARMED_WEAPON).implicit_values()
     assert shield["block_chance"] > 0
     assert shield["armor"] > 0
 
     for base in af.ITEM_BASES:
-        if not isinstance(base, af.WeaponBase) or base.name == pd.OFFHAND:
+        if not isinstance(base, af.WeaponBase) or base.name == pd.UNARMED_WEAPON:
             continue
         granted = base.implicit_values()
         assert "block_chance" not in granted, base.name
         assert "armor" not in granted, base.name
 
 
-def test_the_offhand_never_changes_how_fast_the_weapon_swings():
-    """A shield is held, not swung, so it stays out of the rate average."""
+def test_a_weapon_granting_no_damage_never_changes_the_swing_rate():
+    """It stays out of the rate average, because it supplies no attack damage."""
     for weapon in ("Axe", "Dagger", "Sword", "Wand"):
-        assert pd.attack_rate((weapon, pd.OFFHAND)) == \
+        assert pd.attack_rate((weapon, pd.UNARMED_WEAPON)) == \
             pytest.approx(pd.attack_rate(weapon))

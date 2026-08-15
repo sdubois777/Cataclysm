@@ -53,25 +53,21 @@ from .character import BASIC_ATTACK_SLOT, SKILL_SLOTS
 # What a character may be holding
 # --------------------------------------------------------------------------
 
-#: The base that is an offhand rather than a weapon.
+#: The weapon that grants no attack damage. Named here for the tests and the
+#: report below; nothing in the arithmetic reads it.
 #:
-#: STATED BY THE PROJECT OWNER on 2026-08-15: a Shield is an offhand, and a
-#: one-handed weapon with a Shield is a legal loadout. It counts "just like a
-#: second one-handed weapon" -- one equipped piece for Power Score across both
-#: hands, four affix slots of its own, and three gem sockets, so every loadout
-#: gives the same six. Issue #612.
+#: A SHIELD IS A ONE-HANDED WEAPON, decided by the project owner on 2026-08-15
+#: after a day spent modelling it as a separate offhand category. Calling it a
+#: weapon that grants no attack damage says everything the category said and
+#: costs no extra rule: its three sockets, its four affix slots and its place in
+#: the one equipped piece Power Score counts all follow from being one-handed.
 #:
-#: IT CONTRIBUTES NOTHING TO A HIT, and that is the whole trade. A Shield has no
-#: attack damage implicit, so it adds none, and it is left out of the attack rate
-#: average because a shield is not swung. A one-handed weapon with a Shield
-#: therefore hits exactly as hard as that weapon alone and buys block and armor
-#: with the difference.
-#:
-#: `affixes.py` still models it as a `WeaponBase` with one hand, which is now a
-#: category error rather than an exception. Moving it touches `ITEM_BASES`,
-#: `WEAPON_BASES`, `attack_speed_of`, `BASES_BY_SLOT` and the slot table, and
-#: changes no number this module produces, so it has not been done here.
-OFFHAND = "Shield"
+#: IT CONTRIBUTES NOTHING TO A HIT, and that is the whole trade. It supplies no
+#: attack damage and so no swing rate either, which `armed_weapons_in` decides by
+#: reading the base's implicits rather than by checking this name. A weapon and a
+#: Shield therefore hits exactly as hard as that weapon alone, and buys block and
+#: armor with the difference while keeping a dual wielder's slots and sockets.
+UNARMED_WEAPON = "Shield"
 
 #: The loadout the damage target describes: two one-handed weapons.
 #:
@@ -114,11 +110,15 @@ INCREASED_DAMAGE_AFFIXES_ON_THE_WEAPON = 0
 def normalise_loadout(loadout: str | tuple[str, ...] | list[str]) -> tuple[str, ...]:
     """Accept a single name or a sequence, and check the result is legal.
 
-    THE FOUR LEGAL SHAPES, as the project owner stated them on 2026-08-15:
-    one two-handed weapon; two one-handed weapons; one one-handed weapon on its
-    own; one one-handed weapon with a Shield in the offhand.
+    THE THREE LEGAL SHAPES: one two-handed weapon; two one-handed weapons; one
+    one-handed weapon on its own. The third was added by the project owner on
+    2026-08-15, against what the design document said at the time.
 
     A two-handed weapon uses both hands, so it may not be paired with anything.
+
+    A SHIELD IS ONE OF THE ONE-HANDED WEAPONS and needs no case here. It happens
+    to grant no attack damage, which `armed_weapons_in` reads off the base rather
+    than off its name.
     """
     names = (loadout,) if isinstance(loadout, str) else tuple(loadout)
     if not names:
@@ -137,22 +137,31 @@ def normalise_loadout(loadout: str | tuple[str, ...] | list[str]) -> tuple[str, 
     if hands > 2:
         raise ValueError(
             f"{list(names)} needs {hands} hands and a character has two")
-    # Asked before the position check below, because a loadout of nothing but
-    # offhands is wrong in a more fundamental way than one holding them in the
-    # wrong order, and the more fundamental complaint is the more useful one.
-    if all(n == OFFHAND for n in names):
+    if not _armed(names):
         raise ValueError(
-            f"this loadout holds no weapon, only {OFFHAND}, so it deals no "
-            "attack damage at all")
-    if len(names) == 2 and OFFHAND in names[:1]:
-        raise ValueError(
-            f"{OFFHAND} is an offhand, so it goes in the second position")
+            f"{list(names)} grants no attack damage at all, so there is no "
+            "basic attack to compose")
     return names
 
 
-def weapons_in(loadout: tuple[str, ...]) -> tuple[str, ...]:
-    """The names in a loadout that are weapons rather than the offhand."""
-    return tuple(n for n in loadout if n != OFFHAND)
+def _armed(names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(n for n in names if _base_attack_damage(af.base_named(n)) > 0)
+
+
+def _base_attack_damage(base: af.ItemBase) -> float:
+    """What a base grants before any upgrade level, used only to ask if it arms."""
+    return sum(i.value for i in base.implicits if i.stat == "attack_damage")
+
+
+def armed_weapons_in(loadout: tuple[str, ...]) -> tuple[str, ...]:
+    """The weapons in a loadout that actually supply attack damage.
+
+    A WEAPON GRANTING NONE CONTRIBUTES NOTHING TO THE BASIC ATTACK, neither
+    damage nor swing rate. The Shield is the only such weapon today and this
+    names none of them: the rule reads the base's own implicits, so a future
+    weapon of the same kind needs no change here.
+    """
+    return _armed(loadout)
 
 
 def affix_tier_at(tier: int) -> int:
@@ -334,7 +343,7 @@ def attack_rate(loadout: str | tuple[str, ...] = REFERENCE_LOADOUT) -> float:
 
     The offhand is left out, because a shield is not swung.
     """
-    names = weapons_in(normalise_loadout(loadout))
+    names = armed_weapons_in(normalise_loadout(loadout))
     if not names:
         raise ValueError("this loadout holds no weapon, so it has no rate")
     return af.attack_speed_of(*[af.base_named(n) for n in names])
@@ -457,13 +466,13 @@ if __name__ == "__main__":
 
     ONE_HANDERS = [b.name for b in af.ITEM_BASES
                    if isinstance(b, af.WeaponBase) and b.hands == 1
-                   and b.name != OFFHAND]
+                   and b.name != UNARMED_WEAPON]
     TWO_HANDERS = [b.name for b in af.ITEM_BASES
                    if isinstance(b, af.WeaponBase) and b.hands == 2]
 
     LOADOUTS: list[tuple[str, ...]] = (
         [("Axe",), ("Dagger",)]
-        + [("Axe", OFFHAND)]
+        + [("Axe", UNARMED_WEAPON)]
         + [("Axe", "Sword"), ("Axe", "Axe"), ("Dagger", "Dagger")]
         + [(n,) for n in TWO_HANDERS])
 
@@ -473,11 +482,11 @@ if __name__ == "__main__":
           f"{'gap':>7} {'per second':>11}")
     print("    " + "-" * 74)
     for names in LOADOUTS:
-        weapons = weapons_in(names)
+        weapons = armed_weapons_in(names)
         if len(names) == 1 and af.base_named(names[0]).hands == 2:
             kind = "two-handed"
-        elif OFFHAND in names:
-            kind = "one + offhand"
+        elif UNARMED_WEAPON in names:
+            kind = "weapon+shield"
         elif len(weapons) == 2:
             kind = "dual wield"
         else:

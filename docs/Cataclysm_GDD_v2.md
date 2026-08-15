@@ -664,7 +664,7 @@ Four rules follow from the formula:
 
   - **Socket count has no weight of its own.** It is the number of terms in the gem sum, so filling a socket is what a socket contributes.
   - **Gear upgrade level multiplies gear rarity rather than adding to it.** A +10 Cataclysmic piece is worth 3.52 times the same piece at +0, and eight times what a +10 Everyday piece is worth. This is the only place two inputs multiply, and it is what makes the power curve rise faster than the difficulty tier.
-  - **What the hands hold counts as one equipped piece**, whatever the loadout, the same way every loadout gives the same six sockets. A two-handed weapon, two one-handed weapons, a single one-handed weapon and a one-handed weapon with a Shield all count once. No loadout may be worth free Power Score.
+  - **What the hands hold counts as one equipped piece**, whatever the loadout, the same way every loadout gives the same six sockets. A two-handed weapon, two one-handed weapons and a single one-handed weapon all count once. No loadout may be worth free Power Score.
   - **Resistance above the 70% cap adds no Power Score.** Over-capping remains legal and useful, because enemy penetration reduces effective resistance, but it is headroom against penetration rather than power.
 
   
@@ -1449,30 +1449,38 @@ Skills in Cataclysm are not learned or leveled independently. They are determine
 
 ## **Weapon Types**
 
-  - One-Handed: Sword, Dagger, Axe, Fist, Wand, Whip, Crossbow
+  - One-Handed: Sword, Dagger, Axe, Fist, Wand, Whip, Shield, Crossbow
   - Two-Handed: Greatsword, Greataxe, Spear, Staff, 2H Crossbow, Warhammer
-  - Offhand: Shield
 
-There are four legal loadouts: one two-handed weapon, two one-handed weapons, a
-single one-handed weapon, or a one-handed weapon with a Shield in the offhand.
+There are three legal loadouts: one two-handed weapon, two one-handed weapons, or
+a single one-handed weapon.
+
+**The Shield is a one-handed weapon that grants no attack damage.** It is the one
+weapon bought for something other than a hit: it carries block chance and armor
+and no attack damage at all, and it has its own skills — Shield Bash, Shield
+Charge, Shield Wall. A character holding a weapon and a Shield is dual wielding,
+and gets the second weapon's affix slots and sockets while giving up the damage a
+second weapon would have added.
 
 **Every loadout gives the same 6 gem sockets and the same Power Score.** A
-two-handed weapon carries all six on its own. A one-handed item carries three, so
-two one-handed weapons make six and so does a one-handed weapon with a Shield.
-What the hands hold counts as **one equipped piece** for Power Score whatever it
-is, so no loadout is worth free Power Score.
+two-handed weapon carries all six on its own; a one-handed weapon carries three,
+so two of them make six. What the hands hold counts as **one equipped piece** for
+Power Score whatever the loadout, so none is worth free Power Score.
 
-**A Shield is treated just like a second one-handed weapon**, decided by the
-project owner on 2026-08-15. It is a real piece with its own four affix slots and
-its own three sockets, so a one-handed weapon with a Shield has 19 equipped
-pieces and 76 affix slots — the same as dual wielding — and trades a second
-weapon's damage for block and armor.
+**A held weapon that grants no attack damage contributes nothing to the basic
+attack** — neither damage nor swing rate. That is a rule about the item's stats
+rather than about a category, so it needs no exception written for the Shield and
+would cover any future weapon of the same kind.
 
-**This reverses what this document used to say**, which was that a Shield is one
-of the one-handed weapons and that there are no offhand items at all. The project
-owner changed both on 2026-08-15. Under the old rule a Shield was, in this
-document's own words, "a weapon with nowhere else to be", and a player who wanted
-one had to spend half of a dual wield on it.
+**One rule here changed on 2026-08-15: a single one-handed weapon is now a legal
+loadout.** This document used to say a player equips either one two-handed weapon
+or two one-handed weapons, with nothing in between.
+
+The Shield was briefly moved out of the weapons and given its own offhand
+category on the same day, and then moved back. Calling it a weapon that grants no
+attack damage says everything the offhand category said, and it costs no extra
+rule: the sockets, the Power Score piece count and the affix slots all follow from
+it being a one-handed weapon rather than needing a clause of their own.
 
 ### **Dual Wielding and Damage Types**
 
@@ -2454,13 +2462,16 @@ With the multiplier applied to both, a two-handed weapon deals about **1.33 time
 
 ### **What a Dual Wielder Has**
 
-|  | Two-handed | Dual wielding | One-handed and Shield |
+|  | Two-handed | Dual wielding | One-handed alone |
 | :-- | :-: | :-: | :-: |
-| Equipped pieces | 18 | 19 | 19 |
-| Affix slots | 72 | 76 | 76 |
+| Equipped pieces | 18 | 19 | 18 |
+| Affix slots | 72 | 76 | 72 |
 | Damage types | 3 | 4 | 2 |
 | Weapon affix slots, in one-handed terms | 8 | 8 | 4 |
-| Gem sockets in both hands | 6 | 6 | 6 |
+| Gem sockets in both hands | 6 | 6 | 3 |
+
+A Shield counts as the second one-handed weapon in the middle column: it brings
+the nineteenth piece, its four affix slots and its three sockets, and no damage.
 
   
 
@@ -2476,7 +2487,7 @@ With the multiplier applied to both, a two-handed weapon deals about **1.33 time
 
   
 
-**The Shield is the one held item whose base defends, and it is an offhand rather than a weapon.** Section V lists it separately from the one-handed and two-handed weapons. It grants block chance and armor and no attack damage at all, which is why it is the one thing a hand can hold that adds nothing to a hit. No weapon base grants health, energy shield, armor, evasion, block or damage reduction, and no weapon can **roll** any of those as an affix.
+**The Shield is the one weapon whose base defends.** Section V lists it among the one-handed weapons. It grants block chance and armor and no attack damage at all, which makes it the one weapon a hand can hold that adds nothing to a hit — so a character holding one is dual wielding for slots and sockets while forgoing a second weapon's damage. No other weapon base grants health, energy shield, armor, evasion, block or damage reduction, and no weapon can **roll** any of those as an affix.
 
   
 

@@ -159,14 +159,15 @@ TOTAL_AFFIX_SLOTS = GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
 #: A filled offhand is a nineteenth piece, so 76 affix slots.
 #:
 #: Settled by the project owner 2026-08-03 for a second weapon: it is a real
-#: piece with its own four affix slots, and it is not exempt. Extended on
-#: 2026-08-15 to the Shield, which is an offhand rather than a weapon and is
-#: treated "just like a second one-handed weapon".
+#: piece with its own four affix slots, and it is not exempt.
 #:
-#: NAMED FOR THE OFFHAND RATHER THAN FOR DUAL WIELDING, which is what these two
-#: used to be called. A one-handed weapon with a Shield gets the same nineteenth
-#: piece as two one-handed weapons do, so a name mentioning only dual wielding
-#: described half of what the constant covers.
+#: NAMED FOR THE OFFHAND -- MEANING THE SECOND HAND, NOT A CATEGORY OF ITEM --
+#: rather than for dual wielding, which is what these two used to be called. A
+#: Shield is one of the one-handed weapons and simply grants no attack damage, so
+#: a character holding a weapon and a Shield fills the second hand and gets this
+#: nineteenth piece exactly as two ordinary one-handers do. "Dual wielding" reads
+#: as two damage-dealing weapons, and this is about the hand being occupied at
+#: all.
 GEAR_PIECES_WITH_AN_OFFHAND = GEAR_PIECES + 1
 TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND = (GEAR_PIECES_WITH_AN_OFFHAND
                                      * AFFIX_SLOTS_PER_PIECE)
