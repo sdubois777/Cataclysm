@@ -236,6 +236,56 @@ def test_each_stunning_skill_states_its_designed_duration(key, seconds):
         f"docs/All_Things_Cataclysm.xlsx and update this table.")
 
 
+@pytest.mark.parametrize(("key", "seconds"), sorted(SKILL_STUN_SECONDS.items()))
+def test_each_stunning_skill_states_its_duration_as_data_too(key, seconds):
+    """The number the prose states and the number the game reads are the same one.
+
+    WHY THIS IS SEPARATE FROM THE TEST ABOVE. That one reads the prose, which is
+    what a human reads. This one reads the `StunSeconds` shape parameter, which
+    is what the game reads. Until issue #588 there was no second number to
+    compare against: all four of these rows had an empty Shape cell, and
+    `tools/generate_datatables.py` refuses shape parameters on a row with no
+    shape, so a duration could not be written as data at all. Four durations
+    lived in prose that nothing but a person could read.
+
+    THE TWO CAN DRIFT AND ONLY THIS NOTICES. Editing one cell of the Weapon
+    Skills sheet and not the other leaves a skill whose description promises 1.5
+    seconds and whose behaviour delivers something else, which no amount of
+    reading either cell on its own would reveal.
+    """
+    row = next((r for r in rows_of("WeaponSkills") if r["Name"] == key), None)
+    assert row is not None, f"game/Data/WeaponSkills.csv has no row {key}"
+
+    assert row["Shape"], (
+        f"{key} ({row['SkillName']}) has no Shape, so it cannot carry a stun "
+        f"duration as data and is granted the placeholder ability instead of a "
+        f"real one. Issue #588.")
+
+    stated = dict(
+        piece.strip().split("=", 1)
+        for piece in row["ShapeParams"].split(";")
+        if "=" in piece)
+
+    assert "StunSeconds" in stated, (
+        f"{key} ({row['SkillName']}) stuns for {seconds} seconds in its "
+        f"description and states no StunSeconds, so the game cannot read it. "
+        f"Issue #588.")
+    assert float(stated["StunSeconds"]) == seconds, (
+        f"{key} ({row['SkillName']}) states StunSeconds={stated['StunSeconds']} "
+        f"and its description says {seconds} seconds. They have to be the same "
+        f"number.")
+
+    # NAMING THE EFFECT IS WHAT MAKES THE THRESHOLD NOT APPLY. The anti-stun-lock
+    # rule says a hit must take at least 10% of the target's maximum health to
+    # stun, UNLESS the skill states stunning as its effect. All four of these are
+    # designed to stun rather than stunning by being big, so each has to say so.
+    assert stated.get("Effect") == "Stun", (
+        f"{key} ({row['SkillName']}) does not state Effect=Stun, so its stun "
+        f"would be subject to the 10% of maximum health threshold that a "
+        f"designed stun is exempt from. See the anti-stun-lock rules in "
+        f"game/Data/StatusEffects.csv.")
+
+
 def test_the_stunning_weapon_skills_are_exactly_the_four_that_are_designed():
     """A fifth stunning skill is fine, but it has to be added here and to the
     design document sentence that lists them by name, or both go stale."""
