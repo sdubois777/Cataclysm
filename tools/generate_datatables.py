@@ -265,6 +265,12 @@ SHAPE_PARAMS = {
 #: The only non-numeric parameter, and the values it may take.
 MOVEMENT_MODES = {"Leap", "Charge", "Blink"}
 
+#: The two shapes a basic attack may take. `docs/Cataclysm_GDD_v2.md` says the
+#: basic attack is the weapon's own swing -- a Strike for a melee weapon, a
+#: Projectile for a ranged one -- so any other shape in that column is a mistyped
+#: cell rather than a design. Issue #524.
+BASIC_ATTACK_SHAPES = frozenset({"Strike", "Projectile"})
+
 
 def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
     """Read a `Key=Value; Key=Value` cell, refusing anything the shape cannot use.
@@ -311,6 +317,57 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
         params[key] = value
 
     return params
+
+
+def check_basic_attack(shape: str, params: str, arms_the_holder: bool,
+                       is_weapon: bool, where: str) -> None:
+    """Refuse a basic attack that is missing, misplaced, or not pure weapon damage.
+
+    THE BASIC ATTACK IS THE ANCHOR. `game/Data/SkillSlots.csv` puts it at 100%
+    and every other slot is a percentage of it, so a basic attack carrying a
+    burn, a stun or a patch of ground would make the anchor deal more than the
+    weapon does and every other slot's percentage would then describe something
+    else. That is why the riders are refused here rather than merely discouraged.
+
+    A weapon that grants no attack damage grants no basic attack either, which is
+    the Shield and was decided on issue #619. It is asked about through
+    `arms_the_holder` rather than by name so a second such weapon behaves the
+    same way without an edit here.
+
+    BOTH HALVES OF `is_weapon and arms_the_holder` ARE LOAD-BEARING. Flat attack
+    damage is not by itself a weapon: the Vambraces glove base grants 12 of it,
+    and a glove has no swing to describe.
+    """
+    if params and not shape:
+        raise DataError(f"{where}: has basic attack parameters but no shape")
+
+    if not shape:
+        if is_weapon and arms_the_holder:
+            raise DataError(
+                f"{where}: is a weapon that grants flat attack damage and has no "
+                "basic attack shape. Every armed weapon needs one, or a character "
+                "holding it has nothing between its cooldowns. Issue #524.")
+        return
+
+    if not is_weapon:
+        raise DataError(f"{where}: is not a weapon but states a basic attack. "
+                        "Only a weapon supplies one.")
+    if not arms_the_holder:
+        raise DataError(
+            f"{where}: grants no flat attack damage but states a basic attack, "
+            "which would deal 100% of nothing. Issue #619.")
+    if shape not in BASIC_ATTACK_SHAPES:
+        raise DataError(
+            f"{where}: basic attack shape is {shape!r}. A basic attack is the "
+            f"weapon's own swing, so it is one of {sorted(BASIC_ATTACK_SHAPES)}.")
+
+    parsed = parse_shape_params(params, shape, where)
+    riders = sorted(set(parsed) - SHAPE_PARAMS[shape])
+    if riders:
+        raise DataError(
+            f"{where}: basic attack carries {riders}. A basic attack is 100% "
+            "weapon damage and nothing else, which is what makes it the anchor "
+            "every other slot is measured against.")
 
 
 def weapon_skills(book) -> list[dict]:
@@ -742,6 +799,15 @@ def item_bases(book) -> list[dict]:
                 f"Item Bases row {index}: {name} is not a weapon but has an "
                 "attack speed. Only a weapon supplies that base.")
 
+        # THE BASIC ATTACK'S SHAPE AND REACH. It lives on the weapon base rather
+        # than in the Weapon Skills sheet because it does not vary by damage
+        # type: the design document calls it weapon damage itself, so there is
+        # one per weapon rather than one per weapon-and-damage-type pair. Decided
+        # 2026-08-15 on issue #524, and the design document says the matrix holds
+        # one skill per NON-BASIC slot, which putting it here keeps true.
+        basic_shape = _cell(raw, headers, "Basic Shape")
+        basic_params = _cell(raw, headers, "Basic Shape Params")
+
         entry = {
             "Name": row_name(slot, name),
             "BaseName": name,
@@ -752,9 +818,12 @@ def item_bases(book) -> list[dict]:
             "MaxDamageTypes": int(float(
                 _cell(raw, headers, "Max Damage Types") or 0)),
             "AttackSpeed": float(attack_speed) if attack_speed else 0.0,
+            "BasicShape": basic_shape,
+            "BasicShapeParams": basic_params,
         }
 
         implicits = 0
+        arms_the_holder = False
         for slot_index in (1, 2):
             stat = _cell(raw, headers, f"Implicit {slot_index} Stat")
             kind = _cell(raw, headers, f"Implicit {slot_index} Kind")
@@ -765,6 +834,19 @@ def item_bases(book) -> list[dict]:
                         f"Item Bases row {index}: {name} implicit {slot_index} "
                         f"kind is {kind!r}, expected one of {list(IMPLICIT_KINDS)}")
                 implicits += 1
+            # Read off the implicits rather than off the name, which is what
+            # player_damage.armed_weapons_in also does. The Shield is the only
+            # weapon today that arms nobody, and naming it here instead would
+            # make a second such weapon silently wrong.
+            #
+            # THE TWO ARE NOT IDENTICAL AND THE DIFFERENCE IS DELIBERATE. That
+            # function sums any attack_damage implicit; this one requires the
+            # kind to be flat. They agree on today's data, because no weapon
+            # grants increased attack damage as an implicit. This is the stricter
+            # of the two, because a weapon granting only an increase supplies no
+            # damage to increase.
+            if stat == "attack_damage" and kind == "flat":
+                arms_the_holder = True
             entry[f"Implicit{slot_index}Stat"] = stat
             entry[f"Implicit{slot_index}Kind"] = kind
             entry[f"Implicit{slot_index}Value"] = float(value) if value else 0.0
@@ -772,6 +854,9 @@ def item_bases(book) -> list[dict]:
         if implicits == 0:
             raise DataError(f"Item Bases row {index}: {name} grants nothing, so "
                             "it is not a distinct base")
+
+        check_basic_attack(basic_shape, basic_params, arms_the_holder,
+                           bool(hands), f"Item Bases row {index} ({name})")
         out.append(entry)
 
     return unique(out, "Item Bases")

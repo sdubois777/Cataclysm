@@ -121,6 +121,57 @@ class TestItemBases:
                 f"{base.name} has no attack speed in the sheet")
             assert float(row["Attack Speed"]) == base.attack_speed, base.name
 
+    def test_every_basic_attack_matches(self, base_sheet, model):
+        """The basic attack's shape and reach live on the weapon base rather than
+        in the Weapon Skills sheet, decided on issue #524, so this is the only
+        place the sheet and the model can disagree about them."""
+        for row in base_sheet:
+            base = model.base_named(text(row["Base Name"]))
+            stated_shape = text(row["Basic Shape"])
+            stated_params = text(row["Basic Shape Params"])
+            if not isinstance(base, model.WeaponBase):
+                assert not stated_shape and not stated_params, (
+                    f"{base.name} is not a weapon, so it has no swing to "
+                    f"describe, but the sheet gives it a basic attack")
+                continue
+            assert stated_shape == base.basic_shape, base.name
+            assert stated_params == base.basic_shape_params, base.name
+
+    def test_exactly_the_weapons_that_arm_their_holder_have_a_basic_attack(
+            self, base_sheet, model):
+        """Read from the sheet rather than from the model, so a weapon added to
+        the workbook with no basic attack fails here rather than being granted
+        five slots and nothing in between. Issue #524.
+
+        The Shield is the one weapon with neither, because it grants no attack
+        damage and so has no hit to compose. Issue #619.
+        """
+        armed, unarmed = [], []
+        for row in base_sheet:
+            base = model.base_named(text(row["Base Name"]))
+            if not isinstance(base, model.WeaponBase):
+                continue
+            has_basic = bool(text(row["Basic Shape"]))
+            arms = any(text(row[f"Implicit {i} Stat"]) == "attack_damage"
+                       and text(row[f"Implicit {i} Kind"]) == "flat"
+                       for i in (1, 2))
+            (armed if arms else unarmed).append((base.name, has_basic))
+
+        assert armed, "no armed weapon was found in the sheet"
+        missing = [name for name, has_basic in armed if not has_basic]
+        assert not missing, (
+            f"{missing} supply attack damage and have no basic attack, so a "
+            f"character holding one has nothing between its cooldowns")
+
+        assert unarmed, (
+            "no weapon granting zero attack damage was found. The Shield is one, "
+            "so either it was removed from the sheet or this test now compares "
+            "nothing")
+        wrongly_armed = [name for name, has_basic in unarmed if has_basic]
+        assert not wrongly_armed, (
+            f"{wrongly_armed} grant no attack damage but state a basic attack, "
+            f"which would deal 100% of nothing")
+
     def test_the_weapon_rates_still_average_to_what_the_two_handed_multiplier_assumed(
             self, base_sheet, model):
         """The two-handed multiplier of 2.0 is already shipped, and it was

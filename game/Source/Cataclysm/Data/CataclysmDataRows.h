@@ -375,6 +375,35 @@ struct FCataclysmItemBaseRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
 	float AttackSpeed = 0.0f;
 
+	/**
+	 * The basic attack's shape -- "Strike" for a melee weapon, "Projectile" for a
+	 * ranged one -- with that shape's parameters in the cell beside it.
+	 *
+	 * THE BASIC ATTACK LIVES ON THE WEAPON, NOT IN THE SKILL MATRIX. Every other
+	 * slot names a designed skill per weapon type AND damage type, which is what
+	 * the 398 rows of game/Data/WeaponSkills.csv are. The basic attack does not
+	 * vary by damage type -- the design document calls it weapon damage itself --
+	 * so it sits here as 13 entries rather than 75 near-identical matrix rows.
+	 * Decided 2026-08-15 on issue #524, and putting it here keeps the design
+	 * document's statement that the matrix holds one skill per NON-BASIC slot
+	 * true.
+	 *
+	 * EMPTY ON A WEAPON THAT GRANTS NO ATTACK DAMAGE, which is the Shield: there
+	 * is no hit to compose from it. Issue #619. tools/generate_datatables.py
+	 * refuses both mistakes that matter -- an armed weapon with no basic attack,
+	 * and an unarmed one that states one.
+	 *
+	 * NO RIDERS IN THE PARAMETERS. A basic attack is 100% weapon damage and
+	 * nothing else, which is what makes it the anchor every other slot's
+	 * percentage is measured against. A burn or a patch of ground here would move
+	 * the anchor and quietly change what every other slot's percentage means.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
+	FString BasicShape;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base|Weapon")
+	FString BasicShapeParams;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit1Stat;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit1Kind;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") float Implicit1Value = 0.0f;

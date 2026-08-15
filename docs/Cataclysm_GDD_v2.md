@@ -398,6 +398,10 @@ Every skill deals a percentage of **weapon damage**, which means the weapon's ow
 
   
 
+**How far it reaches comes from the weapon**, and is stated per weapon type under Skill Acquisition in section V. It is the one slot whose behaviour is not a row in the weapon-and-damage-type matrix, because it does not vary by damage type.
+
+  
+
 | Slot | Typical | Range | Why |
 | :-- | :-: | :-: | :-- |
 | Basic Attack | 100% | fixed | Automatic and free. It is weapon damage. |
@@ -1444,6 +1448,56 @@ These figures may need tuning once the game is playable.
 ## **Skill Acquisition**
 
 Skills in Cataclysm are not learned or leveled independently. They are determined entirely by the combination of weapon type and damage type on the player's weapon. Every weapon type paired with every damage type produces a unique set of six skills (one per non-basic slot). This design ensures that gear upgrades are never just stat checks — changing weapon types fundamentally changes the player's available kit.
+
+  
+
+**The basic attack is the seventh slot and it does not come from that matrix.** It comes from the weapon type alone, and it is stated on the Item Bases sheet beside that weapon's attack speed rather than on the Weapon Skills sheet. The reason is that it does not vary by damage type: the basic attack **is** weapon damage, so a Dagger swings the same distance whatever the blade is made of. Putting it in the matrix would mean 75 near-identical rows saying the same thing seven times over; putting it on the weapon means 13.
+
+  
+
+**Three consequences follow, and all three are intended.** A weapon whose damage type covers none of its skills — a War Wand, which the matrix has no rows for — still has a basic attack, because it still swings. The Shield has none, because it grants no attack damage and so has no hit to compose. And a fourteenth weapon type needs one entry rather than seven.
+
+  
+
+### **How far a basic attack reaches**
+
+  
+
+**Melee reach is 0.9 metres plus the weapon's length past the fist**, rounded to a 0.3 metre grid. The 0.9 is not a chosen number: it is this game's contact distance, the 0.42 metre player capsule plus a 0.48 metre baseline enemy body, and it is already the radius of Maul, Slam and Sunder — the three shortest-reaching of the seven designed enemy basic attacks. Path of Exile computes melee reach the same way, as the weapon's own range plus the character's hitbox radius, which is evidence the shape is right rather than only convenient.
+
+  
+
+**The arc is that weapon's designed Heavy arc, carried over unchanged**, because the arc is the animation and the reach is the power.
+
+  
+
+| Weapon | Shape | Reach | Arc |
+| :-: | :-: | :-: | :-: |
+| Dagger | Strike | 1.5 m | 60° |
+| Fist | Strike | 1.5 m | 60° |
+| Sword | Strike | 1.8 m | 90° |
+| Axe | Strike | 1.8 m | 100° |
+| Warhammer | Strike | 2.1 m | 80° |
+| Greataxe | Strike | 2.4 m | 120° |
+| Greatsword | Strike | 2.7 m | 140° |
+| Whip | Strike | 3 m | 45° |
+| Spear | Strike | 3.3 m | 40° |
+| Staff | Projectile | 7.2 m | — |
+| Wand | Projectile | 8.4 m | — |
+| Crossbow | Projectile | 10 m | — |
+| 2H Crossbow | Projectile | 12 m | — |
+
+  
+
+**Every one of these is exactly 0.6 times that weapon's designed Heavy reach, for the ten weapons that have a designed Heavy to compare against.** That was not fitted — it fell out of the contact-distance rule above and was noticed afterwards, which is two independent derivations agreeing. Since the arc is unchanged, every melee basic attack covers 36% of its Heavy's area.
+
+  
+
+**Three of the thirteen could not be checked that way and are judgements**: the Spear, the Crossbow and the 2H Crossbow have no designed Heavy attack of any shape anywhere in the matrix.
+
+  
+
+**A basic attack carries no riders.** No burn, no patch of ground, no stun, no knockback, and it hits one target. That is stricter than the enemy basic attacks, four of whose seven cap themselves at one target and one of which — the Hellhound's Maul — does set what it hits alight. The player's basic attack is held to the stricter rule because it is the 100% figure every other slot's percentage is measured against, so a rider on it would silently move all six of the others.
 
   
 

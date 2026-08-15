@@ -1197,8 +1197,14 @@ bool FCataclysmShapeDispatchTest::RunTest(const FString&)
 	Slots->RegisterComponent();
 	Slots->SetDamageType(TEXT("Demonic"));
 
+	// SEVEN, NOT SIX, SINCE ISSUE #524. Six skills come from the weapon skill
+	// matrix and the seventh is the basic attack, which is read from the
+	// Greataxe's own row on the Item Bases sheet because it does not vary by
+	// damage type. The ByShape map below deliberately covers only the six matrix
+	// slots, because this test is about the Shape column deciding which class is
+	// granted, and the basic attack has no matrix row to have a Shape column in.
 	const int32 Filled = Slots->EquipWeaponType(TEXT("Greataxe"));
-	TestEqual(TEXT("A Demonic Greataxe fills six slots"), Filled, 6);
+	TestEqual(TEXT("A Demonic Greataxe fills seven slots"), Filled, 7);
 
 	// THE ROW DECIDES THE CLASS. Nothing in C++ names Molten Cleave; the Heavy
 	// row's Shape column says Strike, so a Strike is what is granted.

@@ -10,6 +10,7 @@
 #include "AbilitySystemInterface.h"
 #include "Cataclysm.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagsManager.h"
 
 UCataclysmWeaponSlotsComponent::UCataclysmWeaponSlotsComponent()
 {
@@ -48,21 +49,83 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 		return 0;
 	}
 
+	AvailableSkills.Reset();
+
+	// THE BASIC ATTACK COMES FROM THE WEAPON, NOT FROM THE MATRIX, so it is
+	// collected first and separately. Two things follow from that and both are
+	// intended. It does not depend on the matrix loading, and it does not depend
+	// on the damage type: a War Wand has no matrix skills at all, because the
+	// design says not every damage type covers every weapon, and it still swings.
+	// Issue #524.
+	if (!ItemBaseTable)
+	{
+		ItemBaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	}
+
+	FCataclysmWeaponSkill Basic = UCataclysmWeaponSkills::BasicAttackFor(
+		ItemBaseTable, EquippedWeaponType);
+	if (Basic.Slot != ECataclysmAbilitySlot::None)
+	{
+		// THE ELEMENT TAG IS ADDED HERE BECAUSE ONLY THIS COMPONENT KNOWS IT.
+		// One Item Bases row serves a weapon across every damage type it can
+		// roll, so the row cannot state one; the equipped weapon's rolled type
+		// is what DamageType holds.
+		//
+		// WITHOUT IT THE BASIC ATTACK IS THE ONE SLOT NO SCOPED MODIFIER
+		// REACHES. UCataclysmStatPipeline::ModifierApplies asks whether the
+		// skill in hand carries every tag a modifier requires, and every gear
+		// increase the design has is scoped to an element. Burning Wrath grants
+		// increased damage scoped to Element.Demonic; untagged, the basic attack
+		// would be the only one of the seven granted skills it did not increase,
+		// and it is the 100% weapon damage anchor the other six are percentages
+		// of. Nothing reports that: ModifierApplies simply returns false.
+		//
+		// ErrorIfNotFound is false so a damage type with no registered tag adds
+		// nothing rather than raising during equip, matching what
+		// CataclysmAbilitySlots::Tag and UCataclysmSkillTemplate::ElementTag do.
+		if (!DamageType.IsEmpty())
+		{
+			const FGameplayTag Element =
+				UGameplayTagsManager::Get().RequestGameplayTag(
+					FName(*FString::Printf(TEXT("Element.%s"), *DamageType)),
+					/*ErrorIfNotFound=*/false);
+			if (Element.IsValid())
+			{
+				Basic.Tags.AddTag(Element);
+			}
+			else
+			{
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("There is no Element.%s tag, so the %s's basic attack "
+						 "carries no element and no scoped gear modifier will "
+						 "reach it."),
+					*DamageType, *EquippedWeaponType);
+			}
+		}
+
+		AvailableSkills.Add(Basic);
+	}
+
 	if (!WeaponSkillTable)
 	{
 		WeaponSkillTable = UCataclysmWeaponSkills::LoadGeneratedTable();
 	}
 
-	if (!WeaponSkillTable)
+	if (WeaponSkillTable)
 	{
-		// LoadGeneratedTable has already said why. Nothing more useful to add
-		// here, and a character with no abilities and no explanation is exactly
-		// what that logging exists to prevent.
-		return 0;
+		AvailableSkills.Append(UCataclysmWeaponSkills::SkillsFor(
+			WeaponSkillTable, EquippedWeaponType, DamageType));
 	}
-
-	AvailableSkills = UCataclysmWeaponSkills::SkillsFor(
-		WeaponSkillTable, EquippedWeaponType, DamageType);
+	else
+	{
+		// LoadGeneratedTable has already said why. Not returned on any more,
+		// because the basic attack does not come from that table and a character
+		// who can still swing is better than one who cannot.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The %s has no skill matrix to read, so only its basic attack "
+				 "is available."),
+			*EquippedWeaponType);
+	}
 
 	// THE NUMBER EVERY SKILL IS A PERCENTAGE OF, and until issue #173 nothing
 	// set it: UCataclysmCombatAttributeSet::AttackDamage was initialised to zero
@@ -75,11 +138,13 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 
 	if (AvailableSkills.IsEmpty())
 	{
-		// Expected for a weapon its damage type does not cover, such as a War
-		// Wand. Verbose, not a warning: the design says not every damage type
-		// has skills for every weapon type.
+		// A weapon its damage type does not cover AND which arms nobody, which
+		// today is only the Shield. Verbose, not a warning: the design says not
+		// every damage type has skills for every weapon type, and issue #619 says
+		// a Shield composes no hit.
 		UE_LOG(LogCataclysm, Verbose,
-			TEXT("The %s has no %s skills, so no slot was filled."),
+			TEXT("The %s has no %s skills and no basic attack, so no slot was "
+				 "filled."),
 			*EquippedWeaponType, *DamageType);
 		return 0;
 	}
@@ -175,10 +240,25 @@ int32 UCataclysmWeaponSlotsComponent::EquipStartingWeapon()
 
 	const int32 Filled = EquipWeaponType(StartingWeaponType);
 
-	if (Filled == 0)
+	// ASKED OF THE MATRIX SLOTS, NOT OF THE TOTAL, and that distinction keeps
+	// this warning working. Since issue #524 the basic attack is granted from the
+	// weapon base whatever the damage type covers, so counting it would let a
+	// starting weapon with no designed skills at all report one filled slot and
+	// stay silent.
+	bool bAnyDesignedSkill = false;
+	for (const FCataclysmWeaponSkill& Skill : AvailableSkills)
 	{
-		// LOUD, BECAUSE THIS IS A CHARACTER WHO CANNOT USE ANY ABILITY. It means
-		// the starting weapon type is one the damage type does not cover, or is
+		if (Skill.Slot != ECataclysmAbilitySlot::BasicAttack)
+		{
+			bAnyDesignedSkill = true;
+			break;
+		}
+	}
+
+	if (!bAnyDesignedSkill)
+	{
+		// LOUD, BECAUSE THIS IS A CHARACTER WHO CAN ONLY SWING. It means the
+		// starting weapon type is one the damage type does not cover, or is
 		// misspelled -- and the symptom is a game that runs normally and does
 		// nothing when a skill key is pressed, which is exactly how issue #169
 		// went unnoticed.

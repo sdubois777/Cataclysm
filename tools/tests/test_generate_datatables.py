@@ -466,6 +466,125 @@ class TestShapeParams:
         assert rows[0]["Shape"] == "" and rows[0]["ShapeParams"] == ""
 
 
+class TestBasicAttacks:
+    """The basic attack on the weapon base. Issue #524.
+
+    THE SILENT FAILURE HERE IS A CHARACTER WITH NOTHING BETWEEN ITS COOLDOWNS.
+    Before this, `game/Data/WeaponSkills.csv` had 398 rows across six slots and
+    not one Basic row anywhere, so every character was granted five abilities and
+    no ordinary attack. The project owner found it by playing. An empty column is
+    exactly as invisible as an empty sheet, so the generator refuses one.
+    """
+
+    HEADERS = ["Base Name", "Slot", "Hands", "Sub-Type", "Weapon Type",
+               "Max Damage Types", "Implicit 1 Stat", "Implicit 1 Kind",
+               "Implicit 1 Value", "Attack Speed", "Basic Shape",
+               "Basic Shape Params"]
+
+    def sheet(self, tmp_path, *rows) -> "openpyxl.Workbook":
+        path = workbook_with(tmp_path / "b.xlsx",
+                             {"Item Bases": [self.HEADERS, *rows]})
+        return openpyxl.load_workbook(path, data_only=True)
+
+    def armed(self, **changes) -> list:
+        row = ["Sword", "Weapon", 1, "Slashing", "Sword", 4,
+               "attack_damage", "flat", 40.0, 1.3,
+               "Strike", "Radius=1.8; Angle=90; MaxTargets=1"]
+        for column, value in changes.items():
+            row[self.HEADERS.index(column)] = value
+        return row
+
+    def test_an_armed_weapon_keeps_its_basic_attack(self, tmp_path):
+        rows = gen.item_bases(self.sheet(tmp_path, self.armed()))
+        assert rows[0]["BasicShape"] == "Strike"
+        assert rows[0]["BasicShapeParams"] == "Radius=1.8; Angle=90; MaxTargets=1"
+
+    def test_an_armed_weapon_with_no_basic_attack_is_refused(self, tmp_path):
+        """The exact hole issue #524 reported, moved to where it now lives."""
+        with pytest.raises(gen.DataError, match="no basic attack shape"):
+            gen.item_bases(self.sheet(
+                tmp_path, self.armed(**{"Basic Shape": "",
+                                        "Basic Shape Params": ""})))
+
+    def test_a_weapon_granting_no_attack_damage_gets_none_and_needs_none(
+            self, tmp_path):
+        """The Shield. It is a one-handed weapon that grants no attack damage,
+        so there is no hit to compose from it. Issue #619."""
+        shield = self.armed(**{"Base Name": "Shield", "Weapon Type": "Shield",
+                               "Implicit 1 Stat": "block_chance",
+                               "Basic Shape": "", "Basic Shape Params": ""})
+        rows = gen.item_bases(self.sheet(tmp_path, shield))
+        assert rows[0]["BasicShape"] == ""
+
+    def test_a_weapon_granting_no_attack_damage_may_not_state_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="100% of nothing"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Base Name": "Shield", "Weapon Type": "Shield",
+                   "Implicit 1 Stat": "block_chance"})))
+
+    def test_something_that_is_not_a_weapon_may_not_state_one(self, tmp_path):
+        """A glove can grant flat attack damage -- the Vambraces base grants 12 --
+        and still have no swing to describe."""
+        with pytest.raises(gen.DataError, match="not a weapon"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Base Name": "Vambraces", "Slot": "Gloves", "Hands": "",
+                   "Weapon Type": "", "Attack Speed": ""})))
+
+    def test_a_shape_a_swing_cannot_take_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="basic attack shape is 'Summon'"):
+            gen.item_bases(self.sheet(
+                tmp_path, self.armed(**{"Basic Shape": "Summon"})))
+
+    def test_a_misspelled_parameter_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no parameter 'Radiuss'"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Basic Shape Params": "Radiuss=1.8"})))
+
+    def test_a_rider_is_refused_even_though_every_other_slot_may_carry_one(
+            self, tmp_path):
+        """A basic attack is 100% weapon damage and nothing else, which is what
+        makes it the anchor every other slot is a percentage of. `Burn=1` is
+        legal on any weapon skill and is not legal here."""
+        with pytest.raises(gen.DataError, match=r"carries \['Burn'\]"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Basic Shape Params":
+                   "Radius=1.8; Angle=90; MaxTargets=1; Burn=1"})))
+
+    def test_parameters_without_a_shape_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="parameters but no shape"):
+            gen.item_bases(self.sheet(
+                tmp_path, self.armed(**{"Basic Shape": ""})))
+
+    def test_the_two_basic_attack_shape_vocabularies_agree(self):
+        """`BASIC_ATTACK_SHAPES` exists in this generator and again in
+        `sim/cataclysm_sim/affixes.py`, which enforces the same rule on the
+        model. Two copies of a vocabulary drift, so they are compared here the
+        same way the two copies of the full shape vocabulary are."""
+        from cataclysm_sim import affixes as af
+
+        assert af.BASIC_ATTACK_SHAPES == gen.BASIC_ATTACK_SHAPES, (
+            "the basic attack shapes differ between affixes.py and "
+            "generate_datatables.py: "
+            f"{sorted(af.BASIC_ATTACK_SHAPES ^ gen.BASIC_ATTACK_SHAPES)}")
+
+    def test_the_basic_attack_shapes_are_shapes_the_generator_knows(self):
+        """Both names in BASIC_ATTACK_SHAPES appear in SHAPE_PARAMS, so a basic
+        attack is validated against a real parameter list rather than against a
+        missing dictionary key.
+
+        ONE VOCABULARY IS CHECKED HERE AND THAT IS ENOUGH, because
+        test_the_two_basic_attack_shape_vocabularies_agree above proves the copy
+        in affixes.py is the same set.
+
+        WHAT THIS DOES NOT CHECK is that a C++ ability template implements the
+        shape, which is the stronger property and is not knowable from Python.
+        Cataclysm.WeaponSlots.EveryArmedWeaponGrantsABasicAttack asserts it
+        against the real table, calling TemplateFor on every armed weapon's
+        basic attack shape.
+        """
+        assert gen.BASIC_ATTACK_SHAPES <= set(gen.SHAPE_PARAMS)
+
+
 class TestElementVisuals:
     """The eight damage types' effect palette. Issue #549.
 
