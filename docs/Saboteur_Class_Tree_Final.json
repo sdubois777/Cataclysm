@@ -463,7 +463,7 @@
       "data": {
         "kind": "keystone",
         "name": "Overwhelming Presence",
-        "description": "While at maximum active traps, all trap damage is increased by 50% more and trap trigger radius is doubled.",
+        "description": "While at maximum active traps, you deal 50% more trap damage and trap trigger radius is doubled.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

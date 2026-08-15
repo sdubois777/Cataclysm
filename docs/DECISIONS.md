@@ -20,6 +20,108 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — One magnitude word per number: Overwhelming Presence keeps "more", Thornwall keeps "increased"
+
+**Affects:** `Saboteur_Class_Tree_Final.json`, `Bulwark_Class_Tree_Final.json`
+and `tools/tests/test_class_passive_trees.py`. Applied. Issue #582.
+
+### What was wrong
+
+Two passive tree node descriptions used both magnitude words for one number:
+
+| Tree | Node | Said |
+| :-- | :-- | :-- |
+| Saboteur | Overwhelming Presence, a keystone | "all trap damage is **increased by 50% more**" |
+| Bulwark | Thornwall, a Second Oath capstone option | "**increases** the retaliation damage they take from you **by 5% more**" |
+
+The two words name different places in the damage pipeline
+`(base + flat) x (1 + increases) x more1 x more2`. "increased" joins the additive
+bucket; "more" is its own multiplier. A sentence using both does not say which
+the number is, and on an invested character the two readings differ by a large
+factor.
+
+Neither is a rule violation. Issue #344, decided the same day, permits any
+passive tree node the "more" multiplier. This is purely which of the two words
+each sentence keeps.
+
+### The decision, and it is one word each rather than one word for both
+
+**Overwhelming Presence keeps "more"**, and now reads "While at maximum active
+traps, you deal 50% more trap damage and trap trigger radius is doubled."
+
+**Thornwall keeps "increased"**, and now reads "Each stack of Exposed increases
+the retaliation damage they take from you by 5%, stacking up to 10 times." The
+word "more" was simply deleted.
+
+### Why they differ
+
+**Thornwall is a debuff applied by being hit, and the genre is unanimous that
+those are additive.** Path of Exile 2's Withered is "5% increased Chaos Damage
+taken" per stack up to 10 stacks — the same percentage, the same cap, the same
+role. Path of Exile 1's version is 6% over 15. Maxroll's Path of Exile 2 damage
+page states the rule plainly: sources of "increased damage taken" are additive
+with each other. Last Epoch does the same with Shred. Diablo 4 is the one game
+that made a damage-taken debuff a separate multiplier, with Vulnerable, and in
+patch 1.2.0 it deliberately froze that at a fixed baseline and pushed every
+additional source back into the additive bucket because separate-multiplier
+debuffs were disproportionately powerful.
+
+Sources:
+
+- https://maxroll.gg/poe2/getting-started/damage-scaling-in-path-of-exile-2
+- https://maxroll.gg/d4/getting-started/damage-in-depth
+
+**Overwhelming Presence is a keystone with one condition and one large
+multiplier, which is what a "more" is for.** Path of Exile's keystone Elemental
+Overload is the same sentence at a different number: skills that have critically
+struck in the past 8 seconds deal 40% more elemental damage. Last Epoch places
+its "more" multipliers on the build-defining picks.
+
+**Two arguments from inside this game's own trees point the same way.**
+
+The Saboteur tree has 21 basic nodes granting a percentage to traps, several at
++15% per point over 6 points, so a committed trap build reaches several hundred
+percent additive without trying. The design document's own worked example is a
+character at +800% increased who adds another +60% and gains 6.7%. At the
+additive reading this keystone would be worth roughly 5% on the very build that
+satisfies its condition — less than one point in a basic node — while costing a
+keystone slot and demanding maximum active traps. It also sits above Reinforced
+Housing, a *basic* node on the same tree that already says "20% more damage".
+
+The Bulwark tree's retaliation identity is built entirely from additive nodes,
+and two of them are near-twins of Thornwall worded plainly: Thick Hide is "Each
+hit you survive increases your retaliation damage by 1% for 5 seconds, stacking
+up to 10 times", and Open Wounds is "Enemies with 5 or more bleed stacks take 20%
+increased damage from all sources". Making Thornwall the single compounding
+source in that tree would make it the only correct Second Oath while reading
+identically to Thick Hide.
+
+### What this does not settle, and it changes what ten stacks are worth
+
+**Which side owns the bucket for an "increased damage taken" debuff.** The design
+document says "one bucket per stat" and does not say whether Exposed forms its
+own bucket on the enemy — in which case ten stacks are worth close to a full 50%
+and still multiply against the attacker's own increases — or joins the attacker's
+retaliation-increase bucket, where an invested Bulwark would dilute it to a few
+percent. In every game surveyed it is the former. This is filed separately rather
+than decided here, because it applies to every damage-taken debuff and not only
+to this node.
+
+### A count in the issue was wrong, and so was one in this file
+
+Issue #582 said Overwhelming Presence "was the only node of the twenty-five
+containing 'more' or 'less' that used both words at once". It was not the only
+one — Thornwall did the same — and the figure was wrong: 29 strings across the
+five trees contained the word and 20 used it as a magnitude. The #344 entry above
+also said nine keystones use the wording, and twelve do.
+
+Two tests now measure rather than assert from memory:
+`test_the_measured_wording_counts_are_still_right` pins both counts, and
+`test_no_node_uses_both_magnitude_words_for_one_number` looks for the shape of
+the fault rather than for the two nodes by name, so it catches a third one.
+
+---
+
 ## 2026-08-14 — A Solo Self-Found character gets its own 600-slot stash
 
 **Affects:** the Solo Self-Found table row, the Capital Services table and the
@@ -423,7 +525,15 @@ The eight that were not allowed under the old rule:
 | Masochist | capstone option | The Final Vow, Apotheosis | 1% more damage per 100 Anguish |
 | Empire | capstone option | The Imperial Vanguard, The Midas Touch | 50% more gold |
 
-Nine keystones also use it and were always allowed to.
+Twelve keystones also use it and were always allowed to: nine in the Masochist
+tree, Overwhelming Presence in the Saboteur tree, and Scaffolding and Imperial
+Command in the empire tree. **This line said nine when it was written**, counting
+only the Masochist tree; corrected on 2026-08-14 while working issue #582. Only
+the non-keystone count is pinned by a test, so nothing caught it.
+
+The Thornwall row above also changed the same day. Issue #582 rewrote it from
+"5% more retaliation damage per stack" to "5% increased", so it no longer relies
+on the widened rule and `NODES_RELYING_ON_THE_WIDENED_RULE` is now seven.
 
 **The first count taken during this work was four, and it was wrong**; it read
 each node's own description and not the option text hanging off a capstone, which
