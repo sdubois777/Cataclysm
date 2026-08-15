@@ -593,13 +593,15 @@ def test_the_succubus_basic_attack_is_telegraphed_and_the_curse_is_not(
         "it has no cycle to measure a wind-up against.")
 
 
-def test_the_document_says_three_shapes_have_no_marker(succubus_section):
+def test_the_document_says_four_shapes_have_no_marker(succubus_section):
     from cataclysm_sim.enemy_abilities import SHAPES, TELEGRAPHED_SHAPES
 
     unmarked = sorted(set(SHAPES) - set(TELEGRAPHED_SHAPES))
-    assert len(unmarked) == 3, (
-        f"the telegraph table now draws {7 - len(unmarked)} of the seven "
-        "shapes. The Succubus subsection states that three have no marker.")
+    assert len(unmarked) == 4, (
+        f"the telegraph table now draws {len(SHAPES) - len(unmarked)} of the "
+        f"{len(SHAPES)} shapes. The Succubus subsection states that four have "
+        "no marker: SelfBuff, Summon, Deployable and Debuff. Deployable was "
+        "the fourth, added with issue #338.")
     for shape in unmarked:
         assert shape in succubus_section, (
             f"the Succubus subsection no longer names {shape} as a shape with "
@@ -808,7 +810,16 @@ def test_the_succubus_does_not_kite_and_the_reason_is_stated(succubus,
 def test_the_energy_shield_answer_counts_the_burning_skills(succubus_section,
                                                             succubus):
     """The claim that a Demonic player already carries the answer. It rests on
-    a count of the designed skills, so the count is recomputed here."""
+    a count of the designed skills, so the count is recomputed here.
+
+    IT COUNTS DEMONIC ROWS ONLY, AND IT USED NOT TO. While every designed skill
+    happened to be Demonic the two counts were the same number, so the missing
+    filter was invisible. Issue #338 gave Bolt Turret, Ballista and Iron
+    Fortress a Shape and all three are War, which took the unfiltered count to
+    54 while the sentence in the design document -- which is about what a
+    DEMONIC player carries -- was still correct at 51. The test was wrong, not
+    the document.
+    """
     import csv
 
     assert succubus.energy_shield_fraction > 0.0, (
@@ -819,7 +830,8 @@ def test_the_energy_shield_answer_counts_the_burning_skills(succubus_section,
     if not skills.is_file():
         pytest.skip("game/Data/WeaponSkills.csv is not present")
     with skills.open(encoding="utf-8-sig", newline="") as handle:
-        designed = [row for row in csv.DictReader(handle) if row["Shape"]]
+        designed = [row for row in csv.DictReader(handle)
+                    if row["Shape"] and row["DamageType"] == "Demonic"]
     burning = [row for row in designed if "Burn=1" in row["ShapeParams"]]
 
     stated = f"{len(burning)} of the {len(designed)} designed Demonic skills"

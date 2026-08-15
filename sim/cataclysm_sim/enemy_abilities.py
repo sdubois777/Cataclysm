@@ -41,10 +41,14 @@ from dataclasses import dataclass, field
 
 from .enemy_stats import ARCHETYPES, Archetype, archetype
 
-#: The seven shapes from `docs/Cataclysm_GDD_v2.md` section V, spelled the way
+#: The eight shapes from `docs/Cataclysm_GDD_v2.md` section V, spelled the way
 #: the `Shape` column of `game/Data/WeaponSkills.csv` spells them.
-SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Aura",
-          "Debuff")
+#:
+#: `Deployable` was the eighth, added with issue #338. No enemy ability uses it,
+#: and it is listed here anyway because this tuple has to hold every shape the
+#: skill data uses: a test compares the two and fails when they drift apart.
+SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Deployable",
+          "Aura", "Debuff")
 
 #: Which parameter names each shape reads. Same names and same meanings as the
 #: player skill rows use. A key outside its shape's list is a typo that would be
@@ -77,7 +81,10 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed", "Arc"),
     "SelfBuff": ("Duration", "Radius", "IncreasePerBurning"),
     "Movement": ("Mode", "Range", "Radius"),
-    "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval"),
+    "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
+               "Minions"),
+    "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
+                   "Interval", "Minions", "HealthPercent"),
     "Aura": ("Radius", "Duration", "Interval"),
     "Debuff": ("Range", "Radius", "MaxTargets", "Duration"),
 }
@@ -1213,12 +1220,12 @@ def abilities(name: str) -> tuple[Ability, ...]:
 
 
 def _check_every_ability_uses_a_real_shape() -> None:
-    """A shape name outside the seven is a shape nothing will execute."""
+    """A shape name outside the eight is a shape nothing will execute."""
     for name, entries in ABILITIES.items():
         for ability in entries:
             assert ability.shape in SHAPES, (
                 f"{name}'s {ability.name} has shape {ability.shape!r}, which is "
-                f"not one of the seven: {list(SHAPES)}")
+                f"not one of the eight: {list(SHAPES)}")
 
 
 def _check_every_parameter_belongs_to_its_shape() -> None:
