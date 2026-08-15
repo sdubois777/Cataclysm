@@ -3,6 +3,12 @@
 `affixes.damage_target()` says what a player NEEDS. `player_damage` says what a
 player HAS. These check the second, and check that the two are compared honestly
 rather than made to agree.
+
+A HIT BELONGS TO A LOADOUT. The first version of this module took one weapon and
+concluded that no weapon reaches the damage target. That was wrong: the target's
+weapon term of about 90 is what a PAIR of one-handed weapons supplies. Issue #610
+was filed on that mistake and closed. Several tests below exist to stop it
+returning.
 """
 
 from __future__ import annotations
@@ -23,20 +29,20 @@ def test_the_composed_hit_is_the_three_buckets_multiplied_in_order():
     """Worked by hand from the constants, so this fails if any of them moves.
 
     At difficulty tier 8 the reference character carries T7 affixes on +10 gear
-    and a Greatsword. The Greatsword's implicit is 156 once the two-handed
-    multiplier is applied. Five flat damage affixes sit off the weapon at 18
-    each and one sits on it at 36, so the base bracket is 156 + 126 = 282. Five
-    increased affixes off the weapon at 125% and one on it at 250% make 875%.
+    and holds an Axe and a Sword. Those sum to 46 + 40 = 86. Six flat damage
+    affixes at 18 give 108, so the base bracket is 194. Six increased damage
+    affixes at 125% give 750%.
 
-        282 x 9.75 = 2749.5
+        194 x 8.5 = 1649
     """
     b = pd.breakdown(8)
-    assert b.weapon_damage == pytest.approx(156.0)
-    assert b.flat_from_affixes == pytest.approx(126.0)
-    assert b.base_bracket == pytest.approx(282.0)
-    assert b.increased == pytest.approx(8.75)
-    assert b.per_hit == pytest.approx(2749.5)
-    assert pd.damage_per_hit(8) == pytest.approx(2749.5)
+    assert b.loadout == ("Axe", "Sword")
+    assert b.weapon_damage == pytest.approx(86.0)
+    assert b.flat_from_affixes == pytest.approx(108.0)
+    assert b.base_bracket == pytest.approx(194.0)
+    assert b.increased == pytest.approx(7.5)
+    assert b.per_hit == pytest.approx(1649.0)
+    assert pd.damage_per_hit(8) == pytest.approx(1649.0)
 
 
 def test_a_more_multiplier_multiplies_on_its_own_rather_than_joining_the_increases():
@@ -60,71 +66,132 @@ def test_a_support_skill_deals_nothing_because_its_slot_deals_nothing():
 
 
 # --------------------------------------------------------------------------
-# The two-handed multiplier, which is the gap reference_build.py left open
+# Loadouts: what a character may hold, and what summing means
 # --------------------------------------------------------------------------
+
+def test_two_one_handed_weapons_sum_their_base_damage():
+    """`docs/Cataclysm_GDD_v2.md` line 2378 states the rule and this example:
+    "an Axe and a Sword give 86 against a Greatsword's stated 78"."""
+    axe = pd.weapon_base_damage("Axe")
+    sword = pd.weapon_base_damage("Sword")
+    assert axe == pytest.approx(46.0)
+    assert sword == pytest.approx(40.0)
+    assert pd.weapon_base_damage(("Axe", "Sword")) == pytest.approx(86.0)
+
 
 def test_a_two_handed_weapon_doubles_its_own_implicit_damage():
     """The Greatsword is stored at 78 and supplies 156, because it is two-handed."""
     stored = next(i.value for i in af.base_named("Greatsword").implicits
                   if i.stat == "attack_damage")
     assert stored == pytest.approx(78.0)
-    assert pd.weapon_base_damage("Greatsword", af.MAX_GEAR_LEVEL) == \
+    assert pd.weapon_base_damage("Greatsword") == \
         pytest.approx(stored * af.TWO_HANDED_MULTIPLIER)
 
 
-def test_a_one_handed_weapon_supplies_its_stored_value_unchanged():
-    stored = next(i.value for i in af.base_named("Axe").implicits
-                  if i.stat == "attack_damage")
-    assert pd.weapon_base_damage("Axe", af.MAX_GEAR_LEVEL) == pytest.approx(stored)
+def test_a_single_one_handed_weapon_is_a_legal_loadout():
+    """Stated by the project owner on 2026-08-15, against what the design
+    document says. It deals less than a pair, which is the point of a pair."""
+    assert pd.damage_per_hit(8, "Axe") == pytest.approx(1309.0)
+    assert pd.damage_per_hit(8, "Axe") < pd.damage_per_hit(8, ("Axe", "Sword"))
 
 
-def test_a_two_hander_doubles_the_damage_affixes_on_it_and_leaves_the_others_alone():
-    """This is what `reference_build.py` says it does not model and understates.
+def test_a_shield_is_an_offhand_that_adds_no_attack_damage():
+    """Also the project owner, 2026-08-15. A shield is held, not swung, so a
+    one-hander with a shield hits exactly as hard as that one-hander alone."""
+    assert pd.weapon_base_damage(("Axe", pd.OFFHAND)) == \
+        pytest.approx(pd.weapon_base_damage("Axe"))
+    assert pd.damage_per_hit(8, ("Axe", pd.OFFHAND)) == \
+        pytest.approx(pd.damage_per_hit(8, "Axe"))
 
-    Five affixes off the weapon at 18 and one on it at 36 is 126. If the
-    placement were ignored the six would be 108, so the difference is exactly one
-    affix's worth.
+
+def test_the_offhand_does_not_drag_the_attack_rate():
+    """A shield is not swung, so it is left out of the average. Were it counted,
+    an Axe with a Shield would swing at a different rate from an Axe alone."""
+    assert pd.attack_rate(("Axe", pd.OFFHAND)) == pytest.approx(pd.attack_rate("Axe"))
+
+
+def test_the_attack_rate_of_a_pair_is_the_average_and_not_the_sum():
+    """`docs/Cataclysm_GDD_v2.md` line 2401: "Attack speed is the average of the
+    two weapons. Not the sum, and not the slower." That is what stops summed base
+    damage becoming a strict advantage."""
+    axe = af.base_named("Axe").attack_speed
+    sword = af.base_named("Sword").attack_speed
+    assert pd.attack_rate(("Axe", "Sword")) == pytest.approx((axe + sword) / 2.0)
+    assert pd.attack_rate(("Axe", "Sword")) < axe + sword
+
+
+@pytest.mark.parametrize("loadout,expected", [
+    (("Greatsword", "Axe"), "hands"),
+    (("Greatsword", "Greatsword"), "hands"),
+    (("Axe", "Sword", "Dagger"), "two hands"),
+    ((pd.OFFHAND,), "no weapon"),
+    ((pd.OFFHAND, pd.OFFHAND), "no weapon"),
+    ((pd.OFFHAND, "Axe"), "second position"),
+])
+def test_an_illegal_loadout_is_refused(loadout, expected):
+    with pytest.raises(ValueError, match=expected):
+        pd.damage_per_hit(8, loadout)
+
+
+def test_a_loadout_of_something_that_is_not_a_weapon_is_refused():
+    with pytest.raises(ValueError, match="not something a hand can hold"):
+        pd.damage_per_hit(8, ("Helm",))
+
+
+# --------------------------------------------------------------------------
+# What the comparison against the target actually says
+# --------------------------------------------------------------------------
+
+def test_the_reference_pair_lands_on_the_damage_target():
+    """THE HEADLINE. The target describes a dual wielder, stated by the project
+    owner on 2026-08-15, and the arithmetic agrees from two directions.
+
+    `reference_weapon_base` says the weapon term must supply about 90. An Axe and
+    a Sword supply 86 and land at 1,649 against a target of 1,683.
     """
-    two_handed = pd.breakdown(8, "Greatsword")
-    one_handed = pd.breakdown(8, "Axe")
-    assert two_handed.flat_from_affixes == pytest.approx(126.0)
-    assert one_handed.flat_from_affixes == pytest.approx(108.0)
-    assert two_handed.increased == pytest.approx(8.75)
-    assert one_handed.increased == pytest.approx(7.50)
+    assert af.reference_weapon_base(8) == pytest.approx(90.0, abs=1.0)
+    assert pd.weapon_base_damage(pd.REFERENCE_LOADOUT) == pytest.approx(86.0)
+    assert pd.gap_against_target(8) == pytest.approx(1.0, abs=0.05)
 
 
-def test_placing_no_damage_affix_on_the_weapon_removes_the_doubling():
-    """The placement is a constant, not a law, so the effect of changing it is
-    stated rather than left to be discovered."""
-    b = pd.breakdown(8, "Greatsword", flat_affixes=0, increased_affixes=0)
-    assert b.flat_from_affixes == pytest.approx(0.0)
-    assert b.increased == pytest.approx(0.0)
-    # Weapon alone, no affixes at all.
-    assert b.per_hit == pytest.approx(156.0)
+def test_the_two_strongest_pairs_bracket_the_weapon_term_the_target_needs():
+    """90.03 is not a pair sum, because pair sums are whole numbers. The two
+    strongest legal pairs sit either side of it, which is why the module states a
+    five per cent margin rather than claiming an exact fit."""
+    required = af.reference_weapon_base(8)
+    assert pd.weapon_base_damage(("Axe", "Axe")) == pytest.approx(92.0)
+    assert pd.weapon_base_damage(("Axe", "Sword")) == pytest.approx(86.0)
+    assert pd.weapon_base_damage(("Axe", "Sword")) < required
+    assert pd.weapon_base_damage(("Axe", "Axe")) > required
 
 
-def test_two_handed_weapons_deal_about_twice_one_handed_per_second():
-    """The design rule, measured rather than asserted.
+def test_a_two_hander_beats_the_reference_pair_by_the_stated_multiplier():
+    """`docs/Cataclysm_GDD_v2.md` line 2382: "a two-handed weapon deals about
+    **1.33 times** the damage per hit". A two-hander exceeding the target is that
+    advantage working, not a loadout breaking the target."""
+    ratio = pd.damage_per_hit(8, ("Greatsword",)) / pd.damage_per_hit(8)
+    assert ratio == pytest.approx(1.33, abs=0.05), (
+        f"a Greatsword deals {ratio:.2f}x the reference pair and the design "
+        "document states about 1.33x")
 
-    Per HIT a two-hander is worth far more, and per SECOND it should be worth
-    the stated multiplier, because a two-hander's slower swing is what pays for
-    its bigger hit. This is the check that the weapon table is internally
-    coherent.
+
+def test_every_two_hander_is_above_the_target_and_every_lone_one_hander_below_it():
+    """Records the shape of the spread rather than a claim that it is wrong.
+
+    This replaces a test that asserted no weapon reaches the target, which was
+    true only because it measured single weapons against a target describing a
+    pair. Issue #610.
     """
-    one, two = [], []
-    for base in af.ITEM_BASES:
-        if not isinstance(base, af.WeaponBase):
-            continue
-        if pd.weapon_base_damage(base.name, af.MAX_GEAR_LEVEL) <= 0:
-            continue
-        (two if base.hands == 2 else one).append(
-            pd.damage_per_second(8, base.name))
+    for name in ("Greatsword", "Greataxe", "Spear", "Staff", "Warhammer"):
+        assert pd.gap_against_target(8, (name,)) > 1.0
+    for name in ("Axe", "Sword", "Dagger"):
+        assert pd.gap_against_target(8, name) < 1.0
 
-    assert one and two
-    ratio = (sum(two) / len(two)) / (sum(one) / len(one))
-    assert ratio == pytest.approx(af.TWO_HANDED_MULTIPLIER, abs=0.1), (
-        f"two-handed weapons average {ratio:.2f}x one-handed per second, and "
-        f"TWO_HANDED_MULTIPLIER is {af.TWO_HANDED_MULTIPLIER}")
+
+def test_the_gap_is_the_composed_hit_over_the_stated_target():
+    for tier in (1, 4, 8):
+        assert pd.gap_against_target(tier) == pytest.approx(
+            pd.damage_per_hit(tier) / af.damage_target(tier))
 
 
 # --------------------------------------------------------------------------
@@ -167,60 +234,9 @@ def test_criticals_raise_the_average_above_the_non_critical_hit():
     assert average == pytest.approx(pd.damage_per_hit(8) * 1.158)
 
 
-def test_damage_per_second_is_the_hit_times_the_weapons_own_rate():
-    rate = af.base_named("Greatsword").attack_speed
-    assert pd.damage_per_second(8, "Greatsword") == \
-        pytest.approx(pd.damage_per_hit(8, "Greatsword") * rate)
-
-
-def test_a_weapon_that_is_not_a_weapon_has_no_rate():
-    with pytest.raises(ValueError, match="not a weapon"):
-        pd.damage_per_second(8, "Helm")
-
-
-# --------------------------------------------------------------------------
-# What the comparison against the target actually says
-# --------------------------------------------------------------------------
-
-def test_the_gap_is_the_composed_hit_over_the_stated_target():
-    for tier in (1, 4, 8):
-        assert pd.gap_against_target(tier) == pytest.approx(
-            pd.damage_per_hit(tier) / af.damage_target(tier))
-
-
-def test_no_weapon_in_the_game_lands_on_the_damage_target():
-    """RECORDS A FINDING, and it is expected to fail the day the finding is fixed.
-
-    `affixes.py` fits every offensive value to a single figure -- 1,683 damage
-    per hit at difficulty tier 8 -- and `reference_weapon_base` says that figure
-    implies a weapon supplying 90. No weapon supplies 90. Every one-handed weapon
-    supplies at most 46 and every two-handed one at least 128, so the target sits
-    in a gap between the two families: one-handers fall short of it and
-    two-handers overshoot it, and nothing sits on it.
-
-    See the pull request that added this file for the full table.
-    """
-    one_handed, two_handed = [], []
-    for base in af.ITEM_BASES:
-        if not isinstance(base, af.WeaponBase):
-            continue
-        if pd.weapon_base_damage(base.name, af.MAX_GEAR_LEVEL) <= 0:
-            continue
-        (two_handed if base.hands == 2 else one_handed).append(
-            (base.name, pd.gap_against_target(8, base.name)))
-
-    assert one_handed and two_handed
-    for name, gap in one_handed:
-        assert gap < 1.0, f"{name} reaches the target at {gap:.2f}x"
-    for name, gap in two_handed:
-        assert gap > 1.0, f"{name} falls short of the target at {gap:.2f}x"
-
-
-def test_the_reference_greatsword_build_overshoots_the_target_by_about_two_thirds():
-    """The headline number this module exists to produce."""
-    assert pd.damage_per_hit(8) == pytest.approx(2749.5)
-    assert af.damage_target(8) == pytest.approx(1683.0, abs=1.0)
-    assert pd.gap_against_target(8) == pytest.approx(1.63, abs=0.01)
+def test_damage_per_second_is_the_hit_times_the_loadouts_own_rate():
+    assert pd.damage_per_second(8) == \
+        pytest.approx(pd.damage_per_hit(8) * pd.attack_rate(pd.REFERENCE_LOADOUT))
 
 
 # --------------------------------------------------------------------------
@@ -246,9 +262,3 @@ def test_a_negative_affix_count_is_refused():
 def test_an_unknown_weapon_is_refused():
     with pytest.raises(ValueError):
         pd.damage_per_hit(8, "Halberd")
-
-
-def test_a_base_with_no_attack_damage_supplies_none():
-    """The Shield is the only weapon base that grants no damage, and asking is
-    not an error -- it is a real loadout."""
-    assert pd.weapon_base_damage("Shield", af.MAX_GEAR_LEVEL) == 0.0
