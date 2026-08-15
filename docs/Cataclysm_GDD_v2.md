@@ -1698,11 +1698,40 @@ and evasion build new offensive slots to serve six skills.
 
   
 
-**Three numbers are not settled and are tracked rather than guessed here.** The per-type base health and damage, which need the simulation rather than a judgement (#336). The four minion affixes and their values (#337). Whether the three deployable skills state their numbers in data rather than in prose (#338).
+**Two numbers are not settled and are tracked rather than guessed here.** The four minion affixes and their values (#337). Whether the three deployable skills state their numbers in data rather than in prose (#338).
 
   
 
-**Which attribute a minion scales from was the fourth and is now answered**, above: Spirit for summoned creatures, Agility for deployed machines, 1.0% increased minion damage per point. The rows that put those into `game/Data/Attributes.csv` land with the minion type table (#336) rather than here, because "minion damage" is not a stat the model knows until that table defines it.
+**Two more were on that list and are now answered rather than dropped.** Which attribute a minion scales from was the fourth, answered above: Spirit for summoned creatures, Agility for deployed machines, 1.0% increased minion damage per point, reaching a minion through a tag rather than through a column. The per-type base health and damage were the third, and are now set in `game/Data/MinionTypes.csv`, the generated table of minion stat blocks. The Imp and the Mote are the two the vertical slice needs; the three War deployables follow when Crossbow and Spear do.
+
+  
+
+### **How scaling reaches a minion: by tag**
+
+**A minion carries tags, and scaling is looked up against them.** `game/Data/MinionTypes.csv` gives each type a `Tags` column — every minion carries `Type.Minion`, exactly one of `Minion.Creature` or `Minion.Machine`, and whatever narrower tags describe how it fights, such as `Minion.Melee` or `Minion.Spell`. A separate generated table, `game/Data/MinionScaling.csv`, holds one row per attribute, required tag and minion stat, with a percent per point.
+
+  
+
+| Attribute | Requires tag | Stat | Percent per point |
+| :-- | :-- | :-- | :-: |
+| Spirit | `Minion.Creature` | damage | 1.0 |
+| Agility | `Minion.Machine` | damage | 1.0 |
+
+  
+
+**A tag rather than a column on the minion, because a column can only ever say one thing.** The first version of this table wrote the attribute directly onto the minion, which could express "Spirit raises this creature's damage" and nothing else. A tag lets a minion answer to more than one attribute, to more than one stat, and to a narrower group than its family — a future affix granting increased minion melee damage reaches an imp and not a mote, with no new machinery.
+
+  
+
+**It is also what stops one attribute raising the wrong minion.** Everything reading `game/Data/Attributes.csv` sums every attribute that names a stat, so a single shared "increased minion damage" entry would let a summoner's Agility raise a summoned creature. Scoping by tag is what makes "declared by the minion type" real rather than a convention.
+
+  
+
+**This is the shape the tag-scoped increase rule already describes**: an increase is a stat, an amount, and the tags it applies to. Minion scaling is that rule pointed at minions, which is why the minion affixes in #337 need nothing new. It is also close to how Last Epoch does it, where only stats explicitly tagged for minions reach them and the tags are layered rather than a single flag.
+
+  
+
+**Only damage is filled in.** Health is expressible in the same table and no figure has been chosen for it.
 
   
 

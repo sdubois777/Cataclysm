@@ -129,6 +129,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// The three War deployables -- bolt turret, ballista and spike trap -- sit on
 	// Crossbow and Spear and are outside the vertical slice. Issue #336.
 	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             2)
+	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
+	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
+	// per point. Health is expressible in the same table and no figure has been
+	// chosen for it.
+	CHECK_TABLE(FCataclysmMinionScalingRow,     "MinionScaling.csv",           2)
 	// 17: eight attributes, each raising two stats, except Efficacy raising
 	// three.
 	CHECK_TABLE(FCataclysmAttributeEffectRow,   "Attributes.csv",             17)

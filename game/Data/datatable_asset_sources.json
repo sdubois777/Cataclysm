@@ -89,7 +89,13 @@
       "asset": "DT_MinionTypes",
       "csv": "MinionTypes.csv",
       "rows": 2,
-      "csv_sha256": "9d8c00ff1484610bdfa8e7bb193dba784572a572cfaf3c45b261d743f250b482"
+      "csv_sha256": "38f7d5b2e4f26489b01ef61c85b943543318cf58d6c7827cfcddf532a9579c08"
+    },
+    {
+      "asset": "DT_MinionScaling",
+      "csv": "MinionScaling.csv",
+      "rows": 2,
+      "csv_sha256": "9b493ced6e4579024b0b40500cedaa699377817ac0ca708e62c8d0860f9f74b0"
     },
     {
       "asset": "DT_SkillSlots",
