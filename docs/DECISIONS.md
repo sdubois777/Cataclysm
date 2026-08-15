@@ -20,6 +20,68 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — A full inventory is a choice about what to leave, and a Stash stands at every dungeon's middle floor
+
+**Affects:** the Storage section of `Cataclysm_GDD_v2.md`. Applied. Issue #323.
+
+### The decision
+
+**A player cannot leave a dungeon partway through.** The only ways out are
+clearing it or dying. That was the project owner's answer on 2026-08-06.
+
+**So an item that will not fit stays on the floor.** A full inventory is a
+decision about what is worth a slot, not a reason to walk out.
+
+**And a Stash stands at the entrance to every dungeon's middle floor**, with no
+empire upgrade needed. The Explorer branch of the empire upgrade tree makes them
+more frequent from there.
+
+### What was already designed, and what was actually missing
+
+The project owner asked on 2026-08-06 whether to add Explorer nodes for this and
+"maybe make it a capstone", leaving the final decision open. **The nodes already
+exist**, as three ranked keystones in the Explorer branch of
+`Empire_Development_Tree_Final.json`:
+
+| Node | Effect |
+| :-- | :-- |
+| Field Depot I | A Stash appears every 30 floors in dungeons |
+| Field Depot II | A Stash appears every 15 floors |
+| Field Depot III | A Stash appears every 5 floors |
+
+So there was nothing to add and no capstone to make. **The only thing genuinely
+missing was the default**, and the design document said nothing about any of it.
+
+### Why there is a default at all
+
+Without one, a player who has spent no points in the Explorer branch has no
+answer to a full inventory on a dungeon 100 to 150 floors deep, and cannot leave.
+That is a dead end rather than a difficulty choice. One Stash at the middle floor
+is the smallest thing that removes it.
+
+### Why the ladder still means something with a default under it
+
+The three keystones stack with the middle-floor Stash rather than replacing it,
+and the interval ones only overtake it on long dungeons:
+
+| Dungeon depth | Default only | With Field Depot I | With Field Depot III |
+| --: | --: | --: | --: |
+| 10 floors | 1 | 1 | 2 |
+| 125 floors, a Cataclysm dungeon | 1 | 5 | 25 |
+
+That is the right shape. Forty-eight carried slots are not under pressure over
+ten floors, and they are under real pressure over a hundred, which is where the
+Explorer investment pays.
+
+### One node that looks relevant and is not
+
+**Supply Caches**, a basic Explorer node, gives each floor a chance to contain a
+loot chest. That adds items to carry rather than somewhere to put them, so it
+makes a full inventory more likely rather than less. Recorded here because the
+name reads like storage.
+
+---
+
 ## 2026-08-14 — Madness takes the immunity window and boss immunity, but not the damage threshold
 
 **Affects:** the "Stun and the Anti-Stun-Lock Rule" section of

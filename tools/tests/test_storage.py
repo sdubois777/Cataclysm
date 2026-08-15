@@ -44,6 +44,7 @@ a test; changing it in one place and not the other should.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 
@@ -626,3 +627,93 @@ def test_the_inventory_entry_records_what_argues_against_it(inventory_entry):
     assert "a construction, not a measurement" in inventory_entry, (
         "the entry does not say the number is built from other games' figures "
         "rather than measured. Issue #308.")
+
+
+# --------------------------------------------------------------------------
+# What happens when the inventory fills partway down a dungeon. Issue #323.
+# --------------------------------------------------------------------------
+
+
+def test_it_says_a_player_cannot_leave_a_dungeon_partway(storage):
+    """The project owner's answer, 2026-08-06. Everything else follows from it.
+
+    If a player could walk out, a full inventory would be an inconvenience. They
+    cannot, so it is a decision about what to leave behind.
+    """
+    assert "the player cannot leave" in storage, (
+        "the Storage section describes a 48 slot inventory without saying what "
+        "happens when it fills partway down a dungeon. The player cannot leave, "
+        "so the answer is not 'go and come back'. Issue #323.")
+
+
+def test_it_says_what_happens_to_an_item_that_will_not_fit(storage):
+    assert "stays on the floor" in storage, (
+        "the Storage section does not say what happens to an item picked up with "
+        "a full inventory. It stays on the floor and the player chooses what is "
+        "worth a slot. Issue #323.")
+
+
+def test_it_says_a_stash_stands_in_every_dungeon_by_default(storage):
+    """The part that was actually missing.
+
+    The three Field Depot keystones already existed in the Explorer branch of
+    the empire upgrade tree. What did not exist was any answer for a player who
+    has spent no points there, on a dungeon a hundred floors deep.
+    """
+    assert "at the entrance to its middle floor" in storage, (
+        "the Storage section does not say that a dungeon holds a Stash without "
+        "any empire upgrade. Without one, a player with no Explorer investment "
+        "has no answer to a full inventory and cannot leave. Issue #323.")
+
+    assert "with no empire upgrade needed" in storage, (
+        "the Storage section describes a Stash inside a dungeon without saying "
+        "whether it is the default or bought. It is the default. Issue #323.")
+
+
+def test_it_names_the_explorer_nodes_that_already_exist(storage):
+    """Named rather than described, so the document and the tree cannot drift.
+
+    All three are keystones in Empire_Development_Tree_Final.json and none of
+    them was added for this: Field Depot I every 30 floors, II every 15, III
+    every 5.
+    """
+    for node in ("Field Depot I", "Field Depot II", "Field Depot III"):
+        assert node in storage, (
+            f"the Storage section does not name {node}, which already exists in "
+            f"the Explorer branch of the empire upgrade tree and is how a player "
+            f"gets more Stashes in a dungeon. Issue #323.")
+
+    assert "stack with the middle-floor default rather than replacing it" in storage, (
+        "the Storage section does not say whether the Field Depot keystones "
+        "replace the default Stash or add to it. They add. Issue #323.")
+
+
+def test_the_named_nodes_and_their_intervals_match_the_empire_tree(storage):
+    """The document names three nodes and their floor intervals. The tree owns
+    both, so they are read out of it rather than restated here.
+
+    THE FAILURE THIS EXISTS FOR is somebody renaming a node or retuning an
+    interval in Empire_Development_Tree_Final.json and leaving the design
+    document describing the old one. Nothing else compares the two.
+    """
+    tree = REPO_ROOT / "docs" / "Empire_Development_Tree_Final.json"
+    if not tree.is_file():
+        pytest.skip("the empire tree is not present")
+
+    nodes = {node["data"]["name"]: (node["data"].get("description") or "")
+             for node in json.loads(tree.read_text(encoding="utf-8"))["nodes"]}
+
+    wanted = {"Field Depot I": "30", "Field Depot II": "15", "Field Depot III": "5"}
+    for name, floors in wanted.items():
+        assert name in nodes, (
+            f"{name} is no longer a node in the empire upgrade tree, and the "
+            f"Storage section names it as how a player gets more Stashes in a "
+            f"dungeon. Issue #323.")
+        assert floors in nodes[name], (
+            f"{name} in the empire tree no longer mentions {floors} floors: "
+            f"{nodes[name]!r}. The Storage section says it is every {floors}. "
+            f"Issue #323.")
+        assert f"every\n{floors} floors" in storage or f"every {floors} floors" in storage, (
+            f"the Storage section does not say {name} puts a Stash every "
+            f"{floors} floors, which is what the empire tree says it does. "
+            f"Issue #323.")
