@@ -1759,6 +1759,33 @@ Halving is also the only option under which no skill ever visibly does nothing. 
 
   
 
+**Rarity never changes the model.** An item's geometry comes from its item base
+and from nothing else, so a Cataclysmic sword and an Everyday sword of the same
+base are the same mesh. Rarity is shown through colour, frame and drop effect
+only.
+
+**That follows from rarity being computed rather than stored.** Rarity is a label
+for what fills an item's four slots, and adding an affix at the crafting bench
+promotes the piece. A model that tracked rarity would therefore change shape on
+the bench, in the player's hands, without the item having become a different
+object. A higher rarity is also not automatically a better item — it is weighted
+further toward enchantments and away from ordinary stats — so there is no power
+ladder for a visual ladder to follow.
+
+**It also sets the model count.** There are 55 item bases, 14 of them weapon
+types and the rest armour and jewellery slots. Rarity-per-model would multiply
+that by the eight tiers. The base alone determines it, so the number of gear
+models this project has to produce is 55.
+
+**Named sets are the one exception, and they are bought deliberately.** A named
+set may carry bespoke geometry, because a set has an identity of its own rather
+than a roll. That is the same line every game in the genre draws: the procedural
+rarity ladder is colour and effects, and only the named tier gets new art. The
+cost is per set and is stated where sets are defined, so adding a set is a
+decision to fund ten or more models rather than a side effect of a rarity tier.
+
+  
+
 **Adding an affix promotes the piece.** An Everyday item with an affix added becomes a Quality item, and a Superb item with a fourth becomes Masterful. That is not a special crafting rule; it follows from rarity being the name for the contents.
 
   
@@ -2398,6 +2425,15 @@ Enchantments are organized by the following tag types, with multiple enchantment
 ### **Set Enchantments**
 
 Set items are Legendary and above items that belong to a named set. Sets provide 2-piece, 6-piece, and 10-piece bonuses. Unlike generic enchantments, set positive and negative rolls are paired and guaranteed — the set functions as a complete package. Sets are the highest-power itemization option in the game and represent the endgame loot chase.
+
+  
+
+**A named set is the only itemisation layer that buys bespoke geometry**, and
+that is what makes each set expensive. Rarity does not change an item's model;
+the item base does, and a set is the one thing with an identity of its own rather
+than a roll. A set with a 10-piece bonus means ten or more models nobody has
+made. No set is enumerated yet, so nothing is owed today, but the art cost of a
+set should be counted when the set is written rather than when it is built.
 
   
 
@@ -4864,6 +4900,26 @@ marker's rework. What the table above fixes is the **starting constraint** — t
 hue an effect reads as, and the guarantee that it stays visible. The finished
 appearance comes from the material on top of it: how far the emissive pushes past
 the base value, how the surface moves, how dense it is, and how fast.
+
+  
+
+### **The item rarity ramp**
+
+Item rarity is shown through colour, frame and drop effect, and never through the
+model. The Item Rarities section states that rule and why.
+
+**The eight rarity colours are not assigned yet.** Two constraints on whoever
+assigns them:
+
+**They must not reuse the eight damage-type hues** in the effect palette above.
+Those hues already mean "this damage is Fire" wherever they appear, and a rarity
+ramp sharing them would make a drop's colour ambiguous between what it is and
+what it does. The two palettes have to be separable at a glance.
+
+**Colour cannot be the only channel**, for the same reason the effect palette
+carries a second one. A player who cannot separate two hues has to be able to
+separate two rarities, so the frame and the drop effect must differ by shape or
+motion as well as by colour. The Accessibility section is what this answers to.
 
   
 

@@ -20,6 +20,76 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — An item's rarity changes its colour, never its model
+
+**Affects:** the Item Rarities section, the Set Enchantments section and section
+XIII of `Cataclysm_GDD_v2.md`. Applied. Issue #537.
+
+### The decision
+
+**Rarity is colour, frame and drop effect. The item base alone determines the
+model.** A Cataclysmic sword and an Everyday sword of the same base are the same
+mesh. A named set may carry bespoke geometry, and it is the only itemisation
+layer that does.
+
+### Why, and the strongest reason is internal rather than from the genre
+
+**Rarity is computed, not stored, and it is mutable.** The design already says
+so: "Rarity is not a property an item carries. It is a label for what fills its
+four slots", and "Adding an affix promotes the piece. An Everyday item with an
+affix added becomes a Quality item". So a model that followed rarity would change
+shape at the crafting bench, in the player's hands, without the item having
+become a different object.
+
+**And the tiers are not a power ladder.** The same section says "A higher rarity
+is not automatically a better item. It is a different item, weighted further
+toward enchantments and away from ordinary stats." There is no ascending power
+for ascending visual weight to track.
+
+Either of those would be enough on its own. The genre agrees, and it draws the
+line in a more precise place than "colour only":
+
+| Game | Where the line falls | Source |
+| :-- | :-- | :-- |
+| Path of Exile | Procedural rarity is name colour; uniques are named items with their own art | https://www.poewiki.net/wiki/Item |
+| Diablo 2 | Normal, magic, rare and set share base art; uniques and sets are named and get distinct art | https://diablo2.diablowiki.net/Item_Quality |
+| Diablo 3 and 4 | Rarity is colour and beam; Legendary and Unique items are named and modelled | https://diablo.fandom.com/wiki/Item_Quality |
+| Last Epoch | Rarity is colour; uniques and sets are named and separately authored | https://www.lastepoch.com/ |
+| Grim Dawn | Rarity is colour; epics and legendaries are named items | https://www.grimdawn.com/ |
+
+**The rule the genre actually follows is that art tracks an item's identity, not
+its roll.** A named set has an identity. A Superb helmet does not. That is why
+sets are the exception here and rarity is not.
+
+### The model count this settles, and the figure it corrects
+
+There are **55 item bases**: 14 weapon types and 10 armour and jewellery slots,
+counted from `game/Data/ItemBases.csv`. Under this decision the number of gear
+models to produce is **55**. Under rarity-per-model it would have been 55 times
+the eight tiers.
+
+Issue #17, the 3D asset bake-off, opens with "24 classes of gear, 15 weapon types
+across eight rarity tiers". Both figures are wrong: there are 14 weapon types,
+not 15, and the eight rarity tiers do not multiply anything. The 15th value
+exists only in `game/Data/WeaponSkills.csv` as the pseudo-type "All", the marker
+for weapon-agnostic skills, which is not a weapon. #17's body has been corrected.
+
+### What this does not settle
+
+**Which eight colours.** The rule is stated and the ramp is not assigned. Section
+XIII now carries two constraints on whoever assigns it: the ramp must not reuse
+the eight damage-type hues from the effect palette, because those already mean a
+damage type wherever they appear, and colour cannot be the only channel, so the
+frame and drop effect must differ by shape or motion as well. Filed separately.
+
+**Where the model-to-base binding lives.** Nothing in `game/Data/ItemBases.csv`,
+the Item Bases sheet or `FCataclysmItemBaseRow` has a mesh column, so "the base
+decides the model" is a rule with nowhere to write the answer. That is
+implementation and belongs with issue #44, which owns loot generation and
+rarities. Filed separately.
+
+---
+
 ## 2026-08-14 — One magnitude word per number: Overwhelming Presence keeps "more", Thornwall keeps "increased"
 
 **Affects:** `Saboteur_Class_Tree_Final.json`, `Bulwark_Class_Tree_Final.json`
