@@ -105,17 +105,56 @@ KNOWN_DUPLICATE_NAMES: set[tuple[str, str]] = set()
 #:
 #: The pattern requires a number and a percent sign so that ordinary English --
 #: "5 or more bleed stacks", "no more than once every 10 seconds", "more than 10
-#: meters" -- does not match. Measured 2026-08-14: twenty-five nodes across the
-#: five trees contain the word and only ten are magnitudes.
+#: meters" -- does not match.
+#:
+#: THE COUNTS HERE WERE WRONG AND ARE NOW MEASURED BY A TEST. This comment said
+#: "twenty-five nodes across the five trees contain the word and only ten are
+#: magnitudes". Re-measured 2026-08-14 for issue #582: twenty-nine contained the
+#: word and twenty were magnitudes. Both figures were wrong, and nothing noticed,
+#: so `test_the_measured_wording_counts_are_still_right` now checks them.
 MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 
-#: How many non-keystone nodes used that wording on 2026-08-14, when issue #344
-#: widened the rule to cover them. Four basic nodes and four capstone options,
-#: across the Bulwark, Masochist, Saboteur and empire trees.
+#: How many strings across the five trees contain the bare word "more" or "less",
+#: and how many use it as a percentage magnitude. Measured, not estimated.
+#:
+#: BOTH DROPPED BY ONE WHEN ISSUE #582 LANDED, because Thornwall's "by 5% more"
+#: became "by 5%" and so stopped containing the word at all. The Saboteur
+#: keystone kept its "more" and still counts in both.
+STRINGS_CONTAINING_THE_WORD = 28
+STRINGS_USING_IT_AS_A_MAGNITUDE = 19
+
+#: A node that uses BOTH magnitude words for one number, as in "increased by 50%
+#: more". Issue #582.
+#:
+#: WHY IT IS A FAULT RATHER THAN A STYLE PREFERENCE. The two words name different
+#: places in the damage pipeline, `(base + flat) x (1 + increases) x more1 x
+#: more2`. "increased" joins the additive bucket; "more" is its own multiplier. A
+#: sentence using both for one number does not say which the number is, and the
+#: two readings differ by a large factor on an invested character.
+#:
+#: THE 80 CHARACTER WINDOW AND THE FULL STOP MATTER. Without them a node that
+#: legitimately grants an increase in one sentence and a "more" multiplier in
+#: another would match. Measured 2026-08-14: with them, exactly the two nodes
+#: issue #582 names matched and nothing else did.
+BOTH_MAGNITUDE_WORDS = re.compile(
+    r"(?:increas|reduc|decreas)\w*[^.]{0,80}?\d+\s*%\s+(?:more|less)\b",
+    re.IGNORECASE)
+
+#: How many non-keystone nodes use that wording. It was eight on 2026-08-14, when
+#: issue #344 widened the rule to cover them: four basic nodes and four capstone
+#: options across the Bulwark, Masochist, Saboteur and empire trees.
+#:
+#: SEVEN SINCE ISSUE #582 the same day. The eighth was Bulwark's Thornwall
+#: capstone option, which said "increased by 5% more" and now says "increased by
+#: 5%". It is the only one that left the Bulwark tree, so the widened rule is now
+#: relied on by the Masochist, Saboteur and empire trees only. The remaining
+#: seven are Economic Zones, Salvage Protocol, The Imperial Vanguard and Thrifty
+#: in the empire tree, The Second Vow and The Final Vow in the Masochist tree,
+#: and Reinforced Housing in the Saboteur tree.
 #:
 #: Pinned exactly rather than as a floor, for the reason
 #: `test_the_widened_rule_is_actually_relied_on` gives.
-NODES_RELYING_ON_THE_WIDENED_RULE = 8
+NODES_RELYING_ON_THE_WIDENED_RULE = 7
 
 
 def load(tree_name: str) -> dict:
@@ -633,3 +672,87 @@ def test_the_gdd_class_resource_table_names_the_masochist_resource(demonic):
         "the Class Resource Systems table in docs/Cataclysm_GDD_v2.md does "
         "not have a row for the Masochist. Every class needs a resource and "
         "the table is where a reader looks for it. Issue #63.")
+
+
+# ---------------------------------------------------------------------------
+# One magnitude word per number
+# ---------------------------------------------------------------------------
+#
+# Issue #582. Two nodes said "increased by X% more", using both magnitude words
+# for a single number: the Saboteur keystone Overwhelming Presence and the
+# Bulwark capstone option Thornwall. Answered on 2026-08-14 by choosing one word
+# for each rather than one word for both -- Overwhelming Presence keeps "more"
+# because it is one conditional keystone multiplier, and Thornwall keeps
+# "increased" because it is a ten-stack debuff that belongs in the additive
+# bucket. docs/DECISIONS.md carries the reasoning and the genre sources.
+
+
+def every_tree_string() -> list[tuple[str, str]]:
+    """Every node and capstone-option description across the five trees.
+
+    Returned with the file it came from, so a failure names where to look.
+    """
+    strings: list[tuple[str, str]] = []
+    paths = sorted(DOCS.glob("*_Class_Tree_Final.json"))
+    paths.append(DOCS / "Empire_Development_Tree_Final.json")
+
+    for path in paths:
+        if not path.is_file():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for node in data["nodes"]:
+            body = node["data"]
+            strings.append((path.name, body.get("description", "") or ""))
+            for option in body.get("options", []) or []:
+                strings.append((path.name, option.get("description", "") or ""))
+    return strings
+
+
+def test_no_node_uses_both_magnitude_words_for_one_number():
+    """The fault issue #582 reported, stated as a property rather than by name.
+
+    Naming the two nodes would pass the moment somebody wrote a third. This
+    looks for the shape, so it catches the next one as well.
+    """
+    strings = every_tree_string()
+    if not strings:
+        pytest.skip("no class tree JSON files are present")
+
+    offenders = [f"{name}: {text}"
+                 for name, text in strings
+                 if BOTH_MAGNITUDE_WORDS.search(text)]
+
+    assert not offenders, (
+        "a passive tree node uses both magnitude words for one number, so it "
+        "does not say whether the number joins the additive bucket or is its "
+        "own multiplier. The two readings differ by a large factor on an "
+        "invested character. Pick one word. Issue #582.\n  "
+        + "\n  ".join(offenders))
+
+
+def test_the_measured_wording_counts_are_still_right():
+    """The counts in the comment on MAGNITUDE_WORDING were both wrong.
+
+    It claimed twenty-five strings contained the word and ten were magnitudes;
+    the real figures were twenty-nine and twenty. A number written into a
+    comment and never checked is a number that drifts, and this one was used to
+    argue that the pattern was tight enough.
+    """
+    strings = every_tree_string()
+    if not strings:
+        pytest.skip("no class tree JSON files are present")
+
+    bare = re.compile(r"\b(?:more|less)\b", re.IGNORECASE)
+    containing = sum(1 for _, text in strings if bare.search(text))
+    magnitudes = sum(1 for _, text in strings if MAGNITUDE_WORDING.search(text))
+
+    assert containing == STRINGS_CONTAINING_THE_WORD, (
+        f"{containing} tree strings contain the word 'more' or 'less', and "
+        f"STRINGS_CONTAINING_THE_WORD says {STRINGS_CONTAINING_THE_WORD}. "
+        f"Update it, and check the pattern still separates the magnitudes from "
+        f"ordinary English.")
+
+    assert magnitudes == STRINGS_USING_IT_AS_A_MAGNITUDE, (
+        f"{magnitudes} tree strings use it as a percentage magnitude, and "
+        f"STRINGS_USING_IT_AS_A_MAGNITUDE says "
+        f"{STRINGS_USING_IT_AS_A_MAGNITUDE}. Update it.")

@@ -1627,7 +1627,7 @@
           {
             "name": "Thornwall",
             "identity": "Retaliation/Thorns",
-            "description": "Enemies that hit you are inflicted with a stack of Exposed. Each stack of Exposed increases the retaliation damage they take from you by 5% more, stacking up to 10 times."
+            "description": "Enemies that hit you are inflicted with a stack of Exposed. Each stack of Exposed increases the retaliation damage they take from you by 5%, stacking up to 10 times."
           }
         ],
         "pointThreshold": 50
