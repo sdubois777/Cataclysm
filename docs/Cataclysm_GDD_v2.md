@@ -329,6 +329,31 @@ of play.
 
   
 
+### **How Many Characters an Account Holds**
+
+**An account holds 24 characters, as one pool.** Every character counts against
+the same 24 whatever its population, whatever its lethality mode and whether or
+not it is Solo Self-Found. There is not one allowance per partition.
+
+**Nothing raises it.** No empire upgrade node grants a slot, no city upgrade
+grants one, and none is sold. Deleting a character is the only way to free one,
+which is the second reason deletion exists.
+
+**Why one pool rather than one per partition.** Everything this design partitions
+by population and lethality mode — the stash, the auction house, gold, the empire
+upgrade tree — is something characters *share*. A slot count is not shared
+between characters; it is a count *of* them, so the partition does not apply. It
+also means the number does not have to be restated if a seasonal league ever
+becomes a fourth axis.
+
+**Why 24.** It matches the free default in Path of Exile 2, which is the surveyed
+game with the most partitions and the deepest build-crafting, and it exceeds
+Diablo IV's 14. It is also the number of classes, so one of every class fits at
+once. The number is a tuning value; the rule is that it is one pool and nothing
+buys more.
+
+  
+
 ## **Combat System**
 
 ### **Real-Time Action**
@@ -2992,7 +3017,9 @@ a run, knowing what is in the tree.
 **So an account holds three shared trees per population, plus one for every Solo
 Self-Found character.** A player who plays only online, or only offline, has
 three; a player who plays both has six, because offline and online characters
-share nothing with each other either. Each tree persists across every run and
+share nothing with each other either. **That is at most 30 trees on an account**:
+six shared ones, and at most 24 private ones, because an account holds 24
+characters in total. Each tree persists across every run and
 every character that feeds it, exactly as before. The scope narrows which
 characters share a tree; it does not shorten how long a tree lasts.
 
@@ -5237,7 +5264,9 @@ There is no free client, no subscription, and no trial.
 **Buying the game buys all of it.** All 8 Cataclysms, all 24 classes, empire
 management, city upgrades, the capital hub, all crafting systems and all weapon
 types are included in the purchase. There are no paywalls on gameplay content, no
-pay-to-win mechanics, and no stash or storage fees of any kind.
+pay-to-win mechanics, no stash or storage fees of any kind, and no character
+slots for sale. An account's 24 slots are the whole allowance and nothing raises
+them; the only way to free one is to delete a character.
 
   
 

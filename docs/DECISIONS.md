@@ -20,6 +20,69 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — An account holds 24 characters, as one pool
+
+**Affects:** section II and the monetisation and empire tree sections of
+`Cataclysm_GDD_v2.md`, and the partition key section of `Save_System_Design.md`.
+Applied. Issue #577.
+
+### The decision
+
+**24 characters per account, as a single pool.** Every character counts against
+the same 24 whatever its population, whatever its lethality mode and whether or
+not it is Solo Self-Found. Nothing raises it — no empire node, no city upgrade,
+nothing sold. Deleting a character is the only way to free a slot.
+
+### Why one pool rather than one allowance per partition
+
+This is the question the issue actually turns on, because this design partitions
+almost everything else. The answer is that **every partitioned thing is something
+characters share** — the stash, the auction house, gold, the empire upgrade tree
+— and a slot count is not shared between characters. It is a count *of* them.
+
+Every game surveyed that has a limit holds it per account as one pool, and none
+partitions it along the axes it partitions storage or progression:
+
+| Game | The limit | What it does not partition it by | Source |
+| :-- | :-- | :-- | :-- |
+| Path of Exile 2 | 24 free slots | leagues — "By default, players can get 24 maximum free character slots across all leagues in the game's early access" | https://game8.co/games/Path-of-Exile-2/archives/496032 |
+| Diablo IV | 12, raised to 14 in Vessel of Hatred | Eternal against Seasonal | https://www.wowhead.com/diablo-4/news/character-cap-increased-in-diablo-4-vessel-of-hatred-347617 |
+| Last Epoch | 25 online, unbounded offline | the same online/offline split this design has | https://forum.lastepoch.com/t/character-slots/76622 |
+| Grim Dawn | no game limit; a save-storage cap only | nothing | https://www.grimdawn.com/ |
+
+**It also means the number survives issue #287.** That issue asks whether a
+seasonal league resets the empire upgrade tree, and is open. A per-partition
+count would be six times something today and twelve times it if #287 introduced a
+fourth axis, so answering this one per partition would silently pre-commit that
+one. A per-account count is unaffected. That is a judgement about this
+repository, not a finding from the genre.
+
+### Why 24, which is a judgement
+
+It matches Path of Exile 2's free default exactly — the surveyed game with the
+most partitions and the deepest build-crafting — and exceeds Diablo IV's 14,
+which is right because this design has more partitions than Diablo IV does. It is
+also the number of classes, so one of every class fits at once, which makes the
+rule legible without a player having to look it up. The number is a tuning value;
+the rule is that it is one pool and nothing buys more.
+
+### Sources checked by hand, because the first pass got some wrong
+
+The research pass for this decision produced a **fabricated quotation** — a
+sentence attributed to the Path of Exile 2 page that does not appear on it — and
+two misattributed Last Epoch citations, one crediting a forum poster's guess to a
+developer and one giving a quote the wrong thread. An adversarial checking pass
+found all three, and every source in the table above was then re-fetched and read
+before being written here.
+
+Two things are recorded as **not established**: Last Epoch's reason for its 25 is
+a community member's guess about database cost and not a developer statement, so
+it is not used as an argument here; and Grim Dawn's cap is a save-storage limit
+rather than a design decision, so it is evidence about nothing except that a game
+can ship without a limit.
+
+---
+
 ## 2026-08-14 — An item's rarity changes its colour, never its model
 
 **Affects:** the Item Rarities section, the Set Enchantments section and section

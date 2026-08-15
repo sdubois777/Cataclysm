@@ -162,6 +162,14 @@ So the partition key is **offline-or-online × lethality mode**, giving up to
 six account records per player, plus one self-contained record per Solo
 Self-Found character.
 
+**Both halves of that are bounded.** An account holds 24 characters as one pool
+across both populations and all three lethality modes, so the worst case is six
+account records and 24 character records, of which at most 24 are Solo
+Self-Found. That matters to the format because a Solo Self-Found character record
+is the largest object in it: it carries a private 600-slot stash and a private
+empire upgrade tree as well as the ordinary 48 inventory slots and 18 equipped
+items.
+
 ---
 
 ## 4. Storage format

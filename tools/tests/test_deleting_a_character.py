@@ -30,9 +30,11 @@ its checks by writing a paragraph stating the opposite rule while keeping the
 matched substring. "delete", "tree" and "character" are each far too common in
 this document to carry a check on their own.
 
-WHAT IS NOT ASSERTED HERE. How many character slots an account has. The document
-has never said, deletion makes the question live because freeing a slot is a
-reason to delete, and it has its own issue rather than an invented number here.
+WHAT IS NOT ASSERTED HERE. How many character slots an account has. That was
+issue #577, answered on 2026-08-14: 24 per account as one pool, with deletion the
+only way to free one. It is checked in `test_character_slots.py`, which reads the
+number out of the document rather than pinning it, so tuning the number does not
+mean editing two test files.
 
 WHAT IS ASSERTED HERE.
 
