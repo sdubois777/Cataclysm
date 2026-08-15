@@ -1703,7 +1703,38 @@ Taking the middle rather than the strictest is deliberate. This design also has 
 | Damage reduction, such as Weaken | No | Weaker is still able to act |
 | Displacement, such as a 4 metre knockback | No | The target can act on arrival |
 | Disarm | No | Movement and any skill that does not need the weapon still work |
-| Madness | **Open** | The target operates every part of itself, but not for the side that owns it. Issue #303 |
+| Madness | **Partly** | The target operates every part of itself, but not for the side that owns it. It gets the immunity window and boss immunity, and not the damage threshold. See below |
+
+  
+
+**Madness takes two of the three rules and not the third.** It is the one effect
+that does not sit cleanly on either side of "completely stops the target
+operating any part of its character": a maddened target moves and attacks at full
+capability, but not for the side that owns it.
+
+  
+
+| Rule | Applies to Madness | Because |
+| :-- | :-- | :-- |
+| The 10% damage threshold | **No** | The threshold exists to stop small hits interrupting constantly. Madness is not an interruption; it is a redirection, and it does not matter how hard the hit that caused it landed |
+| The 5 second immunity window | **Yes** | Shared with stun and knockdown rather than counted separately, so the three cannot be alternated to hold a target continuously |
+| A boss cannot be affected | **Yes** | The reason boss immunity exists applies word for word. A maddened boss is not fighting the player, and a boss that can be held out of its own fight is not a fight |
+
+  
+
+**The boss half is the one that had to change.** Madness is 3 seconds, the
+longest hold in the game, and it is the only one that is freely rollable: the
+suffix "Of Madness" gives a 15% chance on a necklace, relic, ring or weapon, and
+the Staff support skill Subjugate applies it directly for 6 seconds against a
+burning target. Without boss immunity, a build stacking that affix could hold a
+boss out of its own fight indefinitely, reaching by a different word exactly the
+outcome this whole section exists to prevent.
+
+  
+
+**Subjugate therefore does nothing to a boss, and that is accepted.** It still
+works on everything else, which is where the Staff support slot will spend most
+of its uses.
 
   
 
