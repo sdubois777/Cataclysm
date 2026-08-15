@@ -98,16 +98,16 @@ def test_a_single_one_handed_weapon_is_a_legal_loadout():
 def test_a_shield_is_an_offhand_that_adds_no_attack_damage():
     """Also the project owner, 2026-08-15. A shield is held, not swung, so a
     one-hander with a shield hits exactly as hard as that one-hander alone."""
-    assert pd.weapon_base_damage(("Axe", pd.OFFHAND)) == \
+    assert pd.weapon_base_damage(("Axe", pd.UNARMED_WEAPON)) == \
         pytest.approx(pd.weapon_base_damage("Axe"))
-    assert pd.damage_per_hit(8, ("Axe", pd.OFFHAND)) == \
+    assert pd.damage_per_hit(8, ("Axe", pd.UNARMED_WEAPON)) == \
         pytest.approx(pd.damage_per_hit(8, "Axe"))
 
 
 def test_the_offhand_does_not_drag_the_attack_rate():
     """A shield is not swung, so it is left out of the average. Were it counted,
     an Axe with a Shield would swing at a different rate from an Axe alone."""
-    assert pd.attack_rate(("Axe", pd.OFFHAND)) == pytest.approx(pd.attack_rate("Axe"))
+    assert pd.attack_rate(("Axe", pd.UNARMED_WEAPON)) == pytest.approx(pd.attack_rate("Axe"))
 
 
 def test_the_attack_rate_of_a_pair_is_the_average_and_not_the_sum():
@@ -124,13 +124,19 @@ def test_the_attack_rate_of_a_pair_is_the_average_and_not_the_sum():
     (("Greatsword", "Axe"), "hands"),
     (("Greatsword", "Greatsword"), "hands"),
     (("Axe", "Sword", "Dagger"), "two hands"),
-    ((pd.OFFHAND,), "no weapon"),
-    ((pd.OFFHAND, pd.OFFHAND), "no weapon"),
-    ((pd.OFFHAND, "Axe"), "second position"),
+    ((pd.UNARMED_WEAPON,), "grants no attack damage"),
+    ((pd.UNARMED_WEAPON, pd.UNARMED_WEAPON), "grants no attack damage"),
 ])
 def test_an_illegal_loadout_is_refused(loadout, expected):
     with pytest.raises(ValueError, match=expected):
         pd.damage_per_hit(8, loadout)
+
+
+def test_which_hand_holds_the_shield_does_not_matter():
+    """There is no offhand position. A Shield is one of the one-handed weapons,
+    so the pair is unordered and both spellings are the same loadout."""
+    assert pd.damage_per_hit(8, ("Axe", pd.UNARMED_WEAPON)) == \
+        pytest.approx(pd.damage_per_hit(8, (pd.UNARMED_WEAPON, "Axe")))
 
 
 def test_a_loadout_of_something_that_is_not_a_weapon_is_refused():
