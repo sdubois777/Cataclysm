@@ -291,3 +291,107 @@ def test_the_reversal_says_what_it_reversed(section):
     assert "30% of its summoner's weapon damage" in collapsed, (
         f"{DESIGN_DOC.name} no longer says what the old rule was, so a reader "
         f"who knows the 30% figure cannot tell it has been replaced.")
+
+
+# ---------------------------------------------------------------------------
+# Which attribute a minion scales from. Issue #335.
+# ---------------------------------------------------------------------------
+#
+# The project owner answered on 2026-08-14 with "that will depend on the
+# minion", so the attribute is a per-type choice rather than one global one.
+# Spirit for summoned creatures, Agility for deployed machines, 1.0% increased
+# minion damage per point.
+
+
+#: The two families and their attributes, as the design states them.
+SCALING_ATTRIBUTES = {"Spirit": "Summoned creatures", "Agility": "Deployed machines"}
+
+#: Attributes considered and rejected, with the stat that made each compound.
+#: Named in the tests so a future change that quietly adopts one is caught.
+REJECTED_ATTRIBUTES = ("Efficacy", "Ferocity")
+
+
+def test_the_attribute_is_chosen_per_minion_type(section):
+    """The answer itself, and the part a reader would otherwise get wrong.
+
+    Everything else about minions in this design is uniform across types, so a
+    single global attribute is the assumption somebody arrives with.
+    """
+    assert "chosen per minion type, not once for all minions" in section, (
+        "the minion section does not say whether the scaling attribute is one "
+        "choice for all minions or one per type. It is per type. Issue #335.")
+
+    # THE TABLE ROW, NOT THE BARE WORD. Proving this guard showed that checking
+    # for "Agility" alone could not fail: the section names it again in the
+    # paragraph explaining why it was chosen, and again in the unsettled-list
+    # paragraph, so deleting the table row left the test passing.
+    for family, types, attribute in (
+            ("Summoned creatures", "Lesser imp, mote of living fire", "Spirit"),
+            ("Deployed machines", "Bolt turret, ballista, spike trap", "Agility")):
+        row = f"| {family} | {types} | **{attribute}** |"
+        assert row in section, (
+            f"the minion section's scaling table has no row giving {family.lower()} "
+            f"the attribute {attribute}. Expected: {row}  Issue #335.")
+
+
+def test_the_rate_is_stated_and_derived(section):
+    """A number with no derivation beside it gets retuned by guess."""
+    # THE WHOLE SENTENCE. Proving this guard showed that the bare phrase appears
+    # twice in the section -- once here and once in the paragraph recording that
+    # the question is answered -- so deleting one copy left the test passing.
+    # That is the same trap that has caught a check in this project before.
+    assert "**Each grants 1.0% increased minion damage per point**" in section, (
+        "the minion section names the scaling attributes without stating what a "
+        "point is worth in the sentence that defines it. It is 1.0% increased "
+        "minion damage per point. Issue #335.")
+
+    assert "no critical strike layer to compound with" in section, (
+        "the minion section states 1.0% per point without the reasoning that "
+        "put it at the top of the band between Ferocity and Efficacy. A rate "
+        "with no derivation is a rate somebody changes by feel. Issue #335.")
+
+
+def test_the_test_that_picked_them_is_stated(section):
+    """Otherwise the choice reads as flavour and the next attribute is picked
+    by flavour too."""
+    assert "whether the attribute's existing stats *multiply* the new one" in section, (
+        "the minion section names two attributes without saying what test chose "
+        "them. It is whether the attribute's existing stats multiply minion "
+        "damage. Issue #335.")
+
+    for rejected in REJECTED_ATTRIBUTES:
+        assert rejected in section, (
+            f"the minion section does not record that {rejected} was considered "
+            f"and rejected. Both were rejected for compounding, and a reader who "
+            f"does not know that will propose one of them again. Issue #335.")
+
+
+def test_the_slot_cost_is_stated_rather_than_discovered(section):
+    """Both attributes roll on defensive and mobility slots, so a minion build
+    cannot get its scaling attribute on an offensive piece. That is deliberate
+    and the document has to say so, or it reads as an oversight."""
+    assert "archetype's cost" in section, (
+        "the minion section does not say that a minion build gets its scaling "
+        "attribute only on defensive and mobility slots. That is the trade the "
+        "archetype makes and it looks like a mistake if unstated. Issue #335.")
+
+    assert "neither slot list is being widened" in section, (
+        "the minion section does not rule out widening Spirit's or Agility's "
+        "slot lists, which would hand every energy shield and evasion build new "
+        "offensive slots to serve six skills. Issue #335.")
+
+
+def test_the_unsettled_list_no_longer_carries_the_attribute_question(section):
+    """A tracked-open list that keeps a settled item teaches people to skim it.
+
+    The three that remain are the per-type numbers (#336), the affixes (#337)
+    and the deployable skill rows (#338).
+    """
+    assert "Three numbers are not settled" in section, (
+        "the minion section still says four numbers are unsettled. The "
+        "attribute question is answered, so three remain. Issue #335.")
+
+    assert "was the fourth and is now answered" in section, (
+        "the minion section dropped the attribute question from its unsettled "
+        "list without saying it was answered, so a reader cannot tell whether "
+        "it was decided or lost. Issue #335.")
