@@ -21,9 +21,10 @@ on them: if either is ever rewritten, the reasoning recorded in
 `docs/DECISIONS.md` stops holding and this file should be revisited rather than
 quietly still passing.
 
-WHAT IS NOT CHECKED HERE. Which eight colours the ramp uses. They are not
-assigned yet, and section XIII states the two constraints on assigning them
-rather than the answer.
+THE EIGHT COLOURS ARE CHECKED HERE TOO, since issue #602 assigned them on
+2026-08-14: White, Grey, Green, Blue, Yellow, Orange, Purple, Red. Seven of them
+sit close to one of the eight Cataclysm damage hues, which is deliberate and
+safe, because the two palettes never appear on the same surface.
 
 THE MODEL COUNT IS READ FROM THE DATA, not pinned to 55 here. Adding an item base
 should not break a test; the document claiming a count that disagrees with
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import csv
 import pathlib
+import re
 
 import pytest
 
@@ -128,18 +130,110 @@ def test_the_two_sentences_the_decision_rests_on_are_still_there(document):
             f"asked again rather than left answered.")
 
 
-def test_the_rarity_ramp_may_not_reuse_the_damage_type_hues(document):
-    """The constraint on whoever assigns the eight colours. Issue #537.
+#: The eight rarity colours, in tier order, chosen by the project owner on
+#: 2026-08-14. Issue #602.
+RARITY_COLOURS = [
+    ("Everyday", "White"),
+    ("Quality", "Grey"),
+    ("Superb", "Green"),
+    ("Masterful", "Blue"),
+    ("Legendary", "Yellow"),
+    ("Mythical", "Orange"),
+    ("Ascendant", "Purple"),
+    ("Cataclysmic", "Red"),
+]
 
-    The effect palette's eight hues already mean "this damage is Fire" wherever
-    they appear. A rarity ramp sharing them makes a drop's colour ambiguous
-    between what the item is and what it does.
+
+def colour_table_tiers(document: str) -> list[str]:
+    """The tier names section XIII's colour table actually lists, in order.
+
+    READ OUT OF THE DOCUMENT rather than taken from RARITY_COLOURS above. The
+    first version of the drift check below iterated over the Python list, so
+    renaming a tier in the document could not fail it: it went on checking that
+    the OLD name was in the Item Rarities table, which it still was. Proving the
+    guard is what found that.
     """
-    assert "must not reuse the eight damage-type hues" in document, (
-        "section XIII does not say that the item rarity colours have to be "
-        "separable from the damage-type palette. Issue #537.")
+    block = re.search(r"^\| Rarity \| Colour \|\n\|[^\n]*\|\n((?:\|[^\n]*\|\n)+)",
+                      document, re.MULTILINE)
+    if not block:
+        return []
+    return [line.split("|")[1].strip()
+            for line in block.group(1).splitlines() if line.strip()]
 
-    assert "Colour cannot be the only channel" in document, (
+
+def test_every_rarity_tier_has_a_colour(document):
+    """Issue #602. Eight tiers, eight colours, in the same order both places."""
+    for tier, colour in RARITY_COLOURS:
+        assert f"| {tier} | {colour} |" in document, (
+            f"section XIII does not give {tier} the colour {colour}. All eight "
+            f"tiers need one. Issue #602.")
+
+
+def test_the_colour_table_covers_the_same_tiers_as_the_rarity_table(document):
+    """The two tables are in different sections and would drift apart silently.
+
+    THE FAILURE THIS EXISTS FOR is adding a ninth rarity to the Item Rarities
+    table, or renaming one, and leaving section XIII's colour table behind. That
+    already happened once with this exact set of tiers: the sixth was called
+    Mythic in one table and Mythical in four other places, which issue #603
+    fixed.
+    """
+    named = colour_table_tiers(document)
+    assert named, "section XIII no longer has a rarity colour table at all."
+
+    for tier in named:
+        assert re.search(rf"^\| {re.escape(tier)} \| \d+ \| \d+ \|", document,
+                         re.MULTILINE), (
+            f"{tier!r} is given a colour in section XIII but is not a row of the "
+            f"Item Rarities table, which is the definitive list of tiers. Either "
+            f"it was renamed in one place and not the other, or a tier was "
+            f"invented. Issues #602 and #603.")
+
+    assert named == [tier for tier, _ in RARITY_COLOURS], (
+        f"the tiers in section XIII's colour table are {named}, and the eight "
+        f"the project owner assigned colours to on 2026-08-14 are "
+        f"{[tier for tier, _ in RARITY_COLOURS]}. Issue #602.")
+
+
+def test_it_says_the_two_palettes_may_overlap_and_why(document):
+    """The constraint written on 2026-08-14 was too strong and was replaced.
+
+    WHAT THIS USED TO ASSERT. Until the colours were chosen, this file asserted
+    that section XIII said the rarity ramp "must not reuse the eight damage-type
+    hues". Seven of the eight colours the project owner then chose do sit close
+    to a Cataclysm hue, and the project owner's answer was that this is not a
+    problem.
+
+    They were right, and the reason is worth keeping rather than the rule: the
+    two palettes never share a SURFACE. Rarity colours are on item names,
+    inventory frames and the marker over a drop; damage-type hues are on skill
+    and damage effects. Nothing is both an item and an attack.
+    """
+    assert "The two palettes never share a surface" in document, (
+        "section XIII gives the rarity colours without saying why overlapping "
+        "the damage-type palette is safe. Seven of the eight do overlap, so a "
+        "reader who knows the effect palette will think it is a mistake. "
+        "Issue #602.")
+
+    assert "Colour is still not the only channel" in document, (
         "section XIII does not carry the second channel requirement for the "
         "rarity ramp, so a player who cannot separate two hues cannot separate "
-        "two rarities. Issue #537.")
+        "two rarities. Issues #537 and #602.")
+
+
+def test_a_damage_taken_debuff_is_the_defenders_bucket(document):
+    """Issue #600. "One bucket per stat" never said whose stat.
+
+    THE FAILURE THIS EXISTS FOR is the sentence being dropped as redundant. It
+    reads like a restatement of the bucket rule and it is not: it is the half
+    the bucket rule leaves open, and the two readings differ by about a factor
+    of ten on Thornwall, a Bulwark capstone option.
+    """
+    assert "is the target's bucket, not\nthe attacker's" in document, (
+        "section IV states the damage pipeline without saying which side owns "
+        "the bucket for a debuff that increases the damage a target takes. It "
+        "is the defender's. Issue #600.")
+
+    assert "They do not join the attacker's bucket" in document, (
+        "section IV does not rule out the other reading, under which an "
+        "invested attacker dilutes the debuff to a few percent. Issue #600.")
