@@ -2265,6 +2265,18 @@ Every piece has four affix slots, and they are **two prefixes and two suffixes**
 
   
 
+**Every affix is equally likely on any slot it is allowed on.** The affix table carries no weight column, so a pool of 80 and a pool of 84 differ only in that every entry in the larger one is slightly rarer.
+
+  
+
+**That dilution is accepted rather than solved, and its size is stated here.** Adding the four minion affixes made the worst-affected pool, the Weapon prefixes, go from 3 entries to 4 — a third more crowded. A Ring's prefixes went from 14 to 17. Every other pool moved by less. Last Epoch solves this class of problem by weighting, so plain increased minion damage is common while affixes scaling two things at once are rare, and this design cannot express that today.
+
+  
+
+**A weight column is the fix, and it is not urgent.** With no weights at all the pool has never expressed rarity for any affix, so the four minion entries are a slightly larger instance of an existing gap rather than a new problem. It is worth doing before the pool grows much further.
+
+  
+
 ### **One Affix Per Group**
 
 The split above says which pool an affix is drawn from. It does not say what an affix may sit beside, and without a second rule a four-affix Masterful piece can roll **Flat maximum health** four times over. Slot restrictions do not help: every affix is restricted against the slot and against nothing else, least of all itself.

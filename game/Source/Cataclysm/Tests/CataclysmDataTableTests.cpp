@@ -120,7 +120,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// gear began granting a percentage increase to each primary attribute, two
 	// when mana leech and energy shield leech were added for #214, and eight
 	// when increased damage against each enemy damage type was added for #213.
-	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                80)
+	// 84, not 80. The four minion affixes landed with issue #337: increased
+	// minion damage, minion health and minion attack speed, plus the one
+	// hybrid, whose slot list is Ring alone because that is the only slot
+	// both of its halves roll on.
+	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                84)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
 	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             33)

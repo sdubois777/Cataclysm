@@ -733,10 +733,23 @@ def test_every_affix_names_a_stat_that_something_reads():
         af.StatAffix("Bad", "max_stamina", "flat", 1.0)
 
 
-def test_attack_damage_is_the_only_stat_allowed_off_the_character_sheet():
+def test_only_stats_belonging_to_something_other_than_the_character_are_off_sheet():
     """`character.py` says attack damage belongs to the weapon rather than the
-    sheet. Anything else off-sheet would be a stat nobody had designed."""
-    assert af.OFF_SHEET_STATS == {"attack_damage"}
+    sheet. The three minion stats were added with issue #337 for the same reason:
+    they belong to the minion. Anything else off-sheet would be a stat nobody had
+    designed.
+    """
+    assert af.OFF_SHEET_STATS == {"attack_damage", "minion_damage",
+                                  "minion_health", "minion_attack_speed"}
+
+
+def test_every_off_sheet_stat_is_named_by_at_least_one_affix():
+    """An off-sheet stat nothing grants is a hole in the pool, not a rule."""
+    named = {a.stat for a in af.AFFIX_POOL}
+    missing = sorted(af.OFF_SHEET_STATS - named)
+    assert not missing, (
+        f"{missing} are allowed off the character sheet and no affix grants "
+        "them, so nothing can ever raise them")
 
 
 def test_every_attribute_has_exactly_one_affix():
