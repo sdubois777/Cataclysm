@@ -297,6 +297,71 @@ private:
 };
 
 /**
+ * Places machines where they are put and leaves them there.
+ *
+ * THE EIGHTH SHAPE, AND IT EXISTED IN THE DATA BEFORE IT EXISTED HERE. Three War
+ * skills name it -- Bolt Turret, Ballista and Iron Fortress -- and until issue
+ * #621 the C++ did not know the word, so all three were granted the placeholder
+ * ability that fills a slot and does nothing.
+ *
+ * WHAT MAKES IT DIFFERENT FROM UCataclysmSummonSkill IS LESS THAN IT LOOKS. Two
+ * things, and neither of them is movement:
+ *
+ *   IT PLACES AT AN AIMED POINT rather than at the caster. One with no Range is
+ *   placed at the caster's feet, which is what a spike trap laid underfoot is.
+ *
+ *   IT PLACES MORE THAN ONE KIND AT ONCE. Iron Fortress deploys two ballistae
+ *   AND three spike traps. No summoning skill produces two kinds.
+ *
+ * WHETHER WHAT IT PLACES WALKS IS NOT DECIDED HERE. That is a property of the
+ * thing placed: a bolt turret, a ballista and a spike trap all state a move speed
+ * of zero in game/Data/MinionTypes.csv, while an imp states 4.4. So "stays where
+ * it is put" falls out of the data rather than being a rule this class imposes.
+ *
+ * NO OLDEST-EXPLODES RULE. That belongs to Summon Imp, whose design says a fourth
+ * imp destroys the oldest. Nothing in the three deployable skills says anything
+ * of the kind, so reaching the cap here simply stops placing more.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmDeployableSkill : public UCataclysmSkillTemplate
+{
+	GENERATED_BODY()
+
+public:
+	virtual ECataclysmSkillShape Shape() const override
+	{
+		return ECataclysmSkillShape::Deployable;
+	}
+
+	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
+								 const FGameplayAbilityActorInfo* ActorInfo,
+								 const FGameplayAbilityActivationInfo ActivationInfo,
+								 const FGameplayEventData* TriggerEventData) override;
+
+	/** Put one of a named type down. Public so a test can drive it directly. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	ACataclysmMinion* DeployOne(const FString& InTypeName);
+
+	/**
+	 * What this ability instance has out, oldest first.
+	 *
+	 * ON THE ABILITY INSTANCE for the same reason the summon skill's list is:
+	 * the base class instances per actor, so the cap counts what this character
+	 * has out rather than what one press produced.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	TArray<TObjectPtr<ACataclysmMinion>> Deployed;
+
+	/** How many are still out, after dropping the ones that expired. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	int32 LivingDeployedCount();
+
+private:
+	/** Fixed at activation: what is put down does not follow the cursor. */
+	FVector DeployLocation = FVector::ZeroVector;
+};
+
+/**
  * A radius around the caster, held while it is affordable.
  *
  * TOGGLED WHEN IT HAS NO DURATION, TIMED WHEN IT HAS ONE. Conflagration is the

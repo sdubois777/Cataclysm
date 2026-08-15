@@ -9,11 +9,16 @@ namespace
 	/**
 	 * The shape names, spelled exactly as the Shape column writes them.
 	 *
-	 * The generator holds the same seven names in SHAPE_PARAMS. They are two
+	 * The generator holds the same eight names in SHAPE_PARAMS. They are two
 	 * lists of the same thing and they can disagree, so
 	 * Cataclysm.SkillShape.EveryShapeInTheDataHasATemplate compares them: it
 	 * reads every Shape value out of the generated table and fails on one this
 	 * function does not know.
+	 *
+	 * THEY DID DISAGREE, AND THE TEST WAS THE ONLY THING THAT SAID SO. Deployable
+	 * was added to the generator on issue #338 and not added here, so for as long
+	 * as nobody ran the full automation suite the three skills naming it were
+	 * granted a placeholder that filled the slot and did nothing. Issue #621.
 	 */
 	struct FShapeName
 	{
@@ -27,6 +32,7 @@ namespace
 		{ ECataclysmSkillShape::SelfBuff,   TEXT("SelfBuff")   },
 		{ ECataclysmSkillShape::Movement,   TEXT("Movement")   },
 		{ ECataclysmSkillShape::Summon,     TEXT("Summon")     },
+		{ ECataclysmSkillShape::Deployable, TEXT("Deployable") },
 		{ ECataclysmSkillShape::Aura,       TEXT("Aura")       },
 		{ ECataclysmSkillShape::Debuff,     TEXT("Debuff")     },
 	};
@@ -171,10 +177,17 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		Key.TrimStartAndEndInline();
 		Value.TrimStartAndEndInline();
 
-		// Everything but Mode and Effect is a number, so it is read once here
-		// rather than in each branch below.
+		// Everything but Mode, Effect and Minions is a number, so it is read once
+		// here rather than in each branch below.
+		//
+		// THIS LIST IS `TEXT_PARAMS` IN `tools/generate_datatables.py` AND IT
+		// WAS SHORT BY ONE. Minions was missing, so "Minions=Imp:1" went through
+		// FCString::Atof, came back 0, and the guard below rejected the entire
+		// parameter cell -- taking Count and MaxActive down with it. Every summon
+		// skill therefore arrived with no idea what it summoned. Issue #622.
 		const bool bIsNumber = !Key.Equals(TEXT("Mode"), ESearchCase::IgnoreCase)
-							&& !Key.Equals(TEXT("Effect"), ESearchCase::IgnoreCase);
+							&& !Key.Equals(TEXT("Effect"), ESearchCase::IgnoreCase)
+							&& !Key.Equals(TEXT("Minions"), ESearchCase::IgnoreCase);
 		const float Number = bIsNumber ? FCString::Atof(*Value) : 0.0f;
 		if (bIsNumber && Number == 0.0f && !Value.Equals(TEXT("0")))
 		{
@@ -250,6 +263,10 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.GroundDuration = Number;
 		}
+		else if (Key.Equals(TEXT("GroundPercent"), ESearchCase::IgnoreCase))
+		{
+			Params.GroundPercent = Number;
+		}
 		else if (Key.Equals(TEXT("FinalHitPercent"), ESearchCase::IgnoreCase))
 		{
 			Params.FinalHitPercent = Number;
@@ -257,6 +274,16 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("HealthCostPercent"), ESearchCase::IgnoreCase))
 		{
 			Params.HealthCostPercent = Number;
+		}
+		else if (Key.Equals(TEXT("HealthPercent"), ESearchCase::IgnoreCase))
+		{
+			// A DIFFERENT NUMBER FROM THE ONE ABOVE, despite the names. That one
+			// is a cost in the caster's own health; this one raises the health of
+			// what the skill deploys above that minion type's own. Iron Fortress
+			// is the only skill that states it, at 150. Handled after
+			// HealthCostPercent only because that is where the riders sit; the
+			// comparison is exact, so the order does not matter.
+			Params.MinionHealthPercent = Number;
 		}
 		else if (Key.Equals(TEXT("IncreasePerBurning"), ESearchCase::IgnoreCase))
 		{
@@ -269,6 +296,64 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			// place the real list lives; repeating it in C++ would be a second
 			// copy that could go stale.
 			Params.Effect = Value;
+		}
+		else if (Key.Equals(TEXT("Minions"), ESearchCase::IgnoreCase))
+		{
+			// `Imp:1`, or `Ballista:2, SpikeTrap:3`. The comma separates kinds
+			// and the colon separates a kind from how many of it.
+			//
+			// THE TYPE NAMES ARE NOT CHECKED AGAINST THE MINION TABLE HERE, for
+			// the same reason Effect is not checked above:
+			// `validate_minion_references` in tools/generate_datatables.py
+			// already refuses a name the Minion Types sheet does not have, so a
+			// generated table cannot carry one. What IS checked is the shape of
+			// the text, because a misread pair would silently summon nothing.
+			TArray<FString> Pairs;
+			Value.ParseIntoArray(Pairs, TEXT(","), /*InCullEmpty=*/true);
+
+			for (const FString& Pair : Pairs)
+			{
+				FString TypeName;
+				FString CountText;
+				if (!Pair.Split(TEXT(":"), &TypeName, &CountText))
+				{
+					Fail(FString::Printf(
+						TEXT("Minions entry %s is not Type:Count"),
+						*Pair.TrimStartAndEnd()));
+					continue;
+				}
+
+				TypeName.TrimStartAndEndInline();
+				CountText.TrimStartAndEndInline();
+
+				if (TypeName.IsEmpty() || !CountText.IsNumeric())
+				{
+					Fail(FString::Printf(
+						TEXT("Minions entry %s is not Type:Count"),
+						*Pair.TrimStartAndEnd()));
+					continue;
+				}
+
+				const int32 HowMany = FCString::Atoi(*CountText);
+				if (HowMany < 1)
+				{
+					// Naming a type and asking for none of it says nothing, and
+					// would read as a skill that summons and then does not.
+					Fail(FString::Printf(
+						TEXT("Minions asks for %d %s"), HowMany, *TypeName));
+					continue;
+				}
+
+				FCataclysmMinionSpawn Spawn;
+				Spawn.Type = TypeName;
+				Spawn.Count = HowMany;
+				Params.Minions.Add(MoveTemp(Spawn));
+			}
+
+			if (Params.Minions.IsEmpty() && Params.bValid)
+			{
+				Fail(TEXT("Minions names nothing"));
+			}
 		}
 		else if (Key.Equals(TEXT("Mode"), ESearchCase::IgnoreCase))
 		{

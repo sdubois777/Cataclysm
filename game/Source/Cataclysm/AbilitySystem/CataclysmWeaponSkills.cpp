@@ -84,6 +84,7 @@ TSubclassOf<UCataclysmGameplayAbility> UCataclysmWeaponSkills::TemplateFor(
 	case ECataclysmSkillShape::SelfBuff:   return UCataclysmSelfBuffSkill::StaticClass();
 	case ECataclysmSkillShape::Movement:   return UCataclysmMovementSkill::StaticClass();
 	case ECataclysmSkillShape::Summon:     return UCataclysmSummonSkill::StaticClass();
+	case ECataclysmSkillShape::Deployable: return UCataclysmDeployableSkill::StaticClass();
 	case ECataclysmSkillShape::Aura:       return UCataclysmAuraSkill::StaticClass();
 	case ECataclysmSkillShape::Debuff:     return UCataclysmDebuffSkill::StaticClass();
 	case ECataclysmSkillShape::None:

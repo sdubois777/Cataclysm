@@ -20,6 +20,65 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — Three rules the data already stated, now read by the game
+
+**Affects:** no design document. This entry records **implementation catching up
+with decisions already made**, plus two small rules that had to be settled to do
+it. Closes issues #590, #621 and #622.
+
+### What was wrong, and it was invisible
+
+Three numbers the design documents state and the generated data carries were not
+read by the game at all. Each failed silently, and one automation test —
+`Cataclysm.SkillShape.EveryShapeInTheDataHasATemplate` — was the only thing that
+ever said so. It had been failing for some time, because no pull request in this
+project compiles any C++ (issue #20) and recent sessions ran only a small subset
+of the tests.
+
+| What the data said | What the game did | Issue |
+| :-- | :-- | :-- |
+| Three War skills have the shape `Deployable` | The C++ shape list had seven entries and not that one, so all three were granted a placeholder ability that fills a slot and does nothing | #621 |
+| Six skills name what they produce, as `Minions=Ballista:2, SpikeTrap:3` | The parser treated every parameter except two as a number, so the whole cell was rejected and every summon spawned the same generic creature | #622 |
+| All 22 skills that leave burning ground state what it deals per second | The game derived that figure from the Burn status effect instead, so a longer patch was automatically a bigger one | #590 |
+
+### Two rules that had to be settled to finish it
+
+**`Count` is not multiplied by the count in `Minions`.** A row may state both.
+Bolt Turret writes `Count=1` and `Minions=BoltTurret:1`, which is the same number
+said twice; multiplying them would deploy one turret per turret. So `Minions` is
+the authority on how many of each kind, and `Count` is what a skill with no named
+minion uses. All three deployable skills give the same answer either way, so this
+decides a case that does not exist yet rather than changing one that does.
+
+**Whether a minion walks is a property of the minion, not of the shape.** A bolt
+turret, a ballista and a spike trap all state a move speed of zero in
+`game/Data/MinionTypes.csv`; an imp states 4.4 and a mote 5.5. So the difference
+between the `Summon` shape and the `Deployable` shape is **where the thing is
+placed** — a summon at the caster, a deployable at the point the player aimed at
+— and "stays where it is put" falls out of the data. A deployable handed a
+walking creature would walk, and that is correct rather than a hole.
+
+### What was deliberately left, and why
+
+**A minion's damage and health still do not come from its type.** Issue #209
+reversed the rule that a minion deals 30% of its summoner's weapon damage, and
+`game/Data/MinionTypes.csv` states a base and a per-level amount for each type
+instead. That model is still not implemented, and two things it needs do not
+exist: any way to read the summoner's level, and any code at all that applies
+`game/Data/MinionScaling.csv`. **Issue #340 holds that half.**
+
+What a minion now does take from its type is everything that is pure behaviour:
+its reach, its notice radius, its attack interval and its move speed. So a
+ballista now reaches 15 metres and fires every 2 seconds where an imp reaches 2
+metres and hits every second, which is what made "no summon skill knows what to
+summon" true rather than merely untidy.
+
+**`ACataclysmGroundZone::Spawn` was kept.** Issue #590 asked whether a spawner
+nothing calls should go. It is called — by three automation tests — so removing
+it would delete coverage rather than dead code.
+
+---
+
 ## 2026-08-15 — The basic attack lives on the weapon, not in the skill matrix
 
 **Affects:** the Combat System damage table and the Skill Acquisition section of

@@ -9,10 +9,16 @@
 /**
  * Which shared template runs a skill.
  *
- * SEVEN SHAPES FOR 398 ROWS. Issue #37 asks for shared templates rather than
+ * EIGHT SHAPES FOR 398 ROWS. Issue #37 asks for shared templates rather than
  * sixteen one-off implementations, because the full weapon-and-damage-type
  * matrix is 398 rows and bespoke work on the first sixteen would make the other
  * 382 unaffordable.
+ *
+ * THIS LIST AND `SHAPE_PARAMS` IN `tools/generate_datatables.py` MUST AGREE. When
+ * they did not, the consequence was silent: `Deployable` was added to the
+ * generator on issue #338 and not here, so the three skills naming it read as
+ * None, were granted the placeholder ability, and filled their slot doing
+ * nothing for as long as nobody ran the full automation suite. Issue #621.
  *
  * THE LIST IS NOT INVENTED. Path of Exile's own `active_skill_types` list, which
  * ships in its data files, carves the same joints: Projectile, Melee,
@@ -45,8 +51,19 @@ enum class ECataclysmSkillShape : uint8
 	/** Moves the caster: a leap, a charge or a blink. */
 	Movement		UMETA(DisplayName = "Movement"),
 
-	/** Spawns minions that fight for the caster. */
+	/** Spawns minions that fight for the caster. They walk to the enemy. */
 	Summon			UMETA(DisplayName = "Summon"),
+
+	/**
+	 * Places machines that stay where they are put. A turret, a ballista, a
+	 * spike trap.
+	 *
+	 * THE SPLIT FROM Summon IS BEHAVIOURAL, not a naming preference: a summon
+	 * spawns things that walk to the enemy, a deployable places things that do
+	 * not move. The data already carried it as a tag -- Bolt Turret, Ballista
+	 * and Iron Fortress all have Type.Deployable -- before it was a shape.
+	 */
+	Deployable		UMETA(DisplayName = "Deployable"),
 
 	/** A radius around the caster, held as a toggle or for a duration. */
 	Aura			UMETA(DisplayName = "Aura"),
@@ -67,6 +84,32 @@ enum class ECataclysmMovementMode : uint8
 
 	/** Instant, hitting at both ends and nothing between. Emberstep. */
 	Blink			UMETA(DisplayName = "Blink"),
+};
+
+/**
+ * One kind of minion a skill produces, and how many of it.
+ *
+ * A LIST RATHER THAN ONE NAME, because Iron Fortress deploys two ballistae AND
+ * three spike traps, which no single key and value can say. The Shape Params
+ * cell writes it as `Ballista:2, SpikeTrap:3`.
+ *
+ * THE NAME IS NOT VALIDATED HERE. `validate_minion_references` in
+ * `tools/generate_datatables.py` refuses a name the Minion Types sheet does not
+ * have, so a generated table cannot carry one. Repeating that check in C++ would
+ * be a second copy of the list that could go stale.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmMinionSpawn
+{
+	GENERATED_BODY()
+
+	/** The row name in the Minion Types sheet, such as "Ballista". */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString Type;
+
+	/** How many of that type. Always one or more; the generator refuses zero. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 Count = 0;
 };
 
 /**
@@ -149,6 +192,31 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	int32 MaxActive = 0;
 
+	/**
+	 * What the skill produces, and how many of each. Empty when it produces
+	 * nothing.
+	 *
+	 * WITHOUT THIS EVERY SUMMON SPAWNED THE SAME THING. The parameter was
+	 * written in the sheet from issue #338 and this parser rejected the whole
+	 * cell as unreadable, so a skill naming a Ballista and one naming an Imp
+	 * arrived here identical. Issue #622.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	TArray<FCataclysmMinionSpawn> Minions;
+
+	/**
+	 * Percent of its own type's health each thing produced is given, when the
+	 * skill raises it. Zero means the type's own health, unchanged.
+	 *
+	 * NOT `HealthCostPercent`, WHICH IS A DIFFERENT NUMBER ENTIRELY. That one is
+	 * a cost in the caster's own health, which Blood Pyre charges. This one
+	 * makes what a skill deploys tougher than the same machine deployed by
+	 * something else, and Iron Fortress is the only skill that states it, at
+	 * 150.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MinionHealthPercent = 0.0f;
+
 	// --- Self buff --------------------------------------------------------
 
 	/**
@@ -181,6 +249,24 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	/** Seconds that ground burns. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float GroundDuration = 0.0f;
+
+	/**
+	 * Percent of the skill's own damage that ground deals per second.
+	 *
+	 * THE RULE IT CARRIES, decided on issue #361: standing in a patch for its
+	 * whole GroundDuration costs one hit of the skill that left it, so this is
+	 * 100 divided by GroundDuration. That keeps burning ground area denial
+	 * rather than a second damage source, and stops a longer patch being
+	 * automatically a bigger one.
+	 *
+	 * BEFORE ISSUE #590 THE ENGINE DID NOT READ IT. It derived the figure from
+	 * the Burn status effect instead -- 20% of a hit spread over 4 seconds, so
+	 * 5% per second whatever the patch's own duration was. A three second patch
+	 * was therefore worth 15% of a hit and a ten second one 50%, which is
+	 * exactly the "longer means bigger" property the rule was chosen to remove.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float GroundPercent = 0.0f;
 
 	/** Percent of weapon damage a closing hit deals. Pyroclasm states 300. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
