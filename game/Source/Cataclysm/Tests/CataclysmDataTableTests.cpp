@@ -124,6 +124,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
 	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             33)
+	// 2, not 5. Only the two Demonic minion types are designed: the Imp, which
+	// Summon Imp and Open the Rift both produce, and the Mote from Cinder Swarm.
+	// The three War deployables -- bolt turret, ballista and spike trap -- sit on
+	// Crossbow and Spear and are outside the vertical slice. Issue #336.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             2)
 	// 17: eight attributes, each raising two stats, except Efficacy raising
 	// three.
 	CHECK_TABLE(FCataclysmAttributeEffectRow,   "Attributes.csv",             17)
