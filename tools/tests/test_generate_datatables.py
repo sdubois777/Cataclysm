@@ -523,7 +523,7 @@ class TestBasicAttacks:
                    "Implicit 1 Stat": "block_chance"})))
 
     def test_something_that_is_not_a_weapon_may_not_state_one(self, tmp_path):
-        """A glove can grant flat attack damage -- the Vambraces base grants 24 --
+        """A glove can grant flat attack damage -- the Vambraces base grants 12 --
         and still have no swing to describe."""
         with pytest.raises(gen.DataError, match="not a weapon"):
             gen.item_bases(self.sheet(tmp_path, self.armed(
@@ -567,10 +567,21 @@ class TestBasicAttacks:
             "generate_datatables.py: "
             f"{sorted(af.BASIC_ATTACK_SHAPES ^ gen.BASIC_ATTACK_SHAPES)}")
 
-    def test_both_vocabularies_name_only_real_shapes(self):
-        """A guard that allowed a shape no template implements would pass every
-        test above and produce a basic attack that fills its slot and does
-        nothing."""
+    def test_the_basic_attack_shapes_are_shapes_the_generator_knows(self):
+        """Both names in BASIC_ATTACK_SHAPES appear in SHAPE_PARAMS, so a basic
+        attack is validated against a real parameter list rather than against a
+        missing dictionary key.
+
+        ONE VOCABULARY IS CHECKED HERE AND THAT IS ENOUGH, because
+        test_the_two_basic_attack_shape_vocabularies_agree above proves the copy
+        in affixes.py is the same set.
+
+        WHAT THIS DOES NOT CHECK is that a C++ ability template implements the
+        shape, which is the stronger property and is not knowable from Python.
+        Cataclysm.WeaponSlots.EveryArmedWeaponGrantsABasicAttack asserts it
+        against the real table, calling TemplateFor on every armed weapon's
+        basic attack shape.
+        """
         assert gen.BASIC_ATTACK_SHAPES <= set(gen.SHAPE_PARAMS)
 
 

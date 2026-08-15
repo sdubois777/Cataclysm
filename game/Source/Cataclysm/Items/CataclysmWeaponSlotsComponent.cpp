@@ -10,6 +10,7 @@
 #include "AbilitySystemInterface.h"
 #include "Cataclysm.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagsManager.h"
 
 UCataclysmWeaponSlotsComponent::UCataclysmWeaponSlotsComponent()
 {
@@ -61,10 +62,47 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 		ItemBaseTable = UCataclysmItemModifiers::LoadBaseTable();
 	}
 
-	const FCataclysmWeaponSkill Basic = UCataclysmWeaponSkills::BasicAttackFor(
+	FCataclysmWeaponSkill Basic = UCataclysmWeaponSkills::BasicAttackFor(
 		ItemBaseTable, EquippedWeaponType);
 	if (Basic.Slot != ECataclysmAbilitySlot::None)
 	{
+		// THE ELEMENT TAG IS ADDED HERE BECAUSE ONLY THIS COMPONENT KNOWS IT.
+		// One Item Bases row serves a weapon across every damage type it can
+		// roll, so the row cannot state one; the equipped weapon's rolled type
+		// is what DamageType holds.
+		//
+		// WITHOUT IT THE BASIC ATTACK IS THE ONE SLOT NO SCOPED MODIFIER
+		// REACHES. UCataclysmStatPipeline::ModifierApplies asks whether the
+		// skill in hand carries every tag a modifier requires, and every gear
+		// increase the design has is scoped to an element. Burning Wrath grants
+		// increased damage scoped to Element.Demonic; untagged, the basic attack
+		// would be the only one of the seven granted skills it did not increase,
+		// and it is the 100% weapon damage anchor the other six are percentages
+		// of. Nothing reports that: ModifierApplies simply returns false.
+		//
+		// ErrorIfNotFound is false so a damage type with no registered tag adds
+		// nothing rather than raising during equip, matching what
+		// CataclysmAbilitySlots::Tag and UCataclysmSkillTemplate::ElementTag do.
+		if (!DamageType.IsEmpty())
+		{
+			const FGameplayTag Element =
+				UGameplayTagsManager::Get().RequestGameplayTag(
+					FName(*FString::Printf(TEXT("Element.%s"), *DamageType)),
+					/*ErrorIfNotFound=*/false);
+			if (Element.IsValid())
+			{
+				Basic.Tags.AddTag(Element);
+			}
+			else
+			{
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("There is no Element.%s tag, so the %s's basic attack "
+						 "carries no element and no scoped gear modifier will "
+						 "reach it."),
+					*DamageType, *EquippedWeaponType);
+			}
+		}
+
 		AvailableSkills.Add(Basic);
 	}
 

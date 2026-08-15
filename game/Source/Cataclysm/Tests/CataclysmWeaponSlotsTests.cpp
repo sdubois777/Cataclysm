@@ -6,9 +6,11 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Data/CataclysmDataRows.h"
+#include "GameplayTagsManager.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/DataTable.h"
@@ -782,6 +784,121 @@ bool FCataclysmBasicAttackTest::RunTest(const FString& Parameters)
 		UCataclysmWeaponSkills::BasicAttackFor(nullptr, TEXT("Dagger"));
 	TestEqual(TEXT("no table means no basic attack rather than a crash"),
 		NoTable.Slot, ECataclysmAbilitySlot::None);
+
+	return true;
+}
+
+/**
+ * The basic attack carries the tags that let gear modifiers reach it.
+ *
+ * WHAT THIS CATCHES, AND IT IS INVISIBLE WITHOUT A TEST. Tags decide which of a
+ * character's stat modifiers apply to a skill:
+ * UCataclysmStatPipeline::ModifierApplies asks whether the skill in hand carries
+ * every tag a modifier requires, and returns false silently when it does not. A
+ * basic attack with an empty tag container is granted, fires, deals damage, and
+ * is reached by no scoped modifier at all -- and nothing reports it.
+ *
+ * That would matter more than for any other slot. The basic attack is 100%
+ * weapon damage, which is what makes it the anchor the other six slots are
+ * percentages of, so a buff that increased six of the seven would move the ratio
+ * between them without anything failing.
+ *
+ * TWO TAGS, FROM TWO PLACES, WHICH IS WHY BOTH ARE CHECKED. The slot tag is
+ * invariant and comes from UCataclysmWeaponSkills::BasicAttackFor. The element
+ * tag is the weapon's rolled damage type, which one Item Bases row cannot state
+ * because that row serves every damage type the weapon can roll, so
+ * UCataclysmWeaponSlotsComponent adds it at equip time.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicAttackCarriesItsTagsTest,
+	"Cataclysm.WeaponSlots.TheBasicAttackCarriesItsSlotAndElementTags",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBasicAttackCarriesItsTagsTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	CataclysmWeaponSlotsTest::FScopedWeaponFixture Fixture(World);
+
+	const FGameplayTag SlotTag =
+		CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack);
+	TestTrue(TEXT("Slot.Basic is a registered tag"), SlotTag.IsValid());
+
+	// The fixture pins War, so this is the tag the equipped weapon should carry.
+	const FGameplayTag ElementTag = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Element.War")), /*ErrorIfNotFound=*/false);
+	TestTrue(TEXT("Element.War is a registered tag"), ElementTag.IsValid());
+
+	Fixture.Slots->EquipWeaponType(TEXT("Dagger"));
+
+	const FCataclysmWeaponSkill* Basic = nullptr;
+	for (const FCataclysmWeaponSkill& Skill : Fixture.Slots->GetAvailableSkills())
+	{
+		if (Skill.Slot == ECataclysmAbilitySlot::BasicAttack)
+		{
+			Basic = &Skill;
+			break;
+		}
+	}
+
+	if (!Basic)
+	{
+		AddError(TEXT("A War Dagger granted no basic attack at all."));
+		return false;
+	}
+
+	TestTrue(TEXT("the basic attack carries its own slot tag"),
+		Basic->Tags.HasTagExact(SlotTag));
+	TestTrue(TEXT("and the equipped weapon's element tag"),
+		Basic->Tags.HasTagExact(ElementTag));
+
+	// THE TAGS HAVE TO REACH THE GRANTED INSTANCE, not merely sit on the struct.
+	// UCataclysmStatPipeline reads them off the ability, so a component that
+	// collected them and did not copy them across would fail exactly the same way
+	// as one that never collected them.
+	bool bFoundInstance = false;
+	for (const FGameplayAbilitySpec& Spec :
+			Fixture.AbilitySystem->GetActivatableAbilities())
+	{
+		const UCataclysmSkillTemplate* Template =
+			Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+		if (!Template || !Template->SkillTags.HasTagExact(SlotTag))
+		{
+			continue;
+		}
+		bFoundInstance = true;
+		TestTrue(TEXT("the granted instance carries the element tag too"),
+			Template->SkillTags.HasTagExact(ElementTag));
+	}
+	TestTrue(TEXT("a granted ability instance carries the basic attack slot tag"),
+		bFoundInstance);
+
+	// AND THE ELEMENT FOLLOWS THE WEAPON'S DAMAGE TYPE RATHER THAN BEING FIXED.
+	// Without this the checks above would pass for a change that hard-coded one
+	// element, which is the mistake worth guarding against: the same Item Bases
+	// row serves a Dagger of every damage type.
+	Fixture.Slots->SetDamageType(TEXT("Demonic"));
+	Fixture.Slots->EquipWeaponType(TEXT("Dagger"));
+
+	const FGameplayTag Demonic = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Element.Demonic")), /*ErrorIfNotFound=*/false);
+
+	for (const FCataclysmWeaponSkill& Skill : Fixture.Slots->GetAvailableSkills())
+	{
+		if (Skill.Slot != ECataclysmAbilitySlot::BasicAttack)
+		{
+			continue;
+		}
+		TestTrue(TEXT("a Demonic Dagger's basic attack carries Element.Demonic"),
+			Skill.Tags.HasTagExact(Demonic));
+		TestFalse(TEXT("and no longer carries Element.War"),
+			Skill.Tags.HasTagExact(ElementTag));
+	}
 
 	return true;
 }

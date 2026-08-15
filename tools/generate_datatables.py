@@ -335,7 +335,7 @@ def check_basic_attack(shape: str, params: str, arms_the_holder: bool,
     same way without an edit here.
 
     BOTH HALVES OF `is_weapon and arms_the_holder` ARE LOAD-BEARING. Flat attack
-    damage is not by itself a weapon: the Vambraces glove base grants 24 of it,
+    damage is not by itself a weapon: the Vambraces glove base grants 12 of it,
     and a glove has no swing to describe.
     """
     if params and not shape:
@@ -834,10 +834,17 @@ def item_bases(book) -> list[dict]:
                         f"Item Bases row {index}: {name} implicit {slot_index} "
                         f"kind is {kind!r}, expected one of {list(IMPLICIT_KINDS)}")
                 implicits += 1
-            # Read off the implicits rather than off the name, the same way
-            # player_damage.armed_weapons_in decides it. The Shield is the only
+            # Read off the implicits rather than off the name, which is what
+            # player_damage.armed_weapons_in also does. The Shield is the only
             # weapon today that arms nobody, and naming it here instead would
             # make a second such weapon silently wrong.
+            #
+            # THE TWO ARE NOT IDENTICAL AND THE DIFFERENCE IS DELIBERATE. That
+            # function sums any attack_damage implicit; this one requires the
+            # kind to be flat. They agree on today's data, because no weapon
+            # grants increased attack damage as an implicit. This is the stricter
+            # of the two, because a weapon granting only an increase supplies no
+            # damage to increase.
             if stat == "attack_damage" and kind == "flat":
                 arms_the_holder = True
             entry[f"Implicit{slot_index}Stat"] = stat

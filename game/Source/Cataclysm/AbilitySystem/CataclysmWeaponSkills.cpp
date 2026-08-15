@@ -221,11 +221,26 @@ FCataclysmWeaponSkill UCataclysmWeaponSkills::BasicAttackFor(
 			Basic.Name = BasicAttackName;
 			Basic.Shape = UCataclysmSkillShapes::ShapeFromName(Row.BasicShape);
 
-			// NO TAGS, DELIBERATELY. Tags scope which of the character's gear
-			// modifiers reach a skill, and the basic attack is weapon damage
-			// itself: it carries the weapon's damage type rather than a damage
-			// type of its own, so there is no element tag to write here that
-			// would be true for every weapon holding it.
+			// THE SLOT TAG IS ADDED HERE AND THE ELEMENT TAG IS NOT, because
+			// only one of the two is known here. Tags decide which of the
+			// character's gear modifiers reach a skill:
+			// UCataclysmStatPipeline::ModifierApplies asks whether the skill in
+			// hand carries every tag a modifier requires, so a skill with an
+			// empty container is reached by nothing scoped at all.
+			//
+			// Every row of the Weapon Skills sheet gets Slot.<Slot> derived into
+			// its Tags cell by tools/generate_datatables.py, which is issue
+			// #156. The basic attack has no row there, so without this line it
+			// would be the one granted skill outside that guarantee, and
+			// game/Data/EnchantmentsPositive.csv already ships three
+			// enchantments scoped to Slot.Basic that could never match anything.
+			//
+			// THE ELEMENT IS THE WEAPON'S ROLLED DAMAGE TYPE, which this row
+			// cannot state: one Item Bases row serves every damage type a weapon
+			// can roll. UCataclysmWeaponSlotsComponent adds it, because the
+			// component is what knows which type is equipped.
+			Basic.Tags.AddTag(
+				CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack));
 
 			FString Error;
 			Basic.Params = UCataclysmSkillShapes::ParseParams(

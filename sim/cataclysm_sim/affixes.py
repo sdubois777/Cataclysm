@@ -1476,9 +1476,15 @@ class WeaponBase(ItemBase):
     def arms_the_holder(self) -> bool:
         """Whether this weapon supplies attack damage, so a hit can be composed.
 
-        Read off the implicits rather than off the name, the same way
-        `player_damage.armed_weapons_in` decides it, so a second weapon like the
+        Read off the implicits rather than off the name, which is what
+        `player_damage.armed_weapons_in` also does, so a second weapon like the
         Shield needs no edit here.
+
+        THE TWO ARE NOT IDENTICAL. That function sums any `attack_damage`
+        implicit; this one requires the kind to be `flat`. They agree on today's
+        data because no weapon grants increased attack damage as an implicit.
+        This is the stricter of the two, because a weapon granting only an
+        increase supplies no damage for the increase to act on.
         """
         return any(i.stat == "attack_damage" and i.kind == "flat"
                    for i in self.implicits)
@@ -1657,9 +1663,10 @@ def max_damage_types(hands: int, tier: int) -> int:
 #: MELEE REACH IS `0.9 + the weapon's length past the fist`, on a 0.3 m grid. The
 #: 0.9 is not chosen: it is this project's own contact distance, the 0.42 m
 #: player capsule from `CataclysmPlayerCharacter.cpp` plus a 0.48 m baseline enemy
-#: body, and it is literally the Radius of Maul, Slam and Sunder, the three enemy
-#: basic attacks the design document designs. Path of Exile computes melee reach
-#: the same way, as weapon range plus the character's own hitbox radius.
+#: body, and it is the Radius of Maul, Slam and Sunder -- three of the seven
+#: designed enemy basic attacks, and the three shortest. Path of Exile computes
+#: melee reach the same way, as weapon range plus the character's own hitbox
+#: radius.
 #:
 #: THE ARC IS THAT WEAPON'S DESIGNED HEAVY ARC, CARRIED OVER UNCHANGED, because
 #: the arc is the animation and the reach is the power. Every angle below is the
@@ -1677,9 +1684,17 @@ def max_damage_types(hands: int, tier: int) -> int:
 #:
 #: NO RIDERS, ON ANY OF THEM. A basic attack is 100% weapon damage and nothing
 #: else, which is what makes it the anchor every other slot is measured against.
-#: Six of the seven designed enemy basics are `MaxTargets=1` and none carries a
-#: burn, a stun or a patch of ground, so the shape of these follows the content
-#: the design document already has rather than a new convention.
+#:
+#: THE ENEMY BASIC ATTACKS ARE THE NEAREST PRECEDENT AND THEY ARE NOT UNANIMOUS,
+#: so this is a choice rather than a convention read off the content. Of the seven
+#: designed enemy basic attacks in `enemy_abilities.py`, four state `MaxTargets=1`
+#: -- Rend, Maul, Slam and Sunder -- while Soulfire, Siege Bolt and Dread Cleave
+#: state no cap at all. One of the seven does carry a rider: the Hellhound's Maul
+#: sets what it hits alight. None carries a stun or leaves a patch of ground.
+#:
+#: A single target and no riders is the stricter reading, taken because the player
+#: basic attack has a job no enemy one has: it is the 100% figure every other slot
+#: is a percentage of, so a rider on it would move all six of the others.
 BASIC_ATTACKS: dict[str, tuple[str, str]] = {
     "Dagger":      ("Strike",     "Radius=1.5; Angle=60; MaxTargets=1"),
     "Fist":        ("Strike",     "Radius=1.5; Angle=60; MaxTargets=1"),
