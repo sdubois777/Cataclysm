@@ -1339,9 +1339,12 @@ def test_the_two_loadouts_are_worth_the_same_in_affixes():
     assert two_handed == pytest.approx(dual_wield)
 
 
-def test_a_dual_wielder_carries_one_more_piece_and_four_more_slots():
-    assert af.DUAL_WIELD_GEAR_PIECES == af.GEAR_PIECES + 1
-    assert af.DUAL_WIELD_TOTAL_AFFIX_SLOTS == af.TOTAL_AFFIX_SLOTS + 4
+def test_filling_the_offhand_adds_one_piece_and_four_slots():
+    """True whether the offhand holds a second weapon or a Shield. The project
+    owner settled on 2026-08-15 that a Shield is treated just like a second
+    one-handed weapon."""
+    assert af.GEAR_PIECES_WITH_AN_OFFHAND == af.GEAR_PIECES + 1
+    assert af.TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND == af.TOTAL_AFFIX_SLOTS + 4
 
 
 def test_only_a_two_handed_weapon_multiplies_anything():

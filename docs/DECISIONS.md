@@ -20,6 +20,65 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — A Shield counts just like a second one-handed weapon
+
+**Affects:** the Weapon Types, Power Score and Dual Wielding sections of
+`Cataclysm_GDD_v2.md`. Applied. Closes issue #612.
+
+### The decision
+
+The project owner's words: a Shield "counts towards power score, 3 gem slots,
+just like a second 1h weapon. Basically 2 1h weapons or a 1h weapon + shield give
+the same amount of power score as a 2h weapon."
+
+|  | Two-handed | Dual wielding | One-handed and Shield |
+| :-- | :-: | :-: | :-: |
+| Equipped pieces | 18 | 19 | 19 |
+| Affix slots | 72 | 76 | 76 |
+| Gem sockets in both hands | 6 | 6 | 6 |
+| Damage types | 3 | 4 | 2 |
+| Weapon affix slots, in one-handed terms | 8 | 8 | 4 |
+
+**What the hands hold is one equipped piece for Power Score, whatever it is.**
+All four legal loadouts count once, which is the existing rule extended rather
+than a new one: no loadout may be worth free Power Score.
+
+**A one-handed item carries three sockets**, so two of them make six and a
+two-handed weapon carries six alone.
+
+### What the Shield trades
+
+It adds **no attack damage at all** — it is the only thing a hand can hold with
+no attack damage implicit — and it is left out of the attack rate average,
+because a shield is not swung. So a one-handed weapon with a Shield hits exactly
+as hard as that weapon on its own, and strictly less hard than a pair. What it
+buys instead is block chance and armor, which no weapon base grants.
+
+It still gets the nineteenth piece and its four affix slots, so it is not paying
+twice.
+
+### Two constants were renamed
+
+`DUAL_WIELD_GEAR_PIECES` and `DUAL_WIELD_TOTAL_AFFIX_SLOTS` in
+`sim/cataclysm_sim/affixes.py` became `GEAR_PIECES_WITH_AN_OFFHAND` and
+`TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND`. A one-handed weapon with a Shield now gets
+the same nineteenth piece that two one-handed weapons do, so a name mentioning
+only dual wielding described half of what the constant covered.
+
+### What is still not done
+
+`sim/cataclysm_sim/affixes.py` continues to model the Shield as a `WeaponBase`
+with one hand. That is a category error now rather than an exception, and moving
+it touches `ITEM_BASES`, `WEAPON_BASES`, `attack_speed_of`, `BASES_BY_SLOT` and
+the slot table. It changes no number any of these decisions produce, so it was
+left alone. Nothing tracks it, deliberately: it is a tidying job, not a defect.
+
+Which affixes a Shield may roll is also untouched. It currently draws from the
+weapon pool, and whether an offhand should draw from a defensive pool instead is
+a question nobody has asked yet.
+
+---
+
 ## 2026-08-15 — Minion scaling reaches a minion through a tag, not a column
 
 **Affects:** the minion section of `Cataclysm_GDD_v2.md`, and

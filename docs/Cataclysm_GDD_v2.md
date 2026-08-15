@@ -664,7 +664,7 @@ Four rules follow from the formula:
 
   - **Socket count has no weight of its own.** It is the number of terms in the gem sum, so filling a socket is what a socket contributes.
   - **Gear upgrade level multiplies gear rarity rather than adding to it.** A +10 Cataclysmic piece is worth 3.52 times the same piece at +0, and eight times what a +10 Everyday piece is worth. This is the only place two inputs multiply, and it is what makes the power curve rise faster than the difficulty tier.
-  - **Two one-handed weapons count as one equipped piece**, the same way they give the same six sockets a two-handed weapon gives. Dual wielding must not be worth free Power Score.
+  - **What the hands hold counts as one equipped piece**, whatever the loadout, the same way every loadout gives the same six sockets. A two-handed weapon, two one-handed weapons, a single one-handed weapon and a one-handed weapon with a Shield all count once. No loadout may be worth free Power Score.
   - **Resistance above the 70% cap adds no Power Score.** Over-capping remains legal and useful, because enemy penetration reduces effective resistance, but it is headroom against penetration rather than power.
 
   
@@ -1456,10 +1456,17 @@ Skills in Cataclysm are not learned or leveled independently. They are determine
 There are four legal loadouts: one two-handed weapon, two one-handed weapons, a
 single one-handed weapon, or a one-handed weapon with a Shield in the offhand.
 
-A two-handed weapon and two one-handed weapons give the same 6 gem sockets. What
-the other two loadouts give, whether a Shield counts as an equipped piece for
-Power Score, and how many affix slots a Shield carries are **not settled**; see
-issue #612.
+**Every loadout gives the same 6 gem sockets and the same Power Score.** A
+two-handed weapon carries all six on its own. A one-handed item carries three, so
+two one-handed weapons make six and so does a one-handed weapon with a Shield.
+What the hands hold counts as **one equipped piece** for Power Score whatever it
+is, so no loadout is worth free Power Score.
+
+**A Shield is treated just like a second one-handed weapon**, decided by the
+project owner on 2026-08-15. It is a real piece with its own four affix slots and
+its own three sockets, so a one-handed weapon with a Shield has 19 equipped
+pieces and 76 affix slots — the same as dual wielding — and trades a second
+weapon's damage for block and armor.
 
 **This reverses what this document used to say**, which was that a Shield is one
 of the one-handed weapons and that there are no offhand items at all. The project
@@ -2434,12 +2441,13 @@ With the multiplier applied to both, a two-handed weapon deals about **1.33 time
 
 ### **What a Dual Wielder Has**
 
-|  | Two-handed | Dual wielding |
-| :-- | :-: | :-: |
-| Equipped pieces | 18 | 19 |
-| Affix slots | 72 | 76 |
-| Damage types | 3 | 4 |
-| Weapon affix slots, in one-handed terms | 8 | 8 |
+|  | Two-handed | Dual wielding | One-handed and Shield |
+| :-- | :-: | :-: | :-: |
+| Equipped pieces | 18 | 19 | 19 |
+| Affix slots | 72 | 76 | 76 |
+| Damage types | 3 | 4 | 2 |
+| Weapon affix slots, in one-handed terms | 8 | 8 | 4 |
+| Gem sockets in both hands | 6 | 6 | 6 |
 
   
 

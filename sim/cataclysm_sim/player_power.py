@@ -53,11 +53,28 @@ MAX_RARITY = len(RARITIES)
 MAX_UPGRADE = 10
 
 # Gear pieces that carry a rarity and an upgrade level: 7 armour (head, chest,
-# shoulders, gloves, pants, boots, belt), 8 rings, a necklace, a relic, and the
-# weapon. Two one-handed weapons count as one weapon for scoring, the same way
-# they give the same 6 sockets a two-handed weapon gives, so that dual wielding
-# is not worth more Power Score than using a single weapon.
+# shoulders, gloves, pants, boots, belt), 8 rings, a necklace, a relic, and what
+# the hands hold.
+#
+# WHAT THE HANDS HOLD IS ONE PIECE FOR SCORING, WHATEVER IT IS. All four legal
+# loadouts count once: one two-handed weapon, two one-handed weapons, a single
+# one-handed weapon, or a one-handed weapon with a Shield. No loadout may be
+# worth free Power Score, which is the whole reason the rule exists.
+#
+# THE SHIELD WAS ADDED TO THAT LIST on 2026-08-15, when the project owner made
+# it an offhand rather than a one-handed weapon and said it counts "just like a
+# second one-handed weapon". Issue #612. Before then a Shield was a weapon, so a
+# character holding one was already inside the dual wielding case by accident.
 GEAR_PIECES = 18
+
+# Sockets on one held item, and on a full pair of hands.
+#
+# A two-handed weapon carries all six on its own. A one-handed item carries
+# three, so two one-handed weapons make six and so does a one-handed weapon with
+# a Shield. That equality is the same rule as the piece count above and exists
+# for the same reason.
+SOCKETS_PER_ONE_HANDED_ITEM = 3
+SOCKETS_IN_BOTH_HANDS = 6
 
 # Total sockets across all equipment, fixed at 45 by the design document. The
 # four potion slots hold gems but are consumables, not gear, so they contribute
@@ -104,6 +121,24 @@ SHARE_GEMS = 0.30
 SHARE_RESISTANCES = 0.10
 
 assert abs(SHARE_LEVEL + SHARE_GEAR + SHARE_GEMS + SHARE_RESISTANCES - 1.0) < 1e-9
+
+
+def _check_every_loadout_fills_both_hands_with_the_same_sockets() -> None:
+    """No loadout may be worth free Power Score.
+
+    Two one-handed items must give exactly what one two-handed weapon gives.
+    Stated in the design document under Power Score, and extended to the Shield
+    by the project owner on 2026-08-15. Issue #612.
+    """
+    paired = SOCKETS_PER_ONE_HANDED_ITEM * 2
+    if paired != SOCKETS_IN_BOTH_HANDS:
+        raise ValueError(
+            f"two one-handed items give {paired} sockets and a two-handed "
+            f"weapon gives {SOCKETS_IN_BOTH_HANDS}, so one loadout is worth "
+            "free Power Score")
+
+
+_check_every_loadout_fills_both_hands_with_the_same_sockets()
 
 
 # --------------------------------------------------------------------------

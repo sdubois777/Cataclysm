@@ -137,19 +137,28 @@ ROLL_BAND_FRACTION = 0.25
 #: and nothing compared the four.
 RESISTANCE_CAP = damage.RESISTANCE_CAP
 
-#: A character holding a two-handed weapon has 18 gear pieces with up to 4 affix
-#: slots each, and those slots are shared with enchantments. A dual wielder has
-#: 19 and 76; see DUAL_WIELD_GEAR_PIECES below.
+#: A character with one hand free -- holding a two-handed weapon, or a single
+#: one-handed weapon -- has 18 gear pieces with up to 4 affix slots each, and
+#: those slots are shared with enchantments. Filling the offhand adds a piece;
+#: see GEAR_PIECES_WITH_AN_OFFHAND below.
 GEAR_PIECES = 18
 AFFIX_SLOTS_PER_PIECE = 4
 TOTAL_AFFIX_SLOTS = GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
 
-#: A dual wielder carries a second weapon, so 19 pieces and 76 affix slots.
+#: A filled offhand is a nineteenth piece, so 76 affix slots.
 #:
-#: Settled by the project owner 2026-08-03. The second weapon is a real piece
-#: with its own four affix slots; it is not exempt.
-DUAL_WIELD_GEAR_PIECES = GEAR_PIECES + 1
-DUAL_WIELD_TOTAL_AFFIX_SLOTS = DUAL_WIELD_GEAR_PIECES * AFFIX_SLOTS_PER_PIECE
+#: Settled by the project owner 2026-08-03 for a second weapon: it is a real
+#: piece with its own four affix slots, and it is not exempt. Extended on
+#: 2026-08-15 to the Shield, which is an offhand rather than a weapon and is
+#: treated "just like a second one-handed weapon".
+#:
+#: NAMED FOR THE OFFHAND RATHER THAN FOR DUAL WIELDING, which is what these two
+#: used to be called. A one-handed weapon with a Shield gets the same nineteenth
+#: piece as two one-handed weapons do, so a name mentioning only dual wielding
+#: described half of what the constant covers.
+GEAR_PIECES_WITH_AN_OFFHAND = GEAR_PIECES + 1
+TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND = (GEAR_PIECES_WITH_AN_OFFHAND
+                                     * AFFIX_SLOTS_PER_PIECE)
 
 #: What a two-handed weapon multiplies its own implicits AND its own affixes by.
 #:
@@ -2556,11 +2565,11 @@ def _check_the_two_loadouts_have_equal_affix_value() -> None:
             f"and two one-handed weapons are worth {dual_wield}. Dual wielding "
             "must not be worth free power; see section VII.")
 
-    pieces = DUAL_WIELD_GEAR_PIECES - GEAR_PIECES
+    pieces = GEAR_PIECES_WITH_AN_OFFHAND - GEAR_PIECES
     if pieces != 1:
         raise ValueError(
-            f"a dual wielder carries {pieces} more pieces than a two-handed "
-            "character; it should be exactly the one extra weapon")
+            f"filling the offhand adds {pieces} pieces; it should add exactly "
+            "the one held item, whether that is a second weapon or a Shield")
 
 
 def _check_only_a_two_handed_weapon_multiplies_its_values() -> None:

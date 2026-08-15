@@ -56,15 +56,21 @@ from .character import BASIC_ATTACK_SLOT, SKILL_SLOTS
 #: The base that is an offhand rather than a weapon.
 #:
 #: STATED BY THE PROJECT OWNER on 2026-08-15: a Shield is an offhand, and a
-#: one-handed weapon with a Shield is a legal loadout. `affixes.py` still models
-#: it as a `WeaponBase` with one hand, and `docs/Cataclysm_GDD_v2.md` still lists
-#: it among the one-handed weapon types and says there are no offhand items.
-#: Reclassifying it everywhere touches Power Score's piece count, the affix slot
-#: count and the attack speed average, so it is its own change and its own issue.
+#: one-handed weapon with a Shield is a legal loadout. It counts "just like a
+#: second one-handed weapon" -- one equipped piece for Power Score across both
+#: hands, four affix slots of its own, and three gem sockets, so every loadout
+#: gives the same six. Issue #612.
 #:
-#: What this module does in the meantime is narrow and safe: a Shield contributes
-#: no attack damage, because it has no attack damage implicit, and it is left out
-#: of the attack rate average, because a shield is not swung.
+#: IT CONTRIBUTES NOTHING TO A HIT, and that is the whole trade. A Shield has no
+#: attack damage implicit, so it adds none, and it is left out of the attack rate
+#: average because a shield is not swung. A one-handed weapon with a Shield
+#: therefore hits exactly as hard as that weapon alone and buys block and armor
+#: with the difference.
+#:
+#: `affixes.py` still models it as a `WeaponBase` with one hand, which is now a
+#: category error rather than an exception. Moving it touches `ITEM_BASES`,
+#: `WEAPON_BASES`, `attack_speed_of`, `BASES_BY_SLOT` and the slot table, and
+#: changes no number this module produces, so it has not been done here.
 OFFHAND = "Shield"
 
 #: The loadout the damage target describes: two one-handed weapons.
