@@ -1014,7 +1014,7 @@ bool FCataclysmPiercingProjectileTrailTest::RunTest(const FString&)
 	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
 		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=0; Burn=1; "
-			 "GroundRadius=1.5; GroundDuration=4"),
+			 "GroundRadius=1.5; GroundDuration=4; GroundPercent=25"),
 		TEXT("Emberhurl"));
 	if (!Hurl)
 	{
@@ -1071,7 +1071,7 @@ bool FCataclysmLandingProjectileGroundTest::RunTest(const FString&)
 	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
 		TEXT("Range=12; Radius=3; Speed=0; Burn=1; GroundRadius=3; "
-			 "GroundDuration=8"),
+			 "GroundDuration=8; GroundPercent=12.5"),
 		TEXT("Blood Pyre"));
 	if (!Pyre)
 	{
@@ -1114,7 +1114,7 @@ bool FCataclysmChargeTrailTest::RunTest(const FString&)
 		UCataclysmMovementSkill* Rush = GrantSkill<UCataclysmMovementSkill>(
 			Caster, ECataclysmAbilitySlot::Movement,
 			TEXT("Mode=Charge; Range=10; Radius=2; Burn=1; GroundRadius=2; "
-				 "GroundDuration=5"),
+				 "GroundDuration=5; GroundPercent=20"),
 			TEXT("Cinder Rush"));
 		if (!Rush)
 		{
@@ -1151,7 +1151,7 @@ bool FCataclysmChargeTrailTest::RunTest(const FString&)
 		UCataclysmMovementSkill* Plunge = GrantSkill<UCataclysmMovementSkill>(
 			Caster, ECataclysmAbilitySlot::Movement,
 			TEXT("Mode=Leap; Range=10; Radius=5; Burn=1; GroundRadius=5; "
-				 "GroundDuration=5"),
+				 "GroundDuration=5; GroundPercent=20"),
 			TEXT("Infernal Plunge"));
 		if (!Plunge)
 		{
@@ -1466,7 +1466,8 @@ bool FCataclysmBuffLeavesPricedGroundTest::RunTest(const FString&)
 
 	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy,
-		TEXT("Radius=4; Angle=360; GroundRadius=3; GroundDuration=6"),
+		TEXT("Radius=4; Angle=360; GroundRadius=3; GroundDuration=6; "
+			 "GroundPercent=16.7"),
 		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
 	TestTrue(TEXT("The strike activates"), Activate(Caster, Strike));
 
@@ -1477,16 +1478,12 @@ bool FCataclysmBuffLeavesPricedGroundTest::RunTest(const FString&)
 		return false;
 	}
 
-	const FCataclysmStatusEffectNumbers Burn = UCataclysmSkillEffects::BurnNumbers();
-	if (!Burn.bUsable)
-	{
-		AddError(TEXT("Burn has no row in the generated status effect table."));
-		return false;
-	}
-
-	const float Unbuffed = WeaponDamage * 250.0f / 100.0f
-						 * Burn.PercentOfHit / 100.0f
-						 / FMath::Max(1.0f, Burn.DurationSeconds);
+	// PRICED FROM THE ROW'S OWN GroundPercent, WHICH IT WAS NOT. Until issue #590
+	// this figure came from the Burn status effect's percent and duration, which
+	// ignored the patch's own duration entirely. The expectation below is now the
+	// stated rule -- 16.7% of the skill's damage per second, so a full six second
+	// stay costs one hit -- rather than a second derivation of the old formula.
+	const float Unbuffed = WeaponDamage * 250.0f / 100.0f * 16.7f / 100.0f;
 	TestEqual(TEXT("A tick is priced with the 4% increase applied"),
 		Zone->DamagePerTick, Unbuffed * 1.04f, 0.001f);
 
@@ -1918,7 +1915,7 @@ bool FCataclysmProjectileBurnsRealPathTest::RunTest(const FString&)
 	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
 		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800; Burn=1; "
-			 "GroundRadius=1.5; GroundDuration=4"),
+			 "GroundRadius=1.5; GroundDuration=4; GroundPercent=25"),
 		TEXT("Emberhurl"));
 	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
 
@@ -2162,7 +2159,7 @@ bool FCataclysmReturningProjectileGroundTest::RunTest(const FString&)
 	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
 		TEXT("Range=12; Radius=1.5; Pierce=99; Returns=1; Speed=1800; Burn=1; "
-			 "GroundRadius=1.5; GroundDuration=4"),
+			 "GroundRadius=1.5; GroundDuration=4; GroundPercent=25"),
 		TEXT("Emberhurl"));
 	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
 

@@ -216,15 +216,28 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 		return nullptr;
 	}
 
-	// A TICK OF BURNING GROUND IS WORTH ONE TICK OF BURN. The design gives the
-	// ground no damage of its own -- "leaves a pool of lava for 5 seconds that
-	// burns anything standing in it" states a duration and nothing else -- so it
-	// deals what burn deals, per second, and the skill's own duration decides how
-	// long. That keeps one number in the data instead of two, and it means the
-	// ground and the burn move together when either is tuned.
-	const FCataclysmStatusEffectNumbers Burn = UCataclysmSkillEffects::BurnNumbers();
-	if (!Burn.bUsable)
+	// THE GROUND STATES WHAT IT DEALS AND THIS READS IT. Every skill that leaves
+	// ground carries a GroundPercent, added on issue #361: the percent of the
+	// skill's own damage that patch deals per second, set so that standing in it
+	// for its whole GroundDuration costs exactly one hit of the skill.
+	//
+	// IT USED TO BE DERIVED FROM THE BURN EFFECT INSTEAD, and that was wrong in a
+	// way nothing reported. Burn is 20% of a hit over 4 seconds, so every patch
+	// dealt 5% of the skill's damage per second whatever its own duration was --
+	// which made a three second patch worth 15% of a hit and a ten second one
+	// worth 50%. A longer patch was automatically a bigger one, which is the
+	// exact property issue #361's rule was chosen to remove. Issue #590.
+	if (Params.GroundPercent <= 0.0f)
 	{
+		// A patch with a radius and a duration and no stated damage would burn
+		// visibly and hurt nobody, which reads as working. The generator writes
+		// GroundPercent on all 22 rows that leave ground, so reaching here means
+		// the imported table is older than the sheet.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' leaves ground and states no GroundPercent, so that ground "
+				 "would deal nothing. None was left. Run "
+				 "tools/generate_datatable_assets.py."),
+			*SkillName);
 		return nullptr;
 	}
 
@@ -243,8 +256,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 							AbilitySystem,
 							WeaponDamage * GetSlotDamagePercent() / 100.0f,
 							SkillTags)
-						* Burn.PercentOfHit / 100.0f
-						/ FMath::Max(1.0f, Burn.DurationSeconds);
+						* Params.GroundPercent / 100.0f;
 
 	return ACataclysmGroundZone::SpawnAlong(Self, Start, End, Params.GroundRadiusCm,
 											Params.GroundDuration, PerTick);

@@ -538,6 +538,113 @@ void UCataclysmMovementSkill::ActivateAbility(
 }
 
 // ==========================================================================
+// Deployable -- Bolt Turret, Ballista, Iron Fortress
+// ==========================================================================
+
+int32 UCataclysmDeployableSkill::LivingDeployedCount()
+{
+	Deployed.RemoveAll([](const TObjectPtr<ACataclysmMinion>& Machine)
+	{
+		return !IsValid(Machine);
+	});
+	return Deployed.Num();
+}
+
+ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName)
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	// THE CAP STOPS PLACING RATHER THAN REPLACING. Summon Imp destroys its
+	// oldest to make room and says so in its description; none of the three
+	// deployable skills says anything of the kind, so reaching the cap here
+	// simply means nothing more goes down.
+	if (Params.MaxActive > 0 && LivingDeployedCount() >= Params.MaxActive)
+	{
+		return nullptr;
+	}
+
+	// A deployable with no Duration is not permanent, it is undesigned. Twenty
+	// seconds matches what the summon template uses for the same case, so an
+	// undesigned row behaves the same way whichever shape it names.
+	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
+
+	ACataclysmMinion* Machine = ACataclysmMinion::Spawn(
+		Self, DeployLocation, Lifetime, Params.bBurns, InTypeName,
+		Params.MinionHealthPercent);
+
+	if (Machine)
+	{
+		Deployed.Add(Machine);
+	}
+	return Machine;
+}
+
+void UCataclysmDeployableSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// PUT DOWN WHERE IT WAS AIMED, WHICH IS THE POINT OF THE SHAPE. A deployable
+	// with no Range goes at the caster's feet, which is what a spike trap laid
+	// underfoot would be.
+	DeployLocation = Params.RangeCm > 0.0f
+		? AimedPointWithin(Params.RangeCm)
+		: Self->GetActorLocation();
+
+	// EVERY KIND THE ROW NAMES, NOT JUST THE FIRST. Iron Fortress writes
+	// `Ballista:2, SpikeTrap:3`, and placing only ballistae would be a fortress
+	// missing three fifths of itself with nothing to report it.
+	//
+	// COUNT IS NOT MULTIPLIED IN. The Minions parameter already says how many of
+	// each kind. Bolt Turret writes `Count=1` and `Minions=BoltTurret:1`, which
+	// is the same number said twice; multiplying them would deploy one turret
+	// per turret and quietly double anything that stated both.
+	int32 Placed = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		for (int32 Index = 0; Index < Kind.Count; ++Index)
+		{
+			if (DeployOne(Kind.Type))
+			{
+				++Placed;
+			}
+		}
+	}
+
+	if (Placed == 0)
+	{
+		// Names nothing, or the cap was already full. Verbose rather than a
+		// warning: a player pressing a deployable key with its cap full is an
+		// ordinary event, and a row that names nothing is refused by the
+		// generator before it reaches here.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' deployed nothing."), *SkillName);
+	}
+
+	// DELIBERATELY NOT ENDED WITH bWasCancelled. The ability instance holds the
+	// list of what is out, and the cap only works if the same instance is used
+	// next time, which InstancedPerActor guarantees.
+	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+// ==========================================================================
 // Summon -- Summon Imp, Open the Rift
 // ==========================================================================
 
@@ -573,8 +680,22 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	}
 
 	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
+
+	// WHAT IT SUMMONS, WHICH THIS COULD NOT SAY BEFORE ISSUE #622. The row's
+	// Minions parameter names it -- Summon Imp writes `Imp:1` and Cinder Swarm
+	// writes `Mote:2` -- and until that parameter could be parsed at all, every
+	// summon in the game spawned the same creature carrying the same
+	// compile-time constants.
+	//
+	// THE FIRST TYPE, BECAUSE A SUMMON NAMES EXACTLY ONE. All three summoning
+	// skills in game/Data/WeaponSkills.csv name a single kind. Producing more
+	// than one kind at once is what Iron Fortress does, and that is the
+	// Deployable shape with its own template.
+	const FString SummonedType =
+		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
+
 	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
-		Self, RiftLocation, Lifetime, Params.bBurns);
+		Self, RiftLocation, Lifetime, Params.bBurns, SummonedType);
 	if (Minion)
 	{
 		Minions.Add(Minion);

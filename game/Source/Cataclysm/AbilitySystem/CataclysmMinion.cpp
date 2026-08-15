@@ -6,9 +6,12 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -20,9 +23,57 @@ namespace
 	constexpr float MinionCapsuleRadius = 30.0f;
 	constexpr float MinionCapsuleHalfHeight = 45.0f;
 
-	/** How fast it walks, in centimetres per second. Faster than a monster,
-	 *  because Summon Imp is written as "fast swarming melee". */
+	/** How fast it walks, in centimetres per second, when its type states
+	 *  nothing. Faster than a monster, because Summon Imp is written as "fast
+	 *  swarming melee". A type that states a move speed overrides it. */
 	constexpr float MinionWalkSpeedCmPerSecond = 500.0f;
+
+	/** Where the imported minion type table lives. */
+	const TCHAR* MinionTypeTablePath = TEXT("/Game/Data/DT_MinionTypes.DT_MinionTypes");
+}
+
+const UDataTable* ACataclysmMinion::LoadTypeTable()
+{
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, MinionTypeTablePath);
+	if (!Table)
+	{
+		// Loudly, and naming both scripts, because the two failures look the
+		// same from here: the workbook never produced the CSV, or the CSV was
+		// never imported as an asset.
+		UE_LOG(LogCataclysm, Error,
+			TEXT("Could not load %s. It is produced by "
+				 "tools/generate_datatable_assets.py from game/Data/"
+				 "MinionTypes.csv, which tools/generate_datatables.py produces "
+				 "from the Minion Types sheet of "
+				 "docs/All_Things_Cataclysm.xlsx."), MinionTypeTablePath);
+	}
+	return Table;
+}
+
+const FCataclysmMinionTypeRow* ACataclysmMinion::FindType(
+	const UDataTable* Table, const FString& InTypeName)
+{
+	if (!Table || InTypeName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// MATCHED ON THE ROW NAME, which is what the Minions parameter writes:
+	// `Ballista:2` names the Ballista row. The generator's
+	// validate_minion_references already refuses a name the sheet does not
+	// have, so a miss here means the table is stale rather than the cell wrong.
+	const FCataclysmMinionTypeRow* Found = nullptr;
+	Table->ForeachRow<FCataclysmMinionTypeRow>(
+		TEXT("ACataclysmMinion::FindType"),
+		[&](const FName& RowName, const FCataclysmMinionTypeRow& Row)
+		{
+			if (!Found && RowName.ToString().Equals(InTypeName, ESearchCase::IgnoreCase))
+			{
+				Found = &Row;
+			}
+		});
+
+	return Found;
 }
 
 ACataclysmMinion::ACataclysmMinion()
@@ -92,7 +143,9 @@ void ACataclysmMinion::BeginPlay()
 }
 
 ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Location,
-										  float Lifetime, bool bBurns)
+										  float Lifetime, bool bBurns,
+										  const FString& InTypeName,
+										  float HealthPercent)
 {
 	if (!IsValid(InSummoner) || Lifetime <= 0.0f)
 	{
@@ -123,6 +176,49 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 
 	Minion->Summoner = InSummoner;
 	Minion->bBurnsWhatItHits = bBurns;
+
+	// ITS OWN NUMBERS, IF IT WAS TOLD WHAT IT IS. Before issue #622 every minion
+	// carried one set of compile-time constants, so a ballista and an imp were
+	// the same creature with a different name in the prose. A minion spawned
+	// without a type keeps those defaults, which is what the tests that predate
+	// this rely on.
+	if (const FCataclysmMinionTypeRow* Type = FindType(LoadTypeTable(), InTypeName))
+	{
+		Minion->TypeName = InTypeName;
+		Minion->ReachCm = Type->ReachCm;
+		Minion->NoticeRadiusCm = Type->NoticeRadiusCm;
+		Minion->AttackIntervalSeconds = Type->AttackIntervalSeconds;
+
+		// THE MOVE SPEED IS WRITTEN IN METRES PER SECOND and Unreal walks in
+		// centimetres, the same conversion the shape parameters make.
+		// A ZERO IS NOT A MISSING NUMBER HERE: it is what makes a turret, a
+		// ballista and a spike trap stay where they are put, which is the whole
+		// behavioural difference between the Summon shape and the Deployable
+		// shape. Issue #621.
+		Minion->bStaysWhereItIsPut = Type->MoveSpeed <= 0.0f;
+		if (UCharacterMovementComponent* Movement = Minion->GetCharacterMovement())
+		{
+			Movement->MaxWalkSpeed = Type->MoveSpeed * 100.0f;
+		}
+	}
+	else if (!InTypeName.IsEmpty())
+	{
+		// Named something the table does not have. Loud, because the generator
+		// refuses an unknown name, so reaching here means the imported asset is
+		// older than the sheet -- and the symptom is a ballista that behaves
+		// like an imp, which nothing else would report.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("No minion type named '%s'. It was spawned carrying the "
+				 "defaults instead. Run tools/generate_datatable_assets.py."),
+			*InTypeName);
+	}
+
+	// HEALTH IS DELIBERATELY NOT SET FROM THE TYPE. The table states BaseHealth
+	// and HealthPerLevel, and applying them needs the summoner's level, which
+	// nothing in this module can read yet. Issue #340 holds that half, together
+	// with the damage model. HealthPercent is accepted so a caller need not know
+	// that, and is recorded rather than silently dropped.
+	Minion->DeployedHealthPercent = HealthPercent;
 
 	// The summoner's side, not one of its own. A Ritualist's imps must be
 	// friendly to a second player in the party, not merely to the Ritualist,
