@@ -267,6 +267,18 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.GroundPercent = Number;
 		}
+		else if (Key.Equals(TEXT("GroundHitsAllies"), ESearchCase::IgnoreCase))
+		{
+			Params.bGroundHitsAllies = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("Arc"), ESearchCase::IgnoreCase))
+		{
+			Params.ArcHeightFraction = Number;
+		}
+		else if (Key.Equals(TEXT("StunSeconds"), ESearchCase::IgnoreCase))
+		{
+			Params.StunSeconds = Number;
+		}
 		else if (Key.Equals(TEXT("FinalHitPercent"), ESearchCase::IgnoreCase))
 		{
 			Params.FinalHitPercent = Number;

@@ -1981,7 +1981,39 @@ Halving is also the only option under which no skill ever visibly does nothing. 
 
   
 
-**Outright immunity to displacement still exists, as a skill effect rather than as a rule.** Living Pyre, Unstoppable Force and Forge Stance each state that their user cannot be knocked back, and Bull Rush and Cinder Rush grant immunity to all crowd control while charging. Those are unchanged. Note that nothing in the game currently knocks the *player* back, so all five clauses are written against a threat the data does not yet contain; issue #310 carries that.
+**Outright immunity to displacement still exists, as a skill effect rather than as a rule.** Living Pyre, Unstoppable Force and Forge Stance each state that their user cannot be knocked back, and Bull Rush and Cinder Rush grant immunity to all crowd control while charging. Those are unchanged.
+
+  
+
+### **Enemies displace the player, and the rule above applies with the player as the target**
+
+  
+
+**This was settled on 2026-08-15 and the five immunity clauses above stay exactly as written.** Nothing in the game can currently knock the player back — no enemy modifier, archetype or status effect displaces — so those five clauses are written against a threat the data does not yet contain. That is the intended state rather than an oversight: enemy displacement is coming, and those skills are already balanced for it, so adding it later needs none of them re-tuned.
+
+  
+
+**Three designed enemy abilities are the ones that do it**, and each is chosen because the player already has a skill that does the same thing to enemies:
+
+  
+
+| Enemy | Ability | Why it displaces |
+| :-- | :-- | :-- |
+| The Brute | Stomp | A 360 degree slam that already stuns for 1.5 seconds. A slam that shoves outward is what Molten Crush and Searing Hook already do, and the Brute is the enemy the anti-stun-lock rule was written for |
+| The Hellhound | Hellrush | A charge. Bull Rush and Cinder Rush charge through a crowd "knocking them aside"; a charge that runs through the player does the same to them |
+| The Abyssal Warden | Stampede | A charge, for the same reason |
+
+  
+
+**The distance uses the same `Knockback` parameter the player's skills use**, in metres, so displacement is one quantity in the data rather than two. The player's two numeric knockbacks are 4 metres on Searing Hook and 3 on Molten Crush, and Path of Exile's default knockback distance is 4 units, so an enemy shove belongs in the same band.
+
+  
+
+**Every part of the diminishing-distance rule above applies unchanged with the player as the target.** A second shove inside 5 seconds moves the player half as far, there is no damage threshold and no immunity flag, and the 5 seconds is the same window the stun rule uses. That symmetry is why the rule was written for "a target" rather than "an enemy" in the first place.
+
+  
+
+**Per-enemy distances are not set here.** Choosing them, and whether a shove is telegraphed, is implementation and is tracked on issue #625. Note that two of the three abilities above are charges, and a Movement-shape skill cannot currently state a knockback distance at all; issue #626 carries that.
 
   
 

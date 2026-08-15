@@ -173,6 +173,22 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float SpeedCmPerSecond = 0.0f;
 
+	/**
+	 * How high a lobbed projectile rises above the straight line to where it
+	 * lands, as a fraction of the distance thrown. Zero means it travels flat.
+	 *
+	 * A SHAPE RATHER THAN A SPEED, which is why it is not one. A lob follows real
+	 * projectile motion, so there is no single speed to state: it is slowest at
+	 * the top of its arc and fastest as it lands. The figure is not chosen
+	 * either -- a projectile launched at 45 degrees, the angle that throws
+	 * furthest, reaches an apex of one quarter of its range, which is why the
+	 * Brute's thrown rock states 0.25.
+	 *
+	 * NO PLAYER SKILL STATES IT TODAY. It is read so that one can.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float ArcHeightFraction = 0.0f;
+
 	// --- Movement ---------------------------------------------------------
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
@@ -251,6 +267,18 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	float GroundDuration = 0.0f;
 
 	/**
+	 * True when that ground burns everything standing in it whatever side it is
+	 * on, including whatever left it.
+	 *
+	 * FALSE IS WHAT EVERY PLAYER SKILL WANTS, and none states this. The
+	 * Hellhound's fire trail is the only thing in the design that sets it, which
+	 * is what makes its own trail dangerous to the pack behind it. It is read
+	 * here so a player skill could state it rather than being silently refused.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bGroundHitsAllies = false;
+
+	/**
 	 * Percent of the skill's own damage that ground deals per second.
 	 *
 	 * THE RULE IT CARRIES, decided on issue #361: standing in a patch for its
@@ -267,6 +295,23 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float GroundPercent = 0.0f;
+
+	/**
+	 * Seconds the skill holds its target still, if it stuns.
+	 *
+	 * THE DURATION, NOT A PROMISE THAT A STUN LANDS. The anti-stun-lock rule
+	 * still applies: a stunned target cannot be stunned again for 5 seconds and
+	 * a boss cannot be stunned at all. The one rule this exempts a skill from is
+	 * the damage threshold, and only because the skill also states `Effect=Stun`,
+	 * which is what "the skill states stunning as its effect" means.
+	 *
+	 * FOUR PLAYER SKILLS STATE IT and none could until issue #588, because all
+	 * four had an empty Shape cell and the generator refuses parameters on a row
+	 * with no shape. Shield Bash 1.5, Shockwave Leap 1.0, Lunge 0.75, Whip Swing
+	 * 0.75. The Brute's stomp states 1.5 on the enemy side.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float StunSeconds = 0.0f;
 
 	/** Percent of weapon damage a closing hit deals. Pyroclasm states 300. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")

@@ -20,6 +20,85 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — Enemies displace the player, and four stunning skills get a shape
+
+**Affects:** the Stun and Anti-Stun-Lock section of `Cataclysm_GDD_v2.md`; the
+Weapon Skills sheet of `All_Things_Cataclysm.xlsx`. Applied. Closes issues #310
+and #588.
+
+### Enemy displacement is intended, and the immunity clauses stay
+
+Five player skills spend part of their effect on immunity to being knocked back —
+Living Pyre, Unstoppable Force, Forge Stance, Bull Rush and Cinder Rush — and
+**nothing in the game can knock the player back.** No enemy modifier, archetype
+or status effect displaces. Verified: `game/Data/EnemyModifiers.csv` and
+`game/Data/EnemyArchetypes.csv` contain no match for "knock" at all.
+
+**The project owner decided that enemy displacement is intended and simply not
+built yet.** The five clauses stay exactly as written, because they are already
+balanced against a threat that is coming, and adding it later will not need them
+re-tuned. The alternative considered was removing the clauses and giving the
+freed budget to something that happens; it was rejected because the genre
+evidence says the threat is standard.
+
+**Genre research.** Diablo IV's Unstoppable buff exists precisely because monsters
+apply control effects to the player: it "grants immunity to all control impairing
+effects", which is the same shape these five clauses take. It also ships Knockback
+and Knock Down as separate effects, the first pure movement and the second a hard
+stop, which is the split this document already draws.
+https://www.icy-veins.com/d4/guides/unstoppable-status-effect/ and
+https://www.icy-veins.com/d4/guides/knock-down-status-effect/
+
+Path of Exile treats knockback as pure movement with a default distance of 4
+units, which is the band the player's own two numeric knockbacks sit in — 4 metres
+on Searing Hook and 3 on Molten Crush.
+https://pathofexile.fandom.com/wiki/Knockback
+
+**Three enemies do it**, each chosen because a player skill already does the same
+thing to enemies: the Brute's Stomp, which is a 360 degree slam that already
+stuns, and the two charges — the Hellhound's Hellrush and the Abyssal Warden's
+Stampede — because Bull Rush and Cinder Rush charge through a crowd "knocking them
+aside" and a charge through the player does the same to them.
+
+**Per-enemy distances were not set**, and neither was whether a shove is
+telegraphed. That is implementation and is issue #625.
+
+### The four stunning War skills, and where every number came from
+
+Four War skills stun and had no Shape at all, so their durations lived in prose
+that nothing but a person could read. A row with no shape is granted the
+placeholder ability, so giving them one makes them playable skills.
+
+**Nothing below was invented.** Each number is either stated in that skill's own
+prose or carried over from the SAME WEAPON's designed Demonic skill in the same
+slot.
+
+| Skill | Shape and parameters | Where each number came from |
+| :-- | :-- | :-- |
+| Shield Bash | `Strike`, `Radius=2.5; Angle=60; MaxTargets=1; Effect=Stun; StunSeconds=1.5` | The Shield has no designed Heavy anywhere and no basic attack, so there is nothing of its own to copy. 2.5 and 60 are the shortest designed Heavy Strike in the game, shared by the Dagger and the Fist. A shield is held at the body, so it cannot reach further than a fist. Single target and 1.5 seconds are both stated |
+| Shockwave Leap | `Movement`, `Mode=Leap; Range=9; Radius=5; Effect=Stun; StunSeconds=1` | Mode and Range are the Warhammer's own designed Movement, Meteor Drop. Radius 5 and 1 second are stated |
+| Lunge | `Movement`, `Mode=Charge; Range=8; Radius=1.5; Effect=Stun; StunSeconds=0.75` | Mode, Range and Radius are the Sword's own designed Movement, Flamedart, carried over unchanged. 0.75 seconds is stated |
+| Whip Swing | `Movement`, `Mode=Blink; Range=10; Radius=1.5; Effect=Stun; StunSeconds=0.75` | Range 10 is stated in the prose AND is the Whip's own designed Movement range. Radius is that same skill's. Blink rather than Charge because the prose says it covers the distance instantly |
+
+**All four state `Effect=Stun` as well as `StunSeconds`.** That is not
+duplication. The anti-stun-lock rule says a hit must take at least 10% of the
+target's maximum health to stun **unless the skill states stunning as its
+effect**, so naming the effect is what exempts a designed stun from the damage
+threshold. Issue #363 made `Effect=Stun` writable by adding the row to the status
+effect table.
+
+### One thing the shape vocabulary could not express
+
+**Shockwave Leap knocks back and the data cannot say so.** Its prose reads "knocks
+back all enemies within 5 meters", and `Knockback` is a parameter of the `Strike`
+shape only — a `Movement` shape reads `Mode`, `Range` and `Radius`. So that
+knockback stays in prose, which is the exact class of problem this work exists to
+fix, for one skill. It has its own issue rather than being fixed by widening a
+shape's vocabulary in passing, and that issue is #626. It also blocks two of the
+three enemy abilities named above, because both are charges.
+
+---
+
 ## 2026-08-15 — Three rules the data already stated, now read by the game
 
 **Affects:** no design document. This entry records **implementation catching up
