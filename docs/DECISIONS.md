@@ -20,6 +20,110 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — A Shield is an offhand, and a single one-handed weapon is a legal loadout
+
+**Affects:** the Weapon Types section and the Dual Wielding section of
+`Cataclysm_GDD_v2.md`. Applied. Consequences tracked in issue #612.
+
+### The decision
+
+There are now **four** legal loadouts, not two:
+
+| Loadout | What it holds |
+| :-- | :-- |
+| Two-handed | One two-handed weapon |
+| Dual wield | Two one-handed weapons |
+| One-handed | A single one-handed weapon, other hand empty |
+| Weapon and shield | A one-handed weapon with a Shield in the offhand |
+
+A **Shield is an offhand**, not a one-handed weapon.
+
+### What this reverses
+
+The document previously said the opposite in three places, and all three were
+wrong rather than merely incomplete:
+
+- Weapon Types listed Shield among the one-handed weapons and stated "There are
+  no offhand items."
+- The Shield paragraph in Dual Wielding said Section V "states there are no
+  offhand items, so it is a weapon with nowhere else to be" — the absence of an
+  offhand slot was being used as the *justification* for the classification.
+- Power Score counts two one-handed weapons as one equipped piece, a rule written
+  when every held item was a weapon.
+
+### Why it was quoted back before being applied
+
+The project owner stated the new rule while the old one was being quoted to them
+from the document. That is the recorded procedure for an owner answer that
+conflicts with the documents, and it was followed: the conflicting sentence was
+quoted and the answer confirmed. The document lost.
+
+### What is deliberately still open
+
+Whether a Shield is an equipped piece for Power Score, how many affix slots it
+carries, and how many gem sockets the two new loadouts give. Issue #612 carries
+all three, because they hang off the same question of what an offhand is in the
+item model, and answering one alone risks contradicting the others.
+
+`sim/cataclysm_sim/affixes.py` also still models the Shield as a `WeaponBase`,
+with a test excepting it from the rule that every weapon supplies damage. That is
+now a category error rather than an exception, and moving it is part of #612.
+`sim/cataclysm_sim/player_damage.py` works around it in the meantime by naming the
+Shield in a constant and leaving it out of the attack rate average.
+
+---
+
+## 2026-08-15 — The damage target describes a dual wielder
+
+**Affects:** The Damage Target section of `Cataclysm_GDD_v2.md`. Applied.
+Closes issue #610.
+
+### The decision
+
+The target of **1,681 damage per non-critical hit at difficulty tier 8**, which
+every offensive value in `sim/cataclysm_sim/affixes.py` is fitted against,
+describes a character holding **two one-handed weapons**.
+
+### Why, and how it was nearly recorded as a defect
+
+Issue #610 was filed claiming the target was unreachable. Solving the pipeline
+backwards, `affixes.reference_weapon_base` reports the weapon term must supply
+about 90, and no single weapon supplies 90: the strongest one-hander carries 46
+and the smallest two-hander 128. That looked like a hole in the middle.
+
+It was not. Two one-handed weapons **sum** their base damage, which the Dual
+Wielding section already stated, so 90 is what a pair supplies. The two strongest
+pairs bracket it almost exactly:
+
+| Loadout | Weapon term | Damage per hit | Against the 1,681 target |
+| :-- | --: | --: | --: |
+| Axe + Sword | 86 | 1,649 | 0.98x |
+| Axe + Axe | 92 | 1,700 | 1.01x |
+| Greatsword | 156 | 2,244 | 1.33x |
+| Axe alone | 46 | 1,309 | 0.78x |
+
+The check that settles it is the two-hander. Reading the target as a dual wielder
+puts a Greatsword at **1.33 times** it, and the Dual Wielding section already
+states, on independent grounds, that "a two-handed weapon deals about **1.33
+times** the damage per hit". Two figures derived separately landing on the same
+number is the evidence.
+
+### The residual is stated rather than absorbed
+
+Pair sums are whole numbers and the requirement is 90.03, so nothing lands on it
+exactly; the two candidates sit about 4% under and 2% over.
+`sim/cataclysm_sim/player_damage.py` checks at import that the reference pair
+stays within five per cent of the target, so if a weapon base or an affix value
+moves, the declaration fails loudly instead of quietly becoming false.
+
+### What this does not fix
+
+`damage_target()` still applies no enemy mitigation, which is issue #511 and moves
+the figure by about 10%. That is a separate error in the same number and is
+untouched here.
+
+---
+
 ## 2026-08-14 — A minion's scaling attribute is chosen per type: Spirit for creatures, Agility for machines
 
 **Affects:** the minion section of `Cataclysm_GDD_v2.md`. Applied. Issue #335.

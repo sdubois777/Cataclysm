@@ -1449,11 +1449,23 @@ Skills in Cataclysm are not learned or leveled independently. They are determine
 
 ## **Weapon Types**
 
-  - One-Handed: Sword, Dagger, Axe, Fist, Wand, Whip, Shield, Crossbow
+  - One-Handed: Sword, Dagger, Axe, Fist, Wand, Whip, Crossbow
   - Two-Handed: Greatsword, Greataxe, Spear, Staff, 2H Crossbow, Warhammer
+  - Offhand: Shield
 
-There are no offhand items. A player equips either one two-handed weapon or two
-one-handed weapons; both configurations give the same 6 gem sockets.
+There are four legal loadouts: one two-handed weapon, two one-handed weapons, a
+single one-handed weapon, or a one-handed weapon with a Shield in the offhand.
+
+A two-handed weapon and two one-handed weapons give the same 6 gem sockets. What
+the other two loadouts give, whether a Shield counts as an equipped piece for
+Power Score, and how many affix slots a Shield carries are **not settled**; see
+issue #612.
+
+**This reverses what this document used to say**, which was that a Shield is one
+of the one-handed weapons and that there are no offhand items at all. The project
+owner changed both on 2026-08-15. Under the old rule a Shield was, in this
+document's own words, "a weapon with nowhere else to be", and a player who wanted
+one had to spend half of a dual wield on it.
 
 ### **Dual Wielding and Damage Types**
 
@@ -2168,7 +2180,15 @@ The damage numbers are not chosen. They are read off the enemy statistics in sec
 
   
 
-An average Common enemy at difficulty tier 8 has 3,362 effective health and should take **2 non-critical hits** to kill, so a player needs **1,681 damage per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 198, of which the affixes supply 108. The weapon and its skill together supply the remaining 90.
+An average Common enemy at difficulty tier 8 has 3,362 effective health and should take **2 non-critical hits** to kill, so a player needs **1,681 damage per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 198, of which the affixes supply 108. The weapons supply the remaining 90.
+
+**That 90 is two one-handed weapons, not one weapon.** The target describes a **dual wielder**, decided by the project owner on 2026-08-15. Two one-handed weapons sum their base damage, as Dual Wielding below sets out, so the 90 is what the pair supplies between them. No single weapon supplies 90 and none is meant to: the strongest one-hander carries 46 and the smallest two-hander 128. The two strongest pairs bracket the figure, an Axe with an Axe at 92 and an Axe with a Sword at 86.
+
+**The fit is close rather than exact, and the residual is stated rather than hidden.** Pair sums are whole numbers and the requirement is 90.03, so an Axe with a Sword lands about 4% under it and an Axe with an Axe about 2% over. The resulting damage per hit is 1,649 and 1,700 against the 1,681 target.
+
+**Every other loadout is measured against that one, and being above or below it is not an error.** A two-handed weapon deals about 1.33 times the target, which is exactly the two-handed advantage Dual Wielding states, and is that multiplier working rather than a loadout breaking the target. A single one-handed weapon deals about 0.78 times it, and a one-handed weapon with a Shield deals the same 0.78 since a Shield adds no attack damage; both trade damage for a free hand or for block and armor.
+
+`sim/cataclysm_sim/player_damage.py` composes all four loadouts from the gear and checks at import that the dual wielder still lands within five per cent of this target, so the declaration above cannot quietly stop being true.
 
   
 
@@ -2406,7 +2426,7 @@ With the multiplier applied to both, a two-handed weapon deals about **1.33 time
 
   
 
-**The Shield is the one weapon whose base defends.** Section V lists it among the one-handed weapon types and states there are no offhand items, so it is a weapon with nowhere else to be. No other weapon base grants health, energy shield, armor, evasion, block or damage reduction, and no weapon can **roll** any of those as an affix.
+**The Shield is the one held item whose base defends, and it is an offhand rather than a weapon.** Section V lists it separately from the one-handed and two-handed weapons. It grants block chance and armor and no attack damage at all, which is why it is the one thing a hand can hold that adds nothing to a hit. No weapon base grants health, energy shield, armor, evasion, block or damage reduction, and no weapon can **roll** any of those as an affix.
 
   
 
