@@ -1609,6 +1609,59 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
+### **Which attribute a minion scales from**
+
+**The attribute is chosen per minion type, not once for all minions**, which is
+what "declared by the minion type" in the table above means. A summoned creature
+and a deployed machine are not the same kind of thing and do not answer to the
+same part of a character.
+
+  
+
+| Minion family | Types | Attribute |
+| :-- | :-- | :-- |
+| Summoned creatures | Lesser imp, mote of living fire | **Spirit** |
+| Deployed machines | Bolt turret, ballista, spike trap | **Agility** |
+
+  
+
+**Each grants 1.0% increased minion damage per point**, so 100 points doubles it.
+That figure is derived rather than picked: this document already establishes that
+100 points of Efficacy multiply damage over time output by 2.0 and 100 points of
+Ferocity multiply a direct hit by about 1.56, so an attribute at 100 points
+belongs between those. Minion damage sits at the top of that band because it has
+no critical strike layer to compound with — a minion takes neither the summoner's
+critical strike chance nor its multiplier.
+
+  
+
+**Both were chosen by the same test, and it is not "which attribute feels
+right".** It is whether the attribute's existing stats *multiply* the new one.
+Spirit drives maximum energy shield and energy shield regeneration, both purely
+defensive. Agility drives movement speed and evasion, and a deployable does not
+move at all. Neither pairing compounds, so a point spent buys one thing.
+
+  
+
+**Efficacy was rejected for failing that test.** It already gives a summoner
+cooldown reduction, which raises how often minions are summoned, and area of
+effect, which enlarges the imp's death explosion. Minion damage would have been a
+third gain on the same build. Ferocity fails it too: critical strike chance and
+multiplier would compound the moment minions were ever allowed to critically
+strike.
+
+  
+
+**A minion build gets its scaling from defensive and mobility slots, and that is
+the archetype's cost rather than an oversight.** An attribute's affix rolls on the
+slots matching the stats it drives, so Spirit and Agility both roll on slots that
+would otherwise have kept the player alive or moving. A minion build spends them
+on the army instead. That is the same trade minion health makes, and it is why
+neither slot list is being widened: widening them would hand every energy shield
+and evasion build new offensive slots to serve six skills.
+
+  
+
 **One enchantment is the named exception, and it is the model for any future one.** "Summoned minions inherit 10%-25% of your armor and resistances" already exists. Inheritance beyond the three channels above exists **only** where an enchantment says so by name. A blanket rule with no exception would contradict the enchantment table on the day it was written.
 
   
@@ -1633,7 +1686,11 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**Four numbers are not settled and are tracked rather than guessed here.** Which attribute minions scale from (#335). The per-type base health and damage, which need the simulation rather than a judgement (#336). The four minion affixes and their values (#337). Whether the three deployable skills state their numbers in data rather than in prose (#338).
+**Three numbers are not settled and are tracked rather than guessed here.** The per-type base health and damage, which need the simulation rather than a judgement (#336). The four minion affixes and their values (#337). Whether the three deployable skills state their numbers in data rather than in prose (#338).
+
+  
+
+**Which attribute a minion scales from was the fourth and is now answered**, above: Spirit for summoned creatures, Agility for deployed machines, 1.0% increased minion damage per point. The rows that put those into `game/Data/Attributes.csv` land with the minion type table (#336) rather than here, because "minion damage" is not a stat the model knows until that table defines it.
 
   
 

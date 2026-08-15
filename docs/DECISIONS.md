@@ -20,6 +20,83 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — A minion's scaling attribute is chosen per type: Spirit for creatures, Agility for machines
+
+**Affects:** the minion section of `Cataclysm_GDD_v2.md`. Applied. Issue #335.
+
+### The decision
+
+Asked which primary attribute minions scale from, the project owner answered
+**"that will depend on the minion"**. So it is a per-type choice, not one global
+one:
+
+| Minion family | Types | Attribute |
+| :-- | :-- | :-- |
+| Summoned creatures | Lesser imp, mote of living fire | Spirit |
+| Deployed machines | Bolt turret, ballista, spike trap | Agility |
+
+Each grants **1.0% increased minion damage per point**.
+
+### The document already expected this answer
+
+`Cataclysm_GDD_v2.md` states what a minion takes from its summoner as three
+channels, and the third already read "Increased damage — one **primary
+attribute**, declared by the minion type". The mechanism was in place; only the
+attributes were missing.
+
+### The 1.0% per point rate is derived, not chosen
+
+The document establishes that 100 points of Efficacy multiply damage over time
+output by 2.0, and 100 points of Ferocity multiply a direct hit by about 1.56, so
+an attribute at 100 points belongs between those. 1.0% per point gives exactly
+2.0, the top of the band, and the top is right because minion damage has no
+critical strike layer to compound with: a minion takes neither the summoner's
+critical strike chance nor its multiplier.
+
+### Which attributes, and the test that picked them
+
+**The test is whether the attribute's existing stats multiply the new one**, not
+which one reads well.
+
+- **Spirit** drives maximum energy shield and energy shield regeneration. Both
+  defensive; neither multiplies minion damage.
+- **Agility** drives movement speed and evasion. A deployable does not move, so
+  movement speed cannot reach it, and evasion is defensive.
+
+**Efficacy was rejected for failing that test**, and it was the obvious candidate.
+It already gives a summoner cooldown reduction, raising how often minions are
+summoned, and area of effect, enlarging the imp's death explosion. Minion damage
+would have been a third compounding gain on one build. **Ferocity fails it too**:
+critical strike chance and multiplier would compound the moment minions were ever
+allowed to critically strike.
+
+**Which family gets which is a judgement and is labelled one.** Creatures to
+Spirit and machines to Agility reads right — a summoner binds a creature with
+something soul-shaped, and the deployables are War skills on Crossbow and Spear,
+which are mobile ranged weapons. Neither pairing compounds, so if this turns out
+to play badly the two can be swapped without any of the reasoning above changing.
+
+### The slot leak the issue warned about, and why nothing is widened
+
+An attribute's affix rolls on the slots matching the stats it drives, so Spirit
+and Agility both roll on defensive and mobility slots. A minion build therefore
+gets its scaling attribute only on slots that would otherwise have kept the player
+alive or moving.
+
+**That is the archetype's cost, not a defect.** It is the same trade minion health
+makes by rolling on defensive slots. Widening either slot list would hand every
+energy shield build and every evasion build new offensive slots in order to serve
+six skills, which is a much larger change than the one being made.
+
+### What this does not do
+
+**No row is added to `game/Data/Attributes.csv` yet.** "Minion damage" is not a
+stat anything in the model or the engine knows until the minion type table exists,
+so the two attribute rows land with #336. Adding them earlier would put a stat in
+the table that nothing reads.
+
+---
+
 ## 2026-08-14 — The eight rarity colours, and they may overlap the damage palette
 
 **Affects:** section XIII of `Cataclysm_GDD_v2.md`. Applied. Issue #602.
