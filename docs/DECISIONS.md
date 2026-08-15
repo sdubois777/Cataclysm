@@ -20,6 +20,132 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — The basic attack lives on the weapon, not in the skill matrix
+
+**Affects:** the Combat System damage table and the Skill Acquisition section of
+`Cataclysm_GDD_v2.md`; the Item Bases sheet of `All_Things_Cataclysm.xlsx`.
+Applied. Closes issue #524.
+
+### What was wrong
+
+`game/Data/WeaponSkills.csv` held 398 rows across six slots and **not one row for
+the Basic slot**, so no character had an ordinary attack. The project owner found
+it by playing:
+
+> "As far as I can tell, we have two player abilities. One is a teleport, and the
+> other is a giant ball that shoots out and comes back. There's no basic attack
+> or anything else happening"
+
+### The decision, and why the issue's own plan was rejected
+
+Issue #524 assumed 75 new rows in the weapon-and-damage-type matrix. **The design
+document already said that matrix deliberately has none.** It states the matrix
+produces "one per non-basic slot" and that it is 398 rows. Adding 75 rows would
+make both sentences false.
+
+The project owner chose, from four options, to **key the basic attack on the
+weapon type alone**, as two new columns on the Item Bases sheet beside that
+weapon's attack speed. Thirteen entries rather than 75 rows, and both sentences
+stay true.
+
+The three rejected options were: 75 rows in the matrix; teaching the lookup a
+damage-type wildcard so 13 matrix rows would serve; and postponing the work.
+
+**The reason it is not a matrix row is that it does not vary by damage type.**
+The basic attack *is* weapon damage, so a Dagger swings the same distance whatever
+the blade is made of. Every other slot names a designed skill per weapon **and**
+damage type; this one does not.
+
+### Genre research
+
+**Path of Exile stores weapon range as a property of the weapon base type**, and
+melee reach is that range plus the character's own hitbox radius. That is the same
+shape as the rule below, which is contact distance plus the weapon's length. It is
+evidence the structure is right rather than merely convenient.
+https://pathofexile.fandom.com/wiki/Range
+
+**Last Epoch's basic attack is one generic skill** unlocked at level 1, costing no
+mana, usable with no weapon equipped — one attack rather than one per weapon type.
+That supports the premise that a basic attack is not a per-combination designed
+skill. https://lastepoch.fandom.com/wiki/Attack
+
+### The numbers, and how they were derived
+
+**Melee reach is `0.9 + the weapon's length past the fist`, on a 0.3 m grid.** The
+0.9 is not chosen: it is this project's contact distance, the 0.42 m player capsule
+from `CataclysmPlayerCharacter.cpp` plus a 0.48 m baseline enemy body, and it is
+already the radius of Maul, Slam and Sunder. **The arc is that weapon's designed
+Heavy arc carried over unchanged**, because the arc is the animation and the reach
+is the power.
+
+| Weapon | Shape | Parameters |
+| :-- | :-- | :-- |
+| Dagger | Strike | `Radius=1.5; Angle=60; MaxTargets=1` |
+| Fist | Strike | `Radius=1.5; Angle=60; MaxTargets=1` |
+| Sword | Strike | `Radius=1.8; Angle=90; MaxTargets=1` |
+| Axe | Strike | `Radius=1.8; Angle=100; MaxTargets=1` |
+| Warhammer | Strike | `Radius=2.1; Angle=80; MaxTargets=1` |
+| Greataxe | Strike | `Radius=2.4; Angle=120; MaxTargets=1` |
+| Greatsword | Strike | `Radius=2.7; Angle=140; MaxTargets=1` |
+| Whip | Strike | `Radius=3; Angle=45; MaxTargets=1` |
+| Spear | Strike | `Radius=3.3; Angle=40; MaxTargets=1` |
+| Staff | Projectile | `Range=7.2; Radius=0.9; Pierce=0; Speed=2000` |
+| Wand | Projectile | `Range=8.4; Radius=0.6; Pierce=0; Speed=2600` |
+| Crossbow | Projectile | `Range=10; Radius=0.4; Pierce=0; Speed=2400` |
+| 2H Crossbow | Projectile | `Range=12; Radius=0.9; Pierce=0; Speed=1800` |
+
+**Every one is exactly 0.6 times that weapon's designed Heavy reach**, verified to
+three decimals for the ten weapons that have a designed Heavy: eight melee Strikes
+plus the Staff at 12 m and the Wand at 14 m. That was not fitted — it fell out of
+the contact-distance rule and was noticed afterwards, so it is two independent
+derivations agreeing. Since the arc is unchanged, each melee basic attack covers
+36% of its Heavy's area.
+
+**Three are judgements with nothing to check against.** The Spear, the Crossbow and
+the 2H Crossbow have no designed Heavy of any shape anywhere in the matrix.
+
+**The Shield gets none.** It is a one-handed weapon that grants no attack damage,
+decided on issue #619, so there is no hit to compose from it.
+
+### What "no riders" means and why it is stricter than the enemies
+
+A basic attack carries no burn, no patch of ground, no stun and no knockback, and
+hits one target. The generator refuses any of them.
+
+**The enemy basic attacks are the nearest precedent and they are not unanimous.**
+Of the seven, four state a one-target cap — Rend, Maul, Slam and Sunder — while
+Soulfire, Siege Bolt and Dread Cleave state none, and the Hellhound's Maul does set
+what it hits alight. The stricter reading was taken because the player's basic
+attack has a job no enemy's has: it is the 100% figure every other slot is a
+percentage of, so a rider on it would move all six of the others.
+
+### Three consequences in play, all intended
+
+- **A weapon whose damage type covers none of its skills still has a basic
+  attack.** A War Wand has no matrix rows and fills one slot instead of none.
+- **The Shield fills six slots and no basic attack.**
+- **A fourteenth weapon type costs one entry**, not seven rows.
+
+### Two things this surfaced that are not this decision
+
+**The basic attack needed tags of its own.** Every matrix row gets a slot tag and
+an element tag written into it by the generator, which is issue #156, and those
+tags decide which gear modifiers reach a skill. Having no matrix row, the basic
+attack had none, so no scoped modifier reached it — Burning Wrath's increase moved
+six of the seven granted skills and not the anchor they are measured against. The
+slot tag is now added where the skill is read and the element tag where the weapon
+is equipped, because only the equipped weapon knows its rolled damage type.
+
+**Three statements in `Cataclysm_GDD_v2.md` about longest range are in conflict
+with the data.** Line 4503 says 14 metres "is the longest range any player attack
+reaches ... and no attack states more", while two Demonic Staff rows state
+`Range=15` and this log already calls 15 "the joint longest" in the 2026-08-04
+entry. Nothing in this decision exceeds 12 metres, so nothing here makes it worse.
+It is left as it stands because the Corrupted Sentinel's reach is derived from the
+14 figure and changing it is a separate decision.
+
+---
+
 ## 2026-08-15 — A Shield is a one-handed weapon that grants no attack damage
 
 **Affects:** the Weapon Types, Power Score and Dual Wielding sections of
