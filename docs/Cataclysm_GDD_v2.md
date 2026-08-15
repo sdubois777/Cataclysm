@@ -97,7 +97,7 @@ Self-Found and Heretic Solo Self-Found are both real combinations.
 
 | Flag | Rules |
 | :-: | :-: |
-| Solo Self-Found (SSF) | No auction house, no shared stash. Drop rates are unchanged. |
+| Solo Self-Found (SSF) | No auction house, and no shared stash: it opens a private stash of its own instead, the same 600 slots, shared with nobody. Drop rates are unchanged. |
 
 **Both choices are locked at character creation and cannot be changed
 afterwards.** The lethality mode never changes, in either direction, and dying
@@ -3038,7 +3038,7 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 | Auction House | Buy and sell items. One market per lethality mode, and offline characters have none at all (disabled in SSF) |
 | Trainer | Respec class passive skill points, and respec the empire upgrade tree. Both cost days. |
 | Side Quests | Random missions for crafting materials, gear, and gold |
-| Stash | Shared storage. One stash per lethality mode per population, offline and online never sharing one (disabled in SSF) |
+| Stash | Shared storage. One stash per lethality mode per population, offline and online never sharing one. A Solo Self-Found character opens a private one of its own instead |
 
   
 
@@ -3047,8 +3047,10 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 **There are two containers and they are different things.** A character's
 inventory is carried, belongs to that character alone, and goes into a dungeon
 with it. The stash sits at the capital, belongs to the account, and never enters
-a dungeon. **A character has no private stash.** Everything a character stores is
-either in its own inventory or in the shared one.
+a dungeon. **A character has no private stash, unless it is Solo Self-Found.**
+Everything an ordinary character stores is either in its own inventory or in the
+shared one. A Solo Self-Found character is the single exception, and the stash it
+opens is its own rather than the account's.
 
 **The carried inventory is 48 slots, four rows of twelve, and nothing increases
 it.** One item takes one slot whatever it is, the same rule the stash uses. No
@@ -3072,12 +3074,29 @@ does not change.
 characters open one stash, Hardcore characters a second and Heretic characters a
 third, with nothing passing between them. That is the general rule stated in the
 Empire-Wide Upgrades section: anything the account shares between characters is
-held once per lethality mode. A Solo Self-Found character has no stash at all,
-which is what its table row says, so everything it owns is carried.
+held once per lethality mode.
+
+**A Solo Self-Found character opens a private stash instead of a shared one**,
+the same 600 slots in the same six tabs, shared with no other character at all —
+not with the others in its lethality mode, and not with another Solo Self-Found
+character. It is the same rule its empire upgrade tree follows and for the same
+reason: the mode's promise is that nothing reaches this character from anywhere
+else, and a container two characters can both open breaks that promise however
+few characters they are. The stash itself is not the thing the mode is strict
+about.
+
+**That private stash lives in the character's own record**, not in an account
+record, so a Solo Self-Found character still touches no account record at all and
+its save file stays self-contained. `docs/Save_System_Design.md` carries the
+storage table.
 
 **Offline and online characters never open the same stash**, whatever their
-lethality mode, so a player who plays both has up to six stashes rather than
-three. This is the partition that protects the auction house: an offline save is
+lethality mode, so a player who plays both has up to six *shared* stashes rather
+than three, plus one more for every Solo Self-Found character they have. Those
+private ones are outside the count because they are not shared: the rule is that
+anything the account shares between characters is held once per population per
+lethality mode, and a private stash is shared with nobody. This is the partition
+that protects the auction house: an offline save is
 a local file that can be edited, and a stash both populations could reach would
 carry an edited item into the market. Gold is partitioned the same way, for the
 same reason.
@@ -3111,9 +3130,18 @@ general partition rule was written to cover: anything the account shares between
 characters is held once per lethality mode, and gold is one of those things.
 
 **The auction house lists from the stash, not from the carried inventory.** That
-is why a Solo Self-Found character loses both together and why one market and one
-stash exist per lethality mode: a market can only offer what the stash it draws
-from can hold.
+is why one market and one stash exist per lethality mode: a market can only offer
+what the stash it draws from can hold.
+
+**It is no longer why Solo Self-Found has no market**, and that argument was
+rewritten rather than quietly left standing. It used to run: the market lists
+from the stash, a Solo Self-Found character has no stash, so it can have no
+market. The first half is still true and the second is not. Such a character now
+has a stash, and still has no market, because the mode's promise is that nothing
+reaches it from another player — which is a statement about trading and not about
+storage. **The market follows from the promise directly; it never needed the
+storage argument.** The old reasoning only ever looked stronger than it was
+because both facts happened to be true at once.
 
 **Why fixed rather than earned or bought.** 600 slots is close to what Path of
 Exile 2 gives for free, which is four tabs of 144. Diablo IV starts at 50 and
