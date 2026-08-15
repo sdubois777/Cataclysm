@@ -52,7 +52,18 @@ DAMAGE_TYPES = ("War", "Demonic", "Death", "Pestilence",
 #: character. Damage affixes still have to name attack damage, so it is allowed
 #: here and nowhere else. Every other name an affix uses must be a real stat, or
 #: an affix could silently grant something nothing reads.
-OFF_SHEET_STATS = frozenset({"attack_damage"})
+#:
+#: THE THREE MINION STATS ARE OFF THE SHEET FOR THE SAME REASON, added with issue
+#: #337. They belong to the minion rather than to the character, exactly as
+#: attack damage belongs to the weapon. Putting them on the character sheet would
+#: be worse than useless: the sheet sums every source that names a stat, so a
+#: summoner holding no minions would carry a visible number meaning nothing.
+#: `game/Data/MinionScaling.csv` scopes ATTRIBUTE scaling by tag, because Spirit
+#: and Agility raise different families. An affix needs no tag, because increased
+#: minion damage reaches every minion by definition; a narrower affix would name
+#: a narrower stat rather than carry a tag.
+OFF_SHEET_STATS = frozenset({"attack_damage", "minion_damage", "minion_health",
+                             "minion_attack_speed"})
 
 #: AN ATTRIBUTE IS NOT A STAT, and an affix may still name one.
 #:
@@ -725,6 +736,30 @@ FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 18.0,
 INCREASED_DAMAGE = StatAffix("Increased damage", "attack_damage",
                              "increased", 125.0, OFFENSIVE_SLOTS, PREFIX)
 
+#: The minion affixes. Issue #337.
+#:
+#: EACH MIRRORS AN EXISTING AFFIX EXACTLY, so no new power enters the game. A
+#: minion build gives up the weapon damage affix, which is worth nothing to it,
+#: and takes the minion one at the same value on the same slots. That is the
+#: whole design: a swap, not an addition.
+#:
+#: THE DAMAGE ONE IS 125 AND THE HEALTH ONE IS 12, WHICH IS NOT AN INCONSISTENCY.
+#: The increased affixes do not share one standard value -- damage and spell
+#: damage are 125, defensive and attribute affixes are 12, attack speed is 15.
+#: A minion damage affix at 12 would be a tenth of its weapon counterpart and the
+#: archetype would not function.
+#:
+#: MINION HEALTH SITS ON DEFENSIVE SLOTS DELIBERATELY. It makes a summoner spend
+#: the slots that would have kept them alive on keeping the army alive, which is
+#: the real cost of the archetype and should be a visible trade rather than a
+#: hidden one.
+INCREASED_MINION_DAMAGE = StatAffix("Increased minion damage", "minion_damage",
+                                    "increased", 125.0,
+                                    INCREASED_DAMAGE.allowed_slots, PREFIX)
+INCREASED_MINION_HEALTH = StatAffix("Increased minion health", "minion_health",
+                                    "increased", 12.0,
+                                    INCREASED_HEALTH.allowed_slots, PREFIX)
+
 HEALTH_AFFIXES = (FLAT_HEALTH, INCREASED_HEALTH)
 DAMAGE_AFFIXES = (FLAT_DAMAGE, INCREASED_DAMAGE)
 
@@ -926,6 +961,13 @@ FLAT_CRIT_MULTIPLIER = StatAffix("Flat critical strike multiplier",
 #: the weapon gives rather than creating a rate from nothing.
 INCREASED_ATTACK_SPEED = StatAffix("Increased attack speed", "attack_speed",
                                    "increased", 15.0, OFFENSIVE_SLOTS, SUFFIX)
+
+#: The minion mirror, at the same value on the same slots. Issue #337. It scales
+#: the interval `game/Data/MinionTypes.csv` gives each type, in the same way the
+#: affix above scales the rate the weapon gives.
+INCREASED_MINION_ATTACK_SPEED = StatAffix(
+    "Increased minion attack speed", "minion_attack_speed", "increased", 15.0,
+    INCREASED_ATTACK_SPEED.allowed_slots, SUFFIX)
 
 #: Against the class base: baselines at 100%, being a percentage of whatever
 #: the skill itself does, so 12% is the same ratio the other increases use.
@@ -1200,6 +1242,8 @@ AFFIX_POOL: tuple[StatAffix, ...] = (
     FLAT_EVASION, INCREASED_EVASION,
     FLAT_DAMAGE, INCREASED_DAMAGE,
     INCREASED_SPELL_DAMAGE,
+    INCREASED_MINION_DAMAGE, INCREASED_MINION_HEALTH,
+    INCREASED_MINION_ATTACK_SPEED,
     FLAT_CLASS_RESOURCE,
     FLAT_HEALTH_REGEN, INCREASED_HEALTH_REGEN,
     FLAT_MANA_REGEN, INCREASED_MANA_REGEN,
@@ -1959,6 +2003,12 @@ HYBRID_AFFIXES: tuple[HybridAffix, ...] = (
     _hybrid("Evasion and energy shield", FLAT_EVASION, FLAT_ENERGY_SHIELD),
     _hybrid("Mana and energy shield", FLAT_MANA, FLAT_ENERGY_SHIELD),
     _hybrid("Increased health and armor", INCREASED_HEALTH, INCREASED_ARMOR),
+    # ONE MINION HYBRID, AND ITS SLOT LIST IS DERIVED RATHER THAN CHOSEN. A
+    # hybrid can only appear where both halves roll, and Ring is the only slot
+    # shared by the offensive slots minion damage uses and the defensive ones
+    # minion health uses. Issue #337.
+    _hybrid("Minion damage and minion health",
+            INCREASED_MINION_DAMAGE, INCREASED_MINION_HEALTH),
     # Suffixes: pairs that a single build wants together, which is what makes
     # giving up 30% of each worth doing.
     _hybrid("Attack speed and critical strike chance",

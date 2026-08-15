@@ -20,6 +20,96 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — The four minion affixes, and accepting the pool dilution
+
+**Affects:** `All_Things_Cataclysm.xlsx`, the Affixes sheet, which gains four
+rows; and the Prefixes and Suffixes section of `Cataclysm_GDD_v2.md`. Applied.
+Closes issue #337.
+
+### The decision
+
+Four affixes, each mirroring an existing one exactly so no new power enters the
+game. A minion build gives up the weapon damage affix, which is worth nothing to
+it, and takes the minion one at the same value on the same slots.
+
+| Affix | Position | Value | Mirrors |
+| :-- | :-- | --: | :-- |
+| Increased minion damage | prefix | 125.0 | Increased damage |
+| Increased minion health | prefix | 12.0 | Increased maximum health |
+| Increased minion attack speed | suffix | 15.0 | Increased attack speed |
+| Minion damage and minion health | prefix, hybrid | — | The existing hybrid pattern |
+
+**125 and 12 are not an inconsistency.** The increased affixes have never shared
+one standard value: damage and spell damage are 125, defensive and attribute
+affixes are 12, attack speed is 15. A minion damage affix at 12 would be a tenth
+of its weapon counterpart and the archetype would not function.
+
+**Minion health sits on defensive slots deliberately**, so a summoner spends the
+slots that would have kept them alive on keeping the army alive. That is the real
+cost of the archetype and it should be visible.
+
+**The hybrid's slot list is derived, not chosen.** A hybrid can only appear where
+both halves roll, and Ring is the only slot shared by the offensive slots minion
+damage uses and the defensive ones minion health uses.
+
+### The three minion stats are off the character sheet
+
+`attack_damage` is already off it, because it belongs to the equipped weapon
+rather than to the character. `minion_damage`, `minion_health` and
+`minion_attack_speed` join it for the same reason: they belong to the minion. The
+character sheet sums every source that names a stat, so a summoner holding no
+minions would otherwise carry a visible number meaning nothing.
+
+An affix needs no tag, unlike the attribute scaling in
+`game/Data/MinionScaling.csv`. Increased minion damage reaches every minion by
+definition; a narrower affix would name a narrower stat rather than carry a tag,
+which is how Last Epoch layers them.
+
+### The dilution is accepted, and measured
+
+Issue #337 raised it as the thing most likely to be discovered late: the affix
+table has **no weight column**, so every affix is equally likely on any slot it is
+allowed on, and four more entries make every other entry on those slots rarer.
+
+Measured rather than estimated:
+
+| Pool | Before | After | Change |
+| :-- | --: | --: | --: |
+| Weapon prefixes | 3 | 4 | +33% |
+| Ring prefixes | 14 | 17 | +21% |
+| Gloves prefixes | 5 | 6 | +20% |
+| Every other pool | | | +17% or less |
+
+**Accepted rather than fixed, because the absence of weights is not new.** With
+no weight column at all, the pool has never expressed rarity for any affix, so
+these four are a slightly larger instance of an existing gap. Adding a weight
+column is the real fix and is worth doing before the pool grows much further. It
+is recorded in the design document rather than filed as an issue, on the
+principle that constants and pool shapes get tuned against real play.
+
+### Two things issue #337 proposed and this does not add
+
+**Flat minion damage.** A flat addition is multiplied by the number of active
+minions, which is already the most dangerous quantity in the system. It is the
+first thing to add if minion builds feel numerically flat after a tuning pass,
+and it should be split by attack type when it lands.
+
+**Minion count as an affix. Never.** Every affix has seven tiers and can appear on
+several pieces, and count has no meaningful seven-step curve. There are eight ring
+slots, so a "+1 maximum minions" suffix would be +8 from rings alone. Count lives
+in the enchantment table, where the unique-per-character rule bounds it.
+
+### An asymmetry noted and not acted on
+
+`game/Data/EnchantmentsNegative.csv` carries six minion penalties — less minion
+health, minus maximum count, minions costing health to summon, minions reserving
+health — against a positive count pool that maxes at +2 to +4. If negatives roll
+independently of whether a character summons anything, a minion build is
+disproportionately exposed and a weapon build treats most of them as dead text.
+Whether that is deliberate is still unknown, and nothing here changes it.
+
+---
+
 ## 2026-08-15 — A Shield counts just like a second one-handed weapon
 
 **Affects:** the Weapon Types, Power Score and Dual Wielding sections of

@@ -222,7 +222,10 @@ class TestTheCountsThatAreAssertedInUnreal:
         78 after the eight increased-damage-against-a-type affixes for #213,
         then 80 after increased damage over time and increased damage over time
         duration were added for #205."""
-        assert len(affix_sheet) == 80 == model.total_pool_size()
+        # 84, not 80. The four minion affixes landed with issue #337:
+        # increased minion damage, health and attack speed, plus the one
+        # hybrid that Ring is the only slot for.
+        assert len(affix_sheet) == 84 == model.total_pool_size()
 
     def test_the_gem_count(self, model):
         """The Gems sheet count the Unreal test pins by hand.

@@ -79,3 +79,7 @@ Stat_Increased_damage_against_Chaos_enemies,Increased damage against Chaos enemi
 Stat_Increased_damage_against_Void_enemies,Increased damage against Void enemies,Stat,prefix,damage_vs_void,increased,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
 Stat_Increased_damage_over_time,Increased damage over time,Stat,suffix,dot_damage,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
 Stat_Increased_damage_over_time_duration,Increased damage over time duration,Stat,suffix,dot_duration,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
+Stat_Increased_minion_damage,Increased minion damage,Stat,prefix,minion_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
+Stat_Increased_minion_health,Increased minion health,Stat,prefix,minion_health,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders"
+Stat_Increased_minion_attack_speed,Increased minion attack speed,Stat,suffix,minion_attack_speed,increased,15.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
+Hybrid_Minion_damage_and_minion_health,Minion damage and minion health,Hybrid,prefix,,,0.0,0,,,Increased minion damage,Increased minion health,Ring

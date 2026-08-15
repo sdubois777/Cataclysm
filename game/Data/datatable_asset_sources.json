@@ -4,8 +4,8 @@
     {
       "asset": "DT_Affixes",
       "csv": "Affixes.csv",
-      "rows": 80,
-      "csv_sha256": "e3ca42e1414f45fad5b9860e1c5130f1a0d8809a8ef908f266b494fa227fbab1"
+      "rows": 84,
+      "csv_sha256": "194b226bc68b29b7ed3e89ed84290f27cb4ead4c47e80790fbe171d823da40e5"
     },
     {
       "asset": "DT_Attributes",
