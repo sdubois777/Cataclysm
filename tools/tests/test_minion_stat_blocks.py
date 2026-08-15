@@ -99,11 +99,75 @@ def test_two_skills_making_the_same_creature_share_one_stat_block():
     assert len([n for n in minion_rows() if n == "Imp"]) == 1
 
 
-def test_a_creature_scales_from_spirit():
-    """Settled in issue #335: Spirit for creatures, Agility for machines."""
+def scaling_rows() -> list[dict]:
+    path = ROOT / "game" / "Data" / "MinionScaling.csv"
+    with path.open(encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def tags_of(row: dict) -> set[str]:
+    return {t.strip() for t in row["Tags"].split(",") if t.strip()}
+
+
+def increase_for(minion: dict, stat: str, points: dict[str, int]) -> float:
+    """What the summoner's attribute points add to one of a minion's stats.
+
+    Only rows whose tag the minion carries count, which is the whole point of
+    scoping by tag rather than by a shared stat name.
+    """
+    total = 0.0
+    for row in scaling_rows():
+        if row["Stat"] != stat or row["RequiresTag"] not in tags_of(minion):
+            continue
+        total += points.get(row["Attribute"], 0) * float(row["PercentPerPoint"])
+    return total / 100.0
+
+
+def test_a_creature_is_raised_by_spirit_and_a_machine_by_agility():
+    """Settled in issue #335, and now expressed as a tag rather than a column."""
+    by_tag = {(r["RequiresTag"], r["Stat"]): r for r in scaling_rows()}
+    assert by_tag[("Minion.Creature", "damage")]["Attribute"] == "spirit"
+    assert by_tag[("Minion.Machine", "damage")]["Attribute"] == "agility"
+    for row in scaling_rows():
+        assert float(row["PercentPerPoint"]) == 1.0, row
+
+
+def test_every_minion_carries_its_familys_tag_and_only_its_familys_tag():
     for name, row in minion_rows().items():
-        assert row["Family"] == "Creature", name
-        assert row["ScalingAttribute"] == "spirit", name
+        tags = tags_of(row)
+        assert "Type.Minion" in tags, name
+        assert "Minion.Creature" in tags, name
+        assert "Minion.Machine" not in tags, name
+
+
+def test_agility_does_nothing_for_a_creature():
+    """THE DOUBLE COUNT THIS SHAPE EXISTS TO PREVENT.
+
+    A single shared "increased minion damage" stat would let a summoner's
+    Agility raise an imp, because the character sheet sums every attribute that
+    names a stat. Scoping by tag means an Agility point reaches a machine and
+    nothing else.
+    """
+    imp = minion_rows()["Imp"]
+    assert increase_for(imp, "damage", {"spirit": 100}) == pytest.approx(1.0)
+    assert increase_for(imp, "damage", {"agility": 100}) == pytest.approx(0.0)
+    assert increase_for(imp, "damage", {"spirit": 50, "agility": 50}) == \
+        pytest.approx(0.5)
+
+
+def test_one_hundred_points_of_the_right_attribute_doubles_minion_damage():
+    """The design document states "Each grants 1.0% increased minion damage per
+    point, so 100 points doubles it"."""
+    imp = minion_rows()["Imp"]
+    plain = damage_at(imp, 100)
+    raised = plain * (1.0 + increase_for(imp, "damage", {"spirit": 100}))
+    assert raised == pytest.approx(plain * 2.0)
+
+
+def test_only_damage_is_decided_and_health_is_expressible():
+    """Health scaling has no figure yet. The table can carry it; nothing does."""
+    assert {r["Stat"] for r in scaling_rows()} == {"damage"}
+    assert "health" in gen.MINION_SCALABLE_STATS
 
 
 def test_both_types_attack_the_nearest_enemy():
@@ -203,34 +267,56 @@ def test_a_minion_is_fragile_enough_to_be_worth_killing():
 HEADERS = ["Minion Type", "Family", "Base Health", "Health Per Level",
            "Base Damage", "Damage Per Level", "Attack Interval Seconds",
            "Move Speed", "Threat Percent", "Reach Cm", "Notice Radius Cm",
-           "Target Mode", "Scaling Attribute"]
+           "Target Mode", "Tags"]
 
 GOOD = ["Imp", "Creature", 200, 90, 10, 10.0, 1.0, 4.4, 100, 200, 1500,
-        "Nearest", "spirit"]
+        "Nearest", "Type.Minion, Type.Summon, Minion.Creature, Minion.Melee"]
+
+SCALING_HEADERS = ["Attribute", "Requires Tag", "Stat", "Percent Per Point"]
+GOOD_SCALING = ["spirit", "Minion.Creature", "damage", 1.0]
 
 
-def book_with(tmp_path, row):
+def book_with(tmp_path, row, sheet_name="Minion Types", headers=None):
     book = openpyxl.Workbook()
     book.remove(book.active)
-    sheet = book.create_sheet("Minion Types")
-    sheet.append(HEADERS)
+    sheet = book.create_sheet(sheet_name)
+    sheet.append(headers or HEADERS)
     sheet.append(row)
     path = tmp_path / "w.xlsx"
     book.save(path)
     return openpyxl.load_workbook(path)
 
 
+def scaling_book(tmp_path, row):
+    return book_with(tmp_path, row, "Minion Scaling", SCALING_HEADERS)
+
+
 def test_the_good_row_is_accepted(tmp_path):
     """A guard that rejects everything proves nothing, so check the control."""
     rows = gen.minion_types(book_with(tmp_path, list(GOOD)))
     assert rows[0]["Name"] == "Imp"
-    assert rows[0]["ScalingAttribute"] == "spirit"
+    assert "Minion.Creature" in rows[0]["Tags"]
 
 
-def test_a_creature_that_scales_from_the_wrong_attribute_is_refused(tmp_path):
+def test_a_creature_without_its_familys_tag_is_refused(tmp_path):
     row = list(GOOD)
-    row[HEADERS.index("Scaling Attribute")] = "agility"
-    with pytest.raises(gen.DataError, match="issue #335"):
+    row[HEADERS.index("Tags")] = "Type.Minion, Type.Summon, Minion.Melee"
+    with pytest.raises(gen.DataError, match="does not carry Minion.Creature"):
+        gen.minion_types(book_with(tmp_path, row))
+
+
+def test_a_minion_carrying_both_family_tags_is_refused(tmp_path):
+    """Both families' scaling would reach it, which is the double count again."""
+    row = list(GOOD)
+    row[HEADERS.index("Tags")] = ("Type.Minion, Minion.Creature, Minion.Machine")
+    with pytest.raises(gen.DataError, match="also carries"):
+        gen.minion_types(book_with(tmp_path, row))
+
+
+def test_a_minion_with_no_tags_at_all_is_refused(tmp_path):
+    row = list(GOOD)
+    row[HEADERS.index("Tags")] = ""
+    with pytest.raises(gen.DataError, match="carries no tags"):
         gen.minion_types(book_with(tmp_path, row))
 
 
@@ -260,3 +346,31 @@ def test_no_health_at_all_is_refused(tmp_path):
     row[HEADERS.index("Base Health")] = 0
     with pytest.raises(gen.DataError, match="base health"):
         gen.minion_types(book_with(tmp_path, row))
+
+
+def test_a_good_scaling_row_is_accepted(tmp_path):
+    rows = gen.minion_scaling(scaling_book(tmp_path, list(GOOD_SCALING)))
+    assert rows[0]["Attribute"] == "spirit"
+    assert rows[0]["RequiresTag"] == "Minion.Creature"
+
+
+def test_a_scaling_row_with_no_tag_is_refused(tmp_path):
+    """Without a tag it would reach every minion of every family."""
+    row = list(GOOD_SCALING)
+    row[SCALING_HEADERS.index("Requires Tag")] = ""
+    with pytest.raises(gen.DataError, match="requires no tag"):
+        gen.minion_scaling(scaling_book(tmp_path, row))
+
+
+def test_a_scaling_row_naming_a_stat_a_minion_does_not_have_is_refused(tmp_path):
+    row = list(GOOD_SCALING)
+    row[SCALING_HEADERS.index("Stat")] = "crit_chance"
+    with pytest.raises(gen.DataError, match="expected one of"):
+        gen.minion_scaling(scaling_book(tmp_path, row))
+
+
+def test_a_scaling_row_worth_nothing_per_point_is_refused(tmp_path):
+    row = list(GOOD_SCALING)
+    row[SCALING_HEADERS.index("Percent Per Point")] = 0
+    with pytest.raises(gen.DataError, match="the point is wasted"):
+        gen.minion_scaling(scaling_book(tmp_path, row))

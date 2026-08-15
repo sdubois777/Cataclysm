@@ -559,9 +559,53 @@ struct FCataclysmMinionTypeRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	FString TargetMode;
 
-	/** The primary attribute granting this type increased damage. */
+	/**
+	 * What this minion answers to, comma separated. Every row carries
+	 * Type.Minion, exactly one of Minion.Creature or Minion.Machine, and
+	 * whatever narrower tags describe how it fights.
+	 *
+	 * SCALING IS LOOKED UP BY TAG, not written here. FCataclysmMinionScalingRow
+	 * says what one point of an attribute grants a minion carrying a tag, so a
+	 * minion can answer to more than one attribute and to more than one stat
+	 * without this row changing shape.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
-	FString ScalingAttribute;
+	FString Tags;
+};
+
+/**
+ * What one point of an attribute grants a minion carrying a tag.
+ * Source: Minion Scaling.
+ *
+ * WHY NOT ROWS IN THE ATTRIBUTES TABLE. That one is (attribute, stat, percent
+ * per point) with no tag, and everything reading it sums every attribute that
+ * names a stat. One shared "minion damage" entry would let a summoner's Agility
+ * raise a summoned creature, which the design forbids: the attribute is declared
+ * per minion type. The tag is what makes the scoping real.
+ *
+ * It is the same shape a tag-scoped modifier already uses -- a stat, an amount,
+ * and the tags it requires -- so the minion gear affixes need no new machinery.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmMinionScalingRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** A primary attribute name, such as "spirit". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Scaling")
+	FString Attribute;
+
+	/** Only minions carrying this tag are raised by it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Scaling")
+	FString RequiresTag;
+
+	/** Which of the minion's own stats this raises: "damage" or "health". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Scaling")
+	FString Stat;
+
+	/** Percent per point. 1.0 means 100 points doubles the stat. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Scaling")
+	float PercentPerPoint = 0.0f;
 };
 
 /**

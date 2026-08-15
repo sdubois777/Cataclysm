@@ -916,10 +916,17 @@ def class_stats(book) -> list[dict]:
     return unique(out, "Class Stats")
 
 
-#: Which primary attribute each minion family scales its damage from. Settled in
-#: issue #335: "a minion's scaling attribute is per type -- Spirit for creatures,
-#: Agility for machines". Held here so a row cannot quietly disagree with it.
-MINION_FAMILY_ATTRIBUTE = {"Creature": "spirit", "Machine": "agility"}
+#: The tag each minion family must carry, so a row's family and its tags cannot
+#: say two different things.
+#:
+#: WHICH ATTRIBUTE IS NO LONGER WRITTEN ON THE MINION. Issue #335 settled Spirit
+#: for creatures and Agility for machines, and the first version of this table
+#: stored that as a `Scaling Attribute` column. That could only ever express one
+#: attribute granting one thing. A minion now carries TAGS, and the separate
+#: `Minion Scaling` sheet says what each attribute grants to a minion carrying a
+#: given tag -- which is the shape Last Epoch uses, where only stats explicitly
+#: tagged for minions reach them and the tags are layered rather than one flag.
+MINION_FAMILY_TAG = {"Creature": "Minion.Creature", "Machine": "Minion.Machine"}
 
 #: Which enemy a minion picks. The Ballista deliberately targets the furthest,
 #: which is the whole reason this is a column rather than one global rule.
@@ -958,18 +965,30 @@ def minion_types(book) -> list[dict]:
             continue
 
         family = _cell(raw, headers, "Family")
-        if family not in MINION_FAMILY_ATTRIBUTE:
+        if family not in MINION_FAMILY_TAG:
             raise DataError(
                 f"Minion Types row {index}: {name} is family {family!r}; "
-                f"expected one of {sorted(MINION_FAMILY_ATTRIBUTE)}")
+                f"expected one of {sorted(MINION_FAMILY_TAG)}")
 
-        attribute = _cell(raw, headers, "Scaling Attribute")
-        expected = MINION_FAMILY_ATTRIBUTE[family]
-        if attribute != expected:
+        written = _cell(raw, headers, "Tags")
+        tags = [t.strip() for t in written.split(",") if t.strip()]
+        if not tags:
             raise DataError(
-                f"Minion Types row {index}: {name} is a {family} and scales "
-                f"from {attribute!r}, but issue #335 settled that a {family} "
-                f"scales from {expected!r}")
+                f"Minion Types row {index}: {name} carries no tags, so nothing "
+                "can ever scale it")
+        required = MINION_FAMILY_TAG[family]
+        if required not in tags:
+            raise DataError(
+                f"Minion Types row {index}: {name} is a {family} and does not "
+                f"carry {required}, so no {family} scaling would reach it")
+        if "Type.Minion" not in tags:
+            raise DataError(
+                f"Minion Types row {index}: {name} does not carry Type.Minion")
+        for other, tag in MINION_FAMILY_TAG.items():
+            if other != family and tag in tags:
+                raise DataError(
+                    f"Minion Types row {index}: {name} is a {family} and also "
+                    f"carries {tag}, so both families' scaling would reach it")
 
         mode = _cell(raw, headers, "Target Mode")
         if mode not in MINION_TARGET_MODES:
@@ -1017,13 +1036,88 @@ def minion_types(book) -> list[dict]:
             "NoticeRadiusCm": number(_cell(raw, headers, "Notice Radius Cm"),
                                      "Notice Radius Cm", index),
             "TargetMode": mode,
-            "ScalingAttribute": attribute,
+            "Tags": ", ".join(tags),
         })
 
     if not out:
         raise DataError("Minion Types has no rows, so no skill can summon "
                         "anything with stats")
     return unique(out, "Minion Types")
+
+
+#: Which minion stats an attribute may grant. NOT the character sheet: these are
+#: the minion's own stats, held in `Minion Types`, and nothing here reaches the
+#: summoner.
+MINION_SCALABLE_STATS = ("damage", "health")
+
+
+def minion_scaling(book) -> list[dict]:
+    """What one point of an attribute grants a minion carrying a tag.
+
+    WHY THIS IS NOT ROWS IN `Attributes`. That table is (attribute, stat, percent
+    per point) with no tag, and everything reading it sums every attribute that
+    names a stat. One shared "minion damage" entry would therefore let a
+    summoner's Agility raise an imp, which issue #335 settled it must not: the
+    attribute is declared per minion type. A tag is what makes the scoping real.
+
+    IT IS THE SHAPE `character.Modifier` ALREADY USES -- a stat, an amount and
+    the tags it requires -- which the project owner stated on 2026-08-02: "The
+    player holds all of its own increases, and those increases apply to things
+    with matching tags." This is that rule pointed at minions, so the four minion
+    affixes in issue #337 need no new machinery.
+
+    ONLY DAMAGE IS FILLED IN, because only damage is decided. The design document
+    states "Each grants 1.0% increased minion damage per point". Health is
+    expressible here and nobody has chosen a figure for it.
+    """
+    rows = list(book["Minion Scaling"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Minion Scaling")
+
+    out = []
+    seen: set[tuple[str, str, str]] = set()
+    for index, raw in enumerate(rows[1:], start=2):
+        attribute = _cell(raw, headers, "Attribute")
+        if not attribute:
+            continue
+
+        tag = _cell(raw, headers, "Requires Tag")
+        if not tag:
+            raise DataError(
+                f"Minion Scaling row {index}: {attribute} requires no tag, so "
+                "it would reach every minion of every family")
+
+        stat = _cell(raw, headers, "Stat")
+        if stat not in MINION_SCALABLE_STATS:
+            raise DataError(
+                f"Minion Scaling row {index}: {attribute} grants {stat!r}; "
+                f"expected one of {list(MINION_SCALABLE_STATS)}")
+
+        key = (attribute, tag, stat)
+        if key in seen:
+            raise DataError(
+                f"Minion Scaling row {index}: {attribute} sets {stat} for {tag} "
+                "twice, so one of the two is silently ignored")
+        seen.add(key)
+
+        value = number(_cell(raw, headers, "Percent Per Point"),
+                       "Percent Per Point", index)
+        if value <= 0:
+            raise DataError(
+                f"Minion Scaling row {index}: {attribute} gives {value} percent "
+                f"of minion {stat} per point, so the point is wasted")
+
+        out.append({
+            "Name": row_name(attribute, tag, stat),
+            "Attribute": attribute,
+            "RequiresTag": tag,
+            "Stat": stat,
+            "PercentPerPoint": value,
+        })
+
+    if not out:
+        raise DataError("Minion Scaling has no rows, so no attribute raises a "
+                        "minion at all")
+    return unique(out, "Minion Scaling")
 
 
 def attributes(book) -> list[dict]:
@@ -1356,6 +1450,7 @@ TABLES = {
     "Affixes": affixes,
     "ClassStats": class_stats,
     "MinionTypes": minion_types,
+    "MinionScaling": minion_scaling,
     "Attributes": attributes,
     "SkillSlots": skill_slots,
     "ElementVisuals": element_visuals,

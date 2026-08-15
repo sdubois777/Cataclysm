@@ -381,17 +381,24 @@ def test_the_slot_cost_is_stated_rather_than_discovered(section):
         "offensive slots to serve six skills. Issue #335.")
 
 
-def test_the_unsettled_list_no_longer_carries_the_attribute_question(section):
+def test_the_unsettled_list_no_longer_carries_the_answered_questions(section):
     """A tracked-open list that keeps a settled item teaches people to skim it.
 
-    The three that remain are the per-type numbers (#336), the affixes (#337)
-    and the deployable skill rows (#338).
+    Two remain: the minion affixes (#337) and the deployable skill rows (#338).
+    Two have left it. The attribute question was answered first (#335), and the
+    per-type base health and damage went into `game/Data/MinionTypes.csv` with
+    issue #336.
     """
-    assert "Three numbers are not settled" in section, (
-        "the minion section still says four numbers are unsettled. The "
-        "attribute question is answered, so three remain. Issue #335.")
+    assert "Two numbers are not settled" in section, (
+        "the minion section still says three or four numbers are unsettled. "
+        "The attribute question and the per-type stat blocks are both "
+        "answered, so two remain. Issues #335 and #336.")
 
-    assert "was the fourth and is now answered" in section, (
-        "the minion section dropped the attribute question from its unsettled "
-        "list without saying it was answered, so a reader cannot tell whether "
-        "it was decided or lost. Issue #335.")
+    assert "are now answered rather than dropped" in section, (
+        "the minion section dropped items from its unsettled list without "
+        "saying they were answered, so a reader cannot tell whether they were "
+        "decided or lost. Issues #335 and #336.")
+
+    assert "MinionTypes.csv" in section, (
+        "the minion section says the per-type numbers are settled without "
+        "naming the generated table that holds them. Issue #336.")

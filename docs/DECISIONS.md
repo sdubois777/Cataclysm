@@ -20,6 +20,87 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — Minion scaling reaches a minion through a tag, not a column
+
+**Affects:** the minion section of `Cataclysm_GDD_v2.md`, and
+`All_Things_Cataclysm.xlsx` — the "Minion Types" sheet gains a `Tags` column in
+place of `Scaling Attribute`, and a new "Minion Scaling" sheet. Applied.
+Closes issue #336.
+
+### The decision
+
+A minion carries **tags**. A separate table says what one point of an attribute
+grants a minion carrying a tag.
+
+| Attribute | Requires tag | Stat | Percent per point |
+| :-- | :-- | :-- | --: |
+| spirit | `Minion.Creature` | damage | 1.0 |
+| agility | `Minion.Machine` | damage | 1.0 |
+
+Every minion type carries `Type.Minion`, exactly one of `Minion.Creature` or
+`Minion.Machine`, and narrower tags for how it fights. The Imp is
+`Minion.Creature, Minion.Melee`; the Mote is `Minion.Creature, Minion.Spell`.
+
+### What it replaces, and why
+
+The first version of the minion table, merged earlier the same day, wrote the
+attribute onto the minion as a `Scaling Attribute` column. The project owner
+asked for something more general: a scaling tag, with values per stat.
+
+**A column can only ever say one thing.** It expressed "Spirit raises this
+creature's damage" and nothing else — not two attributes, not a second stat, not
+a group narrower than the family. A tag lets a future affix granting increased
+minion melee damage reach an imp and not a mote, with no new machinery.
+
+**It also removes a double count that a shared stat would have caused.**
+Everything reading `game/Data/Attributes.csv` sums every attribute that names a
+stat, so a single shared "increased minion damage" entry would have let a
+summoner's Agility raise a summoned creature — which #335 settled it must not.
+An earlier proposal to solve this with two separately-named character stats was
+rejected in favour of the tag, which is the same fix without inventing names.
+
+### The genre research behind it
+
+Last Epoch: minions scale **only** from stats explicitly tagged for minions, and
+the tags are **layered** rather than one flag — a general minion damage reaches
+everything, while minion melee damage and minion spell damage reach only minions
+doing that. A skeleton mage's spells scale from minion spell damage; an archer's
+shots do not. The attribute link comes from the skill's own tag.
+
+- https://maxroll.gg/last-epoch/resources/damage-explained
+- https://maxroll.gg/last-epoch/getting-started/damage-for-beginners
+- https://www.lastepochtools.com/minions/skeleton_mage
+- https://lastepoch.fandom.com/wiki/Summon_Skeleton
+
+**Not copied: Last Epoch's Minion Power**, a separate multiplicative bonus of
+0.6% per character level from level 26, reaching 45% more damage and 45% less
+damage taken at level 100. This game already raises minion base health and damage
+by summoner level inside the minion table, so a second level term would count
+level twice.
+
+**Worth revisiting, and deliberately not done here.** Last Epoch's level term is
+multiplicative and this game's is a flat per-level addition, which is why three
+imps are worth about 2.0x the summoner's basic attack in the middle difficulty
+tiers and 1.15x at the level cap: a straight line cannot track a curve that also
+rises with gear. Changing the level term to a multiplier would flatten that, and
+belongs in its own change.
+
+### This is the tag-scoped increase rule, pointed at minions
+
+The project owner stated on 2026-08-02: "The player holds all of its own
+increases, and those increases apply to things with matching tags."
+`sim/cataclysm_sim/character.py` already models that as a stat, an amount and a
+set of required tags. Minion scaling is the same shape, which is why the four
+minion affixes in issue #337 need nothing new.
+
+### What is filled in
+
+**Only damage.** The design document states "Each grants 1.0% increased minion
+damage per point", and that is the only figure decided. Health is expressible in
+the same table and nobody has chosen a number for it, so no row claims one.
+
+---
+
 ## 2026-08-15 — The Imp and Mote stat blocks, and three imps beat the basic attack
 
 **Affects:** `All_Things_Cataclysm.xlsx`, new sheet "Minion Types". Applied.
