@@ -3091,8 +3091,12 @@ its save file stays self-contained. `docs/Save_System_Design.md` carries the
 storage table.
 
 **Offline and online characters never open the same stash**, whatever their
-lethality mode, so a player who plays both has up to six stashes rather than
-three. This is the partition that protects the auction house: an offline save is
+lethality mode, so a player who plays both has up to six *shared* stashes rather
+than three, plus one more for every Solo Self-Found character they have. Those
+private ones are outside the count because they are not shared: the rule is that
+anything the account shares between characters is held once per population per
+lethality mode, and a private stash is shared with nobody. This is the partition
+that protects the auction house: an offline save is
 a local file that can be edited, and a stash both populations could reach would
 carry an edited item into the market. Gold is partitioned the same way, for the
 same reason.
