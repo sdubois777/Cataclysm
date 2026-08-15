@@ -20,6 +20,140 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — The eight rarity colours, and they may overlap the damage palette
+
+**Affects:** section XIII of `Cataclysm_GDD_v2.md`. Applied. Issue #602.
+
+### The decision
+
+| Rarity | Colour |
+| :-- | :-- |
+| Everyday | White |
+| Quality | Grey |
+| Superb | Green |
+| Masterful | Blue |
+| Legendary | Yellow |
+| Mythical | Orange |
+| Ascendant | Purple |
+| Cataclysmic | Red |
+
+Chosen by the project owner on 2026-08-14.
+
+### A constraint written earlier the same day was wrong and has been replaced
+
+Issue #537, applied a few hours before, added a rule to section XIII saying the
+rarity ramp **must not reuse the eight damage-type hues** from the effect
+palette, on the grounds that a shared hue would make a drop's colour ambiguous
+between what the item is and what it does.
+
+**Seven of the eight colours above break that rule.** Measured against
+`game/Data/ElementVisuals.csv`, which holds the eight Cataclysm damage hues:
+
+| Rarity colour | Sits close to |
+| :-- | :-- |
+| Grey | Chaos (mid grey), and War (slate grey-blue) |
+| Green | Pestilence (yellow-green) |
+| Blue | Death (cyan) |
+| Yellow | Celestial (gold), and Famine (olive) |
+| Orange | Demonic (red-orange) |
+| Purple | Void (violet) |
+| Red | Demonic |
+| White | nothing |
+
+Put to the project owner, the answer was that they collide and it is not a
+problem. **That is correct and the original rule was too strong.** The reason the
+overlap is safe is not that the colours are far enough apart — they are not — but
+that **the two palettes never share a surface.** Rarity colours appear on item
+names, inventory frames and the marker over a drop on the ground. Damage-type
+hues appear on skill and damage effects. Nothing in the game is both an item and
+an attack, so nothing ever has to be told apart from itself. Path of Exile and
+Diablo both run a rarity ramp and an elemental palette simultaneously for the
+same reason.
+
+The rule in section XIII now states the surface separation rather than a hue ban,
+and `tools/tests/test_item_rarity_presentation.py` asserts the reason rather than
+the old prohibition.
+
+### One observation, recorded and not acted on
+
+**Grey above White is unusual for the genre.** Diablo and Path of Exile both use
+white for the ordinary tier and grey, where it appears, for something below it.
+Here White is Everyday and Grey is Quality, one rung up. Nothing breaks: the ramp
+is legible and the remaining six rungs follow the convention exactly. Recorded so
+that it reads as a choice rather than an oversight if anybody asks later.
+
+### What is still open
+
+The second channel. The design requires that colour is not the only way two
+rarities differ, so the frame and the drop marker have to differ by shape or
+motion as well. That is not designed and belongs with the loot interface.
+
+---
+
+## 2026-08-14 — A damage-taken debuff is the defender's bucket, not the attacker's
+
+**Affects:** the Stat Calculation part of section IV in `Cataclysm_GDD_v2.md`.
+Applied. Issue #600.
+
+### The decision
+
+**"Increased damage taken" is additive on the defender.** Ten stacks of Exposed
+add up among themselves, on the enemy carrying them, and the result multiplies
+against whatever the attacker's own increases already produced. They do not join
+the attacker's bucket.
+
+The project owner's instruction was to take the recommendation and adjust later
+if it proves wrong.
+
+### Why it needed deciding at all
+
+The damage pipeline is `(base + flat) x (1 + increases) x more1 x more2`, and the
+document said "one bucket per stat, one multiplication". **It never said whose
+stat**, and for a debuff that increases damage taken the two readings differ by
+about a factor of ten:
+
+| Reading | Ten stacks of Exposed are worth |
+| :-- | :-- |
+| The defender's own bucket, applied after the attacker's increases | close to a full 50% |
+| Joining the attacker's additive bucket | a few percent, on a Bulwark whose retaliation increases already run into the hundreds |
+
+That lands directly on **Thornwall**, a Bulwark Second Oath capstone option, and
+on **Open Wounds**, a Bulwark basic node. It also decides every future enemy
+modifier, status effect or affix worded "takes X% increased damage", which is why
+it was answered once in section IV rather than per node.
+
+### Why the defender's side
+
+A debuff that grows weaker the more the attacker has invested is the opposite of
+how every other scaling source in this design behaves, and it would be worth
+least to the character best placed to use it.
+
+Path of Exile, Path of Exile 2 and Last Epoch all place "increased damage taken"
+on the defender. Diablo IV is the exception that tested the other shape:
+Vulnerable was a separate multiplier, and patch 1.2.0 froze it at a fixed
+baseline and pushed every further source into an additive bucket, because a
+separate multiplier there was disproportionately powerful. **That is an argument
+against making a damage-taken debuff a "more" multiplier, not against putting it
+on the defender** — this decision is additive, and additive on the defender.
+
+Sources:
+
+- https://maxroll.gg/poe2/getting-started/damage-scaling-in-path-of-exile-2
+- https://maxroll.gg/d4/getting-started/damage-in-depth
+
+The Path of Exile official wiki could not be fetched — poewiki.net returns an
+access-denied page to an automated request, which the #302 entry already records
+as a limit. Both sources above are secondary and were read rather than taken from
+a search summary.
+
+### It does not implement anything
+
+Nothing in `sim/cataclysm_sim/` or `game/Source/` applies a damage-taken debuff
+today, so this changes no code and no number. It settles what the number will
+mean when something does.
+
+---
+
 ## 2026-08-14 — A full inventory is a choice about what to leave, and a Stash stands at every dungeon's middle floor
 
 **Affects:** the Storage section of `Cataclysm_GDD_v2.md`. Applied. Issue #323.

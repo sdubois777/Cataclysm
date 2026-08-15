@@ -26,6 +26,20 @@ twice gave two different answers, which is the only reason it was noticed.
 the repository broken. Every restore here happens in a `finally`, so an
 exception, a failing command and a keyboard interrupt all put the files back.
 
+**The busy-checkout trap (issue #598).** This breaks the REAL repository for the
+duration of the command. Anything else working in the same checkout at that
+moment — a second test run, an editor, another agent — can read the broken text
+or write over it. On 2026-08-14 that produced five failures in tests that had
+nothing to do with the break, all of which passed on an immediate rerun, and the
+failures pointed at innocent guards in the design document.
+
+It is now detected rather than avoided: the bytes written before the command are
+compared against the file afterwards, and a mismatch sets `GuardResult.disturbed`
+and makes `failed` answer False whatever the exit code was. **A run whose files
+moved underneath it did not test what it was asked to test**, and a failure from
+one of those is not evidence that a guard fires. `result.summary` says so in
+those words.
+
 WHAT THIS DOES NOT DO. It does not run the Unreal build. Issue #139 records the
 same class of problem for compiled C++ — restoring a source file with a
 preserved timestamp leaves the stale binary in place — and the fix there is to
@@ -76,15 +90,27 @@ class GuardResult:
     returncode: int
     stdout: str
     stderr: str
+    #: Paths whose bytes changed underneath the run, so the result cannot be
+    #: trusted. Empty on an ordinary run. See `break_and_run`.
+    disturbed: tuple[str, ...] = ()
 
     @property
     def failed(self) -> bool:
-        """Whether the command reported a failure, which is what proves a guard."""
-        return self.returncode != 0
+        """Whether the command reported a failure, which is what proves a guard.
+
+        FALSE WHEN THE RUN WAS DISTURBED, whatever the exit code. A run whose
+        files moved underneath it did not test what it was asked to test, and a
+        failure from one of those is not evidence a guard fires.
+        """
+        return self.returncode != 0 and not self.disturbed
 
     @property
     def summary(self) -> str:
         """The last line of output, which for pytest is its result line."""
+        if self.disturbed:
+            return ("EVIDENCE COMPROMISED: " + ", ".join(self.disturbed)
+                    + " changed underneath this run, so its result means nothing. "
+                    "Something else is working in this checkout. Issue #598.")
         lines = [line for line in (self.stdout + self.stderr).splitlines() if line.strip()]
         return lines[-1].strip() if lines else "(no output)"
 
@@ -144,6 +170,9 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
         raise ValueError("break_and_run needs at least one edit to make.")
 
     originals: dict[pathlib.Path, bytes] = {}
+    #: What each broken file held while the command ran. Compared against the
+    #: file afterwards. See the note on being disturbed below.
+    written: dict[pathlib.Path, bytes] = {}
     try:
         for relative, edit in edits.items():
             path = REPO_ROOT / relative
@@ -158,8 +187,26 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
                     f"The edit to {relative} changed nothing. A break that does "
                     "not break anything makes a working guard look worthless.")
             path.write_text(after, encoding="utf-8")
+            written[path] = path.read_bytes()
 
-        return run_without_bytecode(command, env)
+        result = run_without_bytecode(command, env)
+
+        # WAS ANYTHING ELSE WRITING TO THESE FILES? Issue #598. This function
+        # breaks the REAL repository for the duration of the command, so any
+        # other process working in the same checkout -- a second test run, an
+        # editor, another agent -- can see the broken text or overwrite it. When
+        # that happened, five unrelated tests failed once and passed on a rerun,
+        # and the failures pointed at innocent guards in the design document.
+        #
+        # A file whose bytes are not what this function wrote means the run did
+        # not test what it was asked to. Saying so is the whole fix: the result
+        # is reported as compromised rather than as a guard firing.
+        disturbed = tuple(
+            str(path.relative_to(REPO_ROOT)).replace("\\", "/")
+            for path, content in written.items()
+            if not path.is_file() or path.read_bytes() != content)
+
+        return dataclasses.replace(result, disturbed=disturbed)
     finally:
         # IN A FINALLY, so a raising edit, a crashing command and an interrupt
         # all leave the repository as they found it.

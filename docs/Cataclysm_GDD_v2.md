@@ -1016,6 +1016,38 @@ This covers the empire upgrade tree as well as the four class trees, it covers c
 
   
 
+**A debuff that increases the damage a target takes is the target's bucket, not
+the attacker's.** "One bucket per stat" leaves open whose stat it is, and for
+these effects it is the defender's. Ten stacks of Exposed on an enemy add up
+among themselves, on that enemy, and the result multiplies against whatever the
+attacker's own increases already produced. They do not join the attacker's bucket
+and get diluted by it.
+
+  
+
+**The difference is a factor of ten and it lands on a capstone.** Thornwall, a
+Bulwark Second Oath capstone option, gives 5% per stack up to 10 stacks. If
+Exposed were the attacker's bucket, a Bulwark whose retaliation increases already
+run into the hundreds would gain a few percent from a full ten stacks. As the
+defender's bucket it is worth close to the full 50%. Open Wounds, a Bulwark basic
+node giving 20% increased damage from all sources against a heavily bleeding
+enemy, works the same way.
+
+  
+
+**Why the defender's side.** A debuff that grows weaker the more the attacker has
+invested is the opposite of how every other scaling source here behaves, and it
+would be worth least to the character best placed to use it. Path of Exile, Path
+of Exile 2 and Last Epoch all put "increased damage taken" on the defender.
+Diablo IV is the exception that tested the other shape: Vulnerable was a separate
+multiplier, and patch 1.2.0 froze it at a fixed baseline and pushed every further
+source into an additive bucket, because a separate multiplier there was
+disproportionately powerful. That is an argument against making a damage-taken
+debuff a "more" multiplier, which this is not. It is additive, and additive on
+the defender.
+
+  
+
 **Everything in the increased bucket has diminishing returns and every "more" multiplier does not.** That is the whole reason for having two buckets rather than one. A character at +800% increased who adds another +60% increased gains 6.7%; the same character adding a 60% "more" multiplier gains 60%. Two independent 50% "more" sources give 2.25 times, not 2.0 times.
 
   
@@ -4991,18 +5023,34 @@ the base value, how the surface moves, how dense it is, and how fast.
 Item rarity is shown through colour, frame and drop effect, and never through the
 model. The Item Rarities section states that rule and why.
 
-**The eight rarity colours are not assigned yet.** Two constraints on whoever
-assigns them:
+**The eight rarity colours, in tier order:**
 
-**They must not reuse the eight damage-type hues** in the effect palette above.
-Those hues already mean "this damage is Fire" wherever they appear, and a rarity
-ramp sharing them would make a drop's colour ambiguous between what it is and
-what it does. The two palettes have to be separable at a glance.
+| Rarity | Colour |
+| :-- | :-- |
+| Everyday | White |
+| Quality | Grey |
+| Superb | Green |
+| Masterful | Blue |
+| Legendary | Yellow |
+| Mythical | Orange |
+| Ascendant | Purple |
+| Cataclysmic | Red |
 
-**Colour cannot be the only channel**, for the same reason the effect palette
+**These deliberately overlap the damage-type palette above, and that is not a
+problem.** Seven of the eight sit close to one of the eight Cataclysm hues — grey
+against Chaos, green against Pestilence, blue against Death, yellow against
+Celestial, purple against Void, red against Demonic, orange against Demonic
+again. **The two palettes never share a surface.** Rarity colours appear on item
+names, inventory frames and the marker over a drop on the ground. Damage-type
+hues appear on skill and damage effects. Nothing is both an item and an attack,
+so nothing has to be told apart from itself. Path of Exile and Diablo both run a
+rarity ramp and an elemental palette at the same time for the same reason.
+
+**Colour is still not the only channel**, for the same reason the effect palette
 carries a second one. A player who cannot separate two hues has to be able to
-separate two rarities, so the frame and the drop effect must differ by shape or
-motion as well as by colour. The Accessibility section is what this answers to.
+separate two rarities, so the frame and the drop marker must differ by shape or
+motion as well as by colour. The Accessibility section is what this answers to,
+and it is the part that is still open.
 
   
 

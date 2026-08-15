@@ -241,3 +241,76 @@ def test_run_without_bytecode_reports_a_real_failure() -> None:
     )
     assert result.failed
     assert result.summary == "nope"
+
+
+# ---------------------------------------------------------------------------
+# A run whose files moved underneath it. Issue #598.
+# ---------------------------------------------------------------------------
+
+
+def test_a_run_disturbed_by_something_else_is_not_reported_as_a_guard_firing(tmp_path):
+    """The failure issue #598 recorded, made detectable.
+
+    `break_and_run` breaks the real repository for the duration of the command,
+    so anything else working in the same checkout can overwrite what it wrote.
+    On 2026-08-14 that produced five failures in tests unrelated to the break,
+    every one of which passed on a rerun.
+
+    Here the command itself plays the part of the other process: it writes to
+    the broken file while it runs, then exits non-zero. Without the check that
+    reads as a guard firing.
+    """
+    target = REPO_ROOT / "tools" / "tests" / "_disturbed_probe.txt"
+    target.write_text("original\n", encoding="utf-8")
+
+    # NO ESCAPE SEQUENCES IN THE GENERATED SOURCE. The first version of this
+    # test put a newline escape into the meddling script and it reached the file
+    # as a real line break, so the script did not parse, nothing was written,
+    # and the test failed for a reason unrelated to what it checks.
+    meddler = tmp_path / "meddle.py"
+    meddler.write_text(
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(target)!r}).write_text('somebody else', encoding='utf-8')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8")
+
+    try:
+        result = break_and_run(
+            {"tools/tests/_disturbed_probe.txt": lambda t: t.replace("original", "broken")},
+            [sys.executable, str(meddler)])
+
+        assert result.returncode != 0, "the probe command was supposed to fail"
+        assert result.disturbed == ("tools/tests/_disturbed_probe.txt",), (
+            "break_and_run did not notice that the file it broke was rewritten "
+            "underneath the run. Issue #598.")
+        assert not result.failed, (
+            "a run whose files moved underneath it is being reported as a guard "
+            "firing. It did not test what it was asked to test. Issue #598.")
+        assert "EVIDENCE COMPROMISED" in result.summary
+        assert "_disturbed_probe.txt" in result.summary
+    finally:
+        target.unlink(missing_ok=True)
+
+
+def test_an_undisturbed_failing_run_is_still_a_guard_firing(tmp_path):
+    """The check must not swallow ordinary proofs, which is the whole point.
+
+    Same shape as the test above with the meddling removed.
+    """
+    target = REPO_ROOT / "tools" / "tests" / "_undisturbed_probe.txt"
+    target.write_text("original\n", encoding="utf-8")
+
+    failing = tmp_path / "fail.py"
+    failing.write_text("import sys\nsys.exit(1)\n", encoding="utf-8")
+
+    try:
+        result = break_and_run(
+            {"tools/tests/_undisturbed_probe.txt": lambda t: t.replace("original", "broken")},
+            [sys.executable, str(failing)])
+
+        assert result.disturbed == ()
+        assert result.failed, (
+            "an ordinary failing run is no longer reported as a guard firing, so "
+            "the issue #598 check has broken every proof in the project.")
+    finally:
+        target.unlink(missing_ok=True)
