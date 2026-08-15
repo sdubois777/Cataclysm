@@ -363,13 +363,62 @@ def test_the_document_states_the_criterion_for_being_covered(gdd):
         "anti-stun-lock rule covers. Issue #297.")
 
 
-def test_madness_is_recorded_as_open_rather_than_decided_by_omission(gdd):
-    """It is the one case the criterion does not settle, and it is the longest
-    hold in the game and the only one that is freely rollable. Issue #303."""
-    assert "Issue #303" in gdd, (
-        "the design document no longer records that Madness's position under the "
-        "anti-stun-lock rule is open. Leaving it out reads as not covered, which "
-        "is one of the two answers and has not been chosen.")
+def test_madness_takes_the_window_and_boss_immunity_but_not_the_threshold(gdd):
+    """WHAT THIS USED TO ASSERT. Until 2026-08-14 this was
+    test_madness_is_recorded_as_open_rather_than_decided_by_omission, and it
+    checked that the document still said "Issue #303" -- that Madness's position
+    was recorded as open rather than settled by leaving it out of the table.
+
+    The project owner answered on 2026-08-06 with option C and it was applied on
+    2026-08-14. A test that records an absence has to be rewritten when the
+    absence is filled, or it fails for the right reason and gets deleted for the
+    wrong one.
+
+    WHY MADNESS IS THE ONE SPLIT CASE. The criterion is that an effect is covered
+    when it completely stops the target operating any part of its character. A
+    maddened target operates every part of itself, at full capability, but not
+    for the side that owns it. So two of the three rules apply and one does not.
+    """
+    assert "Madness takes two of the three rules and not the third" in gdd, (
+        "the design document no longer says how Madness sits under the "
+        "anti-stun-lock rule. It takes the 5 second immunity window and boss "
+        "immunity, and not the 10% damage threshold. Issue #303.")
+
+    assert "| Madness | **Partly** |" in gdd, (
+        "the coverage table no longer marks Madness as partly covered. Marking "
+        "it Yes or No is wrong in both directions, and leaving it out of the "
+        "table reads as No by omission. Issue #303.")
+
+
+def test_madness_does_not_take_the_damage_threshold(gdd):
+    """The half deliberately NOT applied, which is the whole of option C.
+
+    The threshold exists to stop small hits interrupting constantly. Madness is
+    a redirection rather than an interruption, so how hard the hit landed does
+    not bear on it.
+    """
+    assert "it is a redirection" in gdd, (
+        "the design document does not say why the damage threshold is the one "
+        "rule Madness does not take. Without the reason the next reader makes it "
+        "consistent by applying all three. Issue #303.")
+
+
+def test_a_boss_cannot_be_maddened(gdd):
+    """The half that closes a real hole, and the reason this was worth deciding.
+
+    Madness is 3 seconds, the longest hold in the game, and the only one that is
+    freely rollable: a 15% suffix on four gear slots. Without boss immunity a
+    build stacking it could hold a boss out of its own fight indefinitely.
+    """
+    assert "A maddened boss is not fighting the player" in gdd, (
+        "the design document does not say that a boss cannot be maddened. "
+        "Without it a rollable affix removes a boss from its own fight, which is "
+        "what this whole section exists to prevent. Issue #303.")
+
+    assert "Subjugate therefore does nothing to a boss" in gdd, (
+        "the design document makes bosses immune to Madness without saying what "
+        "that costs. Subjugate is a Staff support skill whose whole effect is "
+        "Madness, so it does nothing to a boss. Issue #303.")
 
 
 def test_the_document_says_a_knockdown_is_covered(gdd):

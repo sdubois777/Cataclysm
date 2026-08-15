@@ -20,6 +20,71 @@ applied or still pending.
 
 ---
 
+## 2026-08-14 — Madness takes the immunity window and boss immunity, but not the damage threshold
+
+**Affects:** the "Stun and the Anti-Stun-Lock Rule" section of
+`Cataclysm_GDD_v2.md`. Applied. Issue #303.
+
+**Answered by the project owner on 2026-08-06 with "Option C", and not applied
+until 2026-08-14.** The answer sat on the issue for eight days while the document
+still marked Madness as open. Worth noting only because an answered issue that
+looks open is easy to walk past twice.
+
+### The decision
+
+| Rule | Applies to Madness |
+| :-- | :-- |
+| A hit must take at least 10% of the target's maximum health | **No** |
+| A target affected cannot be affected again for 5 seconds | **Yes**, shared with stun and knockdown |
+| A boss cannot be affected at all | **Yes** |
+
+### Why it is the one split case
+
+The criterion the project owner gave on 2026-08-05 is that the rule covers
+effects that "completely stop you from operating any part of your character".
+Madness reads both ways: a maddened target moves and attacks at full capability,
+so nothing is stopped — but nothing it does is for the side that owns it.
+
+**The boss half is decided by the rule's own stated reason.** The document says a
+boss cannot be stunned because "a boss that can be held still is not a fight". A
+maddened boss is not fighting the player either. The word differs and the outcome
+does not.
+
+**The threshold half is decided by its stated reason too, in the other
+direction.** The threshold exists to stop small hits interrupting constantly.
+Madness is not an interruption; it is a redirection, and how hard the hit landed
+has no bearing on whether redirecting a target for 3 seconds is fair.
+
+### Why this was worth answering rather than leaving
+
+**Madness is the longest hold in the game and the only one that is freely
+rollable.** It is 3 seconds, where every stun a weapon skill grants runs 0.75 to
+1.5 and the two knockdowns run 2 and 3. It comes from a suffix — "Of Madness", a
+15% chance on a necklace, relic, ring or weapon in `game/Data/Affixes.csv` — and
+from the Staff support skill Subjugate, which lasts 6 seconds against a burning
+target.
+
+Leaving it out of the coverage table read as "not covered" by omission, and under
+that reading a build stacking chance-to-madden could hold a boss out of its own
+fight indefinitely: no threshold, no window, no immunity. That is the exact
+outcome the anti-stun-lock rule exists to prevent, reached through a different
+word.
+
+### What it costs, stated rather than discovered later
+
+**Subjugate does nothing to a boss.** Its whole effect is Madness, so boss
+immunity empties it in exactly the fight where a support skill matters most. That
+is accepted: it still works on everything else, which is where the Staff support
+slot will spend most of its uses. If the Staff support slot later turns out to
+need something against a boss, that is a skill design question and not a reason
+to reopen this one.
+
+**The affix is worth less than it looks.** A 15% chance to madden that cannot
+fire again for 5 seconds has a real ceiling on it now. Against ordinary enemies
+it is unchanged, which is where it will be used most.
+
+---
+
 ## 2026-08-14 — An account holds 24 characters, as one pool
 
 **Affects:** section II and the monetisation and empire tree sections of
