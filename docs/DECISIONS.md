@@ -75,6 +75,73 @@ Sources: [Resistance, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Re
 
 ---
 
+## 2026-08-16 — The radius cap applies to every attack, and a held-on aura is the one exemption
+
+**Affects:** `Cataclysm_GDD_v2.md`, the Attack Telegraphs subsection of section X.
+Applied: two new paragraphs. Closes issue #500.
+
+### What was wrong
+
+`fits_its_cycle` in `sim/cataclysm_sim/enemy_abilities.py` returned `True`
+immediately for any ability that draws no marker, before the radius cap was
+consulted. So an ability whose cycle is too short to telegraph, or whose shape
+has no marker in the table, could state any radius at all.
+
+**That exempted the dangerous case.** An ability escapes being telegraphed by
+being FAST — the Imp's Rend and the Hellhound's Maul are both under the
+threshold — so a fast, huge, unannounced area was legal. An unannounced nine
+metre ring is strictly worse than an announced one: unavoidable and unannounced
+rather than only unavoidable.
+
+Nothing exploited it. The six untelegraphed designed abilities run 0.90 to 2.00
+metres against a 6.50 metre cap, so this was a guard that did not guard rather
+than a live balance defect.
+
+### The two rules answer different questions
+
+- **The half-cycle test** asks whether the player can clear the area during the
+  wind-up. It means nothing for an ability with no wind-up, so it correctly
+  applies to telegraphed abilities only.
+- **The cap** asks whether the player can cross the area at all. Nothing about
+  that depends on a marker being drawn.
+
+### The exemption, which is the decision
+
+**An ability held on for as long as the creature lives is exempt.** That is the
+Aura slot, and the Succubus's Dominion is the only one designed: an 8.00 metre
+field granting Commander to allies, over the 6.50 metre cap, which a cap applied
+to everything would refuse outright.
+
+**The cap is about a moment.** It asks whether the player can be clear by the
+time an attack lands, and a field that is simply on has no moment it lands. The
+player may walk out of it at any point, and the design document's own stated
+counter to the Succubus is killing it, which ends the aura at once — that is what
+the section calls the lesson in target priority. Dominion's radius is also
+derived rather than free: the document sets it to the Succubus's own 8 metre
+attack range, because a smaller field would buff nothing at the moment it
+matters.
+
+**An aura on a cooldown is not exempt.** It fires at a moment like anything else,
+so it has a wind-up, draws a marker, and is capped. Nothing designed does this
+today, and the distinction is written down so a later one is not exempted by
+accident.
+
+### What was considered and rejected
+
+**Exempting by shape rather than by being held on.** `Aura` is one of the four
+shapes the telegraph table draws a marker for, so exempting the shape would also
+exempt the cooled-down case that genuinely does land at a moment. Being held on
+is the property the argument actually rests on.
+
+**Exempting anything that does not damage the player.** It is the more precise
+rule and there is no field to express it: an ability carries a shape, a slot and
+parameters, and nothing anywhere says whether it deals damage. Inventing that
+field to answer one question would be a larger change than the one this issue
+asks for, and the held-on test reaches the same answer for every ability that
+exists.
+
+---
+
 ## 2026-08-16 — Repeated displacement halves, and the count lives on the target
 
 **Affects:** no design document. This records **implementation catching up with a

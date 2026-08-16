@@ -312,11 +312,40 @@ def telegraph_cap_metres(kind: Archetype | str) -> float:
 
 
 def fits_its_cycle(ability: Ability, kind: Archetype | str) -> bool:
-    """Whether a telegraphed ability's marker is legal for its cycle.
+    """Whether an ability's radius is legal.
 
-    TWO CONDITIONS, NOT THREE, AND THERE ARE NO LONGER TWO TIERS. The marker
-    must be within `telegraph_cap_metres`, and its wind-up must fit inside half
-    the cycle.
+    TWO CONDITIONS, AND THEY ARE ASKED OF DIFFERENT SETS OF ABILITIES. The
+    radius must be within `telegraph_cap_metres`, which is asked of almost
+    everything; and the wind-up for that radius must fit inside half the cycle,
+    which is asked only of an ability that draws a marker.
+
+    THE CAP DOES NOT DEPEND ON A MARKER BEING DRAWN, since issue #500. The two
+    conditions answer different questions. The half-cycle test asks "can the
+    player clear this during the wind-up", which means nothing without a wind-up.
+    The cap asks "can the player cross this at all", which does not care whether
+    anything was drawn -- an untelegraphed nine metre ring is strictly worse than
+    a telegraphed one, because it is unavoidable AND unannounced. Until #500 the
+    cap sat after the telegraph test and so was skipped by every untelegraphed
+    ability, which is exactly the dangerous set: an ability escapes telegraphing
+    by being FAST, and a fast, huge, unannounced area is the thing the cap exists
+    to forbid. No designed ability exploited it -- the six untelegraphed ones run
+    0.90 to 2.00 metres against a 6.50 metre cap -- so this was a guard that did
+    not guard rather than a live defect.
+
+    AN ABILITY HELD ON FOR AS LONG AS THE CREATURE LIVES IS EXEMPT, BY DECISION.
+    That is the Aura slot, and the Succubus's Dominion is the only one designed:
+    an 8.00 metre field granting Commander to allies, which is over the cap. The
+    cap is about a moment. It asks whether the player can be clear by the time an
+    attack lands, and a field that is simply on has no moment it lands -- the
+    player may walk out of it at any point, and the design's stated counter is
+    killing the caster, which ends it instantly. Dominion's radius is also not a
+    free number: the design document derives it from the Succubus's own 8 metre
+    attack range, because a smaller field would buff nothing at the moment it
+    matters.
+
+    An Aura on a COOLDOWN is not exempt, and the distinction is deliberate. It
+    fires at a moment like anything else, so it has a wind-up, draws a marker,
+    and is capped. Nothing designed does this today.
 
     WHAT WENT AND WHY. Until 2026-08-09 there was a second tier for markers
     escaped with a Movement skill rather than by walking, with its own wind-up
@@ -327,24 +356,15 @@ def fits_its_cycle(ability: Ability, kind: Archetype | str) -> bool:
     was ever in it. Measuring it also showed it would not have done its job: its
     escape margin was 13.7 metres at every radius against the walk-out tier's
     2.3, so it was between identical and twice as forgiving, never harder.
-
-    AN ABILITY THAT IS NOT TELEGRAPHED IS STILL EXEMPT FROM THE CAP, and that
-    is a known hole rather than a decision: issue #500. "Can the player cross
-    this at all" does not depend on whether a marker was drawn, so the cap
-    should apply to everything. It is left alone here because closing it is a
-    separate concern with its own casualty -- the Succubus's Dominion is an Aura
-    with a radius of 8.0 metres and no cycle, so it draws no marker and would be
-    refused outright by a cap applied here. Whether an Aura is exempt by shape
-    is the question #500 has to answer, and answering it inside this change
-    would mean two decisions in one.
     """
     kind = archetype(kind) if isinstance(kind, str) else kind
+    radius = float(ability.params.get("Radius", 0.0))
+
+    if not ability.is_held_on and radius > telegraph_cap_metres(kind):
+        return False
+
     if not is_telegraphed(ability, kind):
         return True
-
-    radius = float(ability.params.get("Radius", 0.0))
-    if radius > telegraph_cap_metres(kind):
-        return False
 
     return (wind_up_seconds(radius)
             <= ability.cycle_seconds(kind) / 2.0)
@@ -1298,22 +1318,25 @@ def _check_every_movement_ability_names_a_real_mode() -> None:
                 f"which is not one of {list(MOVEMENT_MODES)}")
 
 
-def _check_every_telegraphed_marker_fits_its_cycle() -> None:
-    """A marker too big for its cycle cannot be escaped, which by the design
-    document's own words makes it a damage event rather than a telegraph."""
+def _check_every_ability_radius_is_legal() -> None:
+    """An area too big to cross cannot be escaped, which by the design
+    document's own words makes it a damage event rather than a telegraph.
+
+    THIS COVERS EVERY ABILITY, not only the ones that draw a marker, since issue
+    #500. `fits_its_cycle` says which of its two conditions each ability is
+    subject to."""
     for name, entries in ABILITIES.items():
         kind = archetype(name)
         for ability in entries:
             radius = float(ability.params.get("Radius", 0.0))
             assert fits_its_cycle(ability, kind), (
-                f"{name}'s {ability.name} draws a {radius} m marker whose "
-                f"wind-up is {wind_up_seconds(radius):.2f} s, on a "
+                f"{name}'s {ability.name} states a {radius} m radius. The cap "
+                f"is {telegraph_cap_metres(kind):.2f} m, above which the "
+                "slowest class cannot both react and walk clear, which the "
+                "design document calls a damage event rather than a telegraph. "
+                f"Its wind-up would be {wind_up_seconds(radius):.2f} s, on a "
                 f"{ability.cycle_seconds(kind)} s cycle which allows a wind-up "
-                f"of {ability.cycle_seconds(kind) / 2.0:.2f} s. The cap on the "
-                f"marker itself is {telegraph_cap_metres(kind):.2f} m, above "
-                "which the slowest class cannot both react and walk clear, "
-                "which the design document calls a damage event rather than a "
-                "telegraph.")
+                f"of {ability.cycle_seconds(kind) / 2.0:.2f} s.")
 
 
 def _check_every_phase_is_reachable_and_starts_at_one() -> None:
@@ -1448,7 +1471,7 @@ _check_every_ability_declares_a_real_slot()
 _check_every_designed_enemy_has_exactly_one_basic_attack()
 _check_only_the_held_on_and_basic_abilities_lack_a_cooldown()
 _check_every_movement_ability_names_a_real_mode()
-_check_every_telegraphed_marker_fits_its_cycle()
+_check_every_ability_radius_is_legal()
 _check_every_phase_is_reachable_and_starts_at_one()
 _check_every_stun_is_spaced_by_the_immunity_window()
 _check_no_stun_outlasts_the_longest_the_player_has()

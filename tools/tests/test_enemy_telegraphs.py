@@ -219,6 +219,27 @@ def test_the_section_no_longer_describes_a_second_telegraph_tier(section):
         "standard body.")
 
 
+def test_the_section_says_the_cap_reaches_attacks_that_draw_no_marker(section):
+    """ISSUE #500. The cap and the wind-up rule answer different questions, and
+    only the wind-up one depends on a marker being drawn.
+
+    `fits_its_cycle` in `sim/cataclysm_sim/enemy_abilities.py` enforces this. The
+    prose is checked here because the code applying a rule the document does not
+    state is how the two drift apart.
+    """
+    assert "whether or not it draws a marker" in section, (
+        "the Attack Telegraphs section no longer says the cap applies to every "
+        "attack rather than only to the marked ones. An attack escapes being "
+        "marked by being FAST, so leaving the unmarked ones out exempts exactly "
+        "the case the cap exists to forbid.")
+
+    assert "aura held on" in section, (
+        "the Attack Telegraphs section no longer states the one exemption from "
+        "the cap. The Succubus's Dominion is an 8 metre field, over the 6.5 m "
+        "cap, and is legal because a field that is simply on has no moment it "
+        "lands. An exemption that is not written down reads as an oversight.")
+
+
 # --------------------------------------------------------------------------
 # The per-enemy table, recomputed rather than compared to a copy
 # --------------------------------------------------------------------------
