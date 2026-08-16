@@ -1691,6 +1691,10 @@ def validate_weapon_skill_types(tables: dict[str, list[dict]]) -> list[str]:
 
     Cross-checked against the other sheet rather than a list written here, so
     adding a weapon to the design needs no change in this file.
+
+    IT ONLY EVER LOOKED AT THE `WeaponType` COLUMN, which is why the same rename
+    survived in the gameplay tags. `validate_weapon_tags` below is the other
+    half. Issue #620.
     """
     bases = tables.get("ItemBases")
     skills = tables.get("WeaponSkills")
@@ -1711,6 +1715,66 @@ def validate_weapon_skill_types(tables: dict[str, list[dict]]) -> list[str]:
     for name in sorted(real - covered):
         problems.append(f"WeaponSkills: the {name} has no rows at all")
 
+    return problems
+
+
+#: The prefix every weapon type's gameplay tag carries. Declared on the Tags
+#: sheet and generated into game/Config/Tags/CataclysmTags.ini.
+WEAPON_TAG_PREFIX = "Item.Weapon."
+
+
+def weapon_tag_leaf(weapon_type: str) -> str:
+    """The tag leaf a weapon type must use, from the type's own name.
+
+    ONE RULE, AND IT IS ONLY ABOUT SPACES. A gameplay tag cannot contain a space
+    and one weapon type does: "2H Crossbow" in `game/Data/ItemBases.csv`. So the
+    leaf is the weapon type with its spaces removed and nothing else changed,
+    which makes `Item.Weapon.2HCrossbow` the only legal spelling for it and
+    leaves the other thirteen identical to their weapon type.
+    """
+    return weapon_type.replace(" ", "")
+
+
+def validate_weapon_tags(tables: dict[str, list[dict]],
+                         declared: set[str]) -> list[str]:
+    """Every weapon type's tag is named after the weapon. Issue #620.
+
+    WHY THIS EXISTS. Three weapons carried a tag named after what they used to be
+    called: a Greataxe's rows said `Item.Weapon.2hAxe`, a Greatsword's said
+    `Item.Weapon.2hSword`, a Warhammer's said `Item.Weapon.2hWarhammer`, and the
+    2H Crossbow's differed in letter case. That was the tail of a rename which
+    corrected the `WeaponType` column and left the tags behind.
+
+    NOTHING WAS BROKEN BY IT, which is exactly why it survived. The naming was
+    consistent within the data, so every lookup worked and no test failed. What
+    it cost was a reader having to know two names for one weapon.
+
+    `validate_weapon_skill_types` above is the same shape of check for the
+    `WeaponType` column, and it is what caught the first half of that rename. It
+    could not catch this half because it never looks at a tag.
+
+    BOTH DIRECTIONS. A weapon with no tag cannot be scoped to by an affix or a
+    passive, and a weapon tag naming no weapon is a name for something that does
+    not exist.
+    """
+    bases = tables.get("ItemBases")
+    if not bases:
+        return []
+
+    weapons = {row["WeaponType"] for row in bases if row["WeaponType"]}
+    wanted = {WEAPON_TAG_PREFIX + weapon_tag_leaf(name) for name in weapons}
+    have = {tag for tag in declared if tag.startswith(WEAPON_TAG_PREFIX)}
+
+    problems = [
+        f"Tags: {tag} is not declared, and it is the tag for a weapon type in "
+        f"the Item Bases sheet. A weapon with no tag cannot be scoped to."
+        for tag in sorted(wanted - have)
+    ]
+    problems += [
+        f"Tags: {tag} names no weapon type. The Item Bases sheet's weapon types "
+        f"are {sorted(weapons)}, so the tags are {sorted(wanted)}."
+        for tag in sorted(have - wanted)
+    ]
     return problems
 
 
@@ -1938,6 +2002,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weights(tables)
                 + validate_affix_slots(tables)
                 + validate_weapon_skill_types(tables)
+                + validate_weapon_tags(tables, declared_tags(book))
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)
                 + validate_hybrid_parts(tables)
