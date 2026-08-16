@@ -1129,7 +1129,7 @@ def test_no_stun_outlasts_the_immunity_it_grants() -> None:
         "immunity it grants, so a second Brute could take over the instant the "
         "first let go."
     )
-    assert damage.BLUNT_STUN_SECONDS < damage.STUN_IMMUNITY_SECONDS, (
+    assert damage.INCIDENTAL_STUN_SECONDS < damage.STUN_IMMUNITY_SECONDS, (
         "The incidental blunt-weapon stun outlasts the immunity window."
     )
 

@@ -131,11 +131,27 @@ def test_every_effect_a_gem_applies_has_an_affix(gems, ailment_affixes) -> None:
         f"sheet, so they can only be built by spending a socket: {missing}")
 
 
+#: The one ailment affix whose Gem cell is empty, and why.
+#:
+#: Nothing in the Gems sheet applies stun, so there is no gem for the chance to
+#: stun to name. Added with issue #298 on 2026-08-16. Written out here so a
+#: second empty cell has to be deliberate rather than a row somebody half filled
+#: in, and `test_an_affix_with_no_gem_really_has_none_available` below checks the
+#: claim rather than trusting it.
+AFFIXES_WITH_NO_GEM = {"Chance to stun"}
+
+
 def test_every_ailment_affix_names_a_gem_that_applies_the_same_effect(
         gems, ailment_affixes) -> None:
     for affix in ailment_affixes:
         name = str(affix.get("Affix Name", "")).strip()
         gem_name = str(affix.get("Gem", "")).strip()
+        if name in AFFIXES_WITH_NO_GEM:
+            assert not gem_name or gem_name.lower() == "none", (
+                f"the {name} affix is listed as having no gem and names "
+                f"{gem_name!r}. If a gem now applies it, take it out of "
+                f"AFFIXES_WITH_NO_GEM.")
+            continue
         assert gem_name in gems, (
             f"the {name} affix names the gem {gem_name!r}, which either does not "
             "exist in the Gems sheet or does not apply an effect on hit")
@@ -209,3 +225,22 @@ def test_burn_in_particular_is_reachable(gems, ailment_affixes) -> None:
     assert "burn" in ailments, (
         "no affix applies burn, so burn chance from gear is always zero and its "
         "magnitude can never rise above the base. See issue #152.")
+
+
+def test_an_affix_with_no_gem_really_has_none_available(gems, ailment_affixes) -> None:
+    """What stops AFFIXES_WITH_NO_GEM being a way to skip the check above.
+
+    If a gem is ever added that applies the same effect, this fails and the
+    affix has to name it like every other one.
+    """
+    by_name = {str(a.get("Affix Name", "")).strip(): a for a in ailment_affixes}
+    applied = {effect.casefold() for _, effect in gems.values()}
+
+    for name in AFFIXES_WITH_NO_GEM:
+        assert name in by_name, (
+            f"{name!r} is listed as having no gem and is not an ailment affix "
+            f"at all any more, so the exception should go.")
+        effect = str(by_name[name].get("Ailment", "")).strip()
+        assert effect.casefold() not in applied, (
+            f"a gem now applies {effect!r}, so the {name} affix should name it "
+            f"rather than being listed as having none.")

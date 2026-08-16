@@ -2011,9 +2011,33 @@ SHRED = AilmentAffix("Chance to shred", "Shred", 15.0, gem="Of Shredding")
 #: the two sit in the same place in their damage types and should cost the same.
 BURN = AilmentAffix("Chance to burn", "Burn", 15.0, gem="Of Embers")
 
+#: Added for issue #298, answered by the project owner on 2026-08-16: an affix
+#: does grant a chance to stun, and the Blunt weapon sub-type's 10% is part of
+#: the same pool rather than a separate mechanic.
+#:
+#: 15%, THE SAME AS THE OTHER NINE, AND THE ISSUE ASKED WHY IT WOULD BE ANYTHING
+#: ELSE. A chance-to-apply affix that did not match the shape of the four
+#: weakening ones would need a reason, and there is none: it rolls on the same
+#: four slots, in the same suffix position, at the same value.
+#:
+#: NO GEM, unlike every other entry here. Nothing in `game/Data/Gems.csv` applies
+#: stun, so an affix is the only way to buy chance beyond what a Blunt weapon
+#: gives free. That is also why the duration cap is hard to reach: eleven pieces
+#: of gear carrying one each reach 165%, which is 1.65 times the base duration,
+#: and the cap needs 400%.
+#:
+#: LAST EPOCH SELLS THE SAME STAT, which is what settled that the affix should
+#: exist at all. Its "Increased Stun Chance" suffix runs 15% to 25% at its first
+#: tier and 131% to 170% at its seventh. Path of Exile argues the other way and
+#: has no such stat: stun there is decided by damage against a threshold, so
+#: there is nothing to buy. This design already chose the Last Epoch shape by
+#: giving Blunt a flat chance, so an affix scaling it is consistent rather than
+#: new.
+STUN = AilmentAffix("Chance to stun", "Stun", 15.0)
+
 AILMENT_AFFIXES: tuple[AilmentAffix, ...] = (
     BLEED, POISON, DISEASE, VOID_SPLINTER, NECROSIS, BURN, MADNESS, CRIPPLE,
-    WEAKEN, SHRED,
+    WEAKEN, SHRED, STUN,
 )
 
 #: The effects among those that are damage over time rather than a weakening.
@@ -2623,14 +2647,23 @@ def _check_every_gem_applied_effect_is_reachable_as_an_affix() -> None:
 
     This set is written out rather than read from the CSV, so it does not
     protect against a gem being added with no affix; issue #152 was exactly that
-    and went unnoticed because burn was in neither place."""
+    and went unnoticed because burn was in neither place.
+
+    ONE DIRECTION ONLY, SINCE 2026-08-16. This compared the two sets for
+    equality, which also required every AFFIX to have a gem -- and that was never
+    a stated rule, only a fact about the ten that existed. The chance to stun
+    added for issue #298 has no gem, deliberately: nothing in `Gems.csv` applies
+    stun, which is what makes the affix the only way to buy the chance. Requiring
+    the reverse would have meant inventing a gem to satisfy a check.
+    """
     from_gems = {"Void Splinter", "Poison", "Bleed", "Madness", "Disease",
                  "Necrosis", "Burn", "Cripple", "Weaken", "Shred"}
     covered = {a.ailment for a in AILMENT_AFFIXES}
-    if covered != from_gems:
+    missing = from_gems - covered
+    if missing:
         raise ValueError(
-            f"gem effects with no affix: {sorted(from_gems - covered)}; "
-            f"affixes with no gem: {sorted(covered - from_gems)}")
+            f"gem effects with no affix: {sorted(missing)}. Every effect a gem "
+            f"applies has to be reachable as an affix too.")
 
 
 def _check_ailments_only_appear_where_a_hit_comes_from() -> None:

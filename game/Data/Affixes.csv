@@ -59,6 +59,7 @@ Hybrid_Penetration_and_critical_strike_multiplier,Penetration and critical strik
 Hybrid_Block_chance_and_crowd_control_resistance,Block chance and crowd control resistance,Hybrid,suffix,,,0.0,0,,,Flat block chance,Flat crowd control resistance,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders"
 Hybrid_Magic_find_and_loot_quantity,Magic find and loot quantity,Hybrid,suffix,,,0.0,0,,,Flat magic find,Increased loot quantity,"Belt, Boots, Necklace, Relic, Ring"
 Ailment_Chance_to_burn,Chance to burn,Ailment,suffix,,,15.0,0,Burn,Of Embers,,,"Necklace, Relic, Ring, Weapon"
+Ailment_Chance_to_stun,Chance to stun,Ailment,suffix,,,15.0,0,Stun,,,,"Necklace, Relic, Ring, Weapon"
 Stat_Increased_agility,Increased agility,Stat,suffix,agility,increased,12.0,0,,,,,"Belt, Boots, Chest, Gloves, Head, Pants, Ring, Shoulders"
 Stat_Increased_ferocity,Increased ferocity,Stat,suffix,ferocity,increased,12.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
 Stat_Increased_constitution,Increased constitution,Stat,suffix,constitution,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders"

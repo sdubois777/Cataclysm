@@ -266,7 +266,7 @@ def test_a_blunt_stun_uses_the_shortest_designed_duration():
     """Several War skills stun, for between 0.75 and 3 seconds. A weapon
     sub-type stunning on every hit must not outclass the skills whose entire
     purpose is stunning, so it uses the shortest of those durations."""
-    assert dm.BLUNT_STUN_SECONDS == 0.75
+    assert dm.INCIDENTAL_STUN_SECONDS == 0.75
     r = dm.resolve(hit(subtype="Blunt"), plain(),
                    force_evade=False, force_block=False, force_stun=True)
     assert r.stunned
@@ -652,3 +652,104 @@ def test_a_shield_that_absorbed_the_whole_hit_still_waits_to_recharge():
         max_shield=1000.0, regen_per_second=100.0,
         events=[(0.0, 50.0), (2.0, 50.0)], ends_at=2.0)
     assert remaining == pytest.approx(900.0)
+
+
+# --------------------------------------------------------------------------
+# Chance to stun above certainty. Issues #298 and #639.
+# --------------------------------------------------------------------------
+
+def test_chance_to_stun_caps_at_certainty_and_the_rest_becomes_duration():
+    """THE RULE, extended to stun by the project owner on 2026-08-16. It is the
+    one they set for damage over time on 2026-08-03: chance caps at 100% and
+    everything past it multiplies the magnitude. A stun has no damage, so its
+    magnitude is its duration."""
+    assert dm.stun_application(0.0) == (0.0, dm.INCIDENTAL_STUN_SECONDS)
+    assert dm.stun_application(50.0) == (50.0, dm.INCIDENTAL_STUN_SECONDS)
+    assert dm.stun_application(100.0) == (100.0, dm.INCIDENTAL_STUN_SECONDS)
+
+    chance, seconds = dm.stun_application(200.0)
+    assert chance == 100.0
+    assert seconds == pytest.approx(dm.INCIDENTAL_STUN_SECONDS * 2)
+
+
+def test_a_stun_never_lasts_as_long_as_the_immunity_window():
+    """THE PROPERTY THE CAP EXISTS FOR, and it is arithmetic rather than taste.
+    A stun lasting as long as the window means the window expires while the
+    target is still held, so the next hit re-stuns and the target never acts --
+    which is exactly the chain-stunning the window was added to stop."""
+    for chance in (100.0, 400.0, 800.0, 100_000.0):
+        _, seconds = dm.stun_application(chance)
+        assert seconds <= dm.LONGEST_STUN_SECONDS
+        assert seconds < dm.STUN_IMMUNITY_SECONDS
+
+    # AND THE GAP IS REAL, not a rounding margin. A stunned target always gets at
+    # least two seconds to act.
+    assert dm.STUN_IMMUNITY_SECONDS - dm.LONGEST_STUN_SECONDS >= 2.0
+
+
+def test_the_cap_is_the_longest_stun_the_design_already_has():
+    """Three seconds is not a new number: it is the Brute's Heart ten-piece set
+    bonus, the most expensive thing in the game to assemble. Reaching it needs
+    400% chance."""
+    assert dm.LONGEST_STUN_SECONDS == 3.0
+    _, at_cap = dm.stun_application(400.0)
+    assert at_cap == pytest.approx(dm.LONGEST_STUN_SECONDS)
+
+
+def test_scaling_stops_dead_at_the_cap_and_that_is_deliberate():
+    """Every other effect rolls over into duration once its magnitude caps, so
+    its scaling never dies. A stun's magnitude IS its duration, so there is
+    nothing to roll over into, and letting it run would break the window."""
+    _, at_cap = dm.stun_application(400.0)
+    _, far_past = dm.stun_application(4000.0)
+    assert far_past == at_cap
+
+
+def test_a_blunt_weapon_brings_its_own_chance_and_nothing_else_does():
+    assert dm.Attacker(damage=100.0, subtype="Blunt").total_stun_chance() ==         dm.BLUNT_STUN_CHANCE
+    assert dm.Attacker(damage=100.0, subtype="Slashing").total_stun_chance() == 0.0
+
+    # AN AFFIX ADDS TO IT RATHER THAN REPLACING IT, which is what the project
+    # owner meant by the affix including the effect of blunt.
+    both = dm.Attacker(damage=100.0, subtype="Blunt", bonus_stun_chance=90.0)
+    assert both.total_stun_chance() == 100.0
+
+
+def test_crowd_control_resistance_bites_into_the_overflow_too():
+    """A defender at 50 resistance facing 400% chance sees 200%, which is still
+    certainty and still doubles the duration -- but from twice the investment.
+    Reducing only the capped 100 would make resistance worth nothing at all
+    against a heavy stun build, which is the opposite of what it is for."""
+    attacker = dm.Attacker(damage=100.0, subtype="Blunt", bonus_stun_chance=390.0)
+    tough = plain(crowd_control_resistance=50.0)
+
+    chance, seconds = dm.stun_against(attacker, tough)
+    assert chance == 100.0
+    assert seconds == pytest.approx(dm.INCIDENTAL_STUN_SECONDS * 2)
+
+    # And full resistance still means no stun at all, whatever is stacked.
+    immune = plain(crowd_control_resistance=100.0)
+    assert dm.stun_against(attacker, immune)[0] == 0.0
+
+
+def test_a_stunning_hit_reports_the_scaled_duration():
+    """The duration has to reach the Resolution, or the rule computes a number
+    nothing uses."""
+    # 290 FROM THE AFFIX PLUS BLUNT'S OWN 10 IS 300, so the duration trebles.
+    # Blunt's chance is part of the total rather than separate from it, which is
+    # what the project owner meant by the affix including the effect of blunt.
+    attacker = dm.Attacker(damage=100_000.0, subtype="Blunt",
+                           bonus_stun_chance=290.0)
+    d = plain()
+    r = dm.resolve(attacker, d, force_evade=False, force_block=False,
+                   force_stun=True)
+    assert r.stunned
+    assert r.stun_seconds == pytest.approx(dm.INCIDENTAL_STUN_SECONDS * 3)
+
+
+def test_a_hit_that_does_not_stun_reports_no_duration():
+    attacker = dm.Attacker(damage=100_000.0, subtype="Blunt")
+    r = dm.resolve(attacker, plain(), force_evade=False, force_block=False,
+                   force_stun=False)
+    assert not r.stunned
+    assert r.stun_seconds == 0.0

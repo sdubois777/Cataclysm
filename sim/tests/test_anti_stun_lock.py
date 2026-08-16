@@ -209,7 +209,7 @@ def test_the_window_is_longer_than_any_stun_the_game_can_apply():
     the Brute's Heart set bonus."""
     longest_designed_stun = 3.0
     assert dm.STUN_IMMUNITY_SECONDS > longest_designed_stun
-    assert dm.STUN_IMMUNITY_SECONDS > dm.BLUNT_STUN_SECONDS
+    assert dm.STUN_IMMUNITY_SECONDS > dm.INCIDENTAL_STUN_SECONDS
 
 
 # --------------------------------------------------------------------------
@@ -732,7 +732,7 @@ class TestTheDocumentMatchesTheSkillTable:
         """0.75s is the shortest designed hold. A knockdown under it would be a
         different kind of effect and would need its own paragraph."""
         knockdowns = self._durations(r"knocked down for ([\d.]+) second")
-        assert min(knockdowns.values()) >= dm.BLUNT_STUN_SECONDS
+        assert min(knockdowns.values()) >= dm.INCIDENTAL_STUN_SECONDS
 
     def test_displacement_and_knockdown_are_different_skills(self):
         """If one skill did both, the document would need to say which wins."""

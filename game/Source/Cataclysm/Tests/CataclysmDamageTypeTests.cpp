@@ -1134,6 +1134,114 @@ CATACLYSM_TEST(FCataclysmPiercingAddsToTheStatTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmStunApplicationTest,
+	"Cataclysm.DamageType.ChanceToStunPastCertaintyBecomesDuration")
+{
+	using FCalc = UCataclysmDamageCalculation;
+
+	// THE RULE, set by the project owner for damage over time on 2026-08-03 and
+	// extended to stun on 2026-08-16: chance caps at 100% and everything past it
+	// multiplies the magnitude. A stun has no damage, so its magnitude is its
+	// duration. Mirrors `stun_application` in sim/cataclysm_sim/damage.py.
+	float Chance = -1.0f;
+	float Seconds = -1.0f;
+
+	FCalc::StunApplication(50.0f, Chance, Seconds);
+	TestEqual(TEXT("half a chance is half a chance"), Chance, 50.0f);
+	TestEqual(TEXT("and the duration is the base"),
+		Seconds, FCalc::IncidentalStunSeconds);
+
+	FCalc::StunApplication(200.0f, Chance, Seconds);
+	TestEqual(TEXT("twice certainty still applies once"), Chance, 100.0f);
+	TestEqual(TEXT("and lasts twice as long"),
+		Seconds, FCalc::IncidentalStunSeconds * 2.0f);
+
+	// THE CAP, AND THE PROPERTY IT EXISTS FOR. A stun as long as the immunity
+	// window would hold a target for ever, because the window would expire while
+	// it was still held.
+	FCalc::StunApplication(400.0f, Chance, Seconds);
+	TestEqual(TEXT("four times certainty reaches the cap"),
+		Seconds, FCalc::LongestStunSeconds);
+
+	FCalc::StunApplication(100000.0f, Chance, Seconds);
+	TestEqual(TEXT("and nothing goes past it"),
+		Seconds, FCalc::LongestStunSeconds);
+	TestTrue(TEXT("which is short of the immunity window"),
+		FCalc::LongestStunSeconds
+			< UCataclysmSkillEffects::StunImmunityWindowSeconds);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmBluntWeaponCanStunTest,
+	"Cataclysm.DamageType.ABluntWeaponCanStunWhatItHits")
+{
+	// THE LAST OF THE FOUR SUB-TYPES. Issue #639 left blunt unbuilt because
+	// nothing rolled a chance to stun on an ordinary hit; this is that roll.
+	//
+	// THE CHANCE IS 10%, SO THE ROLL IS NOT WATCHED DIRECTLY. Hitting until it
+	// stuns would be a test that fails once in a while for no reason. What is
+	// checked instead is that a blunt weapon reaches the stun path at all and a
+	// slashing one never does, over enough hits that 10% would have landed
+	// many times.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+
+		// SMALL ENOUGH THAT EVERY HIT CLEARS THE 10% DAMAGE THRESHOLD. The
+		// fixture starts at a million health, which no single hit would dent,
+		// and an incidental stun obeys that threshold on purpose.
+		Defender.Vitals->SetMaxHealth(1000.0f);
+		Defender.Vitals->SetHealth(1000.0f);
+
+		bool bBluntEverStunned = false;
+		for (int32 Attempt = 0; Attempt < 200 && !bBluntEverStunned; ++Attempt)
+		{
+			CataclysmDamageTypeTest::FScopedArmedAttacker Blunt(World, TEXT("Fist"));
+			Blunt.Actor->SetAttackDamage(500.0f);
+
+			Defender.Vitals->SetHealth(1000.0f);
+			UCataclysmSkillEffects::ApplyHit(Blunt.Actor, Defender.Actor, 100.0f);
+			bBluntEverStunned =
+				UCataclysmSkillEffects::IsStunned(Defender.Actor);
+		}
+
+		TestTrue(TEXT("a blunt weapon stuns within 200 hits at a 10% chance"),
+			bBluntEverStunned);
+	}
+
+	{
+		// AND A SLASHING WEAPON NEVER DOES, which is what makes the above a
+		// property of the sub-type rather than of hitting things.
+		CataclysmDamageTypeTest::FScopedCombatant Untouched(World);
+		Untouched.Vitals->SetMaxHealth(1000.0f);
+		Untouched.Vitals->SetHealth(1000.0f);
+
+		bool bSlashingEverStunned = false;
+		for (int32 Attempt = 0; Attempt < 200 && !bSlashingEverStunned; ++Attempt)
+		{
+			CataclysmDamageTypeTest::FScopedArmedAttacker Slashing(World, TEXT("Axe"));
+			Slashing.Actor->SetAttackDamage(500.0f);
+
+			Untouched.Vitals->SetHealth(1000.0f);
+			UCataclysmSkillEffects::ApplyHit(Slashing.Actor, Untouched.Actor, 100.0f);
+			bSlashingEverStunned =
+				UCataclysmSkillEffects::IsStunned(Untouched.Actor);
+		}
+
+		TestFalse(TEXT("a slashing weapon never stuns in 200 hits"),
+			bSlashingEverStunned);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 

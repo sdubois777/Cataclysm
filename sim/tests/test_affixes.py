@@ -1163,15 +1163,56 @@ def test_every_effect_a_gem_applies_is_reachable_as_an_affix():
     player-applicable effect with neither a gem nor an affix, which meant a
     Demonic character's burn chance from gear was always zero.
     """
-    assert {a.ailment for a in af.AILMENT_AFFIXES} == {
-        "Void Splinter", "Poison", "Bleed", "Madness", "Disease", "Necrosis",
-        "Burn", "Cripple", "Weaken", "Shred"}
+    from_gems = {"Void Splinter", "Poison", "Bleed", "Madness", "Disease",
+                 "Necrosis", "Burn", "Cripple", "Weaken", "Shred"}
+    covered = {a.ailment for a in af.AILMENT_AFFIXES}
+
+    # ONE DIRECTION, SINCE 2026-08-16. This compared the two sets for equality,
+    # which also required every AFFIX to have a gem -- never a stated rule, only
+    # a fact about the ten that existed. The chance to stun added for issue #298
+    # has no gem, deliberately: nothing in Gems.csv applies stun, which is what
+    # makes the affix the only way to buy the chance.
+    assert from_gems <= covered, sorted(from_gems - covered)
+
+
+#: The one ailment affix with no gem, and why. Written out so adding a second
+#: has to be deliberate rather than a typo in a gem name.
+AFFIXES_WITH_NO_GEM = {"Chance to stun"}
 
 
 def test_every_ailment_affix_names_the_gem_that_shares_its_effect():
-    """So the two stay findable from each other when either is edited."""
+    """So the two stay findable from each other when either is edited.
+
+    THE CHANCE TO STUN IS THE EXCEPTION AND IS NAMED. Nothing in
+    `game/Data/Gems.csv` applies stun, so there is no gem for it to name. That is
+    also what makes the affix worth more than the same 15% is elsewhere: it is
+    the only way to buy chance beyond what a Blunt weapon gives free.
+    """
     for affix in af.AILMENT_AFFIXES:
+        if affix.name in AFFIXES_WITH_NO_GEM:
+            assert affix.gem == "", (
+                f"{affix.name} is listed as having no gem and names {affix.gem!r}. "
+                "If a gem now applies it, take it out of AFFIXES_WITH_NO_GEM.")
+            continue
         assert affix.gem.startswith("Of "), affix.name
+
+
+def test_no_gem_applies_the_effects_listed_as_having_none():
+    """What stops AFFIXES_WITH_NO_GEM being a way to skip the check above. If a
+    gem is ever added that applies stun, this fails and the exception goes."""
+    import pathlib
+
+    gems = (pathlib.Path(__file__).resolve().parents[2] / "game" / "Data"
+            / "Gems.csv")
+    if not gems.is_file():
+        pytest.skip("game/Data/Gems.csv is not present")
+
+    text = gems.read_text(encoding="utf-8-sig").lower()
+    for name in AFFIXES_WITH_NO_GEM:
+        effect = next(a.ailment for a in af.AILMENT_AFFIXES if a.name == name)
+        assert effect.lower() not in text, (
+            f"a gem in game/Data/Gems.csv now applies {effect}, so "
+            f"{name!r} should name it rather than being listed as having none.")
 
 
 def test_the_damage_over_time_effects_are_marked_as_such():

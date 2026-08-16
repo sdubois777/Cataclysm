@@ -20,6 +20,98 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — An affix grants a chance to stun, and chance past certainty becomes duration
+
+**Affects:** `Cataclysm_GDD_v2.md`, the effect magnitude table and the Weapon
+Sub-Types subsection; the Affixes and Debuffs sheets of
+`All_Things_Cataclysm.xlsx`. Applied. Closes issue #298 and the last quarter of
+issue #639.
+
+### The question, and the answer
+
+Issue #298 asked whether an affix grants a chance to stun and at what value, and
+noted that answering no was legitimate: Blunt's stun is the sub-type's identity,
+and an affix letting any weapon buy into it weakens that.
+
+**The project owner answered yes on 2026-08-16**, with the reason: "Guaranteed
+stuns are overpowered if you don't need to invest." So the chance must be bought
+rather than given, and **Blunt's 10% is part of the same pool** rather than a
+separate mechanic.
+
+**15%, on Necklace, Relic, Ring and Weapon, as a suffix.** The issue asked why it
+would be anything else: the four weakening chance affixes are all 15% on those
+four slots, and a chance-to-apply affix with a different shape would need a
+reason. There is none.
+
+**Last Epoch settled that the affix should exist at all.** Its "Increased Stun
+Chance" suffix runs 15% to 25% at its first tier and 131% to 170% at its seventh,
+so a shipped game in the genre sells exactly this stat. Path of Exile argues the
+other way and has no such stat: stun there is decided by damage against a
+threshold, so there is nothing to buy. This design already chose the Last Epoch
+shape when it gave Blunt a flat chance.
+
+**No gem.** Nothing in `game/Data/Gems.csv` applies stun, which makes the affix
+the only way to buy chance beyond what a Blunt weapon gives free. It is the first
+ailment affix with no gem, and two tests that required every affix to have one
+were relaxed to their stated direction with the exception named.
+
+### Chance past certainty becomes duration
+
+The project owner proposed this and marked it a question. **It is already the
+rule this project uses**, stated by them for damage over time on 2026-08-03: "DoT
+chance caps at 100%, anything beyond 100% applies to the magnitude ... if you
+have 800% chance to apply it, it gets a 700% multiplier." A stun has no damage,
+so its magnitude is its duration.
+
+    100% chance   0.75 seconds
+    200% chance   1.50 seconds
+    400% chance   3.00 seconds, which is the cap
+    800% chance   3.00 seconds
+
+### The cap, which the proposal needed and did not have
+
+**Without one the anti-stun-lock rule stops working, and that is arithmetic
+rather than judgement.** The immunity window is 5 seconds. A stun lasting 5
+seconds or more means the window expires while the target is still held, so the
+next hit re-stuns and the target never acts again — exactly the chain-stunning
+the window exists to stop. Blunt's 0.75 second base reaches 5 seconds at 667%
+chance, and the weakening ailments show that much is reachable: affixes alone
+reach 165% and gems reach 150% each.
+
+**Three seconds, and it is not a new number.** It is the longest stun the design
+already contains: the Brute's Heart ten-piece set bonus, the most expensive thing
+in the game to assemble. A character reaching the same hold through 400% chance
+has spent comparably. It also leaves a stunned target at least 2 seconds to act.
+
+**Stun is the one effect whose scaling stops dead at its cap.** Every other
+effect rolls over into duration once its magnitude caps, so scaling never dies. A
+stun's magnitude IS its duration, so there is nothing to roll over into. Past the
+cap the extra chance really is wasted, and that is the intended outcome.
+
+### Crowd control resistance reduces the total, not the capped chance
+
+So it bites into the overflow as well. A defender at 50 resistance facing 400%
+chance sees 200%, which is still certainty and still doubles the duration — but
+from twice the investment. Reducing only the capped 100 would make resistance
+worth nothing against a heavy stun build, which is the opposite of what a
+defensive stat is for.
+
+### An incidental stun obeys the damage threshold
+
+A stun rolled on an ordinary hit is **not** a designed stun.
+`UCataclysmSkillEffects::ApplyStun` takes a flag that skips the 10% damage
+threshold, and blunt's roll does not set it. Without that, chip damage from a
+fast blunt weapon would interrupt a well defended character constantly, which is
+half of what the rule exists to stop.
+
+### A constant was renamed
+
+`BLUNT_STUN_SECONDS` became `INCIDENTAL_STUN_SECONDS`. A stun rolled from the
+shared pool lasts that long whatever weapon is held, so a name mentioning only
+blunt had stopped being true.
+
+---
+
 ## 2026-08-16 — A hit's weapon sub-type is the one every swung weapon agrees on
 
 **Affects:** `Cataclysm_GDD_v2.md`, the Weapon Sub-Types subsection. Applied: one
