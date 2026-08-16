@@ -130,7 +130,7 @@ STAT_GROUPS: dict[str, tuple[str, ...]] = {
                 "retaliation", "crowd_control_resistance") + RESISTANCE_STATS,
     "Offense": ("crit_chance", "crit_multiplier", "attack_speed",
                 "area_of_effect", "dot_damage", "dot_frequency",
-                "dot_duration", "penetration",
+                "dot_duration", "penetration", "armor_penetration",
                 "spell_damage") + DAMAGE_VS_STATS,
     "Utility": ("movement_speed", "cooldown_reduction", "magic_find",
                 "loot_quantity"),
@@ -306,6 +306,29 @@ DEFAULT_STAT_LINE: dict[str, Scaling] = {
     "dot_frequency": Scaling(base=100.0),
     "dot_duration": Scaling(base=100.0),
     "penetration": Scaling(),
+    # ARMOUR PENETRATION IS A SECOND, SEPARATE STAT, and the two are not
+    # interchangeable: `penetration` above cuts into a target's RESISTANCE and
+    # this cuts into its ARMOUR. The enchantment tables treat them separately
+    # too -- "Your skills ignore 10%-25% of enemy resistances" against "Your
+    # skills ignore 10%-25% of enemy armor" -- and `damage.Attacker` has taken
+    # them as two parameters since it was written.
+    #
+    # IT IS ON THE SHEET BECAUSE TWO OF ITS THREE SOURCES ARE CHARACTER-WIDE.
+    # `EnchantmentsPositive.csv` carries "Your skills ignore 10%-25% of enemy
+    # armor", "Your critical hits ignore 20%-40% of enemy armor" and "Your first
+    # hit against each enemy ignores all armor", none of which belongs to one
+    # blow. The piercing weapon sub-type's flat 20% is the per-hit source and it
+    # adds to whatever this holds; `Attacker.total_armor_ignored` combines them.
+    #
+    # ZERO, NOT 100, because it is an added percentage rather than a percentage
+    # OF something -- the same shape as `penetration` above and the rule
+    # `tools/tests/test_stat_baselines_match_the_attribute_set.py` holds.
+    #
+    # ADDED 2026-08-16 FOR ISSUE #520. Enemy armour reached no arithmetic at all
+    # until issue #481 and is now the largest single mitigation layer on the most
+    # armoured creatures, so an entire enchantment family existed with nowhere to
+    # land.
+    "armor_penetration": Scaling(),
     "spell_damage": Scaling(),
     # Increased damage against one type of enemy. Zero for every class: no class
     # is born better against a Cataclysm, because which Cataclysms a run faces

@@ -34,6 +34,11 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitDotDuration(100.0f);
 
 	InitPenetration(0.0f);
+	// Zero, not 100, because it is an added percentage rather than a
+	// percentage OF something. Same shape as the resistance penetration
+	// above, and the rule test_stat_baselines_match_the_attribute_set.py
+	// holds. Issue #520.
+	InitArmorPenetration(0.0f);
 	InitSpellDamage(0.0f);
 
 	// Increased damage against one type of enemy. Zero for every class: no class
@@ -80,6 +85,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotFrequency);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotDuration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Penetration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SpellDamage);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsWar);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsDemonic);
@@ -160,6 +166,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetAttackSpeedAttribute(), GetAreaOfEffectAttribute(),
 		GetDotDamageAttribute(), GetDotFrequencyAttribute(),
 		GetDotDurationAttribute(), GetPenetrationAttribute(),
+		GetArmorPenetrationAttribute(),
 		GetSpellDamageAttribute(),
 		GetDamageVsWarAttribute(), GetDamageVsDemonicAttribute(),
 		GetDamageVsDeathAttribute(), GetDamageVsPestilenceAttribute(),
@@ -185,6 +192,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDamage)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotFrequency)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDuration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Penetration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SpellDamage)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsWar)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsDemonic)

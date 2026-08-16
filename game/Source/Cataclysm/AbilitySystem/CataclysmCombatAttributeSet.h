@@ -143,9 +143,40 @@ public:
 	FGameplayAttributeData DotDuration;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DotDuration)
 
+	/** Percentage points subtracted from a target's RESISTANCE. */
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_Penetration)
 	FGameplayAttributeData Penetration;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, Penetration)
+
+	/**
+	 * Percentage of a target's ARMOR ignored. A different stat from the
+	 * resistance penetration above, and not interchangeable with it.
+	 *
+	 * TWO STATS BECAUSE THE DESIGN HAS TWO SOURCES AND TWO STEPS. The enchantment
+	 * tables have always separated them -- "Your skills ignore 10%-25% of enemy
+	 * resistances" against "Your skills ignore 10%-25% of enemy armor" -- and the
+	 * damage calculation applies armor at step 3 and resistance at step 4.
+	 * `Attacker.armor_penetration` in `sim/cataclysm_sim/damage.py` has taken
+	 * them as two parameters since it was written.
+	 *
+	 * NOTHING HELD ONE UNTIL ISSUE #520. `FCataclysmIncomingHit::ArmorPenetration`
+	 * was applied correctly by `UCataclysmDamageCalculation::Resolve` and was
+	 * never set, because there was no attribute to read. Three enchantments in
+	 * `game/Data/EnchantmentsPositive.csv` grant it and none could do anything.
+	 *
+	 * IT MATTERS MORE THAN IT DID. Enemy armour reached no arithmetic at all
+	 * until issue #481 and is now the largest single mitigation layer on the most
+	 * armoured creatures: the Abyssal Warden's 5,954 armour removes 48.19% of a
+	 * hit at difficulty tier 8.
+	 *
+	 * A PIERCING WEAPON'S FLAT 20% IS NOT HERE. That belongs to the blow rather
+	 * than to the character, because it depends on what is in the hand at the
+	 * moment of the hit, and it ADDS to whatever this holds. Carrying the weapon
+	 * sub-type to a hit is separate work, split out of #520.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_ArmorPenetration)
+	FGameplayAttributeData ArmorPenetration;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ArmorPenetration)
 
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_SpellDamage)
 	FGameplayAttributeData SpellDamage;
@@ -265,6 +296,7 @@ protected:
 	UFUNCTION() void OnRep_DotFrequency(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DotDuration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Penetration(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_SpellDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageVsWar(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageVsDemonic(const FGameplayAttributeData& OldValue);

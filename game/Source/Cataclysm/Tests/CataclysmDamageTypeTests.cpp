@@ -799,6 +799,142 @@ CATACLYSM_TEST(FCataclysmAreaTagsAreReadCorrectlyTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Armour penetration, which is a different stat from the one above. Issue #520.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmArmorPenetrationReachesTheArmorStepTest,
+	"Cataclysm.DamageType.TheAttackersArmorPenetrationReachesTheArmorStep")
+{
+	// WHAT WAS WRONG. `FCataclysmIncomingHit::ArmorPenetration` was applied
+	// correctly by UCataclysmDamageCalculation::Resolve and was never set, because
+	// nothing in the project held an armour penetration value. Three enchantments
+	// in game/Data/EnchantmentsPositive.csv grant it and none could do anything.
+	//
+	// A DIFFERENT STAT FROM THE RESISTANCE PENETRATION ABOVE. That one is
+	// subtracted from the target's resistance at step 4; this ignores a share of
+	// its armour at step 3. The test above would pass with the two confused,
+	// which is why this one sets armour and no resistance at all.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an attacking enemy"), Attacker))
+	{
+		Attacker->SetAttackDamage(1'000.0f);
+
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+
+		// 800 ARMOUR AT TIER 1 IS EXACTLY HALF A HIT, because armour removes
+		// `armor / (armor + 800 x tier)`. A round figure makes the two readings
+		// below arithmetic rather than approximate.
+		Defender.Combat->SetArmor(800.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+		TestEqual(TEXT("with no armour penetration, half the hit is stopped"),
+			Defender.TakeDamageReading(), 500.0f, 1.0f);
+
+		// READ OFF THE ATTACKER, because penetration of either kind belongs to
+		// whoever is swinging rather than to any one blow.
+		if (UAbilitySystemComponent* Offence =
+				UCataclysmTargeting::AbilitySystemOf(Attacker))
+		{
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 50.0f);
+		}
+
+		// IGNORING HALF THE ARMOUR LEAVES 400, which removes a third rather than a
+		// half, so 666.7 lands. Note the two are NOT proportional: the armour curve
+		// bends, which is the whole reason it is a curve.
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+		TestEqual(TEXT("ignoring half the armour lets two thirds through"),
+			Defender.TakeDamageReading(), 666.7f, 1.0f);
+
+		// AND IGNORING ALL OF IT LETS THE WHOLE HIT THROUGH, which is what the
+		// enchantment "Your first hit against each enemy ignores all armor" needs.
+		if (UAbilitySystemComponent* Offence =
+				UCataclysmTargeting::AbilitySystemOf(Attacker))
+		{
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 100.0f);
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+		TestEqual(TEXT("ignoring all of it lets the whole hit through"),
+			Defender.TakeDamageReading(), 1'000.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTheTwoPenetrationsAreSeparateTest,
+	"Cataclysm.DamageType.TheTwoPenetrationStatsAreNotTheSameStat")
+{
+	// THE FAILURE THIS CATCHES is one attribute being read where the other was
+	// meant, which every assertion above would survive: each of those tests sets
+	// only the layer it is about, so a swap would look like the stat working.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Attacker = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an attacking enemy"), Attacker))
+	{
+		Attacker->SetAttackDamage(1'000.0f);
+
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+
+		// ARMOUR ONLY, AND NO RESISTANCE AT ALL. Resistance penetration therefore
+		// has nothing to work on, and any damage it appears to add is it reaching
+		// the wrong step.
+		Defender.Combat->SetArmor(800.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		if (UAbilitySystemComponent* Offence =
+				UCataclysmTargeting::AbilitySystemOf(Attacker))
+		{
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetPenetrationAttribute(), 100.0f);
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+		TestEqual(TEXT("resistance penetration does nothing to armour"),
+			Defender.TakeDamageReading(), 500.0f, 1.0f);
+
+		// AND THE OTHER WAY ROUND: resistance and no armour, with armour
+		// penetration at its maximum.
+		CataclysmDamageTypeTest::FScopedCombatant Second(World);
+		Second.Resistances->SetDemonicResistance(50.0f);
+		Second.LastHealth = Second.Vitals->GetHealth();
+
+		if (UAbilitySystemComponent* Offence =
+				UCataclysmTargeting::AbilitySystemOf(Attacker))
+		{
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetPenetrationAttribute(), 0.0f);
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 100.0f);
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Second.Actor, 100.0f);
+		TestEqual(TEXT("armour penetration does nothing to resistance"),
+			Second.TakeDamageReading(), 500.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
+
 
 #endif  // WITH_AUTOMATION_TESTS

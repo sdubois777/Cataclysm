@@ -147,20 +147,27 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// Twenty-five since the eight increased-damage-against-a-type stats were
 	// added for #213. Seventeen before that. Twenty-seven since damage over time
 	// damage and damage over time duration joined damage over time frequency
-	// for #205.
-	TestEqual(TEXT("Twenty-seven combat and utility stats, plus attack damage off the sheet"),
-		Combat, 27 + OffSheetCombatStats);
+	// for #205. Twenty-eight since armour penetration was added for #520 -- a
+	// SECOND penetration stat, cutting into armour where the first cuts into
+	// resistance.
+	TestEqual(TEXT("Twenty-eight combat and utility stats, plus attack damage off the sheet"),
+		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);
 	TestEqual(TEXT("Two class resource attributes"), Resource, 2);
 
-	// The 45 sheet stats: 3 maxima + 6 recovery from vitals, 27 combat,
+	// The 46 sheet stats: 3 maxima + 6 recovery from vitals, 28 combat,
 	// 8 resistances, 1 class resource maximum. The six recovery stats are the
-	// three regenerations and the three leeches. The 27 combat stats include the
+	// three regenerations and the three leeches. The 28 combat stats include the
 	// eight increased-damage-against-a-type figures, which are the offensive
-	// mirror of the eight resistances, and the three damage over time levers.
-	TestEqual(TEXT("Forty-five stats on the character sheet"),
-		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 45);
+	// mirror of the eight resistances, the three damage over time levers, and the
+	// two penetrations -- one for resistance and one for armour.
+	//
+	// `sim/cataclysm_sim/character.py` states the same count and
+	// `tools/tests/test_leech.py` compares the two, which is the check that
+	// really runs: continuous integration compiles no C++.
+	TestEqual(TEXT("Forty-six stats on the character sheet"),
+		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 46);
 	return true;
 }
 
