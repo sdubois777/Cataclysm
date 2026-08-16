@@ -151,7 +151,17 @@ float UCataclysmDamageCalculation::ArmorReduction(float Armor, int32 Tier)
 float UCataclysmDamageCalculation::EffectiveResistance(float Resistance,
 													   float Penetration)
 {
-	return FMath::Clamp(Resistance - Penetration, ResistanceFloor, ResistanceCap);
+	// Penetration stops at zero. Anything past the target's own resistance is
+	// wasted rather than pushing the figure negative, or over-stacking becomes a
+	// damage multiplier against the targets that resist least. A resistance that
+	// is ALREADY negative is left where it is: that state is inflicted
+	// deliberately by enchantments and penetration must not manufacture it.
+	// Issue #482, and `effective_resistance` in `sim/cataclysm_sim/damage.py`
+	// carries the same rule.
+	const float ReachableByPenetration = FMath::Min(Resistance, 0.0f);
+	const float Penetrated =
+		FMath::Max(Resistance - Penetration, ReachableByPenetration);
+	return FMath::Clamp(Penetrated, ResistanceFloor, ResistanceCap);
 }
 
 FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(

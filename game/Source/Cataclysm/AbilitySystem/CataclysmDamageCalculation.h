@@ -178,6 +178,16 @@ public:
 	 * that makes over-capping worth anything: against 30 penetration a defender
 	 * at 100 resistance still sits at the 70 cap, where one at exactly 70 drops
 	 * to 40. Capping first would make every point above 70 worthless.
+	 *
+	 * PENETRATION STOPS AT ZERO. `docs/Cataclysm_GDD_v2.md` states in section X
+	 * that "penetration beyond an enemy's resistance grants no bonus, so
+	 * over-stacking it does not become a damage multiplier against the enemies
+	 * that need it least". Until issue #482 the subtraction ran on into negative
+	 * resistance, so 50 penetration against a 35% target landed 115% of a hit.
+	 *
+	 * A NATIVELY NEGATIVE RESISTANCE IS LEFT ALONE, which is why the floor is not
+	 * simply zero. Enchantments push a target under zero deliberately and that
+	 * target takes extra damage; penetration must not create that state itself.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
 	static float EffectiveResistance(float Resistance, float Penetration);

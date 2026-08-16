@@ -423,10 +423,11 @@ def test_penetration_beyond_an_enemys_resistance_does_not_grant_bonus_damage():
     penetration pushing the fraction ABOVE what an identical creature with no
     resistance at all would take, and that is what this checks.
 
-    `enemy_stats` clamps penetration at the enemy's own resistance to get this.
-    `damage.effective_resistance` does not, and lets penetration overshoot into
-    negative resistance -- that is issue #482, still open, and this test is what
-    stops routing through `damage.resolve` importing it.
+    `damage.effective_resistance` is what stops the overshoot, since issue #482.
+    This file used to clamp penetration itself before handing it over, because
+    the shared function let penetration run on into negative resistance; that
+    local clamp is gone and this test now checks the shared rule reaches an
+    enemy rather than checking a copy of it.
     """
     warden = at_tier_eight("Herald", "Abyssal Warden")
     unresisted = 1.0 - dmg.armor_reduction(warden.armor, warden.tier) / 100.0

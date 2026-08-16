@@ -20,6 +20,61 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — Penetration stops at zero resistance, and does not deepen a negative one
+
+**Affects:** `Cataclysm_GDD_v2.md`, section X, the enemy resistance subsection.
+Applied: one new paragraph. Closes issue #482.
+
+### What was wrong
+
+The design document has always said that "penetration beyond an enemy's
+resistance grants no bonus, so over-stacking it does not become a damage
+multiplier against the enemies that need it least". **Both implementations did
+the opposite.** `effective_resistance` in `sim/cataclysm_sim/damage.py` and
+`UCataclysmDamageCalculation::EffectiveResistance` in the game each subtracted
+penetration from resistance and let the result run negative, so against the
+Abyssal Warden's 35% a player with 50 penetration landed 115% of a hit and one
+with 80 landed 145%.
+
+### The part the document did not settle
+
+A negative resistance is legitimate on its own. Several enchantments push a
+target below zero deliberately and that target should take extra damage, which
+is why the floor in both files is -100 rather than 0. So "stop at zero" is not
+enough on its own: the rule has to distinguish a negative the enchantments
+inflicted from one penetration produced.
+
+**The decision: penetration may remove resistance down to zero and no further,
+and a resistance that is already negative is left where it is.** A target at
+-25% takes 125% of a hit whether the attacker has no penetration or sixty.
+
+### What the genre does, and it is split
+
+- **Path of Exile 1 allows it.** Penetration reduces resistance below 0% and
+  there is no floor on the result at all.
+- **Path of Exile 2 does not.** Penetration reduces the value the hit is
+  calculated against and cannot take it below 0%; negative resistance there comes
+  from reduction effects instead. One unique item, Leopold's Applause, carries an
+  explicit modifier letting hits penetrate down to -50%, which is the only way
+  past the floor.
+
+So this game's stated rule is Path of Exile 2's shape rather than an invented
+one, and Path of Exile 1 is the counter-example that shows the other choice is
+survivable. **The document's position was already the considered one** and
+nothing argued against it, so this changed the code rather than the design.
+
+Path of Exile 2's unique-item exception is also a design option this leaves open:
+an affix or enchantment that explicitly says it penetrates past zero would be a
+deliberate, named exception rather than the default behaviour every point of
+penetration gets. Nothing proposes one today.
+
+Sources: [Resistance, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Resistance),
+[Resistance penetration, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Resistance_penetration),
+[PoE 2 Resistance, Curses, Exposure and Penetration](https://poe2.stratlore.com/en/guides/resistance-curse-exposure-penetration/),
+[PoE 2 Penetration Explained, Mobalytics](https://mobalytics.gg/poe-2/guides/penetration).
+
+---
+
 ## 2026-08-16 — Repeated displacement halves, and the count lives on the target
 
 **Affects:** no design document. This records **implementation catching up with a

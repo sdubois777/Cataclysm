@@ -374,9 +374,25 @@ def effective_resistance(resistance: float, penetration: float) -> float:
 
     Capping first would make every point above 70 worthless and would contradict
     the design's own statement that over-capping is possible via affixes.
+
+    PENETRATION STOPS AT ZERO AND CANNOT PUSH PAST IT. `docs/Cataclysm_GDD_v2.md`
+    states it in the enemy resistance subsection of section X: "Penetration beyond
+    an enemy's resistance grants no bonus, so over-stacking it does not become a
+    damage multiplier against the enemies that need it least." Before issue #482
+    the subtraction ran on into negative resistance, so 50 penetration against the
+    Abyssal Warden's 35% resistance landed 115% of a hit rather than 100%.
+
+    A NATIVELY NEGATIVE RESISTANCE IS UNTOUCHED, and telling the two cases apart
+    is the whole reason the floor below is not simply zero. Several enchantments
+    push a target's resistance under zero deliberately and that target should take
+    extra damage; what must not happen is penetration MANUFACTURING that state
+    against a target that resists. So the floor penetration may reach is the
+    lower of zero and the target's own resistance, and `RESISTANCE_FLOOR` still
+    bounds how far a natively negative one can go.
     """
-    return max(RESISTANCE_FLOOR,
-               min(RESISTANCE_CAP, resistance - penetration))
+    reachable_by_penetration = min(resistance, 0.0)
+    penetrated = max(resistance - penetration, reachable_by_penetration)
+    return max(RESISTANCE_FLOOR, min(RESISTANCE_CAP, penetrated))
 
 
 def effective_stun_chance(attacker: Attacker, defender: Defender) -> float:
