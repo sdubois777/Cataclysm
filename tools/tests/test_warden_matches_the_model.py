@@ -23,9 +23,13 @@ applied here in the open rather than hidden on either side.
 WHAT IS DELIBERATELY NOT COMPARED. The three shares -- `health_share`,
 `damage_share` and `armor_share`. A share is a multiplier on a score-scaled base
 and nothing in the engine knows an encounter's Power Score, so a figure for one
-declared on a C++ class would be invented rather than designed. They reach the
-sandbox as scaffolding instead, and the two scaffolding figures ARE checked below
-against the shares they claim to apply.
+declared on a C++ class would be invented rather than designed.
+
+THE SANDBOX HEALTH AND ARMOUR ARE THE MODEL'S OWN FIGURES SINCE ISSUE #525, read
+at one stated encounter and checked against it below. They used to be the
+training dummy's numbers times the shares above, which is a ratio the model
+states applied to a base it does not. The sandbox ATTACK DAMAGE is still that
+scaffolding, deliberately, and is still checked only for the ratio it claims.
 """
 
 from __future__ import annotations
@@ -569,23 +573,55 @@ def test_the_capsule_half_height_is_not_taller_than_the_art():
 # The sandbox scaffolding
 # --------------------------------------------------------------------------
 
-def test_the_sandbox_health_is_the_dummys_times_the_designed_share():
-    """Scaffolding, but scaffolding that claims a ratio, so the ratio is checked.
+def sandbox_stat_block():
+    """The one encounter the sandbox's health and armour figures come from.
 
-    The comment on the property says it is the training dummy's health times the
-    archetype's health share. That claim is what makes the sandbox creature as
-    much tougher than a dummy as the model says it should be, and it is the kind
-    of claim that goes stale when a share is retuned.
+    The same encounter `tools/tests/test_brute_matches_the_model.py` reads, and
+    the same one the comment block in `CataclysmGameMode.h` names. Issue #525.
     """
-    dummy = property_default("TrainingDummyHealth", GAME_MODE_HEADER)
-    expected = dummy * warden().health_share
+    from cataclysm_sim.enemy_stats import stats_on_floor
 
-    assert property_default("AbyssalWardenHealth", GAME_MODE_HEADER) == \
-        pytest.approx(expected), (
-        f"AbyssalWardenHealth is "
-        f"{property_default('AbyssalWardenHealth', GAME_MODE_HEADER)} and the "
-        f"training dummy's {dummy} times the designed health share of "
-        f"{warden().health_share} is {expected}.")
+    return stats_on_floor("Common", 1, "Cataclysm", total_floors=50, floor=50,
+                          kind="Abyssal Warden")
+
+
+def test_the_sandbox_health_is_the_models_tier_one_figure():
+    """The sandbox Warden is the design model's Common Abyssal Warden at tier 1.
+
+    COMMON, THOUGH THE DESIGN MEETS THIS CREATURE AT HERALD. At Herald the same
+    stat block is 6,161 health, which an ungeared character kills in 148 uses of
+    a 1.5 second cooldown -- nearly four minutes. The sandbox exists to watch
+    what a creature does, and the rarity ladder is issues #39 and #355.
+
+    IT USED TO BE 17,500, the training dummy's 5,000 times the health share of
+    3.50, which took 240 uses. That is what issue #525 was.
+    """
+    designed = sandbox_stat_block().health
+    written = property_default("AbyssalWardenHealth", GAME_MODE_HEADER)
+
+    assert written == pytest.approx(round(designed)), (
+        f"AbyssalWardenHealth is {written} and the design model gives a Common "
+        f"Abyssal Warden at tier 1, on the last floor of a 50-floor Cataclysm "
+        f"dungeon, {designed:.2f}. The model is authoritative.")
+
+
+def test_the_sandbox_armour_is_the_models_tier_one_figure():
+    """The armour that reached no creature at all until issue #525."""
+    designed = sandbox_stat_block().armor
+    written = property_default("AbyssalWardenArmour", GAME_MODE_HEADER)
+
+    assert written == pytest.approx(round(designed)), (
+        f"AbyssalWardenArmour is {written} and the design model gives "
+        f"{designed:.2f} at the same encounter as its health.")
+
+
+def test_the_sandbox_warden_is_armoured_at_all():
+    """Zero is what it was, so a regression to zero gets its own reason."""
+    assert property_default("AbyssalWardenArmour", GAME_MODE_HEADER) > 0.0, (
+        "The sandbox Abyssal Warden has no armour again. Nothing outside a test "
+        "called SetArmour anywhere in the project until issue #525, so every "
+        "enemy carried none and the difficulty tier -- which does nothing "
+        "except divide an armour value -- was invisible in play.")
 
 
 def test_the_sandbox_damage_is_the_dummys_times_the_designed_share():
