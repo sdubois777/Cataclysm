@@ -124,6 +124,47 @@ def test_negative_resistance_is_bounded():
     assert dm.effective_resistance(-9999.0, 0.0) == dm.RESISTANCE_FLOOR
 
 
+def test_penetration_past_a_targets_resistance_grants_nothing():
+    """ISSUE #482. The design document forbids over-stacked penetration becoming
+    a damage multiplier: "Penetration beyond an enemy's resistance grants no
+    bonus, so over-stacking it does not become a damage multiplier against the
+    enemies that need it least."
+
+    Written against the Abyssal Warden's 35%, which is the worked example the
+    document itself uses and the highest resistance in the vertical slice. Before
+    the fix, 50 penetration gave -15% effective resistance and 115% of a hit."""
+    for penetration in (35.0, 50.0, 80.0, 200.0):
+        assert dm.effective_resistance(35.0, penetration) == pytest.approx(0.0)
+
+    d = plain(resistances={"Demonic": 35.0})
+    assert taken(hit(penetration=35.0), d) == pytest.approx(1000.0)
+    assert taken(hit(penetration=200.0), d) == pytest.approx(1000.0)
+
+
+def test_penetration_is_worth_less_once_it_passes_the_target():
+    """The property that makes it a defence-stripping stat rather than a scaling
+    one: each point up to the target's resistance is worth the same, and every
+    point past it is worth nothing."""
+    steps = [dm.effective_resistance(35.0, p) for p in (0.0, 10.0, 20.0, 30.0)]
+    gaps = [steps[i] - steps[i + 1] for i in range(len(steps) - 1)]
+    assert all(gap == pytest.approx(10.0) for gap in gaps)
+    assert dm.effective_resistance(35.0, 40.0) == dm.effective_resistance(35.0, 35.0)
+
+
+def test_penetration_does_not_deepen_a_natively_negative_resistance():
+    """The case that stops this being a clamp at zero. An enchantment can push a
+    target's resistance below zero and that target should take extra damage; what
+    the rule forbids is penetration MANUFACTURING that state. So a target already
+    at -25% stays at -25% however much penetration is thrown at it, and the floor
+    still bounds how far a native negative can go."""
+    assert dm.effective_resistance(-25.0, 0.0) == pytest.approx(-25.0)
+    assert dm.effective_resistance(-25.0, 60.0) == pytest.approx(-25.0)
+
+    d = plain(resistances={"Demonic": -25.0})
+    assert taken(hit(), d) == pytest.approx(1250.0)
+    assert taken(hit(penetration=60.0), d) == pytest.approx(1250.0)
+
+
 def test_penetration_only_affects_the_matching_damage_type():
     d = plain(resistances={"Demonic": 70.0, "Void": 70.0})
     demonic = taken(hit(damage_type="Demonic", penetration=70.0), d)

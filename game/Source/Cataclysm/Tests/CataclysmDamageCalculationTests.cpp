@@ -173,6 +173,36 @@ CATACLYSM_TEST(FCataclysmPenetrationOrderTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmPenetrationOvershootTest,
+	"Cataclysm.Damage.PenetrationPastATargetsResistanceGrantsNothing")
+{
+	using FCalc = UCataclysmDamageCalculation;
+
+	// ISSUE #482. The design document forbids over-stacked penetration turning
+	// into a damage multiplier. 35% is the Abyssal Warden's resistance, the
+	// worked example the document uses and the highest in the vertical slice.
+	// Before the fix, 50 penetration gave -15% and 115% of a hit landed.
+	for (const float Penetration : { 35.0f, 50.0f, 80.0f, 200.0f })
+	{
+		TestEqual(TEXT("Penetration stops at zero resistance"),
+			FCalc::EffectiveResistance(35.0f, Penetration), 0.0f);
+	}
+
+	// Every point up to the target's resistance is worth the same, and every
+	// point past it is worth nothing. That is what makes it a defence-stripping
+	// stat rather than a scaling one.
+	TestEqual(TEXT("A point below the target's resistance still bites"),
+		FCalc::EffectiveResistance(35.0f, 20.0f), 15.0f);
+
+	// A natively negative resistance is left where it is. Enchantments inflict
+	// that state on purpose; penetration must not manufacture it.
+	TestEqual(TEXT("Penetration does not deepen a native negative"),
+		FCalc::EffectiveResistance(-25.0f, 60.0f), -25.0f);
+	TestEqual(TEXT("A native negative still takes extra damage"),
+		FCalc::EffectiveResistance(-25.0f, 0.0f), -25.0f);
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // The order, against a real set of attributes
 // --------------------------------------------------------------------------

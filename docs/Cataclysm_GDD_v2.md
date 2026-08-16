@@ -3672,6 +3672,10 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
+**Penetration cannot take a resistance below zero, and cannot deepen one that is already there.** Resistance below zero means taking extra damage, and several enchantments inflict exactly that, so a target sitting at -25% still takes 125% of a hit. What penetration may not do is produce that state itself. It removes resistance and stops when there is none left to remove.
+
+  
+
 **Those two percentages describe the resistance layer alone, and not what reaches the creature.** Resistance is one layer of several and a hit passes through all of them, multiplying. The Abyssal Warden also carries 5,954 armor at tier 8, which removes a further 48.2%, so 33.7% of an unpenetrated hit actually reaches it rather than 65%. Killing it in 30 swings needs 7,584 damage a swing, where counting resistance alone said 3,929. The full order is in the Damage Calculation section: evasion, block, armor, resistance, flat damage reduction, energy shield, health. Enemies have no block chance and no flat damage reduction today, so for an enemy the live layers are evasion, armor, resistance and the energy shield.
 
   

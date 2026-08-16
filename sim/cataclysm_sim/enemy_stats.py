@@ -614,22 +614,21 @@ class EnemyStats:
         evasion to direct attacks only and lets area damage land regardless, so
         an area attack against the same enemy gets a larger share through.
 
-        PENETRATION IS CLAMPED AT THE ENEMY'S OWN RESISTANCE before it is handed
-        over. `damage.effective_resistance` lets penetration overshoot into
-        negative resistance, which turns over-stacked penetration into a damage
-        multiplier -- that is issue #482, and the design document forbids it. This
-        file has always clamped, and routing through `damage.resolve` without
-        clamping here would import the defect rather than fix it. The clamp is
-        local on purpose: the shared fix belongs in `damage.py` under #482, and
-        this enemy's own resistance is known here, which is what makes clamping
-        possible at all.
+        PENETRATION IS CLAMPED AT THE ENEMY'S OWN RESISTANCE, and this file no
+        longer does the clamping itself. It used to, because
+        `damage.effective_resistance` let penetration overshoot into negative
+        resistance and turn over-stacking into a damage multiplier, which the
+        design document forbids. Issue #482 fixed that at the shared definition,
+        so the clamp here would now be a second copy of a rule that has one, and
+        it was removed. The behaviour is unchanged: over-stacked penetration
+        stops at zero resistance either way.
         """
         against = replace(self.defender_for(),
                           health=_PROBE_HEALTH, energy_shield=0.0)
         hit = damage.Attacker(
             damage=_PROBE_DAMAGE,
             damage_type=self.damage_type,
-            penetration=min(penetration, max(0.0, self.resistance)),
+            penetration=penetration,
             armor_penetration=armor_penetration,
             is_area=is_area,
         )
