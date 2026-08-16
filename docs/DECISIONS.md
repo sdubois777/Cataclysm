@@ -20,6 +20,67 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — The difficulty tier lives on the game mode until a dungeon exists
+
+**Affects:** no design document. This records where a number lives, not what it
+is. Applied. Closes issue #514.
+
+### What was wrong
+
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute` is the only place in the
+running game that resolves an incoming hit, and it passed a hard-coded difficulty
+tier of 1. The tier decides what armour is worth and nothing else:
+`ArmorReduction` is `armor / (armor + 800 x tier)` capped at 75%.
+
+Against the Abyssal Warden's designed armour of 5,954, that is the 75% cap at
+tier 1 against 48.19% at its own tier 8, so **25% of a hit landed where the design
+says 51.81% should**. Every armoured thing in the game was 2.07 times harder to
+hurt than the simulation says, and the most armoured creatures were the worst
+affected.
+
+**The 1 was honest.** Nothing in the project held a tier at all, so there was
+nothing to read. This is a value with no source rather than a wrong value read
+from the wrong place.
+
+### Where it goes, and why not where the design says
+
+**The design puts the tier on the encounter.** A dungeon has a difficulty tier
+and the enemies inside it stand at that tier. That is the right answer and it is
+part of issue #41, the dungeon runtime, which does not exist.
+
+**It goes on the game mode instead, world-wide, defaulting to 1.** That is the
+smallest thing that lets the sandbox match a chosen tier while there is no
+dungeon. It does not block the encounter-level answer and should be replaced by
+it.
+
+**One is the start of the game rather than a placeholder**, which is why the
+default did not change. The sandbox is where a new character stands, and a new
+character is at tier 1. What changed is that the figure can now be something else.
+
+### A console variable, because that is how this project tunes
+
+`Cataclysm.DifficultyTier` overrides the game mode while playing, with 0 meaning
+"use the game mode's own". That is the same shape as the Brute's two cooldown
+overrides, and it exists because the difference between the tiers is large and
+the only way to judge it is to stand in the sandbox and switch.
+
+Every answer is clamped to 1 to 8. A console variable is typed by hand, and a
+tier of 40 would make armour worth almost nothing without saying so.
+
+### One thing that could not be tested, and it is named rather than hidden
+
+**Finding the game mode from a world is not covered by any automation test.** A
+world built by a test has no authority game mode and cannot be given one:
+`UWorld::AuthorityGameMode` is private, and `UWorld::SetGameMode` on a world with
+no game instance crashes — measured, not assumed, on 2026-08-16, and it took the
+whole test run down with it.
+
+So the rule was split in two. `DifficultyTierFor` takes the game mode and decides;
+`DifficultyTierIn` finds the game mode and calls it. The decision is tested in
+full and exactly one line — the lookup — is not.
+
+---
+
 ## 2026-08-16 — The damage type axis of the skill matrix gets no wildcard, and a row naming a type nobody has now fails generation
 
 **Affects:** no design document. This records a decision **not** to build something,

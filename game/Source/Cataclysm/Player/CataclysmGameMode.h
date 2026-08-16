@@ -77,6 +77,84 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<class ACataclysmAbyssalWardenCharacter>> AbyssalWardens;
 
+	// ----------------------------------------------------------------------
+	// Difficulty
+	// ----------------------------------------------------------------------
+
+	/** The lowest and highest difficulty tier. `DIFFICULTY_TIERS` is 8 in
+	 *  `sim/cataclysm_sim/affixes.py`, and `UCataclysmPowerScore::TierAnchors`
+	 *  already carries one score anchor per tier plus an unused entry 0. */
+	static constexpr int32 LowestDifficultyTier = 1;
+	static constexpr int32 HighestDifficultyTier = 8;
+
+	/**
+	 * Which difficulty tier everything in this world stands at.
+	 *
+	 * WHAT IT DECIDES, AND IT IS ONLY ONE THING: what armour is worth.
+	 * `UCataclysmDamageCalculation::ArmorReduction` is
+	 * `armor / (armor + 800 x tier)` capped at 75%, so the same armour removes
+	 * far more of a hit at tier 1 than at tier 8. Nothing else in the damage
+	 * calculation reads the tier.
+	 *
+	 * EVERY HIT USED TO RESOLVE AT TIER 1 BECAUSE NOTHING HELD A TIER AT ALL.
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` passed a literal
+	 * 1, honestly, because there was nowhere to read one from. The Abyssal
+	 * Warden's designed armour of 5,954 removes 88.2% of a hit at tier 1 --
+	 * capped to 75% -- against 48.19% at tier 8, so every armoured thing in the
+	 * game was 2.07 times harder to hurt than its design says. Issue #514.
+	 *
+	 * THE DESIGN PUTS THIS ON THE ENCOUNTER, NOT THE WORLD. A dungeon has a
+	 * difficulty tier and the enemies inside it stand at that tier. There is no
+	 * dungeon yet -- that is issue #41 -- so this world-wide figure is the
+	 * smallest thing that lets the sandbox match a chosen tier. It does not
+	 * block the encounter-level answer and should be replaced by it.
+	 *
+	 * ONE, BECAUSE THE SANDBOX IS WHERE A NEW CHARACTER STANDS. That is the
+	 * start of the game rather than a placeholder. Use the
+	 * `Cataclysm.DifficultyTier` console variable to play at another tier
+	 * without editing this.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Difficulty",
+			  meta = (ClampMin = "1", ClampMax = "8"))
+	int32 DifficultyTier = LowestDifficultyTier;
+
+	/**
+	 * The difficulty tier a hit in this world resolves at.
+	 *
+	 * THE ONE PLACE THAT ANSWERS THE QUESTION, so a second caller cannot arrive
+	 * at a different answer. It finds this world's game mode and hands it to
+	 * `DifficultyTierFor` below, which decides.
+	 *
+	 * @param WorldContext anything that can find a world. Null answers with the
+	 *                     lowest tier.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Difficulty",
+			  meta = (WorldContext = "WorldContext"))
+	static int32 DifficultyTierIn(const UObject* WorldContext);
+
+	/**
+	 * The same question with the game mode already in hand.
+	 *
+	 * SPLIT FROM `DifficultyTierIn` SO THE RULE CAN BE TESTED. A world built by
+	 * an automation test has no authority game mode and cannot be given one:
+	 * `UWorld::AuthorityGameMode` is private and `UWorld::SetGameMode` needs a
+	 * game instance the test has not built. Keeping the decision here and the
+	 * world lookup there leaves exactly one untested line -- finding the mode --
+	 * instead of the whole rule.
+	 *
+	 * IT READS, IN ORDER: the `Cataclysm.DifficultyTier` console variable when
+	 * that has been set above zero, then the game mode's own `DifficultyTier`,
+	 * then `LowestDifficultyTier`. Every answer is clamped to the legal range,
+	 * because a console variable is typed by hand while playing and a tier of 40
+	 * would make armour worth almost nothing without saying so.
+	 *
+	 * FALLING BACK RATHER THAN FAILING on a null game mode, because a great deal
+	 * runs without one and a hit still has to produce a number. Tier 1 is the
+	 * answer those worlds already gave before anything read a tier at all.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Difficulty")
+	static int32 DifficultyTierFor(const ACataclysmGameMode* Mode);
+
 	/**
 	 * How many enemies to put in the level at the start of play.
 	 *

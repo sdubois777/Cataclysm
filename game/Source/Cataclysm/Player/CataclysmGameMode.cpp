@@ -11,6 +11,66 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerStart.h"
 #include "EngineUtils.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
+
+/**
+ * Play at a difficulty tier without editing the game mode's default.
+ *
+ * ZERO MEANS "USE THE GAME MODE'S", the same shape as the Brute's two cooldown
+ * overrides in `CataclysmBruteCharacter.cpp`. A sentinel rather than a second
+ * copy of the default, so the real figure has one home.
+ *
+ * WHAT IT IS FOR. The tier decides what armour is worth and nothing else, and
+ * the difference is large: the Abyssal Warden's 5,954 armour removes 75% of a
+ * hit at tier 1 against 48.19% at tier 8. Switching while standing in the
+ * sandbox is how that gets judged by play rather than by arithmetic.
+ */
+static TAutoConsoleVariable<int32> CVarDifficultyTier(
+	TEXT("Cataclysm.DifficultyTier"),
+	0,
+	TEXT("The difficulty tier every hit resolves at, 1 to 8. 0 uses the game "
+		 "mode's own DifficultyTier. It decides what armour is worth and "
+		 "nothing else: armour removes armor / (armor + 800 x tier) of a hit, "
+		 "capped at 75 percent, so the same armour is worth far more at tier 1."),
+	ECVF_Default);
+
+int32 ACataclysmGameMode::DifficultyTierFor(const ACataclysmGameMode* Mode)
+{
+	// THE CONSOLE VARIABLE WINS, so a tier chosen while playing takes effect on
+	// the next hit rather than on the next launch.
+	const int32 Override = CVarDifficultyTier.GetValueOnAnyThread();
+	if (Override > 0)
+	{
+		return FMath::Clamp(Override, LowestDifficultyTier,
+							HighestDifficultyTier);
+	}
+
+	if (Mode)
+	{
+		return FMath::Clamp(Mode->DifficultyTier, LowestDifficultyTier,
+							HighestDifficultyTier);
+	}
+
+	// No game mode. Every automation test builds a bare world, and a hit
+	// resolved there still has to produce a number.
+	return LowestDifficultyTier;
+}
+
+int32 ACataclysmGameMode::DifficultyTierIn(const UObject* WorldContext)
+{
+	const ACataclysmGameMode* Mode = nullptr;
+	if (WorldContext && GEngine)
+	{
+		if (const UWorld* World = GEngine->GetWorldFromContextObject(
+				WorldContext, EGetWorldErrorMode::ReturnNull))
+		{
+			Mode = World->GetAuthGameMode<ACataclysmGameMode>();
+		}
+	}
+
+	return DifficultyTierFor(Mode);
+}
 
 ACataclysmGameMode::ACataclysmGameMode()
 {
