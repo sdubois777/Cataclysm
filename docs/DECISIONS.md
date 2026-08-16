@@ -20,6 +20,148 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — Health bars and damage numbers, drawn on the canvas
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` section XIII, which gained a subsection
+"Over the World, Not on the Frame". Closes issue #518. Filed issues #649 and
+#650 along the way.
+
+### The problem
+
+The sandbox became fightable earlier the same day — a Brute dies to about seven
+uses of Molten Cleave — and nothing on screen reported any of it. There was no
+user interface code of any kind in `game/Source/`: no heads-up display class, no
+widget, and no `UMG`, `Slate` or `SlateCore` dependency on any of the three
+modules. Every combat figure settled in the preceding week — enemy armour, the
+eight-step mitigation order, damage types, resistance, resistance penetration —
+changes only how fast a health bar that did not exist goes down.
+
+That matters more here than in most projects, because this one settles combat
+constants by playing them rather than by arguing them first.
+
+### Three decisions, all the project owner's
+
+**How much interface to build: the smallest subset that makes a fight
+readable.** A bar over a creature, a number where a blow lands, and the player's
+own health. Not the designed heads-up display, which is the empire status bar,
+the skill slots with cooldowns and the minimap, and which is issue #49.
+
+**A health bar appears only after a creature has been hurt.** The design document
+does not mention enemy health bars at all — the phrase "health bar" occurs twice
+in it, once as a metaphor for energy shield and once saying a Heretic player has
+none. So this needed an answer rather than a lookup, and the genre gave one:
+
+| Game | A health bar over every enemy? | Source |
+| :-- | :-- | :-- |
+| Path of Exile 1 and 2 | Setting "Show Mini Life Bars on Enemies", under Options then UI, default unchecked. Even switched on it draws only after an enemy is damaged or moused over | http://www.vhpg.com/show-mini-life-bars-on-enemies/ and https://www.pathofexile.com/forum/view-thread/3739878 |
+| Diablo 4 | "Monster Health Bar Option" has three states: Hover Only, Always On, Always Off. A separate setting covers minions | https://www.vhpg.com/diablo-4-monster-health-bar-option/ |
+| Last Epoch | Independent switches for enemies, minions and players, and bars framed by rarity rather than gated by who gets one | https://forum.lastepoch.com/t/new-health-bars-coming-in-our-next-patch/15522 |
+
+**Which of Diablo 4's three states is the default is not recorded here, because
+no citable source states it.** Player reports say Hover Only; Blizzard publishes
+no default. What the citation does support is that Always On is a state the
+player has to choose, which is the part this decision rests on.
+
+The Path of Exile behaviour is the one that settles it, and it has a
+staff-tagged answer behind it. Asked to add an always-on option, a Grinding Gear
+Games reply on 2025-03-31 said monsters are not highlighted unless moused over
+or selected, and that "They are meant to be hard to see."
+
+The reason to follow Path of Exile rather than to draw one over everything is
+this game's own art direction, which states that the world is deliberately dark
+and low-light and that this fights the combat design. A bar over every creature
+undoes that before a fight has started. A bar that appears when something is hurt
+means "this fight has started" instead of "there is a creature here".
+
+**Damage numbers ship, on by default, with a switch.** Path of Exile 1 and 2 are
+the only games in the genre with none at all — the oldest request for them is
+from 2011 and none has ever shipped
+(https://www.pathofexile.com/forum/view-thread/4815). Diablo 4 and Last Epoch
+both ship them with a switch, and Diablo 4's switched-off state still shows
+critical strikes: its "Show All Damage Numbers" setting reads "Determines
+whether every character's hit damage is shown or just special hits (e.g.,
+Critical Strikes)" (https://mythicdrop.com/guide/diablo-4-gameplay-settings).
+**No game in the set colours a damage number by damage type.** In Last Epoch that
+is an open feature request
+(https://forum.lastepoch.com/t/more-floating-numbers-settings/65578).
+
+### Why the canvas rather than UMG
+
+Issue #518 proposed `UWidgetComponent` for both. Reading the installed Unreal
+5.8 source changed the recommendation, and the project owner chose the canvas
+with the port recorded as a follow-up.
+
+`AHUD::DrawHUD` needs **no new module dependency and no content asset of any
+kind**. `AHUD::DrawText` falls back to `GEngine->GetMediumFont()`, so there is
+still no font asset anywhere in the project; `AHUD::Project` does the
+world-to-screen arithmetic an overhead bar needs; and `AHUD::bShowHUD` already
+matches the Heretic lethality mode, which hides the display entirely.
+`Cataclysm.Build.cs` is unchanged by this work.
+
+A widget would have cost `UMG`, `Slate` and `SlateCore` — all three, because
+`UMG` lists the latter two as private dependencies, so adding only `UMG` does not
+compile — plus either a binary `.uasset` that cannot be reviewed in a diff, which
+issue #140 records the editor rewriting on open, or a C++ `UUserWidget` whose
+widget tree has to be built in `RebuildWidget`, because `NativeConstruct` runs
+after the Slate root has already been captured and a tree built there never
+appears at all.
+
+**The cost of that choice, stated plainly.** The canvas has no layout, no text
+reflow and no localisation. Three of the design's own commitments need all
+three: multiple language support, scalable heads-up display elements, and the
+four designed display elements themselves. So this is expected to be replaced,
+and issue #650 records the port rather than leaving the choice to become
+permanent by silence.
+
+### The colours, and the one rule they had to obey
+
+**`#FF3020` is reserved for the whole game.** Section XIII gives it to the attack
+telegraph and states there is one telegraph colour — not one per Cataclysm, not
+one per damage type — because the marker has to mean "this ground is about to
+hurt" everywhere. A health bar in the same red weakens the only signal that must
+survive all eight environments. The health bar is `#C0392B`, a darker and less
+saturated red, and an automation test fails if any bar colour is ever set to the
+reserved value.
+
+**Every bar carries the telegraph's own near-black `#0A0F12` as a backing**, drawn
+two pixels wider on every side. The design's readability guarantee — world
+surfaces under 30% brightness, effect primaries over 60% — holds a large fill
+against a floor but says nothing about a seven pixel bar seen against Demonic
+lava or a Celestial wall. The backing makes contrast a property of the bar.
+
+**The numbers are not coloured by damage type**, though
+`UCataclysmImpactEffect::ColoursFor` already maps all eight and reusing it would
+have been easy. Section XIII permits the damage-type palette and the rarity
+palette to overlap only because "the two palettes never share a surface", and a
+floating number is a third surface. Colour says where the damage went instead —
+reached health, absorbed by a pool, or stopped — which is what the reader
+actually wants to know and what Diablo 4 does with its own three-way scheme.
+
+### What it cannot do, and why
+
+**It cannot mark a critical strike.** `CritChance` and `CritMultiplier` exist as
+replicated attributes and are set on enemies from data, and no code in the
+project reads either one: the string `Crit` does not appear in
+`CataclysmDamageCalculation.cpp` at all, and neither `FCataclysmIncomingHit` nor
+`FCataclysmDamageResult` carries a flag saying a hit landed as one. That is issue
+#649, filed rather than built, because rolling critical strikes is a change to
+the damage pipeline and not to its presentation.
+
+### One thing deliberately built the other way round from its neighbour
+
+`UCataclysmImpactEffect::ShouldDrawFor` refuses a hit that never connected, so
+that a particle burst means "that landed" rather than "an attack happened". The
+damage number does the opposite and draws for exactly those hits: an evaded blow
+says "Evaded" and one that armour and resistance stopped shows a zero. A defence
+working completely is precisely the case nobody can see today, and it is what
+issues #483 and #644 are about.
+
+The one hit that gets no number is one that arrived at something already dead. A
+killing blow is not that case and must still be drawn — it leaves health at zero
+but dealt real damage getting there — which is why the rule tests both.
+
+---
+
 ## 2026-08-16 — The sandbox's enemies carry the design model's tier 1 figures
 
 **Affects:** nothing in the design documents. It replaces invented numbers in

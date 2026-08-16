@@ -13,6 +13,8 @@
 // For the weapon sub-type a hit carries, which is a property of what the
 // attacker is holding rather than a number on its attribute set. Issue #639.
 #include "Items/CataclysmWeaponSlotsComponent.h"
+// For the floating number that says what the blow did. Issue #518.
+#include "Interface/CataclysmCombatOverlay.h"
 #include "Cataclysm.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
@@ -339,6 +341,19 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 		Hit.bIsArea ? TEXT("yes") : TEXT("no"),
 		Outcome.DealtToHealth, Outcome.AbsorbedByShield, GetHealth(),
 		bWorthDrawing ? TEXT("yes") : TEXT("no"));
+
+	// THE NUMBER IS RECORDED BEFORE THE PARTICLE'S EARLY RETURN, DELIBERATELY,
+	// because the two follow opposite rules and the ordering is what enforces
+	// it. The particle refuses a hit that never connected, so that a burst means
+	// "that landed" rather than "an attack happened". A number is wanted for
+	// exactly those hits: an evaded blow says "Evaded" and one armour and
+	// resistance took to nothing shows a zero, which is the only way to see
+	// issues #483 and #644 happening while playing rather than in arithmetic.
+	//
+	// Struck may be null, and UCataclysmCombatOverlay::Record answers that by
+	// drawing nothing rather than guessing a position -- the same contract
+	// ActorToDrawOn states above.
+	UCataclysmCombatOverlay::Record(Struck, Hit, Outcome);
 
 	if (!bWorthDrawing || !Struck)
 	{
