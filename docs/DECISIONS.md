@@ -20,6 +20,66 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — The damage type axis of the skill matrix gets no wildcard, and a row naming a type nobody has now fails generation
+
+**Affects:** no design document. This records a decision **not** to build something,
+and the check that makes the absence say so. Applied. Closes issue #579.
+
+### What was asked for
+
+The weapon skill matrix has two axes. The WEAPON axis accepts a wildcard:
+`UCataclysmWeaponSkills::WeaponIndependent` is `All`, and the eight Aura rows use
+it, because an aura is not a property of the weapon being held. The DAMAGE TYPE
+axis does not — `UCataclysmWeaponSkills::SkillsFor` compares it exactly — so a row
+whose damage type is `All` matches a character whose damage type is literally the
+string "All", which no character has.
+
+Issue #579 asked for the missing wildcard.
+
+### Why it is not being built
+
+**Its reason has gone.** The issue was filed because the basic attack was expected
+to live in this matrix as fourteen damage-type-independent rows, one per weapon.
+Issue #524 settled that the other way on 2026-08-15: the basic attack comes from
+the weapon base, through `UCataclysmWeaponSkills::BasicAttackFor`, and the matrix
+has no basic attack row at all. **No row in `game/Data/WeaponSkills.csv` uses a
+damage type of `All` today and nothing needs one.**
+
+**Building it would mean choosing a rule with nothing to check the choice
+against.** The issue says so itself: with wildcards on both axes there are four
+classes of row rather than two, and which beats which for a contested slot has to
+be stated rather than fall out of loop order. Deciding that with no data that uses
+it means the first row ever written in that shape would be the thing that tests
+the rule, which is the wrong order.
+
+**Symmetry between the two axes is not a reason on its own.** The axes answer
+different questions. A weapon-independent skill is a real design idea — an aura
+does not care what is in your hands. A damage-type-independent skill has no
+equivalent argument today, because a character's damage type is what their skills
+ARE rather than a piece of equipment they happen to hold.
+
+### What was built instead, and it is wider than the issue asked
+
+**The Damage Type column was checked by nothing at all**, which is a larger hole
+than the wildcard. `validate_weapon_skill_damage_types` in
+`tools/generate_datatables.py` now holds every value in that column to the eight
+`Element.*` tags on the Tags sheet, in both directions.
+
+That closes the trap the issue identified at the point a designer would hit it,
+and a bigger one beside it: a MISSPELLED damage type was also silently dead data.
+An exact comparison in the engine means such a row generates cleanly, imports
+cleanly, fills no slot and reports nothing, so one typo costs one skill and says
+so nowhere. It is the same failure `validate_weapon_skill_types` was written for
+one column over, where a rename once left five of the fourteen weapons with no
+skills at all.
+
+`All` is refused by name rather than lumped in with the misspellings, and the
+message says the weapon column has a wildcard and this one does not. Somebody
+writing it has guessed at a symmetry that is not there, and the refusal should
+answer the guess.
+
+---
+
 ## 2026-08-16 — How far each enemy ability shoves, and that a shove is always straight away from what landed it
 
 **Affects:** `Cataclysm_GDD_v2.md`, the Stun and Anti-Stun-Lock section of section
