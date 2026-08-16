@@ -1718,6 +1718,74 @@ def validate_weapon_skill_types(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def validate_weapon_skill_damage_types(tables: dict[str, list[dict]],
+                                       declared: set[str]) -> list[str]:
+    """Every damage type in the Weapon Skills sheet must be one somebody has.
+
+    THE SAME SHAPE OF FAILURE `validate_weapon_skill_types` ABOVE WAS WRITTEN
+    FOR, one column over, and until issue #579 the Damage Type column was checked
+    by nothing at all. `UCataclysmWeaponSkills::SkillsFor` in the engine matches
+    it with `Row.DamageType.Equals(DamageType, ESearchCase::IgnoreCase)`, an exact
+    comparison, so a row naming a damage type nobody has is offered to nobody: it
+    generates cleanly, imports cleanly, fills no slot and produces no error. A
+    single misspelling costs one skill and says nothing.
+
+    THE WILDCARD CASE IS THE ONE THAT LOOKS LIKE IT SHOULD WORK. The WEAPON axis
+    has one -- `UCataclysmWeaponSkills::WeaponIndependent` is `All`, and the eight
+    Aura rows use it, because an aura is not a property of the weapon being held.
+    The damage type axis has no such thing, so `All` in this column is dead data
+    that reads like a feature. Refused by name below, with the reason, because
+    somebody writing it has guessed at symmetry that is not there.
+
+    NOTHING IN THE SHEET USES `All` TODAY and nothing needs to. Issue #579 was
+    filed when the basic attack was expected to live in this matrix as fourteen
+    damage-type-independent rows; issue #524 settled it the other way, and the
+    basic attack now comes from the weapon base through
+    `UCataclysmWeaponSkills::BasicAttackFor`. So the wildcard is not built,
+    because building it would mean choosing a precedence rule between four
+    classes of row with no data to check the choice against.
+
+    Cross-checked against the Tags sheet rather than a list written here, so
+    adding a ninth damage type to the design needs no change in this file.
+    """
+    skills = tables.get("WeaponSkills")
+    if not skills:
+        return []
+
+    real = {tag[len(ELEMENT_TAG_PREFIX):] for tag in declared
+            if tag.startswith(ELEMENT_TAG_PREFIX)}
+    if not real:
+        return []
+
+    problems = []
+    for name in sorted({row["DamageType"] for row in skills if row["DamageType"]}):
+        if name in real:
+            continue
+        if name == WEAPON_INDEPENDENT_SKILL:
+            problems.append(
+                f"WeaponSkills: damage type {name!r} is not a wildcard. The "
+                f"WeaponType column has one and this column does not: "
+                f"UCataclysmWeaponSkills::SkillsFor matches the damage type "
+                f"exactly, so these rows would be granted to nobody. Issue #579 "
+                f"records what building one would take. Name one of "
+                f"{sorted(real)} instead.")
+        else:
+            problems.append(
+                f"WeaponSkills: damage type {name!r} is not declared on the Tags "
+                f"sheet. A row naming a damage type nobody has is granted to "
+                f"nobody and reports nothing. The declared ones are "
+                f"{sorted(real)}.")
+
+    # And the other way. A damage type with no rows at all is a Cataclysm whose
+    # characters have no skills, which is a hole rather than a design choice.
+    covered = {row["DamageType"] for row in skills}
+    for name in sorted(real - covered):
+        problems.append(
+            f"WeaponSkills: the {name} damage type has no rows at all")
+
+    return problems
+
+
 #: The prefix every weapon type's gameplay tag carries. Declared on the Tags
 #: sheet and generated into game/Config/Tags/CataclysmTags.ini.
 WEAPON_TAG_PREFIX = "Item.Weapon."
@@ -2002,6 +2070,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weights(tables)
                 + validate_affix_slots(tables)
                 + validate_weapon_skill_types(tables)
+                + validate_weapon_skill_damage_types(tables, declared_tags(book))
                 + validate_weapon_tags(tables, declared_tags(book))
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)

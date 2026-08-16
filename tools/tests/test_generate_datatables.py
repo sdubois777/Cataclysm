@@ -372,6 +372,72 @@ class TestValidation:
         assert gen.validate_weights({"T": [{"Name": "r", "Weight": 20}]}) == []
 
 
+class TestASkillRowCannotNameADamageTypeNobodyHas:
+    """ISSUE #579. The Damage Type column of the Weapon Skills sheet was checked
+    by nothing at all, one column over from a WeaponType column that has been
+    checked since a rename left five weapons with no skills.
+
+    WHY A BAD ONE IS SILENT. `UCataclysmWeaponSkills::SkillsFor` in the engine
+    compares the damage type exactly, so a row naming one nobody has is offered
+    to nobody: it generates cleanly, imports cleanly, fills no slot and reports
+    nothing. One misspelling costs one skill and says so nowhere.
+    """
+
+    DECLARED = {"Element.Demonic", "Element.War", "Item.Weapon.Sword"}
+
+    @staticmethod
+    def skills(*damage_types: str) -> dict[str, list[dict]]:
+        return {"WeaponSkills": [
+            {"Name": f"{d}_Sword_Heavy", "WeaponType": "Sword",
+             "DamageType": d, "Slot": "Heavy"} for d in damage_types]}
+
+    def test_declared_damage_types_pass(self):
+        assert gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic", "War"), self.DECLARED) == []
+
+    def test_a_damage_type_nobody_declared_is_reported(self):
+        problems = gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic", "War", "Demonc"), self.DECLARED)
+        assert len(problems) == 1
+        assert "'Demonc' is not declared" in problems[0]
+
+    def test_the_wildcard_is_refused_by_name_and_says_why(self):
+        """`All` is what the WEAPON column means by every weapon. Somebody
+        writing it in this column has guessed at a symmetry that is not there,
+        so the refusal says that rather than only listing the legal values."""
+        problems = gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic", "War", "All"), self.DECLARED)
+        assert len(problems) == 1
+        assert "is not a wildcard" in problems[0]
+        assert "granted to nobody" in problems[0]
+
+    def test_a_damage_type_with_no_rows_at_all_is_reported(self):
+        """The other direction. A Cataclysm whose characters have no skills is a
+        hole rather than a design choice, which is the same check the weapon
+        column has carried since the rename that produced it."""
+        problems = gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic"), self.DECLARED)
+        assert len(problems) == 1
+        assert "the War damage type has no rows at all" in problems[0]
+
+    def test_it_reads_the_tags_sheet_rather_than_a_list_written_here(self):
+        """So adding a ninth damage type to the design needs no change in
+        tools/generate_datatables.py."""
+        assert gen.validate_weapon_skill_damage_types(
+            self.skills("Rust"), {"Element.Rust"}) == []
+
+    def test_the_real_workbook_passes(self):
+        """The check above is worth nothing if it does not run against the
+        shipping data. All 398 rows name one of the eight declared types."""
+        import openpyxl
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("the design workbook is not present")
+        book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
+        tables = {"WeaponSkills": gen.weapon_skills(book)}
+        assert gen.validate_weapon_skill_damage_types(
+            tables, gen.declared_tags(book)) == []
+
+
 class TestWeaponTagsAreNamedAfterTheWeapon:
     """ISSUE #620. Three weapons carried a tag named after what they used to be
     called -- a Greataxe's rows said `Item.Weapon.2hAxe` -- and nothing compared
