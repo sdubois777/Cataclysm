@@ -419,6 +419,51 @@ bool UCataclysmSkillEffects::IsStunned(const AActor* Actor)
 	return HasTag(Actor, StunnedTag());
 }
 
+bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
+											float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// Away from whatever hit it, along the ground.
+	FVector Away = Target->GetActorLocation() - Instigator->GetActorLocation();
+	Away.Z = 0.0f;
+	if (Away.IsNearlyZero())
+	{
+		// Standing exactly on the instigator. There is no direction to push in,
+		// and picking one arbitrarily would shove a target somewhere nobody could
+		// have predicted.
+		return false;
+	}
+
+	// HALVED FOR EACH DISPLACEMENT THE TARGET HAS ALREADY TAKEN INSIDE THE
+	// WINDOW: the full distance, then half, then a quarter, resetting once 5
+	// seconds pass with no displacement at all. Three shoves inside the window
+	// move a target seven metres in total rather than twelve, which is what stops
+	// it being held at the far end of a room. Issues #302 and #628.
+	//
+	// ASKED OF THE TARGET, because the count belongs to the target rather than to
+	// whatever is shoving: the previous shove was usually a different attack and
+	// often a different actor. It is kept on the ability system component because
+	// that is what everything hittable has.
+	float Share = 1.0f;
+	if (UCataclysmAbilitySystemComponent* TargetAbilities =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Target)))
+	{
+		Share = TargetAbilities->TakeNextDisplacementShare();
+	}
+
+	// A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has
+	// no physics body and a knockback that silently did nothing would look
+	// exactly like a knockback. Swept, so a shove into a wall stops at the wall.
+	Target->AddActorWorldOffset(Away.GetSafeNormal() * DistanceCm * Share,
+								/*bSweep=*/true);
+	return true;
+}
+
 FGameplayTag UCataclysmSkillEffects::DeadTag()
 {
 	return UGameplayTagsManager::Get().RequestGameplayTag(

@@ -148,7 +148,8 @@ void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
 void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
 										   float SpeedCmPerSecond,
 										   float HalfWidthCm,
-										   float DamagePercent)
+										   float DamagePercent,
+										   float KnockbackCm)
 {
 	if (SpeedCmPerSecond <= 0.0f)
 	{
@@ -167,6 +168,7 @@ void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
 	ChargeSpeedCmPerSecond = SpeedCmPerSecond;
 	ChargeHalfWidthCm = HalfWidthCm;
 	ChargeDamagePercent = DamagePercent;
+	ChargeKnockbackCm = KnockbackCm;
 	ChargeTravelledCm = 0.0f;
 	ChargeHitCount = 0;
 	ChargeAlreadyHit.Reset();
@@ -302,6 +304,23 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 		ChargeAlreadyHit.Add(Caught);
 		++ChargeHitCount;
 		UCataclysmSkillEffects::ApplyHit(this, Caught, ChargeDamagePercent);
+
+		// AND IT SHOVES WHAT IT RUNS THROUGH ASIDE, when the ability asked for
+		// it. The design settled on issue #310 that enemies displace the player
+		// and gave the reason for a charge in particular: the player's own Bull
+		// Rush and Cinder Rush charge through a crowd "knocking them aside", so a
+		// charge that runs through the player does the same to them. Issue #625.
+		//
+		// AWAY FROM THE CREATURE AT THE MOMENT OF CONTACT, which is what
+		// ApplyKnockback works out from the two positions. For a charge that is
+		// diagonal rather than straight out: contact happens at the LEADING edge
+		// of the lane, so the target is carried forward as well as out. It still
+		// finishes outside the lane, which is what clears the ground.
+		//
+		// ONCE PER TARGET PER CHARGE, because it sits inside the same guard the
+		// damage does. A charge that shoved on every step would push a target the
+		// whole length of the lane.
+		UCataclysmSkillEffects::ApplyKnockback(this, Caught, ChargeKnockbackCm);
 	}
 
 	if (bBlocked || FVector::Dist2D(Landed, ChargeEndPoint) <= KINDA_SMALL_NUMBER)

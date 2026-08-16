@@ -93,9 +93,15 @@ public:
 	 *   own Radius and the same figure the marker was drawn with.
 	 * @param DamagePercent      what one pass is worth, as a percent of the
 	 *   creature's attack damage.
+	 * @param KnockbackCm        how far each thing it runs through is shoved
+	 *   away from it, in centimetres. Zero for a charge that does not displace.
+	 *   Issue #625. It is a parameter rather than a constant here because it
+	 *   belongs to the ability, and the two designed charges are on different
+	 *   creatures.
 	 */
 	void BeginCharge(const FVector& ToPoint, float SpeedCmPerSecond,
-					 float HalfWidthCm, float DamagePercent);
+					 float HalfWidthCm, float DamagePercent,
+					 float KnockbackCm = 0.0f);
 
 	/** Whether a charge is running now. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Enemy")
@@ -457,6 +463,9 @@ private:
 
 	/** What one pass of the running charge is worth, as a percent. */
 	float ChargeDamagePercent = 0.0f;
+
+	/** How far the running charge shoves what it hits, in centimetres. */
+	float ChargeKnockbackCm = 0.0f;
 
 	/**
 	 * Who this charge has already hit.

@@ -647,7 +647,20 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                     # design's number and it was prose only; issue #361 made it
                     # a rider, and the general rule is 100 / GroundDuration.
                     "GroundPercent": 25,
-                    "GroundHitsAllies": 1},
+                    "GroundHitsAllies": 1,
+                    # 4 METRES BECAUSE IT IS A CHARGE THAT DOES NOT STUN, the
+                    # same figure and the same reason as the Abyssal Warden's
+                    # Stampede. Issue #625 chose the three distances; the design
+                    # names the band as the player's own 3 and 4 metres, with
+                    # Path of Exile's default of 4 units beside them.
+                    #
+                    # NOT IMPLEMENTED, AND IT IS THE ONLY ONE OF THE THREE THAT
+                    # IS NOT. The Hellhound has no C++ class -- only the Brute
+                    # and the Abyssal Warden are built -- so there is nothing to
+                    # attach a shove to. The number is decided and recorded here
+                    # so that building the creature does not have to decide it
+                    # again. Issue #39 builds the seven slice enemies.
+                    "Knockback": 4},
             # The Movement slot's typical cooldown in game/Data/SkillSlots.csv.
             cooldown=5.0,
             note="Charges in a straight line fixed when the wind-up starts, "
@@ -702,7 +715,21 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # 1.5 seconds of stun is the longest any designed player skill
             # grants -- Shield Bash's. An enemy's hold should not be longer than
             # the best one the player has.
-            params={"Radius": 3.5, "Angle": 360, "StunSeconds": 1.5},
+            #
+            # 3 METRES OF SHOVE, THE LOW END OF THE BAND, BECAUSE THIS ALSO
+            # STUNS. Issue #625 chose the three distances the design left open.
+            # The band is the player's own two numeric knockbacks -- Molten
+            # Crush's 3 metres and Searing Hook's 4 -- with Path of Exile's
+            # default of 4 units beside them. Of the three enemy abilities that
+            # displace, this is the only one that also holds the player still,
+            # and being moved while unable to act is already the harshest thing
+            # in the slice. The other two are charges and take the 4.
+            #
+            # Molten Crush is the right comparison rather than Searing Hook: it
+            # is the player's own slam that shoves outward from a point, which
+            # is what this is, where Searing Hook pulls along a line.
+            params={"Radius": 3.5, "Angle": 360, "StunSeconds": 1.5,
+                    "Knockback": 3},
             # 8 SECONDS, SET BY PLAYING IT on 2026-08-09, up from the 5 second
             # stun immunity window it used to sit exactly on.
             #
@@ -1017,7 +1044,24 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # The same rule the Hellhound's charge is sized by, producing the
             # same answer. It also keeps this ability clearly secondary to the
             # 5.6 metre ring below, which is what the creature is really about.
-            params={"Mode": "Charge", "Range": 8, "Radius": 1.5},
+            #
+            # 4 METRES OF SHOVE, THE TOP OF THE BAND, BECAUSE IT DOES NOT STUN.
+            # Issue #625 chose the three distances. The band is the player's own
+            # two numeric knockbacks -- Molten Crush's 3 metres and Searing
+            # Hook's 4 -- with Path of Exile's default of 4 units beside them.
+            # The Brute's Stomp takes the 3 because it also holds the player
+            # still; nothing about this charge denies the player anything once
+            # it has passed, so it takes the 4.
+            #
+            # IT LEAVES THE LANE, AND DIAGONALLY RATHER THAN STRAIGHT OUT.
+            # The shove is away from the creature and a charge meets its target
+            # at the LEADING edge of a 1.5 metre lane, so contact happens about
+            # 1.3 metres short of somebody standing 0.75 metres off the centre
+            # line and the push carries them forward as well as out. Measured in
+            # the engine on 2026-08-16: 334 cm along against 219 cm across. They
+            # still finish outside the lane, which is the requirement.
+            params={"Mode": "Charge", "Range": 8, "Radius": 1.5,
+                    "Knockback": 4},
             # The Movement slot's cooldown in game/Data/SkillSlots.csv.
             cooldown=5.0,
             note="A charge in a straight line fixed when the wind-up starts, "

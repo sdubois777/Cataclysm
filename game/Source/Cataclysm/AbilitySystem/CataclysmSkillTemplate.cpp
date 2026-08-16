@@ -213,48 +213,14 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 
 void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) const
 {
-	if (Params.KnockbackCm <= 0.0f || !IsValid(Self) || !IsValid(Target))
-	{
-		return;
-	}
-
-	// Away from the caster, along the ground. Searing Hook "knocks them back 4
-	// meters".
-	FVector Away = Target->GetActorLocation() - Self->GetActorLocation();
-	Away.Z = 0.0f;
-	if (Away.IsNearlyZero())
-	{
-		// Standing exactly on the caster. There is no direction to push in, and
-		// picking one arbitrarily would shove a target somewhere the player
-		// could not have predicted.
-		return;
-	}
-
-	// HALVED FOR EACH DISPLACEMENT THE TARGET HAS ALREADY TAKEN INSIDE THE
-	// WINDOW. The design's limit on repeated displacement, decided on issue #302
-	// and implemented on issue #628: the full distance, then half, then a
-	// quarter, resetting once 5 seconds pass with no displacement at all. Three
-	// shoves inside the window move a target seven metres in total rather than
-	// twelve, which is what stops it being held at the far end of a room.
-	//
-	// ASKED OF THE TARGET, because the count belongs to the target rather than to
-	// this skill: the previous shove was usually a different skill and often a
-	// different actor. It is kept on the ability system component because that is
-	// what everything hittable has -- being hit at all goes through
-	// UCataclysmSkillEffects::ApplyHit, which requires one.
-	float Share = 1.0f;
-	if (UCataclysmAbilitySystemComponent* TargetAbilities =
-			Cast<UCataclysmAbilitySystemComponent>(
-				UCataclysmTargeting::AbilitySystemOf(Target)))
-	{
-		Share = TargetAbilities->TakeNextDisplacementShare();
-	}
-
-	// A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has
-	// no physics body and a knockback that silently did nothing would look
-	// exactly like a knockback. Swept, so a shove into a wall stops at the wall.
-	Target->AddActorWorldOffset(
-		Away.GetSafeNormal() * Params.KnockbackCm * Share, /*bSweep=*/true);
+	// THE RULE ITSELF LIVES IN UCataclysmSkillEffects, and this reads its own
+	// distance out of the skill row and hands it over. It used to hold the whole
+	// body -- the direction, the halving and the swept move -- and that made
+	// displacement something only a player skill could do. An enemy attack is
+	// C++ on the creature rather than a skill template, so the Brute's Stomp and
+	// the Abyssal Warden's Stampede had no way to reach any of it. Issue #625
+	// moved it out; there is one definition of a shove and both directions use it.
+	UCataclysmSkillEffects::ApplyKnockback(Self, Target, Params.KnockbackCm);
 }
 
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Location)

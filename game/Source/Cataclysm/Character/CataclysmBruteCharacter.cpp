@@ -896,6 +896,23 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 
 			UCataclysmSkillEffects::ApplyStun(this, Caught, StompStunSeconds,
 											  Dealt, /*bStunIsDesigned=*/true);
+
+			// AND IT SHOVES, WHICH IS THE FIRST THING IN THE GAME TO MOVE THE
+			// PLAYER. The design settled on issue #310 that enemies displace the
+			// player and named this as one of the three abilities that do it;
+			// issue #625 is the implementation. Five player skills already grant
+			// immunity to displacement and until now protected against nothing.
+			//
+			// AFTER THE STUN, AND THE ORDER DOES NOT CHANGE THE OUTCOME. Neither
+			// reads the other. It is written last because a shove is the least of
+			// the three things this attack does, and reading it in the order the
+			// player feels them is worth more than any saving.
+			//
+			// OUTWARD FROM THE CREATURE, which ApplyKnockback works out from the
+			// two positions. That is right for a 360 degree slam: everything
+			// caught is pushed away from the middle rather than in one direction.
+			UCataclysmSkillEffects::ApplyKnockback(this, Caught,
+												   StompKnockbackCm);
 		}
 		return;
 	}

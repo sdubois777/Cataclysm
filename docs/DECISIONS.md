@@ -20,6 +20,73 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — How far each enemy ability shoves, and that a shove is always straight away from what landed it
+
+**Affects:** `Cataclysm_GDD_v2.md`, the Stun and Anti-Stun-Lock section of section
+VI and the three enemy ability tables in section X. Applied. Issue #625, and it
+closes two of the three abilities that issue names.
+
+### The three distances
+
+The design settled on issue #310 that enemies displace the player, named the three
+abilities that do it, and left the distances open. It set the band: the player's
+own two numeric knockbacks are Searing Hook's 4 metres and Molten Crush's 3, and
+Path of Exile's default knockback distance is 4 units.
+
+**One rule decides all three: an ability that also stuns takes the low end, and
+one that does not takes the high end.**
+
+| Enemy | Ability | Shove | Also stuns |
+| :-- | :-- | :-: | :-- |
+| The Brute | Stomp | 3 metres | Yes, 1.5 seconds |
+| The Hellhound | Hellrush | 4 metres | No |
+| The Abyssal Warden | Stampede | 4 metres | No |
+
+Being moved and being unable to act at the same time is the harshest thing in the
+vertical slice, so the one ability that does both does the smaller of the two.
+Molten Crush is also the right comparison for the Stomp rather than Searing Hook:
+it is the player's own slam that shoves outward from a point, where Searing Hook
+pulls along a line.
+
+### A shove is always straight away from whatever landed it
+
+**There is one direction rule and no special case for a charge**, and the reason
+is a measurement rather than a preference. The wording this started from was that
+a charge knocks a crowd "aside", which reads as a push perpendicular to the lane.
+Measuring the Abyssal Warden's charge in the engine showed away-from-the-creature
+already does the job: its lane is 1.5 metres to either side, so it makes contact
+about 1.3 metres short of somebody standing 0.75 metres off the centre line, and
+the shove from there is diagonal — 3.34 metres along the lane against 2.19 across.
+They still finish outside the lane, which is what clearing the ground means.
+
+Being carried forward by something running at you is also the sensible outcome
+rather than a defect to correct, so the second direction rule was dropped.
+
+### A shove is not announced separately in the telegraph
+
+All three abilities already draw a ground marker and already commit for a wind-up
+the player can walk out of, so the marker already says to leave the area. A second
+symbol for the displacement would add something to read without adding anything to
+do: the answer to being shoved is the same as the answer to being hit.
+
+### What is not settled, and it is the part that wants playing
+
+**Whether the Brute can close the three metres again has not been shown by
+anything.** On paper it can: it walks 2.8 metres per second and the stun it
+applies lasts 1.5 seconds, so it arrives before the target recovers. Nothing
+tests it, because the enemy behaviour fixture cannot move anybody —
+`AdvanceWorldClock` in `game/Source/Cataclysm/Tests/CataclysmEnemyBehaviourTests.cpp`
+adds to `World->TimeSeconds` and does not tick the world.
+
+That limitation is not hypothetical. With the shove in place and the fixture
+unchanged, the Brute went from 13 and 20 ordinary swings over thirty seconds to
+**zero at both ability cooldowns**, because the first stomp pushed its target out
+of reach and nothing could ever bring them back together. The tests now hold their
+target at the distance they placed it, which is the arrangement they were written
+to measure, and the real question is left for play.
+
+---
+
 ## 2026-08-16 — Penetration stops at zero resistance, and does not deepen a negative one
 
 **Affects:** `Cataclysm_GDD_v2.md`, section X, the enemy resistance subsection.

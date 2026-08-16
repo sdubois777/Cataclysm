@@ -135,6 +135,14 @@ namespace CataclysmBehaviourTest
 		// be waited out as well. With it, two abilities came to 5.7 seconds and
 		// the stomp was ready again -- which is what three tests reported as
 		// the Brute winding up when they expected a swing.
+		// WHERE EVERYTHING STANDS BEFORE ANY OF THIS, so it can be put back. See
+		// the restore at the end of this function for why.
+		TMap<AActor*, FVector> Placed;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			Placed.Add(*It, It->GetActorLocation());
+		}
+
 		int32 Used = 0;
 		for (int32 Pass = 0; Pass < 8; ++Pass)
 		{
@@ -164,6 +172,26 @@ namespace CataclysmBehaviourTest
 		// LONGER THAN THE INTERVAL, NOT EQUAL TO IT, so the comparison is not
 		// being asked to decide a tie.
 		AdvanceWorldClock(World, Driven->SecondsBetweenAttacks() + 0.05);
+
+		// AND EVERYTHING GOES BACK WHERE IT WAS, because spending the Brute's
+		// stomp now SHOVES what it catches three metres. Issue #625 gave three
+		// enemy abilities a knockback and this helper drives one of them.
+		//
+		// THIS IS SETUP PUTTING ITSELF BACK, NOT A RESULT BEING UNDONE. Every
+		// caller places its target at an exact distance and then asserts what the
+		// creature does at that distance; spending cooldowns is a precondition and
+		// is not meant to change the arrangement. Five tests failed the moment the
+		// stomp could move anything, all of them reporting the creature chasing
+		// where they expected a swing -- which was the shove working, inside a
+		// fixture written when nothing could move.
+		for (const TPair<AActor*, FVector>& Pair : Placed)
+		{
+			if (IsValid(Pair.Key)
+				&& !Pair.Key->GetActorLocation().Equals(Pair.Value, 0.01))
+			{
+				Pair.Key->SetActorLocation(Pair.Value);
+			}
+		}
 
 		return Used;
 	}
@@ -3045,10 +3073,31 @@ bool FCataclysmLongerCooldownsMeanMoreSwings::RunTest(const FString&)
 		Brute.Actor->SetActorRotation(FRotator::ZeroRotator);
 
 		// Thirty seconds at the thinking rate of four passes a second.
+		//
+		// THE TARGET IS PUT BACK AT CONTACT EVERY PASS, because the Brute's stomp
+		// shoves it three metres from 2026-08-16 and NOTHING IN THIS FIXTURE CAN
+		// EVER BRING THEM BACK TOGETHER. AdvanceWorldClock adds to
+		// World->TimeSeconds and does not tick the world, so no character here ever
+		// moves: the brain can order a chase and the creature stays where it is.
+		// Left alone, the first stomp ended the fight for the remaining 29 seconds
+		// and this measured zero ordinary swings at both cooldowns, against 13 and
+		// 20 before the shove existed.
+		//
+		// WHAT THIS TEST IS FOR IS THE TRADE BETWEEN ABILITIES AND SWINGS at a
+		// fixed distance, so holding the distance fixed is the arrangement rather
+		// than a result being undone. WHAT IT LEAVES UNTESTED is whether the
+		// creature can really close the three metres again -- it walks 2.8 m/s and
+		// the stun it applies lasts 1.5 s, so on paper it arrives before the target
+		// recovers, but nothing here can show that and it wants playing.
+		const FVector HoldAt = Player.Actor->GetActorLocation();
 		for (int32 Pass = 0; Pass < 120; ++Pass)
 		{
 			Brain->Think();
 			AdvanceWorldClock(World, 0.25);
+			if (!Player.Actor->GetActorLocation().Equals(HoldAt, 0.01))
+			{
+				Player.Actor->SetActorLocation(HoldAt);
+			}
 		}
 
 		OutSwings = Brain->AttacksOrdered;

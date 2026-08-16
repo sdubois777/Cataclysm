@@ -493,8 +493,13 @@ void ACataclysmAbyssalWardenCharacter::UseEnemyAbility(int32 Index,
 		// the full distance whether or not anything is still there; reading the
 		// target here would be the charge following the player, which is exactly
 		// what makes a telegraph unwalkable.
+		// AND IT SHOVES WHAT IT RUNS THROUGH, which is the second of the three
+		// enemy abilities the design names as displacing the player. Issue #625.
+		// The distance is passed in here rather than read inside the charge,
+		// because it belongs to this ability: the Brute's Stomp shoves a
+		// different distance for a stated reason.
 		BeginCharge(AimedAt, StampedeSpeedCmPerSecondInUse(), StampedeRadiusCm,
-					StampedeDamagePercent);
+					StampedeDamagePercent, StampedeKnockbackCm);
 	}
 }
 
