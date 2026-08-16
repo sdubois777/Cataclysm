@@ -191,9 +191,49 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		{
 			UCataclysmSkillEffects::ApplyBurn(Self, Target, Dealt);
 		}
+
+		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
+		// live inside UCataclysmStrikeSkill::SwingOnce, so only a Strike could
+		// shove. Issue #626 moved it: displacement is not specific to one kind of
+		// skill, and while it was a Strike parameter Shockwave Leap knocked back
+		// in its prose and could not say so in its data. Every template that hits
+		// anything comes through this function, so every one of them can now
+		// shove.
+		//
+		// NOT SCALED BY THE DAMAGE DEALT, deliberately. A Support skill deals no
+		// damage by design and can still push, which is what Forge Stance's
+		// opposite number would be. That is the difference between this and the
+		// burn above.
+		ApplyKnockbackTo(Self, Target);
 	}
 
 	return Total;
+}
+
+void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) const
+{
+	if (Params.KnockbackCm <= 0.0f || !IsValid(Self) || !IsValid(Target))
+	{
+		return;
+	}
+
+	// Away from the caster, along the ground. Searing Hook "knocks them back 4
+	// meters".
+	FVector Away = Target->GetActorLocation() - Self->GetActorLocation();
+	Away.Z = 0.0f;
+	if (Away.IsNearlyZero())
+	{
+		// Standing exactly on the caster. There is no direction to push in, and
+		// picking one arbitrarily would shove a target somewhere the player
+		// could not have predicted.
+		return;
+	}
+
+	// A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has
+	// no physics body and a knockback that silently did nothing would look
+	// exactly like a knockback. Swept, so a shove into a wall stops at the wall.
+	Target->AddActorWorldOffset(
+		Away.GetSafeNormal() * Params.KnockbackCm, /*bSweep=*/true);
 }
 
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Location)

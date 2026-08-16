@@ -20,6 +20,60 @@ applied or still pending.
 
 ---
 
+## 2026-08-15 — Knockback is a rider, not a property of one shape
+
+**Affects:** the shapes section of `Cataclysm_GDD_v2.md`; the Weapon Skills sheet
+of `All_Things_Cataclysm.xlsx`. Applied. Closes issue #626.
+
+### The decision
+
+**`Knockback` moved from the `Strike` shape's parameter list to the riders any
+shape may carry.** The project owner chose this over adding it to the `Movement`
+shape as well, which was the narrower alternative.
+
+**The reason is that displacement is not specific to one kind of skill.** A
+strike, a leap, a charge and an enemy slam can all shove. That is the same
+argument that made a burning patch of ground a rider rather than a shape of its
+own, and adding the parameter shape by shape would have meant answering the same
+question again for every shape that ever needs it.
+
+### What was actually broken
+
+**Shockwave Leap knocked back in its description and could not say so in its
+data.** It is a Movement skill, `Knockback` belonged to `Strike`, and the
+generator refuses a parameter its shape does not list. It now states
+`Knockback=3`, which is the Warhammer's own designed knockback from Molten Crush,
+its Heavy. Path of Exile's default knockback distance is 4 units, so 3 metres on a
+movement skill sits just inside that band.
+
+**Two of the three enemy abilities that will displace the player were blocked by
+the same thing.** The Hellhound's Hellrush and the Abyssal Warden's Stampede are
+both charges, which are Movement.
+
+### The code had the same shape as the data, and had to move too
+
+**Applying the shove lived inside `UCataclysmStrikeSkill::SwingOnce`**, so making
+the parameter legal everywhere would have produced a number a designer could write
+on any shape and only a Strike would honour — which is the exact class of failure
+four issues this month were about. It moved to
+`UCataclysmSkillTemplate::ApplyKnockbackTo`, called from `HitTargets`, which every
+template that hits anything already goes through.
+
+**Displacement is not scaled by the damage dealt**, deliberately, which is the
+difference between it and the burn rider beside it. A Support skill deals no
+damage by design and can still push.
+
+### One consequence worth stating rather than discovering
+
+**A repeating shape now shoves on every tick.** An Aura pulses through
+`HitTargets` once per `Interval`, so an Aura stating a `Knockback` would push on
+each pulse. No designed skill states one. What would bound it is the design's own
+limit on repeated displacement — each one inside 5 seconds moves half as far as
+the one before, decided on issue #302 — and that rule is implemented nowhere, for
+either direction. Issue #628 carries it.
+
+---
+
 ## 2026-08-15 — Enemies displace the player, and four stunning skills get a shape
 
 **Affects:** the Stun and Anti-Stun-Lock section of `Cataclysm_GDD_v2.md`; the

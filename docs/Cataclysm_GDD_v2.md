@@ -1640,7 +1640,7 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
 | Shape | What it does | Numbers it reads |
 | :-: | :-: | :-: |
-| Strike | Hits everything in a cone or ring around the caster. An angle of 360 is a ring. With a duration and an interval it repeats, which is what a spin is. | Radius, Angle, MaxTargets, Duration, Interval, Knockback |
+| Strike | Hits everything in a cone or ring around the caster. An angle of 360 is a ring. With a duration and an interval it repeats, which is what a spin is. | Radius, Angle, MaxTargets, Duration, Interval |
 | Projectile | Sends something out toward where the player is aiming. One that pierces travels a line and hits what it passes; one that does not lands and hits in a radius there. | Range, Radius, Pierce, Returns, Speed |
 | Self Buff | Grants the caster an effect for a duration. | Duration, Radius |
 | Movement | Moves the caster. A leap hits where it lands, a charge hits everything on the way, a blink hits at both ends and nothing between. | Mode, Range, Radius |
@@ -1651,7 +1651,11 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius`, `GroundDuration` and `GroundPercent`. Six other riders work the same way: `GroundHitsAllies` makes that ground burn everything standing in it whatever side it is on, `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `StunSeconds` is how long a stun lasts, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+**A burning patch of ground is a rider, not a shape.** Eight of the sixteen slice skills leave one behind on top of whatever else they do: Molten Cleave drags a line of slag, Emberhurl leaves its flight path burning, Infernal Plunge leaves a pool of lava. Any shape may carry `GroundRadius`, `GroundDuration` and `GroundPercent`. Seven other riders work the same way: `GroundHitsAllies` makes that ground burn everything standing in it whatever side it is on, `Burn` sets what the skill hits alight, `Effect` names a status effect from the Buffs, Debuffs or DoTs sheets, `StunSeconds` is how long a stun lasts, `Knockback` is how many metres the skill pushes what it hits away from the caster, `FinalHitPercent` is a closing blow at the end of something that repeats, and `HealthCostPercent` is a cost in health rather than mana.
+
+  
+
+**`Knockback` became a rider on 2026-08-15 and was a parameter of `Strike` alone before that.** Displacement is not specific to one kind of skill — a strike, a leap, a charge and an enemy slam can all shove — and while it belonged to one shape, Shockwave Leap knocked back in its description and had no way to say so in its data, because it is a Movement skill. Two of the three enemy abilities that will displace the player are charges, so they were blocked by the same thing. That is the same argument that made a burning patch of ground a rider rather than a shape of its own.
 
   
 

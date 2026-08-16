@@ -172,6 +172,14 @@ SHAPE_RIDERS = {
     "StunSeconds": "how long the target is stunned, if the skill stuns. The "
                    "anti-stun-lock rule in section VI still applies: it is the "
                    "duration, not a promise that a stun lands",
+    "Knockback": "metres the skill pushes what it hits away from the caster, 0 "
+                 "or absent for none. A RIDER RATHER THAN A STRIKE PARAMETER, "
+                 "decided 2026-08-15 on issue #626: displacement is not specific "
+                 "to one kind of skill. A strike, a leap, a charge and an enemy "
+                 "slam can all shove, and while this was a parameter of Strike "
+                 "alone, Shockwave Leap knocked back in its prose and could not "
+                 "say so in its data. That is the same argument that made a "
+                 "burning patch of ground a rider",
     "FinalHitPercent": "percent of weapon damage a closing hit deals, if any",
     "HealthCostPercent": "percent of current health one use costs, if any",
     "Effect": "the named status effect this applies, from the Buffs, Debuffs or "
@@ -241,7 +249,7 @@ def parse_minions(text: str, where: str) -> dict[str, int]:
 #: `sim/cataclysm_sim/enemy_abilities.py` is the same table and says the same.
 #: Issue #465.
 SHAPE_PARAMS = {
-    "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval", "Knockback"},
+    "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval"},
     "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed", "Arc"},
     "SelfBuff": {"Duration", "Radius", "IncreasePerBurning"},
     "Movement": {"Mode", "Range", "Radius"},

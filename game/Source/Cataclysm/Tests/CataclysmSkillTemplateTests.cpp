@@ -376,6 +376,118 @@ bool FCataclysmStrikeSingleTargetTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A skill that is not a Strike can knock back, because knockback is a rider.
+ *
+ * WHAT WENT WRONG. Issue #626: `Knockback` was a parameter of the `Strike` shape
+ * alone, and the code that applied it was written inline in
+ * UCataclysmStrikeSkill::SwingOnce. So Shockwave Leap, a Movement skill whose
+ * description reads "knocks back all enemies within 5 meters", could not state a
+ * distance at all -- the generator refused the parameter on its shape -- and
+ * would not have shoved anything if it had.
+ *
+ * WHY A MOVEMENT SKILL IS THE ONE TESTED. It is the shape the real skill uses,
+ * and it reaches the shared hit path by a completely different route from a
+ * Strike: it moves the caster first and hits what it arrives among. If knockback
+ * had been moved somewhere only a Strike passes through, this is what would say
+ * so.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKnockbackIsARiderTest,
+	"Cataclysm.Skills.AMovementSkillCanKnockBackBecauseKnockbackIsARider",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKnockbackIsARiderTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// Standing where the leap lands, so it is inside the shockwave.
+	FScopedFighter Caught(World, FVector(10 * M, 0, 0));
+
+	// Shockwave Leap's cell, verbatim from the Weapon Skills sheet.
+	UCataclysmMovementSkill* Leap = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Leap; Range=9; Radius=5; Knockback=3; Effect=Stun; StunSeconds=1"),
+		TEXT("Shockwave Leap"));
+	if (!Leap)
+	{
+		AddError(TEXT("Could not grant the leap."));
+		return false;
+	}
+
+	const FVector CaughtWhere = Caught.Actor->GetActorLocation();
+	const float CaughtBefore = Caught.Health();
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Leap));
+	TestTrue(TEXT("The enemy it landed among took damage"),
+		Caught.Health() < CaughtBefore);
+
+	// THE ASSERTION THE ISSUE IS ABOUT. Before this change a Movement skill could
+	// not carry a Knockback at all, and nothing applied one outside a Strike.
+	const FVector Moved = Caught.Actor->GetActorLocation() - CaughtWhere;
+	TestTrue(FString::Printf(
+		TEXT("It was shoved about 3 metres by a Movement skill (moved %.0f cm)"),
+		Moved.Size()), Moved.Size() > 2.5f * M);
+
+	// Away from where the caster ENDED UP, which for a leap is where it landed
+	// rather than where it started. Getting this wrong would push the target
+	// towards the player, which is the opposite of a knockback.
+	const FVector AwayFromCaster =
+		Caught.Actor->GetActorLocation() - Caster.Actor->GetActorLocation();
+	TestTrue(TEXT("and away from the caster rather than towards it"),
+		FVector::DotProduct(Moved.GetSafeNormal(),
+							AwayFromCaster.GetSafeNormal()) > 0.0f);
+
+	return true;
+}
+
+/**
+ * A skill that states no knockback moves nothing.
+ *
+ * The other half of the test above. Moving knockback into the shared hit path
+ * means every skill in the game now runs that code, so a skill with no
+ * `Knockback` must still leave its targets exactly where they were. Without this
+ * check, a change that shoved on every hit regardless of the parameter would
+ * pass everything above.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoKnockbackMovesNothingTest,
+	"Cataclysm.Skills.ASkillThatStatesNoKnockbackMovesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNoKnockbackMovesNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4; Angle=180"), TEXT("A Strike With No Knockback"));
+	if (!Plain)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const FVector Where = Target.Actor->GetActorLocation();
+	const float Before = Target.Health();
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Plain));
+	TestTrue(TEXT("The target took damage"), Target.Health() < Before);
+	TestTrue(TEXT("and did not move"),
+		Target.Actor->GetActorLocation().Equals(Where, 1.0f));
+
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // Projectile
 // --------------------------------------------------------------------------

@@ -83,24 +83,10 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 		GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
 		Params.RadiusCm, Params.AngleDegrees, Params.MaxTargets);
 
+	// The knockback goes with it. It used to be applied here, for Strikes only;
+	// issue #626 moved it into HitTargets so that every shape can shove, which
+	// is what making it a rider means.
 	HitTargets(Targets, DamagePercent);
-
-	// Searing Hook "knocks them back 4 meters". Applied as a displacement
-	// rather than an impulse: most of what this hits has no physics body, and a
-	// knockback that silently did nothing would look like a knockback.
-	if (Params.KnockbackCm > 0.0f)
-	{
-		for (AActor* Target : Targets)
-		{
-			FVector Away = Target->GetActorLocation() - Self->GetActorLocation();
-			Away.Z = 0.0f;
-			if (!Away.IsNearlyZero())
-			{
-				Target->AddActorWorldOffset(
-					Away.GetSafeNormal() * Params.KnockbackCm, /*bSweep=*/true);
-			}
-		}
-	}
 
 	++SwingsMade;
 	return Targets.Num();

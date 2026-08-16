@@ -76,8 +76,7 @@ SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Deployable"
 #: chord, so an arc of `Arc * range` is in the air for
 #: `sqrt(8 * Arc * range / g)`.
 SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
-    "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
-               "Knockback"),
+    "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval"),
     "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed", "Arc"),
     "SelfBuff": ("Duration", "Radius", "IncreasePerBurning"),
     "Movement": ("Mode", "Range", "Radius"),
@@ -91,9 +90,15 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 
 #: Riders any shape may carry, from the same section of the design document.
 #: Also a copy of `SHAPE_RIDERS` in `tools/generate_datatables.py`.
+#:
+#: `Knockback` MOVED HERE FROM `Strike` on 2026-08-15, issue #626. Displacement
+#: is not specific to one kind of skill: a strike, a leap, a charge and an enemy
+#: slam can all shove. While it was a Strike parameter, Shockwave Leap knocked
+#: back in its prose and could not say so in its data, and two of the three enemy
+#: abilities that will displace the player are charges, which are Movement.
 RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "Burn", "Effect", "StunSeconds", "FinalHitPercent",
-          "HealthCostPercent")
+          "HealthCostPercent", "Knockback")
 
 #: How long a target is immune to being stunned again, from the anti-stun-lock
 #: rule in section VI of `docs/Cataclysm_GDD_v2.md`. Any ability that stuns has

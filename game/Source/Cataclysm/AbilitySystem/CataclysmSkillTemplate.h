@@ -133,6 +133,27 @@ protected:
 	float HitTargets(const TArray<AActor*>& Targets, float DamagePercent = -1.0f);
 
 	/**
+	 * Push one target away from the caster by this skill's `Knockback`, if it
+	 * states one. Does nothing when it does not.
+	 *
+	 * CALLED FROM HitTargets, WHICH IS WHAT MAKES KNOCKBACK A RIDER. It used to
+	 * be written inline in UCataclysmStrikeSkill::SwingOnce, so only a Strike
+	 * could shove. Issue #626 moved it here, because displacement is not
+	 * specific to one kind of skill: a strike, a leap, a charge and an enemy
+	 * slam can all do it, and Shockwave Leap knocked back in its prose while its
+	 * Movement shape had no way to say so.
+	 *
+	 * A REPEATING SHAPE SHOVES ON EVERY TICK. An Aura pulses through HitTargets
+	 * once per Interval, so an Aura stating a Knockback would push on each pulse.
+	 * No designed skill states one, and what would bound it is the design's own
+	 * limit on repeated displacement -- each one inside 5 seconds moves half as
+	 * far as the one before, decided on issue #302. That rule is stated in
+	 * docs/Cataclysm_GDD_v2.md and implemented nowhere, for either direction.
+	 * Issue #628 carries it.
+	 */
+	void ApplyKnockbackTo(AActor* Self, AActor* Target) const;
+
+	/**
 	 * Leave a burning patch of ground, if this skill's numbers say to.
 	 *
 	 * Eight of the sixteen designed Demonic skills do, on top of whatever else
