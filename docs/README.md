@@ -57,7 +57,7 @@ or if a sheet is added or removed without this table changing.
 | Gems | 27 | Column 1, Everyday / Quality / Superb / Masterful / Legendary / Mythical Gemstone |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3 |
 | Enchantments | 380 | Positives, Type, Weight / Negatives, Type, Weight |
-| **Tags** | **128** | **Tag Name, Description** |
+| **Tags** | **129** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic / Death / War / Pestilence / Famine / Celestial / Chaos Modifiers |
 | Weapon Skills | 398 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape |
 | Buffs | 18 | one description per row, no heading row |

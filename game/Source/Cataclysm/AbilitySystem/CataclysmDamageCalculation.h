@@ -35,6 +35,25 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float ArmorPenetration = 0.0f;
 
+	/**
+	 * The attacker's chance to critically strike, 0-100.
+	 *
+	 * READ OFF THE ATTACKER AND CARRIED, for the same reason the two penetration
+	 * figures above are: `Resolve` is given the defender and never sees who is
+	 * swinging. Zero means this hit cannot critically strike, which is the case
+	 * for a damage over time tick and for a minion's blow.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CritChance = 0.0f;
+
+	/**
+	 * What a critical strike is worth, as a percentage. 150 means one and a half
+	 * times the hit. The design's default class stat line supplies 150 and no
+	 * class overrides it.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CritMultiplier = 150.0f;
+
 	/** Area damage cannot be evaded. It can still be blocked. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsArea = false;
@@ -93,6 +112,21 @@ struct CATACLYSM_API FCataclysmDamageResult
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	bool bBlocked = false;
+
+	/**
+	 * The hit landed as a critical strike and its damage above already carries
+	 * the multiplier.
+	 *
+	 * ON THE RESULT AND NOT ONLY ON THE HIT, because the two functions that pick
+	 * a floating damage number's colour and text are given the result alone. A
+	 * flag on the incoming hit would be invisible to everything that draws.
+	 *
+	 * NEVER TRUE ON AN EVADED HIT. The roll is made after the evasion step, so a
+	 * hit that never landed is not reported as a critical strike that never
+	 * landed.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bWasCritical = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	float AbsorbedByMana = 0.0f;
@@ -221,11 +255,33 @@ public:
 	 */
 	static const TCHAR* DamageOverTimeTagName;
 
+	/**
+	 * The tag that says a hit may not critically strike, whoever threw it.
+	 *
+	 * `Keyword.NoCrit`. IT EXISTS FOR SUMMONED MINIONS. A minion's blow is dealt
+	 * in its summoner's name -- `ACataclysmMinion` calls
+	 * `UCataclysmSkillEffects::ApplyHit` with the summoner as the attacker --
+	 * so the attacker the engine sees when it reads a critical strike chance is
+	 * the player. The design forbids that inheritance in as many words:
+	 * "A minion takes neither the summoner's critical strike chance nor its
+	 * multiplier", and minion damage was set at the top of its band precisely
+	 * because it has no critical strike layer to compound with.
+	 * See `docs/Cataclysm_GDD_v2.md` lines 1747 and 1776.
+	 *
+	 * A TAG RATHER THAN A FIELD, because this has to survive the trip from the
+	 * caller to the defender's attribute set, and a gameplay effect spec carries
+	 * tags. It is the same route `Type.AOE` and `Keyword.DoT` already take.
+	 */
+	static const TCHAR* NoCriticalStrikeTagName;
+
 	/** `Type.AOE`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag AreaDamageTag();
 
 	/** `Keyword.DoT`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag DamageOverTimeTag();
+
+	/** `Keyword.NoCrit`, or an invalid tag if the vocabulary has lost it. */
+	static FGameplayTag NoCriticalStrikeTag();
 
 	/**
 	 * A damage type as the gameplay tag that carries it on an effect.
@@ -280,12 +336,13 @@ public:
 	/**
 	 * Run one hit through the whole order against a character's attribute sets.
 	 *
-	 * `EvasionRoll` and `BlockRoll` are 0-100 values supplied by the caller so
-	 * that tests can pin them. Pass a negative number to roll here.
+	 * `EvasionRoll`, `BlockRoll` and `CritRoll` are 0-100 values supplied by the
+	 * caller so that tests can pin them. Pass a negative number to roll here.
 	 */
 	static FCataclysmDamageResult Resolve(const FCataclysmIncomingHit& Hit,
 										  const UAbilitySystemComponent* Defender,
 										  int32 Tier,
 										  float EvasionRoll = -1.0f,
-										  float BlockRoll = -1.0f);
+										  float BlockRoll = -1.0f,
+										  float CritRoll = -1.0f);
 };

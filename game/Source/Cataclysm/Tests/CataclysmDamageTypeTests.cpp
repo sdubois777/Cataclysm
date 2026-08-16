@@ -18,6 +18,8 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagsManager.h"
+// For pinning the critical strike roll. See FScopedNoCriticalStrikes below.
+#include "HAL/IConsoleManager.h"
 
 /**
  * Tests for a hit carrying its damage type, and for the generic resistance an
@@ -59,6 +61,66 @@ namespace CataclysmDamageTypeTest
 	static const TCHAR* const EveryDamageType[] = {
 		TEXT("War"), TEXT("Demonic"), TEXT("Death"), TEXT("Pestilence"),
 		TEXT("Famine"), TEXT("Celestial"), TEXT("Chaos"), TEXT("Void"),
+	};
+
+	/**
+	 * Stops critical strikes for as long as it is in scope, then restores.
+	 *
+	 * WITHOUT THIS, ELEVEN TESTS IN THIS FILE FAIL AT RANDOM. Every test below
+	 * that asserts an exact damage figure attacks with either a spawned
+	 * `ACataclysmEnemyCharacter`, which takes 5% critical strike chance from its
+	 * archetype, or an attacker holding a weapon, which takes the same 5% from
+	 * the skills the weapon grants. A critical strike multiplies the hit by 1.5,
+	 * so each assertion had a one in twenty chance of reading half as much again
+	 * as it expected, and a test with three hits in it had roughly one in seven.
+	 *
+	 * THAT IS WORSE THAN A TEST THAT FAILS. Two of the eleven failed on the first
+	 * run after the roll was added and nine passed, which would have left nine
+	 * tests failing later for no reason anyone could connect to this change.
+	 * Running the whole suite with `Cataclysm.CritRoll 0`, which makes every hit
+	 * a critical strike, is what produced the list of eleven.
+	 *
+	 * 100 NEVER CRITICALLY STRIKES, because the roll is compared with strictly
+	 * less than and a chance is capped at 100.
+	 *
+	 * These tests are about resistance, penetration, evasion and the weapon
+	 * sub-types. A critical strike is not what any of them is measuring, so
+	 * pinning it is removing noise rather than avoiding a case.
+	 * `Cataclysm.Damage.*` and `Cataclysm.Overlay.*` are where the roll itself is
+	 * tested.
+	 */
+	struct FScopedNoCriticalStrikes
+	{
+		FScopedNoCriticalStrikes()
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("Cataclysm.CritRoll"));
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+
+				// SET AT THE CONSOLE'S OWN PRIORITY, and that is not a detail.
+				// A console variable in Unreal remembers who set it, and a write
+				// from code is silently discarded when the command line or a
+				// console command has already set it. A plain `Set(100.0f)` did
+				// nothing at all when the suite was run with
+				// `Cataclysm.CritRoll 0` to find these eleven tests: the pin was
+				// there in the source and absent from the run, and all eleven
+				// still failed. Nothing reported that the write had been dropped.
+				Variable->Set(100.0f, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedNoCriticalStrikes()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
 	};
 
 	static UWorld* MakeWorldThatHasBegunPlay()
@@ -369,6 +431,10 @@ CATACLYSM_TEST(FCataclysmTypedResistanceAddsToTheGenericOneTest,
 CATACLYSM_TEST(FCataclysmEnemyHitIsMetByThePlayersResistanceTest,
 	"Cataclysm.DamageType.AnEnemysHitIsMetByTheResistanceToItsOwnType")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -416,6 +482,10 @@ CATACLYSM_TEST(FCataclysmEnemyHitIsMetByThePlayersResistanceTest,
 CATACLYSM_TEST(FCataclysmPenetrationReachesTheResistanceStepTest,
 	"Cataclysm.DamageType.TheAttackersPenetrationReachesTheResistanceStep")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -542,6 +612,10 @@ CATACLYSM_TEST(FCataclysmDeliveryTagsExistTest,
 CATACLYSM_TEST(FCataclysmAreaDamageCannotBeEvadedTest,
 	"Cataclysm.DamageType.AreaDamageCannotBeEvadedAndADirectHitCan")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -586,6 +660,10 @@ CATACLYSM_TEST(FCataclysmAreaDamageCannotBeEvadedTest,
 CATACLYSM_TEST(FCataclysmAreaDamageIsStillMitigatedTest,
 	"Cataclysm.DamageType.AreaDamageSkipsEvasionAndNothingElse")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -701,6 +779,10 @@ CATACLYSM_TEST(FCataclysmAnOrdinaryHitCarriesNeitherTest,
 CATACLYSM_TEST(FCataclysmAreaComesFromTheSkillsTagsTest,
 	"Cataclysm.DamageType.ASkillTaggedForAreaDamageCannotBeEvaded")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -807,6 +889,10 @@ CATACLYSM_TEST(FCataclysmAreaTagsAreReadCorrectlyTest,
 CATACLYSM_TEST(FCataclysmArmorPenetrationReachesTheArmorStepTest,
 	"Cataclysm.DamageType.TheAttackersArmorPenetrationReachesTheArmorStep")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	// WHAT WAS WRONG. `FCataclysmIncomingHit::ArmorPenetration` was applied
 	// correctly by UCataclysmDamageCalculation::Resolve and was never set, because
 	// nothing in the project held an armour penetration value. Three enchantments
@@ -877,6 +963,10 @@ CATACLYSM_TEST(FCataclysmArmorPenetrationReachesTheArmorStepTest,
 CATACLYSM_TEST(FCataclysmTheTwoPenetrationsAreSeparateTest,
 	"Cataclysm.DamageType.TheTwoPenetrationStatsAreNotTheSameStat")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	// THE FAILURE THIS CATCHES is one attribute being read where the other was
 	// meant, which every assertion above would survive: each of those tests sets
 	// only the layer it is about, so a swap would look like the stat working.
@@ -986,6 +1076,10 @@ namespace CataclysmDamageTypeTest
 CATACLYSM_TEST(FCataclysmSlashingReachesHealthTest,
 	"Cataclysm.DamageType.ASlashingWeaponDealsMoreToHealth")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -1022,6 +1116,10 @@ CATACLYSM_TEST(FCataclysmSlashingReachesHealthTest,
 CATACLYSM_TEST(FCataclysmMagicStripsMoreShieldTest,
 	"Cataclysm.DamageType.AMagicWeaponStripsMoreEnergyShield")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -1059,6 +1157,10 @@ CATACLYSM_TEST(FCataclysmMagicStripsMoreShieldTest,
 CATACLYSM_TEST(FCataclysmPiercingIgnoresArmourTest,
 	"Cataclysm.DamageType.APiercingWeaponIgnoresAShareOfArmour")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	// THE ONE THAT NEEDED ISSUE #520 FIRST. Piercing ignores 20% of the target's
 	// armour, and until armour penetration was a stat there was nothing for that
 	// 20% to be added to. Resolve combines the two the way
@@ -1101,6 +1203,10 @@ CATACLYSM_TEST(FCataclysmPiercingIgnoresArmourTest,
 CATACLYSM_TEST(FCataclysmPiercingAddsToTheStatTest,
 	"Cataclysm.DamageType.APiercingWeaponAddsToTheArmourPenetrationStat")
 {
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
 	// THEY ADD RATHER THAN ONE WINNING, which is the rule
 	// `Attacker.total_armor_ignored` states and the reason Resolve owns the
 	// combination rather than each caller doing it.

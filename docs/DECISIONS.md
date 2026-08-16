@@ -20,6 +20,150 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — Critical strikes are rolled per hit, and the model keeps averaging them
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Damage Calculation subsection of
+section IV and the floating damage number paragraph in section XIII. Closes
+issue #649. Filed issues #657, #658, #659 and #660 along the way.
+
+### What was wrong
+
+**Nothing in the project ever rolled a critical strike.** `CritChance` and
+`CritMultiplier` existed as replicated attributes, were clamped, and were written
+onto every enemy from its archetype row, and no code in the game read either one.
+No hit was ever multiplied, and neither `FCataclysmIncomingHit` nor
+`FCataclysmDamageResult` carried a flag saying a hit landed as one, so a floating
+damage number could not have marked a critical strike even if something had
+rolled it.
+
+**Every enemy was weaker than the model says**, by whatever its critical strikes
+were worth. The Gatekeeper, the boss, carries 15% at a 250% multiplier, so it was
+dealing about 78% of its designed damage. The Hellhound, the Succubus and the
+Abyssal Warden were all short by less.
+
+**And the player never critically struck at all**, for a second and separate
+reason. `UCataclysmCombatAttributeSet` initialises the chance to zero with the
+comment "supplied by the skill in use", and nothing supplied it. That is the same
+defect as the attack speed fixed the day before under issue #647, one attribute
+over: an attribute initialised with a comment describing an intention nobody
+built, written in a form that reads as a statement of fact. Everything that scales
+the stat — the Ferocity attribute, three affixes, eight item base implicits, two
+gems and two whole passive tree branches of the Berserker — multiplied zero.
+
+### Where the multiplier goes was already settled, by the model rather than the design
+
+The design's eight-step Damage Calculation table does not mention critical
+strikes, and neither does the three-bucket offensive pipeline. `damage.py`, which
+issue #649 said to check, has no critical strike code in it either. Two other
+modules in the same package answer it and agree with each other:
+
+| File | What it does |
+| :-- | :-- |
+| `sim/cataclysm_sim/player_damage.py:368-381` | scales the finished per-hit damage by `(1 - chance + chance x multiplier)` |
+| `sim/cataclysm_sim/enemy_stats.py:563-568` | the identical form for the enemy side |
+| `sim/cataclysm_sim/reference_build.py:264-266` | hands that scaled figure to `damage.Attacker`, which is what then meets mitigation |
+
+So the multiplier applies to the whole finished hit, after the offensive pipeline
+and before any mitigation. Not a "more" multiplier inside the pipeline, and not
+applied to what survives. That is a quotation rather than a judgement.
+
+### The one deliberate divergence: the model averages and the game rolls
+
+The model never rolls. It multiplies every hit by the long-run average, because
+it has no use for a single blow — `player_damage.py:38-41` says so outright, and
+`docs/Cataclysm_GDD_v2.md:2409` uses the same expected-value arithmetic to state
+what 100 points of Ferocity are worth.
+
+A game cannot do that. The whole point of issue #649 is that a damage number
+should be able to say "that one was a critical strike", and a hit that is 15.8%
+larger than usual is not one. So the engine rolls per hit. Over many hits the two
+produce the same mean, which is what keeps the model's damage targets true of the
+game, and `tools/tests/test_the_critical_strike_numbers_are_one_set.py` pins the
+three numbers that make the means agree.
+
+### Damage over time cannot critically strike, and the genre settles that
+
+The design documents say nothing about it. Both games in the genre that ship a
+layer of this shape say the same thing:
+
+- **Last Epoch.** A damage over time effect is not a hit, and so "cannot be
+  Dodged, are not affected by on hit effects, the damage is not scaled randomly,
+  nor do they deal critical strikes."
+  <https://support.lastepoch.com/hc/en-us/articles/46363283610523-Understanding-Critical-Damage>
+  and <https://lastepoch.fandom.com/wiki/Damage_Over_Time>
+- **Path of Exile.** Damage over time cannot critically hit. It adds a rule this
+  project has no equivalent of: an ailment inflicted *by* a critical hit is
+  scaled up, through a separate multiplier from the one hits use.
+  <https://pathofexile.fandom.com/wiki/Ailment>
+
+The Path of Exile refinement was deliberately not copied. This project has no
+ailment-from-crit multiplier and inventing one would be adding a stat rather than
+building the issue.
+
+The design already agreed in shape: it gives damage over time three scaling levers
+of its own and calls critical strike chance and multiplier the direct-hit lever
+(`docs/Cataclysm_GDD_v2.md:2409`).
+
+### A minion would have inherited the player's critical strikes
+
+`ACataclysmMinion` deals its damage in its summoner's name — both call sites pass
+`Summoner` as the attacker — so the character whose critical strike chance the
+engine reads when a minion's blow lands is the player. The design forbids exactly
+that: "A minion takes neither the summoner's critical strike chance nor its
+multiplier", and minion damage sits at the top of its band *because* it has no
+critical strike layer to compound with.
+
+The fix is a flag on `FCataclysmHitDelivery` that the minion's two call sites set,
+carried to the defender as a new gameplay tag `Keyword.NoCrit`. That is the route
+`Type.AOE` and `Keyword.DoT` already take. The tag was added to the Tags sheet of
+`docs/All_Things_Cataclysm.xlsx`, which is where every gameplay tag is defined.
+
+**The same path carries the summoner's penetration and nothing stops it.** That
+is the other half of the same design sentence and it is a separate cause, so it
+is issue #659 rather than part of this.
+
+### Size and text, not colour
+
+Colour on a floating number was given one job when the numbers were built — it
+says where the damage went — and this log records rejecting a damage-type palette
+for numbers to keep it saying only that. Diablo 4 marks a critical strike with
+colour, white for an ordinary hit and yellow for a critical one. This project
+cannot follow that without taking the colour axis back, so a critical strike is
+drawn larger and its figure carries a mark instead. The project owner chose that
+shape on 2026-08-16.
+
+**Only a figure is marked.** "Evaded", "Blocked" and the bare "0" are left alone.
+The roll happens before block, armour and resistance, so a critical strike can be
+stopped dead by a well-defended target, and an oversized "Evaded!" would be
+excitement about a miss.
+
+### Eleven existing tests would have failed at random, and finding them needed a seam
+
+A critical strike is the first random roll in the project that fires on an
+ordinary hit. Evasion and block are rolled too, but a defender's evasion and block
+chance are zero unless something sets them, so those rolls never fire by accident.
+An attacker's chance is never zero: a player holding any weapon has 5% and every
+enemy archetype has 5% to 15%.
+
+Two automation tests failed on the first run after the roll was added. Running the
+whole suite with the roll forced on found **eleven**, all in
+`CataclysmDamageTypeTests.cpp`, all asserting exact damage figures. Nine of them
+would have started failing later for no reason anyone could have connected to this
+change.
+
+That is what `Cataclysm.CritRoll` is for: a console variable that pins the roll,
+-1 to roll normally, 0 to always critically strike, 100 to never. It is also how
+the display is judged at the keyboard without waiting for a critical strike to
+happen.
+
+**The pin did not work the first time and said nothing.** A console variable in
+Unreal remembers who set it, and a write from code is silently discarded when the
+command line has already set one. The scoped helper in the tests called plain
+`Set(100.0f)` and all eleven tests still failed — the pin was present in the
+source and absent from the run. It sets at `ECVF_SetByConsole` now.
+
+---
+
 ## 2026-08-16 — The basic attack swings by itself, at the weapon's rate
 
 **Affects:** nothing in the design documents, which state every rule applied

@@ -20,6 +20,36 @@
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
 
+/**
+ * Forces the critical strike roll to a fixed number, so it can be watched.
+ *
+ * WHY THIS EXISTS. A critical strike is the first random roll in the project
+ * that fires on an ordinary hit. Evasion and block are rolled too, but a
+ * defender's evasion and block chance are both zero unless something sets them,
+ * so those rolls never fire by accident. An attacker's critical strike chance is
+ * never zero: a player holding any weapon has 5% and every enemy archetype has
+ * between 5% and 15%. Without a way to pin it, every automation test that asserts
+ * an exact damage figure through a real gameplay effect would pass most of the
+ * time and fail the rest, which is worse than failing.
+ *
+ * `UCataclysmDamageCalculation::Resolve` already takes the roll as a parameter,
+ * which serves a test calling it directly. This serves the other path, where the
+ * hit arrives as a gameplay effect and no test is holding the arguments.
+ *
+ * -1, the default, rolls normally. 0 always critically strikes, because every
+ * chance above zero beats it. 100 never does, because the comparison is strictly
+ * less than. Anything between behaves as that roll.
+ *
+ * IT IS ALSO USEFUL AT THE KEYBOARD. `Cataclysm.CritRoll 0` makes every blow a
+ * critical strike, which is how the display is judged without waiting for one.
+ */
+static TAutoConsoleVariable<float> CVarCritRoll(
+	TEXT("Cataclysm.CritRoll"),
+	-1.0f,
+	TEXT("Pins the critical strike roll, 0-100. -1 rolls normally. 0 always "
+		 "critically strikes; 100 never does."),
+	ECVF_Default);
+
 UCataclysmVitalAttributeSet::UCataclysmVitalAttributeSet()
 {
 	// Placeholders only. Real starting values come from a class stat line
@@ -169,6 +199,45 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// any one blow, so it is read at the moment the blow lands,
 					// which is also the moment it is true.
 					Hit.ArmorPenetration = Offence->GetArmorPenetration();
+
+					// AND THE CRITICAL STRIKE, read here for that same reason.
+					// Both attributes existed, were replicated, were clamped and
+					// were set on every enemy from its archetype row, and no code
+					// in the project read either one, so no hit was ever
+					// multiplied by a critical strike multiplier. Issue #649. It
+					// is the same shape of defect as the attack speed that never
+					// reached a character, which issue #647 fixed one session
+					// earlier: an attribute initialised with a comment describing
+					// an intention nobody built.
+					//
+					// TWO HITS MAY NEVER CRITICALLY STRIKE and both are excluded
+					// here rather than inside the calculation, because both are
+					// facts about how this blow was thrown rather than about the
+					// arithmetic.
+					//
+					// A DAMAGE OVER TIME TICK CANNOT. The design gives damage over
+					// time its own three scaling levers and calls the critical
+					// strike attribute "the direct-hit damage attribute", and both
+					// games in the genre that ship this layer agree outright: Last
+					// Epoch's manual says a damage over time effect is not a hit
+					// and so cannot be dodged and does not deal critical strikes,
+					// and Path of Exile says damage over time cannot critically
+					// hit. See docs/DECISIONS.md for the sources.
+					//
+					// A MINION'S BLOW CANNOT. It is dealt in its summoner's name,
+					// so without this the attacker read above is the player and
+					// every minion would inherit the player's critical strikes.
+					// The design forbids it in as many words and set minion damage
+					// at the top of its band because of it.
+					const bool bCanCriticallyStrike =
+						!Hit.bIsDamageOverTime
+						&& !AssetTags.HasTag(
+							UCataclysmDamageCalculation::NoCriticalStrikeTag());
+					if (bCanCriticallyStrike)
+					{
+						Hit.CritChance = Offence->GetCritChance();
+						Hit.CritMultiplier = Offence->GetCritMultiplier();
+					}
 				}
 			}
 
@@ -213,7 +282,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			const FCataclysmDamageResult Outcome =
 				UCataclysmDamageCalculation::Resolve(
 					Hit, GetOwningAbilitySystemComponent(),
-					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()));
+					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()),
+					/*EvasionRoll=*/-1.0f, /*BlockRoll=*/-1.0f,
+					CVarCritRoll.GetValueOnAnyThread());
 
 			// THE ENERGY SHIELD'S REFILL WAIT STARTS HERE. The design gives the
 			// shield a three second delay after the character last took damage,

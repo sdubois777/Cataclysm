@@ -1226,6 +1226,28 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 
   
 
+**A critical strike is not one of these eight steps.** The eight are what the
+defender does to a hit and they take the hit's size as given. A critical strike
+belongs to whoever is swinging: it is rolled against the attacker's critical
+strike chance and multiplies the whole finished hit, before block, armor,
+resistance, damage reduction and the energy shield all take their share of the
+larger number. A critical strike is mitigated exactly like any other hit and is
+not a way past any layer.
+
+**It is rolled once per hit, and only a hit can roll it.** Damage over time
+cannot critically strike. That is what both games in the genre with this layer do:
+Last Epoch states that a damage over time effect is not a hit and so cannot be
+dodged and does not deal critical strikes, and Path of Exile states that damage
+over time cannot critically hit. It also follows the shape this design already
+has, which gives damage over time three scaling levers of its own and treats
+critical strikes as the direct-hit lever.
+
+**A summoned minion never critically strikes**, which the Minions section already
+states. Its damage is a share of its summoner's, and the share was set on the
+understanding that no critical strike layer compounds with it.
+
+  
+
 **Armor uses a curve, not a subtraction.** `armor / (armor + K)` never reaches 100%, so no amount of armor is immunity, and it has natural diminishing returns so the first points matter most. K rising with the difficulty tier is what stops armor earned early from keeping its value forever: 371 armor is worth 32% at tier 1 and 5% at tier 8.
 
   
@@ -5209,8 +5231,13 @@ evaded says so in a word, and one that armour and resistance stopped completely
 shows a zero, because a defence working is as much worth seeing as a defence
 failing. Colour says where the damage went and the text says which outcome it
 was, so neither is the only channel. A damage over time tick is drawn smaller
-than a blow. It cannot yet distinguish a critical strike, because nothing in the
-game rolls one.
+than a blow.
+
+**A critical strike is drawn larger and its figure carries a mark.** Colour is
+not used for it, because colour already says where the damage went and may not be
+made to say two things at once. Only a figure is marked: an evaded hit, a blocked
+one and a zero say what they say without a mark, because a hit that did nothing is
+not made interesting by having been a critical strike.
 
   
 

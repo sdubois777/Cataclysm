@@ -87,6 +87,33 @@ public:
 	static constexpr float DamageOverTimeScale = 0.7f;
 
 	/**
+	 * A critical strike is drawn at this multiple of an ordinary blow's size.
+	 *
+	 * SIZE AND TEXT, NOT COLOUR. Colour on a floating number is already spoken
+	 * for: it says where the damage went, and nothing else may claim it. That was
+	 * decided when the numbers were built and is recorded in `docs/DECISIONS.md`,
+	 * where colouring numbers by damage type was rejected for the same reason.
+	 * Diablo 4 does use colour for this -- white for an ordinary hit, yellow for
+	 * a critical strike -- and this project deliberately does not, because it has
+	 * given colour a different job.
+	 *
+	 * IT MULTIPLIES WITH THE TICK SIZE ABOVE rather than replacing it. Nothing in
+	 * the game can produce that combination today, because a damage over time
+	 * tick can never critically strike, but the arithmetic is written so that if
+	 * one ever could the number would still be smaller than a blow.
+	 */
+	static constexpr float CriticalStrikeScale = 1.35f;
+
+	/**
+	 * Appended to a figure that landed as a critical strike.
+	 *
+	 * ONLY WHERE A FIGURE IS PRINTED. "Evaded", "Blocked" and the bare "0" never
+	 * take it: a hit that dealt nothing is not made interesting by having been a
+	 * critical strike, and "Evaded!" reads as excitement about a miss.
+	 */
+	static constexpr const TCHAR* CriticalStrikeMark = TEXT("!");
+
+	/**
 	 * How many numbers may wait to be drawn at once.
 	 *
 	 * A CEILING RATHER THAN A HOPE. Issue #563 measured one player attack
@@ -221,11 +248,22 @@ public:
 	 * so one number covers one hit rather than two numbers racing each other up
 	 * the screen.
 	 *
-	 * IT CANNOT SAY WHETHER A HIT WAS A CRITICAL STRIKE, because nothing in the
-	 * project rolls one. CritChance and CritMultiplier exist as attributes and
-	 * are set on enemies from data, and no code reads either. Issue #649.
+	 * A CRITICAL STRIKE ADDS A MARK TO THE FIGURE, and only to a figure. See
+	 * CriticalStrikeMark. Until issue #649 it could not say so at all, because
+	 * nothing in the project ever rolled one.
 	 */
 	static FString TextFor(const FCataclysmDamageResult& Outcome);
+
+	/**
+	 * Whether this outcome is drawn as a critical strike.
+	 *
+	 * BOTH THAT IT WAS ONE AND THAT SOMETHING GOT THROUGH. The roll happens
+	 * before block, armour and resistance, so a critical strike can still be
+	 * stopped dead by a well-defended target -- and a grey, oversized "0!" would
+	 * say the opposite of what happened. The size and the mark ask this same
+	 * question so the two can never disagree.
+	 */
+	static bool ShowsCriticalStrike(const FCataclysmDamageResult& Outcome);
 
 	/** What colour that text is drawn in. Three cases, described above. */
 	static FLinearColor ColourFor(const FCataclysmDamageResult& Outcome);
@@ -257,8 +295,16 @@ public:
 	 */
 	static int32 FigureFor(float Amount);
 
-	/** How large. A damage over time tick is drawn smaller than a blow. */
-	static float ScaleFor(const FCataclysmIncomingHit& Hit);
+	/**
+	 * How large. A damage over time tick is drawn smaller than a blow, and a
+	 * critical strike that got through is drawn larger.
+	 *
+	 * IT NEEDS BOTH ARGUMENTS because the two facts live on different structs:
+	 * whether a hit was a tick is a property of the hit, and whether it landed as
+	 * a critical strike is decided while it is being resolved.
+	 */
+	static float ScaleFor(const FCataclysmIncomingHit& Hit,
+						  const FCataclysmDamageResult& Outcome);
 
 	/**
 	 * Whether a creature gets a bar over its head at this instant.

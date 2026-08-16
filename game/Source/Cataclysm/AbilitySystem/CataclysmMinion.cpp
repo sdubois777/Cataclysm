@@ -23,6 +23,27 @@ namespace
 	constexpr float MinionCapsuleRadius = 30.0f;
 	constexpr float MinionCapsuleHalfHeight = 45.0f;
 
+	/**
+	 * How a minion's blow arrives, for either of the two ways it deals damage.
+	 *
+	 * A MINION NEVER CRITICALLY STRIKES, and saying so at the call site is the
+	 * only way to get that right. Its damage is dealt in its summoner's name --
+	 * the two ApplyHit calls below pass `Summoner` as the attacker -- so the
+	 * character whose critical strike chance the engine reads is the player.
+	 * The design forbids the inheritance: "A minion does not take the summoner's
+	 * weapon damage, flat added damage, attack speed, critical strike chance or
+	 * multiplier, penetration" (docs/Cataclysm_GDD_v2.md:1747), and minion damage
+	 * was fitted at the top of its band precisely because a minion "has no
+	 * critical strike layer to compound with" (:1776).
+	 */
+	FCataclysmHitDelivery MinionDelivery(bool bIsArea)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = bIsArea;
+		Delivery.bCannotCriticallyStrike = true;
+		return Delivery;
+	}
+
 	/** How fast it walks, in centimetres per second, when its type states
 	 *  nothing. Faster than a monster, because Summon Imp is written as "fast
 	 *  swarming melee". A type that states a move speed overrides it. */
@@ -256,7 +277,8 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// has none of. So a Ritualist's imps get stronger as the Ritualist does,
 	// which is how every minion in the genre scales.
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
-		Summoner, Target, DamagePercentOfSummoner);
+		Summoner, Target, DamagePercentOfSummoner, FGameplayTagContainer(),
+		MinionDelivery(/*bIsArea=*/false));
 
 	if (bBurnsWhatItHits && Dealt > 0.0f)
 	{
@@ -279,7 +301,7 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 			// above is a single blow and stays evadable. Issue #513.
 			const float Dealt = UCataclysmSkillEffects::ApplyHit(
 				Summoner, Target, DamagePercent, FGameplayTagContainer(),
-				FCataclysmHitDelivery::Area());
+				MinionDelivery(/*bIsArea=*/true));
 			if (bBurnsWhatItHits && Dealt > 0.0f)
 			{
 				UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt);

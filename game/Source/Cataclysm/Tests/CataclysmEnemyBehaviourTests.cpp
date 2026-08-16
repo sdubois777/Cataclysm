@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -3123,6 +3124,93 @@ bool FCataclysmLongerCooldownsMeanMoreSwings::RunTest(const FString&)
 		AbilitiesAtTwenty < AbilitiesAtFive);
 	TestTrue(TEXT("and more ordinary swings"),
 		SwingsAtTwenty > SwingsAtFive);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionNeverCriticallyStrikesTest,
+	"Cataclysm.AI.ASummonedImpNeverCriticallyStrikesEvenWhenItsSummonerWould",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMinionNeverCriticallyStrikesTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE DESIGN FORBIDS THE INHERITANCE IN AS MANY WORDS. "A minion does not
+	// take the summoner's weapon damage, flat added damage, attack speed,
+	// critical strike chance or multiplier, penetration"
+	// (docs/Cataclysm_GDD_v2.md:1747), and minion damage was fitted at the top of
+	// its band precisely because a minion "has no critical strike layer to
+	// compound with" (:1776).
+	//
+	// IT IS EASY TO GET WRONG AND SILENT WHEN IT IS. A minion's blow is dealt in
+	// its summoner's name -- ACataclysmMinion::AttackTarget calls ApplyHit with
+	// Summoner as the attacker -- so the character whose critical strike chance
+	// the engine reads is the player. Nothing about the code reads as though a
+	// minion were involved at all.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// EVERY HIT CRITICALLY STRIKES FOR THE LENGTH OF THIS TEST. A summoner's
+	// chance is 5%, so leaving the roll alone would let this test pass nineteen
+	// times in twenty with the guard removed.
+	IConsoleVariable* CritRoll = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.CritRoll"));
+	if (!TestNotNull(TEXT("the Cataclysm.CritRoll console variable"), CritRoll))
+	{
+		return false;
+	}
+	const float PreviousRoll = CritRoll->GetFloat();
+	CritRoll->Set(0.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { CritRoll->Set(PreviousRoll, ECVF_SetByConsole); };
+
+	FScopedFighter Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players,
+							/*Health=*/1000.0f, /*AttackDamage=*/100.0f);
+	FScopedFighter Monster(World, FVector(3 * M, 0, 0), ECataclysmTeam::Monsters,
+						   /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	// A summoner that would certainly critically strike, and for a lot.
+	if (UAbilitySystemComponent* Offence =
+			UCataclysmTargeting::AbilitySystemOf(Summoner.Actor))
+	{
+		Offence->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+		Offence->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 300.0f);
+	}
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(2 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not summon an imp."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	const float Before = Monster.Health();
+	Imp->AttackOnce();
+
+	// A share of the summoner's weapon damage and not one point more. 100 attack
+	// damage at 30% is 30; a tripled critical strike would read 90.
+	const float Expected =
+		100.0f * ACataclysmMinion::DamagePercentOfSummoner / 100.0f;
+	TestEqual(TEXT("an imp deals its share and never the summoner's critical "
+				   "strike"),
+		Before - Monster.Health(), Expected, 0.01f);
+
+	// AND THE SUMMONER ITSELF STILL CRITICALLY STRIKES, which is what makes the
+	// reading above a rule about minions rather than a roll that failed to fire.
+	const float BeforeDirect = Monster.Health();
+	UCataclysmSkillEffects::ApplyHit(Summoner.Actor, Monster.Actor, 100.0f);
+	TestEqual(TEXT("while the summoner's own blow is tripled"),
+		BeforeDirect - Monster.Health(), 300.0f, 0.01f);
 
 	return true;
 }

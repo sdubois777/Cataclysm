@@ -270,6 +270,15 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 			Spec.AddDynamicAssetTag(OverTime);
 		}
 	}
+	if (Delivery.bCannotCriticallyStrike)
+	{
+		const FGameplayTag NoCrit =
+			UCataclysmDamageCalculation::NoCriticalStrikeTag();
+		if (NoCrit.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoCrit);
+		}
+	}
 
 	Defender->ApplyGameplayEffectSpecToSelf(Spec);
 }

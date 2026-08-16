@@ -44,6 +44,22 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	bool bIsDamageOverTime = false;
 
+	/**
+	 * This blow may not critically strike, whatever the attacker's chance is.
+	 *
+	 * FOR A SUMMONED MINION. A minion's damage is dealt in its summoner's name,
+	 * so the attacker the engine reads a critical strike chance off is the
+	 * player. The design says "a minion takes neither the summoner's critical
+	 * strike chance nor its multiplier" and set minion damage at the top of its
+	 * band because a minion has no critical strike layer to compound with.
+	 * See `docs/Cataclysm_GDD_v2.md` lines 1747 and 1776.
+	 *
+	 * A DAMAGE OVER TIME TICK DOES NOT NEED THIS. It is already excluded by
+	 * `bIsDamageOverTime`, which the defender's attribute set reads directly.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCannotCriticallyStrike = false;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{
