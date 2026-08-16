@@ -6,6 +6,10 @@
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmCharacterBase.h"
+// For the difficulty tier a hit resolves at. It lives on the game mode because
+// nothing smaller holds one and the design's own home for it, the dungeon, does
+// not exist yet. Issue #514.
+#include "Player/CataclysmGameMode.h"
 #include "Cataclysm.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
@@ -146,9 +150,23 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// THE DIFFICULTY TIER IS READ RATHER THAN ASSUMED, since issue #514.
+			// This passed a literal 1 because nothing in the project held a tier
+			// at all, and the tier decides what armour is worth: armour removes
+			// `armor / (armor + 800 x tier)` of a hit, capped at 75%, so the
+			// Abyssal Warden's designed 5,954 stopped 75% of every hit instead
+			// of the 48.19% its design states. Every armoured thing in the game
+			// was 2.07 times harder to hurt than the simulation said.
+			//
+			// ASKED OF THE DEFENDER'S WORLD, because that is where the fight is
+			// happening. `ACataclysmGameMode::DifficultyTierIn` answers with the
+			// console variable, then the game mode, then tier 1 -- and a world
+			// with no game mode gets exactly the answer this line used to
+			// hard-code, so nothing that does not care is changed by it.
 			const FCataclysmDamageResult Outcome =
 				UCataclysmDamageCalculation::Resolve(
-					Hit, GetOwningAbilitySystemComponent(), /*Tier=*/1);
+					Hit, GetOwningAbilitySystemComponent(),
+					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()));
 
 			if (Outcome.AbsorbedByShield > 0.0f)
 			{
