@@ -783,7 +783,7 @@ Points come from levelling, from the Maw, and from gear. The gear source is a pe
 
 ### **The Character Sheet**
 
-A character has 45 stats, grouped the way the gameplay tag list groups its Stat tags.
+A character has 46 stats, grouped the way the gameplay tag list groups its Stat tags.
 
   
 
@@ -792,8 +792,14 @@ A character has 45 stats, grouped the way the gameplay tag list groups its Stat 
 | Resource | Maximum Health, Maximum Mana, Maximum Energy Shield, Class Resource |
 | Recovery | Health Regeneration, Mana Regeneration, Energy Shield Regeneration, Life Leech, Mana Leech, Energy Shield Leech |
 | Defence | Armor, Evasion, Block Chance, Damage Reduction, Retaliation, Crowd Control Resistance, and the eight Resistances |
-| Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time, Damage over Time Frequency, Damage over Time Duration, Penetration, Spell Damage, and the eight Damage Against a Type figures |
+| Offence | Critical Strike Chance, Critical Strike Multiplier, Attack Speed, Area of Effect, Damage over Time, Damage over Time Frequency, Damage over Time Duration, Penetration, Armor Penetration, Spell Damage, and the eight Damage Against a Type figures |
 | Utility | Movement Speed, Cooldown Reduction, Magic Find, Loot Quantity |
+
+  
+
+**Penetration and Armor Penetration are two stats, not one.** Penetration cuts into a target's resistance and Armor Penetration cuts into its armor, and the enchantment tables have always treated them as separate: "Your skills ignore 10%-25% of enemy resistances" against "Your skills ignore 10%-25% of enemy armor". They are also applied at different steps of the Damage Calculation, armor at step 3 and resistance at step 4. **Armor Penetration was added to the sheet on 2026-08-16** and had no line before that, so the three enchantments granting it had nowhere to land.
+
+**A piercing weapon's 20% adds to whatever the sheet holds rather than replacing it.** That figure belongs to the blow rather than to the character, which is why it is not a stat: it depends on what is in the character's hand at the moment of the hit.
 
   
 

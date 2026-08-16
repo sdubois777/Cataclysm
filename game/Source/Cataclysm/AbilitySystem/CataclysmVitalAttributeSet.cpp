@@ -147,6 +147,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Attacker->GetSet<UCataclysmCombatAttributeSet>())
 				{
 					Hit.ResistancePenetration = Offence->GetPenetration();
+
+					// AND THE ARMOUR PENETRATION, which is a SECOND stat rather
+					// than the same one. The line above cuts into the target's
+					// resistance at step 4; this cuts into its armour at step 3.
+					// Nothing held an armour penetration value at all until
+					// issue #520, so `Hit.ArmorPenetration` was applied
+					// correctly by Resolve and never set, and the three
+					// enchantments in EnchantmentsPositive.csv that grant it
+					// could do nothing.
+					//
+					// READ OFF THE ATTACKER FOR THE SAME REASON: penetration of
+					// either kind belongs to whoever is swinging rather than to
+					// any one blow, so it is read at the moment the blow lands,
+					// which is also the moment it is true.
+					Hit.ArmorPenetration = Offence->GetArmorPenetration();
 				}
 			}
 

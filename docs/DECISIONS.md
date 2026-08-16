@@ -20,6 +20,70 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — Armor Penetration is a character sheet stat, and the forty-sixth
+
+**Affects:** `Cataclysm_GDD_v2.md`, the Character Sheet subsection of section IV.
+Applied: the stat count, the Offence row, and two new paragraphs. Closes issue
+#520, which was split; the weapon sub-type half is issue #639.
+
+### What was wrong
+
+`FCataclysmIncomingHit::ArmorPenetration` was applied correctly by the damage
+calculation and was never set, because **nothing in the project held an armour
+penetration value**. `UCataclysmCombatAttributeSet` had a `Penetration`
+attribute, and that is RESISTANCE penetration.
+
+Three enchantments in `game/Data/EnchantmentsPositive.csv` grant it — skills
+ignoring 10-25% of enemy armor, critical hits ignoring 20-40%, and a first hit
+ignoring all of it — and none of them could do anything.
+
+### The decision: it goes on the character sheet
+
+This was not a wiring fix. **The design's own character sheet had no such stat.**
+The stat table in section IV listed one Penetration, the model's
+`sim/cataclysm_sim/character.py` had one, and the sheet was 45 stats. So the
+question was whether armour penetration is a stat a character HAS, or a property
+computed per hit from whatever is granting it at that moment.
+
+**It is a stat, and two of its three sources decide that.** The three
+enchantments are character-wide — "Your skills ignore 10%-25% of enemy armor" is
+not about one blow — so there has to be somewhere on the character for them to
+land. The parallel with resistance penetration is exact: that is also a character
+stat that arrives at a hit as a parameter, and `damage.Attacker` in
+`sim/cataclysm_sim/damage.py` has taken the two as separate parameters since it
+was written.
+
+**The piercing weapon sub-type's flat 20% is NOT a stat**, and that is the same
+decision pointed the other way. It depends on what is in the character's hand at
+the moment of the hit, so it belongs to the blow. It ADDS to whatever the sheet
+holds; `Attacker.total_armor_ignored` combines them.
+
+**It starts at zero, not 100.** An added percentage rather than a percentage OF
+something, which is the rule
+`tools/tests/test_stat_baselines_match_the_attribute_set.py` holds. Ignoring 100%
+of a target's armour is the maximum this stat can mean, so 100 would not be
+"unchanged".
+
+### Why the two penetrations stay separate
+
+They cut into different layers and are applied at different steps — armour at
+step 3, resistance at step 4 — and the enchantment tables have always listed them
+apart. Collapsing them into one stat would mean a point of penetration doing two
+things at once, which no source in the design grants.
+
+`Cataclysm.DamageType.TheTwoPenetrationStatsAreNotTheSameStat` is the check: it
+gives a target armour and no resistance, sets resistance penetration to its
+maximum, and asserts nothing changes; then the other way round.
+
+### Why this matters more than it did
+
+Enemy armour reached no arithmetic at all until issue #481. It is now the largest
+single mitigation layer on the most armoured creatures — the Abyssal Warden's
+5,954 armour removes 48.19% of a hit at difficulty tier 8 — so an entire
+enchantment family existed with nowhere to land.
+
+---
+
 ## 2026-08-16 — An enemy's energy shield is a fraction of its health, and the route for it exists before the creatures do
 
 **Affects:** no design document. This records how a designed number reaches the

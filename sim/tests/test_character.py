@@ -11,17 +11,18 @@ from cataclysm_sim import character as ch
 # The sheet is complete and self-consistent
 # --------------------------------------------------------------------------
 
-def test_the_sheet_has_forty_five_stats():
+def test_the_sheet_has_forty_six_stats():
     """33 until mana leech and energy shield leech were added for issue #214,
     then 35, then 43 when the eight increased-damage-against-a-type stats were
     added for issue #213, then 45 when damage over time damage and duration
-    joined damage over time frequency for issue #205.
+    joined damage over time frequency for issue #205, then 46 when armour
+    penetration was added for issue #520.
 
     The design document's Character Sheet section states the same count, and
     `test_the_design_document_agrees_on_the_stat_count` compares the two.
     """
-    assert len(ch.ALL_STATS) == 45
-    assert len(set(ch.ALL_STATS)) == 45, "a stat is listed in two groups"
+    assert len(ch.ALL_STATS) == 46
+    assert len(set(ch.ALL_STATS)) == 46, "a stat is listed in two groups"
 
 
 def test_every_stat_has_a_default_and_every_default_is_a_stat():
@@ -595,7 +596,7 @@ def test_spends_health_does_not_mean_the_class_has_no_mana():
 def test_the_full_sheet_can_be_produced_for_any_character():
     sheet = ch.Character(ch.GENERIC, level=50).sheet()
     assert set(sheet) == set(ch.ALL_STATS)
-    assert len(sheet) == 45
+    assert len(sheet) == 46
 
 
 # --------------------------------------------------------------------------
