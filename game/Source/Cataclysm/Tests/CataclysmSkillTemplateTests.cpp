@@ -1552,7 +1552,7 @@ bool FCataclysmBuffIncreaseAppliesTest::RunTest(const FString&)
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
 		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
-		TEXT("Item.Weapon.2hAxe, Element.Demonic, Type.Buff"));
+		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Buff"));
 	if (!Buff)
 	{
 		AddError(TEXT("Could not grant the buff."));
@@ -1569,7 +1569,7 @@ bool FCataclysmBuffIncreaseAppliesTest::RunTest(const FString&)
 	FScopedFighter Demonic(World, FVector(2 * M, 0, 0));
 	UCataclysmStrikeSkill* DemonicStrike = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
-		TEXT("Molten Cleave"), TEXT("Item.Weapon.2hAxe, Element.Demonic"));
+		TEXT("Molten Cleave"), TEXT("Item.Weapon.Greataxe, Element.Demonic"));
 
 	const float DemonicBefore = Demonic.Health();
 	TestTrue(TEXT("The Demonic strike activates"), Activate(Caster, DemonicStrike));
@@ -1771,7 +1771,7 @@ bool FCataclysmSkillElementTagTest::RunTest(const FString&)
 
 	UCataclysmStrikeSkill* Demonic = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4"), TEXT("A Demonic Skill"),
-		TEXT("Item.Weapon.2hAxe, Element.Demonic, Type.Strike"));
+		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Strike"));
 	TestEqual(TEXT("It picks the Element tag out of the row's other tags"),
 		Demonic->ElementTag().ToString(), FString(TEXT("Element.Demonic")));
 
@@ -2240,7 +2240,7 @@ bool FCataclysmProjectileHitsAreScaledTest::RunTest(const FString&)
 	UCataclysmProjectileSkill* Hurl = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
 		TEXT("Range=12; Radius=1.5; Pierce=99; Speed=1800"), TEXT("Emberhurl"),
-		TEXT("Item.Weapon.2hAxe, Element.Demonic"));
+		TEXT("Item.Weapon.Greataxe, Element.Demonic"));
 	TestTrue(TEXT("It activates"), Activate(Caster, Hurl));
 
 	const float Before = Target.Health();

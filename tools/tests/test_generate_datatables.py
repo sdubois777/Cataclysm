@@ -372,6 +372,68 @@ class TestValidation:
         assert gen.validate_weights({"T": [{"Name": "r", "Weight": 20}]}) == []
 
 
+class TestWeaponTagsAreNamedAfterTheWeapon:
+    """ISSUE #620. Three weapons carried a tag named after what they used to be
+    called -- a Greataxe's rows said `Item.Weapon.2hAxe` -- and nothing compared
+    the two, so the old vocabulary survived a rename that corrected everything
+    else.
+
+    NOTHING WAS BROKEN BY IT, which is why it lasted. The naming was consistent
+    within the data, so every lookup worked and no test failed.
+    """
+
+    @staticmethod
+    def bases(*weapon_types: str) -> dict[str, list[dict]]:
+        return {"ItemBases": [{"Name": f"Weapon_{t}", "WeaponType": t}
+                              for t in weapon_types]}
+
+    def test_a_tag_named_after_the_weapon_passes(self):
+        assert gen.validate_weapon_tags(
+            self.bases("Greataxe"), {"Item.Weapon.Greataxe"}) == []
+
+    def test_the_old_name_is_reported_from_both_sides(self):
+        problems = gen.validate_weapon_tags(
+            self.bases("Greataxe"), {"Item.Weapon.2hAxe"})
+        assert len(problems) == 2
+        assert any("Item.Weapon.Greataxe is not declared" in p for p in problems)
+        assert any("Item.Weapon.2hAxe names no weapon type" in p
+                   for p in problems)
+
+    def test_a_weapon_with_no_tag_at_all_is_reported(self):
+        problems = gen.validate_weapon_tags(
+            self.bases("Sword", "Whip"), {"Item.Weapon.Sword"})
+        assert len(problems) == 1
+        assert "Item.Weapon.Whip is not declared" in problems[0]
+
+    def test_a_space_in_a_weapon_type_is_removed_and_nothing_else_is(self):
+        """A gameplay tag cannot contain a space and "2H Crossbow" does. The
+        letter case is not touched, so the tag is `Item.Weapon.2HCrossbow` and
+        not the `2hCrossbow` it used to be."""
+        assert gen.weapon_tag_leaf("2H Crossbow") == "2HCrossbow"
+        assert gen.validate_weapon_tags(
+            self.bases("2H Crossbow"), {"Item.Weapon.2HCrossbow"}) == []
+        assert gen.validate_weapon_tags(
+            self.bases("2H Crossbow"), {"Item.Weapon.2hCrossbow"}) != []
+
+    def test_tags_outside_the_weapon_prefix_are_ignored(self):
+        """It reads `Item.Weapon.*` and nothing else, so the other 166 declared
+        tags are not weapons that went missing."""
+        assert gen.validate_weapon_tags(
+            self.bases("Sword"),
+            {"Item.Weapon.Sword", "Item.Slot.Weapon", "Element.War"}) == []
+
+    def test_the_real_workbook_passes(self):
+        """The check above is worth nothing if it does not run against the
+        shipping data. This is what the four renames were for."""
+        import openpyxl
+        workbook = gen.WORKBOOK
+        if not workbook.is_file():
+            pytest.skip("the design workbook is not present")
+        book = openpyxl.load_workbook(workbook, data_only=True)
+        tables = {"ItemBases": gen.TABLES["ItemBases"](book)}
+        assert gen.validate_weapon_tags(tables, gen.declared_tags(book)) == []
+
+
 class TestShapeParams:
     """A skill's shape names which template runs; its params are that template's numbers.
 
