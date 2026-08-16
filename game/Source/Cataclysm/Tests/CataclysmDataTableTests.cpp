@@ -124,7 +124,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// minion damage, minion health and minion attack speed, plus the one
 	// hybrid, whose slot list is Ring alone because that is the only slot
 	// both of its halves roll on.
-	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                84)
+	// 85, not 84. The chance to stun landed with issue #298 on 2026-08-16:
+	// an affix does grant a chance to stun, and a Blunt weapon's 10% is part
+	// of the same pool rather than a separate mechanic.
+	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                85)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
 	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             33)

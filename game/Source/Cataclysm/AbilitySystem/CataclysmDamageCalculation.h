@@ -68,6 +68,18 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsPiercing = false;
+
+	/**
+	 * Carries a chance to stun rather than a damage bonus.
+	 *
+	 * THE ONLY SUB-TYPE WHOSE EFFECT IS NOT DAMAGE, which is why it is read by
+	 * the attribute set that resolves a hit rather than by `Resolve`: a stun is
+	 * applied through `UCataclysmSkillEffects::ApplyStun`, which enforces the
+	 * three anti-stun-lock rules, and `Resolve` is pure arithmetic with no way
+	 * to reach any of that. Issue #639.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsBlunt = false;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */
@@ -136,6 +148,55 @@ public:
 	 * Weapon Sub-Types table it comes from. Issue #639.
 	 */
 	static constexpr float PiercingArmorIgnored = 20.0f;
+
+	/**
+	 * A Blunt weapon's chance to stun on every hit, as a percentage.
+	 *
+	 * Mirrors `BLUNT_STUN_CHANCE` in `sim/cataclysm_sim/damage.py`. It is part of
+	 * the same pool an affix adds to, settled by the project owner on
+	 * 2026-08-16, rather than a mechanic of its own.
+	 */
+	static constexpr float BluntStunChance = 10.0f;
+
+	/**
+	 * How long a stun applied by a chance lasts before the overflow lengthens
+	 * it, in seconds.
+	 *
+	 * Mirrors `INCIDENTAL_STUN_SECONDS`. Deliberately the shortest duration any
+	 * designed skill uses, so something that can stun on every hit does not
+	 * outclass the skills whose whole purpose is stunning.
+	 */
+	static constexpr float IncidentalStunSeconds = 0.75f;
+
+	/** Chance to stun caps here, and everything past it becomes duration. */
+	static constexpr float StunChanceCap = 100.0f;
+
+	/**
+	 * The longest a stun may last however much chance is stacked, in seconds.
+	 *
+	 * Mirrors `LONGEST_STUN_SECONDS`. It is the longest stun the design already
+	 * contains -- the Brute's Heart ten-piece set bonus -- and it is below the 5
+	 * second immunity window on purpose: a stun as long as the window would hold
+	 * a target for ever, which is the failure the whole anti-stun-lock rule
+	 * exists to stop.
+	 */
+	static constexpr float LongestStunSeconds = 3.0f;
+
+	/**
+	 * Split a total chance to stun into the chance it applies at and how long
+	 * the stun then lasts.
+	 *
+	 * THE RULE THE PROJECT OWNER SET FOR DAMAGE OVER TIME ON 2026-08-03, applied
+	 * to stun on 2026-08-16: chance caps at 100% and everything past it
+	 * multiplies the magnitude. A stun has no damage, so its magnitude is its
+	 * duration. Mirrors `stun_application` in `sim/cataclysm_sim/damage.py`.
+	 *
+	 * @param TotalChance   every source added together, uncapped
+	 * @param OutChance     the chance the stun is rolled at, capped at 100
+	 * @param OutSeconds    how long it lasts, capped at LongestStunSeconds
+	 */
+	static void StunApplication(float TotalChance, float& OutChance,
+								float& OutSeconds);
 
 	/** Seconds after taking damage before an energy shield starts refilling. */
 	static constexpr float EnergyShieldRechargeDelay = 3.0f;

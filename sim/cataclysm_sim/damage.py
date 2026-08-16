@@ -122,11 +122,18 @@ SUBTYPE_BONUS = 10.0
 #: sheet already carries crowd control resistance to defend against it.
 BLUNT_STUN_CHANCE = 10.0
 
+#: How long a stun lasts when something gave an ordinary hit a chance to apply
+#: one, before the overflow rule below lengthens it.
+#:
 #: Deliberately the shortest duration any designed skill uses, matching the
-#: Lunge skill's 0.75 seconds. A weapon sub-type applying stun on every hit must
-#: not outclass the skills whose entire purpose is stunning, which run to 3
-#: seconds.
-BLUNT_STUN_SECONDS = 0.75
+#: Lunge skill's 0.75 seconds. Something that can stun on every hit must not
+#: outclass the skills whose entire purpose is stunning, which run to 3 seconds.
+#:
+#: IT WAS CALLED `BLUNT_STUN_SECONDS` UNTIL 2026-08-16, when the project owner
+#: settled that an affix grants a chance to stun and that blunt's 10% is part of
+#: the same pool. A stun rolled from that pool lasts this long whatever weapon is
+#: held, so a name mentioning only blunt had stopped being true.
+INCIDENTAL_STUN_SECONDS = 0.75
 
 
 # --------------------------------------------------------------------------
@@ -175,6 +182,71 @@ STUN_DAMAGE_THRESHOLD = 10.0
 #: Stated by the project owner as "at least 5 seconds". Enforced by the game
 #: rather than here, and recorded here so both copies of the rule sit together.
 STUN_IMMUNITY_SECONDS = 5.0
+
+#: The longest a stun may last however much chance to stun is stacked, in
+#: seconds.
+#:
+#: DERIVED, NOT PICKED. It is the longest stun anywhere in the design: the
+#: Brute's Heart ten-piece set bonus in `game/Data/EnchantmentsPositive.csv`,
+#: which stuns for 3 seconds and is the most expensive thing in the game to
+#: assemble. Player skills run 0.75 to 1.5. So a blunt weapon with heavy
+#: investment reaching the same hold as a ten-piece set is a ceiling the design
+#: already contains rather than a new number.
+#:
+#: WITHOUT A CAP THE ANTI-STUN-LOCK RULE STOPS WORKING, and that is arithmetic
+#: rather than judgement. The immunity window is 5 seconds. A stun lasting 5
+#: seconds or more means the window expires while the target is still held, so
+#: the next hit re-stuns immediately and the target never acts again -- which is
+#: exactly the "chain-stunned by large hits" the window exists to stop. Blunt's
+#: 0.75 second base reaches 5 seconds at 667% chance to stun, and the weakening
+#: ailments show that much chance is reachable: affixes alone reach 165% and gems
+#: reach 150% each.
+#:
+#: AT THIS CAP A STUNNED TARGET ALWAYS GETS AT LEAST 2 SECONDS TO ACT, because 3
+#: is 2 short of the window. That is the property the cap is for.
+LONGEST_STUN_SECONDS = 3.0
+
+#: Chance to stun caps at certainty, and everything past it becomes duration.
+#: The same 100 `AILMENT_CHANCE_CAP` uses in `affixes.py`, kept here because this
+#: module has no dependency on that one.
+STUN_CHANCE_CAP = 100.0
+
+
+def stun_application(total_chance: float,
+                     base_seconds: float = INCIDENTAL_STUN_SECONDS) -> tuple[float, float]:
+    """Chance to stun, and how long the stun lasts, from one total chance.
+
+    THE SAME SHAPE `affixes.ailment_application` USES, and deliberately so. The
+    project owner stated the rule for damage over time on 2026-08-03 -- "DoT
+    chance caps at 100%, anything beyond 100% applies to the magnitude of the
+    DoT's effect ... if you have 800% chance to apply it, it gets a 700%
+    multiplier" -- and extended it to stun on 2026-08-16. A stun has no damage,
+    so its magnitude IS its duration.
+
+    WHY THE OVERFLOW RULE AT ALL. Chance to stun comes from a weapon sub-type, an
+    affix, and whatever gems and enchantments grant later, and all of those
+    scale. Without it a build stacking them would hit a ceiling at 100% and every
+    point past it would be dead, which is what the ailments avoid.
+
+    WHY THIS ONE HAS A HARD STOP AND THE AILMENTS DO NOT. A weakening ailment's
+    magnitude caps and then rolls over into duration, so its scaling never dies.
+    A stun's magnitude is its duration, so there is nothing to roll over into --
+    and duration is the one thing that must not run away, because a stun as long
+    as the immunity window is a permanent hold. Past `LONGEST_STUN_SECONDS` the
+    extra chance really is dead, and that is the intended outcome rather than an
+    oversight.
+
+    Returns the chance to stun, capped at certainty, and the duration in seconds.
+    """
+    if total_chance < 0.0:
+        raise ValueError(f"a chance to stun of {total_chance}% is not a chance")
+    if base_seconds < 0.0:
+        raise ValueError(f"a stun of {base_seconds} seconds is not a duration")
+
+    applied = min(STUN_CHANCE_CAP, total_chance)
+    multiplier = max(1.0, total_chance / STUN_CHANCE_CAP)
+    seconds = min(LONGEST_STUN_SECONDS, base_seconds * multiplier)
+    return applied, seconds
 
 
 def can_be_stunned(damage_to_health: float, defender: Defender) -> bool:
@@ -266,10 +338,23 @@ class Attacker:
     #: ignore boss immunity, and it does not ignore the immunity window.
     stun_is_designed: bool = False
 
-    def stun_chance(self) -> float:
-        """Chance to stun before the target's crowd control resistance."""
+    def total_stun_chance(self) -> float:
+        """Every source of chance to stun added up, uncapped.
+
+        NOT CLAMPED HERE, and that is the point of the split. Everything above
+        100% becomes duration rather than being discarded; `stun_application`
+        below is what divides it into the two.
+        """
         base = BLUNT_STUN_CHANCE if self.subtype == "Blunt" else 0.0
-        return max(0.0, min(100.0, base + self.bonus_stun_chance))
+        return max(0.0, base + self.bonus_stun_chance)
+
+    def stun_chance(self) -> float:
+        """Chance to stun before the target's crowd control resistance.
+
+        Capped at certainty. What is above it is not lost: see
+        `stun_application`.
+        """
+        return min(STUN_CHANCE_CAP, self.total_stun_chance())
 
     def __post_init__(self) -> None:
         if self.subtype not in WEAPON_SUBTYPES:
@@ -401,9 +486,32 @@ def effective_stun_chance(attacker: Attacker, defender: Defender) -> float:
     Resistance reduces the chance proportionally rather than subtracting from
     it, so a character at 100 resistance cannot be stunned at all and one at 50
     is stunned half as often, whatever the incoming chance.
+
+    IT REDUCES THE ATTACKER'S TOTAL, NOT THE CAPPED CHANCE, so a defender's
+    resistance bites into the overflow as well. A 50 resistance defender facing
+    400% chance to stun sees 200%, which is still certainty and still doubles
+    the duration -- but sees it from twice as much investment as before. Reducing
+    only the capped 100 would make resistance worth nothing at all against a
+    heavy stun build, which is the opposite of what a defensive stat is for.
     """
     reduction = max(0.0, min(100.0, defender.crowd_control_resistance))
-    return attacker.stun_chance() * (1.0 - reduction / 100.0)
+    return attacker.total_stun_chance() * (1.0 - reduction / 100.0)
+
+
+def stun_against(attacker: Attacker, defender: Defender) -> tuple[float, float]:
+    """The chance to stun this defender and how long the stun would last.
+
+    Both halves after the defender's crowd control resistance, which is the only
+    place the two are put together.
+
+    THE DURATION DOES NOT DEPEND ON THE WEAPON. Every source of chance to stun --
+    a blunt weapon's 10%, an affix, whatever gems and enchantments grant later --
+    fills one pool, and a stun rolled from that pool lasts
+    `INCIDENTAL_STUN_SECONDS` before the overflow lengthens it. A skill whose
+    STATED effect is to stun is a different thing entirely and carries its own
+    duration in its data; see `Attacker.stun_is_designed`.
+    """
+    return stun_application(effective_stun_chance(attacker, defender))
 
 
 def resolve(attacker: Attacker, defender: Defender,
@@ -493,11 +601,12 @@ def resolve(attacker: Attacker, defender: Defender,
     if defender.is_boss:
         stunned = False
     elif attacker.stun_is_designed or can_be_stunned(to_health, defender):
-        stun_chance = effective_stun_chance(attacker, defender)
+        stun_chance, stun_seconds = stun_against(attacker, defender)
         stunned = (force_stun if force_stun is not None
                    else rng.uniform(0, 100) < stun_chance)
     else:
         stunned = False
+        stun_seconds = 0.0
 
     return Resolution(
         evaded=False, blocked=blocked, incoming=attacker.damage,
@@ -506,7 +615,7 @@ def resolve(attacker: Attacker, defender: Defender,
         absorbed_by_shield=absorbed, absorbed_by_mana=absorbed_by_mana,
         dealt_to_health=min(to_health, defender.health),
         stunned=stunned,
-        stun_seconds=BLUNT_STUN_SECONDS if stunned else 0.0,
+        stun_seconds=stun_seconds if stunned else 0.0,
     )
 
 

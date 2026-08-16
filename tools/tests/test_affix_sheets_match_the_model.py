@@ -276,7 +276,11 @@ class TestTheCountsThatAreAssertedInUnreal:
         # 84, not 80. The four minion affixes landed with issue #337:
         # increased minion damage, health and attack speed, plus the one
         # hybrid that Ring is the only slot for.
-        assert len(affix_sheet) == 84 == model.total_pool_size()
+        # 85, not 84. The chance to stun landed with issue #298 on
+        # 2026-08-16, when the project owner settled that an affix does
+        # grant a chance to stun and that Blunt's 10% is part of the same
+        # pool.
+        assert len(affix_sheet) == 85 == model.total_pool_size()
 
     def test_the_gem_count(self, model):
         """The Gems sheet count the Unreal test pins by hand.

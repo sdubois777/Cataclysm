@@ -4,8 +4,8 @@
     {
       "asset": "DT_Affixes",
       "csv": "Affixes.csv",
-      "rows": 84,
-      "csv_sha256": "801a4de4b27294f57b0717500c2b57c47752b23f9d53149cd8c167c567963e6e"
+      "rows": 85,
+      "csv_sha256": "ab7a82e176c4c961ba6ccad99378f59562b9be353e5d1ea5132c6ea3c18f57d0"
     },
     {
       "asset": "DT_Attributes",
@@ -107,7 +107,7 @@
       "asset": "DT_StatusEffects",
       "csv": "StatusEffects.csv",
       "rows": 52,
-      "csv_sha256": "1fca4d477a4721a517a52a6dd4d0c55685c10cb5bbc5576267e32ddaf6cd407f"
+      "csv_sha256": "bf8ac7af94e4c269934bcbce491851113983b7ba4ff0d48f941812621a4587a4"
     },
     {
       "asset": "DT_WeaponSkills",

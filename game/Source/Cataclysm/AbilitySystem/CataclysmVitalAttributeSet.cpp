@@ -193,6 +193,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Hit.bIsMagic = SubType.Equals(TEXT("Magic"), ESearchCase::IgnoreCase);
 			Hit.bIsPiercing =
 				SubType.Equals(TEXT("Piercing"), ESearchCase::IgnoreCase);
+			Hit.bIsBlunt = SubType.Equals(TEXT("Blunt"), ESearchCase::IgnoreCase);
 
 			// THE DIFFICULTY TIER IS READ RATHER THAN ASSUMED, since issue #514.
 			// This passed a literal 1 because nothing in the project held a tier
@@ -223,6 +224,52 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				SetHealth(FMath::Clamp(GetHealth() - Outcome.DealtToHealth,
 									   0.0f, GetMaxHealth()));
 				NotifyIfHealthReachedZero();
+			}
+
+			// A BLUNT WEAPON MAY STUN WHAT IT HITS. Issue #639, and the last
+			// of the four sub-types to be built. Its effect is the only one that
+			// is not damage, which is why it is here rather than inside Resolve:
+			// a stun goes through UCataclysmSkillEffects::ApplyStun, which
+			// enforces the three anti-stun-lock rules, and Resolve is pure
+			// arithmetic with no way to reach any of them.
+			//
+			// THE THRESHOLD, THE WINDOW AND BOSS IMMUNITY ARE ALL ApplyStun'S,
+			// so none of them is checked twice. It is passed the damage this hit
+			// actually dealt and told the stun is NOT designed, which is what
+			// makes it obey the 10% damage threshold -- a stun rolled on an
+			// ordinary hit must obey it, or chip damage from a fast blunt weapon
+			// would interrupt a well defended character constantly, which is
+			// half of what the rule exists to stop.
+			//
+			// CROWD CONTROL RESISTANCE REDUCES THE TOTAL, NOT THE CAPPED CHANCE,
+			// so it bites into the overflow as well and is worth something
+			// against a heavy stun build rather than nothing.
+			if (Hit.bIsBlunt && Outcome.DealtToHealth > 0.0f)
+			{
+				float Total = UCataclysmDamageCalculation::BluntStunChance;
+				if (const UCataclysmCombatAttributeSet* Defence =
+						GetOwningAbilitySystemComponent()
+							? GetOwningAbilitySystemComponent()
+								  ->GetSet<UCataclysmCombatAttributeSet>()
+							: nullptr)
+				{
+					const float Resisted = FMath::Clamp(
+						Defence->GetCrowdControlResistance(), 0.0f, 100.0f);
+					Total *= 1.0f - Resisted / 100.0f;
+				}
+
+				float Chance = 0.0f;
+				float Seconds = 0.0f;
+				UCataclysmDamageCalculation::StunApplication(Total, Chance,
+															 Seconds);
+
+				if (Chance > 0.0f && FMath::FRandRange(0.0f, 100.0f) < Chance)
+				{
+					UCataclysmSkillEffects::ApplyStun(
+						Data.EffectSpec.GetContext().GetEffectCauser(),
+						GetOwningActor(), Seconds, Outcome.DealtToHealth,
+						/*bStunIsDesigned=*/false);
+				}
 			}
 
 			PlayImpactEffect(Data, Hit, Outcome);

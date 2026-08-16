@@ -14,7 +14,7 @@ also the only one of the four that no test could say anything about.
 
 WHAT WAS DECIDED. 0.75 seconds, the same as Lunge. Both are Movement-slot skills
 that stun a single target on arrival, and it is the shortest duration any designed
-skill uses. That last part is not a preference: `BLUNT_STUN_SECONDS` in
+skill uses. That last part is not a preference: `INCIDENTAL_STUN_SECONDS` in
 `sim/cataclysm_sim/damage.py` is set to 0.75 and its comment says it is
 "deliberately the shortest duration any designed skill uses, matching the Lunge
 skill's 0.75 seconds". Giving Whip Swing anything shorter would have made that
@@ -96,6 +96,24 @@ DEFINITIONS = {
     ("StatusEffects", "Debuff_Knockdown"),
 }
 
+#: Rows that grant a CHANCE to apply a hard stop rather than applying one of a
+#: stated length, as (table, row key).
+#:
+#: WHY THEY NEED AN EXEMPTION TOO, and it is a different reason from the two
+#: above. The chance to stun added for issue #298 on 2026-08-16 does not choose a
+#: duration: how long its stun lasts is a rule, because chance past 100%
+#: multiplies the duration. So there is no number for the row to carry, and the
+#: number it would carry would be wrong as soon as a second source of chance was
+#: equipped.
+#:
+#: THIS IS NOT A HOLE EITHER.
+#: `test_a_chance_row_names_an_effect_whose_definition_states_the_rule` below
+#: requires each of these to name an effect that IS a definition row, so a row
+#: cannot claim the exemption while pointing at nothing.
+CHANCE_TO_APPLY = {
+    ("Affixes", "Ailment_Chance_to_stun"),
+}
+
 #: What a definition row has to say in place of a duration.
 FROM_THE_SOURCE = re.compile(
     r"stated by whatever applies it|a stated number of seconds",
@@ -159,8 +177,9 @@ def test_everything_that_applies_a_stun_states_how_long():
     DEFINITION ROWS ARE EXEMPT, and only the two named in DEFINITIONS. See the
     comment there for why, and for the test that stops the exemption being a
     hole."""
+    exempt = DEFINITIONS | CHANCE_TO_APPLY
     missing = [(table, key) for table, key, text in stun_rows()
-               if (table, key) not in DEFINITIONS and not DURATION.search(text)]
+               if (table, key) not in exempt and not DURATION.search(text)]
     assert not missing, (
         f"{missing} apply a stun without saying how long it lasts. Since the "
         "anti-stun-lock rule gave stun a 5 second immunity window, a duration "
@@ -320,7 +339,7 @@ def test_the_design_document_names_the_same_stunning_skills():
 # --------------------------------------------------------------------------
 
 def test_the_blunt_stun_constant_still_matches_the_shortest_designed_stun():
-    """`BLUNT_STUN_SECONDS` in sim/cataclysm_sim/damage.py is the stun a Blunt
+    """`INCIDENTAL_STUN_SECONDS` in sim/cataclysm_sim/damage.py is the stun a Blunt
     weapon applies on an ordinary hit. Its comment says it is deliberately the
     shortest duration any designed skill uses, so that a weapon sub-type
     stunning on every hit cannot outclass the skills built to stun. That claim
@@ -329,8 +348,8 @@ def test_the_blunt_stun_constant_still_matches_the_shortest_designed_stun():
     from cataclysm_sim import damage
 
     shortest = min(SKILL_STUN_SECONDS.values())
-    assert damage.BLUNT_STUN_SECONDS == shortest, (
-        f"BLUNT_STUN_SECONDS is {damage.BLUNT_STUN_SECONDS} but the shortest "
+    assert damage.INCIDENTAL_STUN_SECONDS == shortest, (
+        f"INCIDENTAL_STUN_SECONDS is {damage.INCIDENTAL_STUN_SECONDS} but the shortest "
         f"designed skill stun is now {shortest}. Its comment claims the two "
         f"match. Either change the constant, or change the comment and say why "
         f"a Blunt weapon's incidental stun differs from the shortest skill.")
@@ -351,3 +370,43 @@ def test_a_skill_that_only_grants_immunity_needs_no_duration():
         "test and the IMMUNITY patterns above can go; until then its absence "
         "means the wording changed and the classifier no longer recognises it, "
         "which would make those rows fail the duration rule for no reason.")
+
+
+@pytest.mark.parametrize(("table", "key"), sorted(CHANCE_TO_APPLY))
+def test_a_chance_row_names_an_effect_whose_definition_states_the_rule(table, key):
+    """What stops CHANCE_TO_APPLY being a way to say nothing.
+
+    A row exempted on the grounds that its duration is a rule has to name the
+    effect whose definition carries that rule. Without this, any row mentioning
+    stun could be added to the exemption and the guard would stop asking the
+    question it exists to ask.
+    """
+    row = next((r for r in rows_of(table) if r["Name"] == key), None)
+    assert row is not None, (
+        f"game/Data/{table}.csv has no row {key}. It is exempted from stating a "
+        f"stun duration on the grounds that it grants a chance rather than a "
+        f"stun of a stated length, so if it is gone the exemption should go too.")
+
+    named = row.get("Ailment", "")
+    assert named, (
+        f"{key} claims the chance-to-apply exemption and names no effect at "
+        f"all, so there is nothing to look the duration up in.")
+
+    effects = {r["EffectName"]: r for r in rows_of("StatusEffects")}
+    assert named in effects, (
+        f"{key} names the effect {named!r}, which is not in "
+        f"game/Data/StatusEffects.csv. The exemption relies on that row "
+        f"carrying the duration rule.")
+
+    definition_keys = {k for _, k in DEFINITIONS}
+    assert effects[named]["Name"] in definition_keys, (
+        f"{key} names {named!r}, whose row is not one of the definitions that "
+        f"state how a duration is arrived at. Either it should state its own "
+        f"duration, or {named!r} needs to become a definition row.")
+
+    # AND THE DEFINITION REALLY DOES CARRY A NUMBER, so the chain ends somewhere
+    # rather than pointing at another deferral.
+    assert DURATION.search(effects[named]["Description"]), (
+        f"the {named!r} row in game/Data/StatusEffects.csv no longer states how "
+        f"long a stun applied by a chance lasts, so {key} points at nothing. "
+        f"That rule was added on 2026-08-16 with issue #298.")

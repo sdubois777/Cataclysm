@@ -164,6 +164,22 @@ float UCataclysmDamageCalculation::EffectiveResistance(float Resistance,
 	return FMath::Clamp(Penetrated, ResistanceFloor, ResistanceCap);
 }
 
+void UCataclysmDamageCalculation::StunApplication(float TotalChance,
+												  float& OutChance,
+												  float& OutSeconds)
+{
+	const float Chance = FMath::Max(0.0f, TotalChance);
+	OutChance = FMath::Min(StunChanceCap, Chance);
+
+	// EVERYTHING PAST CERTAINTY BECOMES DURATION rather than being wasted, which
+	// is what stops a stun build hitting a ceiling and every point past it being
+	// dead. The multiplier is never below one, so chance under 100% shortens
+	// nothing.
+	const float Multiplier = FMath::Max(1.0f, Chance / StunChanceCap);
+	OutSeconds = FMath::Min(LongestStunSeconds,
+							IncidentalStunSeconds * Multiplier);
+}
+
 FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	const FCataclysmIncomingHit& Hit,
 	const UAbilitySystemComponent* Defender,

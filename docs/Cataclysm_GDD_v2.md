@@ -1410,6 +1410,15 @@ The chance summed is the total across every source: affixes, gems, keystones and
 | Cripple | Reduces the enemy's movement and attack speed by 30% for 4 seconds | The reduction, to a cap of 80%, then the duration |
 | Shred | Reduces the enemy's resistance by 10 for 6 seconds | The reduction, until that resistance reaches zero, then the duration |
 | Weaken | Reduces the enemy's damage by 20% for 5 seconds | The reduction, to a cap of 80%, then the duration |
+| Stun | The target cannot act for 0.75 seconds | The duration, to a cap of 3 seconds, and then nothing |
+
+  
+
+**Stun is the one effect whose scaling stops dead at its cap**, and that is deliberate. Every other effect here rolls over into duration once its magnitude caps, so scaling never dies. A stun's magnitude IS its duration, so there is nothing to roll over into — and duration is the one thing that must not run away, because a stun as long as the 5 second immunity window would hold a target for ever. Past 3 seconds the extra chance really is wasted.
+
+  
+
+**Three seconds is not a new number.** It is the longest stun the design already contains: the Brute's Heart ten-piece set bonus, which is the most expensive thing in the game to assemble. A character reaching the same hold through 400% chance to stun has spent comparably. It also leaves a stunned target at least 2 seconds to act before the immunity window expires, which is the property the cap exists for.
 
   
 
