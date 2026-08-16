@@ -3835,6 +3835,14 @@ For a creature with the standard 0.48 metre body that is **6.5 metres**. Above i
 
   
 
+**The cap applies to every attack, whether or not it draws a marker.** The two rules on this page answer different questions. The wind-up has to fit inside half the cycle, which only means something for an attack that has a wind-up. The cap asks whether the player can cross the area at all, and that does not depend on anything being drawn: an unmarked area past the cap is worse than a marked one, because it is unavoidable and unannounced as well. An attack escapes being marked by being fast, so exempting the unmarked ones would exempt exactly the dangerous case.
+
+  
+
+**One exemption: an aura held on for as long as the creature lives.** The Succubus's Dominion is the only one designed, and its 8 metre field is over the cap. The cap is about a moment — whether the player can be clear by the time an attack lands — and a field that is simply on has no moment it lands. The player may walk out of it whenever they choose, and the stated counter is killing the caster, which ends it at once. An aura on a cooldown is not exempt: it fires at a moment like anything else, so it draws a marker and is capped.
+
+  
+
 **A large telegraph looks different from a small one.** The player has to read the size at a glance, and radius alone is not readable in a fight. That is presentation, and it no longer implies a different rule.
 
   

@@ -2221,6 +2221,87 @@ def test_a_marker_too_big_for_its_cycle_is_rejected():
                            params={"Radius": 9.0}, cooldown=30.0)
     assert not fits_its_cycle(beyond_reach, brute)
 
+
+def test_the_cap_applies_to_an_ability_that_draws_no_marker():
+    """ISSUE #500. The cap used to sit after the telegraph test, so anything
+    untelegraphed skipped it and could state any radius at all.
+
+    THAT EXEMPTED THE DANGEROUS CASE. An ability escapes being telegraphed by
+    being fast -- the Imp's Rend and the Hellhound's Maul are both under the
+    threshold -- so a fast, huge, unannounced area was legal, and an unannounced
+    nine metre ring is strictly worse than an announced one.
+
+    Three ways an ability avoids drawing a marker, and the cap now reaches all
+    three: a cycle too short to telegraph, a shape with no marker in the table,
+    and a radius under the one metre marker floor. The last cannot break the cap
+    on its own, so it is not listed below.
+    """
+    from cataclysm_sim.enemy_abilities import (Ability, fits_its_cycle,
+                                               is_telegraphed,
+                                               telegraph_cap_metres)
+    from cataclysm_sim.enemy_stats import archetype
+
+    imp = archetype("Imp")
+    cap = telegraph_cap_metres(imp)
+    assert 9.0 > cap
+
+    # A CYCLE TOO SHORT TO TELEGRAPH. The Imp's attack interval allows a marker
+    # well under the one metre floor, so a Basic on it draws nothing.
+    too_fast = Ability(name="Test", shape="Strike", slot="Basic",
+                       params={"Radius": 9.0, "Angle": 360})
+    assert not is_telegraphed(too_fast, imp)
+    assert not fits_its_cycle(too_fast, imp)
+
+    # A SHAPE WITH NO MARKER. Summon is one of the four the telegraph table
+    # draws nothing for.
+    no_marker = Ability(name="Test", shape="Summon", slot="Special",
+                        params={"Radius": 9.0}, cooldown=10.0)
+    assert not is_telegraphed(no_marker, imp)
+    assert not fits_its_cycle(no_marker, imp)
+
+    # The control: the same untelegraphed shapes are fine under the cap, so this
+    # is a cap being applied and not a blanket refusal.
+    under_the_cap = Ability(name="Test", shape="Strike", slot="Basic",
+                            params={"Radius": 1.32, "Angle": 360})
+    assert not is_telegraphed(under_the_cap, imp)
+    assert fits_its_cycle(under_the_cap, imp)
+
+
+def test_an_aura_held_on_is_exempt_from_the_cap_and_one_on_a_cooldown_is_not():
+    """THE DECISION ISSUE #500 HAD TO MAKE, and the Succubus's Dominion is what
+    forced it: an 8.00 metre field, over the 6.50 metre cap, that would be
+    refused outright by a cap applied to everything.
+
+    The cap is about a moment. It asks whether the player can be clear by the
+    time an attack lands, and a field that is simply on has no moment it lands --
+    the player may walk out whenever they choose, and the design's stated counter
+    is killing the caster, which ends it at once.
+
+    AN AURA ON A COOLDOWN IS NOT EXEMPT. It fires at a moment like anything else.
+    Nothing designed does that today, which is why the second half of this test
+    is written against a constructed ability.
+    """
+    from cataclysm_sim.enemy_abilities import (Ability, abilities,
+                                               fits_its_cycle,
+                                               telegraph_cap_metres)
+    from cataclysm_sim.enemy_stats import archetype
+
+    succubus = archetype("Succubus")
+    cap = telegraph_cap_metres(succubus)
+
+    dominion = next(a for a in abilities("Succubus") if a.slot == "Aura")
+    assert dominion.is_held_on
+    assert float(dominion.params["Radius"]) > cap, (
+        "Dominion no longer exceeds the cap, so this test is checking nothing. "
+        "The exemption only means something while a held-on aura is over it.")
+    assert fits_its_cycle(dominion, succubus)
+
+    on_a_cooldown = Ability(name="Test", shape="Aura", slot="Ultimate",
+                            params={"Radius": float(dominion.params["Radius"])},
+                            cooldown=12.0)
+    assert not on_a_cooldown.is_held_on
+    assert not fits_its_cycle(on_a_cooldown, succubus)
+
 def test_an_undesigned_enemy_raises_rather_than_returning_nothing():
     """Returning an empty list would let a caller treat an undesigned enemy as
     a finished one that does nothing.
