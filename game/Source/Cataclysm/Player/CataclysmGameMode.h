@@ -155,6 +155,40 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Difficulty")
 	static int32 DifficultyTierFor(const ACataclysmGameMode* Mode);
 
+	// ----------------------------------------------------------------------
+	// WHICH ENCOUNTER THE SANDBOX IS. Issue #525.
+	//
+	// Every health and armour figure below for a designed creature is read out
+	// of `sim/cataclysm_sim/enemy_stats.py` at ONE stated encounter:
+	//
+	//     stats_on_floor(rarity="Common", tier=1, dungeon_type="Cataclysm",
+	//                    total_floors=50, floor=50)
+	//
+	// TIER 1 BECAUSE THE SANDBOX IS WHERE A NEW CHARACTER STANDS, which is what
+	// `DifficultyTier` above already says and defaults to.
+	//
+	// COMMON BECAUSE NOTHING SETS A RARITY. `ACataclysmEnemyCharacter::RarityStep`
+	// defaults to 0, which is Common, so this is the rarity the sandbox already
+	// spawns rather than a choice made here.
+	//
+	// THE LAST FLOOR OF A 50-FLOOR CATACLYSM DUNGEON because that is the hardest
+	// encounter tier 1 contains, and because it is the configuration every other
+	// figure in this project is quoted against. The first floor of a Basic
+	// dungeon gives a Brute 8 health, which is a creature nobody could watch do
+	// anything.
+	//
+	// WHY THE FIGURES ARE COPIED RATHER THAN READ. `game/Data/EnemyArchetypes.csv`
+	// publishes the archetype table and nothing in the engine loads it; a Power
+	// Score, which is what turns a share into a number, has no port at all. Issue
+	// #355 builds that transport and issue #39 wires the creatures onto it, and
+	// when they do these constants go away.
+	//
+	// WHAT IS DELIBERATELY NOT TAKEN FROM THE MODEL: the attack damage figures
+	// below. The project owner ruled on 2026-08-14 that how hard an enemy hits
+	// cannot be judged yet, because there is no gear, no character level and no
+	// attribute allocation to judge it against. Issue #570 records it.
+	// ----------------------------------------------------------------------
+
 	/**
 	 * How many enemies to put in the level at the start of play.
 	 *
@@ -198,6 +232,14 @@ protected:
 	 * there is nothing to watch. At this figure it survives long enough to see a
 	 * burn tick, a ground zone, and an Ultimate. Real enemy health comes from
 	 * rarity and difficulty, which is issue #39.
+	 *
+	 * DELIBERATELY NOT MOVED ONTO THE MODEL'S FIGURE WITH THE BRUTE AND THE
+	 * WARDEN. Issue #525 lowered those to what the design model states, and left
+	 * this alone, because a training dummy is a practice target rather than a
+	 * creature: its whole job is to outlast an effect so the effect can be
+	 * watched, and the model's Common baseline of 250 dies to two and a half uses
+	 * of Molten Cleave. It also spawns none by default, so nothing in a play
+	 * session is affected either way.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
 	float TrainingDummyHealth = 5000.0f;
@@ -236,16 +278,48 @@ protected:
 	/**
 	 * How much health each one has.
 	 *
-	 * SANDBOX SCAFFOLDING, NOT THE DESIGNED FIGURE, exactly as
-	 * TrainingDummyHealth is. This is the dummy's 5000 times the Brute's
-	 * health_share of 2.20 from ARCHETYPES in sim/cataclysm_sim/enemy_stats.py,
-	 * so a Brute is as much tougher than a dummy as the model says it should be,
-	 * on a scale the sandbox player can actually fight. The real figure comes
-	 * from tier, floor and rarity through the enemy score model, which has no
-	 * port into the engine yet: issues #39 and #355.
+	 * THE DESIGN MODEL'S OWN FIGURE, NOT SCAFFOLDING, SINCE ISSUE #525. It is
+	 * `stats_on_floor("Common", tier=1, "Cataclysm", kind="Brute")` in
+	 * `sim/cataclysm_sim/enemy_stats.py`, rounded to a whole number:
+	 * `SandboxEncounter` above says which encounter that is and why.
+	 * `tools/tests/test_brute_matches_the_model.py` holds it against the model.
+	 *
+	 * IT WAS 11,000 AND THAT MADE THE CREATURE UNFIGHTABLE. That figure was the
+	 * training dummy's 5,000 times the Brute's health_share of 2.20 -- a ratio
+	 * the model does state, applied to a base the model does not. An ungeared
+	 * character with a bare Greataxe deals about 102 a use with Molten Cleave and
+	 * about 96 of that reached the creature, so killing one took 116 uses of a
+	 * 1.5 second cooldown: nearly three minutes of uninterrupted attacking. At
+	 * this figure it takes about 7 uses and about 10 seconds.
+	 *
+	 * WHY THE MODEL'S FIGURE RATHER THAN A NUMBER PICKED TO FEEL RIGHT. The two
+	 * sides of the exchange were never both honest: the player's damage is what a
+	 * bare weapon really supplies, and the enemy's health was invented. Reading
+	 * the model at the tier the sandbox already stands at makes both sides the
+	 * project's own numbers, and it lands inside the eight-to-ten uses issue #525
+	 * asked for without that target being aimed at.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
-	float BruteHealth = 11000.0f;
+	float BruteHealth = 549.0f;
+
+	/**
+	 * How much armour each one has.
+	 *
+	 * NOTHING SET THIS BEFORE, AND THE BRUTE IS THE CREATURE THE DESIGN CALLS
+	 * HEAVILY ARMOURED. `ACataclysmEnemyCharacter::StartingArmour` defaults to
+	 * zero and nothing outside a test ever called `SetArmour`, so every enemy in
+	 * the sandbox had none. Armour was the one defensive layer that reached the
+	 * attribute set and was never given a value.
+	 *
+	 * IT ALSO MADE THE DIFFICULTY TIER DO NOTHING. `ArmorReduction` is
+	 * `armor / (armor + 800 x tier)`, and with armour at zero that is zero at
+	 * every tier, so the whole of issue #514's work was invisible in play.
+	 *
+	 * The figure is from the same stat block as `BruteHealth`. At tier 1 it
+	 * removes 15.76% of a hit.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float BruteArmour = 150.0f;
 
 	/**
 	 * What one of its attacks is worth. The dummy's 20 times the Brute's
@@ -278,14 +352,26 @@ protected:
 	/**
 	 * How much health each one has.
 	 *
-	 * SANDBOX SCAFFOLDING, NOT THE DESIGNED FIGURE, on exactly the reasoning
-	 * BruteHealth records: the training dummy's 5000 times this creature's
-	 * health_share of 3.50 from ARCHETYPES in sim/cataclysm_sim/enemy_stats.py.
-	 * The real figure comes from tier, floor and rarity through the enemy score
-	 * model, which has no port into the engine yet.
+	 * THE DESIGN MODEL'S OWN FIGURE, on exactly the reasoning BruteHealth
+	 * records. It is `stats_on_floor("Common", tier=1, "Cataclysm",
+	 * kind="Abyssal Warden")`, rounded to a whole number. It was 17,500, which
+	 * took 240 uses of Molten Cleave; it now takes about 15 and about 22 seconds.
+	 *
+	 * COMMON RARITY, THOUGH THE DESIGN MEETS THIS CREATURE AT HERALD. The same
+	 * stat block at Herald is 6,161 health, which is 148 uses and nearly four
+	 * minutes for an ungeared character. The sandbox exists to watch what a
+	 * creature DOES, and its rarity ladder is what issues #39 and #355 build; a
+	 * fight nobody can finish shows less of the creature, not more.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
-	float AbyssalWardenHealth = 17500.0f;
+	float AbyssalWardenHealth = 873.0f;
+
+	/**
+	 * How much armour each one has. See `BruteArmour` for why nothing set this
+	 * before. At tier 1 it removes 17.92% of a hit.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float AbyssalWardenArmour = 175.0f;
 
 	/**
 	 * What one of its ordinary swings is worth. The dummy's 20 times its

@@ -151,6 +151,12 @@ int32 ACataclysmGameMode::SpawnAbyssalWardens()
 		Warden->SetHealth(AbyssalWardenHealth);
 		Warden->SetAttackDamage(AbyssalWardenAttackDamage);
 
+		// ARMOUR ARRIVES FROM THE SPAWNER, which is what the enemy class's own
+		// header says it must, and until issue #525 nothing anywhere called this.
+		// Every enemy in the sandbox had none, so the difficulty tier divided a
+		// zero and made no difference to anything.
+		Warden->SetArmour(AbyssalWardenArmour);
+
 		AbyssalWardens.Add(Warden);
 		++Spawned;
 	}
@@ -158,12 +164,14 @@ int32 ACataclysmGameMode::SpawnAbyssalWardens()
 	// THE LOG SAYS IT CANNOT CHASE, because that is the first thing anybody
 	// watching it will notice and it is designed rather than broken.
 	UE_LOG(LogCataclysm, Verbose,
-		TEXT("Put %d Abyssal Wardens %.0f cm from %s. Each has %.0f health, "
+		TEXT("Put %d Abyssal Wardens %.0f cm from %s. Each has %.0f health and "
+			 "%.0f armour at difficulty tier %d, "
 			 "hits for %.0f every %.1f s, walks at %.0f cm/s and never runs. "
 			 "Its Molten Roar marks a %.0f cm ring every %.0f s. It has no "
 			 "charge and cannot close on a player who walks away: issue #491."),
 		Spawned, AbyssalWardenDistanceCm, *Centre.ToCompactString(),
-		AbyssalWardenHealth, AbyssalWardenAttackDamage,
+		AbyssalWardenHealth, AbyssalWardenArmour, DifficultyTierFor(this),
+		AbyssalWardenAttackDamage,
 		ACataclysmAbyssalWardenCharacter::DesignedAttackIntervalSeconds,
 		ACataclysmAbyssalWardenCharacter::DesignedWalkSpeedCmPerSecond,
 		ACataclysmAbyssalWardenCharacter::MoltenRoarRadiusCm,
@@ -223,15 +231,21 @@ int32 ACataclysmGameMode::SpawnBrutes()
 		Brute->SetHealth(BruteHealth);
 		Brute->SetAttackDamage(BruteAttackDamage);
 
+		// See the note beside the Abyssal Warden's call. This is the creature the
+		// design calls heavily armoured, and it had no armour at all until
+		// issue #525.
+		Brute->SetArmour(BruteArmour);
+
 		Brutes.Add(Brute);
 		++Spawned;
 	}
 
 	UE_LOG(LogCataclysm, Verbose,
-		TEXT("Put %d Brutes %.0f cm from %s. Each has %.0f health, hits for "
+		TEXT("Put %d Brutes %.0f cm from %s. Each has %.0f health and %.0f "
+			 "armour at difficulty tier %d, hits for "
 			 "%.0f every %.1f s, walks at %.0f cm/s and turns at %.0f deg/s."),
 		Spawned, BruteDistanceCm, *Centre.ToCompactString(),
-		BruteHealth, BruteAttackDamage,
+		BruteHealth, BruteArmour, DifficultyTierFor(this), BruteAttackDamage,
 		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds,
 		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond,
 		ACataclysmBruteCharacter::DesignedTurnRateDegreesPerSecond);

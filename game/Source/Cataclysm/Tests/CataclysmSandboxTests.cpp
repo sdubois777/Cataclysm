@@ -4,9 +4,14 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Character/CataclysmAbyssalWardenCharacter.h"
+#include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
@@ -216,6 +221,181 @@ bool FCataclysmTrainingDummiesRingThePlayerStartTest::RunTest(const FString& Par
 		TestTrue(TEXT("And not at the world origin"),
 			Dummy->GetActorLocation().Size() > 1500.0f);
 	}
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The designed creatures carry the model's figures. Issue #525
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSandboxEnemiesAreArmouredTest,
+	"Cataclysm.Sandbox.TheDesignedCreaturesSpawnWithArmour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSandboxEnemiesAreArmouredTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSandboxTest;
+
+	// WHAT THIS EXISTS FOR. Until issue #525 nothing outside a test ever called
+	// ACataclysmEnemyCharacter::SetArmour, so StartingArmour stayed at its zero
+	// default on every creature in the sandbox. The Brute is the one the design
+	// calls heavily armoured and it had none, and the difficulty tier -- which
+	// does nothing except divide an armour value -- was invisible in play.
+	//
+	// THE FIGURES THEMSELVES ARE PINNED IN PYTHON, by
+	// tools/tests/test_brute_matches_the_model.py and its Warden counterpart,
+	// which compare the header against sim/cataclysm_sim/enemy_stats.py. What
+	// this checks is the half that reading the header cannot: that the number
+	// reaches a live attribute on a spawned actor.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
+	if (!GameMode)
+	{
+		AddError(TEXT("Could not spawn the game mode."));
+		return false;
+	}
+
+	const int32 Brutes = GameMode->SpawnBrutes();
+	const int32 Wardens = GameMode->SpawnAbyssalWardens();
+
+	TestTrue(TEXT("The sandbox spawns a Brute"), Brutes > 0);
+	TestTrue(TEXT("and an Abyssal Warden"), Wardens > 0);
+
+	const FGameplayAttribute Armour =
+		UCataclysmCombatAttributeSet::GetArmorAttribute();
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	for (const TPair<FString, AActor*>& Creature : TArray<TPair<FString, AActor*>>{
+			{TEXT("Brute"), Brutes > 0 ? GameMode->Brutes[0].Get() : nullptr},
+			{TEXT("Abyssal Warden"),
+			 Wardens > 0 ? GameMode->AbyssalWardens[0].Get() : nullptr}})
+	{
+		if (!IsValid(Creature.Value))
+		{
+			AddError(FString::Printf(TEXT("No %s was spawned."), *Creature.Key));
+			continue;
+		}
+
+		const UAbilitySystemComponent* AbilitySystem =
+			UCataclysmTargeting::AbilitySystemOf(Creature.Value);
+		if (!AbilitySystem)
+		{
+			AddError(FString::Printf(
+				TEXT("The %s has no ability system."), *Creature.Key));
+			continue;
+		}
+
+		const float ArmourValue = AbilitySystem->GetNumericAttribute(Armour);
+		const float HealthValue = AbilitySystem->GetNumericAttribute(Health);
+
+		TestTrue(FString::Printf(TEXT("The %s carries armour (%.0f)"),
+			*Creature.Key, ArmourValue), ArmourValue > 0.0f);
+		TestTrue(FString::Printf(TEXT("and health (%.0f)"), HealthValue),
+			HealthValue > 0.0f);
+
+		// SMALL ENOUGH TO BE KILLED, which is the whole of issue #525. An
+		// ungeared character's Heavy slot deals about 102 before the creature's
+		// own mitigation, and 11,000 health meant 116 uses of a 1.5 second
+		// cooldown. The bound is loose on purpose: the exact figure is the
+		// model's and is pinned in Python, and this only has to notice a return
+		// to a number nobody can fight.
+		TestTrue(FString::Printf(
+			TEXT("and not so much of it that it cannot be killed (%.0f)"),
+			HealthValue), HealthValue < 3000.0f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSandboxArmourReducesAHitTest,
+	"Cataclysm.Sandbox.ASandboxEnemysArmourActuallyReducesAHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSandboxTest;
+
+	// THE ATTRIBUTE HOLDING A NUMBER IS NOT THE SAME AS THE NUMBER DOING
+	// ANYTHING. That distinction is exactly what went wrong before issue #481 on
+	// the simulation side: armour was computed, exported, checked for sanity, and
+	// read by no arithmetic anywhere. This measures the same hit twice against
+	// the same creature, once armoured and once not.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
+	if (!GameMode || GameMode->SpawnBrutes() == 0)
+	{
+		AddError(TEXT("Could not spawn a Brute."));
+		return false;
+	}
+
+	ACataclysmBruteCharacter* Brute = GameMode->Brutes[0].Get();
+	ACataclysmEnemyCharacter* Attacker =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(200.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!IsValid(Brute) || !IsValid(Attacker))
+	{
+		AddError(TEXT("Could not arrange the fight."));
+		return false;
+	}
+	Attacker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Brute);
+	if (!AbilitySystem)
+	{
+		AddError(TEXT("The Brute has no ability system."));
+		return false;
+	}
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute Armour =
+		UCataclysmCombatAttributeSet::GetArmorAttribute();
+
+	const float ArmourValue = AbilitySystem->GetNumericAttribute(Armour);
+	if (!TestTrue(TEXT("The Brute starts armoured"), ArmourValue > 0.0f))
+	{
+		return false;
+	}
+
+	// THE SAME HIT, TWICE. Small against the creature's health so neither
+	// application is clamped by the health remaining.
+	constexpr float Blow = 50.0f;
+
+	const float BeforeArmoured = AbilitySystem->GetNumericAttribute(Health);
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Brute, Blow);
+	const float WithArmour = BeforeArmoured
+		- AbilitySystem->GetNumericAttribute(Health);
+
+	Brute->SetArmour(0.0f);
+
+	const float BeforeBare = AbilitySystem->GetNumericAttribute(Health);
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Brute, Blow);
+	const float WithoutArmour = BeforeBare
+		- AbilitySystem->GetNumericAttribute(Health);
+
+	TestTrue(FString::Printf(TEXT("An armoured Brute loses health (%.2f)"),
+		WithArmour), WithArmour > 0.0f);
+	TestTrue(FString::Printf(
+		TEXT("and less of it than the same Brute with no armour "
+			 "(%.2f against %.2f)"), WithArmour, WithoutArmour),
+		WithArmour < WithoutArmour);
 
 	return true;
 }

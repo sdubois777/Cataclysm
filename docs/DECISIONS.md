@@ -20,6 +20,130 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — The sandbox's enemies carry the design model's tier 1 figures
+
+**Affects:** nothing in the design documents. It replaces invented numbers in
+`game/Source/Cataclysm/Player/CataclysmGameMode.h` with figures the model already
+states. Closes issue #525.
+
+### What was wrong
+
+A player in the sandbox could not kill anything. With a bare Greataxe at gear
+level 0 — no affixes, no attribute points, no passive tree, because none of those
+systems exists — killing the Brute took **116 uses of a 1.5 second cooldown**,
+nearly three minutes of uninterrupted attacking. The Abyssal Warden took 240.
+
+**Both sides of that were honest except one.** The player's 40.86 attack damage
+is what a bare weapon really supplies. The enemies' health was not a design
+figure at all: 11,000 was the training dummy's 5,000 times the Brute's
+`health_share` of 2.20, and 17,500 was the same 5,000 times the Warden's 3.50.
+That is a ratio the model states applied to a base it does not. The header said
+so itself, twice, in the words "SANDBOX SCAFFOLDING, NOT THE DESIGNED FIGURE".
+
+### The answer was to read the model rather than to pick a number
+
+Issue #525 suggested lowering the enemies "to eight or ten uses of Molten
+Cleave". That is a target rather than a derivation. The model already answers the
+question, at the tier the sandbox already stands at:
+
+```
+stats_on_floor(rarity="Common", tier=1, dungeon_type="Cataclysm",
+               total_floors=50, floor=50)
+```
+
+| Creature | Health | Armour | Resistance |
+| :-- | --: | --: | --: |
+| the average enemy | 250 | 50 | 0% |
+| Brute | 549 | 150 | 15% |
+| Abyssal Warden | 873 | 175 | 35% |
+
+Three parts of that choice, each read off something the project already decided:
+
+- **Tier 1**, because `ACataclysmGameMode::DifficultyTier` already defaults to 1
+  and the entry of 2026-08-15 says why: "the sandbox is where a new character
+  stands, and a new character is at tier 1".
+- **Common rarity**, because `ACataclysmEnemyCharacter::RarityStep` already
+  defaults to 0, which is Common. Nothing was chosen; the rarity the sandbox
+  already spawns was written down.
+- **The last floor of a 50-floor Cataclysm dungeon**, because that is the hardest
+  encounter tier 1 contains and it is the configuration every other figure in
+  this project is quoted against. The first floor of a Basic dungeon gives a
+  Brute 8 health.
+
+**What it costs an ungeared character**, counting armour, resistance and the
+Greataxe's Slashing bonus of 10% to health:
+
+| Creature | Molten Cleave uses | Seconds |
+| :-- | --: | --: |
+| Brute | 6.8 | 10.2 |
+| Abyssal Warden | 14.6 | 21.9 |
+
+Nothing aimed at issue #525's eight-to-ten target and the Brute landed next to
+it anyway, which is the reason to trust the derivation rather than the target.
+
+### The Abyssal Warden is spawned as Common, and the design meets it at Herald
+
+At Herald the same stat block is 6,161 health, which is 148 uses and nearly four
+minutes. **The sandbox exists to watch what a creature does**, and a fight nobody
+can finish shows less of the creature rather than more. The rarity ladder reaching
+the engine is issues #39 and #355.
+
+### Armour reached no creature at all, and now does
+
+`ACataclysmEnemyCharacter::StartingArmour` defaults to zero and **nothing outside
+a test had ever called `SetArmour`**. So every enemy in the sandbox had none —
+including the Brute, which the design document calls heavily armoured and gives
+the second-highest armour share of the seven vertical slice creatures.
+
+**It also made the difficulty tier do nothing.** `ArmorReduction` is
+`armor / (armor + 800 x tier)`, and with armour at zero that is zero at every
+tier, so the whole of issue #514's work was invisible in play.
+
+The two spawners now call `SetArmour` beside the `SetHealth` they already called,
+with the figure from the same stat block.
+
+### What was deliberately left alone
+
+- **The training dummy's 5,000 health.** A training dummy is a practice target
+  rather than a creature: its job is to outlast an effect so the effect can be
+  watched, and the model's Common baseline of 250 dies to two and a half uses of
+  Molten Cleave. It also spawns none by default.
+- **Every attack damage figure.** The project owner ruled on 2026-08-14 that how
+  hard an enemy hits cannot be judged yet, because there is no gear, no character
+  level and no attribute allocation to judge it against. Issue #570 records it.
+  So the damage side keeps the scaffolding it had and the tests keep checking the
+  ratio it claims.
+
+### Two things issue #525 got wrong, found while checking it
+
+Neither is staleness; both were arithmetic errors in the issue when it was
+written.
+
+- **Emberhurl hits twice.** Its shape parameters carry `Returns=1` and the
+  projectile clears what it has already hit when it turns round, so one use is
+  300% of weapon damage and not 150%. The issue said 211 uses against the Brute;
+  the answer was 96 even before this change.
+- **Pyroclasm is a three-second channel**, not one blow. Its parameters are
+  `Duration=3; Interval=0.5; FinalHitPercent=300`, which is at least six swings
+  at 400% plus a 300% finisher. The issue said 79 uses against the Brute; the
+  answer was 11.
+
+Slashing's 10% is the one thing that genuinely changed since the issue was
+written, and it accounts for about 9% off every single-hit figure.
+
+### One thing found and filed rather than fixed here
+
+**A weapon's attack speed never reaches the character.**
+`UCataclysmCombatAttributeSet` initialises `AttackSpeed` to zero with the comment
+"supplied by the equipped weapon", `game/Data/ItemBases.csv` gives every weapon
+an attack speed, `FCataclysmItemBaseRow` carries the column — and nothing writes
+it. `UCataclysmWeaponSlotsComponent::ApplyWeaponDamage` writes `AttackDamage` and
+nothing else. So the basic attack, which is meant to fire at the weapon's own
+rate, has no rate to fire at, and every increased-attack-speed affix would
+multiply zero. It is separate work and is its own issue.
+
+---
+
 ## 2026-08-16 — A player at zero health dies, stops, and stands back up
 
 **Affects:** `Cataclysm_GDD_v2.md`, section II. Applied: a new subsection, *What

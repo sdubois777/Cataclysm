@@ -36,9 +36,12 @@ a figure for one declared on a C++ class would be invented rather than designed.
 They reach the engine through `DT_EnemyArchetypes` instead, which is issue #355,
 and whatever finally reads that table is what will use them.
 
-The sandbox health and damage figures on `ACataclysmGameMode` are scaffolding
-derived from the training dummy's numbers rather than from the model, and are
-checked separately below only for the share ratio they claim to apply.
+The sandbox HEALTH and ARMOUR figures on `ACataclysmGameMode` are the model's
+own, read at one stated encounter, and are checked against it below. Issue #525
+moved them: they used to be the training dummy's numbers times the archetype's
+shares, which is a ratio the model states applied to a base it does not. The
+sandbox ATTACK DAMAGE figures are still that scaffolding, deliberately, and are
+checked only for the ratio they claim -- see the test that says why.
 """
 
 from __future__ import annotations
@@ -321,25 +324,89 @@ def test_the_capsule_radius_is_the_designed_body_radius() -> None:
     )
 
 
-def test_the_sandbox_figures_apply_the_designed_shares() -> None:
-    """Sandbox health and damage are the dummy's times the Brute's shares.
+def sandbox_stat_block(kind: str):
+    """The one encounter the sandbox's health and armour figures come from.
 
-    Not the designed absolute figures -- those come from the enemy score model,
-    which has no port into the engine (#355). What is guarded is that the
-    scaffolding still scales by the ratio the design gives, so a Brute stays as
-    much tougher than a training dummy as it is supposed to be.
+    Stated once here and once in a comment block in `CataclysmGameMode.h`, and
+    the two have to say the same thing or these tests are checking a different
+    creature from the one the header describes. Issue #525.
+    """
+    from cataclysm_sim.enemy_stats import stats_on_floor
+
+    return stats_on_floor("Common", 1, "Cataclysm", total_floors=50, floor=50,
+                          kind=kind)
+
+
+def test_the_sandbox_health_is_the_models_tier_one_figure() -> None:
+    """The sandbox Brute is the design model's Common Brute at tier 1.
+
+    IT USED TO BE SCAFFOLDING AND THAT IS WHAT ISSUE #525 WAS. The figure was
+    the training dummy's 5,000 times the Brute's health_share of 2.20 -- a ratio
+    the model states, applied to a base it does not -- which came to 11,000 and
+    took an ungeared character 116 uses of a 1.5 second cooldown to chew
+    through, nearly three minutes.
+
+    ROUNDED TO A WHOLE NUMBER, because the header holds a whole number. Half a
+    point of health on a creature of several hundred is not a figure anybody
+    needs to carry.
+    """
+    designed = sandbox_stat_block("Brute").health
+    written = uproperty_default(GAME_MODE_HEADER, "BruteHealth")
+
+    assert written == pytest.approx(round(designed)), (
+        f"CataclysmGameMode.h gives the sandbox Brute {written} health and the "
+        f"design model gives a Common Brute at tier 1, on the last floor of a "
+        f"50-floor Cataclysm dungeon, {designed:.2f}. The model is "
+        f"authoritative. If the encounter this is read at changed, change the "
+        f"comment block in CataclysmGameMode.h and sandbox_stat_block here "
+        f"together.")
+
+
+def test_the_sandbox_armour_is_the_models_tier_one_figure() -> None:
+    """The armour that reached no creature at all until issue #525.
+
+    `ACataclysmEnemyCharacter::StartingArmour` defaults to zero and nothing
+    outside a test ever called `SetArmour`, so the creature the design calls
+    heavily armoured had none -- and the difficulty tier, which only divides an
+    armour value, therefore changed nothing in play.
+    """
+    designed = sandbox_stat_block("Brute").armor
+    written = uproperty_default(GAME_MODE_HEADER, "BruteArmour")
+
+    assert written == pytest.approx(round(designed)), (
+        f"CataclysmGameMode.h gives the sandbox Brute {written} armour and the "
+        f"design model gives {designed:.2f} at the same encounter as its "
+        f"health.")
+
+
+def test_the_sandbox_brute_is_armoured_at_all() -> None:
+    """Stated separately from the figure, because zero is what it used to be.
+
+    A regression to zero would leave the test above failing with a number, and
+    this one failing with the reason.
+    """
+    assert uproperty_default(GAME_MODE_HEADER, "BruteArmour") > 0.0, (
+        "The sandbox Brute has no armour again. That was the state until issue "
+        "#525: nothing called SetArmour anywhere outside a test, so the "
+        "creature the design calls heavily armoured had none, and the "
+        "difficulty tier -- which does nothing except divide an armour value -- "
+        "was invisible in play.")
+
+
+def test_the_sandbox_damage_applies_the_designed_share() -> None:
+    """Attack damage is still the dummy's times the Brute's share, on purpose.
+
+    NOT MOVED ONTO THE MODEL WITH THE HEALTH. The project owner ruled on
+    2026-08-14 that how hard an enemy hits cannot be judged yet, because there
+    is no gear, no character level and no attribute allocation to judge it
+    against. Issue #570 records it. So the damage side keeps the scaffolding it
+    had, and what is guarded is the ratio it claims.
     """
     archetype = brute_archetype()
 
-    dummy_health = uproperty_default(GAME_MODE_HEADER, "TrainingDummyHealth")
     dummy_damage = uproperty_default(GAME_MODE_HEADER, "TrainingDummyAttackDamage")
-    brute_health = uproperty_default(GAME_MODE_HEADER, "BruteHealth")
     brute_damage = uproperty_default(GAME_MODE_HEADER, "BruteAttackDamage")
 
-    assert brute_health == pytest.approx(dummy_health * archetype.health_share), (
-        "The sandbox Brute's health is no longer the training dummy's health "
-        "times ARCHETYPES['Brute'].health_share."
-    )
     assert brute_damage == pytest.approx(dummy_damage * archetype.damage_share), (
         "The sandbox Brute's attack damage is no longer the training dummy's "
         "damage times ARCHETYPES['Brute'].damage_share."
