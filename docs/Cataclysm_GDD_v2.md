@@ -2315,13 +2315,15 @@ The damage numbers are not chosen. They are read off the enemy statistics in sec
 
   
 
-An average Common enemy at difficulty tier 8 has 3,362 effective health and should take **2 non-critical hits** to kill, so a player needs **1,681 damage per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 198, of which the affixes supply 108. The weapons supply the remaining 90.
+An average Common enemy at difficulty tier 8 has 3,366 effective health and should take **2 non-critical hits** to kill. That is not 1,683 damage per hit, because the creature also carries 673 armor, which stops 9.5% of every hit before it reaches health. The damage a player has to deal is **1,860 per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 219, of which the affixes supply 132. The weapons supply the remaining 87.
 
-**That 90 is two one-handed weapons, not one weapon.** The target describes a **dual wielder**, decided by the project owner on 2026-08-15. Two one-handed weapons sum their base damage, as Dual Wielding below sets out, so the 90 is what the pair supplies between them. No single weapon supplies 90 and none is meant to: the strongest one-hander carries 46 and the smallest two-hander 128. The two strongest pairs bracket the figure, an Axe with an Axe at 92 and an Axe with a Sword at 86.
+**The enemy's own mitigation is counted, and it was not until 2026-08-16.** The target divided health by hits and applied nothing, so it answered how much health had to be removed rather than how much damage had to be dealt to remove it, and every offensive number fitted to it was 10.5% low. The average Common enemy is the mildest case: it carries less armor than anything else in the slice.
 
-**The fit is close rather than exact, and the residual is stated rather than hidden.** Pair sums are whole numbers and the requirement is 90.03, so an Axe with a Sword lands about 4% under it and an Axe with an Axe about 2% over. The resulting damage per hit is 1,649 and 1,700 against the 1,681 target.
+**That 87 is two one-handed weapons, not one weapon.** The target describes a **dual wielder**, decided by the project owner on 2026-08-15. Two one-handed weapons sum their base damage, as Dual Wielding below sets out, so the 87 is what the pair supplies between them. No single weapon supplies 87 and none is meant to: the strongest one-hander carries 46 and the smallest two-hander 128. The two strongest pairs sit either side of the figure, an Axe with an Axe at 92 and an Axe with a Sword at 86.
 
-**Every other loadout is measured against that one, and being above or below it is not an error.** A two-handed weapon deals about 1.33 times the target, which is exactly the two-handed advantage Dual Wielding states, and is that multiplier working rather than a loadout breaking the target. A single one-handed weapon deals about 0.78 times it, and a one-handed weapon with a Shield deals the same 0.78 since a Shield adds no attack damage; both trade damage for a free hand or for block and armor.
+**The fit is close rather than exact, and the residual is stated rather than hidden.** Pair sums are whole numbers and the requirement is 86.86, so an Axe with a Sword lands about 1% under it and an Axe with an Axe about 6% over. The resulting damage per hit is 1,853 and 1,904 against the 1,860 target.
+
+**Every other loadout is measured against that one, and being above or below it is not an error.** A two-handed weapon deals about 1.32 times the target, which is the two-handed advantage Dual Wielding states, and is that multiplier working rather than a loadout breaking the target. A single one-handed weapon deals about 0.81 times it, and a one-handed weapon with a Shield deals the same 0.81 since a Shield adds no attack damage; both trade damage for a free hand or for block and armor.
 
 `sim/cataclysm_sim/player_damage.py` composes all four loadouts from the gear and checks at import that the dual wielder still lands within five per cent of this target, so the declaration above cannot quietly stop being true.
 
@@ -2333,13 +2335,17 @@ Everything else follows from that one number rather than being set separately:
 
 | Enemy at tier 8 | Non-critical hits to kill |
 | :-- | :-: |
-| Common Imp | 0.7 |
-| Common Hellhound | 1.5 |
-| Elite Succubus | 3.4 |
-| Elite Brute | 8.2 |
-| Legendary Corrupted Sentinel | 12.2 |
-| Herald Abyssal Warden | 45.4 |
-| Cataclysm Boss Gatekeeper | 234.7 |
+| Common Imp | 0.8 |
+| Common Hellhound | 1.9 |
+| Elite Succubus | 3.9 |
+| Elite Brute | 12.5 |
+| Legendary Corrupted Sentinel | 19.8 |
+| Herald Abyssal Warden | 122.3 |
+| Cataclysm Boss Gatekeeper | 697.3 |
+
+  
+
+**Each of those counts that creature's own mitigation, and they used to count none of it.** They are hits of a basic attack, which is 100% of weapon damage; a Heavy slot skill deals 250% of it and a player fighting an Abyssal Warden is not using basic attacks. The four heavily armoured creatures moved the most because armour is what was missing: the Warden takes 122 basic attacks where the old figure said 45.
 
   
 
@@ -2542,11 +2548,11 @@ A two-handed weapon multiplies **both** its implicit values and every affix roll
 
   
 
-**It has to reach the implicits, not only the affixes.** Two one-handed weapons **sum** their base damage, so an Axe and a Sword give 86 against a Greatsword's stated 78. With the affix half alone the two-hander would lose on damage while also holding one fewer damage type, which makes it strictly worse. Reaching a damage advantage through the affix half alone would need a multiplier near 2.75, which would hand the two-hander three affix slots the dual wielder does not have — the same free power the rule above forbids, pointed the other way.
+**It has to reach the implicits, not only the affixes.** Two one-handed weapons **sum** their base damage, so an Axe and a Sword give 86 against a Greatsword's stated 78. With the affix half alone the two-hander would lose on damage while also holding one fewer damage type, which makes it strictly worse. Reaching the same damage advantage through the affix half alone needs a multiplier of 3.40, which would hand the two-hander 13.6 affix slots-worth on the weapon against the dual wielder's 8 — the same free power the rule above forbids, pointed the other way. `sim/analyse_two_handed_multiplier.py` solves that figure and `sim/tests/test_analysis_scripts.py` holds the comment in `sim/cataclysm_sim/affixes.py` to it.
 
   
 
-With the multiplier applied to both, a two-handed weapon deals about **1.33 times** the damage per hit and about **1.26 times** the damage per second, and the dual wielder holds a fourth damage type and a wider spread of affixes.
+With the multiplier applied to both, a two-handed weapon deals about **1.29 times** the damage per hit and about **1.22 times** the damage per second, and the dual wielder holds a fourth damage type and a wider spread of affixes.
 
   
 

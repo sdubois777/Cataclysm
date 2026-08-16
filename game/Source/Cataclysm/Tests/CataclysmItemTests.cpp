@@ -332,7 +332,12 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 
 	// A two-handed weapon doubles both its implicit and its affixes. Quoted from
 	// the model: a Greatsword's stated 78 becomes 156, and a flat damage affix
-	// worth 18 on a one-hander is worth 36 here.
+	// worth 22 on a one-hander is worth 44 here.
+	//
+	// THE 22 IS READ OUT OF THE DATA TABLE, not stated in the engine, so it moves
+	// when the design does. It was 18 until issue #511 raised the damage target by
+	// applying the enemy's own mitigation to it; the flat damage affix was
+	// re-derived against the corrected target and the design workbook now says 22.
 	FCataclysmItem Greatsword;
 	Greatsword.Base = TEXT("Weapon_Greatsword");
 	Greatsword.GearLevel = 10;
@@ -352,9 +357,9 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("its 78 implicit doubles to 156, got %.2f"),
 				 (*WeaponDamage)[0].Value),
 			FMath::IsNearlyEqual((*WeaponDamage)[0].Value, 156.0f, 0.05f));
-		TestTrue(FString::Printf(TEXT("its 18 affix doubles to 36, got %.2f"),
+		TestTrue(FString::Printf(TEXT("its 22 affix doubles to 44, got %.2f"),
 				 (*WeaponDamage)[1].Value),
-			FMath::IsNearlyEqual((*WeaponDamage)[1].Value, 36.0f, 0.05f));
+			FMath::IsNearlyEqual((*WeaponDamage)[1].Value, 44.0f, 0.05f));
 	}
 	else
 	{
@@ -379,9 +384,9 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("its 46 implicit stays 46, got %.2f"),
 				 (*AxeDamage)[0].Value),
 			FMath::IsNearlyEqual((*AxeDamage)[0].Value, 46.0f, 0.05f));
-		TestTrue(FString::Printf(TEXT("its affix stays 18, got %.2f"),
+		TestTrue(FString::Printf(TEXT("its affix stays 22, got %.2f"),
 				 (*AxeDamage)[1].Value),
-			FMath::IsNearlyEqual((*AxeDamage)[1].Value, 18.0f, 0.05f));
+			FMath::IsNearlyEqual((*AxeDamage)[1].Value, 22.0f, 0.05f));
 	}
 	else
 	{

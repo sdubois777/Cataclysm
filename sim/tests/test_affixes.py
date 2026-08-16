@@ -376,10 +376,38 @@ def test_the_damage_target_is_read_off_the_enemy_stats():
     An earlier version imported a player damage figure that had been derived
     backwards from player-side targets, and that figure is what made the
     project owner's 125% increased damage affix impossible to fit.
+
+    CHECKED AGAINST `enemy_stats`, NOT AGAINST A RESTATEMENT OF THE BODY. This
+    used to assert `effective_health / HITS_TO_KILL_A_COMMON_ENEMY`, which is
+    what the function did, so it could not catch the function doing the wrong
+    thing -- and it did not: issue #511 was that the whole mitigation order was
+    missing here. `player_damage_to_kill_in` is where that order lives, so this
+    now checks the two files agree rather than checking one file agrees with
+    itself.
     """
     common = es.stats_on_floor("Common", 8, "Cataclysm")
     assert af.damage_target(8) == pytest.approx(
-        common.effective_health / af.HITS_TO_KILL_A_COMMON_ENEMY)
+        es.player_damage_to_kill_in(common, af.HITS_TO_KILL_A_COMMON_ENEMY))
+
+
+def test_the_damage_target_goes_through_the_enemys_mitigation():
+    """ISSUE #511. It divided health by hits and applied nothing, so it answered
+    how much HEALTH had to be removed rather than how much DAMAGE had to be dealt
+    to remove it. The average Common enemy carries 673 armour at tier 8, which
+    stops 9.52% of a hit, so the figure was 10.5% low.
+
+    Asserted as a strict inequality against the unmitigated figure, and as the
+    arithmetic that produces the difference, so it fails if either the mitigation
+    or the armour goes away.
+    """
+    common = es.stats_on_floor("Common", 8, "Cataclysm")
+    unmitigated = common.effective_health / af.HITS_TO_KILL_A_COMMON_ENEMY
+
+    assert common.armor > 0.0
+    assert common.damage_taken_fraction() < 1.0
+    assert af.damage_target(8) > unmitigated
+    assert af.damage_target(8) == pytest.approx(
+        unmitigated / common.damage_taken_fraction())
 
 
 def test_the_target_tracks_enemy_health_rather_than_being_a_constant():
@@ -390,11 +418,17 @@ def test_the_target_tracks_enemy_health_rather_than_being_a_constant():
 
 def test_a_common_enemy_dies_in_the_range_the_project_owner_set():
     """One to three non-critical hits. The named Common enemies are checked as
-    well as the average, because the average is not a creature anyone fights."""
+    well as the average, because the average is not a creature anyone fights.
+
+    COUNTED THROUGH EACH CREATURE'S OWN MITIGATION since issue #511. Dividing
+    health by the target ignores the armour and evasion that creature has, which
+    is the same mistake the target itself carried. The Imp and the Hellhound both
+    evade, so this moves them: 0.6 and 1.4 swings become 0.8 and 1.9.
+    """
     target = af.damage_target(8)
     for kind in ("Imp", "Hellhound"):
         e = es.stats_on_floor("Common", 8, "Cataclysm", kind=kind)
-        hits = e.effective_health / target
+        hits = e.effective_health / (target * e.damage_taken_fraction())
         assert 0 < hits <= 3.0, f"a Common {kind} takes {hits:.1f} hits"
 
 

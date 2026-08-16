@@ -9,7 +9,7 @@ Stat_Flat_armor,Flat armor,Stat,prefix,armor,flat,250.0,0,,,,,"Belt, Boots, Ches
 Stat_Increased_armor,Increased armor,Stat,prefix,armor,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders"
 Stat_Flat_evasion,Flat evasion,Stat,prefix,evasion,flat,4.0,0,,,,,"Boots, Chest, Gloves, Head, Pants, Ring, Shoulders"
 Stat_Increased_evasion,Increased evasion,Stat,prefix,evasion,increased,12.0,0,,,,,"Boots, Chest, Gloves, Head, Pants, Ring, Shoulders"
-Stat_Flat_damage,Flat damage,Stat,prefix,attack_damage,flat,18.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
+Stat_Flat_damage,Flat damage,Stat,prefix,attack_damage,flat,22.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
 Stat_Increased_damage,Increased damage,Stat,prefix,attack_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
 Stat_Increased_spell_damage,Increased spell damage,Stat,prefix,spell_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon"
 Stat_Flat_maximum_class_resource,Flat maximum class resource,Stat,prefix,class_resource,flat,7.0,0,,,,,"Belt, Necklace, Relic, Ring"
