@@ -143,6 +143,23 @@ public:
 	 */
 	static const TCHAR* ShieldFillHex;
 
+	/**
+	 * Mana.
+	 *
+	 * A BAR AT ALL BECAUSE ITS ABSENCE HID A BUG. Issue #653: mana was spent and
+	 * never returned, so every ability became permanently refused, and it was
+	 * reported from play as "sometimes all of my abilities just become disabled"
+	 * rather than as "I have run out of mana" -- because nothing on screen said
+	 * so. The design has listed mana as a player resource bar since section XIII
+	 * was written. It was left out of the first version of this overlay and
+	 * should not have been.
+	 *
+	 * DELIBERATELY NOT VOID'S #B978F5, which is a damage type's primary, and not
+	 * the shield's blue either, because a player reading two bars in a corner
+	 * has to tell them apart at a glance.
+	 */
+	static const TCHAR* ManaFillHex;
+
 	/** A figure that reached health. Warm near-white. */
 	static const TCHAR* ReachedHealthHex;
 
@@ -306,6 +323,9 @@ public:
 	/** The same for an energy shield. False when the actor has no shield set. */
 	static bool ShieldOf(const AActor* Actor, float& OutShield,
 						 float& OutMaxShield);
+
+	/** The same for mana. False when the actor has no vital attribute set. */
+	static bool ManaOf(const AActor* Actor, float& OutMana, float& OutMaxMana);
 
 	/**
 	 * Hands a landed hit to the heads-up display so it can be drawn.

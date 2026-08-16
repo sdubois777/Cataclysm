@@ -22,6 +22,7 @@
 const TCHAR* UCataclysmCombatOverlay::BarBackingHex = TEXT("0A0F12");
 const TCHAR* UCataclysmCombatOverlay::HealthFillHex = TEXT("C0392B");
 const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
+const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
 const TCHAR* UCataclysmCombatOverlay::ReachedHealthHex = TEXT("F5F0EA");
 const TCHAR* UCataclysmCombatOverlay::AbsorbedHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::NothingThroughHex = TEXT("8C9196");
@@ -342,6 +343,20 @@ bool UCataclysmCombatOverlay::ShieldOf(const AActor* Actor, float& OutShield,
 
 	OutShield = Vitals->GetEnergyShield();
 	OutMaxShield = Vitals->GetMaxEnergyShield();
+	return true;
+}
+
+bool UCataclysmCombatOverlay::ManaOf(const AActor* Actor, float& OutMana,
+									 float& OutMaxMana)
+{
+	const UCataclysmVitalAttributeSet* Vitals = VitalsSetOf(Actor);
+	if (!Vitals)
+	{
+		return false;
+	}
+
+	OutMana = Vitals->GetMana();
+	OutMaxMana = Vitals->GetMaxMana();
 	return true;
 }
 

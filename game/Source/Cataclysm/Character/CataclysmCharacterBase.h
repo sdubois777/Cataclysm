@@ -258,7 +258,71 @@ public:
 	 */
 	virtual void BeginEnemyAbilityWindUp(int32 Index, AActor* Target) {}
 
+	// ----------------------------------------------------------------------
+	// Health, mana and energy shield coming back over time. Issue #653.
+	//
+	// ON THE SHARED BASE BECAUSE ALL THREE CHARACTERS CARRY THE SAME POOLS and
+	// none of them is special: a player, a monster and a summoned minion each
+	// have a vital attribute set with the same three regeneration attributes on
+	// it. The arithmetic and the design's rules live in UCataclysmRegeneration.
+	// What is here is only the clock that drives them and the record of when
+	// this character was last hurt.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Records that this character has just taken damage, for the energy
+	 * shield's refill delay.
+	 *
+	 * CALLED FOR EVERY HIT THAT TOOK SOMETHING, including one an energy shield
+	 * absorbed entirely and including a damage over time tick. The design
+	 * requires both: the shield "refills 3 seconds after the character last took
+	 * damage", taking damage again inside that window restarts the wait, and
+	 * damage over time restarts it as well.
+	 *
+	 * A hit that was evaded, or that armour and resistance stopped completely,
+	 * is not damage taken and does not restart the wait.
+	 */
+	void NoteDamageTaken();
+
+	/**
+	 * Seconds since this character last took damage.
+	 *
+	 * A LARGE NUMBER RATHER THAN ZERO WHEN IT HAS NEVER BEEN HURT, because zero
+	 * would read as "hurt this instant" and would stop the shield ever filling
+	 * on a character nothing has touched.
+	 */
+	float SecondsSinceLastDamage() const;
+
+	/**
+	 * Whether the regeneration clock is running on this character.
+	 *
+	 * EXISTS FOR A TEST, AND THE TEST IS WORTH THE ACCESSOR. Every other check
+	 * on this feature calls UCataclysmRegeneration::ApplyStep directly, which is
+	 * what the timer calls -- so all of them would still pass if the timer were
+	 * never started and nothing regenerated in the running game at all. That is
+	 * precisely the failure this feature exists to fix, so it needs its own
+	 * guard. A world built by UWorld::CreateWorld is never ticked, so a test can
+	 * ask whether the timer is running but can never watch it fire.
+	 */
+	bool IsRegenerating() const;
+
 protected:
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** One step of regeneration. Driven by RegenerationTimer. */
+	void RegenerationStep();
+
+	/** Fires every UCataclysmRegeneration::StepSeconds while alive. */
+	FTimerHandle RegenerationTimer;
+
+	/**
+	 * World time when this character last took damage, in seconds. Negative
+	 * means it never has, which is what SecondsSinceLastDamage turns into a
+	 * large number rather than into a small one.
+	 */
+	float LastDamagedAtSeconds = -1.0f;
+
 	/**
 	 * Which side this character is on. Set in the subclass constructor.
 	 *

@@ -20,6 +20,126 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — Health, mana and energy shield come back over time
+
+**Affects:** nothing in the design documents, which already state every rule
+applied here. It wires up three attributes that existed and that no code read.
+Closes issue #653. Filed issue #654 along the way.
+
+### What was wrong
+
+**Mana was spent and never returned.** Every ability subtracts its cost on use
+and refuses to activate without it, and there were exactly four places in the
+whole project that wrote the mana value. Three subtracted: the ability cost, the
+aura's per-second drain, and nothing else. The one that added was
+`ACataclysmPlayerCharacter::Revive`, which fills all three pools when the player
+stands back up after dying.
+
+So a play session ended with every ability permanently refused, and the only way
+to recover was to be killed. The project owner reported it on 2026-08-16 as
+"sometimes when i'm playing all of my abilities just become disabled."
+
+**Two things were supposed to return mana and neither ran.** `ManaRegen` was
+declared, initialised, clamped and replicated, and read by nothing. `ManaOnHit`
+in `SkillSlots.csv` gives the basic attack 6 mana per hit and is loaded into a
+field that only tests reference — and the basic attack cannot fire at all, which
+is issue #36.
+
+How fast it happened at the level the sandbox runs at, with a pool of 50:
+
+| Slot | Cost each use | Uses from a full pool |
+| :-- | --: | --: |
+| Heavy | 1.16 | 42 |
+| Special | 3.11 | 16 |
+| Ultimate | 11.65 | **4** |
+| Aura | 1.55 per second | **32 seconds** |
+
+### The design already answered the shape, so nothing was invented
+
+Under Stat Calculation, `Cataclysm_GDD_v2.md` says the base regeneration rate
+"is a small flat value per second, supplied the same way base health is. This
+applies to health, mana and energy shield regeneration alike", and that the
+percentages players collect are increases to that base rather than percentages
+of the maximum. That is exactly what the three attributes hold.
+
+**The energy shield is the one with a delay, and the design gives its number.**
+Its section: the shield "refills 3 seconds after the character last took damage",
+taking damage again inside that window restarts the wait, and damage over time
+restarts it as well. That last clause is load-bearing — the shield absorbs no
+damage over time at all, so without it a bleeding character would refill freely
+and the shield would be strongest against the one thing it ignores. Health and
+mana have no delay: nothing gives them one, and the enchantment that proves the
+shield's delay exists names only the shield.
+
+**The design's own check confirms the figures still work.** It says the Heavy
+attack should be affordable from mana regeneration alone — 10 mana per second
+against 10.9 regenerated, at level 100. At the level the sandbox runs at the
+Heavy attack costs 1.16 on a 1.5 second cooldown, which is 0.78 mana per second
+against 1.0 regenerated. The property holds.
+
+### The placeholder rates were checked rather than trusted
+
+`UCataclysmVitalAttributeSet` initialises health and mana regeneration to 1.0 as
+a placeholder for a character with no class attached. As a share of the pools it
+sits beside, that lands inside the design's own band:
+
+| | Sandbox player | The design's three classes |
+| :-- | :-- | :-- |
+| Health regeneration | 1.0 against 100 health, 1.00% per second | 0.75% (Ravager) to 1.49% (Masochist) |
+| Mana regeneration | 1.0 against 50 mana, 2.00% per second | 1.69% (Masochist) to 2.50% (Ravager) |
+
+So wiring them up imports no invented number. The values themselves are still
+placeholders and a class stat line will replace them.
+
+### A creature regenerates nothing, and that is a position rather than an omission
+
+Leaving the placeholder alone would have handed every creature in the game a heal
+nobody designed — a Brute recovering while the player backs away, and anything
+walked away from returning to full. **The design gives regeneration to classes,
+not to creatures:** each of the three Demonic class stat lines states a health and
+a mana regeneration figure, `EnemyArchetypes.csv` has no column for either, and
+`stats_for` in `sim/cataclysm_sim/enemy_stats.py` computes no such figure.
+
+So `ACataclysmEnemyCharacter::ApplyStartingAttributes` writes zero to all three,
+beside where it writes armour, evasion and resistance. Zero in the creature's own
+numbers rather than a special case inside the mechanism, so a creature that
+should regenerate can be given a rate later without touching the mechanism.
+
+### A repeating timer rather than a periodic gameplay effect
+
+The other shape this could take is an infinite periodic gameplay effect. Its
+magnitude would have to be attribute-based, because the amount comes from the
+character's own three regeneration attributes, and an effect built at runtime
+with three attribute-based modifiers is harder to read and cannot be tested
+without an ability system. The arithmetic is instead two static functions over
+plain numbers, `GainPerStep` and `ShieldMayRefill`, and a timer on
+`ACataclysmCharacterBase` calls them.
+
+The step is a quarter of a second while the rate is stated per second. The damage
+over time effect uses a whole second per tick and is right to: a burn tick is an
+event a player should see land. A pool coming back is not an event, and a bar
+that jumps once a second reads as broken rather than as recovering.
+
+### And a mana bar, because its absence is why this was a mystery
+
+The combat overlay built earlier the same day drew health and energy shield and
+not mana, though the design has listed mana as a player resource bar since
+section XIII was written. Had the bar been there, this would have been "I have
+run out of mana" rather than "all of my abilities just become disabled". The
+player's corner now stacks health, then mana, then the energy shield when there
+is one.
+
+### One thing found along the way and not fixed
+
+**Actors in the automation tests' world never receive `BeginPlay`**, and the
+shared helper is named `MakeWorldThatHasBegunPlay`. `UWorld::BeginPlay` only does
+anything when the world has a game mode, and a world built by
+`UWorld::CreateWorld` has none. That is issue #654. It was found because the
+guard on the regeneration clock failed, and calling `DispatchBeginPlay` by hand
+made it pass.
+
+---
+
 ## 2026-08-16 — Health bars and damage numbers, drawn on the canvas
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` section XIII, which gained a subsection
