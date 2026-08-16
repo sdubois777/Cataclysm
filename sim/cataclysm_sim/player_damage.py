@@ -164,6 +164,55 @@ def armed_weapons_in(loadout: tuple[str, ...]) -> tuple[str, ...]:
     return _armed(loadout)
 
 
+#: What a hit's sub-type is when the weapons swung do not agree on one.
+#:
+#: The same spelling `damage.Attacker` uses for "no sub-type", so the two can be
+#: handed to each other without translation.
+NO_SUBTYPE = "None"
+
+
+def subtype_of(loadout: str | tuple[str, ...] = REFERENCE_LOADOUT) -> str:
+    """The weapon sub-type a hit from this loadout carries.
+
+    THE RULE, SET BY THE PROJECT OWNER ON 2026-08-16: every weapon actually
+    SWUNG has to agree. Two Slashing weapons give a slashing hit; an Axe with a
+    Wand gives no sub-type at all, because a single blended swing cannot be both
+    Slashing and Magic.
+
+    WHY NOT A PRIMARY HAND, WHICH WAS THE FIRST ANSWER. This project's damage
+    model blends two weapons into ONE swing -- base damage summed, attack speed
+    averaged -- so there is no first weapon for a swing to belong to. It would
+    also have reversed the ruling of 2026-08-15 that "there is no offhand
+    position", made after a day spent modelling a shield as a separate offhand
+    category, and the engine could not read it: `UCataclysmWeaponSlotsComponent`
+    equips one weapon type and nothing tracks two.
+
+    WHAT THE RULE BUYS. Mixing sub-types is how a player carries more damage
+    types at once, which the Dual Wielding section calls the primary route to
+    multiclassing. Giving a mixed pair both bonuses would make mixing strictly
+    better and matching pointless. Costing it the sub-type instead makes the two
+    a real trade.
+
+    A SHIELD DOES NOT VOTE, and that follows from `armed_weapons_in` rather than
+    from a rule about shields. Its own sub-type is Blunt, so counting it would
+    take the slashing bonus away from a sword-and-board character for holding
+    something they never swing.
+
+    A LOADOUT WITH NOTHING TO SWING NEVER REACHES HERE. `normalise_loadout`
+    refuses one that grants no attack damage at all -- a Shield on its own, or
+    two of them -- because there is no basic attack to compose. The empty case
+    below is therefore unreachable today and is written anyway, so a future
+    weapon that changes that gets an answer rather than an exception from a set
+    operation.
+    """
+    swung = armed_weapons_in(normalise_loadout(loadout))
+    if not swung:
+        return NO_SUBTYPE
+
+    subtypes = {af.base_named(name).sub_type for name in swung}
+    return subtypes.pop() if len(subtypes) == 1 else NO_SUBTYPE
+
+
 def affix_tier_at(tier: int) -> int:
     """The affix tier a character progressing on drops carries at a difficulty tier.
 

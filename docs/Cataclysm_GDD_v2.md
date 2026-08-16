@@ -1843,6 +1843,22 @@ Weapons have a physical sub-type that determines baseline combat properties:
 
   
 
+**A hit's sub-type is the one every weapon actually swung agrees on.** Two Slashing weapons give a slashing hit. An Axe with a Wand gives no sub-type at all, because a single swing cannot be both Slashing and Magic — this game blends two weapons into one swing, summing their base damage and averaging their attack speed, so there is no first weapon for the swing to belong to. **There is no primary hand**, and the pair stays unordered as it has been since 2026-08-15.
+
+  
+
+**Losing the sub-type is what mixing costs.** Carrying two damage types at once is the primary route to multiclassing, as Dual Wielding sets out. If a mixed pair kept both sub-type bonuses, mixing would be strictly better and matching would be pointless; costing it the sub-type makes the two a real choice.
+
+  
+
+**A shield does not decide anything.** Its own sub-type is Blunt and it is never swung, so it does not count towards the agreement. A sword and board character keeps their slashing hit.
+
+  
+
+**Piercing's 20% adds to the character's own Armor Penetration rather than replacing it.** A character with 80% from gear holding a piercing weapon ignores all of a target's armor.
+
+  
+
 **Blunt stuns rather than doing bonus damage against armor.** Its original property put it in direct competition with Piercing, which already beats armor and has a whole family of affixes that scale it — ignoring armor appears on skills, on critical hits, on traps and on first hits. Nothing anywhere scales damage against armored targets, so Blunt was a flat bonus with nowhere to grow.
 
   

@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
 #include "Items/CataclysmItem.h"
+#include "Data/CataclysmDataRows.h"
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystemInterface.h"
 #include "Cataclysm.h"
@@ -34,6 +35,55 @@ UCataclysmAbilitySystemComponent* UCataclysmWeaponSlotsComponent::GetAbilitySyst
 
 	return Cast<UCataclysmAbilitySystemComponent>(
 		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Owner));
+}
+
+FString UCataclysmWeaponSlotsComponent::GetEquippedSubType() const
+{
+	if (EquippedWeaponType.IsEmpty())
+	{
+		return FString();
+	}
+
+	const UDataTable* Bases = ItemBaseTable
+		? ItemBaseTable.Get()
+		: UCataclysmItemModifiers::LoadBaseTable();
+	if (!Bases)
+	{
+		return FString();
+	}
+
+	FString Found;
+	Bases->ForeachRow<FCataclysmItemBaseRow>(
+		TEXT("UCataclysmWeaponSlotsComponent::GetEquippedSubType"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (Found.IsEmpty()
+				&& Row.WeaponType.Equals(EquippedWeaponType, ESearchCase::IgnoreCase))
+			{
+				Found = Row.SubType;
+			}
+		});
+
+	return Found;
+}
+
+FString UCataclysmWeaponSlotsComponent::SubTypeOf(const AActor* Actor)
+{
+	if (!Actor)
+	{
+		return FString();
+	}
+
+	if (const UCataclysmWeaponSlotsComponent* Slots =
+			Actor->FindComponentByClass<UCataclysmWeaponSlotsComponent>())
+	{
+		return Slots->GetEquippedSubType();
+	}
+
+	// No weapon slots at all, which is every enemy: they attack from their own
+	// attack damage rather than from a weapon. Empty is the answer every hit gave
+	// before this existed, so nothing about an enemy's hit changes.
+	return FString();
 }
 
 int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponType)
