@@ -118,6 +118,17 @@ public:
 	static constexpr float DesignedEvasionPercent = 0.0f;
 
 	/**
+	 * `energy_shield_fraction` 0.0, for the same reason the evasion above is
+	 * written out: the zero is designed rather than forgotten.
+	 *
+	 * TWO OF THE SEVEN SLICE ENEMIES CARRY ONE and this is not either of them.
+	 * The Succubus is designed at 0.50 and the Corrupted Sentinel at 0.35; this
+	 * creature's survivability is armour and resistance, which are the highest in
+	 * the slice. Nothing could express a shield at all until issue #485.
+	 */
+	static constexpr float DesignedEnergyShieldFraction = 0.0f;
+
+	/**
 	 * How fast it walks. `move_speed` is 2.8 metres per second.
 	 *
 	 * IT HAS NO CHASE SPEED, unlike the Brute, and that is designed:
