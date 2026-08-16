@@ -2017,7 +2017,23 @@ Halving is also the only option under which no skill ever visibly does nothing. 
 
   
 
-**Per-enemy distances are not set here.** Choosing them, and whether a shove is telegraphed, is implementation and is tracked on issue #625. Note that two of the three abilities above are charges, and a Movement-shape skill cannot currently state a knockback distance at all; issue #626 carries that.
+**The three distances, set on 2026-08-16.** Each ability's own table further down states the same figure, and one rule decides all three: an ability that also stuns takes the low end of the band, and one that does not takes the high end. Being moved and being unable to act at the same time is the harshest thing in the slice, so the ability that does both does the smaller of the two.
+
+  
+
+| Enemy | Ability | Shove | Does it also stun |
+| :-- | :-- | :-: | :-- |
+| The Brute | Stomp | 3 metres | Yes, 1.5 seconds |
+| The Hellhound | Hellrush | 4 metres | No |
+| The Abyssal Warden | Stampede | 4 metres | No |
+
+  
+
+**A shove is not announced separately in the telegraph.** All three abilities already draw a ground marker and already commit for a wind-up the player can walk out of, so the marker already says "leave this area". A second symbol for the displacement would add a thing to read without adding a thing to do: the answer to being shoved is the same as the answer to being hit, which is not to be standing there.
+
+  
+
+**A shove is always directly away from whatever landed it.** There is no separate rule for a charge, and measuring one showed there does not need to be. A charge meets somebody at the leading edge of its lane rather than beside them — the Abyssal Warden's lane is 1.5 metres to either side, so it makes contact about 1.3 metres short of a target standing 0.75 metres off the centre line — so the shove is diagonal, carrying them forward as well as out. They still finish outside the lane, which is what knocking a crowd aside has to achieve. Being carried forward by something running at you is also the sensible outcome rather than a defect to correct.
 
   
 
@@ -4339,7 +4355,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Maul | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1; Burn=1` | its 1.1 s attack interval | No |
-| Hellrush | Movement | Movement | `Mode=Charge; Range=10; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25; GroundHitsAllies=1` | a 5 s cooldown | Yes, 0.83 s wind-up |
+| Hellrush | Movement | Movement | `Mode=Charge; Range=10; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25; GroundHitsAllies=1; Knockback=4` | a 5 s cooldown | Yes, 0.83 s wind-up |
 
   
 
@@ -4436,7 +4452,7 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Slam | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 1.2 s attack interval | No |
-| Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5` | an 8 s cooldown | Yes, 1.4 s wind-up |
+| Stomp | Heavy | Strike | `Radius=3.5; Angle=360; StunSeconds=1.5; Knockback=3` | an 8 s cooldown | Yes, 1.4 s wind-up |
 | Rip and Toss | Special | Projectile | `Range=10; Radius=2.1; Pierce=0; Arc=0.25` | a 12 s cooldown | Yes, 1.0 s wind-up |
 
   
@@ -4723,7 +4739,7 @@ The word melee is doing work there. The Succubus moves at 3.5 metres per second 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Sunder | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1` | its 2.4 s attack interval | No |
-| Stampede | Movement | Movement | `Mode=Charge; Range=8; Radius=1.5` | a 5 s cooldown | Yes, 0.83 s wind-up |
+| Stampede | Movement | Movement | `Mode=Charge; Range=8; Radius=1.5; Knockback=4` | a 5 s cooldown | Yes, 0.83 s wind-up |
 | Molten Roar | Ultimate | Strike | `Radius=6.5; Angle=360` | a 12 s cooldown | Yes, 2.0 s wind-up |
 
   

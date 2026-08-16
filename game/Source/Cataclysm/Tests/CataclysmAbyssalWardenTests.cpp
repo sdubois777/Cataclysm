@@ -1198,4 +1198,112 @@ bool FCataclysmWardenCanRegisterContactDespiteItsHeight::RunTest(const FString&)
 	return true;
 }
 
+
+// --------------------------------------------------------------------------
+// Displacement. Issue #625.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenChargeShovesWhatItRunsThrough,
+	"Cataclysm.Warden.StampedeShovesWhatItRunsThroughSidewaysOutOfTheLane",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenChargeShovesWhatItRunsThrough::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden)
+	{
+		AddError(TEXT("could not spawn an Abyssal Warden"));
+		return false;
+	}
+
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	// Spawned far away and then moved, because two capsules created at contact
+	// distance push each other apart. On the players' side, because
+	// FindEnemiesInLine finds actors hostile to the one asking.
+	ACataclysmEnemyCharacter* InTheLane =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(),
+			FVector(20000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!InTheLane)
+	{
+		AddError(TEXT("could not spawn something to stand in the lane"));
+		return false;
+	}
+	InTheLane->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+
+	// OFF THE CENTRE LINE BUT INSIDE THE LANE. Standing exactly on the axis would
+	// put it directly in front of the creature, and the shove is away from the
+	// creature, so it would be pushed ALONG the lane and this could not tell
+	// sideways from forwards. Half the lane's half-width is comfortably inside it
+	// and gives a sideways component to measure.
+	const float HalfWay = Warden_t::StampedeRangeCm / 2.0f;
+	const float OffAxis = Warden_t::StampedeRadiusCm / 2.0f;
+	InTheLane->SetActorLocation(FVector(HalfWay, OffAxis, 0.0f));
+	const FVector Before = InTheLane->GetActorLocation();
+
+	Warden->BeginCharge(FVector(Warden_t::StampedeRangeCm, 0.0f, 0.0f),
+						Warden_t::StampedeSpeedCmPerSecond,
+						Warden_t::StampedeRadiusCm,
+						Warden_t::StampedeDamagePercent,
+						Warden_t::StampedeKnockbackCm);
+
+	for (int32 Frame = 0; Frame < 60 && Warden->IsCharging(); ++Frame)
+	{
+		Warden->AdvanceCharge(1.0f / 60.0f);
+	}
+
+	TestEqual(TEXT("it ran through exactly one thing"),
+		Warden->ChargeHitCount, 1);
+
+	const FVector After = InTheLane->GetActorLocation();
+	const float Moved = FVector::Dist2D(Before, After);
+
+	// IT MOVED, AND ROUGHLY THE DESIGNED DISTANCE. A tolerance rather than
+	// equality, because the shove is swept and a capsule can stop short against
+	// another body. What must not happen is it not moving at all, which is what a
+	// knockback that reached nothing looks like.
+	TestTrue(FString::Printf(
+			TEXT("it was shoved; designed %.0f cm, moved %.0f cm"),
+			Warden_t::StampedeKnockbackCm, Moved),
+		Moved > Warden_t::StampedeKnockbackCm * 0.5f);
+
+	// IT ENDS OUTSIDE THE LANE, which is what knocking somebody aside has to mean
+	// for a charge: the ground the creature is running down is cleared.
+	//
+	// FORWARD AND OUT RATHER THAN STRAIGHT OUT, and that is measured rather than
+	// assumed. The shove is away from the creature, and the creature meets its
+	// target at the LEADING EDGE of the lane -- 150 cm of half-width against a
+	// target 75 cm off the axis puts first contact about 130 cm short of it. So
+	// away-from-the-creature at that moment is diagonal, and the target moves
+	// further along the lane than across it: 334 cm along against 219 cm across,
+	// measured 2026-08-16. It still leaves the lane, which is the requirement,
+	// and that is why displacement is left as one rule rather than given a
+	// special case for a charge.
+	const float OutFromAxis = FMath::Abs(After.Y);
+	TestTrue(FString::Printf(
+			TEXT("it ended %.0f cm off the axis, outside the %.0f cm lane"),
+			OutFromAxis, Warden_t::StampedeRadiusCm),
+		OutFromAxis > Warden_t::StampedeRadiusCm);
+
+	// AND AWAY FROM THE CENTRE LINE, not across it into the creature's path. It
+	// started at +Y, so it must end further out in +Y.
+	TestTrue(TEXT("it was pushed away from the centre line, not through it"),
+		After.Y > Before.Y);
+
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS

@@ -11,6 +11,8 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
@@ -1035,6 +1037,101 @@ bool FCataclysmBruteAbilityMontagesAreBuiltCorrectly::RunTest(const FString&)
 					  "not, which means one of the two is wrong rather than the "
 					  "art being absent. Re-run tools/generate_brute_montages.py."));
 	}
+
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+// The Stomp shoves. Issue #625.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmStompShovesWhatItCatches,
+	"Cataclysm.Brute.StompShovesOutwardAsWellAsStunning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStompShovesWhatItCatches::RunTest(const FString&)
+{
+	using namespace CataclysmBruteTest;
+
+	// WHAT THIS GUARDS. Issue #310 settled that enemies displace the player and
+	// issue #625 built it. Nothing in the game could move a target on the players'
+	// side before, and five player skills already granted immunity to displacement
+	// -- two of them Ultimates -- against a threat that did not exist.
+	//
+	// THE TARGET IS AN ACataclysmEnemyCharacter ON THE PLAYERS' SIDE, not an
+	// ACataclysmPlayerCharacter, and that is a limit of the test rather than a
+	// choice. A player character reaches its ability system component through its
+	// player state, and a world built here has no player state, so a bare-spawned
+	// player is hit by nothing and stunned by nothing. Every other test in this
+	// suite stands the same thing in. What it does prove is the whole of the
+	// mechanism: UCataclysmSkillEffects::ApplyKnockback moves an AActor and reads
+	// nothing off its class, and both are ACharacter with a movement component.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Caught =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(10000.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!Brute || !Caught)
+	{
+		AddError(TEXT("could not spawn a Brute and something to catch"));
+		return false;
+	}
+
+	Caught->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	Caught->SetHealth(100000.0f);
+
+	using Brute_t = ACataclysmBruteCharacter;
+
+	// INSIDE THE RING AND OFF ITS AXIS. Spawned far away and moved, because two
+	// capsules created at contact distance push each other apart. Placed
+	// diagonally so the direction has to be worked out from the two positions
+	// rather than happening to lie on an axis.
+	const float Inside = Brute_t::StompRadiusCm * 0.4f;
+	Caught->SetActorLocation(FVector(Inside, Inside,
+									 Caught->GetActorLocation().Z));
+	const FVector Before = Caught->GetActorLocation();
+	const float DistanceBefore = FVector::Dist2D(Before, Brute->GetActorLocation());
+
+	Brute->UseEnemyAbility(Brute_t::StompAbility, Caught, FVector::ZeroVector);
+
+	const FVector After = Caught->GetActorLocation();
+	const float DistanceAfter = FVector::Dist2D(After, Brute->GetActorLocation());
+	const float Moved = FVector::Dist2D(Before, After);
+
+	// IT MOVED AT ALL, which is the whole of what did not happen before.
+	TestTrue(FString::Printf(TEXT("the stomp moved it; %.0f cm"), Moved),
+		Moved > 1.0f);
+
+	// OUTWARD, NOT INWARD. A 360 degree slam pushes everything away from the
+	// middle, so it must end further from the creature than it started.
+	TestTrue(FString::Printf(
+			TEXT("outward: %.0f cm from the Brute before, %.0f cm after"),
+			DistanceBefore, DistanceAfter),
+		DistanceAfter > DistanceBefore);
+
+	// AND ROUGHLY THE DESIGNED DISTANCE. A tolerance rather than equality, because
+	// the shove is swept and a capsule can stop short against another body. Half
+	// the designed distance is the line between being shoved and being nudged.
+	TestTrue(FString::Printf(
+			TEXT("designed %.0f cm, moved %.0f cm"),
+			Brute_t::StompKnockbackCm, Moved),
+		Moved > Brute_t::StompKnockbackCm * 0.5f);
+
+	// AND IT STILL STUNS. The shove is an addition, not a replacement: the stun is
+	// what this attack is for, and a change that traded one for the other would
+	// pass every assertion above.
+	TestTrue(TEXT("and the stomp still stuns, which is what it is for"),
+		UCataclysmSkillEffects::IsStunned(Caught));
 
 	return true;
 }

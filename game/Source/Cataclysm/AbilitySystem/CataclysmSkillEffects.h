@@ -304,6 +304,39 @@ public:
 	static bool IsStunned(const AActor* Actor);
 
 	/**
+	 * Shove a target directly away from whatever hit it.
+	 *
+	 * THE ONE DEFINITION OF DISPLACEMENT, and it is here rather than on the skill
+	 * template because both directions need it. The template's own knockback rider
+	 * calls this, and so do the enemy abilities that shove the player, which are
+	 * not skill templates at all -- an enemy attack is C++ on the creature.
+	 * Issue #625. Before that this body lived inside
+	 * `UCataclysmSkillTemplate::ApplyKnockbackTo` and only a player skill could
+	 * reach it.
+	 *
+	 * THE DIRECTION IS AWAY FROM THE INSTIGATOR, ALONG THE GROUND, and a target
+	 * standing exactly on its instigator is not moved at all: there is no
+	 * direction to push in and picking one would shove somebody somewhere they
+	 * could not have predicted.
+	 *
+	 * HALVED FOR EACH DISPLACEMENT THE TARGET HAS ALREADY TAKEN inside the five
+	 * second window, which is `TakeNextDisplacementShare` on the target's ability
+	 * system component. That rule was written for "a target" rather than "an
+	 * enemy" precisely so it would hold with the player as the target, and this
+	 * is where that symmetry becomes real.
+	 *
+	 * A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has no
+	 * physics body and a knockback that silently did nothing would look exactly
+	 * like a knockback. Swept, so a shove into a wall stops at the wall.
+	 *
+	 * @param DistanceCm  how far to shove before the halving rule is applied.
+	 *                    Zero or less does nothing.
+	 * @return whether the target was moved
+	 */
+	static bool ApplyKnockback(AActor* Instigator, AActor* Target,
+							   float DistanceCm);
+
+	/**
 	 * Whether this actor's health has reached zero.
 	 *
 	 * A TAG RATHER THAN A FLAG, for the reason a stun is one: the two controllers

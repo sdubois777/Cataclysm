@@ -122,6 +122,26 @@ public:
 	 */
 	static constexpr float StompStunSeconds = 1.5f;
 
+	/**
+	 * How far it shoves everything in the ring, in centimetres. Knockback=3.
+	 *
+	 * THE LOW END OF THE BAND THE DESIGN NAMES, and the reason is that this
+	 * attack already holds the player still for 1.5 seconds. The design puts an
+	 * enemy shove between the player's own two numeric knockbacks -- Molten
+	 * Crush's 3 metres and Searing Hook's 4 -- and notes Path of Exile's default
+	 * of 4 units. Of the three enemy abilities that displace, this is the only
+	 * one that also stuns, so it takes the smaller distance: being moved and
+	 * being unable to act at the same time is already the harshest thing in the
+	 * slice, and adding the larger shove to it would compound two denials.
+	 *
+	 * MOLTEN CRUSH IS THE RIGHT COMPARISON rather than Searing Hook. It is the
+	 * player's own slam that shoves outward from a point, which is exactly what
+	 * this is, where Searing Hook pulls along a line.
+	 *
+	 * Issue #625.
+	 */
+	static constexpr float StompKnockbackCm = 300.0f;
+
 	//~ Rip and Toss, from the same table.
 
 	/** How far it can throw, in centimetres. Range=10 metres. */

@@ -355,6 +355,29 @@ public:
 	 *  also deal damage, so a basic attack's worth is the right middle". */
 	static constexpr float StampedeDamagePercent = 100.0f;
 
+	/**
+	 * How far it shoves what it runs through, in centimetres. Knockback=4.
+	 *
+	 * THE TOP OF THE BAND THE DESIGN NAMES, and it takes the larger of the two
+	 * figures because this charge does not stun. The design puts an enemy shove
+	 * between the player's own two numeric knockbacks -- Molten Crush's 3 metres
+	 * and Searing Hook's 4 -- and notes that Path of Exile's default knockback
+	 * distance is 4 units. The Brute's Stomp takes the 3 because it also holds
+	 * the player still for 1.5 seconds; nothing else about this charge denies the
+	 * player anything after it has passed, so it takes the 4.
+	 *
+	 * IT LEAVES THE LANE, DIAGONALLY RATHER THAN STRAIGHT OUT. The shove is
+	 * away from the creature, and a charge meets its target at the LEADING edge
+	 * of its lane rather than beside them: 150 cm of half-width against somebody
+	 * 75 cm off the axis puts first contact about 130 cm short. So the push
+	 * carries them forward as well as out -- measured at 334 cm along against
+	 * 219 cm across -- and they still finish outside the lane, which is what
+	 * knocking a crowd aside has to achieve.
+	 *
+	 * Issue #625.
+	 */
+	static constexpr float StampedeKnockbackCm = 400.0f;
+
 	// ----------------------------------------------------------------------
 	// The body
 	// ----------------------------------------------------------------------
