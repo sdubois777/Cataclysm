@@ -206,11 +206,17 @@ public:
 	/**
 	 * Called once when this character's health first reaches zero.
 	 *
-	 * INERT ON THE BASE, so the player character is unaffected. A player's death
-	 * is a much larger question than an enemy's -- it owes a death penalty, a
-	 * corruption cost and the Last Stand mechanic, none of which is designed --
-	 * so issue #517 does the enemy half alone and this default is what leaves the
-	 * other half untouched rather than half-built.
+	 * INERT ON THE BASE, AND THAT IS NOW ONLY ABOUT MINIONS. The enemy override
+	 * marks the creature dead and removes it from the level (issue #517); the
+	 * player override marks the player dead, stops them, and stands them back up
+	 * after a delay (issue #570). ACataclysmMinion is the one subclass left with
+	 * neither, and it leaves the level by its own lifespan rather than by damage.
+	 *
+	 * WHAT A PLAYER'S DEATH STILL OWES, and it is why the player override stops
+	 * where it does: the designed penalty is days off the empire clock, a
+	 * per-piece equipment drop chance and a respawn at the capital, and the
+	 * running game has no day clock, no equipped inventory and no capital. The
+	 * corruption cost and the Last Stand mechanic (#43) are not designed at all.
 	 *
 	 * CALLED FROM UCataclysmVitalAttributeSet::PostGameplayEffectExecute, which
 	 * is the one place in the project that knows a hit has landed and what it

@@ -288,6 +288,44 @@ equipped items. The run continues.
 
   
 
+### **What Dying Does at the Moment It Happens**
+
+The penalty above is what dying costs. This is what dying *is*, for a character
+of any kind, and it is the same three steps for the player and for a creature
+until the last one.
+
+  
+
+| Step | Player | Enemy |
+| :-- | :-- | :-- |
+| 1. It is marked dead | yes | yes |
+| 2. Whatever it was doing stops | movement halted, input released | movement halted, charge cancelled, collision off |
+| 3. What happens then | stands back up after a delay | removed from the level on the next tick |
+
+  
+
+**Nothing attacks, heals or otherwise selects a character that is marked dead.**
+A corpse is neither an enemy nor an ally. This is a rule about target selection
+rather than about damage: a hit already in flight still resolves, because a
+projectile outlives whoever fired it.
+
+  
+
+**A player comes back whole.** No amount of health is carried over from the death
+and none is withheld. What a death costs is measured in the world — days off the
+empire clock, and equipment in the two harder modes — and not on the character,
+which is the same reasoning that makes an ordinary death continue the run.
+
+  
+
+**The delay before standing back up is 3 seconds, and it is provisional.** It is
+long enough that the death reads as an event rather than a flicker, and short
+enough that dying repeatedly while testing is not tedious. Nothing else in the
+design depends on the figure. It is expected to change once there is something on
+screen at the moment of death, which there is not today.
+
+  
+
 ### **Deleting a Character**
 
 **A player can delete a character, and that is the only thing that removes one.**

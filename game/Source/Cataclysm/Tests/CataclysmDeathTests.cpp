@@ -11,8 +11,11 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerStart.h"
+#include "Player/CataclysmPlayerState.h"
 
 /**
  * Tests for an enemy whose health reaches zero.
@@ -24,12 +27,14 @@
  * owner reported on 2026-08-12 that "None of the actual combat is implemented I
  * don't think. Or at least I can't tell when playing it."
  *
- * WHAT THESE DELIBERATELY DO NOT COVER.
+ * A PLAYER'S DEATH IS NOW COVERED TOO, at the end of this file, and it is a
+ * different shape: the player is marked and stopped like a creature is, and then
+ * stands back up rather than being removed. Issue #570. What it still does not
+ * charge is the designed penalty -- days off the empire clock, a per-piece
+ * equipment drop and a respawn at the capital -- because the running game has
+ * none of the four things that would carry it.
  *
- * A PLAYER'S DEATH, which is not built. `ACataclysmCharacterBase::HandleDeath`
- * is inert on the base and only the enemy overrides it. A player's death owes a
- * death penalty, a corruption cost and the Last Stand mechanic, none of which is
- * designed, so #517 does the enemy half alone.
+ * WHAT THESE DELIBERATELY DO NOT COVER.
  *
  * THE DESTRUCTION ITSELF. `HandleDeath` schedules it for the next tick, and a
  * world built by `UWorld::CreateWorld` is never ticked, so nothing here can
@@ -77,6 +82,35 @@ namespace CataclysmDeathTest
 			UCataclysmTargeting::AbilitySystemOf(Actor);
 		return System ? System->GetNumericAttribute(
 			UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	}
+
+	/**
+	 * A player pawn with its ability system wired up the way the game wires it.
+	 *
+	 * THE OWNER AND THE AVATAR MUST DIFFER, which is the whole reason this is
+	 * not one SpawnActor call. The player's ability system lives on the player
+	 * state, because that survives death, and the pawn is only the avatar. A
+	 * pawn spawned on its own has no player state and therefore no ability
+	 * system at all, so nothing could damage it.
+	 *
+	 * OnRep_PlayerState IS THE CLIENT PATH, driven directly because a test world
+	 * has no controller to possess with and no network to replicate over. It
+	 * calls the same InitAbilityActorInfo the server reaches from PossessedBy.
+	 * The same shape is used by CataclysmPlayerMovementTests.cpp.
+	 */
+	static ACataclysmPlayerCharacter* SpawnPlayer(UWorld* World,
+												  const FVector& Where = FVector::ZeroVector)
+	{
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerCharacter* Actor =
+			World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
+		if (State && Actor)
+		{
+			Actor->SetPlayerState(State);
+			Actor->OnRep_PlayerState();
+			return Actor;
+		}
+		return nullptr;
 	}
 }
 
@@ -345,9 +379,307 @@ CATACLYSM_TEST(FCataclysmDyingHappensOnceTest,
 	return true;
 }
 
-#undef CATACLYSM_TEST
+// --------------------------------------------------------------------------
+// Nothing attacks a corpse. Issue #570
+// --------------------------------------------------------------------------
 
-#endif  // WITH_AUTOMATION_TESTS
+CATACLYSM_TEST(FCataclysmNothingTargetsTheDeadTest,
+	"Cataclysm.Death.NothingFindsADeadCharacterAsATarget")
+{
+	// THE MEASURED DEFECT THIS IS FOR. Issue #570 recorded fifty-six attacks
+	// over seventy seconds landing on a player already at zero health, each
+	// dealing exactly nothing, because a creature had no way to ask whether its
+	// target was finished. UCataclysmTargeting is where it can ask now.
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Hunter = CataclysmDeathTest::SpawnEnemy(
+		World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	ACataclysmEnemyCharacter* Prey = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Players);
+
+	if (TestNotNull(TEXT("a hunter"), Hunter) && TestNotNull(TEXT("prey"), Prey))
+	{
+		TestTrue(TEXT("alive, it is hostile to the hunter"),
+			UCataclysmTargeting::IsHostileTo(Prey, Hunter));
+		TestEqual(TEXT("and a search finds it"),
+			UCataclysmTargeting::FindEnemiesInSphere(
+				World, Hunter, Hunter->GetActorLocation(), 1000.0f).Num(), 1);
+
+		TestTrue(TEXT("now it is dead"), UCataclysmSkillEffects::MarkDead(Prey));
+
+		TestFalse(TEXT("dead, it is no longer hostile"),
+			UCataclysmTargeting::IsHostileTo(Prey, Hunter));
+		TestEqual(TEXT("and the same search finds nothing"),
+			UCataclysmTargeting::FindEnemiesInSphere(
+				World, Hunter, Hunter->GetActorLocation(), 1000.0f).Num(), 0);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmNothingHealsTheDeadTest,
+	"Cataclysm.Death.ADeadCharacterIsNotAnAllyEither")
+{
+	// AN AURA MUST NOT BUFF A CORPSE. The same filter answers both searches, so
+	// this is what proves it was put where both questions are asked rather than
+	// only on the hostile path.
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Caster = CataclysmDeathTest::SpawnEnemy(
+		World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	ACataclysmEnemyCharacter* Friend = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+
+	if (TestNotNull(TEXT("a caster"), Caster) && TestNotNull(TEXT("a friend"), Friend))
+	{
+		TestTrue(TEXT("alive, it is an ally"),
+			UCataclysmTargeting::IsFriendlyTo(Friend, Caster));
+
+		TestTrue(TEXT("now it is dead"), UCataclysmSkillEffects::MarkDead(Friend));
+
+		TestFalse(TEXT("dead, it is not an ally"),
+			UCataclysmTargeting::IsFriendlyTo(Friend, Caster));
+		TestEqual(TEXT("and an ally search finds nothing"),
+			UCataclysmTargeting::FindAlliesInSphere(
+				World, Caster, Caster->GetActorLocation(), 1000.0f).Num(), 0);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A player's death. Issue #570
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmPlayerDiesTest,
+	"Cataclysm.Death.APlayerAtZeroHealthIsMarkedDeadAndStops")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer))
+	{
+		TestFalse(TEXT("it starts alive"), UCataclysmSkillEffects::IsDead(Player));
+		TestFalse(TEXT("and not awaiting a respawn"), Player->IsAwaitingRespawn());
+
+		// Far more than the placeholder 100 the attribute set starts at, so the
+		// hit cannot leave a sliver behind and make this pass for the wrong
+		// reason.
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+
+		TestEqual(TEXT("its health reached zero"),
+			CataclysmDeathTest::HealthOf(Player), 0.0f, 0.01f);
+		TestTrue(TEXT("it is marked dead"),
+			UCataclysmSkillEffects::IsDead(Player));
+		TestTrue(TEXT("and it says so"), Player->IsAwaitingRespawn());
+
+		if (const UCharacterMovementComponent* Movement = Player->GetCharacterMovement())
+		{
+			TestEqual(TEXT("and it is not allowed to move"),
+				static_cast<int32>(Movement->MovementMode),
+				static_cast<int32>(MOVE_None));
+		}
+
+		// NOT REMOVED FROM THE LEVEL, unlike a creature. The design says ordinary
+		// death continues the run and that nothing in play destroys a character.
+		TestTrue(TEXT("and it is still in the world, unlike a dead creature"),
+			IsValid(Player));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmPlayerDiesOnceTest,
+	"Cataclysm.Death.APlayerDiesOnceHoweverManyHitsLand")
+{
+	// THE FIFTY-SIX HITS, IN A TEST. A burn ticking and two blows in one frame
+	// both write health at zero again, and a second death would restart the
+	// respawn timer and hold the player down for ever.
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer))
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		for (int32 Hit = 0; Hit < 10; ++Hit)
+		{
+			UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		}
+
+		TestFalse(TEXT("a second killing blow does not kill it again"),
+			UCataclysmSkillEffects::MarkDead(Player));
+		TestTrue(TEXT("and it is still dead, not resurrected"),
+			UCataclysmSkillEffects::IsDead(Player));
+		TestEqual(TEXT("and still at zero health"),
+			CataclysmDeathTest::HealthOf(Player), 0.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmPlayerRevivesTest,
+	"Cataclysm.Death.APlayerStandsBackUpRatherThanBeingRemoved")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer))
+	{
+		const float FullHealth = CataclysmDeathTest::HealthOf(Player);
+		TestTrue(TEXT("it starts with some health"), FullHealth > 0.0f);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		// DRIVEN DIRECTLY RATHER THAN WAITED FOR. A world built by
+		// UWorld::CreateWorld is never ticked, so its timers never fire. Revive
+		// is public for exactly this.
+		Player->Revive();
+
+		TestFalse(TEXT("it is no longer dead"),
+			UCataclysmSkillEffects::IsDead(Player));
+		TestFalse(TEXT("and no longer awaiting a respawn"),
+			Player->IsAwaitingRespawn());
+		TestEqual(TEXT("its health is full again"),
+			CataclysmDeathTest::HealthOf(Player), FullHealth, 0.01f);
+
+		if (const UCharacterMovementComponent* Movement = Player->GetCharacterMovement())
+		{
+			TestEqual(TEXT("and it can walk again"),
+				static_cast<int32>(Movement->MovementMode),
+				static_cast<int32>(MOVE_Walking));
+		}
+
+		// AND IT CAN BE FOUGHT AGAIN, which is the whole point of coming back.
+		TestTrue(TEXT("a creature can find it once more"),
+			UCataclysmTargeting::IsHostileTo(Player, Killer));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmPlayerStandsUpAtThePlayerStartTest,
+	"Cataclysm.Death.APlayerStandsUpAtThePlayerStart")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FVector StartHere(1234.0f, -567.0f, 89.0f);
+	APlayerStart* Start = World->SpawnActor<APlayerStart>(
+		StartHere, FRotator::ZeroRotator);
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+
+	if (TestNotNull(TEXT("a player start"), Start)
+		&& TestNotNull(TEXT("a player"), Player)
+		&& TestNotNull(TEXT("a killer"), Killer))
+	{
+		// Moved away from the start first, so arriving there is a move rather
+		// than never having left.
+		Player->SetActorLocation(FVector(-4000.0f, 4000.0f, 0.0f));
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		Player->Revive();
+
+		TestTrue(TEXT("it stood up at the player start"),
+			Player->GetActorLocation().Equals(StartHere, 1.0f));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRevivingTheLivingDoesNothingTest,
+	"Cataclysm.Death.RevivingSomethingThatIsNotDeadChangesNothing")
+{
+	// OTHERWISE Revive IS A FREE FULL HEAL for anything that calls it by
+	// mistake, and the mistake would be invisible.
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+
+	if (TestNotNull(TEXT("a player"), Player))
+	{
+		UAbilitySystemComponent* AbilitySystem =
+			UCataclysmTargeting::AbilitySystemOf(Player);
+		if (!TestNotNull(TEXT("the player has an ability system"), AbilitySystem))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// WRITTEN RATHER THAN DEALT, so the wounded figure is exact and this test
+		// measures Revive alone instead of also measuring the mitigation
+		// pipeline.
+		const float FullHealth = CataclysmDeathTest::HealthOf(Player);
+		const float Wounded = FullHealth / 2.0f;
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), Wounded);
+
+		TestTrue(TEXT("it is hurt"), Wounded < FullHealth);
+		TestFalse(TEXT("and alive"), UCataclysmSkillEffects::IsDead(Player));
+
+		TestFalse(TEXT("clearing a mark that is not there reports nothing done"),
+			UCataclysmSkillEffects::ClearDead(Player));
+
+		Player->Revive();
+
+		TestEqual(TEXT("and reviving the living does not heal it"),
+			CataclysmDeathTest::HealthOf(Player), Wounded, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+#undef CATACLYSM_TEST
 
 // --------------------------------------------------------------------------
 // Whose death is it
@@ -367,15 +699,16 @@ CATACLYSM_TEST(FCataclysmDyingHappensOnceTest,
  * not a character, so the cast in NotifyIfHealthReachedZero failed and the
  * function returned early.
  *
- * IT COSTS NOTHING TODAY. HandleDeath is inert on the base by design, and a
- * player's death is not built -- see the note at the top of this file. This test
- * exists so that when somebody does build one, it fires, instead of failing
- * silently in an actor lookup two files away from the code they are writing.
+ * IT COST NOTHING WHEN IT WAS WRITTEN, because a player's death was not built
+ * and the note at the top of this file said so. It costs something now: issue
+ * #570 built one, so the lookup this pins is on the path a real player death
+ * takes. The player death tests above would fail if it regressed, and this one
+ * still says which lookup is wrong rather than only that something is.
  *
  * The arrangement below is artificial on purpose: an enemy is given an ability
  * system whose owner is some other actor, so that owner and avatar differ the
- * way they do for the player. It is the only way to exercise the distinction
- * while a player's death does nothing.
+ * way they do for the player. It exercises the distinction without depending on
+ * anything a player character does.
  */
 // Spelled out rather than using this file's CATACLYSM_TEST macro, which is
 // undefined at a line above where this test sits.
@@ -442,3 +775,5 @@ bool FCataclysmDeathFollowsTheAvatarNotTheOwnerTest::RunTest(const FString& Para
 	World->DestroyWorld(false);
 	return true;
 }
+
+#endif  // WITH_AUTOMATION_TESTS

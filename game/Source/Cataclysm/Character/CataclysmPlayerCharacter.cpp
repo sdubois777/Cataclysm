@@ -3,15 +3,21 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "EngineUtils.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerStart.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -191,6 +197,141 @@ void ACataclysmPlayerCharacter::ApplyMovementSpeed(float MetresPerSecond)
 void ACataclysmPlayerCharacter::OnMovementSpeedChanged(const FOnAttributeChangeData& Data)
 {
 	ApplyMovementSpeed(Data.NewValue);
+}
+
+void ACataclysmPlayerCharacter::HandleDeath()
+{
+	if (!UCataclysmSkillEffects::MarkDead(this))
+	{
+		// Already dead. Health can be written at zero repeatedly -- a burn
+		// ticking, two hits in one frame -- and the second of those must not
+		// restart the timer and hold the player down for ever.
+		return;
+	}
+
+	// WHATEVER IT WAS DOING STOPS, which is the second of the three things
+	// `docs/DECISIONS.md` states an enemy's death is, and it transfers unchanged.
+	// DisableMovement clears the velocity too: UCharacterMovementComponent::
+	// OnMovementModeChanged runs StopMovementKeepPathing when the new mode is
+	// MOVE_None.
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->DisableMovement();
+	}
+
+	// AND THE PLAYER STOPS DRIVING IT. Without this a dead character still
+	// answers the keyboard: it cannot walk, because movement is off, but it can
+	// still swing, and a corpse attacking is worse than a corpse standing still.
+	//
+	// AN ABILITY ALREADY RUNNING IS NOT CANCELLED, and that is deliberate rather
+	// than forgotten. This function runs inside the gameplay effect callback that
+	// dealt the killing blow -- the same reason an enemy is destroyed on the next
+	// tick rather than here -- so cancelling from inside it would tear down
+	// something the ability system is still working through. Releasing input is
+	// what stops a new one starting. A skill already in flight finishing after
+	// its caster died is the rule a projectile already fired follows too.
+	if (APlayerController* Driver = Cast<APlayerController>(GetController()))
+	{
+		DisableInput(Driver);
+	}
+
+	// CHOSEN NOW RATHER THAN AT REVIVAL, so a level with no player start puts the
+	// character back where it fell instead of at the world origin, which is under
+	// the floor in every level this project has.
+	RespawnLocation = GetActorLocation();
+	RespawnRotation = GetActorRotation();
+	if (const UWorld* World = GetWorld())
+	{
+		for (TActorIterator<APlayerStart> It(World); It; ++It)
+		{
+			RespawnLocation = It->GetActorLocation();
+			RespawnRotation = It->GetActorRotation();
+			break;
+		}
+	}
+
+	// NOT DESTROYED, UNLIKE AN ENEMY, and that is the design rather than a
+	// shortcut. `docs/Cataclysm_GDD_v2.md`: "Ordinary death inside a dungeon is
+	// not a run ending", and "A player can delete a character, and that is the
+	// only thing that removes one. Nothing that happens in play does."
+	//
+	// WHAT IS DELIBERATELY NOT CHARGED HERE. The designed penalty is 5 days in
+	// Standard, 10 in Hardcore and 15 in Heretic, plus a per-piece equipment drop
+	// chance, plus a respawn at the capital. None of it can be applied: the
+	// running game has no day clock, no lethality mode, no equipped inventory and
+	// no capital. Issue #41 builds the layer that would carry all four. Standing
+	// the player back up where the level starts them is the whole of the rule
+	// that this game currently has the machinery for, and #570 records the rest
+	// as owed.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			RespawnTimer, this, &ACataclysmPlayerCharacter::Revive,
+			RespawnDelaySeconds, /*bLoop=*/false);
+	}
+}
+
+void ACataclysmPlayerCharacter::Revive()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RespawnTimer);
+	}
+
+	if (!UCataclysmSkillEffects::ClearDead(this))
+	{
+		// Not dead, so there is nothing to undo. Refilling here anyway would make
+		// this a free heal for anything that called it by mistake.
+		return;
+	}
+
+	// MOVED BEFORE REFILLING, so a character that comes back in the middle of the
+	// pack that killed it is somewhere else by the time it has health to lose.
+	// Swept off, because the destination is a spawn point and a sweep from where
+	// the body fell would stop against the first thing in the way.
+	SetActorLocationAndRotation(RespawnLocation, RespawnRotation,
+								/*bSweep=*/false, nullptr,
+								ETeleportType::TeleportPhysics);
+
+	// FULL, NOT PARTIAL. No document says what a player comes back with, so the
+	// least surprising reading is the one every game in the genre uses: a
+	// respawned character is whole and what it lost is measured in the world
+	// rather than on the character. Written as the base value rather than through
+	// a gameplay effect because there is no heal effect in the project and
+	// inventing one to serve a placeholder would be the larger change.
+	if (UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent())
+	{
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()));
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetManaAttribute(),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxManaAttribute()));
+	}
+
+	// MOVE_Walking rather than whatever it was, because what it was is MOVE_None:
+	// HandleDeath set that and DisableMovement does not remember the previous
+	// mode.
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->SetMovementMode(MOVE_Walking);
+	}
+
+	if (APlayerController* Driver = Cast<APlayerController>(GetController()))
+	{
+		EnableInput(Driver);
+	}
+}
+
+bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
+{
+	return UCataclysmSkillEffects::IsDead(this);
 }
 
 UAbilitySystemComponent* ACataclysmPlayerCharacter::GetAbilitySystemComponent() const
