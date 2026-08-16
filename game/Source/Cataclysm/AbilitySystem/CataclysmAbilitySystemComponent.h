@@ -30,6 +30,47 @@ class CATACLYSM_API UCataclysmAbilitySystemComponent : public UAbilitySystemComp
 public:
 	UCataclysmAbilitySystemComponent();
 
+	/**
+	 * The share of a stated knockback distance the NEXT displacement of this
+	 * target actually moves it, recording that displacement as happening now.
+	 *
+	 * THE RULE, from "Stun and the Anti-Stun-Lock Rule" in
+	 * docs/Cataclysm_GDD_v2.md and decided on issue #302: each displacement
+	 * applied to a target already displaced within the last 5 seconds moves it
+	 * HALF AS FAR as the one before -- the full distance, then half, then a
+	 * quarter. The count resets once 5 seconds pass in which that target is not
+	 * displaced at all.
+	 *
+	 * SO REPEATED SHOVES CANNOT HOLD A TARGET AT THE FAR END OF A ROOM. Four
+	 * metres, then two, then one is seven metres in total and nothing worth
+	 * measuring after that. That is the failure the rule was written for.
+	 *
+	 * WHY THE COUNT LIVES ON THIS COMPONENT. It belongs to the TARGET and has to
+	 * outlive the skill that caused it, because the second shove is usually a
+	 * different skill and often a different actor. This component is what every
+	 * hittable thing has: being hit goes through
+	 * UCataclysmSkillEffects::ApplyHit, which requires one. So it covers the
+	 * player, every enemy and every minion in both directions, which issue #310
+	 * settled the design needs. The shared character base was the first choice
+	 * and was wrong, because a thing can be hit without being one.
+	 *
+	 * NO DAMAGE THRESHOLD, NO IMMUNITY FLAG AND NO BOSS EXEMPTION, unlike the
+	 * stun rule. A boss is pushed under the same halving as anything else,
+	 * because a boss pushed four metres is still fighting while a boss held still
+	 * is not a fight.
+	 *
+	 * @return 1.0 for the first displacement in a window, then 0.5, 0.25, and so
+	 *         on. Never zero, so a shove always visibly shoves. Issue #628.
+	 */
+	float TakeNextDisplacementShare();
+
+	/**
+	 * How many times this has been displaced inside the current window, without
+	 * counting a new one or resetting anything. Read by tests.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Abilities")
+	int32 DisplacementsInWindow() const;
+
 	/** Records that the key for this slot went down. Does not activate anything yet. */
 	void AbilityInputTagPressed(const FGameplayTag& InputTag);
 
@@ -146,4 +187,15 @@ protected:
 
 	/** Never reused, so a stale handle cannot remove somebody else's modifier. */
 	int32 NextStatModifierHandle = 1;
+
+	/**
+	 * How many times this has been displaced since the window last reset, and
+	 * when the last one happened in world seconds.
+	 *
+	 * A NEGATIVE TIME MEANS NEVER DISPLACED, told apart from "displaced at world
+	 * time zero" deliberately: without it, the first shove in a fresh world would
+	 * be counted as a second one and moved half as far as it should.
+	 */
+	int32 DisplacementCount = 0;
+	float LastDisplacedAtSeconds = -1.0f;
 };

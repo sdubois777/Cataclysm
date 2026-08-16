@@ -1,12 +1,68 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Cataclysm.h"
+#include "Engine/World.h"
 #include "GameplayTagContainer.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
 	SetIsReplicatedByDefault(true);
+}
+
+int32 UCataclysmAbilitySystemComponent::DisplacementsInWindow() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastDisplacedAtSeconds < 0.0f)
+	{
+		return 0;
+	}
+
+	// REPORTED RATHER THAN STORED, so asking does not reset anything. The count
+	// held in the field is only meaningful inside the window; outside it the
+	// answer is zero, and the field is corrected on the next displacement.
+	const float Since = World->GetTimeSeconds() - LastDisplacedAtSeconds;
+	return Since > UCataclysmSkillEffects::StunImmunityWindowSeconds
+		? 0
+		: DisplacementCount;
+}
+
+float UCataclysmAbilitySystemComponent::TakeNextDisplacementShare()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// No world means no clock to measure a window against. The full distance
+		// is the safe answer: it is what the skill asked for, and halving it
+		// would silently shorten a shove in a context that cannot have had a
+		// previous one.
+		return 1.0f;
+	}
+
+	const float Now = World->GetTimeSeconds();
+
+	// THE SAME 5 SECONDS THE STUN IMMUNITY WINDOW USES, read from that constant
+	// rather than written again. The design says so in as many words: "It is the
+	// stun immunity window, reused rather than a second number to remember." Two
+	// copies of a number that measure different things which happen to be equal
+	// are exactly the kind that drift with nothing noticing.
+	const float Window = UCataclysmSkillEffects::StunImmunityWindowSeconds;
+
+	if (LastDisplacedAtSeconds < 0.0f || Now - LastDisplacedAtSeconds > Window)
+	{
+		DisplacementCount = 0;
+	}
+
+	LastDisplacedAtSeconds = Now;
+
+	// Full, then half, then a quarter. Capped so a target shoved a great many
+	// times inside one window cannot shift the exponent past what a float holds;
+	// by the thirtieth the distance is far below anything visible anyway.
+	const int32 Halvings = FMath::Min(DisplacementCount, 30);
+	++DisplacementCount;
+
+	return 1.0f / static_cast<float>(1 << Halvings);
 }
 
 void UCataclysmAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag)

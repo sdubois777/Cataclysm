@@ -446,6 +446,160 @@ bool FCataclysmKnockbackIsARiderTest::RunTest(const FString&)
 }
 
 /**
+ * Each shove inside the window moves a target half as far as the one before.
+ *
+ * THE RULE, from "Stun and the Anti-Stun-Lock Rule" in
+ * docs/Cataclysm_GDD_v2.md and decided on issue #302: a displacement applied to
+ * a target already displaced within the last 5 seconds moves it half as far, and
+ * the count resets once 5 seconds pass with no displacement at all. It was
+ * stated in the design and implemented nowhere until issue #628.
+ *
+ * WHAT IT PREVENTS. Without it, three shoves of 4 metres move a target 12 metres
+ * and a fourth moves it 4 more, so repeated displacement can hold a target at the
+ * far end of a room. With it they move 4, then 2, then 1 -- seven metres in total
+ * and nothing worth measuring after that.
+ *
+ * THE DISTANCES ARE COMPARED TO EACH OTHER RATHER THAN TO WRITTEN NUMBERS, so
+ * this says what the rule says: each is half the one before. Changing the stated
+ * knockback would not need this test edited.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDiminishingDisplacementTest,
+	"Cataclysm.Skills.EachShoveInsideTheWindowMovesHalfAsFar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDiminishingDisplacementTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+	UCataclysmAbilitySystemComponent* Pushed = Target.AbilitySystem;
+	if (!Pushed)
+	{
+		AddError(TEXT("The target has no ability system, so it cannot hold a "
+					  "displacement count."));
+		return false;
+	}
+
+	TestEqual(TEXT("It has not been displaced yet"),
+		Pushed->DisplacementsInWindow(), 0);
+
+	// A wide ring with a long radius, so the target stays inside it as it is
+	// pushed away and every activation finds it again.
+	UCataclysmStrikeSkill* Shove = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=20; Angle=360; Knockback=4"), TEXT("A Shove"));
+	if (!Shove)
+	{
+		AddError(TEXT("Could not grant the shove."));
+		return false;
+	}
+
+	// ACTIVATED ONCE AND THEN SWUNG DIRECTLY, because a Heavy slot skill goes on a
+	// 1.5 second cooldown and an automation test cannot wait for it. The first
+	// activation is what proves a shove reaches this path through a real ability
+	// at all; the repeats are what the halving is a property of.
+	float Distances[3] = { 0.0f, 0.0f, 0.0f };
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		const FVector Before = Target.Actor->GetActorLocation();
+		if (Index == 0)
+		{
+			TestTrue(TEXT("The first shove activates as an ability"),
+				Activate(Caster, Shove));
+		}
+		else
+		{
+			TestTrue(FString::Printf(TEXT("Shove %d hits something"), Index + 1),
+				Shove->SwingOnce() > 0);
+		}
+		Distances[Index] = (Target.Actor->GetActorLocation() - Before).Size();
+	}
+
+	TestEqual(TEXT("Three displacements were counted"),
+		Pushed->DisplacementsInWindow(), 3);
+	TestTrue(FString::Printf(TEXT("The first shove moved it (%.0f cm)"),
+		Distances[0]), Distances[0] > 1.0f);
+
+	// Half, then a quarter. A centimetre of slack, because the move is swept and
+	// stops short if it meets anything.
+	TestTrue(FString::Printf(
+		TEXT("The second moved half as far (%.0f then %.0f cm)"),
+		Distances[0], Distances[1]),
+		FMath::IsNearlyEqual(Distances[1], Distances[0] * 0.5f, 1.0f));
+	TestTrue(FString::Printf(
+		TEXT("The third moved a quarter as far (%.0f then %.0f cm)"),
+		Distances[0], Distances[2]),
+		FMath::IsNearlyEqual(Distances[2], Distances[0] * 0.25f, 1.0f));
+
+	// AND IT CANNOT HOLD A TARGET ACROSS A ROOM. Three full shoves would be three
+	// times the first; the rule makes the total 1.75 times it.
+	const float Total = Distances[0] + Distances[1] + Distances[2];
+	TestTrue(FString::Printf(
+		TEXT("Three shoves total under twice the first, not three times "
+			 "(%.0f vs %.0f cm)"), Total, Distances[0] * 3.0f),
+		Total < Distances[0] * 2.0f);
+
+	return true;
+}
+
+/**
+ * The count resets once the window passes with no displacement.
+ *
+ * The other half of the rule. Without it a target shoved once would be
+ * permanently harder to shove, which would make the halving a punishment for
+ * having ever been hit rather than a limit on being hit repeatedly.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDisplacementWindowResetsTest,
+	"Cataclysm.Skills.TheDisplacementCountResetsAfterTheWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDisplacementWindowResetsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+	UCataclysmAbilitySystemComponent* Pushed = Target.AbilitySystem;
+	if (!Pushed)
+	{
+		AddError(TEXT("The target has no ability system."));
+		return false;
+	}
+
+	// DRIVEN DIRECTLY RATHER THAN THROUGH A SKILL, because the window is five
+	// seconds of world time and an automation test cannot wait that long. What
+	// is under test here is the rule itself, which the reset is a property of.
+	TestEqual(TEXT("The first displacement is the full distance"),
+		Pushed->TakeNextDisplacementShare(), 1.0f);
+	TestEqual(TEXT("The second is half"),
+		Pushed->TakeNextDisplacementShare(), 0.5f);
+	TestEqual(TEXT("Two are counted"), Pushed->DisplacementsInWindow(), 2);
+
+	// Past the window. The rule reuses the stun immunity window rather than
+	// stating a second number, so this reads that constant instead of writing
+	// five again -- and would fail if the two ever stopped being the same.
+	World->TimeSeconds +=
+		UCataclysmSkillEffects::StunImmunityWindowSeconds + 1.0f;
+
+	TestEqual(TEXT("The count reads zero once the window has passed"),
+		Pushed->DisplacementsInWindow(), 0);
+	TestEqual(TEXT("and the next displacement is the full distance again"),
+		Pushed->TakeNextDisplacementShare(), 1.0f);
+	TestEqual(TEXT("counted as the first of a new window"),
+		Pushed->DisplacementsInWindow(), 1);
+
+	return true;
+}
+
+/**
  * A skill that states no knockback moves nothing.
  *
  * The other half of the test above. Moving knockback into the shared hit path
