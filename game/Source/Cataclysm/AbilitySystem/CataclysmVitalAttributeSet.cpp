@@ -215,6 +215,37 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Hit, GetOwningAbilitySystemComponent(),
 					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()));
 
+			// THE ENERGY SHIELD'S REFILL WAIT STARTS HERE. The design gives the
+			// shield a three second delay after the character last took damage,
+			// restarted by taking damage again inside that window, and says
+			// damage over time restarts it as well. That last part is
+			// load-bearing: the shield absorbs no damage over time at all, so
+			// without it a bleeding character would refill freely and the
+			// shield would be strongest against the one thing it ignores.
+			//
+			// ANYTHING THAT GOT THROUGH COUNTS, including a blow a shield
+			// swallowed whole and including a burn tick. A hit that was evaded,
+			// or that armour and resistance stopped completely, took nothing
+			// and does not restart the wait. Issue #653.
+			//
+			// THE AVATAR, NOT THE OWNER, for the same reason the hit effect and
+			// the death path both need it: GetOwningActor answers with the
+			// ability system's owner, and for the player that is the player
+			// state, which is not a character at all. Issues #562 and #565.
+			if (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
+				|| Outcome.AbsorbedByMana > 0.0f)
+			{
+				if (ACataclysmCharacterBase* Hurt =
+						GetOwningAbilitySystemComponent()
+							? Cast<ACataclysmCharacterBase>(
+								  GetOwningAbilitySystemComponent()
+									  ->GetAvatarActor())
+							: nullptr)
+				{
+					Hurt->NoteDamageTaken();
+				}
+			}
+
 			if (Outcome.AbsorbedByShield > 0.0f)
 			{
 				SetEnergyShield(FMath::Clamp(

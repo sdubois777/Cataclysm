@@ -443,6 +443,30 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	ApplyIfHeld(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(),
 				ResistancePercent);
 
+	// A CREATURE DOES NOT REGENERATE, AND THAT IS A STATED POSITION RATHER THAN
+	// AN OMISSION. Issue #653 wired up the three regeneration attributes, which
+	// until then no code read at all. UCataclysmVitalAttributeSet's constructor
+	// sets health and mana regeneration to 1.0 as a placeholder for a character
+	// with no class attached, so leaving them alone would have handed every
+	// creature in the game a heal nobody designed: a Brute recovering while the
+	// player disengages, and anything walked away from returning to full.
+	//
+	// THE DESIGN GIVES REGENERATION TO CLASSES, NOT TO CREATURES. Each of the
+	// three Demonic class stat lines states a health and a mana regeneration
+	// figure. The enemy archetype table has no column for either, and
+	// `stats_for` in sim/cataclysm_sim/enemy_stats.py computes no such figure. A
+	// creature that should regenerate would be expressed as an archetype
+	// property or a modifier, which is issue #355's territory rather than a
+	// default nobody chose.
+	//
+	// ZERO RATHER THAN A SKIPPED TICK, so the rule lives in the creature's own
+	// numbers where it can be read and changed, rather than inside the
+	// mechanism as a special case for one kind of character.
+	ApplyIfHeld(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 0.0f);
+	ApplyIfHeld(UCataclysmVitalAttributeSet::GetManaRegenAttribute(), 0.0f);
+	ApplyIfHeld(UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(),
+				0.0f);
+
 	// THE ENERGY SHIELD, WHICH NOTHING WROTE AT ALL UNTIL ISSUE #485. The
 	// fraction reached the generated archetype table and the row struct that
 	// reads it, and then stopped: there was no property on this class and no

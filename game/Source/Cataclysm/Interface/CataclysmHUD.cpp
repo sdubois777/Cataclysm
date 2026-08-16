@@ -128,6 +128,27 @@ void ACataclysmHUD::DrawTextCentred(const FString& Text,
 	DrawText(Text, Colour, CentreX - Width * 0.5f, TopY, Font, Scale);
 }
 
+void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
+								   const TCHAR* FillHex)
+{
+	const float Left = PlayerBarMarginPx;
+
+	DrawBar(Left, Top, PlayerBarWidthPx, PlayerBarHeightPx,
+			UCataclysmCombatOverlay::BarFractionFor(Current, Maximum),
+			UCataclysmCombatOverlay::ColourFromHex(FillHex), 1.0f);
+
+	// THE FIGURES AS WELL AS THE BAR, because the whole reason this exists is to
+	// judge combat numbers. A bar answers "how close am I to dying" and the
+	// figures answer "did that hit do what the design says". Issue #518 was
+	// about the second one, and issue #653 showed the first is not enough on its
+	// own either: a mana pool at zero and a mana pool at one look the same on a
+	// bar that short, and the difference decides whether anything can be cast.
+	DrawTextCentred(
+		FString::Printf(TEXT("%d / %d"), FMath::RoundToInt(Current),
+						FMath::RoundToInt(Maximum)),
+		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
+}
+
 void ACataclysmHUD::DrawPlayerVitals()
 {
 	const APawn* Pawn = GetOwningPawn();
@@ -146,11 +167,33 @@ void ACataclysmHUD::DrawPlayerVitals()
 		return;
 	}
 
-	const float Left = PlayerBarMarginPx;
+	// STACKED UPWARD FROM THE BOTTOM LEFT CORNER, health nearest the corner.
+	// Health is the one a player looks at while being hit, so it is the one that
+	// does not move when a bar above it appears or disappears.
 	float Top = Canvas->SizeY - PlayerBarMarginPx - PlayerBarHeightPx;
 
-	// THE ENERGY SHIELD SITS ABOVE HEALTH AND ONLY WHEN THERE IS ONE. A class
-	// with no energy shield is a design position rather than an error state --
+	DrawPlayerPool(Top, Health, MaxHealth,
+				   UCataclysmCombatOverlay::HealthFillHex);
+
+	// MANA NEXT, AND ALWAYS. Every class has a mana pool -- the design's stat
+	// table gives all three Demonic classes one -- so unlike the shield below
+	// there is no case where the bar would be permanently empty and meaningless.
+	//
+	// IT IS HERE BECAUSE ITS ABSENCE HID A BUG. Issue #653: mana was spent and
+	// never returned, so every ability became permanently refused, and it was
+	// reported as "sometimes all of my abilities just become disabled" because
+	// nothing on screen said the pool was empty.
+	float Mana = 0.0f;
+	float MaxMana = 0.0f;
+	if (UCataclysmCombatOverlay::ManaOf(Pawn, Mana, MaxMana) && MaxMana > 0.0f)
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawPlayerPool(Top, Mana, MaxMana,
+					   UCataclysmCombatOverlay::ManaFillHex);
+	}
+
+	// THE ENERGY SHIELD LAST AND ONLY WHEN THERE IS ONE. A class with no energy
+	// shield is a design position rather than an error state --
 	// UCataclysmVitalAttributeSet::PreAttributeChange says so -- and a bar
 	// permanently at zero would say the opposite.
 	float Shield = 0.0f;
@@ -158,34 +201,10 @@ void ACataclysmHUD::DrawPlayerVitals()
 	if (UCataclysmCombatOverlay::ShieldOf(Pawn, Shield, MaxShield)
 		&& MaxShield > 0.0f)
 	{
-		const float ShieldTop = Top - PlayerBarHeightPx - 6.0f;
-		DrawBar(Left, ShieldTop, PlayerBarWidthPx, PlayerBarHeightPx,
-				UCataclysmCombatOverlay::BarFractionFor(Shield, MaxShield),
-				UCataclysmCombatOverlay::ColourFromHex(
-					UCataclysmCombatOverlay::ShieldFillHex),
-				1.0f);
-
-		DrawTextCentred(
-			FString::Printf(TEXT("%d / %d"), FMath::RoundToInt(Shield),
-							FMath::RoundToInt(MaxShield)),
-			FLinearColor::White, Left + PlayerBarWidthPx * 0.5f,
-			ShieldTop + 2.0f, 1.0f);
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawPlayerPool(Top, Shield, MaxShield,
+					   UCataclysmCombatOverlay::ShieldFillHex);
 	}
-
-	DrawBar(Left, Top, PlayerBarWidthPx, PlayerBarHeightPx,
-			UCataclysmCombatOverlay::BarFractionFor(Health, MaxHealth),
-			UCataclysmCombatOverlay::ColourFromHex(
-				UCataclysmCombatOverlay::HealthFillHex),
-			1.0f);
-
-	// THE FIGURES AS WELL AS THE BAR, because the whole reason this exists is to
-	// judge combat numbers. A bar answers "how close am I to dying" and the
-	// figures answer "did that hit do what the design says", and issue #518 is
-	// about the second one.
-	DrawTextCentred(
-		FString::Printf(TEXT("%d / %d"), FMath::RoundToInt(Health),
-						FMath::RoundToInt(MaxHealth)),
-		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
 }
 
 void ACataclysmHUD::DrawOverheadBars()

@@ -77,8 +77,14 @@ public:
 	void DropExpired(float WorldSeconds);
 
 private:
-	/** The player's own health, and its energy shield when it has one. */
+	/**
+	 * The player's own health and mana, and its energy shield when it has one.
+	 */
 	void DrawPlayerVitals();
+
+	/** One of the player's own pools: a bar in the corner, with its figures. */
+	void DrawPlayerPool(float Top, float Current, float Maximum,
+						const TCHAR* FillHex);
 
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
@@ -112,6 +118,9 @@ private:
 	static constexpr float PlayerBarMarginPx = 28.0f;
 	static constexpr float PlayerBarWidthPx = 280.0f;
 	static constexpr float PlayerBarHeightPx = 20.0f;
+
+	/** Clear space between one of the player's bars and the next. */
+	static constexpr float PlayerBarGapPx = 6.0f;
 
 	/** A bar over a creature's head. */
 	static constexpr float OverheadBarWidthPx = 74.0f;
