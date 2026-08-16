@@ -133,6 +133,16 @@ protected:
 	float HitTargets(const TArray<AActor*>& Targets, float DamagePercent = -1.0f);
 
 	/**
+	 * Returns this slot's mana on hit to the caster.
+	 *
+	 * CALLED BY HitTargets ONLY WHEN THE SKILL DEALT SOMETHING, which is what
+	 * the design means by "each time it lands". Inert for every slot but the
+	 * basic attack, because that is the only row in SkillSlots.csv with a
+	 * mana-on-hit figure.
+	 */
+	void ApplyManaOnHit() const;
+
+	/**
 	 * Push one target away from the caster by this skill's `Knockback`, if it
 	 * states one. Does nothing when it does not.
 	 *

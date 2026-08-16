@@ -20,6 +20,79 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — The basic attack swings by itself, at the weapon's rate
+
+**Affects:** nothing in the design documents, which state every rule applied
+here. Closes issues #647 and the automatic basic attack part of #36.
+
+### Two things that were built and never connected
+
+**A weapon's attack speed never reached the character (#647).** Every weapon in
+`game/Data/ItemBases.csv` states a rate — a Greataxe swings 1.28 times a second
+— and `FCataclysmItemBaseRow` carries the column, and the `AttackSpeed`
+attribute exists and is replicated. It was initialised to zero with the comment
+"supplied by the equipped weapon", describing an intention that was never built
+in a form that reads as a statement of fact. Nothing ever wrote it, so every
+increased attack speed affix multiplied zero.
+
+**The basic attack was granted and nothing ever fired it (#36).** The design says
+plainly that it should fire by itself: "The basic attack is on no key. It fires
+automatically... Nothing the player presses triggers it", and "The Basic Attack
+is automatic, so the weapon's attack speed sets its rate." The rate it would have
+read was zero, which is why the first had to be fixed before the second.
+
+### The design decides almost all of it
+
+| Rule | The design's words |
+| :-- | :-- |
+| It fires by itself, on no key | "The basic attack is on no key. It fires automatically." |
+| Its rate is the weapon's attack speed | "The Basic Attack is automatic, so the weapon's attack speed sets its rate." |
+| It swings only when there is a fight | "It is income for being in a fight rather than a filler action." |
+| A landed swing returns 6 mana | "The automatic basic attack returns 6 mana each time it lands." |
+| Its reach comes from the weapon | melee reach is "0.9 metres plus the weapon's length past the fist" |
+
+**The one thing that needed reading rather than quoting** is whether it swings at
+empty air. "Income for being in a fight rather than a filler action" settles it:
+a character swinging at nothing between fights is a filler action performed by
+the game rather than by the player. So it swings only when something it would
+attack is inside the reach.
+
+### Mana on hit is paid per landed swing, not per target
+
+The design states the arithmetic it has to satisfy: 6 mana a swing at "a typical
+1.3 attacks per second" is "about 8 mana per second". Six times 1.3 is 7.8, so
+the 6 is per swing rather than per target. Paying per target would turn an area
+basic attack into a mana engine.
+
+It is paid only when the swing actually dealt damage, which is what "lands"
+means. A swing that was evaded, or that armour and resistance stopped
+completely, returns nothing.
+
+**It rides the mana pool the same way a cost does.** The design sets the return
+against the other slots' costs — 8 mana per second earned against a Heavy attack
+costing 10 per second — and if one scaled with the pool and the other did not,
+that relationship would hold at exactly one level.
+
+### Two defects the tests caught while being written
+
+**The reach was read off the class default object.** A skill's shape is not on
+its class: `UCataclysmWeaponSlotsComponent` parses it out of the weapon's row and
+writes it onto the granted instance, because one ability class stands for every
+skill of that shape. Reading the class default answered zero for every weapon,
+so the basic attack would have found nothing in reach and never swung — the same
+shape of defect as the attack speed it was waiting on. Caught by the end-to-end
+test rather than by review.
+
+**A test passed for the wrong reason.** The check that a swing hitting nothing
+returns no mana was written with only one case, an empty world, and
+`UCataclysmSkillTemplate::HitTargets` returns before it decides anything when the
+target list is empty. So the test never reached the rule it claimed to guard, and
+breaking that rule on purpose did not fail it. It now also covers a swing that
+reaches an enemy and deals it nothing, which is the case that does reach the
+rule, and breaking the rule now fails it.
+
+---
+
 ## 2026-08-16 — Health, mana and energy shield come back over time
 
 **Affects:** nothing in the design documents, which already state every rule

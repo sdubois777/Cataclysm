@@ -385,6 +385,54 @@ void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
 			TEXT("The %s supplies %.1f attack damage at gear level %d."),
 			*EquippedWeaponType, Damage, WeaponGearLevel);
 	}
+
+	// AND THE RATE IT SWINGS AT, WHICH NOTHING WROTE UNTIL ISSUE #647. The
+	// attribute existed and was replicated, and was initialised to zero with the
+	// comment "supplied by the equipped weapon" -- describing an intention that
+	// was never built, in a form that reads as a statement of fact. Every weapon
+	// in ItemBases.csv states a rate and the row struct carries the column; the
+	// chain stopped here.
+	//
+	// TWO THINGS WERE WORTH NOTHING BECAUSE OF IT. Every increased attack speed
+	// affix multiplied zero -- the reference build in
+	// sim/cataclysm_sim/reference_build.py spends four suffix slots on exactly
+	// that, and records the same failure having already happened once on the
+	// simulation side, as issue #120. And the automatic basic attack had no rate
+	// to fire at, which is half of why it was never built.
+	//
+	// SET, NOT ADDED, for the same reason the damage above is: a character holds
+	// one weapon, so its rate replaces the last one's rather than accumulating,
+	// and holding nothing sets zero. Zero is read as "never swings" rather than
+	// as "swings infinitely fast".
+	const FGameplayAttribute SpeedAttribute =
+		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
+	if (AbilitySystem->HasAttributeSetForAttribute(SpeedAttribute))
+	{
+		const float AttackSpeed = EquippedWeaponType.IsEmpty()
+			? 0.0f
+			: UCataclysmItemModifiers::WeaponAttackSpeedForType(
+				ItemBaseTable, EquippedWeaponType);
+
+		AbilitySystem->SetNumericAttributeBase(SpeedAttribute, AttackSpeed);
+
+		if (AttackSpeed <= 0.0f && !EquippedWeaponType.IsEmpty())
+		{
+			// A weapon with no rate never swings its basic attack, and the
+			// symptom is a character that fights normally with its six skills
+			// and silently earns no mana on hit.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("The %s states no attack speed, so its basic attack will "
+					 "never swing. Check its AttackSpeed column in the Item "
+					 "Bases sheet of docs/All_Things_Cataclysm.xlsx."),
+				*EquippedWeaponType);
+		}
+		else if (!EquippedWeaponType.IsEmpty())
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("The %s swings %.2f times a second."),
+				*EquippedWeaponType, AttackSpeed);
+		}
+	}
 }
 
 void UCataclysmWeaponSlotsComponent::UnequipWeapon()

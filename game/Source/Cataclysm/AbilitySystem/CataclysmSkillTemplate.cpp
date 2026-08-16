@@ -208,7 +208,56 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		ApplyKnockbackTo(Self, Target);
 	}
 
+	// MANA ON HIT, WHICH ONLY THE BASIC ATTACK HAS. SkillSlots.csv gives the
+	// Basic row 6 and every other row zero, so this is inert for the other six
+	// slots rather than a special case carved out for one of them.
+	//
+	// PAID ONCE PER LANDED USE, NOT ONCE PER TARGET. The design states the
+	// arithmetic it has to satisfy -- "returns 6 mana each time it lands. At a
+	// typical 1.3 attacks per second that is about 8 mana per second" -- and 6
+	// times 1.3 is 7.8, so the 6 is per swing. Paying per target would turn an
+	// area basic attack into a mana engine, and the design's own reason for the
+	// mechanic is that it is "income for being in a fight rather than a filler
+	// action".
+	//
+	// ONLY WHEN SOMETHING WAS ACTUALLY DEALT, which is what "lands" means. A
+	// swing that was evaded, or that armour and resistance stopped completely,
+	// returns nothing.
+	if (Total > 0.0f)
+	{
+		ApplyManaOnHit();
+	}
+
 	return Total;
+}
+
+void UCataclysmSkillTemplate::ApplyManaOnHit() const
+{
+	const float Gained = GetManaOnHit();
+	if (Gained <= 0.0f)
+	{
+		return;
+	}
+
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	UAbilitySystemComponent* AbilitySystem =
+		Info ? Info->AbilitySystemComponent.Get() : nullptr;
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// APPLIED DIRECTLY RATHER THAN THROUGH A GAMEPLAY EFFECT ASSET, the same way
+	// UCataclysmGameplayAbility::ApplyCost spends mana, and for the same reason:
+	// the magnitude comes from a generated table, so there is no authored asset
+	// to carry it, and an effect built for every landed hit would allocate on
+	// every swing.
+	//
+	// THE CLAMP IN PreAttributeChange IS WHAT STOPS IT OVERFILLING, so this does
+	// not check the maximum itself.
+	AbilitySystem->ApplyModToAttribute(
+		UCataclysmVitalAttributeSet::GetManaAttribute(),
+		EGameplayModOp::Additive, Gained);
 }
 
 void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) const

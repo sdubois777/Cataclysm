@@ -102,6 +102,29 @@ float UCataclysmSkillSlots::ManaCostAtLevel(float CostAtLevel100, int32 Level)
 	return CostAtLevel100 * (DefaultMaxManaAtLevel(Level) / Reference);
 }
 
+float UCataclysmSkillSlots::ManaOnHitAtLevel(float OnHitAtLevel100, int32 Level)
+{
+	if (OnHitAtLevel100 <= 0.0f)
+	{
+		// Every slot but the basic attack. Six of the seven rows state no mana
+		// on hit at all, so this is the ordinary answer rather than an error.
+		return 0.0f;
+	}
+
+	const float Reference = DefaultMaxManaAtLevel(ManaCostReferenceLevel);
+	if (Reference <= 0.0f)
+	{
+		// Cannot happen with the shipped stat line. Returning the level 100
+		// figure is the safe direction here in the OPPOSITE sense to the cost
+		// above: it over-pays rather than paying nothing, and paying nothing is
+		// the failure that would go unnoticed, because it looks exactly like the
+		// mana economy this was built to repair.
+		return OnHitAtLevel100;
+	}
+
+	return OnHitAtLevel100 * (DefaultMaxManaAtLevel(Level) / Reference);
+}
+
 FGameplayTag UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot Slot)
 {
 	// The Basic Attack is automatic and the Aura is a toggle. Neither waits, so

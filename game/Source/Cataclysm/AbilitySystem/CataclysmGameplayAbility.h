@@ -103,6 +103,24 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
 	float GetManaCost() const;
 
+	/**
+	 * Mana one landed use RETURNS to the character holding it, at their level.
+	 *
+	 * ONLY THE BASIC ATTACK HAS ONE. game/Data/SkillSlots.csv gives the Basic
+	 * row a mana-on-hit of 6 and every other row zero, and the design explains
+	 * why that is not a generator to be played around: "The basic attack is
+	 * automatic. There is no button to press and no rotation to perform. It is
+	 * income for being in a fight rather than a filler action."
+	 *
+	 * PAID WHEN A HIT LANDS, NOT WHEN A SKILL IS USED.
+	 * UCataclysmSkillTemplate::HitTargets pays it, and only when the skill
+	 * actually dealt damage, which is what "each time it lands" means. Until
+	 * issue #653 nothing read this figure at all: it was loaded from the table
+	 * into a field that only tests referenced.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
+	float GetManaOnHit() const;
+
 	virtual void OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo,
 							 const FGameplayAbilitySpec& Spec) override;
 
@@ -142,4 +160,5 @@ private:
 	mutable bool bSlotNumbersLoaded = false;
 	mutable float SlotCooldown = 0.0f;
 	mutable float SlotManaCostAtLevel100 = 0.0f;
+	mutable float SlotManaOnHitAtLevel100 = 0.0f;
 };

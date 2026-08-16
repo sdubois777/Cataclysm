@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -140,6 +141,59 @@ void ACataclysmPlayerCharacter::BeginPlay()
 	TargetCameraDistance = FMath::Clamp(CameraBoom->TargetArmLength,
 		MinCameraDistance, MaxCameraDistance);
 	CameraBoom->TargetArmLength = TargetCameraDistance;
+
+	// THE BASIC ATTACK STARTS LOOKING FOR SOMETHING TO HIT. Nothing swings yet:
+	// at this point no weapon is equipped, so the attack speed is zero and the
+	// first attempt only re-arms the clock. Issues #36 and #647.
+	ScheduleNextBasicAttack(0.0f);
+}
+
+void ACataclysmPlayerCharacter::ScheduleNextBasicAttack(
+	float SecondsBetweenSwings)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// ZERO MEANS NO RATE, WHICH IS NOT THE SAME AS NO CLOCK. A character holding
+	// nothing looks again shortly, so that equipping a weapon starts the basic
+	// attack by itself rather than the equip path having to remember to.
+	const float Delay = SecondsBetweenSwings > 0.0f ? SecondsBetweenSwings
+													: NoWeaponRecheckSeconds;
+
+	World->GetTimerManager().SetTimer(
+		BasicAttackTimer, this, &ACataclysmPlayerCharacter::BasicAttackTick,
+		Delay, /*bLoop=*/false);
+}
+
+void ACataclysmPlayerCharacter::BasicAttackTick()
+{
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+
+	const FGameplayAttribute Speed =
+		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
+
+	float Interval = 0.0f;
+	if (AbilitySystem && AbilitySystem->HasAttributeSetForAttribute(Speed))
+	{
+		Interval = UCataclysmBasicAttack::SecondsBetweenSwings(
+			AbilitySystem->GetNumericAttribute(Speed));
+	}
+
+	// THE RATE IS READ FRESH EVERY TIME rather than cached, so swapping a weapon
+	// or gaining an increased attack speed affix takes effect on the next swing
+	// rather than on the next possession.
+	if (Interval > 0.0f
+		&& UCataclysmBasicAttack::ShouldSwingNow(
+			this, UCataclysmBasicAttack::ReachCmOf(AbilitySystem)))
+	{
+		UCataclysmBasicAttack::Swing(AbilitySystem);
+	}
+
+	ScheduleNextBasicAttack(Interval);
 }
 
 void ACataclysmPlayerCharacter::Tick(float DeltaSeconds)

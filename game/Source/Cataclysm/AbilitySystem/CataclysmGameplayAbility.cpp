@@ -138,6 +138,7 @@ void UCataclysmGameplayAbility::EnsureSlotNumbersLoaded() const
 
 	SlotCooldown = Numbers.Cooldown;
 	SlotManaCostAtLevel100 = Numbers.ManaCostAtLevel100;
+	SlotManaOnHitAtLevel100 = Numbers.ManaOnHitAtLevel100;
 }
 
 float UCataclysmGameplayAbility::GetBaseCooldown() const
@@ -165,6 +166,18 @@ float UCataclysmGameplayAbility::GetManaCost() const
 	// GAS's ability level is this project's character level: the weapon slots
 	// component grants each skill at the character's level.
 	return UCataclysmSkillSlots::ManaCostAtLevel(AtLevel100, GetAbilityLevel());
+}
+
+float UCataclysmGameplayAbility::GetManaOnHit() const
+{
+	// NO OVERRIDE PROPERTY, UNLIKE THE COST AND THE COOLDOWN. Those two exist
+	// because a designed skill can differ from its slot; mana on hit belongs to
+	// the basic attack alone, and the basic attack has no row of its own to
+	// differ in -- it comes from the weapon, not from the skill matrix. One
+	// would be a knob nothing could turn.
+	EnsureSlotNumbersLoaded();
+	return UCataclysmSkillSlots::ManaOnHitAtLevel(SlotManaOnHitAtLevel100,
+												  GetAbilityLevel());
 }
 
 bool UCataclysmGameplayAbility::CheckCost(

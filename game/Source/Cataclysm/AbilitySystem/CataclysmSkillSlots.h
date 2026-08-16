@@ -97,6 +97,27 @@ public:
 	static float ManaCostAtLevel(float CostAtLevel100, int32 Level);
 
 	/**
+	 * A mana-on-hit figure quoted at level 100, scaled to a character of this
+	 * level.
+	 *
+	 * THE SAME SCALING AS A COST, AND IT HAS TO BE. The design sets the basic
+	 * attack's return against the other slots' costs -- "The automatic basic
+	 * attack returns 6 mana each time it lands. At a typical 1.3 attacks per
+	 * second that is about 8 mana per second while fighting" -- against a Heavy
+	 * attack costing 10 mana per second. If the return rode the mana pool and
+	 * the costs did not, or the other way round, that relationship would hold at
+	 * exactly one level and nowhere else.
+	 *
+	 * A SEPARATE FUNCTION RATHER THAN A CALL TO ManaCostAtLevel, because a
+	 * function named for a cost being used to scale income reads as a bug six
+	 * months later, and because the two may yet need to scale differently.
+	 *
+	 * @param OnHitAtLevel100  the figure from the table
+	 * @param Level            the character's level, clamped to 1 and above
+	 */
+	static float ManaOnHitAtLevel(float OnHitAtLevel100, int32 Level);
+
+	/**
 	 * The tag marking that this slot is waiting to be used again.
 	 *
 	 * Invalid for the Basic Attack and the Aura, which is correct rather than

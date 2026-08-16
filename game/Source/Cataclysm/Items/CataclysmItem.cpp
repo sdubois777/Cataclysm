@@ -389,3 +389,33 @@ float UCataclysmItemModifiers::WeaponDamageForType(
 
 	return Found;
 }
+
+float UCataclysmItemModifiers::WeaponAttackSpeedForType(
+	const UDataTable* BaseTable, const FString& WeaponType)
+{
+	if (!BaseTable || WeaponType.IsEmpty())
+	{
+		return 0.0f;
+	}
+
+	float Found = 0.0f;
+	BaseTable->ForeachRow<FCataclysmItemBaseRow>(
+		TEXT("UCataclysmItemModifiers::WeaponAttackSpeedForType"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (Found > 0.0f
+				|| !Row.WeaponType.Equals(WeaponType, ESearchCase::IgnoreCase))
+			{
+				return;
+			}
+
+			// STRAIGHT OFF THE COLUMN, WITH NO GEAR LEVEL AND NO TWO-HANDED
+			// DOUBLING. Both of those apply to the damage above and would be
+			// nonsense here: a two-hander doubling its rate would swing twice as
+			// fast as a one-hander, which is the opposite of what a two-hander
+			// is. FCataclysmItemBaseRow states that reasoning on the field.
+			Found = Row.AttackSpeed;
+		});
+
+	return Found;
+}
