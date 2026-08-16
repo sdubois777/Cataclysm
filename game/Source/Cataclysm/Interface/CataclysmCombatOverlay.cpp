@@ -11,9 +11,12 @@
 #include "GameFramework/PlayerController.h"
 
 // ---------------------------------------------------------------------------
-// The colours, stated the way docs/Cataclysm_GDD_v2.md states every other
-// colour in the game: sRGB hex without the leading hash. The reasoning for each
-// is on its declaration in the header.
+// The colours, as six-digit sRGB hex so they can be read straight against
+// section XIII of docs/Cataclysm_GDD_v2.md, which lists every colour in the
+// game the same way. The leading hash is dropped because FColor::FromHex is
+// what parses these, matching ACataclysmTelegraphMarker::DesignedRingHex and
+// the rest of that class's constants. The reasoning for each colour is on its
+// declaration in the header.
 // ---------------------------------------------------------------------------
 
 const TCHAR* UCataclysmCombatOverlay::BarBackingHex = TEXT("0A0F12");
@@ -120,6 +123,19 @@ bool UCataclysmCombatOverlay::ShouldShowNumberFor(
 	return !bTargetWasAlreadyDown;
 }
 
+int32 UCataclysmCombatOverlay::FigureFor(float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return 0;
+	}
+
+	// FMath::RoundToInt IS FloorToInt(F + 0.5f), so it answers 0 for anything
+	// below half a point of damage. The floor of 1 is what stops that reading as
+	// "the defence stopped everything" when the truth is the opposite.
+	return FMath::Max(1, FMath::RoundToInt(Amount));
+}
+
 FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
 {
 	if (Outcome.bEvaded)
@@ -127,12 +143,11 @@ FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
 		return TEXT("Evaded");
 	}
 
-	// ROUNDED RATHER THAN TRUNCATED, so a hit of 0.6 reads as 1 rather than as
-	// 0. Truncating would make a hit that did something say it did nothing,
-	// which is the one thing a damage number must never do.
-	const int32 ToHealth = FMath::RoundToInt(Outcome.DealtToHealth);
-	const int32 ToShield = FMath::RoundToInt(Outcome.AbsorbedByShield);
-	const int32 ToMana = FMath::RoundToInt(Outcome.AbsorbedByMana);
+	// ROUNDED, BUT NEVER ROUNDED AWAY. See FigureFor: any damage at all prints
+	// at least 1, because "0" already means the defence stopped the whole blow.
+	const int32 ToHealth = FigureFor(Outcome.DealtToHealth);
+	const int32 ToShield = FigureFor(Outcome.AbsorbedByShield);
+	const int32 ToMana = FigureFor(Outcome.AbsorbedByMana);
 
 	if (ToHealth > 0)
 	{

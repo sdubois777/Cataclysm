@@ -51,11 +51,21 @@ does not mention enemy health bars at all — the phrase "health bar" occurs twi
 in it, once as a metaphor for energy shield and once saying a Heretic player has
 none. So this needed an answer rather than a lookup, and the genre gave one:
 
-| Game | A health bar over every enemy? |
-| :-- | :-- |
-| Path of Exile 1 and 2 | Setting "Show Mini Life Bars on Enemies", default off, and even on it draws only after an enemy is damaged or moused over |
-| Diablo 4 | "Monster Health Bar Option": Hover Only, Always On, Always Off. Hover is the default |
-| Last Epoch | Independent switches for enemies, minions and players |
+| Game | A health bar over every enemy? | Source |
+| :-- | :-- | :-- |
+| Path of Exile 1 and 2 | Setting "Show Mini Life Bars on Enemies", under Options then UI, default unchecked. Even switched on it draws only after an enemy is damaged or moused over | http://www.vhpg.com/show-mini-life-bars-on-enemies/ and https://www.pathofexile.com/forum/view-thread/3739878 |
+| Diablo 4 | "Monster Health Bar Option" has three states: Hover Only, Always On, Always Off. A separate setting covers minions | https://www.vhpg.com/diablo-4-monster-health-bar-option/ |
+| Last Epoch | Independent switches for enemies, minions and players, and bars framed by rarity rather than gated by who gets one | https://forum.lastepoch.com/t/new-health-bars-coming-in-our-next-patch/15522 |
+
+**Which of Diablo 4's three states is the default is not recorded here, because
+no citable source states it.** Player reports say Hover Only; Blizzard publishes
+no default. What the citation does support is that Always On is a state the
+player has to choose, which is the part this decision rests on.
+
+The Path of Exile behaviour is the one that settles it, and it has a
+staff-tagged answer behind it. Asked to add an always-on option, a Grinding Gear
+Games reply on 2025-03-31 said monsters are not highlighted unless moused over
+or selected, and that "They are meant to be hard to see."
 
 The reason to follow Path of Exile rather than to draw one over everything is
 this game's own art direction, which states that the world is deliberately dark
@@ -64,9 +74,16 @@ undoes that before a fight has started. A bar that appears when something is hur
 means "this fight has started" instead of "there is a creature here".
 
 **Damage numbers ship, on by default, with a switch.** Path of Exile 1 and 2 are
-the only games in the genre with none at all; Diablo 4 and Last Epoch both ship
-them with a switch. Diablo 4 colours by hit quality — white ordinary, yellow
-critical strike — and no game in the set colours by damage type.
+the only games in the genre with none at all — the oldest request for them is
+from 2011 and none has ever shipped
+(https://www.pathofexile.com/forum/view-thread/4815). Diablo 4 and Last Epoch
+both ship them with a switch, and Diablo 4's switched-off state still shows
+critical strikes: its "Show All Damage Numbers" setting reads "Determines
+whether every character's hit damage is shown or just special hits (e.g.,
+Critical Strikes)" (https://mythicdrop.com/guide/diablo-4-gameplay-settings).
+**No game in the set colours a damage number by damage type.** In Last Epoch that
+is an open feature request
+(https://forum.lastepoch.com/t/more-floating-numbers-settings/65578).
 
 ### Why the canvas rather than UMG
 

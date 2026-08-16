@@ -36,11 +36,17 @@
  * ACataclysmHUD, and whether the result is legible. Those need a person to look
  * at them.
  *
- * TWO OF THESE GUARD A DESIGN RULE RATHER THAN CODE. The health bar must not
- * wear the attack telegraph's #FF3020, which docs/Cataclysm_GDD_v2.md line 5251
- * reserves for the whole game, and the numbers must distinguish outcomes by
- * more than colour alone, which line 5412 requires. Both would be easy to
- * undo by picking a nicer colour later.
+ * TWO OF THESE GUARD A DESIGN RULE RATHER THAN CODE, both from section XIII of
+ * docs/Cataclysm_GDD_v2.md. The health bar must not wear the attack telegraph's
+ * #FF3020, which "There is one telegraph colour for the whole game" reserves,
+ * and the numbers must distinguish outcomes by more than colour alone, which
+ * "Over the World, Not on the Frame" requires in the words "Colour says where
+ * the damage went and the text says which outcome it was, so neither is the
+ * only channel". Both would be easy to undo by picking a nicer colour later.
+ *
+ * THE RULES ARE CITED BY HEADING RATHER THAN BY LINE NUMBER, deliberately. The
+ * design document is edited, and a line number in a comment is wrong the moment
+ * anything above it grows -- including the very change that writes the comment.
  */
 
 namespace CataclysmOverlayTest
@@ -226,6 +232,89 @@ bool FCataclysmOverlayRoundsRatherThanTruncates::RunTest(const FString&)
 		UCataclysmCombatOverlay::TextFor(CataclysmOverlayTest::Landed(41.4f)),
 		FString(TEXT("41")));
 
+	// AND ROUNDING MUST NOT ROUND IT AWAY EITHER. FMath::RoundToInt is
+	// FloorToInt(F + 0.5f), so anything under half a point of damage rounds to
+	// zero -- and this reads a bare "0" as "the defence stopped the whole
+	// blow", which is the opposite of what happened.
+	//
+	// THE WINDOW IS REACHABLE AND IT IS NOT AN EDGE CASE.
+	// UCataclysmDamageCalculation::Resolve ends with
+	// FMath::Min(Damage, Vitals->GetHealth()), so a killing blow's figure is
+	// exactly the target's remaining health however large the blow was. A
+	// creature sitting on 0.3 health is alive and hittable, and the blow that
+	// kills it deals 0.3.
+	TestEqual(TEXT("0.42 damage reads as 1, not as 0"),
+		UCataclysmCombatOverlay::TextFor(CataclysmOverlayTest::Landed(0.42f)),
+		FString(TEXT("1")));
+	TestEqual(TEXT("and a killing blow of 0.3 does too"),
+		UCataclysmCombatOverlay::TextFor(CataclysmOverlayTest::Landed(0.3f)),
+		FString(TEXT("1")));
+	TestEqual(TEXT("but nothing at all is still zero"),
+		UCataclysmCombatOverlay::FigureFor(0.0f), 0);
+	TestEqual(TEXT("and so is a negative figure"),
+		UCataclysmCombatOverlay::FigureFor(-3.0f), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayTextAndColourNeverDisagree,
+	"Cataclysm.Overlay.TheTextAndTheColourNeverSayOppositeThings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOverlayTextAndColourNeverDisagree::RunTest(const FString&)
+{
+	// THE TWO CHANNELS MUST AGREE ON EVERY OUTCOME. They are separate functions
+	// reading the same struct, and they used to read it differently: TextFor
+	// worked from a rounded integer while ColourFor tested the raw float, so a
+	// blow dealing 0.42 to health printed the word for "nothing got through" in
+	// the colour for "this reached health", on the same number, at the moment it
+	// killed something.
+	//
+	// This is the general guard rather than a second test of the same case: it
+	// walks the whole awkward band and both sides of it.
+	const FLinearColor ReachedHealth = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCombatOverlay::ReachedHealthHex);
+	const FLinearColor Absorbed = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCombatOverlay::AbsorbedHex);
+
+	const float Amounts[] = { 0.01f, 0.2f, 0.42f, 0.49f, 0.5f, 0.51f, 0.9f,
+							  1.0f, 7.0f, 549.0f };
+
+	for (const float Amount : Amounts)
+	{
+		const FString Reached =
+			UCataclysmCombatOverlay::TextFor(
+				CataclysmOverlayTest::Landed(Amount));
+		TestNotEqual(FString::Printf(
+			TEXT("%.2f reached health, so its text is not the stopped zero"),
+			Amount), Reached, FString(TEXT("0")));
+		TestTrue(FString::Printf(
+			TEXT("%.2f reached health, so its colour says so"), Amount),
+			UCataclysmCombatOverlay::ColourFor(
+				CataclysmOverlayTest::Landed(Amount)).Equals(ReachedHealth));
+
+		FCataclysmDamageResult ShieldOnly;
+		ShieldOnly.AbsorbedByShield = Amount;
+		TestNotEqual(FString::Printf(
+			TEXT("%.2f went to a shield, so its text is not the stopped zero"),
+			Amount), UCataclysmCombatOverlay::TextFor(ShieldOnly),
+			FString(TEXT("0")));
+		TestTrue(FString::Printf(
+			TEXT("%.2f went to a shield, so its colour says so"), Amount),
+			UCataclysmCombatOverlay::ColourFor(ShieldOnly).Equals(Absorbed));
+	}
+
+	// A BLOCK THAT LEFT A FRACTION BEHIND IS NOT A BLOCK THAT LEFT NOTHING. A
+	// block removes half the hit, so this is the ordinary shape of a small
+	// blocked blow, and it must not read as the word for one that stopped
+	// everything.
+	FCataclysmDamageResult BlockedButLanded;
+	BlockedButLanded.bBlocked = true;
+	BlockedButLanded.DealtToHealth = 0.42f;
+	TestEqual(TEXT("a block that still let 0.42 through reads as 1"),
+		UCataclysmCombatOverlay::TextFor(BlockedButLanded),
+		FString(TEXT("1")));
+
 	return true;
 }
 
@@ -288,9 +377,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayAvoidsTheTelegraphRed,
 
 bool FCataclysmOverlayAvoidsTheTelegraphRed::RunTest(const FString&)
 {
-	// #FF3020 BELONGS TO THE ATTACK MARKER AND TO NOTHING ELSE.
-	// docs/Cataclysm_GDD_v2.md line 5251 states there is one telegraph colour
-	// for the whole game -- not one per Cataclysm, not one per damage type --
+	// #FF3020 BELONGS TO THE ATTACK MARKER AND TO NOTHING ELSE. Section XIII of
+	// docs/Cataclysm_GDD_v2.md states there is one telegraph colour for the
+	// whole game -- not one per Cataclysm, not one per damage type --
 	// because the marker has to mean "this ground is about to hurt" in every
 	// environment. A health bar in the same red weakens the only signal that
 	// must survive all eight. This is the guard against somebody later picking
@@ -338,11 +427,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayColourIsNotTheOnlyChannel,
 
 bool FCataclysmOverlayColourIsNotTheOnlyChannel::RunTest(const FString&)
 {
-	// THE DESIGN REQUIRES THIS. docs/Cataclysm_GDD_v2.md line 5412: "Colour is
-	// still not the only channel", because a player who cannot separate two
-	// hues still has to be able to separate two outcomes. Evaded, blocked and
-	// stopped-by-mitigation all share the grey, so the words are what tell them
-	// apart, and they must stay different words.
+	// THE DESIGN REQUIRES THIS, in "Over the World, Not on the Frame" in section
+	// XIII of docs/Cataclysm_GDD_v2.md: "Colour says where the damage went and
+	// the text says which outcome it was, so neither is the only channel."
+	// Evaded, blocked and stopped-by-mitigation all share the grey, so the words
+	// are what tell them apart, and they must stay different words.
 	FCataclysmDamageResult Evaded;
 	Evaded.bEvaded = true;
 
@@ -762,6 +851,22 @@ bool FCataclysmOverlayKeepsTheNewestNumbers::RunTest(const FString&)
 
 	TestEqual(TEXT("no more than the ceiling are kept"),
 		Display->NumbersWaiting(), Ceiling);
+
+	// AND WHICH ONES SURVIVED, which is the whole rule. Dropping the newest
+	// leaves exactly the same count behind, so a test that only counts would
+	// pass with the behaviour reversed. The ten numbered 0 to 9 are the ones
+	// that should have gone, leaving 10 at the front and the last one at the
+	// back.
+	const TArray<FCataclysmDamageNumber>& Kept = Display->NumbersWaitingList();
+	if (TestEqual(TEXT("the list really holds the ceiling"), Kept.Num(),
+				  Ceiling))
+	{
+		TestEqual(TEXT("the oldest survivor is the eleventh number added"),
+			Kept[0].Text, FString(TEXT("10")));
+		TestEqual(TEXT("and the newest number added is still there"),
+			Kept.Last().Text,
+			FString::Printf(TEXT("%d"), Ceiling + 9));
+	}
 
 	return true;
 }

@@ -5225,11 +5225,13 @@ invisible.
 **A health bar over a creature, once it has been hurt.** Nothing is drawn over a
 creature at full health, over a dead one, or over the player's own character,
 whose health is on the frame instead. **Path of Exile does the same** even when
-its own enemy life bar setting is switched on: a bar appears after an enemy has
-been damaged or moused over, and not before, and Diablo 4 defaults to showing one
-only under the cursor. The reason to follow them is the art direction stated in
-the Audio section: the world is deliberately dark and low-light, and a bar over
-every creature standing in it undoes that before a fight has started.
+its own "Show Mini Life Bars on Enemies" setting is switched on: a bar appears
+after an enemy has been damaged or moused over, and not before. Diablo 4 makes
+showing one always a state the player has to choose rather than the only
+behaviour. The reason to follow them is the art direction stated in the Audio
+section: the world is deliberately dark and low-light, and a bar over every
+creature standing in it undoes that before a fight has started. `DECISIONS.md`
+carries the sources.
 
   
 

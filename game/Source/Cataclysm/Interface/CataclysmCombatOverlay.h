@@ -100,8 +100,10 @@ public:
 	/** Centimetres above the top of a creature that its bar and numbers sit. */
 	static constexpr float AnchorMarginCm = 30.0f;
 
-	//~ Colours, as sRGB hex without the leading hash, matching how
-	//~ docs/Cataclysm_GDD_v2.md states every other colour in the game.
+	//~ Colours, as six-digit sRGB hex, so they read straight against the tables
+	//~ in section XIII of docs/Cataclysm_GDD_v2.md. The leading hash is dropped
+	//~ because FColor::FromHex is what parses them, matching the constants on
+	//~ ACataclysmTelegraphMarker.
 
 	/**
 	 * The near-black behind every bar, and it is the telegraph's outer ring
@@ -120,10 +122,11 @@ public:
 	/**
 	 * Health, and NOT the telegraph's #FF3020.
 	 *
-	 * THAT RED IS RESERVED FOR THE WHOLE GAME. docs/Cataclysm_GDD_v2.md line
-	 * 5251 gives it to the attack marker and states there is one telegraph
-	 * colour, not one per Cataclysm or per damage type, because the marker has
-	 * to mean "this ground is about to hurt" everywhere. A health bar wearing
+	 * THAT RED IS RESERVED FOR THE WHOLE GAME. Section XIII of
+	 * docs/Cataclysm_GDD_v2.md gives it to the attack marker under the heading
+	 * "There is one telegraph colour for the whole game", and says it does not
+	 * vary by Cataclysm, by damage type or by enemy, because the marker has to
+	 * mean "this ground is about to hurt" everywhere. A health bar wearing
 	 * the same red weakens the only signal that has to survive every
 	 * environment. This is a darker, less saturated red that still reads as
 	 * health and cannot be mistaken for a warning.
@@ -209,6 +212,33 @@ public:
 
 	/** What colour that text is drawn in. Three cases, described above. */
 	static FLinearColor ColourFor(const FCataclysmDamageResult& Outcome);
+
+	/**
+	 * One damage figure as it is printed: rounded, but never rounded away.
+	 *
+	 * ANY DAMAGE AT ALL PRINTS AT LEAST 1, and that is the whole reason this is
+	 * a function rather than a call to FMath::RoundToInt. Rounding alone reads
+	 * 0.42 as "0", and "0" already means something specific here -- armour,
+	 * resistance and flat reduction stopped the whole blow. So a hit that did
+	 * something would say it did nothing, which is the one thing a damage number
+	 * must never do.
+	 *
+	 * IT IS NOT A RARE CASE. UCataclysmDamageCalculation::Resolve ends with
+	 * FMath::Min(Damage, Vitals->GetHealth()), so a killing blow's figure is
+	 * exactly the target's remaining health however large the blow was, and
+	 * health is an unrounded float that is only clamped. A creature sitting on
+	 * 0.3 health is alive, hittable, and killed by a blow that would have
+	 * printed "0".
+	 *
+	 * IT IS ALSO WHAT KEEPS THE TEXT AND THE COLOUR AGREEING. ColourFor asks
+	 * whether the raw figure is above zero; without this, the text could take
+	 * the "nothing got through" branch while the colour said the blow reached
+	 * health, and the two channels the design requires would contradict each
+	 * other on the same number.
+	 *
+	 * Returns 0, and only 0, when nothing at all arrived.
+	 */
+	static int32 FigureFor(float Amount);
 
 	/** How large. A damage over time tick is drawn smaller than a blow. */
 	static float ScaleFor(const FCataclysmIncomingHit& Hit);

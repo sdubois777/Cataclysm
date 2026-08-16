@@ -229,10 +229,13 @@ void ACataclysmHUD::DrawOverheadBars()
 			+ FVector(0.0f, 0.0f,
 					  UCataclysmCombatOverlay::AnchorHeightFor(Character));
 
-		// bClampToZeroPlane IS FALSE SO THE DEPTH SURVIVES. With it true, a
-		// point behind the camera comes back with Z forced to zero and its X
-		// and Y left alone, which draws a bar for a creature standing behind
-		// the player as though it were in front of them.
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, and it is the
+		// part that matters. Either value of bClampToZeroPlane works: with it
+		// true a point behind the camera comes back with Z forced to zero, and
+		// with it false the engine's reversed-Z projection makes Z negative
+		// there. False is passed only so the depth is the projection's own
+		// answer rather than a clamped one. The engine's own
+		// AHUD::GetActorsInSelectionRectangle uses the other combination.
 		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
 		if (Screen.Z <= 0.0f)
 		{

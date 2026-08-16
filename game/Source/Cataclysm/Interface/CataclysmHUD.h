@@ -61,6 +61,18 @@ public:
 	/** How many numbers are waiting to be drawn. For tests. */
 	int32 NumbersWaiting() const { return Numbers.Num(); }
 
+	/**
+	 * The numbers waiting to be drawn, oldest first. For tests.
+	 *
+	 * COUNTING THEM IS NOT ENOUGH TO CHECK THE CEILING. Whether the oldest or
+	 * the newest are dropped is the whole of the rule, and both answers leave
+	 * the same count behind.
+	 */
+	const TArray<FCataclysmDamageNumber>& NumbersWaitingList() const
+	{
+		return Numbers;
+	}
+
 	/** Removes every number that has outlived its lifetime, given the time now. */
 	void DropExpired(float WorldSeconds);
 
