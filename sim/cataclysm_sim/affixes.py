@@ -197,7 +197,7 @@ TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND = (GEAR_PIECES_WITH_AN_OFFHAND
 #: bases sum to more than any two-handed base -- an Axe and a Sword give 86
 #: against a Greatsword's 78 -- so with only the affix half it loses on damage
 #: while also holding one fewer damage type. Reaching the SAME edge through the
-#: affix half alone needs a multiplier of 3.63, which hands the two-hander 14.5
+#: affix half alone needs a multiplier of 3.40, which hands the two-hander 13.6
 #: affix slots-worth on the weapon against the dual wielder's 8: the same free
 #: power section VII forbids, pointed the other way.
 #:
@@ -208,9 +208,14 @@ TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND = (GEAR_PIECES_WITH_AN_OFFHAND
 #: `sim/tests/test_analysis_scripts.py`. Issue #319.
 #:
 #: What it produces, measured in `sim/analyse_two_handed_multiplier.py`: the
-#: two-hander deals 1.33x per hit and about 1.26x per second, the dual wielder
+#: two-hander deals 1.29x per hit and about 1.22x per second, the dual wielder
 #: holds a fourth damage type and a wider spread of affixes, and the affix
 #: budgets are exactly equal.
+#:
+#: THOSE TWO RATIOS FELL FROM 1.33 AND 1.26 WITH ISSUE #511, and the multiplier
+#: itself did not move. The flat damage affix rose from 18 to 22 there, so the
+#: affixes supply more of the base bracket and the weapon's doubled implicit is a
+#: smaller share of it. The edge is still the implicit half doing the work.
 TWO_HANDED_MULTIPLIER = 2.0
 
 
@@ -697,17 +702,31 @@ def damage_target(tier: int = 8) -> float:
     Measured against the baseline archetype, which is the average enemy of a
     rarity rather than any particular creature.
 
-    IT APPLIES NO MITIGATION AT ALL, WHICH IS WRONG AND IS ISSUE #511. The
-    average Common enemy carries 673 armour at tier 8, which removes 9.52% of a
-    hit, so the damage needed to kill it in two hits is 1,860 and this returns
-    1,683. It was left alone when issue #481 gave `player_damage_to_kill_in` the
-    full mitigation order, because this figure anchors every offensive number in
-    this file -- `damage_for_slot`, `weapon_base_damage_needed`, and the fitted
-    values of `FLAT_DAMAGE` and `INCREASED_DAMAGE` -- and moving it means
-    re-checking all of them rather than editing one line.
+    IT GOES THROUGH EVERY MITIGATION LAYER THE CREATURE HAS, since issue #511.
+    Until then it divided health by hits and applied nothing, so it answered
+    "how much health has to be removed" rather than "how much damage has to be
+    dealt to remove it". The average Common enemy carries 673 armour at tier 8,
+    which stops 9.52% of a hit, so the figure was 10.5% low: 1,683 where the
+    answer is 1,860.
+
+    THE ERROR WAS SMALL HERE AND LARGE ELSEWHERE, and that is not luck. The
+    average Common enemy carries the least armour of anything in the slice --
+    `ARMOR_AT_COMMON` is 0.10 and the baseline archetype's `armor_share` is 1.00
+    -- so this is the mildest case of the same mistake issue #481 fixed in
+    `player_damage_to_kill_in`, which understated by 48% against the Abyssal
+    Warden.
+
+    IT ANCHORS EVERY OFFENSIVE NUMBER IN THIS FILE. `damage_for_slot` scales it
+    per skill slot, `weapon_base_damage_needed` solves the damage pipeline
+    backwards from it, and `reference_weapon_base` feeds the crossover argument
+    that sets `FLAT_DAMAGE`. All of them rose by the same 10.5%, which is why
+    `FLAT_DAMAGE` and `INCREASED_DAMAGE` did not have to move: the target and the
+    weapon base moved together, so the crossover sits in the same place in a
+    build. `tests/test_affixes.py` re-checks that rather than assuming it.
     """
     common = enemy_stats.stats_on_floor("Common", tier, "Cataclysm")
-    return common.effective_health / HITS_TO_KILL_A_COMMON_ENEMY
+    return enemy_stats.player_damage_to_kill_in(
+        common, HITS_TO_KILL_A_COMMON_ENEMY)
 
 
 #: Damage. Increased damage is 125% at T7, set by the project owner.
@@ -718,21 +737,39 @@ def damage_target(tier: int = 8) -> float:
 #: damage was 60, which meant three affixes alone filled the whole bracket and
 #: the weapon had nothing left to contribute.
 #:
-#: 18 IS DERIVED, NOT PICKED. It is set so the choice between the two kinds is
-#: real, which is the entire point of having both. `crossover_base` with eight
-#: increased affixes in place puts them at equal value at 158 points of base, and
-#: a build with a weapon supplying 81 crosses that after four or five flat
-#: affixes. So flat wins early and increased wins later, and a character actually
-#: takes some of each.
+#: 22 IS DERIVED, NOT PICKED, AND TWO SEPARATE THINGS PIN IT.
 #:
-#: Both neighbouring values fail that. At 60 the crossover is 528, which no build
-#: reaches, so flat wins always. At 12 it is 106, below where a real build starts,
-#: so increased wins always. Either way one of the two kinds is dead content.
+#: FIRST, THE WEAPON TERM HAS TO BE A WEAPON A PLAYER CAN HOLD.
+#: `reference_weapon_base` solves the pipeline backwards from `damage_target()`
+#: and says what the weapon and skill together must supply once the reference
+#: six-and-six build's affixes are counted. The reference loadout is two
+#: one-handed weapons -- an Axe and a Sword, the design document's own example --
+#: which supply 86 between them. At 22 the pipeline asks for 86.86, so the pair
+#: lands on it within one per cent.
+#:
+#: IT WAS 18 UNTIL ISSUE #511, AND THAT ONLY WORKED BECAUSE THE TARGET WAS 10.5%
+#: LOW. `damage_target` applied no enemy mitigation, so it asked for 1,683 where
+#: the answer is 1,860. At the corrected target and a flat value of 18 the
+#: pipeline asks the weapon for 110.86, and no legal pair of one-handers reaches
+#: it -- the strongest, an Axe with an Axe, supplies 92. The choice was between
+#: moving this number and rewriting the weapon damage table, and this is the one
+#: the project derives rather than publishes.
+#:
+#: SECOND, THE CHOICE BETWEEN THE TWO KINDS HAS TO BE REAL, which is the entire
+#: point of having both. `crossover_base` with eight increased affixes in place
+#: puts them at equal value at 194 points of base, and a build starting from the
+#: pair's 86 crosses that after three flat affixes. So flat wins early and
+#: increased wins later, and a character actually takes some of each.
+#:
+#: Both neighbouring values fail the second test. At 60 the crossover is 528 and
+#: flat still wins after six flat affixes; at 12 it is 106, below where a real
+#: build starts, so increased wins from the first affix. Either way one of the
+#: two kinds is dead content.
 #:
 #: Flat damage being far smaller than flat health is not an inconsistency. The
 #: two stats have different multiplier scales by design: 125% per damage affix
 #: against 12% per health affix.
-FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 18.0,
+FLAT_DAMAGE = StatAffix("Flat damage", "attack_damage", "flat", 22.0,
                         OFFENSIVE_SLOTS, PREFIX)
 INCREASED_DAMAGE = StatAffix("Increased damage", "attack_damage",
                              "increased", 125.0, OFFENSIVE_SLOTS, PREFIX)

@@ -142,6 +142,83 @@ exists.
 
 ---
 
+## 2026-08-16 — The damage target counts the enemy's armour, and the flat damage affix rises from 18 to 22
+
+**Affects:** `Cataclysm_GDD_v2.md`, the Damage Target subsection and the Dual
+Wielding subsection of section VII, and the Affixes sheet of
+`All_Things_Cataclysm.xlsx`. Applied. Closes issue #511.
+
+### What was wrong
+
+`damage_target` in `sim/cataclysm_sim/affixes.py` divided the average Common
+enemy's effective health by how many hits it should take and applied no
+mitigation. So it answered "how much health has to be removed" rather than "how
+much damage has to be dealt to remove it". That creature carries 673 armour at
+tier 8, which stops 9.52% of a hit, so the figure was **10.5% low**: 1,683 where
+the answer is 1,860.
+
+It is the same mistake issue #481 fixed one layer down in
+`player_damage_to_kill_in`, and it was left behind deliberately, because
+`damage_target` anchors every offensive number in the file.
+
+### The decision: which number absorbs the 10.5%
+
+Correcting the target broke the check that the reference build lands on it. The
+project owner declared on 2026-08-15 that the target describes a dual wielder,
+and `player_damage.py` asserts at import that the reference pair lands within
+five per cent. At the corrected target the pair landed at 0.89 times it.
+
+Four numbers could have absorbed the difference, and three of them are not free:
+
+| Number | Why not |
+| :-- | :-- |
+| `HITS_TO_KILL_A_COMMON_ENEMY` = 2 | The project owner set the range 1 to 3 and this is the middle of it |
+| `INCREASED_DAMAGE` = 125% | Set by the project owner |
+| The weapon base damage table | Published design. An Axe's 46, a Sword's 40 and a Greatsword's 78 are quoted in the design document and encode the two-handed rule |
+| `FLAT_DAMAGE` = 18 | **Derived, and the file says so.** This is the one that moved |
+
+**22 is derived twice over rather than fitted once.**
+
+- **The weapon term has to be a weapon a player can hold.**
+  `reference_weapon_base` solves the pipeline backwards and says what the weapon
+  and skill must supply. At a flat value of 18 and the corrected target it asks
+  for 110.86, and no legal pair of one-handers reaches it — the strongest, an Axe
+  with an Axe, supplies 92. At 22 it asks for 86.86, and the reference Axe and
+  Sword supply 86. **That is a closer fit than the model had before this change**,
+  where the pair's 86 sat 4.5% under a requirement of 90.03.
+- **The choice between flat and increased damage has to stay real**, which is
+  what the value was originally derived from. With eight increased affixes the
+  two kinds are worth the same at 194 points of base, and a build starting from
+  the pair's 86 crosses that after three flat affixes. Flat wins early, increased
+  wins later, and a character takes some of each. Both neighbouring values still
+  fail that test: at 60 flat still wins after six affixes, and at 12 increased
+  wins from the first.
+
+### What moved with it
+
+- **The two-handed advantage falls from 1.33x to 1.29x per hit**, and from 1.26x
+  to 1.22x per second. The multiplier itself is unchanged at 2.0. Bigger flat
+  affixes mean the affixes supply more of the base bracket, so the two-hander's
+  doubled implicit is a smaller share of it.
+- **The hits-to-kill table in the Damage Target subsection now counts each
+  creature's own mitigation** and it did not before, which is the same defect one
+  table over. The heavily armoured creatures moved most: a Herald Abyssal Warden
+  takes 122 basic attacks where the table said 45.
+- The design document's stated affix-only two-handed multiplier was **2.75**,
+  which `sim/cataclysm_sim/affixes.py` had already recorded as never computed
+  from anything. It is now 3.40, the figure
+  `sim/analyse_two_handed_multiplier.py` solves.
+
+### What is still not settled
+
+**Nothing here was played.** These are model figures. A Common enemy taking 2
+basic attacks and a Herald taking 122 are both statements about a basic attack,
+which is 100% of weapon damage; a Heavy slot skill deals 250% of it, and nobody
+fights an Abyssal Warden with basic attacks. The constants are expected to be
+tuned against real play.
+
+---
+
 ## 2026-08-16 — Repeated displacement halves, and the count lives on the target
 
 **Affects:** no design document. This records **implementation catching up with a

@@ -30,19 +30,22 @@ def test_the_composed_hit_is_the_three_buckets_multiplied_in_order():
 
     At difficulty tier 8 the reference character carries T7 affixes on +10 gear
     and holds an Axe and a Sword. Those sum to 46 + 40 = 86. Six flat damage
-    affixes at 18 give 108, so the base bracket is 194. Six increased damage
+    affixes at 22 give 132, so the base bracket is 218. Six increased damage
     affixes at 125% give 750%.
 
-        194 x 8.5 = 1649
+        218 x 8.5 = 1853
+
+    The flat damage affix was 18 until issue #511, which raised the damage target
+    by 10.5% by applying the enemy's mitigation to it. 18 gave 1,649 per hit.
     """
     b = pd.breakdown(8)
     assert b.loadout == ("Axe", "Sword")
     assert b.weapon_damage == pytest.approx(86.0)
-    assert b.flat_from_affixes == pytest.approx(108.0)
-    assert b.base_bracket == pytest.approx(194.0)
+    assert b.flat_from_affixes == pytest.approx(132.0)
+    assert b.base_bracket == pytest.approx(218.0)
     assert b.increased == pytest.approx(7.5)
-    assert b.per_hit == pytest.approx(1649.0)
-    assert pd.damage_per_hit(8) == pytest.approx(1649.0)
+    assert b.per_hit == pytest.approx(1853.0)
+    assert pd.damage_per_hit(8) == pytest.approx(1853.0)
 
 
 def test_a_more_multiplier_multiplies_on_its_own_rather_than_joining_the_increases():
@@ -91,7 +94,7 @@ def test_a_two_handed_weapon_doubles_its_own_implicit_damage():
 def test_a_single_one_handed_weapon_is_a_legal_loadout():
     """Stated by the project owner on 2026-08-15, against what the design
     document says. It deals less than a pair, which is the point of a pair."""
-    assert pd.damage_per_hit(8, "Axe") == pytest.approx(1309.0)
+    assert pd.damage_per_hit(8, "Axe") == pytest.approx(1513.0)
     assert pd.damage_per_hit(8, "Axe") < pd.damage_per_hit(8, ("Axe", "Sword"))
 
 
@@ -152,16 +155,21 @@ def test_the_reference_pair_lands_on_the_damage_target():
     """THE HEADLINE. The target describes a dual wielder, stated by the project
     owner on 2026-08-15, and the arithmetic agrees from two directions.
 
-    `reference_weapon_base` says the weapon term must supply about 90. An Axe and
-    a Sword supply 86 and land at 1,649 against a target of 1,683.
+    `reference_weapon_base` says the weapon term must supply about 87. An Axe and
+    a Sword supply 86 and land at 1,853 against a target of 1,860.
+
+    IT USED TO BE A LOOSER FIT. Before issue #511 the target applied no enemy
+    mitigation and asked for 1,683, the weapon term was 90.03, and the pair's 86
+    sat 4.5% under it. Correcting the target moved both, and re-deriving the flat
+    damage affix against it brought the two within one per cent.
     """
-    assert af.reference_weapon_base(8) == pytest.approx(90.0, abs=1.0)
+    assert af.reference_weapon_base(8) == pytest.approx(87.0, abs=1.0)
     assert pd.weapon_base_damage(pd.REFERENCE_LOADOUT) == pytest.approx(86.0)
     assert pd.gap_against_target(8) == pytest.approx(1.0, abs=0.05)
 
 
 def test_the_two_strongest_pairs_bracket_the_weapon_term_the_target_needs():
-    """90.03 is not a pair sum, because pair sums are whole numbers. The two
+    """86.86 is not a pair sum, because pair sums are whole numbers. The two
     strongest legal pairs sit either side of it, which is why the module states a
     five per cent margin rather than claiming an exact fit."""
     required = af.reference_weapon_base(8)
