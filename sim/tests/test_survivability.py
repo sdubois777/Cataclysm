@@ -110,6 +110,51 @@ def test_no_amount_of_gear_makes_the_reference_build_immune():
 
 
 # --------------------------------------------------------------------------
+# The enemy side is held below the player side. Issue #483
+# --------------------------------------------------------------------------
+#
+# `enemy_stats.ENEMY_MITIGATION_CEILING` states what the player stops, because
+# that module cannot measure it: `reference_build` imports `affixes` and
+# `affixes` imports `enemy_stats`, so importing it there would be a cycle. This
+# file can import both, which is why the pin lives here rather than beside the
+# constant.
+
+def test_the_enemy_mitigation_ceiling_is_what_the_player_actually_stops():
+    """Both directions matter. Above what the player stops and the rule "no
+    enemy stops more than the player does" is not what is enforced; far below it
+    and the ceiling has quietly become a different, stricter rule that nobody
+    decided."""
+    player_stops = 100.0 * (1.0 - rb.damage_taken_fraction(TIER))
+
+    assert es.ENEMY_MITIGATION_CEILING < player_stops, (
+        f"the ceiling is {es.ENEMY_MITIGATION_CEILING}% and the reference "
+        f"character stops {player_stops:.2f}%, so an enemy at the ceiling would "
+        "stop more than the player does")
+    assert es.ENEMY_MITIGATION_CEILING > player_stops - 2.0, (
+        f"the ceiling is {es.ENEMY_MITIGATION_CEILING}% and the reference "
+        f"character stops {player_stops:.2f}%; the ceiling is meant to be that "
+        "figure rounded down to a whole percent, not a stricter rule")
+
+
+def test_the_player_stops_least_at_the_last_tier():
+    """Which is why the ceiling is taken from tier 8. Armour is divided by
+    800 x tier, so the same gear stops less as the tier rises, and taking the
+    player's weakest is what makes the rule hold at every tier."""
+    stopped = [100.0 * (1.0 - rb.damage_taken_fraction(t)) for t in range(1, 9)]
+    assert stopped[-1] == min(stopped)
+    assert stopped[0] > stopped[-1], "the tier would then not matter here"
+
+
+def test_every_enemy_stops_less_than_the_reference_character_does():
+    """The rule stated directly against the two live numbers rather than through
+    the constant, so it still holds if the constant is wrong."""
+    player_stops = 100.0 * (1.0 - rb.damage_taken_fraction(TIER))
+    for name, rarity in MET_AT:
+        stops = 100.0 * (1.0 - enemy(name, rarity).damage_taken_fraction())
+        assert stops < player_stops, f"{rarity} {name} stops {stops:.1f}%"
+
+
+# --------------------------------------------------------------------------
 # What each enemy does to that character
 # --------------------------------------------------------------------------
 

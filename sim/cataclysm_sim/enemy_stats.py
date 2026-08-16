@@ -98,11 +98,20 @@ Warden and by 56% against the Gatekeeper.
 
 `defender_for` is that route. `EnemyStats.damage_taken_fraction` resolves a probe
 hit through `damage.resolve` against it, so it runs the same eight steps in the
-same order as the player's side and as `UCataclysmDamageCalculation::ResolveHit`
+same order as the player's side and as `UCataclysmDamageCalculation::Resolve`
 in the engine. A defensive layer added to enemies later -- block chance and flat
 damage reduction are issue #488 -- is wired in `defender_for` alone and every
 figure downstream picks it up. Adding it to `EnemyStats` and not to
 `defender_for` puts it back on the dead path.
+
+THERE IS A CEILING ON WHAT THOSE LAYERS MAY STOP TOGETHER, and it is a rule
+about the combination rather than about any one of them. `ENEMY_MITIGATION_CEILING`
+below is 89% of a hit, which is what a geared player stops, and
+`_check_no_enemy_can_become_immune` holds every archetype under it. The per-field
+caps cannot do that job: armour caps at 75% and resistance at 70%, so those two
+alone reach 92.5% stopped with neither over its own limit. Until issue #483 the
+check inspected `resistance` and nothing else, under a docstring saying it
+checked the combination.
 """
 
 from __future__ import annotations
@@ -432,18 +441,28 @@ def _check_every_archetype_deals_a_real_damage_type() -> None:
             f"one of the eight damage types: {list(DAMAGE_TYPES)}")
 
 
-def _check_no_enemy_can_become_immune() -> None:
-    """Resistance is one number now, so nothing else caps it.
+def _check_no_enemy_resists_more_than_the_cap_allows() -> None:
+    """A resistance at or above the cap is a figure that does not mean what it
+    says.
 
-    The player's own resistance caps at 70% and armour at 75%, and the design
-    states plainly that no combination of defensive layers reaches immunity.
-    The same has to hold for enemies, or a player's damage could be reduced to
-    nothing by a value nobody noticed was too large.
+    `damage.effective_resistance` caps every resistance at
+    `damage.RESISTANCE_CAP`, so an archetype declaring 95% would behave exactly
+    as one declaring 70% and the extra 25 points would be a number in a table
+    that changes no outcome anywhere.
+
+    THIS IS A DIFFERENT RULE FROM THE CEILING ON THE COMBINATION further down,
+    and neither implies the other. This one is about one field being read as
+    smaller than it is written; that one is about how much every layer stops
+    together. An archetype with no armour and 69% resistance passes this and
+    passes that; one at 60% resistance and heavy armour passes this and fails
+    that. Until issue #483 only this one existed, under a docstring that claimed
+    to be the other.
     """
     for kind in ARCHETYPES.values():
-        assert kind.resistance < 70.0, (
+        assert kind.resistance < damage.RESISTANCE_CAP, (
             f"{kind.name} resists {kind.resistance}% of all damage, at or above "
-            "the 70% the design caps resistance at")
+            f"the {damage.RESISTANCE_CAP:.0f}% the design caps resistance at, so "
+            "everything above the cap would change nothing")
 
 
 def _check_every_creature_can_turn() -> None:
@@ -467,12 +486,6 @@ def _check_every_body_has_a_width() -> None:
         assert kind.body_radius > 0.0, (
             f"{kind.name} has a body radius of {kind.body_radius}, so any "
             "number of them could stand on the same point")
-
-
-_check_every_archetype_deals_a_real_damage_type()
-_check_no_enemy_can_become_immune()
-_check_every_body_has_a_width()
-_check_every_creature_can_turn()
 
 
 def archetype(name: str) -> Archetype:
@@ -689,6 +702,129 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 
 
 # --------------------------------------------------------------------------
+# The ceiling on what an enemy may stop
+# --------------------------------------------------------------------------
+
+#: The most of a hit any enemy may stop with every defensive layer it has, as a
+#: percentage. The design document states the RULE and no number, so this is the
+#: number, and it is one the project already had rather than a new one.
+#:
+#: THE RULE IS "NO ENEMY STOPS MORE THAN THE PLAYER DOES".
+#: `docs/Cataclysm_GDD_v2.md`, "How Long a Geared Character Survives", totals the
+#: reference geared character's four layers at 89.9% of a hit stopped: 53.3% from
+#: armour, 70% resistance, 14.0% from a 28% block chance because a block removes
+#: half a hit rather than all of it, and 15.9% flat reduction.
+#: `reference_build.damage_taken_fraction(8)` measures the same character at
+#: 89.87%.
+#:
+#: THIS FILE CANNOT COMPUTE THAT FIGURE, so it is stated here and pinned by a
+#: test. `reference_build` imports `affixes` and `affixes` imports this module,
+#: so importing it here would be a cycle. See the note at the top of
+#: `reference_build.py`, which chose that direction deliberately.
+#: `sim/tests/test_survivability.py` is where both modules can be imported at
+#: once, and it holds this constant below what the reference character stops and
+#: within two points of it, so it can neither become unreachable nor quietly
+#: stop meaning what it says.
+#:
+#: WHY THE PLAYER'S TIER 8 FIGURE. Their own total falls as the tier rises,
+#: because armour is divided by 800 x tier: they stop 94.58% at tier 1 and 89.87%
+#: at tier 8, which is the last tier in the game. Taking their weakest is what
+#: makes the rule hold at every tier rather than only at the one it was measured
+#: at.
+#:
+#: WHY A WHOLE PERCENT BELOW IT rather than 89.87 exactly. The design document
+#: publishes the player's figure rounded to 89.9%, so a ceiling at the measured
+#: value would leave a gap an enemy could sit in and stop more than the player
+#: while still matching the published number. It also stops this constant
+#: churning every time an affix is tuned.
+#:
+#: IT BINDS BEFORE THE PER-LAYER CAPS DO, and that is the whole point of it.
+#: Armour caps at 75% and resistance at 70%, so those two alone reach 92.5%
+#: stopped with neither one over its own cap. "No combination of these layers
+#: reaches immunity" is a statement about the combination, and until issue #483
+#: nothing checked the combination.
+ENEMY_MITIGATION_CEILING = 89.0
+
+#: An armour figure large enough to sit at `damage.ARMOR_REDUCTION_CAP` at any
+#: tier. Not a stat block anyone fights: it is how `most_damage_stopped` reads an
+#: upper bound instead of a sample.
+_SATURATING_ARMOR = 1e9
+
+
+def most_damage_stopped(kind: Archetype | str, rarity: str) -> float:
+    """The largest share of a hit this creature could ever stop, as a percentage.
+
+    AN UPPER BOUND RATHER THAN A MEASUREMENT, and it has to be one. An enemy's
+    armour is a share of its Power Score, and a score has no maximum: a deeper
+    floor, a higher tier and every dungeon modifier all add to it. So there is no
+    largest real armour figure to check.
+
+    There is a largest EFFECT, though, and that is what this reads. Armour is the
+    only defensive layer that grows with the score; every other one is fixed per
+    archetype. `damage.armor_reduction` rises with armour and stops at
+    `damage.ARMOR_REDUCTION_CAP`, and no later step in the order can undo a
+    larger reduction at an earlier one. So this archetype at the armour cap stops
+    at least as much as the same archetype at any score it could really have.
+
+    An archetype whose `armor_share` is zero never gets armour at all, however
+    large its score. The Imp is the one, and its bound is read with no armour
+    rather than with the cap.
+
+    IT GOES THROUGH `damage_taken_fraction` LIKE EVERY OTHER FIGURE HERE, rather
+    than multiplying the layers out locally. A second copy of the mitigation
+    order would not see a layer added to `defender_for` later, which is exactly
+    the failure the note at the top of this file is about.
+    """
+    kind = archetype(kind) if isinstance(kind, str) else kind
+    saturated = replace(
+        stats_for(rarity, 0.0, kind, tier=1),
+        armor=_SATURATING_ARMOR if kind.armor_share > 0.0 else 0.0)
+    return 100.0 * (1.0 - saturated.damage_taken_fraction())
+
+
+def _check_no_enemy_can_become_immune() -> None:
+    """No creature's defensive layers stop more of a hit than the player's do.
+
+    THE CHECK IS ON THE COMBINATION, not on any one field, because the rule it
+    enforces is about the combination. `docs/Cataclysm_GDD_v2.md`: "No
+    combination of these layers reaches immunity. Each has either a cap or a
+    curve that cannot reach zero damage." Every field here is inside its own cap
+    and armour and resistance alone still reach 92.5% stopped, so a per-field
+    check cannot enforce that sentence however many fields it inspects.
+
+    UNTIL ISSUE #483 THIS FUNCTION CHECKED `resistance` AND NOTHING ELSE, under a
+    docstring that said it checked the combination. The three other layers an
+    enemy already had -- armour, evasion and the energy shield -- were invisible
+    to it.
+
+    IT SWEEPS RARITY AS WELL AS ARCHETYPE. Rarity changes no mitigation today, so
+    every rarity gives the same answer for one archetype. It is swept anyway
+    because `defender_for` already reads rarity for `is_boss`, and a layer that
+    varied by rarity would otherwise be checked at one rarity only.
+    """
+    for kind in ARCHETYPES.values():
+        for rarity in RARITY_ORDER:
+            stopped = most_damage_stopped(kind, rarity)
+            assert stopped < ENEMY_MITIGATION_CEILING, (
+                f"{kind.name} at {rarity} rarity could stop {stopped:.2f}% of a "
+                f"hit with every defensive layer it has, at or above the "
+                f"{ENEMY_MITIGATION_CEILING:.0f}% ceiling, which is what the "
+                "reference geared character stops")
+
+
+# All five run here rather than beside their own definitions, because the
+# immunity check resolves a probe hit through a whole stat block and so cannot
+# run until `stats_for` above it exists. Splitting them would leave four checks
+# firing at one point in the file and the fifth at another, for no reason a
+# reader could see.
+_check_every_archetype_deals_a_real_damage_type()
+_check_no_enemy_resists_more_than_the_cap_allows()
+_check_every_body_has_a_width()
+_check_every_creature_can_turn()
+_check_no_enemy_can_become_immune()
+
+
+# --------------------------------------------------------------------------
 # Reported, not asserted: what this implies for a player
 # --------------------------------------------------------------------------
 #
@@ -815,6 +951,29 @@ if __name__ == "__main__":
     print(f"      {'TOGETHER':<34} {warden.damage_taken_fraction():.1%} of the "
           "hit reaches its health and shield")
     print()
+
+    print("=" * 78)
+    print("The ceiling on the combination, issue #483. A creature's armour is a")
+    print("share of its Power Score and a score has no maximum, so the column")
+    print("below is each archetype at the 75% armour cap: the most it could ever")
+    print("stop, not what it stops at any particular tier and rarity.")
+    print()
+    print(f"    {'archetype':<20} {'stops at most':>14} {'headroom':>10}")
+    print("    " + "-" * 46)
+    for name in ARCHETYPES:
+        most = most_damage_stopped(name, RARITY_ORDER[-1])
+        print(f"    {name:<20} {most:>13.2f}% "
+              f"{ENEMY_MITIGATION_CEILING - most:>9.2f}")
+    print()
+    print(f"    The ceiling is {ENEMY_MITIGATION_CEILING:.0f}%, which is what the")
+    print("    reference geared character stops at tier 8. No enemy may stop")
+    print("    more than the player does.")
+    print()
+    print("    Armour caps at 75% and resistance at 70%, so those two alone")
+    print("    reach 92.5% stopped with neither one over its own cap. That is")
+    print("    why the check is on the combination and not on any one field.")
+    print()
+
     print("    Armour alone is why the figure below nearly doubled. Reading")
     print("    resistance and nothing else said 3,929 where the answer is "
           f"{player_damage_to_kill_in(warden, 30.0):,.0f}.")

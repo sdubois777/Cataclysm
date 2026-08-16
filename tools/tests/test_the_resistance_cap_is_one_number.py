@@ -107,6 +107,9 @@ DOCUMENT_COPIES = [
      r"Going from (\d+(?:\.\d+)?)% to 80% removes a third"),
     ("the comparison with Path of Exile's ratio",
      r"and (\d+(?:\.\d+)?)% to 90% is 3 times here"),
+    ("the enemy mitigation ceiling's note on what it leaves an armoured "
+     "archetype, in section X",
+     r"capped at \*\*56% resistance\*\* rather than the (\d+(?:\.\d+)?)%"),
 ]
 
 

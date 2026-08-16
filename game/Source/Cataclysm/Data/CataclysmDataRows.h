@@ -936,9 +936,17 @@ struct FCataclysmEnemyArchetypeRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
 	float TurnRateDegreesPerSecond = 480.0f;
 
-	/** Percent of all incoming damage resisted, whatever its type. Capped
-	 *  below 70 by the model, because no combination of defensive layers may
-	 *  reach immunity. */
+	/** Percent of all incoming damage resisted, whatever its type. Held below
+	 *  70 by the model, because everything above the cap in
+	 *  UCataclysmDamageCalculation::EffectiveResistance would change no outcome.
+	 *
+	 *  THAT IS NOT WHAT STOPS A CREATURE REACHING IMMUNITY, and this comment
+	 *  used to say it was. The rule "no combination of defensive layers reaches
+	 *  immunity" is about the combination, and armour at its own 75% cap times
+	 *  resistance just under 70% already stops 92.5% of a hit with neither field
+	 *  over its limit. The model checks the combination separately, against a
+	 *  ceiling of what a geared player stops. See ENEMY_MITIGATION_CEILING in
+	 *  sim/cataclysm_sim/enemy_stats.py. Issue #483. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
 	float ResistancePercent = 0.0f;
 };

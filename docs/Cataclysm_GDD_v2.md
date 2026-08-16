@@ -1208,6 +1208,10 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 
   
 
+**That is a statement about the combination, and the per-layer caps do not enforce it.** Armor and resistance sitting at their own caps stop 92.5% of a hit together, with neither one over its limit. For the player that is the intended shape: mitigation is most of what gear is for, and a geared character stopping 89.9% is the figure the enemy damage numbers were fitted against. For an **enemy** there is a ceiling on the combination, in section X.
+
+  
+
 ### **Energy Shield**
 
 Energy shield is a distinct defence with its own rules, not a second health bar.
@@ -3742,6 +3746,22 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
   
 
 **Those two percentages describe the resistance layer alone, and not what reaches the creature.** Resistance is one layer of several and a hit passes through all of them, multiplying. The Abyssal Warden also carries 5,954 armor at tier 8, which removes a further 48.2%, so 33.7% of an unpenetrated hit actually reaches it rather than 65%. Killing it in 30 swings needs 7,584 damage a swing, where counting resistance alone said 3,929. The full order is in the Damage Calculation section: evasion, block, armor, resistance, flat damage reduction, energy shield, health. Enemies have no block chance and no flat damage reduction today, so for an enemy the live layers are evasion, armor, resistance and the energy shield.
+
+  
+
+**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 89.9% of what is thrown at them. The ceiling is **89%**, the whole percent below it, so that an enemy sitting exactly at the ceiling still stops less than the player after the published figure is rounded.
+
+  
+
+**It is a ceiling on what a creature could ever stop, not on what it stops today.** An enemy's armor is a share of its Power Score, and a score has no maximum — a deeper floor, a higher tier and every dungeon modifier all add to it. So the ceiling is checked with armor at its own 75% cap, which is the most armor can ever be worth. Under that reading the Abyssal Warden, the hardest creature in the vertical slice, could reach **83.75%**; what it actually stops at Herald rarity on tier 8 is 66.3%. An archetype that gets no armor at all is read with none: the Imp's ceiling is its 25% evasion.
+
+  
+
+**The ceiling binds before the per-layer caps do, and that is the point of it.** A creature at 60% resistance with armor stops 90% of a hit with every individual figure legal — 60 is under the resistance cap, and no rule limits armor per creature. Nothing that inspects one field at a time can see that, which is why the rule is written about the combination.
+
+  
+
+**Two consequences worth stating.** An archetype that carries any armor at all is capped at **56% resistance** rather than the 70% the caps table allows, because the rest of the room is spent on armor; one with no armor keeps the whole cap. The highest in the vertical slice is the Abyssal Warden's 35%, so nothing is near it. And giving enemies the two layers only the player has, block chance and flat damage reduction, would put archetypes through the ceiling: an Abyssal Warden with 25% block and 30% flat reduction reaches 90.05%. That is a real constraint on that decision rather than an argument against it.
 
   
 

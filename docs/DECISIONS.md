@@ -20,6 +20,142 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — No enemy stops more of a hit than a geared player does
+
+**Affects:** `Cataclysm_GDD_v2.md`, the Damage Calculation subsection of section
+IV and the enemy resistance subsection of section X. Applied: one paragraph added
+to the first and four to the second. Closes issue #483.
+
+### What was wrong
+
+`_check_no_enemy_can_become_immune` in `sim/cataclysm_sim/enemy_stats.py`, the
+file that defines each enemy archetype's combat statistics, said in its own
+docstring that it existed to enforce a rule about a COMBINATION of defensive
+layers, and then asserted `kind.resistance < 70.0` and inspected nothing else.
+An enemy already had three other layers — armour, evasion and an energy shield.
+
+**A per-field check cannot enforce that rule however many fields it inspects.**
+Armour caps at 75% and resistance at 70%, so those two alone stop **92.5%** of a
+hit with neither field over its own limit. The sentence the docstring quotes is
+real and is in the design document: "No combination of these layers reaches
+immunity. Each has either a cap or a curve that cannot reach zero damage."
+
+### Why it could not have been written earlier
+
+Issue #483 says to fix the enemy mitigation pipeline first because the simulation
+applied no enemy armour at all. That was true when it was filed on 2026-08-09 and
+stopped being true on 2026-08-12, when issue #481 added
+`EnemyStats.defender_for` and `damage_taken_fraction`. There was no combined
+figure to assert on until then. Nothing in the history argues for keeping the
+check on one field; the combination simply did not exist yet.
+
+### The ceiling, and why this figure
+
+**89% of a hit.** The rule is "no enemy stops more than the player does", which
+issue #483 proposed and which is a figure the project already had rather than a
+new one: `Cataclysm_GDD_v2.md`, *How Long a Geared Character Survives*, totals
+the reference geared character's four layers at 89.9%, and
+`reference_build.damage_taken_fraction(8)` measures the same character at 89.87%.
+
+Three choices inside that:
+
+- **The player's tier 8 figure, not tier 1.** Their own total falls as the tier
+  rises, because armour is divided by 800 x tier: they stop 94.58% at tier 1 and
+  89.87% at tier 8, which is the last tier in the game. Taking their weakest is
+  what makes the rule hold at every tier rather than only at the one it was
+  measured at.
+- **A whole percent below it, not 89.87 exactly.** The design document publishes
+  the player's figure rounded to 89.9%, so a ceiling at the measured value would
+  leave a gap an enemy could sit in and stop more than the player while still
+  matching the published number. It also stops the constant churning every time
+  an affix is tuned.
+- **Stated in `enemy_stats.py` and pinned by a test, rather than computed.**
+  `reference_build` imports `affixes` and `affixes` imports `enemy_stats`, so
+  computing it in place would be an import cycle. `sim/tests/test_survivability.py`
+  is where both can be imported at once, and it holds the constant below what the
+  reference character stops and within two points of it, so the ceiling can
+  neither become unreachable nor quietly turn into a stricter rule nobody chose.
+
+### The check is on an upper bound, not on a sample
+
+An enemy's armour is a share of its Power Score and **a score has no maximum** — a
+deeper floor, a higher tier and every dungeon modifier all add to it. So there is
+no largest real armour figure to check. There is a largest effect: armour is the
+only defensive layer that grows with the score, `damage.armor_reduction` rises
+with it and stops at 75%, and no later step in the order can undo a larger
+reduction at an earlier one. `most_damage_stopped` therefore reads each archetype
+with armour saturated at its cap, which bounds every real stat block that
+archetype could ever have. An archetype whose armour share is zero never gets
+armour at all, so the Imp is read with none and its ceiling is its 25% evasion.
+
+**It goes through `damage_taken_fraction` like every other figure**, rather than
+multiplying the layers out locally. A second copy of the mitigation order would
+not see a layer added to `defender_for` later, which is the failure issue #481
+was.
+
+### Where the seven archetypes sit
+
+| Archetype | Could ever stop | Headroom |
+| :-- | --: | --: |
+| Imp | 25.00% | 64.00 |
+| Baseline | 75.00% | 14.00 |
+| Brute | 78.75% | 10.25 |
+| Succubus | 79.75% | 9.25 |
+| Corrupted Sentinel | 80.00% | 9.00 |
+| Hellhound | 82.00% | 7.00 |
+| Gatekeeper | 82.50% | 6.50 |
+| **Abyssal Warden** | **83.75%** | **5.25** |
+
+What the hardest of them actually stops in play is lower: 66.3% at Herald rarity
+on tier 8, and 76.78% at Cataclysm Boss rarity, which is the worst real figure
+anywhere in the slice.
+
+### Two consequences, stated rather than discovered later
+
+- **An archetype carrying any armour is effectively capped at 56% resistance**
+  rather than 70%, because the rest of the room is spent on armour. One with no
+  armour keeps the full 70%. The highest in the slice is the Abyssal Warden's
+  35%, so nothing is near it.
+- **Issue #488, giving enemies block chance and flat damage reduction, now has a
+  number to design against.** An Abyssal Warden with 25% block and 30% flat
+  reduction reaches 90.05% and fails the check. That is a real constraint on that
+  decision rather than an argument against it, and it is the outcome #488's own
+  text asked for: "The immunity guard has to grow with it... it becomes urgent
+  the moment a third layer exists."
+
+### The old check is kept, under an accurate name and for a different reason
+
+`_check_no_enemy_resists_more_than_the_cap_allows` still asserts that no
+archetype declares more resistance than 70%. Its reason is no longer immunity —
+the combined check covers that — but that a figure above the cap does not mean
+what it says: `damage.effective_resistance` caps at 70%, so an archetype at 95%
+would behave exactly as one at 70% and the extra 25 points would be a number in a
+table that changes no outcome anywhere. **Neither check implies the other.** An
+archetype with no armour and 69% resistance passes both; one at 60% resistance
+with armour passes the first and fails the second.
+
+### What was proved rather than asserted
+
+Four breaks through `tools/prove_guard.py`, each restored afterwards:
+
+| Break | What noticed |
+| :-- | :-- |
+| Abyssal Warden resistance 35 → 60, every per-field value still legal | the new check: "Abyssal Warden at Common rarity could stop 90.00% of a hit... at or above the 89% ceiling" |
+| The ceiling raised from 89 to 99 | `test_the_enemy_mitigation_ceiling_is_what_the_player_actually_stops`, and the check's own firing test stopped firing |
+| `most_damage_stopped` stops saturating armour, so it samples instead of bounding | `test_the_bound_is_never_below_what_a_real_creature_stops`, 11 failures |
+| Gatekeeper resistance 30 → 95 | the kept per-field check, by its new message |
+
+### One thing found and not fixed here
+
+**Flat damage reduction has no cap anywhere** — not in the design document's caps
+table, not in `damage.py`, not in the engine. A Ravager spending all 36 suffix
+slots on it reaches 79.95%, and with armour and resistance at their own caps that
+stops **98.50%** of a hit; at 100 it is exact immunity and nothing clamps it.
+That is the same design sentence failing on the player's side, from a different
+cause, so it is its own issue rather than part of this one: **#644**.
+
+---
+
 ## 2026-08-16 — No affix scales a stun's duration, because chance already does
 
 **Affects:** `Cataclysm_GDD_v2.md`, the crowd control gear paragraph of the Stun
