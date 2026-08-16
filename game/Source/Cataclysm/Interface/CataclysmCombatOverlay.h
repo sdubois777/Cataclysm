@@ -1,0 +1,297 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "CataclysmCombatOverlay.generated.h"
+
+struct FCataclysmDamageResult;
+struct FCataclysmIncomingHit;
+
+/**
+ * One floating number, waiting for the next frame that draws.
+ *
+ * IT HOLDS A WORLD POSITION RATHER THAN A SCREEN POSITION, because the camera
+ * moves between the hit landing and the number fading. A number pinned to
+ * screen pixels slides off whatever it was describing the moment the player
+ * walks.
+ */
+USTRUCT()
+struct CATACLYSM_API FCataclysmDamageNumber
+{
+	GENERATED_BODY()
+
+	/** What it says: a figure, or a word when nothing got through. */
+	FString Text;
+
+	/** What it means, said in colour. See ColourFor. */
+	FLinearColor Colour = FLinearColor::White;
+
+	/** Where it started, in centimetres. Above the head of what was hit. */
+	FVector WorldAnchor = FVector::ZeroVector;
+
+	/** The world's time in seconds when it appeared. */
+	float StartedAt = 0.0f;
+
+	/** Text size multiplier. A tick is drawn smaller than a blow. */
+	float Scale = 1.0f;
+};
+
+/**
+ * Every decision the combat overlay makes, and none of the drawing.
+ *
+ * THE SPLIT IS THE POINT, and it is copied from UCataclysmImpactEffect. The
+ * automation test command runs with -nullrhi, and AHUD::PostRender checks
+ * FApp::CanEverRender() before it calls DrawHUD at all, so no test in this
+ * project can watch anything reach the screen -- the same wall issue #559
+ * records for the impact particle. What CAN be tested is every judgement that
+ * leads up to the drawing, so every one of them lives here as a static function
+ * over plain numbers, needing no world, no canvas and no rendering device.
+ * ACataclysmHUD is then thin enough to read in one sitting.
+ *
+ * WHY A CANVAS HEADS-UP DISPLAY RATHER THAN UMG. This needs no module
+ * dependency, no widget Blueprint and no content asset of any kind: AHUD::
+ * DrawText falls back to GEngine->GetMediumFont() when given no font, and
+ * AHUD::Project does the world-to-screen arithmetic an overhead bar needs. A
+ * widget would have cost UMG, Slate and SlateCore on the module, plus either a
+ * binary .uasset that cannot be reviewed in a diff -- issue #140 records the
+ * editor rewriting those on open -- or a C++ UUserWidget whose widget tree has
+ * to be built in RebuildWidget, because NativeConstruct runs after the Slate
+ * root has already been captured and a tree built there never appears.
+ *
+ * THIS IS THE COMBAT READABILITY LAYER, NOT THE INTERFACE. Issue #49 builds the
+ * designed heads-up display -- the empire status bar, the skill slots with
+ * their cooldowns, the minimap -- and those need layout, text scaling and
+ * localisation, which is UMG work. This is expected to be replaced by it.
+ * Issue #650.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmCombatOverlay : public UBlueprintFunctionLibrary
+{
+	GENERATED_BODY()
+
+public:
+	//~ How long a number lives and how it behaves while it does.
+
+	/** Seconds a floating number lasts before it is dropped. */
+	static constexpr float NumberLifetimeSeconds = 1.1f;
+
+	/** How far up the screen a number travels over its whole life, in pixels. */
+	static constexpr float NumberRisePixels = 55.0f;
+
+	/** The share of a number's life it stays fully opaque for. */
+	static constexpr float NumberOpaqueShare = 0.55f;
+
+	/** A damage over time tick is drawn at this share of a blow's size. */
+	static constexpr float DamageOverTimeScale = 0.7f;
+
+	/**
+	 * How many numbers may wait to be drawn at once.
+	 *
+	 * A CEILING RATHER THAN A HOPE. Issue #563 measured one player attack
+	 * producing seven impacts in five seconds, and an area skill landing on
+	 * twenty enemies produces twenty numbers in one frame. The oldest are
+	 * dropped first, so the ceiling costs the numbers already fading rather
+	 * than the ones just landed.
+	 */
+	static constexpr int32 MaxNumbersWaiting = 96;
+
+	/** Centimetres above the top of a creature that its bar and numbers sit. */
+	static constexpr float AnchorMarginCm = 30.0f;
+
+	//~ Colours, as sRGB hex without the leading hash, matching how
+	//~ docs/Cataclysm_GDD_v2.md states every other colour in the game.
+
+	/**
+	 * The near-black behind every bar, and it is the telegraph's outer ring
+	 * value on purpose.
+	 *
+	 * FOR THE SAME REASON THE TELEGRAPH HAS ONE. The design's readability
+	 * guarantee is that a world surface stays under 30% brightness and an
+	 * effect's primary stays over 60%, which holds a fill against a floor but
+	 * says nothing about a thin bar seen against lava, against a gold Celestial
+	 * wall, or against another creature. A dark backing under the whole bar
+	 * makes the contrast a property of the bar rather than of wherever it
+	 * happens to be standing.
+	 */
+	static const TCHAR* BarBackingHex;
+
+	/**
+	 * Health, and NOT the telegraph's #FF3020.
+	 *
+	 * THAT RED IS RESERVED FOR THE WHOLE GAME. docs/Cataclysm_GDD_v2.md line
+	 * 5251 gives it to the attack marker and states there is one telegraph
+	 * colour, not one per Cataclysm or per damage type, because the marker has
+	 * to mean "this ground is about to hurt" everywhere. A health bar wearing
+	 * the same red weakens the only signal that has to survive every
+	 * environment. This is a darker, less saturated red that still reads as
+	 * health and cannot be mistaken for a warning.
+	 */
+	static const TCHAR* HealthFillHex;
+
+	/**
+	 * An energy shield, and the same blue a shield-absorbed number is drawn in.
+	 *
+	 * DELIBERATELY NOT DEATH'S #8FD8EC. That pale icy blue is a damage type's
+	 * primary, and the design permits the rarity and damage-type palettes to
+	 * overlap only because "the two palettes never share a surface". A bar over
+	 * a creature is a third surface, so it takes a blue of its own.
+	 */
+	static const TCHAR* ShieldFillHex;
+
+	/** A figure that reached health. Warm near-white. */
+	static const TCHAR* ReachedHealthHex;
+
+	/** A figure a shield or mana pool swallowed. Matches the shield bar. */
+	static const TCHAR* AbsorbedHex;
+
+	/** An evaded, blocked or wholly mitigated hit. Mid grey. */
+	static const TCHAR* NothingThroughHex;
+
+	/** Parses one of the constants above. Black when it will not parse. */
+	static FLinearColor ColourFromHex(const TCHAR* Hex);
+
+	//~ The live switches. All three default to on.
+
+	/** Whether floating damage numbers are drawn at all. */
+	static bool DamageNumbersEnabled();
+
+	/** Whether a bar is drawn over damaged creatures. */
+	static bool OverheadBarsEnabled();
+
+	/** Whether the player's own health is drawn on the frame. */
+	static bool PlayerVitalsEnabled();
+
+	//~ What to draw, decided.
+
+	/**
+	 * Whether a landed hit is worth putting a number on.
+	 *
+	 * ALMOST EVERYTHING IS, and that is the opposite of the rule the impact
+	 * particle follows. UCataclysmImpactEffect::ShouldDrawFor refuses a hit
+	 * that never connected, because a burst appearing for it would make the
+	 * burst mean "an attack happened" rather than "that landed". A number is
+	 * the other way round: a hit that resolved to nothing is exactly the case
+	 * nobody can currently see, and it is what issues #483 and #644 are about
+	 * -- defensive layers combining to stop everything. So an evaded hit says
+	 * so, and a hit armour and resistance took to nothing shows a zero.
+	 *
+	 * THE ONE REFUSAL IS A CORPSE. UCataclysmDamageCalculation::Resolve ends
+	 * with FMath::Min(Damage, Vitals->GetHealth()), so every hit on something
+	 * already at zero health deals nothing. Issue #570 counted fifty-six of
+	 * those arriving over seventy seconds in one session. A killing blow is not
+	 * this case and must still be drawn: it leaves health at zero but dealt
+	 * real damage getting there, which is why the test is on both.
+	 */
+	static bool ShouldShowNumberFor(const FCataclysmIncomingHit& Hit,
+									const FCataclysmDamageResult& Outcome,
+									float HealthRemaining);
+
+	/**
+	 * What the number says.
+	 *
+	 * A WORD WHEN NOTHING GOT THROUGH AND A FIGURE WHEN SOMETHING DID, which
+	 * makes the text itself a second channel beside the colour. The design
+	 * requires that: "colour is still not the only channel", because a player
+	 * who cannot separate two hues still has to be able to separate two
+	 * outcomes.
+	 *
+	 * A hit that reached health past a shield says both figures, health first,
+	 * so one number covers one hit rather than two numbers racing each other up
+	 * the screen.
+	 *
+	 * IT CANNOT SAY WHETHER A HIT WAS A CRITICAL STRIKE, because nothing in the
+	 * project rolls one. CritChance and CritMultiplier exist as attributes and
+	 * are set on enemies from data, and no code reads either. Issue #649.
+	 */
+	static FString TextFor(const FCataclysmDamageResult& Outcome);
+
+	/** What colour that text is drawn in. Three cases, described above. */
+	static FLinearColor ColourFor(const FCataclysmDamageResult& Outcome);
+
+	/** How large. A damage over time tick is drawn smaller than a blow. */
+	static float ScaleFor(const FCataclysmIncomingHit& Hit);
+
+	/**
+	 * Whether a creature gets a bar over its head at this instant.
+	 *
+	 * NOTHING OVER AN UNDAMAGED CREATURE. That is the project owner's decision
+	 * and it is what Path of Exile does even with its own "Show Mini Life Bars
+	 * on Enemies" setting enabled: a bar appears once an enemy has been damaged
+	 * or moused over, and not before. It keeps the design's deliberately dark,
+	 * low-light world from being papered over with interface, and it makes the
+	 * bar mean "this fight has started" rather than "there is a creature here".
+	 *
+	 * Nothing over a corpse either. An enemy destroys itself on the tick after
+	 * it dies, so without this a bar at zero flashes for one frame.
+	 */
+	static bool ShouldShowBarFor(float Health, float MaxHealth);
+
+	/** How much of a bar is filled, 0 to 1. Zero when the maximum is not real. */
+	static float BarFractionFor(float Current, float Maximum);
+
+	/**
+	 * Whether an actor is a candidate for an overhead bar at all.
+	 *
+	 * NOT THE PLAYER'S OWN PAWN, which has its bar on the frame instead, and
+	 * nothing marked dead. Separate from ShouldShowBarFor because this asks
+	 * about the actor and that asks about the numbers.
+	 */
+	static bool IsOverheadBarCandidate(const AActor* Actor,
+									   const AActor* LocalPlayerPawn);
+
+	/**
+	 * How far above an actor's own location its bar and numbers sit.
+	 *
+	 * READ OFF THE ACTOR'S BOUNDS rather than fixed, because a Brute and an Imp
+	 * are not the same height and a fixed offset puts one inside a head and the
+	 * other in mid air. An actor with no components has no bounds and gets the
+	 * margin alone, which is the honest answer for something with no body.
+	 */
+	static float AnchorHeightFor(const AActor* Actor);
+
+	/** How far up the screen a number has travelled, in pixels. */
+	static float RisePixelsFor(float Age);
+
+	/** How opaque a number is at a given age. Zero once it has expired. */
+	static float FadeFor(float Age);
+
+	/**
+	 * Reads health and maximum health off any actor that has an ability system.
+	 *
+	 * WORKS FOR PLAYER, ENEMY AND MINION ALIKE, because it goes through
+	 * UAbilitySystemGlobals::GetAbilitySystemComponentFromActor, which asks the
+	 * actor's IAbilitySystemInterface rather than assuming where the component
+	 * lives. The player's is on its player state and an enemy's is on its pawn,
+	 * and this does not have to know that.
+	 *
+	 * Returns false and writes nothing when the actor has no ability system or
+	 * no vital attribute set, which includes every actor before its ability
+	 * system has been initialised.
+	 */
+	static bool VitalsOf(const AActor* Actor, float& OutHealth,
+						 float& OutMaxHealth);
+
+	/** The same for an energy shield. False when the actor has no shield set. */
+	static bool ShieldOf(const AActor* Actor, float& OutShield,
+						 float& OutMaxShield);
+
+	/**
+	 * Hands a landed hit to the heads-up display so it can be drawn.
+	 *
+	 * THE AVATAR IS THE CALLER'S PROBLEM, not this function's. It is passed the
+	 * actor already resolved by UCataclysmImpactEffect::ActorToDrawOn, because
+	 * an attribute set's GetOwningActor answers with the ability system's OWNER
+	 * and for the player that is the player state, which is not placed in the
+	 * world and reports the origin. Issue #562 drew every blow an enemy landed
+	 * on the player in the middle of the level for exactly that reason, and
+	 * issue #565 was the same mistake again in the death path.
+	 *
+	 * Does nothing when there is no world, no player controller, no heads-up
+	 * display, or the numbers are switched off. A dedicated server and every
+	 * automation test take that path.
+	 */
+	static void Record(const AActor* Struck, const FCataclysmIncomingHit& Hit,
+					   const FCataclysmDamageResult& Outcome);
+};

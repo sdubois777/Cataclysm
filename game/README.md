@@ -138,9 +138,15 @@ by `git add` with no error and no warning. Guarded by
   [#19](https://github.com/sdubois777/Cataclysm/issues/19)).
 - **No procedural dungeon generation.** `L_Sandbox` is the only map (issue
   [#40](https://github.com/sdubois777/Cataclysm/issues/40)).
-- **No heads-up display and no interface screens.** Nothing in the project uses
-  UMG yet, so health, cooldowns and slots are invisible in a play session (issue
-  [#49](https://github.com/sdubois777/Cataclysm/issues/49)).
+- **No interface screens, and only combat is visible on screen.** Nothing in the
+  project uses UMG. `ACataclysmHUD` draws three things on the canvas — a bar over
+  creatures that have been hurt, a floating number where each blow lands, and the
+  player's own health in the bottom left corner (issue
+  [#518](https://github.com/sdubois777/Cataclysm/issues/518)). Skill slots,
+  cooldowns, the empire status bar, the minimap and every screen are still absent
+  (issue [#49](https://github.com/sdubois777/Cataclysm/issues/49)), and the port
+  of the combat overlay to UMG is issue
+  [#650](https://github.com/sdubois777/Cataclysm/issues/650).
 - **No save or persistence.** There is no `USaveGame` anywhere, so a play session
   keeps nothing (issue
   [#21](https://github.com/sdubois777/Cataclysm/issues/21)).

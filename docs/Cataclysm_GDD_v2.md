@@ -5194,6 +5194,54 @@ it, which is their own act and not an outcome of play.
 
   
 
+## **Over the World, Not on the Frame**
+
+Two things are drawn in the world rather than on the heads-up display, and they
+are listed apart from it because they are not part of it. Whether a lethality
+mode hides them is a separate question from whether it hides the display above,
+and it has not been answered.
+
+  
+
+**A floating number where every blow lands.** It says how much reached health,
+and how much an energy shield or a mana pool took, health first. A blow that was
+evaded says so in a word, and one that armour and resistance stopped completely
+shows a zero, because a defence working is as much worth seeing as a defence
+failing. Colour says where the damage went and the text says which outcome it
+was, so neither is the only channel. A damage over time tick is drawn smaller
+than a blow. It cannot yet distinguish a critical strike, because nothing in the
+game rolls one.
+
+  
+
+**Path of Exile 1 and 2 ship no floating damage numbers at all**, and are the
+only games in the genre that do not. Diablo 4 and Last Epoch both ship them with
+a switch, and this follows those two, because this game settles its combat
+constants by playing them and that cannot be done while the figures are
+invisible.
+
+  
+
+**A health bar over a creature, once it has been hurt.** Nothing is drawn over a
+creature at full health, over a dead one, or over the player's own character,
+whose health is on the frame instead. **Path of Exile does the same** even when
+its own enemy life bar setting is switched on: a bar appears after an enemy has
+been damaged or moused over, and not before, and Diablo 4 defaults to showing one
+only under the cursor. The reason to follow them is the art direction stated in
+the Audio section: the world is deliberately dark and low-light, and a bar over
+every creature standing in it undoes that before a fight has started.
+
+  
+
+**Neither may wear the telegraph's `#FF3020`.** There is one telegraph colour for
+the whole game and it has to mean "this ground is about to hurt" in every
+environment, so nothing else may claim it. Every bar carries the same near-black
+backing the telegraph's outermost ring uses, for the same reason that ring
+exists: it makes contrast a property of the bar rather than of whatever it
+happens to be standing against.
+
+  
+
 ## **Accessibility**
 
 **What accessibility means here, and what it does not.** It means removing barriers that make the game impossible to play for some people: perception, language, and physical safety. It does not mean removing difficulty, and it does not guarantee any particular interface element.

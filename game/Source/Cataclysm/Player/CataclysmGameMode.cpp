@@ -8,6 +8,7 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Interface/CataclysmHUD.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerStart.h"
 #include "EngineUtils.h"
@@ -82,6 +83,16 @@ ACataclysmGameMode::ACataclysmGameMode()
 	// no ability system, InitAbilityActorInfo returns early, and the character
 	// spawns with no attributes and no abilities and no error.
 	PlayerStateClass = ACataclysmPlayerState::StaticClass();
+
+	// NAMED HERE RATHER THAN IN A CONFIG FILE, so it holds for any level opened
+	// directly and for a test world alike, the same as the three above. Without
+	// this line the engine spawns a bare AHUD, which draws nothing, and there is
+	// no error to follow -- a heads-up display that is simply absent looks
+	// exactly like one that is switched off.
+	//
+	// It draws three things: a bar over creatures that have been hurt, a number
+	// where each blow lands, and the player's own health. Issue #518.
+	HUDClass = ACataclysmHUD::StaticClass();
 }
 
 void ACataclysmGameMode::StartPlay()
