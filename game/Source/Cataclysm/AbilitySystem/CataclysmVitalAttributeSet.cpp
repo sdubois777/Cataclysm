@@ -316,9 +316,14 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 	//
 	// healthLeft is what answers it. A character at zero health takes no further
 	// damage, because UCataclysmDamageCalculation::Resolve ends with
-	// FMath::Min(Damage, Vitals->GetHealth()) and that is zero from then on. It
-	// keeps being hit and nothing happens, because a player's death is
-	// deliberately not built -- see ACataclysmCharacterBase::HandleDeath.
+	// FMath::Min(Damage, Vitals->GetHealth()) and that is zero from then on.
+	//
+	// THAT CLAMP IS RIGHT AND WAS NEVER THE DEFECT. What was wrong is that a
+	// player at zero health was not marked dead, so nothing stopped, nothing
+	// stopped attacking it, and the hits went on arriving and dealing nothing --
+	// fifty-six of them over seventy seconds in the session that found it.
+	// ACataclysmPlayerCharacter::HandleDeath now marks and stops the player, and
+	// UCataclysmTargeting no longer finds a dead character at all. Issue #570.
 	//
 	// Counted is a running total for the session, so a burst of hits can be
 	// counted without timestamps. Issue #563 needed exactly that.

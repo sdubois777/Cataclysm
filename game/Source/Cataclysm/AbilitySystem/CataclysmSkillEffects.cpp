@@ -485,10 +485,24 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	}
 
 	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
-	// granted for a duration and this one must never expire. A duration effect
-	// with an infinite duration would do the same thing with more moving parts
-	// and one more way to get the duration wrong.
+	// granted for a duration and this one must never expire on its own. A
+	// duration effect with an infinite duration would do the same thing with
+	// more moving parts and one more way to get the duration wrong. What takes
+	// it off again is ClearDead below, called deliberately.
 	System->AddLooseGameplayTag(Dead);
+	return true;
+}
+
+bool UCataclysmSkillEffects::ClearDead(AActor* Actor)
+{
+	UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+	const FGameplayTag Dead = DeadTag();
+	if (!System || !Dead.IsValid() || !System->HasMatchingGameplayTag(Dead))
+	{
+		return false;
+	}
+
+	System->RemoveLooseGameplayTag(Dead);
 	return true;
 }
 

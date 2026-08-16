@@ -345,14 +345,31 @@ public:
 	 * to the character's own class.
 	 *
 	 * IT IS NOT TIMED, unlike every other state tag here. `ApplyTagForDuration`
-	 * grants a tag that expires; this one is added loosely and never removed,
-	 * because the character it is on is being taken out of the level. Issue #517.
+	 * grants a tag that expires; this one is added loosely and comes off only
+	 * when something takes it off deliberately. Issue #517.
+	 *
+	 * NOTHING TAKES IT OFF AN ENEMY, which is what it was written for: an enemy
+	 * is destroyed on the next tick, so there is nobody left to clear it from.
+	 * A PLAYER IS DIFFERENT AND THAT IS WHY `ClearDead` EXISTS. A player is not
+	 * destroyed -- the design says ordinary death continues the run and never
+	 * costs the character -- so a player comes back, and coming back means this
+	 * tag comes off. Issue #570.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsDead(const AActor* Actor);
 
 	/** Mark this actor dead. Does nothing to one already marked. */
 	static bool MarkDead(AActor* Actor);
+
+	/**
+	 * Take the dead mark off again. Does nothing to one that is not marked.
+	 *
+	 * THE RETURN VALUE IS THE POINT, the same way it is on `MarkDead`. Both
+	 * answer "did this call change anything", which is what lets a caller run
+	 * once rather than every time it is asked. Reviving something that was not
+	 * dead is a caller getting its own state wrong, not a thing to do quietly.
+	 */
+	static bool ClearDead(AActor* Actor);
 
 	/** The State.Dead tag, or an invalid tag if the vocabulary lacks it. */
 	static FGameplayTag DeadTag();

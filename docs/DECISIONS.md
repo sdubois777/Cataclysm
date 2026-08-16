@@ -20,6 +20,102 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — A player at zero health dies, stops, and stands back up
+
+**Affects:** `Cataclysm_GDD_v2.md`, section II. Applied: a new subsection, *What
+Dying Does at the Moment It Happens*, under the run and death rules. Closes issue
+#570.
+
+### What was wrong, measured
+
+A play session on 2026-08-14 recorded the player taking two hits, going from 100
+health to 0 in 1.99 seconds, and then **fifty-six further hits over about seventy
+seconds each dealing exactly nothing**.
+
+The project owner ruled on the first half: two hits is not a defect, because
+there is no gear, no character levels and no attribute allocation yet, so nothing
+about survivability can be judged. That is unchanged by this entry.
+
+The second half was real. `ACataclysmCharacterBase::HandleDeath` was inert on the
+base and only the enemy overrode it, so a player at zero health was never marked
+dead. It kept its movement, its input, its collision and every ability, and it
+stayed a legal target. Every later hit computed `FMath::Min(Damage, Health)`
+against a zero pool and dealt nothing.
+
+**The clamp was never the defect.** It reports what a hit actually dealt, and the
+simulation's `damage.resolve` does the same thing for the same reason. What was
+missing is that nothing marked the player dead, so nothing stopped and nothing
+stopped attacking.
+
+### The two decisions this needed
+
+The design already states what dying *costs*: 5 days in Standard, 10 in Hardcore,
+15 in Heretic, plus a per-piece equipment drop chance in the two harder modes,
+plus a respawn at the capital. It states nothing at all about what dying *is* at
+the moment it happens — there is no death screen, no prompt, no input rule, no
+timing, and no statement of what a player comes back with.
+
+**Decision 1: a player comes back whole.** No health is carried over from the
+death and none is withheld. It follows the reasoning the design already uses for
+ordinary death: what a death costs is measured in the world and not on the
+character, which is the same thing that makes an ordinary death continue the run.
+
+**Decision 2: the delay before standing back up is 3 seconds, and it is
+provisional.** Long enough that the death reads as an event rather than a
+flicker, short enough that dying repeatedly while testing is not tedious. Nothing
+else in the design depends on it. Labelled provisional in the document because
+there is nothing on screen at the moment of death and there will be.
+
+### What is deliberately not charged, and why it cannot be
+
+None of the four things the designed penalty is made of exists in the running
+game:
+
+| The penalty needs | The game has |
+| :-- | :-- |
+| a day clock to take days off | nothing; no day clock class exists in `game/Source/` at all |
+| a lethality mode, to know whether it is 5, 10 or 15 days | nothing |
+| an equipped inventory, to drop pieces from | nothing |
+| a capital to respawn at | nothing; the level's player start is the nearest thing |
+
+So the player stands back up at the level's `APlayerStart`, which is the whole of
+the designed rule that this game currently has the machinery for. Issue #41
+builds the layer that would carry the other four, and #570's closing comment
+records them as owed.
+
+### Nothing attacks a corpse
+
+`UCataclysmTargeting::MatchesAttitude` now refuses a character marked dead, so a
+corpse is neither an enemy nor an ally. It is asked there because that is the one
+place the other two questions — can this hold damage, and which side is it on —
+are already asked together, so all four search functions and both public
+predicates pick it up from one line.
+
+**It applies to the enemy side too**, for the one tick a corpse exists before it
+is destroyed. It is a rule about target SELECTION and not about damage: a hit
+already in flight still resolves, because a projectile outlives whoever fired it.
+
+### One rule this changed
+
+**The `State.Dead` tag can now come off.** It was written for enemies, and its own
+comment said it "is added loosely and never removed, because the character it is
+on is being taken out of the level". That is still true of an enemy. A player is
+never taken out of the level — the design says so in as many words — so a player
+comes back and the tag comes off. `UCataclysmSkillEffects::ClearDead` is the one
+thing that does it, and it reports whether it changed anything, so reviving
+something that was not dead is not a silent free heal.
+
+### One defect found and fixed in the same change
+
+`game/Source/Cataclysm/Tests/CataclysmDeathTests.cpp` had its
+`#endif  // WITH_AUTOMATION_TESTS` above its last test rather than at the end of
+the file, so that test sat outside the guard. It compiles today because the
+editor target defines `WITH_AUTOMATION_TESTS`, and it would have failed to
+compile in a configuration that does not. The `#endif` is now at the end of the
+file.
+
+---
+
 ## 2026-08-16 — No enemy stops more of a hit than a geared player does
 
 **Affects:** `Cataclysm_GDD_v2.md`, the Damage Calculation subsection of section

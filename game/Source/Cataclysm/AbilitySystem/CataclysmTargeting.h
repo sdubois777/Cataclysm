@@ -24,12 +24,17 @@ class UWorld;
  * is the same split as UCataclysmDamageCalculation, and for the same reason: the
  * part most likely to be subtly wrong is the arithmetic.
  *
- * WHAT COUNTS AS AN ENEMY IS TWO SEPARATE QUESTIONS, and keeping them apart is
+ * WHAT COUNTS AS AN ENEMY IS THREE SEPARATE QUESTIONS, and keeping them apart is
  * the point. First, can this actor hold damage at all -- does it have an ability
- * system component? That is what makes scenery not a target. Second, which side
- * is it on? `UCataclysmTeams` answers the second and nothing here duplicates it,
- * so an ally is found by asking for a different attitude rather than by a second
- * copy of the search.
+ * system component? That is what makes scenery not a target. Second, is it
+ * already dead? Third, which side is it on? `UCataclysmTeams` answers the last
+ * and nothing here duplicates it, so an ally is found by asking for a different
+ * attitude rather than by a second copy of the search.
+ *
+ * THE DEAD QUESTION WAS ADDED LAST, by issue #570, and it was measured rather
+ * than anticipated: a play session recorded fifty-six attacks landing on a
+ * player already at zero health, each dealing exactly nothing, because nothing
+ * a creature could ask told it the target was finished.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmTargeting : public UObject

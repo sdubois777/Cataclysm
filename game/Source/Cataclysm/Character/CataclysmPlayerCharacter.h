@@ -107,6 +107,39 @@ public:
 	 */
 	float GetTargetCameraDistance() const { return TargetCameraDistance; }
 
+	/**
+	 * How long the player lies dead before coming back, in seconds.
+	 *
+	 * A JUDGEMENT, AND LABELLED AS ONE. No design document describes the moment
+	 * of death at all -- there is no death screen, no prompt, no input lockout
+	 * and no stated timing anywhere in `docs/`. Three seconds is long enough
+	 * that the death is visible as an event rather than a flicker, and short
+	 * enough that testing combat by dying repeatedly is not tedious. It is
+	 * expected to change once the death moment is designed.
+	 */
+	static constexpr float RespawnDelaySeconds = 3.0f;
+
+	/**
+	 * Stop, and come back after `RespawnDelaySeconds`.
+	 *
+	 * WHAT THIS DOES AND DOES NOT DO. It marks the player dead, halts them, and
+	 * schedules `Revive`. It does NOT charge the death penalty, because the
+	 * penalty is measured in days off the empire clock and the running game has
+	 * no day clock to charge. See the note on `Revive`.
+	 */
+	virtual void HandleDeath() override;
+
+	/**
+	 * Undo the death: clear the mark, refill, and stand up at the player start.
+	 *
+	 * Public so a test can run it without waiting out a timer, and so the moment
+	 * of coming back is one function rather than a lambda inside the timer.
+	 */
+	void Revive();
+
+	/** Whether the player is currently dead and waiting to come back. */
+	bool IsAwaitingRespawn() const;
+
 protected:
 	virtual void InitAbilityActorInfo() override;
 
@@ -192,4 +225,13 @@ private:
 	/** Where the camera is heading. Set from the boom's own length at BeginPlay,
 	 *  so the resting distance is stated once, in the constructor. */
 	float TargetCameraDistance = 0.0f;
+
+	/** Counts down `RespawnDelaySeconds` from the moment of death. */
+	FTimerHandle RespawnTimer;
+
+	/** Where to stand up again, chosen at death rather than at revival so a
+	 *  level with no player start still puts the character back where it fell
+	 *  instead of at the world origin. */
+	FVector RespawnLocation = FVector::ZeroVector;
+	FRotator RespawnRotation = FRotator::ZeroRotator;
 };

@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -109,6 +110,25 @@ bool UCataclysmTargeting::MatchesAttitude(const AActor* Actor, const AActor* Ins
 	// This is what keeps scenery out of both searches: a wall is not an enemy,
 	// and it is not an ally an aura can buff either.
 	if (!AbilitySystemOf(Actor))
+	{
+		return false;
+	}
+
+	// A DEAD CHARACTER IS NEITHER AN ENEMY NOR AN ALLY. Asked here rather than
+	// in each of the four Find functions, because this is the one place both
+	// questions are already asked together.
+	//
+	// WHAT IT FIXES IS MEASURED, NOT HYPOTHETICAL. Issue #570 recorded a play
+	// session in which fifty-six attacks over seventy seconds landed on a player
+	// whose health had already reached zero, each dealing exactly nothing,
+	// because the creature attacking had no way to ask whether its target was
+	// still worth attacking. It applies to the enemy side as well, for the one
+	// tick a corpse exists before it is destroyed.
+	//
+	// A DEAD CHARACTER CAN STILL BE THE INSTIGATOR of something already in
+	// flight -- a projectile outlives the caster -- so this filters what a search
+	// FINDS and says nothing about who ran it.
+	if (UCataclysmSkillEffects::IsDead(Actor))
 	{
 		return false;
 	}
