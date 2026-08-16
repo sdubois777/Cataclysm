@@ -10,6 +10,9 @@
 // nothing smaller holds one and the design's own home for it, the dungeon, does
 // not exist yet. Issue #514.
 #include "Player/CataclysmGameMode.h"
+// For the weapon sub-type a hit carries, which is a property of what the
+// attacker is holding rather than a number on its attribute set. Issue #639.
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Cataclysm.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
@@ -125,9 +128,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// damage over time decides whether an energy shield absorbs it.
 			// Issue #513.
 			//
-			// TWO STILL DO NOT REACH IT: armour penetration, which no attribute
-			// holds anywhere, and the weapon sub-type, which decides the slashing
-			// and magic bonuses. See the issue filed alongside #513.
+			// ALL OF THEM REACH IT NOW. Armour penetration gained an attribute on
+			// issue #520 and is read beside the resistance penetration below; the
+			// weapon sub-type is read off the attacking actor on issue #639,
+			// because it is a property of what is in its hand rather than a number
+			// it carries.
 			FCataclysmIncomingHit Hit;
 			Hit.Damage = LocalDamage;
 
@@ -164,6 +169,30 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Hit.ArmorPenetration = Offence->GetArmorPenetration();
 				}
 			}
+
+			// AND THE WEAPON SUB-TYPE, WHICH IS READ OFF THE ATTACKING ACTOR rather
+			// than off its attributes, because it is a property of what is in its
+			// hand rather than a number it carries. Issue #639: all three of these
+			// were applied correctly by Resolve and none was ever set, because
+			// nothing joined the equipped weapon to a hit.
+			//
+			// AN ENEMY ANSWERS EMPTY and always will: it has no weapon slots
+			// component, because it attacks from its own attack damage rather than
+			// from a weapon. That is the same answer every hit gave before this
+			// existed, so nothing about an enemy's hit changes.
+			//
+			// BLUNT IS NOT HERE, and that is a gap rather than an omission. Its
+			// effect is a 10% chance to stun for 0.75 seconds, and nothing in the
+			// project rolls a chance to stun on an ordinary hit --
+			// UCataclysmSkillEffects::ApplyStun applies one already decided. Issue
+			// #639 records what building it takes.
+			const FString SubType = UCataclysmWeaponSlotsComponent::SubTypeOf(
+				Data.EffectSpec.GetContext().GetEffectCauser());
+			Hit.bIsSlashing =
+				SubType.Equals(TEXT("Slashing"), ESearchCase::IgnoreCase);
+			Hit.bIsMagic = SubType.Equals(TEXT("Magic"), ESearchCase::IgnoreCase);
+			Hit.bIsPiercing =
+				SubType.Equals(TEXT("Piercing"), ESearchCase::IgnoreCase);
 
 			// THE DIFFICULTY TIER IS READ RATHER THAN ASSUMED, since issue #514.
 			// This passed a literal 1 because nothing in the project held a tier

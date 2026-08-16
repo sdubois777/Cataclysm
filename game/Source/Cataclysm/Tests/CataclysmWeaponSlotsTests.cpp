@@ -998,4 +998,81 @@ bool FCataclysmBasicAttackReachesWhatTheBaseSaysTest::RunTest(const FString& Par
 	return true;
 }
 
+/**
+ * Which sub-type the equipped weapon gives a hit. Issue #639.
+ *
+ * NOTHING JOINED THE WEAPON TO A HIT BEFORE THIS. `FCataclysmIncomingHit`
+ * carries `bIsSlashing`, `bIsMagic` and now `bIsPiercing`, and
+ * `UCataclysmDamageCalculation::Resolve` applies all three correctly. None was
+ * ever set, so slashing, magic and piercing all did nothing whatever weapon was
+ * held.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWeaponSubTypeTest,
+	"Cataclysm.WeaponSlots.TheEquippedWeaponDecidesTheSubType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWeaponSubTypeTest::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	if (!Actor)
+	{
+		AddError(TEXT("could not spawn an actor"));
+		return false;
+	}
+
+	UCataclysmWeaponSlotsComponent* Slots =
+		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+	Slots->RegisterComponent();
+	Slots->SetDamageType(TEXT("Demonic"));
+
+	// EMPTY BEFORE ANYTHING IS HELD, which is what makes the rest meaningful.
+	TestEqual(TEXT("a character holding nothing has no sub-type"),
+		Slots->GetEquippedSubType(), FString());
+
+	// EVERY SUB-TYPE THE ITEM BASES SHEET USES, one weapon each, so a lookup
+	// that answered the same thing for everything would fail here.
+	struct FCase { const TCHAR* Weapon; const TCHAR* SubType; };
+	const FCase Cases[] = {
+		{ TEXT("Axe"),        TEXT("Slashing") },
+		{ TEXT("Dagger"),     TEXT("Piercing") },
+		{ TEXT("Wand"),       TEXT("Magic") },
+		{ TEXT("Fist"),       TEXT("Blunt") },
+		{ TEXT("Greatsword"), TEXT("Slashing") },
+		{ TEXT("Warhammer"),  TEXT("Blunt") },
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		Slots->EquipWeaponType(Case.Weapon);
+		TestEqual(FString::Printf(TEXT("a %s is %s"), Case.Weapon, Case.SubType),
+			Slots->GetEquippedSubType(), FString(Case.SubType));
+	}
+
+	// AND PUTTING IT DOWN LEAVES NOTHING BEHIND, so a sub-type cannot outlive
+	// the weapon that gave it.
+	Slots->UnequipWeapon();
+	TestEqual(TEXT("unequipping clears the sub-type"),
+		Slots->GetEquippedSubType(), FString());
+
+	// AN ACTOR WITH NO WEAPON SLOTS AT ALL ANSWERS EMPTY, which is every enemy.
+	// That is the answer every hit gave before this existed, so nothing about an
+	// enemy's hit changes.
+	AActor* Bare = World->SpawnActor<AActor>();
+	TestEqual(TEXT("an actor with no weapon slots has no sub-type"),
+		UCataclysmWeaponSlotsComponent::SubTypeOf(Bare), FString());
+	TestEqual(TEXT("and neither does nothing at all"),
+		UCataclysmWeaponSlotsComponent::SubTypeOf(nullptr), FString());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

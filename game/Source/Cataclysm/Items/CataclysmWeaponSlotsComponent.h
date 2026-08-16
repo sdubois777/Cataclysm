@@ -97,6 +97,42 @@ public:
 	const TArray<FCataclysmWeaponSkill>& GetAvailableSkills() const { return AvailableSkills; }
 
 	/**
+	 * The weapon sub-type this character's hits carry: Piercing, Slashing,
+	 * Blunt, Magic, or empty for none.
+	 *
+	 * WHAT IT DECIDES. Slashing deals 10% more to health, magic strips 10% more
+	 * energy shield, and piercing ignores 20% of the target's armour. All three
+	 * were applied correctly by `UCataclysmDamageCalculation::Resolve` and none
+	 * was ever set, because nothing joined the equipped weapon to a hit. Issue
+	 * #639. Blunt's 10% chance to stun needs a mechanism that does not exist and
+	 * is not built here.
+	 *
+	 * READ OFF THE ITEM BASES TABLE, not stored. `game/Data/ItemBases.csv`
+	 * carries a sub-type for all fourteen weapon types and is where the design
+	 * edits it, so a copy here would be a second answer that could disagree.
+	 *
+	 * ONE WEAPON TODAY, AND THE RULE FOR TWO IS ALREADY DECIDED. This component
+	 * equips a single weapon type, so there is nothing to reconcile yet. When it
+	 * holds two, the project owner's ruling of 2026-08-16 applies: every weapon
+	 * actually SWUNG has to agree or the hit has no sub-type, and a Shield does
+	 * not vote because it is not swung. `subtype_of` in
+	 * `sim/cataclysm_sim/player_damage.py` is that rule and states why.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Weapon")
+	FString GetEquippedSubType() const;
+
+	/**
+	 * The sub-type an actor's hits carry, or empty if it has no weapon at all.
+	 *
+	 * A STATIC ON THIS COMPONENT so the attribute set that resolves a hit can
+	 * ask without knowing how a character stores its weapons. An actor with no
+	 * weapon slots component answers empty, which is the answer every hit gave
+	 * before this existed -- so an enemy, which has no such component, keeps
+	 * hitting exactly as it did.
+	 */
+	static FString SubTypeOf(const AActor* Actor);
+
+	/**
 	 * Uses this matrix instead of the generated one.
 	 *
 	 * For tests, which build a table they control so a case can be set up that

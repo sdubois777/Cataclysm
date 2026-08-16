@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagsManager.h"
@@ -928,6 +929,205 @@ CATACLYSM_TEST(FCataclysmTheTwoPenetrationsAreSeparateTest,
 		UCataclysmSkillEffects::ApplyHit(Attacker, Second.Actor, 100.0f);
 		TestEqual(TEXT("armour penetration does nothing to resistance"),
 			Second.TakeDamageReading(), 500.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The weapon sub-type, which now reaches a hit. Issue #639.
+// --------------------------------------------------------------------------
+
+namespace CataclysmDamageTypeTest
+{
+	/** An attacker holding a weapon, so its sub-type reaches what it hits. */
+	struct FScopedArmedAttacker
+	{
+		FScopedArmedAttacker(UWorld* World, const TCHAR* WeaponType)
+		{
+			Actor = World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+			check(Actor);
+
+			// AN ENEMY CHARACTER CARRYING WEAPON SLOTS, which no real enemy does.
+			// It stands in for a player because a player reaches its ability
+			// system component through its player state and a test world has
+			// none. What is checked is the join between a held weapon and a hit,
+			// and that reads the component rather than the class.
+			Slots = NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+			Slots->RegisterComponent();
+			Slots->SetDamageType(TEXT("Demonic"));
+			Slots->EquipWeaponType(WeaponType);
+
+			// THE DAMAGE IS SET AFTER THE WEAPON, AND THAT ORDER IS THE TEST
+			// WORKING. Equipping writes the weapon's own attack damage over
+			// whatever was there -- a Fist states 30 against an Axe's 46 -- so
+			// setting it first made every reading the weapon's base damage rather
+			// than its sub-type. Measured: 8.5 and 14.4 where 1,000 and 1,100 were
+			// expected. With one figure for every attacker, the sub-type is the
+			// only thing that can move a reading.
+			Actor->SetAttackDamage(1000.0f);
+		}
+
+		~FScopedArmedAttacker()
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+		}
+
+		TObjectPtr<ACataclysmEnemyCharacter> Actor = nullptr;
+		TObjectPtr<UCataclysmWeaponSlotsComponent> Slots = nullptr;
+	};
+}
+
+CATACLYSM_TEST(FCataclysmSlashingReachesHealthTest,
+	"Cataclysm.DamageType.ASlashingWeaponDealsMoreToHealth")
+{
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		// NO ARMOUR, NO RESISTANCE AND NO SHIELD on the defender, so the only
+		// thing that can move the reading is the slashing bonus itself.
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		{
+			// A Fist is Blunt, which does nothing to health.
+			CataclysmDamageTypeTest::FScopedArmedAttacker Blunt(World, TEXT("Fist"));
+			UCataclysmSkillEffects::ApplyHit(Blunt.Actor, Defender.Actor, 100.0f);
+			TestEqual(TEXT("a blunt weapon deals its hit unchanged"),
+				Defender.TakeDamageReading(), 1000.0f, 1.0f);
+		}
+
+		{
+			// An Axe is Slashing: 10% more to what reaches health.
+			CataclysmDamageTypeTest::FScopedArmedAttacker Slashing(World, TEXT("Axe"));
+			UCataclysmSkillEffects::ApplyHit(Slashing.Actor, Defender.Actor, 100.0f);
+			TestEqual(TEXT("a slashing weapon deals ten percent more"),
+				Defender.TakeDamageReading(), 1100.0f, 1.0f);
+		}
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmMagicStripsMoreShieldTest,
+	"Cataclysm.DamageType.AMagicWeaponStripsMoreEnergyShield")
+{
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		// A SHIELD LARGER THAN THE HIT, so the whole hit lands on it and the
+		// reading is what the shield lost rather than what health lost.
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Vitals->SetMaxEnergyShield(100000.0f);
+		Defender.Vitals->SetEnergyShield(100000.0f);
+
+		const auto ShieldLost = [&](const TCHAR* WeaponType) -> float
+		{
+			const float Before = Defender.Vitals->GetEnergyShield();
+			CataclysmDamageTypeTest::FScopedArmedAttacker Armed(World, WeaponType);
+			UCataclysmSkillEffects::ApplyHit(Armed.Actor, Defender.Actor, 100.0f);
+			return Before - Defender.Vitals->GetEnergyShield();
+		};
+
+		// A Fist is Blunt, so the shield loses exactly the hit.
+		TestEqual(TEXT("a blunt weapon strips its hit"),
+			ShieldLost(TEXT("Fist")), 1000.0f, 1.0f);
+
+		// A Wand is Magic: 10% more shield stripped per hit.
+		TestEqual(TEXT("a magic weapon strips ten percent more"),
+			ShieldLost(TEXT("Wand")), 1100.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmPiercingIgnoresArmourTest,
+	"Cataclysm.DamageType.APiercingWeaponIgnoresAShareOfArmour")
+{
+	// THE ONE THAT NEEDED ISSUE #520 FIRST. Piercing ignores 20% of the target's
+	// armour, and until armour penetration was a stat there was nothing for that
+	// 20% to be added to. Resolve combines the two the way
+	// `Attacker.total_armor_ignored` in sim/cataclysm_sim/damage.py does.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		// 800 ARMOUR AT TIER 1 IS EXACTLY HALF A HIT, so the figures below are
+		// arithmetic rather than approximate.
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Combat->SetArmor(800.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		{
+			// A Fist is Blunt, so the armour is met in full: 500 lands.
+			CataclysmDamageTypeTest::FScopedArmedAttacker Blunt(World, TEXT("Fist"));
+			UCataclysmSkillEffects::ApplyHit(Blunt.Actor, Defender.Actor, 100.0f);
+			TestEqual(TEXT("a blunt weapon meets the whole armour"),
+				Defender.TakeDamageReading(), 500.0f, 1.0f);
+		}
+
+		{
+			// A Dagger is Piercing: it ignores 20%, so 640 armour is met, which
+			// removes 44.4% and lets 555.6 through.
+			CataclysmDamageTypeTest::FScopedArmedAttacker Piercing(World, TEXT("Dagger"));
+			UCataclysmSkillEffects::ApplyHit(Piercing.Actor, Defender.Actor, 100.0f);
+			TestEqual(TEXT("a piercing weapon ignores a fifth of it"),
+				Defender.TakeDamageReading(), 555.6f, 1.0f);
+		}
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmPiercingAddsToTheStatTest,
+	"Cataclysm.DamageType.APiercingWeaponAddsToTheArmourPenetrationStat")
+{
+	// THEY ADD RATHER THAN ONE WINNING, which is the rule
+	// `Attacker.total_armor_ignored` states and the reason Resolve owns the
+	// combination rather than each caller doing it.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Combat->SetArmor(800.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		CataclysmDamageTypeTest::FScopedArmedAttacker Piercing(World, TEXT("Dagger"));
+		if (UAbilitySystemComponent* Offence =
+				UCataclysmTargeting::AbilitySystemOf(Piercing.Actor))
+		{
+			// 80 FROM GEAR PLUS THE WEAPON'S 20 IS 100, so all the armour is
+			// ignored and the whole hit lands. Either alone would not reach it.
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 80.0f);
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Piercing.Actor, Defender.Actor, 100.0f);
+		TestEqual(TEXT("80 from gear plus a piercing weapon's 20 ignores all of it"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
 	}
 
 	World->DestroyWorld(false);

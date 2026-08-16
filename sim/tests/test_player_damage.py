@@ -142,6 +142,65 @@ def test_which_hand_holds_the_shield_does_not_matter():
         pytest.approx(pd.damage_per_hit(8, (pd.UNARMED_WEAPON, "Axe")))
 
 
+# --------------------------------------------------------------------------
+# Which sub-type a hit carries. Issue #639.
+# --------------------------------------------------------------------------
+
+def test_a_single_weapon_carries_its_own_sub_type():
+    assert pd.subtype_of("Axe") == "Slashing"
+    assert pd.subtype_of("Dagger") == "Piercing"
+    assert pd.subtype_of("Wand") == "Magic"
+    assert pd.subtype_of("Fist") == "Blunt"
+    assert pd.subtype_of("Greatsword") == "Slashing"
+
+
+def test_a_matched_pair_carries_that_sub_type_and_a_mixed_one_carries_none():
+    """THE RULE, set by the project owner on 2026-08-16. Every weapon actually
+    swung has to agree, because this model blends two weapons into ONE swing --
+    base damage summed, attack speed averaged -- and a single swing cannot be
+    both Slashing and Magic.
+
+    Mixing sub-types is how a player carries more damage types at once, which
+    the design document calls the primary route to multiclassing. Giving a mixed
+    pair both bonuses would make mixing strictly better and matching pointless;
+    costing it the sub-type makes the two a real trade.
+    """
+    assert pd.subtype_of(("Axe", "Sword")) == "Slashing"
+    assert pd.subtype_of(("Dagger", "Crossbow")) == "Piercing"
+    assert pd.subtype_of(("Axe", "Wand")) == pd.NO_SUBTYPE
+
+
+def test_the_pair_is_still_unordered():
+    """No primary hand. The ruling of 2026-08-15 that "there is no offhand
+    position" stands, and a rule that read one weapon rather than both would
+    have reversed it."""
+    assert pd.subtype_of(("Axe", "Wand")) == pd.subtype_of(("Wand", "Axe"))
+    assert pd.subtype_of(("Axe", "Sword")) == pd.subtype_of(("Sword", "Axe"))
+
+
+def test_a_shield_does_not_decide_the_sub_type():
+    """A Shield's own sub-type is Blunt, so counting it would take the slashing
+    bonus away from a sword-and-board character for holding something they never
+    swing. It falls out of `armed_weapons_in` rather than a rule about shields:
+    a Shield grants no attack damage, so it is not swung."""
+    assert af.base_named(pd.UNARMED_WEAPON).sub_type == "Blunt"
+    assert pd.subtype_of(("Axe", pd.UNARMED_WEAPON)) == "Slashing"
+    assert pd.subtype_of((pd.UNARMED_WEAPON, "Axe")) == "Slashing"
+    assert pd.subtype_of(("Axe", pd.UNARMED_WEAPON)) == pd.subtype_of("Axe")
+
+
+def test_every_weapon_sub_type_is_one_the_damage_model_knows():
+    """A sub-type the damage model does not know would be refused by
+    `damage.Attacker`, which raises on an unknown one. This is what stops the
+    Item Bases sheet and the mitigation order drifting apart."""
+    from cataclysm_sim import damage as dm
+
+    for base in af.ITEM_BASES:
+        if isinstance(base, af.WeaponBase):
+            assert base.sub_type in dm.WEAPON_SUBTYPES, base.name
+    assert pd.NO_SUBTYPE in dm.WEAPON_SUBTYPES
+
+
 def test_a_loadout_of_something_that_is_not_a_weapon_is_refused():
     with pytest.raises(ValueError, match="not something a hand can hold"):
         pd.damage_per_hit(8, ("Helm",))

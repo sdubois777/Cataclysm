@@ -53,6 +53,21 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	/** Strips 10% more energy shield per hit. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsMagic = false;
+
+	/**
+	 * Ignores a further share of the defender's armor, on top of ArmorPenetration.
+	 *
+	 * A FLAG RATHER THAN A NUMBER ADDED BY THE CALLER, so the combination lives
+	 * in `Resolve` where the rest of the mitigation order lives. That mirrors
+	 * `Attacker.total_armor_ignored` in `sim/cataclysm_sim/damage.py`, which adds
+	 * `PIERCING_ARMOR_IGNORED` to whatever the attacker's own stat holds and
+	 * clamps the sum. A caller adding the 20% itself would put the same rule in
+	 * as many places as there are callers.
+	 *
+	 * Issue #639.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsPiercing = false;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */
@@ -112,6 +127,15 @@ public:
 
 	/** Slashing against health, and magic against energy shield. */
 	static constexpr float SubtypeBonus = 10.0f;
+
+	/**
+	 * A piercing weapon ignores this share of the defender's armor, on top of
+	 * whatever the attacker's own armour penetration stat holds.
+	 *
+	 * Mirrors `PIERCING_ARMOR_IGNORED` in `sim/cataclysm_sim/damage.py`, and the
+	 * Weapon Sub-Types table it comes from. Issue #639.
+	 */
+	static constexpr float PiercingArmorIgnored = 20.0f;
 
 	/** Seconds after taking damage before an energy shield starts refilling. */
 	static constexpr float EnergyShieldRechargeDelay = 3.0f;

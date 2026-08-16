@@ -217,7 +217,14 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// 3. Armor, after whatever share of it the attacker ignores.
 	if (Combat)
 	{
-		const float Ignored = FMath::Clamp(Hit.ArmorPenetration, 0.0f, 100.0f);
+		// THE ATTACKER'S OWN STAT PLUS WHAT THE WEAPON IGNORES, clamped once at the
+		// end. Mirrors `Attacker.total_armor_ignored` in
+		// `sim/cataclysm_sim/damage.py`: gear and sub-type add, and the sum is what
+		// the armour step sees. Issue #639 gave the sub-type half somewhere to
+		// arrive from; issue #520 gave the gear half an attribute to come from.
+		const float FromWeapon = Hit.bIsPiercing ? PiercingArmorIgnored : 0.0f;
+		const float Ignored =
+			FMath::Clamp(Hit.ArmorPenetration + FromWeapon, 0.0f, 100.0f);
 		const float Armor = Combat->GetArmor() * (1.0f - Ignored / 100.0f);
 		Damage *= 1.0f - ArmorReduction(Armor, Tier) / 100.0f;
 	}

@@ -20,6 +20,76 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — A hit's weapon sub-type is the one every swung weapon agrees on
+
+**Affects:** `Cataclysm_GDD_v2.md`, the Weapon Sub-Types subsection. Applied: one
+new paragraph. Closes issue #639, except for blunt.
+
+### What was wrong
+
+`FCataclysmIncomingHit` carries `bIsSlashing` and `bIsMagic`, and
+`UCataclysmDamageCalculation::Resolve` applies both correctly: slashing deals 10%
+more to health, magic strips 10% more energy shield. **Neither was ever set.**
+`FCataclysmItemBaseRow::SubType` holds a sub-type for all fourteen weapons and
+`UCataclysmWeaponSlotsComponent` knows which weapon is equipped, and nothing
+joined the two at the moment of a hit.
+
+### The decision: every weapon actually swung has to agree
+
+**Asked of the project owner on 2026-08-16, and their first answer was a primary
+hand** — declare the right hand primary and let its weapon decide. Checking that
+against the documents changed it, which is why the check happened:
+
+- `sim/tests/test_player_damage.py` carries a test named
+  `test_which_hand_holds_the_shield_does_not_matter`, whose docstring reads
+  "There is no offhand position. A Shield is one of the one-handed weapons, so
+  the pair is unordered and both spellings are the same loadout." That was the
+  owner's own ruling of **2026-08-15**, made after a day spent modelling a shield
+  as a separate offhand category and then removing it.
+- The engine could not read a right hand anyway.
+  `UCataclysmWeaponSlotsComponent` equips one weapon type and nothing tracks two.
+
+**The rule chosen instead: a hit's sub-type is the one every weapon actually
+swung agrees on, and there is none if they disagree.** Two Slashing weapons give
+a slashing hit; an Axe with a Wand gives no sub-type at all.
+
+**Why that rather than both applying.** Mixing sub-types is how a player carries
+more damage types at once, which the Dual Wielding section calls the primary route
+to multiclassing. Giving a mixed pair both bonuses would make mixing strictly
+better and matching pointless. Costing it the sub-type makes the two a real trade:
+two damage types, or one sub-type bonus.
+
+**Why it fits the model.** This project blends two weapons into ONE swing — base
+damage summed, attack speed averaged — so there is no first weapon for a swing to
+belong to. A primary hand would have been the odd rule out. Most games in the
+genre alternate hands instead, and this one already decided not to.
+
+**A shield does not vote**, and that falls out of `armed_weapons_in` rather than
+from a rule about shields. Its own sub-type is Blunt, so counting it would take
+the slashing bonus away from a sword-and-board character for holding something
+they never swing.
+
+### Piercing adds, it does not replace
+
+A piercing weapon ignores 20% of a target's armour **on top of** whatever the
+attacker's armour penetration stat holds, and `Resolve` owns the combination the
+way `Attacker.total_armor_ignored` in `sim/cataclysm_sim/damage.py` does. A
+caller adding the 20% itself would put the same rule in as many places as there
+are callers.
+
+This half needed issue #520 first: until armour penetration was a stat, there was
+nothing for the 20% to be added to.
+
+### Blunt is not built, and that is stated rather than hidden
+
+Blunt's effect is a 10% chance to stun for 0.75 seconds. **Nothing in the project
+rolls a chance to stun on an ordinary hit** — `UCataclysmSkillEffects::ApplyStun`
+applies a stun that is already decided. The anti-stun-lock rules would all apply
+and `ApplyStun` already enforces them, so what is missing is the roll and the
+place to make it. Issue #639 records what building it takes.
+
+---
+
 ## 2026-08-16 — Armor Penetration is a character sheet stat, and the forty-sixth
 
 **Affects:** `Cataclysm_GDD_v2.md`, the Character Sheet subsection of section IV.
