@@ -1432,11 +1432,12 @@ def _enemy_stats():
     Imported here rather than at the top of the file so that generating the
     workbook tables does not depend on the simulation package being importable.
 
-    IMPORTING IT RUNS ITS OWN CHECKS. enemy_stats.py calls four self-checks at
-    module scope: every archetype deals a real damage type, none can reach the
-    70% resistance the design caps at, every body has a width, and every
-    creature can turn. So a model that contradicts itself raises here rather
-    than being written out to a CSV.
+    IMPORTING IT RUNS ITS OWN CHECKS. enemy_stats.py calls five self-checks at
+    module scope: every archetype deals a real damage type, none declares more
+    resistance than the 70% cap is worth, every body has a width, every creature
+    can turn, and no creature's defensive layers combine past what a geared
+    player stops. So a model that contradicts itself raises here rather than
+    being written out to a CSV.
     """
     if str(SIM_ROOT) not in sys.path:
         sys.path.insert(0, str(SIM_ROOT))

@@ -359,20 +359,24 @@ def test_the_import_time_check_on_that_actually_fires():
         es.ARCHETYPES.update(real)
 
 
-def test_no_enemy_can_resist_its_way_to_immunity():
-    """The design says no combination of defensive layers reaches immunity.
-    Enemy resistance is one unbounded number now, so nothing else caps it."""
+def test_every_declared_resistance_is_worth_what_it_says():
+    """The failure this guards against is a figure that reads as smaller than it
+    is written. `damage.effective_resistance` caps at 70%, so an archetype at 95%
+    would behave exactly as one at 70% and the extra 25 points would appear in a
+    table and change nothing. Asserted by resolving the figure rather than by
+    repeating the constant, so it fails if the cap moves."""
     for kind in es.ARCHETYPES.values():
-        assert kind.resistance < 70.0, kind.name
+        assert dmg.effective_resistance(kind.resistance, 0.0) == kind.resistance, \
+            f"{kind.name}'s {kind.resistance}% resistance is not worth {kind.resistance}%"
 
 
-def test_that_immunity_check_actually_fires():
+def test_the_resistance_cap_check_actually_fires():
     real = dict(es.ARCHETYPES)
     es.ARCHETYPES["Tainted"] = es.Archetype(name="Tainted", role="test",
                                             resistance=95.0)
     try:
         with pytest.raises(AssertionError, match="the 70%"):
-            es._check_no_enemy_can_become_immune()
+            es._check_no_enemy_resists_more_than_the_cap_allows()
     finally:
         es.ARCHETYPES.clear()
         es.ARCHETYPES.update(real)
@@ -634,6 +638,120 @@ def test_the_fraction_matches_resolving_a_hit_against_the_enemy_directly():
         landed = dmg.average_damage_taken(
             dmg.Attacker(damage=probe, damage_type=e.damage_type), against)
         assert landed / probe == pytest.approx(e.damage_taken_fraction())
+
+
+# --------------------------------------------------------------------------
+# The ceiling on the combination. Issue #483
+# --------------------------------------------------------------------------
+
+def test_no_enemys_layers_combine_past_what_the_player_stops():
+    """The rule the design document states is about the COMBINATION: "No
+    combination of these layers reaches immunity." Every archetype is inside
+    every per-field cap and that is not the same statement."""
+    for name in es.ARCHETYPES:
+        for rarity in ORDER:
+            most = es.most_damage_stopped(name, rarity)
+            assert most < es.ENEMY_MITIGATION_CEILING, f"{name} at {rarity}"
+
+
+def test_the_per_field_caps_alone_do_not_enforce_the_ceiling():
+    """The reason the check had to change. Armour caps at 75% and resistance at
+    70%, so a creature with both at their caps stops 92.5% of a hit with neither
+    field over its own limit. No per-field check can see that."""
+    both_at_their_caps = 100.0 * (
+        1.0 - (1.0 - dmg.ARMOR_REDUCTION_CAP / 100.0)
+        * (1.0 - dmg.RESISTANCE_CAP / 100.0))
+    assert both_at_their_caps == pytest.approx(92.5)
+    assert both_at_their_caps > es.ENEMY_MITIGATION_CEILING
+
+
+def test_the_ceiling_check_actually_fires():
+    """Broken with an archetype every per-field check passes: 60% resistance is
+    under the 70% cap, and armour has no per-archetype limit at all. Only the
+    combination is out of bounds, so this is the case the old check could not
+    have caught."""
+    real = dict(es.ARCHETYPES)
+    es.ARCHETYPES["Tainted"] = es.Archetype(name="Tainted", role="test",
+                                            resistance=60.0, armor_share=1.0)
+    try:
+        es._check_no_enemy_resists_more_than_the_cap_allows()   # this one passes
+        with pytest.raises(AssertionError, match="could stop"):
+            es._check_no_enemy_can_become_immune()
+    finally:
+        es.ARCHETYPES.clear()
+        es.ARCHETYPES.update(real)
+
+
+def test_the_two_checks_are_different_rules_and_neither_implies_the_other():
+    """One archetype passes each check and fails the other, so keeping both is
+    not belt and braces."""
+    resists_past_the_cap = es.Archetype(name="Resister", role="test",
+                                        resistance=95.0, armor_share=0.0)
+    stops_too_much = es.Archetype(name="Wall", role="test",
+                                  resistance=60.0, armor_share=1.0)
+
+    assert (dmg.effective_resistance(resists_past_the_cap.resistance, 0.0)
+            != resists_past_the_cap.resistance)
+    assert es.most_damage_stopped(resists_past_the_cap, "Common") < \
+        es.ENEMY_MITIGATION_CEILING
+
+    assert (dmg.effective_resistance(stops_too_much.resistance, 0.0)
+            == stops_too_much.resistance)
+    assert es.most_damage_stopped(stops_too_much, "Common") >= \
+        es.ENEMY_MITIGATION_CEILING
+
+
+@pytest.mark.parametrize("name", sorted(es.ARCHETYPES))
+def test_the_bound_is_never_below_what_a_real_creature_stops(name):
+    """`most_damage_stopped` is an upper bound and the guard is only worth
+    anything if it really bounds. Checked against real stat blocks at every tier
+    and rarity, whose armour comes from the score rather than from the cap."""
+    bound = es.most_damage_stopped(name, "Common")
+    for tier in range(1, 9):
+        for rarity in ORDER:
+            e = es.stats_on_floor(rarity, tier, "Cataclysm", kind=name)
+            real = 100.0 * (1.0 - e.damage_taken_fraction())
+            assert real <= bound + 1e-9, f"{name} {rarity} tier {tier}"
+
+
+def test_the_bound_is_reached_rather_than_merely_approached():
+    """An upper bound nothing gets near would say nothing. A score large enough
+    lands within a hundredth of a point of it, which is what makes the bound the
+    right thing to check rather than a sampled tier."""
+    huge = es.stats_for("Cataclysm Boss", 1e7, "Abyssal Warden", tier=1)
+    assert 100.0 * (1.0 - huge.damage_taken_fraction()) == pytest.approx(
+        es.most_damage_stopped("Abyssal Warden", "Cataclysm Boss"), abs=0.01)
+
+
+def test_an_archetype_that_never_gets_armour_is_bounded_without_it():
+    """The Imp's armour share is zero, so no score gives it any armour and its
+    bound is its evasion alone. Reading it at the armour cap would say 81.25%
+    and forbid a creature the design has no problem with."""
+    assert es.archetype("Imp").armor_share == 0.0
+    assert es.most_damage_stopped("Imp", "Common") == pytest.approx(25.0)
+
+
+def test_the_worst_creature_in_the_slice_is_the_one_the_design_calls_resistant():
+    """The Abyssal Warden is the design's deliberate maximum, so it should be
+    what sits closest to the ceiling, and it should still fit under it."""
+    by_bound = sorted(es.ARCHETYPES,
+                      key=lambda n: es.most_damage_stopped(n, "Herald"))
+    assert by_bound[-1] == "Abyssal Warden"
+    assert es.most_damage_stopped("Abyssal Warden", "Herald") == pytest.approx(
+        83.75)
+
+
+def test_the_ceiling_is_not_reached_by_anything_the_slice_actually_fights():
+    """Reported so the headroom is a number rather than an impression. If this
+    ever gets tight, the enemy design has moved and the ceiling is the thing to
+    argue about rather than to quietly raise."""
+    met_at = (("Imp", "Common"), ("Hellhound", "Common"), ("Succubus", "Elite"),
+              ("Brute", "Elite"), ("Corrupted Sentinel", "Legendary"),
+              ("Abyssal Warden", "Herald"), ("Gatekeeper", "Cataclysm Boss"))
+    worst = max(100.0 * (1.0 - at_tier_eight(rarity, name).damage_taken_fraction())
+                for name, rarity in met_at)
+    assert worst < es.ENEMY_MITIGATION_CEILING - 10.0, (
+        f"the hardest creature met stops {worst:.1f}%")
 
 
 # --------------------------------------------------------------------------
