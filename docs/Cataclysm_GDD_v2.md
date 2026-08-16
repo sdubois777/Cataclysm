@@ -2072,7 +2072,19 @@ Halving is also the only option under which no skill ever visibly does nothing. 
 
   
 
-**What offensive crowd control gear exists is not yet decided.** Cripple is the only crowd control effect available as an affix today. Stun reaches the game through the Blunt weapon sub-type, through four weapon skills, and through two enchantments, but no affix grants a chance to stun and none scales a stun's duration. Issues #298 and #299 carry these.
+**What offensive crowd control gear exists was settled on 2026-08-16.** Two crowd control effects are available as affixes: Chance to cripple, which slows, and Chance to stun, which is new. **There is no affix that scales a stun's duration, and there will not be one.**
+
+  
+
+**Chance to stun is the only lever, and it covers both of the things a stun has.** Up to 100% it raises how often a stun lands. Past 100% it lengthens the stun instead of being wasted, to a cap of 3 seconds. So one affix raises whichever of the two a build has not yet filled, in that order, and a duration affix would be a second lever on a number that already has one. That is the same argument that gave Cripple, Weaken, Shred and Madness one affix each rather than three.
+
+  
+
+**A duration affix would also have a cliff, which is a poor shape for an affix.** A stunned target is immune for 5 seconds, so duration past that point is worth exactly nothing — the target was not going to be stunned again in that window anyway. A player who rolled past the cliff would have wasted the roll and nothing in the interface would say so.
+
+  
+
+**Path of Exile sells increased stun duration and can, because its window is narrower than this one.** There, only unique bosses become immune while stunned and for 4 seconds after; ordinary monsters have no such window, so there is no cliff to run into. Here the window applies to everything that can be stunned at all. That difference is the whole argument, so it is written down rather than only its conclusion.
 
 **A slow's position is settled and is not among those open questions**, and neither is a knockdown's or a displacement's. All three are stated above: a slow is not a stun and this rule does not cover it, a knockdown is covered in full, and a displacement is not covered but is limited by halving its distance on repeat. This paragraph used to list a slow and a knockback as open as well, which made the document say two things at once about each.
 

@@ -20,6 +20,64 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — No affix scales a stun's duration, because chance already does
+
+**Affects:** `Cataclysm_GDD_v2.md`, the crowd control gear paragraph of the Stun
+and Anti-Stun-Lock section. Applied: the "not yet decided" paragraph is replaced.
+Closes issue #299.
+
+### The question and the answer
+
+Issue #299 asked whether an affix scales a stun's duration, and laid out three
+defensible answers: no affix, a capped one, or one paired with a wider immunity
+window.
+
+**The answer is the first: there is no duration affix and there will not be one.**
+Confirmed by the project owner on 2026-08-16, immediately after they settled the
+sibling question #298.
+
+### Two arguments, and the second survives the first being wrong
+
+**Chance to stun is already the second lever.** Issue #298 settled that chance
+past 100% lengthens the stun rather than being wasted, to a cap of 3 seconds. So
+one affix raises whichever of the two things a stun has that a build has not yet
+filled, in that order, and a duration affix would be a second lever on a number
+that already has one. That is the same reasoning that gave Cripple, Weaken, Shred
+and Madness one affix each rather than three, recorded under issue #300.
+
+**A duration affix would have a cliff, which is a poor shape for an affix.** A
+stunned target is immune for 5 seconds, so duration past that point is worth
+exactly nothing — nothing was going to stun it again inside that window anyway. A
+player who rolled past the cliff would have wasted the roll and nothing in the
+interface would say so. **This argument does not depend on the first**: if chance
+ever stopped lengthening a stun, this would still be a reason to have no duration
+affix.
+
+### The genre argues the other way, and the difference is the whole point
+
+**Path of Exile sells increased stun duration as a common modifier.** It can,
+because its immunity window is much narrower than this one: only unique bosses
+there become immune while stunned and for 4 seconds after, and ordinary monsters
+have no such window at all. So there is no cliff to run into.
+
+Here the window applies to everything that can be stunned. That difference is the
+argument, so it is written into the design document rather than only the
+conclusion it supports — the same shape the weakening ailments decision used when
+the genre disagreed with it.
+
+Sources: [Stun, Path of Exile Wiki](https://www.poewiki.net/wiki/Stun),
+[Stun, Path of Exile Wiki (Fandom)](https://pathofexile.fandom.com/wiki/Stun).
+
+### What would reverse it
+
+If the immunity window ever went, or became narrow enough that a longer stun
+still took real time away from a target, the cliff would go with it and a
+duration affix would become a reasonable thing to sell.
+`tools/tests/test_stun_scales_by_chance_alone.py` checks the cap is still below
+the window, so that would be noticed rather than assumed.
+
+---
+
 ## 2026-08-16 — An affix grants a chance to stun, and chance past certainty becomes duration
 
 **Affects:** `Cataclysm_GDD_v2.md`, the effect magnitude table and the Weapon

@@ -278,10 +278,22 @@ def test_the_document_says_a_designed_stun_skips_the_threshold(gdd):
             "threshold") in gdd
 
 
-def test_the_document_records_that_point_four_is_still_open(gdd):
+def test_the_document_records_that_point_four_is_now_answered(gdd):
     """The project owner answered three of the issue's four questions and
-    deferred the fourth. A document that reads as complete would lose that."""
-    assert "not yet decided" in gdd
+    deferred the fourth. The fourth was which crowd control affixes exist, and
+    it was answered on 2026-08-16 by issues #298 and #299.
+
+    THIS USED TO ASSERT "not yet decided" WAS IN THE DOCUMENT, which was right
+    while it was true. A document that still deferred a settled question would
+    send the next reader to re-ask it.
+    """
+    assert "not yet decided" not in gdd, (
+        "the design document defers a crowd control gear question again. Both "
+        "were answered on 2026-08-16: an affix grants a chance to stun (#298) "
+        "and no affix scales a stun's duration (#299).")
+    assert "settled on 2026-08-16" in gdd, (
+        "the design document no longer records when the crowd control gear "
+        "question was settled, so it reads as though it never was.")
 
 
 # --- What the rule covers, said once ----------------------------------------
@@ -312,15 +324,23 @@ def test_the_open_questions_are_about_gear_and_not_about_slows(gdd):
 
     THIS USED TO ASSERT THAT KNOCKBACK WAS OPEN, when the only settled thing was
     that a slow is not covered. Issue #297 then settled knockback too, by
-    splitting it: a knockdown is covered in full and a displacement is not. So
-    the sentence this checked is gone, and what remains open in this paragraph is
-    only which crowd control affixes exist, which is #298 and #299.
+    splitting it: a knockdown is covered in full and a displacement is not.
+
+    AND THE PARAGRAPH HAS NOTHING OPEN IN IT AT ALL SINCE 2026-08-16, when
+    issues #298 and #299 settled which crowd control affixes exist. So this
+    checks the paragraph states what those affixes ARE, where it used to check
+    it stated that there were none.
     """
     assert "knockback carries the same threshold and window as stun" not in gdd, (
         "the design document says knockback's position is open. It was settled "
         "by issue #297: a knockdown is covered by the rule, a displacement is "
         "not.")
-    assert "no affix grants a chance to stun and none scales a stun's duration" in gdd
+    assert "no affix grants a chance to stun" not in gdd, (
+        "the design document says no affix grants a chance to stun. One does, "
+        "added by issue #298 on 2026-08-16.")
+    assert "There is no affix that scales a stun's duration" in gdd, (
+        "the design document no longer states that no affix scales a stun's "
+        "duration, which issue #299 decided on 2026-08-16.")
 
 
 def test_the_reason_a_slow_is_separate_is_still_in_the_document(gdd):
