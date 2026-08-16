@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -229,11 +230,31 @@ void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) con
 		return;
 	}
 
+	// HALVED FOR EACH DISPLACEMENT THE TARGET HAS ALREADY TAKEN INSIDE THE
+	// WINDOW. The design's limit on repeated displacement, decided on issue #302
+	// and implemented on issue #628: the full distance, then half, then a
+	// quarter, resetting once 5 seconds pass with no displacement at all. Three
+	// shoves inside the window move a target seven metres in total rather than
+	// twelve, which is what stops it being held at the far end of a room.
+	//
+	// ASKED OF THE TARGET, because the count belongs to the target rather than to
+	// this skill: the previous shove was usually a different skill and often a
+	// different actor. It is kept on the ability system component because that is
+	// what everything hittable has -- being hit at all goes through
+	// UCataclysmSkillEffects::ApplyHit, which requires one.
+	float Share = 1.0f;
+	if (UCataclysmAbilitySystemComponent* TargetAbilities =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Target)))
+	{
+		Share = TargetAbilities->TakeNextDisplacementShare();
+	}
+
 	// A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has
 	// no physics body and a knockback that silently did nothing would look
 	// exactly like a knockback. Swept, so a shove into a wall stops at the wall.
 	Target->AddActorWorldOffset(
-		Away.GetSafeNormal() * Params.KnockbackCm, /*bSweep=*/true);
+		Away.GetSafeNormal() * Params.KnockbackCm * Share, /*bSweep=*/true);
 }
 
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Location)

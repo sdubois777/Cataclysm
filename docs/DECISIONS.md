@@ -20,6 +20,68 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — Repeated displacement halves, and the count lives on the target
+
+**Affects:** no design document. This records **implementation catching up with a
+decision already made** on issue #302, plus one choice about where the count
+lives. Applied. Closes issue #628.
+
+### What was missing
+
+`docs/Cataclysm_GDD_v2.md` has stated since issue #302 that each displacement
+applied to a target already displaced within the last 5 seconds moves it half as
+far as the one before, and that the count resets once 5 seconds pass with no
+displacement at all. **Nothing implemented it, in either direction.** Every shove
+moved the full stated distance however many had just landed, so repeated
+displacement could hold a target at the far end of a room — which is the exact
+failure the rule was written to prevent.
+
+### Where the count lives, and why
+
+**On `UCataclysmAbilitySystemComponent`, which everything hittable has.** Three
+things pointed away from the skill:
+
+- **The count belongs to the target, not the skill.** The second shove is usually
+  a different skill and often a different actor, so anything held on the ability
+  instance would count each source separately and never reach the second halving.
+- **It has to cover both directions.** Issue #310 settled that enemies displace
+  the player, so the player is a target too.
+- **The existing per-target state does not fit.** The stun immunity window is a
+  gameplay tag applied for a duration, which gives a flag. This rule needs a
+  count and a timestamp, and a tag gives neither.
+
+**The shared character base was the first choice and was wrong.** It looked right
+— the player, every enemy and every minion derive from it — but a thing can be
+hit without being one of them, which the automation tests demonstrated
+immediately: their targets are bare actors carrying an ability system component
+and nothing else. Being hit at all goes through
+`UCataclysmSkillEffects::ApplyHit`, which requires that component, so the
+component is the real common denominator and the character base was a narrower
+guess that happened to cover the shipping cases.
+
+### The 5 seconds is read from the stun rule rather than written again
+
+`ACataclysmCharacterBase::TakeNextDisplacementShare` reads
+`UCataclysmSkillEffects::StunImmunityWindowSeconds`. The design says so in as many
+words — "It is the stun immunity window, reused rather than a second number to
+remember" — and two copies of a number that measure different things which happen
+to be equal are exactly the kind that drift without anything noticing.
+
+### What is deliberately not there
+
+**No damage threshold, no immunity flag and no boss exemption**, unlike the stun
+rule beside it. A boss is pushed under the same halving as anything else, because
+a boss pushed four metres is still fighting while a boss held still is not a
+fight. That is the whole difference between the two rules and it is why they are
+not one rule with a flag.
+
+**The share never reaches zero.** It halves indefinitely, capped only so the
+exponent stays inside what a float represents. A shove that moved nothing would
+look like a shove that failed, and the design's own reason for choosing halving
+over an immunity flag was that "a halved shove still looks like a shove".
+
+---
+
 ## 2026-08-15 — Knockback is a rider, not a property of one shape
 
 **Affects:** the shapes section of `Cataclysm_GDD_v2.md`; the Weapon Skills sheet
