@@ -20,6 +20,62 @@ applied or still pending.
 
 ---
 
+## 2026-08-16 — An enemy's energy shield is a fraction of its health, and the route for it exists before the creatures do
+
+**Affects:** no design document. This records how a designed number reaches the
+engine, not what the number is. Applied. Closes issue #485.
+
+### What was wrong
+
+The designed energy shield fraction reached `game/Data/EnemyArchetypes.csv` and
+reached the row struct that reads it, and then stopped.
+`ACataclysmEnemyCharacter` had no property for it, and the function that writes an
+enemy's designed figures onto its gameplay attributes never wrote
+`MaxEnergyShield`. Searching that class for "EnergyShield" returned nothing at
+all. **Every enemy in the editor had a shield of zero whatever the design said.**
+
+The layer itself works. An energy shield is step 7 of the eight in
+`UCataclysmDamageCalculation::Resolve` and absorbs before health. The number was
+the only thing missing.
+
+### It is stored as a fraction, not an absolute figure
+
+`stats_for` in `sim/cataclysm_sim/enemy_stats.py` computes the shield as
+`health x energy_shield_fraction`, so the engine now does the same arithmetic from
+the same two inputs. Storing a second absolute number beside the health would be a
+figure that could disagree with it, and the shield would then have two sources.
+
+The consequence is that changing an enemy's health changes its shield, which is
+what the model does too.
+
+### This changes no creature in the game today, and that is stated rather than discovered
+
+Only two of the seven designed slice enemies carry a shield: the Succubus at 0.50
+and the Corrupted Sentinel at 0.35. **Neither has a C++ class.** Only the Brute
+and the Abyssal Warden are built, and both are designed at 0.00.
+
+So what landed is the route, not a balance change. The same situation as the
+Hellhound's knockback under issue #625 two entries down: the design names three
+creatures, two exist, and the third's number is recorded and waiting.
+
+**The route is made self-enforcing rather than left as a note.**
+`tools/tests/test_enemy_energy_shield_reaches_the_engine.py` fails the moment
+either creature's class file appears without setting the fraction, and its failure
+message says which constant to add and where. That is the only moment the number
+can be forgotten, so that is where the check sits.
+
+**A third shielded creature appearing in the design also fails that file**, rather
+than quietly having no route, because the list of shielded archetypes is compared
+against the model rather than written out.
+
+### The Abyssal Warden states its zero explicitly
+
+It already does this for its designed evasion of 0.0, with the reason given
+there: the zero is visibly designed rather than visibly forgotten. Its
+survivability is armour and resistance, which are the highest in the slice.
+
+---
+
 ## 2026-08-16 — The difficulty tier lives on the game mode until a dungeon exists
 
 **Affects:** no design document. This records where a number lives, not what it

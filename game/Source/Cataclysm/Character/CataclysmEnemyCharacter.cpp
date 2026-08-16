@@ -442,6 +442,46 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// no slot to pick and all eight were skipped. Issue #486.
 	ApplyIfHeld(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(),
 				ResistancePercent);
+
+	// THE ENERGY SHIELD, WHICH NOTHING WROTE AT ALL UNTIL ISSUE #485. The
+	// fraction reached the generated archetype table and the row struct that
+	// reads it, and then stopped: there was no property on this class and no
+	// write here, so every enemy in the editor had a shield of zero whatever the
+	// design said. The layer itself works -- it is step 7 of the eight in
+	// UCataclysmDamageCalculation::Resolve -- so the number was the only thing
+	// missing.
+	//
+	// COMPUTED FROM THE FRACTION AND THE MAXIMUM HEALTH, which is the same
+	// arithmetic `stats_for` in sim/cataclysm_sim/enemy_stats.py does:
+	// `health * energy_shield_fraction`. Storing a second absolute number here
+	// would be a figure that could disagree with the health beside it.
+	//
+	// READ BACK OFF THE ATTRIBUTE RATHER THAN FROM StartingMaxHealth, because
+	// this function runs from the setters AND from InitAbilityActorInfo, and a
+	// creature whose health was never set through SetHealth still has the
+	// attribute set's own maximum. Reading the attribute gives the right answer
+	// in both cases; StartingMaxHealth is zero in the second.
+	//
+	// MAXIMUM FIRST, THEN CURRENT, for the same reason the health write above
+	// says: the vital attribute set clamps the current shield to the maximum, so
+	// filling it before raising the maximum would clamp it straight back down.
+	//
+	// NO ZERO CHECK, like the four writes above it and unlike the two at the top.
+	// Five of the seven designed enemies have a fraction of exactly 0.00, so
+	// treating zero as "not configured" would make an unshielded creature
+	// impossible to express.
+	const FGameplayAttribute MaxShield =
+		UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute();
+	if (AbilitySystemComponent->HasAttributeSetForAttribute(MaxShield))
+	{
+		const float Health = AbilitySystemComponent->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float Shield = FMath::Max(0.0f, Health * EnergyShieldFraction);
+
+		AbilitySystemComponent->SetNumericAttributeBase(MaxShield, Shield);
+		AbilitySystemComponent->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Shield);
+	}
 }
 
 void ACataclysmEnemyCharacter::ApplyIfHeld(const FGameplayAttribute& Attribute,
@@ -468,6 +508,17 @@ void ACataclysmEnemyCharacter::SetArmour(float NewArmour)
 	}
 
 	StartingArmour = NewArmour;
+	ApplyStartingAttributes();
+}
+
+void ACataclysmEnemyCharacter::SetEnergyShieldFraction(float NewFraction)
+{
+	if (NewFraction < 0.0f)
+	{
+		return;
+	}
+
+	EnergyShieldFraction = NewFraction;
 	ApplyStartingAttributes();
 }
 

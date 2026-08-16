@@ -218,6 +218,25 @@ public:
 	void SetArmour(float NewArmour);
 
 	/**
+	 * Set how large an energy shield this creature carries, as a fraction of its
+	 * maximum health, and rewrite the shield from it.
+	 *
+	 * A SETTER RATHER THAN ONLY A PROPERTY, so a spawner can supply the figure
+	 * the way it supplies health, damage and armour. Issue #355 publishes the
+	 * archetype numbers as game data, after which the spawner reads
+	 * `EnergyShieldFraction` off a row and calls this.
+	 *
+	 * ORDER DOES NOT MATTER AGAINST `SetHealth`. Both end in
+	 * `ApplyStartingAttributes`, which recomputes the shield from whatever the
+	 * maximum health is at that moment, so setting the fraction before the health
+	 * gives the same answer as setting it after.
+	 *
+	 * A negative fraction is refused, exactly as a negative armour is.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetEnergyShieldFraction(float NewFraction);
+
+	/**
 	 * Which rung of the rarity ladder this enemy was spawned at.
 	 *
 	 * THE STEP FROM `game/Data/EnemyRarities.csv`, whose rows are generated from
@@ -378,6 +397,36 @@ public:
 	float EvasionPercent = 0.0f;
 
 	/**
+	 * How large an energy shield this creature carries, as a fraction of its
+	 * maximum health.
+	 *
+	 * A FRACTION RATHER THAN AN ABSOLUTE FIGURE, because that is what the design
+	 * holds. `Archetype.energy_shield_fraction` in
+	 * `sim/cataclysm_sim/enemy_stats.py` is the same field, and that model
+	 * computes the shield as `health x energy_shield_fraction`, so
+	 * `ApplyStartingAttributes` does the same arithmetic from the same two
+	 * inputs. Storing a second absolute number would be a figure that could
+	 * disagree with the health beside it.
+	 *
+	 * NOTHING COULD EXPRESS ONE AT ALL UNTIL ISSUE #485. The fraction reached
+	 * `game/Data/EnemyArchetypes.csv` and reached `FCataclysmEnemyArchetypeRow`
+	 * in `game/Source/Cataclysm/Data/CataclysmDataRows.h`, and then stopped:
+	 * there was no property here and `ApplyStartingAttributes` never wrote
+	 * `MaxEnergyShield`, so every enemy in the editor had a shield of zero
+	 * whatever the design said.
+	 *
+	 * TWO OF THE SEVEN SLICE ENEMIES NEED IT AND NEITHER IS BUILT. The Succubus
+	 * is designed at 0.50 and the Corrupted Sentinel at 0.35; the other five,
+	 * including both creatures that do have a class, are designed at 0.00. So
+	 * this changes no creature in the game today and is what lets the two that
+	 * need it have one the moment they exist. Issue #39 builds them, and
+	 * `tools/tests/test_enemy_energy_shield_reaches_the_engine.py` fails the
+	 * moment either class appears without setting this.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy", meta = (ClampMin = "0.0"))
+	float EnergyShieldFraction = 0.0f;
+
+	/**
 	 * What one attack deals, as a percent of its own attack damage.
 	 *
 	 * 100, because the Skill Slots sheet of the design workbook gives the basic
@@ -391,11 +440,14 @@ protected:
 	virtual void InitAbilityActorInfo() override;
 
 	/**
-	/**
 	 * Writes one attribute, if the ability system is holding it yet.
 	 *
-	 * Thirteen attributes are written on spawn and every one needs the same
-	 * guard, so it is a helper rather than thirteen copies of the same `if`.
+	 * Ten attributes are written on spawn and every one needs the same guard, so
+	 * it is a helper rather than ten copies of the same `if`.
+	 *
+	 * IT SAID THIRTEEN UNTIL 2026-08-16, and that had been true: eight of them
+	 * were the eight typed resistances, which issue #486 collapsed into one
+	 * all-damage figure, and issue #485 then added the two energy shield writes.
 	 */
 	void ApplyIfHeld(const struct FGameplayAttribute& Attribute, float Value);
 

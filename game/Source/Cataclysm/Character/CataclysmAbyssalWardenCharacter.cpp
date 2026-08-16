@@ -141,6 +141,7 @@ ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
 	CritChancePercent = DesignedCritChancePercent;
 	CritMultiplierPercent = DesignedCritMultiplierPercent;
 	EvasionPercent = DesignedEvasionPercent;
+	EnergyShieldFraction = DesignedEnergyShieldFraction;
 	NoticeRadiusCm = WardenNoticeRadiusCm;
 
 	GetCapsuleComponent()->InitCapsuleSize(WardenCapsuleRadius,
