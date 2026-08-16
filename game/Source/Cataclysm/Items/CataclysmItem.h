@@ -329,4 +329,26 @@ public:
 	static float WeaponDamageForType(const UDataTable* BaseTable,
 									 const FString& WeaponType,
 									 int32 GearLevel);
+
+	/**
+	 * How many times a second a weapon type swings.
+	 *
+	 * NOT AN IMPLICIT, UNLIKE THE DAMAGE ABOVE, which is why this reads its own
+	 * column rather than searching the two implicit slots. A weapon's rate is an
+	 * intrinsic property of the base, listed apart from its modifiers -- Path of
+	 * Exile and Last Epoch both treat it that way, and FCataclysmItemBaseRow
+	 * says so on the field itself.
+	 *
+	 * NO GEAR LEVEL, ALSO UNLIKE THE DAMAGE. A weapon does not swing faster for
+	 * being a better example of itself. Increased attack speed comes from
+	 * affixes, which multiply this base -- and multiplied nothing until issue
+	 * #647, because nothing ever wrote this onto a character.
+	 *
+	 * @return 0 when the table is missing or the type is not a weapon. Zero
+	 *         means "no rate at all", which the automatic basic attack reads as
+	 *         never swinging rather than as swinging infinitely fast.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float WeaponAttackSpeedForType(const UDataTable* BaseTable,
+										  const FString& WeaponType);
 };

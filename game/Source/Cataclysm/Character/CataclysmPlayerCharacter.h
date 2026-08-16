@@ -234,4 +234,35 @@ private:
 	 *  instead of at the world origin. */
 	FVector RespawnLocation = FVector::ZeroVector;
 	FRotator RespawnRotation = FRotator::ZeroRotator;
+
+	// --- The automatic basic attack. Issues #36 and #647 -------------------
+	//
+	// THE DESIGN SAYS IT FIRES BY ITSELF: "The basic attack is on no key. It
+	// fires automatically... Nothing the player presses triggers it", and "The
+	// Basic Attack is automatic, so the weapon's attack speed sets its rate."
+	//
+	// EVERY JUDGEMENT LIVES IN UCataclysmBasicAttack so it can be tested. What
+	// is here is only the clock, and the clock re-arms itself after each attempt
+	// rather than looping, because the interval is the equipped weapon's attack
+	// speed and that changes when the weapon does.
+
+	/** Makes one attempt to swing, then re-arms itself. */
+	void BasicAttackTick();
+
+	/** Re-arms BasicAttackTimer for the interval the weapon currently sets. */
+	void ScheduleNextBasicAttack(float SecondsBetweenSwings);
+
+	/** Counts down to the next attempt to swing. Never loops; see above. */
+	FTimerHandle BasicAttackTimer;
+
+	/**
+	 * How long to wait before looking again when the character has no rate at
+	 * all -- holding nothing, or holding something that states no attack speed.
+	 *
+	 * A RE-CHECK RATHER THAN STOPPING, because equipping a weapon has to start
+	 * the basic attack without anything else having to remember to start it. A
+	 * clock that stopped would mean the first weapon equipped after spawning
+	 * never swung.
+	 */
+	static constexpr float NoWeaponRecheckSeconds = 0.5f;
 };
