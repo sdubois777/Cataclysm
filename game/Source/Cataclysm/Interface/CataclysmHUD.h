@@ -128,4 +128,24 @@ private:
 
 	/** How thick the dark backing sticks out past the fill, on every side. */
 	static constexpr float BarBackingInsetPx = 2.0f;
+
+public:
+	/**
+	 * What every piece of text this draws is scaled by, on top of its own size.
+	 *
+	 * A BASE SIZE RATHER THAN A SIZE PER CALLER. It multiplies the floating
+	 * damage numbers and the player's own health and mana figures together,
+	 * because the project owner's complaint after playing was that the font is
+	 * "too small in general" rather than about one of them. Issue #668.
+	 *
+	 * PUBLIC SO A TEST CAN READ IT. Nothing here can be judged by drawing: the
+	 * automation tests run with -nullrhi and AHUD::PostRender checks
+	 * FApp::CanEverRender() before calling DrawHUD, so every test in
+	 * CataclysmCombatOverlayTests.cpp is a static function over plain numbers.
+	 *
+	 * IT IS A PLACEHOLDER AND ONLY PLAY SETTLES IT, the same as the bar sizes
+	 * above. 1.0 was measured against a real fight and reported as too small; 1.6
+	 * is a step rather than an answer.
+	 */
+	static constexpr float TextScale = 1.6f;
 };

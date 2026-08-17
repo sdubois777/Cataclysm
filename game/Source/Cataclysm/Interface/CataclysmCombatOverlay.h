@@ -89,13 +89,13 @@ public:
 	/**
 	 * A critical strike is drawn at this multiple of an ordinary blow's size.
 	 *
-	 * SIZE AND TEXT, NOT COLOUR. Colour on a floating number is already spoken
-	 * for: it says where the damage went, and nothing else may claim it. That was
-	 * decided when the numbers were built and is recorded in `docs/DECISIONS.md`,
-	 * where colouring numbers by damage type was rejected for the same reason.
-	 * Diablo 4 does use colour for this -- white for an ordinary hit, yellow for
-	 * a critical strike -- and this project deliberately does not, because it has
-	 * given colour a different job.
+	 * SIZE IS THE SECOND CHANNEL AND NOT THE ONLY ONE, since issue #668. It was
+	 * the only one, alongside an exclamation mark on the figure, and the project
+	 * owner played that and reported "you really can't tell the difference
+	 * between a crit and a normal hit even though it's slightly bigger and has an
+	 * exclamation point". The mark is gone and CriticalStrikeHex now carries the
+	 * distinction; this stays because a critical strike being larger is right,
+	 * not because it is sufficient.
 	 *
 	 * IT MULTIPLIES WITH THE TICK SIZE ABOVE rather than replacing it. Nothing in
 	 * the game can produce that combination today, because a damage over time
@@ -103,15 +103,6 @@ public:
 	 * one ever could the number would still be smaller than a blow.
 	 */
 	static constexpr float CriticalStrikeScale = 1.35f;
-
-	/**
-	 * Appended to a figure that landed as a critical strike.
-	 *
-	 * ONLY WHERE A FIGURE IS PRINTED. "Evaded", "Blocked" and the bare "0" never
-	 * take it: a hit that dealt nothing is not made interesting by having been a
-	 * critical strike, and "Evaded!" reads as excitement about a miss.
-	 */
-	static constexpr const TCHAR* CriticalStrikeMark = TEXT("!");
 
 	/**
 	 * How many numbers may wait to be drawn at once.
@@ -196,6 +187,32 @@ public:
 	/** An evaded, blocked or wholly mitigated hit. Mid grey. */
 	static const TCHAR* NothingThroughHex;
 
+	/**
+	 * A critical strike that got through. Amber orange.
+	 *
+	 * COLOUR NOW SAYS TWO THINGS, AND THAT IS A REVERSAL DECIDED BY PLAYING IT.
+	 * When the numbers were built under issue #518 colour was reserved to say
+	 * only where the damage went, and colouring numbers by damage type was
+	 * rejected to keep it that way. A critical strike was therefore marked by
+	 * size and by an exclamation mark instead. The project owner played that on
+	 * 2026-08-17 and reported that "you really can't tell the difference between
+	 * a crit and a normal hit". Issue #668.
+	 *
+	 * WHAT IT COSTS, STATED RATHER THAN DISCOVERED LATER. For a critical strike,
+	 * colour no longer separates a hit that reached health from one an energy
+	 * shield absorbed. The text still separates them -- "12 (+30)" against "12"
+	 * -- so the information moved rather than went. Diablo 4 makes the same
+	 * trade, white for an ordinary hit and yellow for a critical one.
+	 *
+	 * ORANGE RATHER THAN RED, AND THAT IS NOT A TASTE. #FF3020 is reserved
+	 * game-wide for the attack telegraph and nothing else may claim it. A red
+	 * number beside a red telegraph is exactly the confusion the reservation
+	 * exists to stop, so this sits far enough away in the green channel to be
+	 * told apart at a glance, and a test measures the distance rather than
+	 * checking the two strings differ.
+	 */
+	static const TCHAR* CriticalStrikeHex;
+
 	/** Parses one of the constants above. Black when it will not parse. */
 	static FLinearColor ColourFromHex(const TCHAR* Hex);
 
@@ -248,9 +265,10 @@ public:
 	 * so one number covers one hit rather than two numbers racing each other up
 	 * the screen.
 	 *
-	 * A CRITICAL STRIKE ADDS A MARK TO THE FIGURE, and only to a figure. See
-	 * CriticalStrikeMark. Until issue #649 it could not say so at all, because
-	 * nothing in the project ever rolled one.
+	 * IT SAYS NOTHING ABOUT A CRITICAL STRIKE, and briefly did. Issue #649 added
+	 * an exclamation mark to a critical strike's figure; the project owner played
+	 * it and could not tell a critical strike from an ordinary hit, so the mark
+	 * came out and the colour took the job. Issue #668.
 	 */
 	static FString TextFor(const FCataclysmDamageResult& Outcome);
 

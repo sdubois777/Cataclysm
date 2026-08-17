@@ -5236,11 +5236,18 @@ failing. Colour says where the damage went and the text says which outcome it
 was, so neither is the only channel. A damage over time tick is drawn smaller
 than a blow.
 
-**A critical strike is drawn larger and its figure carries a mark.** Colour is
-not used for it, because colour already says where the damage went and may not be
-made to say two things at once. Only a figure is marked: an evaded hit, a blocked
-one and a zero say what they say without a mark, because a hit that did nothing is
-not made interesting by having been a critical strike.
+**A critical strike is drawn in its own colour, and larger.** Amber orange, and
+not red, because red belongs to the attack telegraph. Only a critical strike that
+got through is drawn that way: one an evasion, a block or the defences stopped
+says what it says in the ordinary colours, because a hit that did nothing is not
+made interesting by having been a critical strike.
+
+**That is the one place colour says something other than where the damage went**,
+and it is a deliberate exception rather than the rule loosening. For a critical
+strike, colour no longer separates a hit that reached health from one an energy
+shield absorbed; the two figures in the text still separate them. The exception
+was made after playing a build that marked a critical strike by size alone, in
+which a critical strike could not be told from an ordinary hit.
 
   
 

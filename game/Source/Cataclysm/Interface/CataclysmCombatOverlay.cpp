@@ -26,6 +26,7 @@ const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
 const TCHAR* UCataclysmCombatOverlay::ReachedHealthHex = TEXT("F5F0EA");
 const TCHAR* UCataclysmCombatOverlay::AbsorbedHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::NothingThroughHex = TEXT("8C9196");
+const TCHAR* UCataclysmCombatOverlay::CriticalStrikeHex = TEXT("FFA31F");
 
 namespace
 {
@@ -150,32 +151,28 @@ FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
 	const int32 ToShield = FigureFor(Outcome.AbsorbedByShield);
 	const int32 ToMana = FigureFor(Outcome.AbsorbedByMana);
 
-	// A CRITICAL STRIKE MARKS THE FIGURE AND NOTHING ELSE. The three branches
-	// below are the ones that print a number; the three after them are words for
-	// a hit that did nothing, and a hit that did nothing is not worth marking.
-	const FString Mark =
-		ShowsCriticalStrike(Outcome) ? CriticalStrikeMark : TEXT("");
-
 	if (ToHealth > 0)
 	{
 		// BOTH FIGURES WHEN A SHIELD TOOK SOME OF IT, health first, because
 		// health is the one that matters and a shield stripping is secondary.
 		//
-		// THE MARK GOES ON THE END, after the shield figure, because the whole
-		// blow was the critical strike rather than either half of it.
+		// THIS PAIR IS ALSO WHAT PAYS FOR THE CRITICAL STRIKE COLOUR. Colour no
+		// longer separates a hit that reached health from one a shield absorbed
+		// when the hit was a critical strike, because the colour says it was
+		// one. These two figures still separate them.
 		return ToShield > 0
-			? FString::Printf(TEXT("%d (+%d)%s"), ToHealth, ToShield, *Mark)
-			: FString::Printf(TEXT("%d%s"), ToHealth, *Mark);
+			? FString::Printf(TEXT("%d (+%d)"), ToHealth, ToShield)
+			: FString::Printf(TEXT("%d"), ToHealth);
 	}
 
 	if (ToShield > 0)
 	{
-		return FString::Printf(TEXT("%d%s"), ToShield, *Mark);
+		return FString::Printf(TEXT("%d"), ToShield);
 	}
 
 	if (ToMana > 0)
 	{
-		return FString::Printf(TEXT("%d%s"), ToMana, *Mark);
+		return FString::Printf(TEXT("%d"), ToMana);
 	}
 
 	// A BLOCK THAT LEFT NOTHING SAYS SO IN A WORD. A block removes half the
@@ -196,6 +193,21 @@ FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
 FLinearColor UCataclysmCombatOverlay::ColourFor(
 	const FCataclysmDamageResult& Outcome)
 {
+	// A CRITICAL STRIKE FIRST, AHEAD OF WHERE THE DAMAGE WENT. Colour said only
+	// where the damage went until issue #668, and a critical strike was marked
+	// by size and an exclamation mark instead. The project owner played that and
+	// could not tell one from an ordinary hit, so colour took the job.
+	//
+	// IT ASKS ShowsCriticalStrike RATHER THAN Outcome.bWasCritical, which is what
+	// keeps this branch from swallowing the grey. A critical strike is rolled
+	// before block, armour and resistance, so a well-defended target can stop one
+	// dead -- and an orange "0" would say the opposite of what happened. The size
+	// asks the same question, so the two cannot disagree.
+	if (ShowsCriticalStrike(Outcome))
+	{
+		return ColourFromHex(CriticalStrikeHex);
+	}
+
 	if (Outcome.DealtToHealth > 0.0f)
 	{
 		return ColourFromHex(ReachedHealthHex);
