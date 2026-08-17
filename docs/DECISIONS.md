@@ -20,6 +20,68 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — Critical strike chance is hard-capped at 100%, and one keystone converts the excess
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the caps table in section VII and the
+ailment overflow rule that follows it, and
+`docs/Berserker_Class_Tree_Final.json`, the keystone named Hair Trigger. Closes
+issue #658. Filed issue #680, which is the one part left over.
+
+### The question
+
+Two shipped design documents disagreed. The caps table said:
+
+> | Crit chance | 100% | Hard. Above 100% it means nothing. |
+
+and a Berserker keystone named Hair Trigger said:
+
+> "Your critical strike chance is uncapped. Any critical strike chance above 100%
+> is converted to critical strike damage at a 2:1 ratio."
+
+Neither the model nor the engine had any route past the cap —
+`HARD_CAPS["crit_chance"]` in `sim/cataclysm_sim/character.py` and `CritChanceCap`
+in `CataclysmCombatAttributeSet.h` both clamp unconditionally — so the keystone as
+written could not be built.
+
+### The answer
+
+**The project owner ruled on 2026-08-17 that the chance is hard-capped at 100% and
+nothing raises it.** The critical strike *multiplier* is a separate stat and is
+not what the cap is about.
+
+**The keystone converts rather than uncaps.** Its wording is now "Critical strike
+chance past 100% is converted to critical strike damage at a 2:1 ratio." The cap
+still stops the chance at 100%; what the keystone changes is that the points which
+would have been wasted become multiplier instead. That is a thing the hard cap
+permits, and it keeps the node's original intent.
+
+**The 2:1 ratio is carried over from the old wording and is a placeholder.** The
+owner's ruling did not name a ratio. Two points of chance for one point of damage
+is what the node already said, so it was kept rather than replaced with an
+invented figure. It is a constant to tune against real play.
+
+### Why the ailment overflow rule does not reach critical strikes
+
+The design states elsewhere that "Chance to apply caps at 100%. Everything above
+it becomes magnitude instead", with the reasoning that "Without this rule a build
+would hit the cap and every point past it would be dead". That argument reads as
+though it applies word for word to critical strike chance, which is what made the
+two documents look contradictory rather than merely different.
+
+It does not apply: that rule is inside the ailments section and is about the
+chance to apply an ailment. A sentence saying so has been added there, so the next
+reader does not have to work it out again.
+
+### What is not settled here
+
+The Enchantments sheet of `docs/All_Things_Cataclysm.xlsx` carries a negative
+enchantment reading "Your critical hit chance cannot exceed 30%-50%". That is a
+per-character cap *below* 100 and does not contradict a hard cap at 100, but there
+is nowhere for it to live: both the model and the engine hold the cap as a single
+constant shared by every character. That is issue #680 and is a separate concern.
+
+---
+
 ## 2026-08-17 — A skill states its own critical strike chance in a column, and it travels with the hit
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the Weapon Skills sheet, which

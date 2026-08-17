@@ -1321,7 +1321,7 @@
       "data": {
         "kind": "keystone",
         "name": "Hair Trigger",
-        "description": "Your critical strike chance is uncapped. Any critical strike chance above 100% is converted to critical strike damage at a 2:1 ratio.",
+        "description": "Critical strike chance past 100% is converted to critical strike damage at a 2:1 ratio.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

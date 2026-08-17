@@ -1174,7 +1174,7 @@ Damage-over-time frequency uses the same form, because it is also a rate. Area o
 | :-: | :-: | :-: |
 | Resistances | 70% | Soft. Resistance above it is worth having; one enchantment raises the cap itself, to a ceiling of 90%. |
 | Evasion | 60% | Soft. Gear enchantments may exceed it. |
-| Crit chance | 100% | Hard. Above 100% it means nothing. |
+| Crit chance | 100% | Hard, and nothing raises it. Above 100% it means nothing, except to a character who has taken the one Berserker keystone that converts the excess into critical strike damage. That keystone does not lift the cap; the chance itself still stops at 100%. |
 | Damage reduction | 75% | Hard. The same figure as the armor cap, and nothing penetrates it, so points above it are worth nothing. |
 | Block chance | none | No cap. A block is not a full avoid. |
 | Cooldown reduction | none | No cap needed. The formula cannot reach zero. |
@@ -1446,6 +1446,10 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
   
 
 The chance summed is the total across every source: affixes, gems, keystones and enchantments alike.
+
+  
+
+**This rule is about the chance to apply an ailment. Critical strike chance is deliberately outside it.** The caps table calls critical strike chance hard-capped at 100% and means it: chance past the cap is wasted rather than converted, unless the character has taken the one Berserker keystone that converts the excess into critical strike damage. The two rules read as though they contradict each other and they do not; this one does not reach critical strikes. That ambiguity is what issue #658 was opened for.
 
   
 
