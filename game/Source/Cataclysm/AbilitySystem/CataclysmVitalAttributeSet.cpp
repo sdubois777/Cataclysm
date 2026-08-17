@@ -278,8 +278,15 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							/*WarnIfNotFound=*/false,
 							/*DefaultIfNotFound=*/-1.0f);
 
-						Hit.CritChance = Stated >= 0.0f ? Stated
-														: Offence->GetCritChance();
+						// HELD UNDER THE ATTACKER'S OWN CEILING, which matters only
+						// for the stated route. The attribute was already clamped
+						// when it was written, but a skill's stated chance never
+						// passes through that clamp, so a skill stating 80% on a
+						// character an enchantment has capped at 30% would
+						// otherwise land at 80%. Issue #680.
+						Hit.CritChance = FMath::Min(
+							Stated >= 0.0f ? Stated : Offence->GetCritChance(),
+							Offence->GetMaxCritChance());
 						Hit.CritMultiplier = Offence->GetCritMultiplier();
 					}
 				}

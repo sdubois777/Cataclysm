@@ -135,6 +135,35 @@ public:
 	FGameplayAttributeData CritChance;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CritChance)
 
+	/**
+	 * The most critical strike chance THIS character may have. 100 by default.
+	 *
+	 * WHY A CAP THAT VARIES PER CHARACTER. Every other cap in this project is one
+	 * constant shared by everyone. This one has a downside enchantment that
+	 * lowers it: the Enchantments sheet of `docs/All_Things_Cataclysm.xlsx`
+	 * carries "Your critical hit chance cannot exceed 30%-50%", and there was
+	 * nowhere for a personal ceiling to live, so the enchantment could not do
+	 * anything. Issue #680.
+	 *
+	 * NOTHING RAISES IT, AND `CritChanceCap` IS WHY. The project owner ruled on
+	 * 2026-08-17 that critical strike chance is hard-capped at 100% and nothing
+	 * raises it, so this attribute is itself clamped to that constant. It can
+	 * only ever be lowered. That is the opposite of maximum resistance, where one
+	 * enchantment raises the cap to a ceiling of 90%.
+	 *
+	 * IT BOUNDS TWO THINGS, because the chance arrives by two routes since issue
+	 * #657. `PreAttributeChange` holds the attribute itself under it, and
+	 * `UCataclysmVitalAttributeSet` holds a skill's own stated chance under it
+	 * when a blow lands -- a skill stating 80% on a character capped at 30% deals
+	 * its blow at 30%.
+	 *
+	 * NOTHING LOWERS IT YET. No code reads an enchantment's text into a number;
+	 * that is issue #45. Every character sits at 100 and no behaviour changes.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_MaxCritChance)
+	FGameplayAttributeData MaxCritChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MaxCritChance)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_CritMultiplier)
 	FGameplayAttributeData CritMultiplier;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CritMultiplier)
@@ -322,6 +351,7 @@ protected:
 	UFUNCTION() void OnRep_CrowdControlResistance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AttackDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CritChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_MaxCritChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CritMultiplier(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AreaOfEffect(const FGameplayAttributeData& OldValue);

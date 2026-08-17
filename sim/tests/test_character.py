@@ -470,6 +470,71 @@ def test_a_hard_cap_is_applied():
     assert c.stat("crit_chance") == 100.0
 
 
+class TestACharacterHasItsOwnMaximumCriticalStrikeChance:
+    """One enchantment lowers a character's ceiling below 100%. Issue #680.
+
+    WHAT WAS MISSING. The Enchantments sheet of docs/All_Things_Cataclysm.xlsx
+    carries "Your critical hit chance cannot exceed 30%-50%" as a downside, and
+    the cap was a single constant shared by every character, so there was nowhere
+    for a personal ceiling to live and the enchantment could not do anything.
+
+    NOTHING RAISES IT, which is the other half. The project owner ruled on
+    2026-08-17 that critical strike chance is hard-capped at 100% and nothing
+    raises it, so a gear value above the baseline is ignored. That is the
+    opposite of maximum resistance, where one enchantment raises the cap.
+    """
+
+    def sharp(self, **gear) -> "ch.Character":
+        """A character whose skill and gear would reach 100% unaided."""
+        return ch.Character(
+            ch.GENERIC, level=100,
+            gear=ch.Gear(increased={"crit_chance": 5.0}, **gear),
+            skill=ch.Skill(name="Sharp", base={"crit_chance": 80.0}))
+
+    def test_without_an_enchantment_the_ceiling_is_the_shared_one(self):
+        """Every character in the game today, because nothing sets one."""
+        assert self.sharp().hard_cap("crit_chance") == 100.0
+        assert self.sharp().stat("crit_chance") == pytest.approx(100.0)
+
+    def test_an_enchantment_lowers_it(self):
+        capped = self.sharp(max_crit_chance=30.0)
+        assert capped.hard_cap("crit_chance") == 30.0
+        assert capped.stat("crit_chance") == pytest.approx(30.0)
+
+    def test_it_bounds_the_stat_rather_than_the_skill_that_feeds_it(self):
+        """The skill still states 80%; what changes is what the character gets.
+
+        The same shape every other cap in this project has: the cap sits on the
+        value the character ends up with, not on any one contribution to it.
+        """
+        capped = self.sharp(max_crit_chance=30.0)
+        assert capped.skill.base["crit_chance"] == 80.0
+        assert capped.stat("crit_chance") == pytest.approx(30.0)
+
+    def test_a_ceiling_above_the_shared_cap_is_ignored(self):
+        """Nothing raises it, so a value above 100 buys nothing."""
+        assert self.sharp(max_crit_chance=150.0).hard_cap("crit_chance") == 100.0
+        assert self.sharp(max_crit_chance=150.0).stat(
+            "crit_chance") == pytest.approx(100.0)
+
+    def test_a_ceiling_below_what_the_character_has_still_binds(self):
+        """A character under its own ceiling is untouched by it."""
+        timid = ch.Character(
+            ch.GENERIC, level=100,
+            gear=ch.Gear(max_crit_chance=50.0),
+            skill=ch.Skill(name="Timid", base={"crit_chance": 5.0}))
+        assert timid.stat("crit_chance") == pytest.approx(5.0)
+
+    def test_only_critical_strike_chance_has_a_per_character_cap(self):
+        """Nothing else in HARD_CAPS has anything that moves it.
+
+        If a second stat ever gains a personal ceiling, `hard_cap` needs a table
+        rather than a special case, and this is what will say so.
+        """
+        assert list(ch.HARD_CAPS) == ["crit_chance"]
+        assert self.sharp(max_crit_chance=30.0).hard_cap("evasion") is None
+
+
 def test_soft_caps_are_recorded_but_deliberately_not_applied():
     """Resistances and evasion are exceedable by design, so the model must not
     clamp them. Clamping would silently delete over-capping."""

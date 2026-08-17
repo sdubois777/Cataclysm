@@ -1174,7 +1174,7 @@ Damage-over-time frequency uses the same form, because it is also a rate. Area o
 | :-: | :-: | :-: |
 | Resistances | 70% | Soft. Resistance above it is worth having; one enchantment raises the cap itself, to a ceiling of 90%. |
 | Evasion | 60% | Soft. Gear enchantments may exceed it. |
-| Crit chance | 100% | Hard, and nothing raises it. Above 100% it means nothing, except to a character who has taken the one Berserker keystone that converts the excess into critical strike damage. That keystone does not lift the cap; the chance itself still stops at 100%. |
+| Crit chance | 100% | Hard, and nothing raises it; one enchantment lowers it, to a personal ceiling of 30%-50%. Above the cap it means nothing, except to a character who has taken the one Berserker keystone that converts the excess into critical strike multiplier. That keystone does not lift the cap; the chance itself still stops at the character's own ceiling. |
 | Damage reduction | 75% | Hard. The same figure as the armor cap, and nothing penetrates it, so points above it are worth nothing. |
 | Block chance | none | No cap. A block is not a full avoid. |
 | Cooldown reduction | none | No cap needed. The formula cannot reach zero. |

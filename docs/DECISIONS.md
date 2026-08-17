@@ -20,6 +20,70 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — A character has its own maximum critical strike chance, which only ever goes down
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the caps table in section VII.
+`sim/cataclysm_sim/character.py` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` both gained
+the per-character ceiling. Closes issue #680.
+
+### The question
+
+The Enchantments sheet of `docs/All_Things_Cataclysm.xlsx` carries a downside
+reading "Your critical hit chance cannot exceed 30%-50%". The cap was a single
+constant shared by every character — `HARD_CAPS["crit_chance"]` in the model and
+`CritChanceCap` in the engine — so there was nowhere for a personal ceiling to
+live and the enchantment could not do anything.
+
+It does not contradict the ruling of the same day that the chance is hard-capped
+at 100%. This is the opposite direction: a character with the enchantment has a
+*lower* ceiling, not a higher one.
+
+### The answer
+
+**The project owner ruled on 2026-08-17 that the enchantment stays**, so a
+character carries its own maximum critical strike chance rather than sharing one.
+
+**It can only ever be lowered.** The ceiling is itself bounded by the shared
+100%, so a value above it is ignored. That is deliberately the opposite of
+maximum resistance, where one enchantment raises the cap to a ceiling of 90% and
+the model records both `RESISTANCE_CAP` and `MAX_RESISTANCE_CEILING`. Critical
+strike chance needs only the one figure, because nothing raises it.
+
+**The strictest enchantment wins.** Two saying 50% and 30% leave a character at
+30%. A ceiling is a promise about the most you can have, so the lowest is the
+only one that can be kept.
+
+### It has to bound two things, not one
+
+The chance reaches a hit by two routes since issue #657, and only one of them
+passes through the attribute.
+
+| Route | Where it is bounded |
+| :-- | :-- |
+| The character's `CritChance` attribute | `PreAttributeChange`, when the attribute is written |
+| A skill's own stated chance, which travels with the hit | Where a landing hit is assembled, because it never passes through the attribute at all |
+
+Without the second, a skill stating 100% on a character an enchantment had capped
+at 30% would have critically struck every time. That is the leak this decision's
+tests were written for and it is proved by breaking it.
+
+### It is not a character sheet stat
+
+The sheet stays at 46 stats. A ceiling does not measure anything a character can
+do; it bounds another figure that does. No affix grants it, nothing scales it,
+and it has no baseline of its own beyond the shared cap. The model keeps it off
+the sheet for the same reason, as a field on `Gear` rather than an entry in
+`DEFAULT_STAT_LINE`.
+
+### Nothing lowers it yet
+
+No code reads an enchantment's text into a number — that is issue #45 — so every
+character sits at 100 and no behaviour changes. What is built and tested is the
+arithmetic that consumes it.
+
+---
+
 ## 2026-08-17 — A multiplicative damage reduction is a "more" multiplier, and the 75% cap does not reach it
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Damage Calculation subsection of
