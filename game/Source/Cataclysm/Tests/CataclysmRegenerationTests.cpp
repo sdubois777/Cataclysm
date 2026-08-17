@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -46,15 +47,7 @@ namespace CataclysmRegenerationTest
 {
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	static ACataclysmEnemyCharacter* SpawnEnemy(UWorld* World, float Health)
@@ -460,18 +453,15 @@ bool FCataclysmRegenerationClockIsRunning::RunTest(const FString&)
 		return false;
 	}
 
-	// BEGINPLAY HAS TO BE DISPATCHED BY HAND, AND THAT IS A PROPERTY OF THE
-	// HARNESS RATHER THAN OF THIS FEATURE. The helper every test file in this
-	// project copies is called MakeWorldThatHasBegunPlay, and actors spawned in
-	// its world never receive BeginPlay: UWorld::BeginPlay only does anything
-	// when the world has a game mode, and a world built by UWorld::CreateWorld
-	// has none, so the world's bBegunPlay is never set and nothing dispatches to
-	// an actor. The name says otherwise. Issue #654.
+	// BEGINPLAY USED TO HAVE TO BE DISPATCHED BY HAND HERE, and this test is why
+	// issue #654 was filed. The helper twenty test files copied was called
+	// MakeWorldThatHasBegunPlay and actors spawned in its world never received
+	// BeginPlay, because UWorld::BeginPlay does nothing without a game mode and a
+	// world built by UWorld::CreateWorld has none. Two lines calling
+	// DispatchBeginPlay stood here as the workaround.
 	//
-	// Everything else in this file calls UCataclysmRegeneration::ApplyStep
-	// directly and does not care. This test is the one that does.
-	Player->DispatchBeginPlay();
-	Enemy->DispatchBeginPlay();
+	// The world begins play for real now, so a spawned actor starts its own
+	// clock, which is what the running game does. Nothing is called by hand.
 
 	TestTrue(TEXT("the player's regeneration clock is running"),
 		Player->IsRegenerating());

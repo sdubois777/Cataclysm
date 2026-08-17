@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -56,15 +57,7 @@ namespace CataclysmBehaviourTest
 	 */
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/** Metres, so the tests read like the design document does. */
@@ -1118,9 +1111,9 @@ bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 	FScopedBrute Brute(World, FVector::ZeroVector);
 
 	// CALLED RATHER THAN WAITED FOR, which the Brute's own header asks for:
-	// whether BeginPlay runs at all depends on how the world was made, so a
+	// whether BeginPlay runs at all used to depend on how the world was made, so a
 	// test that spawned and then checked could not tell "the art is missing"
-	// apart from "BeginPlay did not fire". Measured here: it does not fire, and
+	// apart from "BeginPlay did not fire". Since issue #654 it does fire, and
 	// without this the art half of this test silently never ran.
 	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
 
@@ -2122,7 +2115,7 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		return false;
 	}
 
-	// BeginPlay does not fire in a world built this way, so the art half of
+	// BeginPlay fires in a world built this way since issue #654, so the art half of
 	// this test would silently never run without asking for the body directly.
 	Brute.Actor->ResolveBody(/*bIncludeAnimation=*/true);
 

@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyController.h"
@@ -44,15 +45,7 @@ namespace CataclysmTelegraphTest
 	 *  possessed. Same reason the behaviour and sandbox tests need one. */
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/** Metres, so these read the way the design document does. */

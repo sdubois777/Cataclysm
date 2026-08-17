@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
@@ -46,21 +47,24 @@
 
 namespace CataclysmWardenTest
 {
-	/** A world that has begun play, so spawned characters get their attributes. */
+	/**
+	 * A world that has begun play, so spawned characters get their attributes.
+	 *
+	 * IT REGISTERS A WORLD CONTEXT AND NO OTHER TEST FILE DOES. That line was
+	 * here before the shared helper existed, and it is kept rather than folded
+	 * into the shared one, because nothing records why this file needs it and
+	 * twenty other files use the shared helper without it. Removing it is a
+	 * separate change that should start by finding out what it is for.
+	 */
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (!World)
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (World && GEngine)
 		{
-			return nullptr;
+			FWorldContext& Context =
+				GEngine->CreateNewWorldContext(EWorldType::Game);
+			Context.SetCurrentWorld(World);
 		}
-
-		FWorldContext& Context =
-			GEngine->CreateNewWorldContext(EWorldType::Game);
-		Context.SetCurrentWorld(World);
-		World->InitializeActorsForPlay(FURL());
-		World->BeginPlay();
 		return World;
 	}
 
@@ -981,7 +985,19 @@ bool FCataclysmWardenHidesItsPlaceholderOnceDressed::RunTest(const FString&)
 {
 	using namespace CataclysmWardenTest;
 
-	UWorld* World = MakeWorldThatHasBegunPlay();
+	// A WORLD THAT HAS NOT BEGUN PLAY, AND IT IS THE ONLY TEST HERE THAT ASKS FOR
+	// ONE. This test is about what ResolveBody does, and it proves it by watching
+	// the placeholder go from visible to hidden. The creature's own BeginPlay
+	// calls ResolveBody, so in a world that has begun play the placeholder is
+	// already hidden by the time the first line below runs and there is no
+	// transition left to watch.
+	//
+	// IT WOULD HAVE FAILED ON THIS MACHINE AND PASSED IN CONTINUOUS INTEGRATION,
+	// which is the worst shape a test failure has. ResolveBody only hides the
+	// cylinder when the Paragon Grux pack actually resolves, and that art is
+	// gitignored -- so the automatic dispatch added by issue #654 breaks this
+	// where the art exists and leaves it green where it does not.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasNotBegunPlay();
 	if (!World)
 	{
 		AddError(TEXT("could not make a world"));
