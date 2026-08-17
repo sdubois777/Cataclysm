@@ -13,6 +13,9 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitEvasion(0.0f);
 	InitBlockChance(0.0f);
 	InitDamageReduction(0.0f);
+	// Zero until a passive tree grants one, which nothing does yet. See the
+	// attribute's comment for why that is stated rather than left to be found.
+	InitDamageReductionMore(0.0f);
 	InitRetaliation(0.0f);
 	InitCrowdControlResistance(0.0f);
 
@@ -74,6 +77,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Evasion);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BlockChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageReductionMore);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Retaliation);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrowdControlResistance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackDamage);
@@ -171,7 +175,8 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 {
 	return {
 		GetArmorAttribute(), GetEvasionAttribute(), GetBlockChanceAttribute(),
-		GetDamageReductionAttribute(), GetRetaliationAttribute(),
+		GetDamageReductionAttribute(), GetDamageReductionMoreAttribute(),
+		GetRetaliationAttribute(),
 		GetCrowdControlResistanceAttribute(),
 		GetAttackDamageAttribute(),
 		GetCritChanceAttribute(), GetCritMultiplierAttribute(),
@@ -193,6 +198,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Armor)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Evasion)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BlockChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageReductionMore)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Retaliation)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrowdControlResistance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackDamage)

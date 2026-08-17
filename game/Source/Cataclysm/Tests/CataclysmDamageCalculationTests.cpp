@@ -386,6 +386,123 @@ CATACLYSM_TEST(FCataclysmDamageReductionCapTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// The multiplicative damage reduction bucket. Issue #665.
+//
+// WHY THERE ARE TWO BUCKETS. Twelve passive tree nodes -- eleven in the Bulwark
+// tree and one in the Saboteur tree -- grant damage reduction and call it
+// "(multiplicative)". The project owner confirmed on 2026-08-17 that the word
+// means "more", which is what Path of Exile and Last Epoch both call it, so each
+// such source removes a share of what the ones before it left rather than adding
+// into the pool the 75% cap bounds.
+//
+// NOTHING GRANTS ONE YET. No code in game/Source loads a passive tree, so every
+// character sits at zero and no existing behaviour changes. What is built and
+// tested here is the arithmetic that consumes it.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmMoreDamageReductionDoesNotAddTest,
+	"Cataclysm.Damage.TwoMultiplicativeReductionsDoNotAddTogether")
+{
+	using FCalc = UCataclysmDamageCalculation;
+
+	// THE ENTIRE DIFFERENCE BETWEEN THE TWO BUCKETS, and the reason the second
+	// one exists. Twenty and twenty remove 36%, because the second removes a
+	// fifth of the 80% the first left.
+	TestEqual(TEXT("two sources of 20% remove 36% and not 40%"),
+		FCalc::CombinedMoreDamageReduction({ 20.0f, 20.0f }), 36.0f, 0.001f);
+
+	TestEqual(TEXT("one source is worth what it says"),
+		FCalc::CombinedMoreDamageReduction({ 20.0f }), 20.0f, 0.001f);
+
+	TestEqual(TEXT("no sources remove nothing"),
+		FCalc::CombinedMoreDamageReduction({}), 0.0f, 0.001f);
+
+	// THE 75% CAP DOES NOT REACH THIS BUCKET, by the owner's ruling. Four
+	// sources of 30% pass it without any source doing so.
+	TestTrue(TEXT("four sources of 30% pass the additive pool's cap"),
+		FCalc::CombinedMoreDamageReduction({ 30.0f, 30.0f, 30.0f, 30.0f })
+			> FCalc::DamageReductionCap);
+
+	// A NEGATIVE IS FLOORED, the same way the additive pool's is: nothing in the
+	// design grants a source that increases damage taken.
+	TestEqual(TEXT("a negative source removes nothing rather than adding damage"),
+		FCalc::CombinedMoreDamageReduction({ -40.0f }), 0.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmMoreDamageReductionCannotReachImmunityTest,
+	"Cataclysm.Damage.StackingMultiplicativeReductionNeverReachesImmunity")
+{
+	using FCalc = UCataclysmDamageCalculation;
+
+	// THIS IS WHAT STANDS IN FOR A CAP. The design says "No combination of these
+	// layers reaches immunity. Each has either a cap or a curve that cannot reach
+	// zero damage." This bucket is the curve kind, so the property that has to
+	// hold is that the product never reaches one.
+	// FORTY SOURCES OF 50% IS THE CASE THAT CAUGHT A REAL DEFECT. Exact
+	// arithmetic leaves 9.1e-13 of the damage, but a float carries about seven
+	// decimal digits, so `100 * (1 - 9.1e-13)` rounded to exactly 100.0f and this
+	// assertion failed the first time it was run. Multiplicative stacking cannot
+	// reach immunity in mathematics and could reach it here, so the combination
+	// is bounded as well as each source.
+	TArray<float> Many;
+	for (int32 Index = 0; Index < 40; ++Index)
+	{
+		Many.Add(50.0f);
+	}
+	TestTrue(TEXT("forty sources of 50% still leave something"),
+		FCalc::CombinedMoreDamageReduction(Many) < 100.0f);
+
+	// AND THE ARITHMETIC THAT MATTERS, ASKED DIRECTLY: a hit still lands.
+	TestTrue(TEXT("and a hit against them still deals damage"),
+		1'000'000.0f
+			* (1.0f - FCalc::CombinedMoreDamageReduction(Many) / 100.0f) > 0.0f);
+
+	// A SINGLE SOURCE OF 100 WOULD BE EXACT IMMUNITY, which stacking cannot
+	// prevent on its own, so one source is separately bounded. That is the
+	// failure the 75% cap was added for under issue #644.
+	TestEqual(TEXT("one source of 100% is held below immunity"),
+		FCalc::CombinedMoreDamageReduction({ 100.0f }),
+		FCalc::MoreDamageReductionCap, 0.001f);
+
+	TestTrue(TEXT("and that bound is not the additive pool's cap"),
+		FCalc::MoreDamageReductionCap > FCalc::DamageReductionCap);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmBothReductionBucketsApplyTest,
+	"Cataclysm.Damage.BothDamageReductionBucketsApplyOneAfterTheOther")
+{
+	UWorld* World = CataclysmDamageTest::MakeWorld();
+	{
+		const CataclysmDamageTest::FScopedDefender D(World);
+
+		FCataclysmIncomingHit Incoming;
+		Incoming.Damage = 1'000.0f;
+
+		// The pool at its cap and one multiplicative source of 20%. If the two
+		// were summed this would read 50; if the multiplicative source joined the
+		// pool before capping it would read 250.
+		D.Combat->SetDamageReduction(75.0f);
+		D.Combat->SetDamageReductionMore(20.0f);
+
+		TestEqual(TEXT("75% then 20% leaves a fifth of the hit"),
+			D.Resolve(Incoming).DealtToHealth, 200.0f, 0.1f);
+
+		// AND A CHARACTER WITH NEITHER IS UNCHANGED, which is every character in
+		// the game today, because nothing grants either from a passive tree yet.
+		D.Combat->SetDamageReduction(0.0f);
+		D.Combat->SetDamageReductionMore(0.0f);
+		TestEqual(TEXT("a character with neither takes the whole hit"),
+			D.Resolve(Incoming).DealtToHealth, 1'000.0f, 0.1f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmDamageReductionCapAppliesToAHitTest,
 	"Cataclysm.Damage.TheFlatReductionCapReachesARealHit")
 {

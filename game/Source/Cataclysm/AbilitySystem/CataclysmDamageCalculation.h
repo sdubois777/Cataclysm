@@ -188,6 +188,26 @@ public:
 	 */
 	static constexpr float DamageReductionCap = 75.0f;
 
+	/**
+	 * The most one "more" damage reduction source may remove, as a percentage.
+	 *
+	 * NOT THE SAME BOUND AS `DamageReductionCap` ABOVE, and it is not a balance
+	 * figure. That one bounds the additive pool. The project owner decided on
+	 * 2026-08-17 that it binds that pool only, because sources in the
+	 * multiplicative bucket each remove a share of what the ones before them
+	 * left and so cannot reach 100% however many there are.
+	 *
+	 * THIS BOUNDS ONE SOURCE, and exists only to keep that sentence true: a
+	 * single factor of exactly 100 would remove all the damage and make a
+	 * character immune, which is the failure `DamageReductionCap` was added for.
+	 * Nothing in the design comes near it -- the largest multiplicative node in
+	 * any class tree is 3% per point over 8 points, which is 24%.
+	 *
+	 * Mirrors `MORE_DAMAGE_REDUCTION_CAP` in `sim/cataclysm_sim/damage.py`.
+	 * Issue #665.
+	 */
+	static constexpr float MoreDamageReductionCap = 99.0f;
+
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;
 
@@ -433,6 +453,34 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
 	static float EffectiveDamageReduction(float Reduction);
+
+	/**
+	 * Several "more" damage reductions as one percentage of damage removed.
+	 *
+	 * Each source removes a share of what the ones before it left, so two
+	 * sources of 20% remove 36% between them and not 40%. That is the whole
+	 * difference between this bucket and the additive pool
+	 * `EffectiveDamageReduction` bounds, and it is the defensive half of the rule
+	 * the design already states for offence: `(base + flat) x (1 + increases) x
+	 * more1 x more2`, where each "more" is its own multiplier rather than joining
+	 * a sum.
+	 *
+	 * TWELVE PASSIVE TREE NODES SAY "(multiplicative)" AND MEAN THIS. Eleven in
+	 * the Bulwark tree and one in the Saboteur tree grant damage reduction and
+	 * carry the word. The project owner confirmed on 2026-08-17 that
+	 * multiplicative means "more", which is what Path of Exile and Last Epoch
+	 * both call it. Issue #665.
+	 *
+	 * IT CANNOT REACH 100% AND THAT IS THE POINT. Every factor removes a share of
+	 * what is left, so the product never reaches zero, and the 75% cap on the
+	 * additive pool has nothing to prevent here. Each factor is separately
+	 * clamped by `MoreDamageReductionCap`, because a single factor of exactly 100
+	 * would be exact immunity.
+	 *
+	 * Mirrors `combined_more_damage_reduction` in `sim/cataclysm_sim/damage.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float CombinedMoreDamageReduction(const TArray<float>& Factors);
 
 	/**
 	 * Run one hit through the whole order against a character's attribute sets.
