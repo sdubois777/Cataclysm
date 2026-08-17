@@ -297,6 +297,41 @@ public:
 	 */
 	static const TCHAR* NoCriticalStrikeTagName;
 
+	/**
+	 * The tag that says a hit ignores none of the target's armour or resistance.
+	 *
+	 * `Keyword.NoPenetration`. IT EXISTS FOR SUMMONED MINIONS, and for the same
+	 * reason `Keyword.NoCrit` above does: a minion's blow is dealt in its
+	 * summoner's name, so the attacker the engine reads a penetration figure off
+	 * is the player. The design blocks that inheritance twice over. It names
+	 * penetration in the list of what does not cross -- "A minion does not take
+	 * the summoner's weapon damage, flat added damage, attack speed, critical
+	 * strike chance or multiplier, penetration..." -- and it states the general
+	 * rule the list is an instance of: "A minion reaches its summoner through
+	 * exactly three channels, and nothing else crosses", those three being its
+	 * side, its base health and damage raised by the summoner's level, and
+	 * increased damage from one primary attribute. See
+	 * `docs/Cataclysm_GDD_v2.md` line 1747 and the table above it.
+	 *
+	 * IT STOPS BOTH PENETRATION STATS AND THE WEAPON SUB-TYPE'S SHARE. There are
+	 * three ways a summoner's armour penetration reaches a minion's blow, not
+	 * one: the `Penetration` attribute, the `ArmorPenetration` attribute, and a
+	 * piercing weapon, which `Resolve` turns into a further 20% of armour
+	 * ignored. The third arrives by a different route -- the weapon sub-type is
+	 * read off the effect causer rather than off the attacker's attributes -- and
+	 * a fix that stopped only the first two would leave a minion penetrating
+	 * armour whenever its summoner held a piercing weapon.
+	 *
+	 * A MINION HAS NO PENETRATION OF ITS OWN TO PUT IN ITS PLACE, so this leaves
+	 * a minion's blow at zero. `game/Data/MinionTypes.csv` states no penetration
+	 * for any type, `game/Data/MinionScaling.csv` scales only damage, and
+	 * `ACataclysmMinion` carries no combat attribute set to hold one. If a
+	 * minion-scoped penetration modifier is ever written, it belongs on the
+	 * minion rather than here: the design's rule is that a modifier reaches a
+	 * minion only when it names minions.
+	 */
+	static const TCHAR* NoPenetrationTagName;
+
 	/** `Type.AOE`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag AreaDamageTag();
 
@@ -305,6 +340,9 @@ public:
 
 	/** `Keyword.NoCrit`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag NoCriticalStrikeTag();
+
+	/** `Keyword.NoPenetration`, or an invalid tag if the vocabulary lost it. */
+	static FGameplayTag NoPenetrationTag();
 
 	/**
 	 * A damage type as the gameplay tag that carries it on an effect.

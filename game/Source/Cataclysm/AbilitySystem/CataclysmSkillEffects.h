@@ -60,6 +60,26 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	bool bCannotCriticallyStrike = false;
 
+	/**
+	 * This blow ignores none of the target's armour or resistance.
+	 *
+	 * FOR A SUMMONED MINION, and for the same reason the flag above exists. A
+	 * minion's damage is dealt in its summoner's name, so the attacker the engine
+	 * reads a penetration figure off is the player. The design blocks it: "A
+	 * minion does not take the summoner's weapon damage, flat added damage,
+	 * attack speed, critical strike chance or multiplier, penetration...", under
+	 * the general rule that a minion reaches its summoner through exactly three
+	 * channels and nothing else crosses. See `docs/Cataclysm_GDD_v2.md:1747`.
+	 *
+	 * IT COVERS THREE ROUTES RATHER THAN TWO. The attacker's `Penetration` and
+	 * `ArmorPenetration` attributes are the obvious two. The third is the
+	 * summoner's weapon: a piercing weapon makes `Resolve` ignore a further 20%
+	 * of the target's armour, and the weapon is read off the effect causer, which
+	 * for a minion's blow is also the summoner. Issue #659.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCannotPenetrate = false;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{

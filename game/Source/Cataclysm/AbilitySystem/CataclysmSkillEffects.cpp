@@ -279,6 +279,15 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 			Spec.AddDynamicAssetTag(NoCrit);
 		}
 	}
+	if (Delivery.bCannotPenetrate)
+	{
+		const FGameplayTag NoPenetration =
+			UCataclysmDamageCalculation::NoPenetrationTag();
+		if (NoPenetration.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoPenetration);
+		}
+	}
 
 	Defender->ApplyGameplayEffectSpecToSelf(Spec);
 }

@@ -177,17 +177,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Hit.bIsDamageOverTime = AssetTags.HasTag(
 				UCataclysmDamageCalculation::DamageOverTimeTag());
 
+			// WHETHER THIS BLOW MAY IGNORE ANY OF THE DEFENDER'S ARMOUR OR
+			// RESISTANCE. Read up here rather than beside the first thing that
+			// needs it, because two separate places below do: the attacker's two
+			// penetration attributes, and the weapon sub-type, which arrives by a
+			// different route and can ignore 20% of armour on its own. Issue #659.
+			const bool bCanPenetrate = !AssetTags.HasTag(
+				UCataclysmDamageCalculation::NoPenetrationTag());
+
 			if (const UAbilitySystemComponent* Attacker =
 					Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent())
 			{
 				if (const UCataclysmCombatAttributeSet* Offence =
 						Attacker->GetSet<UCataclysmCombatAttributeSet>())
 				{
-					Hit.ResistancePenetration = Offence->GetPenetration();
-
-					// AND THE ARMOUR PENETRATION, which is a SECOND stat rather
-					// than the same one. The line above cuts into the target's
-					// resistance at step 4; this cuts into its armour at step 3.
+					// THE TWO PENETRATIONS, which are TWO stats rather than one
+					// under two names. Resistance penetration cuts into the
+					// target's resistance at step 4; armour penetration cuts
+					// into its armour at step 3.
 					// Nothing held an armour penetration value at all until
 					// issue #520, so `Hit.ArmorPenetration` was applied
 					// correctly by Resolve and never set, and the three
@@ -198,7 +205,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// either kind belongs to whoever is swinging rather than to
 					// any one blow, so it is read at the moment the blow lands,
 					// which is also the moment it is true.
-					Hit.ArmorPenetration = Offence->GetArmorPenetration();
+					//
+					// AND FOR THAT SAME REASON A MINION'S BLOW TAKES NEITHER.
+					// Its damage is dealt in its summoner's name, so without
+					// this the attacker read above is the player and a minion
+					// cuts into a target's armour and resistance by whatever the
+					// player's gear supplies. The design says a minion reaches
+					// its summoner through exactly three channels and names
+					// penetration among what does not cross. Issue #659, which
+					// is the other half of the design sentence issue #649 built
+					// the critical strike exclusion for.
+					if (bCanPenetrate)
+					{
+						Hit.ResistancePenetration = Offence->GetPenetration();
+						Hit.ArmorPenetration = Offence->GetArmorPenetration();
+					}
 
 					// AND THE CRITICAL STRIKE, read here for that same reason.
 					// Both attributes existed, were replicated, were clamped and
@@ -262,8 +283,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Hit.bIsSlashing =
 				SubType.Equals(TEXT("Slashing"), ESearchCase::IgnoreCase);
 			Hit.bIsMagic = SubType.Equals(TEXT("Magic"), ESearchCase::IgnoreCase);
-			Hit.bIsPiercing =
+
+			// PIERCING IS THE ONE SUB-TYPE A HIT CAN BE FORBIDDEN, because its
+			// effect IS armour penetration: `Resolve` adds a further 20% of the
+			// defender's armour ignored on top of the attacker's own stat. The
+			// causer a sub-type is read off is the summoner for a minion's blow,
+			// exactly as the attacker is, so a summoner holding a piercing weapon
+			// is a third route for the inheritance the design forbids. The other
+			// three sub-types are left alone here: they are not penetration and
+			// whether they should cross is a separate question, which is issue
+			// #676. Issue #659.
+			const bool bHoldsAPiercingWeapon =
 				SubType.Equals(TEXT("Piercing"), ESearchCase::IgnoreCase);
+			Hit.bIsPiercing = bCanPenetrate && bHoldsAPiercingWeapon;
 			Hit.bIsBlunt = SubType.Equals(TEXT("Blunt"), ESearchCase::IgnoreCase);
 
 			// THE DIFFICULTY TIER IS READ RATHER THAN ASSUMED, since issue #514.
