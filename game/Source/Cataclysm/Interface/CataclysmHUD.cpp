@@ -78,10 +78,16 @@ UFont* ACataclysmHUD::OverlayFont() const
 {
 	// THE ENGINE'S OWN FONT, WHICH IS WHY THIS FEATURE SHIPS NO ASSET. There is
 	// no font anywhere under game/Content and none is needed: AHUD::DrawText
-	// falls back to this same font when handed null, and this is asked for
+	// falls back to the engine's font when handed null, and one is asked for
 	// explicitly only so GetTextSize measures the same font that DrawText will
 	// draw with. A mismatch there would centre text against the wrong width.
-	return GEngine ? GEngine->GetMediumFont() : nullptr;
+	//
+	// THE LARGE ONE RATHER THAN THE MEDIUM ONE, SINCE ISSUE #671. The project
+	// owner played a build where every number was drawn at 1.6 times the medium
+	// font and reported it as "pretty small". Scaling a fixed-size font further
+	// eventually blurs it rather than enlarging it, so the larger face carries
+	// part of the increase and the scale carries the rest.
+	return GEngine ? GEngine->GetLargeFont() : nullptr;
 }
 
 void ACataclysmHUD::DrawBar(float ScreenX, float ScreenY, float Width,
@@ -138,7 +144,41 @@ void ACataclysmHUD::DrawTextCentred(const FString& Text,
 	float Height = 0.0f;
 	GetTextSize(Text, Width, Height, Font, Sized);
 
-	DrawText(Text, Colour, CentreX - Width * 0.5f, TopY, Font, Sized);
+	const float Left = CentreX - Width * 0.5f;
+
+	// A BLACK OUTLINE, BECAUSE A COLOUR ALONE DOES NOT SURVIVE THE FLOOR IT IS
+	// STANDING ON. The project owner played a build without one and reported the
+	// numbers washing out against pale stone; the critical strike colour is amber
+	// orange and the ordinary one a warm near-white, and both are light. Issue
+	// #671.
+	//
+	// THE SAME ANSWER THE BARS ALREADY USE, and for the reason DrawBar states:
+	// the design guarantees a world surface stays under 30% brightness, which is
+	// enough for a large fill and says nothing about a few pixels of text seen
+	// against Demonic lava or a Celestial wall. With an outline, the contrast is
+	// a property of the text rather than of wherever it is drawn.
+	//
+	// EIGHT OFFSETS RATHER THAN FOUR. Four leaves the diagonals thin, and it
+	// shows at this size. The cost is eight extra text draws per number, bounded
+	// by UCataclysmCombatOverlay::MaxNumbersWaiting at 96 numbers, so the worst
+	// frame draws 864 of them. That is a real number and it is why the ceiling
+	// on waiting numbers exists.
+	const float Spread = FMath::Max(1.0f, FMath::RoundToFloat(Sized));
+	const FVector2D Offsets[] = {
+		{ -Spread, -Spread }, { 0.0f, -Spread }, { Spread, -Spread },
+		{ -Spread,    0.0f },                    { Spread,    0.0f },
+		{ -Spread,  Spread }, { 0.0f,  Spread }, { Spread,  Spread },
+	};
+
+	FLinearColor Outline = FLinearColor::Black;
+	Outline.A = Colour.A;
+
+	for (const FVector2D& Offset : Offsets)
+	{
+		DrawText(Text, Outline, Left + Offset.X, TopY + Offset.Y, Font, Sized);
+	}
+
+	DrawText(Text, Colour, Left, TopY, Font, Sized);
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,

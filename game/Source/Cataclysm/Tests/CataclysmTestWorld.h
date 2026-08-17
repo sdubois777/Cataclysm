@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
 
 /**
  * The world every automation test runs in, in one place.
@@ -44,6 +45,82 @@
 namespace CataclysmTestWorld
 {
 	/**
+	 * Turn the critical strike roll off for the rest of the run.
+	 *
+	 * WHY A WORLD HELPER TOUCHES A CONSOLE VARIABLE. A critical strike is the
+	 * only random roll in the project that fires on an ordinary hit -- a
+	 * defender's evasion and block chance are zero unless something sets them,
+	 * so those rolls never fire by accident, while an attacker's critical strike
+	 * chance is 5% for a player holding any weapon and 5% to 15% for every enemy
+	 * archetype. Any test that asserts an exact damage figure is therefore a
+	 * coin toss.
+	 *
+	 * IT GOT WORSE WHEN THE TEST WORLD STARTED BEGINNING PLAY, under issue #654.
+	 * An enemy's archetype attributes are applied in `BeginPlay`, so creatures
+	 * that used to sit at a chance of zero in a test world now carry their real
+	 * one, and tests that had never been at risk became intermittent.
+	 *
+	 * AND THE WORST KIND CANNOT BE FOUND BY SWEEPING. Running the whole suite
+	 * with the roll forced on, and again forced off, finds every test that
+	 * asserts one damage figure -- and finds none of the tests that compare two,
+	 * because forcing the roll makes both hits agree. `ASandboxEnemysArmour`
+	 * `ActuallyReducesAHit` is exactly that: it passed both sweeps and failed a
+	 * plain run. There is no sweep that finds those, so they are not hunted; the
+	 * randomness is switched off instead.
+	 *
+	 * A TEST THAT WANTS A CRITICAL STRIKE ASKS FOR ONE, with FScopedCritRoll
+	 * below. `Cataclysm.Crit.*` and `Cataclysm.Overlay.*` do exactly that, so the
+	 * roll itself is still covered.
+	 *
+	 * SET AT THE CONSOLE'S OWN PRIORITY. Unreal remembers who set a console
+	 * variable and silently discards a write from code once the command line has
+	 * set one. A plain `Set(100.0f)` looked present in the source and was absent
+	 * from the run.
+	 */
+	inline void SilenceCriticalStrikes()
+	{
+		if (IConsoleVariable* Variable =
+				IConsoleManager::Get().FindConsoleVariable(
+					TEXT("Cataclysm.CritRoll")))
+		{
+			// 100 never critically strikes, because the roll is compared with
+			// strictly less than and a chance is capped at 100.
+			Variable->Set(100.0f, ECVF_SetByConsole);
+		}
+	}
+
+	/**
+	 * Pins the critical strike roll for as long as it is in scope.
+	 *
+	 * 0 always critically strikes, because every chance above zero beats it.
+	 * 100 never does. For a test whose subject IS the roll.
+	 */
+	struct FScopedCritRoll
+	{
+		explicit FScopedCritRoll(float Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("Cataclysm.CritRoll"));
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedCritRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	/**
 	 * A world in which an actor spawned later actually receives `BeginPlay`.
 	 *
 	 * USE THIS BY DEFAULT. It is the one that behaves like the running game, and
@@ -78,6 +155,7 @@ namespace CataclysmTestWorld
 		// rather than of this code, so the test named above spawns an actor and
 		// asks it, instead of trusting the reasoning.
 		World->SetBegunPlay(true);
+		SilenceCriticalStrikes();
 
 		return World;
 	}
@@ -99,6 +177,7 @@ namespace CataclysmTestWorld
 		FURL URL;
 		World->InitializeActorsForPlay(URL);
 		World->SetBegunPlay(true);
+		SilenceCriticalStrikes();
 	}
 
 	/**
@@ -111,6 +190,7 @@ namespace CataclysmTestWorld
 	 */
 	inline UWorld* MakeWorldThatHasNotBegunPlay()
 	{
+		SilenceCriticalStrikes();
 		return UWorld::CreateWorld(EWorldType::Game,
 								   /*bInformEngineOfWorld=*/false);
 	}
