@@ -332,6 +332,26 @@ public:
 	 */
 	static const TCHAR* NoPenetrationTagName;
 
+	/**
+	 * The key a hit's own critical strike chance is carried under.
+	 *
+	 * `Data.SkillCritChance`. NOT A TAG ANYTHING IS SCOPED BY. The other tag
+	 * names on this class go into a container and are asked yes-or-no questions.
+	 * This one names a NUMBER: Unreal's set-by-caller magnitudes are a map from
+	 * tag to float on a gameplay effect spec, and this is that map's key. It
+	 * never appears in a tag container, so nothing can match on it by accident.
+	 *
+	 * `Data.` IS THE ENGINE'S OWN NAMESPACE FOR THIS. Unreal's samples key
+	 * set-by-caller magnitudes `Data.Damage`, `Data.Duration` and so on, and this
+	 * follows that rather than inventing a scheme.
+	 *
+	 * WHY A NUMBER HAS TO TRAVEL AT ALL. Critical strike chance belongs to the
+	 * skill being used, not to the character using it, and a character holds six
+	 * skills at once against one `CritChance` attribute. So the skill's own base
+	 * rides on the hit and the attribute holds the default. Issue #657.
+	 */
+	static const TCHAR* SkillCritChanceDataTagName;
+
 	/** `Type.AOE`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag AreaDamageTag();
 
@@ -343,6 +363,9 @@ public:
 
 	/** `Keyword.NoPenetration`, or an invalid tag if the vocabulary lost it. */
 	static FGameplayTag NoPenetrationTag();
+
+	/** `Data.SkillCritChance`, or an invalid tag if the vocabulary lost it. */
+	static FGameplayTag SkillCritChanceDataTag();
 
 	/**
 	 * A damage type as the gameplay tag that carries it on an effect.

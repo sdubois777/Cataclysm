@@ -176,11 +176,19 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 
 	const float Percent = DamagePercent >= 0.0f ? DamagePercent : GetSlotDamagePercent();
 
+	// THIS SKILL'S OWN CRITICAL STRIKE CHANCE TRAVELS WITH EVERY BLOW IT DEALS.
+	// It is -1 for every skill in the game today, which means "take the
+	// character's attribute" and is exactly what happened before this existed.
+	// Sent per hit rather than written onto the character because a character
+	// holds six skills at once and has one CritChance attribute. Issue #657.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CritChancePercent = CritChancePercent;
+
 	float Total = 0.0f;
 	for (AActor* Target : Targets)
 	{
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(Self, Target, Percent,
-															SkillTags);
+															SkillTags, Delivery);
 		Total += Dealt;
 
 		// The burn is a share of the hit that caused it, so a skill that deals

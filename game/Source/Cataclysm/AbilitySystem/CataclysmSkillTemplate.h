@@ -55,6 +55,25 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FGameplayTagContainer SkillTags;
 
+	/**
+	 * This skill's own base critical strike chance, or -1 to take the default.
+	 *
+	 * ON THE GRANTED INSTANCE AND NOT ON THE CLASS, for the same reason
+	 * `SkillTags` and `Params` are: one class stands for every skill of that
+	 * shape, so two characters holding different Projectile skills share
+	 * `UCataclysmProjectileSkill` and differ only in what is stamped here.
+	 *
+	 * WHY IT IS NOT WRITTEN ONTO THE CHARACTER. A character holds six skills at
+	 * once and the ability system has one `CritChance` attribute, so writing this
+	 * onto the character would mean the last skill granted decided the chance for
+	 * all six. Instead each hit carries the chance of the skill that dealt it, as
+	 * a set-by-caller magnitude on the damage effect, and the character's
+	 * attribute holds the default for every skill that states nothing. Issue
+	 * #657.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float CritChancePercent = -1.0f;
+
 	/** Which shape this class implements. Every subclass answers. */
 	virtual ECataclysmSkillShape Shape() const PURE_VIRTUAL(UCataclysmSkillTemplate::Shape, return ECataclysmSkillShape::None;);
 

@@ -261,6 +261,13 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 			Template->SkillDescription = Skill.Description;
 			Template->Params = Skill.Params;
 			Template->SkillTags = Skill.Tags;
+
+			// AND ITS OWN CRITICAL STRIKE CHANCE, stamped here rather than
+			// written onto the character, because six skills are granted at once
+			// and the character has one CritChance attribute to hold them in.
+			// Each hit carries the chance of the skill that dealt it instead.
+			// Issue #657.
+			Template->CritChancePercent = Skill.CritChancePercent;
 		}
 		else if (UCataclysmUndesignedSkill* Placeholder =
 					Cast<UCataclysmUndesignedSkill>(Instance))

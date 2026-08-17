@@ -151,6 +151,13 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 				Skill.Shape = UCataclysmSkillShapes::ShapeFromName(Row.Shape);
 				Skill.Tags = UCataclysmSkillShapes::TagsFromCell(Row.Tags);
 
+				// CARRIED UNCHANGED, INCLUDING THE -1 THAT MEANS THE ROW SAYS
+				// NOTHING. Turning that into 5% here would put the default in a
+				// second place, and the two could then disagree silently. It is
+				// applied once, where a character's attribute is written, in
+				// UCataclysmWeaponSlotsComponent. Issue #657.
+				Skill.CritChancePercent = Row.CritChancePercent;
+
 				// Named in the error so a bad cell says which of the 398 rows it
 				// is. The generator refuses one already, so this only fires for
 				// a table edited in the editor rather than generated.

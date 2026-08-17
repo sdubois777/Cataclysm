@@ -99,6 +99,10 @@ public:
 	 *   flat at InSpeed. Above zero it follows real projectile motion onto
 	 *   `To` and InSpeed is not used, because a ballistic shot does not have
 	 *   one speed. See ApexHeightCm.
+	 * @param InCritChancePercent the firing skill's own base critical strike
+	 *   chance. -1, the default, means the skill states none and the hit takes
+	 *   the firer's own attribute, which is what an enemy's thrown rock does and
+	 *   what every player skill does today. Issue #657.
 	 * @return the projectile, or null if the world or the caster is missing, or if
 	 *   it was given neither a speed nor a flight time
 	 */
@@ -109,7 +113,8 @@ public:
 									  const FGameplayTagContainer& InSkillTags,
 									  bool bInBurns,
 									  UStaticMesh* InBodyMesh = nullptr,
-									  float InFlightSeconds = 0.0f);
+									  float InFlightSeconds = 0.0f,
+									  float InCritChancePercent = -1.0f);
 
 	/**
 	 * Swap what the flying object looks like, and size it to BodyRadiusCm.
@@ -424,6 +429,15 @@ private:
 
 	/** The firing skill's tags, which decide which of the caster's modifiers apply. */
 	FGameplayTagContainer SkillTags;
+
+	/**
+	 * The firing skill's own base critical strike chance, or -1 for none stated.
+	 *
+	 * CARRIED RATHER THAN READ WHEN IT LANDS, for the same reason the tags above
+	 * are: a projectile arrives after the skill that fired it has finished, so
+	 * the character may be holding a different skill by then. Issue #657.
+	 */
+	float CritChancePercent = -1.0f;
 
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;

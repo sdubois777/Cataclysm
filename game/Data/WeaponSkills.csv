@@ -1,399 +1,399 @@
-Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams
-Celestial_Sword_Support,Sword,Celestial,Support,,,"Item.Weapon.Sword, Element.Celestial, Slot.Support",,
-Demonic_Sword_Support,Sword,Demonic,Support,Kindled Edge,"Hold the blade in your own fire for 10 seconds. While it lasts every hit you land sets its target alight, and your critical strike chance is increased by 20% against anything already burning.","Item.Weapon.Sword, Element.Demonic, Type.Buff, Stat.Offense.Crit, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10
-Pestilence_Sword_Support,Sword,Pestilence,Support,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Support",,
-War_All_Aura,All,War,Aura,Blood and Iron,Emanate an aura of martial dominance in a 10 meter radius. Enemies within the aura have their armor reduced by 10% and their movement speed reduced by 15%. Allies within the aura deal 8% increased physical damage. Drains mana per second while active.,"Element.War, Type.AOE.Aura, Stat.Defense.Armor, Stat.Offense.Global, Stat.Utility.Movespeed, Stat.Resource.Mana, Slot.Aura",,
-Death_Sword_Support,Sword,Death,Support,,,"Item.Weapon.Sword, Element.Death, Slot.Support",,
-Chaos_Sword_Support,Sword,Chaos,Support,,,"Item.Weapon.Sword, Element.Chaos, Slot.Support",,
-Famine_Sword_Support,Sword,Famine,Support,,,"Item.Weapon.Sword, Element.Famine, Slot.Support",,
-Celestial_Sword_Heavy,Sword,Celestial,Heavy,,,"Item.Weapon.Sword, Element.Celestial, Slot.Heavy",,
-Demonic_Sword_Heavy,Sword,Demonic,Heavy,Cinderslash,"Draw a burning diagonal cut across everything in front of you, setting each one alight. Against an enemy that is already burning the cut deals 30% more damage.","Item.Weapon.Sword, Element.Demonic, Type.Strike, Type.Melee, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=3; Angle=90; Burn=1
-Pestilence_Sword_Heavy,Sword,Pestilence,Heavy,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Heavy",,
-War_Greataxe_Heavy,Greataxe,War,Heavy,Sundering Arc,"Swing your greataxe in a brutal horizontal arc that hits all enemies in a wide cone, dealing massive damage and applying a bleed to each target hit. Armored enemies take an additional 20% damage from this attack.","Item.Weapon.Greataxe, Element.War, Type.AOE.PointBlank, Type.Strike, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Heavy",,
-Death_Sword_Heavy,Sword,Death,Heavy,,,"Item.Weapon.Sword, Element.Death, Slot.Heavy",,
-Chaos_Sword_Heavy,Sword,Chaos,Heavy,,,"Item.Weapon.Sword, Element.Chaos, Slot.Heavy",,
-Famine_Sword_Heavy,Sword,Famine,Heavy,,,"Item.Weapon.Sword, Element.Famine, Slot.Heavy",,
-Celestial_Sword_Ultimate,Sword,Celestial,Ultimate,,,"Item.Weapon.Sword, Element.Celestial, Slot.Ultimate",,
-Demonic_Sword_Ultimate,Sword,Demonic,Ultimate,Hundred Cinders,"Cut in every direction for 3 seconds, striking all enemies within 3 meters five times a second and setting each one alight. The closing cut deals 350% weapon damage to everything still standing.","Item.Weapon.Sword, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=3; Angle=360; Duration=3; Interval=0.2; Burn=1; FinalHitPercent=350
-Pestilence_Sword_Ultimate,Sword,Pestilence,Ultimate,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Ultimate",,
-War_2H_Crossbow_Heavy,2H Crossbow,War,Heavy,Siege Bolt,"Fire a massive bolt that punches through up to 3 enemies in a line, dealing enormous damage to each. The bolt leaves a wound on every enemy it passes through, causing them to bleed for 10 seconds.","Item.Weapon.2HCrossbow, Element.War, Type.Projectile, Keyword.DoT.Bleed, Slot.Heavy",,
-Death_Sword_Ultimate,Sword,Death,Ultimate,,,"Item.Weapon.Sword, Element.Death, Slot.Ultimate",,
-Chaos_Sword_Ultimate,Sword,Chaos,Ultimate,,,"Item.Weapon.Sword, Element.Chaos, Slot.Ultimate",,
-Famine_Sword_Ultimate,Sword,Famine,Ultimate,,,"Item.Weapon.Sword, Element.Famine, Slot.Ultimate",,
-Celestial_Sword_Movement,Sword,Celestial,Movement,,,"Item.Weapon.Sword, Element.Celestial, Slot.Movement",,
-Demonic_Sword_Movement,Sword,Demonic,Movement,Flamedart,"Dart forward in a straight line, cutting every enemy you pass and setting them alight. The path you took burns for 4 seconds.","Item.Weapon.Sword, Element.Demonic, Type.Strike, Keyword.Charge, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Charge; Range=8; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25.0
-Pestilence_Sword_Movement,Sword,Pestilence,Movement,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Movement",,
-War_Greatsword_Heavy,Greatsword,War,Heavy,Executioner's Arc,"Swing your greatsword in a wide horizontal arc, hitting all enemies in a 180 degree cone in front of you. Enemies below 5% HP are instantly killed. Enemies above 90% HP are staggered for 1.5 seconds.","Item.Weapon.Greatsword, Element.War, Type.AOE.PointBlank, Type.Strike, Keyword.CC, Slot.Heavy",,
-Death_Sword_Movement,Sword,Death,Movement,,,"Item.Weapon.Sword, Element.Death, Slot.Movement",,
-Chaos_Sword_Movement,Sword,Chaos,Movement,,,"Item.Weapon.Sword, Element.Chaos, Slot.Movement",,
-Famine_Sword_Movement,Sword,Famine,Movement,,,"Item.Weapon.Sword, Element.Famine, Slot.Movement",,
-Celestial_Sword_Special,Sword,Celestial,Special,,,"Item.Weapon.Sword, Element.Celestial, Slot.Special",,
-Demonic_Sword_Special,Sword,Demonic,Special,Emberfang,"Flick a shard of hot iron from the blade that flies forward and passes through up to three enemies in a line, setting each one alight.","Item.Weapon.Sword, Element.Demonic, Type.Projectile, Keyword.DoT.Burn, Slot.Special",Projectile,Range=10; Radius=1; Pierce=2; Speed=2200; Burn=1
-Pestilence_Sword_Special,Sword,Pestilence,Special,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Special",,
-War_Warhammer_Heavy,Warhammer,War,Heavy,Earthquake,"Slam your warhammer into the ground with tremendous force, sending a shockwave rippling outward in a 6 meter radius. Enemies caught in the shockwave are staggered for 0.5 seconds and have their armor reduced by 20% for 6 seconds. A fissure remains at the impact point dealing damage per second to enemies standing on it for 5 seconds.","Item.Weapon.Warhammer, Element.War, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.CC, Stat.Defense.Armor, Slot.Heavy",,
-Death_Sword_Special,Sword,Death,Special,,,"Item.Weapon.Sword, Element.Death, Slot.Special",,
-Chaos_Sword_Special,Sword,Chaos,Special,,,"Item.Weapon.Sword, Element.Chaos, Slot.Special",,
-Famine_Sword_Special,Sword,Famine,Special,,,"Item.Weapon.Sword, Element.Famine, Slot.Special",,
-Celestial_Greatsword_Support,Greatsword,Celestial,Support,,,Slot.Support,,
-Demonic_Greatsword_Support,Greatsword,Demonic,Support,Brand of the Pit,"Mark yourself for 10 seconds. While it lasts you deal 2% increased damage for every enemy burning within 12 meters, and take 15% less damage from anything that is burning.","Item.Weapon.Greatsword, Element.Demonic, Type.Buff, Stat.Offense.Global, Stat.Defense.Global, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10; Radius=12
-Void_Greatsword_Support,Greatsword,Void,Support,,,Slot.Support,,
-War_Axe_Heavy,Axe,War,Heavy,Cleaving Blow,Deliver a savage overhead chop that deals heavy damage and reduces the target's armor by 20% for 8 seconds. The blow has a 30% chance to cause a deep bleed.,"Item.Weapon.Axe, Element.War, Type.Strike, Stat.Defense.Armor, Keyword.DoT.Bleed, Slot.Heavy",,
-Death_Greatsword_Support,Greatsword,Death,Support,,,Slot.Support,,
-Chaos_Greatsword_Support,Greatsword,Chaos,Support,,,Slot.Support,,
-Celestial_Greatsword_Heavy,Greatsword,Celestial,Heavy,,,Slot.Heavy,,
-Demonic_Greatsword_Heavy,Greatsword,Demonic,Heavy,Scorching Arc,"Sweep the greatsword through a wide arc, setting alight every enemy it touches and scorching the ground it crosses. That ground burns anything standing in it for 5 seconds.","Item.Weapon.Greatsword, Element.Demonic, Type.Strike, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=4.5; Angle=140; Burn=1; GroundRadius=4.5; GroundDuration=5; GroundPercent=20.0
-Void_Greatsword_Heavy,Greatsword,Void,Heavy,,,Slot.Heavy,,
-War_Crossbow_Heavy,Crossbow,War,Heavy,Armor Piercing Bolt,"Fire a specially crafted bolt that ignores 40% of the target's armor, dealing heavy physical damage. If the bolt hits a gadget or trap you own, it overcharges it — the next time that gadget or trap fires it deals 50% bonus damage.","Item.Weapon.Crossbow, Element.War, Type.Projectile, Stat.Defense.Armor, Stat.Offense.Global, Slot.Heavy",,
-Death_Greatsword_Heavy,Greatsword,Death,Heavy,,,Slot.Heavy,,
-Chaos_Greatsword_Heavy,Greatsword,Chaos,Heavy,,,Slot.Heavy,,
-Celestial_Greatsword_Ultimate,Greatsword,Celestial,Ultimate,,,Slot.Ultimate,,
-Demonic_Greatsword_Ultimate,Greatsword,Demonic,Ultimate,Sunder the Ash,"Raise the greatsword and bring it down for 3 seconds of hammering overhead blows, striking everything within 6 meters and setting it alight. The ground is left burning for 10 seconds, and the last blow deals 450% weapon damage.","Item.Weapon.Greatsword, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=6; Angle=360; Duration=3; Interval=0.6; Burn=1; GroundRadius=6; GroundDuration=10; GroundPercent=10.0; FinalHitPercent=450
-Void_Greatsword_Ultimate,Greatsword,Void,Ultimate,,,Slot.Ultimate,,
-War_Dagger_Heavy,Dagger,War,Heavy,Gut Wire,"Slash a razor-thin tripwire across the ground directly in front of you, instantly arming a close-range trap that triggers on the next enemy to cross it. The trap deals heavy bleed damage and applies bleed at double its normal damage.","Item.Weapon.Dagger, Element.War, Type.Strike, Keyword.DoT.Bleed, Stat.Offense.Global, Type.Trap, Slot.Heavy",,
-Death_Greatsword_Ultimate,Greatsword,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Greatsword_Ultimate,Greatsword,Chaos,Ultimate,,,Slot.Ultimate,,
-Celestial_Greatsword_Movement,Greatsword,Celestial,Movement,,,Slot.Movement,,
-Demonic_Greatsword_Movement,Greatsword,Demonic,Movement,Furnace Charge,"Drive forward with the blade levelled, throwing aside every enemy in your path and setting them alight. The furrow you cut burns for 5 seconds.","Item.Weapon.Greatsword, Element.Demonic, Type.Strike, Keyword.Charge, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Charge; Range=10; Radius=2.5; Burn=1; GroundRadius=2.5; GroundDuration=5; GroundPercent=20.0
-Void_Greatsword_Movement,Greatsword,Void,Movement,,,Slot.Movement,,
-War_Fist_Heavy,Fist,War,Heavy,Haymaker,Wind up and deliver a devastating hook that deals massive damage to a single target and knocks them back 4 meters. If the target hits a wall or obstacle they take an additional 100% weapon damage from the impact.,"Item.Weapon.Fist, Element.War, Type.Strike, Keyword.CC, Slot.Heavy",,
-Death_Greatsword_Movement,Greatsword,Death,Movement,,,Slot.Movement,,
-Chaos_Greatsword_Movement,Greatsword,Chaos,Movement,,,Slot.Movement,,
-Celestial_Greatsword_Special,Greatsword,Celestial,Special,,,Slot.Special,,
-Demonic_Greatsword_Special,Greatsword,Demonic,Special,Hellbrand,"Drive the blade into the ground and send a wedge of fire tearing outward, piercing every enemy in a 14 meter line and setting them alight. The scar it leaves burns for 4 seconds.","Item.Weapon.Greatsword, Element.Demonic, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Special",Projectile,Range=14; Radius=2; Pierce=99; Speed=1600; Burn=1; GroundRadius=2; GroundDuration=4; GroundPercent=25.0
-Void_Greatsword_Special,Greatsword,Void,Special,,,Slot.Special,,
-War_Shield_Heavy,Shield,War,Heavy,Shield Bash,"Slam your shield into an enemy with full force, dealing damage and stunning them for 1.5 seconds. If you have blocked an attack in the last 3 seconds, the bash also deals bonus damage equal to the amount blocked.","Item.Weapon.Shield, Element.War, Type.Strike, Keyword.CC, Stat.Defense.Block, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Effect=Stun; StunSeconds=1.5
-Death_Greatsword_Special,Greatsword,Death,Special,,,Slot.Special,,
-Chaos_Greatsword_Special,Greatsword,Chaos,Special,,,Slot.Special,,
-Demonic_Dagger_Support,Dagger,Demonic,Support,Smoulder,"Bank your own heat for 8 seconds, gaining 25% increased attack speed and setting alight anything you strike while it lasts.","Item.Weapon.Dagger, Element.Demonic, Type.Buff, Stat.Offense.Speed, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=8; Radius=10
-Pestilence_Dagger_Support,Dagger,Pestilence,Support,,,Slot.Support,,
-Void_Dagger_Support,Dagger,Void,Support,,,Slot.Support,,
-War_Spear_Heavy,Spear,War,Heavy,Impaler,"Drive your spear into the ground with force, creating a spike trap that erupts from beneath the first enemy to walk over it, dealing heavy physical damage and pinning them in place for 2 seconds.","Item.Weapon.Spear, Element.War, Type.Strike, Keyword.CC, Stat.Offense.Global, Type.Trap, Slot.Heavy",,
-Death_Dagger_Support,Dagger,Death,Support,,,Slot.Support,,
-Chaos_Dagger_Support,Dagger,Chaos,Support,,,Slot.Support,,
-Famine_Dagger_Support,Dagger,Famine,Support,,,Slot.Support,,
-Demonic_Dagger_Heavy,Dagger,Demonic,Heavy,Emberpierce,"Drive the dagger into a single enemy and leave the heat behind in the wound, setting them alight. The strike deals 40% more damage from behind.","Item.Weapon.Dagger, Element.Demonic, Type.Strike, Type.Melee, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Burn=1
-Pestilence_Dagger_Heavy,Dagger,Pestilence,Heavy,,,Slot.Heavy,,
-Void_Dagger_Heavy,Dagger,Void,Heavy,,,Slot.Heavy,,
-War_Sword_Heavy,Sword,War,Heavy,Rending Strike,"Drive your sword forward in a powerful lunge that pierces through the target, dealing heavy damage and applying a deep wound that causes the target to bleed for 8 seconds. The wound reduces the target's armor by 15% for the duration.","Item.Weapon.Sword, Element.War, Type.Strike, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Heavy",,
-Death_Dagger_Heavy,Dagger,Death,Heavy,,,Slot.Heavy,,
-Chaos_Dagger_Heavy,Dagger,Chaos,Heavy,,,Slot.Heavy,,
-Famine_Dagger_Heavy,Dagger,Famine,Heavy,,,Slot.Heavy,,
-Demonic_Dagger_Ultimate,Dagger,Demonic,Ultimate,Thousand Cuts of Ash,"Move faster than sight for 4 seconds, striking every enemy within 2.5 meters four times a second and setting each one alight. The final flurry deals 300% weapon damage.","Item.Weapon.Dagger, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=2.5; Angle=360; Duration=4; Interval=0.25; Burn=1; FinalHitPercent=300
-Pestilence_Dagger_Ultimate,Dagger,Pestilence,Ultimate,,,Slot.Ultimate,,
-Void_Dagger_Ultimate,Dagger,Void,Ultimate,,,Slot.Ultimate,,
-War_Whip_Heavy,Whip,War,Heavy,Flaying Lash,"Crack your whip with full force against a target up to 6 meters away, dealing heavy damage and applying bleed at double its normal damage. The force of the blow also disarms the target, knocking their weapon aside for 2 seconds.","Item.Weapon.Whip, Element.War, Type.Strike, Keyword.DoT.Bleed, Keyword.CC, Slot.Heavy",,
-Death_Dagger_Ultimate,Dagger,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Dagger_Ultimate,Dagger,Chaos,Ultimate,,,Slot.Ultimate,,
-Famine_Dagger_Ultimate,Dagger,Famine,Ultimate,,,Slot.Ultimate,,
-Demonic_Dagger_Movement,Dagger,Demonic,Movement,Ashwalk,"Scatter into ash and reform up to 9 meters away, setting alight every enemy at the point you left and the point you arrive. Both points burn for 3 seconds.","Item.Weapon.Dagger, Element.Demonic, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Blink; Range=9; Radius=2; Burn=1; GroundRadius=2; GroundDuration=3; GroundPercent=33.3
-Pestilence_Dagger_Movement,Dagger,Pestilence,Movement,,,Slot.Movement,,
-Void_Dagger_Movement,Dagger,Void,Movement,,,Slot.Movement,,
-War_Greataxe_Movement,Greataxe,War,Movement,Savage Leap,"Leap to a target location and slam down with your greataxe, dealing damage in a 5 meter radius on impact. Enemies struck are staggered and begin bleeding.","Item.Weapon.Greataxe, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Keyword.CC, Slot.Movement",,
-Death_Dagger_Movement,Dagger,Death,Movement,,,Slot.Movement,,
-Chaos_Dagger_Movement,Dagger,Chaos,Movement,,,Slot.Movement,,
-Famine_Dagger_Movement,Dagger,Famine,Movement,,,Slot.Movement,,
-Demonic_Dagger_Special,Dagger,Demonic,Special,Cinder Fan,"Throw a spray of burning shards that scatters over a 2.5 meter area at the point you aim, setting alight everything caught in it.","Item.Weapon.Dagger, Element.Demonic, Type.Projectile, Type.AOE.PointBlank, Keyword.DoT.Burn, Slot.Special",Projectile,Range=9; Radius=2.5; Speed=2400; Burn=1
-Pestilence_Dagger_Special,Dagger,Pestilence,Special,,,Slot.Special,,
-Void_Dagger_Special,Dagger,Void,Special,,,Slot.Special,,
-War_2H_Crossbow_Movement,2H Crossbow,War,Movement,Recoil Dash,Fire a bolt point-blank into the ground and use the recoil to propel yourself backward 6 meters instantly. The fired bolt creates a small explosion on impact that knocks back nearby enemies.,"Item.Weapon.2HCrossbow, Element.War, Type.AOE.PointBlank, Keyword.CC, Slot.Movement",,
-Death_Dagger_Special,Dagger,Death,Special,,,Slot.Special,,
-Chaos_Dagger_Special,Dagger,Chaos,Special,,,Slot.Special,,
-Famine_Dagger_Special,Dagger,Famine,Special,,,Slot.Special,,
-Demonic_Axe_Support,Axe,Demonic,Support,Butcher's Heat,"Work yourself into a heat for 10 seconds. Every enemy you kill while it lasts extends it by 2 seconds, and killing a burning enemy makes the next one you strike burn as well.","Item.Weapon.Axe, Element.Demonic, Type.Buff, Trigger.OnKill, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10
-War_Greatsword_Movement,Greatsword,War,Movement,Leaping Cleave,"Leap to a target location and slam your greatsword into the ground on landing, dealing damage in a 4 meter radius and knocking enemies back. The slam leaves a shockwave that briefly slows enemies caught in it.","Item.Weapon.Greatsword, Element.War, Type.AOE.PointBlank, Keyword.CC, Slot.Movement",,
-Chaos_Axe_Support,Axe,Chaos,Support,,,Slot.Support,,
-Famine_Axe_Support,Axe,Famine,Support,,,Slot.Support,,
-Demonic_Axe_Heavy,Axe,Demonic,Heavy,Rending Ember,"Chop down into an enemy and twist, setting them alight and leaving the wound open. The blow deals 25% more damage against an enemy below half health.","Item.Weapon.Axe, Element.Demonic, Type.Strike, Type.Melee, Trigger.LowLife, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=3; Angle=100; Burn=1
-War_Warhammer_Movement,Warhammer,War,Movement,Shockwave Leap,"Leap to a target location and slam your hammer down on landing, creating a shockwave that deals damage and knocks back all enemies within 5 meters. The landing impact stuns enemies directly beneath you for 1 second.","Item.Weapon.Warhammer, Element.War, Type.AOE.PointBlank, Keyword.CC, Slot.Movement",Movement,Mode=Leap; Range=9; Radius=5; Knockback=3; Effect=Stun; StunSeconds=1
-Chaos_Axe_Heavy,Axe,Chaos,Heavy,,,Slot.Heavy,,
-Famine_Axe_Heavy,Axe,Famine,Heavy,,,Slot.Heavy,,
-Demonic_Axe_Ultimate,Axe,Demonic,Ultimate,Reap the Ashes,"Swing without stopping for 3 seconds, striking everything within 4 meters twice a second and setting it alight. The ground burns for 6 seconds, and the last swing deals 350% weapon damage.","Item.Weapon.Axe, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=4; Angle=360; Duration=3; Interval=0.5; Burn=1; GroundRadius=4; GroundDuration=6; GroundPercent=16.7; FinalHitPercent=350
-War_Axe_Movement,Axe,War,Movement,Headlong Charge,"Charge forward in a straight line, striking any enemy in your path and knocking them aside. The charge deals damage proportional to the distance traveled and applies a bleed to all struck enemies.","Item.Weapon.Axe, Element.War, Type.Strike, Keyword.DoT.Bleed, Slot.Movement",,
-Chaos_Axe_Ultimate,Axe,Chaos,Ultimate,,,Slot.Ultimate,,
-Famine_Axe_Ultimate,Axe,Famine,Ultimate,,,Slot.Ultimate,,
-Demonic_Axe_Movement,Axe,Demonic,Movement,Cleaving Lunge,"Spring to a point up to 8 meters away and bury the axe on landing, setting alight every enemy within 3 meters. The impact leaves the ground burning for 4 seconds.","Item.Weapon.Axe, Element.Demonic, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Leap; Range=8; Radius=3; Burn=1; GroundRadius=3; GroundDuration=4; GroundPercent=25.0
-War_Crossbow_Movement,Crossbow,War,Movement,Grapple,"Fire a grappling bolt at a surface or enemy within 15 meters. If fired at a surface, you are instantly pulled to that location and a trip mine is deployed at your departure point. If fired at an enemy, they are pulled to you and land on any active trap at your location.","Item.Weapon.Crossbow, Element.War, Keyword.CC, Type.Trap, Slot.Movement",,
-Chaos_Axe_Movement,Axe,Chaos,Movement,,,Slot.Movement,,
-Famine_Axe_Movement,Axe,Famine,Movement,,,Slot.Movement,,
-Demonic_Axe_Special,Axe,Demonic,Special,Hurl Cinders,"Throw the axe end over end, striking each enemy in its path once on the way out and once on the way back, and setting them alight.","Item.Weapon.Axe, Element.Demonic, Type.Projectile, Keyword.DoT.Burn, Slot.Special",Projectile,Range=11; Radius=1.5; Pierce=1; Returns=1; Speed=1900; Burn=1
-War_Dagger_Movement,Dagger,War,Movement,Vanishing Trap,"Instantly teleport to a target location up to 12 meters away. If you teleport through or past an enemy, a blade trap is left at your departure point that triggers on any enemy that walks over it for 4 seconds. The trap deals physical damage and applies bleed.","Item.Weapon.Dagger, Element.War, Keyword.DoT.Bleed, Type.Trap, Slot.Movement",,
-Chaos_Axe_Special,Axe,Chaos,Special,,,Slot.Special,,
-Famine_Axe_Special,Axe,Famine,Special,,,Slot.Special,,
-Demonic_Greataxe_Support,Greataxe,Demonic,Support,Burning Wrath,"Stoke your fury into open flame for 10 seconds, gaining 4% increased fire damage for every enemy currently burning within 15 meters. While it lasts, any enemy that strikes you in melee is set alight.","Item.Weapon.Greataxe, Element.Demonic, Type.Buff, Stat.Offense.Global, Keyword.DoT.Burn, Trigger.OnHit, Slot.Support",SelfBuff,Duration=10; Radius=15; Burn=1; IncreasePerBurning=4
-War_Fist_Movement,Fist,War,Movement,Bull Rush,"Lower your shoulder and charge forward, barreling through any enemies in your path and knocking them aside. Each enemy hit takes damage and is briefly staggered. You are immune to crowd control during the rush.","Item.Weapon.Fist, Element.War, Type.Strike, Keyword.CC, Slot.Movement",,
-Death_Greataxe_Support,Greataxe,Death,Support,,,Slot.Support,,
-Chaos_Greataxe_Support,Greataxe,Chaos,Support,,,Slot.Support,,
-Demonic_Greataxe_Heavy,Greataxe,Demonic,Heavy,Molten Cleave,"Swing your greataxe in a brutal horizontal arc that hits all enemies in a wide cone, setting each one alight. The arc drags a line of molten slag across the ground behind it that burns enemies standing in it for 6 seconds.","Item.Weapon.Greataxe, Element.Demonic, Type.AOE.PointBlank, Type.Strike, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Heavy",Strike,Radius=4; Angle=120; Burn=1; GroundRadius=4; GroundDuration=6; GroundPercent=16.7
-War_Shield_Movement,Shield,War,Movement,Shield Charge,"Sprint forward with your shield raised, dealing damage and staggering any enemy caught in your path. The charge deals bonus damage for each meter traveled and is unstoppable — you cannot be staggered or interrupted during the charge.","Item.Weapon.Shield, Element.War, Type.Strike, Keyword.CC, Slot.Movement",,
-Death_Greataxe_Heavy,Greataxe,Death,Heavy,,,Slot.Heavy,,
-Chaos_Greataxe_Heavy,Greataxe,Chaos,Heavy,,,Slot.Heavy,,
-Demonic_Greataxe_Ultimate,Greataxe,Demonic,Ultimate,Pyroclasm,"Spin continuously for 3 seconds, dealing rapid hits to all enemies within melee range and flinging molten debris outward. Every enemy hit is set alight, and the ground within 5 meters is left burning for 8 seconds. The final hit at the end of the spin deals 300% weapon damage to all affected enemies.","Item.Weapon.Greataxe, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Ultimate",Strike,Radius=3.5; Angle=360; Duration=3; Interval=0.5; Burn=1; GroundRadius=5; GroundDuration=8; GroundPercent=12.5; FinalHitPercent=300
-War_Spear_Movement,Spear,War,Movement,Cavalry Charge,"Sprint forward at high speed for up to 8 meters, impaling the first enemy in your path and carrying them with you. On arrival, slam them into the ground — any active trap within 3 meters of the landing point is immediately triggered centered on the slammed enemy.","Item.Weapon.Spear, Element.War, Type.Strike, Keyword.CC, Type.Trap, Slot.Movement",,
-Death_Greataxe_Ultimate,Greataxe,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Greataxe_Ultimate,Greataxe,Chaos,Ultimate,,,Slot.Ultimate,,
-Demonic_Greataxe_Movement,Greataxe,Demonic,Movement,Infernal Plunge,"Leap to a target location and slam down with your greataxe, dealing damage in a 5 meter radius on impact and setting every enemy struck alight. The impact cracks the ground open, leaving a pool of lava for 5 seconds that burns anything standing in it.","Item.Weapon.Greataxe, Element.Demonic, Type.AOE.PointBlank, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Movement",Movement,Mode=Leap; Range=10; Radius=5; Burn=1; GroundRadius=5; GroundDuration=5; GroundPercent=20.0
-War_Sword_Movement,Sword,War,Movement,Lunge,"Dash forward at high speed, driving your sword into the first enemy in your path. The lunge deals damage on impact and briefly stuns the target for 0.75 seconds.","Item.Weapon.Sword, Element.War, Type.Strike, Keyword.CC, Slot.Movement",Movement,Mode=Charge; Range=8; Radius=1.5; Effect=Stun; StunSeconds=0.75
-Death_Greataxe_Movement,Greataxe,Death,Movement,,,Slot.Movement,,
-Chaos_Greataxe_Movement,Greataxe,Chaos,Movement,,,Slot.Movement,,
-Demonic_Greataxe_Special,Greataxe,Demonic,Special,Emberhurl,"Hurl your greataxe spinning through a group of enemies in a line, hitting each enemy twice, once going out and once returning to your hand. The axe trails fire, setting alight every enemy it passes and leaving its flight path burning for 4 seconds.","Item.Weapon.Greataxe, Element.Demonic, Type.Projectile, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Special",Projectile,Range=12; Radius=1.5; Pierce=99; Returns=1; Speed=1800; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25.0
-War_Whip_Movement,Whip,War,Movement,Whip Swing,"Hook your whip around an anchor point or enemy up to 10 meters away and swing through the air, covering the distance instantly. If hooked to an enemy, the swing yanks them off balance and briefly stuns them for 0.75 seconds on your arrival.","Item.Weapon.Whip, Element.War, Keyword.CC, Slot.Movement",Movement,Mode=Blink; Range=10; Radius=1.5; Effect=Stun; StunSeconds=0.75
-Death_Greataxe_Special,Greataxe,Death,Special,,,Slot.Special,,
-Chaos_Greataxe_Special,Greataxe,Chaos,Special,,,Slot.Special,,
-Celestial_Spear_Support,Spear,Celestial,Support,,,Slot.Support,,
-Pestilence_Spear_Support,Spear,Pestilence,Support,,,Slot.Support,,
-Void_Spear_Support,Spear,Void,Support,,,Slot.Support,,
-War_Greataxe_Special,Greataxe,War,Special,Spinning Axe,"Hurl your greataxe spinning through a group of enemies in a line, hitting each enemy twice — once going out and once returning to your hand. Each hit deals full weapon damage and applies bleed.","Item.Weapon.Greataxe, Element.War, Type.Projectile, Keyword.DoT.Bleed, Slot.Special",,
-Death_Spear_Support,Spear,Death,Support,,,Slot.Support,,
-Chaos_Spear_Support,Spear,Chaos,Support,,,Slot.Support,,
-Celestial_Spear_Heavy,Spear,Celestial,Heavy,,,Slot.Heavy,,
-Pestilence_Spear_Heavy,Spear,Pestilence,Heavy,,,Slot.Heavy,,
-Void_Spear_Heavy,Spear,Void,Heavy,,,Slot.Heavy,,
-War_2H_Crossbow_Special,2H Crossbow,War,Special,Bolt Trap,"Plant a bolt trap on the ground that fires a bolt at the first enemy to enter its 3 meter detection radius, dealing heavy damage and pinning them in place for 2 seconds.","Item.Weapon.2HCrossbow, Element.War, Keyword.CC, Type.Trap, Slot.Special",,
-Death_Spear_Heavy,Spear,Death,Heavy,,,Slot.Heavy,,
-Chaos_Spear_Heavy,Spear,Chaos,Heavy,,,Slot.Heavy,,
-Celestial_Spear_Ultimate,Spear,Celestial,Ultimate,,,Slot.Ultimate,,
-Pestilence_Spear_Ultimate,Spear,Pestilence,Ultimate,,,Slot.Ultimate,,
-Void_Spear_Ultimate,Spear,Void,Ultimate,,,Slot.Ultimate,,
-War_Greatsword_Special,Greatsword,War,Special,Sundering Throw,"Hurl your greatsword at a target location, dealing massive damage in a line as it travels and embedding itself in the ground. Enemies that walk over the embedded sword take bleed damage. Recall the sword after 5 seconds.","Item.Weapon.Greatsword, Element.War, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Bleed, Slot.Special",,
-Death_Spear_Ultimate,Spear,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Spear_Ultimate,Spear,Chaos,Ultimate,,,Slot.Ultimate,,
-Celestial_Spear_Movement,Spear,Celestial,Movement,,,Slot.Movement,,
-Pestilence_Spear_Movement,Spear,Pestilence,Movement,,,Slot.Movement,,
-Void_Spear_Movement,Spear,Void,Movement,,,Slot.Movement,,
-War_Warhammer_Special,Warhammer,War,Special,Catapult Stone,"Hurl a massive stone pulled from the earth at a target location up to 12 meters away. The stone deals crushing physical damage in a 4 meter radius on impact, shattering armor on all enemies hit by 25% for 8 seconds.","Item.Weapon.Warhammer, Element.War, Type.Projectile, Type.AOE.PointBlank, Stat.Defense.Armor, Slot.Special",,
-Death_Spear_Movement,Spear,Death,Movement,,,Slot.Movement,,
-Chaos_Spear_Movement,Spear,Chaos,Movement,,,Slot.Movement,,
-Celestial_Spear_Special,Spear,Celestial,Special,,,Slot.Special,,
-Pestilence_Spear_Special,Spear,Pestilence,Special,,,Slot.Special,,
-Void_Spear_Special,Spear,Void,Special,,,Slot.Special,,
-War_Axe_Special,Axe,War,Special,Thrown Axe,"Hurl your axe at an enemy, dealing damage and ricocheting to up to 2 additional nearby enemies. Each enemy hit has a 40% chance to begin bleeding.","Item.Weapon.Axe, Element.War, Type.Projectile, Keyword.DoT.Bleed, Slot.Special",,
-Death_Spear_Special,Spear,Death,Special,,,Slot.Special,,
-Chaos_Spear_Special,Spear,Chaos,Special,,,Slot.Special,,
-Demonic_Fist_Support,Fist,Demonic,Support,Martyr's Ember,"Take the pain inward and hold it as heat for 10 seconds. 40% of all damage you take while it lasts is stored, and each hit you land spends part of the store as bonus fire damage until it is empty. The store is capped at 200% weapon damage.","Item.Weapon.Fist, Element.Demonic, Type.Buff, Stat.Defense.Retaliation, Stat.Offense.Global, Trigger.OnHit, Slot.Support",SelfBuff,Duration=10
-Pestilence_Fist_Support,Fist,Pestilence,Support,,,Slot.Support,,
-Void_Fist_Support,Fist,Void,Support,,,Slot.Support,,
-War_Crossbow_Special,Crossbow,War,Special,Bolt Turret,"Fire a specially designed bolt into the ground that deploys into a stationary bolt turret. The turret automatically fires at the nearest enemy within 10 meters every 1.5 seconds, dealing physical damage and applying bleed on each hit. The turret has 200 HP and lasts 5 seconds.","Item.Weapon.Crossbow, Element.War, Type.Deployable, Type.Minion, Keyword.DoT.Bleed, Stat.Offense.Global, Type.Projectile, Slot.Special",Deployable,Count=1; Duration=5; Minions=BoltTurret:1; Effect=Bleed
-Death_Fist_Support,Fist,Death,Support,,,Slot.Support,,
-Chaos_Fist_Support,Fist,Chaos,Support,,,Slot.Support,,
-Famine_Fist_Support,Fist,Famine,Support,,,Slot.Support,,
-Demonic_Fist_Heavy,Fist,Demonic,Heavy,Searing Hook,"Wind up and deliver a devastating burning hook that deals massive damage to a single target, knocks them back 4 meters and sets them alight. The blow deals 1% increased damage for every 1% of your maximum health you are currently missing.","Item.Weapon.Fist, Element.Demonic, Type.Strike, Type.Melee, Keyword.Stagger, Keyword.DoT.Burn, Trigger.LowLife, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Knockback=4; Burn=1
-Pestilence_Fist_Heavy,Fist,Pestilence,Heavy,,,Slot.Heavy,,
-Void_Fist_Heavy,Fist,Void,Heavy,,,Slot.Heavy,,
-War_Dagger_Special,Dagger,War,Special,Proximity Mine,"Plant a concealed proximity mine at your current location. The mine arms after 0.5 seconds and detonates when an enemy enters its trigger radius, dealing heavy physical damage in a 3 meter blast radius and applying a bleed to all enemies caught in the explosion.","Item.Weapon.Dagger, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Stat.Offense.Global, Type.Trap, Slot.Special",,
-Death_Fist_Heavy,Fist,Death,Heavy,,,Slot.Heavy,,
-Chaos_Fist_Heavy,Fist,Chaos,Heavy,,,Slot.Heavy,,
-Famine_Fist_Heavy,Fist,Famine,Heavy,,,Slot.Heavy,,
-Demonic_Fist_Ultimate,Fist,Demonic,Ultimate,Living Pyre,"Set yourself alight for 6 seconds. You cannot be stunned, slowed or knocked back, your own fire does you no harm, and enemies within 4 meters are continuously set alight. Every hit you take raises the pyre's fire damage by 8% with no cap, and returns health equal to 25% of the damage that hit dealt.","Item.Weapon.Fist, Element.Demonic, Type.AOE.Aura, Keyword.DoT.Burn, Stat.Recovery.Leech, Trigger.OnHit, Slot.Ultimate",Aura,Radius=4; Duration=6; Interval=1; Burn=1
-Pestilence_Fist_Ultimate,Fist,Pestilence,Ultimate,,,Slot.Ultimate,,
-Void_Fist_Ultimate,Fist,Void,Ultimate,,,Slot.Ultimate,,
-War_Fist_Special,Fist,War,Special,Bolas,"Hurl a set of weighted bolas at a target, wrapping around their legs and immobilizing them for 3 seconds. The bolas also deal physical damage on impact and have a 40% chance to apply a bleed as the weights cut into flesh.","Item.Weapon.Fist, Element.War, Type.Projectile, Keyword.CC, Keyword.DoT.Bleed, Slot.Special",,
-Death_Fist_Ultimate,Fist,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Fist_Ultimate,Fist,Chaos,Ultimate,,,Slot.Ultimate,,
-Famine_Fist_Ultimate,Fist,Famine,Ultimate,,,Slot.Ultimate,,
-Demonic_Fist_Movement,Fist,Demonic,Movement,Cinder Rush,"Lower your shoulder and charge forward, barrelling through any enemies in your path and knocking them aside. Each enemy hit takes damage and is set alight. You are immune to crowd control during the rush and leave a trail of fire behind you that burns for 5 seconds.","Item.Weapon.Fist, Element.Demonic, Type.Strike, Keyword.Charge, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Movement",Movement,Mode=Charge; Range=10; Radius=2; Burn=1; GroundRadius=2; GroundDuration=5; GroundPercent=20.0
-Pestilence_Fist_Movement,Fist,Pestilence,Movement,,,Slot.Movement,,
-Void_Fist_Movement,Fist,Void,Movement,,,Slot.Movement,,
-War_Shield_Special,Shield,War,Special,Shield Wall,"Plant your shield firmly in the ground, creating a physical barrier that blocks projectiles and reduces incoming damage from the front by 50% for all allies behind it. The shield wall lasts 8 seconds.","Item.Weapon.Shield, Element.War, Type.Deployable, Stat.Defense.Global, Stat.Defense.Ranged, Slot.Special",,
-Death_Fist_Movement,Fist,Death,Movement,,,Slot.Movement,,
-Chaos_Fist_Movement,Fist,Chaos,Movement,,,Slot.Movement,,
-Famine_Fist_Movement,Fist,Famine,Movement,,,Slot.Movement,,
-Demonic_Fist_Special,Fist,Demonic,Special,Blood Pyre,"Hurl a gout of your own burning blood at a target location, paying 8% of your current health. It ignites on impact, dealing damage in a 3 meter radius and leaving a pyre that burns enemies within it for 8 seconds. Standing in your own pyre does you no harm and doubles your health regeneration.","Item.Weapon.Fist, Element.Demonic, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Burn, Stat.Resource.HP, Stat.Recovery.Regen, Slot.Special",Projectile,Range=12; Radius=3; Speed=1400; Burn=1; GroundRadius=3; GroundDuration=8; GroundPercent=12.5; HealthCostPercent=8
-Pestilence_Fist_Special,Fist,Pestilence,Special,,,Slot.Special,,
-Void_Fist_Special,Fist,Void,Special,,,Slot.Special,,
-War_Spear_Special,Spear,War,Special,Ballista,"Hammer a ballista into the ground at your location. The ballista automatically fires massive bolts at the furthest enemy within 15 meters every 2 seconds, dealing enormous physical damage and pinning struck enemies in place for 1 second. The ballista has 500 HP, lasts 8 seconds.","Item.Weapon.Spear, Element.War, Type.Deployable, Type.Minion, Keyword.CC, Stat.Offense.Global, Type.Projectile, Slot.Special",Deployable,Count=1; Duration=8; Minions=Ballista:1
-Death_Fist_Special,Fist,Death,Special,,,Slot.Special,,
-Chaos_Fist_Special,Fist,Chaos,Special,,,Slot.Special,,
-Famine_Fist_Special,Fist,Famine,Special,,,Slot.Special,,
-Celestial_Wand_Support,Wand,Celestial,Support,,,Slot.Support,,
-Demonic_Wand_Support,Wand,Demonic,Support,Hex of Cinders,"Lay a hex on an enemy up to 12 meters away, applying Shred: their resistance is reduced for 6 seconds. Hexing an enemy that is already burning also sets alight everything within 4 meters of them.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Debuff, Stat.Defense.Resist, Keyword.DoT.Burn, Slot.Support",Debuff,Range=12; MaxTargets=1; Duration=6; Effect=Shred
-Pestilence_Wand_Support,Wand,Pestilence,Support,,,Slot.Support,,
-Void_Wand_Support,Wand,Void,Support,,,Slot.Support,,
-War_Sword_Special,Sword,War,Special,Skirmish,"Hurl a throwing sword at a distant target, dealing physical damage and applying bleed. The thrown sword embeds in the target, reducing their movement speed by 30% for 4 seconds.","Item.Weapon.Sword, Element.War, Type.Projectile, Keyword.DoT.Bleed, Keyword.CC, Slot.Special",,
-Death_Wand_Support,Wand,Death,Support,,,Slot.Support,,
-Chaos_Wand_Support,Wand,Chaos,Support,,,Slot.Support,,
-Famine_Wand_Support,Wand,Famine,Support,,,Slot.Support,,
-Celestial_Wand_Heavy,Wand,Celestial,Heavy,,,Slot.Heavy,,
-Demonic_Wand_Heavy,Wand,Demonic,Heavy,Emberbolt,"Snap a bolt of hellfire at the first enemy in a 14 meter line, setting them alight. Against an enemy already burning it deals 30% more damage.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Projectile, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Projectile,Range=14; Radius=1; Speed=2600; Burn=1
-Pestilence_Wand_Heavy,Wand,Pestilence,Heavy,,,Slot.Heavy,,
-Void_Wand_Heavy,Wand,Void,Heavy,,,Slot.Heavy,,
-War_Whip_Special,Whip,War,Special,Snare Line,"Lay a whip trap along the ground that snaps up when triggered, grabbing the first enemy to cross it and immobilizing them for 3 seconds while dealing a burst of physical damage and applying bleed.","Item.Weapon.Whip, Element.War, Type.Deployable, Keyword.CC, Keyword.DoT.Bleed, Slot.Special",,
-Death_Wand_Heavy,Wand,Death,Heavy,,,Slot.Heavy,,
-Chaos_Wand_Heavy,Wand,Chaos,Heavy,,,Slot.Heavy,,
-Famine_Wand_Heavy,Wand,Famine,Heavy,,,Slot.Heavy,,
-Celestial_Wand_Ultimate,Wand,Celestial,Ultimate,,,Slot.Ultimate,,
-Demonic_Wand_Ultimate,Wand,Demonic,Ultimate,Rain of Cinders,"Call falling fire over a 7 meter area for 4 seconds, striking everything beneath it twice a second and setting it alight. The ground burns for 8 seconds, and the last fall deals 400% weapon damage.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=7; Angle=360; Duration=4; Interval=0.5; Burn=1; GroundRadius=7; GroundDuration=8; GroundPercent=12.5; FinalHitPercent=400
-Pestilence_Wand_Ultimate,Wand,Pestilence,Ultimate,,,Slot.Ultimate,,
-Void_Wand_Ultimate,Wand,Void,Ultimate,,,Slot.Ultimate,,
-War_Greataxe_Support,Greataxe,War,Support,Blood Frenzy,"Enter a blood frenzy, gaining 5% increased damage for every enemy currently bleeding within 15 meters. The frenzy lasts 10 seconds and has no cap on the damage bonus.","Item.Weapon.Greataxe, Element.War, Stat.Offense.Global, Keyword.DoT.Bleed, Slot.Support",,
-Death_Wand_Ultimate,Wand,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Wand_Ultimate,Wand,Chaos,Ultimate,,,Slot.Ultimate,,
-Famine_Wand_Ultimate,Wand,Famine,Ultimate,,,Slot.Ultimate,,
-Celestial_Wand_Movement,Wand,Celestial,Movement,,,Slot.Movement,,
-Demonic_Wand_Movement,Wand,Demonic,Movement,Wisp Step,"Come apart into embers and reform up to 10 meters away, setting alight everything at both points. Both points burn for 3 seconds.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Blink; Range=10; Radius=2; Burn=1; GroundRadius=2; GroundDuration=3; GroundPercent=33.3
-Pestilence_Wand_Movement,Wand,Pestilence,Movement,,,Slot.Movement,,
-Void_Wand_Movement,Wand,Void,Movement,,,Slot.Movement,,
-War_2H_Crossbow_Support,2H Crossbow,War,Support,Fortify,"Brace your crossbow and dig in, increasing your armor by 25% and your physical damage by 20% for 10 seconds. You cannot move while braced but your attack speed is increased by 50%.","Item.Weapon.2HCrossbow, Element.War, Stat.Defense.Armor, Stat.Offense.Global, Slot.Support",,
-Death_Wand_Movement,Wand,Death,Movement,,,Slot.Movement,,
-Chaos_Wand_Movement,Wand,Chaos,Movement,,,Slot.Movement,,
-Famine_Wand_Movement,Wand,Famine,Movement,,,Slot.Movement,,
-Celestial_Wand_Special,Wand,Celestial,Special,,,Slot.Special,,
-Demonic_Wand_Special,Wand,Demonic,Special,Cinder Swarm,"Call two motes of living fire that attack what is nearest and set what they hit alight. They last 15 seconds, and up to four may burn at once. Calling more than four snuffs the oldest, which bursts for damage in a 2.5 meter radius.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Minion, Type.Summon, Keyword.Summon, Keyword.DoT.Burn, Slot.Special",Summon,Count=2; MaxActive=4; Duration=15; Radius=2.5; Burn=1; Minions=Mote:2
-Pestilence_Wand_Special,Wand,Pestilence,Special,,,Slot.Special,,
-Void_Wand_Special,Wand,Void,Special,,,Slot.Special,,
-War_Greatsword_Support,Greatsword,War,Support,War Shout,Let out a thunderous battle cry that increases your damage by 20% and your armor by 15% for 10 seconds. Nearby allies within 10 meters also receive half the bonus.,"Item.Weapon.Greatsword, Element.War, Stat.Offense.Global, Stat.Defense.Armor, Slot.Support",,
-Death_Wand_Special,Wand,Death,Special,,,Slot.Special,,
-Chaos_Wand_Special,Wand,Chaos,Special,,,Slot.Special,,
-Famine_Wand_Special,Wand,Famine,Special,,,Slot.Special,,
-Celestial_Staff_Support,Staff,Celestial,Support,,,Slot.Support,,
-Demonic_Staff_Support,Staff,Demonic,Support,Subjugate,"Seize an enemy's mind, applying Madness: the target attacks anything nearby, friend or foe. Subjugating an enemy that is already burning makes the madness last twice as long.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Type.Debuff, Keyword.CC, Keyword.DoT.Burn, Slot.Support",Debuff,Range=15; MaxTargets=1; Duration=3; Effect=Madness
-Pestilence_Staff_Support,Staff,Pestilence,Support,,,Slot.Support,,
-Void_Staff_Support,Staff,Void,Support,,,Slot.Support,,
-War_Warhammer_Support,Warhammer,War,Support,Warcry,"Unleash a thunderous battle cry that taunts all nearby enemies within 10 meters to focus their attacks on you for 5 seconds. While taunted enemies are attacking you, you take 20% reduced damage and deal 25% increased damage against them.","Item.Weapon.Warhammer, Element.War, Stat.Defense.Global, Stat.Offense.Global, Slot.Support",,
-Death_Staff_Support,Staff,Death,Support,,,Slot.Support,,
-Chaos_Staff_Support,Staff,Chaos,Support,,,Slot.Support,,
-Famine_Staff_Support,Staff,Famine,Support,,,Slot.Support,,
-Celestial_Staff_Heavy,Staff,Celestial,Heavy,,,Slot.Heavy,,
-Demonic_Staff_Heavy,Staff,Demonic,Heavy,Infernal Lance,"Level your staff and drive a lance of hellfire forward, piercing every enemy in a 12 meter line and setting each one alight. The lance deals 20% more damage for every enemy it has already passed through.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Type.Projectile, Keyword.DoT.Burn, Stat.Offense.Global, Slot.Heavy",Projectile,Range=12; Radius=1.5; Pierce=99; Speed=0; Burn=1
-Pestilence_Staff_Heavy,Staff,Pestilence,Heavy,,,Slot.Heavy,,
-Void_Staff_Heavy,Staff,Void,Heavy,,,Slot.Heavy,,
-War_Axe_Support,Axe,War,Support,Battle Rage,"Channel your fury into a violent rage, increasing your damage by 15% and your attack speed by 20% for 8 seconds. Each kill during the rage resets the duration.","Item.Weapon.Axe, Element.War, Stat.Offense.Global, Stat.Offense.Speed, Trigger.OnKill, Slot.Support",,
-Death_Staff_Heavy,Staff,Death,Heavy,,,Slot.Heavy,,
-Chaos_Staff_Heavy,Staff,Chaos,Heavy,,,Slot.Heavy,,
-Famine_Staff_Heavy,Staff,Famine,Heavy,,,Slot.Heavy,,
-Celestial_Staff_Ultimate,Staff,Celestial,Ultimate,,,Slot.Ultimate,,
-Demonic_Staff_Ultimate,Staff,Demonic,Ultimate,Open the Rift,"Tear open an infernal rift at a target location up to 15 meters away. It lasts 10 seconds, burns every enemy within 6 meters, and spawns a lesser imp every 2 seconds to a maximum of 5. When the rift closes it collapses, dealing 400% weapon damage in its radius and destroying the imps it spawned.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Type.AOE.Persistent, Type.Minion, Type.Summon, Keyword.Summon, Keyword.DoT.Burn, Slot.Ultimate",Summon,Range=15; Radius=6; Duration=10; Interval=2; MaxActive=5; Burn=1; GroundRadius=6; GroundDuration=10; GroundPercent=10.0; FinalHitPercent=400; Minions=Imp:1
-Pestilence_Staff_Ultimate,Staff,Pestilence,Ultimate,,,Slot.Ultimate,,
-Void_Staff_Ultimate,Staff,Void,Ultimate,,,Slot.Ultimate,,
-War_Crossbow_Support,Crossbow,War,Support,Suppressing Fire,"Fire a rapid volley of bolts at a target area, forcing enemies within 5 meters to dodge or be hit. Enemies in the suppression zone have their movement speed reduced by 40%.","Item.Weapon.Crossbow, Element.War, Type.AOE.Persistent, Keyword.CC, Stat.Offense.Global, Slot.Support",,
-Death_Staff_Ultimate,Staff,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Staff_Ultimate,Staff,Chaos,Ultimate,,,Slot.Ultimate,,
-Famine_Staff_Ultimate,Staff,Famine,Ultimate,,,Slot.Ultimate,,
-Celestial_Staff_Movement,Staff,Celestial,Movement,,,Slot.Movement,,
-Demonic_Staff_Movement,Staff,Demonic,Movement,Emberstep,"Collapse into a cloud of embers and reappear at a target location up to 12 meters away. Enemies at the point you left and the point you arrive are set alight, and both points burn for 4 seconds.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Movement",Movement,Mode=Blink; Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=4; GroundPercent=25.0
-Pestilence_Staff_Movement,Staff,Pestilence,Movement,,,Slot.Movement,,
-Void_Staff_Movement,Staff,Void,Movement,,,Slot.Movement,,
-War_Dagger_Support,Dagger,War,Support,Smoke Bomb,"Hurl a smoke bomb at your feet, creating a cloud that blinds nearby enemies for 3 seconds and reduces their chance to hit you by 40%. While inside the cloud your evasion chance is increased by 20% and placing traps costs no arming delay.","Item.Weapon.Dagger, Element.War, Type.AOE.PointBlank, Stat.Defense.Evasion, Keyword.CC, Slot.Support",,
-Death_Staff_Movement,Staff,Death,Movement,,,Slot.Movement,,
-Chaos_Staff_Movement,Staff,Chaos,Movement,,,Slot.Movement,,
-Famine_Staff_Movement,Staff,Famine,Movement,,,Slot.Movement,,
-Celestial_Staff_Special,Staff,Celestial,Special,,,Slot.Special,,
-Demonic_Staff_Special,Staff,Demonic,Special,Summon Imp,"Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Up to 3 imps may be active at once. Summoning a fourth destroys the oldest, which explodes for damage in a 3 meter radius.","Item.Weapon.Staff, Element.Demonic, Type.Minion, Type.Summon, Keyword.Summon, Keyword.DoT.Burn, Slot.Special",Summon,Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1; Minions=Imp:1
-Pestilence_Staff_Special,Staff,Pestilence,Special,,,Slot.Special,,
-Void_Staff_Special,Staff,Void,Special,,,Slot.Special,,
-War_Fist_Support,Fist,War,Support,Iron Skin,"Harden your body against incoming blows, increasing your armor by 30% and reducing stagger duration by 60% for 10 seconds. While active, taking a hit that would stagger you instead grants you 10% bonus damage for 3 seconds.","Item.Weapon.Fist, Element.War, Stat.Defense.Armor, Stat.Offense.Global, Slot.Support",,
-Death_Staff_Special,Staff,Death,Special,,,Slot.Special,,
-Chaos_Staff_Special,Staff,Chaos,Special,,,Slot.Special,,
-Famine_Staff_Special,Staff,Famine,Special,,,Slot.Special,,
-Demonic_Whip_Support,Whip,Demonic,Support,Coil of Embers,"Wind burning coils about yourself for 10 seconds. Enemies that strike you in melee are set alight, and your attack range is increased by 20% while it lasts.","Item.Weapon.Whip, Element.Demonic, Type.Buff, Stat.Defense.Retaliation, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10; Radius=12
-Pestilence_Whip_Support,Whip,Pestilence,Support,,,Slot.Support,,
-Void_Whip_Support,Whip,Void,Support,,,Slot.Support,,
-War_Shield_Support,Shield,War,Support,Braced Guard,"Raise your shield and brace for impact, increasing your block chance to 100% for 3 seconds. Damage blocked during this time is stored and added to your next attack as bonus damage up to a cap of 200% weapon damage.","Item.Weapon.Shield, Element.War, Stat.Defense.Block, Stat.Offense.Global, Slot.Support",,
-Death_Whip_Support,Whip,Death,Support,,,Slot.Support,,
-Chaos_Whip_Support,Whip,Chaos,Support,,,Slot.Support,,
-Famine_Whip_Support,Whip,Famine,Support,,,Slot.Support,,
-Demonic_Whip_Heavy,Whip,Demonic,Heavy,Searing Lash,"Crack the whip out to 5 meters, setting alight everything it touches. The lash reaches further than any other one-handed weapon's heavy blow.","Item.Weapon.Whip, Element.Demonic, Type.Strike, Type.Melee, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=5; Angle=45; Burn=1
-Pestilence_Whip_Heavy,Whip,Pestilence,Heavy,,,Slot.Heavy,,
-Void_Whip_Heavy,Whip,Void,Heavy,,,Slot.Heavy,,
-War_Spear_Support,Spear,War,Support,Phalanx Stance,"Brace your spear and enter a defensive stance, reducing incoming melee damage by 25% and granting all active gadgets within 10 meters +20% HP and +15% damage for 8 seconds.","Item.Weapon.Spear, Element.War, Stat.Defense.Melee, Stat.Offense.Global, Type.Deployable, Slot.Support",,
-Death_Whip_Heavy,Whip,Death,Heavy,,,Slot.Heavy,,
-Chaos_Whip_Heavy,Whip,Chaos,Heavy,,,Slot.Heavy,,
-Famine_Whip_Heavy,Whip,Famine,Heavy,,,Slot.Heavy,,
-Demonic_Whip_Ultimate,Whip,Demonic,Ultimate,Firestorm of Lashes,"Lash in every direction for 4 seconds, striking everything within 7 meters twice a second and setting it alight. The closing crack deals 350% weapon damage to everything still standing.","Item.Weapon.Whip, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=7; Angle=360; Duration=4; Interval=0.5; Burn=1; FinalHitPercent=350
-Pestilence_Whip_Ultimate,Whip,Pestilence,Ultimate,,,Slot.Ultimate,,
-Void_Whip_Ultimate,Whip,Void,Ultimate,,,Slot.Ultimate,,
-War_Sword_Support,Sword,War,Support,Combat Stance,"Adopt a disciplined combat stance, increasing your block chance by 20% and reducing incoming damage by 10% for 8 seconds. Attacks made from this stance deal bonus damage equal to your current block chance percentage.","Item.Weapon.Sword, Element.War, Stat.Defense.Block, Stat.Offense.Global, Slot.Support",,
-Death_Whip_Ultimate,Whip,Death,Ultimate,,,Slot.Ultimate,,
-Chaos_Whip_Ultimate,Whip,Chaos,Ultimate,,,Slot.Ultimate,,
-Famine_Whip_Ultimate,Whip,Famine,Ultimate,,,Slot.Ultimate,,
-Demonic_Whip_Movement,Whip,Demonic,Movement,Grapple of Ash,"Throw the whip to a point up to 10 meters away and haul yourself to it, setting alight every enemy the line crosses.","Item.Weapon.Whip, Element.Demonic, Type.Strike, Keyword.Charge, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Charge; Range=10; Radius=1.5; Burn=1
-Pestilence_Whip_Movement,Whip,Pestilence,Movement,,,Slot.Movement,,
-Void_Whip_Movement,Whip,Void,Movement,,,Slot.Movement,,
-War_Whip_Support,Whip,War,Support,Entangle,"Wrap your whip around a target's limbs, reducing their movement speed by 60% and attack speed by 40% for 5 seconds. While entangled, the target takes 20% increased damage from all sources.","Item.Weapon.Whip, Element.War, Keyword.CC, Stat.Offense.Global, Slot.Support",,
-Death_Whip_Movement,Whip,Death,Movement,,,Slot.Movement,,
-Chaos_Whip_Movement,Whip,Chaos,Movement,,,Slot.Movement,,
-Famine_Whip_Movement,Whip,Famine,Movement,,,Slot.Movement,,
-Demonic_Whip_Special,Whip,Demonic,Special,Chain of Coals,"Whirl the whip out in a burning line, striking every enemy along 12 meters and setting them alight. The line it traces burns for 4 seconds.","Item.Weapon.Whip, Element.Demonic, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Special",Projectile,Range=12; Radius=1.5; Pierce=99; Speed=2000; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25.0
-Pestilence_Whip_Special,Whip,Pestilence,Special,,,Slot.Special,,
-Void_Whip_Special,Whip,Void,Special,,,Slot.Special,,
-War_Greataxe_Ultimate,Greataxe,War,Ultimate,Annihilator,Spin continuously for 3 seconds dealing rapid hits to all enemies within melee range. Each revolution applies bleed and reduces enemy armor by 5%. The final hit at the end of the spin deals 300% weapon damage to all affected enemies.,"Item.Weapon.Greataxe, Element.War, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Ultimate",,
-Death_Whip_Special,Whip,Death,Special,,,Slot.Special,,
-Chaos_Whip_Special,Whip,Chaos,Special,,,Slot.Special,,
-Famine_Whip_Special,Whip,Famine,Special,,,Slot.Special,,
-Celestial_Shield_Support,Shield,Celestial,Support,,,Slot.Support,,
-War_2H_Crossbow_Ultimate,2H Crossbow,War,Ultimate,Artillery Strike,Load and fire a specially crafted explosive bolt at a target location up to 20 meters away. The bolt detonates on impact dealing catastrophic physical damage in a 6 meter radius and applying a bleed to all enemies caught in the blast.,"Item.Weapon.2HCrossbow, Element.War, Type.Projectile, Type.AOE.PointBlank, Keyword.DoT.Bleed, Slot.Ultimate",,
-Chaos_Shield_Support,Shield,Chaos,Support,,,Slot.Support,,
-Celestial_Shield_Heavy,Shield,Celestial,Heavy,,,Slot.Heavy,,
-Chaos_Shield_Heavy,Shield,Chaos,Heavy,,,Slot.Heavy,,
-Celestial_Shield_Ultimate,Shield,Celestial,Ultimate,,,Slot.Ultimate,,
-Chaos_Shield_Ultimate,Shield,Chaos,Ultimate,,,Slot.Ultimate,,
-Celestial_Shield_Movement,Shield,Celestial,Movement,,,Slot.Movement,,
-Chaos_Shield_Movement,Shield,Chaos,Movement,,,Slot.Movement,,
-Celestial_Shield_Special,Shield,Celestial,Special,,,Slot.Special,,
-Chaos_Shield_Special,Shield,Chaos,Special,,,Slot.Special,,
-Celestial_Crossbow_Support,Crossbow,Celestial,Support,,,Slot.Support,,
-Pestilence_Crossbow_Support,Crossbow,Pestilence,Support,,,Slot.Support,,
-Chaos_Crossbow_Support,Crossbow,Chaos,Support,,,Slot.Support,,
-Celestial_Crossbow_Heavy,Crossbow,Celestial,Heavy,,,Slot.Heavy,,
-Pestilence_Crossbow_Heavy,Crossbow,Pestilence,Heavy,,,Slot.Heavy,,
-War_Greatsword_Ultimate,Greatsword,War,Ultimate,Warlord's Decree,Channel for 1 second then unleash a catastrophic sweeping strike that hits all enemies within 8 meters for enormous damage. Enemies struck are knocked down for 2 seconds and take 40% increased damage from all sources for 8 seconds.,"Item.Weapon.Greatsword, Element.War, Type.AOE.PointBlank, Keyword.CC, Stat.Offense.Global, Slot.Ultimate",,
-Chaos_Crossbow_Heavy,Crossbow,Chaos,Heavy,,,Slot.Heavy,,
-Celestial_Crossbow_Ultimate,Crossbow,Celestial,Ultimate,,,Slot.Ultimate,,
-Pestilence_Crossbow_Ultimate,Crossbow,Pestilence,Ultimate,,,Slot.Ultimate,,
-War_Warhammer_Ultimate,Warhammer,War,Ultimate,Cataclysm,"Channel for 1.5 seconds then bring your hammer down with world-ending force at a target location up to 8 meters away. The impact deals catastrophic damage in a 8 meter radius, instantly shattering the armor of all enemies hit, knocking them down for 3 seconds, and creating a persistent fissure that deals damage per second for 10 seconds.","Item.Weapon.Warhammer, Element.War, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.CC, Stat.Defense.Armor, Slot.Ultimate",,
-Chaos_Crossbow_Ultimate,Crossbow,Chaos,Ultimate,,,Slot.Ultimate,,
-Celestial_Crossbow_Movement,Crossbow,Celestial,Movement,,,Slot.Movement,,
-Pestilence_Crossbow_Movement,Crossbow,Pestilence,Movement,,,Slot.Movement,,
-War_Axe_Ultimate,Axe,War,Ultimate,Skull Splitter,Wind up for 0.5 seconds then deliver a single catastrophic overhead blow dealing 500% weapon damage to a single target. If the blow kills the target it explodes in a shower of gore that applies bleed at 15 times its normal damage to all enemies within 5 meters.,"Item.Weapon.Axe, Element.War, Type.Strike, Keyword.DoT.Bleed, Type.AOE.PointBlank, Slot.Ultimate",,
-Chaos_Crossbow_Movement,Crossbow,Chaos,Movement,,,Slot.Movement,,
-Celestial_Crossbow_Special,Crossbow,Celestial,Special,,,Slot.Special,,
-Pestilence_Crossbow_Special,Crossbow,Pestilence,Special,,,Slot.Special,,
-War_Crossbow_Ultimate,Crossbow,War,Ultimate,Artillery Barrage,"Mark a target location up to 20 meters away. After a 1 second delay, rain down 18 explosive bolts on the marked area over 3 seconds, each bolt deploying a proximity mine on landing. All mines are fully armed immediately. Mines from this ability do not count towards your trap limit.","Item.Weapon.Crossbow, Element.War, Type.Projectile, Type.AOE.PointBlank, Stat.Offense.Global, Type.Trap, Slot.Ultimate",,
-Chaos_Crossbow_Special,Crossbow,Chaos,Special,,,Slot.Special,,
-Pestilence_2H_Crossbow_Support,2H Crossbow,Pestilence,Support,,,Slot.Support,,
-War_Dagger_Ultimate,Dagger,War,Ultimate,Death by a Thousand Cuts,"Scatter 5 proximity mines in a ring around yourself and enter a frenzied evasive state for 5 seconds, gaining 30% increased evasion chance. Each mine that detonates during the frenzy applies bleed at double its normal damage. When the frenzy ends, any remaining mines detonate simultaneously.","Item.Weapon.Dagger, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Stat.Defense.Evasion, Type.Trap, Slot.Ultimate",,
-Chaos_2H_Crossbow_Support,2H Crossbow,Chaos,Support,,,Slot.Support,,
-Pestilence_2H_Crossbow_Heavy,2H Crossbow,Pestilence,Heavy,,,Slot.Heavy,,
-Chaos_2H_Crossbow_Heavy,2H Crossbow,Chaos,Heavy,,,Slot.Heavy,,
-Pestilence_2H_Crossbow_Ultimate,2H Crossbow,Pestilence,Ultimate,,,Slot.Ultimate,,
-Chaos_2H_Crossbow_Ultimate,2H Crossbow,Chaos,Ultimate,,,Slot.Ultimate,,
-Pestilence_2H_Crossbow_Movement,2H Crossbow,Pestilence,Movement,,,Slot.Movement,,
-Chaos_2H_Crossbow_Movement,2H Crossbow,Chaos,Movement,,,Slot.Movement,,
-Pestilence_2H_Crossbow_Special,2H Crossbow,Pestilence,Special,,,Slot.Special,,
-Chaos_2H_Crossbow_Special,2H Crossbow,Chaos,Special,,,Slot.Special,,
-Celestial_Warhammer_Support,Warhammer,Celestial,Support,,,Slot.Support,,
-Demonic_Warhammer_Support,Warhammer,Demonic,Support,Forge Stance,"Set your feet and take the heat inward for 10 seconds, gaining 30% increased armor and becoming immune to knockback. Enemies that strike you in melee are set alight.","Item.Weapon.Warhammer, Element.Demonic, Type.Buff, Stat.Defense.Armor, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10
-Void_Warhammer_Support,Warhammer,Void,Support,,,Slot.Support,,
-Chaos_Warhammer_Support,Warhammer,Chaos,Support,,,Slot.Support,,
-Famine_Warhammer_Support,Warhammer,Famine,Support,,,Slot.Support,,
-Celestial_Warhammer_Heavy,Warhammer,Celestial,Heavy,,,Slot.Heavy,,
-Demonic_Warhammer_Heavy,Warhammer,Demonic,Heavy,Molten Crush,"Bring the hammer down on everything in front of you, knocking them back 3 meters and setting them alight. The slowest heavy blow in the game and the hardest.","Item.Weapon.Warhammer, Element.Demonic, Type.Strike, Type.Melee, Keyword.Stagger, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=3.5; Angle=80; Knockback=3; Burn=1
-Void_Warhammer_Heavy,Warhammer,Void,Heavy,,,Slot.Heavy,,
-War_Fist_Ultimate,Fist,War,Ultimate,Unstoppable Force,"Enter an unstoppable rage for 6 seconds. During this time you cannot be stunned, slowed or knocked back. Every hit deals bonus damage equal to 10% of your maximum HP and each punch has a 50% chance to apply bleed.","Item.Weapon.Fist, Element.War, Stat.Defense.Life, Keyword.DoT.Bleed, Slot.Ultimate",,
-Chaos_Warhammer_Heavy,Warhammer,Chaos,Heavy,,,Slot.Heavy,,
-Famine_Warhammer_Heavy,Warhammer,Famine,Heavy,,,Slot.Heavy,,
-Celestial_Warhammer_Ultimate,Warhammer,Celestial,Ultimate,,,Slot.Ultimate,,
-Demonic_Warhammer_Ultimate,Warhammer,Demonic,Ultimate,Break the World,"Hammer the ground once a second for 3 seconds, striking everything within 6 meters and setting it alight. The ground burns for 10 seconds, and the last blow deals 450% weapon damage.","Item.Weapon.Warhammer, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=6; Angle=360; Duration=3; Interval=1; Burn=1; GroundRadius=6; GroundDuration=10; GroundPercent=10.0; FinalHitPercent=450
-Void_Warhammer_Ultimate,Warhammer,Void,Ultimate,,,Slot.Ultimate,,
-War_Shield_Ultimate,Shield,War,Ultimate,Fortress,"Plant yourself and become an immovable fortress for 5 seconds. All incoming damage is reduced by 60%, every blocked hit is reflected back at the attacker for 500% of the blocked damage, and nearby allies within 6 meters take 30% less damage.","Item.Weapon.Shield, Element.War, Stat.Defense.Block, Stat.Defense.Global, Slot.Ultimate",,
-Chaos_Warhammer_Ultimate,Warhammer,Chaos,Ultimate,,,Slot.Ultimate,,
-Famine_Warhammer_Ultimate,Warhammer,Famine,Ultimate,,,Slot.Ultimate,,
-Celestial_Warhammer_Movement,Warhammer,Celestial,Movement,,,Slot.Movement,,
-Demonic_Warhammer_Movement,Warhammer,Demonic,Movement,Meteor Drop,"Rise and fall on a point up to 9 meters away, striking everything within 4.5 meters on impact and setting it alight. The crater burns for 6 seconds.","Item.Weapon.Warhammer, Element.Demonic, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Leap; Range=9; Radius=4.5; Burn=1; GroundRadius=4.5; GroundDuration=6; GroundPercent=16.7
-Void_Warhammer_Movement,Warhammer,Void,Movement,,,Slot.Movement,,
-War_Spear_Ultimate,Spear,War,Ultimate,Iron Fortress,Slam your spear into the ground to instantly deploy 2 ballista turrets and 3 ground spike traps arranged around your position. All deployed gadgets and traps from this ability are fully armed immediately and have 50% increased HP. Lasts 20 seconds.,"Item.Weapon.Spear, Element.War, Type.Deployable, Type.Minion, Stat.Offense.Global, Keyword.CC, Type.Trap, Slot.Ultimate",Deployable,"Duration=20; Minions=Ballista:2, SpikeTrap:3; HealthPercent=150"
-Chaos_Warhammer_Movement,Warhammer,Chaos,Movement,,,Slot.Movement,,
-Famine_Warhammer_Movement,Warhammer,Famine,Movement,,,Slot.Movement,,
-Celestial_Warhammer_Special,Warhammer,Celestial,Special,,,Slot.Special,,
-Demonic_Warhammer_Special,Warhammer,Demonic,Special,Magma Quake,"Slam the hammer into the ground at a point up to 10 meters away, cracking it open in a 4 meter radius and setting alight everything caught. The break burns for 6 seconds.","Item.Weapon.Warhammer, Element.Demonic, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Special",Projectile,Range=10; Radius=4; Speed=1200; Burn=1; GroundRadius=4; GroundDuration=6; GroundPercent=16.7
-Void_Warhammer_Special,Warhammer,Void,Special,,,Slot.Special,,
-War_Sword_Ultimate,Sword,War,Ultimate,Bladestorm,"Channel to spin in a ferocious whirlwind of steel, striking all enemies within melee range repeatedly. Each strike applies bleed. Enemies hit 5 or more times have all their armor stripped for 6 seconds.","Item.Weapon.Sword, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Ultimate",,
-Chaos_Warhammer_Special,Warhammer,Chaos,Special,,,Slot.Special,,
-Famine_Warhammer_Special,Warhammer,Famine,Special,,,Slot.Special,,
-Celestial_All_Aura,All,Celestial,Aura,,,Slot.Aura,,
-Demonic_All_Aura,All,Demonic,Aura,Conflagration,Emanate a ring of hellfire in a 10 meter radius. Enemies within it are continuously set alight and have their Demonic resistance reduced by 15%. Allies within it deal 8% increased fire damage. Drains mana per second while active.,"Element.Demonic, Type.AOE.Aura, Keyword.DoT.Burn, Stat.Defense.Resist, Stat.Offense.Global, Stat.Resource.Mana, Slot.Aura",Aura,Radius=10; Interval=1; Burn=1
-Pestilence_All_Aura,All,Pestilence,Aura,,,Slot.Aura,,
-Void_All_Aura,All,Void,Aura,,,Slot.Aura,,
-War_Whip_Ultimate,Whip,War,Ultimate,Whirlwind of Steel,"Spin your whip in a frenzy for 4 seconds, creating a zone of lashing cuts up to 7 meters around you. Every enemy in range is struck repeatedly, each hit applying bleed. Enemies that attempt to move through the zone take double damage.","Item.Weapon.Whip, Element.War, Type.AOE.Aura, Keyword.DoT.Bleed, Slot.Ultimate",,
-Death_All_Aura,All,Death,Aura,,,Slot.Aura,,
-Chaos_All_Aura,All,Chaos,Aura,,,Slot.Aura,,
-Famine_All_Aura,All,Famine,Aura,,,Slot.Aura,,
+Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent
+Celestial_Sword_Support,Sword,Celestial,Support,,,"Item.Weapon.Sword, Element.Celestial, Slot.Support",,,-1.0
+Demonic_Sword_Support,Sword,Demonic,Support,Kindled Edge,"Hold the blade in your own fire for 10 seconds. While it lasts every hit you land sets its target alight, and your critical strike chance is increased by 20% against anything already burning.","Item.Weapon.Sword, Element.Demonic, Type.Buff, Stat.Offense.Crit, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10,-1.0
+Pestilence_Sword_Support,Sword,Pestilence,Support,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Support",,,-1.0
+War_All_Aura,All,War,Aura,Blood and Iron,Emanate an aura of martial dominance in a 10 meter radius. Enemies within the aura have their armor reduced by 10% and their movement speed reduced by 15%. Allies within the aura deal 8% increased physical damage. Drains mana per second while active.,"Element.War, Type.AOE.Aura, Stat.Defense.Armor, Stat.Offense.Global, Stat.Utility.Movespeed, Stat.Resource.Mana, Slot.Aura",,,-1.0
+Death_Sword_Support,Sword,Death,Support,,,"Item.Weapon.Sword, Element.Death, Slot.Support",,,-1.0
+Chaos_Sword_Support,Sword,Chaos,Support,,,"Item.Weapon.Sword, Element.Chaos, Slot.Support",,,-1.0
+Famine_Sword_Support,Sword,Famine,Support,,,"Item.Weapon.Sword, Element.Famine, Slot.Support",,,-1.0
+Celestial_Sword_Heavy,Sword,Celestial,Heavy,,,"Item.Weapon.Sword, Element.Celestial, Slot.Heavy",,,-1.0
+Demonic_Sword_Heavy,Sword,Demonic,Heavy,Cinderslash,"Draw a burning diagonal cut across everything in front of you, setting each one alight. Against an enemy that is already burning the cut deals 30% more damage.","Item.Weapon.Sword, Element.Demonic, Type.Strike, Type.Melee, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=3; Angle=90; Burn=1,-1.0
+Pestilence_Sword_Heavy,Sword,Pestilence,Heavy,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Heavy",,,-1.0
+War_Greataxe_Heavy,Greataxe,War,Heavy,Sundering Arc,"Swing your greataxe in a brutal horizontal arc that hits all enemies in a wide cone, dealing massive damage and applying a bleed to each target hit. Armored enemies take an additional 20% damage from this attack.","Item.Weapon.Greataxe, Element.War, Type.AOE.PointBlank, Type.Strike, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Heavy",,,-1.0
+Death_Sword_Heavy,Sword,Death,Heavy,,,"Item.Weapon.Sword, Element.Death, Slot.Heavy",,,-1.0
+Chaos_Sword_Heavy,Sword,Chaos,Heavy,,,"Item.Weapon.Sword, Element.Chaos, Slot.Heavy",,,-1.0
+Famine_Sword_Heavy,Sword,Famine,Heavy,,,"Item.Weapon.Sword, Element.Famine, Slot.Heavy",,,-1.0
+Celestial_Sword_Ultimate,Sword,Celestial,Ultimate,,,"Item.Weapon.Sword, Element.Celestial, Slot.Ultimate",,,-1.0
+Demonic_Sword_Ultimate,Sword,Demonic,Ultimate,Hundred Cinders,"Cut in every direction for 3 seconds, striking all enemies within 3 meters five times a second and setting each one alight. The closing cut deals 350% weapon damage to everything still standing.","Item.Weapon.Sword, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=3; Angle=360; Duration=3; Interval=0.2; Burn=1; FinalHitPercent=350,-1.0
+Pestilence_Sword_Ultimate,Sword,Pestilence,Ultimate,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Ultimate",,,-1.0
+War_2H_Crossbow_Heavy,2H Crossbow,War,Heavy,Siege Bolt,"Fire a massive bolt that punches through up to 3 enemies in a line, dealing enormous damage to each. The bolt leaves a wound on every enemy it passes through, causing them to bleed for 10 seconds.","Item.Weapon.2HCrossbow, Element.War, Type.Projectile, Keyword.DoT.Bleed, Slot.Heavy",,,-1.0
+Death_Sword_Ultimate,Sword,Death,Ultimate,,,"Item.Weapon.Sword, Element.Death, Slot.Ultimate",,,-1.0
+Chaos_Sword_Ultimate,Sword,Chaos,Ultimate,,,"Item.Weapon.Sword, Element.Chaos, Slot.Ultimate",,,-1.0
+Famine_Sword_Ultimate,Sword,Famine,Ultimate,,,"Item.Weapon.Sword, Element.Famine, Slot.Ultimate",,,-1.0
+Celestial_Sword_Movement,Sword,Celestial,Movement,,,"Item.Weapon.Sword, Element.Celestial, Slot.Movement",,,-1.0
+Demonic_Sword_Movement,Sword,Demonic,Movement,Flamedart,"Dart forward in a straight line, cutting every enemy you pass and setting them alight. The path you took burns for 4 seconds.","Item.Weapon.Sword, Element.Demonic, Type.Strike, Keyword.Charge, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Charge; Range=8; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25.0,-1.0
+Pestilence_Sword_Movement,Sword,Pestilence,Movement,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Movement",,,-1.0
+War_Greatsword_Heavy,Greatsword,War,Heavy,Executioner's Arc,"Swing your greatsword in a wide horizontal arc, hitting all enemies in a 180 degree cone in front of you. Enemies below 5% HP are instantly killed. Enemies above 90% HP are staggered for 1.5 seconds.","Item.Weapon.Greatsword, Element.War, Type.AOE.PointBlank, Type.Strike, Keyword.CC, Slot.Heavy",,,-1.0
+Death_Sword_Movement,Sword,Death,Movement,,,"Item.Weapon.Sword, Element.Death, Slot.Movement",,,-1.0
+Chaos_Sword_Movement,Sword,Chaos,Movement,,,"Item.Weapon.Sword, Element.Chaos, Slot.Movement",,,-1.0
+Famine_Sword_Movement,Sword,Famine,Movement,,,"Item.Weapon.Sword, Element.Famine, Slot.Movement",,,-1.0
+Celestial_Sword_Special,Sword,Celestial,Special,,,"Item.Weapon.Sword, Element.Celestial, Slot.Special",,,-1.0
+Demonic_Sword_Special,Sword,Demonic,Special,Emberfang,"Flick a shard of hot iron from the blade that flies forward and passes through up to three enemies in a line, setting each one alight.","Item.Weapon.Sword, Element.Demonic, Type.Projectile, Keyword.DoT.Burn, Slot.Special",Projectile,Range=10; Radius=1; Pierce=2; Speed=2200; Burn=1,-1.0
+Pestilence_Sword_Special,Sword,Pestilence,Special,,,"Item.Weapon.Sword, Element.Pestilence, Slot.Special",,,-1.0
+War_Warhammer_Heavy,Warhammer,War,Heavy,Earthquake,"Slam your warhammer into the ground with tremendous force, sending a shockwave rippling outward in a 6 meter radius. Enemies caught in the shockwave are staggered for 0.5 seconds and have their armor reduced by 20% for 6 seconds. A fissure remains at the impact point dealing damage per second to enemies standing on it for 5 seconds.","Item.Weapon.Warhammer, Element.War, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.CC, Stat.Defense.Armor, Slot.Heavy",,,-1.0
+Death_Sword_Special,Sword,Death,Special,,,"Item.Weapon.Sword, Element.Death, Slot.Special",,,-1.0
+Chaos_Sword_Special,Sword,Chaos,Special,,,"Item.Weapon.Sword, Element.Chaos, Slot.Special",,,-1.0
+Famine_Sword_Special,Sword,Famine,Special,,,"Item.Weapon.Sword, Element.Famine, Slot.Special",,,-1.0
+Celestial_Greatsword_Support,Greatsword,Celestial,Support,,,Slot.Support,,,-1.0
+Demonic_Greatsword_Support,Greatsword,Demonic,Support,Brand of the Pit,"Mark yourself for 10 seconds. While it lasts you deal 2% increased damage for every enemy burning within 12 meters, and take 15% less damage from anything that is burning.","Item.Weapon.Greatsword, Element.Demonic, Type.Buff, Stat.Offense.Global, Stat.Defense.Global, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10; Radius=12,-1.0
+Void_Greatsword_Support,Greatsword,Void,Support,,,Slot.Support,,,-1.0
+War_Axe_Heavy,Axe,War,Heavy,Cleaving Blow,Deliver a savage overhead chop that deals heavy damage and reduces the target's armor by 20% for 8 seconds. The blow has a 30% chance to cause a deep bleed.,"Item.Weapon.Axe, Element.War, Type.Strike, Stat.Defense.Armor, Keyword.DoT.Bleed, Slot.Heavy",,,-1.0
+Death_Greatsword_Support,Greatsword,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Greatsword_Support,Greatsword,Chaos,Support,,,Slot.Support,,,-1.0
+Celestial_Greatsword_Heavy,Greatsword,Celestial,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Greatsword_Heavy,Greatsword,Demonic,Heavy,Scorching Arc,"Sweep the greatsword through a wide arc, setting alight every enemy it touches and scorching the ground it crosses. That ground burns anything standing in it for 5 seconds.","Item.Weapon.Greatsword, Element.Demonic, Type.Strike, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=4.5; Angle=140; Burn=1; GroundRadius=4.5; GroundDuration=5; GroundPercent=20.0,-1.0
+Void_Greatsword_Heavy,Greatsword,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_Crossbow_Heavy,Crossbow,War,Heavy,Armor Piercing Bolt,"Fire a specially crafted bolt that ignores 40% of the target's armor, dealing heavy physical damage. If the bolt hits a gadget or trap you own, it overcharges it — the next time that gadget or trap fires it deals 50% bonus damage.","Item.Weapon.Crossbow, Element.War, Type.Projectile, Stat.Defense.Armor, Stat.Offense.Global, Slot.Heavy",,,-1.0
+Death_Greatsword_Heavy,Greatsword,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Greatsword_Heavy,Greatsword,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Celestial_Greatsword_Ultimate,Greatsword,Celestial,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Greatsword_Ultimate,Greatsword,Demonic,Ultimate,Sunder the Ash,"Raise the greatsword and bring it down for 3 seconds of hammering overhead blows, striking everything within 6 meters and setting it alight. The ground is left burning for 10 seconds, and the last blow deals 450% weapon damage.","Item.Weapon.Greatsword, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=6; Angle=360; Duration=3; Interval=0.6; Burn=1; GroundRadius=6; GroundDuration=10; GroundPercent=10.0; FinalHitPercent=450,-1.0
+Void_Greatsword_Ultimate,Greatsword,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Dagger_Heavy,Dagger,War,Heavy,Gut Wire,"Slash a razor-thin tripwire across the ground directly in front of you, instantly arming a close-range trap that triggers on the next enemy to cross it. The trap deals heavy bleed damage and applies bleed at double its normal damage.","Item.Weapon.Dagger, Element.War, Type.Strike, Keyword.DoT.Bleed, Stat.Offense.Global, Type.Trap, Slot.Heavy",,,-1.0
+Death_Greatsword_Ultimate,Greatsword,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Greatsword_Ultimate,Greatsword,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Celestial_Greatsword_Movement,Greatsword,Celestial,Movement,,,Slot.Movement,,,-1.0
+Demonic_Greatsword_Movement,Greatsword,Demonic,Movement,Furnace Charge,"Drive forward with the blade levelled, throwing aside every enemy in your path and setting them alight. The furrow you cut burns for 5 seconds.","Item.Weapon.Greatsword, Element.Demonic, Type.Strike, Keyword.Charge, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Charge; Range=10; Radius=2.5; Burn=1; GroundRadius=2.5; GroundDuration=5; GroundPercent=20.0,-1.0
+Void_Greatsword_Movement,Greatsword,Void,Movement,,,Slot.Movement,,,-1.0
+War_Fist_Heavy,Fist,War,Heavy,Haymaker,Wind up and deliver a devastating hook that deals massive damage to a single target and knocks them back 4 meters. If the target hits a wall or obstacle they take an additional 100% weapon damage from the impact.,"Item.Weapon.Fist, Element.War, Type.Strike, Keyword.CC, Slot.Heavy",,,-1.0
+Death_Greatsword_Movement,Greatsword,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Greatsword_Movement,Greatsword,Chaos,Movement,,,Slot.Movement,,,-1.0
+Celestial_Greatsword_Special,Greatsword,Celestial,Special,,,Slot.Special,,,-1.0
+Demonic_Greatsword_Special,Greatsword,Demonic,Special,Hellbrand,"Drive the blade into the ground and send a wedge of fire tearing outward, piercing every enemy in a 14 meter line and setting them alight. The scar it leaves burns for 4 seconds.","Item.Weapon.Greatsword, Element.Demonic, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Special",Projectile,Range=14; Radius=2; Pierce=99; Speed=1600; Burn=1; GroundRadius=2; GroundDuration=4; GroundPercent=25.0,-1.0
+Void_Greatsword_Special,Greatsword,Void,Special,,,Slot.Special,,,-1.0
+War_Shield_Heavy,Shield,War,Heavy,Shield Bash,"Slam your shield into an enemy with full force, dealing damage and stunning them for 1.5 seconds. If you have blocked an attack in the last 3 seconds, the bash also deals bonus damage equal to the amount blocked.","Item.Weapon.Shield, Element.War, Type.Strike, Keyword.CC, Stat.Defense.Block, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Effect=Stun; StunSeconds=1.5,-1.0
+Death_Greatsword_Special,Greatsword,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Greatsword_Special,Greatsword,Chaos,Special,,,Slot.Special,,,-1.0
+Demonic_Dagger_Support,Dagger,Demonic,Support,Smoulder,"Bank your own heat for 8 seconds, gaining 25% increased attack speed and setting alight anything you strike while it lasts.","Item.Weapon.Dagger, Element.Demonic, Type.Buff, Stat.Offense.Speed, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=8; Radius=10,-1.0
+Pestilence_Dagger_Support,Dagger,Pestilence,Support,,,Slot.Support,,,-1.0
+Void_Dagger_Support,Dagger,Void,Support,,,Slot.Support,,,-1.0
+War_Spear_Heavy,Spear,War,Heavy,Impaler,"Drive your spear into the ground with force, creating a spike trap that erupts from beneath the first enemy to walk over it, dealing heavy physical damage and pinning them in place for 2 seconds.","Item.Weapon.Spear, Element.War, Type.Strike, Keyword.CC, Stat.Offense.Global, Type.Trap, Slot.Heavy",,,-1.0
+Death_Dagger_Support,Dagger,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Dagger_Support,Dagger,Chaos,Support,,,Slot.Support,,,-1.0
+Famine_Dagger_Support,Dagger,Famine,Support,,,Slot.Support,,,-1.0
+Demonic_Dagger_Heavy,Dagger,Demonic,Heavy,Emberpierce,"Drive the dagger into a single enemy and leave the heat behind in the wound, setting them alight. The strike deals 40% more damage from behind.","Item.Weapon.Dagger, Element.Demonic, Type.Strike, Type.Melee, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Burn=1,-1.0
+Pestilence_Dagger_Heavy,Dagger,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+Void_Dagger_Heavy,Dagger,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_Sword_Heavy,Sword,War,Heavy,Rending Strike,"Drive your sword forward in a powerful lunge that pierces through the target, dealing heavy damage and applying a deep wound that causes the target to bleed for 8 seconds. The wound reduces the target's armor by 15% for the duration.","Item.Weapon.Sword, Element.War, Type.Strike, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Heavy",,,-1.0
+Death_Dagger_Heavy,Dagger,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Dagger_Heavy,Dagger,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Famine_Dagger_Heavy,Dagger,Famine,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Dagger_Ultimate,Dagger,Demonic,Ultimate,Thousand Cuts of Ash,"Move faster than sight for 4 seconds, striking every enemy within 2.5 meters four times a second and setting each one alight. The final flurry deals 300% weapon damage.","Item.Weapon.Dagger, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=2.5; Angle=360; Duration=4; Interval=0.25; Burn=1; FinalHitPercent=300,-1.0
+Pestilence_Dagger_Ultimate,Dagger,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+Void_Dagger_Ultimate,Dagger,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Whip_Heavy,Whip,War,Heavy,Flaying Lash,"Crack your whip with full force against a target up to 6 meters away, dealing heavy damage and applying bleed at double its normal damage. The force of the blow also disarms the target, knocking their weapon aside for 2 seconds.","Item.Weapon.Whip, Element.War, Type.Strike, Keyword.DoT.Bleed, Keyword.CC, Slot.Heavy",,,-1.0
+Death_Dagger_Ultimate,Dagger,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Dagger_Ultimate,Dagger,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Famine_Dagger_Ultimate,Dagger,Famine,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Dagger_Movement,Dagger,Demonic,Movement,Ashwalk,"Scatter into ash and reform up to 9 meters away, setting alight every enemy at the point you left and the point you arrive. Both points burn for 3 seconds.","Item.Weapon.Dagger, Element.Demonic, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Blink; Range=9; Radius=2; Burn=1; GroundRadius=2; GroundDuration=3; GroundPercent=33.3,-1.0
+Pestilence_Dagger_Movement,Dagger,Pestilence,Movement,,,Slot.Movement,,,-1.0
+Void_Dagger_Movement,Dagger,Void,Movement,,,Slot.Movement,,,-1.0
+War_Greataxe_Movement,Greataxe,War,Movement,Savage Leap,"Leap to a target location and slam down with your greataxe, dealing damage in a 5 meter radius on impact. Enemies struck are staggered and begin bleeding.","Item.Weapon.Greataxe, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Keyword.CC, Slot.Movement",,,-1.0
+Death_Dagger_Movement,Dagger,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Dagger_Movement,Dagger,Chaos,Movement,,,Slot.Movement,,,-1.0
+Famine_Dagger_Movement,Dagger,Famine,Movement,,,Slot.Movement,,,-1.0
+Demonic_Dagger_Special,Dagger,Demonic,Special,Cinder Fan,"Throw a spray of burning shards that scatters over a 2.5 meter area at the point you aim, setting alight everything caught in it.","Item.Weapon.Dagger, Element.Demonic, Type.Projectile, Type.AOE.PointBlank, Keyword.DoT.Burn, Slot.Special",Projectile,Range=9; Radius=2.5; Speed=2400; Burn=1,-1.0
+Pestilence_Dagger_Special,Dagger,Pestilence,Special,,,Slot.Special,,,-1.0
+Void_Dagger_Special,Dagger,Void,Special,,,Slot.Special,,,-1.0
+War_2H_Crossbow_Movement,2H Crossbow,War,Movement,Recoil Dash,Fire a bolt point-blank into the ground and use the recoil to propel yourself backward 6 meters instantly. The fired bolt creates a small explosion on impact that knocks back nearby enemies.,"Item.Weapon.2HCrossbow, Element.War, Type.AOE.PointBlank, Keyword.CC, Slot.Movement",,,-1.0
+Death_Dagger_Special,Dagger,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Dagger_Special,Dagger,Chaos,Special,,,Slot.Special,,,-1.0
+Famine_Dagger_Special,Dagger,Famine,Special,,,Slot.Special,,,-1.0
+Demonic_Axe_Support,Axe,Demonic,Support,Butcher's Heat,"Work yourself into a heat for 10 seconds. Every enemy you kill while it lasts extends it by 2 seconds, and killing a burning enemy makes the next one you strike burn as well.","Item.Weapon.Axe, Element.Demonic, Type.Buff, Trigger.OnKill, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10,-1.0
+War_Greatsword_Movement,Greatsword,War,Movement,Leaping Cleave,"Leap to a target location and slam your greatsword into the ground on landing, dealing damage in a 4 meter radius and knocking enemies back. The slam leaves a shockwave that briefly slows enemies caught in it.","Item.Weapon.Greatsword, Element.War, Type.AOE.PointBlank, Keyword.CC, Slot.Movement",,,-1.0
+Chaos_Axe_Support,Axe,Chaos,Support,,,Slot.Support,,,-1.0
+Famine_Axe_Support,Axe,Famine,Support,,,Slot.Support,,,-1.0
+Demonic_Axe_Heavy,Axe,Demonic,Heavy,Rending Ember,"Chop down into an enemy and twist, setting them alight and leaving the wound open. The blow deals 25% more damage against an enemy below half health.","Item.Weapon.Axe, Element.Demonic, Type.Strike, Type.Melee, Trigger.LowLife, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=3; Angle=100; Burn=1,-1.0
+War_Warhammer_Movement,Warhammer,War,Movement,Shockwave Leap,"Leap to a target location and slam your hammer down on landing, creating a shockwave that deals damage and knocks back all enemies within 5 meters. The landing impact stuns enemies directly beneath you for 1 second.","Item.Weapon.Warhammer, Element.War, Type.AOE.PointBlank, Keyword.CC, Slot.Movement",Movement,Mode=Leap; Range=9; Radius=5; Knockback=3; Effect=Stun; StunSeconds=1,-1.0
+Chaos_Axe_Heavy,Axe,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Famine_Axe_Heavy,Axe,Famine,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Axe_Ultimate,Axe,Demonic,Ultimate,Reap the Ashes,"Swing without stopping for 3 seconds, striking everything within 4 meters twice a second and setting it alight. The ground burns for 6 seconds, and the last swing deals 350% weapon damage.","Item.Weapon.Axe, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=4; Angle=360; Duration=3; Interval=0.5; Burn=1; GroundRadius=4; GroundDuration=6; GroundPercent=16.7; FinalHitPercent=350,-1.0
+War_Axe_Movement,Axe,War,Movement,Headlong Charge,"Charge forward in a straight line, striking any enemy in your path and knocking them aside. The charge deals damage proportional to the distance traveled and applies a bleed to all struck enemies.","Item.Weapon.Axe, Element.War, Type.Strike, Keyword.DoT.Bleed, Slot.Movement",,,-1.0
+Chaos_Axe_Ultimate,Axe,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Famine_Axe_Ultimate,Axe,Famine,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Axe_Movement,Axe,Demonic,Movement,Cleaving Lunge,"Spring to a point up to 8 meters away and bury the axe on landing, setting alight every enemy within 3 meters. The impact leaves the ground burning for 4 seconds.","Item.Weapon.Axe, Element.Demonic, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Leap; Range=8; Radius=3; Burn=1; GroundRadius=3; GroundDuration=4; GroundPercent=25.0,-1.0
+War_Crossbow_Movement,Crossbow,War,Movement,Grapple,"Fire a grappling bolt at a surface or enemy within 15 meters. If fired at a surface, you are instantly pulled to that location and a trip mine is deployed at your departure point. If fired at an enemy, they are pulled to you and land on any active trap at your location.","Item.Weapon.Crossbow, Element.War, Keyword.CC, Type.Trap, Slot.Movement",,,-1.0
+Chaos_Axe_Movement,Axe,Chaos,Movement,,,Slot.Movement,,,-1.0
+Famine_Axe_Movement,Axe,Famine,Movement,,,Slot.Movement,,,-1.0
+Demonic_Axe_Special,Axe,Demonic,Special,Hurl Cinders,"Throw the axe end over end, striking each enemy in its path once on the way out and once on the way back, and setting them alight.","Item.Weapon.Axe, Element.Demonic, Type.Projectile, Keyword.DoT.Burn, Slot.Special",Projectile,Range=11; Radius=1.5; Pierce=1; Returns=1; Speed=1900; Burn=1,-1.0
+War_Dagger_Movement,Dagger,War,Movement,Vanishing Trap,"Instantly teleport to a target location up to 12 meters away. If you teleport through or past an enemy, a blade trap is left at your departure point that triggers on any enemy that walks over it for 4 seconds. The trap deals physical damage and applies bleed.","Item.Weapon.Dagger, Element.War, Keyword.DoT.Bleed, Type.Trap, Slot.Movement",,,-1.0
+Chaos_Axe_Special,Axe,Chaos,Special,,,Slot.Special,,,-1.0
+Famine_Axe_Special,Axe,Famine,Special,,,Slot.Special,,,-1.0
+Demonic_Greataxe_Support,Greataxe,Demonic,Support,Burning Wrath,"Stoke your fury into open flame for 10 seconds, gaining 4% increased fire damage for every enemy currently burning within 15 meters. While it lasts, any enemy that strikes you in melee is set alight.","Item.Weapon.Greataxe, Element.Demonic, Type.Buff, Stat.Offense.Global, Keyword.DoT.Burn, Trigger.OnHit, Slot.Support",SelfBuff,Duration=10; Radius=15; Burn=1; IncreasePerBurning=4,-1.0
+War_Fist_Movement,Fist,War,Movement,Bull Rush,"Lower your shoulder and charge forward, barreling through any enemies in your path and knocking them aside. Each enemy hit takes damage and is briefly staggered. You are immune to crowd control during the rush.","Item.Weapon.Fist, Element.War, Type.Strike, Keyword.CC, Slot.Movement",,,-1.0
+Death_Greataxe_Support,Greataxe,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Greataxe_Support,Greataxe,Chaos,Support,,,Slot.Support,,,-1.0
+Demonic_Greataxe_Heavy,Greataxe,Demonic,Heavy,Molten Cleave,"Swing your greataxe in a brutal horizontal arc that hits all enemies in a wide cone, setting each one alight. The arc drags a line of molten slag across the ground behind it that burns enemies standing in it for 6 seconds.","Item.Weapon.Greataxe, Element.Demonic, Type.AOE.PointBlank, Type.Strike, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Heavy",Strike,Radius=4; Angle=120; Burn=1; GroundRadius=4; GroundDuration=6; GroundPercent=16.7,-1.0
+War_Shield_Movement,Shield,War,Movement,Shield Charge,"Sprint forward with your shield raised, dealing damage and staggering any enemy caught in your path. The charge deals bonus damage for each meter traveled and is unstoppable — you cannot be staggered or interrupted during the charge.","Item.Weapon.Shield, Element.War, Type.Strike, Keyword.CC, Slot.Movement",,,-1.0
+Death_Greataxe_Heavy,Greataxe,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Greataxe_Heavy,Greataxe,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Greataxe_Ultimate,Greataxe,Demonic,Ultimate,Pyroclasm,"Spin continuously for 3 seconds, dealing rapid hits to all enemies within melee range and flinging molten debris outward. Every enemy hit is set alight, and the ground within 5 meters is left burning for 8 seconds. The final hit at the end of the spin deals 300% weapon damage to all affected enemies.","Item.Weapon.Greataxe, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Ultimate",Strike,Radius=3.5; Angle=360; Duration=3; Interval=0.5; Burn=1; GroundRadius=5; GroundDuration=8; GroundPercent=12.5; FinalHitPercent=300,-1.0
+War_Spear_Movement,Spear,War,Movement,Cavalry Charge,"Sprint forward at high speed for up to 8 meters, impaling the first enemy in your path and carrying them with you. On arrival, slam them into the ground — any active trap within 3 meters of the landing point is immediately triggered centered on the slammed enemy.","Item.Weapon.Spear, Element.War, Type.Strike, Keyword.CC, Type.Trap, Slot.Movement",,,-1.0
+Death_Greataxe_Ultimate,Greataxe,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Greataxe_Ultimate,Greataxe,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Greataxe_Movement,Greataxe,Demonic,Movement,Infernal Plunge,"Leap to a target location and slam down with your greataxe, dealing damage in a 5 meter radius on impact and setting every enemy struck alight. The impact cracks the ground open, leaving a pool of lava for 5 seconds that burns anything standing in it.","Item.Weapon.Greataxe, Element.Demonic, Type.AOE.PointBlank, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Movement",Movement,Mode=Leap; Range=10; Radius=5; Burn=1; GroundRadius=5; GroundDuration=5; GroundPercent=20.0,-1.0
+War_Sword_Movement,Sword,War,Movement,Lunge,"Dash forward at high speed, driving your sword into the first enemy in your path. The lunge deals damage on impact and briefly stuns the target for 0.75 seconds.","Item.Weapon.Sword, Element.War, Type.Strike, Keyword.CC, Slot.Movement",Movement,Mode=Charge; Range=8; Radius=1.5; Effect=Stun; StunSeconds=0.75,-1.0
+Death_Greataxe_Movement,Greataxe,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Greataxe_Movement,Greataxe,Chaos,Movement,,,Slot.Movement,,,-1.0
+Demonic_Greataxe_Special,Greataxe,Demonic,Special,Emberhurl,"Hurl your greataxe spinning through a group of enemies in a line, hitting each enemy twice, once going out and once returning to your hand. The axe trails fire, setting alight every enemy it passes and leaving its flight path burning for 4 seconds.","Item.Weapon.Greataxe, Element.Demonic, Type.Projectile, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Special",Projectile,Range=12; Radius=1.5; Pierce=99; Returns=1; Speed=1800; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25.0,-1.0
+War_Whip_Movement,Whip,War,Movement,Whip Swing,"Hook your whip around an anchor point or enemy up to 10 meters away and swing through the air, covering the distance instantly. If hooked to an enemy, the swing yanks them off balance and briefly stuns them for 0.75 seconds on your arrival.","Item.Weapon.Whip, Element.War, Keyword.CC, Slot.Movement",Movement,Mode=Blink; Range=10; Radius=1.5; Effect=Stun; StunSeconds=0.75,-1.0
+Death_Greataxe_Special,Greataxe,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Greataxe_Special,Greataxe,Chaos,Special,,,Slot.Special,,,-1.0
+Celestial_Spear_Support,Spear,Celestial,Support,,,Slot.Support,,,-1.0
+Pestilence_Spear_Support,Spear,Pestilence,Support,,,Slot.Support,,,-1.0
+Void_Spear_Support,Spear,Void,Support,,,Slot.Support,,,-1.0
+War_Greataxe_Special,Greataxe,War,Special,Spinning Axe,"Hurl your greataxe spinning through a group of enemies in a line, hitting each enemy twice — once going out and once returning to your hand. Each hit deals full weapon damage and applies bleed.","Item.Weapon.Greataxe, Element.War, Type.Projectile, Keyword.DoT.Bleed, Slot.Special",,,-1.0
+Death_Spear_Support,Spear,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Spear_Support,Spear,Chaos,Support,,,Slot.Support,,,-1.0
+Celestial_Spear_Heavy,Spear,Celestial,Heavy,,,Slot.Heavy,,,-1.0
+Pestilence_Spear_Heavy,Spear,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+Void_Spear_Heavy,Spear,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_2H_Crossbow_Special,2H Crossbow,War,Special,Bolt Trap,"Plant a bolt trap on the ground that fires a bolt at the first enemy to enter its 3 meter detection radius, dealing heavy damage and pinning them in place for 2 seconds.","Item.Weapon.2HCrossbow, Element.War, Keyword.CC, Type.Trap, Slot.Special",,,-1.0
+Death_Spear_Heavy,Spear,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Spear_Heavy,Spear,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Celestial_Spear_Ultimate,Spear,Celestial,Ultimate,,,Slot.Ultimate,,,-1.0
+Pestilence_Spear_Ultimate,Spear,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+Void_Spear_Ultimate,Spear,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Greatsword_Special,Greatsword,War,Special,Sundering Throw,"Hurl your greatsword at a target location, dealing massive damage in a line as it travels and embedding itself in the ground. Enemies that walk over the embedded sword take bleed damage. Recall the sword after 5 seconds.","Item.Weapon.Greatsword, Element.War, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Bleed, Slot.Special",,,-1.0
+Death_Spear_Ultimate,Spear,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Spear_Ultimate,Spear,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Celestial_Spear_Movement,Spear,Celestial,Movement,,,Slot.Movement,,,-1.0
+Pestilence_Spear_Movement,Spear,Pestilence,Movement,,,Slot.Movement,,,-1.0
+Void_Spear_Movement,Spear,Void,Movement,,,Slot.Movement,,,-1.0
+War_Warhammer_Special,Warhammer,War,Special,Catapult Stone,"Hurl a massive stone pulled from the earth at a target location up to 12 meters away. The stone deals crushing physical damage in a 4 meter radius on impact, shattering armor on all enemies hit by 25% for 8 seconds.","Item.Weapon.Warhammer, Element.War, Type.Projectile, Type.AOE.PointBlank, Stat.Defense.Armor, Slot.Special",,,-1.0
+Death_Spear_Movement,Spear,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Spear_Movement,Spear,Chaos,Movement,,,Slot.Movement,,,-1.0
+Celestial_Spear_Special,Spear,Celestial,Special,,,Slot.Special,,,-1.0
+Pestilence_Spear_Special,Spear,Pestilence,Special,,,Slot.Special,,,-1.0
+Void_Spear_Special,Spear,Void,Special,,,Slot.Special,,,-1.0
+War_Axe_Special,Axe,War,Special,Thrown Axe,"Hurl your axe at an enemy, dealing damage and ricocheting to up to 2 additional nearby enemies. Each enemy hit has a 40% chance to begin bleeding.","Item.Weapon.Axe, Element.War, Type.Projectile, Keyword.DoT.Bleed, Slot.Special",,,-1.0
+Death_Spear_Special,Spear,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Spear_Special,Spear,Chaos,Special,,,Slot.Special,,,-1.0
+Demonic_Fist_Support,Fist,Demonic,Support,Martyr's Ember,"Take the pain inward and hold it as heat for 10 seconds. 40% of all damage you take while it lasts is stored, and each hit you land spends part of the store as bonus fire damage until it is empty. The store is capped at 200% weapon damage.","Item.Weapon.Fist, Element.Demonic, Type.Buff, Stat.Defense.Retaliation, Stat.Offense.Global, Trigger.OnHit, Slot.Support",SelfBuff,Duration=10,-1.0
+Pestilence_Fist_Support,Fist,Pestilence,Support,,,Slot.Support,,,-1.0
+Void_Fist_Support,Fist,Void,Support,,,Slot.Support,,,-1.0
+War_Crossbow_Special,Crossbow,War,Special,Bolt Turret,"Fire a specially designed bolt into the ground that deploys into a stationary bolt turret. The turret automatically fires at the nearest enemy within 10 meters every 1.5 seconds, dealing physical damage and applying bleed on each hit. The turret has 200 HP and lasts 5 seconds.","Item.Weapon.Crossbow, Element.War, Type.Deployable, Type.Minion, Keyword.DoT.Bleed, Stat.Offense.Global, Type.Projectile, Slot.Special",Deployable,Count=1; Duration=5; Minions=BoltTurret:1; Effect=Bleed,-1.0
+Death_Fist_Support,Fist,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Fist_Support,Fist,Chaos,Support,,,Slot.Support,,,-1.0
+Famine_Fist_Support,Fist,Famine,Support,,,Slot.Support,,,-1.0
+Demonic_Fist_Heavy,Fist,Demonic,Heavy,Searing Hook,"Wind up and deliver a devastating burning hook that deals massive damage to a single target, knocks them back 4 meters and sets them alight. The blow deals 1% increased damage for every 1% of your maximum health you are currently missing.","Item.Weapon.Fist, Element.Demonic, Type.Strike, Type.Melee, Keyword.Stagger, Keyword.DoT.Burn, Trigger.LowLife, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Knockback=4; Burn=1,-1.0
+Pestilence_Fist_Heavy,Fist,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+Void_Fist_Heavy,Fist,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_Dagger_Special,Dagger,War,Special,Proximity Mine,"Plant a concealed proximity mine at your current location. The mine arms after 0.5 seconds and detonates when an enemy enters its trigger radius, dealing heavy physical damage in a 3 meter blast radius and applying a bleed to all enemies caught in the explosion.","Item.Weapon.Dagger, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Stat.Offense.Global, Type.Trap, Slot.Special",,,-1.0
+Death_Fist_Heavy,Fist,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Fist_Heavy,Fist,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Famine_Fist_Heavy,Fist,Famine,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Fist_Ultimate,Fist,Demonic,Ultimate,Living Pyre,"Set yourself alight for 6 seconds. You cannot be stunned, slowed or knocked back, your own fire does you no harm, and enemies within 4 meters are continuously set alight. Every hit you take raises the pyre's fire damage by 8% with no cap, and returns health equal to 25% of the damage that hit dealt.","Item.Weapon.Fist, Element.Demonic, Type.AOE.Aura, Keyword.DoT.Burn, Stat.Recovery.Leech, Trigger.OnHit, Slot.Ultimate",Aura,Radius=4; Duration=6; Interval=1; Burn=1,-1.0
+Pestilence_Fist_Ultimate,Fist,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+Void_Fist_Ultimate,Fist,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Fist_Special,Fist,War,Special,Bolas,"Hurl a set of weighted bolas at a target, wrapping around their legs and immobilizing them for 3 seconds. The bolas also deal physical damage on impact and have a 40% chance to apply a bleed as the weights cut into flesh.","Item.Weapon.Fist, Element.War, Type.Projectile, Keyword.CC, Keyword.DoT.Bleed, Slot.Special",,,-1.0
+Death_Fist_Ultimate,Fist,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Fist_Ultimate,Fist,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Famine_Fist_Ultimate,Fist,Famine,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Fist_Movement,Fist,Demonic,Movement,Cinder Rush,"Lower your shoulder and charge forward, barrelling through any enemies in your path and knocking them aside. Each enemy hit takes damage and is set alight. You are immune to crowd control during the rush and leave a trail of fire behind you that burns for 5 seconds.","Item.Weapon.Fist, Element.Demonic, Type.Strike, Keyword.Charge, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Movement",Movement,Mode=Charge; Range=10; Radius=2; Burn=1; GroundRadius=2; GroundDuration=5; GroundPercent=20.0,-1.0
+Pestilence_Fist_Movement,Fist,Pestilence,Movement,,,Slot.Movement,,,-1.0
+Void_Fist_Movement,Fist,Void,Movement,,,Slot.Movement,,,-1.0
+War_Shield_Special,Shield,War,Special,Shield Wall,"Plant your shield firmly in the ground, creating a physical barrier that blocks projectiles and reduces incoming damage from the front by 50% for all allies behind it. The shield wall lasts 8 seconds.","Item.Weapon.Shield, Element.War, Type.Deployable, Stat.Defense.Global, Stat.Defense.Ranged, Slot.Special",,,-1.0
+Death_Fist_Movement,Fist,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Fist_Movement,Fist,Chaos,Movement,,,Slot.Movement,,,-1.0
+Famine_Fist_Movement,Fist,Famine,Movement,,,Slot.Movement,,,-1.0
+Demonic_Fist_Special,Fist,Demonic,Special,Blood Pyre,"Hurl a gout of your own burning blood at a target location, paying 8% of your current health. It ignites on impact, dealing damage in a 3 meter radius and leaving a pyre that burns enemies within it for 8 seconds. Standing in your own pyre does you no harm and doubles your health regeneration.","Item.Weapon.Fist, Element.Demonic, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Burn, Stat.Resource.HP, Stat.Recovery.Regen, Slot.Special",Projectile,Range=12; Radius=3; Speed=1400; Burn=1; GroundRadius=3; GroundDuration=8; GroundPercent=12.5; HealthCostPercent=8,-1.0
+Pestilence_Fist_Special,Fist,Pestilence,Special,,,Slot.Special,,,-1.0
+Void_Fist_Special,Fist,Void,Special,,,Slot.Special,,,-1.0
+War_Spear_Special,Spear,War,Special,Ballista,"Hammer a ballista into the ground at your location. The ballista automatically fires massive bolts at the furthest enemy within 15 meters every 2 seconds, dealing enormous physical damage and pinning struck enemies in place for 1 second. The ballista has 500 HP, lasts 8 seconds.","Item.Weapon.Spear, Element.War, Type.Deployable, Type.Minion, Keyword.CC, Stat.Offense.Global, Type.Projectile, Slot.Special",Deployable,Count=1; Duration=8; Minions=Ballista:1,-1.0
+Death_Fist_Special,Fist,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Fist_Special,Fist,Chaos,Special,,,Slot.Special,,,-1.0
+Famine_Fist_Special,Fist,Famine,Special,,,Slot.Special,,,-1.0
+Celestial_Wand_Support,Wand,Celestial,Support,,,Slot.Support,,,-1.0
+Demonic_Wand_Support,Wand,Demonic,Support,Hex of Cinders,"Lay a hex on an enemy up to 12 meters away, applying Shred: their resistance is reduced for 6 seconds. Hexing an enemy that is already burning also sets alight everything within 4 meters of them.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Debuff, Stat.Defense.Resist, Keyword.DoT.Burn, Slot.Support",Debuff,Range=12; MaxTargets=1; Duration=6; Effect=Shred,-1.0
+Pestilence_Wand_Support,Wand,Pestilence,Support,,,Slot.Support,,,-1.0
+Void_Wand_Support,Wand,Void,Support,,,Slot.Support,,,-1.0
+War_Sword_Special,Sword,War,Special,Skirmish,"Hurl a throwing sword at a distant target, dealing physical damage and applying bleed. The thrown sword embeds in the target, reducing their movement speed by 30% for 4 seconds.","Item.Weapon.Sword, Element.War, Type.Projectile, Keyword.DoT.Bleed, Keyword.CC, Slot.Special",,,-1.0
+Death_Wand_Support,Wand,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Wand_Support,Wand,Chaos,Support,,,Slot.Support,,,-1.0
+Famine_Wand_Support,Wand,Famine,Support,,,Slot.Support,,,-1.0
+Celestial_Wand_Heavy,Wand,Celestial,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Wand_Heavy,Wand,Demonic,Heavy,Emberbolt,"Snap a bolt of hellfire at the first enemy in a 14 meter line, setting them alight. Against an enemy already burning it deals 30% more damage.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Projectile, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Projectile,Range=14; Radius=1; Speed=2600; Burn=1,-1.0
+Pestilence_Wand_Heavy,Wand,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+Void_Wand_Heavy,Wand,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_Whip_Special,Whip,War,Special,Snare Line,"Lay a whip trap along the ground that snaps up when triggered, grabbing the first enemy to cross it and immobilizing them for 3 seconds while dealing a burst of physical damage and applying bleed.","Item.Weapon.Whip, Element.War, Type.Deployable, Keyword.CC, Keyword.DoT.Bleed, Slot.Special",,,-1.0
+Death_Wand_Heavy,Wand,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Wand_Heavy,Wand,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Famine_Wand_Heavy,Wand,Famine,Heavy,,,Slot.Heavy,,,-1.0
+Celestial_Wand_Ultimate,Wand,Celestial,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Wand_Ultimate,Wand,Demonic,Ultimate,Rain of Cinders,"Call falling fire over a 7 meter area for 4 seconds, striking everything beneath it twice a second and setting it alight. The ground burns for 8 seconds, and the last fall deals 400% weapon damage.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=7; Angle=360; Duration=4; Interval=0.5; Burn=1; GroundRadius=7; GroundDuration=8; GroundPercent=12.5; FinalHitPercent=400,-1.0
+Pestilence_Wand_Ultimate,Wand,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+Void_Wand_Ultimate,Wand,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Greataxe_Support,Greataxe,War,Support,Blood Frenzy,"Enter a blood frenzy, gaining 5% increased damage for every enemy currently bleeding within 15 meters. The frenzy lasts 10 seconds and has no cap on the damage bonus.","Item.Weapon.Greataxe, Element.War, Stat.Offense.Global, Keyword.DoT.Bleed, Slot.Support",,,-1.0
+Death_Wand_Ultimate,Wand,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Wand_Ultimate,Wand,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Famine_Wand_Ultimate,Wand,Famine,Ultimate,,,Slot.Ultimate,,,-1.0
+Celestial_Wand_Movement,Wand,Celestial,Movement,,,Slot.Movement,,,-1.0
+Demonic_Wand_Movement,Wand,Demonic,Movement,Wisp Step,"Come apart into embers and reform up to 10 meters away, setting alight everything at both points. Both points burn for 3 seconds.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Blink; Range=10; Radius=2; Burn=1; GroundRadius=2; GroundDuration=3; GroundPercent=33.3,-1.0
+Pestilence_Wand_Movement,Wand,Pestilence,Movement,,,Slot.Movement,,,-1.0
+Void_Wand_Movement,Wand,Void,Movement,,,Slot.Movement,,,-1.0
+War_2H_Crossbow_Support,2H Crossbow,War,Support,Fortify,"Brace your crossbow and dig in, increasing your armor by 25% and your physical damage by 20% for 10 seconds. You cannot move while braced but your attack speed is increased by 50%.","Item.Weapon.2HCrossbow, Element.War, Stat.Defense.Armor, Stat.Offense.Global, Slot.Support",,,-1.0
+Death_Wand_Movement,Wand,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Wand_Movement,Wand,Chaos,Movement,,,Slot.Movement,,,-1.0
+Famine_Wand_Movement,Wand,Famine,Movement,,,Slot.Movement,,,-1.0
+Celestial_Wand_Special,Wand,Celestial,Special,,,Slot.Special,,,-1.0
+Demonic_Wand_Special,Wand,Demonic,Special,Cinder Swarm,"Call two motes of living fire that attack what is nearest and set what they hit alight. They last 15 seconds, and up to four may burn at once. Calling more than four snuffs the oldest, which bursts for damage in a 2.5 meter radius.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Minion, Type.Summon, Keyword.Summon, Keyword.DoT.Burn, Slot.Special",Summon,Count=2; MaxActive=4; Duration=15; Radius=2.5; Burn=1; Minions=Mote:2,-1.0
+Pestilence_Wand_Special,Wand,Pestilence,Special,,,Slot.Special,,,-1.0
+Void_Wand_Special,Wand,Void,Special,,,Slot.Special,,,-1.0
+War_Greatsword_Support,Greatsword,War,Support,War Shout,Let out a thunderous battle cry that increases your damage by 20% and your armor by 15% for 10 seconds. Nearby allies within 10 meters also receive half the bonus.,"Item.Weapon.Greatsword, Element.War, Stat.Offense.Global, Stat.Defense.Armor, Slot.Support",,,-1.0
+Death_Wand_Special,Wand,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Wand_Special,Wand,Chaos,Special,,,Slot.Special,,,-1.0
+Famine_Wand_Special,Wand,Famine,Special,,,Slot.Special,,,-1.0
+Celestial_Staff_Support,Staff,Celestial,Support,,,Slot.Support,,,-1.0
+Demonic_Staff_Support,Staff,Demonic,Support,Subjugate,"Seize an enemy's mind, applying Madness: the target attacks anything nearby, friend or foe. Subjugating an enemy that is already burning makes the madness last twice as long.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Type.Debuff, Keyword.CC, Keyword.DoT.Burn, Slot.Support",Debuff,Range=15; MaxTargets=1; Duration=3; Effect=Madness,-1.0
+Pestilence_Staff_Support,Staff,Pestilence,Support,,,Slot.Support,,,-1.0
+Void_Staff_Support,Staff,Void,Support,,,Slot.Support,,,-1.0
+War_Warhammer_Support,Warhammer,War,Support,Warcry,"Unleash a thunderous battle cry that taunts all nearby enemies within 10 meters to focus their attacks on you for 5 seconds. While taunted enemies are attacking you, you take 20% reduced damage and deal 25% increased damage against them.","Item.Weapon.Warhammer, Element.War, Stat.Defense.Global, Stat.Offense.Global, Slot.Support",,,-1.0
+Death_Staff_Support,Staff,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Staff_Support,Staff,Chaos,Support,,,Slot.Support,,,-1.0
+Famine_Staff_Support,Staff,Famine,Support,,,Slot.Support,,,-1.0
+Celestial_Staff_Heavy,Staff,Celestial,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Staff_Heavy,Staff,Demonic,Heavy,Infernal Lance,"Level your staff and drive a lance of hellfire forward, piercing every enemy in a 12 meter line and setting each one alight. The lance deals 20% more damage for every enemy it has already passed through.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Type.Projectile, Keyword.DoT.Burn, Stat.Offense.Global, Slot.Heavy",Projectile,Range=12; Radius=1.5; Pierce=99; Speed=0; Burn=1,-1.0
+Pestilence_Staff_Heavy,Staff,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+Void_Staff_Heavy,Staff,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_Axe_Support,Axe,War,Support,Battle Rage,"Channel your fury into a violent rage, increasing your damage by 15% and your attack speed by 20% for 8 seconds. Each kill during the rage resets the duration.","Item.Weapon.Axe, Element.War, Stat.Offense.Global, Stat.Offense.Speed, Trigger.OnKill, Slot.Support",,,-1.0
+Death_Staff_Heavy,Staff,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Staff_Heavy,Staff,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Famine_Staff_Heavy,Staff,Famine,Heavy,,,Slot.Heavy,,,-1.0
+Celestial_Staff_Ultimate,Staff,Celestial,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Staff_Ultimate,Staff,Demonic,Ultimate,Open the Rift,"Tear open an infernal rift at a target location up to 15 meters away. It lasts 10 seconds, burns every enemy within 6 meters, and spawns a lesser imp every 2 seconds to a maximum of 5. When the rift closes it collapses, dealing 400% weapon damage in its radius and destroying the imps it spawned.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Type.AOE.Persistent, Type.Minion, Type.Summon, Keyword.Summon, Keyword.DoT.Burn, Slot.Ultimate",Summon,Range=15; Radius=6; Duration=10; Interval=2; MaxActive=5; Burn=1; GroundRadius=6; GroundDuration=10; GroundPercent=10.0; FinalHitPercent=400; Minions=Imp:1,-1.0
+Pestilence_Staff_Ultimate,Staff,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+Void_Staff_Ultimate,Staff,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Crossbow_Support,Crossbow,War,Support,Suppressing Fire,"Fire a rapid volley of bolts at a target area, forcing enemies within 5 meters to dodge or be hit. Enemies in the suppression zone have their movement speed reduced by 40%.","Item.Weapon.Crossbow, Element.War, Type.AOE.Persistent, Keyword.CC, Stat.Offense.Global, Slot.Support",,,-1.0
+Death_Staff_Ultimate,Staff,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Staff_Ultimate,Staff,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Famine_Staff_Ultimate,Staff,Famine,Ultimate,,,Slot.Ultimate,,,-1.0
+Celestial_Staff_Movement,Staff,Celestial,Movement,,,Slot.Movement,,,-1.0
+Demonic_Staff_Movement,Staff,Demonic,Movement,Emberstep,"Collapse into a cloud of embers and reappear at a target location up to 12 meters away. Enemies at the point you left and the point you arrive are set alight, and both points burn for 4 seconds.","Item.Weapon.Staff, Element.Demonic, Type.Spell, Keyword.DoT.Burn, Type.AOE.Persistent, Slot.Movement",Movement,Mode=Blink; Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=4; GroundPercent=25.0,-1.0
+Pestilence_Staff_Movement,Staff,Pestilence,Movement,,,Slot.Movement,,,-1.0
+Void_Staff_Movement,Staff,Void,Movement,,,Slot.Movement,,,-1.0
+War_Dagger_Support,Dagger,War,Support,Smoke Bomb,"Hurl a smoke bomb at your feet, creating a cloud that blinds nearby enemies for 3 seconds and reduces their chance to hit you by 40%. While inside the cloud your evasion chance is increased by 20% and placing traps costs no arming delay.","Item.Weapon.Dagger, Element.War, Type.AOE.PointBlank, Stat.Defense.Evasion, Keyword.CC, Slot.Support",,,-1.0
+Death_Staff_Movement,Staff,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Staff_Movement,Staff,Chaos,Movement,,,Slot.Movement,,,-1.0
+Famine_Staff_Movement,Staff,Famine,Movement,,,Slot.Movement,,,-1.0
+Celestial_Staff_Special,Staff,Celestial,Special,,,Slot.Special,,,-1.0
+Demonic_Staff_Special,Staff,Demonic,Special,Summon Imp,"Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Up to 3 imps may be active at once. Summoning a fourth destroys the oldest, which explodes for damage in a 3 meter radius.","Item.Weapon.Staff, Element.Demonic, Type.Minion, Type.Summon, Keyword.Summon, Keyword.DoT.Burn, Slot.Special",Summon,Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1; Minions=Imp:1,-1.0
+Pestilence_Staff_Special,Staff,Pestilence,Special,,,Slot.Special,,,-1.0
+Void_Staff_Special,Staff,Void,Special,,,Slot.Special,,,-1.0
+War_Fist_Support,Fist,War,Support,Iron Skin,"Harden your body against incoming blows, increasing your armor by 30% and reducing stagger duration by 60% for 10 seconds. While active, taking a hit that would stagger you instead grants you 10% bonus damage for 3 seconds.","Item.Weapon.Fist, Element.War, Stat.Defense.Armor, Stat.Offense.Global, Slot.Support",,,-1.0
+Death_Staff_Special,Staff,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Staff_Special,Staff,Chaos,Special,,,Slot.Special,,,-1.0
+Famine_Staff_Special,Staff,Famine,Special,,,Slot.Special,,,-1.0
+Demonic_Whip_Support,Whip,Demonic,Support,Coil of Embers,"Wind burning coils about yourself for 10 seconds. Enemies that strike you in melee are set alight, and your attack range is increased by 20% while it lasts.","Item.Weapon.Whip, Element.Demonic, Type.Buff, Stat.Defense.Retaliation, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10; Radius=12,-1.0
+Pestilence_Whip_Support,Whip,Pestilence,Support,,,Slot.Support,,,-1.0
+Void_Whip_Support,Whip,Void,Support,,,Slot.Support,,,-1.0
+War_Shield_Support,Shield,War,Support,Braced Guard,"Raise your shield and brace for impact, increasing your block chance to 100% for 3 seconds. Damage blocked during this time is stored and added to your next attack as bonus damage up to a cap of 200% weapon damage.","Item.Weapon.Shield, Element.War, Stat.Defense.Block, Stat.Offense.Global, Slot.Support",,,-1.0
+Death_Whip_Support,Whip,Death,Support,,,Slot.Support,,,-1.0
+Chaos_Whip_Support,Whip,Chaos,Support,,,Slot.Support,,,-1.0
+Famine_Whip_Support,Whip,Famine,Support,,,Slot.Support,,,-1.0
+Demonic_Whip_Heavy,Whip,Demonic,Heavy,Searing Lash,"Crack the whip out to 5 meters, setting alight everything it touches. The lash reaches further than any other one-handed weapon's heavy blow.","Item.Weapon.Whip, Element.Demonic, Type.Strike, Type.Melee, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=5; Angle=45; Burn=1,-1.0
+Pestilence_Whip_Heavy,Whip,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+Void_Whip_Heavy,Whip,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_Spear_Support,Spear,War,Support,Phalanx Stance,"Brace your spear and enter a defensive stance, reducing incoming melee damage by 25% and granting all active gadgets within 10 meters +20% HP and +15% damage for 8 seconds.","Item.Weapon.Spear, Element.War, Stat.Defense.Melee, Stat.Offense.Global, Type.Deployable, Slot.Support",,,-1.0
+Death_Whip_Heavy,Whip,Death,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Whip_Heavy,Whip,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Famine_Whip_Heavy,Whip,Famine,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Whip_Ultimate,Whip,Demonic,Ultimate,Firestorm of Lashes,"Lash in every direction for 4 seconds, striking everything within 7 meters twice a second and setting it alight. The closing crack deals 350% weapon damage to everything still standing.","Item.Weapon.Whip, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=7; Angle=360; Duration=4; Interval=0.5; Burn=1; FinalHitPercent=350,-1.0
+Pestilence_Whip_Ultimate,Whip,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+Void_Whip_Ultimate,Whip,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Sword_Support,Sword,War,Support,Combat Stance,"Adopt a disciplined combat stance, increasing your block chance by 20% and reducing incoming damage by 10% for 8 seconds. Attacks made from this stance deal bonus damage equal to your current block chance percentage.","Item.Weapon.Sword, Element.War, Stat.Defense.Block, Stat.Offense.Global, Slot.Support",,,-1.0
+Death_Whip_Ultimate,Whip,Death,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Whip_Ultimate,Whip,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Famine_Whip_Ultimate,Whip,Famine,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Whip_Movement,Whip,Demonic,Movement,Grapple of Ash,"Throw the whip to a point up to 10 meters away and haul yourself to it, setting alight every enemy the line crosses.","Item.Weapon.Whip, Element.Demonic, Type.Strike, Keyword.Charge, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Charge; Range=10; Radius=1.5; Burn=1,-1.0
+Pestilence_Whip_Movement,Whip,Pestilence,Movement,,,Slot.Movement,,,-1.0
+Void_Whip_Movement,Whip,Void,Movement,,,Slot.Movement,,,-1.0
+War_Whip_Support,Whip,War,Support,Entangle,"Wrap your whip around a target's limbs, reducing their movement speed by 60% and attack speed by 40% for 5 seconds. While entangled, the target takes 20% increased damage from all sources.","Item.Weapon.Whip, Element.War, Keyword.CC, Stat.Offense.Global, Slot.Support",,,-1.0
+Death_Whip_Movement,Whip,Death,Movement,,,Slot.Movement,,,-1.0
+Chaos_Whip_Movement,Whip,Chaos,Movement,,,Slot.Movement,,,-1.0
+Famine_Whip_Movement,Whip,Famine,Movement,,,Slot.Movement,,,-1.0
+Demonic_Whip_Special,Whip,Demonic,Special,Chain of Coals,"Whirl the whip out in a burning line, striking every enemy along 12 meters and setting them alight. The line it traces burns for 4 seconds.","Item.Weapon.Whip, Element.Demonic, Type.Projectile, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Special",Projectile,Range=12; Radius=1.5; Pierce=99; Speed=2000; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25.0,-1.0
+Pestilence_Whip_Special,Whip,Pestilence,Special,,,Slot.Special,,,-1.0
+Void_Whip_Special,Whip,Void,Special,,,Slot.Special,,,-1.0
+War_Greataxe_Ultimate,Greataxe,War,Ultimate,Annihilator,Spin continuously for 3 seconds dealing rapid hits to all enemies within melee range. Each revolution applies bleed and reduces enemy armor by 5%. The final hit at the end of the spin deals 300% weapon damage to all affected enemies.,"Item.Weapon.Greataxe, Element.War, Type.AOE.PointBlank, Type.Channel, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Ultimate",,,-1.0
+Death_Whip_Special,Whip,Death,Special,,,Slot.Special,,,-1.0
+Chaos_Whip_Special,Whip,Chaos,Special,,,Slot.Special,,,-1.0
+Famine_Whip_Special,Whip,Famine,Special,,,Slot.Special,,,-1.0
+Celestial_Shield_Support,Shield,Celestial,Support,,,Slot.Support,,,-1.0
+War_2H_Crossbow_Ultimate,2H Crossbow,War,Ultimate,Artillery Strike,Load and fire a specially crafted explosive bolt at a target location up to 20 meters away. The bolt detonates on impact dealing catastrophic physical damage in a 6 meter radius and applying a bleed to all enemies caught in the blast.,"Item.Weapon.2HCrossbow, Element.War, Type.Projectile, Type.AOE.PointBlank, Keyword.DoT.Bleed, Slot.Ultimate",,,-1.0
+Chaos_Shield_Support,Shield,Chaos,Support,,,Slot.Support,,,-1.0
+Celestial_Shield_Heavy,Shield,Celestial,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_Shield_Heavy,Shield,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Celestial_Shield_Ultimate,Shield,Celestial,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_Shield_Ultimate,Shield,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Celestial_Shield_Movement,Shield,Celestial,Movement,,,Slot.Movement,,,-1.0
+Chaos_Shield_Movement,Shield,Chaos,Movement,,,Slot.Movement,,,-1.0
+Celestial_Shield_Special,Shield,Celestial,Special,,,Slot.Special,,,-1.0
+Chaos_Shield_Special,Shield,Chaos,Special,,,Slot.Special,,,-1.0
+Celestial_Crossbow_Support,Crossbow,Celestial,Support,,,Slot.Support,,,-1.0
+Pestilence_Crossbow_Support,Crossbow,Pestilence,Support,,,Slot.Support,,,-1.0
+Chaos_Crossbow_Support,Crossbow,Chaos,Support,,,Slot.Support,,,-1.0
+Celestial_Crossbow_Heavy,Crossbow,Celestial,Heavy,,,Slot.Heavy,,,-1.0
+Pestilence_Crossbow_Heavy,Crossbow,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+War_Greatsword_Ultimate,Greatsword,War,Ultimate,Warlord's Decree,Channel for 1 second then unleash a catastrophic sweeping strike that hits all enemies within 8 meters for enormous damage. Enemies struck are knocked down for 2 seconds and take 40% increased damage from all sources for 8 seconds.,"Item.Weapon.Greatsword, Element.War, Type.AOE.PointBlank, Keyword.CC, Stat.Offense.Global, Slot.Ultimate",,,-1.0
+Chaos_Crossbow_Heavy,Crossbow,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Celestial_Crossbow_Ultimate,Crossbow,Celestial,Ultimate,,,Slot.Ultimate,,,-1.0
+Pestilence_Crossbow_Ultimate,Crossbow,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Warhammer_Ultimate,Warhammer,War,Ultimate,Cataclysm,"Channel for 1.5 seconds then bring your hammer down with world-ending force at a target location up to 8 meters away. The impact deals catastrophic damage in a 8 meter radius, instantly shattering the armor of all enemies hit, knocking them down for 3 seconds, and creating a persistent fissure that deals damage per second for 10 seconds.","Item.Weapon.Warhammer, Element.War, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.CC, Stat.Defense.Armor, Slot.Ultimate",,,-1.0
+Chaos_Crossbow_Ultimate,Crossbow,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Celestial_Crossbow_Movement,Crossbow,Celestial,Movement,,,Slot.Movement,,,-1.0
+Pestilence_Crossbow_Movement,Crossbow,Pestilence,Movement,,,Slot.Movement,,,-1.0
+War_Axe_Ultimate,Axe,War,Ultimate,Skull Splitter,Wind up for 0.5 seconds then deliver a single catastrophic overhead blow dealing 500% weapon damage to a single target. If the blow kills the target it explodes in a shower of gore that applies bleed at 15 times its normal damage to all enemies within 5 meters.,"Item.Weapon.Axe, Element.War, Type.Strike, Keyword.DoT.Bleed, Type.AOE.PointBlank, Slot.Ultimate",,,-1.0
+Chaos_Crossbow_Movement,Crossbow,Chaos,Movement,,,Slot.Movement,,,-1.0
+Celestial_Crossbow_Special,Crossbow,Celestial,Special,,,Slot.Special,,,-1.0
+Pestilence_Crossbow_Special,Crossbow,Pestilence,Special,,,Slot.Special,,,-1.0
+War_Crossbow_Ultimate,Crossbow,War,Ultimate,Artillery Barrage,"Mark a target location up to 20 meters away. After a 1 second delay, rain down 18 explosive bolts on the marked area over 3 seconds, each bolt deploying a proximity mine on landing. All mines are fully armed immediately. Mines from this ability do not count towards your trap limit.","Item.Weapon.Crossbow, Element.War, Type.Projectile, Type.AOE.PointBlank, Stat.Offense.Global, Type.Trap, Slot.Ultimate",,,-1.0
+Chaos_Crossbow_Special,Crossbow,Chaos,Special,,,Slot.Special,,,-1.0
+Pestilence_2H_Crossbow_Support,2H Crossbow,Pestilence,Support,,,Slot.Support,,,-1.0
+War_Dagger_Ultimate,Dagger,War,Ultimate,Death by a Thousand Cuts,"Scatter 5 proximity mines in a ring around yourself and enter a frenzied evasive state for 5 seconds, gaining 30% increased evasion chance. Each mine that detonates during the frenzy applies bleed at double its normal damage. When the frenzy ends, any remaining mines detonate simultaneously.","Item.Weapon.Dagger, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Stat.Defense.Evasion, Type.Trap, Slot.Ultimate",,,-1.0
+Chaos_2H_Crossbow_Support,2H Crossbow,Chaos,Support,,,Slot.Support,,,-1.0
+Pestilence_2H_Crossbow_Heavy,2H Crossbow,Pestilence,Heavy,,,Slot.Heavy,,,-1.0
+Chaos_2H_Crossbow_Heavy,2H Crossbow,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Pestilence_2H_Crossbow_Ultimate,2H Crossbow,Pestilence,Ultimate,,,Slot.Ultimate,,,-1.0
+Chaos_2H_Crossbow_Ultimate,2H Crossbow,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Pestilence_2H_Crossbow_Movement,2H Crossbow,Pestilence,Movement,,,Slot.Movement,,,-1.0
+Chaos_2H_Crossbow_Movement,2H Crossbow,Chaos,Movement,,,Slot.Movement,,,-1.0
+Pestilence_2H_Crossbow_Special,2H Crossbow,Pestilence,Special,,,Slot.Special,,,-1.0
+Chaos_2H_Crossbow_Special,2H Crossbow,Chaos,Special,,,Slot.Special,,,-1.0
+Celestial_Warhammer_Support,Warhammer,Celestial,Support,,,Slot.Support,,,-1.0
+Demonic_Warhammer_Support,Warhammer,Demonic,Support,Forge Stance,"Set your feet and take the heat inward for 10 seconds, gaining 30% increased armor and becoming immune to knockback. Enemies that strike you in melee are set alight.","Item.Weapon.Warhammer, Element.Demonic, Type.Buff, Stat.Defense.Armor, Trigger.OnHit, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10,-1.0
+Void_Warhammer_Support,Warhammer,Void,Support,,,Slot.Support,,,-1.0
+Chaos_Warhammer_Support,Warhammer,Chaos,Support,,,Slot.Support,,,-1.0
+Famine_Warhammer_Support,Warhammer,Famine,Support,,,Slot.Support,,,-1.0
+Celestial_Warhammer_Heavy,Warhammer,Celestial,Heavy,,,Slot.Heavy,,,-1.0
+Demonic_Warhammer_Heavy,Warhammer,Demonic,Heavy,Molten Crush,"Bring the hammer down on everything in front of you, knocking them back 3 meters and setting them alight. The slowest heavy blow in the game and the hardest.","Item.Weapon.Warhammer, Element.Demonic, Type.Strike, Type.Melee, Keyword.Stagger, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=3.5; Angle=80; Knockback=3; Burn=1,-1.0
+Void_Warhammer_Heavy,Warhammer,Void,Heavy,,,Slot.Heavy,,,-1.0
+War_Fist_Ultimate,Fist,War,Ultimate,Unstoppable Force,"Enter an unstoppable rage for 6 seconds. During this time you cannot be stunned, slowed or knocked back. Every hit deals bonus damage equal to 10% of your maximum HP and each punch has a 50% chance to apply bleed.","Item.Weapon.Fist, Element.War, Stat.Defense.Life, Keyword.DoT.Bleed, Slot.Ultimate",,,-1.0
+Chaos_Warhammer_Heavy,Warhammer,Chaos,Heavy,,,Slot.Heavy,,,-1.0
+Famine_Warhammer_Heavy,Warhammer,Famine,Heavy,,,Slot.Heavy,,,-1.0
+Celestial_Warhammer_Ultimate,Warhammer,Celestial,Ultimate,,,Slot.Ultimate,,,-1.0
+Demonic_Warhammer_Ultimate,Warhammer,Demonic,Ultimate,Break the World,"Hammer the ground once a second for 3 seconds, striking everything within 6 meters and setting it alight. The ground burns for 10 seconds, and the last blow deals 450% weapon damage.","Item.Weapon.Warhammer, Element.Demonic, Type.AOE.PointBlank, Type.Channel, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Ultimate",Strike,Radius=6; Angle=360; Duration=3; Interval=1; Burn=1; GroundRadius=6; GroundDuration=10; GroundPercent=10.0; FinalHitPercent=450,-1.0
+Void_Warhammer_Ultimate,Warhammer,Void,Ultimate,,,Slot.Ultimate,,,-1.0
+War_Shield_Ultimate,Shield,War,Ultimate,Fortress,"Plant yourself and become an immovable fortress for 5 seconds. All incoming damage is reduced by 60%, every blocked hit is reflected back at the attacker for 500% of the blocked damage, and nearby allies within 6 meters take 30% less damage.","Item.Weapon.Shield, Element.War, Stat.Defense.Block, Stat.Defense.Global, Slot.Ultimate",,,-1.0
+Chaos_Warhammer_Ultimate,Warhammer,Chaos,Ultimate,,,Slot.Ultimate,,,-1.0
+Famine_Warhammer_Ultimate,Warhammer,Famine,Ultimate,,,Slot.Ultimate,,,-1.0
+Celestial_Warhammer_Movement,Warhammer,Celestial,Movement,,,Slot.Movement,,,-1.0
+Demonic_Warhammer_Movement,Warhammer,Demonic,Movement,Meteor Drop,"Rise and fall on a point up to 9 meters away, striking everything within 4.5 meters on impact and setting it alight. The crater burns for 6 seconds.","Item.Weapon.Warhammer, Element.Demonic, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Movement",Movement,Mode=Leap; Range=9; Radius=4.5; Burn=1; GroundRadius=4.5; GroundDuration=6; GroundPercent=16.7,-1.0
+Void_Warhammer_Movement,Warhammer,Void,Movement,,,Slot.Movement,,,-1.0
+War_Spear_Ultimate,Spear,War,Ultimate,Iron Fortress,Slam your spear into the ground to instantly deploy 2 ballista turrets and 3 ground spike traps arranged around your position. All deployed gadgets and traps from this ability are fully armed immediately and have 50% increased HP. Lasts 20 seconds.,"Item.Weapon.Spear, Element.War, Type.Deployable, Type.Minion, Stat.Offense.Global, Keyword.CC, Type.Trap, Slot.Ultimate",Deployable,"Duration=20; Minions=Ballista:2, SpikeTrap:3; HealthPercent=150",-1.0
+Chaos_Warhammer_Movement,Warhammer,Chaos,Movement,,,Slot.Movement,,,-1.0
+Famine_Warhammer_Movement,Warhammer,Famine,Movement,,,Slot.Movement,,,-1.0
+Celestial_Warhammer_Special,Warhammer,Celestial,Special,,,Slot.Special,,,-1.0
+Demonic_Warhammer_Special,Warhammer,Demonic,Special,Magma Quake,"Slam the hammer into the ground at a point up to 10 meters away, cracking it open in a 4 meter radius and setting alight everything caught. The break burns for 6 seconds.","Item.Weapon.Warhammer, Element.Demonic, Type.AOE.PointBlank, Type.AOE.Persistent, Keyword.DoT.Burn, Slot.Special",Projectile,Range=10; Radius=4; Speed=1200; Burn=1; GroundRadius=4; GroundDuration=6; GroundPercent=16.7,-1.0
+Void_Warhammer_Special,Warhammer,Void,Special,,,Slot.Special,,,-1.0
+War_Sword_Ultimate,Sword,War,Ultimate,Bladestorm,"Channel to spin in a ferocious whirlwind of steel, striking all enemies within melee range repeatedly. Each strike applies bleed. Enemies hit 5 or more times have all their armor stripped for 6 seconds.","Item.Weapon.Sword, Element.War, Type.AOE.PointBlank, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Ultimate",,,-1.0
+Chaos_Warhammer_Special,Warhammer,Chaos,Special,,,Slot.Special,,,-1.0
+Famine_Warhammer_Special,Warhammer,Famine,Special,,,Slot.Special,,,-1.0
+Celestial_All_Aura,All,Celestial,Aura,,,Slot.Aura,,,-1.0
+Demonic_All_Aura,All,Demonic,Aura,Conflagration,Emanate a ring of hellfire in a 10 meter radius. Enemies within it are continuously set alight and have their Demonic resistance reduced by 15%. Allies within it deal 8% increased fire damage. Drains mana per second while active.,"Element.Demonic, Type.AOE.Aura, Keyword.DoT.Burn, Stat.Defense.Resist, Stat.Offense.Global, Stat.Resource.Mana, Slot.Aura",Aura,Radius=10; Interval=1; Burn=1,-1.0
+Pestilence_All_Aura,All,Pestilence,Aura,,,Slot.Aura,,,-1.0
+Void_All_Aura,All,Void,Aura,,,Slot.Aura,,,-1.0
+War_Whip_Ultimate,Whip,War,Ultimate,Whirlwind of Steel,"Spin your whip in a frenzy for 4 seconds, creating a zone of lashing cuts up to 7 meters around you. Every enemy in range is struck repeatedly, each hit applying bleed. Enemies that attempt to move through the zone take double damage.","Item.Weapon.Whip, Element.War, Type.AOE.Aura, Keyword.DoT.Bleed, Slot.Ultimate",,,-1.0
+Death_All_Aura,All,Death,Aura,,,Slot.Aura,,,-1.0
+Chaos_All_Aura,All,Chaos,Aura,,,Slot.Aura,,,-1.0
+Famine_All_Aura,All,Famine,Aura,,,Slot.Aura,,,-1.0

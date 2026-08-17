@@ -387,6 +387,7 @@ def weapon_skills(book) -> list[dict]:
         name = clean(raw[3])
         shape = clean(raw[6]) if len(raw) > 6 else ""
         params = clean(raw[7]) if len(raw) > 7 else ""
+        crit = clean(raw[8]) if len(raw) > 8 else ""
         where = f"Weapon Skills row {index} ({damage} {weapon} {slot})"
 
         if shape and shape not in SHAPE_PARAMS:
@@ -409,8 +410,53 @@ def weapon_skills(book) -> list[dict]:
                     "SkillDescription": clean(raw[4]),
                     "Tags": tags_with_slot(clean(raw[5]), slot, where),
                     "Shape": shape,
-                    "ShapeParams": params})
+                    "ShapeParams": params,
+                    "CritChancePercent": skill_crit_chance(crit, where)})
     return unique(out, "Weapon Skills")
+
+
+#: What the CritChancePercent column holds for a skill that states no critical
+#: strike chance of its own, and takes the 5% default instead.
+#:
+#: NOT ZERO, AND THAT IS THE WHOLE REASON A SENTINEL IS NEEDED. The decision
+#: recorded in docs/DECISIONS.md on 2026-08-04 says the 5% is "a default and not
+#: a floor: a skill that states 1% gets 1%, which is what lets a skill be
+#: designed to crit less than average". A skill designed never to critically
+#: strike states 0, so zero has to mean zero. The same convention -1 carries on
+#: the Cataclysm.CritRoll console variable, where it means "roll normally".
+UNSTATED_CRIT_CHANCE = -1.0
+
+
+def skill_crit_chance(cell: str, where: str) -> float:
+    """The Crit Chance cell as a number, or -1 when the cell is blank.
+
+    Blank is the ordinary case and is not a fault: all 398 rows are blank today,
+    and a skill that says nothing about critical strikes should not have to.
+    """
+    if not cell:
+        return UNSTATED_CRIT_CHANCE
+
+    try:
+        chance = float(cell)
+    except ValueError:
+        raise DataError(
+            f"{where}: states a critical strike chance of {cell!r}, which is not "
+            "a number. Leave the cell blank for the 5% default.") from None
+
+    # THE CAP IS 100 AND IT IS HARD. docs/Cataclysm_GDD_v2.md's caps table says
+    # "Above 100% it means nothing", and both the model and the engine clamp
+    # there -- HARD_CAPS in sim/cataclysm_sim/character.py and CritChanceCap in
+    # CataclysmCombatAttributeSet.h. A row stating 150 would be silently clamped
+    # to 100, so it is refused here instead. Whether a keystone may lift that cap
+    # is an open design question, issue #658; if it is ever lifted, this bound
+    # moves with it.
+    if not 0.0 <= chance <= 100.0:
+        raise DataError(
+            f"{where}: states a critical strike chance of {chance}, which is "
+            "outside 0 to 100. The cap is hard; see the caps table in "
+            "docs/Cataclysm_GDD_v2.md.")
+
+    return chance
 
 
 def tags_with_slot(written: str, slot: str, where: str) -> str:

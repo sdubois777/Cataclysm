@@ -256,7 +256,30 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							UCataclysmDamageCalculation::NoCriticalStrikeTag());
 					if (bCanCriticallyStrike)
 					{
-						Hit.CritChance = Offence->GetCritChance();
+						// THE SKILL'S OWN CHANCE WINS OVER THE CHARACTER'S, when
+						// the skill states one. Critical strike chance belongs to
+						// the skill being used rather than to the character using
+						// it -- the design's stat source table names "the skill
+						// being used" and adds "A character has no critical strike
+						// chance in the abstract" -- and a character holds six
+						// skills at once against this one attribute. So a skill
+						// that states its own sends it with the hit, as a
+						// set-by-caller magnitude keyed by Data.SkillCritChance,
+						// and the attribute holds the default for every skill that
+						// states nothing. Issue #657.
+						//
+						// -1 MEANS NOTHING WAS SENT, which is every hit in the game
+						// today: all 398 rows of the weapon skill matrix leave the
+						// column blank, and an enemy's attack has no skill row at
+						// all. Zero cannot mean it, because a skill designed never
+						// to critically strike states zero and must get zero.
+						const float Stated = Data.EffectSpec.GetSetByCallerMagnitude(
+							UCataclysmDamageCalculation::SkillCritChanceDataTag(),
+							/*WarnIfNotFound=*/false,
+							/*DefaultIfNotFound=*/-1.0f);
+
+						Hit.CritChance = Stated >= 0.0f ? Stated
+														: Offence->GetCritChance();
 						Hit.CritMultiplier = Offence->GetCritMultiplier();
 					}
 				}

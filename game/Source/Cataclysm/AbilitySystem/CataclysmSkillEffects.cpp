@@ -289,6 +289,22 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		}
 	}
 
+	// THE SKILL'S OWN CRITICAL STRIKE CHANCE, AS A NUMBER RATHER THAN A TAG.
+	// Everything above is a yes-or-no property and rides as a tag. This is a
+	// figure, so it rides as a set-by-caller magnitude, which is Unreal's own way
+	// to attach a number to one application of an effect. Added only when the
+	// skill states one, so a hit that says nothing carries nothing and the
+	// defender reads the attacker's attribute exactly as before. Issue #657.
+	if (Delivery.CritChancePercent >= 0.0f)
+	{
+		const FGameplayTag CritChanceKey =
+			UCataclysmDamageCalculation::SkillCritChanceDataTag();
+		if (CritChanceKey.IsValid())
+		{
+			Spec.SetSetByCallerMagnitude(CritChanceKey, Delivery.CritChancePercent);
+		}
+	}
+
 	Defender->ApplyGameplayEffectSpecToSelf(Spec);
 }
 

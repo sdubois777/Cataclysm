@@ -23,6 +23,8 @@
 #include "GameFramework/Actor.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
+// For pinning the critical strike roll in the one test whose subject it is.
+#include "Tests/CataclysmTestWorld.h"
 
 /**
  * Tests for what the seven shared skill templates actually do.
@@ -326,6 +328,99 @@ bool FCataclysmStrikeTest::RunTest(const FString&)
 		UCataclysmSkillEffects::HasTag(InFront.Actor, UCataclysmSkillEffects::BurnTag()));
 	TestFalse(TEXT("The enemy behind is not"),
 		UCataclysmSkillEffects::HasTag(Behind.Actor, UCataclysmSkillEffects::BurnTag()));
+
+	return true;
+}
+
+/**
+ * A skill's own critical strike chance reaches the blow it deals. Issue #657.
+ *
+ * THE LAST LINK IN THE CHAIN, and the one the other tests cannot reach.
+ * `Cataclysm.Crit.*` proves that a hit carrying a chance uses it and that a row
+ * stating one produces a skill stating one. Neither proves that a running skill
+ * puts its own figure onto the blows it lands, which is what
+ * `UCataclysmSkillTemplate::HitTargets` has to do, and every one of the seven
+ * shared templates deals its damage through that one function.
+ *
+ * THE CASTER'S OWN CHANCE IS ZERO ON PURPOSE. If the skill's figure were ignored
+ * and the character's read instead, the hit would not critically strike at all
+ * and the reading would be the plain 250%.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillSendsItsOwnCritChanceTest,
+	"Cataclysm.Skills.ASkillsOwnCriticalStrikeChanceReachesWhatItHits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillSendsItsOwnCritChanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// EVERY CHANCE ABOVE ZERO BEATS A ROLL OF ZERO, so the roll is decided and
+	// this test is not a coin toss. Restored when it leaves scope.
+	const CataclysmTestWorld::FScopedCritRoll AlwaysRolls(0.0f);
+
+	// The Heavy slot deals 250% of weapon damage, and a target with no armour,
+	// resistance, evasion or block takes all of it.
+	const float Plain = WeaponDamage * 250.0f / 100.0f;
+
+	{
+		FScopedFighter Caster(World, FVector::ZeroVector);
+		FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+		// THE CHARACTER NEVER CRITICALLY STRIKES. Only the skill does.
+		Caster.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 0.0f);
+		Caster.Set(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
+
+		UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=120"),
+			TEXT("Precise Cut"));
+		if (!Strike)
+		{
+			AddError(TEXT("Could not grant the strike that states a chance."));
+			return false;
+		}
+		Strike->CritChancePercent = 100.0f;
+
+		const float Before = Target.Health();
+		TestTrue(TEXT("the skill that states a chance activates"),
+			Activate(Caster, Strike));
+
+		// THE MULTIPLIER IS STILL THE CHARACTER'S, which is the design and not an
+		// oversight: only the CHANCE is stated by the skill. So 250% doubled.
+		TestEqual(TEXT("a skill stating 100% critically strikes, at its "
+					   "character's multiplier"),
+			Before - Target.Health(), Plain * 2.0f);
+	}
+
+	{
+		// THE SAME SKILL SAYING NOTHING, which is every skill in the game today,
+		// and what makes the reading above a rule rather than damage that changed
+		// for some other reason.
+		FScopedFighter Caster(World, FVector::ZeroVector);
+		FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+		Caster.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 0.0f);
+		Caster.Set(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
+
+		UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=120"),
+			TEXT("Wild Swing"));
+		if (!Strike)
+		{
+			AddError(TEXT("Could not grant the strike that states nothing."));
+			return false;
+		}
+		TestEqual(TEXT("a granted skill states no chance until one is stamped on it"),
+			Strike->CritChancePercent, -1.0f);
+
+		const float Before = Target.Health();
+		TestTrue(TEXT("the skill that states nothing activates"),
+			Activate(Caster, Strike));
+		TestEqual(TEXT("so it takes its character's 0% and does not critically strike"),
+			Before - Target.Health(), Plain);
+	}
 
 	return true;
 }
@@ -685,6 +780,81 @@ bool FCataclysmPiercingProjectileTest::RunTest(const FString&)
 		Second.Health() < SecondBefore);
 	TestEqual(TEXT("One standing beside the line was not"),
 		Beside.Health(), BesideBefore);
+
+	return true;
+}
+
+/**
+ * A projectile carries the firing skill's critical strike chance. Issue #657.
+ *
+ * WHY A PROJECTILE NEEDS ITS OWN TEST. It is the one thing that lands after the
+ * ability that made it has already ended, so it cannot read anything off the
+ * character when it arrives -- by then the character may be using a different
+ * skill. Everything else a skill does goes through
+ * `UCataclysmSkillTemplate::HitTargets` while the skill is still running.
+ *
+ * DRIVEN WITH `Step` RATHER THAN BY TICKING. The test world is never ticked, so
+ * the projectile is moved by hand, which is what `Step` is public for. The two
+ * projectile tests either side of this one use a speed of zero, which never
+ * creates a flying projectile at all, so neither covers this path.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCarriesTheSkillsCritChanceTest,
+	"Cataclysm.Skills.AProjectileCarriesItsFiringSkillsCriticalStrikeChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileCarriesTheSkillsCritChanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// Every chance above zero beats a roll of zero, so nothing here is random.
+	const CataclysmTestWorld::FScopedCritRoll AlwaysRolls(0.0f);
+
+	// Fires one shot at a target three metres away and returns what it took.
+	const auto DamageDealtWith = [&](float CritChancePercent) -> float
+	{
+		FScopedFighter Caster(World, FVector::ZeroVector);
+		FScopedFighter Target(World, FVector(3 * M, 0, 0));
+
+		// THE CHARACTER NEVER CRITICALLY STRIKES, so anything above the plain
+		// figure can only have come from the number the projectile carried.
+		Caster.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 0.0f);
+		Caster.Set(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
+
+		ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+			Caster.Actor, FVector::ZeroVector, FVector(8 * M, 0, 0),
+			/*InRadiusCm=*/100.0f, /*InSpeed=*/1000.0f, /*InPierce=*/0,
+			/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+			FGameplayTagContainer(), /*bInBurns=*/false,
+			/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f, CritChancePercent);
+		if (!Shot)
+		{
+			AddError(TEXT("The projectile was not fired."));
+			return -1.0f;
+		}
+
+		const float Before = Target.Health();
+
+		// Three metres at ten metres a second, so it arrives inside 0.3 s. The
+		// loop stops as soon as the target is hurt rather than running on.
+		for (int32 Steps = 0; Steps < 20 && Target.Health() >= Before; ++Steps)
+		{
+			Shot->Step(0.05f);
+		}
+
+		return Before - Target.Health();
+	};
+
+	// 100% of a weapon damage of 100.
+	TestEqual(TEXT("a projectile whose skill states nothing takes the "
+				   "character's 0% and does not critically strike"),
+		DamageDealtWith(-1.0f), WeaponDamage);
+
+	TestEqual(TEXT("and one whose skill states 100% critically strikes, at the "
+				   "character's multiplier"),
+		DamageDealtWith(100.0f), WeaponDamage * 2.0f);
 
 	return true;
 }

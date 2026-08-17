@@ -103,6 +103,27 @@ struct FCataclysmWeaponSkillRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
 	FString ShapeParams;
+
+	/**
+	 * This skill's own base critical strike chance, or -1 to take the default.
+	 *
+	 * THE DESIGN PUTS THIS ON THE SKILL. Its stat source table says "the skill
+	 * being used" supplies critical strike chance, and the sentence after it is
+	 * "A character has no critical strike chance in the abstract."
+	 * See `docs/Cataclysm_GDD_v2.md` lines 858 and 866.
+	 *
+	 * -1 MEANS THE ROW SAYS NOTHING, and that is the ordinary case: every one of
+	 * the 398 rows is blank today, so every skill in the game takes the 5%
+	 * default in `UCataclysmWeaponSlotsComponent::DefaultSkillCritChancePercent`.
+	 *
+	 * ZERO CANNOT MEAN THAT, which is the whole reason a sentinel is needed. The
+	 * decision of 2026-08-04 recorded in `docs/DECISIONS.md` says the 5% is "a
+	 * default and not a floor: a skill that states 1% gets 1%, which is what lets
+	 * a skill be designed to crit less than average". A skill built never to
+	 * critically strike states 0, so 0 has to be a real answer. Issue #657.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
+	float CritChancePercent = -1.0f;
 };
 
 /**

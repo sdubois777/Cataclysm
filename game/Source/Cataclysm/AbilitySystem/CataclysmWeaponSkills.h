@@ -56,6 +56,16 @@ struct CATACLYSM_API FCataclysmWeaponSkill
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
 	FGameplayTagContainer Tags;
+
+	/**
+	 * This skill's own base critical strike chance, or -1 to take the default.
+	 *
+	 * Carried from the row's Crit Chance column. See
+	 * `FCataclysmWeaponSkillRow::CritChancePercent` for why -1 rather than 0
+	 * means "the row says nothing". Issue #657.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	float CritChancePercent = -1.0f;
 };
 
 /**
