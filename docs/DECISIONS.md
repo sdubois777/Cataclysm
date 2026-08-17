@@ -20,6 +20,83 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — A multiplicative damage reduction is a "more" multiplier, and the 75% cap does not reach it
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Damage Calculation subsection of
+section VII, which now describes two damage reduction buckets.
+`sim/cataclysm_sim/damage.py` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` both gained
+the second bucket. Closes issue #665. Filed issue #682, which is about the node
+values rather than the mechanism.
+
+### The question
+
+Twelve passive tree nodes — eleven in the Bulwark tree and one in the Saboteur
+tree — grant damage reduction and say "(multiplicative)". The stat they feed was
+additive everywhere it was implemented, there was no per-source storage anywhere,
+and the word was defined nowhere. That decided whether the 75% cap added under
+issue #644 bound those nodes at all.
+
+### The answer
+
+**The project owner ruled on 2026-08-17 that multiplicative means "more".** In
+their words: there is flat, increased, and more; more are multipliers; the same
+thing Last Epoch and Path of Exile do.
+
+So the defensive side takes the shape the offensive side already has. The design
+states the offensive pipeline as `(base + flat) x (1 + increases) x more1 x more2`
+and this is its defensive half: most sources add into one pool, and a source that
+says multiplicative is its own factor on the damage that reaches it.
+
+**The 75% cap binds the additive pool only.** Two sources of 20% in the pool
+remove 40% and the pool is then capped; two multiplicative sources remove 36%,
+because the second removes a fifth of the 80% the first left.
+
+**The multiplicative bucket needs no cap of its own, because it cannot reach
+immunity.** Every factor removes a share of what is left, so the product never
+reaches zero. That is the same argument the caps table already makes for cooldown
+reduction: "No cap needed. The formula cannot reach zero."
+
+### Two bounds exist anyway, and neither is the 75%
+
+**One source may not remove 100%**, because a single factor of exactly 100 would
+be exact immunity, which is the failure the 75% cap was added for under issue
+#644. Nothing in the design comes near it: the largest multiplicative node in any
+class tree is 3% per point over 8 points.
+
+**The combination is bounded too, and that one was found by a test failing.**
+"Multiplicative stacking cannot reach 100%" is true of exact arithmetic and false
+of the arithmetic the engine runs in. Unreal computes in single precision, which
+carries about seven decimal digits, so forty sources of 50% leave 9.1e-13 of the
+damage and `100 x (1 - 9.1e-13)` rounds to exactly 100 — immunity, reached by the
+layer the design says cannot reach it. Python's floats are double precision and
+came out at 99.99999999999991, so the same expression passed in the model and
+failed in the engine. Both are bounded now, so they agree by construction rather
+than by both happening to stay away from the edge.
+
+### The eleven node descriptions were not reworded
+
+The word "multiplicative" is now defined, so the nodes say something true. The
+house term is "more" and rewording them would be more consistent, but the trees
+are authored in the separate tool at `C:\Projects\PassiveTreeCreator` and
+re-exported over the files in `docs/`, so a rewording is work outside this
+repository for a wording that is no longer ambiguous. The definition went into the
+design document instead, where the offensive pipeline already lives.
+
+### What this makes possible, which is issue #682
+
+With the mechanism decided, the Bulwark's twelve nodes combine to a much larger
+figure than any one of them suggests. The two unconditional ones give 33.1%. With
+three conditional ones met and three enemies nearby it is 77.5%, and with the
+additive pool also at its cap a Bulwark takes 5.6% of a hit — 94.4% mitigation,
+before armour, resistance, block and the energy shield.
+
+That is a question about the node values rather than about the rule, so it is
+issue #682 rather than part of this. Nothing runs these numbers yet: no code loads
+a passive tree, so no character has a multiplicative damage reduction today.
+
+---
+
 ## 2026-08-17 — Critical strike chance is hard-capped at 100%, and one keystone converts the excess
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the caps table in section VII and the

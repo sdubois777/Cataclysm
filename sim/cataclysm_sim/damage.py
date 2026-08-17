@@ -94,6 +94,18 @@ ARMOR_REDUCTION_CAP = 75.0
 #: nothing, which is what "hard" means in the design's caps table.
 DAMAGE_REDUCTION_CAP = 75.0
 
+#: The most one "more" damage reduction source may remove, as a percentage.
+#:
+#: NOT THE SAME BOUND AS THE 75 ABOVE, and it is not a balance figure. The cap
+#: above bounds the additive pool; the project owner decided on 2026-08-17 that it
+#: binds that pool only, because multiplicative sources cannot reach 100% by
+#: construction. This bounds ONE source, and it exists only to keep that sentence
+#: true: a single factor of exactly 100 would remove all the damage and make a
+#: character immune, which is the failure the 75 cap was added for in the first
+#: place. Nothing in the design comes near it -- the largest multiplicative node
+#: in any class tree is 3% per point over 8 points, which is 24%. Issue #665.
+MORE_DAMAGE_REDUCTION_CAP = 99.0
+
 # --------------------------------------------------------------------------
 # Resistance
 # --------------------------------------------------------------------------
@@ -423,6 +435,19 @@ class Defender:
     evasion: float = 0.0
     block_chance: float = 0.0
     damage_reduction: float = 0.0
+    #: Damage reduction that is a "more" multiplier rather than part of the
+    #: additive pool above. One entry per source, each a percentage of the
+    #: damage remaining that it removes.
+    #:
+    #: A LIST RATHER THAN ONE NUMBER, because each source is its own factor. Two
+    #: sources of 20% leave 64% of the damage, not 60%: that is the entire
+    #: difference between this bucket and `damage_reduction`, and collapsing them
+    #: into one number would lose it.
+    #:
+    #: THE 75% CAP DOES NOT REACH THIS. It bounds the additive pool only, decided
+    #: by the project owner on 2026-08-17. Multiplicative sources cannot reach
+    #: 100% by construction, so the cap has nothing to prevent here.
+    damage_reduction_more: tuple[float, ...] = ()
     resistances: dict[str, float] = field(default_factory=dict)
     tier: int = 1
     mana: float = 0.0
@@ -506,6 +531,48 @@ def effective_damage_reduction(reduction: float) -> float:
     flat damage reduction, and the engine's attribute is already clamped at zero.
     """
     return min(DAMAGE_REDUCTION_CAP, max(0.0, reduction))
+
+
+def combined_more_damage_reduction(factors: tuple[float, ...] | list[float]) -> float:
+    """Several "more" damage reductions as one percentage of damage removed.
+
+    Each source removes a share of what the ones before it left, so two sources
+    of 20% remove 36% between them and not 40%. That is what makes this bucket
+    different from the additive pool `effective_damage_reduction` bounds, and it
+    is the defensive half of the rule the design already states for offence:
+    `(base + flat) x (1 + increases) x more1 x more2`, where each "more" is its
+    own multiplier rather than joining a sum.
+
+    Path of Exile and Last Epoch both use this shape and both call it "more".
+    Eleven Bulwark passive tree nodes and one Saboteur node say "(multiplicative)"
+    and mean it; the project owner confirmed on 2026-08-17 that multiplicative
+    means "more". Issue #665.
+
+    IT CANNOT REACH 100% AND THAT IS THE POINT. Every factor removes a share of
+    what is left, so the product never reaches zero, and the 75% cap on the
+    additive pool has nothing to prevent here. A single factor OF 100 would be
+    exact immunity, so each is clamped to below that.
+
+    A FUNCTION RATHER THAN A LOOP AT THE CALL SITE, for the reason
+    `effective_damage_reduction` above is one: the rule lives in one place and
+    the mitigation step stays one line.
+    """
+    remaining = 1.0
+    for factor in factors:
+        remaining *= 1.0 - min(MORE_DAMAGE_REDUCTION_CAP, max(0.0, factor)) / 100.0
+
+    # BOUNDED AT THE END AS WELL AS PER SOURCE, AND THAT IS NOT BELT AND BRACES.
+    # "Multiplicative stacking cannot reach 100%" is true of exact arithmetic and
+    # false of the arithmetic the ENGINE runs in. Unreal computes this in single
+    # precision, which carries about seven decimal digits, so forty sources of
+    # 50% leave 9.1e-13 of the damage and `100 * (1 - 9.1e-13)` rounds to exactly
+    # 100.0f -- immunity, reached by the layer the design says cannot reach it.
+    # Python's floats are double precision and come out at 99.99999999999991,
+    # which is why the same expression passed here and failed there.
+    #
+    # SO THE BOUND IS HERE TOO, to keep the two languages agreeing by
+    # construction rather than by both happening to stay away from the edge.
+    return min(MORE_DAMAGE_REDUCTION_CAP, 100.0 * (1.0 - remaining))
 
 
 def effective_resistance(resistance: float, penetration: float) -> float:
@@ -622,6 +689,16 @@ def resolve(attacker: Attacker, defender: Defender,
     # that read a defender's field straight into the arithmetic with nothing
     # bounding it, so at 100 a character was exactly immune.
     damage *= 1.0 - effective_damage_reduction(defender.damage_reduction) / 100.0
+
+    # AND THE MULTIPLICATIVE BUCKET, WHICH THE CAP ABOVE DOES NOT REACH. Twelve
+    # passive tree nodes grant damage reduction and call it "(multiplicative)".
+    # The project owner confirmed on 2026-08-17 that multiplicative means "more",
+    # the same word Path of Exile and Last Epoch use, so each source removes a
+    # share of what the ones before it left rather than joining the additive pool.
+    # The 75% cap binds that pool only; this bucket cannot reach 100% by
+    # construction. Issue #665.
+    damage *= 1.0 - combined_more_damage_reduction(
+        defender.damage_reduction_more) / 100.0
     after_reduction = damage
 
     # 6. Mana, but only for damage over time and only if the character has built

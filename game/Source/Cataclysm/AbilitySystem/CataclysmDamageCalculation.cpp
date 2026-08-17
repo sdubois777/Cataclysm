@@ -190,6 +190,31 @@ float UCataclysmDamageCalculation::EffectiveDamageReduction(float Reduction)
 	return FMath::Clamp(Reduction, 0.0f, DamageReductionCap);
 }
 
+float UCataclysmDamageCalculation::CombinedMoreDamageReduction(
+	const TArray<float>& Factors)
+{
+	float Remaining = 1.0f;
+	for (const float Factor : Factors)
+	{
+		Remaining *=
+			1.0f - FMath::Clamp(Factor, 0.0f, MoreDamageReductionCap) / 100.0f;
+	}
+
+	// BOUNDED AT THE END AS WELL AS PER SOURCE, AND THAT IS NOT BELT AND BRACES.
+	// "Multiplicative stacking cannot reach 100%" is true of exact arithmetic and
+	// FALSE of the arithmetic this actually runs in. A float carries about seven
+	// decimal digits, so forty sources of 50% leave 9.1e-13 of the damage, and
+	// `100 * (1 - 9.1e-13)` rounds to exactly 100.0f. That is immunity, reached
+	// by the layer the design says cannot reach it.
+	//
+	// FOUND BY THE TEST BELOW RATHER THAN BY READING. The Python model computes
+	// the same expression in double precision, where it comes out at
+	// 99.99999999999991 and stays under, so the two languages disagreed and only
+	// the engine was wrong. The model is bounded the same way now, so the two
+	// agree by construction rather than by both being far from the edge.
+	return FMath::Min(100.0f * (1.0f - Remaining), MoreDamageReductionCap);
+}
+
 void UCataclysmDamageCalculation::StunApplication(float TotalChance,
 												  float& OutChance,
 												  float& OutSeconds)
@@ -315,6 +340,24 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	{
 		Damage *= 1.0f
 			- EffectiveDamageReduction(Combat->GetDamageReduction()) / 100.0f;
+
+		// AND THE MULTIPLICATIVE BUCKET, WHICH THAT CAP DOES NOT REACH. Twelve
+		// passive tree nodes grant damage reduction and call it
+		// "(multiplicative)". The project owner confirmed on 2026-08-17 that
+		// multiplicative means "more", the same word Path of Exile and Last Epoch
+		// use, so each source removes a share of what the ones before it left
+		// rather than joining the pool above. The 75% cap binds that pool only,
+		// and this bucket cannot reach 100% however many sources feed it.
+		//
+		// ONE ATTRIBUTE HOLDING THE PRODUCT, because an attribute is one number.
+		// CombinedMoreDamageReduction is where several sources are multiplied
+		// together, and it is what whoever writes the attribute must use.
+		//
+		// EVERY CHARACTER SITS AT ZERO TODAY, so this changes nothing yet:
+		// nothing in game/Source loads a passive tree, so there is no source for
+		// it. Issue #665.
+		Damage *= 1.0f - FMath::Clamp(Combat->GetDamageReductionMore(),
+									  0.0f, MoreDamageReductionCap) / 100.0f;
 	}
 
 	// 6. Mana, but only for damage over time and only for a character built for

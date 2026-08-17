@@ -1267,6 +1267,25 @@ understanding that no critical strike layer compounds with it.
 
 **Flat damage reduction stops at 75% for the same reason armor does.** It is the flattest of the layers — no curve, no roll, no per-type split, and it applies to every kind of damage in every situation — so it is the one that would run away without a stop. Nothing penetrates it, unlike resistance, so every point past 75% is worth exactly nothing and the cap is a hard one. The figure is the armor cap's, so that one number is the most any single unconditional layer removes. Path of Exile caps the closest thing it ships at 90%, but that 90% covers physical damage alone where this covers all eight types, so the wider layer is held to the tighter number. Nothing reachable from gear goes near it: 14 pieces may each carry one roll of the affix at 2%, which with a Ravager's class base is 35.95% at the absolute most. What the cap binds is the passive trees and enchantments.
 
+**Damage reduction has two buckets, and only the first is capped.** The defensive side follows the same shape as the offensive pipeline, which is `(base + flat) x (1 + increases) x more1 x more2`. Most sources of flat damage reduction — affixes, a class base, most passive tree nodes — add into one pool, and it is that pool the 75% cap binds. A source that says **multiplicative** is a "more" multiplier instead: it removes a share of what the layers before it left, and it is its own factor rather than joining the pool.
+
+  
+
+| Two sources of 20% | What they remove together |
+| :-- | :-- |
+| Both in the additive pool | 40%, and the pool is then capped at 75% |
+| Both multiplicative | 36%, because the second removes a fifth of the 80% the first left |
+
+  
+
+**Multiplicative sources are not capped because they cannot reach immunity.** Every factor removes a share of what is left, so the product never reaches zero however many are stacked. That is the same reason cooldown reduction needs no cap: the formula cannot reach the bottom. A single source removing 100% would be exact immunity, so no source may state that, but there is no bound on how many may combine.
+
+  
+
+**"Multiplicative" and "more" are the same word.** Twelve passive tree nodes — eleven in the Bulwark tree and one in the Saboteur tree — grant damage reduction and say "(multiplicative)". They mean "more", in the sense Path of Exile and Last Epoch both use it. The offensive pipeline above already uses "more" for exactly this, so the two sides of the game describe one idea.
+
+  
+
 **No combination of these layers reaches immunity.** Each has either a cap or a curve that cannot reach zero damage.
 
   

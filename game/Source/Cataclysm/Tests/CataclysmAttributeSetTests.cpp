@@ -125,14 +125,26 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	/**
 	 * Attributes that exist but are NOT on the character sheet.
 	 *
-	 * Attack damage is the only one. `sim/cataclysm_sim/affixes.py` names it
-	 * explicitly as an off-sheet stat, because it belongs to the equipped weapon
-	 * rather than to the character: a Greataxe supplies 144 and a Fist 30, and
-	 * the character has no value of their own. It has to be an attribute anyway,
-	 * because every skill's damage is a percentage of it and two affixes add to
-	 * it, but it does not make the sheet longer.
+	 * ATTACK DAMAGE is one. `sim/cataclysm_sim/affixes.py` names it explicitly as
+	 * an off-sheet stat, because it belongs to the equipped weapon rather than to
+	 * the character: a Greataxe supplies 144 and a Fist 30, and the character has
+	 * no value of their own. It has to be an attribute anyway, because every
+	 * skill's damage is a percentage of it and two affixes add to it, but it does
+	 * not make the sheet longer.
+	 *
+	 * MULTIPLICATIVE DAMAGE REDUCTION is the second, added under issue #665. It is
+	 * off the sheet for a different reason: it is not a stat at all but the
+	 * product of however many "more" sources a character has, and the model treats
+	 * it the same way. `sim/cataclysm_sim/damage.py` carries it as a list on the
+	 * `Defender` being hit rather than as an entry in `DEFAULT_STAT_LINE`, because
+	 * a "more" multiplier in this project is a modifier rather than a stat with a
+	 * baseline, affixes and scaling of its own. The additive pool it sits beside,
+	 * `DamageReduction`, IS a sheet stat and has all three.
+	 *
+	 * So the sheet stays at 46 and the combat set grew by one, which is what this
+	 * count exists to keep honest.
 	 */
-	constexpr int32 OffSheetCombatStats = 1;
+	constexpr int32 OffSheetCombatStats = 2;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -150,7 +162,7 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// for #205. Twenty-eight since armour penetration was added for #520 -- a
 	// SECOND penetration stat, cutting into armour where the first cuts into
 	// resistance.
-	TestEqual(TEXT("Twenty-eight combat and utility stats, plus attack damage off the sheet"),
+	TestEqual(TEXT("Twenty-eight combat and utility stats, plus two off the sheet"),
 		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);

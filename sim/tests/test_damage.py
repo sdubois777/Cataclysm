@@ -455,6 +455,89 @@ def test_the_cap_applies_to_the_layer_and_not_to_the_stat():
     assert dm.effective_damage_reduction(-40.0) == pytest.approx(0.0)
 
 
+def test_two_multiplicative_reductions_do_not_add():
+    """Twenty and twenty remove 36%, not 40%. Issue #665.
+
+    This is the entire difference between the two buckets and the reason the
+    second one exists. Twelve passive tree nodes say "(multiplicative)"; the
+    project owner confirmed on 2026-08-17 that the word means "more", which is
+    what Path of Exile and Last Epoch call it.
+    """
+    additive = plain(damage_reduction=40.0)
+    multiplicative = plain(damage_reduction_more=(20.0, 20.0))
+
+    assert taken(hit(damage=1_000.0), additive) == pytest.approx(600.0)
+    assert taken(hit(damage=1_000.0), multiplicative) == pytest.approx(640.0)
+
+
+def test_the_seventy_five_percent_cap_does_not_reach_the_multiplicative_bucket():
+    """The owner ruled on 2026-08-17 that the cap binds the additive pool only.
+
+    Four sources of 30% remove 75.99% between them, which is past the cap that
+    bounds the other bucket, and that is correct rather than a leak: each removes
+    a share of what is left, so the total can pass 75% without any source doing
+    so and without ever reaching 100.
+    """
+    four = plain(damage_reduction_more=(30.0, 30.0, 30.0, 30.0))
+    assert dm.combined_more_damage_reduction((30.0,) * 4) == pytest.approx(75.99)
+    assert taken(hit(damage=1_000.0), four) == pytest.approx(240.1)
+
+
+def test_the_multiplicative_bucket_cannot_reach_immunity():
+    """However many sources stack, something always gets through.
+
+    The design says "No combination of these layers reaches immunity. Each has
+    either a cap or a curve that cannot reach zero damage." This bucket is the
+    curve kind rather than the capped kind, so this is what has to hold instead
+    of a cap.
+    """
+    many = plain(damage_reduction_more=(50.0,) * 40)
+    dealt = taken(hit(damage=1_000_000.0), many)
+    assert dealt > 0.0, "forty sources of 50% removed everything"
+
+    assert dm.combined_more_damage_reduction((90.0,) * 10) < 100.0
+
+
+def test_one_source_cannot_remove_everything():
+    """A single factor of 100 would be exact immunity, so it is clamped.
+
+    That is the failure the 75% cap on the additive pool was added for under
+    issue #644, and it is the one thing multiplicative stacking does not prevent
+    on its own. Nothing in the design comes near it: the largest multiplicative
+    node in any class tree is 3% per point over 8 points.
+    """
+    assert dm.combined_more_damage_reduction((100.0,)) == pytest.approx(
+        dm.MORE_DAMAGE_REDUCTION_CAP)
+
+    immune_if_unclamped = plain(damage_reduction_more=(100.0,))
+    assert taken(hit(damage=1_000.0), immune_if_unclamped) > 0.0
+
+    # Negative is floored, the same way the additive pool's is: nothing in the
+    # design grants a source that increases damage taken.
+    assert dm.combined_more_damage_reduction((-40.0,)) == pytest.approx(0.0)
+
+
+def test_a_defender_states_no_multiplicative_reduction_by_default():
+    """Every existing defender in the model is unchanged by this bucket.
+
+    Nothing grants one yet, so the default has to be "none" rather than "zero
+    sources of zero", and an empty tuple removes nothing.
+    """
+    assert dm.Defender(health=1.0).damage_reduction_more == ()
+    assert dm.combined_more_damage_reduction(()) == pytest.approx(0.0)
+
+
+def test_the_two_buckets_apply_one_after_the_other():
+    """Both together: the pool at its cap, then a multiplicative source.
+
+    75% then 20% leaves 20% of the hit, not 5%. If the two were summed, or if
+    the multiplicative source were folded into the pool before capping, this
+    would read 250 instead.
+    """
+    both = plain(damage_reduction=75.0, damage_reduction_more=(20.0,))
+    assert taken(hit(damage=1_000.0), both) == pytest.approx(200.0)
+
+
 def test_the_full_order_is_recorded_step_by_step():
     r = dm.resolve(hit(), plain(armor=500.0, tier=1), force_evade=False,
                    force_block=False)

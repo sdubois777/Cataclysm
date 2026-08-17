@@ -69,6 +69,38 @@ public:
 	FGameplayAttributeData DamageReduction;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageReduction)
 
+	/**
+	 * Damage reduction that multiplies rather than joining the pool above,
+	 * already combined into one percentage.
+	 *
+	 * WHY A SECOND ATTRIBUTE. Twelve passive tree nodes grant damage reduction
+	 * and call it "(multiplicative)". The project owner confirmed on 2026-08-17
+	 * that multiplicative means "more", the same word Path of Exile and Last
+	 * Epoch use, so each source removes a share of what the ones before it left
+	 * rather than adding into `DamageReduction`. The 75% cap binds the additive
+	 * pool only; this bucket cannot reach 100% however many sources feed it.
+	 * Issue #665.
+	 *
+	 * ALREADY COMBINED, which is what "one percentage" means. Several sources
+	 * multiply together and the product is what is stored here, because an
+	 * attribute is one number.
+	 * `UCataclysmDamageCalculation::CombinedMoreDamageReduction` is the one place
+	 * that multiplication is written, and whoever writes this must use it rather
+	 * than adding the sources up.
+	 *
+	 * NOTHING WRITES IT YET, AND THAT IS SAID HERE RATHER THAN LEFT TO BE FOUND.
+	 * Passive trees are not implemented at all -- no code in `game/Source` loads
+	 * a class tree -- so there is no source for this today, every character sits
+	 * at zero, and no existing behaviour changes. This project has been bitten
+	 * three times by an attribute whose comment described an intention nobody had
+	 * built, in issues #647, #649 and #520, so to be exact about which half this
+	 * is: the arithmetic that consumes this IS built and IS tested, and what does
+	 * not exist is the passive tree that would supply a value.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_DamageReductionMore)
+	FGameplayAttributeData DamageReductionMore;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageReductionMore)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_Retaliation)
 	FGameplayAttributeData Retaliation;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, Retaliation)
@@ -285,6 +317,7 @@ protected:
 	UFUNCTION() void OnRep_Evasion(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_BlockChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageReduction(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageReductionMore(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Retaliation(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CrowdControlResistance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AttackDamage(const FGameplayAttributeData& OldValue);

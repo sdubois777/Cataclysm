@@ -158,9 +158,72 @@ class TestTheCapIsActuallyApplied:
         attacker = damage.Attacker(damage=1_000_000.0, damage_type="Demonic")
         defender = damage.Defender(
             health=1e9, armor=1_000_000.0, damage_reduction=1_000.0,
-            resistances={"Demonic": 300.0}, tier=1)
+            resistances={"Demonic": 300.0}, tier=1,
+            # AND WITH THE MULTIPLICATIVE BUCKET FULL TOO, since issue #665.
+            # Twelve sources of 90% is far past anything the passive trees
+            # contain and still must not reach immunity.
+            damage_reduction_more=(90.0,) * 12)
         landed = damage.average_damage_taken(attacker, defender)
         assert landed > 0.0, (
             "every defensive layer at or past its cap stopped the whole hit, "
             "which is immunity. The design document says no combination of "
             "these layers reaches it.")
+
+
+class TestTheMultiplicativeBucketIsOneRule:
+    """The second damage reduction bucket, added under issue #665.
+
+    THE 75% CAP DOES NOT BIND IT, by the project owner's ruling of 2026-08-17.
+    That is safe only because multiplicative stacking cannot reach 100%, so the
+    thing that has to be true here is different from the thing the cap enforces
+    and needs its own checks.
+    """
+
+    def test_the_model_and_the_engine_bound_one_source_the_same(self):
+        text = read(SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.h")
+        match = re.search(
+            r"constexpr float MoreDamageReductionCap\s*=\s*([0-9.]+)f", text)
+        assert match, (
+            "could not find MoreDamageReductionCap in "
+            "CataclysmDamageCalculation.h. If it was renamed, rename it here "
+            "too.")
+        assert float(match.group(1)) == pytest.approx(
+            damage.MORE_DAMAGE_REDUCTION_CAP)
+
+    def test_it_is_a_different_bound_from_the_additive_cap(self):
+        """They are not the same number and must not be conflated.
+
+        75 is a balance figure bounding the additive pool. The other exists only
+        so that one source cannot be exact immunity, and is deliberately close to
+        100 rather than close to 75.
+        """
+        assert damage.MORE_DAMAGE_REDUCTION_CAP != damage.DAMAGE_REDUCTION_CAP
+        assert damage.MORE_DAMAGE_REDUCTION_CAP > damage.DAMAGE_REDUCTION_CAP
+
+    def test_the_model_applies_the_bucket(self):
+        text = (REPO_ROOT / "sim" / "cataclysm_sim" / "damage.py").read_text(
+            encoding="utf-8")
+        assert "combined_more_damage_reduction(\n        defender.damage_reduction_more)" in text, (
+            "the mitigation order no longer applies the multiplicative damage "
+            "reduction bucket, so twelve passive tree nodes would do nothing.")
+
+    def test_the_engine_applies_the_bucket(self):
+        text = read(SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.cpp")
+        assert "Combat->GetDamageReductionMore()" in text, (
+            "UCataclysmDamageCalculation::Resolve no longer reads the "
+            "multiplicative damage reduction attribute.")
+
+    def test_the_design_document_says_what_multiplicative_means(self):
+        """The half of issue #665 that is not code.
+
+        The word appears on twelve passive tree nodes and meant nothing until
+        this was written down. If the sentence goes, the nodes are ambiguous
+        again and nothing else would report it.
+        """
+        text = read(GDD)
+        assert '**"Multiplicative" and "more" are the same word.**' in text, (
+            "docs/Cataclysm_GDD_v2.md no longer defines what a multiplicative "
+            "damage reduction is. Twelve passive tree nodes depend on it.")
+        assert "Damage reduction has two buckets" in text, (
+            "the Damage Calculation section no longer describes the two "
+            "damage reduction buckets.")
