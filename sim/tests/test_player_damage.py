@@ -18,6 +18,7 @@ import pytest
 from cataclysm_sim import affixes as af
 from cataclysm_sim import player_damage as pd
 from cataclysm_sim import player_power as pp
+from cataclysm_sim import reference_build as rb
 from cataclysm_sim.character import SKILL_SLOTS
 
 
@@ -299,12 +300,74 @@ def test_no_critical_chance_leaves_the_average_equal_to_the_plain_hit():
 
 
 def test_criticals_raise_the_average_above_the_non_critical_hit():
-    """The reference build's own figures, read off `reference_build`."""
-    average = pd.average_damage_per_hit(8, crit_chance=10.0,
-                                        crit_multiplier=258.0)
+    """The reference build's own figures, read off `reference_build`.
+
+    THEY ARE NOW ACTUALLY READ OFF IT. This test said that and wrote 10.0 and
+    258.0 out by hand, which happened to be right and would have gone on passing
+    if the reference character's gear changed underneath it. Issue #663.
+    """
+    hero = rb.character()
+    chance = hero.stat("crit_chance")
+    multiplier = hero.stat("crit_multiplier")
+
+    average = pd.average_damage_per_hit(8, crit_chance=chance,
+                                        crit_multiplier=multiplier)
     assert average > pd.damage_per_hit(8)
-    # 10% of hits at 2.58x: 0.9 + 0.1 * 2.58 = 1.158
-    assert average == pytest.approx(pd.damage_per_hit(8) * 1.158)
+
+    expected = 1.0 - chance / 100.0 + (chance / 100.0) * (multiplier / 100.0)
+    assert average == pytest.approx(pd.damage_per_hit(8) * expected)
+
+
+def test_the_reference_character_gains_about_a_sixth_from_criticals():
+    """The figure nothing else in the project states, named so it is visible.
+
+    It is what a player actually deals against the target they were fitted to,
+    and it became worth having on 2026-08-17 when issue #649 made the engine roll
+    critical strikes for the player for the first time.
+
+    A RANGE RATHER THAN A FIGURE, because the reference character's gear is
+    retuned and this should not fail every time it is. What it refuses is the
+    two states that would mean something is broken: no gain at all, which is what
+    a critical strike chance of zero looks like, and a gain so large that
+    critical strikes rather than gear have become the player's damage.
+    """
+    hero = rb.character()
+    average = pd.average_damage_per_hit(
+        8, crit_chance=hero.stat("crit_chance"),
+        crit_multiplier=hero.stat("crit_multiplier"))
+
+    gain = average / pd.damage_per_hit(8) - 1.0
+    assert 0.05 < gain < 0.50, (
+        f"critical strikes are worth {gain:.1%} to the reference character. "
+        "At or below 5% something has stopped granting critical strike chance; "
+        "at or above 50% they have become the build rather than a bonus on it.")
+
+
+def test_the_target_comparison_deliberately_uses_the_non_critical_hit():
+    """The asymmetry issue #663 asked about, asserted so it cannot drift.
+
+    The design states its damage target in NON-CRITICAL hits -- "should take 2
+    non-critical hits to kill" -- so `gap_against_target` compares
+    `damage_per_hit` against it, and an import-time check refuses a reference
+    loadout more than 5% away. Averaging criticals into that comparison would
+    overshoot a target stated in the other units.
+
+    The enemy side averages instead, and that is right for the opposite reason:
+    an enemy's damage is fitted to how long a character survives, which is a
+    question about many hits rather than about one.
+    """
+    gap = pd.gap_against_target(8)
+    assert gap == pytest.approx(pd.damage_per_hit(8) / af.damage_target(8))
+
+    hero = rb.character()
+    averaged = pd.average_damage_per_hit(
+        8, crit_chance=hero.stat("crit_chance"),
+        crit_multiplier=hero.stat("crit_multiplier"))
+
+    assert averaged / af.damage_target(8) > gap, (
+        "averaging criticals into the target comparison would read higher than "
+        "the non-critical comparison, which is the overshoot this asymmetry "
+        "exists to avoid")
 
 
 def test_damage_per_second_is_the_hit_times_the_loadouts_own_rate():
