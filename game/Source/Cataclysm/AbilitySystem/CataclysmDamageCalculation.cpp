@@ -81,6 +81,8 @@ const TCHAR* UCataclysmDamageCalculation::AreaDamageTagName = TEXT("Type.AOE");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTagName = TEXT("Keyword.DoT");
 const TCHAR* UCataclysmDamageCalculation::NoCriticalStrikeTagName =
 	TEXT("Keyword.NoCrit");
+const TCHAR* UCataclysmDamageCalculation::NoPenetrationTagName =
+	TEXT("Keyword.NoPenetration");
 
 namespace
 {
@@ -112,6 +114,11 @@ FGameplayTag UCataclysmDamageCalculation::DamageOverTimeTag()
 FGameplayTag UCataclysmDamageCalculation::NoCriticalStrikeTag()
 {
 	return TagNamed(NoCriticalStrikeTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::NoPenetrationTag()
+{
+	return TagNamed(NoPenetrationTagName);
 }
 
 FGameplayTag UCataclysmDamageCalculation::ElementTagFor(FName DamageType)

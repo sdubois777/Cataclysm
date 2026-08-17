@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+// For the minion that must not take its summoner's penetration. Issue #659.
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -1226,6 +1228,166 @@ CATACLYSM_TEST(FCataclysmPiercingAddsToTheStatTest,
 
 		UCataclysmSkillEffects::ApplyHit(Piercing.Actor, Defender.Actor, 100.0f);
 		TestEqual(TEXT("80 from gear plus a piercing weapon's 20 ignores all of it"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A hit that penetrates nothing, and the summoned minion it exists for.
+// Issue #659.
+//
+// WHY THESE ARE IN THIS FILE RATHER THAN A MINION ONE. Every test of either
+// penetration stat is here, and so is the piercing weapon test, which is half of
+// what the minion inherits. Splitting the minion case out would put two halves of
+// one rule in two places.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmNoPenetrationTagExistsTest,
+	"Cataclysm.DamageType.TheTagThatForbidsPenetrationIsInTheVocabulary")
+{
+	// AN INVALID TAG WOULD STOP THE FLAG TRAVELLING AND FAIL NOTHING ELSE. The tag
+	// is requested by name rather than declared natively, so a name the Tags sheet
+	// of docs/All_Things_Cataclysm.xlsx has lost answers with an invalid tag rather
+	// than being created out of thin air. That is the right behaviour and it is
+	// also silent: every minion would quietly start penetrating again and no other
+	// test would notice. The same reasoning is why Keyword.NoCrit has this test.
+	const FGameplayTag NoPenetration =
+		UCataclysmDamageCalculation::NoPenetrationTag();
+
+	TestTrue(TEXT("Keyword.NoPenetration is a tag the vocabulary knows"),
+		NoPenetration.IsValid());
+	TestEqual(TEXT("and it is spelled the way the generator writes it"),
+		NoPenetration.GetTagName().ToString(),
+		FString(TEXT("Keyword.NoPenetration")));
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmCallerCanForbidPenetrationTest,
+	"Cataclysm.DamageType.ACallerCanSayAHitIgnoresNoArmourOrResistance")
+{
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
+	// THE MECHANISM, TESTED APART FROM THE MINION THAT USES IT. All three routes
+	// at once: the attacker's two penetration attributes and a piercing weapon.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		// 800 ARMOUR AT TIER 1 REMOVES EXACTLY HALF, and 30 generic resistance
+		// removes 30% of what is left, so every figure below is arithmetic.
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Combat->SetArmor(800.0f);
+		Defender.AllResistance->SetAllResistance(30.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		// A Dagger is Piercing, which ignores a further 20% of armour on its own.
+		CataclysmDamageTypeTest::FScopedArmedAttacker Attacker(World, TEXT("Dagger"));
+		if (UAbilitySystemComponent* Offence =
+				UCataclysmTargeting::AbilitySystemOf(Attacker.Actor))
+		{
+			// 80 from gear plus the weapon's 20 ignores all the armour, and 30
+			// penetration cancels all the resistance.
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 80.0f);
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetPenetrationAttribute(), 30.0f);
+		}
+
+		FCataclysmHitDelivery NoPenetration;
+		NoPenetration.bCannotPenetrate = true;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), NoPenetration);
+
+		// Half to armour, then 30% of the remainder to resistance: 350 of 1,000.
+		TestEqual(TEXT("a hit forbidden to penetrate meets armour and resistance in full"),
+			Defender.TakeDamageReading(), 350.0f, 1.0f);
+
+		// THE SAME ATTACKER WITHOUT THE FLAG, which is what makes the reading above
+		// a rule rather than a hit that failed to land for some other reason.
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+		TestEqual(TEXT("where the same blow without the flag ignores both"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmMinionTakesNoPenetrationTest,
+	"Cataclysm.DamageType.AMinionDoesNotTakeItsSummonersPenetration")
+{
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
+	// THE REAL CALL SITE RATHER THAN THE MECHANISM. A summoned minion's damage is
+	// dealt in its summoner's name, so everything read off "the attacker" when its
+	// blow lands is the player's. The design blocks it: a minion reaches its
+	// summoner through exactly three channels -- its side, its base health and
+	// damage raised by the summoner's level, and increased damage from one primary
+	// attribute -- and penetration is named among what does not cross
+	// (docs/Cataclysm_GDD_v2.md:1747). Issue #659.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Combat->SetArmor(800.0f);
+		Defender.AllResistance->SetAllResistance(30.0f);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		// A DAGGER, SO ALL THREE ROUTES ARE OPEN AT ONCE. Two are attributes on
+		// the summoner and the third is what is in its hand: a piercing weapon
+		// ignores a further 20% of armour, and the weapon a hit is credited to is
+		// read off the effect causer, which for a minion's blow is the summoner.
+		CataclysmDamageTypeTest::FScopedArmedAttacker Summoner(World, TEXT("Dagger"));
+		if (UAbilitySystemComponent* Offence =
+				UCataclysmTargeting::AbilitySystemOf(Summoner.Actor))
+		{
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 80.0f);
+			Offence->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetPenetrationAttribute(), 30.0f);
+		}
+
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner.Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+			/*bBurns=*/false);
+		if (!TestNotNull(TEXT("an imp"), Imp))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// TOLD WHO TO HIT RATHER THAN LEFT TO FIND ONE. AttackTarget is the path a
+		// controller drives and it is what AttackOnce calls once it has chosen;
+		// naming the target skips the hostility search, which is not what this is
+		// about.
+		Imp->AttackTarget(Defender.Actor);
+
+		// An imp hits for 30% of its summoner's weapon damage, so 300 is swung.
+		// Half of it is taken by 800 armour and 30% of the remainder by the
+		// resistance: 105 lands. Before this was fixed the imp ignored all of both
+		// and dealt the whole 300.
+		TestEqual(TEXT("a minion's blow meets armour and resistance in full"),
+			Defender.TakeDamageReading(), 105.0f, 1.0f);
+
+		// AND THE SUMMONER'S OWN BLOW STILL PENETRATES, which is what makes the
+		// reading above a rule about minions rather than penetration being broken.
+		UCataclysmSkillEffects::ApplyHit(Summoner.Actor, Defender.Actor, 100.0f);
+		TestEqual(TEXT("while its summoner's own blow ignores both"),
 			Defender.TakeDamageReading(), 1000.0f, 1.0f);
 	}
 

@@ -35,12 +35,22 @@ namespace
 	 * multiplier, penetration" (docs/Cataclysm_GDD_v2.md:1747), and minion damage
 	 * was fitted at the top of its band precisely because a minion "has no
 	 * critical strike layer to compound with" (:1776).
+	 *
+	 * AND IT PENETRATES NOTHING, which is the other half of that same sentence.
+	 * Both penetration stats are read off the attacker in the same place the
+	 * critical strike chance is, and a piercing weapon adds a third share of
+	 * armour ignored on top, so an imp was cutting into a target's armour and
+	 * resistance by whatever its summoner's gear supplied. Issue #659. A minion
+	 * has nothing of its own to put in its place -- no type in
+	 * `game/Data/MinionTypes.csv` states penetration and a minion carries no
+	 * combat attribute set -- so it penetrates zero.
 	 */
 	FCataclysmHitDelivery MinionDelivery(bool bIsArea)
 	{
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = bIsArea;
 		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCannotPenetrate = true;
 		return Delivery;
 	}
 
