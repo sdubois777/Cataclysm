@@ -21,6 +21,8 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 
 	InitAttackDamage(0.0f);      // supplied by the equipped weapon
 	InitCritChance(0.0f);        // supplied by the skill in use
+	// 100 UNLESS AN ENCHANTMENT LOWERS IT. Nothing does yet; see the attribute.
+	InitMaxCritChance(CritChanceCap);
 	InitCritMultiplier(150.0f);  // a critical strike is worth 1.5x by default
 	InitAttackSpeed(0.0f);       // supplied by the equipped weapon
 
@@ -82,6 +84,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrowdControlResistance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackDamage);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CritChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MaxCritChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CritMultiplier);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackSpeed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AreaOfEffect);
@@ -112,7 +115,22 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 
 	if (Attribute == GetCritChanceAttribute())
 	{
-		// The one hard cap on this set.
+		// THE CAP IS THIS CHARACTER'S RATHER THAN THE GAME'S, since issue #680.
+		// It is 100 for everyone until an enchantment lowers it, and the
+		// Enchantments sheet of docs/All_Things_Cataclysm.xlsx carries one that
+		// does: "Your critical hit chance cannot exceed 30%-50%". Reading the
+		// attribute rather than the constant is what gives it somewhere to land.
+		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxCritChance());
+		return;
+	}
+
+	if (Attribute == GetMaxCritChanceAttribute())
+	{
+		// THE CEILING ITSELF IS BOUNDED BY THE CONSTANT, so it can be lowered and
+		// never raised. The project owner ruled on 2026-08-17 that critical strike
+		// chance is hard-capped at 100% and nothing raises it. That is the
+		// opposite of maximum resistance, where one enchantment raises the cap to
+		// a ceiling of 90%.
 		NewValue = FMath::Clamp(NewValue, 0.0f, CritChanceCap);
 		return;
 	}
@@ -179,7 +197,8 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetRetaliationAttribute(),
 		GetCrowdControlResistanceAttribute(),
 		GetAttackDamageAttribute(),
-		GetCritChanceAttribute(), GetCritMultiplierAttribute(),
+		GetCritChanceAttribute(), GetMaxCritChanceAttribute(),
+		GetCritMultiplierAttribute(),
 		GetAttackSpeedAttribute(), GetAreaOfEffectAttribute(),
 		GetDotDamageAttribute(), GetDotFrequencyAttribute(),
 		GetDotDurationAttribute(), GetPenetrationAttribute(),
@@ -203,6 +222,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Retaliation)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrowdControlResistance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackDamage)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MaxCritChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritMultiplier)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackSpeed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AreaOfEffect)

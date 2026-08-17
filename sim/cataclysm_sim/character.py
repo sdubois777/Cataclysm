@@ -579,6 +579,26 @@ class Gear:
     weapon_base: dict[str, float] = field(default_factory=dict)
     modifiers: tuple[Modifier, ...] = ()
 
+    #: The lowest personal ceiling on critical strike chance any equipped
+    #: enchantment imposes, or None for the ordinary 100%.
+    #:
+    #: NOT ONE OF THE THREE TABLES ABOVE, because it is not a contribution. Flat,
+    #: increased and more all move a stat's VALUE; this moves the ceiling that
+    #: value is held under, which is a different kind of thing and is why it has
+    #: its own field rather than a row in `flat`.
+    #:
+    #: ONE NUMBER FOR HOWEVER MANY ENCHANTMENTS IMPOSE ONE, AND IT IS THE LOWEST.
+    #: Two enchantments saying 50% and 30% leave a character capped at 30%: a
+    #: ceiling is a promise about the most you can have, so the strictest one is
+    #: the only one that can be kept.
+    #:
+    #: ONE NEGATIVE ENCHANTMENT STATES ONE TODAY. The Enchantments sheet of
+    #: `docs/All_Things_Cataclysm.xlsx` carries "Your critical hit chance cannot
+    #: exceed 30%-50%" as a downside. Nothing turns enchantment text into a
+    #: number yet, which is issue #45, so nothing sets this in a real run and
+    #: every character sits at the 100% baseline. Issue #680.
+    max_crit_chance: float | None = None
+
     def __post_init__(self) -> None:
         for label, table in (("flat", self.flat), ("increased", self.increased),
                              ("weapon_base", self.weapon_base)):
@@ -1086,8 +1106,31 @@ class Character:
         else:
             value = base * (1.0 + inc) * more
 
-        cap = HARD_CAPS.get(stat)
+        cap = self.hard_cap(stat)
         return min(value, cap) if cap is not None else value
+
+    def hard_cap(self, stat: str) -> float | None:
+        """The most this character may have of a stat, or None if it is unbounded.
+
+        THE CAP IS THE CHARACTER'S RATHER THAN THE GAME'S for critical strike
+        chance, since issue #680. Every other hard cap is a constant the same for
+        everyone, and this one has a downside enchantment that lowers it: the
+        Enchantments sheet says "Your critical hit chance cannot exceed 30%-50%".
+        Nothing else in `HARD_CAPS` has anything that moves it, so the rest are
+        read straight out.
+
+        NOTHING RAISES IT, WHICH IS THE OTHER HALF OF THE RULE. The project owner
+        ruled on 2026-08-17 that critical strike chance is hard-capped at 100%
+        and nothing raises it, so a gear value above the baseline is ignored
+        rather than honoured. That is the opposite of maximum resistance, where
+        one enchantment raises the cap to a ceiling of 90%.
+        """
+        cap = HARD_CAPS.get(stat)
+        if cap is None:
+            return None
+        if stat == "crit_chance" and self.gear.max_crit_chance is not None:
+            return min(cap, self.gear.max_crit_chance)
+        return cap
 
     def cooldown_of(self, base_cooldown: float) -> float:
         """A skill's cooldown after this character's reduction.

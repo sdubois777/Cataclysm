@@ -617,6 +617,111 @@ CATACLYSM_TEST(FCataclysmHitStatingNoChanceUsesTheCharactersTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmPersonalCapBindsTheAttributeTest,
+	"Cataclysm.Crit.ACharactersOwnCeilingBoundsItsCriticalStrikeChance")
+{
+	using namespace CataclysmCritTest;
+
+	// ONE ENCHANTMENT LOWERS A CHARACTER'S CEILING BELOW 100%. The Enchantments
+	// sheet of docs/All_Things_Cataclysm.xlsx carries "Your critical hit chance
+	// cannot exceed 30%-50%" as a downside, and the cap was a single constant
+	// shared by everyone, so it had nowhere to live. Issue #680.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Character(World);
+
+		TestEqual(TEXT("a character starts at the shared ceiling"),
+			Character.Combat->GetMaxCritChance(),
+			UCataclysmCombatAttributeSet::CritChanceCap);
+
+		// Below its ceiling, the chance is what it says.
+		Character.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 40.0f);
+		TestEqual(TEXT("under the ceiling it is worth what it says"),
+			Character.Combat->GetCritChance(), 40.0f);
+
+		// Lower the ceiling, then try to exceed it.
+		Character.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 30.0f);
+		Character.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 80.0f);
+		TestEqual(TEXT("a lowered ceiling holds the chance down"),
+			Character.Combat->GetCritChance(), 30.0f);
+
+		// AND THE CEILING ITSELF CANNOT BE RAISED. The project owner ruled on
+		// 2026-08-17 that nothing raises the cap, which is the opposite of
+		// maximum resistance, where one enchantment raises it to 90%.
+		Character.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 150.0f);
+		TestEqual(TEXT("and the ceiling itself cannot be raised past the cap"),
+			Character.Combat->GetMaxCritChance(),
+			UCataclysmCombatAttributeSet::CritChanceCap);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmPersonalCapBindsASkillsStatedChanceTest,
+	"Cataclysm.Crit.ACharactersOwnCeilingBoundsASkillsStatedChance")
+{
+	using namespace CataclysmCritTest;
+
+	// THE SECOND ROUTE, AND THE ONE THAT WOULD HAVE LEAKED. Since issue #657 a
+	// skill can state its own base chance, and that figure travels with the hit
+	// rather than being written onto the character, so it never passes through
+	// the clamp on the attribute. Without a second bound, a skill stating 100% on
+	// a character an enchantment has capped at 30% would critically strike every
+	// time. Issue #680.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Attacker(World);
+		FScopedCombatant Defender(World);
+
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1'000.0f);
+		Attacker.SetCritical(/*Chance=*/0.0f, /*Multiplier=*/200.0f);
+
+		// An enchantment has capped this character at 30%.
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 30.0f);
+
+		// A ROLL BETWEEN THE TWO FIGURES IS WHAT MAKES THIS A TEST. At 50, a
+		// chance of 100 would critically strike and a chance of 30 would not, so
+		// the reading says which figure was used rather than only that something
+		// changed.
+		const FScopedCritRoll RollsFifty(50.0f);
+
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 100.0f;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), Delivery);
+
+		TestEqual(TEXT("a skill stating 100% is held to its character's 30%"),
+			Defender.TakeDamageReading(), 1'000.0f, 1.0f);
+
+		// AND WITHOUT THE ENCHANTMENT THE SAME SKILL DOES CRITICALLY STRIKE,
+		// which is what makes the reading above the ceiling doing its job rather
+		// than the stated chance having stopped working.
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(),
+			UCataclysmCombatAttributeSet::CritChanceCap);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), Delivery);
+		TestEqual(TEXT("where the same skill on an uncapped character does"),
+			Defender.TakeDamageReading(), 2'000.0f, 1.0f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmSkillRowCarriesItsChanceTest,
 	"Cataclysm.Crit.ASkillRowsOwnCriticalStrikeChanceReachesTheSkill")
 {

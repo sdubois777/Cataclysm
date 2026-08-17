@@ -141,10 +141,18 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * baseline, affixes and scaling of its own. The additive pool it sits beside,
 	 * `DamageReduction`, IS a sheet stat and has all three.
 	 *
-	 * So the sheet stays at 46 and the combat set grew by one, which is what this
+	 * A CHARACTER'S OWN MAXIMUM CRITICAL STRIKE CHANCE is the third, added under
+	 * issue #680. It is a ceiling rather than a stat: it does not measure
+	 * anything the character can do, it bounds another figure that does. The
+	 * model agrees and keeps it off the sheet too -- `sim/cataclysm_sim/
+	 * character.py` carries it as a field on `Gear` rather than an entry in
+	 * `DEFAULT_STAT_LINE`, because no affix grants it, nothing scales it, and it
+	 * has no baseline of its own beyond the shared cap.
+	 *
+	 * So the sheet stays at 46 and the combat set grew by two, which is what this
 	 * count exists to keep honest.
 	 */
-	constexpr int32 OffSheetCombatStats = 2;
+	constexpr int32 OffSheetCombatStats = 3;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -162,7 +170,7 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// for #205. Twenty-eight since armour penetration was added for #520 -- a
 	// SECOND penetration stat, cutting into armour where the first cuts into
 	// resistance.
-	TestEqual(TEXT("Twenty-eight combat and utility stats, plus two off the sheet"),
+	TestEqual(TEXT("Twenty-eight combat and utility stats, plus three off the sheet"),
 		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);
