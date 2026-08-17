@@ -171,6 +171,11 @@ float UCataclysmDamageCalculation::EffectiveResistance(float Resistance,
 	return FMath::Clamp(Penetrated, ResistanceFloor, ResistanceCap);
 }
 
+float UCataclysmDamageCalculation::EffectiveDamageReduction(float Reduction)
+{
+	return FMath::Clamp(Reduction, 0.0f, DamageReductionCap);
+}
+
 void UCataclysmDamageCalculation::StunApplication(float TotalChance,
 												  float& OutChance,
 												  float& OutSeconds)
@@ -289,10 +294,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		ResistanceFor(Defender, Hit.DamageType), Hit.ResistancePenetration);
 	Damage *= 1.0f - Resist / 100.0f;
 
-	// 5. Flat damage reduction.
+	// 5. Flat damage reduction, capped. Until issue #644 this was the one step
+	// that read a defender's attribute straight into the arithmetic with nothing
+	// bounding it, so at 100 a character was exactly immune.
 	if (Combat)
 	{
-		Damage *= 1.0f - Combat->GetDamageReduction() / 100.0f;
+		Damage *= 1.0f
+			- EffectiveDamageReduction(Combat->GetDamageReduction()) / 100.0f;
 	}
 
 	// 6. Mana, but only for damage over time and only for a character built for

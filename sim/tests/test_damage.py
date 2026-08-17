@@ -397,10 +397,62 @@ def test_each_layer_only_ever_reduces_damage_except_negative_resistance():
 def test_stacking_every_defence_still_lets_damage_through():
     """No combination of layers should reach immunity. If it does, a character
     that reaches the caps becomes unkillable and the difficulty system stops
-    meaning anything."""
-    d = plain(armor=1_000_000.0, damage_reduction=90.0,
-              resistances={"Demonic": 300.0}, tier=1)
-    assert taken(hit(damage=1_000_000.0), d) > 0.0
+    meaning anything.
+
+    IT ASKS AT AND ABOVE 100 FLAT REDUCTION, WHICH IT DID NOT UNTIL ISSUE #644.
+    This test pinned `damage_reduction` at 90 and passed, one step below the
+    value that broke it: at exactly 100 the layer removed the whole hit and this
+    assertion was False. So the one guard aimed at immunity passed because of the
+    number it happened to choose rather than because anything stopped it.
+    """
+    for reduction in (90.0, 100.0, 1_000.0):
+        d = plain(armor=1_000_000.0, damage_reduction=reduction,
+                  resistances={"Demonic": 300.0}, tier=1)
+        assert taken(hit(damage=1_000_000.0), d) > 0.0, (
+            f"{reduction}% flat damage reduction with armour and resistance at "
+            "their caps let nothing through, which is immunity")
+
+
+def test_flat_damage_reduction_stops_rising_at_its_cap():
+    """Past the cap, more of the stat buys nothing at all.
+
+    That is what makes it a HARD cap in the design's caps table, as against
+    resistance's soft one: over-capped resistance is worth having because
+    penetration is subtracted before the cap, and nothing penetrates this layer.
+    """
+    at_cap = plain(damage_reduction=dm.DAMAGE_REDUCTION_CAP)
+    over = plain(damage_reduction=dm.DAMAGE_REDUCTION_CAP + 25.0)
+    far_over = plain(damage_reduction=1_000.0)
+
+    assert taken(hit(damage=1_000.0), at_cap) == pytest.approx(250.0)
+    assert taken(hit(damage=1_000.0), over) == pytest.approx(250.0)
+    assert taken(hit(damage=1_000.0), far_over) == pytest.approx(250.0)
+
+    # AND BELOW THE CAP IT STILL DOES EVERYTHING IT DID. A cap that also changed
+    # the ordinary case would be a nerf wearing a cap's clothes; nothing
+    # reachable from gear and a class base goes near 75.
+    under = plain(damage_reduction=35.95)
+    assert taken(hit(damage=1_000.0), under) == pytest.approx(640.5)
+
+
+def test_the_cap_applies_to_the_layer_and_not_to_the_stat():
+    """A character may hold more than the cap; the excess simply does nothing.
+
+    The same shape as armour and resistance, whose caps sit on the percentage
+    the layer removes rather than on the number the character carries. The
+    engine says so in as many words in `CataclysmCombatAttributeSet.cpp`:
+    "where they need bounding is in the damage calculation, against the final
+    number, not against each contributing stat".
+    """
+    assert dm.effective_damage_reduction(20.0) == pytest.approx(20.0)
+    assert dm.effective_damage_reduction(75.0) == pytest.approx(75.0)
+    assert dm.effective_damage_reduction(99.0) == pytest.approx(75.0)
+    assert dm.effective_damage_reduction(100.0) == pytest.approx(75.0)
+
+    # Negative is floored rather than allowed to add damage. Unlike resistance,
+    # which reaches -100 on purpose, nothing in the design grants a negative
+    # here.
+    assert dm.effective_damage_reduction(-40.0) == pytest.approx(0.0)
 
 
 def test_the_full_order_is_recorded_step_by_step():

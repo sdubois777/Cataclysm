@@ -322,17 +322,96 @@ CATACLYSM_TEST(FCataclysmNoImmunityTest,
 	{
 		const CataclysmDamageTest::FScopedDefender D(World);
 		D.Combat->SetArmor(1'000'000.0f);
-		D.Combat->SetDamageReduction(90.0f);
 		D.Resistances->SetDemonicResistance(300.0f);
 
 		FCataclysmIncomingHit Incoming;
 		Incoming.Damage = 1'000'000.0f;
 		Incoming.DamageType = TEXT("Demonic");
 
-		// If any combination reached immunity, a character at the caps would be
-		// unkillable and the difficulty system would stop meaning anything.
-		TestTrue(TEXT("Damage always gets through"),
-			D.Resolve(Incoming).DealtToHealth > 0.0f);
+		// IT ASKS AT AND ABOVE 100 FLAT REDUCTION, WHICH IT DID NOT UNTIL ISSUE
+		// #644. This test set damage reduction to 90 and passed, one step below
+		// the value that broke it: at exactly 100 that layer removed the whole
+		// hit and this assertion was false. So the one guard aimed at immunity
+		// was passing because of the number it happened to pick rather than
+		// because anything stopped the layer.
+		const float Reductions[] = { 90.0f, 100.0f, 1'000.0f };
+		for (const float Reduction : Reductions)
+		{
+			D.Combat->SetDamageReduction(Reduction);
+
+			// If any combination reached immunity, a character at the caps would
+			// be unkillable and the difficulty system would stop meaning
+			// anything.
+			TestTrue(*FString::Printf(
+				TEXT("damage gets through at %.0f%% flat reduction"), Reduction),
+				D.Resolve(Incoming).DealtToHealth > 0.0f);
+		}
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmDamageReductionCapTest,
+	"Cataclysm.Damage.FlatDamageReductionStopsRisingAtItsCap")
+{
+	// A HARD CAP, WHICH IS WHAT SEPARATES IT FROM RESISTANCE'S SOFT ONE. Over-
+	// capped resistance is worth having because penetration is subtracted before
+	// the cap; nothing in the game penetrates this layer, so everything past the
+	// cap is worth exactly nothing.
+	TestEqual(TEXT("below the cap it is worth what it says"),
+		UCataclysmDamageCalculation::EffectiveDamageReduction(20.0f), 20.0f);
+	TestEqual(TEXT("at the cap it is worth the cap"),
+		UCataclysmDamageCalculation::EffectiveDamageReduction(
+			UCataclysmDamageCalculation::DamageReductionCap),
+		UCataclysmDamageCalculation::DamageReductionCap);
+	TestEqual(TEXT("past the cap it is still worth only the cap"),
+		UCataclysmDamageCalculation::EffectiveDamageReduction(99.0f),
+		UCataclysmDamageCalculation::DamageReductionCap);
+	TestEqual(TEXT("and far past it, the same"),
+		UCataclysmDamageCalculation::EffectiveDamageReduction(100'000.0f),
+		UCataclysmDamageCalculation::DamageReductionCap);
+
+	// A NEGATIVE IS FLOORED RATHER THAN ALLOWED TO ADD DAMAGE. That is the one
+	// place this differs from EffectiveResistance, which floors at -100 because
+	// a negative resistance is a real state several enchantments inflict.
+	TestEqual(TEXT("a negative is worth nothing rather than extra damage"),
+		UCataclysmDamageCalculation::EffectiveDamageReduction(-40.0f), 0.0f);
+
+	// AND THE CAP IS THE ARMOUR CAP, on purpose, so the design has one figure
+	// for the most a single unconditional mitigation layer may remove.
+	TestEqual(TEXT("the cap is the same figure as the armour cap"),
+		UCataclysmDamageCalculation::DamageReductionCap,
+		UCataclysmDamageCalculation::ArmorReductionCap);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmDamageReductionCapAppliesToAHitTest,
+	"Cataclysm.Damage.TheFlatReductionCapReachesARealHit")
+{
+	// The check above is arithmetic on a static function. This one proves the
+	// mitigation order actually calls it, which is the half that a cap declared
+	// and never applied would still pass.
+	UWorld* World = CataclysmDamageTest::MakeWorld();
+	{
+		const CataclysmDamageTest::FScopedDefender D(World);
+
+		FCataclysmIncomingHit Incoming;
+		Incoming.Damage = 1'000.0f;
+
+		D.Combat->SetDamageReduction(35.95f);
+		TestEqual(TEXT("the most gear and a class can reach still applies in full"),
+			D.Resolve(Incoming).DealtToHealth, 640.5f, 0.01f);
+
+		D.Combat->SetDamageReduction(
+			UCataclysmDamageCalculation::DamageReductionCap);
+		const float AtCap = D.Resolve(Incoming).DealtToHealth;
+		TestEqual(TEXT("at the cap a quarter of the hit lands"), AtCap, 250.0f,
+			0.01f);
+
+		D.Combat->SetDamageReduction(100.0f);
+		TestEqual(TEXT("and at 100, which used to be immunity, the same quarter"),
+			D.Resolve(Incoming).DealtToHealth, AtCap, 0.01f);
 	}
 	World->DestroyWorld(false);
 	return true;
