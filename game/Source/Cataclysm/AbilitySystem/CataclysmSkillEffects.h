@@ -80,6 +80,30 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	bool bCannotPenetrate = false;
 
+	/**
+	 * The base critical strike chance of the skill dealing this blow, or -1 to
+	 * take whatever the attacker's own attribute holds.
+	 *
+	 * THE ONLY NUMBER ON THIS STRUCT, and it is here because critical strike
+	 * chance belongs to the skill rather than to the character. The design says
+	 * so twice: its stat source table names "the skill being used" as the source,
+	 * and the sentence after it is "A character has no critical strike chance in
+	 * the abstract." A character holds six skills at once and has one
+	 * `CritChance` attribute, so the skill's own figure has to travel with the
+	 * hit instead of being written onto the character. Issue #657.
+	 *
+	 * -1 IS THE ORDINARY CASE. Every one of the 398 rows of the weapon skill
+	 * matrix leaves the Crit Chance column blank today, and an enemy's attack, a
+	 * minion's blow and a burning patch of ground never had a skill row at all.
+	 * All of them take the attacker's attribute, which is what happened before
+	 * this existed.
+	 *
+	 * ZERO IS A REAL ANSWER, so it cannot be the sentinel. A skill designed never
+	 * to critically strike states 0 and gets 0.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float CritChancePercent = -1.0f;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{

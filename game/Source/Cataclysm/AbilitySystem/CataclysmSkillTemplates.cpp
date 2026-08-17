@@ -148,10 +148,15 @@ void UCataclysmProjectileSkill::ActivateAbility(
 	// A REAL ACTOR WHEN IT HAS A SPEED. It moves in steps and sweeps each one,
 	// so who it hits is decided by where they stood as it went past rather than
 	// by where they stand when it arrives, and a wall stops it. Issue #164.
+	// THIS SKILL'S OWN CRITICAL STRIKE CHANCE GOES WITH IT. A projectile lands
+	// after this ability has ended, so it has to carry the chance rather than
+	// read it off the character on arrival. Named explicitly because the two
+	// arguments before it are defaulted. Issue #657.
 	InFlight = ACataclysmProjectile::Fire(
 		Self, Origin, Destination, Params.RadiusCm, Params.SpeedCmPerSecond,
 		Params.Pierce, Params.bReturns, GetSlotDamagePercent(), SkillTags,
-		Params.bBurns);
+		Params.bBurns, /*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
+		CritChancePercent);
 
 	if (!InFlight)
 	{

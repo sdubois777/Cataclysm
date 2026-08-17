@@ -594,6 +594,85 @@ class TestShapeParams:
         assert rows[0]["Shape"] == "" and rows[0]["ShapeParams"] == ""
 
 
+class TestASkillsOwnCriticalStrikeChance:
+    """The Crit Chance column of the Weapon Skills sheet. Issue #657.
+
+    WHAT WAS MISSING. The design says critical strike chance belongs to the skill
+    being used -- its stat source table names "the skill being used" and adds "A
+    character has no critical strike chance in the abstract" -- and the sheet had
+    nowhere to say it. Every one of the 398 rows took the 5% default and a skill
+    designed to critically strike more or less often than average could not be
+    built.
+
+    THE SENTINEL IS -1 AND NOT 0, which is what most of these check. The decision
+    of 2026-08-04 says the 5% is "a default and not a floor: a skill that states
+    1% gets 1%", so a skill built never to critically strike states 0 and must get
+    0 rather than silently getting 5.
+    """
+
+    HEADERS = ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+               "Skill Description", "Tags", "Shape", "Shape Params",
+               "Crit Chance"]
+
+    def rows(self, tmp_path, crit):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            self.HEADERS,
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", "", "", "", crit]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        return gen.weapon_skills(book)
+
+    def test_a_blank_cell_states_nothing(self, tmp_path):
+        assert self.rows(tmp_path, None)[0]["CritChancePercent"] == -1.0
+
+    def test_a_stated_chance_is_carried(self, tmp_path):
+        assert self.rows(tmp_path, 12.5)[0]["CritChancePercent"] == 12.5
+
+    def test_zero_is_a_real_answer_and_not_a_blank(self, tmp_path):
+        """A skill designed never to critically strike states 0 and gets 0."""
+        assert self.rows(tmp_path, 0)[0]["CritChancePercent"] == 0.0
+
+    def test_a_chance_written_as_text_is_read(self, tmp_path):
+        """A spreadsheet cell formatted as text still holds a number."""
+        assert self.rows(tmp_path, "7")[0]["CritChancePercent"] == 7.0
+
+    def test_something_that_is_not_a_number_fails_generation(self, tmp_path):
+        with pytest.raises(gen.DataError, match="is not a number"):
+            self.rows(tmp_path, "often")
+
+    def test_a_chance_above_the_hard_cap_fails_generation(self, tmp_path):
+        """Otherwise the engine clamps it to 100 and the row lies."""
+        with pytest.raises(gen.DataError, match="outside 0 to 100"):
+            self.rows(tmp_path, 150)
+
+    def test_a_negative_chance_fails_generation(self, tmp_path):
+        """-1 is the generator's own sentinel, not something a row may state."""
+        with pytest.raises(gen.DataError, match="outside 0 to 100"):
+            self.rows(tmp_path, -1)
+
+    def test_a_sheet_without_the_column_still_generates(self, tmp_path):
+        """Every row predates this column, so a short sheet must still work."""
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", ""]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        assert gen.weapon_skills(book)[0]["CritChancePercent"] == -1.0
+
+    def test_every_shipped_row_states_nothing(self):
+        """No skill is designed to differ yet, and that is the owner's call.
+
+        This is not a rule -- it is a record of where the data stands. When a
+        skill is deliberately given its own chance, change this test with it.
+        """
+        book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
+        stated = {r["Name"]: r["CritChancePercent"]
+                  for r in gen.weapon_skills(book)
+                  if r["CritChancePercent"] != -1.0}
+        assert not stated, (
+            "these skill rows state a critical strike chance of their own: "
+            f"{stated}. That is allowed; update this test to say so.")
+
+
 class TestBasicAttacks:
     """The basic attack on the weapon base. Issue #524.
 

@@ -13,7 +13,11 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the row-to-skill half of a skill's own critical strike chance. Issue #657.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagsManager.h"
@@ -475,6 +479,199 @@ CATACLYSM_TEST(FCataclysmCallerCanForbidACritTest,
 			Defender.TakeDamageReading(), 2'000.0f, 1.0f);
 	}
 	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A skill's own base chance, which beats the character's. Issue #657.
+//
+// WHY IT IS NOT THE CHARACTER'S NUMBER. The design's stat source table names
+// "the skill being used" as the source of critical strike chance, and the
+// sentence after it is "A character has no critical strike chance in the
+// abstract." docs/Cataclysm_GDD_v2.md lines 858 and 866. A character holds six
+// skills at once and the ability system has one CritChance attribute to put them
+// in, so a skill that states its own sends it with the hit instead.
+//
+// THE MULTIPLIER IS NOT MOVED, and that is deliberate rather than an omission.
+// The design puts only the CHANCE on the skill; the multiplier stays a character
+// stat and is still read off the attacker's attribute on every hit.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmSkillCritChanceKeyExistsTest,
+	"Cataclysm.Crit.TheKeyASkillsOwnChanceTravelsUnderIsInTheVocabulary")
+{
+	// A NUMBER CANNOT RIDE ON A TAG, so this one rides as a set-by-caller
+	// magnitude, which is Unreal's map from tag to float on an effect spec. This
+	// tag is that map's key and appears in no tag container, so nothing can match
+	// on it by accident.
+	//
+	// AN INVALID KEY FAILS SILENTLY, which is why this test exists at all. The
+	// tag is requested by name with ErrorIfNotFound false, so a Tags sheet that
+	// lost the row returns an invalid tag, the number is never attached, every
+	// skill quietly falls back to the character's attribute, and nothing reports
+	// it. The same reasoning gives Keyword.NoCrit its own test above.
+	const FGameplayTag Key = UCataclysmDamageCalculation::SkillCritChanceDataTag();
+
+	TestTrue(TEXT("Data.SkillCritChance is a tag the vocabulary knows"),
+		Key.IsValid());
+	TestEqual(TEXT("and it is spelled the way the generator writes it"),
+		Key.GetTagName().ToString(), FString(TEXT("Data.SkillCritChance")));
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmSkillChanceBeatsTheCharactersTest,
+	"Cataclysm.Crit.ASkillsOwnChanceIsUsedInsteadOfTheCharactersAttribute")
+{
+	using namespace CataclysmCritTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Attacker(World);
+		FScopedCombatant Defender(World);
+
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1'000.0f);
+
+		// BOTH DIRECTIONS ARE CHECKED, because only one of them proves anything
+		// on its own. A skill can raise the chance above what the character
+		// carries and it can lower it below, and a test that only raised it would
+		// pass against an implementation that took the larger of the two.
+		{
+			// The character never critically strikes. The skill always does.
+			Attacker.SetCritical(/*Chance=*/0.0f, /*Multiplier=*/200.0f);
+			const FScopedCritRoll RollsZero(0.0f);
+
+			FCataclysmHitDelivery Delivery;
+			Delivery.CritChancePercent = 100.0f;
+			UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+											 FGameplayTagContainer(), Delivery);
+
+			TestEqual(TEXT("a skill stating 100% critically strikes where its "
+						   "character's 0% would not"),
+				Defender.TakeDamageReading(), 2'000.0f, 1.0f);
+		}
+		{
+			// The character always critically strikes. The skill never does.
+			Attacker.SetCritical(/*Chance=*/100.0f, /*Multiplier=*/200.0f);
+			const FScopedCritRoll RollsZero(0.0f);
+
+			FCataclysmHitDelivery Delivery;
+			Delivery.CritChancePercent = 0.0f;
+			UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+											 FGameplayTagContainer(), Delivery);
+
+			// ZERO IS A REAL ANSWER AND NOT A BLANK. This is the case the whole
+			// sentinel exists for: the decision of 2026-08-04 says the 5% is a
+			// default and not a floor, so a skill designed never to critically
+			// strike has to be able to say so.
+			TestEqual(TEXT("and a skill stating 0% does not, where its "
+						   "character's 100% would"),
+				Defender.TakeDamageReading(), 1'000.0f, 1.0f);
+		}
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmHitStatingNoChanceUsesTheCharactersTest,
+	"Cataclysm.Crit.AHitThatStatesNoChanceTakesTheCharactersAttribute")
+{
+	using namespace CataclysmCritTest;
+
+	// THE CASE EVERY HIT IN THE GAME IS IN TODAY. All 398 rows of the weapon
+	// skill matrix leave the Crit Chance column blank, and an enemy's attack, a
+	// minion's blow and a burning patch of ground have no skill row at all. If
+	// this broke, every critical strike in the game would stop.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Attacker(World);
+		FScopedCombatant Defender(World);
+
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1'000.0f);
+		Attacker.SetCritical(/*Chance=*/100.0f, /*Multiplier=*/200.0f);
+
+		const FScopedCritRoll RollsZero(0.0f);
+
+		// -1 IS WHAT A DEFAULT-CONSTRUCTED DELIVERY CARRIES, so this is also the
+		// behaviour of every caller that says nothing about critical strikes.
+		FCataclysmHitDelivery SaysNothing;
+		TestEqual(TEXT("a delivery states no chance by default"),
+			SaysNothing.CritChancePercent, -1.0f);
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), SaysNothing);
+		TestEqual(TEXT("so the hit takes the character's own chance"),
+			Defender.TakeDamageReading(), 2'000.0f, 1.0f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmSkillRowCarriesItsChanceTest,
+	"Cataclysm.Crit.ASkillRowsOwnCriticalStrikeChanceReachesTheSkill")
+{
+	// THE DATA HALF OF THE CHAIN, from a row of the weapon skill matrix to the
+	// skill a character is granted. Built from a CSV string through the real row
+	// struct, the same way Cataclysm.Data.EveryGeneratedTableImports checks the
+	// shipped tables, so the column name and its type are both exercised rather
+	// than assumed.
+	UDataTable* Table = NewObject<UDataTable>();
+	Table->RowStruct = FCataclysmWeaponSkillRow::StaticStruct();
+
+	// Two rows differing in one cell: one states a chance, one states nothing.
+	const FString Csv = TEXT(
+		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent\r\n"
+		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,,,20\r\n"
+		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,,,-1\r\n");
+
+	const TArray<FString> Problems = Table->CreateTableFromCSVString(Csv);
+	if (!TestEqual(TEXT("the CSV imports with no problems"), Problems.Num(), 0))
+	{
+		for (const FString& Problem : Problems)
+		{
+			AddError(Problem);
+		}
+		return false;
+	}
+
+	const TArray<FCataclysmWeaponSkill> Skills =
+		UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Sword"), TEXT("War"));
+
+	if (!TestEqual(TEXT("both rows became skills"), Skills.Num(), 2))
+	{
+		return false;
+	}
+
+	const FCataclysmWeaponSkill* Stated = Skills.FindByPredicate(
+		[](const FCataclysmWeaponSkill& S) { return S.Name == TEXT("Precise Cut"); });
+	const FCataclysmWeaponSkill* Silent = Skills.FindByPredicate(
+		[](const FCataclysmWeaponSkill& S) { return S.Name == TEXT("Wild Swing"); });
+
+	if (!TestNotNull(TEXT("the row that states a chance"), Stated)
+		|| !TestNotNull(TEXT("the row that states none"), Silent))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a row stating 20% produces a skill of 20%"),
+		Stated->CritChancePercent, 20.0f);
+
+	// CARRIED, NOT RESOLVED. Turning -1 into 5 here would put the default in a
+	// second place, and the two could then disagree without anything saying so.
+	// It stays -1 until the character's attribute is written.
+	TestEqual(TEXT("and a row stating none stays at -1 rather than becoming 5"),
+		Silent->CritChancePercent, -1.0f);
+
 	return true;
 }
 

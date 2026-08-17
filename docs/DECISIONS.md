@@ -20,6 +20,86 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — A skill states its own critical strike chance in a column, and it travels with the hit
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the Weapon Skills sheet, which
+gains a Crit Chance column, and its Tags sheet, which gains
+`Data.SkillCritChance`. `docs/README.md`'s sheet table records both. No change to
+`Cataclysm_GDD_v2.md`: the design already said this and the code did not do it.
+Closes issue #657.
+
+### What was already decided, and what was not
+
+The design has always put critical strike chance on the skill. Its stat source
+table names "the skill being used" as the source, and the sentence after it is "A
+character has no critical strike chance in the abstract"
+(`Cataclysm_GDD_v2.md:858` and `:866`). The 5% default was decided on 2026-08-04
+and recorded below, and that entry is explicit that it is "a default and not a
+floor: a skill that states 1% gets 1%, which is what lets a skill be designed to
+crit less than average".
+
+The override half was never built. There was no column in which a skill could
+state a chance, so all 398 rows took the default and a skill designed to
+critically strike more or less often than average could not exist. What needed
+deciding was not whether a skill may state one, but **where the number lives and
+how it reaches the blow**.
+
+### Blank means the default, and -1 carries that through the code
+
+A blank cell means the skill states nothing and takes the 5%. Everything between
+the sheet and the running ability carries -1 for that, rather than resolving it to
+5 on the way.
+
+**Zero cannot be the sentinel**, which is the whole reason one is needed: a skill
+built never to critically strike states 0 and must get 0. Turning -1 into 5 early
+would also put the default in two places, and two copies of a number can
+disagree without anything reporting it — which is the defect that produced issues
+#647, #649 and #639 in the first place.
+
+The generator refuses a chance outside 0 to 100, because the cap is hard and the
+engine would otherwise clamp a row stating 150 down to 100 and the row would lie.
+If issue #658 lifts that cap, this bound moves with it.
+
+### The number travels with the hit, not on the character
+
+**A character holds six skills at once and the ability system has one
+`CritChance` attribute.** Writing the skill's figure onto the character would mean
+the last skill granted decided the chance for all six, and a projectile — which
+lands after the ability that fired it has ended — would read whatever the
+character happened to be holding by then.
+
+So the chance is stamped on the granted ability instance, the same way its name,
+its tags and its shape parameters already are, and each blow carries the figure of
+the skill that dealt it. The character's attribute keeps holding the default, for
+every skill that states nothing and for every enemy, which has no skill row at
+all.
+
+**Carried as a set-by-caller magnitude rather than as a tag.** Four properties
+already travel from attacker to defender on the damage effect — the damage type,
+whether the hit swept a volume, whether it is damage over time, and whether it may
+critically strike — and all four are gameplay tags, which can only answer yes or
+no. This is a figure. Unreal's set-by-caller magnitudes are a map from tag to
+float on an effect spec and are the engine's own mechanism for exactly this, so
+the key is named `Data.SkillCritChance`, following the engine's own `Data.`
+convention for such keys. It is the first use of the mechanism in this project.
+
+### Only the chance moves. The multiplier stays on the character
+
+The design's stat source table puts critical strike **chance** on the skill and
+says nothing about the multiplier, so the multiplier is still read off the
+attacker's attribute on every hit. A skill can be designed to critically strike
+often without also being designed to hit harder when it does.
+
+### No skill states one yet, and that is deliberate
+
+All 398 rows ship blank. Choosing that a particular skill critically strikes more
+or less often than average is a balance decision and it belongs to the project
+owner. `test_every_shipped_row_states_nothing` in
+`tools/tests/test_generate_datatables.py` records where the data stands and names
+the rows if that ever changes; it is a record, not a rule.
+
+---
+
 ## 2026-08-17 — An enemy keeps four defensive layers, and does not get the player's other two
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Enemy Stat Blocks section of section

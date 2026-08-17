@@ -116,7 +116,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	AActor* Instigator, const FVector& From, const FVector& To, float InRadiusCm,
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
 	const FGameplayTagContainer& InSkillTags, bool bInBurns,
-	UStaticMesh* InBodyMesh, float InFlightSeconds)
+	UStaticMesh* InBodyMesh, float InFlightSeconds, float InCritChancePercent)
 {
 	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
 	if (!World || InRadiusCm <= 0.0f)
@@ -228,6 +228,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->bWillReturn = bInReturns;
 	Projectile->DamagePercent = InDamagePercent;
 	Projectile->SkillTags = InSkillTags;
+	Projectile->CritChancePercent = InCritChancePercent;
 	Projectile->bBurns = bInBurns;
 
 	UE_LOG(LogCataclysm, Verbose,
@@ -466,8 +467,16 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// skill that fired it. Emberhurl is `Type.Projectile` and nothing else, so it
 	// is a direct hit; a projectile whose skill is tagged `Type.AOE.PointBlank`
 	// detonates and cannot be evaded. Issue #513.
+	// AND ITS CRITICAL STRIKE CHANCE IS THE FIRING SKILL'S, carried the same way
+	// and for the same reason: a projectile lands after the skill that fired it
+	// has finished, so anything read off the character at that moment could belong
+	// to a different skill. -1 means the skill states none, which is every skill
+	// today and every enemy attack. Issue #657.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CritChancePercent = CritChancePercent;
+
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
-		Firer, Target, DamagePercent, SkillTags);
+		Firer, Target, DamagePercent, SkillTags, Delivery);
 	if (Dealt > 0.0f)
 	{
 		++EnemiesHit;

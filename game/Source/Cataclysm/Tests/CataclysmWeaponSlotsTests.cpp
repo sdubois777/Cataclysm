@@ -1155,4 +1155,101 @@ bool FCataclysmWeaponSlotsWriteTheBaseCritChance::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A row's own critical strike chance is stamped onto the granted skill. #657.
+ *
+ * THE LINK BETWEEN THE DATA AND THE RUNNING ABILITY. `Cataclysm.Crit.ASkillRows
+ * OwnCriticalStrikeChanceReachesTheSkill` proves a row becomes a skill carrying
+ * the figure, and `Cataclysm.Skills.ASkillsOwnCriticalStrikeChanceReachesWhat
+ * ItHits` proves a skill carrying it uses it. This is the step between: the
+ * figure being written onto the ability the character is actually granted.
+ *
+ * ONTO THE INSTANCE AND NOT ONTO THE CHARACTER, which is the point. Six skills
+ * are granted at once and the ability system has one `CritChance` attribute, so
+ * writing it there would let the last skill granted decide for all six. This test
+ * grants two skills whose rows differ and checks they still differ afterwards,
+ * which is exactly what an attribute could not express.
+ *
+ * A TABLE BUILT HERE RATHER THAN THE SHIPPED ONE, because every one of the 398
+ * shipped rows leaves the column blank on purpose -- no skill is designed to
+ * differ yet, and that is the project owner's call to make. Against the shipped
+ * table this test could only ever read the default back.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillRowCritChanceReachesTheAbilityTest,
+	"Cataclysm.WeaponSlots.ASkillRowsCriticalStrikeChanceReachesTheGrantedAbility",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillRowCritChanceReachesTheAbilityTest::RunTest(const FString&)
+{
+	using namespace CataclysmWeaponSlotsTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// Two Strike rows on one weapon, differing only in the Crit Chance column.
+	// Shape is filled in so a real skill template is granted; a row with no shape
+	// gets the placeholder, which has no chance to carry.
+	UDataTable* Table = NewObject<UDataTable>();
+	Table->RowStruct = FCataclysmWeaponSkillRow::StaticStruct();
+
+	const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
+		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent\r\n"
+		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,20\r\n"
+		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1\r\n"));
+	if (!TestEqual(TEXT("the table built for this test imports"), Problems.Num(), 0))
+	{
+		for (const FString& Problem : Problems)
+		{
+			AddError(Problem);
+		}
+		return false;
+	}
+
+	FScopedWeaponFixture Fixture(World);
+	Fixture.Slots->SetWeaponSkillTable(Table);
+
+	// THREE, NOT TWO. The two rows above fill two slots, and the weapon's basic
+	// attack fills a third. Since issue #524 a basic attack comes from the Item
+	// Bases sheet rather than from the weapon skill matrix, so replacing the
+	// matrix does not replace it. Measured rather than assumed: this test first
+	// asserted two and was wrong.
+	TestEqual(TEXT("both rows filled a slot, alongside the weapon's basic attack"),
+		Fixture.Slots->EquipWeaponType(TEXT("Sword")), 3);
+
+	// Read back off the granted instances, by the skill's name, so this cannot
+	// pass by looking at the table it came from.
+	TMap<FString, float> Stamped;
+	for (const FGameplayAbilitySpec& Spec : Fixture.AbilitySystem->GetActivatableAbilities())
+	{
+		if (const UCataclysmSkillTemplate* Template =
+				Cast<UCataclysmSkillTemplate>(
+					const_cast<FGameplayAbilitySpec&>(Spec).GetPrimaryInstance()))
+		{
+			Stamped.Add(Template->SkillName, Template->CritChancePercent);
+		}
+	}
+
+	if (!TestEqual(TEXT("three skill templates were granted"), Stamped.Num(), 3))
+	{
+		return false;
+	}
+
+	const float* Stated = Stamped.Find(TEXT("Precise Cut"));
+	const float* Silent = Stamped.Find(TEXT("Wild Swing"));
+	if (!TestNotNull(TEXT("the skill whose row states a chance"), Stated)
+		|| !TestNotNull(TEXT("the skill whose row states none"), Silent))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the skill whose row states 20% carries 20%"), *Stated, 20.0f);
+
+	// THE TWO DISAGREE AND BOTH ARE HELD AT ONCE, which is the whole reason this
+	// is not written onto the character.
+	TestEqual(TEXT("and the one whose row states none still carries -1"),
+		*Silent, -1.0f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
