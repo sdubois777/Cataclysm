@@ -121,9 +121,90 @@ class TestTheHardCapIsOneHundred:
                           read(GDD))
         assert match, (
             "could not find the Crit chance row of the caps table in "
-            "docs/Cataclysm_GDD_v2.md. It read "
-            "'| Crit chance | 100% | Hard. Above 100% it means nothing. |'")
+            "docs/Cataclysm_GDD_v2.md. It began "
+            "'| Crit chance | 100% | Hard, and nothing raises it. ...'")
         assert float(match.group(1)) == pytest.approx(100.0)
+
+
+class TestNothingClaimsTheCapCanBeLifted:
+    """No passive tree may say critical strike chance is uncapped. Issue #658.
+
+    WHAT WENT WRONG. A Berserker keystone named Hair Trigger read "Your critical
+    strike chance is uncapped. Any critical strike chance above 100% is converted
+    to critical strike damage at a 2:1 ratio." The caps table said the cap was
+    hard. Both are shipped design and they could not both be true, and neither
+    the model nor the engine had any route past the cap, so the keystone could
+    not have been built as written.
+
+    THE PROJECT OWNER SETTLED IT ON 2026-08-17: the cap is hard and nothing
+    raises it. The keystone now converts the excess into critical strike damage
+    without lifting the cap, which is a thing the 100% cap permits.
+
+    WHY A TEST AND NOT JUST AN EDIT. The trees are authored in a separate tool at
+    C:\\Projects\\PassiveTreeCreator and re-exported over these files, so the old
+    wording can come back by accident. Nothing else in the project would notice:
+    no code reads a keystone's description.
+    """
+
+    #: Every class passive tree, which is where a keystone could claim it.
+    TREES = sorted((REPO_ROOT / "docs").glob("*_Class_Tree_*.json"))
+
+    #: Wordings that would mean the cap can be exceeded. Matched case-insensitively
+    #: against every node description.
+    FORBIDDEN = ("uncapped", "cap is removed", "ignores the cap",
+                 "no longer capped", "removes the cap")
+
+    def test_the_trees_were_actually_found(self):
+        """A glob that matches nothing would make the next test vacuous."""
+        assert len(self.TREES) >= 3, (
+            f"expected several class tree files in docs/, found "
+            f"{[p.name for p in self.TREES]}")
+
+    def test_no_node_says_critical_strike_chance_is_uncapped(self):
+        import json
+
+        offenders = []
+        for path in self.TREES:
+            for node in json.loads(read(path)).get("nodes", []):
+                data = node.get("data", {})
+                description = str(data.get("description", ""))
+                if "crit" not in description.lower():
+                    continue
+                for phrase in self.FORBIDDEN:
+                    if phrase in description.lower():
+                        offenders.append(
+                            f"{path.name}: {data.get('name')} -- {description}")
+                        break
+
+        assert not offenders, (
+            "these passive tree nodes say critical strike chance can exceed its "
+            "cap, which the caps table forbids: " + "; ".join(offenders))
+
+    def test_the_berserker_keystone_converts_rather_than_uncaps(self):
+        """The node the contradiction was found on, checked by name.
+
+        Pinned by name rather than only by the sweep above, because the sweep can
+        only catch wordings it was told about, and this is the one node whose
+        history makes it worth naming.
+        """
+        import json
+
+        path = REPO_ROOT / "docs" / "Berserker_Class_Tree_Final.json"
+        assert path.is_file(), f"{path} does not exist"
+
+        nodes = {n.get("data", {}).get("name"): n.get("data", {})
+                 for n in json.loads(read(path)).get("nodes", [])}
+        keystone = nodes.get("Hair Trigger")
+        assert keystone, (
+            "the Berserker tree has no keystone named Hair Trigger. If it was "
+            "renamed or removed, this check needs rethinking rather than "
+            "deleting; issue #658 has the history.")
+
+        description = str(keystone.get("description", ""))
+        assert "converted to critical strike damage" in description, (
+            f"Hair Trigger reads {description!r}. It is meant to convert "
+            "critical strike chance past 100% into critical strike damage, "
+            "which is what the hard cap permits.")
 
 
 class TestTheBaseMultiplierIsOneHundredAndFifty:
