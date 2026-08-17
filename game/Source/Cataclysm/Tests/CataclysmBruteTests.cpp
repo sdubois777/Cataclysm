@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestSkip.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -319,7 +320,7 @@ bool FCataclysmTheAnimationGraphRunsAndReadsTheCreaturesSpeed::RunTest(const FSt
 
 	if (FSoftObjectPath(ACataclysmBruteCharacter::BodyMeshPath).TryLoad() == nullptr)
 	{
-		AddInfo(TEXT("Paragon Rampage pack is not installed, so there is no "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("Paragon Rampage pack is not installed, so there is no "
 					 "skeleton to run a graph on. Expected in continuous "
 					 "integration."));
 		Brute->Destroy();
@@ -633,7 +634,7 @@ bool FCataclysmBruteFightsWithOrWithoutItsArt::RunTest(const FString&)
 	}
 	else
 	{
-		AddInfo(TEXT("Paragon Rampage pack is not installed, so the mesh test "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("Paragon Rampage pack is not installed, so the mesh test "
 					 "is skipped. The Brute keeps its placeholder cylinder. "
 					 "This is the expected state in continuous integration."));
 	}
@@ -712,7 +713,7 @@ bool FCataclysmBruteIsDrivenByItsOwnAnimationBlueprint::RunTest(const FString&)
 		FSoftObjectPath(ACataclysmBruteCharacter::BodyMeshPath).TryLoad() != nullptr;
 	if (!bArtIsInstalled)
 	{
-		AddInfo(TEXT("Paragon Rampage pack is not installed, so the animation "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("Paragon Rampage pack is not installed, so the animation "
 					 "Blueprint test is skipped. Expected in continuous "
 					 "integration."));
 		Brute->Destroy();
@@ -1017,7 +1018,7 @@ bool FCataclysmBruteAbilityMontagesAreBuiltCorrectly::RunTest(const FString&)
 
 	if (Checked == 0)
 	{
-		AddInfo(TEXT("The Paragon art is absent, so the montage contents could "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon art is absent, so the montage contents could "
 					 "not be checked. Expected in continuous integration; the "
 					 "montage assets are committed but the clips inside them "
 					 "are not."));

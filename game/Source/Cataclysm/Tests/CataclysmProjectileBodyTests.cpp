@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmMeshWidth.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestSkip.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -167,7 +168,7 @@ bool FCataclysmProjectileUsesAGivenMesh::RunTest(const FString&)
 	UStaticMesh* Rock = RockOrNull();
 	if (!Rock)
 	{
-		AddInfo(TEXT("The Paragon Rampage pack is not installed, so there is no "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon Rampage pack is not installed, so there is no "
 					 "rock to fly and this test has nothing to check. That is "
 					 "the expected state on a fresh clone."));
 		return true;
@@ -254,7 +255,7 @@ bool FCataclysmBruteThrowsTheRock::RunTest(const FString&)
 		// WITHOUT THE PACK IT MUST STILL WORK, and that half is checked here
 		// rather than skipped. A fresh clone throws a sphere and the throw is
 		// otherwise unaffected.
-		AddInfo(TEXT("The Paragon Rampage pack is not installed, so only the "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon Rampage pack is not installed, so only the "
 					 "no-art path is checked."));
 		TestNull(TEXT("the Brute resolves no rock without the pack"),
 			Brute->RockMesh.Get());
@@ -564,7 +565,7 @@ bool FCataclysmBruteLobsFromItsHand::RunTest(const FString&)
 		Body && Body->DoesSocketExist(ACataclysmBruteCharacter::RockHoldBoneName);
 	if (!bHasBone)
 	{
-		AddInfo(TEXT("No skeleton with a weapon_r bone, which is expected "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("No skeleton with a weapon_r bone, which is expected "
 					 "without the Paragon Rampage pack. The launch height is "
 					 "not checked; the arc above is."));
 		return true;
@@ -949,7 +950,7 @@ bool FCataclysmHeldRockMatchesThrownRock::RunTest(const FString&)
 	const UStaticMesh* Rock = RockOrNull();
 	if (!Rock)
 	{
-		AddInfo(TEXT("The Paragon Rampage pack is not installed, so there is no "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon Rampage pack is not installed, so there is no "
 					 "rock to measure and the size is not checked."));
 		TestNull(TEXT("and the Brute resolved no rock without the pack"),
 			Brute->RockMesh.Get());
