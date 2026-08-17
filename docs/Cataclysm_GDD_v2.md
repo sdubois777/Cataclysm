@@ -1468,7 +1468,7 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-**This rule is about the chance to apply an ailment. Critical strike chance is deliberately outside it.** The caps table calls critical strike chance hard-capped at 100% and means it: chance past the cap is wasted rather than converted, unless the character has taken the one Berserker keystone that converts the excess into critical strike damage. The two rules read as though they contradict each other and they do not; this one does not reach critical strikes. That ambiguity is what issue #658 was opened for.
+**This rule is about the chance to apply an ailment. Critical strike chance is deliberately outside it.** The caps table calls critical strike chance hard-capped at 100% and means it: chance past the cap is wasted rather than converted, unless the character has taken the one Berserker keystone that converts the excess into critical strike multiplier. The two rules read as though they contradict each other and they do not; this one does not reach critical strikes. That ambiguity is what issue #658 was opened for.
 
   
 
@@ -1958,7 +1958,7 @@ Weapons have a physical sub-type that determines baseline combat properties:
 
   
 
-**Blunt stuns rather than doing bonus damage against armor.** Its original property put it in direct competition with Piercing, which already beats armor and has a whole family of affixes that scale it — ignoring armor appears on skills, on critical hits, on traps and on first hits. Nothing anywhere scales damage against armored targets, so Blunt was a flat bonus with nowhere to grow.
+**Blunt stuns rather than doing bonus damage against armor.** Its original property put it in direct competition with Piercing, which already beats armor and has a whole family of affixes that scale it — ignoring armor appears on skills, on critical strikes, on traps and on first hits. Nothing anywhere scales damage against armored targets, so Blunt was a flat bonus with nowhere to grow.
 
   
 
@@ -2464,7 +2464,7 @@ The damage numbers are not chosen. They are read off the enemy statistics in sec
 
   
 
-An average Common enemy at difficulty tier 8 has 3,366 effective health and should take **2 non-critical hits** to kill. That is not 1,683 damage per hit, because the creature also carries 673 armor, which stops 9.5% of every hit before it reaches health. The damage a player has to deal is **1,860 per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 219, of which the affixes supply 132. The weapons supply the remaining 87.
+An average Common enemy at difficulty tier 8 has 3,366 effective health and should take **2 non-critical strikes** to kill. That is not 1,683 damage per hit, because the creature also carries 673 armor, which stops 9.5% of every hit before it reaches health. The damage a player has to deal is **1,860 per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 219, of which the affixes supply 132. The weapons supply the remaining 87.
 
 **The enemy's own mitigation is counted, and it was not until 2026-08-16.** The target divided health by hits and applied nothing, so it answered how much health had to be removed rather than how much damage had to be dealt to remove it, and every offensive number fitted to it was 10.5% low. The average Common enemy is the mildest case: it carries less armor than anything else in the slice.
 
@@ -2482,7 +2482,7 @@ Everything else follows from that one number rather than being set separately:
 
   
 
-| Enemy at tier 8 | Non-critical hits to kill |
+| Enemy at tier 8 | Non-critical strikes to kill |
 | :-- | :-: |
 | Common Imp | 0.8 |
 | Common Hellhound | 1.9 |

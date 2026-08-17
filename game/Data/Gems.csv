@@ -6,7 +6,7 @@ Gem_Of_Madness,Of Madness,10% chance to apply madness,Attack,0.1,0.15,0.2,0.25,0
 Gem_Of_Rot,Of Rot,15% chance to apply disease,Attack,0.15,0.3,0.45,0.6,0.75,0.9,1.05,1.2
 Gem_Of_Ticking,Of Ticking,Increases DoT Freq by 10%,Attack,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.6
 Gem_Of_Striking,Of Striking,Increases Attack Speed by 10%,Attack,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.6
-Gem_Of_Hatred,Of Hatred,Increases Crit Multi by 5%,Attack,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.55
+Gem_Of_Hatred,Of Hatred,Increases Crit Multiplier by 5%,Attack,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.55
 Gem_Of_Ferocity,Of Ferocity,Increases Crit by 25%,Attack,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.75
 Gem_Of_Recovery,Of Recovery,Increases hp regen by 10%,Defense,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.6
 Gem_Of_Shielding,Of Shielding,Increases energy shield regen by 5%,Defense,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.55

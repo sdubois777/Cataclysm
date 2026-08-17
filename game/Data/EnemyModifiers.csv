@@ -24,7 +24,7 @@ War_Armored_Juggernaut,War,Armored Juggernaut,Gain 50% armor
 War_Drums_of_War,War,Drums of War,Increases nearby allies move speed and attack speed by 50%.
 War_Shield_Wall,War,Shield Wall,Take 75% less damage from attacks from the front.
 War_Artillery_Barrage,War,Artillery Barrage,Call down explosive projectiles in random areas near the player.
-War_Battle_Scarred,War,Battle Scarred,"Become more dangerous, gaining increased critical hit chance and damage resistance."
+War_Battle_Scarred,War,Battle Scarred,"Become more dangerous, gaining increased critical strike chance and damage resistance."
 War_1_On_1,War,1 On 1,Summon an arena around you and a nearby player that lasts until one of you is defeated. All allies in the area of the arena are consumed to empower you with 50% of all of their stats.
 War_Phalanx,War,Phalanx,Gains 10% damage reduction for every other enemy within 5 meters. Forces you to pull them apart or use high AoE.
 Pestilence_Contagion,Pestilence,Contagion,DOTs and debuffs are mirrored back onto the player.

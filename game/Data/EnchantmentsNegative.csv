@@ -60,9 +60,9 @@ Negative_Your_ultimate_ability_deals_30_50_less_damage,Your ultimate ability dea
 Negative_Your_ultimate_ability_cannot_be_used_unless_you,Your ultimate ability cannot be used unless you are below 50% HP,Generic,2.0,"Slot.Ultimate, Trigger.LowLife",True
 Negative_Projectiles_have_a_20_35_chance_to_explode_pre,Projectiles have a 20%-35% chance to explode prematurely dealing no damage,Generic,2.0,Type.Projectile,True
 Negative_Projectiles_deal_20_35_less_damage_on_each_sub,Projectiles deal 20%-35% less damage on each subsequent hit after the first,Generic,2.0,Type.Projectile,True
-Negative_Critical_hits_trigger_a_0_5_1_second_global_cool,Critical hits trigger a 0.5-1 second global cooldown on all your skills,Generic,2.0,Stat.Offense.Crit,True
-Negative_Non_critical_hits_deal_20_35_less_damage,Non-critical hits deal 20%-35% less damage,Generic,2.0,Stat.Offense.Crit,True
-Negative_Your_critical_hit_chance_cannot_exceed_30_50,Your critical hit chance cannot exceed 30%-50%,Generic,2.0,Stat.Offense.Crit,True
+Negative_Critical_strikes_trigger_a_0_5_1_second_global_c,Critical strikes trigger a 0.5-1 second global cooldown on all your skills,Generic,2.0,Stat.Offense.Crit,True
+Negative_Non_critical_strikes_deal_20_35_less_damage,Non-critical strikes deal 20%-35% less damage,Generic,2.0,Stat.Offense.Crit,True
+Negative_Your_critical_strike_chance_cannot_exceed_30_50,Your critical strike chance cannot exceed 30%-50%,Generic,2.0,Stat.Offense.Crit,True
 Negative_Your_attack_speed_is_reduced_by_20_35,Your attack speed is reduced by 20%-35%,Generic,2.0,Stat.Offense.Speed,True
 Negative_You_cannot_regenerate_HP_above_50_of_your_maxim,You cannot regenerate HP above 50% of your maximum,Generic,2.0,Stat.Defense.Life,True
 Negative_You_take_20_35_increased_damage_while_above_75,You take 20%-35% increased damage while above 75% HP,Generic,2.0,Stat.Defense.Life,True
@@ -142,8 +142,8 @@ Negative_Your_retaliation_damage_is_reduced_by_50_75,Your retaliation damage is 
 Negative_Mana_regeneration_is_reduced_by_50_75,Mana regeneration is reduced by 50%-75%,Generic,3.0,"Stat.Recovery.Regen, Stat.Resource.Mana",True
 Negative_Blocking_attacks_reduces_your_class_resource_by,Blocking attacks reduces your class resource by 5%-10%,Generic,3.0,"Trigger.OnBlock, Stat.Resource.ClassResource",True
 Negative_After_blocking_you_cannot_block_again_for_1_2_se,After blocking you cannot block again for 1-2 seconds,Generic,3.0,"Trigger.OnBlock, Stat.Defense.Block",True
-Negative_Critical_hits_drain_3_6_of_your_current_HP,Critical hits drain 3%-6% of your current HP,Generic,3.0,"Trigger.OnCrit, Stat.Defense.Life",True
-Negative_Critical_hits_have_a_20_35_chance_to_trigger_a,Critical hits have a 20%-35% chance to trigger a random debuff on you,Generic,3.0,"Trigger.OnCrit, Type.Debuff",True
+Negative_Critical_strikes_drain_3_6_of_your_current_HP,Critical strikes drain 3%-6% of your current HP,Generic,3.0,"Trigger.OnCrit, Stat.Defense.Life",True
+Negative_Critical_strikes_have_a_20_35_chance_to_trigge,Critical strikes have a 20%-35% chance to trigger a random debuff on you,Generic,3.0,"Trigger.OnCrit, Type.Debuff",True
 Negative_When_you_die_all_your_buffs_are_removed,When you die all your buffs are removed,Generic,3.0,"Trigger.OnDeath, Type.Buff",True
 Negative_Each_skill_use_reduces_your_armor_by_1_2_for_3,Each skill use reduces your armor by 1%-2% for 3 seconds stacking up to 10 times,Generic,3.0,"Trigger.OnSkillUse, Stat.Defense.Armor",True
 Negative_Dodging_an_attack_drains_5_10_of_your_class_re,Dodging an attack drains 5%-10% of your class resource,Generic,3.0,"Trigger.OnDodge, Stat.Resource.ClassResource",True

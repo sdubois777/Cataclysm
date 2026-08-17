@@ -30,7 +30,7 @@ the per-character ceiling. Closes issue #680.
 ### The question
 
 The Enchantments sheet of `docs/All_Things_Cataclysm.xlsx` carries a downside
-reading "Your critical hit chance cannot exceed 30%-50%". The cap was a single
+reading "Your critical strike chance cannot exceed 30%-50%". The cap was a single
 constant shared by every character — `HARD_CAPS["crit_chance"]` in the model and
 `CritChanceCap` in the engine — so there was nowhere for a personal ceiling to
 live and the enchantment could not do anything.
@@ -216,7 +216,7 @@ reader does not have to work it out again.
 ### What is not settled here
 
 The Enchantments sheet of `docs/All_Things_Cataclysm.xlsx` carries a negative
-enchantment reading "Your critical hit chance cannot exceed 30%-50%". That is a
+enchantment reading "Your critical strike chance cannot exceed 30%-50%". That is a
 per-character cap *below* 100 and does not contradict a hard cap at 100, but there
 is nowhere for it to live: both the model and the engine hold the cap as a single
 constant shared by every character. That is issue #680 and is a separate concern.
