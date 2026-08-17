@@ -291,6 +291,12 @@ gh issue close 12 --comment "Fixed in #34"
   prefix is fine. Chaining `git` commands together is fine; the rule is about
   `gh`. Run the merge, then verify, then delete the branch as three separate
   invocations.
+- **Keep the `cd` prefix on `gh pr create`.** `--repo` says which repository, not
+  which branch, and `gh pr create` reads the branch to open the pull request from
+  out of the working directory. Run from anywhere else it fails with "you must
+  first push the current branch to a remote", which is misleading when the branch
+  is already pushed. `gh pr merge`, `gh pr view` and `gh issue close` take a
+  number and do not need the `cd`.
 
   **A successful `gh pr merge` prints nothing at all.** Empty output with exit 0
   usually means a command did not run, so it is not evidence either way here.
