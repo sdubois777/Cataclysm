@@ -48,6 +48,29 @@ class CATACLYSM_API UCataclysmWeaponSlotsComponent : public UActorComponent
 	GENERATED_BODY()
 
 public:
+	/**
+	 * What a skill's base critical strike chance is when it names none. 5%.
+	 *
+	 * THE DESIGN PUTS THIS ON THE SKILL AND NOT ON THE CHARACTER. Its stat source
+	 * table says "the skill being used" supplies critical strike chance, and the
+	 * sentence after it is explicit: "A character has no critical strike chance
+	 * in the abstract." So this is written when a weapon's skills are granted and
+	 * zeroed when they are taken away, the same way the weapon's own rate is.
+	 *
+	 * WHY 5%: it is Path of Exile's base for a plain melee weapon and it is
+	 * already what this project gives an ordinary enemy, so a player and a
+	 * monster start from the same place. Decided on 2026-08-04 and recorded in
+	 * `docs/DECISIONS.md`; the same number is `DEFAULT_SKILL_CRIT_CHANCE` in
+	 * `sim/cataclysm_sim/character.py`, and
+	 * `tools/tests/test_the_critical_strike_numbers_are_one_set.py` fails if the
+	 * two ever disagree.
+	 *
+	 * IT IS A DEFAULT AND NOT A FLOOR. A skill stating 1% is meant to get 1%.
+	 * Nothing states one yet, because `game/Data/WeaponSkills.csv` has no column
+	 * for it -- all 558 rows use this. Issue #657.
+	 */
+	static constexpr float DefaultSkillCritChancePercent = 5.0f;
+
 	UCataclysmWeaponSlotsComponent();
 
 	/**
@@ -227,6 +250,7 @@ protected:
 	/** The item base table, for the equipped weapon's own damage. */
 	UPROPERTY(Transient)
 	TObjectPtr<const UDataTable> ItemBaseTable;
+
 
 private:
 	UCataclysmAbilitySystemComponent* GetAbilitySystem() const;

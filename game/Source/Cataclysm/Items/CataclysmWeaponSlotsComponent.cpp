@@ -433,6 +433,35 @@ void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
 				*EquippedWeaponType, AttackSpeed);
 		}
 	}
+
+	// AND THE BASE CRITICAL STRIKE CHANCE, WHICH IS THE SKILL'S AND NOT THE
+	// WEAPON'S. It is written here because this is the moment a weapon's six
+	// skills are granted, and the moment they are taken away again. The design
+	// is explicit about whose it is: its stat source table says "the skill being
+	// used" supplies critical strike chance, and the sentence after it says "A
+	// character has no critical strike chance in the abstract."
+	//
+	// NOTHING WROTE IT UNTIL ISSUE #649, so it stood at the zero it was
+	// initialised to, with the comment "supplied by the skill in use" describing
+	// an intention nobody had built -- the same defect as the attack speed above,
+	// one attribute over. A player never critically struck, and the three
+	// critical strike affixes, the two gems, the Ferocity attribute and two whole
+	// passive tree branches all scaled a base of zero and were worth nothing.
+	//
+	// ONE NUMBER FOR SIX SKILLS, which is correct only because every skill in the
+	// game takes the default. `game/Data/WeaponSkills.csv` has no column for a
+	// skill to state its own. Issue #657.
+	//
+	// SET, NOT ADDED, and zero when holding nothing, for the same reasons the
+	// damage and the rate above are. A character holding nothing swings nothing.
+	const FGameplayAttribute CritAttribute =
+		UCataclysmCombatAttributeSet::GetCritChanceAttribute();
+	if (AbilitySystem->HasAttributeSetForAttribute(CritAttribute))
+	{
+		AbilitySystem->SetNumericAttributeBase(
+			CritAttribute,
+			EquippedWeaponType.IsEmpty() ? 0.0f : DefaultSkillCritChancePercent);
+	}
 }
 
 void UCataclysmWeaponSlotsComponent::UnequipWeapon()

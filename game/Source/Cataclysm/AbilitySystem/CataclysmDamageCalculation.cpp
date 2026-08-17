@@ -79,6 +79,8 @@ namespace
 const TCHAR* UCataclysmDamageCalculation::ElementTagPrefix = TEXT("Element.");
 const TCHAR* UCataclysmDamageCalculation::AreaDamageTagName = TEXT("Type.AOE");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTagName = TEXT("Keyword.DoT");
+const TCHAR* UCataclysmDamageCalculation::NoCriticalStrikeTagName =
+	TEXT("Keyword.NoCrit");
 
 namespace
 {
@@ -105,6 +107,11 @@ FGameplayTag UCataclysmDamageCalculation::AreaDamageTag()
 FGameplayTag UCataclysmDamageCalculation::DamageOverTimeTag()
 {
 	return TagNamed(DamageOverTimeTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::NoCriticalStrikeTag()
+{
+	return TagNamed(NoCriticalStrikeTagName);
 }
 
 FGameplayTag UCataclysmDamageCalculation::ElementTagFor(FName DamageType)
@@ -185,7 +192,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	const UAbilitySystemComponent* Defender,
 	int32 Tier,
 	float EvasionRoll,
-	float BlockRoll)
+	float BlockRoll,
+	float CritRoll)
 {
 	FCataclysmDamageResult Result;
 	if (!Defender || Hit.Damage <= 0.0f)
@@ -217,6 +225,37 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 
 	float Damage = Hit.Damage;
+
+	// THE CRITICAL STRIKE, WHICH IS NOT ONE OF THE DESIGN'S EIGHT STEPS. Those
+	// eight are what the defender does to a hit. A critical strike belongs to
+	// whoever is swinging, and it multiplies the whole finished hit before any
+	// mitigation touches it. That is what the model does:
+	// `average_damage_per_hit` in `sim/cataclysm_sim/enemy_stats.py` scales the
+	// per-hit damage, and `sim/cataclysm_sim/reference_build.py` hands the scaled
+	// figure to the mitigation code as the raw hit.
+	//
+	// IT IS ROLLED HERE AND AVERAGED THERE, and that difference is deliberate.
+	// The model has no use for a single hit, so it multiplies every hit by
+	// (1 - chance + chance x multiplier), the long-run average. A game cannot do
+	// that: a hit that is 15.8% larger than usual is not a critical strike and
+	// cannot be drawn as one. Over many hits the two agree, which is what keeps
+	// the model's damage targets true of the game.
+	//
+	// AFTER EVASION AND NOT BEFORE IT. Every step below is a multiplication or a
+	// minimum against what is left, so where the multiplier sits among them does
+	// not change the number by a fraction. It sits after the evasion step's early
+	// return so that a hit which never landed is never reported as a critical
+	// strike, which would put an exclamation mark on the word "Evaded".
+	if (Hit.CritChance > 0.0f && Hit.CritMultiplier > 0.0f)
+	{
+		const float Roll = CritRoll >= 0.0f ? CritRoll
+											: FMath::FRandRange(0.0f, 100.0f);
+		if (Roll < Hit.CritChance)
+		{
+			Result.bWasCritical = true;
+			Damage *= Hit.CritMultiplier / 100.0f;
+		}
+	}
 
 	// 2. Block. Applies to area damage too, and removes half rather than all.
 	if (Combat)

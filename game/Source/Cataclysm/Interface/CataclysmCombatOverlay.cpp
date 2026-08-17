@@ -150,23 +150,32 @@ FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
 	const int32 ToShield = FigureFor(Outcome.AbsorbedByShield);
 	const int32 ToMana = FigureFor(Outcome.AbsorbedByMana);
 
+	// A CRITICAL STRIKE MARKS THE FIGURE AND NOTHING ELSE. The three branches
+	// below are the ones that print a number; the three after them are words for
+	// a hit that did nothing, and a hit that did nothing is not worth marking.
+	const FString Mark =
+		ShowsCriticalStrike(Outcome) ? CriticalStrikeMark : TEXT("");
+
 	if (ToHealth > 0)
 	{
 		// BOTH FIGURES WHEN A SHIELD TOOK SOME OF IT, health first, because
 		// health is the one that matters and a shield stripping is secondary.
+		//
+		// THE MARK GOES ON THE END, after the shield figure, because the whole
+		// blow was the critical strike rather than either half of it.
 		return ToShield > 0
-			? FString::Printf(TEXT("%d (+%d)"), ToHealth, ToShield)
-			: FString::Printf(TEXT("%d"), ToHealth);
+			? FString::Printf(TEXT("%d (+%d)%s"), ToHealth, ToShield, *Mark)
+			: FString::Printf(TEXT("%d%s"), ToHealth, *Mark);
 	}
 
 	if (ToShield > 0)
 	{
-		return FString::Printf(TEXT("%d"), ToShield);
+		return FString::Printf(TEXT("%d%s"), ToShield, *Mark);
 	}
 
 	if (ToMana > 0)
 	{
-		return FString::Printf(TEXT("%d"), ToMana);
+		return FString::Printf(TEXT("%d%s"), ToMana, *Mark);
 	}
 
 	// A BLOCK THAT LEFT NOTHING SAYS SO IN A WORD. A block removes half the
@@ -201,7 +210,18 @@ FLinearColor UCataclysmCombatOverlay::ColourFor(
 	return ColourFromHex(NothingThroughHex);
 }
 
-float UCataclysmCombatOverlay::ScaleFor(const FCataclysmIncomingHit& Hit)
+bool UCataclysmCombatOverlay::ShowsCriticalStrike(
+	const FCataclysmDamageResult& Outcome)
+{
+	// THE SAME THREE FIGURES ColourFor ASKS ABOUT, in the same form, so a number
+	// cannot be drawn large and marked while its colour says nothing arrived.
+	return Outcome.bWasCritical
+		&& (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
+			|| Outcome.AbsorbedByMana > 0.0f);
+}
+
+float UCataclysmCombatOverlay::ScaleFor(const FCataclysmIncomingHit& Hit,
+										const FCataclysmDamageResult& Outcome)
 {
 	// A TICK IS NOT A BLOW, and the size is what says so. The impact particle
 	// solves the same problem by refusing to draw for a tick at all -- issue
@@ -209,7 +229,18 @@ float UCataclysmCombatOverlay::ScaleFor(const FCataclysmIncomingHit& Hit)
 	// them burn ticks. A number is cheap enough to draw for every tick, which is
 	// what the genre does, but it should not shout as loudly as the strike that
 	// started the burn.
-	return Hit.bIsDamageOverTime ? DamageOverTimeScale : 1.0f;
+	float Scale = Hit.bIsDamageOverTime ? DamageOverTimeScale : 1.0f;
+
+	// AND A CRITICAL STRIKE IS LOUDER THAN A BLOW, which is the whole point of
+	// marking one. MULTIPLIED RATHER THAN ASSIGNED, so the tick rule above still
+	// holds if the two ever meet. They cannot today: a damage over time tick can
+	// never critically strike.
+	if (ShowsCriticalStrike(Outcome))
+	{
+		Scale *= CriticalStrikeScale;
+	}
+
+	return Scale;
 }
 
 bool UCataclysmCombatOverlay::ShouldShowBarFor(float Health, float MaxHealth)
@@ -407,7 +438,7 @@ void UCataclysmCombatOverlay::Record(const AActor* Struck,
 	FCataclysmDamageNumber Number;
 	Number.Text = TextFor(Outcome);
 	Number.Colour = ColourFor(Outcome);
-	Number.Scale = ScaleFor(Hit);
+	Number.Scale = ScaleFor(Hit, Outcome);
 	Number.StartedAt = World->GetTimeSeconds();
 	Number.WorldAnchor = Struck->GetActorLocation()
 		+ FVector(0.0f, 0.0f, AnchorHeightFor(Struck));

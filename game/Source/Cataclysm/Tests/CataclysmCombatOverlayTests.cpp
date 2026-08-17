@@ -519,9 +519,13 @@ bool FCataclysmOverlayDrawsATickSmaller::RunTest(const FString&)
 	FCataclysmIncomingHit Tick = CataclysmOverlayTest::OrdinaryHit();
 	Tick.bIsDamageOverTime = true;
 
-	const float BlowScale =
-		UCataclysmCombatOverlay::ScaleFor(CataclysmOverlayTest::OrdinaryHit());
-	const float TickScale = UCataclysmCombatOverlay::ScaleFor(Tick);
+	// AN ORDINARY OUTCOME, which is to say not a critical strike. Size carries
+	// two facts now and this test is about the other one.
+	const FCataclysmDamageResult Landed = CataclysmOverlayTest::Landed(20.0f);
+
+	const float BlowScale = UCataclysmCombatOverlay::ScaleFor(
+		CataclysmOverlayTest::OrdinaryHit(), Landed);
+	const float TickScale = UCataclysmCombatOverlay::ScaleFor(Tick, Landed);
 
 	TestEqual(TEXT("a blow is drawn at full size"), BlowScale, 1.0f);
 	TestTrue(TEXT("a tick is drawn smaller than a blow"), TickScale < BlowScale);
@@ -949,6 +953,126 @@ bool FCataclysmOverlayRecordSurvivesNoDisplay::RunTest(const FString&)
 									CataclysmOverlayTest::Landed(42.0f));
 
 	TestTrue(TEXT("recording a hit with nowhere to draw it is safe"), true);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Marking a critical strike
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayMarksACriticalStrike,
+	"Cataclysm.Overlay.ACriticalStrikeIsDrawnLargerAndItsFigureIsMarked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOverlayMarksACriticalStrike::RunTest(const FString&)
+{
+	// SIZE AND TEXT, NOT COLOUR, AND THAT IS A DECISION RATHER THAN A TASTE.
+	// Colour on a floating number already says where the damage went, and
+	// docs/DECISIONS.md rejected colouring numbers by damage type to keep it
+	// saying only that. Diablo 4 does use colour for a critical strike -- white
+	// for an ordinary hit, yellow for a critical one -- and this project cannot,
+	// because it has given colour a different job.
+	FCataclysmDamageResult Crit = CataclysmOverlayTest::Landed(1'234.0f);
+	Crit.bWasCritical = true;
+
+	const FCataclysmDamageResult Ordinary =
+		CataclysmOverlayTest::Landed(1'234.0f);
+
+	const FString CritText = UCataclysmCombatOverlay::TextFor(Crit);
+	const FString OrdinaryText = UCataclysmCombatOverlay::TextFor(Ordinary);
+
+	TestEqual(TEXT("an ordinary hit prints its figure alone"),
+		OrdinaryText, FString(TEXT("1234")));
+	TestEqual(TEXT("a critical strike prints the same figure, marked"),
+		CritText, FString(TEXT("1234!")));
+
+	const float CritScale = UCataclysmCombatOverlay::ScaleFor(
+		CataclysmOverlayTest::OrdinaryHit(), Crit);
+	const float OrdinaryScale = UCataclysmCombatOverlay::ScaleFor(
+		CataclysmOverlayTest::OrdinaryHit(), Ordinary);
+
+	TestTrue(TEXT("and it is drawn larger"), CritScale > OrdinaryScale);
+	TestEqual(TEXT("by the stated multiple"),
+		CritScale,
+		OrdinaryScale * UCataclysmCombatOverlay::CriticalStrikeScale, 0.001f);
+
+	// THE COLOUR IS UNTOUCHED, which is the half of this that is easy to break.
+	TestTrue(TEXT("a critical strike is the same colour as any hit that reached "
+				  "health"),
+		UCataclysmCombatOverlay::ColourFor(Crit).Equals(
+			UCataclysmCombatOverlay::ColourFor(Ordinary)));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayMarksBothFigures,
+	"Cataclysm.Overlay.ACriticalStrikeThroughAShieldIsMarkedOnceAtTheEnd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOverlayMarksBothFigures::RunTest(const FString&)
+{
+	// A blow that stripped a shield and still reached health prints both figures.
+	// THE MARK GOES ON THE END, because the whole blow was the critical strike
+	// rather than either half of it.
+	FCataclysmDamageResult Both;
+	Both.DealtToHealth = 12.0f;
+	Both.AbsorbedByShield = 30.0f;
+	Both.bWasCritical = true;
+
+	TestEqual(TEXT("both figures, health first, marked once"),
+		UCataclysmCombatOverlay::TextFor(Both), FString(TEXT("12 (+30)!")));
+
+	// A hit a shield swallowed whole is still a critical strike and still says so.
+	FCataclysmDamageResult ShieldOnly;
+	ShieldOnly.AbsorbedByShield = 30.0f;
+	ShieldOnly.bWasCritical = true;
+
+	TestEqual(TEXT("a critical strike a shield swallowed is marked too"),
+		UCataclysmCombatOverlay::TextFor(ShieldOnly), FString(TEXT("30!")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayNeverMarksAHitThatDidNothing,
+	"Cataclysm.Overlay.ACriticalStrikeThatGotThroughNothingIsNotMarked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOverlayNeverMarksAHitThatDidNothing::RunTest(const FString&)
+{
+	// THE ROLL HAPPENS BEFORE BLOCK, ARMOUR AND RESISTANCE, so a critical strike
+	// can be stopped dead by a well-defended target. Three words say a hit did
+	// nothing and none of them is improved by an exclamation mark: "Evaded!"
+	// reads as excitement about a miss, and an oversized grey "0!" says the
+	// opposite of what happened.
+	FCataclysmDamageResult Stopped;
+	Stopped.bWasCritical = true;
+
+	TestEqual(TEXT("a wholly mitigated critical strike is a plain zero"),
+		UCataclysmCombatOverlay::TextFor(Stopped), FString(TEXT("0")));
+
+	FCataclysmDamageResult Evaded;
+	Evaded.bEvaded = true;
+	Evaded.bWasCritical = true;
+
+	TestEqual(TEXT("an evaded one says only that it was evaded"),
+		UCataclysmCombatOverlay::TextFor(Evaded), FString(TEXT("Evaded")));
+
+	FCataclysmDamageResult BlockedToNothing;
+	BlockedToNothing.bBlocked = true;
+	BlockedToNothing.bWasCritical = true;
+
+	TestEqual(TEXT("and one blocked to nothing says only that"),
+		UCataclysmCombatOverlay::TextFor(BlockedToNothing),
+		FString(TEXT("Blocked")));
+
+	// AND NONE OF THE THREE IS DRAWN LARGER. The size and the mark ask the same
+	// question so that they can never disagree on the same number.
+	const FCataclysmIncomingHit Hit = CataclysmOverlayTest::OrdinaryHit();
+	TestEqual(TEXT("a stopped critical strike is drawn at ordinary size"),
+		UCataclysmCombatOverlay::ScaleFor(Hit, Stopped), 1.0f, 0.001f);
+	TestEqual(TEXT("and so is an evaded one"),
+		UCataclysmCombatOverlay::ScaleFor(Hit, Evaded), 1.0f, 0.001f);
 
 	return true;
 }
