@@ -301,21 +301,32 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// project rolls a chance to stun on an ordinary hit --
 			// UCataclysmSkillEffects::ApplyStun applies one already decided. Issue
 			// #639 records what building it takes.
-			const FString SubType = UCataclysmWeaponSlotsComponent::SubTypeOf(
-				Data.EffectSpec.GetContext().GetEffectCauser());
+			// A BLOW CAN BE FORBIDDEN THE WHOLE SUB-TYPE, which is what a minion's
+			// is. The causer a sub-type is read off is the summoner, exactly as
+			// the attacker is, so without this a sword in the player's hand makes
+			// its imps deal 10% more to health and a wand makes them strip 10%
+			// more energy shield. The design's general rule blocks it: a minion
+			// reaches its summoner through exactly three channels and a weapon
+			// sub-type is not one of them. Issue #676.
+			const bool bCarriesSubType = !AssetTags.HasTag(
+				UCataclysmDamageCalculation::NoWeaponSubTypeTag());
+
+			const FString SubType = bCarriesSubType
+				? UCataclysmWeaponSlotsComponent::SubTypeOf(
+					Data.EffectSpec.GetContext().GetEffectCauser())
+				: FString();
+
 			Hit.bIsSlashing =
 				SubType.Equals(TEXT("Slashing"), ESearchCase::IgnoreCase);
 			Hit.bIsMagic = SubType.Equals(TEXT("Magic"), ESearchCase::IgnoreCase);
 
-			// PIERCING IS THE ONE SUB-TYPE A HIT CAN BE FORBIDDEN, because its
-			// effect IS armour penetration: `Resolve` adds a further 20% of the
-			// defender's armour ignored on top of the attacker's own stat. The
-			// causer a sub-type is read off is the summoner for a minion's blow,
-			// exactly as the attacker is, so a summoner holding a piercing weapon
-			// is a third route for the inheritance the design forbids. The other
-			// three sub-types are left alone here: they are not penetration and
-			// whether they should cross is a separate question, which is issue
-			// #676. Issue #659.
+			// PIERCING IS BLOCKED BY TWO INDEPENDENT THINGS AND NEEDS ONLY ONE.
+			// It is a sub-type, so the rule above reaches it; and its whole effect
+			// IS armour penetration -- `Resolve` adds a further 20% of the
+			// defender's armour ignored on top of the attacker's own stat -- so a
+			// blow forbidden to penetrate must not get it either. Issue #659 added
+			// the second reason; issue #676 added the first. A minion carries both
+			// and either alone would be enough.
 			const bool bHoldsAPiercingWeapon =
 				SubType.Equals(TEXT("Piercing"), ESearchCase::IgnoreCase);
 			Hit.bIsPiercing = bCanPenetrate && bHoldsAPiercingWeapon;

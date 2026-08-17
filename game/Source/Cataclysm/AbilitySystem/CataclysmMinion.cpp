@@ -44,6 +44,14 @@ namespace
 	 * has nothing of its own to put in its place -- no type in
 	 * `game/Data/MinionTypes.csv` states penetration and a minion carries no
 	 * combat attribute set -- so it penetrates zero.
+	 *
+	 * AND IT CARRIES NO WEAPON SUB-TYPE, which is the third thing that crossed by
+	 * the same route. The weapon a hit is credited to is read off the effect
+	 * causer, which is this summoner, so a sword made an imp deal 10% more to
+	 * health and a wand made it strip 10% more energy shield. No sentence of the
+	 * design names sub-types; the general rule blocks them, because a minion
+	 * reaches its summoner through exactly three channels and this is not one of
+	 * them. Issue #676.
 	 */
 	FCataclysmHitDelivery MinionDelivery(bool bIsArea)
 	{
@@ -51,6 +59,7 @@ namespace
 		Delivery.bIsArea = bIsArea;
 		Delivery.bCannotCriticallyStrike = true;
 		Delivery.bCannotPenetrate = true;
+		Delivery.bCarriesNoWeaponSubType = true;
 		return Delivery;
 	}
 

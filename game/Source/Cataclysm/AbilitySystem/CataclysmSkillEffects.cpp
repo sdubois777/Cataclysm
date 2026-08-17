@@ -289,6 +289,16 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		}
 	}
 
+	if (Delivery.bCarriesNoWeaponSubType)
+	{
+		const FGameplayTag NoSubType =
+			UCataclysmDamageCalculation::NoWeaponSubTypeTag();
+		if (NoSubType.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoSubType);
+		}
+	}
+
 	// THE SKILL'S OWN CRITICAL STRIKE CHANCE, AS A NUMBER RATHER THAN A TAG.
 	// Everything above is a yes-or-no property and rides as a tag. This is a
 	// figure, so it rides as a set-by-caller magnitude, which is Unreal's own way

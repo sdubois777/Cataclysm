@@ -83,6 +83,8 @@ const TCHAR* UCataclysmDamageCalculation::NoCriticalStrikeTagName =
 	TEXT("Keyword.NoCrit");
 const TCHAR* UCataclysmDamageCalculation::NoPenetrationTagName =
 	TEXT("Keyword.NoPenetration");
+const TCHAR* UCataclysmDamageCalculation::NoWeaponSubTypeTagName =
+	TEXT("Keyword.NoWeaponSubType");
 const TCHAR* UCataclysmDamageCalculation::SkillCritChanceDataTagName =
 	TEXT("Data.SkillCritChance");
 
@@ -121,6 +123,11 @@ FGameplayTag UCataclysmDamageCalculation::NoCriticalStrikeTag()
 FGameplayTag UCataclysmDamageCalculation::NoPenetrationTag()
 {
 	return TagNamed(NoPenetrationTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::NoWeaponSubTypeTag()
+{
+	return TagNamed(NoWeaponSubTypeTagName);
 }
 
 FGameplayTag UCataclysmDamageCalculation::SkillCritChanceDataTag()
