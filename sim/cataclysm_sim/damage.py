@@ -52,6 +52,49 @@ ARMOR_CONSTANT_PER_TIER = 800.0
 ARMOR_REDUCTION_CAP = 75.0
 
 # --------------------------------------------------------------------------
+# Flat damage reduction
+# --------------------------------------------------------------------------
+
+#: The most the flat damage reduction stat removes from a hit, as a percentage.
+#:
+#: WHY IT NEEDS ONE AT ALL. It was the only layer in the mitigation order with
+#: nothing holding it. Evasion has a soft cap and applies to direct attacks only;
+#: block removes half a hit, so even certainty is not immunity; armour follows a
+#: curve that cannot reach 100 and is capped at 75 besides; resistance is capped
+#: at 70. This one is a flat percentage off everything, with no curve, no roll
+#: and no per-type split, and at 100 it is exact immunity. The design document
+#: says "No combination of these layers reaches immunity. Each has either a cap
+#: or a curve that cannot reach zero damage", and the second sentence was not
+#: true of this layer. Issue #644.
+#:
+#: WHY 75 AND NOT 90. The same figure as ARMOR_REDUCTION_CAP, so the design has
+#: one number for the most a single unconditional mitigation layer may remove.
+#: Path of Exile caps the closest thing it ships, additive physical damage
+#: reduction, at 90%, and that figure was deliberately not copied: its 90% covers
+#: physical damage alone, one damage type among several, where this covers all
+#: eight. A layer that broad should not be more generous than the narrow one it
+#: is modelled on. Last Epoch caps every layer it has -- armour at 85%,
+#: resistances and parry chance at 75% -- and Diablo 4 has no cap because its
+#: sources stack multiplicatively and so cannot reach 100 by construction. This
+#: project's sources add and are applied once, which is Path of Exile's shape,
+#: so a cap is the matching answer rather than restructuring how they stack.
+#:
+#: WHAT IT DOES AND DOES NOT CHANGE. Gear and a class base reach 35.95% at the
+#: absolute most: 14 pieces may carry the affix, one roll each under the affix
+#: group rule, at 2.0 a roll, plus the Ravager's 7.95 at level 100. So no build
+#: reachable from gear is touched, and the 15.9% the design publishes for a fully
+#: geared character is untouched -- which matters, because every enemy damage
+#: figure in the game was fitted against that character stopping 89.9% of a hit.
+#: What the cap binds is the Bulwark passive tree, which has twelve nodes
+#: granting this stat, and two enchantments, one of which grows with the number
+#: of active leech types and states no bound.
+#:
+#: APPLIED TO THE LAYER AND NOT TO THE STAT, the same way ARMOR_REDUCTION_CAP and
+#: RESISTANCE_CAP are. A character may hold more than 75 and the excess does
+#: nothing, which is what "hard" means in the design's caps table.
+DAMAGE_REDUCTION_CAP = 75.0
+
+# --------------------------------------------------------------------------
 # Resistance
 # --------------------------------------------------------------------------
 
@@ -449,6 +492,22 @@ def armor_reduction(armor: float, tier: int) -> float:
     return min(ARMOR_REDUCTION_CAP, 100.0 * armor / (armor + k))
 
 
+def effective_damage_reduction(reduction: float) -> float:
+    """Flat damage reduction as a percentage of damage removed, capped.
+
+    A FUNCTION RATHER THAN A `min()` AT THE CALL SITE, so the cap lives in one
+    place and the mitigation step stays one line, which is what
+    `armor_reduction` and `effective_resistance` already do for their own caps.
+
+    THE FLOOR IS ZERO BECAUSE NEGATIVE FLAT REDUCTION IS NOT A MECHANIC. That is
+    what separates this from `effective_resistance`, whose floor is -100 on
+    purpose: a negative resistance means taking extra damage and several
+    enchantments inflict one deliberately. Nothing in the design grants negative
+    flat damage reduction, and the engine's attribute is already clamped at zero.
+    """
+    return min(DAMAGE_REDUCTION_CAP, max(0.0, reduction))
+
+
 def effective_resistance(resistance: float, penetration: float) -> float:
     """Resistance after penetration, then capped.
 
@@ -559,8 +618,10 @@ def resolve(attacker: Attacker, defender: Defender,
     damage *= 1.0 - resist / 100.0
     after_resistance = damage
 
-    # 5. Flat damage reduction.
-    damage *= 1.0 - defender.damage_reduction / 100.0
+    # 5. Flat damage reduction, capped. Until issue #644 this was the one step
+    # that read a defender's field straight into the arithmetic with nothing
+    # bounding it, so at 100 a character was exactly immune.
+    damage *= 1.0 - effective_damage_reduction(defender.damage_reduction) / 100.0
     after_reduction = damage
 
     # 6. Mana, but only for damage over time and only if the character has built

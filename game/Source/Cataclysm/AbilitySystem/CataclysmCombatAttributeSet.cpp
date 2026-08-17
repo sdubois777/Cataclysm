@@ -121,6 +121,18 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 	// Damage reduction and retaliation are likewise left unbounded here; where
 	// they need bounding is in the damage calculation, against the final number,
 	// not against each contributing stat.
+	//
+	// THAT IS NOW TRUE OF DAMAGE REDUCTION AND IT WAS NOT UNTIL ISSUE #644. The
+	// paragraph above described where the bound belonged, and no bound existed
+	// in the damage calculation or anywhere else, so a character at 100 took
+	// nothing at all. It is capped now, at
+	// UCataclysmDamageCalculation::DamageReductionCap, inside
+	// EffectiveDamageReduction -- which is exactly where this comment always
+	// said it should be.
+	//
+	// RETALIATION IS STILL UNBOUNDED AND THAT IS A DIFFERENT QUESTION. It deals
+	// damage back rather than preventing any, so no amount of it makes anything
+	// immune to anything.
 	NewValue = FMath::Max(NewValue, 0.0f);
 }
 

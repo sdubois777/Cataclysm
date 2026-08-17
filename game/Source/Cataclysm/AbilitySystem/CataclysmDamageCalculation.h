@@ -165,6 +165,29 @@ public:
 	/** How much resistance is worth against damage, however high it is. */
 	static constexpr float ResistanceCap = 70.0f;
 
+	/**
+	 * The most the flat damage reduction stat removes from a hit.
+	 *
+	 * IT WAS THE ONE LAYER WITH NOTHING HOLDING IT. Evasion has a soft cap and
+	 * covers direct attacks only, block removes half a hit so even certainty is
+	 * not immunity, armour follows a curve that cannot reach 100 and is capped at
+	 * 75 besides, and resistance is capped at 70. This is a flat percentage off
+	 * everything, with no curve, no roll and no per-type split, and at 100 it was
+	 * exact immunity. The design document says "No combination of these layers
+	 * reaches immunity. Each has either a cap or a curve that cannot reach zero
+	 * damage", and the second sentence was not true of this one. Issue #644.
+	 *
+	 * THE SAME FIGURE AS ArmorReductionCap, so the design has one number for the
+	 * most a single unconditional mitigation layer may remove. Path of Exile caps
+	 * the closest thing it ships at 90%, and that was deliberately not copied:
+	 * its 90% covers physical damage alone where this covers all eight types.
+	 *
+	 * Mirrors `DAMAGE_REDUCTION_CAP` in `sim/cataclysm_sim/damage.py`, and
+	 * `tools/tests/test_the_damage_reduction_cap_is_one_number.py` fails if the
+	 * two ever disagree.
+	 */
+	static constexpr float DamageReductionCap = 75.0f;
+
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;
 
@@ -332,6 +355,23 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
 	static float EffectiveResistance(float Resistance, float Penetration);
+
+	/**
+	 * Flat damage reduction as a percentage of damage removed, capped.
+	 *
+	 * A FUNCTION RATHER THAN A CLAMP AT THE CALL SITE, so the cap lives in one
+	 * place and the mitigation step stays one line, which is what ArmorReduction
+	 * and EffectiveResistance already do for their own caps.
+	 *
+	 * THE FLOOR IS ZERO, WHICH IS WHAT SEPARATES IT FROM EffectiveResistance.
+	 * That one floors at -100 on purpose, because a negative resistance means
+	 * taking extra damage and several enchantments inflict one deliberately.
+	 * Nothing in the design grants negative flat damage reduction.
+	 *
+	 * Mirrors `effective_damage_reduction` in `sim/cataclysm_sim/damage.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float EffectiveDamageReduction(float Reduction);
 
 	/**
 	 * Run one hit through the whole order against a character's attribute sets.

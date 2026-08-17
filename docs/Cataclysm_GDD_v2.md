@@ -1175,6 +1175,7 @@ Damage-over-time frequency uses the same form, because it is also a rate. Area o
 | Resistances | 70% | Soft. Resistance above it is worth having; one enchantment raises the cap itself, to a ceiling of 90%. |
 | Evasion | 60% | Soft. Gear enchantments may exceed it. |
 | Crit chance | 100% | Hard. Above 100% it means nothing. |
+| Damage reduction | 75% | Hard. The same figure as the armor cap, and nothing penetrates it, so points above it are worth nothing. |
 | Block chance | none | No cap. A block is not a full avoid. |
 | Cooldown reduction | none | No cap needed. The formula cannot reach zero. |
 
@@ -1219,7 +1220,7 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 | 2. Block | Removes 50% of what remains. Applies to area damage as well. |
 | 3. Armor | Reduces damage by `armor / (armor + K)`, where K is 800 × the difficulty tier, capped at 75%. |
 | 4. Resistance | The attacker's Penetration and any Overwhelm are subtracted first, then the result is capped at 70%. |
-| 5. Damage reduction | The flat percentage stat. |
+| 5. Damage reduction | The flat percentage stat, capped at 75%. |
 | 6. Mana | Only for damage over time, and only if an enchantment grants it. |
 | 7. Energy shield | Absorbs before health, one for one. Does not absorb damage over time. |
 | 8. Health | Takes whatever is left. |
@@ -1263,6 +1264,8 @@ understanding that no critical strike layer compounds with it.
 **Armor penetration and resistance penetration are separate stats.** Affixes grant them separately — ignoring armor and ignoring resistances appear as different modifiers throughout the enchantment tables. Piercing weapons add their 20% on top of whatever gear provides, up to all of a target's armor.
 
   
+
+**Flat damage reduction stops at 75% for the same reason armor does.** It is the flattest of the layers — no curve, no roll, no per-type split, and it applies to every kind of damage in every situation — so it is the one that would run away without a stop. Nothing penetrates it, unlike resistance, so every point past 75% is worth exactly nothing and the cap is a hard one. The figure is the armor cap's, so that one number is the most any single unconditional layer removes. Path of Exile caps the closest thing it ships at 90%, but that 90% covers physical damage alone where this covers all eight types, so the wider layer is held to the tighter number. Nothing reachable from gear goes near it: 14 pieces may each carry one roll of the affix at 2%, which with a Ravager's class base is 35.95% at the absolute most. What the cap binds is the passive trees and enchantments.
 
 **No combination of these layers reaches immunity.** Each has either a cap or a curve that cannot reach zero damage.
 

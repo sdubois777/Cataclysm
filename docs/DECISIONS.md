@@ -20,6 +20,137 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — Flat damage reduction caps at 75%, the same figure as armor
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the caps table and the Damage
+Calculation subsection of section IV. Closes issue #644.
+
+### What was wrong
+
+**Flat damage reduction was the only layer of the mitigation order with nothing
+bounding it** — not in the design document's caps table, not in
+`sim/cataclysm_sim/damage.py`, and not in the engine. At 100 it was exact
+immunity. The design document says "No combination of these layers reaches
+immunity. Each has either a cap or a curve that cannot reach zero damage", and
+the second sentence was not true of this layer.
+
+Every other layer can be pointed at. Evasion has a soft cap at 60% and covers
+direct attacks only. Block removes half a hit, so even certainty is not immunity.
+Armor follows `armor / (armor + K)`, which cannot reach 100%, and is capped at
+75% besides. Resistance is capped at 70%. This one is a flat percentage off
+everything.
+
+**The engine already said where the bound belonged and there was no bound.**
+`CataclysmCombatAttributeSet.cpp`, which declares a character's combat
+attributes, read: "Damage reduction and retaliation are likewise left unbounded
+here; where they need bounding is in the damage calculation, against the final
+number, not against each contributing stat." Nothing in the damage calculation
+bounded it. That is the third instance this week of a comment describing an
+intention nobody built, after the attack speed of issue #647 and the critical
+strike chance of issue #649.
+
+**And the one test aimed at this passed because of the number it picked.** Both
+`test_stacking_every_defence_still_lets_damage_through` in `sim/tests/test_damage.py`
+and `StackingEveryLayerStillLetsDamageThrough` in
+`CataclysmDamageCalculationTests.cpp` set flat damage reduction to **90** and
+assert damage still gets through. At exactly 100 both fail. Measured before the
+cap existed:
+
+```
+with damage_reduction=100 the guard test would see 0.0 -> assertion > 0.0 is False
+with damage_reduction=90  it sees 7500.0
+```
+
+Both now sweep 90, 100 and 1,000.
+
+### The issue's own figure was wrong, and so was the first correction
+
+Issue #644 states that a Ravager spending "all 36 suffix slots" on the affix
+reaches 79.95%. Two things are wrong with that. The affix rolls on seven slot
+types only — belt, boots, chest, head, pants, rings and shoulders — which is 14
+physical pieces because there are 8 rings, not the character's full 36 suffix
+slots. And the affix group rule, stated at `Cataclysm_GDD_v2.md:2518` and
+implemented at `affixes.py:2232`, allows one affix from any group per piece, so a
+piece carries this once rather than twice.
+
+| Figure | Where it came from |
+| :-- | :-- |
+| 79.95% | issue #644, counting all 36 suffix slots |
+| 63.95% | a first correction in this session, counting 14 pieces x 2 suffix slots and missing the group rule |
+| **35.95%** | 14 pieces, one roll each at 2.0, plus the Ravager's 7.95 at level 100 |
+
+### 75%, and why not 90
+
+**The genre never leaves this layer unbounded.** Path of Exile caps additive
+physical damage reduction at **90%**, stated on its wiki as a hard limit so that
+physical damage "remains a threat even for heavily defensive builds".
+<https://pathofexile.fandom.com/wiki/Physical_damage_reduction>
+Last Epoch caps **every** layer it has — armour at 85%, resistances at 75%, parry
+chance at 75%. <https://maxroll.gg/last-epoch/resources/defenses-explained>
+Diablo 4 has **no** cap, and needs none, because its damage reduction sources
+stack multiplicatively: each removes a share of what is left, so 100% is
+unreachable by construction.
+<https://maxroll.gg/d4/getting-started/defenses-for-beginners>
+
+**Path of Exile's shape is this project's shape**, which is what decides between a
+cap and a restructure. Here the affixes add into one stat and it is applied once
+as `damage x (1 - reduction/100)`. Diablo 4's answer would mean storing each
+source separately and multiplying them one at a time, which is a change to how
+the stat works rather than a bound on it.
+
+**90 was deliberately not copied.** Path of Exile's 90% covers physical damage
+alone, one damage type among several. This project's layer covers all eight types,
+unconditionally, with no roll and no curve. The widest layer in the game should
+not be held to a looser number than the narrow one it is modelled on.
+
+**75 is the armor cap.** Using the same figure gives the design one number for the
+most a single unconditional mitigation layer may remove, and
+`tools/tests/test_the_damage_reduction_cap_is_one_number.py` fails if either
+moves without the other, so whoever retunes one has to decide about the other.
+
+### What it changes, which is nothing anyone can currently build
+
+Gear and a class base reach 35.95% at the absolute most, so the cap is more than
+twice anything reachable and no existing build is touched. **That matters beyond
+this decision.** The design publishes 15.9% as a fully geared character's flat
+damage reduction and 89.9% as what that character's four layers stop together,
+and every enemy damage constant in the game was fitted against the 89.9%. A cap
+that moved it would move all of them.
+
+What the cap binds is elsewhere. `docs/Bulwark_Class_Tree_Final.json` has twelve
+nodes granting this stat — Thick Hide at 3% per point over 8 points, Iron Wall at
+4% per point over 6, and ten more — which pass 75% between them. Two enchantments
+in `game/Data/EnchantmentsPositive.csv` grant it as well, and the Starvation
+six-piece bonus grows with the number of active leech types and states no bound
+at all.
+
+### Applied to the layer, not to the stat
+
+The same shape as armor and resistance: the cap sits on the percentage the layer
+removes, inside a function, rather than on the number the character carries. A
+character may hold 200 and it does nothing. That is what the caps table's "Hard"
+means, and it is what the engine's own comment always said should happen.
+
+The floor is zero rather than -100. That is the one place it differs from
+resistance, whose floor is negative on purpose because several enchantments
+inflict a negative resistance deliberately. Nothing grants negative flat damage
+reduction.
+
+### Two questions this raises and does not answer
+
+**The Bulwark tree says "(multiplicative)" on eight of its twelve damage
+reduction nodes**, against a stat the model and the engine both treat as
+additive-then-applied-once. What that word means here is undefined, and a cap on
+the stat may not bind on a node that genuinely multiplies. Filed separately.
+
+**The design has four damage reduction tags** — `Stat.Defense.Global`, `.Melee`,
+`.Spell` and `.Ranged` — and about eight enchantments phrased as "you take X%
+less damage" from a particular source. Whether those route through this stat or
+their own buckets is stated nowhere, and this cap covers only the one stat. Filed
+separately.
+
+---
+
 ## 2026-08-17 — Critical strikes are rolled per hit, and the model keeps averaging them
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Damage Calculation subsection of
