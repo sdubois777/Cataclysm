@@ -81,6 +81,28 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCannotPenetrate = false;
 
 	/**
+	 * This blow carries none of the attacker's weapon sub-type effects.
+	 *
+	 * FOR A SUMMONED MINION, the third exclusion built for the same reason as the
+	 * two above. The weapon a hit is credited to is read off the effect causer,
+	 * and a minion's damage is dealt in its summoner's name, so without this a
+	 * sword in the player's hand makes its imps deal 10% more to health and a
+	 * wand makes them strip 10% more energy shield.
+	 *
+	 * BLOCKED BY THE DESIGN'S GENERAL RULE rather than by a sentence naming
+	 * sub-types: "A minion reaches its summoner through exactly three channels,
+	 * and nothing else crosses", then "Everything else is blocked unless a
+	 * modifier says minion". A weapon sub-type is not one of the three.
+	 * `docs/Cataclysm_GDD_v2.md:1747`. Issue #676.
+	 *
+	 * IT OVERLAPS WITH `bCannotPenetrate` ON PIERCING, on purpose: piercing's
+	 * whole effect is armour penetration, so both flags block it and a hit needs
+	 * only one of them to be free of it.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCarriesNoWeaponSubType = false;
+
+	/**
 	 * The base critical strike chance of the skill dealing this blow, or -1 to
 	 * take whatever the attacker's own attribute holds.
 	 *

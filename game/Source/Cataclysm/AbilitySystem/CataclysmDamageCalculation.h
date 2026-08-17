@@ -353,6 +353,31 @@ public:
 	static const TCHAR* NoPenetrationTagName;
 
 	/**
+	 * The tag that says a hit carries none of the attacker's weapon sub-type.
+	 *
+	 * `Keyword.NoWeaponSubType`. IT EXISTS FOR SUMMONED MINIONS, the third of
+	 * three exclusions built for the same reason. A minion's blow is dealt in its
+	 * summoner's name, and the weapon a hit is credited to is read off the effect
+	 * causer, which is that same summoner, so without this a minion inherits
+	 * whatever is in the player's hand: a sword makes it deal 10% more to health
+	 * and a wand makes it strip 10% more energy shield.
+	 *
+	 * THE DESIGN'S GENERAL RULE IS WHAT BLOCKS IT, rather than a sentence naming
+	 * sub-types. "A minion reaches its summoner through exactly three channels,
+	 * and nothing else crosses" -- its side, its base health and damage raised by
+	 * the summoner's level, and increased damage from one primary attribute --
+	 * followed by "Everything else is blocked unless a modifier says minion."
+	 * A weapon sub-type is not one of the three. See
+	 * `docs/Cataclysm_GDD_v2.md:1747` and the table above it. Issue #676.
+	 *
+	 * IT OVERLAPS WITH `Keyword.NoPenetration` ON PIERCING, on purpose. Piercing's
+	 * whole effect is armour penetration, so a hit that may not penetrate must not
+	 * get it either. Two independent reasons block the same flag and a hit needs
+	 * only one of them.
+	 */
+	static const TCHAR* NoWeaponSubTypeTagName;
+
+	/**
 	 * The key a hit's own critical strike chance is carried under.
 	 *
 	 * `Data.SkillCritChance`. NOT A TAG ANYTHING IS SCOPED BY. The other tag
@@ -383,6 +408,9 @@ public:
 
 	/** `Keyword.NoPenetration`, or an invalid tag if the vocabulary lost it. */
 	static FGameplayTag NoPenetrationTag();
+
+	/** `Keyword.NoWeaponSubType`, or an invalid tag if the vocabulary lost it. */
+	static FGameplayTag NoWeaponSubTypeTag();
 
 	/** `Data.SkillCritChance`, or an invalid tag if the vocabulary lost it. */
 	static FGameplayTag SkillCritChanceDataTag();

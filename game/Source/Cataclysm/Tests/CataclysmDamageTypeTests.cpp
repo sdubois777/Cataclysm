@@ -1245,6 +1245,115 @@ CATACLYSM_TEST(FCataclysmPiercingAddsToTheStatTest,
 // one rule in two places.
 // --------------------------------------------------------------------------
 
+CATACLYSM_TEST(FCataclysmNoWeaponSubTypeTagExistsTest,
+	"Cataclysm.DamageType.TheTagThatForbidsAWeaponSubTypeIsInTheVocabulary")
+{
+	// An invalid tag would stop the flag travelling and fail nothing else, which
+	// is the silent failure the two tags beside it have their own tests for.
+	const FGameplayTag NoSubType =
+		UCataclysmDamageCalculation::NoWeaponSubTypeTag();
+
+	TestTrue(TEXT("Keyword.NoWeaponSubType is a tag the vocabulary knows"),
+		NoSubType.IsValid());
+	TestEqual(TEXT("and it is spelled the way the generator writes it"),
+		NoSubType.GetTagName().ToString(),
+		FString(TEXT("Keyword.NoWeaponSubType")));
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmCallerCanForbidTheSubTypeTest,
+	"Cataclysm.DamageType.ACallerCanSayAHitCarriesNoWeaponSubType")
+{
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		// NO ARMOUR, NO RESISTANCE AND NO SHIELD on the defender, so the slashing
+		// bonus is the only thing that can move the reading.
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		// A Sword is Slashing: 10% more of what reaches health.
+		CataclysmDamageTypeTest::FScopedArmedAttacker Slashing(World, TEXT("Sword"));
+
+		FCataclysmHitDelivery NoSubType;
+		NoSubType.bCarriesNoWeaponSubType = true;
+		UCataclysmSkillEffects::ApplyHit(Slashing.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), NoSubType);
+		TestEqual(TEXT("a hit carrying no sub-type gets no slashing bonus"),
+			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+
+		// THE SAME ATTACKER WITHOUT THE FLAG, which is what makes the reading
+		// above a rule rather than a weapon that was never read at all.
+		UCataclysmSkillEffects::ApplyHit(Slashing.Actor, Defender.Actor, 100.0f);
+		TestEqual(TEXT("where the same blow without the flag gets it"),
+			Defender.TakeDamageReading(), 1100.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmMinionTakesNoWeaponSubTypeTest,
+	"Cataclysm.DamageType.AMinionDoesNotTakeItsSummonersWeaponSubType")
+{
+	// The roll is pinned off. See FScopedNoCriticalStrikes: without it this
+	// test reads half as much again as it expects, at random.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+
+	// THE REAL CALL SITE. The weapon a hit is credited to is read off the effect
+	// causer, and a minion's damage is dealt in its summoner's name, so a sword in
+	// the summoner's hand made its imps deal 10% more to health. No sentence of
+	// the design names sub-types; its general rule blocks them, because a minion
+	// reaches its summoner through exactly three channels and this is not one of
+	// them (docs/Cataclysm_GDD_v2.md:1747). Issue #676.
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.LastHealth = Defender.Vitals->GetHealth();
+
+		CataclysmDamageTypeTest::FScopedArmedAttacker Summoner(World, TEXT("Sword"));
+
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner.Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+			/*bBurns=*/false);
+		if (!TestNotNull(TEXT("an imp"), Imp))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// An imp hits for 30% of its summoner's weapon damage, so 300 is swung and
+		// 300 lands. With the sub-type it would have been 330.
+		Imp->AttackTarget(Defender.Actor);
+		TestEqual(TEXT("a minion's blow gets no slashing bonus"),
+			Defender.TakeDamageReading(), 300.0f, 1.0f);
+
+		// AND THE SUMMONER'S OWN BLOW STILL GETS IT, which is what makes the
+		// reading above a rule about minions rather than the weapon sub-type
+		// having stopped reaching anything at all.
+		UCataclysmSkillEffects::ApplyHit(Summoner.Actor, Defender.Actor, 100.0f);
+		TestEqual(TEXT("while its summoner's own blow still gets it"),
+			Defender.TakeDamageReading(), 1100.0f, 1.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmNoPenetrationTagExistsTest,
 	"Cataclysm.DamageType.TheTagThatForbidsPenetrationIsInTheVocabulary")
 {
