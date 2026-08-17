@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestSkip.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -1128,7 +1129,7 @@ bool FCataclysmBruteSwingIsVisibleTest::RunTest(const FString&)
 		Brute.Actor->PlayAttackAnimation();
 		TestNull(TEXT("with no attack animation loaded it plays nothing"),
 			Brute.Actor->LastPlayedAnimation.Get());
-		AddInfo(TEXT("The Paragon art is absent, so only the no-art half of this "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon art is absent, so only the no-art half of this "
 					 "test ran. Install the pack to exercise the rest."));
 		return true;
 	}
@@ -2166,7 +2167,7 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 				ACataclysmBruteCharacter::RockThrowWindUpSeconds),
 			1.00f, 0.001f);
 
-		AddInfo(TEXT("The Paragon art is absent, so only the no-art half of this "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon art is absent, so only the no-art half of this "
 					 "test ran. Install the pack to exercise the rest."));
 		return true;
 	}

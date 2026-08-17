@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestSkip.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
@@ -821,7 +822,7 @@ bool FCataclysmWardenSwingsLeftThenRightThenRecovers::RunTest(const FString&)
 	const bool bDressed = Warden->ResolveBody(/*bIncludeAnimation=*/true);
 	if (!bDressed || !Warden->LeftSwingAnimation)
 	{
-		AddInfo(TEXT("SKIPPED: the Paragon Grux pack is not present, so there "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("SKIPPED: the Paragon Grux pack is not present, so there "
 					 "are no clips to sequence. The behaviour this checks was "
 					 "NOT verified on this machine."));
 		return true;
@@ -1042,7 +1043,7 @@ bool FCataclysmWardenHidesItsPlaceholderOnceDressed::RunTest(const FString&)
 
 	if (!bDressed)
 	{
-		AddInfo(TEXT("the Paragon Grux pack is not present, so what was checked "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("the Paragon Grux pack is not present, so what was checked "
 					 "is that the placeholder is KEPT rather than that it is "
 					 "hidden. Both directions matter; only one ran here."));
 	}
@@ -1080,7 +1081,7 @@ bool FCataclysmWardenReturnsToARestingPoseAfterASwing::RunTest(const FString&)
 	const bool bDressed = Warden->ResolveBody(/*bIncludeAnimation=*/true);
 	if (!bDressed || !Warden->IdleAnimation || !Warden->LeftSwingAnimation)
 	{
-		AddInfo(TEXT("SKIPPED: the Paragon Grux pack is not present, so there "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("SKIPPED: the Paragon Grux pack is not present, so there "
 					 "are no clips to move between. The behaviour this checks "
 					 "was NOT verified on this machine."));
 		return true;

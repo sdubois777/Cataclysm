@@ -223,6 +223,18 @@ cycle each:
   issue #436, because the file was a library with no entry point, and it was run
   three times before anyone noticed. Check the exit code and check that the
   output says how many tests were performed.
+- **A passing test may have checked half of what it is named for, and the run
+  says so.** Fifteen tests take a shorter path when the Paragon art packs are
+  absent. They report it with `CataclysmTestSkip::ReportSkippedHalf`, and
+  `python tools/unreal_build.py tests` names them after the pass count:
+
+  ```
+  22 tests performed, 22 succeeded, 0 failed. 1 skipped part of what they
+  check: Cataclysm.Brute.ItLobsTheRockFromItsHandRatherThanItsWaist
+  ```
+
+  Read that line before quoting a run as evidence. **Use the helper rather than
+  `AddInfo` for a new skip**, or the run will not mention it. Issue #467.
 
 **Say what did not work.** If a test fails, or you skipped part of the task, or
 the evidence for a result was compromised, say so plainly and first. Do not

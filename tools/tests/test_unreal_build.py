@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -29,6 +30,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+import unreal_build  # noqa: E402
 from unreal_build import (  # noqa: E402
     BuildDidNothing,
     BuildOutcome,
@@ -42,6 +44,10 @@ from unreal_build import (  # noqa: E402
     require_compiled,
     restore_and_touch,
 )
+
+#: This checkout's root, for the check that the C++ helper and the Python reader
+#: spell the skipped-half token the same way.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 #: The script itself, for the tests below that run it as a command rather than
 #: importing it.
@@ -188,6 +194,90 @@ def test_the_test_log_is_read_rather_than_standard_output() -> None:
     assert tests.failed == ("AProjectileHitsWhatItPassedThrough",)
     assert tests.any_failed
     assert "AProjectileHitsWhatItPassedThrough" in tests.summary
+
+
+#: A run in which two tests passed while checking half of what they are named
+#: for. Both routes the reporting helper writes are present, because it writes
+#: the line twice on purpose: once through the automation controller's event
+#: block and once straight to the log under LogCataclysm.
+TEST_LOG_WITH_SKIPS = """\
+LogCataclysm: Display: CATACLYSM_SKIPPED_HALF Cataclysm.Brute.ItLobsTheRock -- \
+No skeleton with a weapon_r bone. The launch height is not checked.
+LogAutomationController: CATACLYSM_SKIPPED_HALF Cataclysm.Brute.ItLobsTheRock -- \
+No skeleton with a weapon_r bone. The launch height is not checked.
+LogAutomationController: Display: Test Completed. Result={Success} Name={ItLobsTheRock}
+LogCataclysm: Display: CATACLYSM_SKIPPED_HALF Cataclysm.Warden.ItSequencesClips -- \
+The Paragon Grux pack is not present, so there are no clips to sequence.
+LogAutomationController: CATACLYSM_SKIPPED_HALF Cataclysm.Warden.ItSequencesClips -- \
+The Paragon Grux pack is not present, so there are no clips to sequence.
+LogAutomationController: Display: Test Completed. Result={Success} Name={ItSequencesClips}
+LogAutomationController: Display: ...Automation Test Queue Empty 2 tests performed.
+"""
+
+
+class TestASkippedHalfIsReported:
+    """A test that checks nothing still counts as a pass. Issue #467.
+
+    WHAT WAS WRONG. Fifteen automation tests take a shorter path when the Paragon
+    art packs are absent, and each said so in its own wording. The run's summary
+    read "22 tests performed, 22 succeeded, 0 failed" whether or not any of them
+    had a subject left, and finding out meant knowing all fifteen wordings and
+    grepping the log by hand.
+    """
+
+    def test_a_skipped_half_is_read_out_of_the_log(self) -> None:
+        tests = parse_test_log(TEST_LOG_WITH_SKIPS)
+        assert tests.skipped_half == (
+            "Cataclysm.Brute.ItLobsTheRock", "Cataclysm.Warden.ItSequencesClips")
+
+    def test_the_two_routes_are_counted_once(self) -> None:
+        """The helper writes each line twice on purpose; it is one skip."""
+        assert len(parse_test_log(TEST_LOG_WITH_SKIPS).skipped_half) == 2
+
+    def test_the_summary_says_so_even_though_nothing_failed(self) -> None:
+        """The whole point: a clean-looking run that checked less than it says."""
+        summary = parse_test_log(TEST_LOG_WITH_SKIPS).summary
+        assert "2 succeeded, 0 failed" in summary
+        assert "2 skipped part of what they check" in summary
+        assert "Cataclysm.Brute.ItLobsTheRock" in summary
+
+    def test_a_run_with_no_skips_says_nothing_about_them(self) -> None:
+        """No noise on the ordinary case, which is every run on this machine."""
+        tests = parse_test_log(TEST_LOG)
+        assert tests.skipped_half == ()
+        assert "skipped part of what they check" not in tests.summary
+
+    def test_a_skipped_half_is_not_a_failure(self) -> None:
+        """It is a warning to a reader, not a broken build.
+
+        Continuous integration has no Paragon art and never will, so treating
+        this as a failure would make every run there red for a reason nobody can
+        fix. What was missing was the reader being told.
+        """
+        assert not parse_test_log(TEST_LOG_WITH_SKIPS).any_failed
+
+    def test_python_and_cpp_spell_the_token_the_same(self) -> None:
+        """The two halves of this are in different languages and cannot import
+        each other, so the token is compared as text.
+
+        A renamed token on either side would silently stop every skip being
+        reported, and nothing else would notice: the tests would still pass and
+        the summary would still look clean, which is the exact state this whole
+        issue is about.
+        """
+        header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Tests"
+                  / "CataclysmTestSkip.h")
+        assert header.is_file(), f"{header} does not exist"
+
+        text = header.read_text(encoding="utf-8")
+        match = re.search(r'Marker\s*=\s*TEXT\("([^"]+)"\)', text)
+        assert match, (
+            "could not find the Marker constant in CataclysmTestSkip.h. If it "
+            "was renamed, rename it here too.")
+
+        assert match.group(1) in unreal_build.SKIPPED_HALF.pattern, (
+            f"the C++ helper writes {match.group(1)!r} and the Python reader "
+            f"looks for {unreal_build.SKIPPED_HALF.pattern!r}.")
 
 
 def test_an_empty_log_reports_nothing_rather_than_success() -> None:

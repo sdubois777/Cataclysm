@@ -119,6 +119,23 @@ TEST_RESULT = re.compile(r"Test Completed\. Result=\{(\w+)\}\s+Name=\{([^}]+)\}"
 #: `... Automation Test Queue Empty 141 tests performed.`
 TESTS_PERFORMED = re.compile(r"Automation Test Queue Empty\s+(\d+) tests performed")
 
+#: The token a test writes when it could not check part of what it is named for.
+#:
+#: FIFTEEN TESTS TAKE A SHORTER PATH WHEN THE PARAGON ART IS ABSENT, checking
+#: what can be checked without a skeletal mesh and returning early. Each said so
+#: in its own words, so telling "this ran" from "this skipped" meant knowing all
+#: fifteen wordings, and a sixteenth added later was invisible to anyone who had
+#: learned the list. `CataclysmTestSkip::ReportSkippedHalf`, in
+#: `game/Source/Cataclysm/Tests/CataclysmTestSkip.h`, now writes this one token,
+#: and `tools/tests/test_unreal_build.py` fails if the two spellings disagree.
+#:
+#: THE SAME LINE APPEARS TWICE PER SKIP, because the helper writes it by two
+#: routes on purpose: once through the automation controller's event block, and
+#: once straight into the log file under `LogCataclysm`, which does not depend on
+#: how the automation framework formats events. So the test names are collected
+#: into a set rather than counted. Issue #467.
+SKIPPED_HALF = re.compile(r"CATACLYSM_SKIPPED_HALF\s+(\S+)\s+--")
+
 
 class BuildDidNothing(RuntimeError):
     """A build reported success without compiling anything that was asked for.
@@ -226,6 +243,14 @@ class TestOutcome:
     succeeded: tuple[str, ...]
     failed: tuple[str, ...]
 
+    #: Tests that passed while saying they could not check part of their subject.
+    #:
+    #: A PASS AND A SKIPPED HALF LOOK IDENTICAL IN THE COUNT, which is what this
+    #: exists to change. A test that checks nothing and returns true is counted as
+    #: a success, and the run's summary said "22 succeeded" whether or not any of
+    #: them had a subject left. Issue #467.
+    skipped_half: tuple[str, ...] = ()
+
     @property
     def any_failed(self) -> bool:
         return bool(self.failed)
@@ -237,6 +262,15 @@ class TestOutcome:
                 f"{len(self.failed)} failed")
         if self.failed:
             line += ": " + ", ".join(self.failed)
+
+        # SAID EVEN WHEN NOTHING FAILED, and said after the failures so a failure
+        # is still the first thing read. A run where every test passed and six of
+        # them checked half of what they are named for is not the same run as one
+        # where every test checked everything, and until this the two printed the
+        # same line.
+        if self.skipped_half:
+            line += (f". {len(self.skipped_half)} skipped part of what they "
+                     f"check: " + ", ".join(self.skipped_half))
         return line
 
 
@@ -380,11 +414,16 @@ def parse_test_log(text: str) -> TestOutcome:
     for result, name in TEST_RESULT.findall(text):
         (succeeded if result == "Success" else failed).append(name)
 
+    # De-duplicated and sorted, because the helper writes each line twice by two
+    # routes on purpose. See SKIPPED_HALF.
+    skipped = sorted(set(SKIPPED_HALF.findall(text)))
+
     performed_match = TESTS_PERFORMED.search(text)
     return TestOutcome(
         int(performed_match.group(1)) if performed_match else None,
         tuple(succeeded),
         tuple(failed),
+        tuple(skipped),
     )
 
 

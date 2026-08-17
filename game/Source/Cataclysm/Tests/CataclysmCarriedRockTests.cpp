@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestSkip.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -194,7 +195,7 @@ bool FCataclysmTheRockIsHeldOnlyWhileWindingUpTheThrow::RunTest(const FString&)
 	const bool bHasArt = Fixture.Brute->RockMesh != nullptr;
 	if (!bHasArt)
 	{
-		AddInfo(TEXT("The Paragon Rampage pack is not installed, so there is no "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon Rampage pack is not installed, so there is no "
 					 "rock to hold. Only the hidden-throughout path is checked."));
 	}
 
@@ -261,7 +262,7 @@ bool FCataclysmAStunTakesTheRockOutOfItsHand::RunTest(const FString&)
 
 	if (!Fixture.Brute->RockMesh)
 	{
-		AddInfo(TEXT("The Paragon Rampage pack is not installed, so the rock is "
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon Rampage pack is not installed, so the rock is "
 					 "hidden throughout and this test can only check that."));
 	}
 
