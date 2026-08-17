@@ -3,6 +3,9 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For turning an ability's tag list into a container, the same way a
+// player's skill row is read. Issue #519.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
@@ -119,6 +122,12 @@ static TAutoConsoleVariable<float> CVarWardenStampedeSpeed(
 	ECVF_Default);
 
 // --------------------------------------------------------------------------
+
+// A RING AT ITS OWN FEET. Scorching Arc is the designed player skill of the
+// same shape; this one leaves no burning ground, so it carries no
+// Type.AOE.Persistent, and it does not stun, so it carries no Keyword.CC.
+const TCHAR* ACataclysmAbyssalWardenCharacter::MoltenRoarTags =
+	TEXT("Type.AOE.PointBlank, Type.Strike");
 
 ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
 {
@@ -469,15 +478,18 @@ void ACataclysmAbyssalWardenCharacter::UseEnemyAbility(int32 Index,
 		// IT DOES NOT STUN. The Brute's stomp is the one thing in this slice
 		// that holds the player still, and a second would spend most of its uses
 		// inside the five second stun immunity window.
+		// PARSED ONCE RATHER THAN PER TARGET. This is the largest ring in the
+		// game and catches a crowd.
+		const FGameplayTagContainer AbilityTags =
+			UCataclysmSkillShapes::TagsFromCell(MoltenRoarTags);
+
 		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
 				World, this, GetActorLocation(), MoltenRoarRadiusCm))
 		{
 			// AREA DAMAGE, so it cannot be evaded. This is the largest
 			// telegraph in the game and it swept a sphere. Issue #513.
 			UCataclysmSkillEffects::ApplyHit(this, Caught,
-											 MoltenRoarDamagePercent,
-											 FGameplayTagContainer(),
-											 FCataclysmHitDelivery::Area());
+											 MoltenRoarDamagePercent, AbilityTags);
 		}
 		return;
 	}

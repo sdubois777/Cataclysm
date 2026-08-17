@@ -110,6 +110,30 @@ public:
 	static constexpr float StompDamagePercent = 250.0f;
 
 	/**
+	 * What the stomp IS, as gameplay tags. Issue #519.
+	 *
+	 * THE SAME THREE SHOCKWAVE LEAP CARRIES, which is the designed player skill
+	 * of the same shape: a point-blank area that holds what it catches still.
+	 * Written in the format a skill row's Tags cell uses and parsed by the same
+	 * code, so there is one format and one parser rather than a second of each.
+	 *
+	 * `Type.AOE.PointBlank` IS WHAT MAKES IT UNEVADABLE, and it is now the only
+	 * thing that does. Until this, the call site said so a second way by passing
+	 * an area delivery, and two routes to one question is the workaround issue
+	 * #519 was opened about.
+	 */
+	static const TCHAR* StompTags;
+
+	/**
+	 * What the thrown rock IS, as gameplay tags. Issue #519.
+	 *
+	 * `Type.Projectile` is what Emberfang and Hurl Cinders carry. `Type.Ranged`
+	 * is this one's own: the ability exists so that standing outside the Brute's
+	 * reach is not free, which is what the design says it is for.
+	 */
+	static const TCHAR* RockThrowTags;
+
+	/**
 	 * Seconds everything caught in the ring is held still. StunSeconds=1.5.
 	 *
 	 * THIS IS WHAT THE FIVE SECOND COOLDOWN ABOVE IS FOR. The design's stun

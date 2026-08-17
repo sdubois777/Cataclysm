@@ -436,6 +436,52 @@ public:
 	 */
 	static constexpr float AttackPercentOfOwnDamage = 100.0f;
 
+	/**
+	 * What an enemy's ordinary attack IS, as gameplay tags.
+	 *
+	 * WHY AN ENEMY ABILITY HAS TAGS AT ALL. A player's skill carries a tag list
+	 * from the Tags column of the weapon skill matrix and an enemy's ability
+	 * carried none, so nothing could ask what an enemy attack is. That already
+	 * cost one workaround: whether a hit is area damage is normally read off the
+	 * skill's own tags, and the two enemy abilities that sweep a volume had to
+	 * say so a second way, at the call site. Issue #519, asked for by the project
+	 * owner on 2026-08-12.
+	 *
+	 * WRITTEN IN THE SAME FORMAT AS A SKILL ROW'S Tags CELL, and parsed by the
+	 * same `UCataclysmSkillShapes::TagsFromCell`, so there is one format and one
+	 * parser rather than a second of each. It warns about a name the vocabulary
+	 * does not have, and `Cataclysm.EnemyTags.*` fails if any of these carries
+	 * one.
+	 *
+	 * DECLARED IN C++ BESIDE THE ABILITY'S OTHER CONSTANTS rather than generated
+	 * from a table. Issue #519 weighed both and preferred this: a generated enemy
+	 * ability table is the shape issue #355 proposes for enemy archetype numbers
+	 * and the two should go together, while the tags themselves have to be chosen
+	 * either way.
+	 *
+	 * THE TAGS FOLLOW WHAT THE DESIGNED PLAYER SKILLS ALREADY DO, rather than
+	 * being invented. A single melee swing is what Cinderslash carries.
+	 *
+	 * NO `Element.*` TAG, on purpose. An enemy's damage type is a field on this
+	 * class and already reaches the hit as an `Element.*` tag through
+	 * `UCataclysmSkillEffects::DamageTypeOf`. Naming it here as well would put
+	 * the damage type in two places that could disagree.
+	 *
+	 * NO `Slot.*` TAG either. Those exist so a player affix scoped to, say, heavy
+	 * attack damage can find the player's heavy skill. An enemy carries no stat
+	 * modifiers, so a slot tag on an enemy ability would scope nothing.
+	 */
+	static const TCHAR* BasicAttackTags;
+
+	/**
+	 * What a charge IS, as gameplay tags.
+	 *
+	 * `Keyword.Charge` is what Furnace Charge and Flamedart carry, and
+	 * `Keyword.Stagger` is here because this one shoves aside what it runs
+	 * through, which is the rule the design settled on issue #310.
+	 */
+	static const TCHAR* ChargeTags;
+
 protected:
 	virtual void InitAbilityActorInfo() override;
 
