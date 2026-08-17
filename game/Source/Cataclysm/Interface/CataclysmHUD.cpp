@@ -121,11 +121,24 @@ void ACataclysmHUD::DrawTextCentred(const FString& Text,
 {
 	UFont* Font = OverlayFont();
 
+	// EVERY PIECE OF TEXT THIS DRAWS GOES THROUGH HERE, which is why the base
+	// size is applied at this one point rather than at each caller. It covers
+	// the floating damage numbers and the player's own health and mana figures
+	// together, and the project owner's complaint after playing was that the
+	// font is "too small in general" rather than about either one. Issue #668.
+	//
+	// THE CALLER'S Scale STAYS RELATIVE. UCataclysmCombatOverlay::ScaleFor
+	// answers 1.0 for an ordinary blow, 0.7 for a damage over time tick and 1.35
+	// for a critical strike, and those are ratios between numbers rather than
+	// absolute sizes. Multiplying here keeps that separation: the overlay decides
+	// what is bigger than what, and the heads-up display decides how big.
+	const float Sized = Scale * TextScale;
+
 	float Width = 0.0f;
 	float Height = 0.0f;
-	GetTextSize(Text, Width, Height, Font, Scale);
+	GetTextSize(Text, Width, Height, Font, Sized);
 
-	DrawText(Text, Colour, CentreX - Width * 0.5f, TopY, Font, Scale);
+	DrawText(Text, Colour, CentreX - Width * 0.5f, TopY, Font, Sized);
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,

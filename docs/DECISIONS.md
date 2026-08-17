@@ -20,6 +20,78 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — A critical strike gets its own colour, decided by playing it
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the floating damage number paragraph in
+section XIII. Closes issues #668 and #661. **This reverses part of a decision
+recorded in this log on 2026-08-16**, and the reversal is the point of the entry.
+
+### What was decided before, and why it was wrong
+
+When floating damage numbers were built under issue #518, colour was reserved to
+say one thing: where the damage went. Warm near-white reached health, blue was
+absorbed by an energy shield or a mana pool, mid grey got through nothing.
+Colouring numbers by damage type was rejected to keep it that way, and this log
+records the reasoning.
+
+So when issue #649 made critical strikes real, the question of how to show one
+was put to the project owner with three options, and colour was the one I argued
+against. A critical strike was drawn 1.35 times larger with an exclamation mark on
+its figure.
+
+**Then it was played.** On 2026-08-17 the project owner reported:
+
+> Personally I think the font size is too small in general, and crits should be an
+> orange/red color even though it might conflict with some backgrounds. As is, you
+> really can't tell the difference between a crit and a normal hit even though
+> it's slightly bigger and has an exclamation point.
+
+The earlier decision was made by argument, on a screen neither of us had seen. The
+new one was made by looking at it. That is the whole reason the sandbox exists.
+
+### What changed
+
+| Before | After |
+| :-- | :-- |
+| a critical strike's figure ended in "!" | no punctuation on any figure |
+| a critical strike was 1.35x size, in the ordinary colours | 1.35x size, in amber orange `FFA31F` |
+| every number drawn at the engine medium font, scale 1.0 | every number and the player's own health and mana figures drawn at 1.6 |
+
+**The base size is applied in one place**, inside `ACataclysmHUD::DrawTextCentred`,
+because the complaint was that the font is small "in general" rather than about
+the damage numbers alone. The overlay still answers relative sizes — 1.0 for a
+blow, 0.7 for a damage over time tick, 1.35 for a critical strike — and the
+heads-up display decides how big those are. 1.6 is a step rather than an answer,
+and only play settles it.
+
+### What the colour costs, stated rather than discovered later
+
+For a critical strike, colour no longer separates a hit that reached health from
+one an energy shield absorbed. The information moved rather than went: the text
+still prints `12 (+30)` against `12`. Diablo 4 makes the same trade, white for an
+ordinary hit and yellow for a critical one.
+
+The rule that colour is not the only channel still holds, and the test that
+enforces it — `Cataclysm.Overlay.ColourIsNotTheOnlyChannelSeparatingTwoOutcomes`
+— is unchanged and still passes.
+
+### Orange rather than red, and that is not a taste
+
+`#FF3020` is reserved game-wide for the attack telegraph, and a red number beside
+a red telegraph is exactly the confusion the reservation exists to prevent. Amber
+orange sits far enough away in the green channel to be told apart.
+
+**The test that guards the reservation could not have caught a near miss.** It
+compared three named colour constants against the string "FF3020", so `FF3021`
+would have passed it, and two of the class's colours were not in its list at all
+— the mana bar, added when the mana display was built, and nothing said so. It
+now walks every colour the class declares, asserts the count so a new one cannot
+be added unnoticed, and measures distance from the telegraph red rather than
+checking two strings differ. That is issue #661, closed here because the new
+colour is the reason it mattered.
+
+---
+
 ## 2026-08-17 — Flat damage reduction caps at 75%, the same figure as armor
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the caps table and the Damage

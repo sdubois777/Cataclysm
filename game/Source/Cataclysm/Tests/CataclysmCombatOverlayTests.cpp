@@ -385,38 +385,94 @@ bool FCataclysmOverlayAvoidsTheTelegraphRed::RunTest(const FString&)
 	// must survive all eight. This is the guard against somebody later picking
 	// a brighter red because it looks better.
 	const FString Reserved(TEXT("FF3020"));
+	const FLinearColor Telegraph =
+		UCataclysmCombatOverlay::ColourFromHex(*Reserved);
 
-	TestNotEqual(TEXT("the health bar is not the telegraph red"),
-		FString(UCataclysmCombatOverlay::HealthFillHex), Reserved);
-	TestNotEqual(TEXT("the shield bar is not the telegraph red"),
-		FString(UCataclysmCombatOverlay::ShieldFillHex), Reserved);
-	TestNotEqual(TEXT("a number that reached health is not the telegraph red"),
-		FString(UCataclysmCombatOverlay::ReachedHealthHex), Reserved);
+	// EVERY COLOUR THIS CLASS DECLARES, rather than the three that were listed by
+	// hand until issue #661. Two were missing: the mana bar, added when the mana
+	// display was built, and nothing said so. A named list cannot notice a
+	// colour nobody remembered to add to it, so the count below is asserted too.
+	struct FNamedColour { const TCHAR* What; const TCHAR* Hex; };
+	const FNamedColour All[] = {
+		{ TEXT("the bar backing"), UCataclysmCombatOverlay::BarBackingHex },
+		{ TEXT("the health bar"), UCataclysmCombatOverlay::HealthFillHex },
+		{ TEXT("the shield bar"), UCataclysmCombatOverlay::ShieldFillHex },
+		{ TEXT("the mana bar"), UCataclysmCombatOverlay::ManaFillHex },
+		{ TEXT("a number that reached health"),
+		  UCataclysmCombatOverlay::ReachedHealthHex },
+		{ TEXT("a number a pool absorbed"),
+		  UCataclysmCombatOverlay::AbsorbedHex },
+		{ TEXT("a number nothing got through"),
+		  UCataclysmCombatOverlay::NothingThroughHex },
+		{ TEXT("a critical strike"),
+		  UCataclysmCombatOverlay::CriticalStrikeHex },
+	};
+
+	TestEqual(TEXT("every colour this class declares is in the list above"),
+		static_cast<int32>(UE_ARRAY_COUNT(All)), 8);
+
+	for (const FNamedColour& Entry : All)
+	{
+		TestNotEqual(FString::Printf(
+			TEXT("%s is not the telegraph red"), Entry.What),
+			FString(Entry.Hex), Reserved);
+
+		// AND NOT MERELY A DIFFERENT STRING FROM IT. The check above passes for
+		// FF3021, which no eye can tell from FF3020. That matters now that a
+		// number is deliberately warm: the critical strike colour added under
+		// issue #668 is the first thing in this class chosen to be orange, and
+		// "orange, but not that orange" is a distance rather than an inequality.
+		const FLinearColor Colour =
+			UCataclysmCombatOverlay::ColourFromHex(Entry.Hex);
+		const float Distance =
+			FMath::Abs(Colour.R - Telegraph.R)
+			+ FMath::Abs(Colour.G - Telegraph.G)
+			+ FMath::Abs(Colour.B - Telegraph.B);
+
+		TestTrue(FString::Printf(
+			TEXT("%s is far enough from the telegraph red to tell apart "
+				 "(distance %.2f)"), Entry.What, Distance),
+			Distance > 0.25f);
+	}
 
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayColoursSayWhereDamageWent,
-	"Cataclysm.Overlay.ThreeOutcomesGetThreeDifferentColours",
+	"Cataclysm.Overlay.FourOutcomesGetFourDifferentColours",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmOverlayColoursSayWhereDamageWent::RunTest(const FString&)
 {
+	// THREE OF THESE SAY WHERE THE DAMAGE WENT AND THE FOURTH SAYS WHAT KIND OF
+	// HIT IT WAS. That is a second job for one channel and it was taken on
+	// deliberately under issue #668, after the project owner played a build where
+	// a critical strike was marked only by size and an exclamation mark and could
+	// not tell one from an ordinary hit. All four still have to be told apart.
 	FCataclysmDamageResult ShieldOnly;
 	ShieldOnly.AbsorbedByShield = 30.0f;
 
-	const FLinearColor ReachedHealth =
-		UCataclysmCombatOverlay::ColourFor(CataclysmOverlayTest::Landed(20.0f));
-	const FLinearColor Absorbed = UCataclysmCombatOverlay::ColourFor(ShieldOnly);
-	const FLinearColor NothingThrough =
-		UCataclysmCombatOverlay::ColourFor(FCataclysmDamageResult());
+	FCataclysmDamageResult Crit = CataclysmOverlayTest::Landed(20.0f);
+	Crit.bWasCritical = true;
 
-	TestFalse(TEXT("reaching health looks different from being absorbed"),
-		ReachedHealth.Equals(Absorbed));
-	TestFalse(TEXT("being absorbed looks different from being stopped"),
-		Absorbed.Equals(NothingThrough));
-	TestFalse(TEXT("reaching health looks different from being stopped"),
-		ReachedHealth.Equals(NothingThrough));
+	struct FNamedOutcome { const TCHAR* What; FCataclysmDamageResult Outcome; };
+	const FNamedOutcome All[] = {
+		{ TEXT("reaching health"), CataclysmOverlayTest::Landed(20.0f) },
+		{ TEXT("being absorbed"), ShieldOnly },
+		{ TEXT("being stopped"), FCataclysmDamageResult() },
+		{ TEXT("a critical strike"), Crit },
+	};
+
+	for (int32 First = 0; First < UE_ARRAY_COUNT(All); ++First)
+	{
+		for (int32 Second = First + 1; Second < UE_ARRAY_COUNT(All); ++Second)
+		{
+			TestFalse(FString::Printf(TEXT("%s looks different from %s"),
+				All[First].What, All[Second].What),
+				UCataclysmCombatOverlay::ColourFor(All[First].Outcome).Equals(
+					UCataclysmCombatOverlay::ColourFor(All[Second].Outcome)));
+		}
+	}
 
 	return true;
 }
@@ -476,6 +532,9 @@ bool FCataclysmOverlayColoursAllParse::RunTest(const FString&)
 		  UCataclysmCombatOverlay::AbsorbedHex },
 		{ TEXT("a number nothing got through"),
 		  UCataclysmCombatOverlay::NothingThroughHex },
+		{ TEXT("a critical strike"),
+		  UCataclysmCombatOverlay::CriticalStrikeHex },
+		{ TEXT("the mana fill"), UCataclysmCombatOverlay::ManaFillHex },
 	};
 
 	for (const FNamedColour& Entry : All)
@@ -967,41 +1026,78 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayMarksACriticalStrike,
 
 bool FCataclysmOverlayMarksACriticalStrike::RunTest(const FString&)
 {
-	// SIZE AND TEXT, NOT COLOUR, AND THAT IS A DECISION RATHER THAN A TASTE.
-	// Colour on a floating number already says where the damage went, and
-	// docs/DECISIONS.md rejected colouring numbers by damage type to keep it
-	// saying only that. Diablo 4 does use colour for a critical strike -- white
-	// for an ordinary hit, yellow for a critical one -- and this project cannot,
-	// because it has given colour a different job.
+	// COLOUR AND SIZE, AND NOT THE TEXT. Issue #649 marked a critical strike by
+	// size and by an exclamation mark on the figure, deliberately leaving colour
+	// alone because colour said where the damage went. The project owner played
+	// that on 2026-08-17 and reported "you really can't tell the difference
+	// between a crit and a normal hit even though it's slightly bigger and has an
+	// exclamation point". The mark is gone and colour took the job. Issue #668.
 	FCataclysmDamageResult Crit = CataclysmOverlayTest::Landed(1'234.0f);
 	Crit.bWasCritical = true;
 
 	const FCataclysmDamageResult Ordinary =
 		CataclysmOverlayTest::Landed(1'234.0f);
 
-	const FString CritText = UCataclysmCombatOverlay::TextFor(Crit);
-	const FString OrdinaryText = UCataclysmCombatOverlay::TextFor(Ordinary);
-
+	// THE FIGURE READS THE SAME EITHER WAY. A number that says 1234 for an
+	// ordinary hit must say 1234 for a critical one, so the only thing a player
+	// compares between two numbers is how much damage each did.
 	TestEqual(TEXT("an ordinary hit prints its figure alone"),
-		OrdinaryText, FString(TEXT("1234")));
-	TestEqual(TEXT("a critical strike prints the same figure, marked"),
-		CritText, FString(TEXT("1234!")));
+		UCataclysmCombatOverlay::TextFor(Ordinary), FString(TEXT("1234")));
+	TestEqual(TEXT("and a critical strike prints exactly the same figure"),
+		UCataclysmCombatOverlay::TextFor(Crit), FString(TEXT("1234")));
+
+	const FLinearColor CritColour = UCataclysmCombatOverlay::ColourFor(Crit);
+	const FLinearColor OrdinaryColour =
+		UCataclysmCombatOverlay::ColourFor(Ordinary);
+
+	TestFalse(TEXT("a critical strike is a different colour from an ordinary hit"),
+		CritColour.Equals(OrdinaryColour));
+	TestTrue(TEXT("and it is the critical strike colour"),
+		CritColour.Equals(UCataclysmCombatOverlay::ColourFromHex(
+			UCataclysmCombatOverlay::CriticalStrikeHex)));
+
+	// IT IS WARM, which is the whole point of the choice. A critical strike that
+	// came out cool or grey would read as one of the other two outcomes.
+	TestTrue(TEXT("the critical strike colour is warm rather than cool"),
+		CritColour.R > CritColour.B);
 
 	const float CritScale = UCataclysmCombatOverlay::ScaleFor(
 		CataclysmOverlayTest::OrdinaryHit(), Crit);
 	const float OrdinaryScale = UCataclysmCombatOverlay::ScaleFor(
 		CataclysmOverlayTest::OrdinaryHit(), Ordinary);
 
-	TestTrue(TEXT("and it is drawn larger"), CritScale > OrdinaryScale);
+	TestTrue(TEXT("and it is still drawn larger"), CritScale > OrdinaryScale);
 	TestEqual(TEXT("by the stated multiple"),
 		CritScale,
 		OrdinaryScale * UCataclysmCombatOverlay::CriticalStrikeScale, 0.001f);
 
-	// THE COLOUR IS UNTOUCHED, which is the half of this that is easy to break.
-	TestTrue(TEXT("a critical strike is the same colour as any hit that reached "
-				  "health"),
-		UCataclysmCombatOverlay::ColourFor(Crit).Equals(
-			UCataclysmCombatOverlay::ColourFor(Ordinary)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayTextCarriesNoMark,
+	"Cataclysm.Overlay.NoNumberCarriesAnExclamationMark",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOverlayTextCarriesNoMark::RunTest(const FString&)
+{
+	// A GUARD AGAINST PUTTING IT BACK. The exclamation mark was built under
+	// issue #649, played, and reported as not readable. Anything that reintroduces
+	// punctuation into a damage figure should have to delete this test and say
+	// why, rather than doing it by accident while editing the printf formats.
+	FCataclysmDamageResult Crit;
+	Crit.DealtToHealth = 12.0f;
+	Crit.AbsorbedByShield = 30.0f;
+	Crit.bWasCritical = true;
+
+	TestEqual(TEXT("a critical strike through a shield prints both figures only"),
+		UCataclysmCombatOverlay::TextFor(Crit), FString(TEXT("12 (+30)")));
+
+	FCataclysmDamageResult ShieldOnly;
+	ShieldOnly.AbsorbedByShield = 30.0f;
+	ShieldOnly.bWasCritical = true;
+
+	TestEqual(TEXT("and one a shield swallowed prints its figure only"),
+		UCataclysmCombatOverlay::TextFor(ShieldOnly), FString(TEXT("30")));
 
 	return true;
 }
@@ -1020,31 +1116,40 @@ bool FCataclysmOverlayMarksBothFigures::RunTest(const FString&)
 	Both.AbsorbedByShield = 30.0f;
 	Both.bWasCritical = true;
 
-	TestEqual(TEXT("both figures, health first, marked once"),
-		UCataclysmCombatOverlay::TextFor(Both), FString(TEXT("12 (+30)!")));
+	TestEqual(TEXT("both figures, health first"),
+		UCataclysmCombatOverlay::TextFor(Both), FString(TEXT("12 (+30)")));
 
-	// A hit a shield swallowed whole is still a critical strike and still says so.
+	// THESE TWO FIGURES ARE WHAT PAYS FOR THE CRITICAL STRIKE COLOUR. Colour used
+	// to separate a hit that reached health from one a shield absorbed; for a
+	// critical strike it now says "critical strike" instead, so the text is the
+	// only thing left that separates them. Issue #668.
 	FCataclysmDamageResult ShieldOnly;
 	ShieldOnly.AbsorbedByShield = 30.0f;
 	ShieldOnly.bWasCritical = true;
 
-	TestEqual(TEXT("a critical strike a shield swallowed is marked too"),
-		UCataclysmCombatOverlay::TextFor(ShieldOnly), FString(TEXT("30!")));
+	TestEqual(TEXT("a critical strike a shield swallowed prints one figure"),
+		UCataclysmCombatOverlay::TextFor(ShieldOnly), FString(TEXT("30")));
+
+	TestTrue(TEXT("and the two are told apart by the text, not the colour"),
+		UCataclysmCombatOverlay::TextFor(Both)
+			!= UCataclysmCombatOverlay::TextFor(ShieldOnly));
+	TestTrue(TEXT("because both are drawn in the critical strike colour"),
+		UCataclysmCombatOverlay::ColourFor(Both).Equals(
+			UCataclysmCombatOverlay::ColourFor(ShieldOnly)));
 
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayNeverMarksAHitThatDidNothing,
-	"Cataclysm.Overlay.ACriticalStrikeThatGotThroughNothingIsNotMarked",
+	"Cataclysm.Overlay.ACriticalStrikeThatGotThroughNothingIsNotDrawnAsOne",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmOverlayNeverMarksAHitThatDidNothing::RunTest(const FString&)
 {
 	// THE ROLL HAPPENS BEFORE BLOCK, ARMOUR AND RESISTANCE, so a critical strike
 	// can be stopped dead by a well-defended target. Three words say a hit did
-	// nothing and none of them is improved by an exclamation mark: "Evaded!"
-	// reads as excitement about a miss, and an oversized grey "0!" says the
-	// opposite of what happened.
+	// nothing and none of them should be dressed up as a hit that did something:
+	// an orange, oversized "Evaded" says the opposite of what happened.
 	FCataclysmDamageResult Stopped;
 	Stopped.bWasCritical = true;
 
@@ -1066,13 +1171,23 @@ bool FCataclysmOverlayNeverMarksAHitThatDidNothing::RunTest(const FString&)
 		UCataclysmCombatOverlay::TextFor(BlockedToNothing),
 		FString(TEXT("Blocked")));
 
-	// AND NONE OF THE THREE IS DRAWN LARGER. The size and the mark ask the same
-	// question so that they can never disagree on the same number.
+	// AND NONE OF THE THREE IS DRAWN LARGER OR ORANGE. The size and the colour
+	// ask the same question, so they can never disagree on the same number.
 	const FCataclysmIncomingHit Hit = CataclysmOverlayTest::OrdinaryHit();
+	const FLinearColor CritColour = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCombatOverlay::CriticalStrikeHex);
+
 	TestEqual(TEXT("a stopped critical strike is drawn at ordinary size"),
 		UCataclysmCombatOverlay::ScaleFor(Hit, Stopped), 1.0f, 0.001f);
 	TestEqual(TEXT("and so is an evaded one"),
 		UCataclysmCombatOverlay::ScaleFor(Hit, Evaded), 1.0f, 0.001f);
+
+	TestFalse(TEXT("a stopped critical strike is not drawn in the crit colour"),
+		UCataclysmCombatOverlay::ColourFor(Stopped).Equals(CritColour));
+	TestFalse(TEXT("nor is an evaded one"),
+		UCataclysmCombatOverlay::ColourFor(Evaded).Equals(CritColour));
+	TestFalse(TEXT("nor is one blocked to nothing"),
+		UCataclysmCombatOverlay::ColourFor(BlockedToNothing).Equals(CritColour));
 
 	return true;
 }
