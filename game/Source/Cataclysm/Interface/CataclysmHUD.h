@@ -144,8 +144,12 @@ public:
 	 * CataclysmCombatOverlayTests.cpp is a static function over plain numbers.
 	 *
 	 * IT IS A PLACEHOLDER AND ONLY PLAY SETTLES IT, the same as the bar sizes
-	 * above. 1.0 was measured against a real fight and reported as too small; 1.6
-	 * is a step rather than an answer.
+	 * above. Two figures have now been measured against a real fight and reported
+	 * as too small: 1.0, and then 1.6 against the engine's medium font.
+	 *
+	 * THE FONT CHANGED UNDERNEATH IT AT THE SAME TIME. `OverlayFont` now asks for
+	 * the engine's large face rather than its medium one, so this multiplies a
+	 * bigger starting size than the 1.6 did. Issue #671.
 	 */
-	static constexpr float TextScale = 1.6f;
+	static constexpr float TextScale = 1.8f;
 };
