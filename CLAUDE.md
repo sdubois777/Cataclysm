@@ -273,6 +273,32 @@ gh issue close 12 --comment "Fixed in #34"
 
   Skipping this is how the repository reached 107 local branches, 77 of them
   already merged, by 2026-08-14.
+- **Run each `gh` command on its own. Do not chain another command onto it with
+  `;` or `&&`, and do not pipe its output.** A chained or piped `gh` command is
+  refused by the permission system, and the refusal names no reason, so it reads
+  like the action itself is forbidden when it is not. Measured on 2026-08-17,
+  four commands in one session:
+
+  | Command | Result |
+  |---|---|
+  | `cd <repo>; gh pr merge 677 --repo … --squash; git fetch …; git log …` | refused |
+  | `cd <repo>; gh pr view 677 --repo … --json … \| ConvertTo-Json` | refused |
+  | `cd <repo>; gh issue create … --body-file …` | allowed |
+  | `cd <repo>; gh pr list --repo … --state open` | allowed |
+
+  `gh pr view` only reads and was refused when piped, while `gh pr list` was
+  allowed unpiped, so it is the extra command rather than the action. A `cd`
+  prefix is fine. Chaining `git` commands together is fine; the rule is about
+  `gh`. Run the merge, then verify, then delete the branch as three separate
+  invocations.
+
+  **A successful `gh pr merge` prints nothing at all.** Empty output with exit 0
+  usually means a command did not run, so it is not evidence either way here.
+  Confirm with git:
+
+  ```bash
+  git fetch origin --prune && git log origin/development --oneline -1
+  ```
 
   **To find stale branches later, ask GitHub which pull requests merged.** Do not
   decide by comparing trees: `git diff --quiet <branch> development` only means
