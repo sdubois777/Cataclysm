@@ -374,7 +374,31 @@ def average_damage_per_hit(tier: int,
     The same form `enemy_stats.EnemyStats.average_damage_per_hit` uses, so the
     player and the enemies average criticals the same way. Both figures are
     arguments because nothing in the design states a critical progression per
-    difficulty tier; `reference_build.character()` supplies them at tier 8.
+    difficulty tier. `reference_build.character()` is where a caller reads the
+    reference character's own pair; it does not call this, and nothing in the
+    package does.
+
+    NOTHING CALLING IT IS THE POINT, NOT AN OVERSIGHT, and issue #663 was filed
+    asking whether it was. The enemy side's identical function is used
+    throughout, and the difference between the two sides is deliberate:
+
+    * A PLAYER'S DAMAGE IS FITTED TO A TARGET STATED IN NON-CRITICAL HITS.
+      `docs/Cataclysm_GDD_v2.md` says "An average Common enemy at difficulty
+      tier 8 has 3,366 effective health and should take 2 NON-CRITICAL hits to
+      kill", and the whole hits-to-kill table beside it is in those units. So
+      `gap_against_target` compares `damage_per_hit` against
+      `affixes.damage_target`, and an import-time check refuses a reference
+      loadout that drifts more than 5% from it. Averaging criticals into that
+      comparison would fail a target the design states in the other units.
+    * AN ENEMY'S DAMAGE IS FITTED TO HOW LONG A CHARACTER SURVIVES, which is a
+      question about many hits rather than about one, so the enemy side averages.
+
+    SO THE ASYMMETRY IS CORRECT AND THE PLAYER'S FIGURES ARE NOT LOW. What this
+    answers is a different question the design does not state anywhere: how much
+    faster a player actually kills than the figure they were fitted to. That
+    became worth asking on 2026-08-17, when issue #649 made the engine roll
+    critical strikes for the player for the first time. For the reference
+    character it is 15.8% -- 10% of hits at 2.58 times.
     """
     chance = crit_chance / 100.0
     multiplier = crit_multiplier / 100.0
