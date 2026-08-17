@@ -78,14 +78,14 @@ Positive_Your_movement_ability_has_1_2_additional_charges,Your movement ability 
 Positive_Your_movement_ability_leaves_a_persistent_AOE_zo,Your movement ability leaves a persistent AOE zone at both start and end locations for 3-5 seconds,Generic,2.0,"Slot.Movement, Type.AOE.Persistent",False
 Positive_Your_ultimate_ability_cooldown_is_reduced_by_20,Your ultimate ability cooldown is reduced by 20%-40%,Generic,2.0,Slot.Ultimate,False
 Positive_Every_3_blocks_in_quick_succession_triggers_a_sh,Every 3 blocks in quick succession triggers a shockwave dealing 100%-200% weapon damage to nearby enemies,Generic,2.0,"Trigger.OnBlock, Type.AOE.PointBlank",False
-Positive_Critical_hits_grant_a_stack_of_power_increasing,"Critical hits grant a stack of power increasing all damage by 3%-5% for 5 seconds, up to 5 stacks",Generic,2.0,"Trigger.OnCrit, Stat.Offense.Global",False
-Positive_Your_first_critical_hit_against_each_enemy_deals,Your first critical hit against each enemy deals an additional 50%-100% bonus damage,Generic,2.0,"Trigger.OnCrit, Scope.FirstHit",False
+Positive_Critical_strikes_grant_a_stack_of_power_increasi,"Critical strikes grant a stack of power increasing all damage by 3%-5% for 5 seconds, up to 5 stacks",Generic,2.0,"Trigger.OnCrit, Stat.Offense.Global",False
+Positive_Your_first_critical_strike_against_each_enemy_de,Your first critical strike against each enemy deals an additional 50%-100% bonus damage,Generic,2.0,"Trigger.OnCrit, Scope.FirstHit",False
 Positive_When_you_dodge_an_attack_your_next_skill_deals_3,When you dodge an attack your next skill deals 30%-60% increased damage,Generic,2.0,"Trigger.OnDodge, Stat.Offense.Global",False
 Positive_When_you_die_all_your_active_traps_and_gadgets,"When you die, all your active traps and gadgets immediately trigger simultaneously",Generic,2.0,"Trigger.OnDeath, Type.Trap, Type.Deployable",False
 Positive_When_you_die_all_active_DoTs_on_nearby_enemies,"When you die, all active DoTs on nearby enemies instantly deal their remaining damage",Generic,2.0,"Trigger.OnDeath, Keyword.DoT.Generic, Type.AOE.PointBlank",False
 Positive_Every_skill_use_has_a_5_15_chance_to_cast_a_se,Every skill use has a 5%-15% chance to cast a second time for free,Generic,2.0,"Trigger.OnSkillUse, Scope.Global",False
 Positive_When_your_class_resource_is_full_your_next_skil,"When your class resource is full, your next skill deals 30%-60% increased damage",Generic,2.0,"Trigger.OnResourceFull, Stat.Offense.Global",False
-Positive_When_your_class_resource_is_full_critical_hit_c,"When your class resource is full, critical hit chance is increased by 15%-30%",Generic,2.0,"Trigger.OnResourceFull, Stat.Offense.Crit",False
+Positive_When_your_class_resource_is_full_critical_strik,"When your class resource is full, critical strike chance is increased by 15%-30%",Generic,2.0,"Trigger.OnResourceFull, Stat.Offense.Crit",False
 Positive_When_your_class_resource_hits_zero_gain_20_40,"When your class resource hits zero, gain 20%-40% increased damage for 5 seconds",Generic,2.0,"Trigger.OnResourceEmpty, Stat.Offense.Global",False
 Positive_When_your_class_resource_hits_zero_instantly_re,"When your class resource hits zero, instantly restore 20%-40% of your maximum HP",Generic,2.0,"Trigger.OnResourceEmpty, Stat.Defense.Life",False
 Positive_When_your_class_resource_hits_zero_all_skill_co,"When your class resource hits zero, all skill cooldowns are reduced by 2-4 seconds",Generic,2.0,Trigger.OnResourceEmpty,False
@@ -140,7 +140,7 @@ Positive_Poison_effects_you_apply_deal_30_60_increased,Poison effects you apply 
 Positive_Poison_stacks_on_an_enemy_reduce_their_damage_ou,Poison stacks on an enemy reduce their damage output by 2%-4% per stack,Generic,2.0,"Keyword.DoT.Poison, Type.Debuff",False
 Positive_Disease_effects_you_apply_spread_to_1_3_nearby_e,Disease effects you apply spread to 1-3 nearby enemies when the afflicted enemy dies,Generic,2.0,"Keyword.DoT.Disease, Trigger.OnDeath",False
 Positive_Disease_effects_reduce_enemy_healing_by_50_100,Disease effects reduce enemy healing by 50%-100%,Generic,2.0,"Keyword.DoT.Disease, Type.Debuff",False
-Positive_Necrosis_effects_deal_20_40_of_their_remaining,Necrosis effects deal 20%-40% of their remaining damage instantly when you land a critical hit,Generic,2.0,"Keyword.DoT.Necrosis, Trigger.OnCrit",False
+Positive_Necrosis_effects_deal_20_40_of_their_remaining,Necrosis effects deal 20%-40% of their remaining damage instantly when you land a critical strike,Generic,2.0,"Keyword.DoT.Necrosis, Trigger.OnCrit",False
 Positive_Necrosis_stacks_reduce_enemy_maximum_HP_by_1_2,Necrosis stacks reduce enemy maximum HP by 1%-2% per stack,Generic,2.0,"Keyword.DoT.Necrosis, Type.Debuff",False
 Positive_Void_splinter_stacks_detonate_for_50_100_incre,Void splinter stacks detonate for 50%-100% increased damage,Generic,2.0,Keyword.DoT.VoidSplinter,False
 Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh,Void splinter stacks spread to nearby enemies when the afflicted enemy dies,Generic,2.0,"Keyword.DoT.VoidSplinter, Trigger.OnDeath, Type.AOE.PointBlank",False
@@ -153,7 +153,7 @@ Positive_100_of_your_block_value_is_added_to_your_retali,100% of your block valu
 Positive_Spells_deal_20_40_increased_damage,Spells deal 20%-40% increased damage,Generic,2.0,"Type.Spell, Stat.Offense.Global",False
 Positive_Spells_have_a_10_20_chance_to_cast_a_second_ti,Spells have a 10%-20% chance to cast a second time for free,Generic,2.0,Type.Spell,False
 Positive_Spells_pierce_through_all_enemies_in_their_path,Spells pierce through all enemies in their path,Generic,2.0,"Type.Spell, Type.Projectile",False
-Positive_Spell_critical_hits_deal_50_100_increased_dama,Spell critical hits deal 50%-100% increased damage,Generic,2.0,"Type.Spell, Stat.Offense.Crit",False
+Positive_Spell_critical_strikes_deal_50_100_increased_d,Spell critical strikes deal 50%-100% increased damage,Generic,2.0,"Type.Spell, Stat.Offense.Crit",False
 Positive_Spells_ignore_15_30_of_enemy_resistances,Spells ignore 15%-30% of enemy resistances,Generic,2.0,"Type.Spell, Stat.Offense.Penetration",False
 Positive_Your_spells_leave_a_persistent_AOE_zone_at_the_i,Your spells leave a persistent AOE zone at the impact point lasting 2-4 seconds,Generic,2.0,"Type.Spell, Type.AOE.Persistent",False
 Positive_Spells_deal_10_20_bonus_damage_for_each_active,Spells deal 10%-20% bonus damage for each active buff on you,Generic,2.0,"Type.Spell, Type.Buff",False
@@ -169,7 +169,7 @@ Positive_Your_damage_is_increased_by_0_01_0_05_permanen,Your damage is increased
 Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm,Your maximum HP is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run,Generic,2.0,"Trigger.Progression, Stat.Defense.Life",False
 Positive_Your_armor_is_increased_by_1_2_for_every_dunge,Your armor is increased by 1%-2% for every dungeon floor cleared this run,Generic,2.0,"Trigger.Progression, Stat.Defense.Armor",False
 Positive_Your_cooldowns_reset_50_100_faster_when_fighti,Your cooldowns reset 50%-100% faster when fighting Boss enemies,Generic,2.0,Scope.BossOnly,False
-Positive_Critical_hit_chance_is_increased_by_20_40_agai,Critical hit chance is increased by 20%-40% against Boss enemies,Generic,2.0,"Scope.BossOnly, Stat.Offense.Crit",False
+Positive_Critical_strike_chance_is_increased_by_20_40_a,Critical strike chance is increased by 20%-40% against Boss enemies,Generic,2.0,"Scope.BossOnly, Stat.Offense.Crit",False
 Positive_Your_block_chance_is_increased_by_10_20,Your block chance is increased by 10%-20%,Generic,2.0,Stat.Defense.Block,False
 Positive_Each_successful_block_increases_your_next_attack,"Each successful block increases your next attack's damage by 10%-20%, stacking up to 5 times",Generic,2.0,"Stat.Defense.Block, Stat.Offense.Global",False
 Positive_Consecutive_blocks_within_3_seconds_each_block_5,Consecutive blocks within 3 seconds each block 5%-10% more damage,Generic,2.0,Stat.Defense.Block,False
@@ -178,7 +178,7 @@ Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi,"Strike skills reduce en
 Positive_Strike_skills_have_a_10_20_chance_to_execute_e,Strike skills have a 10%-20% chance to execute enemies below 15% HP,Generic,2.0,"Type.Strike, Trigger.LowLife",False
 Positive_Bleed_stacks_you_apply_deal_30_60_increased_da,Bleed stacks you apply deal 30%-60% increased damage,Generic,2.0,Keyword.DoT.Bleed,False
 Positive_Enemies_with_5_or_more_bleed_stacks_take_20_40,Enemies with 5 or more bleed stacks take 20%-40% increased damage from all sources,Generic,2.0,"Keyword.DoT.Bleed, Stat.Offense.Global",False
-Positive_Critical_hits_apply_2_4_additional_bleed_stacks,Critical hits apply 2-4 additional bleed stacks,Generic,2.0,"Keyword.DoT.Bleed, Trigger.OnCrit",False
+Positive_Critical_strikes_apply_2_4_additional_bleed_stac,Critical strikes apply 2-4 additional bleed stacks,Generic,2.0,"Keyword.DoT.Bleed, Trigger.OnCrit",False
 Positive_When_an_enemy_dies_with_bleed_stacks_the_stacks,When an enemy dies with bleed stacks the stacks spread to the nearest enemy within 5 meters,Generic,2.0,"Keyword.DoT.Bleed, Trigger.OnDeath, Type.AOE.PointBlank",False
 Positive_Bleed_damage_you_deal_also_leeches_10_20_of_it,Bleed damage you deal also leeches 10%-20% of its value as HP,Generic,2.0,"Keyword.DoT.Bleed, Stat.Recovery.Leech",False
 Positive_Persistent_AOE_zones_deal_10_20_increased_dama,Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them,Generic,2.0,"Type.AOE.Persistent, Stat.Offense.Global",False
@@ -187,7 +187,7 @@ Positive_Your_persistent_AOE_zones_follow_you_as_you_move,Your persistent AOE zo
 Positive_You_take_15_30_less_damage_from_melee_attacks,You take 15%-30% less damage from melee attacks,Generic,2.0,Stat.Defense.Melee,False
 Positive_Melee_attacks_that_hit_you_have_a_10_20_chance,Melee attacks that hit you have a 10%-20% chance to be reflected back as retaliation damage,Generic,2.0,"Stat.Defense.Melee, Stat.Defense.Retaliation",False
 Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d,"Each melee hit you take reduces the attacker's damage by 3%-5% for 3 seconds, stacking up to 5 times",Generic,2.0,"Stat.Defense.Melee, Type.Debuff",False
-Positive_Your_critical_hits_ignore_20_40_of_enemy_armor,Your critical hits ignore 20%-40% of enemy armor,Generic,2.0,"Stat.Offense.Penetration, Stat.Offense.Crit, Stat.Defense.Armor",False
+Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar,Your critical strikes ignore 20%-40% of enemy armor,Generic,2.0,"Stat.Offense.Penetration, Stat.Offense.Crit, Stat.Defense.Armor",False
 Positive_Your_DoTs_ignore_20_40_of_enemy_resistances,Your DoTs ignore 20%-40% of enemy resistances,Generic,2.0,"Stat.Offense.Penetration, Keyword.DoT.Generic, Stat.Defense.Resist",False
 Positive_Your_first_hit_against_each_enemy_ignores_all_ar,Your first hit against each enemy ignores all armor,Generic,2.0,"Stat.Offense.Penetration, Scope.FirstHit, Stat.Defense.Armor",False
 Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo,"Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking indefinitely",Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Armor",False
@@ -227,7 +227,7 @@ Positive_Each_active_gadget_increases_trap_damage_by_10,Each active gadget incre
 Positive_Your_basic_attack_is_converted_into_a_placeable,"Your basic attack is converted into a placeable trap. When triggered, it fires your basic attack at the nearest enemy. Scales off trap damage. Shares your basic attack cooldown across all placed copies.",Generic,3.0,"Type.Trap, Slot.Basic, Scope.BasicOnly",False
 Positive_Your_basic_attack_is_converted_into_a_deployable,"Your basic attack is converted into a deployable gadget that fires your basic attack at the nearest enemy within range, once per basic attack cooldown. Scales off gadget damage.",Generic,3.0,"Type.Deployable, Slot.Basic, Scope.BasicOnly",False
 Positive_Your_heavy_attack_applies_its_full_effect_twice,Your heavy attack applies its full effect twice if you have not moved in the last 2 seconds,Generic,3.0,"Slot.Heavy, Scope.WhileStationary",False
-Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5,Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a critical hit,Generic,3.0,"Slot.Heavy, Trigger.OnCrit",False
+Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5,Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a critical strike,Generic,3.0,"Slot.Heavy, Trigger.OnCrit",False
 Positive_Your_special_ability_has_20_40_increased_area,Your special ability has 20%-40% increased area of effect,Generic,3.0,Slot.Special,False
 Positive_Your_special_ability_deals_20_40_increased_dam,Your special ability deals 20%-40% increased damage while you are moving,Generic,3.0,"Slot.Special, Scope.WhileMoving",False
 Positive_Your_support_ability_duration_is_increased_by_50,Your support ability duration is increased by 50%-100%,Generic,3.0,Slot.Support,False
@@ -239,9 +239,9 @@ Positive_Blocking_an_attack_has_a_20_40_chance_to_reset,Blocking an attack has a
 Positive_Blocking_an_attack_grants_10_20_increased_dama,Blocking an attack grants 10%-20% increased damage for 3 seconds,Generic,3.0,"Trigger.OnBlock, Stat.Offense.Global",False
 Positive_Blocking_an_attack_restores_3_6_of_your_maximu,Blocking an attack restores 3%-6% of your maximum HP,Generic,3.0,"Trigger.OnBlock, Stat.Defense.Life",False
 Positive_Blocking_an_attack_generates_5_10_of_your_clas,Blocking an attack generates 5%-10% of your class resource,Generic,3.0,"Trigger.OnBlock, Stat.Resource.ClassResource",False
-Positive_Critical_hits_restore_2_4_of_your_maximum_HP,Critical hits restore 2%-4% of your maximum HP,Generic,3.0,"Trigger.OnCrit, Stat.Defense.Life",False
-Positive_Critical_hits_apply_a_random_DoT_to_the_target,Critical hits apply a random DoT to the target,Generic,3.0,"Trigger.OnCrit, Keyword.DoT.Generic",False
-Positive_Critical_hits_have_a_15_30_chance_to_reset_you,Critical hits have a 15%-30% chance to reset your movement ability cooldown,Generic,3.0,"Trigger.OnCrit, Slot.Movement",False
+Positive_Critical_strikes_restore_2_4_of_your_maximum_H,Critical strikes restore 2%-4% of your maximum HP,Generic,3.0,"Trigger.OnCrit, Stat.Defense.Life",False
+Positive_Critical_strikes_apply_a_random_DoT_to_the_targe,Critical strikes apply a random DoT to the target,Generic,3.0,"Trigger.OnCrit, Keyword.DoT.Generic",False
+Positive_Critical_strikes_have_a_15_30_chance_to_reset,Critical strikes have a 15%-30% chance to reset your movement ability cooldown,Generic,3.0,"Trigger.OnCrit, Slot.Movement",False
 Positive_When_you_dodge_an_attack_gain_15_30_increased,When you dodge an attack gain 15%-30% increased damage for 3 seconds,Generic,3.0,"Trigger.OnDodge, Stat.Offense.Global",False
 Positive_Dodging_an_attack_restores_5_10_of_your_maximu,Dodging an attack restores 5%-10% of your maximum HP,Generic,3.0,"Trigger.OnDodge, Stat.Defense.Life",False
 Positive_Dodging_an_attack_has_a_20_40_chance_to_reset,Dodging an attack has a 20%-40% chance to reset your movement ability cooldown,Generic,3.0,"Trigger.OnDodge, Slot.Movement",False
@@ -356,7 +356,7 @@ Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use,"Spellblade's Will (6-Piec
 Positive_Spellblade_s_Will_10_Piece_Bonus_Your_melee_a,Spellblade's Will (10-Piece Bonus): Your melee attacks have a 25% of triggering one of your spells. This does not put the spell on cooldown but does use it's mana cost,Set,10.0,"Type.Strike, Type.Spell",False
 Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2,Demon King's Regalia (2-Piece Bonus): You deal 25% more damage to enemies that are within 5 meters of you.,Set,11.0,"Scope.MeleeOnly, Stat.Offense.Global",False
 Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your,"Demon King's Regalia (6-Piece Bonus): When your health falls below 25%, you enter a ""Demonic Rage"" becoming immune to all crowd control and dealing 100% more damage for 10 seconds. (5 minute cd)",Set,11.0,"Stat.Defense.Life, Trigger.LowLife, Keyword.CC",False
-Positive_Demon_King_s_Regalia_10_Piece_Bonus_If_you_wo,"Demon King's Regalia (10-Piece Bonus): If you would be killed during Demonic Rage, instead gain 100% crit chance and crit multi and become immune to all damage for 3 seconds. Killing a Rare or higher enemy instanly heals you to full, failing to results in your death",Set,11.0,"Stat.Offense.Crit, Trigger.LowLife, Trigger.OnKill",False
+Positive_Demon_King_s_Regalia_10_Piece_Bonus_If_you_wo,"Demon King's Regalia (10-Piece Bonus): If you would be killed during Demonic Rage, instead gain 100% crit chance and crit multiplier and become immune to all damage for 3 seconds. Killing a Rare or higher enemy instanly heals you to full, failing to results in your death",Set,11.0,"Stat.Offense.Crit, Trigger.LowLife, Trigger.OnKill",False
 Positive_Plague_Doctor_2_Piece_Bonus_Your_DoT_effects,Plague Doctor (2-Piece Bonus): Your DoT effects deal 25% more damage,Set,12.0,Keyword.DoT.Generic,False
 Positive_Plague_Doctor_6_Piece_Bonus_When_you_apply_a,"Plague Doctor (6-Piece Bonus): When you apply a DoT to an enemy, all other DoTs you have on that enemy have their duration refreshed",Set,12.0,Keyword.DoT.Generic,False
 Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di,"Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT from you, it explodes and applies all of your DoTs to all nearby enemies",Set,12.0,"Keyword.DoT.Generic, Type.AOE.PointBlank, Trigger.OnKill",False

@@ -133,7 +133,7 @@
       "data": {
         "kind": "basic",
         "name": "Savage Blows",
-        "description": "+5% critical strike damage per point on melee attacks.",
+        "description": "+5% critical strike multiplier per point on melee attacks.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -353,7 +353,7 @@
       "data": {
         "kind": "basic",
         "name": "Skull Splitter",
-        "description": "Two-handed weapons only. +6% critical strike damage per point. While in Wrath, critical strikes drain an additional 3 Fury per hit in exchange for applying a 2-second armor reduction of 10% per point on the target. At 5 points: This armor reduction stacks up to 6 times instead of 4.",
+        "description": "Two-handed weapons only. +6% critical strike multiplier per point. While in Wrath, critical strikes drain an additional 3 Fury per hit in exchange for applying a 2-second armor reduction of 10% per point on the target. At 5 points: This armor reduction stacks up to 6 times instead of 4.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -617,7 +617,7 @@
       "data": {
         "kind": "basic",
         "name": "Killing Blow",
-        "description": "Two-handed weapons only. +6% critical strike damage per point on melee attacks. At 10 points: when you attack at maximum Fury, all enemies below 25% HP are instantly killed.",
+        "description": "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fury, all enemies below 25% HP are instantly killed.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -1189,7 +1189,7 @@
       "data": {
         "kind": "basic",
         "name": "Razor Mind",
-        "description": "+4% critical strike damage per point on melee attacks. Critical strikes also generate +2 Fury per point. At 5 points: Critical strikes made while above 75% Fury generate double Fury from this effect.",
+        "description": "+4% critical strike multiplier per point on melee attacks. Critical strikes also generate +2 Fury per point. At 5 points: Critical strikes made while above 75% Fury generate double Fury from this effect.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1233,7 +1233,7 @@
       "data": {
         "kind": "basic",
         "name": "Glass Cannon",
-        "description": "+8% critical strike damage per point on melee attacks. At 4 points: Your critical melee strikes ignore 20% of enemy resistances. Each point of Fury above your normal maximum (from any source) increases your critical strike damage by an additional 0.5% per point invested here.",
+        "description": "+8% critical strike multiplier per point on melee attacks. At 4 points: Your critical melee strikes ignore 20% of enemy resistances. Each point of Fury above your normal maximum (from any source) increases your critical strike multiplier by an additional 0.5% per point invested here.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1277,7 +1277,7 @@
       "data": {
         "kind": "basic",
         "name": "Killing Rhythm",
-        "description": "+5% critical strike damage per point for each consecutive critical strike, up to 5 stacks. Missing a critical strike or your Fury reaching 0 resets the streak.",
+        "description": "+5% critical strike multiplier per point for each consecutive critical strike, up to 5 stacks. Missing a critical strike or your Fury reaching 0 resets the streak.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1321,7 +1321,7 @@
       "data": {
         "kind": "keystone",
         "name": "Hair Trigger",
-        "description": "Critical strike chance past 100% is converted to critical strike damage at a 2:1 ratio.",
+        "description": "Critical strike chance past 100% is converted to critical strike multiplier at a 2:1 ratio.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1558,7 +1558,7 @@
           {
             "name": "Thrill of the Hunt",
             "identity": "Crit/Leech",
-            "description": "Your critical strike damage is increased by 1% for every 1% of HP you are currently missing."
+            "description": "Your critical strike multiplier is increased by 1% for every 1% of HP you are currently missing."
           }
         ],
         "pointThreshold": 50,
@@ -1601,7 +1601,7 @@
           {
             "name": "Crimson Pact",
             "identity": "Crit × Leech",
-            "description": "Your critical strike damage bonus is added to your life leech percentage. Your life leech percentage is added to your critical strike damage bonus."
+            "description": "Your critical strike multiplier bonus is added to your life leech percentage. Your life leech percentage is added to your critical strike multiplier bonus."
           }
         ],
         "pointThreshold": 100,

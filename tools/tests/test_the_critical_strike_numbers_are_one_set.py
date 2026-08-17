@@ -200,10 +200,16 @@ class TestNothingClaimsTheCapCanBeLifted:
             "renamed or removed, this check needs rethinking rather than "
             "deleting; issue #658 has the history.")
 
+        # THE STAT'S NAME CHANGED UNDER THIS TEST, which is why it reads
+        # "multiplier" where it once read "damage". The project owner settled on
+        # 2026-08-17 that the stat is the critical strike MULTIPLIER, and issue
+        # #660 renamed this keystone with the eight Berserker nodes beside it.
+        # `test_the_critical_strike_stat_has_one_name.py` is what keeps that
+        # name from splitting again.
         description = str(keystone.get("description", ""))
-        assert "converted to critical strike damage" in description, (
+        assert "converted to critical strike multiplier" in description, (
             f"Hair Trigger reads {description!r}. It is meant to convert "
-            "critical strike chance past 100% into critical strike damage, "
+            "critical strike chance past 100% into critical strike multiplier, "
             "which is what the hard cap permits.")
 
 

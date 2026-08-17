@@ -47,13 +47,13 @@
       "asset": "DT_EnchantmentsNegative",
       "csv": "EnchantmentsNegative.csv",
       "rows": 195,
-      "csv_sha256": "c65c1752a80229955e6389ad862bdbdb93e646953823b65512d40e19b93cb805"
+      "csv_sha256": "f1db5e53f178ff3e7cc590e3abfd6be73d49e563756bab72b1e561178ee9b3c9"
     },
     {
       "asset": "DT_EnchantmentsPositive",
       "csv": "EnchantmentsPositive.csv",
       "rows": 379,
-      "csv_sha256": "3c59cdb65ffa045dd49652788b64d0c7f1be7e6d87bc994a06e53967c0b53ad6"
+      "csv_sha256": "73b85c7c71359b42883af113aa328f1ce9635bab03061231a6faa813b4000290"
     },
     {
       "asset": "DT_EnemyArchetypes",
@@ -65,7 +65,7 @@
       "asset": "DT_EnemyModifiers",
       "csv": "EnemyModifiers.csv",
       "rows": 79,
-      "csv_sha256": "dbcd28a6f8734bd2296a51192baff32c384295da68462e26a5fd14df7ee56323"
+      "csv_sha256": "5e7d784418f5b1e75e5db03bb0497e851ee78340a1c22a93416dbd142aa40f92"
     },
     {
       "asset": "DT_EnemyRarities",
@@ -77,7 +77,7 @@
       "asset": "DT_Gems",
       "csv": "Gems.csv",
       "rows": 27,
-      "csv_sha256": "bb85429adc994469bd7d65854613ac199ec1c16ffdc2b8138de34cb5804d27b6"
+      "csv_sha256": "a743f8d36e688ea757217c7f13e0b7d1422b33d6bc9ac576e147bfef0ecc15e8"
     },
     {
       "asset": "DT_ItemBases",
