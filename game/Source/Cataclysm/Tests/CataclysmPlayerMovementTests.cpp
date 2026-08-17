@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
@@ -39,15 +40,7 @@ namespace CataclysmPlayerMovementTest
 	 *  system component initialised and its attribute sets registered. */
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/**

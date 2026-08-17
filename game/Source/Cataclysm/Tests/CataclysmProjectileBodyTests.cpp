@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmMeshWidth.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -39,15 +40,7 @@ namespace CataclysmProjectileBodyTest
 {
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/** Metres, so these read the way the design document does. */
@@ -335,9 +328,10 @@ bool FCataclysmStraightProjectileIsUnchanged::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	FURL URL;
-	World->InitializeActorsForPlay(URL);
-	World->BeginPlay();
+	// Begun by hand here rather than through the helper, because the world
+	// was made a few lines above. Issue #654: World->BeginPlay() alone does
+	// nothing without a game mode, which is what the helper settles.
+	CataclysmTestWorld::BeginPlayIn(World);
 
 	AActor* Caster = World->SpawnActor<AActor>();
 	if (!TestNotNull(TEXT("caster"), Caster))
@@ -408,9 +402,10 @@ bool FCataclysmArcingProjectileLandsWhereAimed::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	FURL URL;
-	World->InitializeActorsForPlay(URL);
-	World->BeginPlay();
+	// Begun by hand here rather than through the helper, because the world
+	// was made a few lines above. Issue #654: World->BeginPlay() alone does
+	// nothing without a game mode, which is what the helper settles.
+	CataclysmTestWorld::BeginPlayIn(World);
 
 	AActor* Caster = World->SpawnActor<AActor>();
 	if (!TestNotNull(TEXT("caster"), Caster))
@@ -636,9 +631,10 @@ bool FCataclysmLobbedProjectileTakesTheTimeItWasGiven::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	FURL URL;
-	World->InitializeActorsForPlay(URL);
-	World->BeginPlay();
+	// Begun by hand here rather than through the helper, because the world
+	// was made a few lines above. Issue #654: World->BeginPlay() alone does
+	// nothing without a game mode, which is what the helper settles.
+	CataclysmTestWorld::BeginPlayIn(World);
 
 	AActor* Caster = World->SpawnActor<AActor>();
 	if (!TestNotNull(TEXT("caster"), Caster))
@@ -749,9 +745,10 @@ bool FCataclysmLobbedProjectileHoldsItsGroundSpeed::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	FURL URL;
-	World->InitializeActorsForPlay(URL);
-	World->BeginPlay();
+	// Begun by hand here rather than through the helper, because the world
+	// was made a few lines above. Issue #654: World->BeginPlay() alone does
+	// nothing without a game mode, which is what the helper settles.
+	CataclysmTestWorld::BeginPlayIn(World);
 
 	AActor* Caster = World->SpawnActor<AActor>();
 	if (!TestNotNull(TEXT("caster"), Caster))

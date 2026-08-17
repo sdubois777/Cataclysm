@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
@@ -125,15 +126,7 @@ namespace CataclysmDamageTypeTest
 
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/**

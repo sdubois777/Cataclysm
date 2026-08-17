@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
@@ -44,22 +45,22 @@
  * never ticked, so no test here waits for a swing to happen on its own. What is
  * tested is every decision the timer makes when it fires -- the interval, whether
  * a character may swing, how far it reaches, and whether anything is in range.
- * Issue #654 records that actors in this world never even receive BeginPlay.
+ * Actors in this world DO receive BeginPlay as they spawn, since issue #654.
+ * That is why the basic attack timer exists on a spawned player here at all.
  */
 
 namespace CataclysmBasicAttackTest
 {
+	/**
+	 * NAMED `MakeWorld`, AND IT IS THE BEGUN-PLAY ONE. This file carried the
+	 * same body as the twenty files whose copy was called
+	 * MakeWorldThatHasBegunPlay, under the shorter name -- the naming confusion
+	 * of issue #654 pointing the other way. The name is left alone so this stays
+	 * a harness fix rather than a rename across one file's call sites.
+	 */
 	static UWorld* MakeWorld()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/** A bare actor carrying an ability system with the combat attributes. */

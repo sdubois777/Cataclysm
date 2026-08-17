@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -38,15 +39,7 @@ namespace CataclysmEnemyShieldTest
 {
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/** The Succubus's designed fraction, from ARCHETYPES in the model. */

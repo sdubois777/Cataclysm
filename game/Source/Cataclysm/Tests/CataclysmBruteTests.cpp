@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -52,15 +53,7 @@ namespace CataclysmBruteTest
 	/** A world that has begun play, so spawned characters get their attributes. */
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (World)
-		{
-			FURL URL;
-			World->InitializeActorsForPlay(URL);
-			World->BeginPlay();
-		}
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 
 	/** The player capsule radius in CataclysmPlayerCharacter.cpp. */

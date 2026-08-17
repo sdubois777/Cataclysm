@@ -20,6 +20,75 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — The test world begins play by setting the flag, not by gaining a game mode
+
+**Affects:** nothing in the design documents. It is a change to the automation
+test harness. Closes issue #654.
+
+### What was wrong
+
+Twenty test files each carried a copy of a helper called
+`MakeWorldThatHasBegunPlay`, and it did not begin play. `UWorld::BeginPlay` is one
+call to `GetAuthGameMode()->StartPlay()`, and a world built by
+`UWorld::CreateWorld` has no game instance and therefore no game mode. The
+world's begun-play flag was never set, so every actor spawned into it skipped
+`BeginPlay` silently.
+
+**It looked fine, which is why it lasted.** `InitializeActorsForPlay` does real
+work — it is what makes a spawned actor's components initialise — so actors
+looked alive. Only `BeginPlay` was missing, and what starts there is a
+character's regeneration timer, the player's automatic basic attack, an enemy's
+attribute application, two creatures' real art and a ground zone's damage timer.
+
+**Two files stated the opposite in comments**, in the same words: "actors spawned
+after this point get their BeginPlay called as they spawn, which is the same
+order the real game uses". Two others worked around it by calling
+`DispatchBeginPlay` by hand.
+
+### The decision: set the flag rather than build a game mode
+
+The issue offered both. Giving the test world a real game mode is the more
+faithful route and it was rejected for a specific reason: **`ACataclysmGameMode`
+is what supplies the difficulty tier**, and `ACataclysmGameMode::DifficultyTierIn`
+answers tier 1 for a world that has none. Tests depend on that, because the tier
+decides what armour is worth — armour removes `armor / (armor + 800 x tier)`. A
+game mode would have changed armour arithmetic across the suite as a side effect
+of a harness fix.
+
+Setting the world's begun-play flag changes exactly the one thing that was wrong
+and nothing else.
+
+### The trap in that route, checked rather than reasoned about
+
+`UWorld::HasBegunPlay` asks two things: that the flag is set, **and** that the
+persistent level holds at least one actor. If the level were empty at that
+moment, the first actor spawned in every test would skip `BeginPlay` while later
+ones did not — an intermittent version of the same bug, which is worse than the
+bug. `Cataclysm.TestWorld.AnActorSpawnedIntoABegunWorldReceivesBeginPlay` spawns
+one and asks it, instead of trusting the reasoning. It passes.
+
+### One test failed, and it would have failed on one machine only
+
+`Cataclysm.Warden.ItHidesItsPlaceholderOnceDressed` asserts a placeholder cylinder
+starts visible, then proves the real art hides it. With `BeginPlay` running, the
+creature's own `BeginPlay` loads the art first and there is no transition left to
+watch. **It fails where the Paragon art exists and passes in continuous
+integration, where that art is gitignored** — the worst shape a failure has. It
+now asks for a world that has not begun play, which is what the second helper is
+for.
+
+### A shared test header, which this project did not have
+
+All thirty world-creating test files carried private copies, which is how the
+helper drifted into three shapes under two names.
+`game/Source/Cataclysm/Tests/CataclysmTestWorld.h` is the first shared test
+header in the project. The nine files whose helper was honestly named `MakeWorld`
+and returned a bare world keep that behaviour, now under
+`MakeWorldThatHasNotBegunPlay`, so this change alters only the files that were
+claiming something untrue.
+
+---
+
 ## 2026-08-17 — A critical strike gets its own colour, decided by playing it
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the floating damage number paragraph in

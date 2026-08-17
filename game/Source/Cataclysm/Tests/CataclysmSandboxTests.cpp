@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -47,17 +48,7 @@ namespace CataclysmSandboxTest
 	 */
 	static UWorld* MakeWorldThatHasBegunPlay()
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-										   /*bInformEngineOfWorld=*/false);
-		if (!World)
-		{
-			return nullptr;
-		}
-
-		FURL URL;
-		World->InitializeActorsForPlay(URL);
-		World->BeginPlay();
-		return World;
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	}
 }
 
