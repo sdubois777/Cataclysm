@@ -20,6 +20,116 @@ applied or still pending.
 
 ---
 
+## 2026-08-17 — An enemy keeps four defensive layers, and does not get the player's other two
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Enemy Stat Blocks section of section
+X and the Abyssal Warden's design section. Closes issue #488 as answered no.
+Filed issue #674, which is what to do instead.
+
+### The question
+
+An enemy has four defensive layers: evasion, armour, resistance and an energy
+shield. A player has six: those four plus block chance and flat damage reduction.
+Issue #488 asked for the missing two as fields on an archetype, alongside evasion.
+
+**The answer is no**, and the project owner made that call on 2026-08-17 after
+being shown the reasoning below.
+
+### The request behind the issue has already been granted, by other work
+
+The issue exists because the project owner said on 2026-08-09 that "enemies get
+layers of defense just like the player". At that moment an enemy had **no working
+layers at all**: the simulation applied resistance and nothing else (issue #481),
+and in the running game every hit resolved untyped so no resistance did anything
+on either side (issue #486). Both landed on 2026-08-12.
+
+The Abyssal Warden now stops **66.3%** of a hit through armour and resistance,
+where the model previously said 35% and the game applied nothing. The layers that
+were asked for exist and work. What was left of issue #488 is the narrower
+question of whether two more are wanted, and that is not automatically yes.
+
+### Flat damage reduction on an enemy is a second copy of its own resistance
+
+A player carries eight typed resistances and chooses which to raise. **An enemy
+carries one untyped figure**, applied to every hit whatever its type. So step 4 of
+the mitigation order already multiplies every hit an enemy takes by
+`(1 - resistance/100)`.
+
+A flat damage reduction at step 5 does the identical arithmetic. The only
+difference is that the player's penetration cuts into resistance and cuts into
+nothing else, so the second copy would be the same mitigation with the counterplay
+removed.
+
+**This project has already deleted a mechanic for exactly that reason.** Per-rarity
+enemy penetration came out of `sim/cataclysm_sim/enemy_stats.py` because the
+hard-coded figures were a second copy of the same mechanic. Where a creature
+should stop more, it is given more resistance or a larger armour share, which are
+the same arithmetic with an answer attached.
+
+### Enemy block would be the only enemy layer with no player answer
+
+The design justifies enemy evasion by naming its counter: enemy evasion is
+answered by area damage. **Block deliberately applies to area damage too**, so
+area damage does not answer it. Nothing else does either — there is no
+block-reduction stat in the affix pool or in either enchantment table.
+
+Block is also a shield's stat in this design; the Shield base is "the one weapon
+whose base defends" and grants 12 block chance. None of the seven creatures in the
+vertical slice carries a shield, so an enemy block chance would be a mechanic with
+no fiction behind it.
+
+And block is a variance layer. The model folds it into an expectation anyway, so
+there it is identical to a smaller flat number; what it adds in play is per-hit
+randomness on the enemy's defence, which makes time to kill noisier without making
+a fight more readable. That is the opposite of what a telegraph-driven design
+wants.
+
+### There was very little room for it in any case
+
+`ENEMY_MITIGATION_CEILING` in `sim/cataclysm_sim/enemy_stats.py` holds every
+creature under 89% of a hit stopped, which is what the reference geared character
+stops. Measured at the armour cap, every archetype and every rarity:
+
+| Creature | Stops at most | Room left |
+| :-- | --: | --: |
+| Abyssal Warden | 83.75% | 5.25 points |
+| Gatekeeper | 82.50% | 6.50 |
+| Hellhound | 82.00% | 7.00 |
+| Corrupted Sentinel | 80.00% | 9.00 |
+| Succubus | 79.75% | 9.25 |
+| Brute | 78.75% | 10.25 |
+| Imp | 25.00% | 64.00 |
+
+The layers multiply, so the Warden crosses the ceiling at about **7.7%** of
+combined extra mitigation. The design document's own worked example — 25% block
+with 30% flat reduction — reaches 90.05% and fails the check at import.
+
+### What to do instead, and it needs no new field
+
+**Enemy flat damage reduction already exists in this design, at the modifier
+layer.** `game/Data/EnemyModifiers.csv`, generated from the Enemy Modifiers sheet
+of the workbook, carries five: Shield Wall takes 75% less from the front, Phalanx
+gains 10% for every ally within five metres, Divine Aegis reduces all damage by
+75% below half health, plus Battle Scarred and Armoured Juggernaut.
+
+Every one is conditional and every one names something a player can do about it —
+flank it, pull the pack apart, burst it past the threshold. That is where Path of
+Exile puts monster damage reduction, through map and unique-monster modifiers
+answered by a family of ignore-physical-damage-reduction stats.
+
+**None of the five is implemented.** That is issue #674, and it is the useful
+follow-up rather than a sixth base stat.
+
+### Two things in the research were out of date and are recorded as such
+
+The research comment on issue #488 gave three reasons the timing was wrong. Two
+have since been fixed and are no longer arguments: the immunity guard now checks
+the combination rather than resistance alone (issue #483), and flat damage
+reduction now has a 75% cap (issue #644, decided earlier the same day). The
+decision rests on the first reason alone, which is the one about counterplay.
+
+---
+
 ## 2026-08-17 — The test world begins play by setting the flag, not by gaining a game mode
 
 **Affects:** nothing in the design documents. It is a change to the automation

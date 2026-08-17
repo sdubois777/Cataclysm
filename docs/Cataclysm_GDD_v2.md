@@ -3808,7 +3808,11 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
-**Those two percentages describe the resistance layer alone, and not what reaches the creature.** Resistance is one layer of several and a hit passes through all of them, multiplying. The Abyssal Warden also carries 5,954 armor at tier 8, which removes a further 48.2%, so 33.7% of an unpenetrated hit actually reaches it rather than 65%. Killing it in 30 swings needs 7,584 damage a swing, where counting resistance alone said 3,929. The full order is in the Damage Calculation section: evasion, block, armor, resistance, flat damage reduction, energy shield, health. Enemies have no block chance and no flat damage reduction today, so for an enemy the live layers are evasion, armor, resistance and the energy shield.
+**Those two percentages describe the resistance layer alone, and not what reaches the creature.** Resistance is one layer of several and a hit passes through all of them, multiplying. The Abyssal Warden also carries 5,954 armor at tier 8, which removes a further 48.2%, so 33.7% of an unpenetrated hit actually reaches it rather than 65%. Killing it in 30 swings needs 7,584 damage a swing, where counting resistance alone said 3,929. The full order is in the Damage Calculation section: evasion, block, armor, resistance, flat damage reduction, energy shield, health. **An enemy has four of those layers and not six: evasion, armor, resistance and the energy shield.** Block chance and flat damage reduction belong to the player alone, and that is a decision rather than work not yet done.
+
+**Why an enemy does not get the other two.** An enemy carries one untyped resistance rather than eight typed ones, so the resistance step already multiplies every hit it takes by one minus that figure. A flat damage reduction step would do the same arithmetic again with one difference: the player's penetration cuts into resistance and cuts into nothing else, so the second copy would be the same mitigation with the counterplay removed. Where a creature should stop more, it is given more resistance or a larger share of armor, which are the same arithmetic with an answer attached. Block is a different objection: a block applies to area damage, and area damage is the answer this design names for enemy evasion, so an enemy block chance would be the only enemy layer a player has no way to reduce. Block is also a shield's stat here, and no creature in the vertical slice carries a shield.
+
+**Where a creature stops more only sometimes, that is a modifier.** The Enemy Modifiers sheet already carries five that reduce damage taken — Shield Wall from the front, Phalanx per nearby ally, Divine Aegis below half health, Battle Scarred and Armored Juggernaut. Every one is conditional and every one names something the player can do about it. That is where this design puts the layer, and it is where Path of Exile puts monster damage reduction too.
 
   
 
@@ -3824,7 +3828,7 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
-**Two consequences worth stating.** An archetype that carries any armor at all is capped at **56% resistance** rather than the 70% the caps table allows, because the rest of the room is spent on armor; one with no armor keeps the whole cap. The highest in the vertical slice is the Abyssal Warden's 35%, so nothing is near it. And giving enemies the two layers only the player has, block chance and flat damage reduction, would put archetypes through the ceiling: an Abyssal Warden with 25% block and 30% flat reduction reaches 90.05%. That is a real constraint on that decision rather than an argument against it.
+**Two consequences worth stating.** An archetype that carries any armor at all is capped at **56% resistance** rather than the 70% the caps table allows, because the rest of the room is spent on armor; one with no armor keeps the whole cap. The highest in the vertical slice is the Abyssal Warden's 35%, so nothing is near it. And it is what settled the question of giving enemies the two layers only the player has. An Abyssal Warden with 25% block and 30% flat reduction reaches 90.05% and breaches the ceiling. The layers multiply, so the room is smaller than it looks: the Warden already stops 83.75% at most, leaving 5.25 points, which it crosses at about 7.7% of combined extra mitigation. That was one of the reasons the answer was no; the others are above.
 
   
 
@@ -4895,7 +4899,7 @@ At Herald rarity on the last floor of a 50-floor Cataclysm dungeon that is 5,954
 
   
 
-**Two of the player's mitigation layers have no enemy equivalent at all** — block chance and flat damage reduction — and giving enemies them is a change to every enemy rather than to this one. It has its own issue.
+**Two of the player's mitigation layers have no enemy equivalent, deliberately** — block chance and flat damage reduction. The reasoning is in the Enemy Stat Blocks section: an enemy's single untyped resistance already does what a flat damage reduction would do, and does it with penetration as an answer, while an enemy block chance would be the only enemy layer a player could not reduce at all. Where this creature should stop more than it does, it is given more resistance or more armor.
 
   
 
