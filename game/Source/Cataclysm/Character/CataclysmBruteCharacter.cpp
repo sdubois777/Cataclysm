@@ -6,6 +6,9 @@
 #include "AbilitySystem/CataclysmMeshWidth.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For turning an ability's tag list into a container, the same way a
+// player's skill row is read. Issue #519.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Animation/AnimInstance.h"
@@ -189,6 +192,17 @@ static TAutoConsoleVariable<float> CVarBruteRockArc(
 		 "it must not outrun the 1200 centimetres per second of the slowest "
 		 "projectile any player skill uses."),
 	ECVF_Default);
+
+// A POINT-BLANK AREA THAT HOLDS WHAT IT CATCHES, which is exactly what the
+// designed player skill Shockwave Leap carries. Issue #519.
+const TCHAR* ACataclysmBruteCharacter::StompTags =
+	TEXT("Type.AOE.PointBlank, Type.Strike, Keyword.CC");
+
+// A THROWN ROCK. Emberfang and Hurl Cinders carry Type.Projectile; the
+// Type.Ranged is this one's own, because the ability exists so that standing
+// outside the Brute's reach is not free.
+const TCHAR* ACataclysmBruteCharacter::RockThrowTags =
+	TEXT("Type.Projectile, Type.Ranged");
 
 ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 {
@@ -883,16 +897,25 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 		// so the hit is what the threshold rule would see if this were an
 		// ordinary stun -- it is not, it is a designed one, but ordering the two
 		// the other way round would make that distinction invisible.
+		// PARSED ONCE RATHER THAN PER TARGET. A stomp catches a crowd.
+		const FGameplayTagContainer AbilityTags =
+			UCataclysmSkillShapes::TagsFromCell(StompTags);
+
 		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
 				World, this, GetActorLocation(), StompRadiusCm))
 		{
 			// AREA DAMAGE, so it cannot be evaded. The design says evasion
 			// avoids a direct attack only and that area damage lands
 			// regardless, and this swept a sphere. Issue #513.
+			//
+			// SAID BY ITS TAGS AND NOT BY THIS CALL, since issue #519. The
+			// Type.AOE.PointBlank in StompTags is what ApplyHit reads, which
+			// is the same route a player skill takes. Passing an area
+			// delivery here as well would be a second answer to one
+			// question.
 			const float Dealt =
 				UCataclysmSkillEffects::ApplyHit(this, Caught, StompDamagePercent,
-												 FGameplayTagContainer(),
-												 FCataclysmHitDelivery::Area());
+												 AbilityTags);
 
 			UCataclysmSkillEffects::ApplyStun(this, Caught, StompStunSeconds,
 											  Dealt, /*bStunIsDesigned=*/true);
@@ -955,7 +978,8 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 			this, RockLaunchLocation(), AimedAt,
 			RockThrowRadiusCm, /*InSpeed=*/0.0f,
 			/*InPierce=*/0, /*bInReturns=*/false, RockThrowDamagePercent,
-			FGameplayTagContainer(), /*bInBurns=*/false, RockMesh,
+			UCataclysmSkillShapes::TagsFromCell(RockThrowTags),
+			/*bInBurns=*/false, RockMesh,
 			RockThrowFlightSecondsFor(AimedAt));
 		return;
 	}

@@ -228,6 +228,22 @@ public:
 	 *  use that slot. */
 	static constexpr float MoltenRoarDamagePercent = 400.0f;
 
+	/**
+	 * What the molten roar IS, as gameplay tags. Issue #519.
+	 *
+	 * A POINT-BLANK AREA, which is what Scorching Arc carries, without that
+	 * skill's Type.AOE.Persistent because this leaves no burning ground.
+	 *
+	 * NO Keyword.CC, and that is deliberate rather than forgotten. The comment
+	 * at the call site says why: the Brute's stomp is the one thing in this
+	 * slice that holds the player still, and a second would spend most of its
+	 * uses inside the five second stun immunity window.
+	 *
+	 * `Type.AOE.PointBlank` IS WHAT MAKES IT UNEVADABLE, and it is now the only
+	 * thing that does; the call site used to say so a second way.
+	 */
+	static const TCHAR* MoltenRoarTags;
+
 	// ----------------------------------------------------------------------
 	// Stampede, the charge
 	// ----------------------------------------------------------------------

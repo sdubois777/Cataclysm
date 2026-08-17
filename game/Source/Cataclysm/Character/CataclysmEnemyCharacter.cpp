@@ -3,6 +3,9 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For turning an ability's tag list into a container, the same way a player's
+// skill row is read. Issue #519.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -24,6 +27,17 @@ namespace
 	constexpr float EnemyCapsuleHalfHeight = 80.0f;
 
 }
+
+// A SINGLE MELEE SWING AT ONE TARGET, which is what Cinderslash carries in the
+// weapon skill matrix. Not area damage, so it can be evaded.
+const TCHAR* ACataclysmEnemyCharacter::BasicAttackTags =
+	TEXT("Type.Strike, Type.Melee");
+
+// RUNS THROUGH WHAT IT HITS AND SHOVES IT ASIDE. Furnace Charge and Flamedart
+// carry Type.Strike with Keyword.Charge; the stagger is this one's own, because
+// it displaces.
+const TCHAR* ACataclysmEnemyCharacter::ChargeTags =
+	TEXT("Type.Strike, Keyword.Charge, Keyword.Stagger");
 
 ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 {
@@ -293,6 +307,10 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 	// a leap that hits only where it lands. Tested against the segment actually
 	// travelled rather than the whole lane, so nothing is hit before the
 	// creature reaches it.
+	// PARSED ONCE RATHER THAN PER TARGET. A charge can run through several.
+	const FGameplayTagContainer AbilityTags =
+		UCataclysmSkillShapes::TagsFromCell(ChargeTags);
+
 	for (AActor* Caught : UCataclysmTargeting::FindEnemiesInLine(
 			World, this, From, Landed, ChargeHalfWidthCm))
 	{
@@ -303,7 +321,7 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 
 		ChargeAlreadyHit.Add(Caught);
 		++ChargeHitCount;
-		UCataclysmSkillEffects::ApplyHit(this, Caught, ChargeDamagePercent);
+		UCataclysmSkillEffects::ApplyHit(this, Caught, ChargeDamagePercent, AbilityTags);
 
 		// AND IT SHOVES WHAT IT RUNS THROUGH ASIDE, when the ability asked for
 		// it. The design settled on issue #310 that enemies displace the player
@@ -551,7 +569,11 @@ void ACataclysmEnemyCharacter::AttackTarget(AActor* Target)
 	// The same path a player's skill takes: written into the Damage meta
 	// attribute and resolved through the full mitigation order. An enemy with no
 	// attack damage set deals nothing and says so once, which ApplyHit handles.
-	UCataclysmSkillEffects::ApplyHit(this, Target, AttackPercentOfOwnDamage);
+	//
+	// AND IT CARRIES TAGS NOW, LIKE A PLAYER'S SKILL DOES. Issue #519.
+	UCataclysmSkillEffects::ApplyHit(
+		this, Target, AttackPercentOfOwnDamage,
+		UCataclysmSkillShapes::TagsFromCell(BasicAttackTags));
 }
 
 UAbilitySystemComponent* ACataclysmEnemyCharacter::GetAbilitySystemComponent() const
