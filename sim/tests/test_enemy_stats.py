@@ -601,16 +601,49 @@ def test_the_defender_knows_whether_it_is_a_boss():
     assert not at_tier_eight("Herald", "Abyssal Warden").defender_for().is_boss
 
 
-def test_enemies_have_no_block_and_no_flat_reduction_yet():
-    """Stated rather than assumed. Issue #488 proposes both, and `defender_for`
-    is the single place they have to be wired in. If they are added to
-    `EnemyStats` and not to the defender they do nothing, which is exactly the
-    failure #481 was."""
+def test_an_enemy_has_four_defensive_layers_and_not_six():
+    """An enemy has evasion, armour, resistance and an energy shield. No block
+    chance and no flat damage reduction, and that is the decision rather than a
+    gap.
+
+    IT USED TO SAY "yet". Issue #488 asked for the player's two remaining layers
+    on every archetype and was answered no on 2026-08-17, so this stopped being a
+    note about unbuilt work and became the guard that holds the answer. The
+    reasoning is in `docs/DECISIONS.md` and the short form is two sentences:
+
+    * An enemy holds ONE untyped resistance, so step 4 already multiplies every
+      hit by `(1 - resistance/100)`. A flat damage reduction at step 5 is the
+      same arithmetic with the player's penetration no longer biting it — a
+      second copy of the mechanic with the counterplay removed. This file has
+      already deleted one mechanic for that exact reason, per-rarity enemy
+      penetration.
+    * Block applies to area damage, and area damage is the answer the design
+      names for enemy evasion. So enemy block would be the first enemy layer
+      with no player answer anywhere, and no affix or enchantment table holds a
+      block-reduction stat to give it one.
+
+    WHERE AN ENEMY SHOULD STOP MORE, raise its resistance or its armour share.
+    Where it should stop more only sometimes, that is a modifier, which is
+    issue #674.
+    """
     for name, rarity in (("Imp", "Common"), ("Abyssal Warden", "Herald"),
                          ("Gatekeeper", "Cataclysm Boss")):
-        d = at_tier_eight(rarity, name).defender_for()
-        assert d.block_chance == 0.0
-        assert d.damage_reduction == 0.0
+        defender = at_tier_eight(rarity, name).defender_for()
+        assert defender.block_chance == 0.0, (
+            f"{name} has a block chance. Issue #488 decided an enemy has none; "
+            "if that is being reversed, the decision in docs/DECISIONS.md has "
+            "to be reversed with it and this test rewritten rather than deleted")
+        assert defender.damage_reduction == 0.0, (
+            f"{name} has flat damage reduction. Issue #488 decided an enemy has "
+            "none, and a conditional modifier is issue #674 rather than a "
+            "figure on the archetype")
+
+    # AND THE FOUR IT DOES HAVE ARE STILL CARRIED, so this cannot pass by an
+    # enemy quietly losing every layer it has.
+    warden = at_tier_eight("Herald", "Abyssal Warden").defender_for()
+    assert warden.armor > 0.0
+    assert warden.resistances["Demonic"] > 0.0
+    assert at_tier_eight("Common", "Imp").defender_for().evasion > 0.0
 
 
 def test_the_probe_hit_is_never_clamped_by_the_probe_pool():

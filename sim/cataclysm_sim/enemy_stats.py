@@ -99,10 +99,23 @@ Warden and by 56% against the Gatekeeper.
 `defender_for` is that route. `EnemyStats.damage_taken_fraction` resolves a probe
 hit through `damage.resolve` against it, so it runs the same eight steps in the
 same order as the player's side and as `UCataclysmDamageCalculation::Resolve`
-in the engine. A defensive layer added to enemies later -- block chance and flat
-damage reduction are issue #488 -- is wired in `defender_for` alone and every
-figure downstream picks it up. Adding it to `EnemyStats` and not to
-`defender_for` puts it back on the dead path.
+in the engine. A defensive layer added to enemies later is wired in
+`defender_for` alone and every figure downstream picks it up. Adding it to
+`EnemyStats` and not to `defender_for` puts it back on the dead path.
+
+AN ENEMY HAS FOUR LAYERS AND THAT IS THE ANSWER, NOT A GAP. Evasion, armour,
+resistance and an energy shield. Issue #488 asked for the two the player has and
+an enemy does not -- block chance and flat damage reduction -- and was answered
+no on 2026-08-17. The reasoning is in `docs/DECISIONS.md`; the short form is that
+an enemy holds ONE untyped resistance, so step 4 already multiplies every hit by
+`(1 - resistance/100)`, and a flat damage reduction at step 5 is the same
+arithmetic with the player's penetration no longer biting it. Enemy block would
+be the first enemy layer with no player answer at all, since block applies to
+area damage and area damage is what the design names as evasion's answer.
+
+Where an enemy needs to stop more, the answer is its resistance or its armour
+share, which are the same arithmetic with a counter attached -- or a conditional
+modifier, which is issue #674.
 
 THERE IS A CEILING ON WHAT THOSE LAYERS MAY STOP TOGETHER, and it is a rule
 about the combination rather than about any one of them. `ENEMY_MITIGATION_CEILING`
@@ -584,9 +597,19 @@ class EnemyStats:
         one figure applied to all incoming damage, so the same number goes in
         every slot. That is the mapping, not a loss of information.
 
-        BLOCK CHANCE AND FLAT DAMAGE REDUCTION ARE LEFT AT ZERO, deliberately and
-        not by omission: enemies have neither today. Issue #488 proposes giving
-        them both, and this is the single line it has to change.
+        BLOCK CHANCE AND FLAT DAMAGE REDUCTION ARE LEFT AT ZERO, AND THAT IS THE
+        DECISION RATHER THAN A GAP. Issue #488 asked for both as fields on an
+        archetype and was answered no on 2026-08-17. An enemy holds one untyped
+        resistance, so step 4 already multiplies every hit by
+        `(1 - resistance/100)`; a flat damage reduction at step 5 does the same
+        arithmetic with nothing to penetrate it, which is a second copy of the
+        mechanic with the counterplay removed. Enemy block would be the first
+        enemy layer with no player answer at all, because block applies to area
+        damage and area damage is the answer the design names for evasion.
+
+        A creature that should stop more gets more resistance or a larger armour
+        share. A creature that should stop more only sometimes gets a modifier,
+        which is issue #674.
         """
         return damage.Defender(
             health=self.health,
@@ -945,7 +968,7 @@ if __name__ == "__main__":
          f"avoids {warden.evasion:.1f}% of direct attacks entirely"),
         (f"block {bare.block_chance:.0f}%, "
          f"flat reduction {bare.damage_reduction:.0f}%",
-         "enemies have neither yet, issue #488"),
+         "an enemy has neither, decided on 2026-08-17, issue #488"),
     ):
         print(f"      {label:<34} {effect}")
     print(f"      {'TOGETHER':<34} {warden.damage_taken_fraction():.1%} of the "
