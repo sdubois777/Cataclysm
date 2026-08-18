@@ -17,9 +17,11 @@ cheaper than re-tuning in the editor.
 | `game/Source/CataclysmEditor/` | Editor-only tooling: data import and validation. Never in a packaged build. |
 | `sim/cataclysm_sim/` | The simulation package. `config.py` holds every tunable number, `world.py` the empire graph, `engine.py` the day loop, `policies.py` seven ways to play, `scoring.py` the power model. |
 | `sim/experiments.py` | The tuning sweeps and the report. Slow. See below. |
-| `sim/tests/` | Fast tests. This is what continuous integration runs. |
+| `sim/tests/` | Fast tests for the simulation. |
 | `sim/verify_scoring_port.py` | Proves `scoring.py` still matches its source. |
 | `sim/analyse_*.py` | One-off analysis scripts. |
+| `tools/` | Python scripts that generate what the engine reads, check that it is current, and drive the Unreal build and its automation tests. `tools/requirements.txt` is what they need. |
+| `tools/tests/` | Fast tests for those scripts, and for the designed numbers the documents, the simulation and the game have to agree on. **More of the fast suite lives here than in `sim/tests/`.** |
 | `docs/` | The design documents. Authoritative; edit them directly. |
 
 ## Commands
@@ -27,9 +29,14 @@ cheaper than re-tuning in the editor.
 Run from the repository root unless stated otherwise.
 
 ```bash
-python -m pytest                          # fast test suite, about 7 seconds
+python -m pytest                          # fast test suite, about 65 seconds
 python -m ruff check .                    # lint
 ```
+
+Those two are what continuous integration runs. `pytest` from the repository root
+collects `sim/tests/` and `tools/tests/` together. Running `sim/tests/` on its
+own, as the narrowed example further down this file does, misses more than half
+the suite; narrow deliberately, not by habit.
 
 ```bash
 # Unreal, run from game/. The engine bundles its own .NET 10; invoking
@@ -54,12 +61,16 @@ cd sim && python verify_scoring_port.py       # compare against the real source
 cd sim && python experiments.py               # full sweeps -- SLOW, see below
 ```
 
-`experiments.py` runs about 25,000 simulated campaigns and takes roughly 18
-minutes. Do not run it to check whether a change works; run `pytest`. Run it
-when you have deliberately changed the power model, the day loop, or a tuning
-constant, and you need to see what moved. Run it in the background and keep
-working. Python block-buffers when redirected, so use `python -u` if you want
-to watch progress.
+`experiments.py` runs about 25,000 simulated campaigns and takes 20 minutes or
+more — longer on a machine you are also working on, where it has been seen to
+take 40. Both figures are being revisited in issue #693, which proposes fewer
+campaigns.
+
+Do not run it to check whether a change works; run `pytest`, which is more than
+ten times shorter. Run it when you have deliberately changed the power model, the
+day loop, or a tuning constant, and you need to see what moved. Run it in the
+background and keep working. Python block-buffers when redirected, so use
+`python -u` if you want to watch progress.
 
 ## Rules that are easy to get wrong
 
@@ -91,6 +102,11 @@ fixed by design rather than swept.
 **The simulation has no runtime dependencies and should keep none.** It is pure
 standard library Python. `sim/requirements-dev.txt` is for testing and linting
 only.
+
+That rule is about `sim/` and not about the repository. The scripts in `tools/`
+do have a dependency, `openpyxl`, because they read the design workbook, and it
+is listed in `tools/requirements.txt`. The two files are kept apart on purpose:
+nothing `tools/` needs may become something the simulation relies on.
 
 ## How to work
 
