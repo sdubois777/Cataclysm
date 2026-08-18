@@ -61,15 +61,10 @@ cd sim && python verify_scoring_port.py       # compare against the real source
 cd sim && python experiments.py               # full sweeps -- SLOW, see below
 ```
 
-`experiments.py` runs about 25,000 simulated campaigns and takes roughly 18
-minutes.
-
-**Neither of those two figures has been verified, and the 18 minutes could not be
-checked on this machine.** Two complete runs on 2026-08-18 took 22 and 40 minutes,
-but the machine was doing other work during both, and contention can only make a
-run slower — so both are upper bounds and neither of them refutes the 18. Budget
-for longer than 18 minutes on a machine you are also using. The campaign count is
-issue #693.
+`experiments.py` runs about 25,000 simulated campaigns and takes 20 minutes or
+more — longer on a machine you are also working on, where it has been seen to
+take 40. Both figures are being revisited in issue #693, which proposes fewer
+campaigns.
 
 Do not run it to check whether a change works; run `pytest`, which is more than
 ten times shorter. Run it when you have deliberately changed the power model, the
