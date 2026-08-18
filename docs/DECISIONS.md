@@ -20,6 +20,122 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — A drop rolls its rarity first, from a flat weight one above the tier
+
+**Affects:** a new Loot Rarity sheet in `docs/All_Things_Cataclysm.xlsx`, and
+`sim/cataclysm_sim/loot.py`. Applied. The first part of issue #44.
+
+### What was missing
+
+Nothing produced an item. `FCataclysmItem` in
+`game/Source/Cataclysm/Items/CataclysmItem.h` has defined what an item IS for some
+time — its base, its upgrade level, its rolled affixes, the rarity computed from
+those contents — and `game/Data/Affixes.csv` and `game/Data/ItemBases.csv` hold 86
+affixes and 56 bases. Two character attributes, magic find and loot quantity, exist
+and replicate. **No code anywhere rolled any of it**, and no rarity distribution
+existed in the workbook, the simulation or the engine.
+
+`docs/Cataclysm_GDD_v2.md` says so itself, in the crafting materials section: "the
+loot tables that would answer it do not exist".
+
+### The first decision: which comes first, the rarity or the contents
+
+Asked by the project owner on 2026-08-18: "Gear drops, rolls for rarity, then picks
+however many affixes/enchantments based on that? Feels like that's how it should
+work but i'm not sure."
+
+**Decision: the rarity is rolled first, and the contents follow from it.**
+
+It was worth asking, because the design says rarity is *not* a property an item
+carries — it is a label for what fills the four slots, which is why adding an affix
+at the crafting bench promotes a piece. That constrains what an item **stores**, not
+the order a generator works in. The generator uses the label as a step and stores
+only the contents; `affixes.rarity_of` recovers the same label from them.
+
+**Rolling the contents directly would not work.** Only eight combinations of
+enchantment count and affix count are a rarity at all — `affixes.rarity_of` raises
+for every other, including nothing at all and one of each — so rolling the two
+counts independently produces something illegal most of the time and needs
+rejecting and retrying. Rolling the rarity and reading `RARITY_COMPOSITION` cannot.
+
+**It also fixes something the other order would have broken.** The first plan was to
+roll the upgrade level first and let it cap the rarity, because Legendary requires
++4, Mythical +6, Ascendant +8 and Cataclysmic +10. That would have made magic find
+unable to do its job: a player with a large bonus at difficulty tier 1 would still
+never see a Legendary, because the upgrade level was fixed at +3 before the rarity
+was rolled. Rarity first makes the gate a floor instead — a lucky Legendary arrives
+at +4 rather than being silently downgraded.
+
+**Those four gates had never been implemented anywhere.** They are stated in the
+rarity table of section VI and existed in no code until now.
+
+### The second: the shape of the roll
+
+**The research settles the shape and does not settle the weights, and that is said
+plainly rather than glossed over.**
+
+What it settles: **the roll is a cascade from the rarest down**, not one weighted
+pick. Path of Exile "rolls for rare, then magic, and any remaining items will drop
+normal"; Diablo 2 checks hierarchically with a fallback when the quality it rolled
+is unavailable. And **magic find multiplies the chance at each step** rather than
+changing the outcome — Path of Exile states that +100% increased item rarity gives
+"twice as many magic items, twice as many rares and twice as many uniques", which is
+exactly what this implements.
+
+What it does not settle: **none of the three publishes base weights**, and all three
+have four or five rarities where this game has eight. So the cascade transfers and
+the steepness of an eight-rung ladder does not.
+
+**Decision: the cap is one rarity above the difficulty tier, and that is not a new
+mechanism.** The design document says the difficulty tier is its own gate three
+times over — gear and gem rarity equal it, the best upgrade stone that can drop is
+capped by it, and a weapon rolls damage types up to it — and
+`affixes.max_affix_tier_on_a_drop` is the fourth, gating affix tiers at tier plus
+one. This is the fifth use of the same shape. Tiers 7 and 8 both reach Cataclysmic,
+the same way affix tiers 6, 7 and 8 all reach T7.
+
+**Decision: how the rarities inside that cap are weighted is data, and every weight
+is 1 today.** The Loot Rarity sheet gives each rarity a drop weight, and a weight is
+its share of every reachable rarity's weight. Equal weights give a flat
+distribution.
+
+### Flat is generous, it is shipped anyway, and here is why
+
+At difficulty tier 8 with no magic find at all, one drop in eight is Cataclysmic.
+That is far above what the genre does with its top rarities, and it is the first
+number that should move.
+
+It ships because **the lever that really controls how much good gear a player sees
+is how many items drop, and that does not exist yet.** Tuning the split between
+rarities before the quantity exists is tuning half a system. Changing it later is a
+column in the workbook and no code change at all. This is the project owner's
+standing rule that balance numbers wait until the systems around them can be played,
+applied rather than argued with.
+
+### What is deliberately not built
+
+**Diminishing returns on magic find.** Diablo 2 has them, per rarity and weaker the
+rarer the tier — uniques `(MF×250)/(MF+250)`, sets `(MF×500)/(MF+500)`, rares
+`(MF×600)/(MF+600)`, with ordinary magic items not diminished at all. Every one of
+those is a chosen constant, and this module has none. Saturating at 1 is the only
+ceiling, and whether that is enough is a question for play.
+
+**The upgrade level a drop arrives at, beyond the floor its rarity forces.** Whether
+a drop rolls an upgrade level or arrives at its floor and is raised by the player
+depends on the upgrade stone system, which is described in the crafting materials
+but modelled nowhere. Left for the next part of #44 rather than guessed at.
+
+**Everything else about a drop**: which base, which affixes, how many items a kill
+or a floor produces. Those are the later parts of #44.
+
+**Sources.** [Drop rate, PoE Wiki](https://www.poewiki.net/wiki/Drop_rate);
+[Rarity, PoE Wiki](https://www.poewiki.net/wiki/Rarity);
+[Magic find diminishing returns, Diablo
+Wiki](https://diablo2.diablowiki.net/Magic_find_diminishing_returns);
+[Magic find, Diablo Wiki](https://diablo.fandom.com/wiki/Magic_find).
+
+---
+
 ## 2026-08-18 — A charge runs along the ground, and the ground decides where it can go
 
 **Affects:** the skill shape subsection of section V of
