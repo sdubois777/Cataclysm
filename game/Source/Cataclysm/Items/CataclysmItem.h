@@ -79,9 +79,10 @@ struct CATACLYSM_API FCataclysmRolledAffix
  * One item: which base it is, how far it has been upgraded, and what it rolled.
  *
  * WHAT IS NOT HERE. Rarity, because it is computed from the contents. The affix
- * values, because they depend on the upgrade level and the base. Sockets and
- * gems, which are issue #46, and enchantments, which are issue #45 -- only the
- * COUNT of enchantments is here, because rarity cannot be computed without it.
+ * values, because they depend on the upgrade level and the base. Which gem sits
+ * in a socket, which is issue #46, and which enchantments a piece carries, which
+ * is issue #45 -- only the COUNT of enchantments is here, because rarity cannot
+ * be computed without it.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmItem
@@ -108,6 +109,27 @@ struct CATACLYSM_API FCataclysmItem
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
 	int32 EnchantmentCount = 0;
+
+	/**
+	 * How many gem sockets the piece has, from none up to its base's maximum.
+	 *
+	 * THE COUNT, NOT WHAT IS IN THEM. Which gem sits in a socket is issue #46.
+	 * A drop rolls this uniformly, so a piece can arrive with none, and the Add
+	 * Socket craft only has something to do because of that.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	int32 Sockets = 0;
+
+	/**
+	 * The Cataclysmic Residue the piece carries.
+	 *
+	 * A COST, NEVER A BENEFIT. It raises what crafting this item charges in gold
+	 * and days, and it counts toward the Worn Residue that can get a character
+	 * hunted by a corrupted copy of itself. An item carries some from the moment
+	 * it drops, in a band set by its rarity.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	float Residue = 0.0f;
 };
 
 /**

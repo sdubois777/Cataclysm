@@ -786,6 +786,368 @@ bool FCataclysmMaterialTierTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// Rolling a whole item
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDropRollTest
+{
+	/** Every table the whole-item roll needs, loaded from the CSVs. */
+	struct FTables
+	{
+		UDataTable* Bases = nullptr;
+		UDataTable* Affixes = nullptr;
+		UDataTable* Rarities = nullptr;
+		UDataTable* Sockets = nullptr;
+		UDataTable* AffixTiers = nullptr;
+
+		bool AllPresent() const
+		{
+			return Bases && Affixes && Rarities && Sockets && AffixTiers;
+		}
+	};
+
+	FTables LoadEverything()
+	{
+		FTables Out;
+		Out.Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+		Out.Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+		Out.Rarities = LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
+		Out.Sockets = LoadTable<FCataclysmItemSocketRow>(TEXT("ItemSockets.csv"));
+		Out.AffixTiers = LoadTable<FCataclysmAffixTierRow>(TEXT("AffixTiers.csv"));
+		return Out;
+	}
+
+	/** Roll one item, or leave OutItem untouched and return false. */
+	bool Roll(const FTables& Tables, const FString& Slot, int32 Tier,
+			  float MagicFind, FRandomStream& Stream, FCataclysmItem& OutItem)
+	{
+		return FDrop::RollItem(Tables.Bases, Tables.Affixes, Tables.Rarities,
+							   Tables.Sockets, Tables.AffixTiers, Slot, Tier,
+							   MagicFind, Stream, OutItem);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWholeItemRollTest,
+	"Cataclysm.Drop.AWholeItemRollsToSomethingValid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWholeItemRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	FRandomStream Stream(/*InSeed=*/20260818);
+	constexpr int32 Rolls = 3000;
+	int32 Rolled = 0;
+
+	for (int32 Attempt = 0; Attempt < Rolls; ++Attempt)
+	{
+		const FString Slot = FDrop::RollSlot(Tables.Bases, Stream);
+		FCataclysmItem Item;
+		if (!TestTrue(*FString::Printf(TEXT("a %s rolls"), *Slot),
+					  Roll(Tables, Slot, 8, 0.0f, Stream, Item)))
+		{
+			return false;
+		}
+		++Rolled;
+
+		// THE CONTENTS HAVE TO BE A RARITY. RarityOf accepts eight combinations
+		// of enchantment and affix count and rejects every other, so an item
+		// that is not any rarity is malformed rather than merely thin -- and
+		// nothing downstream could name it or price it.
+		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+		if (!TestTrue(TEXT("the contents are a rarity"),
+			UCataclysmItemValues::RarityOf(Item.EnchantmentCount,
+										   Item.Affixes.Num(), Rarity)))
+		{
+			AddError(FString::Printf(
+				TEXT("a %s rolled %d enchantments and %d affixes, which is no "
+					 "rarity"), *Slot, Item.EnchantmentCount,
+				Item.Affixes.Num()));
+			return false;
+		}
+
+		// AND THE PIECES AGREE WITH THAT RARITY.
+		if (Item.GearLevel != FDrop::GearLevelGateFor(Tables.Rarities, Rarity))
+		{
+			AddError(FString::Printf(
+				TEXT("a %s arrived at +%d and its rarity needs +%d"), *Slot,
+				Item.GearLevel,
+				FDrop::GearLevelGateFor(Tables.Rarities, Rarity)));
+			return false;
+		}
+
+		float Lowest = 0.0f;
+		float Highest = 0.0f;
+		FDrop::ResidueBandFor(Tables.Rarities, Rarity, Lowest, Highest);
+		if (Item.Residue < Lowest || Item.Residue > Highest)
+		{
+			AddError(FString::Printf(
+				TEXT("a %s carries %.0f residue, outside its rarity's %.0f to "
+					 "%.0f"), *Slot, Item.Residue, Lowest, Highest));
+			return false;
+		}
+
+		const FCataclysmItemBaseRow* BaseRow =
+			Tables.Bases->FindRow<FCataclysmItemBaseRow>(
+				Item.Base, TEXT("test"), /*bWarnIfMissing=*/false);
+		if (!BaseRow || !BaseRow->Slot.Equals(Slot))
+		{
+			AddError(FString::Printf(
+				TEXT("a %s roll produced the base %s"), *Slot,
+				*Item.Base.ToString()));
+			return false;
+		}
+		const int32 Maximum = FDrop::MaxSocketsFor(Tables.Sockets, *BaseRow);
+		if (Item.Sockets < 0 || Item.Sockets > Maximum)
+		{
+			AddError(FString::Printf(
+				TEXT("a %s has %d sockets and its base allows %d"), *Slot,
+				Item.Sockets, Maximum));
+			return false;
+		}
+
+		// NO TWO AFFIXES SHARE A STAT GROUP. This is the rule the whole draw
+		// exists to enforce, and it is the one that would fail silently: an
+		// item with two ways to grant maximum health looks perfectly ordinary.
+		TSet<FString> Taken;
+		TSet<FString> Groups;
+		for (const FCataclysmRolledAffix& Affix : Item.Affixes)
+		{
+			const FCataclysmAffixRow* Row =
+				Tables.Affixes->FindRow<FCataclysmAffixRow>(
+					Affix.Affix, TEXT("test"), /*bWarnIfMissing=*/false);
+			if (!Row)
+			{
+				AddError(FString::Printf(TEXT("rolled an unknown affix %s"),
+										 *Affix.Affix.ToString()));
+				return false;
+			}
+
+			// AND EVERY AFFIX IS ALLOWED ON THIS SLOT.
+			if (!Row->AllowedSlots.Contains(Slot))
+			{
+				AddError(FString::Printf(
+					TEXT("a %s rolled %s, which allows only %s"), *Slot,
+					*Row->AffixName, *Row->AllowedSlots));
+				return false;
+			}
+
+			if (Affix.Tier < 1 || Affix.Tier > UCataclysmItemValues::MaxAffixTier)
+			{
+				AddError(FString::Printf(TEXT("%s rolled at tier %d"),
+										 *Row->AffixName, Affix.Tier));
+				return false;
+			}
+
+			FDrop::GroupsOf(Tables.Affixes, *Row, Affix.DamageTypes, Groups);
+			if (Groups.Intersect(Taken).Num() > 0)
+			{
+				AddError(FString::Printf(
+					TEXT("a %s carries two affixes in one stat group; %s "
+						 "repeats one"), *Slot, *Row->AffixName));
+				return false;
+			}
+			Taken.Append(Groups);
+		}
+	}
+
+	TestEqual(TEXT("every attempt produced an item"), Rolled, Rolls);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAffixGroupsTest,
+	"Cataclysm.Drop.AnAffixOccupiesTheStatGroupsItGrants",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAffixGroupsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!TestNotNull(TEXT("Affixes.csv loads"), Affixes))
+	{
+		return false;
+	}
+
+	const auto GroupsFor = [&](const TCHAR* Key, const TArray<FName>& Types)
+	{
+		TSet<FString> Groups;
+		const FCataclysmAffixRow* Row = Affixes->FindRow<FCataclysmAffixRow>(
+			FName(Key), TEXT("test"), /*bWarnIfMissing=*/false);
+		if (Row)
+		{
+			FDrop::GroupsOf(Affixes, *Row, Types, Groups);
+		}
+		return Groups;
+	};
+
+	// A STAT AFFIX IS ONE GROUP, its stat and its kind together. Flat and
+	// increased maximum health are different groups on purpose: one adds and
+	// one multiplies, so a piece may carry both.
+	TSet<FString> Flat = GroupsFor(TEXT("Stat_Flat_maximum_health"), {});
+	TestEqual(TEXT("a stat affix is one group"), Flat.Num(), 1);
+	TestTrue(TEXT("and it names the stat and the kind"),
+		Flat.Contains(TEXT("max_health.flat")));
+
+	TSet<FString> Increased =
+		GroupsFor(TEXT("Stat_Increased_maximum_health"), {});
+	TestTrue(TEXT("flat and increased are different groups"),
+		Increased.Intersect(Flat).Num() == 0);
+
+	// AN AILMENT AFFIX GRANTS NO STAT, so its group is the effect it applies.
+	TSet<FString> Bleed = GroupsFor(TEXT("Ailment_Chance_to_bleed"), {});
+	TestEqual(TEXT("an ailment affix is one group"), Bleed.Num(), 1);
+	TestTrue(TEXT("named for the effect rather than a stat"),
+		Bleed.Contains(TEXT("ailment.Bleed")));
+
+	// A HYBRID OCCUPIES BOTH ITS PARTS' GROUPS, which is what stops it landing
+	// beside either half on its own.
+	TSet<FString> Hybrid =
+		GroupsFor(TEXT("Hybrid_Magic_find_and_loot_quantity"), {});
+	TestEqual(TEXT("a hybrid is two groups"), Hybrid.Num(), 2);
+	TestTrue(TEXT("and one of them is its first part's"),
+		Hybrid.Intersect(GroupsFor(TEXT("Stat_Flat_magic_find"), {})).Num() == 1);
+
+	// A RESISTANCE FAMILY IS ONE GROUP PER DAMAGE TYPE IT LANDED ON.
+	TSet<FString> One = GroupsFor(TEXT("Resistance_Single_resistance"),
+								  { TEXT("War") });
+	TestEqual(TEXT("a single resistance is one group"), One.Num(), 1);
+	TestTrue(TEXT("named for the damage type"),
+		One.Contains(TEXT("resistance_war.flat")));
+
+	TSet<FString> Two = GroupsFor(TEXT("Resistance_Two_resistances"),
+								  { TEXT("War"), TEXT("Void") });
+	TestEqual(TEXT("two resistances are two groups"), Two.Num(), 2);
+
+	// AND AN EMPTY LIST MEANS ALL EIGHT, which is the convention the rolled
+	// affix already uses for a family that has no choice to make.
+	TSet<FString> All = GroupsFor(TEXT("Resistance_All_resistances"), {});
+	TestEqual(TEXT("all resistances is eight groups"), All.Num(),
+		UCataclysmItemModifiers::DamageTypeNames().Num());
+
+	// SO TWO FAMILIES THAT BOTH LANDED ON WAR CLASH, and two that did not do
+	// not. That is the whole reason the damage types are drawn before the affix
+	// draw rather than after it.
+	TestTrue(TEXT("two families on the same damage type clash"),
+		One.Intersect(GroupsFor(TEXT("Resistance_Two_resistances"),
+							  { TEXT("War"), TEXT("Chaos") })).Num() > 0);
+	TestTrue(TEXT("and two on different ones do not"),
+		One.Intersect(GroupsFor(TEXT("Resistance_Two_resistances"),
+							  { TEXT("Void"), TEXT("Chaos") })).Num() == 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPrefixSuffixSplitTest,
+	"Cataclysm.Drop.AnOddAffixCountGoesBothWays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPrefixSuffixSplitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	// WITHOUT THIS EVERY THREE-AFFIX ITEM IN THE GAME WOULD CARRY TWO PREFIXES
+	// AND ONE SUFFIX, a bias nobody chose, and the affix pool is not built
+	// around it: there are 31 prefixes and 54 suffixes.
+	FRandomStream Stream(/*InSeed=*/3);
+	int32 TwoPrefixes = 0;
+	int32 TwoSuffixes = 0;
+	constexpr int32 Draws = 4000;
+
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		int32 Prefixes = 0;
+		int32 Suffixes = 0;
+		FDrop::SplitForADrop(3, Stream, Prefixes, Suffixes);
+		TestEqual(TEXT("three affixes stay three"), Prefixes + Suffixes, 3);
+		if (Prefixes == 2) { ++TwoPrefixes; }
+		if (Suffixes == 2) { ++TwoSuffixes; }
+	}
+
+	TestTrue(*FString::Printf(
+		TEXT("two prefixes came up %d times in %d"), TwoPrefixes, Draws),
+		FMath::Abs(TwoPrefixes - Draws / 2) < Draws / 10);
+	TestTrue(*FString::Printf(
+		TEXT("and two suffixes %d times in %d"), TwoSuffixes, Draws),
+		FMath::Abs(TwoSuffixes - Draws / 2) < Draws / 10);
+
+	// AN EVEN COUNT HAS NO SIDE TO PICK, so it cannot vary.
+	for (int32 Draw = 0; Draw < 200; ++Draw)
+	{
+		int32 Prefixes = 0;
+		int32 Suffixes = 0;
+		FDrop::SplitForADrop(4, Stream, Prefixes, Suffixes);
+		if (Prefixes != 2 || Suffixes != 2)
+		{
+			AddError(FString::Printf(TEXT("four affixes split %d and %d"),
+									 Prefixes, Suffixes));
+			return false;
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledItemHasAReadableNameTest,
+	"Cataclysm.Item.EveryRolledItemHasAReadableName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRolledItemHasAReadableNameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	// THIS IS WHAT A PLAYER SEES ON THE GROUND. A drop is shown as its own name
+	// rather than as a model, so an item that rolls to an empty name is a drop
+	// nobody can identify or click.
+	FRandomStream Stream(/*InSeed=*/707);
+	for (int32 Attempt = 0; Attempt < 500; ++Attempt)
+	{
+		const FString Slot = FDrop::RollSlot(Tables.Bases, Stream);
+		FCataclysmItem Item;
+		if (!Roll(Tables, Slot, 8, 0.0f, Stream, Item))
+		{
+			AddError(TEXT("a roll produced no item"));
+			return false;
+		}
+
+		const FString Name =
+			UCataclysmItemName::NameOf(Item, Tables.Bases, Tables.Affixes);
+		if (Name.IsEmpty())
+		{
+			AddError(FString::Printf(
+				TEXT("a %s with %d affixes and %d enchantments has no name"),
+				*Slot, Item.Affixes.Num(), Item.EnchantmentCount));
+			return false;
+		}
+
+		// AND IT STARTS WITH THE RARITY, which is the first word of the format.
+		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+		UCataclysmItemValues::RarityOf(Item.EnchantmentCount,
+									   Item.Affixes.Num(), Rarity);
+		if (!Name.StartsWith(UCataclysmItemName::RarityWord(Rarity)))
+		{
+			AddError(FString::Printf(TEXT("'%s' does not begin with its rarity"),
+									 *Name));
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // The name
 // ---------------------------------------------------------------------------
 

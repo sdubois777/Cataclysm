@@ -14,6 +14,32 @@ struct FCataclysmMaterialTierRow;
 class UDataTable;
 
 /**
+ * One affix that could roll on a piece, with its damage types already chosen.
+ *
+ * WHY THE DAMAGE TYPES ARE PICKED BEFORE THE DRAW RATHER THAN AFTER. A
+ * resistance family says how MANY damage types it covers and the item says
+ * which. Two families that both landed on Fire occupy the same stat group and
+ * may not sit on one item, and the draw is what enforces that -- so it has to
+ * know which types each candidate landed on before it chooses between them.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmAffixCandidate
+{
+	GENERATED_BODY()
+
+	/** Row name in the Affixes table. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Affix;
+
+	/** Which damage types a resistance family landed on. Empty for every other
+	 *  kind, and also empty for a family covering all eight, because there is
+	 *  no choice to make -- the same convention FCataclysmRolledAffix uses. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	TArray<FName> DamageTypes;
+};
+
+
+/**
  * What a drop is: which rarity it rolls, how many sockets it has, and what it is
  * called. Ported from `sim/cataclysm_sim/loot.py` and
  * `sim/cataclysm_sim/naming.py`, which are where the rules were argued out.
@@ -222,6 +248,96 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	static int32 MaxAffixTierOnADrop(int32 DifficultyTier);
 
+
+
+	// -----------------------------------------------------------------------
+	// Rolling a whole item
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Every stat group one affix would occupy on an item.
+	 *
+	 * TWO AFFIXES MAY NOT SHARE A GROUP, which is what stops one piece carrying
+	 * four different ways to grant the same stat. The rule, matching
+	 * `affixes.groups_of`:
+	 *
+	 *   Stat        one group, "<stat>.<flat or increased>"
+	 *   Ailment     one group, "ailment.<effect>"
+	 *   Hybrid      one per part, each read as the stat affix it names
+	 *   Resistance  one per damage type it covers, "resistance_<type>.flat"
+	 *
+	 * A HYBRID'S PARTS ARE LOOKED UP BY NAME, because the Affixes table stores
+	 * them as the affix names they are rather than as row keys.
+	 */
+	static void GroupsOf(const UDataTable* AffixTable,
+						 const FCataclysmAffixRow& Affix,
+						 const TArray<FName>& DamageTypes,
+						 TSet<FString>& OutGroups);
+
+	/**
+	 * Every affix that could roll on one slot in one position, each with its
+	 * resistance damage types already drawn.
+	 *
+	 * @param Position  "prefix" or "suffix". They are separate pools, and a stat
+	 *                  appearing as one never appears as the other.
+	 */
+	static void CandidatesFor(const UDataTable* AffixTable, const FString& Slot,
+							  const FString& Position, FRandomStream& Stream,
+							  TArray<FCataclysmAffixCandidate>& OutCandidates);
+
+	/**
+	 * Draw `Count` affixes at random, never two from one group.
+	 *
+	 * @return false when the candidates cannot supply that many distinct
+	 *         groups, which is a fault in the pool rather than an unlucky roll
+	 */
+	static bool DrawWithoutRepeatingAGroup(
+		const UDataTable* AffixTable,
+		const TArray<FCataclysmAffixCandidate>& Candidates, int32 Count,
+		FRandomStream& Stream, TArray<FCataclysmAffixCandidate>& OutDrawn);
+
+	/**
+	 * How one drop's affix slots divide into prefixes and suffixes.
+	 *
+	 * AN ODD COUNT PICKS A SIDE AT RANDOM. `UCataclysmItemValues::
+	 * PrefixSuffixSplit` returns the even shape, and a drop is where the other
+	 * way has to actually happen: without this every three-affix item in the
+	 * game would carry two prefixes and one suffix, a bias nobody chose.
+	 */
+	static void SplitForADrop(int32 Slots, FRandomStream& Stream,
+							  int32& OutPrefixes, int32& OutSuffixes);
+
+	/** Which gear slot a drop is for. Every slot the item bases occupy is
+	 *  equally likely; see the Python model's `roll_slot` for why that is not
+	 *  the same as every WORN position being equally likely. */
+	static FString RollSlot(const UDataTable* BaseTable, FRandomStream& Stream);
+
+	/** A random base within one slot, all equally likely. Returns NAME_None
+	 *  when the slot has no bases. */
+	static FName RollBase(const UDataTable* BaseTable, const FString& Slot,
+						  FRandomStream& Stream);
+
+	/**
+	 * Roll one whole item for a gear slot at a difficulty tier.
+	 *
+	 * THE ORDER IS RARITY, THEN CONTENTS. The rarity says how many enchantments
+	 * and how many regular affixes fill the four slots; the affixes are then
+	 * drawn to that count. Rolling the two counts independently would produce
+	 * something that is not a rarity most of the time.
+	 *
+	 * THE UPGRADE LEVEL IS THE FLOOR ITS RARITY FORCES and nothing more. A
+	 * Legendary drops at +4 because it could not be a Legendary below that.
+	 *
+	 * @return false when a table is missing or the pool cannot fill the item
+	 */
+	static bool RollItem(const UDataTable* BaseTable,
+						 const UDataTable* AffixTable,
+						 const UDataTable* GearRarityTable,
+						 const UDataTable* SocketTable,
+						 const UDataTable* AffixTierTable,
+						 const FString& Slot, int32 DifficultyTier,
+						 float MagicFind, FRandomStream& Stream,
+						 FCataclysmItem& OutItem);
 
 	// -----------------------------------------------------------------------
 	// What a kill drops
