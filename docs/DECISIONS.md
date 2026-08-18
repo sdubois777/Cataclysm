@@ -20,6 +20,104 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — A charge runs along the ground, and the ground decides where it can go
+
+**Affects:** the skill shape subsection of section V of
+`docs/Cataclysm_GDD_v2.md`, and `ACataclysmEnemyCharacter` in
+`game/Source/Cataclysm/Character/`. Applied. Closes issue #497.
+
+### What was wrong
+
+A charge moved the creature with `SetActorLocation` and built each step's
+destination from the previous position with only X and Y changed, so a charge was
+horizontal for its whole run whatever the ground under it did. Nothing anywhere
+in the charge looked for the floor.
+
+It is not visible today. The only playable level,
+`game/Content/Maps/L_Sandbox.umap`, is flat, and a test world built with
+`UWorld::CreateWorld` holds no geometry at all — so none of the fourteen Abyssal
+Warden tests could tell a charge that follows the floor from one that ignores it.
+
+### What the design already settled, so none of it was decided here
+
+Section V of `Cataclysm_GDD_v2.md` says a charge "runs along the ground and meets
+whatever is in the way", and the Abyssal Warden's charge subsection says "it is
+stopped by the level, not by bodies". Following the floor, and being stopped by
+ground it cannot get onto, both follow from those two sentences.
+
+**Issue #497 said `docs/DECISIONS.md` recorded this as a known limitation left
+open by issue #491. It did not.** The 2026-08-09 entry on charge speed names only
+the `Leap` and `Blink` modes as deliberately not built. The limitation was written
+down nowhere before this entry.
+
+### The first thing that had to be decided: what a charge does at a drop
+
+Ground more than one walkable step below — a ledge, a pit, or a ramp too steep to
+walk down. Three candidates were put to the project owner on 2026-08-18:
+
+| Candidate | What it does |
+| :-- | :-- |
+| Leave the height alone | The creature runs forward off the edge and the movement component's gravity pulls it down. Smallest change, decides nothing new, and could not be proved — a test world is never ticked, so the gravity half is unobservable. |
+| Run down as steeply as it could walk | The creature descends at the walkable angle until it meets the floor below. |
+| Stop at the edge | A drop counts as being stopped by the level, the same as a wall. |
+
+**Decision: run down as steeply as it could walk.** The project owner chose it in
+those words. Stopping at the edge was the largest change and had a cost the other
+two do not: a 60 cm gap part way along a lane would end a charge short of the
+marker it had already drawn, and a telegraphed attack that marks a place must
+arrive at that place.
+
+### The second: whether a charge is stopped by a low obstacle
+
+A charge is swept as a **sphere of the capsule's radius centred at the capsule's
+centre**, which for the Abyssal Warden leaves 66 cm of clear air beneath it. So a
+charge passed through anything shorter than 66 cm, while the creature's capsule
+reaches the floor and would really collide with it.
+
+**Decision: a charge stops on anything it could not walk up.** The project owner
+chose it. The consequence is a constraint on level dressing rather than on the
+creature: a crate in a charge lane ends the charge at the crate. A kerb does not.
+
+### Where the two limits come from, and why they are not new numbers
+
+Both are the character movement component's own figures for walking, read at the
+moment they are used:
+
+| Limit | Where it comes from | What it decides |
+| :-- | :-- | :-- |
+| The steepest slope | `GetWalkableFloorZ()`, the cosine of the walkable floor angle. 44.765 degrees by default, which is very nearly one centimetre up for each one along | The steepest ramp a charge follows, and the fastest it descends a drop |
+| The tallest single step | `MaxStepHeight`, 45 cm by default | The tallest lip it mounts, whatever the frame rate |
+
+The slope limit alone would have made the behaviour depend on the frame rate for
+a vertical lip, because it is proportional to how far one step travels: a 25 cm
+doorway lip would stop a charge at 60 frames a second and not at 30. The step
+limit alone would have let a charge climb a 60 degree ramp. The larger of the two
+is what a walking character would manage, which is the rule both come from.
+
+**No new tunable number was introduced.** How far down the charge looks for the
+floor is derived rather than picked: the creature descends at most the walkable
+angle for every centimetre of lane it has left, so a floor lower than that cannot
+be reached before the lane ends, and looking further could not change the run.
+
+### What is deliberately not built
+
+**A charge still does not use the character movement component to move.** Driving
+it through the movement component would get floor-finding, step-up and gravity
+for nothing, and would give up the exact control over the lane that the charge
+needs — the run has to end exactly where the marker was drawn, and a movement
+component that slid along a wall would not. Issue #497 raised that as the larger
+of its two candidate fixes and it stays unbuilt.
+
+**The lane MARKER is still drawn flat, at the creature's own foot height.** This
+entry is about where a charge goes, not about where the telegraph is drawn, and
+the two now disagree on a slope: the creature follows the ground and the
+rectangle on the floor does not. Every marker in the game has the same problem,
+because they all flatten their aim point through one function that assumes the
+creature's own floor. Issue #690 has it. It cannot be seen or judged today for
+the same reason this could not be: there is no sloped level to look at.
+
+---
+
 ## 2026-08-17 — A character has its own maximum critical strike chance, which only ever goes down
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the caps table in section VII.

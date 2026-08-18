@@ -177,6 +177,11 @@ void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
 	// captures it through FloorUnder for the same reason issue #471 flattened
 	// the aim point. Charging toward a point at floor height would drag the
 	// capsule down through the floor by its own half-height.
+	//
+	// AND IT IS ONLY THE HEIGHT IT SET OFF AT, NOT THE HEIGHT IT WILL ARRIVE AT.
+	// Nothing reads this Z: the direction and the distance left are both measured
+	// in the floor plane, and each step's height comes from the floor under it.
+	// Issue #497.
 	ChargeEndPoint = FVector(ToPoint.X, ToPoint.Y, GetActorLocation().Z);
 
 	ChargeSpeedCmPerSecond = SpeedCmPerSecond;
@@ -237,9 +242,11 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 
 	const FVector From = GetActorLocation();
 
-	// HOW FAR IS LEFT, IN THE FLOOR PLANE. The lane is horizontal, so the
-	// remaining distance is a 2D one; a 3D measure would charge the creature for
-	// a height difference that the charge never crosses.
+	// HOW FAR IS LEFT, IN THE FLOOR PLANE. The lane is a floor-plane thing -- the
+	// marker is drawn on the ground as a rectangle -- so both the distance left
+	// and the distance travelled are measured flat. The creature's path over a
+	// slope is longer than that, and charging it for the difference would leave it
+	// short of the end of the lane the marker promised.
 	const float RemainingCm = FVector::Dist2D(From, ChargeEndPoint);
 	if (RemainingCm <= KINDA_SMALL_NUMBER)
 	{
@@ -255,7 +262,18 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 	// point, so a step that overshot would take the creature onto ground it
 	// never warned about.
 	const float ThisStepCm = FMath::Min(StepCm, RemainingCm);
-	const FVector To = From + Direction * ThisStepCm;
+	FVector To = From + Direction * ThisStepCm;
+
+	// ALONG THE GROUND, NOT AT THE HEIGHT IT SET OFF FROM. Issue #497. Direction
+	// is flat, so without this the step would keep the previous height and a
+	// charge would be horizontal for its whole run.
+	if (!SetChargeStepHeight(From, RemainingCm, ThisStepCm, To))
+	{
+		// GROUND IT COULD NOT GET ONTO IS THE LEVEL STOPPING IT, the same as a
+		// wall, and the creature is left standing at the foot of it.
+		bCharging = false;
+		return false;
+	}
 
 	// STOPPED BY THE LEVEL, NOT BY BODIES, AND THE DESIGN ASKS FOR BOTH HALVES.
 	//
@@ -282,6 +300,14 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 	// of the capsule's radius centred at the capsule's centre sits well clear of
 	// the floor -- 66 cm clear for the Warden -- and still meets a wall at body
 	// height, which is what a charge should be stopped by.
+	//
+	// SWEPT TO WHERE THE STEP IS REALLY GOING, WHICH IS WHY IT RUNS AFTER THE
+	// HEIGHT IS DECIDED AND NOT BEFORE. Up a ramp the sphere then travels PARALLEL
+	// to the slope and keeps its whole 66 cm of clearance, where a sphere swept
+	// flat into rising ground would graze the ramp and stop the charge on the
+	// floor. That clearance is also what the sphere cannot see: anything shorter
+	// than it passes underneath, which is why the height check above is what stops
+	// a charge on a low obstacle and this sweep is not.
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(CataclysmCharge),
 								 /*bInTraceComplex=*/false, this);
 
@@ -347,6 +373,105 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 		return false;
 	}
 
+	return true;
+}
+
+bool ACataclysmEnemyCharacter::SetChargeStepHeight(const FVector& From,
+												   float RemainingCm,
+												   float StepCm,
+												   FVector& Step) const
+{
+	UWorld* World = GetWorld();
+	const UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!World || !Movement)
+	{
+		return true;
+	}
+
+	// AN ACTOR'S LOCATION IS ITS CAPSULE CENTRE, so this is what turns a height
+	// on the ground into a height for the creature and back again.
+	const float HalfHeightCm = GetCapsuleComponent()
+		? GetCapsuleComponent()->GetScaledCapsuleHalfHeight()
+		: 0.0f;
+
+	// THE STEEPEST SLOPE THE CREATURE COULD WALK, AS A RISE PER CENTIMETRE ALONG.
+	// The movement component holds that angle as the cosine of itself, which is
+	// what GetWalkableFloorZ returns, and tan = sqrt(1 - cos^2) / cos converts it.
+	// At the engine's default 44.765 degrees this is 0.99, so very nearly one
+	// centimetre up for each one along.
+	//
+	// CLAMPED AWAY FROM ZERO because a walkable angle of 90 degrees would divide
+	// by nothing. It is not a figure anybody would set, and the guard is one line.
+	const float CosWalkable = FMath::Clamp(Movement->GetWalkableFloorZ(), 0.05f, 1.0f);
+	const float WalkableRisePerCm =
+		FMath::Sqrt(1.0f - CosWalkable * CosWalkable) / CosWalkable;
+
+	// HOW FAR DOWN IT IS WORTH LOOKING, AND WHY IT IS DERIVED RATHER THAN PICKED.
+	// The creature descends at most WalkableRisePerCm for every centimetre it has
+	// still to travel, so a floor lower than that cannot be reached before the
+	// lane ends. Below that depth, finding a floor and finding none produce
+	// exactly the same run, so there is nothing to gain by looking further.
+	const float DeepestWorthLookingCm =
+		HalfHeightCm + RemainingCm * WalkableRisePerCm;
+
+	// FROM THE MIDDLE OF THE BODY, NOT FROM OVER ITS HEAD. A trace that began
+	// above the creature would find a ceiling or an overhead walkway and call it
+	// the floor. Begun at the capsule's centre, the first thing below is the floor
+	// or something resting on it, and anything higher than that is a wall, which
+	// is what the sweep in StepCharge is for.
+	const FVector LookFrom(Step.X, Step.Y, From.Z);
+
+	// BY OBJECT TYPE, FOR THE SAME REASON THE SWEEP IN StepCharge IS. Asking what
+	// IS a WorldStatic object excludes other creatures' capsules, so one enemy
+	// cannot serve as the floor another charges along.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CataclysmChargeFloor),
+								 /*bInTraceComplex=*/false, this);
+
+	FHitResult Floor;
+	if (!World->LineTraceSingleByObjectType(
+			Floor, LookFrom,
+			LookFrom - FVector(0.0f, 0.0f, DeepestWorthLookingCm),
+			FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+	{
+		// NOTHING UNDER IT MEANS NOTHING TO FOLLOW, so the step keeps the height it
+		// already had and the charge is horizontal, which is what it always was.
+		// That is the case in every automation test in this project, because a test
+		// world built with UWorld::CreateWorld holds no geometry at all.
+		return true;
+	}
+
+	// HOW MUCH THIS ONE STEP MAY RISE. Two allowances and the larger wins.
+	//
+	// A SLOPE'S WORTH, which is what makes a ramp followed and a steeper ramp
+	// refused. Being proportional to the step, the angle the creature will follow
+	// is the same at any frame rate, where a fixed allowance would let a charge up
+	// a steeper hill the slower the machine.
+	//
+	// OR ONE STEP UP, when the ground ahead is flat enough to stand on. A doorway
+	// lip is a vertical rise of a few centimetres with no slope to it at all, so
+	// the proportional allowance alone would refuse it on a fast frame and allow
+	// it on a slow one. MaxStepHeight is the movement component's own answer to
+	// the same question for walking, so a charge mounts what a walk would.
+	const bool bCouldStandOnIt =
+		Floor.ImpactNormal.Z >= Movement->GetWalkableFloorZ();
+	const float SlopesWorthCm = StepCm * WalkableRisePerCm;
+	const float MostItCouldClimbCm = bCouldStandOnIt
+		? FMath::Max(Movement->MaxStepHeight, SlopesWorthCm)
+		: SlopesWorthCm;
+
+	const float WantedChangeCm = (Floor.ImpactPoint.Z + HalfHeightCm) - From.Z;
+
+	if (WantedChangeCm > MostItCouldClimbCm)
+	{
+		return false;
+	}
+
+	// AND DOWN NO FASTER THAN IT COULD WALK DOWN, which is a slope's worth and not
+	// a step's. Asked of the project owner on 2026-08-18 and answered "run down as
+	// steeply as it could walk": a charge that reaches a ledge leaves the edge and
+	// descends at the walkable angle until it meets the floor below, rather than
+	// dropping to it in one frame. See docs/DECISIONS.md.
+	Step.Z = From.Z + FMath::Max(WantedChangeCm, -SlopesWorthCm);
 	return true;
 }
 
