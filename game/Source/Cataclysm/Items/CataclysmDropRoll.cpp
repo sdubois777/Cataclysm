@@ -556,6 +556,377 @@ int32 UCataclysmDropRoll::RollAffixTier(const UDataTable* AffixTierTable,
 }
 
 // ---------------------------------------------------------------------------
+// Rolling a whole item
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	/** The Affixes table row whose AffixName is this, or null.
+	 *
+	 * BY NAME RATHER THAN BY ROW KEY, because a hybrid names its two parts as
+	 * the affix names they are ("Flat magic find") and the row key is decorated
+	 * with the kind ("Stat_Flat_magic_find").
+	 */
+	const FCataclysmAffixRow* AffixNamed(const UDataTable* AffixTable,
+										 const FString& AffixName)
+	{
+		if (!AffixTable || AffixName.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		const FCataclysmAffixRow* Found = nullptr;
+		AffixTable->ForeachRow<FCataclysmAffixRow>(TEXT("AffixNamed"),
+			[&](const FName&, const FCataclysmAffixRow& Row)
+			{
+				if (!Found && Row.AffixName.Equals(AffixName,
+												   ESearchCase::IgnoreCase))
+				{
+					Found = &Row;
+				}
+			});
+		return Found;
+	}
+
+	/** The group one stat affix occupies: "<stat>.<flat or increased>". */
+	FString StatGroup(const FString& Stat, const FString& ValueKind)
+	{
+		return FString::Printf(TEXT("%s.%s"), *Stat, *ValueKind);
+	}
+
+	/** Whether this affix row is a resistance family. */
+	bool IsResistanceFamily(const FCataclysmAffixRow& Row)
+	{
+		return Row.AffixKind.Equals(TEXT("Resistance"), ESearchCase::IgnoreCase);
+	}
+}
+
+void UCataclysmDropRoll::GroupsOf(const UDataTable* AffixTable,
+								  const FCataclysmAffixRow& Affix,
+								  const TArray<FName>& DamageTypes,
+								  TSet<FString>& OutGroups)
+{
+	OutGroups.Reset();
+
+	if (IsResistanceFamily(Affix))
+	{
+		// AN EMPTY LIST MEANS ALL EIGHT, which is the convention
+		// FCataclysmRolledAffix already uses: a family covering every damage
+		// type has no choice to make, so nothing is stored.
+		const TArray<FName>& Covered = DamageTypes.Num() > 0
+			? DamageTypes : UCataclysmItemModifiers::DamageTypeNames();
+		for (const FName& Type : Covered)
+		{
+			OutGroups.Add(StatGroup(
+				UCataclysmItemModifiers::ResistanceStatFor(Type).ToString(),
+				TEXT("flat")));
+		}
+		return;
+	}
+
+	if (Affix.AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase))
+	{
+		// AN AILMENT AFFIX GRANTS NO STAT, so it cannot use a stat group. What
+		// it grants is a chance at one named effect, and two rolls of the same
+		// chance on one piece is the duplicate the rule exists to stop.
+		OutGroups.Add(FString::Printf(TEXT("ailment.%s"), *Affix.Ailment));
+		return;
+	}
+
+	if (Affix.AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
+	{
+		for (const FString& PartName : { Affix.HybridPart1, Affix.HybridPart2 })
+		{
+			const FCataclysmAffixRow* Part = AffixNamed(AffixTable, PartName);
+			if (Part)
+			{
+				OutGroups.Add(StatGroup(Part->Stat, Part->ValueKind));
+			}
+			else if (!PartName.IsEmpty())
+			{
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("The hybrid affix '%s' names a part '%s' that is not "
+						 "in the Affixes table, so the group rule cannot see "
+						 "it and two affixes granting that stat could land on "
+						 "one item."), *Affix.AffixName, *PartName);
+			}
+		}
+		return;
+	}
+
+	OutGroups.Add(StatGroup(Affix.Stat, Affix.ValueKind));
+}
+
+void UCataclysmDropRoll::CandidatesFor(
+	const UDataTable* AffixTable, const FString& Slot, const FString& Position,
+	FRandomStream& Stream, TArray<FCataclysmAffixCandidate>& OutCandidates)
+{
+	OutCandidates.Reset();
+	if (!AffixTable)
+	{
+		return;
+	}
+
+	const TArray<FName>& AllTypes = UCataclysmItemModifiers::DamageTypeNames();
+
+	AffixTable->ForeachRow<FCataclysmAffixRow>(TEXT("CandidatesFor"),
+		[&](const FName& Key, const FCataclysmAffixRow& Row)
+		{
+			if (!Row.Position.Equals(Position, ESearchCase::IgnoreCase))
+			{
+				return;
+			}
+
+			// THE SLOT LIST IS COMMA SEPARATED and every entry is checked at
+			// generation time against the slots the item bases occupy, so a
+			// misspelling here would already have failed the build.
+			TArray<FString> Allowed;
+			Row.AllowedSlots.ParseIntoArray(Allowed, TEXT(","), true);
+			bool bAllowed = false;
+			for (FString Each : Allowed)
+			{
+				if (Each.TrimStartAndEnd().Equals(Slot, ESearchCase::IgnoreCase))
+				{
+					bAllowed = true;
+					break;
+				}
+			}
+			if (!bAllowed)
+			{
+				return;
+			}
+
+			FCataclysmAffixCandidate Candidate;
+			Candidate.Affix = Key;
+
+			// A RESISTANCE FAMILY DRAWS ITS DAMAGE TYPES NOW, before the affix
+			// draw, because the draw has to know which groups it would occupy.
+			// A family covering all eight stores none, by the convention above.
+			if (IsResistanceFamily(Row) && Row.Breadth > 0
+				&& Row.Breadth < AllTypes.Num())
+			{
+				TArray<FName> Pool = AllTypes;
+				for (int32 Taken = 0; Taken < Row.Breadth; ++Taken)
+				{
+					const int32 Index = Stream.RandRange(Taken, Pool.Num() - 1);
+					Pool.Swap(Taken, Index);
+					Candidate.DamageTypes.Add(Pool[Taken]);
+				}
+			}
+
+			OutCandidates.Add(MoveTemp(Candidate));
+		});
+}
+
+bool UCataclysmDropRoll::DrawWithoutRepeatingAGroup(
+	const UDataTable* AffixTable,
+	const TArray<FCataclysmAffixCandidate>& Candidates, int32 Count,
+	FRandomStream& Stream, TArray<FCataclysmAffixCandidate>& OutDrawn)
+{
+	OutDrawn.Reset();
+	if (Count <= 0)
+	{
+		return Count == 0;
+	}
+	if (!AffixTable)
+	{
+		return false;
+	}
+
+	// SHUFFLED AND THEN TAKEN IN ORDER, which is draw-without-replacement with
+	// a whole group treated as drawn once any of its members is.
+	TArray<FCataclysmAffixCandidate> Order = Candidates;
+	for (int32 Index = Order.Num() - 1; Index > 0; --Index)
+	{
+		Order.Swap(Index, Stream.RandRange(0, Index));
+	}
+
+	TSet<FString> Taken;
+	TSet<FString> Groups;
+	for (const FCataclysmAffixCandidate& Candidate : Order)
+	{
+		if (OutDrawn.Num() == Count)
+		{
+			break;
+		}
+
+		const FCataclysmAffixRow* Row = AffixTable->FindRow<FCataclysmAffixRow>(
+			Candidate.Affix, TEXT("DrawWithoutRepeatingAGroup"),
+			/*bWarnIfMissing=*/false);
+		if (!Row)
+		{
+			continue;
+		}
+
+		GroupsOf(AffixTable, *Row, Candidate.DamageTypes, Groups);
+		if (Groups.Intersect(Taken).Num() > 0)
+		{
+			continue;
+		}
+		Taken.Append(Groups);
+		OutDrawn.Add(Candidate);
+	}
+
+	if (OutDrawn.Num() < Count)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Asked for %d affixes and the %d candidates supply only %d "
+				 "distinct stat groups. That is a fault in the affix pool "
+				 "rather than an unlucky roll."),
+			Count, Order.Num(), OutDrawn.Num());
+		return false;
+	}
+	return true;
+}
+
+void UCataclysmDropRoll::SplitForADrop(int32 Slots, FRandomStream& Stream,
+									   int32& OutPrefixes, int32& OutSuffixes)
+{
+	UCataclysmItemValues::PrefixSuffixSplit(Slots, OutPrefixes, OutSuffixes);
+	if (OutPrefixes != OutSuffixes && Stream.FRand() < 0.5f)
+	{
+		Swap(OutPrefixes, OutSuffixes);
+	}
+}
+
+FString UCataclysmDropRoll::RollSlot(const UDataTable* BaseTable,
+									 FRandomStream& Stream)
+{
+	if (!BaseTable)
+	{
+		return FString();
+	}
+
+	// READ OFF THE ITEM BASES rather than held as a list here, so adding a slot
+	// to the design needs no change in this file.
+	TArray<FString> Slots;
+	BaseTable->ForeachRow<FCataclysmItemBaseRow>(TEXT("RollSlot"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (!Row.Slot.IsEmpty())
+			{
+				Slots.AddUnique(Row.Slot);
+			}
+		});
+	if (Slots.Num() == 0)
+	{
+		return FString();
+	}
+
+	// SORTED SO THE DRAW IS REPRODUCIBLE. A DataTable is a map and its row
+	// order is not guaranteed, so an unsorted list would make one seed give
+	// different slots on different runs.
+	Slots.Sort();
+	return Slots[Stream.RandRange(0, Slots.Num() - 1)];
+}
+
+FName UCataclysmDropRoll::RollBase(const UDataTable* BaseTable,
+								   const FString& Slot, FRandomStream& Stream)
+{
+	if (!BaseTable || Slot.IsEmpty())
+	{
+		return NAME_None;
+	}
+
+	// EVERY BASE IN THE SLOT IS EQUALLY LIKELY, decided by the project owner on
+	// 2026-08-18. The bases in a slot are alternatives rather than a ladder --
+	// one grants armour, another evasion, another energy shield -- so none of
+	// them is the good one to hold out for.
+	TArray<FName> Bases;
+	BaseTable->ForeachRow<FCataclysmItemBaseRow>(TEXT("RollBase"),
+		[&](const FName& Key, const FCataclysmItemBaseRow& Row)
+		{
+			if (Row.Slot.Equals(Slot, ESearchCase::IgnoreCase))
+			{
+				Bases.Add(Key);
+			}
+		});
+	if (Bases.Num() == 0)
+	{
+		return NAME_None;
+	}
+
+	Bases.Sort(FNameLexicalLess());
+	return Bases[Stream.RandRange(0, Bases.Num() - 1)];
+}
+
+bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
+								  const UDataTable* AffixTable,
+								  const UDataTable* GearRarityTable,
+								  const UDataTable* SocketTable,
+								  const UDataTable* AffixTierTable,
+								  const FString& Slot, int32 DifficultyTier,
+								  float MagicFind, FRandomStream& Stream,
+								  FCataclysmItem& OutItem)
+{
+	OutItem = FCataclysmItem();
+
+	const FName Base = RollBase(BaseTable, Slot, Stream);
+	if (Base.IsNone())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("No item base is in slot '%s', so nothing can drop for it."),
+			*Slot);
+		return false;
+	}
+	const FCataclysmItemBaseRow* BaseRow =
+		BaseTable->FindRow<FCataclysmItemBaseRow>(
+			Base, TEXT("RollItem"), /*bWarnIfMissing=*/false);
+	if (!BaseRow)
+	{
+		return false;
+	}
+
+	// THE RARITY IS ROLLED FIRST AND THE CONTENTS FOLLOW FROM IT.
+	const ECataclysmRarity Rarity =
+		RollRarity(GearRarityTable, DifficultyTier, MagicFind, Stream);
+
+	OutItem.Base = Base;
+	OutItem.GearLevel = GearLevelGateFor(GearRarityTable, Rarity);
+	OutItem.EnchantmentCount = UCataclysmItemValues::EnchantmentsFor(Rarity);
+	OutItem.Sockets = RollSockets(SocketTable, *BaseRow, Stream);
+	OutItem.Residue = RollResidue(GearRarityTable, Rarity, Stream);
+
+	int32 Prefixes = 0;
+	int32 Suffixes = 0;
+	SplitForADrop(UCataclysmItemValues::AffixSlotsFor(Rarity), Stream,
+				  Prefixes, Suffixes);
+
+	const TPair<const TCHAR*, int32> Positions[] = {
+		{ TEXT("prefix"), Prefixes }, { TEXT("suffix"), Suffixes } };
+
+	for (const TPair<const TCHAR*, int32>& Each : Positions)
+	{
+		if (Each.Value == 0)
+		{
+			continue;
+		}
+
+		TArray<FCataclysmAffixCandidate> Candidates;
+		CandidatesFor(AffixTable, Slot, Each.Key, Stream, Candidates);
+
+		TArray<FCataclysmAffixCandidate> Drawn;
+		if (!DrawWithoutRepeatingAGroup(AffixTable, Candidates, Each.Value,
+										Stream, Drawn))
+		{
+			return false;
+		}
+
+		for (const FCataclysmAffixCandidate& Candidate : Drawn)
+		{
+			FCataclysmRolledAffix Rolled;
+			Rolled.Affix = Candidate.Affix;
+			Rolled.Tier = RollAffixTier(AffixTierTable, DifficultyTier, Stream);
+			Rolled.Roll = Stream.FRand();
+			Rolled.DamageTypes = Candidate.DamageTypes;
+			OutItem.Affixes.Add(MoveTemp(Rolled));
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // What it is called
 // ---------------------------------------------------------------------------
 
