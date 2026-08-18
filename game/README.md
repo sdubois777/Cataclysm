@@ -96,7 +96,7 @@ them by hand.
 | Path | What it is |
 |---|---|
 | `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. No enemy is in the map — `ACataclysmGameMode` spawns them at play time. |
-| `Content/Data/` | Twenty-two DataTable assets: twenty imported from the design workbook, and two from the simulation package's enemy model. See below. |
+| `Content/Data/` | Twenty-four DataTable assets: twenty-two imported from the design workbook, and two from the simulation package's enemy model. See below. |
 | `Content/Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
 
 **Not in git.**
@@ -199,7 +199,7 @@ them, and `--check` compares them. They are **not content**. Nothing in the
 engine can reference one, `Data/` is not cooked, and a packaged build does not
 contain them. So they are then imported as DataTable assets under `/Game/Data/`:
 
-Two of the twenty-two do not come from the workbook. `EnemyArchetypes.csv` and
+Two of the twenty-four do not come from the workbook. `EnemyArchetypes.csv` and
 `EnemyRarities.csv` are built from `sim/cataclysm_sim/enemy_stats.py`, which is
 where the enemy stat block is designed and where its self-checks live. The same
 generator writes them and the same `--check` compares them, so editing either

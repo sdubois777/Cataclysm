@@ -544,6 +544,248 @@ bool FCataclysmDropAffixTierTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// What a kill drops
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillDropRatesTest,
+	"Cataclysm.Drop.AKillDropsAtTheRateItsRarityStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKillDropRatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Drops = LoadTable<FCataclysmEnemyDropRow>(TEXT("EnemyDrops.csv"));
+	UDataTable* Rarities =
+		LoadTable<FCataclysmEnemyRarityRow>(TEXT("EnemyRarities.csv"));
+	if (!TestNotNull(TEXT("EnemyDrops.csv loads"), Drops)
+		|| !TestNotNull(TEXT("EnemyRarities.csv loads"), Rarities))
+	{
+		return false;
+	}
+
+	// THE TWO TABLES JOIN ON THE ROW KEY. EnemyRarities is generated from the
+	// simulation's enemy model and EnemyDrops is typed into the workbook, so a
+	// rarity in one and not the other would be a creature that drops nothing,
+	// or a drop rate for a creature that cannot exist.
+	const TArray<FName> Known = Rarities->GetRowNames();
+	for (const FName& Key : Known)
+	{
+		TestNotNull(*FString::Printf(TEXT("a drop row for %s"), *Key.ToString()),
+			FDrop::EnemyDropRow(Drops, Key));
+	}
+	TestEqual(TEXT("and no drop rows for creatures that do not exist"),
+		Drops->GetRowNames().Num(), Known.Num());
+
+	// The figures the workbook states, quoted rather than recomputed.
+	struct FExpected { const TCHAR* Key; float Gear; float Materials; float Find; };
+	const FExpected Rows[] = {
+		{ TEXT("Common"),         0.16f,  0.32f,   0.0f },
+		{ TEXT("Elite"),          0.5f,   1.0f,   50.0f },
+		{ TEXT("Legendary"),      1.0f,   2.0f,  100.0f },
+		{ TEXT("Herald"),         2.0f,   4.0f,  150.0f },
+		{ TEXT("Boss"),           5.0f,  10.0f,  300.0f },
+		{ TEXT("Cataclysm_Boss"), 12.0f, 24.0f,  500.0f },
+	};
+
+	for (const FExpected& Row : Rows)
+	{
+		const FName Key(Row.Key);
+		TestEqual(*FString::Printf(TEXT("%s drops %.2f gear"), Row.Key, Row.Gear),
+			FDrop::ExpectedGearDrops(Drops, Key, FDrop::BaselineLootQuantity),
+			Row.Gear);
+		TestEqual(*FString::Printf(TEXT("%s drops %.2f materials"), Row.Key,
+								   Row.Materials),
+			FDrop::ExpectedMaterialDrops(Drops, Key,
+										 FDrop::BaselineLootQuantity),
+			Row.Materials);
+		TestEqual(*FString::Printf(TEXT("%s adds %.0f percent magic find"),
+								   Row.Key, Row.Find),
+			FDrop::MagicFindFrom(Drops, Key), Row.Find);
+	}
+
+	// LOOT QUANTITY IS A PERCENTAGE OF WHAT WOULD OTHERWISE DROP, so 100 leaves
+	// it unchanged. An increase applied to a baseline of zero would be worth
+	// nothing, which is why the baseline is 100.
+	TestEqual(TEXT("400 percent loot quantity quadruples a Boss's gear"),
+		FDrop::ExpectedGearDrops(Drops, TEXT("Boss"), 400.0f), 20.0f);
+	TestEqual(TEXT("and its materials"),
+		FDrop::ExpectedMaterialDrops(Drops, TEXT("Boss"), 400.0f), 40.0f);
+
+	// AN UNKNOWN RARITY DROPS NOTHING rather than crashing. "Rare" is the one
+	// that would be typed by mistake: the design document's older enemy list
+	// had it and this ladder does not.
+	TestEqual(TEXT("an unknown enemy rarity drops nothing"),
+		FDrop::ExpectedGearDrops(Drops, TEXT("Rare"),
+								 FDrop::BaselineLootQuantity), 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropCountTest,
+	"Cataclysm.Drop.AFractionalRateIsRolledRatherThanRounded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropCountTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	// ROUNDING WOULD MAKE A COMMON ENEMY DROP NOTHING, EVER. 0.16 to the
+	// nearest whole number is zero, so the fraction has to be a probability.
+	FRandomStream Stream(/*InSeed=*/20260818);
+	constexpr int32 Draws = 20000;
+
+	int32 Total = 0;
+	int32 MostAtOnce = 0;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const int32 Count = FDrop::RollDropCount(0.16f, Stream);
+		Total += Count;
+		MostAtOnce = FMath::Max(MostAtOnce, Count);
+	}
+	const float Mean = static_cast<float>(Total) / Draws;
+	TestTrue(*FString::Printf(TEXT("0.16 averages 0.16 over %d draws (%.4f)"),
+							  Draws, Mean),
+		FMath::Abs(Mean - 0.16f) < 0.16f * 0.1f);
+	TestEqual(TEXT("and never gives two at once"), MostAtOnce, 1);
+
+	// A WHOLE NUMBER HAS NO FRACTION LEFT TO ROLL, so it cannot vary. Without
+	// this the fractional draw could be adding a spurious extra at every whole
+	// number.
+	Total = 0;
+	for (int32 Draw = 0; Draw < 500; ++Draw)
+	{
+		Total += FDrop::RollDropCount(5.0f, Stream);
+	}
+	TestEqual(TEXT("a rate of exactly 5 always gives 5"), Total, 500 * 5);
+
+	TestEqual(TEXT("and a rate of nothing gives nothing"),
+		FDrop::RollDropCount(0.0f, Stream), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialTierTest,
+	"Cataclysm.Drop.MaterialTiersMatchTheModelAndMagicFindRaisesThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialTierTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Tiers =
+		LoadTable<FCataclysmMaterialTierRow>(TEXT("MaterialTiers.csv"));
+	if (!TestNotNull(TEXT("MaterialTiers.csv loads"), Tiers))
+	{
+		return false;
+	}
+
+	// Printed by loot.material_tier_distribution(0.0). Common down to
+	// Extremely Rare, each tier four times rarer than the one below.
+	const float MaterialShareAtNoMagicFind[] = {
+		0.7507331378f, 0.1876832845f, 0.0469208211f, 0.0117302053f,
+		0.0029325513f,
+	};
+
+	TArray<float> Shares;
+	FDrop::MaterialTierDistribution(Tiers, 0.0f, Shares);
+	if (!TestEqual(TEXT("five tiers"), Shares.Num(), 5))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("tier %d is %.7f of material drops (%.7f)"), Index + 1,
+			MaterialShareAtNoMagicFind[Index], Shares[Index]),
+			FMath::Abs(Shares[Index] - MaterialShareAtNoMagicFind[Index])
+				< MaterialShareAtNoMagicFind[Index] * 1e-4f);
+	}
+
+	// THE FIGURE THE WEIGHTS WERE CHOSEN AGAINST. Three materials share the top
+	// tier, and Purified Essence is the only thing that clears the Consumption
+	// Threshold, so how often it turns up is what mattered.
+	TestTrue(*FString::Printf(
+		TEXT("an Extremely Rare material is one drop in 341 (%.0f)"),
+		1.0f / Shares[4]), FMath::Abs(1.0f / Shares[4] - 341.0f) < 1.0f);
+
+	int32 InTopTier = 0;
+	Tiers->ForeachRow<FCataclysmMaterialTierRow>(TEXT("top tier count"),
+		[&](const FName&, const FCataclysmMaterialTierRow& Row)
+		{
+			if (Row.Tier == 5)
+			{
+				InTopTier = Row.Materials;
+			}
+		});
+	TestEqual(TEXT("three materials share the top tier"), InTopTier, 3);
+	TestTrue(*FString::Printf(
+		TEXT("so a named one is one drop in 1,023 (%.0f)"),
+		1.0f / Shares[4] * InTopTier),
+		FMath::Abs(1.0f / Shares[4] * InTopTier - 1023.0f) < 4.0f);
+
+	// EVERY DISTRIBUTION SUMS TO ONE. It is a cascade, so the commonest tier
+	// takes whatever fell through; a sum below one would be material drops that
+	// rolled no tier at all.
+	for (float MagicFind : { 0.0f, 100.0f, 300.0f, 500.0f, 5000.0f })
+	{
+		FDrop::MaterialTierDistribution(Tiers, MagicFind, Shares);
+		float Total = 0.0f;
+		for (float Share : Shares)
+		{
+			Total += Share;
+		}
+		TestTrue(*FString::Printf(
+			TEXT("%.0f percent magic find sums to 1 (%.6f)"), MagicFind, Total),
+			FMath::Abs(Total - 1.0f) < 1e-4f);
+	}
+
+	// MAGIC FIND RAISES THE TIER, which departs from the genre on purpose.
+	// Printed by loot.material_tier_distribution(300.0).
+	FDrop::MaterialTierDistribution(Tiers, 300.0f, Shares);
+	TestTrue(*FString::Printf(
+		TEXT("300 percent magic find quadruples the top tier (%.7f)"),
+		Shares[4]),
+		FMath::Abs(Shares[4] - 0.0117302053f) < 0.0117302053f * 1e-3f);
+
+	// AND AT 500 PERCENT THE SECOND RUNG SATURATES, so nothing falls through to
+	// the commonest tier. A Cataclysm Boss adds exactly 500%, so it drops no
+	// Common materials at all. That is the intended shape -- the ordinary
+	// supply comes from ordinary enemies, which add none -- and it is sharp
+	// enough to pin here rather than leave to be discovered.
+	FDrop::MaterialTierDistribution(Tiers, 500.0f, Shares);
+	TestEqual(TEXT("a 500 percent magic find kill drops no Common materials"),
+		Shares[0], 0.0f);
+
+	// AND THE ROLL DRAWS FROM THAT DISTRIBUTION.
+	FRandomStream Stream(/*InSeed=*/818);
+	FDrop::MaterialTierDistribution(Tiers, 0.0f, Shares);
+	TArray<int32> Counts;
+	Counts.Init(0, 6);
+	constexpr int32 Draws = 40000;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const int32 Tier = FDrop::RollMaterialTier(Tiers, 0.0f, Stream);
+		if (Tier < 1 || Tier > 5)
+		{
+			AddError(FString::Printf(TEXT("a material rolled tier %d"), Tier));
+			return false;
+		}
+		++Counts[Tier];
+	}
+	for (int32 Tier = 1; Tier <= 3; ++Tier)
+	{
+		const float Seen = static_cast<float>(Counts[Tier]) / Draws;
+		TestTrue(*FString::Printf(
+			TEXT("tier %d came up %.4f against a stated %.4f"), Tier, Seen,
+			Shares[Tier - 1]),
+			FMath::Abs(Seen - Shares[Tier - 1]) < Shares[Tier - 1] * 0.1f);
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // The name
 // ---------------------------------------------------------------------------
 

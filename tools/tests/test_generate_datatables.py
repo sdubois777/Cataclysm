@@ -1156,6 +1156,111 @@ class TestSocketMaximaCoverEverySlotThatIsWorn:
         assert "at 2 hand(s)" in problems[0]
 
 
+class TestEnemyDropsAndTheRarityLadderStayInStep:
+    """The Enemy Drops sheet and the enemy rarity ladder come from different
+    places, and neither is checked against the other anywhere else.
+
+    `EnemyRarities.csv` is generated from `sim/cataclysm_sim/enemy_stats.py`,
+    whose ladder is a port of the external DungeonSimulator power model.
+    `EnemyDrops.csv` is typed into the workbook. A rarity in one and not the
+    other is a creature that drops nothing, or a drop rate for a creature that
+    cannot exist.
+    """
+
+    def tables(self, dropping, known):
+        return {
+            "EnemyDrops": [{"Name": name, "Step": step}
+                           for name, step in dropping],
+            "EnemyRarities": [{"Name": name, "Step": step}
+                              for name, step in known],
+        }
+
+    def test_a_matching_ladder_reports_nothing(self):
+        both = [("Common", 0), ("Elite", 1), ("Boss", 2)]
+        assert gen.validate_enemy_drop_rarities(self.tables(both, both)) == []
+
+    def test_a_rarity_that_drops_nothing_is_reported(self):
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Common", 0), ("Elite", 1)],
+            [("Common", 0), ("Elite", 1), ("Boss", 2)]))
+        assert len(problems) == 1, problems
+        assert "Boss" in problems[0]
+
+    def test_a_drop_rate_for_a_creature_that_cannot_exist_is_reported(self):
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Common", 0), ("Elite", 1), ("Sparkly", 2)],
+            [("Common", 0), ("Elite", 1)]))
+        assert len(problems) == 1, problems
+        assert "Sparkly" in problems[0]
+
+    def test_the_two_have_to_agree_on_the_order_as_well(self):
+        """Both tables carry a Step saying where a rarity sits, so membership
+        alone is not enough."""
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Elite", 1), ("Common", 0)],
+            [("Common", 0), ("Elite", 1)]))
+        assert len(problems) == 1, problems
+        assert "same order" in problems[0]
+
+    def test_a_step_that_disagrees_is_reported(self):
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Common", 0), ("Elite", 4)],
+            [("Common", 0), ("Elite", 1)]))
+        assert len(problems) == 1, problems
+        assert "Step 4" in problems[0]
+
+
+class TestMaterialTierCountsMatchTheMaterials:
+    """How often a NAMED top-tier material drops is the tier's share divided by
+    how many share it. Purified Essence is one of three in the top tier and is
+    the only thing that clears the Consumption Threshold, so a wrong count makes
+    that figure wrong and nothing else notices.
+    """
+
+    def tables(self, stated, materials):
+        return {
+            "MaterialTiers": [{"Name": f"T{i}", "TierName": name,
+                               "Materials": count}
+                              for i, (name, count) in enumerate(stated, 1)],
+            "CraftingMaterials": [
+                {"Name": f"m{i}", "TierAndSource": f"Tier {tier} ({name}). x"}
+                for i, (tier, name) in enumerate(materials)],
+        }
+
+    def test_a_matching_set_reports_nothing(self):
+        assert gen.validate_material_tier_counts(self.tables(
+            [("Common", 2), ("Rare", 1)],
+            [(1, "Common"), (1, "Common"), (3, "Rare")])) == []
+
+    def test_a_wrong_count_is_reported(self):
+        problems = gen.validate_material_tier_counts(self.tables(
+            [("Common", 4)],
+            [(1, "Common"), (1, "Common")]))
+        assert len(problems) == 1, problems
+        assert "says 4" in problems[0] and "has 2" in problems[0]
+
+    def test_a_tier_no_material_is_in_is_reported(self):
+        problems = gen.validate_material_tier_counts(self.tables(
+            [("Common", 1), ("Mythic", 1)], [(1, "Common")]))
+        assert any("Mythic" in p for p in problems), problems
+
+    def test_a_material_in_a_tier_with_no_row_is_reported(self):
+        problems = gen.validate_material_tier_counts(self.tables(
+            [("Common", 1)], [(1, "Common"), (9, "Impossible")]))
+        assert any("Impossible" in p for p in problems), problems
+
+    def test_unreadable_tier_cells_are_reported_rather_than_passing(self):
+        """A parser that matched nothing would make every check above vacuous,
+        so it says so instead of reporting no problems."""
+        problems = gen.validate_material_tier_counts({
+            "MaterialTiers": [{"Name": "T1", "TierName": "Common",
+                               "Materials": 1}],
+            "CraftingMaterials": [{"Name": "m", "TierAndSource": "who knows"}],
+        })
+        assert len(problems) == 1, problems
+        assert "could not be checked at all" in problems[0]
+
+
 class TestAgainstTheRealWorkbook:
     def test_the_committed_csvs_are_current(self):
         if not gen.WORKBOOK.is_file():

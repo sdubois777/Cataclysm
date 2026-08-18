@@ -51,6 +51,65 @@ namespace
 	}
 
 	/**
+	 * One rung's chance in a weighted cascade, given that the cascade reached it.
+	 *
+	 * THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT, multiplied by
+	 * magic find and capped at certainty. Shared by the gear rarity roll and the
+	 * crafting material tier roll, because they are the same cascade over
+	 * different ladders; `_cascade_step_chance` in `sim/cataclysm_sim/loot.py`
+	 * is the same function on the other side.
+	 *
+	 * @param Index  ONE-BASED, so it lines up with a difficulty tier.
+	 */
+	float CascadeStepChance(const TArray<float>& Weights, int32 Index,
+							float MagicFind)
+	{
+		if (Index < 1 || Index > Weights.Num())
+		{
+			return 0.0f;
+		}
+
+		float AtOrBelow = 0.0f;
+		for (int32 Rung = 0; Rung < Index; ++Rung)
+		{
+			AtOrBelow += Weights[Rung];
+		}
+		if (AtOrBelow <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		return FMath::Min(1.0f, Weights[Index - 1] / AtOrBelow
+			* (1.0f + FMath::Max(0.0f, MagicFind) / 100.0f));
+	}
+
+	/** The material tier weights, weakest first, or empty. */
+	TArray<float> MaterialTierWeights(const UDataTable* MaterialTierTable)
+	{
+		TArray<float> Weights;
+		if (!MaterialTierTable)
+		{
+			return Weights;
+		}
+
+		MaterialTierTable->ForeachRow<FCataclysmMaterialTierRow>(
+			TEXT("MaterialTierWeights"),
+			[&](const FName&, const FCataclysmMaterialTierRow& Row)
+			{
+				if (Row.Tier < 1)
+				{
+					return;
+				}
+				if (Row.Tier > Weights.Num())
+				{
+					Weights.SetNumZeroed(Row.Tier);
+				}
+				Weights[Row.Tier - 1] = Row.DropWeight;
+			});
+		return Weights;
+	}
+
+	/**
 	 * The weight of every rung from Everyday up to and including this one.
 	 *
 	 * Returns 0 when nothing on the way up has a weight, which the caller has to
@@ -209,6 +268,132 @@ float UCataclysmDropRoll::RarityStepChance(const UDataTable* GearRarityTable,
 	const float Share = Row->DropWeight / AtOrBelow;
 	return FMath::Min(1.0f, Share * (1.0f + FMath::Max(0.0f, MagicFind) / 100.0f));
 }
+
+// ---------------------------------------------------------------------------
+// What a kill drops
+// ---------------------------------------------------------------------------
+
+const TCHAR* UCataclysmDropRoll::EnemyDropTableAssetPath =
+	TEXT("/Game/Data/DT_EnemyDrops.DT_EnemyDrops");
+const TCHAR* UCataclysmDropRoll::MaterialTierTableAssetPath =
+	TEXT("/Game/Data/DT_MaterialTiers.DT_MaterialTiers");
+
+const UDataTable* UCataclysmDropRoll::LoadEnemyDropTable()
+{
+	return LoadTableAt(EnemyDropTableAssetPath, TEXT("EnemyDrops.csv"),
+					   TEXT("Enemy Drops"));
+}
+
+const UDataTable* UCataclysmDropRoll::LoadMaterialTierTable()
+{
+	return LoadTableAt(MaterialTierTableAssetPath, TEXT("MaterialTiers.csv"),
+					   TEXT("Material Tiers"));
+}
+
+const FCataclysmEnemyDropRow* UCataclysmDropRoll::EnemyDropRow(
+	const UDataTable* EnemyDropTable, FName EnemyRarity)
+{
+	if (!EnemyDropTable)
+	{
+		return nullptr;
+	}
+	return EnemyDropTable->FindRow<FCataclysmEnemyDropRow>(
+		EnemyRarity, TEXT("UCataclysmDropRoll::EnemyDropRow"),
+		/*bWarnIfMissing=*/false);
+}
+
+namespace
+{
+	/** Loot quantity applied to a rate. Shared by the two Expected* functions
+	 *  so neither can forget the baseline of 100. */
+	float ScaledByLootQuantity(float Rate, float LootQuantity)
+	{
+		return Rate * FMath::Max(0.0f, LootQuantity)
+			/ UCataclysmDropRoll::BaselineLootQuantity;
+	}
+}
+
+float UCataclysmDropRoll::ExpectedGearDrops(const UDataTable* EnemyDropTable,
+											FName EnemyRarity,
+											float LootQuantity)
+{
+	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
+	return Row ? ScaledByLootQuantity(Row->GearDrops, LootQuantity) : 0.0f;
+}
+
+float UCataclysmDropRoll::ExpectedMaterialDrops(const UDataTable* EnemyDropTable,
+												FName EnemyRarity,
+												float LootQuantity)
+{
+	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
+	return Row ? ScaledByLootQuantity(Row->MaterialDrops, LootQuantity) : 0.0f;
+}
+
+float UCataclysmDropRoll::MagicFindFrom(const UDataTable* EnemyDropTable,
+										FName EnemyRarity)
+{
+	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
+	return Row ? Row->MagicFind : 0.0f;
+}
+
+int32 UCataclysmDropRoll::RollDropCount(float Expected, FRandomStream& Stream)
+{
+	if (Expected <= 0.0f)
+	{
+		return 0;
+	}
+	const int32 Whole = FMath::FloorToInt(Expected);
+	return Whole + (Stream.FRand() < Expected - static_cast<float>(Whole) ? 1 : 0);
+}
+
+void UCataclysmDropRoll::MaterialTierDistribution(
+	const UDataTable* MaterialTierTable, float MagicFind,
+	TArray<float>& OutShares)
+{
+	const TArray<float> Weights = MaterialTierWeights(MaterialTierTable);
+	OutShares.Init(0.0f, Weights.Num());
+	if (Weights.Num() == 0)
+	{
+		return;
+	}
+
+	float Left = 1.0f;
+	for (int32 Rung = Weights.Num(); Rung >= 2; --Rung)
+	{
+		const float Chance = CascadeStepChance(Weights, Rung, MagicFind);
+		OutShares[Rung - 1] = Left * Chance;
+		Left *= 1.0f - Chance;
+	}
+
+	// WHATEVER FELL THROUGH EVERY RUNG IS THE COMMONEST TIER, which is what
+	// makes this a cascade rather than a table of weights that has to sum to
+	// one by hand.
+	OutShares[0] = Left;
+}
+
+int32 UCataclysmDropRoll::RollMaterialTier(const UDataTable* MaterialTierTable,
+										   float MagicFind,
+										   FRandomStream& Stream)
+{
+	const TArray<float> Weights = MaterialTierWeights(MaterialTierTable);
+	if (Weights.Num() == 0)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("No crafting material tier has a drop weight, so no material "
+				 "can roll a tier. Check game/Data/MaterialTiers.csv."));
+		return 0;
+	}
+
+	for (int32 Rung = Weights.Num(); Rung >= 2; --Rung)
+	{
+		if (Stream.FRand() < CascadeStepChance(Weights, Rung, MagicFind))
+		{
+			return Rung;
+		}
+	}
+	return 1;
+}
+
 
 void UCataclysmDropRoll::RarityDistribution(const UDataTable* GearRarityTable,
 											int32 DifficultyTier, float MagicFind,

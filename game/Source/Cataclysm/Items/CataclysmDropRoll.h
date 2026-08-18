@@ -7,8 +7,10 @@
 #include "CataclysmDropRoll.generated.h"
 
 struct FCataclysmAffixRow;
+struct FCataclysmEnemyDropRow;
 struct FCataclysmGearRarityRow;
 struct FCataclysmItemBaseRow;
+struct FCataclysmMaterialTierRow;
 class UDataTable;
 
 /**
@@ -219,6 +221,95 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	static int32 MaxAffixTierOnADrop(int32 DifficultyTier);
+
+
+	// -----------------------------------------------------------------------
+	// What a kill drops
+	// -----------------------------------------------------------------------
+
+	/** A character with no bonuses. Loot quantity is a percentage of what would
+	 *  otherwise drop, so 100 leaves it unchanged. */
+	static constexpr float BaselineLootQuantity = 100.0f;
+
+	static const TCHAR* EnemyDropTableAssetPath;
+	static const TCHAR* MaterialTierTableAssetPath;
+
+	/** What each enemy rarity drops, or null with the reason logged. */
+	static const UDataTable* LoadEnemyDropTable();
+
+	/** The crafting material tier weights, or null with the reason logged. */
+	static const UDataTable* LoadMaterialTierTable();
+
+	/**
+	 * One enemy rarity's drop row, or null.
+	 *
+	 * @param EnemyRarity  the row key, which is the same key
+	 *        `FCataclysmEnemyRarityRow` uses: "Common" through "Cataclysm_Boss".
+	 *        The two tables join on it.
+	 */
+	static const FCataclysmEnemyDropRow* EnemyDropRow(
+		const UDataTable* EnemyDropTable, FName EnemyRarity);
+
+	/**
+	 * How many gear items a kill of this rarity is expected to drop.
+	 *
+	 * @param LootQuantity  a percentage with a baseline of 100, so 400
+	 *        quadruples it. Every source of it in the design is an increase.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float ExpectedGearDrops(const UDataTable* EnemyDropTable,
+								   FName EnemyRarity, float LootQuantity);
+
+	/** The same, for crafting materials, which drop on a separate roll. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float ExpectedMaterialDrops(const UDataTable* EnemyDropTable,
+									   FName EnemyRarity, float LootQuantity);
+
+	/**
+	 * The magic find a kill of this rarity adds to its own drops.
+	 *
+	 * ADDED TO THE PLAYER'S OWN rather than multiplied by it, which is what
+	 * Path of Exile does with its own sources.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float MagicFindFrom(const UDataTable* EnemyDropTable,
+							   FName EnemyRarity);
+
+	/**
+	 * Turn an expected number of drops into how many actually fall.
+	 *
+	 * THE WHOLE PART IS CERTAIN AND THE FRACTION IS A PROBABILITY, so an
+	 * expected 3.7 gives three and a 70% chance of a fourth. Rounding 0.16 to
+	 * the nearest whole number instead would make a Common enemy drop nothing,
+	 * ever.
+	 */
+	static int32 RollDropCount(float Expected, FRandomStream& Stream);
+
+	/**
+	 * The tier one crafting material drops at, 1 to 5, or 0 when the table is
+	 * missing.
+	 *
+	 * MAGIC FIND RAISES IT, WHICH DEPARTS FROM THE GENRE. Path of Exile's item
+	 * rarity does not affect currency at all. It applies here because the enemy
+	 * rarity contribution exists so a harder enemy is more rewarding, and
+	 * materials are half of what a kill gives.
+	 *
+	 * A CONSEQUENCE WORTH KNOWING: at 500% magic find the second rung saturates
+	 * to certainty and nothing falls through to the commonest tier, so a
+	 * Cataclysm Boss drops no Common materials at all. The ordinary supply comes
+	 * from ordinary enemies, which add none.
+	 *
+	 * WHICH MATERIAL WITHIN THE TIER IS AN EQUAL CHANCE, and this does not make
+	 * it: the names are in the CraftingMaterials table.
+	 */
+	static int32 RollMaterialTier(const UDataTable* MaterialTierTable,
+								  float MagicFind, FRandomStream& Stream);
+
+	/** What fraction of material drops is each tier, indexed by tier minus one.
+	 *  Empty when the table is missing. */
+	static void MaterialTierDistribution(const UDataTable* MaterialTierTable,
+										 float MagicFind,
+										 TArray<float>& OutShares);
 
 	/**
 	 * The tier one affix rolls at on a drop at this difficulty tier.
