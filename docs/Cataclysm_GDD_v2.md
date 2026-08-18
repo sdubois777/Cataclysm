@@ -1621,7 +1621,7 @@ Charge, Shield Wall. A character holding a weapon and a Shield is dual wielding,
 and gets the second weapon's affix slots and sockets while giving up the damage a
 second weapon would have added.
 
-**Every loadout gives the same 6 gem sockets and the same Power Score.** A
+**Every loadout gives the same 6 maximum gem sockets and the same Power Score.** A
 two-handed weapon carries all six on its own; a one-handed weapon carries three,
 so two of them make six. What the hands hold counts as **one equipped piece** for
 Power Score whatever the loadout, so none is worth free Power Score.
@@ -2948,6 +2948,14 @@ Gear can be upgraded from +1 to +10 using upgrade stones obtained as dungeon dro
 ## **Sockets and Gems**
 
 Gear has sockets that accept gems. Gems provide stat bonuses and have the same rarity tiers as gear. Gems are upgraded by combining lower-tier gems. The total socket count across all equipment is 45.
+
+  
+
+**The table below is a MAXIMUM, and an item drops with anywhere from none of them up to all of them.** A Chest can drop with no sockets or with six, and neither is more likely than the other; the difficulty tier does not gate it, which makes this the one part of a drop that does not rise with depth. `docs/DECISIONS.md` records the decision and the two alternatives that were declined.
+
+  
+
+**That is what the Add Socket craft is for.** It uses a Shattered Core at 15 residue and three days, and it only has something to do because drops arrive below their maximum. Reaching the 45 sockets the reference character in section IV carries therefore takes crafting, which is why that character is described as the ceiling of a tier rather than a requirement.
 
   
 

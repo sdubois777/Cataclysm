@@ -20,6 +20,79 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — An item drops with anywhere from no sockets to all of them
+
+**Affects:** the Sockets and Gems subsection of section VI and the loadout rule in
+section V of `docs/Cataclysm_GDD_v2.md`, a new Item Sockets sheet in
+`docs/All_Things_Cataclysm.xlsx`, and `sim/cataclysm_sim/loot.py`. Applied. Part
+of issue #44.
+
+### What was missing
+
+A rolled item had no sockets at all. The design fixes the maximum for every slot —
+Chest 6, Pants 4, Belt 4, Relic 4, a two-handed weapon 6, a one-handed weapon 3,
+Head, Shoulders, Gloves and Boots 2 each, a Ring 1, the Necklace 1, and a potion
+slot 1 — and nothing anywhere read them.
+
+**The project owner asked for it on 2026-08-18:** "all items should be able to
+drop with 0-n sockets where n is their maximum number of sockets."
+
+### The design already implied this, and that is the strongest argument for it
+
+`game/Data/CraftingMaterials.csv` carries an **Add Socket** craft: a Shattered
+Core, 15 residue, three days. If every item always dropped with its maximum
+sockets, that craft would have nothing to do. Its existence is the design's own
+evidence that sockets were always meant to arrive below the maximum.
+
+It also explains something in section IV. The reference character at each tier
+carries every socket filled, and is described as "the **ceiling** at the end of
+each difficulty tier ... a calibration reference, not a requirement". Reaching all
+45 sockets therefore costs crafting, which is why that wording is there.
+
+### The decision: uniform, with no tier gate
+
+Three shapes were put to the project owner and the first was recommended:
+
+| Shape | Outcome |
+| :-- | :-- |
+| **Chosen: uniform from none up to the base's maximum** | Exactly what was asked for, and it introduces no new rule |
+| Capped by the difficulty tier as well | Recommended and declined. It is what Diablo 2 and Path of Exile do — sockets are gated by item level — and it is the shape this design already uses four times over for gear rarity, affix tiers, upgrade stones and weapon damage types |
+| Weighted toward fewer sockets | Declined. It would have needed a curve nobody has chosen |
+
+**So the socket count is the one part of a drop that does not rise with depth.** A
+tier 1 Chest can drop with all six. That is stated as a test rather than left as a
+comment, because every other number on a drop is gated on the tier and a reader
+will assume this one is too.
+
+### One sentence in the design document had to change
+
+Section V said "**Every loadout gives the same 6 gem sockets and the same Power
+Score.**" With sockets rolled, two loadouts no longer carry the same number — only
+the same *maximum*. It now reads "the same 6 maximum gem sockets". The rule it
+protects is unchanged and is still checked: two one-handed weapons at three each
+must equal a two-hander at six, or one loadout is worth free sockets.
+
+### How the numbers are guarded, given they are a third copy
+
+The twelve maxima now exist in the design document, in the workbook and in the
+simulation. Two of the tests compare copies to each other, which passes happily if
+two of them were changed together by mistake. A third does not: **it adds the
+sheet up and compares the total against the 45 the design document states
+separately.** The gear comes to 41 and four potion slots make 45, so a single
+mistyped entry is caught by arithmetic rather than by matching.
+
+### What is deliberately not built
+
+**Gems.** A socket is a count on a rolled item and nothing fills one. That is
+issue #46.
+
+**Potion slot sockets.** Four of the 45, one per slot. Potions are consumables
+rather than gear, the design says they "contribute through their sockets only",
+and nothing rolls one as a drop. They are the difference between the 41 the
+simulation models and the 45 the design states, and the totals check says so.
+
+---
+
 ## 2026-08-18 — An item is called `<rarity> <base> of <word>`, and the word is one of its own affixes
 
 **Affects:** the gear rarity subsection of section VI of

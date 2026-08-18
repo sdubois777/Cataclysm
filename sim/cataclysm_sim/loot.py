@@ -77,6 +77,7 @@ from __future__ import annotations
 import dataclasses
 
 from . import affixes as af
+from . import player_power
 
 #: How far above the difficulty tier's own rarity a drop may roll.
 #:
@@ -326,6 +327,87 @@ def roll_rarity(tier: int, magic_find: float, rng) -> str:
     return af.RARITIES[0]
 
 
+#: The most sockets a piece in each gear slot can have. Mirrors the Item Sockets
+#: sheet of `docs/All_Things_Cataclysm.xlsx`, which restates the socket table in
+#: section VI of `docs/Cataclysm_GDD_v2.md`.
+#:
+#: A WEAPON IS NOT HERE because its maximum depends on how many hands it takes;
+#: see MAX_SOCKETS_BY_WEAPON_HANDS.
+#:
+#: POTION SLOTS ARE NOT HERE either. They carry one socket each and there are
+#: four, but they are consumables rather than gear -- the design says they
+#: "contribute through their sockets only" -- and nothing rolls one as a drop.
+#: They are the difference between the 41 sockets this table describes and the 45
+#: the design states across all equipment.
+MAX_SOCKETS_BY_SLOT: dict[str, int] = {
+    "Head":      2,
+    "Chest":     6,
+    "Shoulders": 2,
+    "Gloves":    2,
+    "Pants":     4,
+    "Boots":     2,
+    "Belt":      4,
+    "Ring":      1,
+    "Necklace":  1,
+    "Relic":     4,
+}
+
+#: The most sockets a weapon can have, by how many hands it takes.
+#:
+#: TWO ONE-HANDED WEAPONS MATCH A TWO-HANDER, which is the design's own rule and
+#: not a coincidence of these two numbers: "Every loadout gives the same maximum
+#: gem sockets and the same Power Score."
+MAX_SOCKETS_BY_WEAPON_HANDS: dict[int, int] = {1: 3, 2: 6}
+
+#: How many rings are worn at once. Only used to check the totals add up.
+RINGS_WORN = 8
+
+#: Potion slots, one socket each. Only used to check the totals add up.
+POTION_SOCKETS = 4
+
+
+def max_sockets_for(base) -> int:
+    """The most sockets this item base can have.
+
+    From the base rather than from the slot alone, because a weapon's maximum
+    depends on how many hands it takes.
+    """
+    if base.slot == "Weapon":
+        hands = getattr(base, "hands", None)
+        if hands not in MAX_SOCKETS_BY_WEAPON_HANDS:
+            raise ValueError(
+                f"{base.name} is a weapon taking {hands} hands, and only "
+                f"{sorted(MAX_SOCKETS_BY_WEAPON_HANDS)} have a socket maximum")
+        return MAX_SOCKETS_BY_WEAPON_HANDS[hands]
+
+    if base.slot not in MAX_SOCKETS_BY_SLOT:
+        raise ValueError(
+            f"{base.name} is in slot {base.slot!r}, which has no socket maximum")
+    return MAX_SOCKETS_BY_SLOT[base.slot]
+
+
+def roll_sockets(base, rng) -> int:
+    """How many sockets one drop of this base arrives with.
+
+    UNIFORM FROM NONE UP TO THE BASE'S MAXIMUM, chosen by the project owner on
+    2026-08-18: "all items should be able to drop with 0-n sockets where n is
+    their maximum number of sockets". Two alternatives were put to them and
+    declined -- capping the roll by the difficulty tier the way Diablo 2 and Path
+    of Exile cap it by item level, and weighting the roll toward fewer sockets.
+
+    SO A SOCKET COUNT CARRIES NO PROGRESSION. A tier 1 Chest can drop with all
+    six. That is the shape asked for, and it is the one place the drop rules do
+    not gate on the difficulty tier.
+
+    A DROP WITH NO SOCKETS IS NOT A RUINED ITEM. `game/Data/CraftingMaterials.csv`
+    carries an Add Socket craft -- Shattered Core, 15 residue, 3 days -- and that
+    craft only has something to do because drops arrive below their maximum. It
+    is the design's own evidence that sockets were always meant to roll.
+    """
+    return rng.randint(0, max_sockets_for(base))
+
+
+
 # --------------------------------------------------------------------------
 # Rolling a whole item
 # --------------------------------------------------------------------------
@@ -369,6 +451,11 @@ class RolledItem:
     #: benefit: it raises what crafting this item will charge in gold and days,
     #: and it counts toward the Worn Residue that can get a character consumed.
     residue: float = 0.0
+
+    #: How many sockets the piece dropped with, from none up to its base's
+    #: maximum. Gems are not modelled, so these are empty; what fills one is
+    #: issue #46.
+    sockets: int = 0
 
     @property
     def rarity(self) -> str:
@@ -479,7 +566,8 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
                       gear_level=gear_level_gate(rarity),
                       affixes=rolled,
                       enchantments=af.enchantments_for(rarity),
-                      residue=roll_residue(rarity, rng))
+                      residue=roll_residue(rarity, rng),
+                      sockets=roll_sockets(base, rng))
 
 
 # --------------------------------------------------------------------------
@@ -577,6 +665,47 @@ def _check_a_distribution_always_sums_to_one() -> None:
                     f"distribution sums to {total}, not 1")
 
 
+def _check_every_gear_slot_has_a_socket_maximum() -> None:
+    """Every slot a drop can be for, so nothing rolls sockets it has no cap on."""
+    covered = set(MAX_SOCKETS_BY_SLOT) | {"Weapon"}
+    missing = set(af.GEAR_SLOTS) - covered
+    extra = set(MAX_SOCKETS_BY_SLOT) - set(af.GEAR_SLOTS)
+    if missing or extra:
+        raise AssertionError(
+            "the socket maximum table does not match the gear slots: "
+            f"missing {sorted(missing)}, unexpected {sorted(extra)}")
+
+
+def _check_two_one_handed_weapons_match_a_two_hander() -> None:
+    """The design's own rule, and the reason a one-hander has three rather than
+    some other number: "Every loadout gives the same maximum gem sockets"."""
+    one = MAX_SOCKETS_BY_WEAPON_HANDS[1] * 2
+    two = MAX_SOCKETS_BY_WEAPON_HANDS[2]
+    if one != two:
+        raise AssertionError(
+            f"two one-handed weapons carry {one} sockets against a two-hander's "
+            f"{two}, so one loadout is worth more sockets than the other")
+
+
+def _check_the_socket_maxima_add_up_to_the_design_total() -> None:
+    """41 across the gear, plus four potion slots, is the 45 the design states.
+
+    THE CHECK THAT MAKES THIS TABLE MORE THAN A COPY. Every number in it is
+    restated from the design document, and a restated number can be mistyped. The
+    total is stated separately in the same document and in
+    `player_power.TOTAL_SOCKETS`, so it catches a single wrong entry.
+    """
+    worn = sum(most * (RINGS_WORN if slot == "Ring" else 1)
+               for slot, most in MAX_SOCKETS_BY_SLOT.items())
+    worn += MAX_SOCKETS_BY_WEAPON_HANDS[2]
+
+    total = worn + POTION_SOCKETS
+    if total != player_power.TOTAL_SOCKETS:
+        raise AssertionError(
+            f"the socket maxima add up to {total} across all equipment, and the "
+            f"design says {player_power.TOTAL_SOCKETS}")
+
+
 def _check_every_rarity_has_a_residue_band() -> None:
     missing = set(af.RARITIES) - set(RARITY_RESIDUE_BAND)
     extra = set(RARITY_RESIDUE_BAND) - set(af.RARITIES)
@@ -609,6 +738,9 @@ _check_no_gate_is_out_of_reach()
 _check_every_rarity_has_a_residue_band()
 _check_every_band_runs_upward_from_above_zero()
 _check_no_residue_band_falls_as_rarity_rises()
+_check_every_gear_slot_has_a_socket_maximum()
+_check_two_one_handed_weapons_match_a_two_hander()
+_check_the_socket_maxima_add_up_to_the_design_total()
 _check_every_rarity_has_a_drop_weight()
 _check_no_drop_weight_is_negative()
 _check_the_distribution_matches_the_weights()

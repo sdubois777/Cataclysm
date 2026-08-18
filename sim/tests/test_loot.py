@@ -521,3 +521,103 @@ def test_that_the_falling_band_check_actually_fires():
             loot._check_no_residue_band_falls_as_rarity_rises()
     finally:
         loot.RARITY_RESIDUE_BAND = original
+
+
+# --------------------------------------------------------------------------
+# Sockets
+# --------------------------------------------------------------------------
+
+def test_a_drop_never_has_more_sockets_than_its_base_allows():
+    rng = random.Random(300)
+    for slot in sorted(af.GEAR_SLOTS):
+        for _ in range(200):
+            item = loot.roll_item(slot, tier=8, magic_find=100.0, rng=rng)
+            assert 0 <= item.sockets <= loot.max_sockets_for(item.base)
+
+
+def test_a_drop_can_arrive_with_none_and_with_all_of_them():
+    """Both ends of the range are reachable, which "0 to n" means.
+
+    A CHECK THAT WOULD OTHERWISE PASS SILENTLY. A roll that never produced zero,
+    or never produced the maximum, satisfies the bounds test above perfectly.
+    """
+    rng = random.Random(301)
+    seen = {loot.roll_item("Chest", 8, 0.0, rng).sockets for _ in range(600)}
+    assert 0 in seen, "no Chest ever dropped with no sockets"
+    assert 6 in seen, "no Chest ever dropped with all six sockets"
+
+
+def test_the_socket_count_does_not_depend_on_the_difficulty_tier():
+    """Chosen by the project owner over a tier-gated roll.
+
+    It is the one place the drop rules do NOT gate on the difficulty tier, so it
+    is worth a test rather than an assumption: a tier 1 Chest can drop with all
+    six sockets.
+    """
+    rng = random.Random(302)
+    seen = {loot.roll_item("Chest", tier=1, magic_find=0.0, rng=rng).sockets
+            for _ in range(600)}
+    assert seen == {0, 1, 2, 3, 4, 5, 6}
+
+
+def test_the_socket_maximum_of_every_slot_matches_the_design_document():
+    """Written out again on purpose.
+
+    Every other socket test reads the maxima from the same table the code uses,
+    so all of them pass together if that table is wrong. These are the twelve
+    numbers in the socket table of section VI of docs/Cataclysm_GDD_v2.md.
+    """
+    stated = {"Head": 2, "Chest": 6, "Shoulders": 2, "Gloves": 2, "Pants": 4,
+              "Boots": 2, "Belt": 4, "Ring": 1, "Necklace": 1, "Relic": 4}
+    for slot, most in stated.items():
+        assert loot.MAX_SOCKETS_BY_SLOT[slot] == most, slot
+
+    assert loot.MAX_SOCKETS_BY_WEAPON_HANDS == {1: 3, 2: 6}
+
+
+def test_a_two_handed_weapon_carries_twice_a_one_handers_sockets():
+    one_handed = [b for b in af.bases_for("Weapon") if b.hands == 1]
+    two_handed = [b for b in af.bases_for("Weapon") if b.hands == 2]
+    assert one_handed and two_handed
+    assert (loot.max_sockets_for(one_handed[0]) * 2
+            == loot.max_sockets_for(two_handed[0]))
+
+
+def test_a_base_in_a_slot_with_no_maximum_is_refused():
+    class Nowhere:
+        name = "Tiara"
+        slot = "Crown"
+
+    with pytest.raises(ValueError, match="no socket maximum"):
+        loot.max_sockets_for(Nowhere())
+
+
+def test_that_the_socket_slot_check_actually_fires():
+    original = loot.MAX_SOCKETS_BY_SLOT
+    try:
+        loot.MAX_SOCKETS_BY_SLOT = {"Head": 2}
+        with pytest.raises(AssertionError, match="does not match the gear slots"):
+            loot._check_every_gear_slot_has_a_socket_maximum()
+    finally:
+        loot.MAX_SOCKETS_BY_SLOT = original
+
+
+def test_that_the_loadout_socket_check_actually_fires():
+    original = loot.MAX_SOCKETS_BY_WEAPON_HANDS
+    try:
+        loot.MAX_SOCKETS_BY_WEAPON_HANDS = {1: 2, 2: 6}
+        with pytest.raises(AssertionError, match="worth more sockets"):
+            loot._check_two_one_handed_weapons_match_a_two_hander()
+    finally:
+        loot.MAX_SOCKETS_BY_WEAPON_HANDS = original
+
+
+def test_that_the_socket_total_check_actually_fires():
+    """One mistyped maximum changes the total, which is what this catches."""
+    original = loot.MAX_SOCKETS_BY_SLOT
+    try:
+        loot.MAX_SOCKETS_BY_SLOT = dict(original, Chest=5)
+        with pytest.raises(AssertionError, match="the design says"):
+            loot._check_the_socket_maxima_add_up_to_the_design_total()
+    finally:
+        loot.MAX_SOCKETS_BY_SLOT = original
