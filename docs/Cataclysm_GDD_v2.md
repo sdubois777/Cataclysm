@@ -2275,14 +2275,14 @@ decision to fund ten or more models rather than a side effect of a rarity tier.
 
   
 
-| Enemy rarity | Gear drops per kill | Magic find it adds |
-| :-- | --: | --: |
-| Common | 0.16 | 0% |
-| Elite | 0.5 | 50% |
-| Legendary | 1.0 | 100% |
-| Herald | 2.0 | 150% |
-| Boss | 5.0 | 300% |
-| Cataclysm Boss | 12.0 | 500% |
+| Enemy rarity | Gear drops per kill | Material drops per kill | Magic find it adds |
+| :-- | --: | --: | --: |
+| Common | 0.16 | 0.32 | 0% |
+| Elite | 0.5 | 1.0 | 50% |
+| Legendary | 1.0 | 2.0 | 100% |
+| Herald | 2.0 | 4.0 | 150% |
+| Boss | 5.0 | 10.0 | 300% |
+| Cataclysm Boss | 12.0 | 24.0 | 500% |
 
   
 
@@ -2306,11 +2306,49 @@ decision to fund ten or more models rather than a side effect of a rarity tier.
 
   
 
-**Every base within a slot is equally likely.** A Head drop is a Helm, a Hood, a Circlet or a Visage with the same chance each. The bases in a slot are alternatives rather than a ladder -- one grants armour, another evasion, another energy shield -- so none of them is the good one to hold out for, and weighting them would say otherwise. What gates the QUALITY of a drop is its rarity and the difficulty tier, not which base it is.
+**Every slot is equally likely, and every base within it.** A drop rolls one of the eleven slots with the same chance each, then one of that slot's bases with the same chance each. A Head drop is a Helm, a Hood, a Circlet or a Visage with the same chance each.
 
   
 
-**Crafting materials drop on a separate roll**, with their own five tiers and their own quantity. They do not compete with gear for the same drop, which is why the Scavenger node on the empire tree can raise material quantity without lowering the number of items that drop. That roll is not yet designed.
+**Uniform over slots is not the same as uniform over bases**, and the difference matters. There are 14 weapon bases against four for most slots, so drawing from all 55 bases would make a weapon a quarter of every drop. It is also not the same as uniform over WORN POSITIONS: a character wears eight rings and one of everything else, so one drop in eleven being a Ring means each ring position fills about an eighth as often as the helmet does. That is a consequence of the rule rather than a defect in it. The bases in a slot are alternatives rather than a ladder -- one grants armour, another evasion, another energy shield -- so none of them is the good one to hold out for, and weighting them would say otherwise. What gates the QUALITY of a drop is its rarity and the difficulty tier, not which base it is.
+
+  
+
+**Crafting materials drop on a separate roll**, with their own quantity in the table above. They do not compete with gear for the same drop, which is why the Scavenger node on the empire tree can raise material quantity without lowering the number of items that drop. A kill drops twice as many materials as gear, because a craft consumes a material and a full loadout takes several hundred crafts, while a piece of gear is kept.
+
+  
+
+**A material's tier is rolled from its own five-rung ladder, each tier four times rarer than the one below.**
+
+  
+
+| Material tier | Drop weight | Share of material drops |
+| :-- | --: | --: |
+| Common | 256 | 75.1% |
+| Uncommon | 64 | 18.8% |
+| Rare | 16 | 4.7% |
+| Very Rare | 4 | 1.2% |
+| Extremely Rare | 1 | 0.3% |
+
+  
+
+So an Extremely Rare material is one material drop in 341, and since three materials share that tier, a named one such as Purified Essence is one in 1,023. That figure is what the tier weight was chosen against: Purified Essence is the only thing that clears the Consumption Threshold, so it has to be something a player can count on eventually having. Which material within a tier is an equal chance.
+
+  
+
+**Magic find raises a material's tier, which departs from the genre.** Path of Exile's item rarity does not affect its currency at all. It applies here because the enemy rarity contribution exists so that a harder enemy is more rewarding, and materials are half of what a kill gives; without it a Cataclysm Boss would hand over twenty-four pieces of Tier 1 dust.
+
+  
+
+**A consequence of that: an enemy adding 500% magic find drops no Common materials at all.** Each rung of the cascade is multiplied and capped at certainty, so at 500% the Uncommon rung reaches certainty and nothing falls through to Common. A Cataclysm Boss adds exactly 500%. This is the intended shape rather than an oversight -- the ordinary supply of Common materials comes from ordinary enemies, which add no magic find at all -- but it is sharp enough to state.
+
+  
+
+**A material tier is not capped by the difficulty tier, unlike gear rarity.** The design gates gear rarity, gem rarity, upgrade stones and weapon damage types on the difficulty tier and says nothing about materials. A cap here would be a new gate, and it would sit oddly beside crafting itself having none: what stops a tier 1 player owning a T7 affix is cost. So a shallow dungeon can produce an Extremely Rare material, rarely, and that is a windfall.
+
+  
+
+**A drop on the ground is shown as its name, and clicking the name picks it up.** There is no item model lying on the floor to identify by shape: what the player reads is the item's own name, coloured by its rarity, and what they click is that name. The rarity colours are listed under Interface Colour, which already says they appear on "the marker over a drop on the ground", and the same section requires the marker to differ by shape or motion as well as by colour so that colour is not the only channel.
 
   
 

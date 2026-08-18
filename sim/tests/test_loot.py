@@ -18,6 +18,7 @@ WHAT THESE GUARD, and each is something the module can get wrong silently:
 
 from __future__ import annotations
 
+import collections
 import random
 
 import pytest
@@ -752,10 +753,10 @@ def test_a_whole_number_rate_always_drops_that_many():
 
 def test_a_kill_produces_whole_items():
     rng = random.Random(3)
-    items = loot.roll_drops_from_kill("Boss", "Chest", 8, 0.0, 100.0, rng)
+    items = loot.roll_drops_from_kill("Boss", 8, 0.0, 100.0, rng)
     assert len(items) == 5
     for item in items:
-        assert item.base.slot == "Chest"
+        assert item.base.slot in af.GEAR_SLOTS
         assert item.rarity in af.RARITIES
 
 
@@ -774,7 +775,7 @@ def test_the_enemys_magic_find_reaches_the_rarity_roll():
         seen = 0
         for _ in range(rounds):
             for item in loot.roll_drops_from_kill(
-                    enemy_rarity, "Chest", 8, 0.0, 100.0, rng):
+                    enemy_rarity, 8, 0.0, 100.0, rng):
                 seen += af.RARITIES.index(item.rarity) >= 3
         return seen
 
@@ -826,3 +827,169 @@ def test_the_import_time_checks_on_the_kill_tables_can_fail():
             loot._check_a_better_enemy_never_drops_less()
     finally:
         loot.ENEMY_MAGIC_FIND = finds
+
+
+# --------------------------------------------------------------------------
+# Which slot a drop is for
+# --------------------------------------------------------------------------
+
+def test_every_slot_is_equally_likely():
+    rng = random.Random(20260818)
+    drawn = [loot.roll_slot(rng) for _ in range(22000)]
+    seen = collections.Counter(drawn)
+    assert set(seen) == set(af.GEAR_SLOTS)
+    for slot, count in seen.items():
+        assert count == pytest.approx(22000 / len(af.GEAR_SLOTS), rel=0.1), slot
+
+
+def test_a_ring_is_no_likelier_than_a_helmet_even_though_eight_are_worn():
+    """The consequence of the rule as stated, pinned so it cannot change
+    unnoticed.
+
+    `affixes.GEAR_SLOTS` maps each slot to how many are WORN and a character
+    wears eight rings. Uniform over slots therefore does NOT make each worn
+    position equally likely: a ring position fills about an eighth as often as
+    the helmet. If the design ever moves to weighting by worn count, this test
+    is the one that says so.
+    """
+    assert af.GEAR_SLOTS["Ring"] == 8
+    assert af.GEAR_SLOTS["Head"] == 1
+
+    rng = random.Random(5)
+    seen = collections.Counter(loot.roll_slot(rng) for _ in range(22000))
+    assert seen["Ring"] == pytest.approx(seen["Head"], rel=0.15)
+
+
+def test_a_weapon_is_not_a_quarter_of_every_drop():
+    """Uniform over SLOTS, not over bases. There are 14 weapon bases against
+    four for most slots, so drawing from all 55 bases would give a weapon about
+    a quarter of the time."""
+    rng = random.Random(6)
+    seen = collections.Counter(loot.roll_slot(rng) for _ in range(11000))
+    assert seen["Weapon"] / 11000 == pytest.approx(1 / 11, rel=0.15)
+
+
+def test_a_kill_can_drop_for_more_than_one_slot():
+    """The slot is rolled per item rather than once per kill, so a Boss's five
+    items are not five of the same thing."""
+    rng = random.Random(20260818)
+    slots = set()
+    for _ in range(50):
+        for item in loot.roll_drops_from_kill("Boss", 8, 0.0, 100.0, rng):
+            slots.add(item.base.slot)
+    assert len(slots) > 1
+
+
+# --------------------------------------------------------------------------
+# Crafting materials, on their own roll
+# --------------------------------------------------------------------------
+
+def test_a_kill_drops_twice_as_many_materials_as_gear():
+    """The starting relationship, and the reason for it: a craft consumes a
+    material and gear is kept. Stored as two columns so either can move."""
+    for rarity in loot.ENEMY_GEAR_DROPS:
+        assert loot.expected_material_drops(rarity) == pytest.approx(
+            loot.expected_gear_drops(rarity) * 2)
+
+
+def test_loot_quantity_multiplies_material_drops_too():
+    assert loot.expected_material_drops("Boss", 400.0) == \
+        pytest.approx(loot.ENEMY_MATERIAL_DROPS["Boss"] * 4)
+
+
+def test_each_material_tier_is_four_times_rarer_than_the_one_below():
+    weights = [loot.MATERIAL_TIER_DROP_WEIGHT[t] for t in loot.MATERIAL_TIERS]
+    for below, above in zip(weights[:-1], weights[1:], strict=True):
+        assert above == pytest.approx(below / 4)
+
+
+def test_the_top_material_tier_is_one_drop_in_the_stated_number():
+    """341, which is what the 256 to 1 spread across five tiers comes to. Stated
+    as a number here rather than recomputed from the weights, so mistyping two
+    weights that still agree with each other is caught."""
+    shares = loot.material_tier_distribution(0.0)
+    assert 1 / shares["Extremely Rare"] == pytest.approx(341, abs=1)
+
+
+def test_a_named_top_tier_material_is_one_drop_in_a_thousand():
+    """Three materials share the top tier, and Purified Essence is the only
+    thing that clears the Consumption Threshold, so how often it turns up is
+    the figure the tier weight was chosen against."""
+    shares = loot.material_tier_distribution(0.0)
+    in_tier = loot.MATERIALS_IN_TIER["Extremely Rare"]
+    assert 1 / shares["Extremely Rare"] * in_tier == pytest.approx(1023, abs=3)
+
+
+def test_the_material_distribution_always_sums_to_one():
+    for magic_find in (0.0, 50.0, 200.0, 500.0, 5000.0):
+        total = sum(loot.material_tier_distribution(magic_find).values())
+        assert total == pytest.approx(1.0)
+
+
+def test_magic_find_raises_the_material_tier():
+    """This departs from the genre on purpose: Path of Exile's item rarity does
+    not affect currency at all. It applies here so that a harder enemy is more
+    rewarding in materials as well as in gear."""
+    plain = loot.material_tier_distribution(0.0)
+    lucky = loot.material_tier_distribution(300.0)
+    assert lucky["Extremely Rare"] > plain["Extremely Rare"] * 2
+    assert lucky["Common"] < plain["Common"]
+
+
+def test_a_saturating_magic_find_stops_the_commonest_tier_appearing():
+    """A CONSEQUENCE WORTH PINNING. Each cascade step is multiplied by magic
+    find and clamped at certainty, so at 500% the Uncommon rung reaches 1 and
+    nothing falls through to Common.
+
+    A Cataclysm Boss adds exactly 500%, so its materials are never Common. That
+    is a reasonable shape -- the ordinary supply comes from ordinary enemies,
+    which add no magic find at all -- but it is sharp enough that it should not
+    be discovered by accident.
+    """
+    assert loot.material_tier_distribution(500.0)["Common"] == 0.0
+    assert loot.material_tier_distribution(0.0)["Common"] > 0.7
+    assert loot.magic_find_from("Cataclysm Boss") == 500.0
+
+
+def test_rolling_materials_draws_from_the_stated_distribution():
+    rng = random.Random(818)
+    stated = loot.material_tier_distribution(0.0)
+    drawn = collections.Counter(
+        loot.roll_material_tier(0.0, rng) for _ in range(40000))
+    for tier in ("Common", "Uncommon", "Rare"):
+        assert drawn[tier] / 40000 == pytest.approx(stated[tier], rel=0.1)
+
+
+def test_a_kill_produces_material_tiers():
+    rng = random.Random(9)
+    tiers = loot.roll_material_drops_from_kill("Boss", 0.0, 100.0, rng)
+    assert len(tiers) == 10
+    assert set(tiers) <= set(loot.MATERIAL_TIERS)
+
+
+def test_the_material_import_time_checks_can_fail():
+    original = loot.MATERIAL_TIER_DROP_WEIGHT
+    try:
+        loot.MATERIAL_TIER_DROP_WEIGHT = dict(original, Rare=512.0)
+        with pytest.raises(AssertionError, match="not rarer at all"):
+            loot._check_no_material_tier_gets_commoner_as_it_rises()
+
+        loot.MATERIAL_TIER_DROP_WEIGHT = {k: v for k, v in original.items()
+                                          if k != "Rare"}
+        with pytest.raises(AssertionError, match="disagree"):
+            loot._check_every_material_tier_has_a_weight()
+    finally:
+        loot.MATERIAL_TIER_DROP_WEIGHT = original
+
+    drops = loot.ENEMY_MATERIAL_DROPS
+    try:
+        loot.ENEMY_MATERIAL_DROPS = dict(drops, Boss=0.5)
+        with pytest.raises(AssertionError, match="drops no more materials"):
+            loot._check_a_better_enemy_never_drops_fewer_materials()
+
+        loot.ENEMY_MATERIAL_DROPS = {k: v for k, v in drops.items()
+                                     if k != "Elite"}
+        with pytest.raises(AssertionError, match="different enemy"):
+            loot._check_every_enemy_rarity_drops_materials()
+    finally:
+        loot.ENEMY_MATERIAL_DROPS = drops

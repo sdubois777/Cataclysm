@@ -20,6 +20,111 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — Crafting materials drop on their own roll, a drop rolls its slot, and a drop on the ground is a clickable name
+
+**Affects:** the Enemy Drops and a new Material Tiers sheet in
+`docs/All_Things_Cataclysm.xlsx`, the What a Kill Drops subsection of section VI
+in `docs/Cataclysm_GDD_v2.md`, and `sim/cataclysm_sim/loot.py`. Applied. Part of
+issue #44; the name tag is issue #707.
+
+### 1. Crafting materials, and the numbers behind them
+
+The separation was decided on 2026-08-18 alongside the gear drop rate. **The
+numbers were delegated:** "1. I'll leave that to you to decide."
+
+| What | Value | Why |
+| :-- | :-- | :-- |
+| Materials per kill | Twice the gear rate. 0.32 for a Common enemy up to 24 for a Cataclysm Boss | A craft consumes a material and a full loadout takes several hundred crafts; a piece of gear is kept rather than spent |
+| Tier weights | 256, 64, 16, 4, 1 — each tier four times rarer than the one below | A 256 to 1 spread across five rungs, inside the range this design already uses: the ordinary gear rarities step by 2.5, the enchanted ones by 5, the affix tiers by 2 |
+| Magic find | Raises a material's tier, on the same cascade as gear rarity | See below; this departs from the genre |
+| Which material within a tier | Equal chance | The same reasoning as bases within a slot |
+
+**Why the top tier is not rarer than one in 341.** Three materials share it, so a
+named one is one drop in 1,023. Purified Essence is one of the three and it is
+the only thing that clears the Consumption Threshold, so making the tier rarer
+would make the tool the design relies on for residue something a player cannot
+count on having. That figure is what the weight was chosen against, and
+`tools/tests/test_enemy_drop_sheet_matches_the_model.py` checks the material
+count per tier against the Crafting sheet rather than against a restatement of
+it.
+
+**Magic find raising material tier departs from Path of Exile**, where item
+rarity does not affect currency at all. It applies here because the enemy rarity
+contribution exists so that a harder enemy is more rewarding, and materials are
+half of what a kill gives; without it a Cataclysm Boss would hand over
+twenty-four pieces of Tier 1 dust. **That is a judgement about this design rather
+than something read off another game**, and it is labelled as one.
+
+**A consequence, stated rather than left to be found.** Each cascade rung is
+multiplied by magic find and capped at certainty, so at 500% the Uncommon rung
+reaches certainty and nothing falls through to Common. A Cataclysm Boss adds
+exactly 500%, so **it drops no Common materials at all**. The ordinary supply
+comes from ordinary enemies, which add no magic find, so this is a reasonable
+shape — but it is sharp, and
+`sim/tests/test_loot.py::test_a_saturating_magic_find_stops_the_commonest_tier_appearing`
+is where it would change.
+
+**No difficulty tier cap on material tier, unlike gear rarity.** The design gates
+gear rarity, gem rarity, upgrade stones and weapon damage types on the difficulty
+tier and says nothing about materials. A cap would be a new gate, and it would
+sit oddly beside crafting itself having none: what stops a tier 1 player owning a
+T7 affix is cost. So a shallow dungeon can produce an Extremely Rare material,
+rarely, and that is a windfall.
+
+### 2. A drop rolls its slot, with every slot equally likely
+
+The owner: "I think we make it an equal chance per slot, that rolls a random base
+on drop." Eleven slots, so a drop is a Weapon one time in eleven, then one of
+that slot's bases with equal chance.
+
+**Uniform over slots is not the same as uniform over bases.** There are 14 weapon
+bases against four for most slots, so drawing from all 55 bases would make a
+weapon a quarter of every drop.
+
+**And it is not the same as uniform over worn positions either, which is worth
+recording because it was nearly missed.** `affixes.GEAR_SLOTS` maps each slot to
+how many are WORN, and a character wears **eight rings** against one of
+everything else — seven armour pieces, eight rings, a necklace, a relic and a
+weapon make the eighteen. So one drop in eleven being a Ring means each ring
+position fills about an eighth as often as the helmet does, and a player needing
+eight of them waits far longer per position than for any other slot.
+
+That is a consequence of the rule as stated rather than a defect in it. The
+alternative — weighting each slot by how many are worn, which would make a Ring
+eight drops in eighteen — was not what was asked for, and changing it is one
+function. `sim/tests/test_loot.py::test_a_ring_is_no_likelier_than_a_helmet_even_though_eight_are_worn`
+pins the consequence so it cannot change unnoticed.
+
+### 3. A drop on the ground is its name, and clicking the name picks it up
+
+The owner: "Items should drop, however the thing that should be visible is the
+items name. So a player sees a drop as a nametag and clicking on it loots the
+item."
+
+There is no item model lying on the floor to recognise by shape. What the player
+reads is the item's own name, coloured by its rarity, and what they click is that
+name.
+
+**This fits what the design already said rather than replacing it.** The
+Interface Colour section already stated that rarity colours appear on "the marker
+over a drop on the ground", and that "the frame and the drop marker must differ
+by shape or motion as well as by colour" so that colour is not the only channel.
+That accessibility requirement now applies to the name tag.
+
+**Nothing is built.** No actor is spawned when an enemy dies, no widget shows a
+name in the world, there is no pick-up interaction, and there is no inventory to
+put an item into. Issue #707 has the order to build them in.
+
+### One refactor this needed
+
+The cascade arithmetic — a rung's weight as a share of everything at or below it,
+multiplied by magic find — was inside `rarity_step_chance`. The material tier roll
+is the same cascade over a different ladder, so it was lifted into
+`_cascade_step_chance` and both now call it. Two copies would have been two places
+to get the share wrong.
+
+---
+
 ## 2026-08-18 — Items drop from enemies, not from floors, and a rarer enemy adds magic find to its own drops
 
 **Affects:** a new Enemy Drops sheet in `docs/All_Things_Cataclysm.xlsx`, a new
