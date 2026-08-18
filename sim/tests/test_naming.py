@@ -70,11 +70,18 @@ def test_an_item_with_no_suffix_affix_has_no_dangling_of():
 
 def test_a_cataclysmic_item_is_named_without_a_word():
     """It carries four enchantments and no regular affixes at all, so there is
-    no suffix to name it after."""
+    no suffix to name it after.
+
+    A MAGIC FIND NO CHARACTER COULD HAVE, on purpose. A Cataclysmic drop is one
+    in 25,531 at difficulty tier 8, so rolling until one appears would take a
+    hundred thousand items and several seconds. Magic find multiplies the top
+    rung's chance until it saturates at certainty, which is the real code path
+    rather than a hand-built item.
+    """
     rng = random.Random(4242)
     seen = False
-    for _ in range(4000):
-        item = loot.roll_item("Relic", tier=8, magic_find=600.0, rng=rng)
+    for _ in range(200):
+        item = loot.roll_item("Relic", tier=8, magic_find=5_000_000.0, rng=rng)
         if item.rarity != "Cataclysmic":
             continue
         seen = True

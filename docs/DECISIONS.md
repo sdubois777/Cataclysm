@@ -20,6 +20,113 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — The drop weights are set: rarity falls in two segments, affix tiers halve
+
+**Affects:** the Gear Rarity sheet and a new Affix Tiers sheet in
+`docs/All_Things_Cataclysm.xlsx`, `sim/cataclysm_sim/loot.py` and
+`sim/cataclysm_sim/affixes.py`. Applied. Part of issue #44.
+
+### What was wrong with both
+
+Two separate rolls on a drop were **uniform**, each shipped as a first value with
+a note saying so:
+
+- **Gear rarity.** Every weight was 1, so at difficulty tier 8 one drop in eight
+  was Cataclysmic.
+- **Affix tier.** The draw was uniform across the reachable tiers, so nearly 15%
+  of affixes at difficulty tier 8 came out at T7.
+
+The test guarding the affix draw said in its own docstring: "If this is ever tuned
+to lean high, this test is the one to change, and the decision belongs in
+`docs/DECISIONS.md`." This is that.
+
+### The point both decisions rest on: a drop is raw material
+
+The design says **adding an affix promotes a piece** — an Everyday item with an
+affix added becomes Quality — and applying an enchantment promotes it further, all
+the way to Cataclysmic. It also says **crafting has no affix tier gate at all**:
+"an affix can be raised as high as the player can afford."
+
+So crafting is the intended route to the top of both ladders, and a drop is what
+crafting works on. A top-rarity or top-tier **drop** is a windfall rather than the
+expected way to own one, which is what makes both of these rare rather than
+punishing.
+
+### Gear rarity: two segments, and one in 25,531
+
+**Set by the project owner on 2026-08-18.** One in 255 was put forward first and
+rejected: "1 in 255 is too generous as a base ... I think I want cataclysm items to
+drop like.. 1 in 5000, maybe even more."
+
+**The ladder falls in two segments, split where the design already splits it.**
+The four lower rarities carry only regular affixes; the four upper ones carry
+enchantments and are gated on upgrade level. Each half falls at its own rate with a
+step between them:
+
+| | |
+| :-- | :-- |
+| the four ordinary rarities | each 2.5 times rarer than the one below |
+| the enchantment boundary | a step of 8 |
+| the four enchanted rarities | each 5 times rarer than the one below |
+
+Giving weights 15625, 6250, 2500, 1000 | 125, 25, 5, 1, which sum to 25,531.
+
+| Rarity | Share of drops | |
+| :-- | --: | --: |
+| Everyday | 61.20% | 1 in 2 |
+| Quality | 24.48% | 1 in 4 |
+| Superb | 9.79% | 1 in 10 |
+| Masterful | 3.92% | 1 in 26 |
+| Legendary | 0.49% | 1 in 204 |
+| Mythical | 0.098% | 1 in 1,021 |
+| Ascendant | 0.020% | 1 in 5,106 |
+| Cataclysmic | 0.0039% | 1 in 25,531 |
+
+**Why not one ratio for the whole ladder**, which was simpler and was the first
+proposal. A single ratio cannot make the top rare without dragging Masterful down
+with it: aimed at one Cataclysmic in 20,000 it puts Masterful at one in 82 against
+one in 26 here. **Masterful has to stay common**, because it is the top of the
+ordinary ladder, the design fits its affix values against "a full set of Masterful
+gear", and crafting promotes a piece upward from there. It is the supply line
+rather than the destination.
+
+**Magic find still matters at these weights.** It multiplies each cascade step, so
++400% takes a Cataclysmic drop from one in 25,531 to one in 5,106.
+
+### Affix tiers: each half as likely as the one below
+
+**Set by the project owner on 2026-08-18**, from three candidates at ratios 2, 2.5
+and 3. Weights 64, 32, 16, 8, 4, 2, 1, summing to 127.
+
+At difficulty tier 8, where all seven tiers are reachable: T1 50.4%, T2 25.2%,
+T3 12.6%, T4 6.3%, T5 3.2%, T6 1.6%, **T7 0.79%, one in 127**. A four-affix item
+carries at least one T7 about 3% of the time.
+
+**The genre weights these, and the old argument for uniform read across from a
+different question.** Path of Exile was cited in the code for WHICH tiers a drop
+can reach, and it expands that range with item level. How LIKELY each one is, is a
+separate matter, and there the higher tiers are rarer rather than equal.
+
+**What the gate does is unchanged.** Which tiers are reachable is still the
+difficulty tier plus one, capped at T7, and every tier at or below stays in the
+pool. Only the weighting inside that range changed.
+
+### How three copies of each table are kept honest
+
+Each table now exists in the workbook and in the simulation, and two tests compare
+those to each other — which passes happily if both were changed together by
+mistake. So each sheet also has one test that compares it to **the decision rather
+than to the other copy**: the gear rarity sheet must halve-and-step at the ratios
+above, and the affix tier sheet must halve at every step and sum to 127.
+
+### What is deliberately not built
+
+**Neither table is tuned against play**, because nothing drops in the game yet.
+The shapes are decisions; the exact rates are first values, and both are a column
+in the workbook away from changing.
+
+---
+
 ## 2026-08-18 — An item drops with anywhere from no sockets to all of them
 
 **Affects:** the Sockets and Gems subsection of section VI and the loadout rule in
