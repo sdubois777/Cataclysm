@@ -5,8 +5,8 @@ part of issue #44.
 
 WHAT THIS DOES NOT DECIDE. Which affixes a drop rolls beyond their count, what
 upgrade level it arrives at beyond the floor its own rarity forces, and which
-gear slot a kill drops for. Those are the later parts of #44. Crafting materials
-drop on their own separate roll, which is not modelled here yet.
+of a tier's crafting materials a material drop is. Those are the later parts of
+#44.
 
 THE ROLL IS A CASCADE FROM THE RAREST DOWN, which is what the genre does. Path of
 Exile "rolls for rare, then magic, and any remaining items will drop normal", and
@@ -278,6 +278,46 @@ def roll_residue(rarity: str, rng) -> float:
     return float(rng.randint(int(lowest), int(highest)))
 
 
+def _cascade_step_chance(weights: list[float], index: int,
+                         magic_find: float, what: str) -> float:
+    """One rung's chance in a weighted cascade, given that the cascade reached it.
+
+    THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT. That is what turns
+    a table of weights into a cascade, and the arithmetic is worth stating
+    because it is not obvious: stopping at rung R with chance w[R]/S[R], where
+    S[R] is the weight of rungs 1 to R, leaves S[R-1]/S[R] to carry on. Multiply
+    those down from the top and every rung ends up with w[R]/S[N] -- its own
+    share of the whole reachable ladder, which is what a weight is supposed to
+    mean.
+
+    SHARED BY THE GEAR RARITY ROLL AND THE MATERIAL TIER ROLL, because they are
+    the same cascade over different ladders. Two copies of this would be two
+    places to get the share wrong.
+
+    @param weights  every rung's weight, weakest first
+    @param index    which rung, ONE-BASED so it lines up with a difficulty tier
+    @param what     what is being rolled, for the error messages only
+    """
+    if index < 1:
+        raise ValueError(f"index {index} is below 1")
+    if index > len(weights):
+        raise ValueError(f"index {index} is above the {len(weights)} rungs "
+                         f"{what} has")
+    if magic_find < 0.0:
+        raise ValueError(
+            f"magic find is {magic_find}; it is an added percentage with a "
+            "baseline of zero and cannot be negative")
+
+    at_or_below = sum(weights[:index])
+    if at_or_below <= 0.0:
+        raise ValueError(
+            f"every rung of {what} up to {index} has a weight of zero, so there "
+            "is nothing for the cascade to choose between")
+
+    return min(1.0, weights[index - 1] / at_or_below
+               * (1.0 + magic_find / 100.0))
+
+
 def rarity_step_chance(index: int, magic_find: float = 0.0) -> float:
     """The chance the cascade stops at this rung, given that it reached it.
 
@@ -296,22 +336,16 @@ def rarity_step_chance(index: int, magic_find: float = 0.0) -> float:
     Saturating at 1 is the only ceiling; see the module docstring for the
     diminishing returns that are deliberately not built.
     """
-    if index < 1:
-        raise ValueError(f"index {index} is below 1")
-    if magic_find < 0.0:
-        raise ValueError(
-            f"magic find is {magic_find}; it is an added percentage with a "
-            "baseline of zero and cannot be negative")
+    if 1 <= index <= len(af.RARITIES):
+        at_or_below = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
+                          for rung in range(1, index + 1))
+        if at_or_below <= 0.0:
+            raise ValueError(
+                f"every rarity up to {rarity_at_index(index)} has a drop weight "
+                "of zero, so there is nothing for the cascade to choose between")
 
-    at_or_below = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
-                      for rung in range(1, index + 1))
-    if at_or_below <= 0.0:
-        raise ValueError(
-            f"every rarity up to {rarity_at_index(index)} has a drop weight of "
-            "zero, so there is nothing for the cascade to choose between")
-
-    share = RARITY_DROP_WEIGHT[rarity_at_index(index)] / at_or_below
-    return min(1.0, share * (1.0 + magic_find / 100.0))
+    weights = [RARITY_DROP_WEIGHT[rarity] for rarity in af.RARITIES]
+    return _cascade_step_chance(weights, index, magic_find, "the rarity ladder")
 
 
 def rarity_distribution(tier: int, magic_find: float = 0.0) -> dict[str, float]:
@@ -552,6 +586,40 @@ def split_for_a_drop(slots: int, rng) -> tuple[int, int]:
     return prefixes, suffixes
 
 
+
+#: The eleven gear slots, in the order `affixes.GEAR_SLOTS` lists them. Held as
+#: a tuple because `GEAR_SLOTS` is a mapping of slot to how many are WORN, and a
+#: mapping cannot be drawn from.
+SLOTS_A_DROP_CAN_BE: tuple[str, ...] = tuple(af.GEAR_SLOTS)
+
+
+def roll_slot(rng) -> str:
+    """Which gear slot a drop is for.
+
+    EVERY SLOT IS EQUALLY LIKELY, decided by the project owner on 2026-08-18.
+    Eleven slots, so a drop is a Weapon one time in eleven and a Ring one time
+    in eleven.
+
+    UNIFORM OVER SLOTS RATHER THAN OVER BASES, and the two are different
+    answers. There are 14 weapon bases against four for most slots, so drawing
+    uniformly from all 55 bases would make a weapon a quarter of every drop.
+
+    AND IT IS NOT THE SAME AS UNIFORM OVER WORN POSITIONS EITHER, which is the
+    part worth knowing. `affixes.GEAR_SLOTS` maps each slot to how many are
+    worn, and **a character wears eight rings** against one of everything else:
+    seven armour pieces, eight rings, a necklace, a relic and a weapon make the
+    eighteen. So one drop in eleven being a Ring means each ring position is
+    filled about an eighth as often as the helmet, and a player needing eight of
+    them waits far longer per position than for any other slot.
+
+    That is a consequence of the rule as stated rather than a defect in it, and
+    the alternative -- weighting each slot by how many are worn, which would
+    make a Ring eight drops in eighteen -- was not what was asked for. Changing
+    it is this one function.
+    """
+    return rng.choice(SLOTS_A_DROP_CAN_BE)
+
+
 def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
     """Roll one whole item for a gear slot at a difficulty tier.
 
@@ -724,17 +792,18 @@ def roll_gear_drop_count(enemy_rarity: str, loot_quantity: float, rng) -> int:
     return whole + (1 if rng.random() < expected - whole else 0)
 
 
-def roll_drops_from_kill(enemy_rarity: str, slot: str, tier: int,
-                         magic_find: float, loot_quantity: float,
-                         rng) -> list[RolledItem]:
-    """Everything one kill drops, as whole items.
+def roll_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
+                         loot_quantity: float, rng) -> list[RolledItem]:
+    """Every gear item one kill drops, whole.
 
     @param enemy_rarity  what was killed: "Common" through "Cataclysm Boss"
-    @param slot          which gear slot the drops are for. Still an argument
-                         rather than a roll; see `roll_item`.
     @param magic_find    the PLAYER's own, as an added percentage. The enemy's
                          contribution is added to it here rather than by the
                          caller, so no caller can forget it.
+
+    THE SLOT IS ROLLED PER ITEM rather than passed in, so two drops from one
+    kill can be for different slots. `roll_slot` says why every slot is equally
+    likely.
 
     THE ENEMY'S MAGIC FIND ADDS TO THE PLAYER'S rather than multiplying it,
     which is what Path of Exile does with its own sources: they "stack
@@ -742,12 +811,204 @@ def roll_drops_from_kill(enemy_rarity: str, slot: str, tier: int,
     """
     count = roll_gear_drop_count(enemy_rarity, loot_quantity, rng)
     together = magic_find + magic_find_from(enemy_rarity)
-    return [roll_item(slot, tier, together, rng) for _ in range(count)]
+    return [roll_item(roll_slot(rng), tier, together, rng)
+            for _ in range(count)]
+
+
+# --------------------------------------------------------------------------
+# Crafting materials, which drop on their own roll
+# --------------------------------------------------------------------------
+
+#: How many crafting materials a kill of each enemy rarity is expected to drop,
+#: before loot quantity. Mirrors the Material Drops column of the Enemy Drops
+#: sheet in `docs/All_Things_Cataclysm.xlsx`.
+#:
+#: A SEPARATE ROLL FROM GEAR, chosen by the project owner on 2026-08-18, rather
+#: than one drop event that picks between the two. The design already had
+#: evidence for the separation: the Scavenger node on the empire tree
+#: "increases drop quantity of t3 and below crafting materials by 5% per point",
+#: and a shared roll would make that node also reduce the number of gear items
+#: that drop.
+#:
+#: TWICE THE GEAR RATE FOR THE SAME ENEMY. A craft consumes a material and a
+#: full loadout takes several hundred crafts -- eighteen pieces of promotion,
+#: upgrade and socketing is well over three hundred -- while a piece of gear is
+#: kept rather than spent. The two columns are stored separately rather than one
+#: being computed from the other, so either can be tuned without the other.
+ENEMY_MATERIAL_DROPS: dict[str, float] = {
+    "Common":          0.32,
+    "Elite":           1.0,
+    "Legendary":       2.0,
+    "Herald":          4.0,
+    "Boss":           10.0,
+    "Cataclysm Boss": 24.0,
+}
+
+#: The five crafting material tiers, weakest first, as the Crafting sheet names
+#: them.
+MATERIAL_TIERS: tuple[str, ...] = ("Common", "Uncommon", "Rare", "Very Rare",
+                                   "Extremely Rare")
+
+#: How heavily each material tier is weighted on a drop. Mirrors the Drop Weight
+#: column of the Material Tiers sheet.
+#:
+#: EACH TIER IS FOUR TIMES RARER THAN THE ONE BELOW, which gives a 256 to 1
+#: spread across the five and puts an Extremely Rare material at one material
+#: drop in 341. Four sits inside the range this design already uses elsewhere:
+#: the ordinary gear rarities step by 2.5, the enchanted ones by 5, and the
+#: affix tiers by 2.
+#:
+#: WHY THE TOP IS NOT RARER THAN THAT. Three materials share Tier 5, so a named
+#: one -- Purified Essence, which is the only thing that clears the Consumption
+#: Threshold -- is one drop in 1,023. Making the tier itself rarer would make
+#: the tool the design relies on to manage residue something a player cannot
+#: count on having.
+MATERIAL_TIER_DROP_WEIGHT: dict[str, float] = {
+    "Common":         256.0,
+    "Uncommon":        64.0,
+    "Rare":            16.0,
+    "Very Rare":        4.0,
+    "Extremely Rare":   1.0,
+}
+
+#: How many materials share each tier, from the Crafting sheet. Only used to say
+#: how likely a NAMED material is, which is what the tier weights above are
+#: judged against.
+MATERIALS_IN_TIER: dict[str, int] = {
+    "Common": 4, "Uncommon": 4, "Rare": 4, "Very Rare": 3,
+    "Extremely Rare": 3,
+}
+
+
+def expected_material_drops(
+        enemy_rarity: str,
+        loot_quantity: float = BASELINE_LOOT_QUANTITY) -> float:
+    """How many crafting materials a kill of this rarity is expected to drop."""
+    _enemy_rarity(enemy_rarity)
+    if loot_quantity < 0.0:
+        raise ValueError(
+            f"loot quantity is {loot_quantity}; it is a percentage with a "
+            "baseline of 100 and cannot be negative")
+    return (ENEMY_MATERIAL_DROPS[enemy_rarity]
+            * loot_quantity / BASELINE_LOOT_QUANTITY)
+
+
+def material_tier_distribution(magic_find: float = 0.0) -> dict[str, float]:
+    """What fraction of material drops is each tier.
+
+    Exact rather than sampled, the same way `rarity_distribution` is, so a test
+    can check the shape without rolling ten thousand materials.
+
+    NO DIFFICULTY TIER CAP, UNLIKE GEAR. The design gates gear rarity, gem
+    rarity, upgrade stones and weapon damage types on the difficulty tier, and
+    says nothing about materials. Adding a cap here would be inventing a
+    mechanic, and it would sit oddly beside crafting itself having no tier gate:
+    what stops a tier 1 player owning a T7 affix is cost. So a shallow dungeon
+    can produce an Extremely Rare material, rarely, and that is a windfall.
+    """
+    weights = [MATERIAL_TIER_DROP_WEIGHT[tier] for tier in MATERIAL_TIERS]
+
+    out = {tier: 0.0 for tier in MATERIAL_TIERS}
+    left = 1.0
+    for index in range(len(MATERIAL_TIERS), 1, -1):
+        chance = _cascade_step_chance(weights, index, magic_find,
+                                      "the material tier ladder")
+        out[MATERIAL_TIERS[index - 1]] = left * chance
+        left *= 1.0 - chance
+
+    out[MATERIAL_TIERS[0]] = left
+    return out
+
+
+def roll_material_tier(magic_find: float, rng) -> str:
+    """The tier one crafting material drops at.
+
+    MAGIC FIND RAISES IT, WHICH DEPARTS FROM THE GENRE. Path of Exile's item
+    rarity does not affect currency at all. It applies here because the enemy
+    rarity contribution exists so that a harder enemy is more rewarding, and
+    materials are half of what a kill gives; without it a Cataclysm Boss would
+    hand over twenty-four pieces of Tier 1 dust. That is a judgement about this
+    design rather than something read off another game.
+
+    WHICH MATERIAL WITHIN THE TIER IS AN EQUAL CHANCE, and this function does not
+    make it: the names live in the Crafting sheet and reach the game through
+    `game/Data/CraftingMaterials.csv`, so whoever holds that table picks. Adding
+    a copy of eighteen names here would be a copy the simulation never reads.
+    """
+    weights = [MATERIAL_TIER_DROP_WEIGHT[tier] for tier in MATERIAL_TIERS]
+    for index in range(len(MATERIAL_TIERS), 1, -1):
+        if rng.random() < _cascade_step_chance(weights, index, magic_find,
+                                               "the material tier ladder"):
+            return MATERIAL_TIERS[index - 1]
+    return MATERIAL_TIERS[0]
+
+
+def roll_material_drops_from_kill(enemy_rarity: str, magic_find: float,
+                                  loot_quantity: float, rng) -> list[str]:
+    """The tier of every crafting material one kill drops.
+
+    Returns tiers rather than named materials, for the reason in
+    `roll_material_tier`.
+    """
+    expected = expected_material_drops(enemy_rarity, loot_quantity)
+    whole = int(expected)
+    count = whole + (1 if rng.random() < expected - whole else 0)
+
+    together = magic_find + magic_find_from(enemy_rarity)
+    return [roll_material_tier(together, rng) for _ in range(count)]
 
 
 # --------------------------------------------------------------------------
 # Checks that run on import, the same way affixes.py does it.
 # --------------------------------------------------------------------------
+
+def _check_every_enemy_rarity_drops_materials() -> None:
+    """The same six as the gear column. A rarity in one and not the other would
+    drop gear and no materials, or the reverse."""
+    if set(ENEMY_MATERIAL_DROPS) != set(ENEMY_GEAR_DROPS):
+        raise AssertionError(
+            "the material and gear drop tables cover different enemy "
+            f"rarities: {sorted(set(ENEMY_MATERIAL_DROPS) ^ set(ENEMY_GEAR_DROPS))}")
+
+
+def _check_a_better_enemy_never_drops_fewer_materials() -> None:
+    rarities = list(ENEMY_MATERIAL_DROPS)
+    for below, above in zip(rarities[:-1], rarities[1:], strict=True):
+        if ENEMY_MATERIAL_DROPS[above] <= ENEMY_MATERIAL_DROPS[below]:
+            raise AssertionError(
+                f"a {above} is rarer than a {below} and drops no more "
+                f"materials: {ENEMY_MATERIAL_DROPS[above]} against "
+                f"{ENEMY_MATERIAL_DROPS[below]}")
+
+
+def _check_every_material_tier_has_a_weight() -> None:
+    missing = set(MATERIAL_TIERS) - set(MATERIAL_TIER_DROP_WEIGHT)
+    extra = set(MATERIAL_TIER_DROP_WEIGHT) - set(MATERIAL_TIERS)
+    if missing or extra:
+        raise AssertionError(
+            f"the material tier weights and the tier list disagree; missing "
+            f"{sorted(missing)}, unknown {sorted(extra)}")
+
+
+def _check_no_material_tier_gets_commoner_as_it_rises() -> None:
+    weights = [MATERIAL_TIER_DROP_WEIGHT[t] for t in MATERIAL_TIERS]
+    for below, above in zip(weights[:-1], weights[1:], strict=True):
+        if above >= below:
+            raise AssertionError(
+                f"a rarer material tier is weighted {above} against the "
+                f"{below} below it, so it is not rarer at all")
+
+
+def _check_the_material_distribution_sums_to_one() -> None:
+    """It is a cascade, so the floor takes whatever fell through. A sum below
+    one would mean material drops that rolled no tier at all."""
+    for magic_find in (0.0, 100.0, 500.0):
+        total = sum(material_tier_distribution(magic_find).values())
+        if abs(total - 1.0) > 1e-9:
+            raise AssertionError(
+                f"the material tier distribution at {magic_find:g}% magic find "
+                f"sums to {total}, not 1")
+
 
 def _check_every_rarity_has_a_gear_level_gate() -> None:
     missing = set(af.RARITIES) - set(RARITY_GEAR_LEVEL_GATE)
@@ -970,3 +1231,8 @@ _check_every_enemy_rarity_has_a_drop_rate()
 _check_a_better_enemy_never_drops_less()
 _check_a_common_kill_adds_no_magic_find()
 _check_every_kill_can_drop_something()
+_check_every_enemy_rarity_drops_materials()
+_check_a_better_enemy_never_drops_fewer_materials()
+_check_every_material_tier_has_a_weight()
+_check_no_material_tier_gets_commoner_as_it_rises()
+_check_the_material_distribution_sums_to_one()

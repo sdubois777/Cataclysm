@@ -185,16 +185,18 @@ def test_a_common_kill_is_the_baseline_both_columns_are_read_against(
 
 DESIGN_DOCUMENT = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 
-#: A row of the What a Kill Drops table: `| Herald | 2.0 | 150% |`
+#: A row of the What a Kill Drops table: `| Herald | 2.0 | 4.0 | 150% |`
 DOCUMENT_ROW = re.compile(
-    r"^\|\s*([A-Za-z ]+?)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)%\s*\|\s*$")
+    r"^\|\s*([A-Za-z ]+?)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|"
+    r"\s*([\d.]+)%\s*\|\s*$")
 
-TABLE_HEADER = "| Enemy rarity | Gear drops per kill | Magic find it adds |"
+TABLE_HEADER = ("| Enemy rarity | Gear drops per kill | "
+                "Material drops per kill | Magic find it adds |")
 
 
 @pytest.fixture(scope="module")
-def stated() -> dict[str, tuple[float, float]]:
-    """Rarity against (gear drops, magic find), read out of the document."""
+def stated() -> dict[str, tuple[float, float, float]]:
+    """Rarity against (gear drops, material drops, magic find)."""
     if not DESIGN_DOCUMENT.is_file():
         pytest.skip(f"{DESIGN_DOCUMENT.name} is not present")
     document = DESIGN_DOCUMENT.read_text(encoding="utf-8")
@@ -212,7 +214,8 @@ def stated() -> dict[str, tuple[float, float]]:
             if line.startswith("|"):
                 continue          # the alignment row
             break                 # the table has ended
-        rows[match.group(1)] = (float(match.group(2)), float(match.group(3)))
+        rows[match.group(1)] = (float(match.group(2)), float(match.group(3)),
+                                float(match.group(4)))
     return rows
 
 
@@ -227,7 +230,7 @@ def test_the_document_states_a_row_for_every_enemy_rarity(stated, loot) -> None:
 def test_the_document_states_the_drop_rates_the_model_uses(stated,
                                                            loot) -> None:
     wrong = [f"{rarity}: document {drops:g}, model {loot.ENEMY_GEAR_DROPS[rarity]:g}"
-             for rarity, (drops, _find) in sorted(stated.items())
+             for rarity, (drops, _mats, _find) in sorted(stated.items())
              if drops != pytest.approx(loot.ENEMY_GEAR_DROPS[rarity])]
     assert not wrong, (
         f"{DESIGN_DOCUMENT.name} states drop rates the simulation does not "
@@ -238,8 +241,137 @@ def test_the_document_states_the_drop_rates_the_model_uses(stated,
 def test_the_document_states_the_magic_find_the_model_uses(stated,
                                                            loot) -> None:
     wrong = [f"{rarity}: document {find:g}%, model {loot.ENEMY_MAGIC_FIND[rarity]:g}%"
-             for rarity, (_drops, find) in sorted(stated.items())
+             for rarity, (_drops, _mats, find) in sorted(stated.items())
              if find != pytest.approx(loot.ENEMY_MAGIC_FIND[rarity])]
     assert not wrong, (
         f"{DESIGN_DOCUMENT.name} states magic find contributions the "
+        "simulation does not use: " + "; ".join(wrong))
+
+
+# --------------------------------------------------------------------------
+# Crafting materials, which drop on their own roll
+# --------------------------------------------------------------------------
+
+MATERIAL_SHEET = "Material Tiers"
+CRAFTING_SHEET = "Crafting"
+
+#: The first cell of the row separating the materials from the operations in
+#: the Crafting sheet. See test_crafting_section_matches_the_sheet.py, which
+#: documents that sheet's three-table shape in full.
+ACTIONS_HEADER = "Action"
+
+
+@pytest.fixture(scope="module")
+def material_tiers() -> list[dict]:
+    openpyxl = pytest.importorskip("openpyxl")
+    if not WORKBOOK.is_file():
+        pytest.skip(f"{WORKBOOK.name} is not present")
+
+    book = openpyxl.load_workbook(WORKBOOK, data_only=True, read_only=True)
+    if MATERIAL_SHEET not in book.sheetnames:
+        pytest.fail(f"the workbook has no sheet named {MATERIAL_SHEET!r}")
+
+    rows = list(book[MATERIAL_SHEET].iter_rows(values_only=True))
+    headers = [text(h) for h in rows[0]]
+    out = [{headers[i]: raw[i] for i in range(len(headers)) if i < len(raw)}
+           for raw in rows[1:] if raw and text(raw[0])]
+    assert out, f"the {MATERIAL_SHEET} sheet has a header row and nothing under it"
+    return out
+
+
+@pytest.fixture(scope="module")
+def materials_by_tier() -> dict[str, int]:
+    """How many materials each tier holds, counted off the Crafting sheet.
+
+    A THIRD SOURCE, not the Material Tiers sheet's own Materials column. That
+    column and this count could both be edited to the same wrong number; the
+    Crafting sheet is where the materials actually are.
+    """
+    openpyxl = pytest.importorskip("openpyxl")
+    if not WORKBOOK.is_file():
+        pytest.skip(f"{WORKBOOK.name} is not present")
+
+    book = openpyxl.load_workbook(WORKBOOK, data_only=True, read_only=True)
+    grid = [row for row in book[CRAFTING_SHEET].iter_rows(values_only=True)
+            if any(cell is not None and str(cell).strip() for cell in row)]
+
+    counted: dict[str, int] = {}
+    for row in grid:
+        if text(row[0]) == ACTIONS_HEADER:
+            break
+        found = re.match(r"Tier\s*\d\s*\(([^)]+)\)", text(row[1]))
+        if found:
+            counted[found.group(1)] = counted.get(found.group(1), 0) + 1
+    assert counted, (
+        f"no 'Tier N (Name)' cells could be read out of the {CRAFTING_SHEET} "
+        "sheet, so the material counts below would compare nothing.")
+    return counted
+
+
+def test_the_material_tier_sheet_names_the_tiers_the_model_has(material_tiers,
+                                                               loot) -> None:
+    named = [text(row["Tier Name"]) for row in material_tiers]
+    assert named == list(loot.MATERIAL_TIERS)
+
+
+def test_the_tier_numbers_run_from_one_upward(material_tiers) -> None:
+    assert [int(row["Tier"]) for row in material_tiers] == \
+        list(range(1, len(material_tiers) + 1))
+
+
+def test_every_material_tier_weight_matches_the_model(material_tiers,
+                                                      loot) -> None:
+    wrong = [f"{text(row['Tier Name'])}: sheet {float(row['Drop Weight']):g}, "
+             f"model {loot.MATERIAL_TIER_DROP_WEIGHT.get(text(row['Tier Name']))}"
+             for row in material_tiers
+             if float(row["Drop Weight"]) != pytest.approx(
+                 loot.MATERIAL_TIER_DROP_WEIGHT.get(text(row["Tier Name"]), -1))]
+    assert not wrong, (
+        f"the {MATERIAL_SHEET} sheet and loot.MATERIAL_TIER_DROP_WEIGHT "
+        "disagree: " + "; ".join(wrong) + ". The workbook is authoritative.")
+
+
+def test_the_material_counts_match_the_crafting_sheet(material_tiers,
+                                                      materials_by_tier,
+                                                      loot) -> None:
+    """Both the sheet's own Materials column and the model's mirror of it,
+    against the Crafting sheet where the materials really are."""
+    wrong = []
+    for row in material_tiers:
+        tier = text(row["Tier Name"])
+        real = materials_by_tier.get(tier)
+        if int(row["Materials"]) != real:
+            wrong.append(f"{tier}: {MATERIAL_SHEET} says "
+                         f"{int(row['Materials'])}, Crafting has {real}")
+        if loot.MATERIALS_IN_TIER.get(tier) != real:
+            wrong.append(f"{tier}: the model says "
+                         f"{loot.MATERIALS_IN_TIER.get(tier)}, Crafting has "
+                         f"{real}")
+    assert not wrong, (
+        "the number of crafting materials in a tier disagrees between the "
+        "Crafting sheet and something that restates it: " + "; ".join(wrong)
+        + ". How often a NAMED top-tier material drops is derived from this "
+          "count, and Purified Essence is the only thing that clears the "
+          "Consumption Threshold.")
+
+
+def test_every_material_drop_rate_matches_the_model(sheet, loot) -> None:
+    wrong = [f"{text(row['Enemy Rarity'])}: sheet {float(row['Material Drops']):g}, "
+             f"model {loot.ENEMY_MATERIAL_DROPS.get(text(row['Enemy Rarity']))}"
+             for row in sheet
+             if float(row["Material Drops"]) != pytest.approx(
+                 loot.ENEMY_MATERIAL_DROPS.get(text(row["Enemy Rarity"]), -1))]
+    assert not wrong, (
+        f"the {SHEET} sheet and loot.ENEMY_MATERIAL_DROPS disagree about how "
+        "many crafting materials a kill drops: " + "; ".join(wrong))
+
+
+def test_the_document_states_the_material_rates_the_model_uses(stated,
+                                                               loot) -> None:
+    wrong = [f"{rarity}: document {mats:g}, "
+             f"model {loot.ENEMY_MATERIAL_DROPS[rarity]:g}"
+             for rarity, (_drops, mats, _find) in sorted(stated.items())
+             if mats != pytest.approx(loot.ENEMY_MATERIAL_DROPS[rarity])]
+    assert not wrong, (
+        f"{DESIGN_DOCUMENT.name} states crafting material drop rates the "
         "simulation does not use: " + "; ".join(wrong))
