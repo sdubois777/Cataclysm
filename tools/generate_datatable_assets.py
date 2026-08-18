@@ -90,6 +90,7 @@ DATA_DIR = "/Game/Data"
 #: columns they came from rather than by shape.
 TABLES = [
     ("DT_Affixes", "Affixes.csv", "CataclysmAffixRow"),
+    ("DT_AffixTiers", "AffixTiers.csv", "CataclysmAffixTierRow"),
     ("DT_Attributes", "Attributes.csv", "CataclysmAttributeEffectRow"),
     ("DT_CityUpgrades", "CityUpgrades.csv", "CataclysmCityUpgradeRow"),
     ("DT_ClassStats", "ClassStats.csv", "CataclysmClassStatRow"),
@@ -101,8 +102,10 @@ TABLES = [
     ("DT_EnemyArchetypes", "EnemyArchetypes.csv", "CataclysmEnemyArchetypeRow"),
     ("DT_EnemyModifiers", "EnemyModifiers.csv", "CataclysmEnemyModifierRow"),
     ("DT_EnemyRarities", "EnemyRarities.csv", "CataclysmEnemyRarityRow"),
+    ("DT_GearRarity", "GearRarity.csv", "CataclysmGearRarityRow"),
     ("DT_Gems", "Gems.csv", "CataclysmGemRow"),
     ("DT_ItemBases", "ItemBases.csv", "CataclysmItemBaseRow"),
+    ("DT_ItemSockets", "ItemSockets.csv", "CataclysmItemSocketRow"),
     ("DT_MinionTypes", "MinionTypes.csv", "CataclysmMinionTypeRow"),
     ("DT_MinionScaling", "MinionScaling.csv", "CataclysmMinionScalingRow"),
     ("DT_SkillSlots", "SkillSlots.csv", "CataclysmSkillSlotRow"),

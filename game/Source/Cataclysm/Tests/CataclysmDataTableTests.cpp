@@ -115,6 +115,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 55 bases across 11 slots, at least three per slot, because one base in a
 	// slot is not a choice.
 	CHECK_TABLE(FCataclysmItemBaseRow,          "ItemBases.csv",              55)
+	// 12: ten gear slots at one row each, and a weapon twice because its
+	// maximum depends on how many hands it takes. The four potion slots are
+	// not gear and nothing rolls one as a drop, so they are not here.
+	CHECK_TABLE(FCataclysmItemSocketRow,        "ItemSockets.csv",            12)
 	// 78: 53 single-stat affixes, 3 resistance families, 10 ailments and 12
 	// hybrids. The single-stat count rose from 35 on 2026-08-04: eight when
 	// gear began granting a percentage increase to each primary attribute, two
@@ -128,6 +132,15 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// an affix does grant a chance to stun, and a Blunt weapon's 10% is part
 	// of the same pool rather than a separate mechanic.
 	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                85)
+	// 7: one per affix tier, T1 to T7, holding how heavily each is weighted
+	// when a drop rolls an affix. Which tiers are REACHABLE is decided by the
+	// difficulty tier instead, so this count does not move with it.
+	CHECK_TABLE(FCataclysmAffixTierRow,         "AffixTiers.csv",              7)
+	// 8: the eight gear rarities, one row each, in the same order and under
+	// the same names as ECataclysmRarity. The engine walks the ladder by that
+	// enum and looks each row up by its name, so a row missing here is a
+	// rarity a drop cannot roll.
+	CHECK_TABLE(FCataclysmGearRarityRow,        "GearRarity.csv",              8)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
 	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             33)
@@ -316,9 +329,18 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 {
 	// Asset name against CSV file. Every table the generator produces is here;
 	// one missing from this list would be one nothing ever checks.
+	//
+	// TWO WERE MISSING FOR THREE DAYS. DT_MinionTypes and DT_MinionScaling
+	// landed with issues #337 and #338 and were never added here, so neither
+	// asset was ever compared against its CSV and every test still passed. The
+	// sibling list of CHECK_TABLE lines above did not have the same hole,
+	// because tools/tests/test_unreal_pinned_row_counts.py fails when a
+	// generated CSV has no pin. This list now has a matching guard,
+	// tools/tests/test_unreal_asset_check_covers_every_table.py. Issue #702.
 	struct FPair { const TCHAR* Asset; const TCHAR* File; };
 	const FPair Tables[] = {
 		{ TEXT("DT_Affixes"),               TEXT("Affixes.csv") },
+		{ TEXT("DT_AffixTiers"),            TEXT("AffixTiers.csv") },
 		{ TEXT("DT_Attributes"),            TEXT("Attributes.csv") },
 		{ TEXT("DT_CityUpgrades"),          TEXT("CityUpgrades.csv") },
 		{ TEXT("DT_ClassStats"),            TEXT("ClassStats.csv") },
@@ -330,8 +352,12 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_EnemyArchetypes"),       TEXT("EnemyArchetypes.csv") },
 		{ TEXT("DT_EnemyModifiers"),        TEXT("EnemyModifiers.csv") },
 		{ TEXT("DT_EnemyRarities"),         TEXT("EnemyRarities.csv") },
+		{ TEXT("DT_GearRarity"),            TEXT("GearRarity.csv") },
 		{ TEXT("DT_Gems"),                  TEXT("Gems.csv") },
 		{ TEXT("DT_ItemBases"),             TEXT("ItemBases.csv") },
+		{ TEXT("DT_ItemSockets"),           TEXT("ItemSockets.csv") },
+		{ TEXT("DT_MinionScaling"),         TEXT("MinionScaling.csv") },
+		{ TEXT("DT_MinionTypes"),           TEXT("MinionTypes.csv") },
 		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },
 		{ TEXT("DT_StatusEffects"),         TEXT("StatusEffects.csv") },
 		{ TEXT("DT_WeaponSkills"),          TEXT("WeaponSkills.csv") },

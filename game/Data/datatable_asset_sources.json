@@ -5,7 +5,13 @@
       "asset": "DT_Affixes",
       "csv": "Affixes.csv",
       "rows": 85,
-      "csv_sha256": "ab7a82e176c4c961ba6ccad99378f59562b9be353e5d1ea5132c6ea3c18f57d0"
+      "csv_sha256": "7dad8d7b26d19dfc6bc84c9d05bedcba037207ba7e58ec87aafd7938c4fa0701"
+    },
+    {
+      "asset": "DT_AffixTiers",
+      "csv": "AffixTiers.csv",
+      "rows": 7,
+      "csv_sha256": "a7a27b3df1e3cf18e0074cefb54c088075e6e54d0dc9ecf5f15ac4585f5fec37"
     },
     {
       "asset": "DT_Attributes",
@@ -74,6 +80,12 @@
       "csv_sha256": "9044ee54bbd783732844522a639aed7505b2ef49dd88d763710601f77ad1f481"
     },
     {
+      "asset": "DT_GearRarity",
+      "csv": "GearRarity.csv",
+      "rows": 8,
+      "csv_sha256": "d4dd402a85fc47f3e965a571c0bafa5104d661bdebd825d6c9ec7151d44d7612"
+    },
+    {
       "asset": "DT_Gems",
       "csv": "Gems.csv",
       "rows": 27,
@@ -84,6 +96,12 @@
       "csv": "ItemBases.csv",
       "rows": 55,
       "csv_sha256": "e70350db5fa2dd1aa3b700765bb0c6d3f3339c84d47be680eefb2c46a174a934"
+    },
+    {
+      "asset": "DT_ItemSockets",
+      "csv": "ItemSockets.csv",
+      "rows": 12,
+      "csv_sha256": "d47726baef387f2a40da3b8fe17def45c7ac23a228daf0e9e040a206bd813de2"
     },
     {
       "asset": "DT_MinionTypes",
