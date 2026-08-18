@@ -3007,7 +3007,7 @@ The Cataclysmic Forge is a high-stakes, deterministic crafting system built arou
 
   
 
-**The number that decides whether all this is dangerous does not exist yet.** The Consumption Threshold below is "a single fixed number, to be tuned", and it is what these bands should eventually be judged against; eighteen equipped pieces put a fully geared character in the thousands. That is issue #697.
+**What decides whether all this is dangerous is the Consumption Threshold, and it is derived from these bands rather than judged against them.** There is one per difficulty tier, listed under Worn Residue and Consumption in section VII. It is set at 85% of the least Worn Residue a character could have while still reaching the gear the tier expects, so a player who gets there has to spend Purified Essence or invest in Residue Protocols to stay under it. Because the threshold follows these bands, changing a band moves every threshold with it and nothing has to be retuned by hand.
 
   
 
@@ -3140,7 +3140,40 @@ Worn Residue grants nothing. It is not a resource and it does not make the chara
 
   
 
-**The Consumption Threshold.** A single fixed number, to be tuned. If equipping an item would take Worn Residue to or past the threshold, the game states the resulting total and the consequence, and asks the player to confirm before the equip happens. There is no path across the threshold that does not show the warning first. Crossing it is always a decision the player made on purpose.
+**The Consumption Threshold, one per difficulty tier.** If equipping an item would take Worn Residue to or past the threshold for the tier being played, the game states the resulting total and the consequence, and asks the player to confirm before the equip happens. There is no path across the threshold that does not show the warning first. Crossing it is always a decision the player made on purpose.
+
+  
+
+| Difficulty tier | Consumption Threshold | Worn Residue of the cheapest route to the expected gear |
+| :-: | --: | --: |
+| 1 | 1,950 | 2,280 |
+| 2 | 2,400 | 2,845 |
+| 3 | 2,900 | 3,415 |
+| 4 | 3,400 | 3,980 |
+| 5 | 3,950 | 4,632 |
+| 6 | 4,500 | 5,292 |
+| 7 | 5,050 | 5,932 |
+| 8 | 5,600 | 6,592 |
+
+  
+
+**Where these numbers come from.** They are derived rather than chosen, and every input is already stated elsewhere in this document: what a drop carries, in section VI; what each Forge operation adds, in the operations table above; and the gear a player is expected to have at the end of each tier. Take that expected gear, work out the least Worn Residue a character could reach it with while spending no residue-reducing material, and set the threshold at 85% of it. The derivation is `sim/cataclysm_sim/residue.py` and it recomputes on every change, so no number here is maintained by hand.
+
+  
+
+**Why one per tier rather than one number for the whole game.** A tier 1 loadout carries about a tenth of the residue a tier 8 loadout does, so a single number set high enough to matter at tier 8 could never be reached at tier 1, and the mechanic would not exist for most of a player's first runs. This replaced "a single fixed number, to be tuned", which is what this section said until 2026-08-18.
+
+  
+
+**The cheapest route uses the worst drops, and that is not a mistake.** Promoting a piece from Everyday all the way to Cataclysmic costs 35 residue in total, because each step is one affix or one imprint. A Cataclysmic drop instead arrives carrying 300 to 500. So the least residue a maxed character can carry comes from taking the worst drops and crafting them all the way up. That is this section's own rule about a better item being more expensive to improve, followed to its end.
+
+  
+
+**From tier 4 upward, a full set of good drops is already over the threshold before any crafting.** Eighteen Masterful drops average 3,600 Worn Residue against a tier 4 threshold of 3,400, and the gap widens with every tier above it. That is the intended shape rather than an oversight: it is what makes the cheap route and the residue-reducing materials both worth using, and a player who wants to wear what they found has to manage it rather than ignore it.
+
+  
+
+**Either tool clears it.** One use of Purified Essence halves accumulated residue, which brings the expected build back under the threshold at every tier. Three or four points in Residue Protocols, at 5% ignored per point, does the same. Neither is a large investment, which is the point: the threshold is meant to make a player spend something, not to stop them.
 
   
 

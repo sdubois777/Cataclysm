@@ -20,6 +20,135 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — The Consumption Threshold is derived per difficulty tier, at 85% of the cheapest route to the expected gear
+
+**Affects:** the Worn Residue and Consumption subsection of section VII and the
+Cataclysmic Residue subsection of section VI in `docs/Cataclysm_GDD_v2.md`, and a
+new `sim/cataclysm_sim/residue.py`. Applied. Closes issue #697.
+
+### What was undecided
+
+`docs/Cataclysm_GDD_v2.md` said, of the number that triggers the corrupted
+double:
+
+> **The Consumption Threshold.** A single fixed number, to be tuned.
+
+It had been undecided since the section was written, and issue #697 raised it as
+urgent on 2026-08-18 because dropped items had just begun carrying residue: Worn
+Residue went from zero-until-you-craft to non-zero on every equipped piece.
+
+### The decision
+
+Two parts, both the project owner's, made on 2026-08-18.
+
+**One threshold per difficulty tier, not one for the whole game.** In their
+words: "Otherwise nobody in the lower tiers would ever cross it." A tier 1
+loadout carries roughly a tenth of the residue a tier 8 loadout does, so a single
+number set high enough to matter at tier 8 is unreachable at tier 1 and the
+mechanic does not exist for most of a first run.
+
+**Derived rather than chosen, at 80% to 90% of the cheapest route.** Their words
+again: "simulating a player crafting all of their equipment to the maximum
+expected player score per tier without using any of the residue mitigating
+crafting materials. Then we can just set the threshold at 80-90% of that value,
+so that they have to use the mitigating materials in order to avoid the penalty."
+85% was taken as the middle of that band, and the result rounded to the nearest
+50 so it reads as a designed number.
+
+### The numbers
+
+| Difficulty tier | Consumption Threshold | Cheapest route to the expected gear |
+| :-: | --: | --: |
+| 1 | 1,950 | 2,280 |
+| 2 | 2,400 | 2,845 |
+| 3 | 2,900 | 3,415 |
+| 4 | 3,400 | 3,980 |
+| 5 | 3,950 | 4,632 |
+| 6 | 4,500 | 5,292 |
+| 7 | 5,050 | 5,932 |
+| 8 | 5,600 | 6,592 |
+
+### Why nothing here was invented
+
+Every input already existed and is stated somewhere else:
+
+| Input | Where it already lived |
+| :-- | :-- |
+| What a drop arrives carrying | the Gear Rarity sheet, mirrored in `sim/cataclysm_sim/loot.py` |
+| What each Forge operation adds | the Crafting sheet, mirrored in `sim/cataclysm_sim/residue.py` |
+| The gear expected at the end of a tier | `player_power.reference_character`, written for issue #26 |
+
+Because the threshold is computed rather than typed, retuning a drop residue
+band or a craft cost moves every threshold with it and nothing has to be kept in
+step by hand. `tools/tests/test_consumption_threshold_matches_the_model.py` fails
+when the table in the design document stops matching what the model derives.
+
+### Three things that were excluded, and why
+
+**Affix tier upgrades.** The Potency Crystal costs 10 residue times the affix's
+current tier, so taking one affix from T1 to T7 costs 210 and four of them cost
+840 — more than everything else combined. They are excluded because Power Score
+does not read affix tiers at all: `player_power.power_score` reads level, gear
+rarity times upgrade level, gems and resistances. So no affix upgrade is needed
+to reach the expected build. A player who upgrades affixes anyway crosses the
+threshold sooner, which is the correct direction for a safety limit to be wrong
+in.
+
+**The two residue-reducing materials**, Purified Essence and Chaos Stabilizer.
+The threshold is what they exist to be spent against, so counting one into the
+route it is derived from would make the number define itself.
+
+**The Residue Protocols empire node**, for the same reason.
+
+### The cheapest route turns out to use the worst drops
+
+Promoting a piece from Everyday all the way to Cataclysmic costs 35 residue in
+total, because every step is one affix or one imprint at 5. A Cataclysmic drop
+instead arrives carrying 300 to 500. So the least residue a maxed character can
+carry comes from taking the *worst* drops and crafting them all the way up, and
+a good drop is a liability to a player who intends to max out.
+
+That was not designed here. It is the rule section VI already states — "a better
+item is therefore more expensive to improve", and a Cataclysmic drop "is not
+simply better than a Masterful one" — followed to its end. It is recorded because
+it is sharp enough to look like a defect to someone meeting it cold, and
+`sim/tests/test_residue.py::test_the_cheapest_start_is_always_the_worst_drop`
+is where it would change.
+
+### And a full set of good drops is over the threshold from tier 4
+
+Eighteen Masterful drops average 3,600 Worn Residue against a tier 4 threshold of
+3,400, and the gap widens at every tier above. So from tier 4 a player who equips
+what they found is marked before touching the Forge.
+
+This is the intended shape rather than an oversight: it is what makes both the
+cheap route and the residue-reducing materials worth using. It is stated in the
+design document rather than left to be discovered.
+
+### Whether the tools that manage residue are enough
+
+The second question issue #697 asked, and it is answered by the same model.
+
+- **Purified Essence** halves accumulated residue. One use brings the expected
+  build back under the threshold at every one of the eight tiers.
+- **Residue Protocols** ignores 5% of residue per point. Three or four points do
+  the same, at every tier.
+
+Neither is a large investment, which is the point: the threshold is meant to make
+a player spend something, not to stop them.
+
+### What this does not settle
+
+Nothing in the engine reads residue yet. Worn Residue, the threshold itself, the
+corrupted double and both management tools are unbuilt; that is issue #47. The
+thresholds live in `sim/cataclysm_sim/residue.py` and in the design document, and
+they are derived rather than authored, so when the engine does need them the
+right move is to generate a table from the model — the way the two enemy tables
+are generated from `sim/cataclysm_sim/enemy_stats.py` — rather than to type them
+into the workbook.
+
+---
+
 ## 2026-08-18 — The drop weights are set: rarity falls in two segments, affix tiers halve
 
 **Affects:** the Gear Rarity sheet and a new Affix Tiers sheet in
