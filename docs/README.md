@@ -72,7 +72,7 @@ or if a sheet is added or removed without this table changing.
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
 | Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown |
 | Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale |
-| Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Note |
+| Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Colour, Note |
 | Item Sockets | 12 | Slot, Hands, Max Sockets, Note |
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Note |

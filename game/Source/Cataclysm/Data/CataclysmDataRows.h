@@ -571,6 +571,26 @@ struct FCataclysmGearRarityRow : public FTableRowBase
 	 *  and residue is a cost rather than a reward. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gear Rarity")
 	float ResidueOnDropHighest = 0.0f;
+
+	/**
+	 * The colour an item of this rarity has its name drawn in.
+	 *
+	 * THIS IS HOW A PLAYER READS A RARITY OFF THE FLOOR. A drop is shown as its
+	 * own name rather than as a model, so the colour is doing the work an item
+	 * silhouette does in other games.
+	 *
+	 * LINEAR, CONVERTED FROM THE sRGB THE WORKBOOK HOLDS, the same way
+	 * FCataclysmElementVisualRow's colours are. A colour picker shows sRGB and
+	 * an FLinearColor is linear, so feeding the raw figures through would render
+	 * a visibly different colour from the one that was chosen.
+	 *
+	 * COLOUR IS NOT ALLOWED TO BE THE ONLY CHANNEL. The Interface Colour section
+	 * of docs/Cataclysm_GDD_v2.md requires the drop marker to differ by shape or
+	 * motion as well, so that a player who cannot separate two hues can still
+	 * separate two rarities.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gear Rarity")
+	FLinearColor Colour = FLinearColor::White;
 };
 
 /**

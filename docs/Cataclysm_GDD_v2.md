@@ -5668,16 +5668,24 @@ model. The Item Rarities section states that rule and why.
 
 **The eight rarity colours, in tier order:**
 
-| Rarity | Colour |
-| :-- | :-- |
-| Everyday | White |
-| Quality | Grey |
-| Superb | Green |
-| Masterful | Blue |
-| Legendary | Yellow |
-| Mythical | Orange |
-| Ascendant | Purple |
-| Cataclysmic | Red |
+| Rarity | Colour | sRGB |
+| :-- | :-- | :-- |
+| Everyday | White | `#FFFFFF` |
+| Quality | Grey | `#9D9D9D` |
+| Superb | Green | `#1EFF00` |
+| Masterful | Blue | `#2E9BFF` |
+| Legendary | Yellow | `#FFD100` |
+| Mythical | Orange | `#FF8000` |
+| Ascendant | Purple | `#A335EE` |
+| Cataclysmic | Red | `#FF4040` |
+
+**The values live in the Colour column of the Gear Rarity sheet in `docs/All_Things_Cataclysm.xlsx`**, stated as the sRGB a colour picker shows and converted to linear when `game/Data/GearRarity.csv` is generated, the same way the damage-type colours are. They are close to the item quality colours the genre has used for twenty years, brightened where a value would be dim against a dark dungeon floor: the blue is lightened from the usual `#0070DD` and the red from a darker one that would read as a damage effect.
+
+  
+
+**The first two rungs run against the genre's habit, and that is worth knowing.** White sits below grey here, and in most games of this kind grey means worthless and white means ordinary. A player arriving from those games will read a grey name as the poorer of the two. The order is as decided; whether it should change is an open question rather than a settled one.
+
+  
 
 **These deliberately overlap the damage-type palette above, and that is not a
 problem.** Seven of the eight sit close to one of the eight Cataclysm hues — grey
