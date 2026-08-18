@@ -1,7 +1,7 @@
-"""The Loot Rarity sheet must agree with the simulation's drop tables.
+"""The Gear Rarity sheet must agree with the simulation's drop tables.
 
 WHY THIS EXISTS. How heavily each rarity is weighted on a drop, and the upgrade
-level each one requires, now live in two places: the Loot Rarity sheet of
+level each one requires, now live in two places: the Gear Rarity sheet of
 `docs/All_Things_Cataclysm.xlsx`, which is what the game will read, and
 `RARITY_DROP_WEIGHT` and `RARITY_GEAR_LEVEL_GATE` in `sim/cataclysm_sim/loot.py`,
 where the drop rules are enforced and where the tuning work happens.
@@ -28,7 +28,7 @@ import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
-SHEET = "Loot Rarity"
+SHEET = "Gear Rarity"
 
 
 def text(value) -> str:
@@ -100,6 +100,47 @@ def test_every_gear_level_gate_matches(sheet, model) -> None:
         "the Gear Level Gate column and RARITY_GEAR_LEVEL_GATE in "
         f"sim/cataclysm_sim/loot.py disagree: {'; '.join(wrong)}. The workbook "
         "is authoritative, so change the Python."
+    )
+
+
+def test_every_residue_band_matches(sheet, model) -> None:
+    wrong = []
+    for rarity, record in sheet.items():
+        in_sheet = (float(record["Residue On Drop Lowest"]),
+                    float(record["Residue On Drop Highest"]))
+        in_model = tuple(float(v) for v in model.RARITY_RESIDUE_BAND[rarity])
+        if in_sheet != in_model:
+            wrong.append(f"{rarity}: sheet {in_sheet}, model {in_model}")
+
+    assert not wrong, (
+        "the two Residue On Drop columns and RARITY_RESIDUE_BAND in "
+        f"sim/cataclysm_sim/loot.py disagree: {'; '.join(wrong)}. The workbook "
+        "is authoritative, so change the Python."
+    )
+
+
+def test_the_top_rarity_carries_the_band_the_project_owner_stated(sheet) -> None:
+    """300 to 500 on a Cataclysmic drop, stated on 2026-08-18.
+
+    Read from the sheet against the figure itself. Every other test here compares
+    the sheet and the Python to each other, which passes happily if both were
+    changed together by mistake.
+    """
+    record = sheet["Cataclysmic"]
+    assert (float(record["Residue On Drop Lowest"]),
+            float(record["Residue On Drop Highest"])) == (300.0, 500.0)
+
+
+def test_every_band_runs_upward_and_starts_above_zero(sheet) -> None:
+    bad = {}
+    for rarity, record in sheet.items():
+        lowest = float(record["Residue On Drop Lowest"])
+        highest = float(record["Residue On Drop Highest"])
+        if not 0.0 < lowest <= highest:
+            bad[rarity] = (lowest, highest)
+    assert not bad, (
+        f"these rarities have a residue band that does not run upward from "
+        f"above zero: {bad}"
     )
 
 

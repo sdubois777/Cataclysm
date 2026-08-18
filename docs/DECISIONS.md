@@ -20,6 +20,93 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — An item drops already carrying residue, in a band set by its rarity
+
+**Affects:** the Cataclysmic Residue subsection of section VI and the Worn Residue
+subsection of section VII in `docs/Cataclysm_GDD_v2.md`, the Gear Rarity sheet of
+`docs/All_Things_Cataclysm.xlsx`, and `sim/cataclysm_sim/loot.py`. Applied. Part
+of issue #44.
+
+### What the design said before
+
+Residue came from crafting and from nothing else. Section VI opened with "Every
+modification made to an item adds Cataclysmic Residue (CR)", so a freshly dropped
+item carried none, and Worn Residue was zero until the player chose to craft.
+
+### The decision
+
+**Stated by the project owner on 2026-08-18: "Items should drop with some amount
+of cataclysmic residue on them already."**
+
+That was put back to them once with the two sentences it contradicted quoted,
+because the design said the opposite and this project has twice had an owner
+answer change when the conflicting sentence was read back. It did not change. The
+design document has been rewritten to match.
+
+### How much, in three passes
+
+The first two proposals were rejected as too safe, and both are recorded because
+the third only makes sense against them.
+
+| Proposal | Top rarity | Why it was rejected |
+| :-- | :-- | :-- |
+| First | 50 | Half the point at which crafting starts costing days. "CR is manageable. You can be more heavy handed than that" |
+| Second | 100 | Exactly that point. Still too safe |
+| **Third, adopted** | **300 to 500** | The project owner's own figure |
+
+**It is a band and not a figure, on every rarity.** "All of them should be in
+ranges." So two pieces of the same rarity differ, and the bands of neighbouring
+rarities overlap: a lucky Superb piece arrives cheaper to improve than an unlucky
+Masterful one. Residue is a cost, so that is a real trade rather than a second
+ladder running beside rarity.
+
+The rest of the ladder is the top band scaled by the rarity's position on the
+eight rungs, down to 38 to 62 on an Everyday piece.
+
+### What that actually costs, by the design's own two formulas
+
+The gold multiplier on a craft is `(CR / 50) + 1` and the craft time penalty is
+`CR / 100` days rounded down. So a freshly dropped Cataclysmic piece costs **seven
+to eleven times the gold** and **three to five real in-game days per craft**,
+before it has been modified at all. Every rarity above Quality arrives past the
+100 at which the critical time penalty begins.
+
+**A better item is therefore more expensive to improve and brings its wearer
+nearer to being hunted by a corrupted copy of itself.** That is the whole trade,
+and it follows from a rule the design already states and this does not touch:
+"Worn Residue grants nothing. It is not a resource and it does not make the
+character stronger."
+
+### One thing this made worse, and it is filed rather than guessed at
+
+**The number that decides whether any of this is dangerous does not exist.** The
+Consumption Threshold is described in section VII as "a single fixed number, to be
+tuned", and the project owner said the same: "The actual break point of residue is
+the point where it triggers the corrupted dopple mechanic. Which we haven't really
+decided yet."
+
+That mattered less when a drop carried nothing. Eighteen pieces are equipped at
+once and Worn Residue is their sum, so a fully geared character now sits somewhere
+between about 700 and 9,000 from the moment they equip, having crafted nothing.
+The threshold has to be set against numbers in the thousands. Issue #697.
+
+**`sim/cataclysm_sim/loot.py` therefore has no ceiling check on residue**, and
+says so rather than inventing one. It checks that the bands run upward, start
+above zero, and never fall as rarity rises. Treating the 100 at which crafting
+starts costing days as a ceiling was wrong twice, and the module now says that
+too, because the next reader will have the same instinct.
+
+### A naming collision this caught on the way
+
+The sheet was first called **Loot Rarity**, and a test failed: "loot rarity" was
+one of the three names the magic find stat carried before issues #244 and #247
+gave it one. A sheet by that name would have reintroduced exactly the ambiguity
+those issues removed. It is called **Gear Rarity** instead, which is the design's
+own term for the eight-rung ladder and is already distinguished from enemy rarity
+in section VII.
+
+---
+
 ## 2026-08-18 — A drop rolls its rarity first, from a flat weight one above the tier
 
 **Affects:** a new Loot Rarity sheet in `docs/All_Things_Cataclysm.xlsx`, and
