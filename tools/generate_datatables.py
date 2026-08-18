@@ -954,6 +954,23 @@ def affixes(book) -> list[dict]:
         if kind in ("Stat", "Resistance", "Ailment") and not value:
             raise DataError(f"Affixes row {index}: {name} has no top value")
 
+        # THE WORD THIS AFFIX GIVES AN ITEM'S NAME, and only a suffix has one.
+        # An item is called `<rarity> <base> of <word>`, so the first word is
+        # the rarity: a prefix has nowhere in the name to appear, and a word on
+        # one could never be read. A suffix without one leaves an item that
+        # rolled it with nothing to be named after. See sim/cataclysm_sim/
+        # naming.py, which mirrors this column.
+        name_word = _cell(raw, headers, "Name Word")
+        if position == "suffix" and not name_word:
+            raise DataError(
+                f"Affixes row {index}: the suffix {name} has no name word, so "
+                "an item rolling it would have nothing to be called after")
+        if position == "prefix" and name_word:
+            raise DataError(
+                f"Affixes row {index}: the prefix {name} carries the name word "
+                f"{name_word!r}, and an item's first word is its rarity, so "
+                "that word could never appear")
+
         out.append({
             "Name": row_name(kind, name),
             "AffixName": name,
@@ -968,9 +985,231 @@ def affixes(book) -> list[dict]:
             "HybridPart1": _cell(raw, headers, "Hybrid Part 1"),
             "HybridPart2": _cell(raw, headers, "Hybrid Part 2"),
             "AllowedSlots": allowed,
+            "NameWord": name_word,
         })
 
+    # TWO AFFIXES SHARING A WORD would make an item's name say less than it
+    # looks like it says. A player reading "of Warding" should be able to look
+    # it up and find one thing.
+    named: dict[str, str] = {}
+    for row in out:
+        word = row["NameWord"]
+        if not word:
+            continue
+        if word in named:
+            raise DataError(f"Affixes: the name word {word!r} is carried by "
+                            f"both {named[word]!r} and {row['AffixName']!r}")
+        named[word] = row["AffixName"]
+
     return unique(out, "Affixes")
+
+
+#: The eight item rarities, weakest first. The Gear Rarity sheet is read in this
+#: order, so a rarity missing from the sheet, misspelled there, or listed out of
+#: order fails generation rather than producing a ladder the drop cascade walks
+#: wrongly.
+#:
+#: WRITTEN OUT HERE the way CATACLYSM_TYPES is, rather than read from
+#: sim/cataclysm_sim/affixes.py. This file keeps the workbook tables and the two
+#: model-generated tables apart on purpose, and the rarity ladder belongs to the
+#: workbook side. tools/tests/test_generated_loot_tables_match_the_model.py
+#: compares this list against the model's RARITIES and against the
+#: ECataclysmRarity enum the engine looks these rows up by.
+RARITY_LADDER = ("Everyday", "Quality", "Superb", "Masterful",
+                 "Legendary", "Mythical", "Ascendant", "Cataclysmic")
+
+#: The highest upgrade level a piece can reach, so a rarity gated above it is a
+#: typo rather than a design. Mirrors UCataclysmItemValues::MaxGearLevel and
+#: affixes.GEAR_LEVELS.
+MAX_GEAR_LEVEL = 10
+
+#: How many hands a weapon takes. Any other value in the Item Sockets sheet is a
+#: mistyped cell, since the sheet uses 0 for everything that is not a weapon.
+WEAPON_HAND_COUNTS = (1, 2)
+
+
+def gear_rarity(book) -> list[dict]:
+    """One rarity per row: how often it drops, and what a drop of it arrives at.
+
+    THE ROW KEY IS THE RARITY'S OWN NAME, which is also the name of its
+    ECataclysmRarity entry. That is the join between the table and the engine:
+    the engine walks the ladder by the enum and looks each row up by the enum's
+    name, so nothing depends on the order Unreal happens to iterate a DataTable's
+    rows in.
+
+    FOUR NUMBERS PER RARITY, and each one is checked against the rarity below it
+    because all four move in a known direction as rarity rises:
+
+      Drop Weight        never rises. A rarer thing cannot be more common.
+      Gear Level Gate    never falls. Legendary needs +4 and Cataclysmic +10.
+      Residue band       neither end falls. A better drop costs more to improve.
+
+    A cell that moves the wrong way is a typo rather than a design, and none of
+    them would fail anywhere else: the table would load, the cascade would run,
+    and the numbers would simply be wrong.
+    """
+    rows = list(book["Gear Rarity"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Gear Rarity")
+
+    found: dict[str, dict] = {}
+    for index, raw in enumerate(rows[1:], start=2):
+        rarity = _cell(raw, headers, "Rarity")
+        if not rarity:
+            continue
+        if rarity not in RARITY_LADDER:
+            raise DataError(f"Gear Rarity row {index}: {rarity!r} is not a "
+                            f"rarity; expected one of {list(RARITY_LADDER)}")
+        if rarity in found:
+            raise DataError(f"Gear Rarity row {index}: {rarity} appears twice")
+
+        weight = number(_cell(raw, headers, "Drop Weight"), "Drop Weight", index)
+        if weight <= 0.0:
+            raise DataError(f"Gear Rarity row {index}: {rarity} has a drop "
+                            f"weight of {weight:g}, so it can never drop")
+
+        gate = number(_cell(raw, headers, "Gear Level Gate"),
+                      "Gear Level Gate", index)
+        if not 0 <= gate <= MAX_GEAR_LEVEL:
+            raise DataError(f"Gear Rarity row {index}: {rarity} is gated at "
+                            f"upgrade level {gate:g}, outside 0 to "
+                            f"{MAX_GEAR_LEVEL}")
+
+        lowest = number(_cell(raw, headers, "Residue On Drop Lowest"),
+                        "Residue On Drop Lowest", index)
+        highest = number(_cell(raw, headers, "Residue On Drop Highest"),
+                         "Residue On Drop Highest", index)
+        if lowest <= 0.0:
+            raise DataError(f"Gear Rarity row {index}: {rarity} drops carrying "
+                            f"{lowest:g} residue. Every drop carries some.")
+        if highest < lowest:
+            raise DataError(f"Gear Rarity row {index}: {rarity}'s residue band "
+                            f"runs from {lowest:g} down to {highest:g}")
+
+        found[rarity] = {
+            "Name": row_name(rarity),
+            "Rarity": rarity,
+            "DropWeight": weight,
+            "GearLevelGate": int(gate),
+            "ResidueOnDropLowest": lowest,
+            "ResidueOnDropHighest": highest,
+        }
+
+    missing = [rarity for rarity in RARITY_LADDER if rarity not in found]
+    if missing:
+        raise DataError(f"Gear Rarity has no row for {missing}. Every rarity "
+                        "needs one, or a drop rolling it has no weight, no "
+                        "gate and no residue.")
+
+    out = [found[rarity] for rarity in RARITY_LADDER]
+    for below, above in zip(out[:-1], out[1:], strict=True):
+        rising = f"{above['Rarity']} is rarer than {below['Rarity']}, and"
+        if above["DropWeight"] > below["DropWeight"]:
+            raise DataError(f"Gear Rarity: {rising} drops more often "
+                            f"({above['DropWeight']:g} against "
+                            f"{below['DropWeight']:g})")
+        if above["GearLevelGate"] < below["GearLevelGate"]:
+            raise DataError(f"Gear Rarity: {rising} is gated lower "
+                            f"(+{above['GearLevelGate']} against "
+                            f"+{below['GearLevelGate']})")
+        for end in ("ResidueOnDropLowest", "ResidueOnDropHighest"):
+            if above[end] < below[end]:
+                raise DataError(f"Gear Rarity: {rising} its {end} is smaller "
+                                f"({above[end]:g} against {below[end]:g})")
+
+    return unique(out, "Gear Rarity")
+
+
+def item_sockets(book) -> list[dict]:
+    """The most sockets a piece in each gear slot can have.
+
+    TWO ROWS FOR A WEAPON, because its maximum depends on how many hands it
+    takes: three for a one-hander and six for a two-hander, so two one-handed
+    weapons match one two-hander. Every other slot has a single row with a hand
+    count of 0, which is also how the Item Bases sheet writes a non-weapon.
+
+    POTION SLOTS ARE NOT HERE. They carry one socket each and there are four of
+    them, but they are consumables rather than gear and nothing rolls one as a
+    drop. They are the difference between the 41 sockets this table describes
+    and the 45 the design states across all equipment.
+    """
+    rows = list(book["Item Sockets"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Item Sockets")
+
+    out = []
+    seen: set[tuple[str, int]] = set()
+    for index, raw in enumerate(rows[1:], start=2):
+        slot = _cell(raw, headers, "Slot")
+        if not slot:
+            continue
+
+        hands = int(number(_cell(raw, headers, "Hands") or 0, "Hands", index))
+        if hands and hands not in WEAPON_HAND_COUNTS:
+            raise DataError(f"Item Sockets row {index}: {slot} takes {hands} "
+                            f"hands; a weapon takes one of "
+                            f"{list(WEAPON_HAND_COUNTS)} and everything else 0")
+
+        if (slot, hands) in seen:
+            raise DataError(f"Item Sockets row {index}: {slot} at {hands} "
+                            "hand(s) appears twice")
+        seen.add((slot, hands))
+
+        maximum = number(_cell(raw, headers, "Max Sockets"),
+                         "Max Sockets", index)
+        if maximum < 1:
+            raise DataError(f"Item Sockets row {index}: {slot} holds "
+                            f"{maximum:g} sockets, so no gem could ever go in "
+                            "one. Remove the slot instead.")
+
+        out.append({
+            "Name": row_name(slot, f"{hands}H" if hands else ""),
+            "Slot": slot,
+            "Hands": hands,
+            "MaxSockets": int(maximum),
+        })
+
+    return unique(out, "Item Sockets")
+
+
+def affix_tiers(book) -> list[dict]:
+    """How heavily each affix tier is weighted when a drop rolls an affix.
+
+    THE TIERS MUST RUN FROM 1 WITH NO GAP. A drop draws from every tier at or
+    below the cap its difficulty tier allows, so a missing tier is not a tier
+    that never rolls -- it is a tier the draw has no weight for.
+    """
+    rows = list(book["Affix Tiers"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Affix Tiers")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        cell = _cell(raw, headers, "Tier")
+        if not cell:
+            continue
+        tier = int(number(cell, "Tier", index))
+
+        weight = number(_cell(raw, headers, "Drop Weight"), "Drop Weight", index)
+        if weight <= 0.0:
+            raise DataError(f"Affix Tiers row {index}: T{tier} has a drop "
+                            f"weight of {weight:g}, so it can never roll")
+
+        out.append({
+            "Name": row_name(f"T{tier}"),
+            "Tier": tier,
+            "DropWeight": weight,
+        })
+
+    if [row["Tier"] for row in out] != list(range(1, len(out) + 1)):
+        raise DataError("Affix Tiers must list every tier from 1 upward in "
+                        f"order, and it lists {[r['Tier'] for r in out]}")
+
+    for below, above in zip(out[:-1], out[1:], strict=True):
+        if above["DropWeight"] > below["DropWeight"]:
+            raise DataError(f"Affix Tiers: T{above['Tier']} is above "
+                            f"T{below['Tier']} and rolls more often "
+                            f"({above['DropWeight']:g} against "
+                            f"{below['DropWeight']:g})")
+
+    return unique(out, "Affix Tiers")
 
 
 #: The two slots that are allowed to have no cooldown, and the reason each has
@@ -1633,6 +1872,9 @@ TABLES = {
     "CraftingMaterials": crafting_materials,
     "ItemBases": item_bases,
     "Affixes": affixes,
+    "GearRarity": gear_rarity,
+    "ItemSockets": item_sockets,
+    "AffixTiers": affix_tiers,
     "ClassStats": class_stats,
     "MinionTypes": minion_types,
     "MinionScaling": minion_scaling,
@@ -1718,6 +1960,40 @@ def validate_affix_slots(tables: dict[str, list[dict]]) -> list[str]:
     for slot in sorted(real - reachable):
         problems.append(f"ItemBases: slot {slot!r} can roll no affix at all")
 
+    return problems
+
+
+
+def validate_socket_slots(tables: dict[str, list[dict]]) -> list[str]:
+    """Every gear slot an item base occupies needs a socket maximum, and no
+    socket maximum may name a slot no base occupies.
+
+    Neither direction fails anywhere else. A slot missing from the Item Sockets
+    sheet leaves a drop with nothing to say how many sockets the piece can hold;
+    a slot in that sheet which nothing occupies is a maximum no drop will ever
+    read.
+
+    MATCHED ON THE SLOT AND THE HAND COUNT TOGETHER, because a weapon's maximum
+    depends on how many hands it takes and the two hand counts are separate rows
+    in both sheets.
+    """
+    bases = tables.get("ItemBases")
+    sockets = tables.get("ItemSockets")
+    if not bases or not sockets:
+        return []
+
+    occupied = {(row["Slot"], row["Hands"]) for row in bases}
+    stated = {(row["Slot"], row["Hands"]) for row in sockets}
+
+    problems = []
+    for slot, hands in sorted(occupied - stated):
+        problems.append(
+            f"ItemSockets: nothing states a socket maximum for {slot} at "
+            f"{hands} hand(s), which item bases occupy")
+    for slot, hands in sorted(stated - occupied):
+        problems.append(
+            f"ItemSockets: a socket maximum for {slot} at {hands} hand(s), "
+            "which no item base occupies")
     return problems
 
 
@@ -2116,6 +2392,7 @@ def main(argv: list[str] | None = None) -> int:
     problems = (validate_tags(tables, known_tags(book))
                 + validate_weights(tables)
                 + validate_affix_slots(tables)
+                + validate_socket_slots(tables)
                 + validate_weapon_skill_types(tables)
                 + validate_weapon_skill_damage_types(tables, declared_tags(book))
                 + validate_weapon_tags(tables, declared_tags(book))

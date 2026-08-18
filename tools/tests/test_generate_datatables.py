@@ -902,6 +902,260 @@ class TestElementVisuals:
             tables, {"Element.War", "Slot.Ultimate"}) == []
 
 
+# --------------------------------------------------------------------------
+# The three loot sheets, and the word an affix gives an item's name.
+#
+# EVERY GUARD BELOW IS SHOWN FAILING. A check that cannot fail is worthless, and
+# none of these would fail anywhere else: a drop weight of zero, a gate above +10
+# or a residue band running backwards all produce a table that loads cleanly and
+# carries the wrong numbers.
+# --------------------------------------------------------------------------
+
+GEAR_RARITY_HEADER = ["Rarity", "Drop Weight", "Gear Level Gate",
+                      "Residue On Drop Lowest", "Residue On Drop Highest"]
+
+#: The real ladder, weakest first. Tests copy this and change one cell.
+GEAR_RARITY_ROWS = [
+    ["Everyday", 15625, 0, 38, 62],
+    ["Quality", 6250, 0, 75, 125],
+    ["Superb", 2500, 0, 112, 188],
+    ["Masterful", 1000, 0, 150, 250],
+    ["Legendary", 125, 4, 188, 312],
+    ["Mythical", 25, 6, 225, 375],
+    ["Ascendant", 5, 8, 262, 438],
+    ["Cataclysmic", 1, 10, 300, 500],
+]
+
+
+def gear_rarity_book(tmp_path, rows):
+    return openpyxl.load_workbook(workbook_with(
+        tmp_path / "w.xlsx", {"Gear Rarity": [GEAR_RARITY_HEADER] + rows}))
+
+
+def changed(rows, index, column, value):
+    """A copy of `rows` with one cell replaced."""
+    out = [list(row) for row in rows]
+    out[index][GEAR_RARITY_HEADER.index(column)] = value
+    return out
+
+
+class TestGearRarity:
+    def test_reads_the_ladder_weakest_first(self, tmp_path):
+        rows = gen.gear_rarity(gear_rarity_book(tmp_path, GEAR_RARITY_ROWS))
+        assert [row["Rarity"] for row in rows] == list(gen.RARITY_LADDER)
+        assert rows[-1] == {
+            "Name": "Cataclysmic", "Rarity": "Cataclysmic",
+            "DropWeight": 1.0, "GearLevelGate": 10,
+            "ResidueOnDropLowest": 300.0, "ResidueOnDropHighest": 500.0}
+
+    def test_the_ladder_decides_the_order_not_the_sheet(self, tmp_path):
+        """A sheet sorted some other way still generates in ladder order, so
+        nothing downstream has to trust how the rows happen to be typed."""
+        backwards = list(reversed(GEAR_RARITY_ROWS))
+        rows = gen.gear_rarity(gear_rarity_book(tmp_path, backwards))
+        assert [row["Rarity"] for row in rows] == list(gen.RARITY_LADDER)
+
+    def test_rejects_a_rarity_that_is_not_on_the_ladder(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Rarity", "Sparkly")
+        with pytest.raises(gen.DataError, match="is not a rarity"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_the_same_rarity_twice(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 1, "Rarity", "Everyday")
+        with pytest.raises(gen.DataError, match="appears twice"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_ladder_with_a_rarity_missing(self, tmp_path):
+        with pytest.raises(gen.DataError, match="has no row for"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, GEAR_RARITY_ROWS[:-1]))
+
+    def test_rejects_a_rarity_that_can_never_drop(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 7, "Drop Weight", 0)
+        with pytest.raises(gen.DataError, match="can never drop"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_gate_above_the_highest_upgrade_level(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 7, "Gear Level Gate", 11)
+        with pytest.raises(gen.DataError, match="outside 0 to 10"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_rarer_thing_that_drops_more_often(self, tmp_path):
+        """The one that would look like a working table. Making Cataclysmic
+        weigh 2000 keeps every other check happy and inverts the ladder."""
+        rows = changed(GEAR_RARITY_ROWS, 7, "Drop Weight", 2000)
+        with pytest.raises(gen.DataError, match="drops more often"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_gate_that_falls_as_rarity_rises(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 7, "Gear Level Gate", 2)
+        with pytest.raises(gen.DataError, match="is gated lower"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_residue_band_that_runs_backwards(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Residue On Drop Highest", 10)
+        with pytest.raises(gen.DataError, match="runs from"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_drop_carrying_no_residue(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Residue On Drop Lowest", 0)
+        with pytest.raises(gen.DataError, match="Every drop carries some"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_residue_band_that_shrinks_as_rarity_rises(self, tmp_path):
+        """Both ends are checked, so a band that starts higher and ends lower
+        than the rarity below it is still caught."""
+        rows = changed(GEAR_RARITY_ROWS, 7, "Residue On Drop Highest", 400)
+        with pytest.raises(gen.DataError,
+                           match="ResidueOnDropHighest is smaller"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+
+class TestItemSockets:
+    HEADER = ["Slot", "Hands", "Max Sockets"]
+    ROWS = [["Head", 0, 2], ["Chest", 0, 6],
+            ["Weapon", 1, 3], ["Weapon", 2, 6]]
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "w.xlsx", {"Item Sockets": [self.HEADER] + rows}))
+
+    def test_a_weapon_gets_one_row_per_hand_count(self, tmp_path):
+        rows = gen.item_sockets(self.book(tmp_path, self.ROWS))
+        assert [row["Name"] for row in rows] == [
+            "Head", "Chest", "Weapon_1H", "Weapon_2H"]
+        assert rows[3] == {"Name": "Weapon_2H", "Slot": "Weapon",
+                           "Hands": 2, "MaxSockets": 6}
+
+    def test_rejects_a_weapon_taking_three_hands(self, tmp_path):
+        with pytest.raises(gen.DataError, match="takes 3 hands"):
+            gen.item_sockets(self.book(tmp_path, [["Weapon", 3, 4]]))
+
+    def test_rejects_the_same_slot_and_hand_count_twice(self, tmp_path):
+        with pytest.raises(gen.DataError, match="appears twice"):
+            gen.item_sockets(self.book(
+                tmp_path, [["Head", 0, 2], ["Head", 0, 3]]))
+
+    def test_rejects_a_slot_that_holds_no_gem(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no gem could ever go in one"):
+            gen.item_sockets(self.book(tmp_path, [["Head", 0, 0]]))
+
+
+class TestAffixTiers:
+    HEADER = ["Tier", "Drop Weight"]
+    ROWS = [[1, 64], [2, 32], [3, 16]]
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "w.xlsx", {"Affix Tiers": [self.HEADER] + rows}))
+
+    def test_reads_a_tier_per_row(self, tmp_path):
+        rows = gen.affix_tiers(self.book(tmp_path, self.ROWS))
+        assert rows == [{"Name": "T1", "Tier": 1, "DropWeight": 64.0},
+                        {"Name": "T2", "Tier": 2, "DropWeight": 32.0},
+                        {"Name": "T3", "Tier": 3, "DropWeight": 16.0}]
+
+    def test_rejects_a_gap_in_the_tiers(self, tmp_path):
+        """A drop draws from every tier at or below its cap, so a missing tier
+        is one the draw has no weight for rather than one that never rolls."""
+        with pytest.raises(gen.DataError, match="every tier from 1 upward"):
+            gen.affix_tiers(self.book(tmp_path, [[1, 64], [3, 16]]))
+
+    def test_rejects_tiers_that_do_not_start_at_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="every tier from 1 upward"):
+            gen.affix_tiers(self.book(tmp_path, [[2, 32], [3, 16]]))
+
+    def test_rejects_a_tier_that_can_never_roll(self, tmp_path):
+        with pytest.raises(gen.DataError, match="can never roll"):
+            gen.affix_tiers(self.book(tmp_path, [[1, 64], [2, 0]]))
+
+    def test_rejects_a_higher_tier_that_rolls_more_often(self, tmp_path):
+        with pytest.raises(gen.DataError, match="rolls more often"):
+            gen.affix_tiers(self.book(tmp_path, [[1, 64], [2, 128]]))
+
+
+class TestTheWordAnAffixGivesAnItemsName:
+    """An item is called `<rarity> <base> of <word>`, so only a suffix has one.
+
+    None of these would fail anywhere else. A suffix with no word leaves an item
+    that rolled it with nothing to be named after; a word on a prefix can never
+    be read, because the first word of the name is the rarity.
+    """
+
+    HEADER = ["Affix Name", "Affix Kind", "Position", "Stat", "Value Kind",
+              "Top Value", "Breadth", "Ailment", "Gem", "Hybrid Part 1",
+              "Hybrid Part 2", "Allowed Slots", "Name Word"]
+
+    def row(self, name, position, word):
+        return [name, "Stat", position, "max_health", "flat", 100, None,
+                None, None, None, None, "Chest", word]
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "w.xlsx", {"Affixes": [self.HEADER] + rows}))
+
+    def test_a_suffix_carries_its_word_into_the_table(self, tmp_path):
+        rows = gen.affixes(self.book(tmp_path, [
+            self.row("Flat life leech", "suffix", "the Leech"),
+            self.row("Flat maximum health", "prefix", None)]))
+        assert [row["NameWord"] for row in rows] == ["the Leech", ""]
+
+    def test_rejects_a_suffix_with_no_word(self, tmp_path):
+        with pytest.raises(gen.DataError, match="has no name word"):
+            gen.affixes(self.book(
+                tmp_path, [self.row("Flat life leech", "suffix", None)]))
+
+    def test_rejects_a_prefix_that_carries_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="could never appear"):
+            gen.affixes(self.book(
+                tmp_path, [self.row("Flat maximum health", "prefix", "Vigour")]))
+
+    def test_rejects_two_affixes_sharing_a_word(self, tmp_path):
+        """A player reading "of Warding" should find one thing."""
+        with pytest.raises(gen.DataError, match="is carried by both"):
+            gen.affixes(self.book(tmp_path, [
+                self.row("Single resistance", "suffix", "Warding"),
+                self.row("Two resistances", "suffix", "Warding")]))
+
+
+class TestSocketMaximaCoverEverySlotThatIsWorn:
+    """The Item Sockets and Item Bases sheets have to describe the same slots.
+
+    A slot missing from Item Sockets leaves a drop with nothing to say how many
+    sockets the piece can hold. A slot in Item Sockets that no base occupies is a
+    maximum nothing will ever read. Neither is reported anywhere else.
+    """
+
+    def tables(self, bases, sockets):
+        return {"ItemBases": [{"Name": f"b{i}", "Slot": slot, "Hands": hands}
+                              for i, (slot, hands) in enumerate(bases)],
+                "ItemSockets": [{"Name": f"s{i}", "Slot": slot, "Hands": hands}
+                                for i, (slot, hands) in enumerate(sockets)]}
+
+    def test_a_matching_set_reports_nothing(self):
+        pairs = [("Head", 0), ("Weapon", 1), ("Weapon", 2)]
+        assert gen.validate_socket_slots(self.tables(pairs, pairs)) == []
+
+    def test_a_worn_slot_with_no_maximum_is_reported(self):
+        problems = gen.validate_socket_slots(
+            self.tables([("Head", 0), ("Relic", 0)], [("Head", 0)]))
+        assert len(problems) == 1, problems
+        assert "Relic" in problems[0] and "which item bases occupy" in problems[0]
+
+    def test_a_maximum_for_a_slot_nobody_wears_is_reported(self):
+        problems = gen.validate_socket_slots(
+            self.tables([("Head", 0)], [("Head", 0), ("Wings", 0)]))
+        assert len(problems) == 1, problems
+        assert "Wings" in problems[0] and "no item base occupies" in problems[0]
+
+    def test_the_two_hand_counts_of_a_weapon_are_matched_separately(self):
+        """A one-handed maximum does not stand in for a two-handed one, which is
+        the whole reason a weapon has two rows."""
+        problems = gen.validate_socket_slots(
+            self.tables([("Weapon", 1), ("Weapon", 2)], [("Weapon", 1)]))
+        assert len(problems) == 1, problems
+        assert "at 2 hand(s)" in problems[0]
+
+
 class TestAgainstTheRealWorkbook:
     def test_the_committed_csvs_are_current(self):
         if not gen.WORKBOOK.is_file():

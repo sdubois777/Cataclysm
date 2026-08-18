@@ -503,6 +503,137 @@ struct FCataclysmAffixRow : public FTableRowBase
 	 *  against the slots the item bases actually occupy. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
 	FString AllowedSlots;
+
+	/** The word this affix gives an item's name, for a suffix only.
+	 *
+	 *  An item is called `<rarity> <base> of <word>`, and the word comes from
+	 *  its own strongest suffix affix, so "of the Leech" says the piece really
+	 *  carries life leech. The first word is the rarity, so a prefix has nowhere
+	 *  in the name to appear and carries none. The generator refuses a suffix
+	 *  without a word, a prefix with one, and two affixes sharing a word. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	FString NameWord;
+};
+
+/**
+ * One of the eight gear rarities: how often it drops, and what a drop of it
+ * arrives carrying. Source: Gear Rarity.
+ *
+ * THE ROW KEY IS THE RARITY'S OWN NAME, and it is also the name of the matching
+ * ECataclysmRarity entry. That is deliberate and it is the whole join between
+ * this table and the engine. A DataTable is a map with no inherent row order, so
+ * the ladder has to come from somewhere: FCataclysmEnemyRarityRow carries a Step
+ * column for exactly that reason. Gear rarity does not need one, because
+ * ECataclysmRarity already states the order and RarityComposition in
+ * CataclysmItem.cpp is already indexed by it. A second copy of the ladder here
+ * would be a number to keep in step rather than a fact.
+ *
+ * `tools/tests/test_generated_loot_tables_match_the_model.py` asserts the eight
+ * row names are exactly the eight enum entries, in order, so a renamed rarity
+ * fails on a pull request rather than silently looking up nothing.
+ *
+ * RARITY IS STILL NOT A FIELD ON AN ITEM. This table says what a rarity means
+ * for a DROP. What an item that already exists IS remains computed from the four
+ * slots it filled; see UCataclysmItemValues::RarityOf.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmGearRarityRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "Everyday" through "Cataclysmic". The same text as the row key, so the
+	 *  table reads on its own without resolving the key against the enum. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gear Rarity")
+	FString Rarity;
+
+	/** This rarity's share of every reachable rung when a drop rolls. Falls as
+	 *  rarity rises: 15625 for Everyday down to 1 for Cataclysmic, summing to
+	 *  25,531, so one drop in 25,531 is Cataclysmic with no magic find. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gear Rarity")
+	float DropWeight = 0.0f;
+
+	/** The upgrade level a piece must be before it can be this rarity: +4 for
+	 *  Legendary, +6 Mythical, +8 Ascendant, +10 Cataclysmic, and 0 for the four
+	 *  below them.
+	 *
+	 *  A FLOOR ON A DROP, NOT A FILTER. A drop that rolls Legendary arrives at
+	 *  +4 or better rather than being downgraded, which is what lets magic find
+	 *  do its job at a low difficulty tier. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gear Rarity")
+	int32 GearLevelGate = 0;
+
+	/** The least Cataclysmic Residue a drop of this rarity carries. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gear Rarity")
+	float ResidueOnDropLowest = 0.0f;
+
+	/** The most. The bands of neighbouring rarities overlap on purpose: a lucky
+	 *  Superb piece arrives cheaper to improve than an unlucky Masterful one,
+	 *  and residue is a cost rather than a reward. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gear Rarity")
+	float ResidueOnDropHighest = 0.0f;
+};
+
+/**
+ * The most gem sockets a piece in one gear slot can have. Source: Item Sockets.
+ *
+ * TWO ROWS FOR A WEAPON, keyed Weapon_1H and Weapon_2H, because its maximum
+ * depends on how many hands it takes: three for a one-hander and six for a
+ * two-hander, so two one-handed weapons match one two-hander exactly. Every
+ * other slot has one row and a Hands of 0, which is how the item base table
+ * writes a non-weapon too.
+ *
+ * POTION SLOTS ARE NOT IN THIS TABLE. Four of them carry one socket each, but
+ * they are consumables rather than gear and nothing rolls one as a drop. They
+ * are the difference between the 41 sockets here and the 45 the design states
+ * across all equipment.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmItemSocketRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "Head", "Chest", ... or "Weapon". Matches FCataclysmItemBaseRow::Slot. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Sockets")
+	FString Slot;
+
+	/** 1 or 2 for a weapon, 0 for everything else. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Sockets")
+	int32 Hands = 0;
+
+	/** The ceiling, not the count. A drop rolls uniformly from no sockets up to
+	 *  this, so a tier 1 Chest can arrive with all six and an Add Socket craft
+	 *  has something to do. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Sockets")
+	int32 MaxSockets = 0;
+};
+
+/**
+ * How heavily one affix tier is weighted when a drop rolls an affix.
+ * Source: Affix Tiers.
+ *
+ * EACH TIER IS HALF AS LIKELY AS THE ONE BELOW: 64, 32, 16, 8, 4, 2, 1. So a T7
+ * affix is one in 127 at difficulty tier 8, where all seven are reachable, and
+ * half of every affix that drops is a T1.
+ *
+ * WHICH TIERS ARE REACHABLE is a separate question, decided by the difficulty
+ * tier plus one and capped at T7. This table only says how the reachable ones
+ * are weighted against each other.
+ *
+ * AND CRAFTING HAS NO TIER GATE, which is why a rare high tier is not punishing:
+ * a drop is the raw material and the Potency Crystal is how a build reaches T7.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmAffixTierRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** 1 to 7. Also the row key, written "T1" through "T7". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix Tier")
+	int32 Tier = 0;
+
+	/** This tier's share of every reachable tier's weight. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix Tier")
+	float DropWeight = 0.0f;
 };
 
 /**
