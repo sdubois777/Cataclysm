@@ -153,8 +153,12 @@ def colour_table_tiers(document: str) -> list[str]:
     the OLD name was in the Item Rarities table, which it still was. Proving the
     guard is what found that.
     """
-    block = re.search(r"^\| Rarity \| Colour \|\n\|[^\n]*\|\n((?:\|[^\n]*\|\n)+)",
-                      document, re.MULTILINE)
+    # THE HEADER MAY CARRY MORE COLUMNS THAN THESE TWO. It gained an sRGB
+    # column when the colour VALUES were settled on 2026-08-18; the tier is
+    # still the first cell, which is all this reads.
+    block = re.search(
+        r"^\| Rarity \| Colour \|[^\n]*\n\|[^\n]*\|\n((?:\|[^\n]*\|\n)+)",
+        document, re.MULTILINE)
     if not block:
         return []
     return [line.split("|")[1].strip()
@@ -237,3 +241,71 @@ def test_a_damage_taken_debuff_is_the_defenders_bucket(document):
     assert "They do not join the attacker's bucket" in document, (
         "section IV does not rule out the other reading, under which an "
         "invested attacker dilutes the debuff to a few percent. Issue #600.")
+
+
+# --------------------------------------------------------------------------
+# The colour VALUES, settled on 2026-08-18
+# --------------------------------------------------------------------------
+
+GEAR_RARITY_CSV = REPO_ROOT / "game" / "Data" / "GearRarity.csv"
+
+#: `| Everyday | White | \`#FFFFFF\` |`
+COLOUR_VALUE_ROW = re.compile(
+    r"^\|\s*([A-Za-z]+)\s*\|\s*[A-Za-z]+\s*\|\s*`(#[0-9A-Fa-f]{6})`\s*\|$",
+    re.MULTILINE)
+
+
+def stated_values(document) -> dict:
+    """Tier against the sRGB hex the design document states for it."""
+    return dict(COLOUR_VALUE_ROW.findall(document))
+
+
+def test_every_rarity_states_an_srgb_value(document):
+    """The colour NAMES were assigned on 2026-08-14 and the VALUES on
+    2026-08-18. A name with no value is a colour nobody can draw."""
+    values = stated_values(document)
+    assert list(values) == [tier for tier, _ in RARITY_COLOURS], (
+        f"section XIII states sRGB values for {list(values)}, and the eight "
+        f"tiers are {[tier for tier, _ in RARITY_COLOURS]}.")
+
+
+def test_no_two_rarities_share_a_value(document):
+    """A player reads a rarity off the floor by the colour of its name, so two
+    rarities sharing one would be two things that cannot be told apart."""
+    values = stated_values(document)
+    assert len(set(values.values())) == len(values), (
+        f"two rarities are given the same colour: {values}")
+
+
+def test_the_stated_values_are_the_ones_the_game_loads(document):
+    """The design document holds sRGB and `game/Data/GearRarity.csv` holds the
+    linear conversion, so this converts and compares rather than matching text.
+
+    WITHOUT THIS the document could state one colour and the game draw another,
+    and the only way to notice would be to look at both.
+    """
+    if not GEAR_RARITY_CSV.is_file():
+        pytest.skip("GearRarity.csv is not present")
+
+    import csv as csv_module
+    with GEAR_RARITY_CSV.open(encoding="utf-8-sig", newline="") as handle:
+        loaded = {row["Rarity"]: row["Colour"]
+                  for row in csv_module.DictReader(handle)}
+
+    def to_linear(channel: int) -> float:
+        share = channel / 255.0
+        if share <= 0.04045:
+            return share / 12.92
+        return ((share + 0.055) / 1.055) ** 2.4
+
+    wrong = []
+    for tier, hex_value in stated_values(document).items():
+        red, green, blue = (int(hex_value[i:i + 2], 16) for i in (1, 3, 5))
+        expected = (f"(R={to_linear(red):.6f},G={to_linear(green):.6f},"
+                    f"B={to_linear(blue):.6f},A=1.000000)")
+        if loaded.get(tier) != expected:
+            wrong.append(f"{tier}: document {hex_value} becomes {expected}, "
+                         f"and the table holds {loaded.get(tier)}")
+    assert not wrong, (
+        "docs/Cataclysm_GDD_v2.md and game/Data/GearRarity.csv disagree about "
+        "what colour a rarity is drawn in: " + "; ".join(wrong))

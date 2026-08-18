@@ -912,18 +912,19 @@ class TestElementVisuals:
 # --------------------------------------------------------------------------
 
 GEAR_RARITY_HEADER = ["Rarity", "Drop Weight", "Gear Level Gate",
-                      "Residue On Drop Lowest", "Residue On Drop Highest"]
+                      "Residue On Drop Lowest", "Residue On Drop Highest",
+                      "Colour"]
 
 #: The real ladder, weakest first. Tests copy this and change one cell.
 GEAR_RARITY_ROWS = [
-    ["Everyday", 15625, 0, 38, 62],
-    ["Quality", 6250, 0, 75, 125],
-    ["Superb", 2500, 0, 112, 188],
-    ["Masterful", 1000, 0, 150, 250],
-    ["Legendary", 125, 4, 188, 312],
-    ["Mythical", 25, 6, 225, 375],
-    ["Ascendant", 5, 8, 262, 438],
-    ["Cataclysmic", 1, 10, 300, 500],
+    ["Everyday", 15625, 0, 38, 62, "#FFFFFF"],
+    ["Quality", 6250, 0, 75, 125, "#9D9D9D"],
+    ["Superb", 2500, 0, 112, 188, "#1EFF00"],
+    ["Masterful", 1000, 0, 150, 250, "#2E9BFF"],
+    ["Legendary", 125, 4, 188, 312, "#FFD100"],
+    ["Mythical", 25, 6, 225, 375, "#FF8000"],
+    ["Ascendant", 5, 8, 262, 438, "#A335EE"],
+    ["Cataclysmic", 1, 10, 300, 500, "#FF4040"],
 ]
 
 
@@ -946,7 +947,8 @@ class TestGearRarity:
         assert rows[-1] == {
             "Name": "Cataclysmic", "Rarity": "Cataclysmic",
             "DropWeight": 1.0, "GearLevelGate": 10,
-            "ResidueOnDropLowest": 300.0, "ResidueOnDropHighest": 500.0}
+            "ResidueOnDropLowest": 300.0, "ResidueOnDropHighest": 500.0,
+            "Colour": "(R=1.000000,G=0.051269,B=0.051269,A=1.000000)"}
 
     def test_the_ladder_decides_the_order_not_the_sheet(self, tmp_path):
         """A sheet sorted some other way still generates in ladder order, so
@@ -1008,6 +1010,44 @@ class TestGearRarity:
         with pytest.raises(gen.DataError,
                            match="ResidueOnDropHighest is smaller"):
             gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+
+    def test_every_rarity_is_drawn_in_its_own_colour(self, tmp_path):
+        """A player reads a rarity off the floor by the colour of its name, so
+        two rarities sharing one would be two things that cannot be told apart.
+        """
+        rows = changed(GEAR_RARITY_ROWS, 1, "Colour", "#FFFFFF")
+        with pytest.raises(gen.DataError, match="same colour"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_a_colour_that_is_not_six_hex_digits_is_rejected(self, tmp_path):
+        """FColor::FromHex does not report bad input, so a nonsense value would
+        become a colour nobody chose. The generator checks every character."""
+        rows = changed(GEAR_RARITY_ROWS, 0, "Colour", "cornflower")
+        with pytest.raises(gen.DataError, match="six hex digits"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_a_missing_colour_is_rejected(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Colour", None)
+        with pytest.raises(gen.DataError, match="six hex digits"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_the_colour_is_converted_from_srgb_to_linear(self, tmp_path):
+        """A colour picker shows sRGB and an FLinearColor is linear. Feeding the
+        raw figures through renders a visibly different colour, which is why
+        this conversion happens at generation rather than in the engine.
+
+        Mid grey is the case that shows it: 0x9D is 157 of 255, which is 0.616
+        as a raw fraction and 0.337 once converted.
+        """
+        rows = gen.gear_rarity(gear_rarity_book(tmp_path, GEAR_RARITY_ROWS))
+        quality = next(r for r in rows if r["Rarity"] == "Quality")
+        assert "R=0.337164" in quality["Colour"]
+        assert "0.615686" not in quality["Colour"], (
+            "the sRGB fraction reached the table unconverted")
+
+        white = next(r for r in rows if r["Rarity"] == "Everyday")
+        assert white["Colour"] == "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"
 
 
 class TestItemSockets:

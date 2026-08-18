@@ -1085,6 +1085,14 @@ def gear_rarity(book) -> list[dict]:
             raise DataError(f"Gear Rarity row {index}: {rarity}'s residue band "
                             f"runs from {lowest:g} down to {highest:g}")
 
+        # THE COLOUR THE ITEM'S NAME IS DRAWN IN, and the only channel a player
+        # has for reading a rarity off the floor at a glance. The design's
+        # Interface Colour section names the eight; this column states them.
+        # Converted from the sRGB a colour picker shows to the linear an
+        # FLinearColor holds, the same way the element visuals are.
+        colour = linear_colour(_cell(raw, headers, "Colour"), "Colour",
+                               f"Gear Rarity row {index} ({rarity})")
+
         found[rarity] = {
             "Name": row_name(rarity),
             "Rarity": rarity,
@@ -1092,6 +1100,7 @@ def gear_rarity(book) -> list[dict]:
             "GearLevelGate": int(gate),
             "ResidueOnDropLowest": lowest,
             "ResidueOnDropHighest": highest,
+            "Colour": colour,
         }
 
     missing = [rarity for rarity in RARITY_LADDER if rarity not in found]
@@ -1115,6 +1124,15 @@ def gear_rarity(book) -> list[dict]:
             if above[end] < below[end]:
                 raise DataError(f"Gear Rarity: {rising} its {end} is smaller "
                                 f"({above[end]:g} against {below[end]:g})")
+
+    seen_colours: dict[str, str] = {}
+    for row in out:
+        if row["Colour"] in seen_colours:
+            raise DataError(
+                f"Gear Rarity: {row['Rarity']} and {seen_colours[row['Colour']]} "
+                "are drawn in the same colour, so a player could not tell them "
+                "apart on the floor")
+        seen_colours[row["Colour"]] = row["Rarity"]
 
     return unique(out, "Gear Rarity")
 

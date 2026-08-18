@@ -20,6 +20,89 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — The eight rarity colours get values, so a drop's name can be drawn in one
+
+**Affects:** a new Colour column on the Gear Rarity sheet in
+`docs/All_Things_Cataclysm.xlsx`, the Interface Colour section of
+`docs/Cataclysm_GDD_v2.md`, `game/Data/GearRarity.csv` and
+`FCataclysmGearRarityRow`. Applied. Toward issue #707.
+
+### What was missing
+
+The eight rarity colours were assigned on 2026-08-14 under issue #602 as colour
+**names**: White, Grey, Green, Blue, Yellow, Orange, Purple, Red. No values
+existed anywhere — not in the workbook, not in a generated table, not in C++.
+
+That did not matter while nothing drew them. It matters now: a drop on the ground
+is shown as its own **name**, coloured by rarity, rather than as an item model,
+so the colour is the only thing telling a player what they are looking at.
+
+### The values
+
+| Rarity | Colour | sRGB |
+| :-- | :-- | :-- |
+| Everyday | White | `#FFFFFF` |
+| Quality | Grey | `#9D9D9D` |
+| Superb | Green | `#1EFF00` |
+| Masterful | Blue | `#2E9BFF` |
+| Legendary | Yellow | `#FFD100` |
+| Mythical | Orange | `#FF8000` |
+| Ascendant | Purple | `#A335EE` |
+| Cataclysmic | Red | `#FF4040` |
+
+**These are close to the item quality colours the genre has used for twenty
+years**, which is the readable set it settled on, with two brightened because
+this game draws them as text on a dark dungeon floor rather than as an item
+border: the blue is lightened from the usual `#0070DD`, which is dim, and the red
+from a darker one that would read as a damage effect.
+
+The project owner asked for standard values and said the choice was mine.
+
+### Stated as sRGB and converted at generation
+
+The workbook holds the hex a colour picker shows and
+`tools/generate_datatables.py` converts it to linear when it writes
+`game/Data/GearRarity.csv`, which is exactly what the damage-type colours in
+`ElementVisuals.csv` already do. An `FLinearColor` is linear, so feeding it the
+raw figures divided by 255 renders a visibly different colour from the one that
+was chosen. Mid grey is the case that shows it: `0x9D` is 0.616 as a raw fraction
+and 0.337 once converted.
+
+`tools/tests/test_item_rarity_presentation.py` converts the document's hex itself
+and compares against the generated table, so the two cannot state different
+colours.
+
+### Two things the generator now refuses
+
+**Two rarities drawn in the same colour**, because a player reads a rarity off
+the floor by the colour of its name and two that matched would be two things
+that cannot be told apart.
+
+**A colour that is not six hex digits.** `FColor::FromHex` does not report bad
+input, and this project has already shipped a colour nobody asked for that way —
+the word "nonsense" is eight characters and a length-only check accepted it. The
+existing `linear_colour` helper checks every character, and the Gear Rarity
+column now goes through it.
+
+### One concern raised and not resolved
+
+**White then grey is backwards for the genre.** Everyday is white and Quality,
+the rung above it, is grey; in most games of this kind grey means worthless and
+white means ordinary. It is also the only step where the ramp gets darker as
+rarity rises.
+
+The colours were implemented as assigned rather than changed, and the concern is
+recorded in the design document and filed as issue #711 for the project owner.
+Swapping the two is two cells in the workbook and two rows in the document.
+
+### What this does not do
+
+Nothing draws a colour yet. The value reaches `FCataclysmGearRarityRow::Colour`
+and no code reads it. The actor spawned on an enemy's death, and the name drawn
+above it, are the rest of issue #707.
+
+---
+
 ## 2026-08-18 — Crafting materials drop on their own roll, a drop rolls its slot, and a drop on the ground is a clickable name
 
 **Affects:** the Enemy Drops and a new Material Tiers sheet in
