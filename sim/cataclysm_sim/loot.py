@@ -3,9 +3,10 @@
 A dungeon produces items and nothing decided what they were. This is the first
 part of issue #44.
 
-WHAT THIS DOES NOT DECIDE. Which item base drops, which affixes it rolls, how
-many items a kill or a floor produces, and what upgrade level a drop arrives at
-beyond the floor its own rarity forces. Those are the later parts of #44.
+WHAT THIS DOES NOT DECIDE. Which affixes a drop rolls beyond their count, what
+upgrade level it arrives at beyond the floor its own rarity forces, and which
+gear slot a kill drops for. Those are the later parts of #44. Crafting materials
+drop on their own separate roll, which is not modelled here yet.
 
 THE ROLL IS A CASCADE FROM THE RAREST DOWN, which is what the genre does. Path of
 Exile "rolls for rare, then magic, and any remaining items will drop normal", and
@@ -571,6 +572,15 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
     guessed at.
     """
     rarity = roll_rarity(tier, magic_find, rng)
+
+    # EVERY BASE IN THE SLOT IS EQUALLY LIKELY, decided by the project owner on
+    # 2026-08-18. The bases in a slot are alternatives rather than a ladder --
+    # a Helm grants armour, a Hood evasion, a Circlet energy shield -- so none
+    # of them is the good one to hold out for, and weighting them would be
+    # saying otherwise. Path of Exile and Diablo both gate WHICH bases can
+    # appear by area or item level; this design gates the same thing through
+    # rarity and the difficulty tier instead, and leaves the choice within a
+    # slot flat.
     base = rng.choice(af.bases_for(slot))
 
     prefixes, suffixes = split_for_a_drop(af.affix_slots_for(rarity), rng)
@@ -596,6 +606,143 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
                       enchantments=af.enchantments_for(rarity),
                       residue=roll_residue(rarity, rng),
                       sockets=roll_sockets(base, rng))
+
+
+# --------------------------------------------------------------------------
+# What a kill drops
+# --------------------------------------------------------------------------
+
+#: How many gear items a kill of each enemy rarity is expected to drop, before
+#: loot quantity. Mirrors the Gear Drops column of the Enemy Drops sheet in
+#: `docs/All_Things_Cataclysm.xlsx`.
+#:
+#: THE WORKBOOK IS AUTHORITATIVE, as it is for every other stored value here;
+#: `tools/tests/test_enemy_drop_sheet_matches_the_model.py` fails when the two
+#: disagree.
+#:
+#: AN EXPECTED COUNT RATHER THAN A CHANCE, which matters above Legendary. A
+#: chance cannot exceed one, and a Cataclysm Boss has to be able to drop twelve
+#: things. The fractional part is rolled as a probability, so 0.16 means one kill
+#: in six drops one item; see `roll_gear_drop_count`.
+#:
+#: 0.16 FOR A COMMON ENEMY is Path of Exile's own figure -- "the base chance for
+#: an item to drop from a normal monster is 16%" -- taken as a starting point
+#: because this design had none and that one has survived contact with players.
+#: It is not a measured equivalent: their figure covers currency and everything
+#: else a monster can drop, not gear alone, so the real gear-only rate there is
+#: lower. Treat this as the right order of magnitude and expect to tune it.
+#:
+#: PER ENEMY RATHER THAN PER FLOOR, chosen by the project owner on 2026-08-18.
+#: A per-floor budget was proposed first and rejected: nothing in the design
+#: pins one. The inventory rule -- 48 slots, no way out of a dungeon -- bounds
+#: how much a player can KEEP, not how much falls, and in this genre most of
+#: what drops is left on the ground. So the floor's total is whatever its
+#: enemies happen to be, which also means no second number has to be invented
+#: before the dungeon generator decides how many enemies a floor holds.
+ENEMY_GEAR_DROPS: dict[str, float] = {
+    "Common":          0.16,
+    "Elite":           0.5,
+    "Legendary":       1.0,
+    "Herald":          2.0,
+    "Boss":            5.0,
+    "Cataclysm Boss": 12.0,
+}
+
+#: How much magic find a kill of each enemy rarity adds to its own drops, as an
+#: added percentage. Mirrors the Magic Find column of the Enemy Drops sheet.
+#:
+#: A BETTER ENEMY DROPS BETTER GEAR, AND THIS IS HOW. Chosen by the project owner
+#: on 2026-08-18. The alternative shapes were raising the difficulty tier cap for
+#: a better enemy, which cuts across the tier being the design's own gate, and
+#: guaranteeing a floor rarity, which removes the disappointment that makes a
+#: good drop feel good.
+#:
+#: EXPRESSED AS MAGIC FIND SO THERE IS NO NEW MECHANIC. `rarity_step_chance`
+#: already multiplies every rung of the cascade by magic find, so an enemy's
+#: contribution simply adds to the player's own. It also sidesteps a problem a
+#: direct mapping has: there are six enemy rarities and eight gear rarities, so
+#: "this enemy drops its equivalent gear rarity" has no one-to-one form.
+#:
+#: THE SHAPE FOLLOWS THE ENEMY POWER LADDER rather than being a second invented
+#: curve. `scoring.RARITY_WEIGHTS` rises 0, 0.05, 0.1, 0.15, 0.3, 0.5 and jumps
+#: at Boss instead of rising evenly; these are that shape times 1000. They are
+#: authored here rather than computed from it, because that ladder is a copy of
+#: an external power model and a change made there for power reasons should not
+#: silently move drop rates.
+ENEMY_MAGIC_FIND: dict[str, float] = {
+    "Common":            0.0,
+    "Elite":            50.0,
+    "Legendary":       100.0,
+    "Herald":          150.0,
+    "Boss":            300.0,
+    "Cataclysm Boss":  500.0,
+}
+
+#: A character with no bonuses at all. The design states it: loot quantity "is a
+#: percentage of whatever the dungeon would otherwise drop, so 100 means
+#: unchanged", and every source of it is an increase.
+BASELINE_LOOT_QUANTITY = 100.0
+
+
+def _enemy_rarity(rarity: str) -> str:
+    if rarity not in ENEMY_GEAR_DROPS:
+        raise ValueError(f"{rarity!r} is not an enemy rarity; expected one of "
+                         f"{list(ENEMY_GEAR_DROPS)}")
+    return rarity
+
+
+def expected_gear_drops(enemy_rarity: str,
+                        loot_quantity: float = BASELINE_LOOT_QUANTITY) -> float:
+    """How many gear items a kill of this rarity is expected to drop.
+
+    Loot quantity is a percentage of what would otherwise drop, so 100 leaves it
+    unchanged and 400 quadruples it.
+    """
+    _enemy_rarity(enemy_rarity)
+    if loot_quantity < 0.0:
+        raise ValueError(
+            f"loot quantity is {loot_quantity}; it is a percentage with a "
+            "baseline of 100 and cannot be negative")
+    return ENEMY_GEAR_DROPS[enemy_rarity] * loot_quantity / BASELINE_LOOT_QUANTITY
+
+
+def magic_find_from(enemy_rarity: str) -> float:
+    """The magic find a kill of this rarity adds to its own drops."""
+    return ENEMY_MAGIC_FIND[_enemy_rarity(enemy_rarity)]
+
+
+def roll_gear_drop_count(enemy_rarity: str, loot_quantity: float, rng) -> int:
+    """How many gear items this kill actually drops.
+
+    THE WHOLE PART IS CERTAIN AND THE FRACTION IS A PROBABILITY, so an expected
+    3.7 gives three items and a 70% chance of a fourth. That is the standard way
+    to turn a rate into a count without rounding bias: rounding 0.16 to the
+    nearest whole number would make a Common enemy drop nothing, ever.
+    """
+    expected = expected_gear_drops(enemy_rarity, loot_quantity)
+    whole = int(expected)
+    return whole + (1 if rng.random() < expected - whole else 0)
+
+
+def roll_drops_from_kill(enemy_rarity: str, slot: str, tier: int,
+                         magic_find: float, loot_quantity: float,
+                         rng) -> list[RolledItem]:
+    """Everything one kill drops, as whole items.
+
+    @param enemy_rarity  what was killed: "Common" through "Cataclysm Boss"
+    @param slot          which gear slot the drops are for. Still an argument
+                         rather than a roll; see `roll_item`.
+    @param magic_find    the PLAYER's own, as an added percentage. The enemy's
+                         contribution is added to it here rather than by the
+                         caller, so no caller can forget it.
+
+    THE ENEMY'S MAGIC FIND ADDS TO THE PLAYER'S rather than multiplying it,
+    which is what Path of Exile does with its own sources: they "stack
+    additively with each other".
+    """
+    count = roll_gear_drop_count(enemy_rarity, loot_quantity, rng)
+    together = magic_find + magic_find_from(enemy_rarity)
+    return [roll_item(slot, tier, together, rng) for _ in range(count)]
 
 
 # --------------------------------------------------------------------------
@@ -760,6 +907,51 @@ def _check_no_residue_band_falls_as_rarity_rises() -> None:
                 f"the residue bands fall somewhere along the ladder: {bands}")
 
 
+def _check_every_enemy_rarity_has_a_drop_rate() -> None:
+    """Both columns, and the same six. A rarity in one and not the other would
+    drop items with no magic find, or none with plenty."""
+    if set(ENEMY_GEAR_DROPS) != set(ENEMY_MAGIC_FIND):
+        raise AssertionError(
+            "the enemy drop rate and magic find tables cover different "
+            f"rarities: {sorted(set(ENEMY_GEAR_DROPS) ^ set(ENEMY_MAGIC_FIND))}")
+
+
+def _check_a_better_enemy_never_drops_less() -> None:
+    """Both columns rise together down the ladder. A rarer enemy that dropped
+    fewer or worse items would be a typo, and nothing else would report it."""
+    rarities = list(ENEMY_GEAR_DROPS)
+    for below, above in zip(rarities[:-1], rarities[1:], strict=True):
+        if ENEMY_GEAR_DROPS[above] <= ENEMY_GEAR_DROPS[below]:
+            raise AssertionError(
+                f"a {above} is rarer than a {below} and drops no more: "
+                f"{ENEMY_GEAR_DROPS[above]} against {ENEMY_GEAR_DROPS[below]}")
+        if ENEMY_MAGIC_FIND[above] <= ENEMY_MAGIC_FIND[below]:
+            raise AssertionError(
+                f"a {above} is rarer than a {below} and adds no more magic "
+                f"find: {ENEMY_MAGIC_FIND[above]} against "
+                f"{ENEMY_MAGIC_FIND[below]}")
+
+
+def _check_a_common_kill_adds_no_magic_find() -> None:
+    """The baseline both columns are read against. A Common enemy that raised
+    rarity would make the whole ladder mean something else."""
+    first = next(iter(ENEMY_MAGIC_FIND))
+    if ENEMY_MAGIC_FIND[first] != 0.0:
+        raise AssertionError(
+            f"the weakest enemy rarity, {first}, adds "
+            f"{ENEMY_MAGIC_FIND[first]} magic find rather than none")
+
+
+def _check_every_kill_can_drop_something() -> None:
+    """A rate of zero would make that rarity drop nothing whatever the player's
+    loot quantity, because loot quantity multiplies."""
+    empty = sorted(r for r, rate in ENEMY_GEAR_DROPS.items() if rate <= 0.0)
+    if empty:
+        raise AssertionError(
+            f"these enemy rarities drop nothing at all: {empty}. Loot quantity "
+            "multiplies the rate, so no amount of it would help.")
+
+
 _check_every_rarity_has_a_gear_level_gate()
 _check_the_gates_only_ever_rise()
 _check_no_gate_is_out_of_reach()
@@ -774,3 +966,7 @@ _check_no_drop_weight_is_negative()
 _check_the_distribution_matches_the_weights()
 _check_nothing_drops_above_the_tier_cap()
 _check_a_distribution_always_sums_to_one()
+_check_every_enemy_rarity_has_a_drop_rate()
+_check_a_better_enemy_never_drops_less()
+_check_a_common_kill_adds_no_magic_find()
+_check_every_kill_can_drop_something()

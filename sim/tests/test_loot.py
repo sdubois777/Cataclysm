@@ -659,3 +659,170 @@ def test_that_the_socket_total_check_actually_fires():
             loot._check_the_socket_maxima_add_up_to_the_design_total()
     finally:
         loot.MAX_SOCKETS_BY_SLOT = original
+
+
+# --------------------------------------------------------------------------
+# What a kill drops
+# --------------------------------------------------------------------------
+
+ENEMY_RARITIES = list(loot.ENEMY_GEAR_DROPS)
+
+
+def test_the_ladder_is_the_six_enemy_rarities_the_power_model_has():
+    """Six, not eight. They come from scoring.RARITY_WEIGHTS, which is a port of
+    an external power model, so the count is not this project's to change."""
+    from cataclysm_sim import scoring
+    assert ENEMY_RARITIES == list(scoring.RARITY_WEIGHTS)
+    assert len(ENEMY_RARITIES) == 6
+
+
+def test_a_common_kill_drops_the_genre_figure():
+    """0.16, Path of Exile's base chance for an item from a normal monster,
+    taken as the starting point because this design had none."""
+    assert loot.expected_gear_drops("Common") == pytest.approx(0.16)
+
+
+def test_a_rarer_enemy_drops_more_and_better():
+    """Both columns rise together. Either one falling would be a typo that
+    nothing else reports."""
+    counts = [loot.expected_gear_drops(r) for r in ENEMY_RARITIES]
+    finds = [loot.magic_find_from(r) for r in ENEMY_RARITIES]
+    assert counts == sorted(counts) and len(set(counts)) == len(counts)
+    assert finds == sorted(finds) and len(set(finds)) == len(finds)
+
+
+def test_a_common_kill_adds_no_magic_find():
+    """The baseline the whole ladder is read against."""
+    assert loot.magic_find_from("Common") == 0.0
+
+
+def test_loot_quantity_is_a_percentage_of_what_would_otherwise_drop():
+    """The design states the baseline is 100, so 100 changes nothing. Every
+    source of loot quantity is an increase, and an increase applied to a
+    baseline of zero would be worth nothing."""
+    assert loot.expected_gear_drops("Boss", 100.0) == \
+        pytest.approx(loot.ENEMY_GEAR_DROPS["Boss"])
+    assert loot.expected_gear_drops("Boss", 400.0) == \
+        pytest.approx(loot.ENEMY_GEAR_DROPS["Boss"] * 4)
+    assert loot.expected_gear_drops("Boss", 0.0) == 0.0
+
+
+def test_negative_loot_quantity_is_rejected():
+    with pytest.raises(ValueError, match="cannot be negative"):
+        loot.expected_gear_drops("Boss", -1.0)
+
+
+def test_an_unknown_enemy_rarity_is_rejected():
+    """"Rare" is the one that would be typed by mistake: the design document's
+    older enemy list had it and the ladder does not."""
+    with pytest.raises(ValueError, match="not an enemy rarity"):
+        loot.expected_gear_drops("Rare")
+
+
+def test_the_rolled_count_averages_the_expected_one():
+    """The fractional part is a probability, so a Common enemy drops nothing
+    most of the time and the mean still comes out at 0.16. Rounding to the
+    nearest whole number instead would make it drop nothing ever."""
+    rng = random.Random(20260818)
+    for rarity in ENEMY_RARITIES:
+        rolled = [loot.roll_gear_drop_count(rarity, 100.0, rng)
+                  for _ in range(20000)]
+        expected = loot.expected_gear_drops(rarity)
+        assert sum(rolled) / len(rolled) == pytest.approx(expected, rel=0.05)
+
+
+def test_a_common_kill_usually_drops_nothing_at_all():
+    """0.16 is a rate, not a guarantee, and the shape matters as much as the
+    mean: five kills in six give the player nothing."""
+    rng = random.Random(1)
+    rolled = [loot.roll_gear_drop_count("Common", 100.0, rng)
+              for _ in range(10000)]
+    assert rolled.count(0) / len(rolled) == pytest.approx(0.84, abs=0.02)
+    assert max(rolled) == 1
+
+
+def test_a_whole_number_rate_always_drops_that_many():
+    """A Legendary enemy is exactly 1.0, so there is no fraction left to roll
+    and the count cannot vary. Without this the fractional roll could be adding
+    a spurious extra item at every whole number."""
+    rng = random.Random(2)
+    assert {loot.roll_gear_drop_count("Legendary", 100.0, rng)
+            for _ in range(500)} == {1}
+
+
+def test_a_kill_produces_whole_items():
+    rng = random.Random(3)
+    items = loot.roll_drops_from_kill("Boss", "Chest", 8, 0.0, 100.0, rng)
+    assert len(items) == 5
+    for item in items:
+        assert item.base.slot == "Chest"
+        assert item.rarity in af.RARITIES
+
+
+def test_the_enemys_magic_find_reaches_the_rarity_roll():
+    """The point of the whole mechanic, and the thing that would silently not
+    happen: `roll_drops_from_kill` adds the enemy's contribution to the
+    player's, so a caller cannot forget it.
+
+    Measured rather than asserted on the call, because passing it and then
+    discarding it would look identical from outside.
+    """
+    rng = random.Random(4)
+    rounds = 4000
+
+    def share_above_superb(enemy_rarity: str) -> float:
+        seen = 0
+        for _ in range(rounds):
+            for item in loot.roll_drops_from_kill(
+                    enemy_rarity, "Chest", 8, 0.0, 100.0, rng):
+                seen += af.RARITIES.index(item.rarity) >= 3
+        return seen
+
+    # A Herald adds 150% magic find and drops two items; a Common adds none and
+    # drops 0.16. Comparing shares rather than counts would be confounded by
+    # that, so this compares against what the distribution itself predicts.
+    plain = loot.rarity_distribution(8, 0.0)
+    lucky = loot.rarity_distribution(8, loot.magic_find_from("Herald"))
+    above = af.RARITIES[3:]
+    assert sum(lucky[r] for r in above) > sum(plain[r] for r in above) * 1.5
+
+    # And the roll really uses it: a Herald's drops beat what no-magic-find
+    # drops would give over the same number of items.
+    heralds = share_above_superb("Herald")
+    expected_without = sum(plain[r] for r in above) * rounds * 2
+    assert heralds > expected_without * 1.3, (
+        f"a Herald's {rounds * 2} drops gave {heralds} above Superb, and with "
+        f"no magic find at all they would give about {expected_without:.0f}")
+
+
+def test_the_import_time_checks_on_the_kill_tables_can_fail():
+    """A check that cannot fail is worthless. Each is fed the condition it
+    guards against and must refuse."""
+    original = loot.ENEMY_GEAR_DROPS
+    try:
+        loot.ENEMY_GEAR_DROPS = dict(original, Elite=0.0)
+        with pytest.raises(AssertionError, match="drop nothing at all"):
+            loot._check_every_kill_can_drop_something()
+
+        loot.ENEMY_GEAR_DROPS = dict(original, Boss=0.2)
+        with pytest.raises(AssertionError, match="drops no more"):
+            loot._check_a_better_enemy_never_drops_less()
+
+        loot.ENEMY_GEAR_DROPS = {k: v for k, v in original.items()
+                                 if k != "Herald"}
+        with pytest.raises(AssertionError, match="different"):
+            loot._check_every_enemy_rarity_has_a_drop_rate()
+    finally:
+        loot.ENEMY_GEAR_DROPS = original
+
+    finds = loot.ENEMY_MAGIC_FIND
+    try:
+        loot.ENEMY_MAGIC_FIND = dict(finds, Common=25.0)
+        with pytest.raises(AssertionError, match="rather than none"):
+            loot._check_a_common_kill_adds_no_magic_find()
+
+        loot.ENEMY_MAGIC_FIND = dict(finds, Boss=10.0)
+        with pytest.raises(AssertionError, match="adds no more magic find"):
+            loot._check_a_better_enemy_never_drops_less()
+    finally:
+        loot.ENEMY_MAGIC_FIND = finds

@@ -2267,6 +2267,57 @@ decision to fund ten or more models rather than a side effect of a rarity tier.
 
   
 
+## **What a Kill Drops**
+
+  
+
+**Items drop from enemies, not from floors.** Each enemy rarity has its own expected number of gear drops per kill and its own contribution to how good those drops are. A floor's total is therefore whatever its enemies happened to be, which is decided by the dungeon generator rather than stated here.
+
+  
+
+| Enemy rarity | Gear drops per kill | Magic find it adds |
+| :-- | --: | --: |
+| Common | 0.16 | 0% |
+| Elite | 0.5 | 50% |
+| Legendary | 1.0 | 100% |
+| Herald | 2.0 | 150% |
+| Boss | 5.0 | 300% |
+| Cataclysm Boss | 12.0 | 500% |
+
+  
+
+**The drop count is an expected number, not a chance.** The whole part is certain and the fraction is rolled, so 0.16 means one Common kill in six drops one item, and 5.0 means a Boss always drops five. A chance could not express a Cataclysm Boss dropping twelve things.
+
+  
+
+**Loot quantity multiplies it.** The baseline is 100%, so a character with no bonuses gets the numbers above unchanged and one at 400% gets four times as many. That is the same percentage described under Attributes, and it is what the Luck attribute, the Increased Loot Quantity affix and the Explorer branch of the empire tree all feed.
+
+  
+
+**A rarer enemy drops better gear, and it does so by adding magic find to its own drops.** That contribution is added to the player's own magic find, not multiplied by it, and the sum then runs through the ordinary rarity cascade. So a Boss is more likely to drop a Cataclysmic item for the same reason a player wearing magic find gear is, and there is no second mechanic to learn.
+
+  
+
+**Why not simply map each enemy rarity to a gear rarity.** There are six enemy rarities and eight gear rarities, so "this enemy drops its equivalent" has no one-to-one form. Expressing it as magic find needs no such correspondence, and it composes with everything else that raises rarity instead of overriding it.
+
+  
+
+**The magic find column follows the enemy power ladder.** The Power Score weights in section X rise 0, 0.05, 0.1, 0.15, 0.3 and 0.5, jumping at Boss rather than rising evenly, and this column is that shape scaled up. So a harder enemy is more rewarding in proportion to how much harder it is, and there is one curve in the design rather than two.
+
+  
+
+**Every base within a slot is equally likely.** A Head drop is a Helm, a Hood, a Circlet or a Visage with the same chance each. The bases in a slot are alternatives rather than a ladder -- one grants armour, another evasion, another energy shield -- so none of them is the good one to hold out for, and weighting them would say otherwise. What gates the QUALITY of a drop is its rarity and the difficulty tier, not which base it is.
+
+  
+
+**Crafting materials drop on a separate roll**, with their own five tiers and their own quantity. They do not compete with gear for the same drop, which is why the Scavenger node on the empire tree can raise material quantity without lowering the number of items that drop. That roll is not yet designed.
+
+  
+
+**These numbers are a starting point and are expected to move.** The 0.16 for a Common enemy is Path of Exile's published figure for a normal monster, taken because this design had none of its own; their figure covers currency and everything else a monster can drop rather than gear alone, so it is the right order of magnitude rather than a measured equivalent. Every number in the table is a column of the Enemy Drops sheet in `docs/All_Things_Cataclysm.xlsx` and changing one is a cell edit.
+
+  
+
 ## **Affixes**
 
 Affixes are the ordinary stats on gear, separate from the enchantments below. Every piece has up to 4 affix slots, so a full set of 18 pieces has 72. A dual wielder carries a nineteenth piece and has 76; see A Two-Handed Weapon Is Worth Double below for why the two come out equal in affix value regardless.

@@ -20,6 +20,140 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — Items drop from enemies, not from floors, and a rarer enemy adds magic find to its own drops
+
+**Affects:** a new Enemy Drops sheet in `docs/All_Things_Cataclysm.xlsx`, a new
+What a Kill Drops subsection in section VI of `docs/Cataclysm_GDD_v2.md`, and
+`sim/cataclysm_sim/loot.py`. Applied. Part of issue #44.
+
+### What was missing
+
+The design says loot quantity "is a percentage of whatever the dungeon would
+otherwise drop, so 100 means unchanged". **There was no number for it to be a
+percentage of.** An earlier entry in this log named the gap plainly: "the lever
+that really controls how much good gear a player sees is how many items drop, and
+that does not exist yet."
+
+### Four decisions, all the project owner's, all on 2026-08-18
+
+**1. The rate is per enemy, not per floor.**
+
+A per-floor budget was proposed first and rejected. It was derived from the
+inventory rule — 48 slots, no way out of a dungeon, one Stash at the middle floor
+— and the design document's own statement that "48 slots is not under pressure
+over ten floors, and it is under real pressure over the 100 to 150 a Cataclysm
+dungeon spans". That produced about three items per floor.
+
+**That derivation was wrong, and the owner caught it.** In their words: "in
+arpgs, 95% or more of the loot that drops is left on the ground... out of those
+15 per floor, the player might pick up one." The inventory rule bounds what a
+player KEEPS, not what falls, so it does not constrain the drop rate at all. The
+per-floor budget only looked workable because the wrong reading made the numbers
+small enough to manage by hand.
+
+Per enemy is also what the genre does, and it has a second advantage: the floor's
+total is then whatever its enemies happened to be, so no second number has to be
+invented before the dungeon generator decides how many enemies a floor holds.
+
+**2. A rarer enemy drops better gear by adding magic find to its own drops.**
+
+The owner's proposal was "maybe each rarity of enemy has a higher chance of
+dropping their equivalent gear rarity". A direct mapping has no form: there are
+six enemy rarities and eight gear rarities. Expressing it as magic find needs no
+correspondence, adds to the player's own rather than competing with it, and
+introduces no new mechanic — `rarity_step_chance` already multiplies every rung
+of the cascade by magic find.
+
+Two alternatives were considered and not taken. Raising the difficulty tier cap
+for a better enemy would let a boss drop something the tier otherwise cannot,
+which cuts across the difficulty tier being the design's own gate, stated three
+times over in section VI. Guaranteeing a floor rarity would remove the
+disappointment that makes a good drop feel good.
+
+**3. Every base within a slot is equally likely.**
+
+The owner: "it's fine if the bases are equal chance... they do the same thing."
+This was already what `sim/cataclysm_sim/loot.py` did, as an unmarked placeholder;
+it is now a decision with a reason. The bases in a slot are alternatives rather
+than a ladder — a Helm grants armour, a Hood evasion, a Circlet energy shield —
+so none of them is the good one to hold out for, and weighting them would say
+otherwise. What gates the quality of a drop is its rarity and the difficulty
+tier.
+
+**4. Crafting materials drop on a separate roll.**
+
+They have their own five tiers and their own quantity, and do not compete with
+gear for the same drop event. The design already had evidence for this: the
+Scavenger node on the empire tree "increases drop quantity of t3 and below
+crafting materials by 5% per point", which would also reduce gear drops if the
+two shared one roll. **That roll is not yet built.**
+
+### The numbers
+
+| Enemy rarity | Gear drops per kill | Magic find it adds |
+| :-- | --: | --: |
+| Common | 0.16 | 0% |
+| Elite | 0.5 | 50% |
+| Legendary | 1.0 | 100% |
+| Herald | 2.0 | 150% |
+| Boss | 5.0 | 300% |
+| Cataclysm Boss | 12.0 | 500% |
+
+**0.16 for a Common enemy is Path of Exile's published figure** for a normal
+monster, taken because this design had none of its own and that one has survived
+contact with players. It is not a measured equivalent: their figure covers
+currency and everything else a monster can drop rather than gear alone, so the
+real gear-only rate there is lower. It is the right order of magnitude and is
+expected to move.
+
+**The drop count is an expected number, not a chance.** The whole part is certain
+and the fraction is rolled, so 0.16 means one Common kill in six drops one item.
+A chance could not express a Cataclysm Boss dropping twelve things.
+
+**The magic find column follows the enemy power ladder rather than being a second
+invented curve.** `scoring.RARITY_WEIGHTS` rises 0, 0.05, 0.1, 0.15, 0.3, 0.5,
+jumping at Boss rather than rising evenly, and this column is that shape times
+1000. So a harder enemy is more rewarding in proportion to how much harder it is.
+`tools/tests/test_enemy_drop_sheet_matches_the_model.py` checks that proportion
+still holds, which is a check against something other than the other copy.
+
+The six numbers are authored in the workbook rather than computed from the power
+ladder, deliberately: that ladder is a port of an external model, and a change
+made there for power reasons should not silently move drop rates.
+
+### There are six enemy rarities, not eight
+
+Worth recording because it was got wrong in the conversation that produced this
+entry. The ladder is Common, Elite, Legendary, Herald, Boss, Cataclysm Boss. It
+comes from `RARITY_WEIGHTS` in `sim/cataclysm_sim/scoring.py`, a port of the
+DungeonSimulator power model that `CLAUDE.md` names as authoritative, so the
+count is not this project's to change. A test now asserts the Enemy Drops sheet
+names exactly those six, in that order.
+
+### Sources
+
+[Drop rate, PoE Wiki](https://www.poewiki.net/wiki/Drop_rate);
+[Drop rate, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Drop_rate);
+[How Increased Item Quantity and Rarity
+Works](https://www.leveling-guides.com/how-increased-item-quantity-and-rarity-works/);
+[Equipment and Gear Overview, Diablo IV,
+Maxroll](https://maxroll.gg/d4/resources/equipment); [Unique and Set Item
+Farming, Last Epoch, Maxroll](https://maxroll.gg/last-epoch/resources/unique-and-set-item-farming).
+
+Diablo IV and Last Epoch publish no comparable per-kill figure; their guides
+cover loot tables and boss drops rather than rates. Only Path of Exile's number
+was usable.
+
+### What this does not settle
+
+Which gear slot a kill drops for is still an argument rather than a roll. How
+many enemies a floor holds does not exist anywhere, so the per-floor total cannot
+be stated yet; that waits on the dungeon generator, issue #40, and the enemy
+rarity spawn weights, issue #508. The crafting material roll is decided in shape
+and unbuilt. Nothing in the engine reads any of this.
+
+---
+
 ## 2026-08-18 — The Consumption Threshold is derived per difficulty tier, at 85% of the cheapest route to the expected gear
 
 **Affects:** the Worn Residue and Consumption subsection of section VII and the

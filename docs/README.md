@@ -32,7 +32,7 @@ python tools/reformat_google_docs_artefacts.py
 |---|---|---|
 | `Cataclysm_GDD_v2.md` | Doc "Cataclysm\_GDD\_v2(1)" | Converted to Markdown so it produces readable diffs. No version number: see below. |
 | `Empire_Skill_Tree_Keystones.md` | Doc "Empire Skill Tree Keystones" | The 12 keystones plus all four empire quadrants (Architect, Treasury, Explorer, Artisan). Converted to Markdown. |
-| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 22 sheets, listed below. Exported unchanged as `.xlsx`, and edited in place since. |
+| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 23 sheets, listed below. Exported unchanged as `.xlsx`, and edited in place since. |
 | `Empire_Development_Tree_Final.json` | Passive Trees/ | Node graph: `version`, `metadata`, `viewport`, `nodes`, `uiElements`, `edges`. |
 | `Berserker_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
 | `Bulwark_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
@@ -75,6 +75,7 @@ or if a sheet is added or removed without this table changing.
 | Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Note |
 | Item Sockets | 12 | Slot, Hands, Max Sockets, Note |
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
+| Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Note |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
 read a row count as a count of the things the sheet describes without checking
