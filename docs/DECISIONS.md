@@ -20,6 +20,88 @@ applied or still pending.
 
 ---
 
+## 2026-08-18 — An item is called `<rarity> <base> of <word>`, and the word is one of its own affixes
+
+**Affects:** the gear rarity subsection of section VI of
+`docs/Cataclysm_GDD_v2.md`, a new Name Word column on the Affixes sheet of
+`docs/All_Things_Cataclysm.xlsx`, and `sim/cataclysm_sim/naming.py`. Applied.
+Closes issue #695.
+
+### What was missing
+
+A dropped item had no name a player could read. It had a base row name like
+`Head_Helm` and nothing else. The design document said nothing about item names at
+all.
+
+### The format
+
+**Stated by the project owner on 2026-08-18:** "Quality Item Type of Interesting
+word that fits the item. For example, Everyday Short Sword of Malice or Mythic
+Robes of The Night."
+
+So `<rarity> <base name> of <word>`. The rarity is computed from the item's
+contents as it always is, the base name is the one already in the Item Bases
+sheet, and the word is the decision below.
+
+**One correction was made to the owner's example without asking.** They wrote
+"Mythic"; the eight rarities in section VI are Everyday, Quality, Superb,
+Masterful, Legendary, **Mythical**, Ascendant, Cataclysmic. Mythical is used, so
+there is one word for one thing. Issue #660 was about exactly that, for the
+critical strike multiplier.
+
+### The decision: where the last word comes from
+
+Three candidates were put to the project owner, and the research is what made them
+three rather than two.
+
+| Candidate | Outcome |
+| :-- | :-- |
+| **Chosen: the item's own strongest suffix affix** | What Diablo 2 and Path of Exile do for magic items -- "Warrior's Sword of Fire" is named for what is on it. The name tells a player something true |
+| A flavour list keyed to the item type | Reads well and always works, but two very different pieces of Robes could share a name and the name would say nothing. Path of Exile does this for RARE items, whose names are two invented words |
+| Both words from affixes, no rarity word | The strict Diablo 2 shape and the most informative, but not the format asked for |
+
+**And when an item has no suffix affix, the name stops after the base.** Also the
+owner's choice. An Everyday piece carries one affix and it may be a prefix, so
+`Everyday Short Sword` is a whole name, and a Cataclysmic piece carries four
+enchantments and no regular affixes at all so it is never named after one. Diablo
+2 does the same: a magic item with only a prefix has no "of" part.
+
+### What "strongest" means, which the format did not settle
+
+**Highest affix tier, then highest roll within that tier, then first on the item.**
+
+The third is the one that matters and it is not decorative. Affixes are stored in
+the order they were drawn and two of them can share a tier and a roll, so without
+a final tie-break the same item could be called two different things on two runs.
+
+Tier before roll because a tier is worth a seventh of the affix's top value and a
+roll is worth at most a quarter of one tier. A perfect T6 can beat a poor T7 in
+value; the name follows the tier, which is the number a player reads off the item.
+
+### The one place this departs from the genre, said plainly
+
+**A prefix affix contributes nothing to the name.** Diablo 2 and Path of Exile put
+a word from the prefix affix first; here the rarity has that position. So only the
+54 suffix affixes carry a word and the 31 prefixes carry none. A word on a prefix
+row would be one that could never appear, which is why it is checked for rather
+than merely unused.
+
+### What is deliberately not built
+
+**The engine cannot name an item yet.** The words are in the workbook and in the
+simulation, and `game/Data/Affixes.csv` does NOT carry them: `generate_datatables.py`
+emits only the columns it knows about, so the generated table the game loads is
+unchanged. Adding the column there means a matching field on `FCataclysmAffixRow`
+and rebuilding the imported DataTable asset, and it belongs with the engine half of
+the loot work rather than ahead of it. Nothing in the engine rolls an item to name.
+
+**Whether each word is a good name for its affix is a judgement and is the project
+owner's.** The tests check that every suffix has one, that no two share one, and
+that the workbook and the simulation agree. They do not check that "of Warding"
+suits a resistance affix.
+
+---
+
 ## 2026-08-18 — An item drops already carrying residue, in a band set by its rarity
 
 **Affects:** the Cataclysmic Residue subsection of section VI and the Worn Residue
