@@ -72,7 +72,7 @@ or if a sheet is added or removed without this table changing.
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
 | Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown |
 | Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale |
-| Loot Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Note |
+| Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Note |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
 read a row count as a count of the things the sheet describes without checking

@@ -2967,7 +2967,27 @@ The Cataclysmic Forge is a high-stakes, deterministic crafting system built arou
 
 ## **Cataclysmic Residue (CR)**
 
-Every modification made to an item adds Cataclysmic Residue (CR). This residue represents the instability and corruption inherent in forcefully modifying powerful gear. As CR increases, crafting becomes exponentially more expensive and time-consuming.
+**An item carries Cataclysmic Residue (CR) from the moment it drops, and every modification made to it adds more.** This residue represents the instability and corruption inherent in powerful gear and in forcefully modifying it. As CR increases, crafting becomes exponentially more expensive and time-consuming.
+
+  
+
+**How much a drop carries is decided by its rarity, and it is a band rather than a figure**, so two pieces of the same rarity differ. The bands are the Residue On Drop Lowest and Residue On Drop Highest columns of the Gear Rarity sheet in `docs/All_Things_Cataclysm.xlsx`. A Cataclysmic drop carries **300 to 500**, and the rest of the ladder is that band scaled by the rarity's position, down to 38 to 62 on an Everyday piece.
+
+  
+
+**The bands of neighbouring rarities overlap on purpose.** A lucky Superb piece arrives cheaper to improve than an unlucky Masterful one, so residue is a trade rather than a strict second ladder running beside rarity.
+
+  
+
+**What that costs, by this section's own two formulas.** A freshly dropped Cataclysmic piece costs seven to eleven times the gold to craft and three to five real in-game days per craft, before it has been modified at all. Every rarity above Quality arrives past the 100 at which the critical time penalty begins. That is heavy on purpose.
+
+  
+
+**A better item is therefore more expensive to improve, and brings its wearer nearer the Consumption Threshold.** That is the trade this makes: residue is a cost throughout and never a benefit, so a Cataclysmic drop is not simply better than a Masterful one. `docs/DECISIONS.md` records the decision, which the project owner made on 2026-08-18 and which reversed what this section previously said.
+
+  
+
+**The number that decides whether all this is dangerous does not exist yet.** The Consumption Threshold below is "a single fixed number, to be tuned", and it is what these bands should eventually be judged against; eighteen equipped pieces put a fully geared character in the thousands. That is issue #697.
 
   
 
@@ -3096,7 +3116,7 @@ Cataclysmic Residue is a property of an item. **Worn Residue** is the sum of the
 
   
 
-Worn Residue grants nothing. It is not a resource and it does not make the character stronger. Residue is a cost throughout, and it becomes dangerous only if the player ignores the tools that manage it: Purified Essence, which halves accumulated residue, and the Residue Protocols node on the Empire tree, which ignores 5% of residue per point.
+Worn Residue grants nothing. It is not a resource and it does not make the character stronger. Residue is a cost throughout -- including the residue an item arrives with, described in section VI -- and it becomes dangerous only if the player ignores the tools that manage it: Purified Essence, which halves accumulated residue, and the Residue Protocols node on the Empire tree, which ignores 5% of residue per point.
 
   
 
