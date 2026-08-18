@@ -582,4 +582,35 @@ private:
 	/** One step of a charge: move, then hit what the step passed. Returns false
 	 *  when the charge ended, either by arriving or by meeting geometry. */
 	bool StepCharge(float StepCm);
+
+	/**
+	 * Put one step of a charge on the floor rather than at the height the charge
+	 * set off from.
+	 *
+	 * WHY A CHARGE HAS TO DO THIS ITSELF. Issue #497. A charge moves the creature
+	 * with SetActorLocation rather than through the movement component, so
+	 * nothing else in the frame is finding the floor for it. Before this, every
+	 * step kept the height of the one before, which is right only on level
+	 * ground: up a ramp the capsule ended up inside the geometry, and off a ledge
+	 * the creature ran out into the air. `docs/Cataclysm_GDD_v2.md` settles what
+	 * it should do instead -- a charge "runs along the ground and meets whatever
+	 * is in the way", and "it is stopped by the level, not by bodies".
+	 *
+	 * WHAT IT WILL AND WILL NOT CLIMB. Both allowances come from the movement
+	 * component, so a charge and a walk agree about the ground by construction
+	 * rather than by a second number kept in step by hand: the walkable floor
+	 * angle gives the steepest slope it will follow, and MaxStepHeight the
+	 * tallest single lip it will mount. Ground higher than both ends the charge,
+	 * which is the same rule a wall is already stopped by.
+	 *
+	 * @param From         where the step starts: the creature's capsule centre.
+	 * @param RemainingCm  how much of the lane is left, in the floor plane. Only
+	 *   sets how far down it is worth looking; see the definition.
+	 * @param StepCm       how far this step travels, in the floor plane.
+	 * @param Step         the step's destination. Its height is replaced.
+	 * @return false when the ground ahead is higher than the creature could get
+	 *   onto in one step, which ends the charge where it stands.
+	 */
+	bool SetChargeStepHeight(const FVector& From, float RemainingCm,
+							 float StepCm, FVector& Step) const;
 };

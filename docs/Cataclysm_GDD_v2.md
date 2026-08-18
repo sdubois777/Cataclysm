@@ -1764,6 +1764,10 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
+**A charge runs along the ground, and the ground decides where it can go.** It follows the floor under it, up or down any slope a character could walk, and up any single step no taller than one a character could step up onto while walking. Ground higher than that stops it, which is the same rule that stops it at a wall: a crate in the lane ends a charge at the crate, and a kerb does not. Where the ground falls away faster than it could be walked down, the charge descends at the steepest angle it could have walked, so a charge that reaches a ledge runs down to the floor below rather than dropping to it in one frame or carrying on through the air. The steepest walkable slope and the tallest single step are the engine's own two figures for walking, so a charge and a walk agree about the ground rather than each carrying its own numbers. `docs/DECISIONS.md` records the two questions this settled.
+
+  
+
 **Standing in burning ground for its whole life costs one hit of the skill that left it.** That is what `GroundPercent` states: the percent of the skill's damage the ground deals per second, which is 100 divided by `GroundDuration`. A 10 second Ultimate patch deals 10% per second, a 3 second Movement patch 33.3%, and both add up to one hit for a target that never leaves.
 
   
