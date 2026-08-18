@@ -2231,6 +2231,18 @@ decision to fund ten or more models rather than a side effect of a rarity tier.
 
   
 
+**An item is called `<rarity> <base> of <word>`.** Everyday Short Sword of Malice, Mythical Robes of the Night. The rarity is the first word, the base supplies the middle, and the last word comes from the item's own strongest suffix affix -- highest tier first, then highest roll -- so the name tells a player something true about what the item rolled rather than being decoration. Each of the 54 suffix affixes carries one word, in the Name Word column of the Affixes sheet in `docs/All_Things_Cataclysm.xlsx`.
+
+  
+
+**An item with no suffix affix is named without the last two words.** An Everyday piece carries one affix and it may be a prefix, so `Everyday Short Sword` is a whole name. The missing words are themselves a signal that the item is thin. Diablo 2 does the same: a magic item with only a prefix has no "of" part.
+
+  
+
+**A prefix affix contributes nothing to the name**, because the rarity has taken that position. That is the one place this departs from the genre, where the first word usually comes from the prefix affix.
+
+  
+
 **Adding an affix promotes the piece.** An Everyday item with an affix added becomes a Quality item, and a Superb item with a fourth becomes Masterful. That is not a special crafting rule; it follows from rarity being the name for the contents.
 
   
