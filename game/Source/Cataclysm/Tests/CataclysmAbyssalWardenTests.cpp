@@ -1937,4 +1937,126 @@ bool FCataclysmWardenChargeOffALedgeDescends::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenChargeStopsAtAWall,
+	"Cataclysm.Warden.AWallStopsAChargeOneBodyRadiusShortOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenChargeStopsAtAWall::RunTest(const FString&)
+{
+	using namespace CataclysmWardenTest;
+	using Warden_t = ACataclysmAbyssalWardenCharacter;
+
+	// ISSUE #689. "It is stopped by the level, not by bodies" is the design's own
+	// sentence about a charge, and the sweep in StepCharge that carries out the
+	// first half of it had never met a wall in any test. Both halves were built on
+	// 2026-08-09 and only the second half was ever covered: three tests check that
+	// a charge runs THROUGH bodies, and none checked that it stops at level
+	// geometry.
+	//
+	// THE THREE TESTS ADDED BY ISSUE #497 DO NOT COVER IT EITHER. They all exercise
+	// the floor: the one that stops a charge on a 60 cm block stops it through the
+	// height check, and asserts that the sweep sphere passes over that block
+	// precisely so that it is testing the height check and not this.
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	// Floor under the whole lane, top at -100.
+	if (!MakeSolid(World, FVector(400.0f, 0.0f, -200.0f), FRotator::ZeroRotator,
+				   FVector(1000.0f, 400.0f, 100.0f)))
+	{
+		AddError(TEXT("could not build the floor"));
+		return false;
+	}
+
+	// A WALL STANDING ON THAT FLOOR, HALF WAY ALONG AN EIGHT METRE LANE. Three
+	// metres tall, so it reaches well above the creature's capsule centre and the
+	// sweep sphere cannot pass over it. Its near face is at 400 cm.
+	constexpr double WallNearFaceCm = 400.0;
+	constexpr double WallTopCm = 200.0;
+	if (!MakeSolid(World, FVector(420.0f, 0.0f, 50.0f), FRotator::ZeroRotator,
+				   FVector(20.0f, 400.0f, 150.0f)))
+	{
+		AddError(TEXT("could not build the wall"));
+		return false;
+	}
+
+	ACataclysmAbyssalWardenCharacter* Warden =
+		SpawnWarden(World, FVector::ZeroVector);
+	if (!Warden || !StandOnTheFloor(World, Warden))
+	{
+		AddError(TEXT("could not put an Abyssal Warden on the floor"));
+		return false;
+	}
+
+	const double BodyRadiusCm =
+		Warden->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const double StartedAtZ = Warden->GetActorLocation().Z;
+
+	// THE WALL IS TALLER THAN THE HEIGHT CHECK CAN SEE, which is what makes this
+	// test about the sweep. The height check traces straight DOWN from the
+	// creature's capsule centre, so a surface above that centre is not something it
+	// can find; only the sweep can stop the charge on this.
+	TestTrue(
+		*FString::Printf(
+			TEXT("the wall's top at %.0f cm is above the creature's capsule "
+				 "centre at %.0f cm, so the downward floor trace cannot see it"),
+			WallTopCm, StartedAtZ),
+		WallTopCm > StartedAtZ);
+
+	const FChargeReading Ran =
+		ChargeDownPositiveX(World, Warden, Warden_t::StampedeRangeCm);
+
+	TestFalse(TEXT("the charge ended at the wall"), Ran.bStillCharging);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("it did not travel the whole %.0f cm lane; it travelled %.0f"),
+			static_cast<double>(Warden_t::StampedeRangeCm), Ran.TravelledCm),
+		Ran.TravelledCm < static_cast<double>(Warden_t::StampedeRangeCm) - 1.0);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("it did reach the wall rather than stopping at the start; it "
+				 "travelled %.0f cm of the 400 to reach it"), Ran.TravelledCm),
+		Ran.TravelledCm > 300.0);
+
+	// ONE BODY RADIUS SHORT OF THE WALL, AND THAT FIGURE IS THE EVIDENCE. The
+	// sweep is a sphere of the capsule's radius centred on the creature, so a
+	// sphere stopped against a flat face leaves its centre exactly one radius out.
+	//
+	// IT IS ALSO WHAT SEPARATES THIS FROM THE OTHER WAY A CHARGE CAN END. The
+	// height check refuses a step without moving the creature at all, which would
+	// leave it at a whole number of 19 cm frames from the start -- 343 cm or 362,
+	// not 352. So this reading could not have been produced by the height check.
+	const double ShortOfTheWallCm = WallNearFaceCm - Ran.EndedAtX;
+	TestEqual(
+		*FString::Printf(
+			TEXT("it stopped one body radius short of the wall's near face; it "
+				 "stopped %.1f cm short and its radius is %.0f"),
+			ShortOfTheWallCm, BodyRadiusCm),
+		ShortOfTheWallCm, BodyRadiusCm, 5.0);
+
+	// AND IT IS LEFT STANDING ON THE FLOOR ON THE NEAR SIDE, not inside the wall
+	// and not on top of it.
+	bool bFoundFloorAtTheEnd = false;
+	const double EndedOffTheFloorCm =
+		HeightAboveTheFloor(World, Warden, bFoundFloorAtTheEnd);
+	TestTrue(TEXT("there is floor under where it ended"), bFoundFloorAtTheEnd);
+	TestEqual(TEXT("it is left standing on that floor"),
+		EndedOffTheFloorCm, 0.0, 0.01);
+	TestEqual(TEXT("and at the height it set off at, not on top of the wall"),
+		Ran.EndedAtZ, StartedAtZ, 0.01);
+
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS
