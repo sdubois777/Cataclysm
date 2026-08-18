@@ -192,7 +192,11 @@ def test_the_document_invents_nothing(split, forge_section):
         re.split(r"\s*\(", str(row[0] or "").strip())[0]
         for row in materials + actions
     }
-    # Only check the two tables this file owns, found by their header rows.
+    # EVERY TABLE ROW IN THE SECTION IS READ, not only the two this file owns,
+    # because there is no marker saying which table a row belongs to. Header
+    # rows are skipped by name instead. Adding a table to section VII therefore
+    # means adding its header here, and the failure says which one is missing,
+    # so the cost is one line and it announces itself.
     invented = []
     for line in forge_section.splitlines():
         if not line.startswith("| ") or line.startswith("| :"):
@@ -200,6 +204,7 @@ def test_the_document_invents_nothing(split, forge_section):
         first = line.strip("|").split("|")[0].strip()
         if not first or first.startswith("**") or first in {
             "Action", "Material", "CR Range", "Item's current CR",
+            "Difficulty tier",
         }:
             continue
         # Rows of the two CR tables are numbers, not names: "0 - 99", "100+",
