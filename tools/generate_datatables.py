@@ -1212,6 +1212,155 @@ def affix_tiers(book) -> list[dict]:
     return unique(out, "Affix Tiers")
 
 
+
+def enemy_drops(book) -> list[dict]:
+    """What a kill of each enemy rarity drops, and how good it is.
+
+    THE ROW KEY IS THE ENEMY RARITY, spelt exactly as `EnemyRarities.csv` keys
+    its own rows, so the two tables join on it. That table comes from the
+    simulation's enemy model and this one from the workbook, and
+    `validate_enemy_drop_rarities` cross-checks them rather than either trusting
+    the other.
+
+    THREE NUMBERS PER RARITY, and each is checked against the rarity below it:
+
+      Gear Drops       never falls. A rarer enemy cannot give less.
+      Material Drops   never falls, for the same reason.
+      Magic Find       never falls, and a Common enemy adds none at all,
+                       because it is the baseline the ladder is read against.
+
+    AN EXPECTED COUNT RATHER THAN A CHANCE for both drop columns. A chance
+    cannot exceed one and a Cataclysm Boss drops twelve items; the fractional
+    part is rolled as a probability where the drop happens.
+    """
+    rows = list(book["Enemy Drops"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Enemy Drops")
+
+    out = []
+    seen: set[str] = set()
+    for index, raw in enumerate(rows[1:], start=2):
+        rarity = _cell(raw, headers, "Enemy Rarity")
+        if not rarity:
+            continue
+        if rarity in seen:
+            raise DataError(f"Enemy Drops row {index}: {rarity} appears twice")
+        seen.add(rarity)
+
+        gear = number(_cell(raw, headers, "Gear Drops"), "Gear Drops", index)
+        materials = number(_cell(raw, headers, "Material Drops"),
+                           "Material Drops", index)
+        for what, value in (("gear", gear), ("crafting material", materials)):
+            if value <= 0.0:
+                raise DataError(
+                    f"Enemy Drops row {index}: a {rarity} drops {value:g} "
+                    f"{what} items. Loot quantity multiplies this, so no amount "
+                    "of it would make a rate of zero produce anything.")
+
+        magic_find = number(_cell(raw, headers, "Magic Find") or 0,
+                            "Magic Find", index)
+        if magic_find < 0.0:
+            raise DataError(
+                f"Enemy Drops row {index}: a {rarity} adds {magic_find:g} magic "
+                "find. It is an added percentage and cannot be negative.")
+
+        out.append({
+            "Name": row_name(rarity),
+            "EnemyRarity": rarity,
+            "Step": int(number(_cell(raw, headers, "Step"), "Step", index)),
+            "GearDrops": gear,
+            "MaterialDrops": materials,
+            "MagicFind": magic_find,
+        })
+
+    if not out:
+        raise DataError("Enemy Drops has no rows")
+
+    if out[0]["MagicFind"] != 0.0:
+        raise DataError(
+            f"Enemy Drops: the weakest rarity, {out[0]['EnemyRarity']}, adds "
+            f"{out[0]['MagicFind']:g} magic find rather than none. It is the "
+            "baseline the whole ladder is read against.")
+
+    if [row["Step"] for row in out] != list(range(len(out))):
+        raise DataError(
+            "Enemy Drops: the Step column has to run from 0 upward in row "
+            f"order, and it reads {[row['Step'] for row in out]}")
+
+    for below, above in zip(out[:-1], out[1:], strict=True):
+        rising = (f"a {above['EnemyRarity']} is rarer than a "
+                  f"{below['EnemyRarity']} and")
+        for column, what in (("GearDrops", "gear"),
+                             ("MaterialDrops", "crafting materials"),
+                             ("MagicFind", "magic find")):
+            if above[column] < below[column]:
+                raise DataError(
+                    f"Enemy Drops: {rising} gives less {what} "
+                    f"({above[column]:g} against {below[column]:g})")
+
+    return unique(out, "Enemy Drops")
+
+
+def material_tiers(book) -> list[dict]:
+    """How heavily each crafting material tier is weighted on a drop.
+
+    THE TIERS MUST RUN FROM 1 WITH NO GAP, for the same reason the affix tiers
+    must: the roll walks every rung, so a missing one is a rung the cascade has
+    no weight for rather than one that never comes up.
+
+    THE MATERIALS COLUMN IS A COUNT, not a list. It says how many crafting
+    materials share the tier, which is what turns "one drop in 341 is Extremely
+    Rare" into "one drop in 1,023 is Purified Essence" -- the figure the weights
+    were actually chosen against. `validate_material_tier_counts` checks it
+    against the Crafting sheet, where the materials really are.
+    """
+    rows = list(book["Material Tiers"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Material Tiers")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        cell = _cell(raw, headers, "Tier")
+        if not cell:
+            continue
+        tier = int(number(cell, "Tier", index))
+
+        name = _cell(raw, headers, "Tier Name")
+        if not name:
+            raise DataError(f"Material Tiers row {index}: tier {tier} has no "
+                            "name, and the Crafting sheet names its tiers")
+
+        weight = number(_cell(raw, headers, "Drop Weight"), "Drop Weight", index)
+        if weight <= 0.0:
+            raise DataError(f"Material Tiers row {index}: {name} has a drop "
+                            f"weight of {weight:g}, so it can never roll")
+
+        materials = number(_cell(raw, headers, "Materials"), "Materials", index)
+        if materials < 1:
+            raise DataError(f"Material Tiers row {index}: {name} holds "
+                            f"{materials:g} materials, so rolling it would give "
+                            "nothing")
+
+        out.append({
+            "Name": row_name(f"T{tier}"),
+            "Tier": tier,
+            "TierName": name,
+            "DropWeight": weight,
+            "Materials": int(materials),
+        })
+
+    if [row["Tier"] for row in out] != list(range(1, len(out) + 1)):
+        raise DataError("Material Tiers must list every tier from 1 upward in "
+                        f"order, and it lists {[r['Tier'] for r in out]}")
+
+    for below, above in zip(out[:-1], out[1:], strict=True):
+        if above["DropWeight"] > below["DropWeight"]:
+            raise DataError(
+                f"Material Tiers: {above['TierName']} is above "
+                f"{below['TierName']} and rolls more often "
+                f"({above['DropWeight']:g} against {below['DropWeight']:g})")
+
+    return unique(out, "Material Tiers")
+
+
 #: The two slots that are allowed to have no cooldown, and the reason each has
 #: none. The Basic Attack is automatic, so the weapon's attack speed sets its
 #: rate; the Aura is a toggle, so there is nothing to wait for. Any other slot
@@ -1875,6 +2024,8 @@ TABLES = {
     "GearRarity": gear_rarity,
     "ItemSockets": item_sockets,
     "AffixTiers": affix_tiers,
+    "EnemyDrops": enemy_drops,
+    "MaterialTiers": material_tiers,
     "ClassStats": class_stats,
     "MinionTypes": minion_types,
     "MinionScaling": minion_scaling,
@@ -1994,6 +2145,95 @@ def validate_socket_slots(tables: dict[str, list[dict]]) -> list[str]:
         problems.append(
             f"ItemSockets: a socket maximum for {slot} at {hands} hand(s), "
             "which no item base occupies")
+    return problems
+
+
+
+def validate_enemy_drop_rarities(tables: dict[str, list[dict]]) -> list[str]:
+    """The Enemy Drops sheet and the enemy rarity ladder must name the same
+    rarities, in the same order.
+
+    THE TWO COME FROM DIFFERENT PLACES, which is why this is worth checking.
+    `EnemyRarities.csv` is generated from `sim/cataclysm_sim/enemy_stats.py`,
+    whose ladder is in turn a port of the external DungeonSimulator power model.
+    `EnemyDrops.csv` is typed into the workbook. A rarity added to one and not
+    the other is a rarity that either drops nothing or drops for a creature that
+    cannot exist, and nothing else would report it.
+
+    ORDER TOO, NOT ONLY MEMBERSHIP, because both tables carry a Step column
+    saying where a rarity sits and the two have to agree about that as well.
+    """
+    drops = tables.get("EnemyDrops")
+    rarities = tables.get("EnemyRarities")
+    if not drops or not rarities:
+        return []
+
+    problems = []
+    dropping = [row["Name"] for row in drops]
+    known = [row["Name"] for row in rarities]
+    if dropping != known:
+        problems.append(
+            f"EnemyDrops names {dropping} and EnemyRarities names {known}. "
+            "They have to be the same rarities in the same order; the ladder "
+            "comes from the simulation's enemy model and is not the workbook's "
+            "to change.")
+        return problems
+
+    for drop, rarity in zip(drops, rarities, strict=True):
+        if drop["Step"] != rarity["Step"]:
+            problems.append(
+                f"EnemyDrops/{drop['Name']}: Step {drop['Step']} against "
+                f"{rarity['Step']} in EnemyRarities")
+    return problems
+
+
+#: `Tier 3 (Rare). Drop from Dungeon Bosses/Elites.` -- the tier and its name.
+MATERIAL_TIER_AND_SOURCE = re.compile(r"Tier\s*(\d)\s*\(([^)]+)\)")
+
+
+def validate_material_tier_counts(tables: dict[str, list[dict]]) -> list[str]:
+    """Every material tier's stated count must match how many materials it has.
+
+    THE COUNT IS NOT DECORATION. How often a NAMED top-tier material drops is
+    the tier's share divided by this number, and Purified Essence -- the only
+    thing that clears the Consumption Threshold -- is one of three that share
+    the top tier. A wrong count here makes that figure wrong and nothing else
+    notices.
+
+    Counted off the Crafting sheet through `CraftingMaterials`, which is where
+    the materials actually are, rather than trusting either restatement.
+    """
+    tiers = tables.get("MaterialTiers")
+    materials = tables.get("CraftingMaterials")
+    if not tiers or not materials:
+        return []
+
+    counted: dict[str, int] = {}
+    for row in materials:
+        found = MATERIAL_TIER_AND_SOURCE.match(row["TierAndSource"])
+        if found:
+            counted[found.group(2)] = counted.get(found.group(2), 0) + 1
+
+    if not counted:
+        return ["MaterialTiers: no 'Tier N (Name)' cell could be read out of "
+                "CraftingMaterials, so the counts could not be checked at all"]
+
+    problems = []
+    for row in tiers:
+        real = counted.get(row["TierName"])
+        if real is None:
+            problems.append(
+                f"MaterialTiers/{row['Name']}: no crafting material is in a "
+                f"tier called {row['TierName']!r}")
+        elif real != row["Materials"]:
+            problems.append(
+                f"MaterialTiers/{row['Name']}: says {row['Materials']} "
+                f"materials, and CraftingMaterials has {real}")
+
+    for name in sorted(set(counted) - {row["TierName"] for row in tiers}):
+        problems.append(
+            f"MaterialTiers: CraftingMaterials has {counted[name]} material(s) "
+            f"in a tier called {name!r}, and MaterialTiers has no such row")
     return problems
 
 
@@ -2393,6 +2633,8 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weights(tables)
                 + validate_affix_slots(tables)
                 + validate_socket_slots(tables)
+                + validate_enemy_drop_rarities(tables)
+                + validate_material_tier_counts(tables)
                 + validate_weapon_skill_types(tables)
                 + validate_weapon_skill_damage_types(tables, declared_tags(book))
                 + validate_weapon_tags(tables, declared_tags(book))

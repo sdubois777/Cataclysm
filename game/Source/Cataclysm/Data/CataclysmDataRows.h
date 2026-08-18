@@ -1122,6 +1122,104 @@ struct FCataclysmEnemyArchetypeRow : public FTableRowBase
  * Boss, matching scoring.RARITY_WEIGHTS, which is authoritative. The design
  * document's older list is superseded; see issue #30.
  */
+/**
+ * What a kill of one enemy rarity drops. Source: Enemy Drops.
+ *
+ * THE ROW KEY IS THE SAME AS FCataclysmEnemyRarityRow's, so the two tables join
+ * on it: "Common" through "Cataclysm_Boss". That one carries what the creature
+ * IS -- how much health and damage its score buys -- and this one carries what
+ * killing it gives.
+ *
+ * ITEMS DROP FROM ENEMIES RATHER THAN FROM FLOORS, decided by the project owner
+ * on 2026-08-18. A floor's total is therefore whatever its enemies happened to
+ * be, which the dungeon generator decides rather than this table.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEnemyDropRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "Common", "Elite", "Legendary", "Herald", "Boss", "Cataclysm Boss". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
+	FString EnemyRarity;
+
+	/** How far above Common this rarity sits. 0 for Common, 5 for Cataclysm
+	 *  Boss, matching the Step on FCataclysmEnemyRarityRow. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
+	int32 Step = 0;
+
+	/**
+	 * How many gear items this kill is EXPECTED to drop, before loot quantity.
+	 *
+	 * AN EXPECTED COUNT RATHER THAN A CHANCE, which matters at both ends. A
+	 * chance cannot exceed one and a Cataclysm Boss drops twelve; and 0.16 for a
+	 * Common enemy rounds to nothing, so the fraction is rolled as a probability
+	 * instead. See UCataclysmDropRoll::RollDropCount.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
+	float GearDrops = 0.0f;
+
+	/** The same, for crafting materials, which drop on a separate roll. Twice
+	 *  the gear figure: a craft consumes a material and gear is kept. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
+	float MaterialDrops = 0.0f;
+
+	/**
+	 * How much magic find this kill adds to its own drops, as an added
+	 * percentage. It is ADDED to the player's own rather than multiplied by it.
+	 *
+	 * THIS IS HOW A RARER ENEMY DROPS BETTER GEAR. Expressing it as magic find
+	 * means no new mechanic: the rarity cascade already multiplies every rung by
+	 * magic find. A direct mapping was considered and has no form, because there
+	 * are six enemy rarities and eight gear rarities.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
+	float MagicFind = 0.0f;
+};
+
+/**
+ * How heavily one crafting material tier is weighted on a drop.
+ * Source: Material Tiers.
+ *
+ * EACH TIER IS FOUR TIMES RARER THAN THE ONE BELOW: 256, 64, 16, 4, 1. So an
+ * Extremely Rare material is one material drop in 341.
+ *
+ * NO DIFFICULTY TIER CAP, UNLIKE GEAR RARITY. The design gates gear rarity, gem
+ * rarity, upgrade stones and weapon damage types on the difficulty tier and says
+ * nothing about materials, so a shallow dungeon can produce an Extremely Rare
+ * one. Rarely, and that is a windfall.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmMaterialTierRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** 1 to 5. Also the row key, written "T1" through "T5". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Material Tier")
+	int32 Tier = 0;
+
+	/** "Common", "Uncommon", "Rare", "Very Rare", "Extremely Rare", as the
+	 *  Crafting sheet names them. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Material Tier")
+	FString TierName;
+
+	/** This tier's share of every tier's weight. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Material Tier")
+	float DropWeight = 0.0f;
+
+	/**
+	 * How many crafting materials share this tier.
+	 *
+	 * NOT DECORATION. How often a NAMED material drops is the tier's share
+	 * divided by this, and Purified Essence -- the only thing that clears the
+	 * Consumption Threshold -- is one of the three in the top tier, which puts
+	 * it at one material drop in 1,023. That figure is what the weights above
+	 * were chosen against.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Material Tier")
+	int32 Materials = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FCataclysmEnemyRarityRow : public FTableRowBase
 {

@@ -172,6 +172,14 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Cataclysm Boss, matching scoring.RARITY_WEIGHTS. There is no "Rare": the
 	// design document's older list is superseded, which is issue #30.
 	CHECK_TABLE(FCataclysmEnemyRarityRow,       "EnemyRarities.csv",           6)
+	// 6, and it must be the same six. EnemyRarities comes from the simulation's
+	// enemy model and this comes from the workbook, so the generator
+	// cross-checks that they name the same rarities in the same order.
+	CHECK_TABLE(FCataclysmEnemyDropRow,         "EnemyDrops.csv",              6)
+	// 5: Common, Uncommon, Rare, Very Rare, Extremely Rare, as the Crafting
+	// sheet names them. The Materials column on each is checked against how
+	// many crafting materials really are in that tier.
+	CHECK_TABLE(FCataclysmMaterialTierRow,      "MaterialTiers.csv",           5)
 	// 8: one per damage type, and it is the same eight for good. The generator
 	// refuses to build this table unless every Element.* tag on the workbook's
 	// Tags sheet has exactly one row, so a ninth damage type raises this number
@@ -350,12 +358,14 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },
 		{ TEXT("DT_EnchantmentsPositive"),  TEXT("EnchantmentsPositive.csv") },
 		{ TEXT("DT_EnemyArchetypes"),       TEXT("EnemyArchetypes.csv") },
+		{ TEXT("DT_EnemyDrops"),            TEXT("EnemyDrops.csv") },
 		{ TEXT("DT_EnemyModifiers"),        TEXT("EnemyModifiers.csv") },
 		{ TEXT("DT_EnemyRarities"),         TEXT("EnemyRarities.csv") },
 		{ TEXT("DT_GearRarity"),            TEXT("GearRarity.csv") },
 		{ TEXT("DT_Gems"),                  TEXT("Gems.csv") },
 		{ TEXT("DT_ItemBases"),             TEXT("ItemBases.csv") },
 		{ TEXT("DT_ItemSockets"),           TEXT("ItemSockets.csv") },
+		{ TEXT("DT_MaterialTiers"),         TEXT("MaterialTiers.csv") },
 		{ TEXT("DT_MinionScaling"),         TEXT("MinionScaling.csv") },
 		{ TEXT("DT_MinionTypes"),           TEXT("MinionTypes.csv") },
 		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },

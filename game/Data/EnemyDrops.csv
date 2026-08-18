@@ -1,0 +1,7 @@
+Name,EnemyRarity,Step,GearDrops,MaterialDrops,MagicFind
+Common,Common,0,0.16,0.32,0.0
+Elite,Elite,1,0.5,1.0,50.0
+Legendary,Legendary,2,1.0,2.0,100.0
+Herald,Herald,3,2.0,4.0,150.0
+Boss,Boss,4,5.0,10.0,300.0
+Cataclysm_Boss,Cataclysm Boss,5,12.0,24.0,500.0
