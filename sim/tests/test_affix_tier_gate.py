@@ -135,25 +135,66 @@ def test_a_tier_one_drop_can_only_be_tier_one_or_two():
     assert {af.roll_affix_tier(1, rng) for _ in range(200)} == {1, 2}
 
 
-def test_the_draw_is_uniform_across_the_allowed_tiers():
-    """Uniform is the simplest rule that keeps every tier below the cap in the
-    pool, and it invents no constant. If this is ever tuned to lean high, this
-    test is the one to change, and the decision belongs in docs/DECISIONS.md."""
+def test_each_tier_is_half_as_likely_as_the_one_below():
+    """The shape the project owner set on 2026-08-18, replacing a uniform draw.
+
+    Stated as the ratio rather than as the seven shares, because the ratio is
+    the decision and the shares follow from it.
+    """
+    weights = af.AFFIX_TIER_DROP_WEIGHT
+    for lower in af.AFFIX_TIERS[:-1]:
+        assert weights[lower] / weights[lower + 1] == pytest.approx(2.0)
+
+
+def test_a_top_tier_affix_is_one_in_a_hundred_and_twenty_seven():
+    """At difficulty tier 8, where all seven tiers are reachable."""
+    share = af.affix_tier_distribution(8)[7]
+    assert 1 / share == pytest.approx(127, rel=0.001)
+
+
+def test_half_of_every_affix_that_drops_is_the_lowest_tier():
+    """Which is the point of the shape: a drop is raw material for crafting,
+    and crafting is what raises an affix to T7."""
+    assert af.affix_tier_distribution(8)[1] == pytest.approx(0.5039, abs=0.001)
+
+
+def test_rolling_agrees_with_the_exact_distribution():
+    """Two separate pieces of code must describe the same thing: the arithmetic
+    in `affix_tier_distribution` and the draw `roll_affix_tier` actually makes.
+
+    70,000 draws puts the standard error of any share below 0.2%, so half a
+    percentage point cannot fail by chance.
+    """
     rng = random.Random(99)
-    counts = Counter(af.roll_affix_tier(8, rng) for _ in range(70000))
-    expected = 70000 / af.max_affix_tier_on_a_drop(8)
-    for tier, count in counts.items():
-        assert abs(count - expected) < expected * 0.1, (
-            f"T{tier} came up {count} times against an expected {expected:.0f}")
+    draws = 70000
+    counts = Counter(af.roll_affix_tier(8, rng) for _ in range(draws))
+    expected = af.affix_tier_distribution(8)
+
+    for affix_tier in af.AFFIX_TIERS:
+        seen = counts[affix_tier] / draws
+        assert seen == pytest.approx(expected[affix_tier], abs=0.005), (
+            f"T{affix_tier} came up {seen:.3%} against a predicted "
+            f"{expected[affix_tier]:.3%}")
 
 
-def test_the_average_drop_at_the_deepest_tier_is_the_middle_tier():
-    """What the gate is worth in practice: a raw tier 8 drop is worth about four
-    sevenths of a perfect one, and crafting closes the rest."""
+def test_nothing_above_the_cap_can_roll():
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        spread = af.affix_tier_distribution(tier)
+        cap = af.max_affix_tier_on_a_drop(tier)
+        for affix_tier in range(cap + 1, af.AFFIX_TIERS[-1] + 1):
+            assert spread[affix_tier] == 0.0
+
+
+def test_the_average_drop_is_low_and_crafting_closes_the_rest():
+    """What the weights are worth in practice. A raw tier 8 drop averages just
+    under T2 of a possible T7, so almost all of an affix's value is crafted.
+
+    THIS REPLACED A TEST EXPECTING THE MIDDLE TIER, which was true while the
+    draw was uniform.
+    """
     rng = random.Random(5)
     rolls = [af.roll_affix_tier(8, rng) for _ in range(20000)]
-    expected = (af.max_affix_tier_on_a_drop(8) + 1) / 2
-    assert abs(sum(rolls) / len(rolls) - expected) < 0.1
+    assert 1.8 < sum(rolls) / len(rolls) < 2.1
 
 
 def test_a_deeper_drop_is_better_on_average():

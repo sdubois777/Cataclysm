@@ -94,19 +94,47 @@ DROP_RARITIES_ABOVE_DIFFICULTY = 1
 #: package; `tools/tests/test_loot_sheet_matches_the_model.py` fails when the two
 #: disagree, and the fix is to change this table rather than the sheet.
 #:
-#: WHAT A WEIGHT MEANS. Its share of every reachable rarity's weight. Equal
-#: weights therefore give a flat distribution, which is what all eight being 1
-#: does today. See the module docstring for why flat is generous and why it ships
-#: anyway.
+#: WHAT A WEIGHT MEANS. Its share of every reachable rarity's weight.
+#:
+#: THE LADDER FALLS IN TWO SEGMENTS, SPLIT WHERE THE DESIGN SPLITS IT. The four
+#: lower rarities carry only regular affixes; the four upper ones carry
+#: enchantments and are gated on upgrade level. That is a real boundary rather
+#: than another rung, so each half falls at its own rate with a step between them:
+#:
+#:     the four ordinary rarities   each 2.5 times rarer than the one below
+#:     the enchantment boundary     a step of 8
+#:     the four enchanted rarities  each 5 times rarer than the one below
+#:
+#: Which gives 15625, 6250, 2500, 1000 | 125, 25, 5, 1, summing to 25,531. So a
+#: Cataclysmic drop is one in 25,531 with no magic find at difficulty tier 8.
+#:
+#: WHY NOT ONE RATIO FOR THE WHOLE LADDER, which was the simpler proposal. A
+#: single ratio cannot make the top rare without dragging Masterful down with it:
+#: aimed at one Cataclysmic in 20,000 it puts Masterful at one in 82, against one
+#: in 26 here. **Masterful has to stay common**, because it is the top of the
+#: ordinary ladder and `docs/Cataclysm_GDD_v2.md` fits its affix values against "a
+#: full set of Masterful gear" -- and because crafting promotes a piece upward
+#: from there, so it is the supply line rather than the destination.
+#:
+#: WHICH IS THE POINT THE WHOLE SHAPE RESTS ON: A DROP IS RAW MATERIAL. The design
+#: says adding an affix promotes a piece and applying an enchantment promotes it
+#: further, all the way to Cataclysmic. So crafting is the intended route to the
+#: top of the ladder and a dropped Cataclysmic is a windfall, not the expected
+#: way to own one. That is what makes one in 25,531 right rather than punishing.
+#:
+#: THE FLAT WEIGHTS THIS REPLACED were every rarity at 1, shipped as a first value
+#: and flagged at the time as too generous -- one drop in eight was Cataclysmic.
+#: The project owner set the shape on 2026-08-18 after rejecting one in 255 as
+#: still too generous.
 RARITY_DROP_WEIGHT: dict[str, float] = {
-    "Everyday":    1.0,
-    "Quality":     1.0,
-    "Superb":      1.0,
-    "Masterful":   1.0,
-    "Legendary":   1.0,
-    "Mythical":    1.0,
-    "Ascendant":   1.0,
-    "Cataclysmic": 1.0,
+    "Everyday":    15625.0,
+    "Quality":      6250.0,
+    "Superb":       2500.0,
+    "Masterful":    1000.0,
+    "Legendary":     125.0,
+    "Mythical":       25.0,
+    "Ascendant":       5.0,
+    "Cataclysmic":     1.0,
 }
 
 #: The residue at which crafting an item starts costing real in-game days.

@@ -77,31 +77,61 @@ def test_a_distribution_covers_every_rarity_including_unreachable_ones():
     assert spread["Cataclysmic"] == 0.0
 
 
-def test_the_flat_weights_shipped_today_give_a_flat_distribution():
-    """Every weight is 1, so every reachable rarity is equally likely.
+def test_the_weights_fall_in_two_segments_split_at_the_enchantment_boundary():
+    """The shape the project owner set on 2026-08-18.
 
-    Stated as a test rather than left implicit, because the flatness is the
-    number most likely to be changed first and this is what will show it moving.
+    Written out as the ratios rather than as the eight shares, because the
+    ratios are the decision and the shares follow from them: the four ordinary
+    rarities each 2.5 times rarer than the one below, a step of 8 at the
+    boundary, then the four enchanted rarities each 5 times rarer.
     """
-    spread = loot.rarity_distribution(8)
-    for rarity in af.RARITIES:
-        assert spread[rarity] == pytest.approx(1 / 8, abs=1e-9)
+    weight = loot.RARITY_DROP_WEIGHT
+
+    for lower, higher in (("Everyday", "Quality"), ("Quality", "Superb"),
+                          ("Superb", "Masterful")):
+        assert weight[lower] / weight[higher] == pytest.approx(2.5)
+
+    assert weight["Masterful"] / weight["Legendary"] == pytest.approx(8.0)
+
+    for lower, higher in (("Legendary", "Mythical"), ("Mythical", "Ascendant"),
+                          ("Ascendant", "Cataclysmic")):
+        assert weight[lower] / weight[higher] == pytest.approx(5.0)
+
+
+def test_a_cataclysmic_drop_is_one_in_twenty_five_thousand():
+    """The figure the project owner chose, after one in 255 was rejected as too
+    generous. At difficulty tier 8 with no magic find."""
+    share = loot.rarity_distribution(8)["Cataclysmic"]
+    assert 1 / share == pytest.approx(25531, rel=0.001)
+
+
+def test_masterful_stays_common_enough_to_craft_with():
+    """The reason the ladder falls in two segments rather than one.
+
+    Masterful is the top of the ordinary ladder, and `docs/Cataclysm_GDD_v2.md`
+    fits its affix values against a full set of it. Crafting promotes a piece
+    upward from there, so it is the supply line rather than the destination. A
+    single ratio steep enough to make Cataclysmic this rare would have put
+    Masterful past one in 80.
+    """
+    share = loot.rarity_distribution(8)["Masterful"]
+    assert 1 / share < 40
 
 
 def test_the_distribution_follows_the_weights_rather_than_the_ladder():
     """Change a weight and the share changes with it.
 
-    A CHECK THAT COULD NOT FAIL OTHERWISE. Every weight shipped today is 1, so
-    every test above passes just as well if the weights are ignored entirely and
-    the cascade is hard-coded flat. This one makes one rarity three times as
-    heavy and requires the outcome to move.
+    A CHECK ON THE MECHANISM RATHER THAN THE NUMBERS. It replaces the shipped
+    weights with a flat set and makes one rarity three times as heavy, so it
+    still fails if the cascade ever stops reading the table -- and it does not
+    have to be rewritten every time the shipped weights are tuned.
     """
-    heavier = dict(loot.RARITY_DROP_WEIGHT)
-    heavier["Superb"] = 3.0
+    flat = dict.fromkeys(loot.RARITY_DROP_WEIGHT, 1.0)
+    flat["Superb"] = 3.0
 
     original = loot.RARITY_DROP_WEIGHT
     try:
-        loot.RARITY_DROP_WEIGHT = heavier
+        loot.RARITY_DROP_WEIGHT = flat
         spread = loot.rarity_distribution(8)
     finally:
         loot.RARITY_DROP_WEIGHT = original
@@ -391,16 +421,24 @@ def test_a_split_never_exceeds_either_cap_or_loses_a_slot():
 
 
 def test_a_cataclysmic_item_carries_no_regular_affixes():
-    """Four enchantments and nothing else, which is what the design says it is."""
+    """Four enchantments and nothing else, which is what the design says it is.
+
+    A MAGIC FIND NO CHARACTER COULD HAVE, on purpose. A Cataclysmic drop is one
+    in 25,531 at difficulty tier 8, so rolling until one appears would take a
+    hundred thousand items and several seconds. Magic find multiplies the top
+    rung's chance until it saturates at certainty, which is the real code path
+    rather than a hand-built item.
+    """
     rng = random.Random(1234)
     seen = False
-    for _ in range(4000):
-        item = loot.roll_item("Relic", tier=8, magic_find=600.0, rng=rng)
-        if item.rarity == "Cataclysmic":
-            seen = True
-            assert item.affixes == ()
-            assert item.enchantments == 4
-            assert item.gear_level == 10
+    for _ in range(200):
+        item = loot.roll_item("Relic", tier=8, magic_find=5_000_000.0, rng=rng)
+        if item.rarity != "Cataclysmic":
+            continue
+        seen = True
+        assert item.affixes == ()
+        assert item.enchantments == 4
+        assert item.gear_level == 10
     assert seen, "no Cataclysmic item dropped, so the assertions never ran"
 
 

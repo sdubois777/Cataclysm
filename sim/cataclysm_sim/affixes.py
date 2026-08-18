@@ -1657,22 +1657,86 @@ def max_affix_tier(tier: int) -> int:
     return max(max_affix_tier_on_a_drop(tier), max_affix_tier_by_crafting(tier))
 
 
+#: How heavily each affix tier is weighted on a drop, mirroring the Drop Weight
+#: column of the Affix Tiers sheet in `docs/All_Things_Cataclysm.xlsx`.
+#:
+#: EACH TIER IS HALF AS LIKELY AS THE ONE BELOW IT, set by the project owner on
+#: 2026-08-18. Which makes a T7 affix one in 127 at difficulty tier 8, where all
+#: seven are reachable, and half of every affix that drops a T1.
+#:
+#: WHAT THIS REPLACED, AND WHY IT WAS WRONG. The draw was uniform, so nearly 15%
+#: of affixes at difficulty tier 8 came out at T7. Uniform was chosen as the rule
+#: that "invents no constant", and the test guarding it said in its own docstring
+#: that it was the one to change if this were ever tuned to lean high.
+#:
+#: THE GENRE WEIGHTS THESE, and the argument for uniform read across from a
+#: different question. Path of Exile is cited above for WHICH tiers a drop can
+#: reach, and it expands that range with item level; how LIKELY each one is, is a
+#: separate matter, and there the higher tiers are rarer rather than equal.
+#:
+#: AND CRAFTING IS THE ROUTE TO T7, WHICH IS WHY A RARE DROP IS NOT PUNISHING.
+#: `max_affix_tier_by_crafting` has no gate at all -- "an affix can be raised as
+#: high as the player can afford" -- so a drop is the raw material and the
+#: Potency Crystal is how a build reaches the top. The same reasoning set the gear
+#: rarity drop weights; `docs/DECISIONS.md` records both.
+AFFIX_TIER_DROP_WEIGHT: dict[int, float] = {
+    1: 64.0,
+    2: 32.0,
+    3: 16.0,
+    4:  8.0,
+    5:  4.0,
+    6:  2.0,
+    7:  1.0,
+}
+
+
+def affix_tier_weights_up_to(cap: int) -> list[float]:
+    """The weight of each tier from T1 up to `cap`, in order."""
+    if cap not in AFFIX_TIERS:
+        raise ValueError(f"T{cap} is not an affix tier; expected one of "
+                         f"{list(AFFIX_TIERS)}")
+    return [AFFIX_TIER_DROP_WEIGHT[t] for t in range(1, cap + 1)]
+
+
+def affix_tier_distribution(tier: int) -> dict[int, float]:
+    """What fraction of affixes dropping at this difficulty tier is each tier.
+
+    Exact rather than sampled, so a test can check the shape without rolling
+    seventy thousand affixes and then arguing about noise. Tiers above the cap
+    are present and carry zero.
+    """
+    cap = max_affix_tier_on_a_drop(tier)
+    weights = affix_tier_weights_up_to(cap)
+    total = sum(weights)
+
+    out = dict.fromkeys(AFFIX_TIERS, 0.0)
+    for affix_tier, weight in zip(range(1, cap + 1), weights, strict=True):
+        out[affix_tier] = weight / total
+    return out
+
+
 def roll_affix_tier(tier: int, rng) -> int:
     """The tier one affix rolls at on a drop at this difficulty tier.
 
-    Uniform from T1 up to `max_affix_tier_on_a_drop(tier)`, which is the
-    difficulty tier plus one, capped at T7. Every tier at or below that stays in
-    the pool, so a deep drop is better on average without being predictable,
-    which is what makes a drop worth reading.
+    WHICH TIERS ARE REACHABLE is `max_affix_tier_on_a_drop(tier)`, the difficulty
+    tier plus one capped at T7. Every tier at or below that stays in the pool, so
+    a deep drop is better on average without being predictable, which is what
+    makes a drop worth reading.
 
-    That is what the genre does. Path of Exile gates modifier tiers on item
+    That part is what the genre does. Path of Exile gates modifier tiers on item
     level, and item level expands which tiers are available rather than removing
     the low ones, so a high item level gives better potential and guarantees
     nothing. Last Epoch gates the same way on area level. It is also the shape
     this design already uses one section away: a weapon rolls from one damage
     type up to the lower of its own limit and the tier it dropped on.
+
+    HOW LIKELY EACH REACHABLE TIER IS comes from AFFIX_TIER_DROP_WEIGHT, and each
+    is half as likely as the one below. This was uniform until 2026-08-18; see
+    that table for why it changed and what it means.
     """
-    return rng.randint(1, max_affix_tier_on_a_drop(tier))
+    cap = max_affix_tier_on_a_drop(tier)
+    weights = affix_tier_weights_up_to(cap)
+    return rng.choices(range(1, cap + 1), weights=weights, k=1)[0]
 
 
 def max_damage_types(hands: int, tier: int) -> int:
@@ -2400,6 +2464,28 @@ def total_pool_size() -> int:
 # What has to stay true as the pool grows
 # --------------------------------------------------------------------------
 
+def _check_every_affix_tier_has_a_drop_weight() -> None:
+    missing = set(AFFIX_TIERS) - set(AFFIX_TIER_DROP_WEIGHT)
+    extra = set(AFFIX_TIER_DROP_WEIGHT) - set(AFFIX_TIERS)
+    if missing or extra:
+        raise AssertionError(
+            "the affix tier drop weights do not match the seven tiers: "
+            f"missing {sorted(missing)}, unexpected {sorted(extra)}")
+
+
+def _check_a_higher_affix_tier_is_never_more_likely() -> None:
+    """A better roll must not be commoner than a worse one at any step."""
+    weights = [AFFIX_TIER_DROP_WEIGHT[t] for t in AFFIX_TIERS]
+    for lower, higher in zip(weights, weights[1:], strict=False):
+        if higher > lower:
+            raise AssertionError(
+                f"the affix tier weights rise somewhere along the ladder: "
+                f"{weights}")
+        if higher <= 0.0:
+            raise AssertionError(
+                f"an affix tier has a weight of {higher}, so it can never roll")
+
+
 def _check_every_slot_can_fill_all_four_of_its_affixes() -> None:
     """A slot with fewer prefixes than it has prefix slots would roll duplicates
     or blanks. Checked per position, because the split makes the two separate
@@ -2831,6 +2917,8 @@ def _check_only_a_two_handed_weapon_multiplies_its_values() -> None:
                 f"{base.value_multiplier}, expected {expected}")
 
 
+_check_every_affix_tier_has_a_drop_weight()
+_check_a_higher_affix_tier_is_never_more_likely()
 _check_every_slot_can_fill_all_four_of_its_affixes()
 _check_the_affix_tier_gate_covers_every_difficulty_tier()
 _check_every_slot_can_fill_its_affixes_without_repeating_a_group()
