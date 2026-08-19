@@ -8,6 +8,7 @@
 #include "CataclysmPlayerCharacter.generated.h"
 
 class UCameraComponent;
+class UCataclysmInventoryComponent;
 class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
@@ -208,6 +209,18 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
 	TObjectPtr<UCataclysmWeaponSlotsComponent> WeaponSlots;
+
+	/**
+	 * The 48 carried slots. Issue #714.
+	 *
+	 * On the pawn for the same reason the weapon slots are: what is
+	 * carried is a property of the body. What happens to it on death is
+	 * not decided here and is not decided anywhere yet -- the design's
+	 * lethality modes say what happens to the CHARACTER, and issue #529
+	 * is what would have to record either answer.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Items")
+	TObjectPtr<UCataclysmInventoryComponent> Inventory;
 
 private:
 	/** Passes the attribute's new value, in metres per second, to

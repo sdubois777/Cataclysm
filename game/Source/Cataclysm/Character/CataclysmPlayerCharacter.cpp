@@ -13,6 +13,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -94,6 +95,10 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// change once there is art and a real sense of scale.
 
 	WeaponSlots = CreateDefaultSubobject<UCataclysmWeaponSlotsComponent>(TEXT("WeaponSlots"));
+
+	// WHAT THE CHARACTER CARRIES. 48 slots, fixed by the design, and
+	// empty until something picks a drop up.
+	Inventory = CreateDefaultSubobject<UCataclysmInventoryComponent>(TEXT("Inventory"));
 
 	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderBody"));
 	PlaceholderBody->SetupAttachment(RootComponent);
