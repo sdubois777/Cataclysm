@@ -131,10 +131,17 @@ def test_the_two_sentences_the_decision_rests_on_are_still_there(document):
 
 
 #: The eight rarity colours, in tier order, chosen by the project owner on
-#: 2026-08-14. Issue #602.
+#: 2026-08-14 under issue #602.
+#:
+#: THE FIRST TWO WERE SWAPPED ON 2026-08-19, under issue #711. Everyday was
+#: white and Quality grey, which is backwards from what every game of this kind
+#: does -- there grey means worthless and white means ordinary -- so a player
+#: arriving from one read the grey name as the poorer of the two when it was the
+#: better. The project owner had both on screen after loot drops were built and
+#: decided to flip them.
 RARITY_COLOURS = [
-    ("Everyday", "White"),
-    ("Quality", "Grey"),
+    ("Everyday", "Grey"),
+    ("Quality", "White"),
     ("Superb", "Green"),
     ("Masterful", "Blue"),
     ("Legendary", "Yellow"),

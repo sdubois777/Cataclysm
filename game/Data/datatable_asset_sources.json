@@ -89,7 +89,7 @@
       "asset": "DT_GearRarity",
       "csv": "GearRarity.csv",
       "rows": 8,
-      "csv_sha256": "fc3507dcfcfd595a194f4b0d5dd070ae8938c3612ef94d256955c8a6019b710f"
+      "csv_sha256": "33e5bf146c136e9102a55ef9c8065d7bd8bcaf7daf58814951fc13332f362a62"
     },
     {
       "asset": "DT_Gems",
