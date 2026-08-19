@@ -103,6 +103,10 @@ public:
 	/** The affix tier weight table, or null with the reason logged. */
 	static const UDataTable* LoadAffixTierTable();
 
+	/** The affix table, or null with the reason logged. Every affix a drop can
+	 *  roll, across the four kinds. */
+	static const UDataTable* LoadAffixTable();
+
 	/**
 	 * The GearRarity row name for a rarity: the ECataclysmRarity entry's own
 	 * name, which is what the generator writes as the key.

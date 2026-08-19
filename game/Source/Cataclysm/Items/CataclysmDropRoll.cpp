@@ -160,6 +160,12 @@ const UDataTable* UCataclysmDropRoll::LoadAffixTierTable()
 					   TEXT("Affix Tiers"));
 }
 
+const UDataTable* UCataclysmDropRoll::LoadAffixTable()
+{
+	return LoadTableAt(TEXT("/Game/Data/DT_Affixes.DT_Affixes"),
+					   TEXT("Affixes.csv"), TEXT("Affixes"));
+}
+
 FName UCataclysmDropRoll::RowNameFor(ECataclysmRarity Rarity)
 {
 	// THE ENUM'S OWN ENTRY NAME, not its UMETA display name. The generator keys

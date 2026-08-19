@@ -12,6 +12,10 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "Character/CataclysmEnemyController.h"
+// For what a kill drops. The rules live in the item module; this file
+// only says when they run and where the result lands.
+#include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -142,6 +146,30 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// player around or stand in the way of another creature for the frame it
 	// has left.
 	SetActorEnableCollision(false);
+
+	// WHAT IT DROPPED, before the actor goes away. How much and how good both
+	// follow from this creature's own rarity, which it already knows as a Step
+	// from 0 to 5.
+	//
+	// THE SEED IS THIS CREATURE AND THE MOMENT IT DIED, so two creatures dying
+	// in the same frame do not drop identical loot, and so a run is not
+	// reproducible in a way a player could exploit. A shared stream would make
+	// every kill in a frame the same.
+	//
+	// NO PLAYER MAGIC FIND OR LOOT QUANTITY IS READ YET. Both are character
+	// stats, nothing computes a character's stats at the moment of a kill, and
+	// passing the baselines is honest about that: 0% added magic find and 100%
+	// loot quantity is a character with no bonuses, which is what the design
+	// says those baselines mean.
+	if (UWorld* World = GetWorld())
+	{
+		FRandomStream Stream(GetUniqueID()
+			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+		UCataclysmDropSpawner::SpawnDropsFor(
+			World, RarityStep, /*MagicFind=*/0.0f,
+			UCataclysmDropRoll::BaselineLootQuantity, GetActorLocation(),
+			Stream);
+	}
 
 	if (UWorld* World = GetWorld())
 	{
