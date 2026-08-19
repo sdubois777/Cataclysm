@@ -40,6 +40,21 @@ public class Cataclysm : ModuleRules
 			"GameplayAbilities",
 			"GameplayTags",
 			"GameplayTasks",
+
+			// Widgets. Interface/CataclysmInventoryWidget.h derives from
+			// UUserWidget, so a UMG type appears in a public header of this
+			// module and UMG cannot be kept private the way Niagara below is.
+			// Issue #735.
+			//
+			// ALL THREE ARE NEEDED, AND ADDING ONLY UMG DOES NOT COMPILE. UMG
+			// lists Slate and SlateCore as PRIVATE dependencies of itself, so
+			// neither propagates to whoever depends on UMG, while UMG's own
+			// public headers include SlateCore headers. This is exactly the
+			// cost issue #650 recorded when the canvas heads-up display was
+			// chosen over a widget in the first place.
+			"UMG",
+			"Slate",
+			"SlateCore",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
