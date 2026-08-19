@@ -69,6 +69,15 @@ namespace CataclysmInputActionNames
 
 	/** Camera distance. A one-axis value; the mouse wheel. Positive zooms in. */
 	inline const FName Zoom = FName(TEXT("Zoom"));
+
+	/**
+	 * Open and close the carried inventory. Tapped, not held.
+	 *
+	 * ONE ACTION FOR BOTH DIRECTIONS, because it is a screen rather than a
+	 * modifier. I by default, which is where Diablo, Path of Exile and Last
+	 * Epoch all put it. Issue #731.
+	 */
+	inline const FName ToggleInventory = FName(TEXT("ToggleInventory"));
 }
 
 /**

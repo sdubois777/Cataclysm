@@ -80,6 +80,23 @@ private:
 	/** Mouse wheel. Handed to the pawn, because the camera boom lives there. */
 	void Input_Zoom(const FInputActionValue& Value);
 
+	/**
+	 * Opens and closes the carried inventory.
+	 *
+	 * HANDED STRAIGHT TO THE HEADS-UP DISPLAY, which owns whether it is drawn,
+	 * beside bShowHUD. A copy of the state here would be a second answer to the
+	 * same question. Issue #731.
+	 */
+	void Input_ToggleInventory();
+
+	/**
+	 * Whether the cursor is over an interface screen that is open right now.
+	 *
+	 * ASKS THE HEADS-UP DISPLAY, the same way DropUnderCursor does, and answers
+	 * false when there is no ACataclysmHUD, no mouse, or nothing open.
+	 */
+	bool CursorIsOverInterface() const;
+
 	/** Puts CachedDestination under the cursor. False if the cursor hit nothing. */
 	bool UpdateCachedDestination();
 
@@ -138,6 +155,19 @@ private:
 
 	/** How long the move button has been held this press, in seconds. */
 	float FollowTime = 0.0f;
+
+	/**
+	 * True when this press of the move button started on an open screen.
+	 *
+	 * DECIDED ONCE AT THE PRESS AND REMEMBERED, rather than tested again on
+	 * every frame of the hold. A player who presses on a grid cell and drags the
+	 * cursor off the panel has not ordered a move, and testing each frame would
+	 * start steering the character the moment the cursor left the edge.
+	 *
+	 * Cleared on release, and on the cancel that a mapping context change
+	 * produces, for the same reason FollowTime is.
+	 */
+	bool bPressBeganOnInterface = false;
 
 	/**
 	 * True while the stand-still modifier is held. Suppresses movement only.

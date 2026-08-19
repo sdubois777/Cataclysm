@@ -486,6 +486,23 @@ public:
 	static FString MaterialNameOf(const UDataTable* CraftingMaterialTable,
 								  FName Material);
 
+	/**
+	 * Which tier a named crafting material is, 1 to 5.
+	 *
+	 * THE OPPOSITE DIRECTION FROM THE ROLL, which is why it did not exist until
+	 * something carried a material rather than dropped one. RollMaterialTier
+	 * picks the tier and RollMaterial then picks a material inside it, so a drop
+	 * never has to ask; a carried slot stores only the material's name, so the
+	 * inventory screen does. Issue #731.
+	 *
+	 * @return 0 for a material the table does not hold, and 0 for the nineteen
+	 *         crafting ACTIONS on that sheet, which carry a tier of 0 so that
+	 *         nothing can drop "Reroll Affix Value". Zero means "no tier" rather
+	 *         than a failure.
+	 */
+	static int32 MaterialTierOf(const UDataTable* CraftingMaterialTable,
+								FName Material);
+
 	/** The colour a material of this tier has its name drawn in, or white when
 	 *  the table is missing it. */
 	static FLinearColor MaterialColourFor(const UDataTable* MaterialTierTable,
