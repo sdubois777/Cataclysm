@@ -3489,6 +3489,31 @@ Dungeon Score = round( (Common × 0.6) + (Elite × 0.2) + (Legendary × 0.15) + 
 
 **The five weights are how common each rarity is, and they sum to 1.** Cataclysm Boss is absent because it does not appear on an ordinary floor.
 
+
+
+**The same five weights decide what actually spawns.** They are not only a way
+of collapsing a floor into one number: each enemy the game places draws its
+rarity from them, so the difficulty a dungeon is priced at and the difficulty it
+presents come from one table rather than two that could drift apart. They reach
+the engine as the SpawnWeight column of `game/Data/EnemyRarities.csv`, generated
+from the model, and `UCataclysmEnemyRarity::RollRarityStep` is what draws.
+Decided on 2026-08-19, issue #508.
+
+
+
+**Each enemy draws independently; a floor is not given an exact count of each
+rung.** Diablo II does the opposite -- its `Levels.txt` gives every area a
+`MonUMin` and `MonUMax`, "Minimum - Maximum Unique and Champion Monsters Spawned
+in this Level" -- and that guarantee is worth having on a floor holding dozens of
+creatures, where the variance would show. It is not what this does yet, because
+there are no dungeon floors to hold a count. `DECISIONS.md` records where a
+minimum would go if it is wanted.
+
+
+
+**A Cataclysm Boss is placed, not drawn**, which is what the sentence above
+means in practice: its weight is zero and a weight of zero cannot come up.
+
   
 
 **There is no Rare tier.** An earlier version of this formula weighted Rare at 0.15; that rarity does not exist. The 0.15 belongs to Legendary, Herald takes 0.04 and Boss 0.01. See section X.

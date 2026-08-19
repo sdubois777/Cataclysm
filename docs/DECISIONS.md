@@ -20,6 +20,135 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — Enemy rarity spawn weights: found rather than invented
+
+**Affects:** the Dungeon Score Formula section of `docs/Cataclysm_GDD_v2.md`, a
+new SpawnWeight column on `game/Data/EnemyRarities.csv`,
+`FCataclysmEnemyRarityRow`, and `game/Config/DefaultGame.ini`. Applied. Closes
+issue #508.
+
+### What issue #508 said, and what was actually there
+
+Issue #508 was filed on 2026-08-10 saying the enemy generator's rarity spawn-pool
+weights "do not exist anywhere", and asking for genre research before proposing
+any. **They already existed, in two places that agree with each other.**
+
+`sim/cataclysm_sim/scoring.py`:
+
+```python
+# Weights used to collapse a floor's rarity spread into one Dungeon Score.
+DUNGEON_SCORE_MIX = (
+    ("Common", 0.60), ("Elite", 0.20), ("Legendary", 0.15),
+    ("Herald", 0.04), ("Boss", 0.01),
+)
+```
+
+And the Dungeon Score Formula section of `docs/Cataclysm_GDD_v2.md`, which states
+all five and then says, in as many words:
+
+> **The five weights are how common each rarity is, and they sum to 1.**
+> Cataclysm Boss is absent because it does not appear on an ordinary floor.
+
+A passing test in `tools/tests/test_enemy_score_formula.py` had also carried the
+same reading in its own docstring since it was written: "They are how common each
+rarity is on a floor, so they have to [sum to one]."
+
+**What did not exist was any way for the engine to read them**, and nothing
+anywhere drew a rarity. Every creature in every play session spawned Common
+unless a rung was typed into `game/Config/DefaultGame.ini` by hand.
+
+### The decision
+
+**Use the weights that are already there. Do not invent a second table.**
+
+They reach the engine as a SpawnWeight column on `game/Data/EnemyRarities.csv`,
+generated from `enemy_stats.spawn_weight`, which reads
+`scoring.DUNGEON_SCORE_MIX` rather than copying it.
+
+**A second table would have been a second answer.** A floor's Dungeon Score is
+that floor's rarity spread collapsed by how common each rarity is. Spawning from
+different shares than the score is priced against would let a dungeon's stated
+difficulty drift from the difficulty it presents, with nothing to notice.
+
+**A Cataclysm Boss carries weight 0 and is not drawn.** The design already says
+it does not appear on an ordinary floor; it is placed, one at the end of a
+Cataclysm dungeon, so any weight at all would be a chance of meeting a second.
+
+**Each enemy draws its own rarity independently.** A floor is not given an exact
+count of each rung.
+
+### What the genre research settles, and what it does not
+
+**It does not settle the numbers, because the numbers were not in question.** The
+five weights were designed already. What the research was for is the one shape
+this decision actually chose: an independent draw per creature, against a
+guaranteed count per area.
+
+**Diablo II uses a guaranteed count.** Its `Levels.txt` gives every area two
+columns, quoted from the Phrozen Keep's column reference:
+
+> **MonUMin - MonUMax:** "Minimum - Maximum Unique and Champion Monsters Spawned
+> in this Level. Whenever any spawn at all however is bound to MonDen."
+
+and
+
+> **MonDen:** "This is a chance in 100000ths that a monster pack will spawn on a
+> tile."
+
+So an area is guaranteed at least `MonUMin` of the rare rungs and never more than
+`MonUMax`, with density gating whether anything spawns at all.
+
+Source: [Levels.txt column functions, The Phrozen Keep](https://d2mods.info/forum/kb/viewarticle?a=301)
+
+**That guarantee is not taken here, and the reason is that there is nothing yet
+to guarantee it across.** A minimum per area removes variance across a floor
+holding dozens of creatures. This project has no dungeon floors: procedural
+generation is issue #40 and the dungeon runtime is issue #41, and the sandbox
+places a handful of creatures on a flat test level. Over five independent draws
+at these weights, every one comes up Common about 8% of the time, which is enough
+variety without any machinery. If variance turns out to matter once floors exist,
+a minimum count belongs on the floor rather than on the draw, and issue #41 is
+where it goes.
+
+**Two claims that were checked and are not true**, recorded so they are not
+repeated. The Phrozen Keep article above does **not** name separate Nightmare or
+Hell variants of `MonUMin`/`MonUMax`, and it states **no** percentage chance for
+a monster group to be upgraded to unique or champion. Both were fetched and read
+in full on 2026-08-19 to confirm it.
+
+### No depth curve
+
+The issue supposed the weights would vary by floor depth, on the grounds that the
+hits-to-kill table prices a Cataclysm Boss for the last floor of a 50-floor
+dungeon. **Nothing depth-varying is built here**, for three reasons.
+
+- There are no floors. A curve over depth has nothing to be evaluated against.
+- The Dungeon Score is defined as the **middle** floor's spread. A curve centred
+  on the middle floor is not invariant the way it first appears: `scoring.py`
+  computes `middle_floor = ceil(total_floors / 2)` and `floor_ratio =
+  current_floor / total_floors`, so the middle floor's ratio is 0.5 only when the
+  floor count is even, and roughly half of the dungeon lengths in
+  `sim/cataclysm_sim/config.py` are odd. Any depth curve has to state what it
+  does on an odd floor count before it is written down.
+- The top rung already only appears at the end, by placement rather than by a
+  curve.
+
+### What this changes in the sandbox
+
+`BruteRarityStep` and `AbyssalWardenRarityStep` in `game/Config/DefaultGame.ini`
+now ship as **-1**, which is `UCataclysmEnemyRarity::RollTheRarity` and means
+"draw one". Setting either to a rung from 0 to 5 still forces it, which is what
+to do when testing one rarity, and is what the automation tests pass.
+
+`TrainingDummyRarityStep` stays at 0. A dummy that drew Boss could not be stunned
+at all, and being able to hit a predictable thing is what a dummy is for.
+
+**This removes a hand edit that had been breaking the test suite.** Watching loot
+drop meant typing 4 into that committed file, which then failed two tests that
+read it. Issue #736 is one of those two, and it is fixed alongside this.
+
+---
+
 ## 2026-08-19 — An inventory cell's label is drawn in one ink, not in the item's colour
 
 **Affects:** the Interface Colour section of `docs/Cataclysm_GDD_v2.md`, and

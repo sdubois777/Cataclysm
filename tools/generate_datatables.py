@@ -2057,10 +2057,24 @@ def enemy_rarities(_book=None) -> list[dict]:
                 model.DAMAGE_AT_COMMON * model.DAMAGE_PER_STEP ** step),
             "ArmorPerScore": _six_places(
                 model.ARMOR_AT_COMMON * model.ARMOR_PER_STEP ** step),
+            "SpawnWeight": _six_places(model.spawn_weight(rarity)),
         })
 
     if not out:
         raise DataError("enemy_stats.RARITY_ORDER is empty")
+
+    # THE SPAWN WEIGHTS HAVE TO ADD UP TO ONE FLOOR'S WORTH, because they are
+    # shares of a floor's population rather than independent chances. The model
+    # reads them out of scoring.DUNGEON_SCORE_MIX, and that file is a port which
+    # has drifted from its source twice, so this is checked rather than assumed.
+    total = sum(row["SpawnWeight"] for row in out)
+    if abs(total - 1.0) > 1e-6:
+        raise DataError(
+            f"the enemy rarity spawn weights sum to {total}, not 1. They are "
+            "how common each rarity is on a floor, which the Dungeon Score "
+            "Formula section of docs/Cataclysm_GDD_v2.md states outright, and "
+            "shares that do not add up leave part of every floor unfilled.")
+
     return unique(out, "Enemy Rarities")
 
 

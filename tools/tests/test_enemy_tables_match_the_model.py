@@ -324,6 +324,91 @@ def test_every_multiplier_is_the_models_arithmetic(rarity_rows) -> None:
                 f"{per_step} to the power {step}.")
 
 
+def test_the_spawn_weights_are_the_designed_mix(rarity_rows) -> None:
+    """How common each rarity is on a floor, checked against the design.
+
+    THE NUMBERS ARE WRITTEN HERE RATHER THAN READ FROM THE MODEL, unlike the
+    multiplier test above, and deliberately. The model reads them out of
+    `scoring.DUNGEON_SCORE_MIX`, which is a port that has drifted from its source
+    twice, so a check that read the same place would agree with itself. These
+    five come from the Dungeon Score Formula section of
+    `docs/Cataclysm_GDD_v2.md`, which states them and says outright: "The five
+    weights are how common each rarity is, and they sum to 1. Cataclysm Boss is
+    absent because it does not appear on an ordinary floor."
+    """
+    designed = {
+        "Common": 0.60,
+        "Elite": 0.20,
+        "Legendary": 0.15,
+        "Herald": 0.04,
+        "Boss": 0.01,
+        "Cataclysm Boss": 0.00,
+    }
+
+    for rarity, weight in designed.items():
+        written = float(rarity_rows[rarity]["SpawnWeight"])
+        assert written == pytest.approx(weight, abs=TOLERANCE), (
+            f"{rarity}: EnemyRarities.csv column SpawnWeight reads {written} "
+            f"and the Dungeon Score Formula section of "
+            f"docs/Cataclysm_GDD_v2.md says {weight}.")
+
+
+def test_the_spawn_weights_sum_to_one_floor(rarity_rows) -> None:
+    """They are shares of a floor's population, not independent chances.
+
+    Shares that do not add up leave some fraction of every floor unfilled, and
+    the draw in `UCataclysmEnemyRarity::RollRarityStep` divides by their total,
+    so a set that summed to 2 would halve every rung's real frequency without
+    changing any single number visibly.
+    """
+    total = sum(float(row["SpawnWeight"]) for row in rarity_rows.values())
+    assert total == pytest.approx(1.0, abs=TOLERANCE), (
+        f"the SpawnWeight column of EnemyRarities.csv sums to {total}, not 1.")
+
+
+def test_a_cataclysm_boss_is_placed_rather_than_drawn(rarity_rows) -> None:
+    """Its weight is zero, and that is the design rather than an omission.
+
+    The Dungeon Score Formula section says a Cataclysm Boss "does not appear on
+    an ordinary floor". One is placed at the end of a Cataclysm dungeon, so any
+    weight at all would be a chance of meeting a second.
+    """
+    written = float(rarity_rows["Cataclysm Boss"]["SpawnWeight"])
+    assert written == 0.0, (
+        f"EnemyRarities.csv gives Cataclysm Boss a SpawnWeight of {written}. "
+        "It is placed rather than drawn, so a weight makes it possible to meet "
+        "one on an ordinary floor.")
+
+    # AND IT IS THE ONLY ONE WITH NONE, or a rung dropped by accident would look
+    # like this rule rather than like the mistake it is.
+    without = [rarity for rarity, row in rarity_rows.items()
+               if float(row["SpawnWeight"]) == 0.0]
+    assert without == ["Cataclysm Boss"], (
+        f"these rarities carry no spawn weight at all: {without}. Only "
+        "Cataclysm Boss should, and a rung that lost its weight can never be "
+        "met by a player.")
+
+
+def test_the_model_reads_the_weights_rather_than_copying_them() -> None:
+    """`enemy_stats.spawn_weight` must not hold a second copy of the five.
+
+    A COPY WOULD BE A SECOND ANSWER. The weights are the same five numbers the
+    Dungeon Score collapses a floor by, so a separate table would let the
+    difficulty a dungeon is priced at drift from the difficulty it presents.
+    """
+    stats = model()
+
+    for rarity, weight in stats.scoring.DUNGEON_SCORE_MIX:
+        assert stats.spawn_weight(rarity) == weight, (
+            f"enemy_stats.spawn_weight({rarity!r}) does not answer what "
+            f"scoring.DUNGEON_SCORE_MIX holds for it, so the two have drifted.")
+
+    assert stats.spawn_weight("Cataclysm Boss") == 0.0
+
+    with pytest.raises(ValueError):
+        stats.spawn_weight("Not A Rarity")
+
+
 def test_a_written_multiplier_reproduces_the_models_own_stat_block() -> None:
     """The table times a share must equal what `stats_for` returns.
 
