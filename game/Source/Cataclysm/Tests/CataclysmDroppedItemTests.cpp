@@ -249,6 +249,16 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 	}
 
 	int32 Found = 0;
+
+	// EVERY PLACE A DROP SHOULD BE, built from the same function the spawner
+	// uses. Each drop found takes one entry off this list, so the list being
+	// empty at the end means every position was filled exactly once.
+	TArray<FVector> Expected;
+	for (int32 Index = 0; Index < BossDrops; ++Index)
+	{
+		Expected.Add(Where + UCataclysmDropSpawner::ScatterOffset(Index, BossDrops));
+	}
+
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 	{
 		const ACataclysmDroppedItem* Drop = *It;
@@ -299,17 +309,44 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		// THEY LANDED NEAR THE KILL, not at the world origin.
-		if (FVector::Dist2D(Drop->GetActorLocation(), Where) > 1000.0f)
+		// IT LANDED ON ONE OF THE PLACES THE SCATTER PUTS A DROP, and on a
+		// place no other drop has already taken.
+		//
+		// THE TOLERANCE USED TO BE 1000 cm AND THE CHECK COULD NOT FAIL. `Where`
+		// is 360 cm from the world origin, so a drop left sitting at (0,0,0) was
+		// 360 cm away and satisfied a check whose own comment said "not at the
+		// world origin". Every drop was in fact at the origin, because
+		// ACataclysmDroppedItem created no root component, and an actor without
+		// one cannot be positioned at all: SpawnActor's location is discarded
+		// and GetActorLocation answers zero. The project owner saw it as every
+		// item from every kill piled in the middle of the room.
+		const int32 Match = Expected.IndexOfByPredicate(
+			[Drop](const FVector& Candidate)
+			{
+				return Drop->GetActorLocation().Equals(Candidate, 1.0f);
+			});
+
+		if (Match == INDEX_NONE)
 		{
 			AddError(FString::Printf(
-				TEXT("'%s' landed %.0f cm from the kill"), *Drop->DisplayName,
-				FVector::Dist2D(Drop->GetActorLocation(), Where)));
+				TEXT("'%s' landed at %s, which is not the kill at %s plus any "
+					 "of the %d scatter offsets, or is where another drop "
+					 "already lies"),
+				*Drop->DisplayName, *Drop->GetActorLocation().ToCompactString(),
+				*Where.ToCompactString(), Expected.Num()));
 			return false;
 		}
+
+		// TAKEN, so two drops on one spot cannot both match it.
+		Expected.RemoveAt(Match);
 	}
 
 	TestEqual(TEXT("and every one of them is in the world"), Found, BossDrops);
+
+	// AND NO POSITION WAS LEFT UNFILLED, which is the other half of "no two
+	// drops share a spot": five drops covering four positions leaves one here.
+	TestEqual(TEXT("every scatter position got exactly one drop"),
+		Expected.Num(), 0);
 
 	// A CREATURE WHOSE RARITY IS NOT IN THE TABLE DROPS NOTHING, rather than
 	// dropping Common loot or crashing.

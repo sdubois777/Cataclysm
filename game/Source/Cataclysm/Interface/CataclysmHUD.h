@@ -137,6 +137,29 @@ private:
 	FBox2D DrawTextCentred(const FString& Text, const FLinearColor& Colour,
 						   float CentreX, float TopY, float Scale);
 
+	/**
+	 * Where a piece of text WOULD be drawn, without drawing it.
+	 *
+	 * SEPARATE FROM THE DRAW so that several pieces of text can be laid out
+	 * against each other before any of them is committed to the screen. That is
+	 * what DrawDropNames does: it measures every drop's name, moves the ones
+	 * that would overlap, and draws them afterwards.
+	 */
+	FBox2D MeasureTextCentred(const FString& Text, float CentreX, float TopY,
+							  float Scale);
+
+	/**
+	 * Draws text with its black outline, with its top left corner at a point.
+	 *
+	 * EVERY PIECE OF TEXT THIS CLASS DRAWS GOES THROUGH HERE. DrawTextCentred is
+	 * a measure followed by a call to this, and the drop names are a measure,
+	 * a layout pass and then a call to this. The outline lives here for that
+	 * reason, and `tools/tests/test_the_heads_up_display_outlines_its_text.py`
+	 * reads this function's body.
+	 */
+	void DrawOutlinedText(const FString& Text, const FLinearColor& Colour,
+						  float Left, float Top, float Scale);
+
 	/** The font every draw here uses. The engine's, so no asset is needed. */
 	UFont* OverlayFont() const;
 

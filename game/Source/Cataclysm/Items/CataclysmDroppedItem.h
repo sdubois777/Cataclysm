@@ -201,6 +201,46 @@ public:
 									   const FVector2D& Point);
 
 	/**
+	 * Clear space to leave between two names that would otherwise touch, in
+	 * pixels.
+	 *
+	 * FOUR IS A STARTING POINT AND IS EXPECTED TO BE TUNED BY EYE. It is enough
+	 * to read two stacked names as two rather than as one block of text, and
+	 * small enough that five names from one kill still sit near the corpse. No
+	 * test can see this; the project owner can.
+	 */
+	static constexpr float NameGapPx = 4.0f;
+
+	/**
+	 * Moves names down until no two of them overlap, in place.
+	 *
+	 * WHY THIS IS NEEDED EVEN THOUGH THE DROPS ARE SPREAD OUT IN THE WORLD.
+	 * UCataclysmDropSpawner::ScatterOffset puts several drops from one kill
+	 * around a circle on the ground, which separates them in world space. It
+	 * does not separate their NAMES on screen: the camera looks down, so two
+	 * drops on opposite sides of that circle can land at almost the same screen
+	 * height, and an item name is far wider than it is tall. The project owner
+	 * asked for this on 2026-08-19, having seen the names printed over each
+	 * other. Issue #723.
+	 *
+	 * DOWNWARD ONLY, AND THE HIGHEST NAME NEVER MOVES. Something has to stay
+	 * still or the whole group drifts as the camera turns, and the top one is
+	 * the one furthest from the player at this camera angle, so pushing the rest
+	 * down keeps a name closer to the item it belongs to than pushing them up
+	 * would.
+	 *
+	 * THE NAME MOVES AND THE ITEM DOES NOT, so a name can end up a little above
+	 * or below the drop it belongs to. That is the trade Path of Exile makes
+	 * too, and it is the right one: a name that cannot be read identifies
+	 * nothing, and clicking still works because the rectangle that moved is the
+	 * same rectangle a click is tested against.
+	 *
+	 * INVALID RECTANGLES ARE LEFT ALONE and take part in nothing. A drop that
+	 * failed to project has no place on screen to be pushed away from.
+	 */
+	static void SeparateOverlappingNames(TArray<FBox2D>& Rects, float GapPx);
+
+	/**
 	 * Moves a drop's item into an inventory and takes the drop off the floor.
 	 *
 	 * @return true when the item was taken. **False leaves everything as it
