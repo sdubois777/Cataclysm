@@ -144,6 +144,29 @@ void UCataclysmDropPickup::SeparateOverlappingNames(TArray<FBox2D>& Rects,
 	}
 }
 
+int32 UCataclysmDropPickup::NameBorderThicknessFor(ECataclysmRarity Rarity)
+{
+	// THE ENUM'S OWN ORDER IS THE LADDER. Everyday is 0 and Cataclysmic is 7,
+	// so this is one pixel at the bottom and eight at the top.
+	return ThinnestNameBorderPx + static_cast<int32>(Rarity);
+}
+
+FBox2D UCataclysmDropPickup::TagAround(const FBox2D& Text,
+									   ECataclysmRarity Rarity)
+{
+	if (!Text.bIsValid)
+	{
+		// NOTHING TO GROW. A name that failed to project has no place on screen.
+		return Text;
+	}
+
+	const float Outward = static_cast<float>(NameBorderPaddingPx
+											 + NameBorderThicknessFor(Rarity));
+
+	return FBox2D(Text.Min - FVector2D(Outward, Outward),
+				  Text.Max + FVector2D(Outward, Outward));
+}
+
 bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 									ACataclysmDroppedItem* Drop)
 {
@@ -291,6 +314,9 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 		if (UCataclysmItemValues::RarityOf(Item.EnchantmentCount,
 										   Item.Affixes.Num(), Rarity))
 		{
+			// THE RARITY IS KEPT AS WELL AS THE COLOUR IT PRODUCES, because the
+			// border's thickness needs the rung rather than the hue. Issue #718.
+			Drop->Rarity = Rarity;
 			Drop->NameColour = ColourFor(Rarities, Rarity);
 		}
 

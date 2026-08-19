@@ -18,20 +18,28 @@ easiest kind to lose: nothing fails when it is deleted, and the next person to
 read the section sees no sign it was ever agreed. These tests fail if either
 sentence goes away.
 
-WHAT THEY DO NOT CHECK. That anything implements either rule. When the border is
-built, the thickness per rarity should be pinned to this document the way
-`tools/tests/test_carried_inventory_is_forty_eight_slots.py` pins the 48 slots to
-it — read out of the C++ as text, because continuous integration compiles no C++.
+THE BORDER IS NOW BUILT, and the last test in this file pins the engine's
+thickness to what the document says, read out of the C++ as text — the same
+arrangement `tools/tests/test_carried_inventory_is_forty_eight_slots.py` uses,
+and for the same reason: continuous integration compiles no C++, so an assertion
+beside the constant would never run on a pull request.
+
+WHAT IS STILL NOT CHECKED. That crafting materials stack anywhere, because
+nothing implements them yet.
 """
 
 from __future__ import annotations
 
 import pathlib
+import re
+import sys
 
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
+
+sys.path.insert(0, str(REPO_ROOT / "sim"))
 
 
 @pytest.fixture(scope="module")
@@ -97,3 +105,68 @@ def test_the_one_item_one_slot_rule_survives_the_stacking_exception(
         "The Storage section no longer says one item takes one slot. Crafting "
         "materials stacking is an exception to that rule, and an exception to a "
         "rule nobody states is just an unexplained behaviour.")
+
+
+DROP_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Items"
+               / "CataclysmDroppedItem.h")
+
+
+def constant(name: str) -> int:
+    """The value of a `static constexpr int32 <name> = <number>;` line."""
+    if not DROP_HEADER.is_file():
+        pytest.fail(f"{DROP_HEADER.relative_to(REPO_ROOT)} does not exist")
+
+    match = re.search(
+        rf"static\s+constexpr\s+int32\s+{re.escape(name)}\s*=\s*(-?\d+)\s*;",
+        DROP_HEADER.read_text(encoding="utf-8"))
+    if match is None:
+        pytest.fail(
+            f"CataclysmDroppedItem.h has no "
+            f"'static constexpr int32 {name} = <number>;' line. If it was "
+            f"renamed, rename it here too; if it was deleted, the border "
+            f"thickness is unguarded and continuous integration compiles no C++ "
+            f"to notice.")
+    return int(match.group(1))
+
+
+def test_the_engines_border_matches_what_the_design_says(document) -> None:
+    """The thinnest border, and the thickest, against the design document.
+
+    NEITHER NUMBER IS PINNED HERE. Both are read out of the document's own
+    sentences and compared with the engine, so moving them together passes and
+    moving one alone fails. The top of the ladder is derived from the number of
+    rarities in the model rather than written down, so adding a rung fails here
+    rather than leaving the new one sharing a thickness with the rung below.
+    """
+    from cataclysm_sim.affixes import RARITIES
+
+    thinnest = re.search(r"(\w+) pixels? thick for Everyday", document)
+    assert thinnest, (
+        "docs/Cataclysm_GDD_v2.md no longer says how thick an Everyday drop's "
+        "border is.")
+    words = {"one": 1, "two": 2, "three": 3, "four": 4}
+    assert thinnest.group(1).lower() in words, (
+        f"unrecognised thickness word: {thinnest.group(1)!r}")
+    designed_thinnest = words[thinnest.group(1).lower()]
+
+    assert constant("ThinnestNameBorderPx") == designed_thinnest, (
+        f"NameBorderThicknessFor starts at "
+        f"{constant('ThinnestNameBorderPx')} in "
+        f"game/Source/Cataclysm/Items/CataclysmDroppedItem.h and "
+        f"docs/Cataclysm_GDD_v2.md says {designed_thinnest}.")
+
+    # THE TOP OF THE LADDER, WHICH THE DOCUMENT STATES AS A SENTENCE.
+    thickest = re.search(r"Cataclysmic sits inside (\w+)", document)
+    assert thickest, (
+        "docs/Cataclysm_GDD_v2.md no longer says how thick a Cataclysmic drop's "
+        "border is. That sentence is what says the rungs are all different.")
+    tops = {"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    assert thickest.group(1).lower() in tops, (
+        f"unrecognised thickness word: {thickest.group(1)!r}")
+
+    engine_top = constant("ThinnestNameBorderPx") + len(RARITIES) - 1
+    assert engine_top == tops[thickest.group(1).lower()], (
+        f"The engine gives the top rarity a border of {engine_top} pixels and "
+        f"the design says {tops[thickest.group(1).lower()]}. There are "
+        f"{len(RARITIES)} rarities, so a ladder starting at "
+        f"{constant('ThinnestNameBorderPx')} ends at {engine_top}.")

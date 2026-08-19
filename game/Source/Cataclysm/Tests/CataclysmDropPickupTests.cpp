@@ -587,4 +587,126 @@ bool FCataclysmNameSeparationCrowdTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// The border that carries a rarity without using colour
+// ---------------------------------------------------------------------------
+
+/**
+ * Every rarity gets its own border thickness, thinnest at the bottom.
+ *
+ * WHAT THIS IS FOR. The Interface Colour section of docs/Cataclysm_GDD_v2.md
+ * requires the drop marker to "differ by shape or motion as well as by colour",
+ * because a player who cannot separate two hues still has to separate two
+ * rarities. About 8% of men have red-green colour blindness and the ramp puts
+ * green, yellow, orange and red on four adjacent rungs. Issue #718.
+ *
+ * TWO RARITIES SHARING A THICKNESS WOULD BE THE FAULT, in the same way two
+ * sharing a colour would be, so that is what this checks rather than the
+ * individual numbers.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNameBorderTest,
+	"Cataclysm.DropPickup.EveryRarityGetsItsOwnBorderThickness",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNameBorderTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	const ECataclysmRarity Ladder[] = {
+		ECataclysmRarity::Everyday,	  ECataclysmRarity::Quality,
+		ECataclysmRarity::Superb,	  ECataclysmRarity::Masterful,
+		ECataclysmRarity::Legendary,  ECataclysmRarity::Mythical,
+		ECataclysmRarity::Ascendant,  ECataclysmRarity::Cataclysmic,
+	};
+
+	TestEqual(TEXT("the thinnest border is one pixel"),
+		FPickup::ThinnestNameBorderPx, 1);
+	TestEqual(TEXT("Everyday gets the thinnest"),
+		FPickup::NameBorderThicknessFor(ECataclysmRarity::Everyday), 1);
+	TestEqual(TEXT("and Cataclysmic gets eight"),
+		FPickup::NameBorderThicknessFor(ECataclysmRarity::Cataclysmic), 8);
+
+	// ONE THICKER A RUNG, WITH NO TWO THE SAME. Checked as a sequence rather
+	// than as eight separate numbers, because sharing a thickness is the fault
+	// and a list of literals would not say so.
+	int32 Previous = 0;
+	for (ECataclysmRarity Rarity : Ladder)
+	{
+		const int32 Thickness = FPickup::NameBorderThicknessFor(Rarity);
+
+		TestTrue(*FString::Printf(
+				TEXT("rarity %d is thicker than the rung below it (%d after %d)"),
+				static_cast<int32>(Rarity), Thickness, Previous),
+			Thickness > Previous);
+		Previous = Thickness;
+	}
+
+	return true;
+}
+
+/**
+ * The tag a name occupies grows with its rarity, on every side, and the text
+ * stays where it was measured.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNameTagTest,
+	"Cataclysm.DropPickup.TheTagGrowsAroundTheTextByItsBorder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNameTagTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	const FBox2D Text = MakeRect(100.0f, 200.0f, 300.0f, 220.0f);
+
+	// EVERYDAY: three pixels of padding and one of border, so four on each side.
+	const FBox2D Thin = FPickup::TagAround(Text, ECataclysmRarity::Everyday);
+	TestEqual(TEXT("an Everyday tag starts four pixels left of its text"),
+		Thin.Min.X, 96.0);
+	TestEqual(TEXT("and four above it"), Thin.Min.Y, 196.0);
+	TestEqual(TEXT("and four right of it"), Thin.Max.X, 304.0);
+	TestEqual(TEXT("and four below it"), Thin.Max.Y, 224.0);
+
+	// CATACLYSMIC: three of padding and eight of border, so eleven a side.
+	const FBox2D Thick = FPickup::TagAround(Text, ECataclysmRarity::Cataclysmic);
+	TestEqual(TEXT("a Cataclysmic tag starts eleven pixels left of its text"),
+		Thick.Min.X, 89.0);
+	TestEqual(TEXT("and eleven below it"), Thick.Max.Y, 231.0);
+
+	// THE TEXT IS RECOVERABLE FROM THE TAG, which is what the drawing relies on:
+	// it lays the tag out, then puts the letters back by insetting the same
+	// amount. If these two ever disagreed the names would drift out of their
+	// borders.
+	for (ECataclysmRarity Rarity : { ECataclysmRarity::Everyday,
+									 ECataclysmRarity::Masterful,
+									 ECataclysmRarity::Cataclysmic })
+	{
+		const FBox2D Tag = FPickup::TagAround(Text, Rarity);
+		const double Inset = FPickup::NameBorderPaddingPx
+						   + FPickup::NameBorderThicknessFor(Rarity);
+
+		TestEqual(TEXT("insetting the tag gives the text's left edge back"),
+			Tag.Min.X + Inset, Text.Min.X);
+		TestEqual(TEXT("and its top edge"), Tag.Min.Y + Inset, Text.Min.Y);
+	}
+
+	// A TAG IS ALWAYS BIGGER THAN ITS TEXT, whatever the rarity. A rung that
+	// shrank it would put the border through the letters.
+	for (ECataclysmRarity Rarity : { ECataclysmRarity::Everyday,
+									 ECataclysmRarity::Cataclysmic })
+	{
+		const FBox2D Tag = FPickup::TagAround(Text, Rarity);
+		TestTrue(TEXT("the tag contains the text"),
+			Tag.Min.X < Text.Min.X && Tag.Min.Y < Text.Min.Y
+			&& Tag.Max.X > Text.Max.X && Tag.Max.Y > Text.Max.Y);
+	}
+
+	// AN UNSET RECTANGLE IS LEFT ALONE. A drop that failed to project has no
+	// place on screen to grow a border around.
+	TestFalse(TEXT("an unset text box gives an unset tag"),
+		FPickup::TagAround(FBox2D(), ECataclysmRarity::Superb).bIsValid);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
