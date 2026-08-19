@@ -4310,6 +4310,45 @@ This is the opposite of dungeon modifiers, which do carry a score. That differen
 
   
 
+### **How an enemy's rarity is shown**
+
+**A rarity above Common is said in a word over the creature: Elite, Legendary,
+Herald, Boss, Cataclysm Boss.** A Common enemy is not marked at all. Common is
+60% of what spawns, so a word over every one of them is a word over most of the
+screen, and what is worth noticing is the exception.
+
+
+
+**It appears before the fight, not during it, and that is the point.** The health
+bar over a creature deliberately waits until the creature has been hurt. A rarity
+cannot: the design's rule that a boss cannot be stunned at all is worth nothing
+to a player who finds that out by spending the stun, and the extra modifiers a
+rarer creature carries change how it should be fought rather than how long it
+takes. Path of Exile's own forum carries the complaint this avoids -- in a large
+pack it is "impossible to know if one of them is an 'elite' mob without first
+killing everything, or seeing one of its mods go off".
+
+
+
+**The word is not coloured, and that is deliberate rather than unfinished.** The
+word already says which rung it is, so a colour would be a second copy of
+something the player has read. There is also nothing to take: the eight colours
+in the Interface Colour section are **gear** rarities, a different ladder with
+different names and one more rung, and this ladder has never been assigned any.
+Giving it six is a separate decision and belongs in the workbook first.
+
+
+
+**A panel at the top of the screen shows the rest, on hover.** The word over the
+head answers "which of these should I look at"; the panel answers "what is this
+one". The panel is where a creature's modifiers go -- one per rung above Common,
+up to five for a Cataclysm Boss -- because a word has no room for them. Last
+Epoch puts the same information in the same place, and Path of Exile has both a
+marker on the creature and a panel at the top for the same division of labour.
+`DECISIONS.md` names the sources.
+
+
+
 ## **Enemy Score Formula**
 
 Every enemy's score is built from **the width of its difficulty tier**: the gap between the maximum Power Score a player is expected to reach at the end of this tier and the end of the tier below. Nothing in the formula multiplies. Each contribution is a fraction of that width, or a flat number of points, and they are added.

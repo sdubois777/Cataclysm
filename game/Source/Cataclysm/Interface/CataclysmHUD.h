@@ -113,6 +113,26 @@ private:
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
 
+	/**
+	 * The rarity of every enemy that is not Common, said in a word over it.
+	 *
+	 * ITS OWN PASS RATHER THAN A LINE INSIDE DrawOverheadBars, because the two
+	 * answer different questions and appear at different times. A bar says how a
+	 * fight is going and waits for the creature to be hurt; a word says whether
+	 * to start one and has to be there before anything is hit. Sharing a loop
+	 * would mean sharing a condition, and the whole point is that they differ.
+	 *
+	 * A SECOND WALK OVER THE CREATURES IN THE WORLD, and that is affordable: a
+	 * dungeon floor holds tens of them, not thousands, and the same walk already
+	 * happens for the bars and again for the drop names.
+	 *
+	 * NOTHING HERE DECIDES ANYTHING. Whether a word is drawn at all is
+	 * UCataclysmCombatOverlay::ShouldShowRarityNameFor and what it says is
+	 * UCataclysmEnemyRarity::RarityNameForStep, for the reason this class's
+	 * header gives.
+	 */
+	void DrawRarityNames();
+
 	/** Every floating number that has not yet faded. */
 	void DrawDamageNumbers();
 

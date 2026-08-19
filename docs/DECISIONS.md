@@ -20,6 +20,94 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — An enemy's rarity is a word over its head, shown before the fight
+
+**Affects:** a new "How an enemy's rarity is shown" subsection in section X of
+`docs/Cataclysm_GDD_v2.md`, and `UCataclysmCombatOverlay`. Applied. Toward issue
+#740.
+
+### The gap
+
+**A Common enemy and a Boss looked identical.** Same model, same size, same
+colour, no name. The project owner found it by playing on 2026-08-19, straight
+after #508 made each creature draw its own rarity: "I can't tell what rarity they
+are just by looking at them."
+
+Rarity changes three things and every one of them was invisible until the
+creature was dead:
+
+| What rarity changes | When a player could notice |
+| :-- | :-- |
+| How many items the kill drops, 0.16 for a Common and exactly 5 for a Boss | After it dies |
+| The magic find it adds to its own drops, 300% for a Boss | After it dies, and only over many kills |
+| Whether it can be stunned at all | When a stun fails, which reads as a bug |
+
+### The decision
+
+**A rarity above Common is drawn as a word over the creature: Elite, Legendary,
+Herald, Boss, Cataclysm Boss. A Common is not marked.**
+
+**It appears before the creature has been hurt**, unlike the health bar over it.
+That is the load-bearing half. The bar deliberately waits for damage, which is
+right for a bar — it means "this fight has started" — and wrong for a rarity. The
+design says a boss cannot be stunned at all, and that rule is worth nothing to a
+player who discovers it by spending the stun.
+
+**Common is left bare** because it is 60% of what spawns. A word over every
+creature is a word over most of the screen, and the exception is the thing worth
+noticing.
+
+**The word carries no colour**, and that is deliberate rather than unfinished.
+The word already says which rung it is. There is also nothing to take: the eight
+colours in the Interface Colour section are **gear** rarities, a different ladder
+with different names and one more rung, and the enemy ladder has never been
+assigned any. Giving it six is a separate decision that belongs in the workbook
+first.
+
+### What the genre research settles, and what it does not
+
+**It settles that this is a known failure rather than a preference.** Two of the
+largest games in this genre carry public complaints about exactly it.
+
+- **Path of Exile.** From its official forum, a player on the game's own
+  feedback board: in a pack of thirty it is "impossible to know if one of them is
+  an 'elite' mob without first killing everything, or seeing one of its mods go
+  off", and the request is for colour-coded health bars so that "we'll know we're
+  fighting something more powerful *before* it rams a mob up our ass". Source:
+  [Health bar colors for bosses/rares/uniques/etc, pathofexile.com](https://www.pathofexile.com/forum/view-thread/3653198)
+
+- **Last Epoch** puts a rare monster's modifiers "under the health bar at the top
+  of the screen". That is a player's description on the official forum rather
+  than a developer statement, and it is recorded as such. Source:
+  [Enemy Types and Stats?, forum.lastepoch.com](https://forum.lastepoch.com/t/enemy-types-and-stats/47338)
+
+**It does not settle the form.** Both of those describe a panel at the top of the
+screen, which is a different thing from a marker on the creature, and the Path of
+Exile complaint is precisely that the panel is not enough on its own: it tells
+you about a creature you already suspected. The two answer different questions —
+a marker says which creature to look at, a panel says what that creature is — and
+Path of Exile ships both.
+
+**What could not be verified.** The Diablo II claim that champion monsters carry
+blue names and uniques gold ones is widely repeated, and the pages carrying it
+are on Fandom, which refused to serve them. It is **not** cited here. Neither is
+anything about Diablo II monster auras.
+
+### The companion, which is not built yet
+
+**A panel at the top of the screen, on hover**, carrying the creature's name, its
+rarity, its health and — the reason it matters — its **modifiers**. The design
+gives an enemy one modifier per rung above Common, up to five for a Cataclysm
+Boss, and those are mechanical effects that change how a creature is fought. A
+word over the head has no room for them. The project owner asked for this on
+2026-08-19, naming Path of Exile 2 as the reference. **Path of Exile 2's own
+behaviour was not verified**; the shape is confirmed for Last Epoch and Path of
+Exile 1 from the sources above.
+
+That is issue #740's remaining half and it is being built next.
+
+---
+
 ## 2026-08-19 — Enemy rarity spawn weights: found rather than invented
 
 **Affects:** the Dungeon Score Formula section of `docs/Cataclysm_GDD_v2.md`, a
