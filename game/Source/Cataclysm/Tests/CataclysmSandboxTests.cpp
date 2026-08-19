@@ -391,4 +391,142 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+/**
+ * A spawned creature carries the rarity the game mode was told to give it.
+ *
+ * WHAT THIS GUARDS. Issue #721. Nothing anywhere called
+ * `ACataclysmEnemyCharacter::SetRarityStep` outside the automation tests, so
+ * every creature in a play session spawned Common however the game mode was
+ * configured. Three systems read that field and all three sat at the bottom
+ * rung: the drop rate, which is 0.16 items for a Common and exactly 5 for a
+ * Boss; the magic find a rarer enemy adds to its own drops; and the design's
+ * rule that a boss cannot be stunned at all.
+ *
+ * THE SETTINGS ARE ASKED FOR EXPLICITLY rather than taken from the defaults, for
+ * the reason the training dummy test gives: all three default to 0 and this test
+ * is about whether the spawner writes them, not about what anybody currently
+ * wants.
+ *
+ * WHAT IS NOT CHECKED HERE: that `game/Config/DefaultGame.ini` reaches these
+ * fields. That is Unreal's config loading rather than this project's code, and
+ * nothing in a test world reads an ini.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpawnedRarityTest,
+	"Cataclysm.Sandbox.ACreatureSpawnsAtTheRarityItWasConfiguredWith",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpawnedRarityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSandboxTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
+	if (!GameMode)
+	{
+		AddError(TEXT("Could not spawn the game mode."));
+		return false;
+	}
+
+	// COMMON IS WHAT EVERY ONE OF THEM DEFAULTS TO. Asserted rather than assumed,
+	// because the whole point of the setting is that raising it changes something,
+	// and a default that had drifted to Boss would make a play session a boss
+	// fight without anyone asking for one.
+	//
+	// THIS READS THE EFFECTIVE DEFAULT AND NOT THE HEADER'S INITIALISER, and the
+	// difference was measured rather than assumed. The class is
+	// UCLASS(Config = Game), so the value in game/Config/DefaultGame.ini wins
+	// over the `= 0` written beside the field. Changing the header to `= 4` and
+	// running this test was tried on purpose: all five tests still passed,
+	// because the ini put it back to 0. The header's initialiser is what a build
+	// with no ini key uses, and it is guarded from Python by
+	// tools/tests/test_the_game_modes_ini_keys_are_real_settings.py, which reads
+	// both and was confirmed to fail on that same break.
+	TestEqual(TEXT("a Brute defaults to Common"), GameMode->BruteRarityStep, 0);
+	TestEqual(TEXT("an Abyssal Warden defaults to Common"),
+		GameMode->AbyssalWardenRarityStep, 0);
+	TestEqual(TEXT("a training dummy defaults to Common"),
+		GameMode->TrainingDummyRarityStep, 0);
+
+	// A DIFFERENT RUNG FOR EACH, so a spawner that wrote the same value to all
+	// three, or wrote one creature's setting onto another, fails here.
+	constexpr int32 BossStep = ACataclysmEnemyCharacter::FirstBossRarityStep;
+	constexpr int32 HeraldStep = 3;
+	constexpr int32 EliteStep = 1;
+
+	GameMode->BruteRarityStep = BossStep;
+	GameMode->AbyssalWardenRarityStep = HeraldStep;
+	GameMode->TrainingDummyRarityStep = EliteStep;
+	GameMode->TrainingDummyCount = 2;
+
+	GameMode->SpawnBrutes();
+	GameMode->SpawnAbyssalWardens();
+	GameMode->SpawnTrainingDummies();
+
+	if (!TestTrue(TEXT("at least one Brute was spawned"),
+				  GameMode->Brutes.Num() > 0))
+	{
+		return false;
+	}
+	for (const ACataclysmBruteCharacter* Brute : GameMode->Brutes)
+	{
+		if (!TestNotNull(TEXT("a spawned Brute"), Brute))
+		{
+			return false;
+		}
+		TestEqual(TEXT("the Brute spawned at the rarity asked for"),
+			Brute->RarityStep, BossStep);
+
+		// AND THE RARITY MEANS WHAT IT IS FOR. IsBoss is what the stun rule
+		// reads, and it is the only consequence visible without killing anything.
+		TestTrue(TEXT("and is therefore a boss, which cannot be stunned"),
+			Brute->IsBoss());
+	}
+
+	if (!TestTrue(TEXT("at least one Abyssal Warden was spawned"),
+				  GameMode->AbyssalWardens.Num() > 0))
+	{
+		return false;
+	}
+	for (const ACataclysmAbyssalWardenCharacter* Warden : GameMode->AbyssalWardens)
+	{
+		if (!TestNotNull(TEXT("a spawned Abyssal Warden"), Warden))
+		{
+			return false;
+		}
+		TestEqual(TEXT("the Warden spawned at its own rarity, not the Brute's"),
+			Warden->RarityStep, HeraldStep);
+
+		// HERALD IS DELIBERATELY BELOW THE BOSS LINE. The Abyssal Warden's
+		// reference rarity is Herald and the design makes it a mini-boss the
+		// player may stun, so this is the boundary rather than a spare case.
+		TestFalse(TEXT("a Herald is not a boss and can be stunned"),
+			Warden->IsBoss());
+	}
+
+	if (!TestTrue(TEXT("training dummies were spawned"),
+				  GameMode->TrainingDummies.Num() > 0))
+	{
+		return false;
+	}
+	for (const ACataclysmEnemyCharacter* Dummy : GameMode->TrainingDummies)
+	{
+		if (!TestNotNull(TEXT("a spawned training dummy"), Dummy))
+		{
+			return false;
+		}
+		TestEqual(TEXT("the dummy spawned at its own rarity"),
+			Dummy->RarityStep, EliteStep);
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

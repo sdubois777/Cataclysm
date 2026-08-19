@@ -19,7 +19,7 @@
  */
 class ACataclysmEnemyCharacter;
 
-UCLASS()
+UCLASS(Config = Game)
 class CATACLYSM_API ACataclysmGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
@@ -167,9 +167,17 @@ public:
 	// TIER 1 BECAUSE THE SANDBOX IS WHERE A NEW CHARACTER STANDS, which is what
 	// `DifficultyTier` above already says and defaults to.
 	//
-	// COMMON BECAUSE NOTHING SETS A RARITY. `ACataclysmEnemyCharacter::RarityStep`
-	// defaults to 0, which is Common, so this is the rarity the sandbox already
-	// spawns rather than a choice made here.
+	// COMMON BECAUSE THAT IS WHAT THE SANDBOX SPAWNS BY DEFAULT.
+	// `ACataclysmEnemyCharacter::RarityStep` starts at 0, which is Common, and
+	// the three rarity settings at the bottom of this class default to 0 too.
+	//
+	// RAISING ONE OF THOSE DOES NOT MOVE THESE FIGURES, and that is worth being
+	// plain about: a Brute set to Boss keeps a Common's health, armour and
+	// attack damage and only its DROPS and its stun immunity change. The
+	// creature is then a mixture that the design does not describe. That is
+	// acceptable for sandbox scaffolding whose purpose is to make loot visible,
+	// and it is not acceptable for judging a fight. Issue #39 is what makes a
+	// creature's whole stat block follow its rarity.
 	//
 	// THE LAST FLOOR OF A 50-FLOOR CATACLYSM DUNGEON because that is the hardest
 	// encounter tier 1 contains, and because it is the configuration every other
@@ -381,4 +389,58 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float AbyssalWardenAttackDamage = 38.0f;
+
+public:
+	// ----------------------------------------------------------------------
+	// WHICH RARITY THE SANDBOX SPAWNS EACH CREATURE AT.
+	//
+	// Common 0, Elite 1, Legendary 2, Herald 3, Boss 4, Cataclysm Boss 5, from
+	// `game/Data/EnemyRarities.csv`.
+	//
+	// WHAT RARITY CHANGES HERE, AND IT IS NOT THE STAT BLOCK. Health, armour and
+	// attack damage come from the settings above and are untouched by these. What
+	// rarity decides is what a kill gives and whether the creature can be stunned:
+	// `game/Data/EnemyDrops.csv` gives a Common 0.16 gear drops and a Boss exactly
+	// 5, a Boss adds 300% magic find to its own drops and a Cataclysm Boss 500%,
+	// and the design's rule that a boss cannot be stunned at all is
+	// `RarityStep >= FirstBossRarityStep`. See the longer note beside the stat
+	// figures above for why that mixture is acceptable in a sandbox and not in a
+	// judgement about a fight.
+	//
+	// `Config`, SO THEY CAN BE CHANGED WITHOUT REBUILDING. This project runs
+	// `ACataclysmGameMode` directly -- `game/Config/DefaultEngine.ini` sets
+	// `GlobalDefaultGameMode=/Script/Cataclysm.CataclysmGameMode` and there is no
+	// Blueprint subclass of it anywhere in `game/Content/` -- so an
+	// `EditDefaultsOnly` value on this class appears in no editor panel at all,
+	// and changing one otherwise means editing this header and compiling. Set
+	// these in `game/Config/DefaultGame.ini`, which already carries a section for
+	// `ACataclysmPlayerController` and now carries one for this class. Issue #721.
+	//
+	// PUBLIC, for the reason `TrainingDummyCount` above is public: a test has to
+	// be able to ask for a rarity regardless of what the default happens to be,
+	// and these defaults are expected to be flipped by hand and flipped back.
+	//
+	// COMMON BY DEFAULT, because that is what every creature has always spawned
+	// at and a play session should not silently become a boss fight. Raise the
+	// Brute's to 4 to watch loot drop: a Common kill gives nothing five times in
+	// six and a Boss gives five items every time.
+	//
+	// SANDBOX SCAFFOLDING. The thing meant to assign a rarity is the enemy
+	// generator, which is issue #508 and does not exist.
+	// ----------------------------------------------------------------------
+
+	/** Which rung each Brute spawns at. See the note above. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "0", ClampMax = "5"))
+	int32 BruteRarityStep = 0;
+
+	/** Which rung each Abyssal Warden spawns at. See the note above. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "0", ClampMax = "5"))
+	int32 AbyssalWardenRarityStep = 0;
+
+	/** Which rung each training dummy spawns at. See the note above. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "0", ClampMax = "5"))
+	int32 TrainingDummyRarityStep = 0;
 };
