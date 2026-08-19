@@ -6,12 +6,59 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmInventoryComponent.h"
 
 ACataclysmDroppedItem::ACataclysmDroppedItem()
 {
 	// NOTHING TICKS. The name is worked out at spawn and the heads-up display
 	// draws it; a drop on the floor has nothing to do between those two.
 	PrimaryActorTick.bCanEverTick = false;
+}
+
+bool UCataclysmDropPickup::IsWithinPickupRange(const FVector& Character,
+											  const FVector& Drop)
+{
+	// FLAT. See the header for why height is ignored.
+	const FVector2D Flat(Character.X - Drop.X, Character.Y - Drop.Y);
+	return Flat.SizeSquared() <= PickupRangeCm * PickupRangeCm;
+}
+
+int32 UCataclysmDropPickup::IndexOfNameUnderPoint(const TArray<FBox2D>& Rects,
+												 const FVector2D& Point)
+{
+	// BACKWARDS, so the last name drawn -- the one on top -- is the one found.
+	for (int32 Index = Rects.Num() - 1; Index >= 0; --Index)
+	{
+		// IsInsideOrOn RATHER THAN IsInside, WHICH EXCLUDES THE BOUNDARY. A
+		// name is a small target -- twenty pixels tall at the current text
+		// scale -- and a click on its outermost row of pixels is the player
+		// pointing at it. The strict test was written first and the two corner
+		// cases in CataclysmDropPickupTests.cpp caught it.
+		if (Rects[Index].bIsValid && Rects[Index].IsInsideOrOn(Point))
+		{
+			return Index;
+		}
+	}
+	return INDEX_NONE;
+}
+
+bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
+									ACataclysmDroppedItem* Drop)
+{
+	if (!Inventory || !IsValid(Drop))
+	{
+		return false;
+	}
+
+	const int32 Slot = Inventory->AddItem(Drop->Item);
+	if (Slot == INDEX_NONE)
+	{
+		// NO ROOM. The drop is untouched and stays where it is.
+		return false;
+	}
+
+	Drop->Destroy();
+	return true;
 }
 
 FVector UCataclysmDropSpawner::ScatterOffset(int32 Index, int32 Count)

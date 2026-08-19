@@ -2,6 +2,9 @@
 
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Interface/CataclysmHUD.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -150,7 +153,14 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	if (bStunned)
 	{
 		StopMovement();
+
+		// A STUN ABANDONS THE ITEM TOO. The walk toward it has just been
+		// cancelled, so continuing to wait for an arrival that will never come
+		// would take the item the moment the player next wandered near it.
+		PendingPickup = nullptr;
 	}
+
+	UpdatePendingPickup();
 
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
@@ -253,10 +263,133 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 	// a hold: the steering above already happened and there is nothing to add.
 	if (FollowTime <= ShortPressThreshold && !bStandStill && !IsPawnStunned())
 	{
+		// A CLICK ON A DROP'S NAME IS A PICK-UP AND NOT A MOVE ORDER. That is
+		// the project owner's decision of 2026-08-18: "a player sees a drop as a
+		// nametag and clicking on it loots the item". This button otherwise only
+		// moves, which is its own decision recorded on this class, and the two do
+		// not conflict because a name is a small target that the player has to be
+		// pointing at deliberately.
+		//
+		// ONLY ON A SHORT PRESS. Holding the button steers the character, and
+		// dragging the cursor across a name on the way past is not a click on it.
+		if (ACataclysmDroppedItem* Clicked = DropUnderCursor())
+		{
+			APawn* ControlledPawn = GetPawn();
+			const bool bInReach = ControlledPawn
+				&& UCataclysmDropPickup::IsWithinPickupRange(
+					ControlledPawn->GetActorLocation(),
+					Clicked->GetActorLocation());
+
+			if (bInReach)
+			{
+				// CLOSE ENOUGH ALREADY. Whether or not it fits, this click is
+				// finished; a full inventory leaves the item where it is.
+				TakeDrop(Clicked);
+				PendingPickup = nullptr;
+			}
+			else
+			{
+				// TOO FAR. Walk there and take it on arrival.
+				PendingPickup = Clicked;
+				UAIBlueprintHelperLibrary::SimpleMoveToLocation(
+					this, Clicked->GetActorLocation());
+			}
+
+			FollowTime = 0.0f;
+			return;
+		}
+
+		// A CLICK ANYWHERE ELSE ABANDONS THE ITEM the player was walking to.
+		// They changed their mind, and the walk that follows is a move order
+		// rather than the tail of the last one.
+		PendingPickup = nullptr;
+
 		UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, CachedDestination);
 	}
 
 	FollowTime = 0.0f;
+}
+
+ACataclysmDroppedItem* ACataclysmPlayerController::DropUnderCursor() const
+{
+	const ACataclysmHUD* Overlay = Cast<ACataclysmHUD>(GetHUD());
+	if (!Overlay)
+	{
+		return nullptr;
+	}
+
+	float X = 0.0f;
+	float Y = 0.0f;
+	if (!GetMousePosition(X, Y))
+	{
+		// NO CURSOR. A gamepad has none, and binding pick-up to a pad is part of
+		// issue #137. Answering nullptr makes the click an ordinary move order.
+		return nullptr;
+	}
+
+	return Overlay->DropUnderPoint(FVector2D(X, Y));
+}
+
+bool ACataclysmPlayerController::TakeDrop(ACataclysmDroppedItem* Drop)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn || !IsValid(Drop))
+	{
+		return false;
+	}
+
+	UCataclysmInventoryComponent* Inventory =
+		ControlledPawn->FindComponentByClass<UCataclysmInventoryComponent>();
+	if (!Inventory)
+	{
+		// A PAWN WITH NO INVENTORY CANNOT CARRY ANYTHING. Only the player
+		// character has one, and only the player clicks.
+		return false;
+	}
+
+	if (UCataclysmDropPickup::TakeInto(Inventory, Drop))
+	{
+		return true;
+	}
+
+	// FULL. Said out loud rather than silently ignored, because from the
+	// player's side a click that does nothing is indistinguishable from a click
+	// that missed. The real answer is a message on screen, which needs the
+	// designed interface and is issue #49.
+	UE_LOG(LogCataclysm, Warning,
+		   TEXT("Inventory full at %d slots, so '%s' stays on the floor."),
+		   UCataclysmInventoryComponent::SlotCount, *Drop->DisplayName);
+	return false;
+}
+
+void ACataclysmPlayerController::UpdatePendingPickup()
+{
+	ACataclysmDroppedItem* Drop = PendingPickup.Get();
+	if (!Drop)
+	{
+		// EITHER NOTHING WAS CLICKED OR IT IS GONE. Both mean there is nothing
+		// left to walk to, and a weak pointer answers the second for free.
+		PendingPickup = nullptr;
+		return;
+	}
+
+	const APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn)
+	{
+		return;
+	}
+
+	if (!UCataclysmDropPickup::IsWithinPickupRange(
+			ControlledPawn->GetActorLocation(), Drop->GetActorLocation()))
+	{
+		// STILL WALKING.
+		return;
+	}
+
+	// ARRIVED. Taken if it fits; either way this click is finished, so a full
+	// inventory does not leave the character trying again every frame.
+	TakeDrop(Drop);
+	PendingPickup = nullptr;
 }
 
 void ACataclysmPlayerController::Input_Zoom(const FInputActionValue& Value)

@@ -20,6 +20,94 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — A drop is taken from within three metres, and a click from further off walks there first
+
+**Affects:** the What a Kill Drops subsection of section VI in
+`docs/Cataclysm_GDD_v2.md`. Applied. Toward issue #707.
+
+### What was missing
+
+The project owner decided on 2026-08-18 that a drop on the ground is shown as its
+name and that clicking the name picks it up. That settles what the player aims
+at. It does not say **how near they have to be**, and there are two workable
+answers with quite different feels: a name is clickable from anywhere it can be
+read, or a name is clickable from anywhere and the character walks over to it.
+
+Nothing in the design said which, and picking one was needed before the click
+could be built at all.
+
+### The decision
+
+**Three metres, and a click from further off walks the character there and takes
+the item on arrival.**
+
+**Measured flat, ignoring height.**
+
+**Nothing is picked up by walking over it.** The three metres is how near a click
+has to happen from and not a radius that sweeps things up.
+
+### What the research settles, and what it does not
+
+**That clicking a name is the interaction, and that the character walks to it.**
+This is uniform across the genre. Last Epoch's players click ground labels, and
+their standing request is that the label's hitbox be made *bigger* rather than
+that labels be replaced. Diablo IV went the other way in patch 1.4.2 — the item
+model became the only target and the text label went inert — and it produced
+complaints on their own forums. This design follows the label, which is also what
+the project owner asked for, and the two agree.
+
+**That a pick-up has a reach at all.** No game in the genre lets a character take
+an item from across the map.
+
+**What the reach should be is NOT settled by the research, and this is a
+judgement.** Only Diablo publishes a number, three yards, and it is the radius
+for sweeping up gold and health orbs automatically rather than a click-to-loot
+range. Path of Exile announced an increase in 3.25 without stating either figure.
+Last Epoch publishes nothing. So three metres is one game's number for a
+neighbouring mechanic, and it is being used because it is the only anchor there
+is.
+
+**It is expected to move once it has been played.** Three metres is roughly a
+third of the way across the screen at the current camera distance, and whether
+that reads as generous or fiddly is not something the number can settle. This is
+the same footing as the 0.16 drops a Common enemy gives.
+
+### Why flat rather than in three dimensions
+
+A drop is spawned at the height of the corpse that produced it and nothing traces
+it down to the floor, which is issue #690. A three-dimensional measure would make
+a drop from a tall creature, or one that died on a step, quietly harder to reach
+than the same drop on level ground — with nothing on screen to explain the
+difference. Flat is also what a top-down camera makes the player think they are
+judging.
+
+### What argues against it
+
+**Three metres is borrowed twice over**: from another game, and from a mechanic
+that is not the one being built. That is weak evidence and is labelled as such
+rather than presented as derived.
+
+**It interacts with a button that already has a job.** The left mouse button
+moves, which is its own recorded decision. A click on a name now does something
+else, so a name is a small region of the screen where the move order does not
+happen. That is the same arrangement the whole genre uses and it is why the
+clickable region is the name's own rectangle and nothing larger.
+
+### Sources
+
+Search-result summaries rather than the pages themselves.
+
+- Diablo's pickup radius, about 3 yards by default, and what it covers.
+  https://www.diablowiki.net/Pickup_Radius
+- Diablo IV patch 1.4.2 removing label clicking, and the reaction.
+  https://us.forums.blizzard.com/en/d4/t/the-character-is-moving-instead-of-picking-up-the-item/170273
+- Last Epoch players clicking ground labels and asking for a larger label hitbox.
+  https://forum.lastepoch.com/t/accessability-keybind-for-picking-up-nearby-loot/57773
+- Path of Exile increasing pickup range in 3.25 without publishing a figure.
+  https://twitter.com/pathofexile/status/1811143028641554825
+
+---
+
 ## 2026-08-18 — The eight rarity colours get values, so a drop's name can be drawn in one
 
 **Affects:** a new Colour column on the Gear Rarity sheet in

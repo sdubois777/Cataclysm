@@ -2352,6 +2352,18 @@ So an Extremely Rare material is one material drop in 341, and since three mater
 
   
 
+**A character has to be within three metres of a drop to take it, and a click from further off walks them there first.** Clicking a name across the room is a move order that ends in a pick-up rather than a refusal, which is what every game in the genre does. Three metres is Diablo's own pickup radius of three yards, borrowed because no other game in the genre publishes a figure: Path of Exile increased its pickup range in 3.25 without stating either the old value or the new one, and Last Epoch states none. So it is the right order of magnitude taken from a shipped game rather than a measured equivalent, on the same footing as the 0.16 drops a Common enemy gives, and it is expected to move once it has been played.
+
+  
+
+**Nothing is picked up by walking over it.** The three metres is how near a click has to happen from, not a radius that sweeps things up. Diablo's number describes the second thing, and this design has no automatic pickup of any kind — not for gear, not for crafting materials, and not for gold.
+
+  
+
+**The reach is measured flat, ignoring height.** A drop lands at the height of the creature that dropped it, so measuring in three dimensions would make loot from a tall creature, or from one that died on a step, quietly harder to pick up than the same loot on level ground, with nothing on screen to explain why.
+
+  
+
 **These numbers are a starting point and are expected to move.** The 0.16 for a Common enemy is Path of Exile's published figure for a normal monster, taken because this design had none of its own; their figure covers currency and everything else a monster can drop rather than gear alone, so it is the right order of magnitude rather than a measured equivalent. Every number in the table is a column of the Enemy Drops sheet in `docs/All_Things_Cataclysm.xlsx` and changing one is a cell edit.
 
   

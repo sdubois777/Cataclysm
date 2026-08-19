@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "Interface/CataclysmCombatOverlay.h"
+#include "Math/Box2D.h"
 #include "CataclysmHUD.generated.h"
 
+class ACataclysmDroppedItem;
 class UFont;
 
 /**
@@ -76,6 +78,28 @@ public:
 	/** Removes every number that has outlived its lifetime, given the time now. */
 	void DropExpired(float WorldSeconds);
 
+	/**
+	 * The drop whose drawn name covers this point on screen, or nullptr.
+	 *
+	 * WHY THE HEADS-UP DISPLAY ANSWERS THIS. The name is what a player
+	 * clicks, and where a name IS on screen is only known by whatever
+	 * drew it: it depends on the projection, the font, the text scale and
+	 * the length of the item's own name. So the draw records the rectangle
+	 * it filled and this reads it back.
+	 *
+	 * THE RECTANGLES ARE ONE FRAME OLD AT MOST. Input is processed before
+	 * the frame is drawn, so a click is tested against where the names were
+	 * last drawn. A drop does not move, and the camera cannot travel far in
+	 * a frame, so the error is smaller than the name itself.
+	 *
+	 * EMPTY WHEN NOTHING HAS BEEN DRAWN, which is every automation test:
+	 * AHUD::PostRender checks FApp::CanEverRender() and the test command
+	 * passes -nullrhi, so DrawHUD never runs. The judgement this makes is
+	 * therefore tested through UCataclysmDropPickup::IndexOfNameUnderPoint
+	 * rather than through this.
+	 */
+	ACataclysmDroppedItem* DropUnderPoint(const FVector2D& Point) const;
+
 private:
 	/**
 	 * The player's own health and mana, and its energy shield when it has one.
@@ -105,15 +129,33 @@ private:
 	 * A NUMBER MUST SIT OVER WHAT IT DESCRIBES, and DrawText places the LEFT
 	 * edge at the coordinate given, so a four figure number would sit noticeably
 	 * further right than a one figure one over the same creature.
+	 *
+	 * @return the rectangle the text filled, so a caller that needs the
+	 *         text to be clickable knows where it landed. A drop's name
+	 *         is the only such caller today.
 	 */
-	void DrawTextCentred(const FString& Text, const FLinearColor& Colour,
-						 float CentreX, float TopY, float Scale);
+	FBox2D DrawTextCentred(const FString& Text, const FLinearColor& Colour,
+						   float CentreX, float TopY, float Scale);
 
 	/** The font every draw here uses. The engine's, so no asset is needed. */
 	UFont* OverlayFont() const;
 
 	/** Waiting to be drawn, oldest first. */
 	TArray<FCataclysmDamageNumber> Numbers;
+
+	/**
+	 * Where each drop's name was drawn last frame, and which drop it was.
+	 *
+	 * TWO PARALLEL ARRAYS RATHER THAN ONE OF PAIRS, so that the judgement
+	 * -- which rectangle a point falls in -- takes nothing but rectangles
+	 * and can be tested without a world, an actor or a renderer.
+	 * UCataclysmDropPickup::IndexOfNameUnderPoint is that function.
+	 *
+	 * WEAK POINTERS, because a drop is destroyed the moment it is picked
+	 * up and these outlive that by up to a frame.
+	 */
+	TArray<FBox2D> DropNameRects;
+	TArray<TWeakObjectPtr<ACataclysmDroppedItem>> DropsNamed;
 
 	//~ Layout, in pixels at an unscaled viewport.
 

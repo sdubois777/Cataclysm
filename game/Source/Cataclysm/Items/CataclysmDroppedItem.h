@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Items/CataclysmItem.h"
+#include "Math/Box2D.h"
 #include "CataclysmDroppedItem.generated.h"
 
+class UCataclysmInventoryComponent;
 class UDataTable;
 
 /**
@@ -125,4 +127,91 @@ public:
 	static int32 SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 							   float MagicFind, float LootQuantity,
 							   const FVector& At, FRandomStream& Stream);
+};
+
+/**
+ * Picking a drop up: what is clickable, what is close enough, and what happens.
+ *
+ * SEPARATE FROM BOTH THE ACTOR AND THE HEADS-UP DISPLAY, for the reason
+ * UCataclysmDropSpawner gives and one more. AHUD::PostRender checks
+ * FApp::CanEverRender() before calling DrawHUD, and the automation test command
+ * passes -nullrhi, so nothing that runs inside a draw call can be tested at all.
+ * Keeping the three judgements here -- which name the cursor is over, whether
+ * the character is near enough, and what moving the item does -- leaves all
+ * three covered while the drawing itself stays untested.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmDropPickup : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/**
+	 * How close the character has to be to take an item, in centimetres.
+	 *
+	 * THREE METRES, FROM DIABLO'S THREE YARDS. That is the default pickup
+	 * radius across the Diablo games, and it is the only published figure the
+	 * genre offers: Path of Exile increased its pickup range in 3.25 without
+	 * stating either number, and Last Epoch publishes none. So this is the right
+	 * order of magnitude taken from a shipped game rather than a measured
+	 * equivalent, which is the same footing as the 0.16 drops a Common enemy
+	 * gives.
+	 *
+	 * IT IS NOT THE SAME THING AS DIABLO'S RADIUS AND THE DIFFERENCE MATTERS.
+	 * There the radius is what a character sweeps up automatically by walking
+	 * over it; here nothing is automatic and this is how near a click has to
+	 * happen from. Nothing in this project picks anything up by walking over it.
+	 *
+	 * A CLICK FROM FURTHER AWAY IS NOT REFUSED. The character walks to the drop
+	 * and takes it on arrival, which is what every game in the genre does.
+	 * ACataclysmPlayerController holds that part.
+	 *
+	 * EXPECTED TO MOVE ONCE IT HAS BEEN PLAYED. Three metres is about a third of
+	 * the way across the screen at the default camera distance, and whether that
+	 * reads as generous or fiddly is not something the number can settle.
+	 */
+	static constexpr float PickupRangeCm = 300.0f;
+
+	/**
+	 * Whether a character standing here can reach a drop lying there.
+	 *
+	 * MEASURED FLAT, IGNORING HEIGHT. A drop is spawned at the height of the
+	 * corpse that produced it and nothing traces it to the floor, which is the
+	 * same limitation the telegraph markers have and is issue #690. Measuring in
+	 * three dimensions would make a drop from a tall creature, or one that died
+	 * on a step, quietly harder to pick up than the same drop on flat ground.
+	 */
+	static bool IsWithinPickupRange(const FVector& Character, const FVector& Drop);
+
+	/**
+	 * Which of the drawn names the cursor is over, or INDEX_NONE for none.
+	 *
+	 * THE NAME IS THE CLICKABLE THING, not a model and not the ground under it.
+	 * That is the project owner's decision of 2026-08-18 and it is what the
+	 * genre does -- Last Epoch's players click ground labels and ask for the
+	 * label hitbox to be made bigger. Diablo IV went the other way in patch
+	 * 1.4.2, making the model the only target and the label inert, and its
+	 * players complained; this design follows the label.
+	 *
+	 * THE LAST MATCH WINS, because the heads-up display draws the names in order
+	 * and the last one drawn is the one on top. Two drops close together overlap
+	 * on screen, and the one the player can actually read is the one they mean.
+	 */
+	static int32 IndexOfNameUnderPoint(const TArray<FBox2D>& Rects,
+									   const FVector2D& Point);
+
+	/**
+	 * Moves a drop's item into an inventory and takes the drop off the floor.
+	 *
+	 * @return true when the item was taken. **False leaves everything as it
+	 *         was**, with the drop still lying there, which is what a full
+	 *         inventory has to do: there is no way out of a dungeon partway
+	 *         through, so an item that will not fit stays on the floor and the
+	 *         player decides what is worth a slot.
+	 *
+	 * THE ACTOR IS DESTROYED ONLY AFTER THE ITEM IS SAFELY IN A SLOT. The other
+	 * order would destroy the item whenever the inventory was full.
+	 */
+	static bool TakeInto(UCataclysmInventoryComponent* Inventory,
+						 ACataclysmDroppedItem* Drop);
 };
