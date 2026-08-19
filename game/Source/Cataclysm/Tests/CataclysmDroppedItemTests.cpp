@@ -229,21 +229,28 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	// A BOSS, BECAUSE ITS RATE IS A WHOLE NUMBER. Its five drops are certain,
-	// so this test does not depend on a fractional roll going one way. Step 4
-	// is Boss; a Common enemy at 0.16 would drop nothing five times in six.
+	// A BOSS, BECAUSE ITS RATE OF 5 MAKES AN EMPTY KILL VANISHINGLY RARE. Step 4
+	// is Boss; a Common enemy at 0.16 would give nothing on most seeds.
+	//
+	// HOW MANY IS NOT ASSERTED, AND USED TO BE. Until issue #725 the count was
+	// the whole part of the rate plus a fractional chance, so a Boss dropped
+	// exactly five every time and this test could say so. The count is drawn
+	// from a Poisson distribution now, so what is checked is that the number
+	// spawned matches the number of actors that appeared and that each one
+	// landed on its own scatter position -- neither of which depends on how many
+	// there are. Cataclysm.Drop.DropCountsMatchTheModel is what checks the
+	// distribution itself.
 	constexpr int32 BossStep = 4;
-	constexpr int32 BossDrops = 5;
 
 	FRandomStream Stream(/*InSeed=*/20260818);
 	const FVector Where(300.0f, -200.0f, 90.0f);
 
-	const int32 Spawned = UCataclysmDropSpawner::SpawnDropsFor(
+	const int32 BossDrops = UCataclysmDropSpawner::SpawnDropsFor(
 		World, BossStep, /*MagicFind=*/0.0f,
 		UCataclysmDropRoll::BaselineLootQuantity, Where, Stream);
 
-	if (!TestEqual(TEXT("a Boss put five items on the floor"), Spawned,
-				   BossDrops))
+	if (!TestTrue(TEXT("a Boss put at least one item on the floor"),
+				  BossDrops > 0))
 	{
 		return false;
 	}
@@ -341,7 +348,11 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 		Expected.RemoveAt(Match);
 	}
 
-	TestEqual(TEXT("and every one of them is in the world"), Found, BossDrops);
+	// THE SPAWNER'S ANSWER AND THE WORLD AGREE. That is the part that
+	// mattered here all along: a spawner reporting more than it made would
+	// be invisible to a test that only counted actors.
+	TestEqual(TEXT("every item the spawner reported is in the world"),
+		Found, BossDrops);
 
 	// AND NO POSITION WAS LEFT UNFILLED, which is the other half of "no two
 	// drops share a spot": five drops covering four positions leaves one here.
@@ -416,7 +427,12 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	TestEqual(TEXT("killing a Boss left five items on the floor"), After, 5);
+	// HOW MANY IS NOT ASSERTED. A Boss averages five since issue #725 and this
+	// seed gives three. What matters here is that killing something is what put
+	// loot on the floor at all.
+	TestTrue(*FString::Printf(
+			TEXT("killing a Boss left items on the floor (%d)"), After),
+		After > 0);
 	TestFalse(TEXT("and they have names a player could read"),
 			  AnyName.IsEmpty());
 

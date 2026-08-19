@@ -348,8 +348,22 @@ int32 UCataclysmDropRoll::RollDropCount(float Expected, FRandomStream& Stream)
 	{
 		return 0;
 	}
-	const int32 Whole = FMath::FloorToInt(Expected);
-	return Whole + (Stream.FRand() < Expected - static_cast<float>(Whole) ? 1 : 0);
+
+	// KNUTH'S POISSON METHOD. See the header for why the count is drawn from a
+	// distribution rather than being the whole part plus a fractional chance.
+	const double Limit = FMath::Exp(-static_cast<double>(Expected));
+
+	int32 Count = 0;
+	double Product = 1.0;
+	while (true)
+	{
+		++Count;
+		Product *= static_cast<double>(Stream.FRand());
+		if (Product <= Limit)
+		{
+			return Count - 1;
+		}
+	}
 }
 
 void UCataclysmDropRoll::MaterialTierDistribution(

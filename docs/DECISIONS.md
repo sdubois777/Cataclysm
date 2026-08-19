@@ -20,6 +20,97 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — How many items a kill drops varies for every enemy
+
+**Affects:** the What a Kill Drops subsection of section VI in
+`docs/Cataclysm_GDD_v2.md`. Applied. Issue #725.
+
+### The gap
+
+**Four of the six enemy rarities dropped a fixed number of items, and nobody had
+decided that.** It was a side effect of how the count was worked out.
+
+The count was the whole part of the expected value plus one more item with
+probability equal to the fractional part — an expected 3.7 gave three items and a
+70% chance of a fourth. All of the randomness lived in the fraction, so a rate
+that happened to be a whole number had none at all:
+
+| Enemy rarity | Gear drops | What actually happened |
+| :-- | --: | :-- |
+| Common | 0.16 | 0 or 1 |
+| Elite | 0.5 | 0 or 1 |
+| Legendary | 1.0 | **always exactly 1** |
+| Herald | 2.0 | **always exactly 2** |
+| Boss | 5.0 | **always exactly 5** |
+| Cataclysm Boss | 12.0 | **always exactly 12** |
+
+The project owner found it by playing on 2026-08-19: a Boss-rarity creature
+dropped five items, every time, and they asked whether that was hard-set.
+
+### The decision
+
+**"Item count should vary for every enemy."** The project owner, 2026-08-19.
+
+**The count is drawn from a Poisson distribution with the table's figure as its
+mean.**
+
+### Why Poisson
+
+**Its mean is exactly the number given.** That is what made the change safe: every
+figure on the Enemy Drops sheet keeps meaning precisely what it meant before — the
+average — so no tuning value had to move and no balance work was invalidated. A
+different distribution would have required re-deriving all six.
+
+**It is the distribution of "how many independent things happened"**, which is
+what a drop count is.
+
+**It is the shape the genre's own systems produce.** Path of Exile gives each
+monster independent per-item drop chances, and many independent chances at a low
+rate is a Poisson count. Diablo IV varies boss rewards by chance and by party size
+rather than handing out a set number.
+
+### What it changes in play
+
+| Enemy rarity | Before | After |
+| :-- | :-- | :-- |
+| Common, 0.16 | nothing 84%, one item 16% | nothing 85.2%, one 13.6%, two 1.2% |
+| Legendary, 1.0 | always exactly 1 | nothing 36.8%, one 36.8%, two or more 26.4% |
+| Boss, 5.0 | always exactly 5 | 5 on average, usually 1 to 10, nothing 0.7% |
+
+**A Legendary enemy now gives nothing more than a third of the time.** That is the
+honest consequence of a mean of 1.0 and it is the largest change in feel here. If
+it turns out to be wrong, the answer is to raise the rate rather than to go back
+to a fixed count.
+
+### What argues against it, and what is left open
+
+**The evidence from the genre is weaker than a quoted rule.** Neither Path of
+Exile nor Diablo publishes a formula for how many items a kill produces. What the
+research establishes is that the genre uses probabilistic counts rather than fixed
+ones; the choice of Poisson specifically is a judgement, taken because its mean is
+the number already in the table.
+
+**A boss can now drop nothing at all**, about seven kills in a thousand at a rate
+of 5. No floor was added, because guaranteeing a boss at least one item is a
+second decision that has not been made. Issue #725 keeps it open, and
+`Cataclysm.Drop.DropCountsMatchTheModel` asserts that zero is reachable so a floor
+cannot appear silently later.
+
+**Predictability was worth something and has been given up.** Always-five is
+readable. The argument for variance is that a good kill should be able to feel
+good, and a fixed count removes that entirely.
+
+### Sources
+
+Search-result summaries rather than the pages themselves.
+
+- Path of Exile's per-monster drop chances.
+  https://pathofexile.fandom.com/wiki/Drop_rate
+- Diablo IV varying boss rewards by chance and party size rather than a set count.
+  https://mobalytics.gg/diablo-4/guides/diablo-4-boss-loot-tables
+
+---
+
 ## 2026-08-19 — A drop is taken from within three metres, and a click from further off walks there first
 
 **Affects:** the What a Kill Drops subsection of section VI in

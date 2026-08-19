@@ -2364,6 +2364,14 @@ So an Extremely Rare material is one material drop in 341, and since three mater
 
   
 
+**Every one of those numbers is an average, and the count varies on every kill.** A Boss's 5 means five items on an average kill, not five items on every kill: the actual number is drawn from a Poisson distribution with the table's figure as its mean, so a Boss usually gives between 1 and 10 and a Common enemy usually gives none. That applies to crafting materials too, on their own separate roll.
+
+  
+
+**A kill can give nothing whatever the enemy was**, including a Cataclysm Boss, because a Poisson draw reaches zero at every mean. At a Boss's rate of 5 that happens about seven kills in a thousand. Whether a boss should be guaranteed at least one item is not decided.
+
+  
+
 **These numbers are a starting point and are expected to move.** The 0.16 for a Common enemy is Path of Exile's published figure for a normal monster, taken because this design had none of its own; their figure covers currency and everything else a monster can drop rather than gear alone, so it is the right order of magnitude rather than a measured equivalent. Every number in the table is a column of the Enemy Drops sheet in `docs/All_Things_Cataclysm.xlsx` and changing one is a cell edit.
 
   
