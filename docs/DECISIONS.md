@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — Three answers from the first session of playing with loot
+
+**Affects:** the Interface Colour and Storage sections of
+`docs/Cataclysm_GDD_v2.md`, the Colour column of the Gear Rarity sheet in
+`docs/All_Things_Cataclysm.xlsx`, and `game/Data/GearRarity.csv`. Applied.
+Issues #711, #718 and #717.
+
+The project owner played a build with loot drops working for the first time and
+answered three questions that had been waiting. They are recorded together
+because they came from one sitting, and separately below because they are
+unrelated.
+
+---
+
+### 1. The two lowest rarity colours are swapped. Issue #711.
+
+**Everyday is grey and Quality is white**, where before Everyday was white and
+Quality grey.
+
+**Why.** Every game of this kind uses grey for the worthless tier and white for
+the ordinary one. The old order was backwards against that, so a player arriving
+from another game read the grey name as the poorer of the two when it was the
+better. The design document had recorded this as an open question since
+2026-08-14 rather than a settled choice; the project owner had both colours on
+screen after drops were built and flipped them.
+
+**What argues against it.** Nothing raised. The rest of the ramp is unchanged and
+no other value moved.
+
+**Where it landed.** The Colour column of the Gear Rarity sheet is authoritative;
+`game/Data/GearRarity.csv` is generated from it and `DT_GearRarity.uasset` was
+rebuilt from that, because a packaged build reads the asset and not the CSV.
+
+---
+
+### 2. A drop's name gets a border, and its thickness is the rarity. Issue #718.
+
+**One pixel for Everyday, rising by one a rung, so Cataclysmic sits inside
+eight.**
+
+**Why a second channel at all.** The Interface Colour section already required
+one: "the frame and the drop marker must differ by shape or motion as well as by
+colour", because a player who cannot separate two hues still has to separate two
+rarities. Roughly 8% of men have red-green colour blindness, and the ramp puts
+green, yellow, orange and red on four adjacent rungs. Nothing had been built to
+satisfy it, so the requirement was stated and unmet.
+
+**Why a border.** It is what Path of Exile's item filters already do to a ground
+label — their five axes are text colour, **border colour**, background colour,
+font size and a beam of light. It needs no art asset, which matters because the
+heads-up display draws on the canvas with no widget Blueprint and no content of
+any kind. And thickness is readable with no colour vision at all.
+
+**What was considered and rejected.**
+
+| Option | Why not |
+| :-- | :-- |
+| Font size per rarity | Path of Exile does this, but size is arguably neither shape nor motion, so it would not satisfy the design's own sentence as written |
+| Motion, such as a rarer name bobbing | It would satisfy the sentence, and it costs a tick on an actor that deliberately has none. A moving target is also harder to click than a still one |
+| An icon per rarity | Needs an art asset, and the canvas heads-up display has none |
+
+**What argues against it.** Eight thicknesses is a fine distinction at the top of
+the ladder, and nobody has judged by eye whether seven pixels reads as different
+from eight. The rungs that matter most are far apart, so the failure would be at
+the top rather than in the middle, but it is unmeasured.
+
+---
+
+### 3. All crafting materials stack. Issue #717.
+
+**Every material of one kind takes one inventory slot however many are held**,
+and a stack has no stated ceiling.
+
+**Why.** A material is a quantity of an interchangeable thing rather than a piece
+with its own rolls. Two Tier 3 dusts are not two objects the way two swords are.
+It is also what every game in the genre does with currency and crafting items.
+
+**Why it had to be decided before materials could be built.** A kill rolls
+materials at twice the gear rate — a Cataclysm Boss averages 24 — and the carried
+inventory is 48 slots. Without stacking, one boss kill could fill half the bag
+with dust and there would be no room for the gear the same kill dropped.
+
+**Gear does not stack and cannot.** Two items of the same base carry different
+affixes, upgrade levels, sockets and residue, so there is no sense in which they
+are the same thing. The one-item-one-slot rule stands for everything that is not
+a material.
+
+**What argues against it.** An unbounded stack removes a pressure the design
+created on purpose: the Storage section says a full inventory is a choice about
+what to leave behind, and materials now never contribute to that. If material
+carrying should cost something, a stack ceiling is the lever, and it is not set.
+
+---
+
 ## 2026-08-19 — How many items a kill drops varies for every enemy
 
 **Affects:** the What a Kill Drops subsection of section VI in

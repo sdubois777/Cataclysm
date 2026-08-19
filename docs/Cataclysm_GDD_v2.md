@@ -3748,7 +3748,15 @@ shared one. A Solo Self-Found character is the single exception, and the stash i
 opens is its own rather than the account's.
 
 **The carried inventory is 48 slots, four rows of twelve, and nothing increases
-it.** One item takes one slot whatever it is, the same rule the stash uses. No
+it.** One item takes one slot whatever it is, the same rule the stash uses.
+
+  
+
+**Crafting materials stack, and every material of one kind takes one slot however many are held.** Decided by the project owner on 2026-08-19: "all crafting materials stack". A material is a quantity of an interchangeable thing rather than a piece with its own rolls, so two of them are not two objects the way two swords are, and a stack has no stated ceiling. That is what every game in the genre does with its currency and crafting items, and it is what stops eighteen material kinds from filling a 48-slot bag before any gear is picked up.
+
+  
+
+**Gear does not stack, and cannot.** Two items of the same base carry different affixes, upgrade levels, sockets and residue, so there is no sense in which they are the same thing. No
 empire upgrade node grants slots, no affix grants slots, and no city upgrade
 grants slots. A character carries the same 48 on its first dungeon and its last.
 
@@ -5690,8 +5698,8 @@ model. The Item Rarities section states that rule and why.
 
 | Rarity | Colour | sRGB |
 | :-- | :-- | :-- |
-| Everyday | White | `#FFFFFF` |
-| Quality | Grey | `#9D9D9D` |
+| Everyday | Grey | `#9D9D9D` |
+| Quality | White | `#FFFFFF` |
 | Superb | Green | `#1EFF00` |
 | Masterful | Blue | `#2E9BFF` |
 | Legendary | Yellow | `#FFD100` |
@@ -5703,7 +5711,7 @@ model. The Item Rarities section states that rule and why.
 
   
 
-**The first two rungs run against the genre's habit, and that is worth knowing.** White sits below grey here, and in most games of this kind grey means worthless and white means ordinary. A player arriving from those games will read a grey name as the poorer of the two. The order is as decided; whether it should change is an open question rather than a settled one.
+**The first two rungs were the other way round until 2026-08-19, and were swapped to match the genre.** Everyday was white and Quality grey, which is backwards from what every game of this kind does: there grey means worthless and white means ordinary, so a player arriving from one of them read the grey name as the poorer of the two when it was the better. The project owner had both colours on screen after loot drops were built and decided to flip them. Issue #711.
 
   
 
@@ -5720,8 +5728,15 @@ rarity ramp and an elemental palette at the same time for the same reason.
 **Colour is still not the only channel**, for the same reason the effect palette
 carries a second one. A player who cannot separate two hues has to be able to
 separate two rarities, so the frame and the drop marker must differ by shape or
-motion as well as by colour. The Accessibility section is what this answers to,
-and it is the part that is still open.
+motion as well as by colour. The Accessibility section is what this answers to.
+
+  
+
+**The second channel is a border around the name, and its thickness is the rarity.** A drop's name on the dungeon floor is drawn inside a rectangular outline one pixel thick for Everyday and rising by one pixel a rung, so Cataclysmic sits inside eight. Thickness is readable without any colour vision at all, it needs no art asset, and it is what Path of Exile's item filters already give a ground label: their five axes are text colour, **border colour**, background colour, font size and a beam of light. Decided by the project owner on 2026-08-19. Issue #718.
+
+  
+
+**Thickness rather than size or motion**, both of which were considered. Font size is arguably neither shape nor motion, so it would not satisfy the sentence above as written. Motion would satisfy it and costs a tick on an actor that deliberately has none, and a moving name is harder to click than a still one.
 
   
 

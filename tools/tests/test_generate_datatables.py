@@ -917,8 +917,8 @@ GEAR_RARITY_HEADER = ["Rarity", "Drop Weight", "Gear Level Gate",
 
 #: The real ladder, weakest first. Tests copy this and change one cell.
 GEAR_RARITY_ROWS = [
-    ["Everyday", 15625, 0, 38, 62, "#FFFFFF"],
-    ["Quality", 6250, 0, 75, 125, "#9D9D9D"],
+    ["Everyday", 15625, 0, 38, 62, "#9D9D9D"],
+    ["Quality", 6250, 0, 75, 125, "#FFFFFF"],
     ["Superb", 2500, 0, 112, 188, "#1EFF00"],
     ["Masterful", 1000, 0, 150, 250, "#2E9BFF"],
     ["Legendary", 125, 4, 188, 312, "#FFD100"],
@@ -1016,7 +1016,10 @@ class TestGearRarity:
         """A player reads a rarity off the floor by the colour of its name, so
         two rarities sharing one would be two things that cannot be told apart.
         """
-        rows = changed(GEAR_RARITY_ROWS, 1, "Colour", "#FFFFFF")
+        # QUALITY GIVEN EVERYDAY'S COLOUR. It used to be given white,
+        # which collided with Everyday until the two were swapped on
+        # 2026-08-19 under issue #711 and white became Quality's own.
+        rows = changed(GEAR_RARITY_ROWS, 1, "Colour", "#9D9D9D")
         with pytest.raises(gen.DataError, match="same colour"):
             gen.gear_rarity(gear_rarity_book(tmp_path, rows))
 
@@ -1039,14 +1042,19 @@ class TestGearRarity:
 
         Mid grey is the case that shows it: 0x9D is 157 of 255, which is 0.616
         as a raw fraction and 0.337 once converted.
+
+        EVERYDAY IS THE GREY ONE AND QUALITY THE WHITE ONE, which is the other
+        way round from how this test was first written. The two were swapped on
+        2026-08-19 under issue #711, because grey below white is what the genre
+        does and the reverse read as backwards to the project owner in play.
         """
         rows = gen.gear_rarity(gear_rarity_book(tmp_path, GEAR_RARITY_ROWS))
-        quality = next(r for r in rows if r["Rarity"] == "Quality")
-        assert "R=0.337164" in quality["Colour"]
-        assert "0.615686" not in quality["Colour"], (
+        grey = next(r for r in rows if r["Rarity"] == "Everyday")
+        assert "R=0.337164" in grey["Colour"]
+        assert "0.615686" not in grey["Colour"], (
             "the sRGB fraction reached the table unconverted")
 
-        white = next(r for r in rows if r["Rarity"] == "Everyday")
+        white = next(r for r in rows if r["Rarity"] == "Quality")
         assert white["Colour"] == "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"
 
 
