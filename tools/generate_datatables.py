@@ -1357,12 +1357,21 @@ def material_tiers(book) -> list[dict]:
                             f"{materials:g} materials, so rolling it would give "
                             "nothing")
 
+        # THE COLOUR THE MATERIAL'S NAME IS DRAWN IN ON THE FLOOR. The five
+        # tiers are a different ladder from the eight gear rarities and they
+        # share a surface with them, so they get their own hue family rather
+        # than borrowing five of the gear colours. Decided on 2026-08-19; the
+        # reasoning and the measurements are in docs/DECISIONS.md.
+        colour = linear_colour(_cell(raw, headers, "Colour"), "Colour",
+                               f"Material Tiers row {index} ({name})")
+
         out.append({
             "Name": row_name(f"T{tier}"),
             "Tier": tier,
             "TierName": name,
             "DropWeight": weight,
             "Materials": int(materials),
+            "Colour": colour,
         })
 
     if [row["Tier"] for row in out] != list(range(1, len(out) + 1)):
@@ -1375,6 +1384,17 @@ def material_tiers(book) -> list[dict]:
                 f"Material Tiers: {above['TierName']} is above "
                 f"{below['TierName']} and rolls more often "
                 f"({above['DropWeight']:g} against {below['DropWeight']:g})")
+
+    # TWO TIERS SHARING A COLOUR WOULD BE TWO THINGS A PLAYER COULD NOT TELL
+    # APART on the floor, the same fault the Gear Rarity sheet refuses.
+    seen_colours: dict[str, str] = {}
+    for row in out:
+        if row["Colour"] in seen_colours:
+            raise DataError(
+                f"Material Tiers: {row['TierName']} and "
+                f"{seen_colours[row['Colour']]} are drawn in the same colour, "
+                "so a player could not tell them apart on the floor")
+        seen_colours[row["Colour"]] = row["TierName"]
 
     return unique(out, "Material Tiers")
 

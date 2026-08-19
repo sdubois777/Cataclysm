@@ -5707,6 +5707,44 @@ model. The Item Rarities section states that rule and why.
 | Ascendant | Purple | `#A335EE` |
 | Cataclysmic | Red | `#FF4040` |
 
+### **The crafting material ladder**
+
+**Crafting materials get their own five colours, in one hue family, so a
+material's name is never mistaken for gear's.** Both lie on the same dungeon
+floor and both are read as a name, so the eight rarity colours above could not be
+borrowed for the five material tiers without putting a Rare material and a
+Masterful sword on screen in the same blue.
+
+| Tier | Name | sRGB |
+| :-- | :-- | :-- |
+| 1 | Common | `#2E9E8E` |
+| 2 | Uncommon | `#23BFAB` |
+| 3 | Rare | `#16DCC4` |
+| 4 | Very Rare | `#4EF0DC` |
+| 5 | Extremely Rare | `#B6FFF4` |
+
+**All five are cyan, which the gear ramp does not use.** The nearest gear hue to
+any of them is Masterful blue, 36 degrees away. The category is readable before
+the tier is, which is what Path of Exile does by drawing every currency item in
+one tan whatever it is worth.
+
+**They brighten at every rung**, from a relative luminance of 0.27 to 0.88, so the
+ladder is readable with no colour vision at all — the same reason the gear names
+carry a border thickness.
+
+**A material's name carries a border too, one pixel a tier**, from one for Common
+to five for Extremely Rare. That is the same rule the gear names follow and it
+answers the same requirement.
+
+
+
+**The values live in the Colour column of the Material Tiers sheet in
+`docs/All_Things_Cataclysm.xlsx`**, stated as sRGB and converted to linear when
+`game/Data/MaterialTiers.csv` is generated, exactly as the gear rarity colours
+are.
+
+
+
 **The values live in the Colour column of the Gear Rarity sheet in `docs/All_Things_Cataclysm.xlsx`**, stated as the sRGB a colour picker shows and converted to linear when `game/Data/GearRarity.csv` is generated, the same way the damage-type colours are. They are close to the item quality colours the genre has used for twenty years, brightened where a value would be dim against a dark dungeon floor: the blue is lightened from the usual `#0070DD` and the red from a darker one that would read as a damage effect.
 
   

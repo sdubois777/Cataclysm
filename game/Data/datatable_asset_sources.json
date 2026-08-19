@@ -119,7 +119,7 @@
       "asset": "DT_MaterialTiers",
       "csv": "MaterialTiers.csv",
       "rows": 5,
-      "csv_sha256": "b5a8224425e970cc51b6af412ed582a2eeabbdd5a9eec9bc1b19c18f0687b1f9"
+      "csv_sha256": "3377c3204a507f5a75c4f98e24baabbe0024f44639c2e97bc7152d95d3473f56"
     },
     {
       "asset": "DT_MinionScaling",

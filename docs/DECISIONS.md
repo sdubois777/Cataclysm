@@ -20,6 +20,110 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — Crafting materials get their own five colours
+
+**Affects:** the Interface Colour section of `docs/Cataclysm_GDD_v2.md`, a new
+Colour column on the Material Tiers sheet in `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/MaterialTiers.csv` and `FCataclysmMaterialTierRow`. Applied. Toward
+issue #717.
+
+### The gap
+
+A drop on the ground is shown as its name, drawn in a colour. Crafting materials
+drop at twice the gear rate and **no colour was designed for any of them**. The
+eight on the Gear Rarity sheet are gear rarities; the material ladder is a
+different one of five rungs — Common, Uncommon, Rare, Very Rare, Extremely Rare —
+and `game/Data/MaterialTiers.csv` had no colour column at all. Nothing could put
+a material's name on the floor until this was settled.
+
+### The decision
+
+**Their own five colours, in one hue family**, rather than borrowing five of the
+gear colours. The project owner, 2026-08-19.
+
+| Tier | Name | sRGB |
+| :-- | :-- | :-- |
+| 1 | Common | `#2E9E8E` |
+| 2 | Uncommon | `#23BFAB` |
+| 3 | Rare | `#16DCC4` |
+| 4 | Very Rare | `#4EF0DC` |
+| 5 | Extremely Rare | `#B6FFF4` |
+
+### Why a separate family rather than five of the gear colours
+
+**The two share a surface.** The design already states that the rarity palette
+and the damage-type palette may overlap because "the two palettes never share a
+surface" — rarity colours appear on item names and damage hues on skill effects,
+and nothing is both. That argument does not hold here: a material's name and a
+gear item's name lie on the same dungeon floor, drawn the same way. Borrowing
+five gear colours would put a Rare material and a Masterful sword on screen in
+the same blue.
+
+**It is what the genre does.** Path of Exile draws every currency item in one
+light brown whatever it is worth, so the category is readable before the value
+is. Its equipment uses white, blue, yellow and orange, and currency is none of
+them.
+
+### Why cyan, and what was measured
+
+**The gear ramp uses grey, white, green, blue, yellow, orange, purple and red** —
+nearly the whole wheel. Cyan is the gap. Measured before choosing:
+
+| Tier | Hue | Nearest gear hue | Relative luminance |
+| :-- | --: | :-- | --: |
+| 1 Common | 171.4° | Masterful blue, 38.5° away | 0.270 |
+| 2 Uncommon | 172.3° | Masterful blue, 37.7° away | 0.406 |
+| 3 Rare | 172.7° | Masterful blue, 36.5° away | 0.553 |
+| 4 Very Rare | 172.6° | Masterful blue, 35.7° away | 0.691 |
+| 5 Extremely Rare | 171.0° | Masterful blue, 37.7° away | 0.880 |
+
+**Luminance rises at every rung**, so the ladder reads with no colour vision at
+all. That matters because the research is explicit that a palette of four to six
+colours holds up better across colour vision deficiency than a broad range of
+vivid hues, and that green is the single worst hue to depend on.
+
+**The first rung is deliberately saturated rather than muted.** A desaturated
+teal at tier 1 measured close to Everyday grey in both luminance and saturation,
+which would have been the commonest material and the commonest gear item looking
+alike. At a saturation of 0.71 it is unmistakably teal.
+
+### The second channel, which materials need for the same reason gear does
+
+**A material's name carries a border too, one pixel a tier**, from one for Common
+to five for Extremely Rare. The Interface Colour section requires the drop marker
+to differ by shape or motion as well as by colour, and a material name is a drop
+marker. It is the same rule the gear names follow under issue #718.
+
+**A tier 3 material and a Superb gear item therefore share a border thickness.**
+That is accepted rather than overlooked: the two are told apart by hue family and
+by the words in the name, and adding a second shape channel to separate the
+categories would be a third thing for a player to learn.
+
+### What argues against it
+
+**No colour here has been seen in play.** The whole ladder is a construction from
+measurements, and the first rung at a relative luminance of 0.27 is the dimmest
+thing that will be drawn on a dungeon floor. The text carries a black outline, so
+its contrast is a property of the text rather than of the floor, but whether tier
+1 reads well is a judgement nobody has made yet.
+
+**Five cyans is a narrow range.** Tier 3 against tier 4 is a smaller step than
+any two adjacent gear rarities, and the border thickness is what is expected to
+carry that distinction rather than the hue.
+
+### Sources
+
+Search-result summaries rather than the pages themselves.
+
+- Path of Exile drawing currency items in one light brown, separate from the
+  white, blue, yellow and orange of equipment.
+  https://pathofexile.fandom.com/wiki/Item
+- Colour-blind palette guidance: four to six colours hold up better than many
+  vivid hues, blue is the safest, green the worst to depend on.
+  https://www.nceas.ucsb.edu/sites/default/files/2022-06/Colorblind%20Safe%20Color%20Schemes.pdf
+
+---
+
 ## 2026-08-19 — Three answers from the first session of playing with loot
 
 **Affects:** the Interface Colour and Storage sections of
