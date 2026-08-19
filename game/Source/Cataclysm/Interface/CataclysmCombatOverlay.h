@@ -342,6 +342,76 @@ public:
 	/** How much of a bar is filled, 0 to 1. Zero when the maximum is not real. */
 	static float BarFractionFor(float Current, float Maximum);
 
+	//~ An enemy's rarity, said in a word over its head. Issue #740.
+
+	/**
+	 * The lowest rung that is marked. Common is not.
+	 *
+	 * MARKING EVERY CREATURE WOULD MARK NONE OF THEM. Common is 60% of what
+	 * spawns, so a word over every one of them is a word over most of the
+	 * screen, and the thing worth noticing is the exception.
+	 */
+	static constexpr int32 LowestMarkedRarityStep = 1;
+
+	/**
+	 * Whether an enemy's rarity is said over its head.
+	 *
+	 * BEFORE THE FIGHT, WHICH IS THE WHOLE POINT AND IS WHY THIS IS NOT
+	 * ShouldShowBarFor. That function deliberately shows nothing over an
+	 * undamaged creature. A rarity has to be readable while there is still a
+	 * choice about whether to engage: the design's rule that a boss cannot be
+	 * stunned at all is worth nothing to a player who finds out by spending the
+	 * stun. Path of Exile's own forum carries the complaint this avoids -- in a
+	 * large pack it is "impossible to know if one of them is an 'elite' mob
+	 * without first killing everything, or seeing one of its mods go off".
+	 * `docs/DECISIONS.md` names the source.
+	 *
+	 * NOTHING OVER A CORPSE, for the reason ShouldShowBarFor gives: an enemy
+	 * destroys itself on the tick after it dies, so without this the word would
+	 * flash for one frame at the end of every fight.
+	 *
+	 * @param RarityStep  0 for Common up to 5 for a Cataclysm Boss
+	 */
+	static bool ShouldShowRarityNameFor(int32 RarityStep, float Health,
+										float MaxHealth);
+
+	/**
+	 * Clear space between the top of a creature's health bar and the bottom of
+	 * the word over it, in pixels.
+	 *
+	 * ENOUGH TO CLEAR THE BAR AND ITS DARK BACKING, which are seven and two
+	 * pixels. Tuned by eye and expected to move; no test can see it.
+	 */
+	static constexpr float RarityNameGapPx = 6.0f;
+
+	/**
+	 * How big the word is, relative to a damage number.
+	 *
+	 * SMALLER THAN A BLOW LANDING. It is a label on a creature rather than
+	 * something that just happened, and it is on screen for as long as the
+	 * creature is, so at full size it would compete with the numbers that are
+	 * only there for a moment.
+	 */
+	static constexpr float RarityNameScale = 0.8f;
+
+	/**
+	 * The colour the word is drawn in.
+	 *
+	 * ONE COLOUR FOR EVERY RUNG, AND THAT IS DELIBERATE. The word itself says
+	 * which rung it is, so a colour would be a second copy of what the player
+	 * has already read. It also cannot be taken from anywhere: the design
+	 * document assigns the enemy rarity ladder no colours at all, and the eight
+	 * in the Interface Colour section are GEAR rarities, a different ladder with
+	 * different names and one more rung. Giving this ladder six colours is a
+	 * design decision that belongs in the workbook and the design document
+	 * rather than being invented here. Issue #740 records it as the next step if
+	 * the word alone turns out not to read at a glance.
+	 */
+	static const TCHAR* RarityNameHex;
+
+	/** Whether an enemy's rarity is drawn over it at all. */
+	static bool RarityNamesEnabled();
+
 	/**
 	 * Whether an actor is a candidate for an overhead bar at all.
 	 *

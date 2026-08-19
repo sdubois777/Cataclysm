@@ -2,6 +2,8 @@
 
 #include "Interface/CataclysmHUD.h"
 #include "Character/CataclysmCharacterBase.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
@@ -46,6 +48,11 @@ void ACataclysmHUD::DrawHUD()
 	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
 	{
 		DrawOverheadBars();
+	}
+
+	if (UCataclysmCombatOverlay::RarityNamesEnabled())
+	{
+		DrawRarityNames();
 	}
 
 	DrawDamageNumbers();
@@ -347,6 +354,84 @@ void ACataclysmHUD::DrawOverheadBars()
 				UCataclysmCombatOverlay::ColourFromHex(
 					UCataclysmCombatOverlay::HealthFillHex),
 				1.0f);
+	}
+}
+
+void ACataclysmHUD::DrawRarityNames()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// ENEMIES ONLY, AND NOT EVERY CHARACTER. DrawOverheadBars walks
+	// ACataclysmCharacterBase because a minion has health too; a minion has no
+	// rarity, so this walks the enemy branch instead.
+	const AActor* LocalPawn = GetOwningPawn();
+
+	// LOADED ONCE FOR THE WHOLE WALK. A creature fetching its own would repeat
+	// the lookup for every enemy on screen, every frame, for a table that cannot
+	// change while the level is loaded.
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCombatOverlay::RarityNameHex);
+
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		const ACataclysmEnemyCharacter* Enemy = *It;
+		if (!UCataclysmCombatOverlay::IsOverheadBarCandidate(Enemy, LocalPawn))
+		{
+			continue;
+		}
+
+		float Health = 0.0f;
+		float MaxHealth = 0.0f;
+		if (!UCataclysmCombatOverlay::VitalsOf(Enemy, Health, MaxHealth))
+		{
+			continue;
+		}
+
+		if (!UCataclysmCombatOverlay::ShouldShowRarityNameFor(
+				Enemy->RarityStep, Health, MaxHealth))
+		{
+			continue;
+		}
+
+		const FString Word =
+			UCataclysmEnemyRarity::RarityNameForStep(Rarities, Enemy->RarityStep);
+		if (Word.IsEmpty())
+		{
+			// A RUNG THE TABLE DOES NOT NAME DRAWS NOTHING, rather than an empty
+			// outline over the creature's head.
+			continue;
+		}
+
+		const FVector Anchor = Enemy->GetActorLocation()
+			+ FVector(0.0f, 0.0f,
+					  UCataclysmCombatOverlay::AnchorHeightFor(Enemy));
+
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, the same test
+		// and the same reasoning as DrawOverheadBars.
+		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		// MEASURED BEFORE IT IS DRAWN, because DrawTextCentred places the TOP of
+		// the text at the height it is given, and this word has to sit above the
+		// bar rather than start where the bar starts.
+		const FBox2D Measured = MeasureTextCentred(
+			Word, Screen.X, 0.0f, UCataclysmCombatOverlay::RarityNameScale);
+		const float Height = static_cast<float>(Measured.Max.Y - Measured.Min.Y);
+
+		DrawTextCentred(Word, Ink, Screen.X,
+						Screen.Y - Height
+							- UCataclysmCombatOverlay::RarityNameGapPx
+							- BarBackingInsetPx,
+						UCataclysmCombatOverlay::RarityNameScale);
 	}
 }
 

@@ -27,6 +27,7 @@ const TCHAR* UCataclysmCombatOverlay::ReachedHealthHex = TEXT("F5F0EA");
 const TCHAR* UCataclysmCombatOverlay::AbsorbedHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::NothingThroughHex = TEXT("8C9196");
 const TCHAR* UCataclysmCombatOverlay::CriticalStrikeHex = TEXT("FFA31F");
+const TCHAR* UCataclysmCombatOverlay::RarityNameHex = TEXT("F5F0EA");
 
 namespace
 {
@@ -61,6 +62,21 @@ namespace
 		TEXT("Whether a health bar is drawn over creatures. 1 draws them, 0 "
 			 "does not. Nothing is ever drawn over an undamaged creature or a "
 			 "dead one, whatever this is set to."),
+		ECVF_Default);
+
+	/**
+	 * Whether an enemy's rarity is said over its head.
+	 *
+	 * SEPARATE FROM THE BAR'S TOGGLE, because the two answer different
+	 * questions. A bar says how a fight is going; a rarity says whether to
+	 * start one, which is why it appears before anything has been hit.
+	 */
+	TAutoConsoleVariable<int32> CVarShowRarityNames(
+		TEXT("Cataclysm.Overlay.RarityNames"),
+		1,
+		TEXT("Whether an enemy's rarity is drawn over it. 1 draws it, 0 does "
+			 "not. Nothing is ever drawn over a Common enemy or a dead one, "
+			 "whatever this is set to."),
 		ECVF_Default);
 
 	/** Whether the player's own health is drawn on the frame. */
@@ -274,6 +290,40 @@ bool UCataclysmCombatOverlay::ShouldShowBarFor(float Health, float MaxHealth)
 	// AND NOTHING OVER SOMETHING UNHURT. The project owner's decision, and what
 	// Path of Exile does even with its own enemy life bar setting enabled.
 	return Health < MaxHealth;
+}
+
+bool UCataclysmCombatOverlay::RarityNamesEnabled()
+{
+	return CVarShowRarityNames.GetValueOnAnyThread() != 0;
+}
+
+bool UCataclysmCombatOverlay::ShouldShowRarityNameFor(int32 RarityStep,
+													  float Health,
+													  float MaxHealth)
+{
+	// A COMMON CREATURE IS NOT MARKED. See the header: marking every creature
+	// would mark none of them.
+	if (RarityStep < LowestMarkedRarityStep)
+	{
+		return false;
+	}
+
+	if (MaxHealth <= 0.0f)
+	{
+		return false;
+	}
+
+	// A CORPSE GETS NOTHING, the same rule and the same reason ShouldShowBarFor
+	// gives: an enemy destroys itself on the tick AFTER it dies.
+	if (Health <= 0.0f)
+	{
+		return false;
+	}
+
+	// AND NOTHING ELSE IS ASKED. Unlike a health bar, this does NOT wait for the
+	// creature to be hurt. A rarity that only appeared once the fight had
+	// started would tell the player what they had already found out.
+	return true;
 }
 
 float UCataclysmCombatOverlay::BarFractionFor(float Current, float Maximum)

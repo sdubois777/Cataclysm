@@ -7,6 +7,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Data/CataclysmDataRows.h"
+#include "Interface/CataclysmCombatOverlay.h"
 #include "Engine/DataTable.h"
 
 /**
@@ -314,6 +315,83 @@ bool FCataclysmRaritySortedTest::RunTest(const FString&)
 		Steps.Num(), 5);
 	TestFalse(TEXT("and it is the one that was left out"),
 		Steps.Contains(CataclysmBossStep));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Saying it over the creature's head
+// ---------------------------------------------------------------------------
+
+/**
+ * A rarity is said over a living enemy above Common, hurt or not. Issue #740.
+ *
+ * THE "HURT OR NOT" IS THE WHOLE POINT AND IT IS WHY THIS IS NOT THE BAR'S
+ * RULE. `ShouldShowBarFor` deliberately shows nothing over an undamaged
+ * creature, which is right for a health bar and wrong for a rarity: the design
+ * says a boss cannot be stunned at all, and that is worth nothing to a player
+ * who finds out by spending the stun. Path of Exile's own forum carries the
+ * complaint this avoids.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityNameShownTest,
+	"Cataclysm.EnemyRarity.TheRarityIsSaidBeforeTheFightRatherThanDuringIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRarityNameShownTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemyRarityTest;
+	using FOverlay = UCataclysmCombatOverlay;
+
+	// UNTOUCHED AND ABOVE COMMON IS THE CASE THAT MATTERS. A health bar would
+	// show nothing here; a rarity has to.
+	TestTrue(TEXT("an untouched Elite is marked"),
+		FOverlay::ShouldShowRarityNameFor(EliteStep, 100.0f, 100.0f));
+	TestFalse(TEXT("and a health bar over the same creature is not drawn"),
+		FOverlay::ShouldShowBarFor(100.0f, 100.0f));
+
+	// EVERY RUNG ABOVE COMMON, so a ladder that grew a rung is not silently
+	// left unmarked.
+	for (int32 Step = FOverlay::LowestMarkedRarityStep;
+		 Step <= CataclysmBossStep; ++Step)
+	{
+		TestTrue(FString::Printf(TEXT("step %d is marked"), Step),
+			FOverlay::ShouldShowRarityNameFor(Step, 100.0f, 100.0f));
+	}
+
+	// A COMMON IS NOT MARKED, at full health or hurt. It is 60% of what spawns
+	// and a word over every one of them is a word over most of the screen.
+	TestFalse(TEXT("an untouched Common is not marked"),
+		FOverlay::ShouldShowRarityNameFor(CommonStep, 100.0f, 100.0f));
+	TestFalse(TEXT("and neither is a hurt one"),
+		FOverlay::ShouldShowRarityNameFor(CommonStep, 40.0f, 100.0f));
+
+	// A HURT ONE ABOVE COMMON IS STILL MARKED, or the word would vanish the
+	// moment the fight started.
+	TestTrue(TEXT("a hurt Boss is still marked"),
+		FOverlay::ShouldShowRarityNameFor(BossStep, 1.0f, 100.0f));
+
+	// NOTHING OVER A CORPSE, the same rule the bar follows and for the same
+	// reason: an enemy destroys itself on the tick after it dies.
+	TestFalse(TEXT("a dead Boss is not marked"),
+		FOverlay::ShouldShowRarityNameFor(BossStep, 0.0f, 100.0f));
+	TestFalse(TEXT("and neither is one past zero"),
+		FOverlay::ShouldShowRarityNameFor(BossStep, -5.0f, 100.0f));
+
+	// A CREATURE WITH NO HEALTH POOL IS NOT A CREATURE YET. Its ability system
+	// arrives some frames after the actor on a client.
+	TestFalse(TEXT("a creature with no maximum health is not marked"),
+		FOverlay::ShouldShowRarityNameFor(BossStep, 0.0f, 0.0f));
+
+	// A STEP BELOW THE LADDER IS NOT MARKED EITHER, which is what the sandbox
+	// setting holds before a rarity is drawn for it.
+	TestFalse(TEXT("a step below Common is not marked"),
+		FOverlay::ShouldShowRarityNameFor(UCataclysmEnemyRarity::RollTheRarity,
+										  100.0f, 100.0f));
+
+	// AND COMMON IS REALLY THE ONLY RUNG LEFT BARE, or the constant could drift
+	// upward and quietly stop marking Elites.
+	TestEqual(TEXT("the lowest marked rung is the one above Common"),
+		FOverlay::LowestMarkedRarityStep, CommonStep + 1);
 
 	return true;
 }
