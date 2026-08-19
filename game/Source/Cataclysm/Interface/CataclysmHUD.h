@@ -92,6 +92,9 @@ private:
 	/** Every floating number that has not yet faded. */
 	void DrawDamageNumbers();
 
+	/** The name of every item lying on the floor, over where it lies. */
+	void DrawDropNames();
+
 	/** One bar: a dark backing, then the filled share of it. */
 	void DrawBar(float ScreenX, float ScreenY, float Width, float Height,
 				 float Fraction, const FLinearColor& Fill, float Opacity);

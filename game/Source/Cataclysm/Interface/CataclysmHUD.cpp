@@ -7,6 +7,7 @@
 #include "Engine/Font.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Items/CataclysmDroppedItem.h"
 
 ACataclysmHUD::ACataclysmHUD()
 {
@@ -48,6 +49,7 @@ void ACataclysmHUD::DrawHUD()
 	}
 
 	DrawDamageNumbers();
+	DrawDropNames();
 }
 
 void ACataclysmHUD::AddDamageNumber(const FCataclysmDamageNumber& Number)
@@ -320,6 +322,43 @@ void ACataclysmHUD::DrawOverheadBars()
 				UCataclysmCombatOverlay::ColourFromHex(
 					UCataclysmCombatOverlay::HealthFillHex),
 				1.0f);
+	}
+}
+
+void ACataclysmHUD::DrawDropNames()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// EVERY DROP IN THE WORLD, ASKED FOR EACH FRAME rather than kept in a list
+	// here. A drop appears when something dies and goes away when it is picked
+	// up, and neither of those happens through this class; keeping a copy would
+	// be a second record of what is on the floor and a way for the two to
+	// disagree.
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		const ACataclysmDroppedItem* Drop = *It;
+		if (!Drop || Drop->DisplayName.IsEmpty())
+		{
+			continue;
+		}
+
+		const FVector Anchor = Drop->GetActorLocation()
+			+ FVector(0.0f, 0.0f, ACataclysmDroppedItem::NameHeightCm);
+
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, the same test
+		// and the same reasoning as DrawOverheadBars above.
+		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		DrawTextCentred(Drop->DisplayName, Drop->NameColour, Screen.X, Screen.Y,
+						1.0f);
 	}
 }
 
