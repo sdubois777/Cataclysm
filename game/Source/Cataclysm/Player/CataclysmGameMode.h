@@ -73,6 +73,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
 	int32 SpawnAbyssalWardens();
 
+	/**
+	 * The rung a creature spawns at, given what its sandbox setting holds.
+	 *
+	 * NOT A UFUNCTION. Nothing in Blueprint calls it, and it takes a raw actor
+	 * pointer, which is what all three spawners already have in hand.
+	 *
+	 * @param Setting  a rung from 0 to 5, or UCataclysmEnemyRarity::RollTheRarity
+	 *                 to draw one from the spawn weights
+	 * @param Spawned  the creature, which seeds its own draw so that two made in
+	 *                 the same frame do not come out the same
+	 *
+	 * @return Common when there is no world or no creature, which is what every
+	 *         creature spawned as before anything drew a rarity at all
+	 */
+	int32 RarityStepFor(int32 Setting, const AActor* Spawned) const;
+
 	/** Every Abyssal Warden this game mode placed. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<class ACataclysmAbyssalWardenCharacter>> AbyssalWardens;
@@ -420,27 +436,43 @@ public:
 	// be able to ask for a rarity regardless of what the default happens to be,
 	// and these defaults are expected to be flipped by hand and flipped back.
 	//
-	// COMMON BY DEFAULT, because that is what every creature has always spawned
-	// at and a play session should not silently become a boss fight. Raise the
-	// Brute's to 4 to watch loot drop: a Common kill gives nothing five times in
-	// six and a Boss gives five items every time.
+	// DRAWN BY DEFAULT, NOT COMMON, SINCE ISSUE #508. Each of these is -1 in
+	// the shipped config, which is UCataclysmEnemyRarity::RollTheRarity and
+	// means "draw one from the spawn weights": Common 0.60, Elite 0.20,
+	// Legendary 0.15, Herald 0.04, Boss 0.01, and never a Cataclysm Boss. Set
+	// one to a rung from 0 to 5 to force it, which is what a person testing a
+	// single rarity wants and what the automation tests pass.
 	//
-	// SANDBOX SCAFFOLDING. The thing meant to assign a rarity is the enemy
-	// generator, which is issue #508 and does not exist.
+	// EVERY CREATURE SPAWNED COMMON BEFORE THIS, because nothing drew a rarity
+	// anywhere, so the eight rarity colours and the varying drop counts were
+	// almost never seen. Watching loot drop meant typing 4 in here by hand, and
+	// that hand edit broke the test suite repeatedly.
+	//
+	// STILL SANDBOX SCAFFOLDING. What decides how many creatures of each rarity
+	// a floor holds, rather than what one creature draws, belongs with the
+	// dungeon runtime, issue #41.
 	// ----------------------------------------------------------------------
 
-	/** Which rung each Brute spawns at. See the note above. */
+	/** Which rung each Brute spawns at, or -1 to draw one. See the note above. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
-			  meta = (ClampMin = "0", ClampMax = "5"))
-	int32 BruteRarityStep = 0;
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 BruteRarityStep = -1;
 
-	/** Which rung each Abyssal Warden spawns at. See the note above. */
+	/** Which rung each Abyssal Warden spawns at, or -1 to draw one. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
-			  meta = (ClampMin = "0", ClampMax = "5"))
-	int32 AbyssalWardenRarityStep = 0;
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 AbyssalWardenRarityStep = -1;
 
-	/** Which rung each training dummy spawns at. See the note above. */
+	/**
+	 * Which rung each training dummy spawns at, or -1 to draw one.
+	 *
+	 * COMMON RATHER THAN DRAWN, UNLIKE THE TWO ABOVE. A dummy is a practice
+	 * target and its stats come from the settings above rather than from its
+	 * rarity, but a dummy that drew Boss could not be stunned at all, and being
+	 * able to hit a predictable thing is what a dummy is there for. Set it to -1
+	 * to draw one anyway.
+	 */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
-			  meta = (ClampMin = "0", ClampMax = "5"))
+			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 TrainingDummyRarityStep = 0;
 };

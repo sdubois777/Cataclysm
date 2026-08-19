@@ -153,6 +153,35 @@ def rarity_step(rarity: str) -> int:
     return RARITY_ORDER.index(rarity)
 
 
+def spawn_weight(rarity: str) -> float:
+    """How common this rarity is among the enemies on one dungeon floor.
+
+    READ FROM `scoring.DUNGEON_SCORE_MIX` RATHER THAN WRITTEN AGAIN HERE. Those
+    five weights already are the spawn mix, and the design document says so in
+    as many words. The Dungeon Score Formula section of
+    `docs/Cataclysm_GDD_v2.md` reads: "The five weights are how common each
+    rarity is, and they sum to 1. Cataclysm Boss is absent because it does not
+    appear on an ordinary floor." A second table would be a second answer to a
+    question already settled, which is how issue #6 happened.
+
+    ISSUE #508 WAS FILED SAYING THESE WEIGHTS "DO NOT EXIST ANYWHERE". They did.
+    What did not exist was any way for the engine to read them, which is what the
+    SpawnWeight column on `game/Data/EnemyRarities.csv` now is.
+
+    A CATACLYSM BOSS HAS WEIGHT ZERO AND IS NOT ROLLED. It is placed, one at the
+    end of a Cataclysm dungeon, so a weight for it would be a chance of meeting a
+    second one on an ordinary floor.
+
+    @return 0.0 for a rarity the mix does not carry, which today is Cataclysm
+            Boss alone. Raises for a name that is not a rarity at all, because
+            that is a typo rather than a rarity that never spawns.
+    """
+    if rarity not in RARITY_ORDER:
+        raise ValueError(
+            f"unknown rarity {rarity!r}; expected one of {list(RARITY_ORDER)}")
+    return dict(scoring.DUNGEON_SCORE_MIX).get(rarity, 0.0)
+
+
 #: The first rung of the ladder that is a boss for the anti-stun-lock rule "a
 #: boss cannot be stunned at all", section VI of the design document. Boss and
 #: Cataclysm Boss are above the line; Herald -- the Abyssal Warden's reference

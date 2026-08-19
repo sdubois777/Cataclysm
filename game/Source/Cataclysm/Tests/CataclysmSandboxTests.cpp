@@ -403,14 +403,23 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
  * Boss; the magic find a rarer enemy adds to its own drops; and the design's
  * rule that a boss cannot be stunned at all.
  *
- * THE SETTINGS ARE ASKED FOR EXPLICITLY rather than taken from the defaults, for
- * the reason the training dummy test gives: all three default to 0 and this test
- * is about whether the spawner writes them, not about what anybody currently
- * wants.
+ * THE SETTINGS ARE ASKED FOR EXPLICITLY rather than taken from the defaults, and
+ * that is the whole arrangement rather than a convenience. This test is about
+ * whether the spawner writes what it was told, not about what the shipped config
+ * happens to hold.
  *
- * WHAT IS NOT CHECKED HERE: that `game/Config/DefaultGame.ini` reaches these
- * fields. That is Unreal's config loading rather than this project's code, and
- * nothing in a test world reads an ini.
+ * IT USED TO ASSERT THE DEFAULTS AS WELL, AND THAT WAS WRONG. Issue #736. The
+ * game mode is UCLASS(Config = Game), so its class default object is populated
+ * from `game/Config/DefaultGame.ini` before any test runs, and this test failed
+ * for anybody who had set a rung there to watch loot drop -- which was the only
+ * way to see a rare creature before issue #508. The comment above those
+ * assertions said "nothing in a test world reads an ini", which is not true and
+ * is what made the failure read as a fault in the spawner.
+ *
+ * WHAT GUARDS THE SHIPPED DEFAULTS INSTEAD, and always did:
+ * `tools/tests/test_the_game_modes_ini_keys_are_real_settings.py`. It reads the
+ * ini and the header as text, it runs on every pull request where this does not,
+ * and its message says which file to edit. One claim, one place.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpawnedRarityTest,
 	"Cataclysm.Sandbox.ACreatureSpawnsAtTheRarityItWasConfiguredWith",
@@ -435,26 +444,11 @@ bool FCataclysmSpawnedRarityTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// COMMON IS WHAT EVERY ONE OF THEM DEFAULTS TO. Asserted rather than assumed,
-	// because the whole point of the setting is that raising it changes something,
-	// and a default that had drifted to Boss would make a play session a boss
-	// fight without anyone asking for one.
+	// NOTHING HERE READS A DEFAULT. See the note above the test: the defaults are
+	// whatever game/Config/DefaultGame.ini holds, which is a file a person edits
+	// while trying something out, and asserting on it here made this test fail
+	// for a reason that had nothing to do with the spawner. Issue #736.
 	//
-	// THIS READS THE EFFECTIVE DEFAULT AND NOT THE HEADER'S INITIALISER, and the
-	// difference was measured rather than assumed. The class is
-	// UCLASS(Config = Game), so the value in game/Config/DefaultGame.ini wins
-	// over the `= 0` written beside the field. Changing the header to `= 4` and
-	// running this test was tried on purpose: all five tests still passed,
-	// because the ini put it back to 0. The header's initialiser is what a build
-	// with no ini key uses, and it is guarded from Python by
-	// tools/tests/test_the_game_modes_ini_keys_are_real_settings.py, which reads
-	// both and was confirmed to fail on that same break.
-	TestEqual(TEXT("a Brute defaults to Common"), GameMode->BruteRarityStep, 0);
-	TestEqual(TEXT("an Abyssal Warden defaults to Common"),
-		GameMode->AbyssalWardenRarityStep, 0);
-	TestEqual(TEXT("a training dummy defaults to Common"),
-		GameMode->TrainingDummyRarityStep, 0);
-
 	// A DIFFERENT RUNG FOR EACH, so a spawner that wrote the same value to all
 	// three, or wrote one creature's setting onto another, fails here.
 	constexpr int32 BossStep = ACataclysmEnemyCharacter::FirstBossRarityStep;

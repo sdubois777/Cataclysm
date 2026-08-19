@@ -1298,4 +1298,24 @@ struct FCataclysmEnemyRarityRow : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
 	float ArmorPerScore = 0.0f;
+
+	/**
+	 * How common this rarity is among the enemies on one dungeon floor.
+	 *
+	 * A SHARE OF A FLOOR'S POPULATION, NOT AN INDEPENDENT CHANCE. The five that
+	 * spawn sum to exactly 1. The Dungeon Score Formula section of
+	 * `docs/Cataclysm_GDD_v2.md` states them and says outright what they are:
+	 * "The five weights are how common each rarity is, and they sum to 1."
+	 *
+	 * CATACLYSM BOSS IS 0 AND IS NOT ROLLED. The same section says it "does not
+	 * appear on an ordinary floor". It is placed, one at the end of a Cataclysm
+	 * dungeon, so a weight for it would be a chance of meeting a second one.
+	 *
+	 * THE SAME FIVE NUMBERS THE DUNGEON SCORE USES, and deliberately. A floor's
+	 * score is that floor's rarity spread collapsed by how common each rarity
+	 * is, so a second set of shares would let the difficulty a dungeon is priced
+	 * at drift from the difficulty it actually presents. Issue #508.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
+	float SpawnWeight = 0.0f;
 };

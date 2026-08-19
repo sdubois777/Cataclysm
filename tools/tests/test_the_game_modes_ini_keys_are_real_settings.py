@@ -37,6 +37,11 @@ DEFAULT_GAME_INI = REPO_ROOT / "game" / "Config" / "DefaultGame.ini"
 
 #: The section Unreal reads this class's config properties from. It is the
 #: module name and the class name, and it has to match exactly.
+#: What a rarity setting holds to mean "draw a rung from the spawn weights"
+#: rather than naming one. `UCataclysmEnemyRarity::RollTheRarity`, issue #508.
+#: Negative so it cannot collide with a rung; the ladder is 0 to 5.
+DRAW_A_RARITY = -1
+
 SECTION = "[/Script/Cataclysm.CataclysmGameMode]"
 
 #: A `UPROPERTY(...)` whose specifiers include `Config`, and the field under it.
@@ -133,13 +138,19 @@ def test_every_setting_is_written_down_where_it_is_set(config_fields,
 
 
 def test_the_rarity_settings_cannot_leave_the_ladder(config_fields) -> None:
-    """Each rarity setting is clamped to the model's rarity ladder.
+    """Each rarity setting is clamped to the model's rarity ladder, plus one.
 
     A step above the ladder matches no row in `game/Data/EnemyDrops.csv`, so the
-    creature drops nothing at all; a negative one makes
-    `ACataclysmEnemyCharacter::IsBoss` meaningless. The maximum is compared with
-    the model rather than with the number 5, so adding a rung fails here instead
-    of leaving the new top rung unreachable.
+    creature drops nothing at all. The maximum is compared with the model rather
+    than with the number 5, so adding a rung fails here instead of leaving the
+    new top rung unreachable.
+
+    THE MINIMUM IS -1 AND NOT 0, since issue #508. That one value below the
+    ladder is `UCataclysmEnemyRarity::RollTheRarity`, which means "draw a rung
+    from the spawn weights" rather than naming one. Anything below it is still
+    refused, because a step of -2 would make
+    `ACataclysmEnemyCharacter::IsBoss` meaningless in the way this test was
+    written to prevent.
     """
     from cataclysm_sim.enemy_stats import RARITY_ORDER
 
@@ -158,35 +169,47 @@ def test_the_rarity_settings_cannot_leave_the_ladder(config_fields) -> None:
         assert low and high, (
             f"{name} has no ClampMin and ClampMax. A value typed or configured "
             f"outside the rarity ladder would reach the creature unchanged.")
-        assert int(low.group(1)) == 0, (
+        assert int(low.group(1)) == DRAW_A_RARITY, (
             f"{name} clamps to a minimum of {low.group(1)}. Common is rung 0 "
-            f"and the ladder has nothing below it.")
+            f"and the one value below it, {DRAW_A_RARITY}, means draw a rung "
+            f"from the spawn weights. Nothing below that is a rarity at all.")
         assert int(high.group(1)) == top, (
             f"{name} clamps to a maximum of {high.group(1)} and the model's "
             f"ladder in sim/cataclysm_sim/enemy_stats.py ends at {top}, which "
             f"is {RARITY_ORDER[-1]!r}.")
 
 
-def test_nothing_spawns_as_a_boss_by_default(config_fields, ini_keys) -> None:
+def test_nothing_spawns_as_a_forced_boss_by_default(config_fields,
+                                                    ini_keys) -> None:
     """A play session should not silently become a boss fight.
+
+    WHAT IS ALLOWED, AND IT CHANGED WITH ISSUE #508. Either Common, or the draw
+    sentinel, and nothing else. Drawing gives a Boss one time in a hundred and a
+    Cataclysm Boss never, which is the frequency the design states for a floor;
+    a forced rung above Common makes every creature in every session that rung,
+    for everybody, which is not a default anybody chose.
 
     Checked in both the header's initialiser and the ini, because either one
     alone decides it: the ini value wins where it is present, and the header's
     is what a build with no config uses.
     """
     header = read(GAME_MODE_HEADER)
+    allowed = {0, DRAW_A_RARITY}
 
     for name in sorted(n for n in config_fields if n.endswith("RarityStep")):
         found = re.search(rf"\bint32\s+{re.escape(name)}\s*=\s*(-?\d+)\s*;",
                           header)
         assert found, f"{name} has no initialiser in CataclysmGameMode.h"
-        assert int(found.group(1)) == 0, (
-            f"{name} defaults to {found.group(1)} in CataclysmGameMode.h. "
-            f"Common is 0, and a default above it makes every play session a "
-            f"harder fight than anyone asked for.")
+        assert int(found.group(1)) in allowed, (
+            f"{name} defaults to {found.group(1)} in CataclysmGameMode.h. Only "
+            f"0, which is Common, and {DRAW_A_RARITY}, which draws a rung from "
+            f"the spawn weights, are defaults. A forced rung above Common makes "
+            f"every play session a harder fight than anyone asked for.")
 
-        assert ini_keys.get(name) == "0", (
-            f"game/Config/DefaultGame.ini sets {name}={ini_keys.get(name)!r}. "
-            f"That file is committed, so a non-zero value here is not one "
-            f"person trying something out -- it is the default for everyone. "
-            f"Set it back to 0 before committing.")
+        stated = ini_keys.get(name)
+        assert stated is not None and int(stated) in allowed, (
+            f"game/Config/DefaultGame.ini sets {name}={stated!r}. That file is "
+            f"committed, so a forced rung here is not one person trying "
+            f"something out -- it is the default for everyone. Set it back to "
+            f"{DRAW_A_RARITY} to draw a rung, or 0 to force Common, before "
+            f"committing.")

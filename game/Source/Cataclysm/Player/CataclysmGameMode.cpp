@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Player/CataclysmGameMode.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Cataclysm.h"
@@ -107,6 +108,35 @@ void ACataclysmGameMode::StartPlay()
 	SpawnAbyssalWardens();
 }
 
+int32 ACataclysmGameMode::RarityStepFor(int32 Setting,
+									   const AActor* Spawned) const
+{
+	if (Setting != UCataclysmEnemyRarity::RollTheRarity)
+	{
+		// A RUNG WAS ASKED FOR, so it is used exactly. This is what a person
+		// testing one rarity sets, and what an automation test passes.
+		return Setting;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World || !Spawned)
+	{
+		return 0;
+	}
+
+	// A STREAM PER CREATURE, SEEDED FROM ITS OWN IDENTITY AND THE CLOCK. The
+	// same shape ACataclysmEnemyCharacter uses to seed its drop roll, and for
+	// the same reason it gives: creatures made in the same frame must not all
+	// come out the same, and a shared stream would make them do exactly that.
+	FRandomStream Stream(Spawned->GetUniqueID()
+		^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+
+	// EVERY CREATURE DRAWS ITS OWN, INDEPENDENTLY. See UCataclysmEnemyRarity for
+	// why an independent draw rather than a guaranteed count per floor.
+	return UCataclysmEnemyRarity::RollRarityStep(
+		UCataclysmEnemyRarity::LoadEnemyRarityTable(), Stream);
+}
+
 int32 ACataclysmGameMode::SpawnAbyssalWardens()
 {
 	UWorld* World = GetWorld();
@@ -171,7 +201,7 @@ int32 ACataclysmGameMode::SpawnAbyssalWardens()
 		// RARITY ARRIVES FROM THE SPAWNER TOO, and until issue #721 nothing
 		// anywhere called this outside the automation tests, so every
 		// creature in a play session was Common and dropped 0.16 items.
-		Warden->SetRarityStep(AbyssalWardenRarityStep);
+		Warden->SetRarityStep(RarityStepFor(AbyssalWardenRarityStep, Warden));
 
 		AbyssalWardens.Add(Warden);
 		++Spawned;
@@ -253,7 +283,7 @@ int32 ACataclysmGameMode::SpawnBrutes()
 		Brute->SetArmour(BruteArmour);
 
 		// See the note beside the Abyssal Warden's call.
-		Brute->SetRarityStep(BruteRarityStep);
+		Brute->SetRarityStep(RarityStepFor(BruteRarityStep, Brute));
 
 		Brutes.Add(Brute);
 		++Spawned;
@@ -324,7 +354,7 @@ int32 ACataclysmGameMode::SpawnTrainingDummies()
 		// system has been wired up yet. See ACataclysmEnemyCharacter::SetHealth.
 		Dummy->SetHealth(TrainingDummyHealth);
 		Dummy->SetAttackDamage(TrainingDummyAttackDamage);
-		Dummy->SetRarityStep(TrainingDummyRarityStep);
+		Dummy->SetRarityStep(RarityStepFor(TrainingDummyRarityStep, Dummy));
 
 		TrainingDummies.Add(Dummy);
 		++Spawned;
