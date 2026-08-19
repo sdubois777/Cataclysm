@@ -395,4 +395,196 @@ bool FCataclysmPickupNothingTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// Two names never printed on top of each other
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDropPickupTest
+{
+	/** Whether two rectangles share any area at all. */
+	bool Overlaps(const FBox2D& A, const FBox2D& B)
+	{
+		return A.Min.X < B.Max.X && B.Min.X < A.Max.X
+			&& A.Min.Y < B.Max.Y && B.Min.Y < A.Max.Y;
+	}
+
+	/** Whether any two of a set of rectangles share area. */
+	bool AnyOverlap(const TArray<FBox2D>& Rects)
+	{
+		for (int32 A = 0; A < Rects.Num(); ++A)
+		{
+			for (int32 B = A + 1; B < Rects.Num(); ++B)
+			{
+				if (Rects[A].bIsValid && Rects[B].bIsValid
+					&& Overlaps(Rects[A], Rects[B]))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
+/**
+ * Names that would print over each other are moved apart, and the rest are not.
+ *
+ * WHY THIS IS NEEDED WHEN THE DROPS ARE ALREADY SPREAD OUT ON THE GROUND. The
+ * scatter puts several drops from one kill around a circle, which separates them
+ * in the world. The camera looks down at that circle, so two drops on opposite
+ * sides of it can land at nearly the same height on screen, and an item name is
+ * far wider than it is tall. The project owner saw the names printed over each
+ * other on 2026-08-19.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNameSeparationTest,
+	"Cataclysm.DropPickup.NamesThatWouldOverlapAreMovedApart",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNameSeparationTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	constexpr float Gap = 4.0f;
+
+	// NOTHING TO DO. Two names far apart are left exactly where they were, so
+	// the common case costs nothing and nothing drifts for no reason.
+	TArray<FBox2D> Apart;
+	Apart.Add(MakeRect(100.0f, 100.0f, 200.0f, 120.0f));
+	Apart.Add(MakeRect(100.0f, 400.0f, 200.0f, 420.0f));
+	const TArray<FBox2D> Untouched = Apart;
+
+	FPickup::SeparateOverlappingNames(Apart, Gap);
+	TestEqual(TEXT("the first name did not move"), Apart[0], Untouched[0]);
+	TestEqual(TEXT("nor did the second"), Apart[1], Untouched[1]);
+
+	// SIDE BY SIDE IS NOT OVERLAPPING. Two names at the same height that do not
+	// share any columns are both readable already.
+	TArray<FBox2D> Beside;
+	Beside.Add(MakeRect(100.0f, 100.0f, 200.0f, 120.0f));
+	Beside.Add(MakeRect(400.0f, 100.0f, 500.0f, 120.0f));
+	const TArray<FBox2D> BesideBefore = Beside;
+
+	FPickup::SeparateOverlappingNames(Beside, Gap);
+	TestEqual(TEXT("a name beside another does not move"), Beside[1],
+		BesideBefore[1]);
+
+	// EXACTLY ON TOP OF EACH OTHER, which is what the project owner saw.
+	TArray<FBox2D> Stacked;
+	Stacked.Add(MakeRect(100.0f, 100.0f, 300.0f, 120.0f));
+	Stacked.Add(MakeRect(100.0f, 100.0f, 300.0f, 120.0f));
+	Stacked.Add(MakeRect(100.0f, 100.0f, 300.0f, 120.0f));
+
+	FPickup::SeparateOverlappingNames(Stacked, Gap);
+	TestFalse(TEXT("three names on one spot no longer overlap"),
+		AnyOverlap(Stacked));
+
+	// THE HIGHEST ONE STAYS PUT and the others go below it, in order.
+	TestEqual(TEXT("the first keeps its place"), Stacked[0].Min.Y, 100.0);
+	TestEqual(TEXT("the second sits under it, a gap away"),
+		Stacked[1].Min.Y, 124.0);
+	TestEqual(TEXT("and the third under that"), Stacked[2].Min.Y, 148.0);
+
+	// AND THEY KEEP THEIR SIZE. A name squashed to fit would be unreadable in a
+	// different way.
+	for (const FBox2D& Rect : Stacked)
+	{
+		TestEqual(TEXT("the name is still 20 pixels tall"),
+			Rect.Max.Y - Rect.Min.Y, 20.0);
+		TestEqual(TEXT("and still 200 wide"), Rect.Max.X - Rect.Min.X, 200.0);
+	}
+
+	// NOTHING MOVES SIDEWAYS. A name that drifted left or right would no longer
+	// point at the item it belongs to.
+	for (const FBox2D& Rect : Stacked)
+	{
+		TestEqual(TEXT("the left edge is where it was"), Rect.Min.X, 100.0);
+	}
+
+	return true;
+}
+
+/**
+ * A crowd of names is separated whatever order they arrive in.
+ *
+ * PARTLY OVERLAPPING RATHER THAN IDENTICAL, because that is the real case: five
+ * drops from one kill land in a circle and their names land in a rough band.
+ * Moving one clear of its neighbour can push it onto the next, which is why the
+ * pass repeats rather than making one comparison each.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNameSeparationCrowdTest,
+	"Cataclysm.DropPickup.ACrowdOfNamesEndsUpWithNoneOverlapping",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNameSeparationCrowdTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	constexpr float Gap = 4.0f;
+
+	// TWELVE, WHICH IS WHAT A CATACLYSM BOSS DROPS. Each one five pixels below
+	// the last and twenty tall, so every one overlaps its neighbours.
+	TArray<FBox2D> Crowd;
+	for (int32 Index = 0; Index < 12; ++Index)
+	{
+		const float Top = 200.0f + static_cast<float>(Index) * 5.0f;
+		Crowd.Add(MakeRect(300.0f, Top, 520.0f, Top + 20.0f));
+	}
+
+	FPickup::SeparateOverlappingNames(Crowd, Gap);
+	TestFalse(TEXT("twelve names no longer overlap"), AnyOverlap(Crowd));
+
+	// GIVEN IN THE OPPOSITE ORDER, the answer is the same set of positions. The
+	// world hands drops over in no particular order, so the layout must not
+	// depend on it.
+	TArray<FBox2D> Reversed;
+	for (int32 Index = 11; Index >= 0; --Index)
+	{
+		const float Top = 200.0f + static_cast<float>(Index) * 5.0f;
+		Reversed.Add(MakeRect(300.0f, Top, 520.0f, Top + 20.0f));
+	}
+
+	FPickup::SeparateOverlappingNames(Reversed, Gap);
+	TestFalse(TEXT("and still do not overlap given in reverse"),
+		AnyOverlap(Reversed));
+
+	TArray<double> Forward;
+	for (const FBox2D& Rect : Crowd) { Forward.Add(Rect.Min.Y); }
+	TArray<double> Backward;
+	for (const FBox2D& Rect : Reversed) { Backward.Add(Rect.Min.Y); }
+	Forward.Sort();
+	Backward.Sort();
+
+	if (TestEqual(TEXT("the same number of names"), Forward.Num(),
+				  Backward.Num()))
+	{
+		for (int32 Index = 0; Index < Forward.Num(); ++Index)
+		{
+			TestEqual(TEXT("the same set of heights, whatever the input order"),
+				Forward[Index], Backward[Index]);
+		}
+	}
+
+	// AN UNSET RECTANGLE TAKES NO PART. A drop that failed to project has no
+	// place on screen, and it must not push a real name out of the way.
+	TArray<FBox2D> WithAnUnsetOne;
+	WithAnUnsetOne.Add(FBox2D());
+	WithAnUnsetOne.Add(MakeRect(0.0f, 0.0f, 100.0f, 20.0f));
+	FPickup::SeparateOverlappingNames(WithAnUnsetOne, Gap);
+	TestEqual(TEXT("a real name at the origin is not pushed by an unset one"),
+		WithAnUnsetOne[1].Min.Y, 0.0);
+
+	// AND NEITHER AN EMPTY LIST NOR A SINGLE NAME IS A PROBLEM.
+	TArray<FBox2D> Empty;
+	FPickup::SeparateOverlappingNames(Empty, Gap);
+	TestEqual(TEXT("an empty list stays empty"), Empty.Num(), 0);
+
+	TArray<FBox2D> Alone;
+	Alone.Add(MakeRect(10.0f, 10.0f, 60.0f, 30.0f));
+	FPickup::SeparateOverlappingNames(Alone, Gap);
+	TestEqual(TEXT("a lone name does not move"), Alone[0].Min.Y, 10.0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

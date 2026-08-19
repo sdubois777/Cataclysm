@@ -44,26 +44,34 @@ def read(path: pathlib.Path) -> str:
 
 
 def centred_text_body() -> str:
-    """Just `ACataclysmHUD::DrawTextCentred`, so a match elsewhere cannot pass.
+    """Just `ACataclysmHUD::DrawOutlinedText`, so a match elsewhere cannot pass.
 
-    THE RETURN TYPE IS NOT PART OF THE ANCHOR. It was `void` until issue #707
-    made the function hand back the rectangle it filled, so that a drop's name
-    could be clicked, and this test failed on the signature while the outline it
-    guards was untouched. What is being guarded is the body.
+    THE FUNCTION THIS READS HAS MOVED TWICE, and both moves were the outline
+    staying put while the code around it changed:
+
+    - It was `void ACataclysmHUD::DrawTextCentred` until issue #707 made that
+      function return the rectangle it filled, so a drop's name could be
+      clicked. This test failed on the signature while the outline was
+      untouched, so the return type stopped being part of the anchor.
+    - Issue #723 then split measuring from drawing, so that every drop name
+      could be laid out before any of them was committed to the screen and two
+      names would stop printing over each other. The outline moved into
+      `DrawOutlinedText`, which is now the one function all text goes through,
+      and `DrawTextCentred` became a measure followed by a call to it.
 
     THE OPEN PARENTHESIS IS PART OF THE ANCHOR, and it is the part that makes a
     rename fail here rather than pass silently. Without it the pattern matches
-    any function whose name merely STARTS with `DrawTextCentred`, so renaming
-    this one to `DrawTextCentredSomewhere` would leave the guard reading a
+    any function whose name merely STARTS with `DrawOutlinedText`, so renaming
+    this one to `DrawOutlinedTextSomewhere` would leave the guard reading a
     different function's body and reporting success. The plain `str.find` this
     replaced had the same hole; it was found by breaking the guard on purpose.
     """
     text = read(HUD)
-    match = re.search(r"^\w[\w:<>&* ]*ACataclysmHUD::DrawTextCentred\(",
+    match = re.search(r"^\w[\w:<>&* ]*ACataclysmHUD::DrawOutlinedText\(",
                       text, re.MULTILINE)
     assert match is not None, (
-        "ACataclysmHUD::DrawTextCentred no longer exists. Every piece of text "
-        "the heads-up display draws went through it; if that changed, this "
+        "ACataclysmHUD::DrawOutlinedText no longer exists. Every piece of text "
+        "the heads-up display draws goes through it; if that changed, this "
         "guard has to move with it.")
     start = match.start()
     end = text.find("\n}", start)

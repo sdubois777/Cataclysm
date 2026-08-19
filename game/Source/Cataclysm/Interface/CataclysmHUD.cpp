@@ -123,23 +123,26 @@ void ACataclysmHUD::DrawBar(float ScreenX, float ScreenY, float Width,
 	DrawRect(Drawn, ScreenX, ScreenY, Filled, Height);
 }
 
-FBox2D ACataclysmHUD::DrawTextCentred(const FString& Text,
-									  const FLinearColor& Colour, float CentreX,
-									  float TopY, float Scale)
+FBox2D ACataclysmHUD::MeasureTextCentred(const FString& Text, float CentreX,
+										float TopY, float Scale)
 {
 	UFont* Font = OverlayFont();
 
-	// EVERY PIECE OF TEXT THIS DRAWS GOES THROUGH HERE, which is why the base
-	// size is applied at this one point rather than at each caller. It covers
-	// the floating damage numbers and the player's own health and mana figures
-	// together, and the project owner's complaint after playing was that the
-	// font is "too small in general" rather than about either one. Issue #668.
+	// THE BASE SIZE IS APPLIED AT THIS ONE POINT rather than at each caller. It
+	// covers the floating damage numbers and the player's own health and mana
+	// figures together, and the project owner's complaint after playing was that
+	// the font is "too small in general" rather than about either one. Issue
+	// #668.
 	//
 	// THE CALLER'S Scale STAYS RELATIVE. UCataclysmCombatOverlay::ScaleFor
 	// answers 1.0 for an ordinary blow, 0.7 for a damage over time tick and 1.35
 	// for a critical strike, and those are ratios between numbers rather than
 	// absolute sizes. Multiplying here keeps that separation: the overlay decides
 	// what is bigger than what, and the heads-up display decides how big.
+	//
+	// MEASURING AND DRAWING BOTH DO THIS MULTIPLICATION, and they have to agree,
+	// which is why DrawOutlinedText takes the same Scale rather than a size in
+	// pixels.
 	const float Sized = Scale * TextScale;
 
 	float Width = 0.0f;
@@ -147,6 +150,28 @@ FBox2D ACataclysmHUD::DrawTextCentred(const FString& Text,
 	GetTextSize(Text, Width, Height, Font, Sized);
 
 	const float Left = CentreX - Width * 0.5f;
+
+	// THE RECTANGLE THE TEXT ITSELF FILLS, not the outline around it. The
+	// outline is one pixel of spread and including it would make two names
+	// drawn close together overlap slightly more than they look like they do.
+	return FBox2D(FVector2D(Left, TopY), FVector2D(Left + Width, TopY + Height));
+}
+
+FBox2D ACataclysmHUD::DrawTextCentred(const FString& Text,
+									  const FLinearColor& Colour, float CentreX,
+									  float TopY, float Scale)
+{
+	const FBox2D Where = MeasureTextCentred(Text, CentreX, TopY, Scale);
+	DrawOutlinedText(Text, Colour, Where.Min.X, Where.Min.Y, Scale);
+	return Where;
+}
+
+void ACataclysmHUD::DrawOutlinedText(const FString& Text,
+									 const FLinearColor& Colour, float Left,
+									 float Top, float Scale)
+{
+	UFont* Font = OverlayFont();
+	const float Sized = Scale * TextScale;
 
 	// A BLACK OUTLINE, BECAUSE A COLOUR ALONE DOES NOT SURVIVE THE FLOOR IT IS
 	// STANDING ON. The project owner played a build without one and reported the
@@ -177,16 +202,10 @@ FBox2D ACataclysmHUD::DrawTextCentred(const FString& Text,
 
 	for (const FVector2D& Offset : Offsets)
 	{
-		DrawText(Text, Outline, Left + Offset.X, TopY + Offset.Y, Font, Sized);
+		DrawText(Text, Outline, Left + Offset.X, Top + Offset.Y, Font, Sized);
 	}
 
-	DrawText(Text, Colour, Left, TopY, Font, Sized);
-
-	// THE RECTANGLE THE TEXT ITSELF FILLED, not the outline around it. The
-	// outline is one pixel of spread and including it would make two names
-	// drawn close together overlap slightly more than they look like they do.
-	return FBox2D(FVector2D(Left, TopY),
-				  FVector2D(Left + Width, TopY + Height));
+	DrawText(Text, Colour, Left, Top, Font, Sized);
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
@@ -350,6 +369,10 @@ void ACataclysmHUD::DrawDropNames()
 	DropNameRects.Reset();
 	DropsNamed.Reset();
 
+	// MEASURED FIRST AND DRAWN AFTERWARDS, in two passes over the same list,
+	// because where a name goes depends on where the other names went. Drawing
+	// as they were found would print the first one before it was known that the
+	// third would land on top of it.
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 	{
 		ACataclysmDroppedItem* Drop = *It;
@@ -369,13 +392,27 @@ void ACataclysmHUD::DrawDropNames()
 			continue;
 		}
 
-		const FBox2D Rect = DrawTextCentred(Drop->DisplayName, Drop->NameColour,
-											Screen.X, Screen.Y, 1.0f);
-
 		// THE TWO ARRAYS ARE APPENDED TOGETHER AND NOWHERE ELSE, which is what
 		// keeps index N of one describing the same drop as index N of the other.
-		DropNameRects.Add(Rect);
+		DropNameRects.Add(MeasureTextCentred(Drop->DisplayName, Screen.X,
+											 Screen.Y, 1.0f));
 		DropsNamed.Add(Drop);
+	}
+
+	// NOTHING IS DRAWN YET, so a name that would have sat on top of another can
+	// still be moved. The rectangles that move are the same ones a click is
+	// tested against, so a name stays clickable wherever it ends up.
+	UCataclysmDropPickup::SeparateOverlappingNames(
+		DropNameRects, UCataclysmDropPickup::NameGapPx);
+
+	for (int32 Index = 0; Index < DropNameRects.Num(); ++Index)
+	{
+		if (const ACataclysmDroppedItem* Drop = DropsNamed[Index].Get())
+		{
+			DrawOutlinedText(Drop->DisplayName, Drop->NameColour,
+							 DropNameRects[Index].Min.X,
+							 DropNameRects[Index].Min.Y, 1.0f);
+		}
 	}
 }
 

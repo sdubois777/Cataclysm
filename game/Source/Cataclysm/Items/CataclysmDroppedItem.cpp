@@ -5,6 +5,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "Components/SceneComponent.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
 
@@ -13,6 +14,26 @@ ACataclysmDroppedItem::ACataclysmDroppedItem()
 	// NOTHING TICKS. The name is worked out at spawn and the heads-up display
 	// draws it; a drop on the floor has nothing to do between those two.
 	PrimaryActorTick.bCanEverTick = false;
+
+	// AN ACTOR WITH NO ROOT COMPONENT CANNOT BE ANYWHERE, and this one had none.
+	//
+	// `AActor::GetActorLocation` answers `RootComponent ?
+	// RootComponent->GetComponentLocation() : FVector::ZeroVector`, and the
+	// transform handed to `SpawnActor` is applied to the root component, so with
+	// no root it is discarded. Every drop this class ever produced sat at the
+	// world origin, whatever position the spawner asked for, and the scatter that
+	// spreads several drops from one kill around a circle moved nothing.
+	//
+	// THE PROJECT OWNER SAW IT FIRST, on 2026-08-19: every item from every kill
+	// piled in the middle of the room rather than lying where the creature died.
+	// Issue #723.
+	//
+	// A BARE SCENE COMPONENT, because there is nothing to draw. What a player
+	// sees is the item's NAME, drawn by ACataclysmHUD::DrawDropNames over this
+	// actor's position, so the actor needs a position and no appearance. A mesh
+	// here would be a model lying on the floor, which is the thing this design
+	// decided against on 2026-08-18.
+	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 }
 
 bool UCataclysmDropPickup::IsWithinPickupRange(const FVector& Character,
@@ -40,6 +61,87 @@ int32 UCataclysmDropPickup::IndexOfNameUnderPoint(const TArray<FBox2D>& Rects,
 		}
 	}
 	return INDEX_NONE;
+}
+
+void UCataclysmDropPickup::SeparateOverlappingNames(TArray<FBox2D>& Rects,
+													float GapPx)
+{
+	// HIGHEST FIRST. The name nearest the top of the screen keeps its place and
+	// every other one moves down past it, so the result does not depend on the
+	// order the world happened to hand the drops over in.
+	TArray<int32> Order;
+	Order.Reserve(Rects.Num());
+	for (int32 Index = 0; Index < Rects.Num(); ++Index)
+	{
+		if (Rects[Index].bIsValid)
+		{
+			Order.Add(Index);
+		}
+	}
+
+	// StableSort, NOT Sort. TArray::Sort is an introsort and gives no order at
+	// all to elements the comparator calls equal, and two drops from one kill
+	// really can produce two names at exactly the same height AND the same left
+	// edge -- that is precisely the case the project owner reported, every name
+	// printed on the same spot. With an unstable sort the layout of an unchanged
+	// scene could differ from one frame to the next, so the names would jitter
+	// while nothing moved. Order is built in array order, so a stable sort
+	// settles every tie by which drop the world handed over first.
+	//
+	// FOUND BY A TEST RATHER THAN BY WATCHING IT. Three identical rectangles
+	// came back in the order 148, 100, 124 instead of 100, 124, 148.
+	Order.StableSort([&Rects](int32 A, int32 B)
+	{
+		if (Rects[A].Min.Y != Rects[B].Min.Y)
+		{
+			return Rects[A].Min.Y < Rects[B].Min.Y;
+		}
+		// LEFTMOST BREAKS A TIE between two names at the same height. Two that
+		// match on both are left in the order they arrived, by the stable sort.
+		return Rects[A].Min.X < Rects[B].Min.X;
+	});
+
+	for (int32 Position = 1; Position < Order.Num(); ++Position)
+	{
+		// AGAINST EVERY NAME ALREADY PLACED, REPEATEDLY, because moving clear of
+		// one can move onto another. Bounded by the number already placed: each
+		// pass that moves anything moves this name below at least one of them,
+		// and there are only that many to get below.
+		for (int32 Pass = 0; Pass < Position; ++Pass)
+		{
+			bool bMoved = false;
+
+			for (int32 Earlier = 0; Earlier < Position; ++Earlier)
+			{
+				FBox2D& Mine = Rects[Order[Position]];
+				const FBox2D& Theirs = Rects[Order[Earlier]];
+
+				// TWO NAMES SIDE BY SIDE DO NOT OVERLAP however close their
+				// heights are, so both axes have to be checked. Only the
+				// vertical one carries the gap, because that is the direction
+				// anything moves.
+				const bool bShareColumns = Mine.Min.X <= Theirs.Max.X
+										&& Theirs.Min.X <= Mine.Max.X;
+				const bool bShareRows = Mine.Min.Y < Theirs.Max.Y + GapPx
+									 && Theirs.Min.Y < Mine.Max.Y + GapPx;
+
+				if (!bShareColumns || !bShareRows)
+				{
+					continue;
+				}
+
+				const float Push = Theirs.Max.Y + GapPx - Mine.Min.Y;
+				Mine.Min.Y += Push;
+				Mine.Max.Y += Push;
+				bMoved = true;
+			}
+
+			if (!bMoved)
+			{
+				break;
+			}
+		}
+	}
 }
 
 bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
