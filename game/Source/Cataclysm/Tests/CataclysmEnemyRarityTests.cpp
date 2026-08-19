@@ -120,6 +120,21 @@ bool FCataclysmSpawnWeightsTest::RunTest(const FString&)
 	TestEqual(TEXT("and no table carries none"),
 		FRarity::SpawnWeightForStep(nullptr, CommonStep), 0.0f);
 
+	// EVERY STEP HAS A NAME A PERSON CAN READ. The log is the only place an
+	// enemy's rarity appears at all, so a step with no name there leaves a line
+	// that says nothing. Issue #740 is the screen work that would replace it.
+	for (const FCase& Case : Cases)
+	{
+		TestEqual(FString::Printf(TEXT("step %d is called %s"), Case.Step,
+								  Case.Rarity),
+			FRarity::RarityNameForStep(Table, Case.Step), FString(Case.Rarity));
+	}
+
+	TestEqual(TEXT("a step off the ladder has no name"),
+		FRarity::RarityNameForStep(Table, 99), FString());
+	TestEqual(TEXT("and no table gives no name"),
+		FRarity::RarityNameForStep(nullptr, CommonStep), FString());
+
 	return true;
 }
 

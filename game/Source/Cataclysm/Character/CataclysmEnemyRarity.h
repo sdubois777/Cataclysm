@@ -80,6 +80,23 @@ public:
 									int32 Step);
 
 	/**
+	 * What a step is called, as a person reads it.
+	 *
+	 * WHY A NAME IS NEEDED AT ALL. Nothing in the game shows an enemy's rarity:
+	 * there is no name plate, no colour and no size difference, and the three
+	 * things rarity changes -- how many items a kill drops, the magic find it
+	 * adds to its own drops, and whether it can be stunned -- are all invisible
+	 * until the creature is dead. So the only way to know what spawned is the
+	 * log, and a log line reading "step 3" tells a person much less than one
+	 * reading "Herald". Issue #740 is the screen work that would make this
+	 * unnecessary.
+	 *
+	 * @return an empty string for a step the table does not hold
+	 */
+	static FString RarityNameForStep(const UDataTable* EnemyRarityTable,
+									 int32 Step);
+
+	/**
 	 * Every step the table carries a positive weight for, lowest first.
 	 *
 	 * SORTED, BECAUSE A DataTable IS A MAP. Its rows come back in whatever order

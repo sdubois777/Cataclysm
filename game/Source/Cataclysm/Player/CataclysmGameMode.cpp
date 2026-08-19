@@ -133,8 +133,25 @@ int32 ACataclysmGameMode::RarityStepFor(int32 Setting,
 
 	// EVERY CREATURE DRAWS ITS OWN, INDEPENDENTLY. See UCataclysmEnemyRarity for
 	// why an independent draw rather than a guaranteed count per floor.
-	return UCataclysmEnemyRarity::RollRarityStep(
-		UCataclysmEnemyRarity::LoadEnemyRarityTable(), Stream);
+	const UDataTable* Table = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	const int32 Step = UCataclysmEnemyRarity::RollRarityStep(Table, Stream);
+
+	// SAID OUT LOUD, BECAUSE NOTHING ON SCREEN SAYS IT. An enemy's rarity has no
+	// name plate, no colour and no size, and the three things it changes -- how
+	// many items the kill drops, the magic find it adds to its own drops, and
+	// whether it can be stunned -- are all invisible until the creature is dead.
+	// Without this line the only way to find out what spawned is to kill it and
+	// infer from the loot. Issue #740 is the screen work that would make this
+	// line unnecessary.
+	//
+	// Log rather than Verbose, deliberately. It is one line per creature at the
+	// start of a session, and it is the only evidence a person has that the draw
+	// happened at all.
+	UE_LOG(LogCataclysm, Log, TEXT("%s spawned as %s (rarity step %d)."),
+		   *GetNameSafe(Spawned),
+		   *UCataclysmEnemyRarity::RarityNameForStep(Table, Step), Step);
+
+	return Step;
 }
 
 int32 ACataclysmGameMode::SpawnAbyssalWardens()

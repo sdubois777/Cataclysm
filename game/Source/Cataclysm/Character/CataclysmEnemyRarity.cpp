@@ -69,6 +69,27 @@ float UCataclysmEnemyRarity::SpawnWeightForStep(
 	return Found;
 }
 
+FString UCataclysmEnemyRarity::RarityNameForStep(
+	const UDataTable* EnemyRarityTable, int32 Step)
+{
+	if (!EnemyRarityTable)
+	{
+		return FString();
+	}
+
+	FString Found;
+	EnemyRarityTable->ForeachRow<FCataclysmEnemyRarityRow>(
+		TEXT("UCataclysmEnemyRarity::RarityNameForStep"),
+		[Step, &Found](const FName& Key, const FCataclysmEnemyRarityRow& Row)
+		{
+			if (Row.Step == Step)
+			{
+				Found = Row.RarityName;
+			}
+		});
+	return Found;
+}
+
 int32 UCataclysmEnemyRarity::RollRarityStep(const UDataTable* EnemyRarityTable,
 											FRandomStream& Stream)
 {
