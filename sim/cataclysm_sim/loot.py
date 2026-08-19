@@ -76,6 +76,7 @@ Diablo Wiki, https://diablo2.diablowiki.net/Magic_find_diminishing_returns .
 from __future__ import annotations
 
 import dataclasses
+import math
 
 from . import affixes as af
 from . import player_power
@@ -690,8 +691,9 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
 #:
 #: AN EXPECTED COUNT RATHER THAN A CHANCE, which matters above Legendary. A
 #: chance cannot exceed one, and a Cataclysm Boss has to be able to drop twelve
-#: things. The fractional part is rolled as a probability, so 0.16 means one kill
-#: in six drops one item; see `roll_gear_drop_count`.
+#: things. It is a MEAN and not a fixed count: `roll_count` draws the actual
+#: number from a Poisson distribution with this as its mean, so 0.16 means a
+#: Common kill gives nothing about six times in seven and occasionally gives two.
 #:
 #: 0.16 FOR A COMMON ENEMY is Path of Exile's own figure -- "the base chance for
 #: an item to drop from a normal monster is 16%" -- taken as a starting point
@@ -779,17 +781,62 @@ def magic_find_from(enemy_rarity: str) -> float:
     return ENEMY_MAGIC_FIND[_enemy_rarity(enemy_rarity)]
 
 
-def roll_gear_drop_count(enemy_rarity: str, loot_quantity: float, rng) -> int:
-    """How many gear items this kill actually drops.
+def roll_count(expected: float, rng) -> int:
+    """How many things actually drop when this many are expected.
 
-    THE WHOLE PART IS CERTAIN AND THE FRACTION IS A PROBABILITY, so an expected
-    3.7 gives three items and a 70% chance of a fourth. That is the standard way
-    to turn a rate into a count without rounding bias: rounding 0.16 to the
-    nearest whole number would make a Common enemy drop nothing, ever.
+    A POISSON DRAW, so the count VARIES FOR EVERY ENEMY. Decided by the project
+    owner on 2026-08-19: "item count should vary for every enemy". Issue #725.
+
+    WHAT IT REPLACED, AND WHY THAT HAD TO GO. The count used to be the whole part
+    of the expected value plus one more with probability equal to the fraction --
+    `whole + (1 if rng.random() < expected - whole else 0)`. All of the randomness
+    lived in the fraction, so a rate that happened to be a whole number had none
+    at all: a Boss at 5.0 dropped exactly five items every kill, a Herald at 2.0
+    exactly two, and a Cataclysm Boss at 12.0 exactly twelve. Four of the six
+    enemy rarities were fixed, and they were the four a player cares about. That
+    was a side effect of the arithmetic rather than a decision anyone made.
+
+    WHY POISSON RATHER THAN SOMETHING WIDER OR NARROWER. It is the distribution
+    of "how many independent things happened", which is what a drop count is, and
+    its mean is exactly the number given -- so every figure on the Enemy Drops
+    sheet keeps meaning precisely what it meant before, the average, and no tuning
+    value had to move. It is also the shape the genre's own systems produce: Path
+    of Exile gives each monster independent per-item drop chances, and many
+    independent chances at a low rate is a Poisson count. Neither Path of Exile
+    nor Diablo publishes a formula, so that is the shape rather than a quoted
+    rule.
+
+    WHAT IT CHANGES IN PRACTICE. A Common at 0.16 gave nothing 84% of the time
+    and one item 16%; it now gives nothing 85.2%, one 13.6% and two 1.2%. A Boss
+    at 5.0 gave exactly five; it now gives 5 on average, between 1 and 10 on
+    almost every kill, and nothing at all 0.7% of the time.
+
+    A BOSS CAN THEREFORE DROP NOTHING, and no floor is applied here. Whether a
+    boss should be guaranteed at least one item is a separate decision that has
+    not been made; issue #725 records it as open.
+
+    KNUTH'S METHOD, which needs only a uniform random number and so works with
+    the same `rng` everything else here uses. It draws about `expected + 1`
+    numbers, so the most expensive call in this project -- a Cataclysm Boss's 24
+    expected materials -- draws about 25. It terminates because each draw is
+    below 1, so the running product strictly decreases.
     """
-    expected = expected_gear_drops(enemy_rarity, loot_quantity)
-    whole = int(expected)
-    return whole + (1 if rng.random() < expected - whole else 0)
+    if expected <= 0.0:
+        return 0
+
+    limit = math.exp(-expected)
+    count = 0
+    product = 1.0
+    while True:
+        count += 1
+        product *= rng.random()
+        if product <= limit:
+            return count - 1
+
+
+def roll_gear_drop_count(enemy_rarity: str, loot_quantity: float, rng) -> int:
+    """How many gear items this kill actually drops. Varies; see `roll_count`."""
+    return roll_count(expected_gear_drops(enemy_rarity, loot_quantity), rng)
 
 
 def roll_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
@@ -950,9 +997,7 @@ def roll_material_drops_from_kill(enemy_rarity: str, magic_find: float,
     Returns tiers rather than named materials, for the reason in
     `roll_material_tier`.
     """
-    expected = expected_material_drops(enemy_rarity, loot_quantity)
-    whole = int(expected)
-    count = whole + (1 if rng.random() < expected - whole else 0)
+    count = roll_count(expected_material_drops(enemy_rarity, loot_quantity), rng)
 
     together = magic_find + magic_find_from(enemy_rarity)
     return [roll_material_tier(together, rng) for _ in range(count)]

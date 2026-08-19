@@ -647,17 +647,55 @@ bool FCataclysmDropCountTest::RunTest(const FString& Parameters)
 	TestTrue(*FString::Printf(TEXT("0.16 averages 0.16 over %d draws (%.4f)"),
 							  Draws, Mean),
 		FMath::Abs(Mean - 0.16f) < 0.16f * 0.1f);
-	TestEqual(TEXT("and never gives two at once"), MostAtOnce, 1);
 
-	// A WHOLE NUMBER HAS NO FRACTION LEFT TO ROLL, so it cannot vary. Without
-	// this the fractional draw could be adding a spurious extra at every whole
-	// number.
-	Total = 0;
-	for (int32 Draw = 0; Draw < 500; ++Draw)
+	// AND TWO AT ONCE IS POSSIBLE, at about one kill in eighty. This test used
+	// to assert the opposite -- "never gives two at once" -- which was true
+	// while the count was the whole part plus a fractional chance, because that
+	// method cannot produce two from a rate below one. Issue #725.
+	TestTrue(TEXT("and a Common enemy can drop two at once"), MostAtOnce >= 2);
+
+	// A WHOLE NUMBER VARIES TOO, WHICH IS THE WHOLE OF ISSUE #725. This test
+	// used to assert "a rate of exactly 5 always gives 5", and it was right
+	// about the old code: all the randomness lived in the fractional part, so
+	// four of the six enemy rarities dropped a fixed number. The project owner
+	// decided on 2026-08-19 that the count should vary for every enemy.
+	constexpr int32 BossDraws = 4000;
+	constexpr float BossRate = 5.0f;
+
+	int32 BossTotal = 0;
+	int32 Fewest = MAX_int32;
+	int32 Most = 0;
+	int32 Empty = 0;
+	for (int32 Draw = 0; Draw < BossDraws; ++Draw)
 	{
-		Total += FDrop::RollDropCount(5.0f, Stream);
+		const int32 Count = FDrop::RollDropCount(BossRate, Stream);
+		BossTotal += Count;
+		Fewest = FMath::Min(Fewest, Count);
+		Most = FMath::Max(Most, Count);
+		Empty += (Count == 0) ? 1 : 0;
 	}
-	TestEqual(TEXT("a rate of exactly 5 always gives 5"), Total, 500 * 5);
+
+	// THE MEAN IS THE PART THAT MUST NOT MOVE, because every figure in
+	// game/Data/EnemyDrops.csv is an average and changing how the count is drawn
+	// was only acceptable while that stayed true.
+	const float BossMean = static_cast<float>(BossTotal) / BossDraws;
+	TestTrue(*FString::Printf(
+			TEXT("a rate of 5 still averages 5 over %d draws (%.3f)"),
+			BossDraws, BossMean),
+		FMath::Abs(BossMean - BossRate) < BossRate * 0.1f);
+
+	TestTrue(*FString::Printf(TEXT("and it varies (%d to %d)"), Fewest, Most),
+		Most > Fewest);
+	TestTrue(TEXT("a Boss sometimes drops fewer than five"), Fewest < 5);
+	TestTrue(TEXT("and sometimes more"), Most > 5);
+
+	// ZERO IS REACHABLE EVEN AT FIVE, about 0.7% of the time. Asserted because
+	// it is a consequence the design has not decided about -- whether a boss
+	// should be guaranteed one item is left open on issue #725 -- and a silent
+	// floor appearing later should fail here rather than pass unnoticed.
+	TestTrue(*FString::Printf(
+			TEXT("a Boss can drop nothing at all (%d of %d)"), Empty, BossDraws),
+		Empty > 0);
 
 	TestEqual(TEXT("and a rate of nothing gives nothing"),
 		FDrop::RollDropCount(0.0f, Stream), 0);

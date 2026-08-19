@@ -734,27 +734,73 @@ def test_the_rolled_count_averages_the_expected_one():
 
 def test_a_common_kill_usually_drops_nothing_at_all():
     """0.16 is a rate, not a guarantee, and the shape matters as much as the
-    mean: five kills in six give the player nothing."""
+    mean: most kills give the player nothing.
+
+    THE EXACT SHARE MOVED WHEN THE COUNT BECAME A POISSON DRAW, from 84% empty
+    to 85.2%, and a Common enemy can now occasionally drop two. Issue #725.
+    """
     rng = random.Random(1)
     rolled = [loot.roll_gear_drop_count("Common", 100.0, rng)
-              for _ in range(10000)]
-    assert rolled.count(0) / len(rolled) == pytest.approx(0.84, abs=0.02)
-    assert max(rolled) == 1
+              for _ in range(20000)]
+
+    assert rolled.count(0) / len(rolled) == pytest.approx(0.852, abs=0.02)
+
+    # AND TWO IS POSSIBLE, at about one kill in eighty. Asserted rather than
+    # left to chance, because the old method made two impossible at any rate
+    # below one and this is the difference.
+    assert max(rolled) >= 2
 
 
-def test_a_whole_number_rate_always_drops_that_many():
-    """A Legendary enemy is exactly 1.0, so there is no fraction left to roll
-    and the count cannot vary. Without this the fractional roll could be adding
-    a spurious extra item at every whole number."""
+def test_a_whole_number_rate_still_varies():
+    """The fault issue #725 was filed for, asserted as its opposite.
+
+    THIS TEST USED TO SAY THE REVERSE. It was called
+    `test_a_whole_number_rate_always_drops_that_many` and asserted that a
+    Legendary enemy, whose rate is exactly 1.0, always dropped exactly one --
+    because the old method put all of the randomness in the fractional part and a
+    whole number has none. Four of the six enemy rarities were fixed that way,
+    including both bosses. The project owner decided on 2026-08-19 that "item
+    count should vary for every enemy".
+    """
     rng = random.Random(2)
-    assert {loot.roll_gear_drop_count("Legendary", 100.0, rng)
-            for _ in range(500)} == {1}
+    rolled = [loot.roll_gear_drop_count("Legendary", 100.0, rng)
+              for _ in range(2000)]
+
+    assert len(set(rolled)) > 1, (
+        "a Legendary enemy dropped the same number of items every time; the "
+        "count is fixed again")
+    assert 0 in rolled, "a rate of 1.0 must sometimes give nothing"
+    assert max(rolled) >= 3, "a rate of 1.0 must sometimes give several"
+
+
+def test_every_enemy_rarity_varies_and_averages_its_designed_rate():
+    """The whole of issue #725, checked for all six rarities at once.
+
+    THE MEAN IS THE PART THAT MUST NOT MOVE. Every figure on the Enemy Drops
+    sheet is an average, and changing how the count is drawn was only acceptable
+    because a Poisson draw averages the number it is given. If that stopped being
+    true, every drop rate in the design would quietly mean something else.
+    """
+    rng = random.Random(4)
+
+    for rarity, expected in loot.ENEMY_GEAR_DROPS.items():
+        rolled = [loot.roll_gear_drop_count(rarity, 100.0, rng)
+                  for _ in range(20000)]
+
+        assert sum(rolled) / len(rolled) == pytest.approx(expected, rel=0.06), (
+            f"{rarity} averages {sum(rolled) / len(rolled)} items and the "
+            f"design says {expected}")
+        assert len(set(rolled)) > 1, f"{rarity} drops a fixed number of items"
 
 
 def test_a_kill_produces_whole_items():
+    """HOW MANY IS NOT ASSERTED, because a Boss's five is a mean rather than a
+    count since issue #725. What is asserted is that every item that arrives is
+    a whole one."""
     rng = random.Random(3)
     items = loot.roll_drops_from_kill("Boss", 8, 0.0, 100.0, rng)
-    assert len(items) == 5
+
+    assert items, "a Boss dropping nothing is possible but not at this seed"
     for item in items:
         assert item.base.slot in af.GEAR_SLOTS
         assert item.rarity in af.RARITIES
@@ -961,10 +1007,24 @@ def test_rolling_materials_draws_from_the_stated_distribution():
 
 
 def test_a_kill_produces_material_tiers():
+    """HOW MANY IS NOT ASSERTED, for the reason `test_a_kill_produces_whole_items`
+    gives: a Boss's ten materials became a mean under issue #725. Materials go
+    through the same `roll_count` as gear, which is what the average below
+    checks."""
     rng = random.Random(9)
+
     tiers = loot.roll_material_drops_from_kill("Boss", 0.0, 100.0, rng)
-    assert len(tiers) == 10
+    assert tiers, "a Boss dropping no materials is possible but not at this seed"
     assert set(tiers) <= set(loot.MATERIAL_TIERS)
+
+    # AND MATERIALS AVERAGE THEIR OWN DESIGNED RATE, which is twice the gear
+    # rate. A second copy of the counting arithmetic living here was how the two
+    # could have drifted apart; there is one function now.
+    counts = [len(loot.roll_material_drops_from_kill("Boss", 0.0, 100.0, rng))
+              for _ in range(4000)]
+    assert sum(counts) / len(counts) == pytest.approx(
+        loot.ENEMY_MATERIAL_DROPS["Boss"], rel=0.06)
+    assert len(set(counts)) > 1, "a Boss drops a fixed number of materials"
 
 
 def test_the_material_import_time_checks_can_fail():

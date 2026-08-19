@@ -398,10 +398,33 @@ public:
 	/**
 	 * Turn an expected number of drops into how many actually fall.
 	 *
-	 * THE WHOLE PART IS CERTAIN AND THE FRACTION IS A PROBABILITY, so an
-	 * expected 3.7 gives three and a 70% chance of a fourth. Rounding 0.16 to
-	 * the nearest whole number instead would make a Common enemy drop nothing,
-	 * ever.
+	 * A POISSON DRAW, SO THE COUNT VARIES FOR EVERY ENEMY. Decided by the
+	 * project owner on 2026-08-19: "item count should vary for every enemy".
+	 * Issue #725. `roll_count` in `sim/cataclysm_sim/loot.py` is the model this
+	 * mirrors and carries the full reasoning.
+	 *
+	 * WHAT IT REPLACED. The count used to be the whole part of the expected
+	 * value plus one more with probability equal to the fraction, so all the
+	 * randomness lived in the fraction and a rate that was a whole number had
+	 * none: a Boss at 5.0 dropped exactly five items every kill and a Cataclysm
+	 * Boss exactly twelve. Four of the six enemy rarities were fixed.
+	 *
+	 * THE MEAN IS UNCHANGED, which is why no number in `game/Data/EnemyDrops.csv`
+	 * moved. A Poisson draw averages the value it is given.
+	 *
+	 * IT CAN ANSWER ZERO FOR ANY RATE, including a Boss's, about 0.7% of the
+	 * time. No floor is applied here; whether a boss should be guaranteed one
+	 * item is a separate question and issue #725 records it as open.
+	 *
+	 * KNUTH'S METHOD, which needs only a uniform random number and so uses the
+	 * same stream as everything else. It draws about `Expected + 1` numbers, so
+	 * the most expensive call in the project -- a Cataclysm Boss's 24 expected
+	 * materials -- draws about 25. It terminates because `FRandomStream::FRand`
+	 * answers in [0, 1), so the running product strictly decreases and reaches
+	 * the limit in finite steps. The product and the limit are doubles rather
+	 * than floats so that a large expected value, which a big loot quantity
+	 * bonus could produce, does not underflow the limit to zero and turn a
+	 * bounded loop into a long one.
 	 */
 	static int32 RollDropCount(float Expected, FRandomStream& Stream);
 
