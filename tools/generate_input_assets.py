@@ -58,6 +58,9 @@ NATIVE_ACTIONS = [
     # One axis, not a boolean: the wheel reports how far it turned, and a notch
     # forward and a notch back differ only in that value's sign.
     ("IA_Zoom", "Zoom", AXIS1D, "Zoom Camera"),
+    # One action for opening and for closing, because it is a screen rather than
+    # a modifier. Issue #731.
+    ("IA_ToggleInventory", "ToggleInventory", BOOLEAN, "Toggle Inventory"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -102,6 +105,9 @@ MOUSE_MAPPINGS = [
     # used for anything else in either. No gamepad equivalent yet; that belongs
     # with the rest of the gamepad bindings in issue #137.
     ("IA_Zoom", "MouseWheelAxis", []),
+    # The carried inventory. I in both schemes, where Diablo, Path of Exile and
+    # Last Epoch all put it, and free in both. Issue #731.
+    ("IA_ToggleInventory", "I", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -120,6 +126,7 @@ KEYBOARD_MAPPINGS = [
     ("IA_SlotUltimate", "R", []),
     ("IA_SlotMovement", "SpaceBar", []),
     ("IA_Zoom", "MouseWheelAxis", []),
+    ("IA_ToggleInventory", "I", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

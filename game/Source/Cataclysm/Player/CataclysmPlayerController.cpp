@@ -113,6 +113,11 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::Zoom, ETriggerEvent::Triggered,
 		this, &ACataclysmPlayerController::Input_Zoom);
 
+	// Started rather than Completed, so the screen opens as the key goes down
+	// the way a screen does everywhere else, rather than when it comes back up.
+	Input->BindNativeAction(Config, Names::ToggleInventory, ETriggerEvent::Started,
+		this, &ACataclysmPlayerController::Input_ToggleInventory);
+
 	TArray<uint32> BindHandles;
 	Input->BindAbilityActions(Config, this,
 		&ACataclysmPlayerController::Input_AbilitySlotPressed,
@@ -228,8 +233,47 @@ void ACataclysmPlayerController::Input_Move(const FInputActionValue& Value)
 	ControlledPawn->AddMovementInput(FVector::RightVector, Axis.X);
 }
 
+void ACataclysmPlayerController::Input_ToggleInventory()
+{
+	if (ACataclysmHUD* Overlay = Cast<ACataclysmHUD>(GetHUD()))
+	{
+		Overlay->ToggleInventory();
+	}
+}
+
+bool ACataclysmPlayerController::CursorIsOverInterface() const
+{
+	const ACataclysmHUD* Overlay = Cast<ACataclysmHUD>(GetHUD());
+	if (!Overlay)
+	{
+		return false;
+	}
+
+	float X = 0.0f;
+	float Y = 0.0f;
+	if (!GetMousePosition(X, Y))
+	{
+		// NO CURSOR. A gamepad has none, and no screen can be clicked with one
+		// yet; that is part of issue #137.
+		return false;
+	}
+
+	return Overlay->InventoryCoversPoint(FVector2D(X, Y));
+}
+
 void ACataclysmPlayerController::Input_MoveToCursorStarted()
 {
+	// A PRESS THAT LANDS ON AN OPEN SCREEN IS NOT A MOVE ORDER, and it does not
+	// stop a walk already under way either. The cursor ray goes straight through
+	// anything drawn on the canvas, so without this a click on a grid cell would
+	// send the character to whatever piece of floor lies behind the panel.
+	// Issue #731.
+	bPressBeganOnInterface = CursorIsOverInterface();
+	if (bPressBeganOnInterface)
+	{
+		return;
+	}
+
 	StopMovement();
 	FollowTime = 0.0f;
 	UpdateCachedDestination();
@@ -237,6 +281,14 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 
 void ACataclysmPlayerController::Input_MoveToCursorHeld()
 {
+	// DECIDED AT THE PRESS AND NOT HERE. A player who presses on a cell and
+	// drags the cursor off the panel has still not ordered a move, and asking
+	// again each frame would start steering the moment the cursor left the edge.
+	if (bPressBeganOnInterface)
+	{
+		return;
+	}
+
 	FollowTime += GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
 
 	if (!UpdateCachedDestination())
@@ -259,6 +311,16 @@ void ACataclysmPlayerController::Input_MoveToCursorHeld()
 
 void ACataclysmPlayerController::Input_MoveToCursorReleased()
 {
+	// THE PRESS BEGAN ON AN OPEN SCREEN, so releasing it finishes nothing in the
+	// world. Cleared here and on the Canceled event this is also bound to, so a
+	// mapping context change mid-press cannot leave every later click ignored.
+	if (bPressBeganOnInterface)
+	{
+		bPressBeganOnInterface = false;
+		FollowTime = 0.0f;
+		return;
+	}
+
 	// Released quickly: treat it as a click and path to the point. Released after
 	// a hold: the steering above already happened and there is nothing to add.
 	if (FollowTime <= ShortPressThreshold && !bStandStill && !IsPawnStunned())

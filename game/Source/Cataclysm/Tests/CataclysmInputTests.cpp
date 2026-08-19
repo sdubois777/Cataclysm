@@ -280,12 +280,13 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Four native bindings, found by the names the controller uses.
+	// Five native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
 		CataclysmInputActionNames::StandStill,
 		CataclysmInputActionNames::Zoom,
+		CataclysmInputActionNames::ToggleInventory,
 	};
 
 	for (const FName& Name : NativeNames)
@@ -366,6 +367,11 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 	// anything else in either, so unlike click-to-move there is nothing for the
 	// two schemes to disagree about.
 	RequiredEverywhere.Add(Config->FindNativeAction(CataclysmInputActionNames::Zoom));
+
+	// The carried inventory is on I in both schemes. Neither scheme uses that
+	// key for anything else, so the two have nothing to disagree about either.
+	RequiredEverywhere.Add(
+		Config->FindNativeAction(CataclysmInputActionNames::ToggleInventory));
 
 	// Click-to-move is the one binding the two schemes disagree about, and the
 	// disagreement is the design rather than an omission. Under keyboard movement

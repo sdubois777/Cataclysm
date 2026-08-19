@@ -451,6 +451,20 @@ FString UCataclysmDropRoll::MaterialNameOf(
 	return Row ? Row->MaterialName : FString();
 }
 
+int32 UCataclysmDropRoll::MaterialTierOf(
+	const UDataTable* CraftingMaterialTable, FName Material)
+{
+	if (!CraftingMaterialTable || Material.IsNone())
+	{
+		return 0;
+	}
+
+	const FCataclysmCraftingMaterialRow* Row =
+		CraftingMaterialTable->FindRow<FCataclysmCraftingMaterialRow>(
+			Material, TEXT("MaterialTierOf"), /*bWarnIfMissing=*/false);
+	return Row ? Row->Tier : 0;
+}
+
 FLinearColor UCataclysmDropRoll::MaterialColourFor(
 	const UDataTable* MaterialTierTable, int32 Tier)
 {

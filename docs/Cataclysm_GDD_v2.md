@@ -187,6 +187,7 @@ The following are default controls. Players with multiple damage types can map m
 | Spacebar | Movement ability |
 | Mouse wheel | Camera distance |
 | Left stick | Directional movement |
+| I | Open and close the carried inventory |
 
   
 
@@ -208,6 +209,7 @@ WASD moves the character, so the Support ability moves off W to 1 and the left m
 | Spacebar | Movement ability |
 | Mouse wheel | Camera distance |
 | Left stick | Directional movement |
+| I | Open and close the carried inventory |
 
   
 

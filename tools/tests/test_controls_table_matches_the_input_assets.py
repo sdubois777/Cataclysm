@@ -54,6 +54,7 @@ KEY_LABEL_TO_ENGINE_KEYS = {
     "W": ("W",),
     "E": ("E",),
     "R": ("R",),
+    "I": ("I",),
 }
 
 #: The words the document uses for an action, and the Input Action asset the
@@ -70,6 +71,7 @@ ACTION_PHRASE_TO_INPUT_ACTION = {
     "Movement ability": "IA_SlotMovement",
     "Camera distance": "IA_Zoom",
     "Directional movement": "IA_Move",
+    "Open and close the carried inventory": "IA_ToggleInventory",
 }
 
 #: The heading above each table in the document, and the list in the generator it
