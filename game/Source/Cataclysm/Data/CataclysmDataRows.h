@@ -1238,6 +1238,24 @@ struct FCataclysmMaterialTierRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Material Tier")
 	int32 Materials = 0;
+
+	/**
+	 * The colour this tier's name is drawn in on the dungeon floor.
+	 *
+	 * ITS OWN HUE FAMILY, NOT FIVE OF THE GEAR COLOURS. A material's name and a
+	 * gear item's name lie on the same floor, so borrowing five of the eight
+	 * gear rarity colours would put a Rare material and a Masterful sword on
+	 * screen in the same blue. All five tiers sit in a cyan family the gear
+	 * ramp does not use, which is how Path of Exile separates its currency from
+	 * its equipment -- one tan for the whole category. Decided by the project
+	 * owner on 2026-08-19; docs/DECISIONS.md carries the measurements.
+	 *
+	 * STATED AS sRGB IN THE WORKBOOK and converted to linear when
+	 * game/Data/MaterialTiers.csv is generated, the same way the gear rarity
+	 * colours and the damage-type colours are.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Material Tier")
+	FLinearColor Colour = FLinearColor::White;
 };
 
 USTRUCT(BlueprintType)
