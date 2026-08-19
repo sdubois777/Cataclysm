@@ -220,6 +220,36 @@ bool FCataclysmInventoryLabelFontTest::RunTest(const FString&)
 	TestTrue(TEXT("the header is larger than a cell's label"),
 		FScreen::HeaderFontPx > FScreen::LabelFontSizeFor(FScreen::MaxCellPx));
 
+	// A STACK COUNT IS BIGGER THAN THE LABEL BESIDE IT, since issue #734. How
+	// many of a material are carried is one of the two things this screen
+	// exists to show, and at the label's size the figure sat in a corner small
+	// enough to miss. Checked across the range, not at one cell size, because
+	// two proportions can cross over.
+	for (float CellPx = 1.0f; CellPx <= FScreen::MaxCellPx; CellPx += 1.0f)
+	{
+		const int32 Label = FScreen::LabelFontSizeFor(CellPx);
+		const int32 Quantity = FScreen::QuantityFontSizeFor(CellPx);
+		if (Quantity < Label)
+		{
+			AddError(FString::Printf(
+				TEXT("a %.0f pixel cell draws its count at %d and its label at "
+					 "%d, so the count is the smaller of the two"),
+				CellPx, Quantity, Label));
+			break;
+		}
+	}
+
+	TestTrue(TEXT("and really is bigger at a full-size cell"),
+		FScreen::QuantityFontSizeFor(FScreen::MaxCellPx)
+			> FScreen::LabelFontSizeFor(FScreen::MaxCellPx));
+
+	// IT SHARES THE LABEL'S FLOOR, so a cell too small for a readable label does
+	// not get a readable count either, which would be the wrong way round.
+	TestEqual(TEXT("a tiny cell's count stops at the smallest readable font"),
+		FScreen::QuantityFontSizeFor(1.0f), FScreen::SmallestLabelFontPx);
+	TestEqual(TEXT("and so does a cell of no size at all"),
+		FScreen::QuantityFontSizeFor(0.0f), FScreen::SmallestLabelFontPx);
+
 	return true;
 }
 
