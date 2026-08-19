@@ -8,8 +8,8 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Engine/DataTable.h"
 
-const TCHAR* UCataclysmInventoryScreen::Ellipsis = TEXT("...");
 const TCHAR* UCataclysmInventoryScreen::PanelHex = TEXT("0A0F12");
+const TCHAR* UCataclysmInventoryScreen::CellInteriorHex = TEXT("0A0F12");
 const TCHAR* UCataclysmInventoryScreen::EmptyCellHex = TEXT("3A4149");
 const TCHAR* UCataclysmInventoryScreen::HeaderTextHex = TEXT("F5F0EA");
 
@@ -46,26 +46,6 @@ namespace
 		// but the struct allows it, and a cell has to draw one thing.
 		return !UCataclysmInventoryComponent::SlotIsEmpty(Slot.Item);
 	}
-
-	/** Text cut to fit, with three stops saying that it was cut. */
-	FString Shortened(const FString& Text, int32 MaxCharacters)
-	{
-		if (Text.Len() <= MaxCharacters)
-		{
-			return Text;
-		}
-
-		const int32 Room =
-			MaxCharacters - FCString::Strlen(UCataclysmInventoryScreen::Ellipsis);
-		if (Room <= 0)
-		{
-			// NO ROOM FOR THE STOPS AND A LETTER BOTH. The letters are worth
-			// more than the mark saying there were more of them.
-			return Text.Left(FMath::Max(0, MaxCharacters));
-		}
-
-		return Text.Left(Room) + UCataclysmInventoryScreen::Ellipsis;
-	}
 }
 
 float UCataclysmInventoryScreen::CellSizeFor(float ViewportWidth,
@@ -82,124 +62,18 @@ float UCataclysmInventoryScreen::CellSizeFor(float ViewportWidth,
 
 	// THE FLOOR IS ONE PIXEL AND IS NOT A READABLE SIZE. It exists so that a
 	// viewport too small to hold the padding cannot produce a negative cell,
-	// which would give every rectangle a Max below its Min.
+	// which Slate treats as an error rather than as a very small box.
 	return FMath::Clamp(Fits, 1.0f, MaxCellPx);
 }
 
-FVector2D UCataclysmInventoryScreen::PanelSizeFor(float CellPx)
+int32 UCataclysmInventoryScreen::LabelFontSizeFor(float CellPx)
 {
-	const float Width = CellPx * Columns + CellGapPx * (Columns - 1)
-		+ PanelPaddingPx * 2.0f;
-	const float Height = HeaderHeightPx + CellPx * Rows
-		+ CellGapPx * (Rows - 1) + PanelPaddingPx * 2.0f;
-
-	return FVector2D(Width, Height);
-}
-
-FBox2D UCataclysmInventoryScreen::PanelRectFor(float ViewportWidth,
-											   float ViewportHeight)
-{
-	const FVector2D Size =
-		PanelSizeFor(CellSizeFor(ViewportWidth, ViewportHeight));
-
-	const FVector2D Min((ViewportWidth - Size.X) * 0.5,
-						(ViewportHeight - Size.Y) * 0.5);
-
-	return FBox2D(Min, Min + Size);
-}
-
-FBox2D UCataclysmInventoryScreen::CellRectFor(const FBox2D& Panel, float CellPx,
-											  int32 Slot)
-{
-	if (!Panel.bIsValid || Slot < 0
-		|| Slot >= UCataclysmInventoryComponent::SlotCount)
-	{
-		return FBox2D(ForceInit);
-	}
-
-	const int32 Column = Slot % Columns;
-	const int32 Row = Slot / Columns;
-
-	const FVector2D Min(
-		Panel.Min.X + PanelPaddingPx + Column * (CellPx + CellGapPx),
-		Panel.Min.Y + PanelPaddingPx + HeaderHeightPx
-			+ Row * (CellPx + CellGapPx));
-
-	return FBox2D(Min, Min + FVector2D(CellPx, CellPx));
-}
-
-bool UCataclysmInventoryScreen::PanelCoversPoint(const FBox2D& Panel,
-												 const FVector2D& Point)
-{
-	// IsInsideOrOn RATHER THAN IsInside, for the reason
-	// UCataclysmDropPickup::IndexOfNameUnderPoint gives: the strict test
-	// excludes the boundary, and a click on the panel's outermost row of pixels
-	// is a click on the panel. Here it matters more than it does there, because
-	// the alternative is not a click that misses but a move order the player
-	// did not give.
-	return Panel.bIsValid && Panel.IsInsideOrOn(Point);
-}
-
-float UCataclysmInventoryScreen::LabelScaleFor(float CellPx)
-{
-	return LabelScaleAtMaxCell * FMath::Max(0.0f, CellPx) / MaxCellPx;
-}
-
-TArray<FString> UCataclysmInventoryScreen::LabelLinesFor(const FString& Text,
-														 int32 MaxCharacters,
-														 int32 MaxLines)
-{
-	TArray<FString> Lines;
-	if (Text.IsEmpty() || MaxCharacters < 1 || MaxLines < 1)
-	{
-		return Lines;
-	}
-
-	TArray<FString> Words;
-	Text.ParseIntoArray(Words, TEXT(" "), /*InCullEmpty=*/true);
-
-	bool bRanOutOfLines = false;
-	for (const FString& Word : Words)
-	{
-		// THE WORD JOINS THE LINE IT IS ON IF IT FITS, counting the space that
-		// would go before it.
-		if (Lines.Num() > 0
-			&& Lines.Last().Len() + 1 + Word.Len() <= MaxCharacters)
-		{
-			Lines.Last().Append(TEXT(" ")).Append(Word);
-			continue;
-		}
-
-		if (Lines.Num() >= MaxLines)
-		{
-			bRanOutOfLines = true;
-			break;
-		}
-
-		// A WORD LONGER THAN A WHOLE LINE STILL STARTS ONE and is cut below,
-		// rather than being broken in the middle. "Greatswo" and "rd" is worse
-		// to read than a shortened "Greatsw...".
-		Lines.Add(Word);
-	}
-
-	for (FString& Line : Lines)
-	{
-		Line = Shortened(Line, MaxCharacters);
-	}
-
-	if (bRanOutOfLines && Lines.Num() > 0)
-	{
-		// THE LAST LINE SAYS THE NAME WENT ON, so a player can tell a name that
-		// was shortened from one that is short.
-		FString& Last = Lines.Last();
-		const int32 Room = MaxCharacters - FCString::Strlen(Ellipsis);
-		if (Room > 0)
-		{
-			Last = Last.Left(FMath::Min(Last.Len(), Room)) + Ellipsis;
-		}
-	}
-
-	return Lines;
+	// ROUNDED TO A WHOLE POINT, because a font size is a point size and Slate
+	// caches a face per size. A size that changed by a fraction as the window
+	// resized would rebuild the atlas for no visible gain.
+	const int32 Sized = FMath::RoundToInt(FMath::Max(0.0f, CellPx)
+										  * LabelFontShareOfCell);
+	return FMath::Max(SmallestLabelFontPx, Sized);
 }
 
 FString UCataclysmInventoryScreen::LabelFor(

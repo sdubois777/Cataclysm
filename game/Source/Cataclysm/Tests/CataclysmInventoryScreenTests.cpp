@@ -12,28 +12,33 @@
 #include "Items/CataclysmItem.h"
 
 /**
- * Tests for the carried inventory screen. Issue #731.
+ * Tests for the carried inventory screen. Issues #731 and #735.
  *
- * WHAT IS COVERED AND WHAT CANNOT BE. Every judgement the screen makes is a
- * static function on UCataclysmInventoryScreen and every one of them is checked
- * here: how big a cell is for a viewport, where each of the 48 sits, whether a
- * point is on the panel, what a slot's label says, how it is broken into lines,
- * what colour and how thick its frame is, and what the header line reads.
+ * WHAT IS COVERED. Every judgement UCataclysmInventoryScreen makes: how big a
+ * cell is for a viewport, what a slot is labelled, how many are stacked in it,
+ * what colour and how thick its frame is, what size its label is drawn at, and
+ * what the header line reads.
  *
- * WHAT IS THEREFORE NOT COVERED, said plainly: that ACataclysmHUD::DrawInventory
- * calls any of it, that the panel is legible, that pressing I reaches
- * ToggleInventory, and that a click on a cell really stops being a move order.
- * AHUD::PostRender checks FApp::CanEverRender() before calling DrawHUD and the
- * automation command in tools/unreal_build.py passes -nullrhi, so DrawHUD does
- * not run here at all, and nothing in this file possesses a pawn or presses a
- * key. Those four were checked by playing. It is the same wall
- * CataclysmDropPickupTests.cpp records for the drop names.
+ * WHAT IS THEREFORE NOT COVERED, said plainly: anything that reaches the screen.
+ * That UCataclysmInventoryWidget builds the tree it means to, that the panel is
+ * legible, that pressing I adds it to the viewport, and that a click on it
+ * really stops being a move order are all outside what a test here can see. The
+ * automation command in tools/unreal_build.py passes -nullrhi, and issue #650
+ * records that a widget does not move that wall. Those four were checked by
+ * playing.
+ *
+ * WHAT THESE TESTS LOST WHEN THE SCREEN BECAME A WIDGET, issue #735. Where the
+ * panel sat, where each of the 48 cells sat, and how a long label broke into
+ * lines were all tested here, because a canvas draw has no layout and the screen
+ * had to work them out. Slate does all three, so the functions are gone and so
+ * are their tests. What replaced them is one assertion below: that a cell size
+ * really does leave twelve cells and their padding fitting the viewport.
  */
 namespace CataclysmInventoryScreenTest
 {
 	using FScreen = UCataclysmInventoryScreen;
 
-	/** A slot holding a piece of gear of a given rarity. */
+	/** A slot holding a piece of gear. */
 	FCataclysmCarriedSlot GearSlot(const TCHAR* Base, int32 Affixes,
 								   int32 Enchantments = 0)
 	{
@@ -53,46 +58,16 @@ namespace CataclysmInventoryScreenTest
 		return Slot;
 	}
 
-	/** How many affixes a rarity is made of, so a test can build one. */
-	int32 AffixesFor(ECataclysmRarity Rarity)
-	{
-		return UCataclysmItemValues::AffixSlotsFor(Rarity);
-	}
-
-	int32 EnchantmentsFor(ECataclysmRarity Rarity)
-	{
-		return UCataclysmItemValues::EnchantmentsFor(Rarity);
-	}
-
 	/** A slot holding gear that really is this rarity. */
 	FCataclysmCarriedSlot SlotOfRarity(const TCHAR* Base,
 									   ECataclysmRarity Rarity)
 	{
-		return GearSlot(Base, AffixesFor(Rarity), EnchantmentsFor(Rarity));
+		return GearSlot(Base, UCataclysmItemValues::AffixSlotsFor(Rarity),
+						UCataclysmItemValues::EnchantmentsFor(Rarity));
 	}
-}
 
-// ---------------------------------------------------------------------------
-// The grid fits on the screen
-// ---------------------------------------------------------------------------
-
-/**
- * The whole panel is inside the viewport, at every shape of viewport.
- *
- * THIS IS THE FAILURE THE CELL SIZE EXISTS TO PREVENT. Twelve cells side by side
- * is a wide thing, so a fixed cell size that looked right on a wide monitor puts
- * the last column past the right edge on a narrower one, where it cannot be
- * clicked or read and nothing says why.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryPanelFitsTest,
-	"Cataclysm.InventoryScreen.ThePanelFitsInsideEveryViewport",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmInventoryPanelFitsTest::RunTest(const FString&)
-{
-	using namespace CataclysmInventoryScreenTest;
-
-	struct FViewport
+	/** Every viewport shape the cell size has to hold for. */
+	struct FViewportShape
 	{
 		float Width;
 		float Height;
@@ -100,57 +75,66 @@ bool FCataclysmInventoryPanelFitsTest::RunTest(const FString&)
 
 	// Sixteen by nine, sixteen by ten, four by three, a tall window, an
 	// ultra-wide monitor, and a viewport small enough to be silly.
-	const FViewport Viewports[] = {
+	const FViewportShape Viewports[] = {
 		{ 3840.0f, 2160.0f }, { 2560.0f, 1440.0f }, { 1920.0f, 1080.0f },
-		{ 1600.0f, 1000.0f }, { 1280.0f,  720.0f }, { 1024.0f,  768.0f },
-		{  800.0f,  600.0f }, {  720.0f, 1280.0f }, { 3440.0f, 1440.0f },
-		{  400.0f,  300.0f },
+		{ 1660.0f,  750.0f }, { 1600.0f, 1000.0f }, { 1280.0f,  720.0f },
+		{ 1024.0f,  768.0f }, {  800.0f,  600.0f }, {  720.0f, 1280.0f },
+		{ 3440.0f, 1440.0f }, {  400.0f,  300.0f },
 	};
+}
 
-	for (const FViewport& Viewport : Viewports)
+// ---------------------------------------------------------------------------
+// The grid fits on the screen
+// ---------------------------------------------------------------------------
+
+/**
+ * Twelve cells and their padding fit inside every viewport shape.
+ *
+ * THIS IS THE ONE LAYOUT RULE SLATE CANNOT WORK OUT, and it is why CellSizeFor
+ * survived the port to a widget. A UUniformGridPanel makes every cell the same
+ * size and sizes them from their contents, so one long item name would widen all
+ * 48 and push the last column past the edge of the screen, where it cannot be
+ * read and nothing says why. Each cell is given an exact size instead, and this
+ * is the guarantee that size carries.
+ *
+ * THE GAP IS COUNTED TWELVE TIMES AND NOT ELEVEN. The widget gives every cell
+ * half a gap on each of its four sides, which puts a whole gap between two of
+ * them and also half a gap outside the first and the last. Asserting the larger
+ * figure is what makes this true of the widget rather than of the arithmetic.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryCellSizeFitsTest,
+	"Cataclysm.InventoryScreen.TwelveCellsFitInsideEveryViewport",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInventoryCellSizeFitsTest::RunTest(const FString&)
+{
+	using namespace CataclysmInventoryScreenTest;
+
+	const int32 Columns = UCataclysmInventoryComponent::Columns;
+	const int32 Rows = UCataclysmInventoryComponent::Rows;
+
+	for (const FViewportShape& Viewport : Viewports)
 	{
 		const FString Where = FString::Printf(TEXT("at %.0fx%.0f"),
 											  Viewport.Width, Viewport.Height);
 
 		const float CellPx = FScreen::CellSizeFor(Viewport.Width,
 												  Viewport.Height);
+
 		TestTrue(*(Where + TEXT(": a cell has a positive size")),
 			CellPx > 0.0f);
 		TestTrue(*(Where + TEXT(": and is no bigger than the ceiling")),
 			CellPx <= FScreen::MaxCellPx);
 
-		const FBox2D Panel = FScreen::PanelRectFor(Viewport.Width,
-												   Viewport.Height);
-		TestTrue(*(Where + TEXT(": the panel's left edge is on screen")),
-			Panel.Min.X >= 0.0);
-		TestTrue(*(Where + TEXT(": its top edge is on screen")),
-			Panel.Min.Y >= 0.0);
-		TestTrue(*(Where + TEXT(": its right edge is on screen")),
-			Panel.Max.X <= Viewport.Width);
-		TestTrue(*(Where + TEXT(": its bottom edge is on screen")),
-			Panel.Max.Y <= Viewport.Height);
+		const float PanelWidth = CellPx * Columns
+			+ FScreen::CellGapPx * Columns + FScreen::PanelPaddingPx * 2.0f;
+		const float PanelHeight = FScreen::HeaderHeightPx + CellPx * Rows
+			+ FScreen::CellGapPx * Rows + FScreen::PanelPaddingPx * 2.0f;
 
-		// AND EVERY CELL IS INSIDE THE PANEL, which is the part that matters:
-		// a panel that fits with a column hanging out of it would pass the four
-		// checks above.
-		for (int32 Slot = 0; Slot < UCataclysmInventoryComponent::SlotCount;
-			 ++Slot)
-		{
-			const FBox2D Cell = FScreen::CellRectFor(Panel, CellPx, Slot);
-			if (!Cell.bIsValid)
-			{
-				AddError(FString::Printf(TEXT("%s: slot %d has no cell"),
-										 *Where, Slot));
-				continue;
-			}
-
-			if (Cell.Min.X < Panel.Min.X || Cell.Min.Y < Panel.Min.Y
-				|| Cell.Max.X > Panel.Max.X || Cell.Max.Y > Panel.Max.Y)
-			{
-				AddError(FString::Printf(
-					TEXT("%s: slot %d sits outside the panel"), *Where, Slot));
-			}
-		}
+		TestTrue(*(Where + TEXT(": twelve cells fit across the viewport")),
+			PanelWidth <= Viewport.Width);
+		TestTrue(*(Where + TEXT(": four rows and the header fit down it")),
+			PanelHeight <= Viewport.Height);
 	}
 
 	// THE CEILING REALLY BINDS somewhere, or it is not a ceiling. A very wide
@@ -163,304 +147,78 @@ bool FCataclysmInventoryPanelFitsTest::RunTest(const FString&)
 	TestTrue(TEXT("a narrow viewport draws them smaller than the ceiling"),
 		FScreen::CellSizeFor(800.0f, 600.0f) < FScreen::MaxCellPx);
 
-	return true;
-}
-
-// ---------------------------------------------------------------------------
-// Where each cell sits
-// ---------------------------------------------------------------------------
-
-/**
- * The 48 cells are four rows of twelve, in reading order, and none overlaps.
- *
- * READING ORDER IS THE PART A PLAYER SEES. UCataclysmInventoryComponent::AddItem
- * fills the lowest free slot, so an item picked up has to appear at the first
- * gap counting left to right and then down. A grid numbered down its columns
- * would put it somewhere the player has no reason to look.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryCellLayoutTest,
-	"Cataclysm.InventoryScreen.TheCellsAreFourRowsOfTwelveInReadingOrder",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmInventoryCellLayoutTest::RunTest(const FString&)
-{
-	using namespace CataclysmInventoryScreenTest;
-
-	const float Width = 1920.0f;
-	const float Height = 1080.0f;
-	const FBox2D Panel = FScreen::PanelRectFor(Width, Height);
-	const float CellPx = FScreen::CellSizeFor(Width, Height);
-
-	const int32 Columns = UCataclysmInventoryComponent::Columns;
-
-	// SLOT 0 IS THE TOP LEFT, under the header rather than over it.
-	const FBox2D First = FScreen::CellRectFor(Panel, CellPx, 0);
-	TestEqual(TEXT("slot 0 starts one padding in from the left"),
-		First.Min.X, Panel.Min.X + FScreen::PanelPaddingPx);
-	TestEqual(TEXT("and below the header band"),
-		First.Min.Y,
-		Panel.Min.Y + FScreen::PanelPaddingPx + FScreen::HeaderHeightPx);
-	TestEqual(TEXT("a cell is square"),
-		First.Max.X - First.Min.X, First.Max.Y - First.Min.Y);
-
-	// SLOT 11 IS THE END OF THE FIRST ROW, not the start of the second.
-	const FBox2D Eleventh = FScreen::CellRectFor(Panel, CellPx, Columns - 1);
-	TestEqual(TEXT("slot 11 is on the first row"), Eleventh.Min.Y, First.Min.Y);
-	TestTrue(TEXT("and to the right of slot 0"),
-		Eleventh.Min.X > First.Min.X);
-	TestEqual(TEXT("its right edge is one padding in from the panel's"),
-		Eleventh.Max.X, Panel.Max.X - FScreen::PanelPaddingPx);
-
-	// SLOT 12 STARTS THE SECOND ROW, back at the left.
-	const FBox2D Twelfth = FScreen::CellRectFor(Panel, CellPx, Columns);
-	TestEqual(TEXT("slot 12 is back at the left edge"),
-		Twelfth.Min.X, First.Min.X);
-	TestEqual(TEXT("and one row down"),
-		Twelfth.Min.Y, First.Min.Y + CellPx + FScreen::CellGapPx);
-
-	// SLOT 47 IS THE BOTTOM RIGHT.
-	const FBox2D Last = FScreen::CellRectFor(
-		Panel, CellPx, UCataclysmInventoryComponent::SlotCount - 1);
-	TestEqual(TEXT("slot 47's right edge matches slot 11's"),
-		Last.Max.X, Eleventh.Max.X);
-	TestEqual(TEXT("and its bottom edge is one padding up from the panel's"),
-		Last.Max.Y, Panel.Max.Y - FScreen::PanelPaddingPx);
-
-	// NO TWO CELLS OVERLAP. Checked in full rather than by sampling: 48 by 48 is
-	// 1,128 comparisons and a layout is exactly the kind of thing that is right
-	// everywhere except one corner.
-	TArray<FBox2D> Cells;
-	for (int32 Slot = 0; Slot < UCataclysmInventoryComponent::SlotCount; ++Slot)
-	{
-		Cells.Add(FScreen::CellRectFor(Panel, CellPx, Slot));
-	}
-
-	for (int32 A = 0; A < Cells.Num(); ++A)
-	{
-		for (int32 B = A + 1; B < Cells.Num(); ++B)
-		{
-			if (Cells[A].Intersect(Cells[B]))
-			{
-				AddError(FString::Printf(
-					TEXT("slots %d and %d overlap"), A, B));
-			}
-		}
-	}
-
-	// A SLOT NUMBER OUTSIDE THE GRID HAS NO CELL, rather than one off the end.
-	TestFalse(TEXT("slot -1 has no cell"),
-		FScreen::CellRectFor(Panel, CellPx, -1).bIsValid);
-	TestFalse(TEXT("slot 48 has no cell"),
-		FScreen::CellRectFor(Panel, CellPx,
-							 UCataclysmInventoryComponent::SlotCount).bIsValid);
-	TestFalse(TEXT("and neither does one with no panel"),
-		FScreen::CellRectFor(FBox2D(ForceInit), CellPx, 0).bIsValid);
+	// A CELL IS NEVER ZERO OR NEGATIVE, whatever it is asked. Slate treats a
+	// negative size override as an error rather than as a very small box.
+	TestTrue(TEXT("a viewport of nothing still gives a positive cell"),
+		FScreen::CellSizeFor(0.0f, 0.0f) > 0.0f);
+	TestTrue(TEXT("and so does a viewport too small to hold the padding"),
+		FScreen::CellSizeFor(50.0f, 40.0f) > 0.0f);
 
 	return true;
 }
 
 // ---------------------------------------------------------------------------
-// A click on the panel is not a click on the world
+// The label's size follows its cell
 // ---------------------------------------------------------------------------
 
 /**
- * The panel covers the points it was drawn over, edges included.
+ * A cell's label is drawn at a size in proportion to its cell.
  *
- * WHAT GOES WRONG WITHOUT IT. The left mouse button orders a move and the cursor
- * ray passes through anything drawn on the canvas, so a click on a grid cell
- * would send the character walking to whatever floor lies behind the panel.
+ * WHY IT IS NOT A FIXED SIZE. A fixed size would fit a whole item name across a
+ * cell on a wide monitor and two letters on a small one, and the grid would read
+ * differently at every resolution.
+ *
+ * AND WHY THERE IS A FLOOR. Below a few points a font stops being text, and a
+ * viewport small enough to reach that is better served by a label that overflows
+ * its cell than by one that cannot be read at all.
  */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryPanelCoversPointTest,
-	"Cataclysm.InventoryScreen.ThePanelSwallowsAClickOnIt",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryLabelFontTest,
+	"Cataclysm.InventoryScreen.ALabelsSizeFollowsItsCell",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmInventoryPanelCoversPointTest::RunTest(const FString&)
+bool FCataclysmInventoryLabelFontTest::RunTest(const FString&)
 {
 	using namespace CataclysmInventoryScreenTest;
 
-	const FBox2D Panel = FScreen::PanelRectFor(1920.0f, 1080.0f);
+	TestEqual(TEXT("a full-size cell takes its share of the cell's height"),
+		FScreen::LabelFontSizeFor(FScreen::MaxCellPx),
+		FMath::RoundToInt(FScreen::MaxCellPx * FScreen::LabelFontShareOfCell));
 
-	TestTrue(TEXT("the middle of the panel is covered"),
-		FScreen::PanelCoversPoint(Panel, (Panel.Min + Panel.Max) * 0.5));
+	// A SMALLER CELL REALLY DOES GET A SMALLER FONT, or the proportion is not
+	// doing anything.
+	TestTrue(TEXT("half a cell gets a smaller font than a whole one"),
+		FScreen::LabelFontSizeFor(FScreen::MaxCellPx * 0.5f)
+			< FScreen::LabelFontSizeFor(FScreen::MaxCellPx));
 
-	// THE EDGE IS COVERED, WHICH THE STRICT TEST WOULD MISS. The alternative to
-	// a click on the boundary being caught is not a click that misses; it is a
-	// move order the player did not give.
-	TestTrue(TEXT("the top left corner is covered"),
-		FScreen::PanelCoversPoint(Panel, Panel.Min));
-	TestTrue(TEXT("the bottom right corner is covered"),
-		FScreen::PanelCoversPoint(Panel, Panel.Max));
-
-	// EVERY CELL IS COVERED, so no gap between cells is a hole through it.
-	const float CellPx = FScreen::CellSizeFor(1920.0f, 1080.0f);
-	for (int32 Slot = 0; Slot < UCataclysmInventoryComponent::SlotCount; ++Slot)
+	// IT NEVER RISES AS THE CELL SHRINKS, checked across the range rather than
+	// at two points.
+	int32 Previous = FScreen::LabelFontSizeFor(1.0f);
+	for (float CellPx = 1.0f; CellPx <= FScreen::MaxCellPx; CellPx += 1.0f)
 	{
-		const FBox2D Cell = FScreen::CellRectFor(Panel, CellPx, Slot);
-		if (!FScreen::PanelCoversPoint(Panel, Cell.GetCenter()))
+		const int32 Sized = FScreen::LabelFontSizeFor(CellPx);
+		if (Sized < Previous)
 		{
 			AddError(FString::Printf(
-				TEXT("slot %d's centre is not on the panel"), Slot));
+				TEXT("a %.0f pixel cell gets font %d, smaller than the %d a "
+					 "narrower one got"), CellPx, Sized, Previous));
+			break;
 		}
-		if (!FScreen::PanelCoversPoint(Panel, Cell.Min)
-			|| !FScreen::PanelCoversPoint(Panel, Cell.Max))
-		{
-			AddError(FString::Printf(
-				TEXT("slot %d has a corner off the panel"), Slot));
-		}
+		Previous = Sized;
 	}
 
-	// AND NOTHING OUTSIDE IT IS, or the whole screen would stop moving the
-	// character.
-	TestFalse(TEXT("a point above the panel is not covered"),
-		FScreen::PanelCoversPoint(Panel,
-			FVector2D(Panel.GetCenter().X, Panel.Min.Y - 1.0)));
-	TestFalse(TEXT("a point below it is not"),
-		FScreen::PanelCoversPoint(Panel,
-			FVector2D(Panel.GetCenter().X, Panel.Max.Y + 1.0)));
-	TestFalse(TEXT("a point left of it is not"),
-		FScreen::PanelCoversPoint(Panel,
-			FVector2D(Panel.Min.X - 1.0, Panel.GetCenter().Y)));
-	TestFalse(TEXT("a point right of it is not"),
-		FScreen::PanelCoversPoint(Panel,
-			FVector2D(Panel.Max.X + 1.0, Panel.GetCenter().Y)));
-	TestFalse(TEXT("the bottom left corner of the screen is not"),
-		FScreen::PanelCoversPoint(Panel, FVector2D(0.0, 1080.0)));
+	// THE FLOOR HOLDS, and a cell of nothing does not ask Slate for a font of
+	// nothing.
+	TestEqual(TEXT("a tiny cell still gets the smallest readable font"),
+		FScreen::LabelFontSizeFor(1.0f), FScreen::SmallestLabelFontPx);
+	TestEqual(TEXT("and so does a cell of no size at all"),
+		FScreen::LabelFontSizeFor(0.0f), FScreen::SmallestLabelFontPx);
+	TestEqual(TEXT("and a negative one, which Slate would refuse"),
+		FScreen::LabelFontSizeFor(-40.0f), FScreen::SmallestLabelFontPx);
 
-	// AND A PANEL THAT IS NOT THERE COVERS NOTHING.
-	TestFalse(TEXT("an invalid panel covers nothing"),
-		FScreen::PanelCoversPoint(FBox2D(ForceInit), FVector2D(10.0, 10.0)));
-
-	return true;
-}
-
-// ---------------------------------------------------------------------------
-// Breaking a label into lines
-// ---------------------------------------------------------------------------
-
-/**
- * A label is wrapped on spaces, cut when it runs out of room, and says so.
- *
- * BY CHARACTER COUNT AND NOT BY MEASURED WIDTH, because no font exists under
- * -nullrhi and this has to be testable. ACataclysmHUD measures the line it is
- * about to draw and shrinks it when the count turns out to have been generous,
- * so the cost of the count being wrong is a smaller label rather than one that
- * spills over its frame.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryLabelLinesTest,
-	"Cataclysm.InventoryScreen.ALabelIsWrappedOnSpacesAndCutWhenItRunsOut",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmInventoryLabelLinesTest::RunTest(const FString&)
-{
-	using namespace CataclysmInventoryScreenTest;
-
-	// A SHORT NAME IS ONE LINE AND IS NOT TOUCHED.
-	{
-		const TArray<FString> Lines =
-			FScreen::LabelLinesFor(TEXT("Helm"), 12, 2);
-		TestEqual(TEXT("'Helm' is one line"), Lines.Num(), 1);
-		if (Lines.Num() == 1)
-		{
-			TestEqual(TEXT("and reads unchanged"), Lines[0], FString(TEXT("Helm")));
-		}
-	}
-
-	// TWO WORDS THAT FIT TOGETHER STAY TOGETHER, counting the space between.
-	{
-		const TArray<FString> Lines =
-			FScreen::LabelLinesFor(TEXT("Corrupted Mote"), 20, 2);
-		TestEqual(TEXT("'Corrupted Mote' fits on one line of 20"),
-			Lines.Num(), 1);
-	}
-
-	// AND SPLIT WHEN THEY DO NOT.
-	{
-		const TArray<FString> Lines =
-			FScreen::LabelLinesFor(TEXT("Corrupted Mote"), 12, 2);
-		TestEqual(TEXT("'Corrupted Mote' takes two lines of 12"),
-			Lines.Num(), 2);
-		if (Lines.Num() == 2)
-		{
-			TestEqual(TEXT("the first word is whole"), Lines[0],
-				FString(TEXT("Corrupted")));
-			TestEqual(TEXT("and so is the second"), Lines[1],
-				FString(TEXT("Mote")));
-		}
-	}
-
-	// A THIRD WORD IS DROPPED AND THE LAST LINE SAYS SO, which is what tells a
-	// player that a name was shortened rather than short.
-	{
-		const TArray<FString> Lines =
-			FScreen::LabelLinesFor(TEXT("Jeweler's Setting Agent"), 12, 2);
-		TestEqual(TEXT("three words take the two lines available"),
-			Lines.Num(), 2);
-		if (Lines.Num() == 2)
-		{
-			TestEqual(TEXT("the first line is whole"), Lines[0],
-				FString(TEXT("Jeweler's")));
-			TestTrue(TEXT("the second says the name went on"),
-				Lines[1].EndsWith(FScreen::Ellipsis));
-			TestTrue(TEXT("and still fits"), Lines[1].Len() <= 12);
-		}
-	}
-
-	// A SINGLE WORD LONGER THAN A LINE IS CUT RATHER THAN BROKEN IN THE MIDDLE.
-	// "Greatswo" then "rd" is worse to read than a shortened "Greatsw...".
-	{
-		const TArray<FString> Lines =
-			FScreen::LabelLinesFor(TEXT("Greatsword"), 8, 2);
-		TestEqual(TEXT("one long word takes one line"), Lines.Num(), 1);
-		if (Lines.Num() == 1)
-		{
-			TestEqual(TEXT("cut to the line's length"), Lines[0].Len(), 8);
-			TestTrue(TEXT("and marked as cut"),
-				Lines[0].EndsWith(FScreen::Ellipsis));
-			TestTrue(TEXT("keeping the letters it had room for"),
-				Lines[0].StartsWith(TEXT("Great")));
-		}
-	}
-
-	// EVERY LINE FITS, WHATEVER IS ASKED FOR. This is the guarantee the drawing
-	// leans on, so it is checked over the real names rather than over examples.
-	{
-		const TCHAR* Names[] = {
-			TEXT("Helm"), TEXT("Two-Handed Crossbow"), TEXT("Greatsword"),
-			TEXT("Crystal of Instability"), TEXT("Jeweler's Setting Agent"),
-			TEXT("Schematic Fragments"), TEXT("Upgrade Stone (x)"),
-			TEXT("Prismatic Catalyst"), TEXT("Purified Essence"),
-		};
-
-		for (const TCHAR* Name : Names)
-		{
-			for (int32 Width = 4; Width <= 20; ++Width)
-			{
-				const TArray<FString> Lines =
-					FScreen::LabelLinesFor(Name, Width, 2);
-				TestTrue(FString::Printf(
-					TEXT("'%s' at %d takes no more than two lines"),
-					Name, Width), Lines.Num() <= 2);
-
-				for (const FString& Line : Lines)
-				{
-					if (Line.Len() > Width)
-					{
-						AddError(FString::Printf(
-							TEXT("'%s' at %d produced a %d character line: %s"),
-							Name, Width, Line.Len(), *Line));
-					}
-				}
-			}
-		}
-	}
-
-	// NOTHING TO SAY MAKES NO LINES, which is what an empty slot gets.
-	TestEqual(TEXT("empty text makes no lines"),
-		FScreen::LabelLinesFor(FString(), 12, 2).Num(), 0);
-	TestEqual(TEXT("and neither does a line with no room"),
-		FScreen::LabelLinesFor(TEXT("Helm"), 0, 2).Num(), 0);
-	TestEqual(TEXT("nor a cell with no lines"),
-		FScreen::LabelLinesFor(TEXT("Helm"), 12, 0).Num(), 0);
+	// THE HEADER IS BIGGER THAN A CELL'S LABEL at the largest cell, because it
+	// is the one line a player reads first.
+	TestTrue(TEXT("the header is larger than a cell's label"),
+		FScreen::HeaderFontPx > FScreen::LabelFontSizeFor(FScreen::MaxCellPx));
 
 	return true;
 }
@@ -476,7 +234,8 @@ bool FCataclysmInventoryLabelLinesTest::RunTest(const FString&)
  * THE BASE'S NAME AND NOT THE ITEM'S. `Cataclysmic Greatsword of Malice` is not
  * going into a hundred pixels, and `Greatsword` is what an icon would say in a
  * game that had one. The rarity the full name opens with is already on the cell
- * twice, as the frame's colour and its thickness.
+ * twice, as the frame's colour and its thickness. Issue #733 is the tooltip that
+ * carries the rest.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryCellLabelTest,
 	"Cataclysm.InventoryScreen.ACellIsLabelledWithTheBaseOrTheMaterial",
@@ -500,11 +259,21 @@ bool FCataclysmInventoryCellLabelTest::RunTest(const FString&)
 		FString(TEXT("Helm")));
 
 	TestEqual(TEXT("a two-word base keeps both words"),
-		FScreen::LabelFor(GearSlot(TEXT("Weapon_Greatsword"), 1), Bases,
-						  Materials),
-		FString(TEXT("Greatsword")));
+		FScreen::LabelFor(GearSlot(TEXT("Weapon_Two_Handed_Crossbow"), 1),
+						  Bases, Materials),
+		FString(TEXT("Two-Handed Crossbow")));
 
-	TestEqual(TEXT("a material slot is labelled with the material's name"),
+	// A THREE-WORD MATERIAL NAME IS KEPT WHOLE. The canvas version cut it to two
+	// lines of twelve characters and lost the last word; the widget wraps by
+	// measured width and cuts with an ellipsis only when it has to, so nothing
+	// here has to shorten anything. Issue #735.
+	TestEqual(TEXT("a material slot is labelled with the material's whole name"),
+		FScreen::LabelFor(
+			MaterialSlot(TEXT("Material_Jeweler_s_Setting_Agent"), 3),
+			Bases, Materials),
+		FString(TEXT("Jeweler's Setting Agent")));
+
+	TestEqual(TEXT("and a two-word one likewise"),
 		FScreen::LabelFor(MaterialSlot(TEXT("Material_Corrupted_Mote"), 34),
 						  Bases, Materials),
 		FString(TEXT("Corrupted Mote")));
@@ -562,7 +331,10 @@ bool FCataclysmInventoryCellLabelTest::RunTest(const FString&)
  * differ by shape or motion as well as by colour", because a player who cannot
  * separate two hues still has to separate two rarities and the ramp puts green,
  * yellow, orange and red on four adjacent rungs. That section names inventory
- * frames as one of the three surfaces the rarity ramp appears on.
+ * frames as a surface the rarity ramp appears on.
+ *
+ * THE THICKNESS IS THE PADDING BETWEEN TWO FILLED RECTANGLES in the widget, so
+ * this figure is a real number of pixels there as it was on the canvas.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryFrameThicknessTest,
 	"Cataclysm.InventoryScreen.AFrameThicknessIsItsRung",
@@ -623,6 +395,13 @@ bool FCataclysmInventoryFrameThicknessTest::RunTest(const FString&)
 		FScreen::EmptyCellBorderPx);
 	TestTrue(TEXT("which is a frame rather than none"),
 		FScreen::EmptyCellBorderPx > 0);
+
+	// AND NO FRAME IS THICK ENOUGH TO SWALLOW ITS OWN CELL. The frame is drawn
+	// as padding inside the cell, so a thickness at or above half the cell's
+	// size would leave no interior for the label at the smallest cell drawn.
+	const float SmallestCell = FScreen::CellSizeFor(400.0f, 300.0f);
+	TestTrue(TEXT("the thickest frame still leaves an interior in a small cell"),
+		8.0f * 2.0f < SmallestCell);
 
 	return true;
 }
@@ -838,51 +617,6 @@ bool FCataclysmInventoryHeaderTest::RunTest(const FString&)
 	// changing if the design ever moves the number the store holds.
 	TestEqual(TEXT("a different capacity is printed as given"),
 		FScreen::HeaderTextFor(3, 60), FString(TEXT("Carried    3 / 60")));
-
-	return true;
-}
-
-// ---------------------------------------------------------------------------
-// The label scales with the cell
-// ---------------------------------------------------------------------------
-
-/**
- * A cell's label shrinks with its cell, so the same words fit at every
- * resolution.
- *
- * WHY IT IS NOT A FIXED SIZE. The character count the wrapping uses is one
- * number for every viewport. A fixed text size would fit twelve characters
- * across a cell on a wide monitor and four on a small one, and the wrapping
- * would then have to be told the viewport as well.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryLabelScaleTest,
-	"Cataclysm.InventoryScreen.ALabelScalesWithItsCell",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmInventoryLabelScaleTest::RunTest(const FString&)
-{
-	using namespace CataclysmInventoryScreenTest;
-
-	TestEqual(TEXT("a full-size cell uses the full label scale"),
-		FScreen::LabelScaleFor(FScreen::MaxCellPx),
-		FScreen::LabelScaleAtMaxCell);
-
-	TestEqual(TEXT("a half-size cell uses half of it"),
-		FScreen::LabelScaleFor(FScreen::MaxCellPx * 0.5f),
-		FScreen::LabelScaleAtMaxCell * 0.5f);
-
-	// IN PROPORTION MEANS THE RATIO IS THE SAME, which is the property the
-	// character count leans on.
-	const float Wide = FScreen::CellSizeFor(1920.0f, 1080.0f);
-	const float Narrow = FScreen::CellSizeFor(1024.0f, 768.0f);
-	TestTrue(TEXT("a narrow viewport really does draw smaller cells"),
-		Narrow < Wide);
-	TestTrue(TEXT("and its labels are smaller in the same proportion"),
-		FMath::IsNearlyEqual(FScreen::LabelScaleFor(Narrow) / Narrow,
-							 FScreen::LabelScaleFor(Wide) / Wide, 0.0001f));
-
-	TestEqual(TEXT("a cell with no size has no label scale"),
-		FScreen::LabelScaleFor(0.0f), 0.0f);
 
 	return true;
 }

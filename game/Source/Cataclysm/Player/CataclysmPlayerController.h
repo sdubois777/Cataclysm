@@ -10,6 +10,7 @@
 class ACataclysmDroppedItem;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmInputConfig;
+class UCataclysmInventoryWidget;
 class UInputMappingContext;
 struct FInputActionValue;
 
@@ -83,17 +84,23 @@ private:
 	/**
 	 * Opens and closes the carried inventory.
 	 *
-	 * HANDED STRAIGHT TO THE HEADS-UP DISPLAY, which owns whether it is drawn,
-	 * beside bShowHUD. A copy of the state here would be a second answer to the
-	 * same question. Issue #731.
+	 * THE CONTROLLER OWNS THE WIDGET, not ACataclysmHUD. It already owns the key
+	 * that opens it and the mouse position that has to be tested against it, and
+	 * the heads-up display is on its way out: issue #650 deletes it once the
+	 * three things it still draws have moved too. Issue #735.
+	 *
+	 * THE WIDGET IS MADE ON THE FIRST PRESS AND KEPT. Building 48 cells is not
+	 * work to repeat every time the screen is opened, and a widget removed from
+	 * the viewport costs nothing while it is not there.
 	 */
 	void Input_ToggleInventory();
 
 	/**
 	 * Whether the cursor is over an interface screen that is open right now.
 	 *
-	 * ASKS THE HEADS-UP DISPLAY, the same way DropUnderCursor does, and answers
-	 * false when there is no ACataclysmHUD, no mouse, or nothing open.
+	 * ASKS THE WIDGET, which knows its own geometry. Answers false when the
+	 * screen has never been opened, when it is closed, and when there is no
+	 * mouse.
 	 */
 	bool CursorIsOverInterface() const;
 
@@ -140,6 +147,20 @@ private:
 	 * anything here is told about.
 	 */
 	void UpdatePendingPickup();
+
+	/**
+	 * The carried inventory screen, once it has been opened at least once.
+	 *
+	 * A UPROPERTY BECAUSE IT IS A UObject THIS OWNS. Without one nothing keeps
+	 * the widget alive between the frame it is removed from the viewport and the
+	 * next time the key is pressed, and it would be collected.
+	 *
+	 * WHETHER IT IS OPEN IS WHETHER IT IS IN THE VIEWPORT, which
+	 * UUserWidget::IsInViewport answers. A separate flag here would be a second
+	 * record of the same thing.
+	 */
+	UPROPERTY()
+	TObjectPtr<UCataclysmInventoryWidget> InventoryScreen = nullptr;
 
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;

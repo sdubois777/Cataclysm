@@ -3,6 +3,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Interface/CataclysmHUD.h"
+#include "Interface/CataclysmInventoryWidget.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -235,16 +236,32 @@ void ACataclysmPlayerController::Input_Move(const FInputActionValue& Value)
 
 void ACataclysmPlayerController::Input_ToggleInventory()
 {
-	if (ACataclysmHUD* Overlay = Cast<ACataclysmHUD>(GetHUD()))
+	if (!InventoryScreen)
 	{
-		Overlay->ToggleInventory();
+		InventoryScreen =
+			CreateWidget<UCataclysmInventoryWidget>(this,
+				UCataclysmInventoryWidget::StaticClass());
+		if (!InventoryScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The carried inventory screen could not be created, so "
+						"the key that opens it does nothing."));
+			return;
+		}
 	}
+
+	if (InventoryScreen->IsInViewport())
+	{
+		InventoryScreen->RemoveFromParent();
+		return;
+	}
+
+	InventoryScreen->AddToViewport();
 }
 
 bool ACataclysmPlayerController::CursorIsOverInterface() const
 {
-	const ACataclysmHUD* Overlay = Cast<ACataclysmHUD>(GetHUD());
-	if (!Overlay)
+	if (!InventoryScreen || !InventoryScreen->IsInViewport())
 	{
 		return false;
 	}
@@ -258,7 +275,7 @@ bool ACataclysmPlayerController::CursorIsOverInterface() const
 		return false;
 	}
 
-	return Overlay->InventoryCoversPoint(FVector2D(X, Y));
+	return InventoryScreen->CursorIsOverPanel(FVector2D(X, Y));
 }
 
 void ACataclysmPlayerController::Input_MoveToCursorStarted()

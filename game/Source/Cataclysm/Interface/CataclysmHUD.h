@@ -10,7 +10,6 @@
 
 class ACataclysmDroppedItem;
 class UFont;
-struct FCataclysmCarriedSlot;
 
 /**
  * Everything the player can see about a fight while it is happening.
@@ -101,36 +100,6 @@ public:
 	 */
 	ACataclysmDroppedItem* DropUnderPoint(const FVector2D& Point) const;
 
-	/**
-	 * Opens the carried inventory if it is closed, and closes it if it is open.
-	 *
-	 * ONE KEY FOR BOTH, which is what every game in this genre does. The player
-	 * controller calls this; nothing else does. Issue #731.
-	 */
-	void ToggleInventory();
-
-	/** Whether the carried inventory is on screen. */
-	bool IsInventoryOpen() const { return bInventoryOpen; }
-
-	/**
-	 * Whether the open inventory panel covers a point on screen.
-	 *
-	 * WHY THE CONTROLLER HAS TO ASK. The left mouse button orders a move, and
-	 * the cursor ray passes through anything drawn on the canvas to the floor
-	 * behind it. Without this, clicking a cell would send the character walking
-	 * to whatever lies under the panel.
-	 *
-	 * COMPUTED RATHER THAN READ BACK FROM THE DRAW, unlike DropUnderPoint above.
-	 * A drop's name lands wherever the projection puts it, so only the draw
-	 * knows; the panel is centred in the viewport and depends on nothing else,
-	 * so it can be worked out without having been drawn. That also makes it
-	 * right on the first frame after the key is pressed.
-	 *
-	 * @return false whenever the inventory is closed, so every click is an
-	 *         ordinary move order again the moment it is shut
-	 */
-	bool InventoryCoversPoint(const FVector2D& Point) const;
-
 private:
 	/**
 	 * The player's own health and mana, and its energy shield when it has one.
@@ -149,32 +118,6 @@ private:
 
 	/** The name of every item lying on the floor, over where it lies. */
 	void DrawDropNames();
-
-	/**
-	 * The carried inventory: a panel, a count, and 48 cells in four rows of
-	 * twelve.
-	 *
-	 * LAST OF EVERYTHING THIS DRAWS, so the panel covers the drop names and the
-	 * damage numbers rather than being written over by them. A screen the
-	 * player opened is the thing they are looking at.
-	 *
-	 * NOTHING HERE DECIDES ANYTHING. Every judgement is a static function on
-	 * UCataclysmInventoryScreen, for the reason this class's header gives: the
-	 * automation test command passes -nullrhi and DrawHUD never runs under test.
-	 */
-	void DrawInventory();
-
-	/**
-	 * One cell of the carried grid, with what is in it already worked out.
-	 *
-	 * IT TAKES WHAT TO DRAW RATHER THAN WHERE TO LOOK IT UP. The four data
-	 * tables are loaded once for the whole grid; a cell that fetched its own
-	 * would repeat four lookups 48 times a frame for something that cannot
-	 * change while the screen is open.
-	 */
-	void DrawInventoryCell(const FBox2D& Cell, const FLinearColor& Frame,
-						   int32 Thickness, const TArray<FString>& Lines,
-						   const FString& Quantity, float LabelScale);
 
 	/** One bar: a dark backing, then the filled share of it. */
 	void DrawBar(float ScreenX, float ScreenY, float Width, float Height,
@@ -254,20 +197,6 @@ private:
 	 */
 	TArray<FBox2D> DropNameRects;
 	TArray<TWeakObjectPtr<ACataclysmDroppedItem>> DropsNamed;
-
-	/**
-	 * Whether the carried inventory is on screen.
-	 *
-	 * ON THE HEADS-UP DISPLAY RATHER THAN ON THE CONTROLLER, beside bShowHUD,
-	 * which AHUD already owns and which the design's Heretic lethality mode
-	 * needs. Whether a thing is drawn belongs to whatever draws it, and the
-	 * controller then has one job -- turning a key press into ToggleInventory --
-	 * rather than a copy of the state to keep in step.
-	 *
-	 * CLOSED AT THE START OF PLAY, and nothing persists it. Reopening the game
-	 * is not a reason to be looking at the bag.
-	 */
-	bool bInventoryOpen = false;
 
 	//~ Layout, in pixels at an unscaled viewport.
 
