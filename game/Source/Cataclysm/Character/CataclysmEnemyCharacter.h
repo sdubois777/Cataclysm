@@ -257,7 +257,36 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetRarityStep(int32 NewStep);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	/**
+	 * EditInstanceOnly, SO A RARITY CAN BE SET ON A CREATURE PLACED IN A LEVEL.
+	 *
+	 * WHY IT HAD TO CHANGE. This was VisibleAnywhere, which greys the field out
+	 * in the Details panel, and SetRarityStep above has never had a caller
+	 * outside the automation tests -- the thing meant to supply a rarity is the
+	 * enemy generator, which is issue #508 and does not exist. So every creature
+	 * in a play session was Common and nothing in the editor could change it.
+	 * That made the whole rarity ladder unreachable by hand: the drop rate, the
+	 * added magic find, and the boss stun rule all read this and all sat at rung
+	 * zero. Found on 2026-08-19 when the project owner asked how to set it.
+	 *
+	 * INSTANCE ONLY, NOT EditAnywhere, WHICH WOULD ALSO ALLOW A BLUEPRINT
+	 * DEFAULT. The comment above says why: rarity is the encounter's business
+	 * and not the class's, and the same Brute is a Common in one room and an
+	 * Elite in the next. A rarity baked into the Brute Blueprint would be a
+	 * class-wide answer to a per-encounter question, and every Brute placed
+	 * afterwards would silently inherit it.
+	 *
+	 * THE CLAMP IS WHAT SetRarityStep DOES, APPLIED TO THE PANEL. Typing into a
+	 * Details field does not go through that function, so without these a
+	 * negative step would make IsBoss's comparison meaningless and a step above
+	 * the ladder would find no row in EnemyDrops.csv and drop nothing at all.
+	 * The maximum is the last rung of the ladder and
+	 * `tools/tests/test_enemy_tables_match_the_model.py` pins it to the model,
+	 * because continuous integration builds no C++ and a ladder that grew a rung
+	 * would otherwise leave the top one untypeable.
+	 */
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy",
+			  meta = (ClampMin = "0", ClampMax = "5"))
 	int32 RarityStep = 0;
 
 	/**
