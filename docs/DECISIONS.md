@@ -20,6 +20,109 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — An inventory cell's label is drawn in one ink, not in the item's colour
+
+**Affects:** the Interface Colour section of `docs/Cataclysm_GDD_v2.md`, and
+`game/Source/Cataclysm/Interface/CataclysmInventoryScreen.h`. Applied. Issue
+#734.
+
+### The gap
+
+The carried inventory grid drew each cell's label in that item's own rarity
+colour, the same colour its frame carries. Measured as WCAG 2.1 contrast ratios
+against the panel colour `#0A0F12`, the thirteen label colours ranged from
+**3.95:1 to 19.27:1**:
+
+| Label colour | Contrast against the panel |
+| :-- | --: |
+| Ascendant gear `#A335EE` | **3.95 : 1** |
+| Cataclysmic gear `#FF4040` | 5.56 : 1 |
+| Tier 1 material `#2E9E8E` | 5.87 : 1 |
+| Masterful gear `#2E9BFF` | 6.65 : 1 |
+| Everyday gear `#9D9D9D` | 7.10 : 1 |
+| Mythical gear `#FF8000` | 7.65 : 1 |
+| Tier 2 material `#23BFAB` | 8.36 : 1 |
+| Tier 3 material `#16DCC4` | 11.07 : 1 |
+| Legendary gear `#FFD100` | 13.19 : 1 |
+| Tier 4 material `#4EF0DC` | 13.60 : 1 |
+| Superb gear `#1EFF00` | 14.09 : 1 |
+| Tier 5 material `#B6FFF4` | 17.06 : 1 |
+| Quality gear `#FFFFFF` | 19.27 : 1 |
+
+WCAG 2.1 success criterion 1.4.3 asks 4.5:1 for ordinary text, so **Ascendant
+purple failed**, and the five-to-one spread meant cells side by side were lit
+very differently for no reason a player could use. The Accessibility section of
+`Cataclysm_GDD_v2.md` commits to a colourblind-friendly palette and to
+accessibility generally, so a label under the published threshold is a defect
+rather than a preference.
+
+**The colours themselves are not at fault and are not changed.** They were chosen
+for a name lying on a dungeon floor, against whatever surface it happens to be
+lying on, and the design guarantees a world surface stays under 30% brightness.
+A near-black interface panel is a different background and a much darker one.
+
+### The decision
+
+**A cell's label is drawn in one ink, `#F5F0EA`, which measures 17.00:1 against
+the panel. The frame around the cell carries the colour, its thickness carries
+the rung, and the cell's interior is tinted by 12% of the frame's colour.**
+
+Nothing about the rarity is lost. It moves from the letters to the frame and the
+cell behind them, which between them are far more coloured area than a word ever
+was.
+
+**The design document already asked for this.** The Interface Colour section says
+rarity colours appear on "item names, inventory frames and the marker over a
+drop on the ground". The inventory surface it names is the **frame**. A label
+inside a cell stands in for an icon, which in this genre carries no text at all,
+so it was never one of the three surfaces.
+
+### Why it is not a matter of taste
+
+**The genre made the same change after the same complaint.** Diablo IV reduced
+the brightness and saturation of its item icon backgrounds and moved the rarity
+signal onto the border decoration, after players reported that item icon art was
+unintelligible and that rare and legendary items could not be told apart without
+hovering over each one. Path of Exile, Diablo IV and Last Epoch all show an
+inventory item as an icon inside a coloured frame, and none of them puts the
+item's name inside the cell at all; the name lives in the tooltip, which here is
+issue #733.
+
+Sources:
+
+- [Item icon art is unintelligible — Diablo IV forums](https://us.forums.blizzard.com/en/d4/t/item-icon-art-is-unintelligible/159604)
+- [Inventory item colors — Diablo IV forums](https://eu.forums.blizzard.com/en/d4/t/inventory-item-colors/15718)
+- [Diablo 4 rarity levels — item colors and affixes explained, PCGamesN](https://www.pcgamesn.com/diablo-4/rarity-levels)
+- [Item filter guide — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Guide:Item_filter_guide)
+
+**What the research settles and what it does not.** It settles the shape: the
+frame carries the colour and the cell's contents do not. It does not settle any
+of the numbers — the ink, the 12% tint, and the empty cell's frame colour are
+judgements made here against measured contrast, and only play settles whether
+they look right.
+
+### Two other measured values changed with it
+
+**An empty cell's frame went from `#3A4149` to `#5A6470`.** The old value
+measured **1.86:1** against the panel, below the 3:1 that WCAG 2.1 success
+criterion 1.4.11 asks for the visual boundary of a user interface component. That
+is why the three empty rows read as one flat rectangle rather than as 36 places
+an item could go, which defeats the reason empty cells are drawn at all. The new
+value measures 3.20:1.
+
+**A cell's interior became a deliberate 12% tint of its frame's colour.** It was
+6% by accident: the interior borrowed `PanelOpacity`, which is the share of the
+world the panel hides and has nothing to do with how much of a frame should show
+through. The two are separate decisions and are now separate values. The ink
+stays well clear of the threshold over it — 12% of the lightest frame, Quality
+white, measures 12.4:1 against the ink.
+
+`tools/tests/test_the_inventory_screen_is_readable.py` holds all three figures to
+the published thresholds, and checks every rung of both palettes rather than the
+two that were found wrong, because the next one to fail will be a different one.
+
+---
+
 ## 2026-08-19 — Crafting materials get their own five colours
 
 **Affects:** the Interface Colour section of `docs/Cataclysm_GDD_v2.md`, a new

@@ -5770,6 +5770,20 @@ carries a second one. A player who cannot separate two hues has to be able to
 separate two rarities, so the frame and the drop marker must differ by shape or
 motion as well as by colour. The Accessibility section is what this answers to.
 
+**On the inventory grid the frame carries that colour and the label inside a cell
+does not.** A cell shows an item base's own name, as a stand-in for the icon this
+project has no art for yet, and drawing those letters in the item's colour put one
+of the thirteen rungs -- Ascendant purple -- at 3.95:1 against the interface
+panel, under the 4.5:1 an ordinary line of text has to reach, with the thirteen
+spread over five to one. Every piece of text on that screen is drawn in one ink
+instead, and the rarity reaches the player through the frame's colour, through its
+thickness, and through a faint tint of that colour across the whole cell, which is
+more coloured area than the letters were. **The colours themselves are unchanged.**
+They were chosen for a name lying on a dungeon floor, where the design guarantees
+the surface under it stays below 30% brightness; a near-black interface panel is a
+different and much darker background. Decided on 2026-08-19, issue #734, and
+`DECISIONS.md` carries the measurements and the sources.
+
   
 
 **The second channel is a border around the name, and its thickness is the rarity.** A drop's name on the dungeon floor is drawn inside a rectangular outline one pixel thick for Everyday and rising by one pixel a rung, so Cataclysmic sits inside eight. Thickness is readable without any colour vision at all, it needs no art asset, and it is what Path of Exile's item filters already give a ground label: their five axes are text colour, **border colour**, background colour, font size and a beam of light. Decided by the project owner on 2026-08-19. Issue #718.

@@ -35,19 +35,34 @@ namespace
 		return Colour;
 	}
 
-	/** The inside of a cell, matching the panel so the two read as one surface. */
+	/**
+	 * The inside of a cell, laid over the frame's own colour.
+	 *
+	 * NOT FULLY OPAQUE, AND THAT IS THE POINT. Twelve per cent of the frame
+	 * beneath it reaches the middle of the cell, so an occupied cell is faintly
+	 * tinted with its own rarity and an empty one is not. Issue #734.
+	 */
 	FLinearColor CellInteriorColour()
 	{
 		FLinearColor Colour =
 			UCataclysmCombatOverlay::ColourFromHex(FScreen::CellInteriorHex);
-		Colour.A = FScreen::PanelOpacity;
+		Colour.A = FScreen::CellInteriorOpacity;
 		return Colour;
 	}
 
-	/** The header line and a stack's count. */
+	/** Every piece of text on this screen: the header, a label and a count. */
 	FLinearColor InkColour()
 	{
-		return UCataclysmCombatOverlay::ColourFromHex(FScreen::HeaderTextHex);
+		return UCataclysmCombatOverlay::ColourFromHex(FScreen::InkHex);
+	}
+
+	/** The panel's edge and the rule under the header. */
+	FLinearColor EdgeColour()
+	{
+		FLinearColor Colour =
+			UCataclysmCombatOverlay::ColourFromHex(FScreen::PanelEdgeHex);
+		Colour.A = FScreen::PanelOpacity;
+		return Colour;
 	}
 }
 
@@ -93,10 +108,15 @@ void UCataclysmInventoryWidget::BuildTree()
 		UOverlay::StaticClass(), TEXT("Root"));
 	WidgetTree->RootWidget = Root;
 
+	// THE PANEL IS TWO FILLED RECTANGLES, the same way a cell's frame is: an
+	// outer one in the edge colour, padded inward by the edge's thickness, and
+	// the panel itself laid on top of it. Without an edge the panel stops where
+	// the game stops being visible, which is not a boundary a player can see
+	// against a dark dungeon floor. Issue #734.
 	Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
 												 TEXT("Panel"));
-	Panel->SetBrush(FSlateColorBrush(PanelColour()));
-	Panel->SetPadding(FMargin(FScreen::PanelPaddingPx));
+	Panel->SetBrush(FSlateColorBrush(EdgeColour()));
+	Panel->SetPadding(FMargin(FScreen::PanelEdgePx));
 
 	// CENTRED BY THE OVERLAY AND SIZED BY ITS CONTENTS. This is what the canvas
 	// version had to work out for itself, and it is the whole reason the port
@@ -105,9 +125,15 @@ void UCataclysmInventoryWidget::BuildTree()
 	PanelSlot->SetHorizontalAlignment(HAlign_Center);
 	PanelSlot->SetVerticalAlignment(VAlign_Center);
 
+	UBorder* Inside = WidgetTree->ConstructWidget<UBorder>(
+		UBorder::StaticClass(), TEXT("PanelInside"));
+	Inside->SetBrush(FSlateColorBrush(PanelColour()));
+	Inside->SetPadding(FMargin(FScreen::PanelPaddingPx));
+	Panel->SetContent(Inside);
+
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(
 		UVerticalBox::StaticClass(), TEXT("Column"));
-	Panel->SetContent(Column);
+	Inside->SetContent(Column);
 
 	Header = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(),
 													 TEXT("Header"));
@@ -115,16 +141,33 @@ void UCataclysmInventoryWidget::BuildTree()
 	Header->SetFontSize(static_cast<float>(FScreen::HeaderFontPx));
 	Header->SetJustification(ETextJustify::Center);
 
-	// THE HEADER'S BAND IS EXACTLY WHAT CellSizeFor RESERVED FOR IT. Left to
-	// size itself the line would be as tall as its font happens to be, and the
-	// figure the cell size was worked out against would be a guess.
+	// THE HEADER, ITS RULE AND THE GAP UNDER THEM COME TO EXACTLY WHAT
+	// CellSizeFor RESERVED. Left to size itself the line would be as tall as its
+	// font happens to be, and the figure the cell size was worked out against
+	// would be a guess.
 	USizeBox* HeaderBand = WidgetTree->ConstructWidget<USizeBox>(
 		USizeBox::StaticClass(), TEXT("HeaderBand"));
-	HeaderBand->SetHeightOverride(FScreen::HeaderHeightPx);
+	HeaderBand->SetHeightOverride(FScreen::HeaderHeightPx
+								  - FScreen::HeaderRulePx - FScreen::CellGapPx);
 	HeaderBand->SetContent(Header);
 
 	UVerticalBoxSlot* HeaderSlot = Column->AddChildToVerticalBox(HeaderBand);
 	HeaderSlot->SetHorizontalAlignment(HAlign_Fill);
+
+	// A LINE UNDER THE COUNT, so the header and the grid read as two things
+	// rather than as text floating above a rectangle.
+	UBorder* Rule = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
+														 TEXT("HeaderRule"));
+	Rule->SetBrush(FSlateColorBrush(EdgeColour()));
+
+	USizeBox* RuleBand = WidgetTree->ConstructWidget<USizeBox>(
+		USizeBox::StaticClass(), TEXT("HeaderRuleBand"));
+	RuleBand->SetHeightOverride(FScreen::HeaderRulePx);
+	RuleBand->SetContent(Rule);
+
+	UVerticalBoxSlot* RuleSlot = Column->AddChildToVerticalBox(RuleBand);
+	RuleSlot->SetHorizontalAlignment(HAlign_Fill);
+	RuleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, FScreen::CellGapPx));
 
 	UUniformGridPanel* Grid = WidgetTree->ConstructWidget<UUniformGridPanel>(
 		UUniformGridPanel::StaticClass(), TEXT("Grid"));
@@ -168,6 +211,13 @@ void UCataclysmInventoryWidget::BuildCell(UUniformGridPanel* Grid,
 	Widgets.Label->SetAutoWrapText(true);
 	Widgets.Label->SetJustification(ETextJustify::Center);
 	Widgets.Label->SetTextOverflowPolicy(ETextOverflowPolicy::MultilineEllipsis);
+
+	// IN THE INK AND NOT IN THE ITEM'S OWN COLOUR, since issue #734. Ascendant
+	// purple measured 3.95:1 against the panel, under the 4.5:1 WCAG 2.1 asks
+	// for ordinary text, and the thirteen label colours ranged over five to one.
+	// The frame carries the colour, its thickness carries the rung, and the
+	// cell's interior is tinted by it; the letters do not need to as well.
+	Widgets.Label->SetColorAndOpacity(FSlateColor(InkColour()));
 
 	// THE COUNT IN THE TEXT COLOUR RATHER THAN THE ITEM'S. It is how many, not
 	// what: in the material's own colour it would read as another word of the
@@ -256,6 +306,8 @@ void UCataclysmInventoryWidget::Refresh(
 
 	const float LabelFontPx =
 		static_cast<float>(FScreen::LabelFontSizeFor(CellPx));
+	const float QuantityFontPx =
+		static_cast<float>(FScreen::QuantityFontSizeFor(CellPx));
 
 	const FCataclysmCarriedSlot Nothing;
 	for (int32 Index = 0; Index < Cells.Num(); ++Index)
@@ -272,7 +324,7 @@ void UCataclysmInventoryWidget::Refresh(
 			Widgets.Size->SetWidthOverride(CellPx);
 			Widgets.Size->SetHeightOverride(CellPx);
 			Widgets.Label->SetFontSize(LabelFontPx);
-			Widgets.Quantity->SetFontSize(LabelFontPx);
+			Widgets.Quantity->SetFontSize(QuantityFontPx);
 		}
 
 		const FLinearColor Colour = FScreen::ColourFor(Carried, Rarities,
@@ -284,7 +336,6 @@ void UCataclysmInventoryWidget::Refresh(
 
 		Widgets.Label->SetText(
 			FText::FromString(FScreen::LabelFor(Carried, Bases, Materials)));
-		Widgets.Label->SetColorAndOpacity(FSlateColor(Colour));
 
 		Widgets.Quantity->SetText(
 			FText::FromString(FScreen::QuantityTextFor(Carried)));

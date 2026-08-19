@@ -110,13 +110,26 @@ public:
 	 * and the grid reads the same at every resolution. A fixed size would fit a
 	 * whole name on a wide monitor and two letters on a small one.
 	 */
-	static constexpr float LabelFontShareOfCell = 0.11f;
+	static constexpr float LabelFontShareOfCell = 0.13f;
 
 	/** The smallest a label is drawn, below which it is not text any more. */
 	static constexpr int32 SmallestLabelFontPx = 6;
 
 	/** The font size a cell's label is drawn at, for a cell of this size. */
 	static int32 LabelFontSizeFor(float CellPx);
+
+	/**
+	 * How much of a cell's height a stack count's font takes.
+	 *
+	 * LARGER THAN THE LABEL'S, deliberately. How many of a material are carried
+	 * is one of the two things this screen exists to show, and at the label's
+	 * size the figure sat in a corner small enough to miss. It is also a figure
+	 * rather than a word, so it needs less room to be read.
+	 */
+	static constexpr float QuantityFontShareOfCell = 0.16f;
+
+	/** The font size a stack count is drawn at, for a cell of this size. */
+	static int32 QuantityFontSizeFor(float CellPx);
 
 	/**
 	 * The font size the header line is drawn at.
@@ -214,26 +227,97 @@ public:
 	static constexpr float PanelOpacity = 0.94f;
 
 	/**
+	 * The panel's own edge, and the rule under the header line.
+	 *
+	 * WITHOUT AN EDGE THE PANEL STOPS WHERE THE GAME STOPS BEING VISIBLE, which
+	 * is not a boundary a player can see against a dark dungeon floor. Measured
+	 * at 2.43:1 against the panel: quieter than an empty cell's frame on
+	 * purpose, so the edge does not compete with the grid inside it.
+	 */
+	static const TCHAR* PanelEdgeHex;
+
+	/** How thick the panel's edge is. */
+	static constexpr float PanelEdgePx = 2.0f;
+
+	/** How thick the line under the header is. */
+	static constexpr float HeaderRulePx = 1.0f;
+
+	/**
 	 * The inside of a cell, within its frame.
 	 *
-	 * ITS OWN CONSTANT EVEN THOUGH IT MATCHES THE PANEL TODAY. A cell's frame is
-	 * drawn as a filled rectangle in the frame's colour with a smaller filled
-	 * rectangle on top of it, which is how a hollow frame of any thickness is
-	 * drawn with no image asset. The smaller rectangle has to be opaque or the
-	 * frame's colour shows through the middle of the cell, so this cannot simply
-	 * be left out. Issue #734 asks whether an occupied cell should be lighter
-	 * than the panel, and this is the value that would change.
+	 * A CELL IS DRAWN AS TWO FILLED RECTANGLES: one in the frame's colour, and a
+	 * smaller one on top of it. That is how a hollow frame of any thickness is
+	 * drawn with no image asset, and the smaller one has to be filled or the
+	 * frame's colour shows through the whole cell.
 	 */
 	static const TCHAR* CellInteriorHex;
 
-	/** The frame around a slot holding nothing. Dim, and plainly not a rarity. */
+	/**
+	 * How opaque a cell's interior is over the frame beneath it.
+	 *
+	 * SO AN OCCUPIED CELL IS FAINTLY TINTED WITH ITS OWN COLOUR. Twelve per cent
+	 * of the frame's colour reaches the middle of the cell, which is what makes
+	 * a full cell and an empty one differ by more than a thin outline. Issue
+	 * #734 asked for that separation; this is where it comes from.
+	 *
+	 * IT WAS 6% BY ACCIDENT BEFORE THIS. The interior borrowed PanelOpacity,
+	 * which is the share of the world the panel hides and has nothing to do with
+	 * how much of a frame should show through. The two are separate decisions
+	 * and are now separate values.
+	 *
+	 * THE INK STAYS READABLE OVER IT. The lightest frame is Quality white, and
+	 * twelve per cent of white over the panel measures 12.4:1 against the ink,
+	 * well above the 4.5:1 WCAG 2.1 asks for ordinary text.
+	 */
+	static constexpr float CellInteriorOpacity = 0.88f;
+
+	/**
+	 * The frame around a slot holding nothing.
+	 *
+	 * RAISED FROM `#3A4149`, WHICH MEASURED 1.86:1 AGAINST THE PANEL. WCAG 2.1
+	 * asks 3:1 for the boundary of a user interface component, and below it the
+	 * three empty rows read as one flat rectangle rather than as 36 places an
+	 * item could go, which defeats the reason empty cells are drawn at all. This
+	 * measures 3.20:1.
+	 *
+	 * STILL PLAINLY NOT A RARITY. It is a desaturated slate, no rung of either
+	 * palette is near it, and an empty cell carries no label.
+	 */
 	static const TCHAR* EmptyCellHex;
 
 	/** The frame thickness of a slot holding nothing. The thinnest there is. */
 	static constexpr int32 EmptyCellBorderPx = 1;
 
-	/** The header line and a stack's count. */
-	static const TCHAR* HeaderTextHex;
+	/**
+	 * The colour every piece of text on this screen is drawn in.
+	 *
+	 * THE FRAME CARRIES THE RARITY AND THE LABEL DOES NOT, since issue #734. A
+	 * cell's label used to be drawn in the item's own colour, and two things
+	 * were wrong with that. Ascendant purple measured **3.95:1** against the
+	 * panel, below the 4.5:1 WCAG 2.1 asks for ordinary text, so one of the
+	 * thirteen labels failed outright. And the thirteen ranged from 3.95:1 to
+	 * 19.27:1, so cells side by side were lit very differently for no reason a
+	 * player could use.
+	 *
+	 * THE COLOUR IS NOT LOST, it moves. The frame carries it, its thickness
+	 * carries the rung, and CellInteriorOpacity lets it tint the whole cell --
+	 * which is more coloured area than the letters ever were.
+	 *
+	 * THE DESIGN ASKS FOR EXACTLY THIS. The Interface Colour section of
+	 * `docs/Cataclysm_GDD_v2.md` says rarity colours appear on "item names,
+	 * inventory frames and the marker over a drop on the ground". A cell's frame
+	 * is the inventory surface it names; the label inside a cell stands in for
+	 * an icon, which in this genre carries no text at all.
+	 *
+	 * AND IT IS WHAT THE GENRE DID AFTER THE SAME COMPLAINT. Diablo IV reduced
+	 * the brightness and saturation of its item icon backgrounds and moved the
+	 * rarity signal onto the border decoration, after players reported the icons
+	 * unintelligible and rare and legendary indistinguishable without hovering.
+	 * `docs/DECISIONS.md` carries the sources.
+	 *
+	 * Measured at 17.00:1 against the panel.
+	 */
+	static const TCHAR* InkHex;
 
 	/** Clear space between a cell's frame and the label inside it. */
 	static constexpr float LabelPaddingPx = 3.0f;

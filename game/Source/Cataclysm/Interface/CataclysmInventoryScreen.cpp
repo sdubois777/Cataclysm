@@ -9,9 +9,10 @@
 #include "Engine/DataTable.h"
 
 const TCHAR* UCataclysmInventoryScreen::PanelHex = TEXT("0A0F12");
+const TCHAR* UCataclysmInventoryScreen::PanelEdgeHex = TEXT("4A525C");
 const TCHAR* UCataclysmInventoryScreen::CellInteriorHex = TEXT("0A0F12");
-const TCHAR* UCataclysmInventoryScreen::EmptyCellHex = TEXT("3A4149");
-const TCHAR* UCataclysmInventoryScreen::HeaderTextHex = TEXT("F5F0EA");
+const TCHAR* UCataclysmInventoryScreen::EmptyCellHex = TEXT("5A6470");
+const TCHAR* UCataclysmInventoryScreen::InkHex = TEXT("F5F0EA");
 
 namespace
 {
@@ -73,6 +74,13 @@ int32 UCataclysmInventoryScreen::LabelFontSizeFor(float CellPx)
 	// resized would rebuild the atlas for no visible gain.
 	const int32 Sized = FMath::RoundToInt(FMath::Max(0.0f, CellPx)
 										  * LabelFontShareOfCell);
+	return FMath::Max(SmallestLabelFontPx, Sized);
+}
+
+int32 UCataclysmInventoryScreen::QuantityFontSizeFor(float CellPx)
+{
+	const int32 Sized = FMath::RoundToInt(FMath::Max(0.0f, CellPx)
+										  * QuantityFontShareOfCell);
 	return FMath::Max(SmallestLabelFontPx, Sized);
 }
 
