@@ -197,9 +197,22 @@ bool FCataclysmDropColourTest::RunTest(const FString& Parameters)
 		Seen.Add(Colour);
 	}
 
-	// EVERYDAY IS WHITE, which is the one value stated plainly enough in the
+	// QUALITY IS WHITE, which is the one value stated plainly enough in the
 	// design document to pin here without restating the whole table.
-	TestTrue(TEXT("an Everyday item is drawn white"),
+	//
+	// IT WAS EVERYDAY UNTIL 2026-08-19. The two lowest rungs were swapped under
+	// issue #711, because every game of this kind uses grey for the worthless
+	// tier and white for the ordinary one, and the old order read backwards to
+	// anyone arriving from one. This test still pinned the old answer after the
+	// swap landed, and continuous integration compiles no C++, so nothing on the
+	// pull request noticed.
+	TestTrue(TEXT("a Quality item is drawn white"),
+		FSpawner::ColourFor(Rarities, ECataclysmRarity::Quality)
+			.Equals(FLinearColor::White, 0.001f));
+
+	// AND EVERYDAY IS NOT, which is the half that would have caught the swap
+	// going missing rather than the swap arriving.
+	TestFalse(TEXT("an Everyday item is not drawn white"),
 		FSpawner::ColourFor(Rarities, ECataclysmRarity::Everyday)
 			.Equals(FLinearColor::White, 0.001f));
 
@@ -222,6 +235,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropsReachTheFloorTest,
 
 bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 {
+	using namespace CataclysmDroppedItemTest;
+
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
 	{
@@ -241,6 +256,16 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 	// there are. Cataclysm.Drop.DropCountsMatchTheModel is what checks the
 	// distribution itself.
 	constexpr int32 BossStep = 4;
+
+	// LOADED SO EACH DROP'S COLOUR CAN BE CHECKED AGAINST ITS RARITY further
+	// down. The generated table, not a fixture, because the point is that the
+	// spawner asked the real one.
+	UDataTable* Rarities =
+		LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
+	if (!TestNotNull(TEXT("GearRarity.csv loads"), Rarities))
+	{
+		return false;
+	}
 
 	FRandomStream Stream(/*InSeed=*/20260818);
 	const FVector Where(300.0f, -200.0f, 90.0f);
@@ -304,6 +329,36 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 		{
 			AddError(FString::Printf(TEXT("'%s' does not begin with its rarity"),
 									 *Drop->DisplayName));
+			return false;
+		}
+
+		// THE DROP REMEMBERS THE RARITY IT ROLLED. The border's thickness is
+		// read off this field every frame rather than recomputed, so a spawner
+		// that failed to set it would draw every name inside an Everyday border.
+		if (Drop->Rarity != Rarity)
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' computes as rarity %d and remembers %d"),
+				*Drop->DisplayName, static_cast<int32>(Rarity),
+				static_cast<int32>(Drop->Rarity)));
+			return false;
+		}
+
+		// AND ITS COLOUR CAME FROM THAT RARITY RATHER THAN FROM ANYWHERE ELSE.
+		//
+		// NOTHING CHECKED THIS UNTIL ISSUE #718, and it was found by breaking
+		// the spawner on purpose: replacing the lookup with a plain white passed
+		// all 26 tests in this group. Cataclysm.Drop.EveryRarityIsDrawnInItsOwnColour
+		// checks that ColourFor answers a different colour per rarity, and
+		// nothing checked that a spawned drop ever asked it. Every item on the
+		// floor could have been drawn white and no test would have said so.
+		const FLinearColor Wanted = FSpawner::ColourFor(Rarities, Rarity);
+		if (!Drop->NameColour.Equals(Wanted, 0.001f))
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' is drawn %s and its rarity's colour is %s"),
+				*Drop->DisplayName, *Drop->NameColour.ToString(),
+				*Wanted.ToString()));
 			return false;
 		}
 
@@ -416,6 +471,33 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
 
 	Victim->HandleDeath();
 
+	// TWO MORE KILLS, AND THE TEST IS ABOUT ALL THREE TOGETHER.
+	//
+	// ONE KILL IS NOT ENOUGH ANY MORE. Since issue #725 the count is a Poisson
+	// draw, so a Boss drops nothing about 7 kills in a thousand, and
+	// ACataclysmEnemyCharacter::HandleDeath seeds its stream from the creature's
+	// unique id and the world's clock -- which this test cannot control. A
+	// single kill would therefore fail roughly once in every 150 runs, and a
+	// test that fails at random is worse than no test. Three kills bring that to
+	// about one run in three million.
+	//
+	// THE FIRST TIME THIS RAN IT FAILED EXACTLY THAT WAY, reporting
+	// "killing a Boss left items on the floor (0)".
+	for (int32 More = 0; More < 2; ++More)
+	{
+		ACataclysmEnemyCharacter* Another =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(),
+				FVector(300.0f * static_cast<float>(More + 1), 0.0f, 0.0f),
+				FRotator::ZeroRotator);
+		if (!TestNotNull(TEXT("another Boss to kill"), Another))
+		{
+			return false;
+		}
+		Another->SetRarityStep(BossStep);
+		Another->HandleDeath();
+	}
+
 	int32 After = 0;
 	FString AnyName;
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
@@ -427,11 +509,10 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// HOW MANY IS NOT ASSERTED. A Boss averages five since issue #725 and this
-	// seed gives three. What matters here is that killing something is what put
-	// loot on the floor at all.
+	// HOW MANY IS NOT ASSERTED, only that killing things is what put loot on the
+	// floor. Three Boss kills average fifteen items.
 	TestTrue(*FString::Printf(
-			TEXT("killing a Boss left items on the floor (%d)"), After),
+			TEXT("killing three Bosses left items on the floor (%d)"), After),
 		After > 0);
 	TestFalse(TEXT("and they have names a player could read"),
 			  AnyName.IsEmpty());

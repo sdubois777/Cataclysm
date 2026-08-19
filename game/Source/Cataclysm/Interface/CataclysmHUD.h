@@ -160,6 +160,24 @@ private:
 	void DrawOutlinedText(const FString& Text, const FLinearColor& Colour,
 						  float Left, float Top, float Scale);
 
+	/**
+	 * Draws a hollow rectangle of a given thickness, inside a box.
+	 *
+	 * FOUR FILLED RECTANGLES, because the canvas has no outline primitive. The
+	 * thickness is drawn INWARD from the box's edge, so the box is the outer
+	 * extent and a caller that laid two boxes out so they do not overlap gets
+	 * two borders that do not overlap either.
+	 *
+	 * WITH A BLACK EDGE ON BOTH SIDES OF IT, one pixel each, for the reason
+	 * DrawOutlinedText gives: the design guarantees a world surface stays under
+	 * 30% brightness, which says nothing about a few pixels seen against Demonic
+	 * lava. This border is what tells a colour-blind player which rarity they
+	 * are looking at, so it washing out is worse than a damage number washing
+	 * out.
+	 */
+	void DrawBorder(const FBox2D& Around, float Thickness,
+					const FLinearColor& Colour);
+
 	/** The font every draw here uses. The engine's, so no asset is needed. */
 	UFont* OverlayFont() const;
 

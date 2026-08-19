@@ -392,14 +392,22 @@ void ACataclysmHUD::DrawDropNames()
 			continue;
 		}
 
+		// THE WHOLE TAG IS RECORDED, NOT JUST THE TEXT. TagAround grows the
+		// text by its padding and its rarity's border thickness, so a
+		// Cataclysmic tag is 11 pixels bigger on every side than its letters.
+		// Recording only the text would let two tags print over each other
+		// while their texts did not, and would leave a click on the border
+		// finding nothing.
+		//
 		// THE TWO ARRAYS ARE APPENDED TOGETHER AND NOWHERE ELSE, which is what
 		// keeps index N of one describing the same drop as index N of the other.
-		DropNameRects.Add(MeasureTextCentred(Drop->DisplayName, Screen.X,
-											 Screen.Y, 1.0f));
+		const FBox2D Text = MeasureTextCentred(Drop->DisplayName, Screen.X,
+											   Screen.Y, 1.0f);
+		DropNameRects.Add(UCataclysmDropPickup::TagAround(Text, Drop->Rarity));
 		DropsNamed.Add(Drop);
 	}
 
-	// NOTHING IS DRAWN YET, so a name that would have sat on top of another can
+	// NOTHING IS DRAWN YET, so a tag that would have sat on top of another can
 	// still be moved. The rectangles that move are the same ones a click is
 	// tested against, so a name stays clickable wherever it ends up.
 	UCataclysmDropPickup::SeparateOverlappingNames(
@@ -407,13 +415,60 @@ void ACataclysmHUD::DrawDropNames()
 
 	for (int32 Index = 0; Index < DropNameRects.Num(); ++Index)
 	{
-		if (const ACataclysmDroppedItem* Drop = DropsNamed[Index].Get())
+		const ACataclysmDroppedItem* Drop = DropsNamed[Index].Get();
+		if (!Drop)
 		{
-			DrawOutlinedText(Drop->DisplayName, Drop->NameColour,
-							 DropNameRects[Index].Min.X,
-							 DropNameRects[Index].Min.Y, 1.0f);
+			continue;
 		}
+
+		const FBox2D& Tag = DropNameRects[Index];
+		const int32 Thickness =
+			UCataclysmDropPickup::NameBorderThicknessFor(Drop->Rarity);
+
+		// THE BORDER IS THE SECOND CHANNEL, and it is drawn before the text so
+		// the letters sit on top of it rather than under it.
+		DrawBorder(Tag, static_cast<float>(Thickness), Drop->NameColour);
+
+		// THE TEXT SITS INSIDE THE BORDER AND ITS PADDING. TagAround grew the
+		// text by exactly this much on every side, so undoing it here puts the
+		// letters back where they were measured.
+		const float Inset = static_cast<float>(
+			UCataclysmDropPickup::NameBorderPaddingPx + Thickness);
+		DrawOutlinedText(Drop->DisplayName, Drop->NameColour,
+						 Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
 	}
+}
+
+void ACataclysmHUD::DrawBorder(const FBox2D& Around, float Thickness,
+							   const FLinearColor& Colour)
+{
+	if (!Around.bIsValid || Thickness <= 0.0f)
+	{
+		return;
+	}
+
+	// A BLACK BAND ONE PIXEL WIDER ON EACH SIDE, DRAWN FIRST. See the header for
+	// why the border needs its own contrast rather than relying on the floor.
+	FLinearColor Edge = FLinearColor::Black;
+	Edge.A = Colour.A;
+
+	const auto Hollow = [this](const FBox2D& Box, float Deep,
+							   const FLinearColor& Paint)
+	{
+		const float Width = static_cast<float>(Box.Max.X - Box.Min.X);
+		const float Height = static_cast<float>(Box.Max.Y - Box.Min.Y);
+		const float Left = static_cast<float>(Box.Min.X);
+		const float Top = static_cast<float>(Box.Min.Y);
+
+		DrawRect(Paint, Left, Top, Width, Deep);
+		DrawRect(Paint, Left, Top + Height - Deep, Width, Deep);
+		DrawRect(Paint, Left, Top, Deep, Height);
+		DrawRect(Paint, Left + Width - Deep, Top, Deep, Height);
+	};
+
+	Hollow(FBox2D(Around.Min - FVector2D(1.0, 1.0),
+				  Around.Max + FVector2D(1.0, 1.0)), Thickness + 2.0f, Edge);
+	Hollow(Around, Thickness, Colour);
 }
 
 ACataclysmDroppedItem* ACataclysmHUD::DropUnderPoint(const FVector2D& Point) const

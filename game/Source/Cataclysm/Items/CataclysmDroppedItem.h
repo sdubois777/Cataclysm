@@ -52,6 +52,20 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
 	FLinearColor NameColour = FLinearColor::White;
 
+	/**
+	 * The rarity the name is drawn for, worked out once at spawn.
+	 *
+	 * STORED RATHER THAN RECOMPUTED, for the reason the name and the colour
+	 * are: the heads-up display redraws every drop on screen on every frame, and
+	 * an item's rarity cannot change while it lies on the floor.
+	 *
+	 * IT DECIDES THE BORDER'S THICKNESS as well as the colour, which is what
+	 * lets a player who cannot separate two hues still separate two rarities.
+	 * See UCataclysmDropPickup::NameBorderThicknessFor. Issue #718.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+
 	/** How far above the actor's own position the name is drawn, in
 	 *  centimetres. Clear of the floor without floating. */
 	static constexpr float NameHeightCm = 60.0f;
@@ -239,6 +253,57 @@ public:
 	 * failed to project has no place on screen to be pushed away from.
 	 */
 	static void SeparateOverlappingNames(TArray<FBox2D>& Rects, float GapPx);
+
+	/**
+	 * How thick the border around a drop's name is, in pixels, for its rarity.
+	 *
+	 * ONE PIXEL FOR Everyday AND ONE MORE A RUNG, so Cataclysmic sits inside
+	 * eight. Decided by the project owner on 2026-08-19 and stated in the
+	 * Interface Colour section of `docs/Cataclysm_GDD_v2.md`. Issue #718.
+	 *
+	 * WHY A NAME NEEDS ANYTHING BUT ITS COLOUR. That section requires it: "the
+	 * frame and the drop marker must differ by shape or motion as well as by
+	 * colour", because a player who cannot separate two hues still has to
+	 * separate two rarities. About 8% of men have red-green colour blindness and
+	 * the ramp puts green, yellow, orange and red on four adjacent rungs. Until
+	 * this the requirement was stated and unmet.
+	 *
+	 * THICKNESS RATHER THAN AN ICON OR MOTION. An icon needs an art asset and
+	 * this heads-up display draws on the canvas with no content of any kind;
+	 * motion costs a tick on an actor that deliberately has none and makes a
+	 * name harder to click. `docs/DECISIONS.md` carries the full comparison.
+	 *
+	 * DERIVED FROM THE ENUM RATHER THAN TABULATED. `ECataclysmRarity` already
+	 * states the order, so a second list here would be a second answer that
+	 * could disagree with it. That is the same reasoning
+	 * `FCataclysmGearRarityRow` uses for having no Step column.
+	 */
+	static int32 NameBorderThicknessFor(ECataclysmRarity Rarity);
+
+	/** The thinnest border any rarity gets. Everyday's. */
+	static constexpr int32 ThinnestNameBorderPx = 1;
+
+	/**
+	 * Clear space between a name and the border around it, in pixels.
+	 *
+	 * WITHOUT IT THE BORDER TOUCHES THE TEXT, and at eight pixels thick it would
+	 * eat into the letters of a Cataclysmic name. Three is enough to read the
+	 * two as separate things at the sizes this draws.
+	 */
+	static constexpr int32 NameBorderPaddingPx = 3;
+
+	/**
+	 * The whole tag a rarity's name occupies: the text, its padding and its
+	 * border.
+	 *
+	 * WHAT THE PLAYER CLICKS AND WHAT MUST NOT OVERLAP is the tag rather than
+	 * the text inside it, so this is what SeparateOverlappingNames is given and
+	 * what IndexOfNameUnderPoint tests a click against. A Cataclysmic name is 22
+	 * pixels wider and taller than its text on every side; leaving that out
+	 * would let two tags print over each other while their texts did not, and
+	 * would leave a click on the border finding nothing.
+	 */
+	static FBox2D TagAround(const FBox2D& Text, ECataclysmRarity Rarity);
 
 	/**
 	 * Moves a drop's item into an inventory and takes the drop off the floor.
