@@ -283,6 +283,8 @@ const TCHAR* UCataclysmDropRoll::EnemyDropTableAssetPath =
 	TEXT("/Game/Data/DT_EnemyDrops.DT_EnemyDrops");
 const TCHAR* UCataclysmDropRoll::MaterialTierTableAssetPath =
 	TEXT("/Game/Data/DT_MaterialTiers.DT_MaterialTiers");
+const TCHAR* UCataclysmDropRoll::CraftingMaterialTableAssetPath =
+	TEXT("/Game/Data/DT_CraftingMaterials.DT_CraftingMaterials");
 
 const UDataTable* UCataclysmDropRoll::LoadEnemyDropTable()
 {
@@ -389,6 +391,85 @@ void UCataclysmDropRoll::MaterialTierDistribution(
 	// makes this a cascade rather than a table of weights that has to sum to
 	// one by hand.
 	OutShares[0] = Left;
+}
+
+const UDataTable* UCataclysmDropRoll::LoadCraftingMaterialTable()
+{
+	return LoadTableAt(CraftingMaterialTableAssetPath,
+					   TEXT("CraftingMaterials.csv"), TEXT("Crafting"));
+}
+
+FName UCataclysmDropRoll::RollMaterial(const UDataTable* CraftingMaterialTable,
+									   int32 Tier, FRandomStream& Stream)
+{
+	if (!CraftingMaterialTable || Tier <= 0)
+	{
+		return NAME_None;
+	}
+
+	// GATHERED RATHER THAN COUNTED THEN INDEXED, because a DataTable is a map
+	// and walking it twice is not guaranteed to walk it in the same order.
+	TArray<FName> InTier;
+	CraftingMaterialTable->ForeachRow<FCataclysmCraftingMaterialRow>(
+		TEXT("UCataclysmDropRoll::RollMaterial"),
+		[&](const FName& Key, const FCataclysmCraftingMaterialRow& Row)
+		{
+			if (Row.Tier == Tier)
+			{
+				InTier.Add(Key);
+			}
+		});
+
+	if (InTier.Num() == 0)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("No crafting material is in tier %d, so a material that "
+				 "rolled that tier cannot become anything. Check "
+				 "game/Data/CraftingMaterials.csv."), Tier);
+		return NAME_None;
+	}
+
+	// SORTED SO THE ROLL IS REPRODUCIBLE FROM ITS SEED. Without this the same
+	// seed could give a different material between runs, because the order the
+	// table hands its rows over is not part of the data.
+	InTier.Sort(FNameLexicalLess());
+
+	return InTier[Stream.RandRange(0, InTier.Num() - 1)];
+}
+
+FString UCataclysmDropRoll::MaterialNameOf(
+	const UDataTable* CraftingMaterialTable, FName Material)
+{
+	if (!CraftingMaterialTable || Material.IsNone())
+	{
+		return FString();
+	}
+
+	const FCataclysmCraftingMaterialRow* Row =
+		CraftingMaterialTable->FindRow<FCataclysmCraftingMaterialRow>(
+			Material, TEXT("MaterialNameOf"), /*bWarnIfMissing=*/false);
+	return Row ? Row->MaterialName : FString();
+}
+
+FLinearColor UCataclysmDropRoll::MaterialColourFor(
+	const UDataTable* MaterialTierTable, int32 Tier)
+{
+	if (!MaterialTierTable)
+	{
+		return FLinearColor::White;
+	}
+
+	FLinearColor Found = FLinearColor::White;
+	MaterialTierTable->ForeachRow<FCataclysmMaterialTierRow>(
+		TEXT("UCataclysmDropRoll::MaterialColourFor"),
+		[&](const FName& Key, const FCataclysmMaterialTierRow& Row)
+		{
+			if (Row.Tier == Tier)
+			{
+				Found = Row.Colour;
+			}
+		});
+	return Found;
 }
 
 int32 UCataclysmDropRoll::RollMaterialTier(const UDataTable* MaterialTierTable,

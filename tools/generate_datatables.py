@@ -771,13 +771,30 @@ def city_upgrades(book) -> list[dict]:
 
 
 def crafting_materials(book) -> list[dict]:
+    """The Crafting sheet, which holds two kinds of row.
+
+    EIGHTEEN OF THEM ARE MATERIALS AND NINETEEN ARE CRAFTING ACTIONS. A material
+    says which tier it belongs to in its Tier and Source cell -- "Tier 3 (Rare).
+    Drop from Dungeon Bosses/Elites." -- and an action such as "Reroll Affix
+    Value" says nothing of the kind, because it is a thing you do rather than a
+    thing you hold.
+
+    THE TIER IS PUBLISHED AS A NUMBER so the engine does not have to read prose.
+    A drop picks a tier and then picks equally among the materials in it, which
+    is what `roll_material_tier` in `sim/cataclysm_sim/loot.py` says belongs to
+    "whoever holds that table". Zero means the row is an action rather than a
+    material, so nothing can drop it.
+    """
     out = []
     for index, raw in enumerate(book["Crafting"].iter_rows(values_only=True), 1):
         if index == 1 or not raw or not clean(raw[0]):
             continue
         name = clean(raw[0])
+        source = clean(raw[1])
+        found = MATERIAL_TIER_AND_SOURCE.match(source or "")
         out.append({"Name": row_name("Material", name), "MaterialName": name,
-                    "TierAndSource": clean(raw[1]),
+                    "Tier": int(found.group(1)) if found else 0,
+                    "TierAndSource": source,
                     "PrimaryUse": clean(raw[2]),
                     "Functions": clean(raw[3]),
                     "CRMetric": clean(raw[6]) if len(raw) > 6 else "",

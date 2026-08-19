@@ -151,8 +151,24 @@ int32 UCataclysmDropPickup::NameBorderThicknessFor(ECataclysmRarity Rarity)
 	return ThinnestNameBorderPx + static_cast<int32>(Rarity);
 }
 
+int32 UCataclysmDropPickup::NameBorderThicknessForMaterialTier(int32 Tier)
+{
+	// CLAMPED AT THE BOTTOM so a drop whose tier failed to read still gets a
+	// border rather than none at all. A missing border would look like a fault
+	// in the drawing rather than in the data.
+	return ThinnestNameBorderPx + FMath::Max(0, Tier - 1);
+}
+
+int32 UCataclysmDropPickup::NameBorderThicknessOf(
+	const ACataclysmDroppedItem& Drop)
+{
+	return Drop.IsMaterial()
+		? NameBorderThicknessForMaterialTier(Drop.MaterialTier)
+		: NameBorderThicknessFor(Drop.Rarity);
+}
+
 FBox2D UCataclysmDropPickup::TagAround(const FBox2D& Text,
-									   ECataclysmRarity Rarity)
+									   int32 BorderThickness)
 {
 	if (!Text.bIsValid)
 	{
@@ -161,7 +177,7 @@ FBox2D UCataclysmDropPickup::TagAround(const FBox2D& Text,
 	}
 
 	const float Outward = static_cast<float>(NameBorderPaddingPx
-											 + NameBorderThicknessFor(Rarity));
+											 + FMath::Max(0, BorderThickness));
 
 	return FBox2D(Text.Min - FVector2D(Outward, Outward),
 				  Text.Max + FVector2D(Outward, Outward));
@@ -175,7 +191,13 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 		return false;
 	}
 
-	const int32 Slot = Inventory->AddItem(Drop->Item);
+	// A MATERIAL GOES ONTO A STACK AND A PIECE OF GEAR TAKES A SLOT. Both can
+	// fail for the same reason -- no free slot -- and both leave the drop where
+	// it is when they do.
+	const int32 Slot = Drop->IsMaterial()
+		? Inventory->AddMaterial(Drop->Material, Drop->MaterialQuantity)
+		: Inventory->AddItem(Drop->Item);
+
 	if (Slot == INDEX_NONE)
 	{
 		// NO ROOM. The drop is untouched and stays where it is.
@@ -263,10 +285,20 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 		return 0;
 	}
 
+	// BOTH COUNTS ARE ROLLED BEFORE ANYTHING IS SPAWNED, so gear and materials
+	// share one scatter circle instead of landing on two of different sizes.
+	// ScatterOffset spaces a drop by how many there are in total, so a gear
+	// item that thought there were five of it and a material that thought there
+	// were seventeen would sit at two different radii and could overlap.
 	const int32 Count = UCataclysmDropRoll::RollDropCount(
 		UCataclysmDropRoll::ExpectedGearDrops(Drops, EnemyRarity, LootQuantity),
 		Stream);
-	if (Count <= 0)
+	const int32 MaterialCount = UCataclysmDropRoll::RollDropCount(
+		UCataclysmDropRoll::ExpectedMaterialDrops(Drops, EnemyRarity,
+												  LootQuantity),
+		Stream);
+	const int32 Total = Count + MaterialCount;
+	if (Total <= 0)
 	{
 		return 0;
 	}
@@ -300,7 +332,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 
 		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(
 			ACataclysmDroppedItem::StaticClass(),
-			At + ScatterOffset(Index, Count), FRotator::ZeroRotator,
+			At + ScatterOffset(Index, Total), FRotator::ZeroRotator,
 			Parameters);
 		if (!Drop)
 		{
@@ -319,6 +351,81 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 			Drop->Rarity = Rarity;
 			Drop->NameColour = ColourFor(Rarities, Rarity);
 		}
+
+		++Spawned;
+	}
+
+	// THE MATERIALS CONTINUE ROUND THE SAME CIRCLE, starting where the gear
+	// stopped. Count rather than Spawned, because a gear item that failed to
+	// roll still used up its place: leaving a gap is better than putting a
+	// material on top of the item after it.
+	Spawned += SpawnMaterialsFor(World, EnemyRarity, Together, At, MaterialCount,
+								 Count, Total, Stream);
+
+	return Spawned;
+}
+
+int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
+											   float MagicFind,
+											   const FVector& At, int32 Count,
+											   int32 AlreadyOnTheFloor,
+											   int32 TotalDrops,
+											   FRandomStream& Stream)
+{
+	if (!World || Count <= 0)
+	{
+		return 0;
+	}
+
+	const UDataTable* TierTable = UCataclysmDropRoll::LoadMaterialTierTable();
+	const UDataTable* Materials = UCataclysmDropRoll::LoadCraftingMaterialTable();
+	if (!TierTable || !Materials)
+	{
+		// Each Load* has already said which table is missing and why.
+		return 0;
+	}
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const int32 Tier =
+			UCataclysmDropRoll::RollMaterialTier(TierTable, MagicFind, Stream);
+		const FName Material =
+			UCataclysmDropRoll::RollMaterial(Materials, Tier, Stream);
+		if (Material.IsNone())
+		{
+			// RollMaterial has already said why. One material failing to roll is
+			// not a reason to drop the rest unspawned.
+			continue;
+		}
+
+		FActorSpawnParameters Parameters;
+		Parameters.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		// SCATTERED PAST THE GEAR RATHER THAN OVER IT. The gear from this kill
+		// occupies the first AlreadyOnTheFloor positions of the circle and the
+		// materials continue round the same one, which is why the caller passes
+		// the total rather than letting this work one out.
+		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(
+			ACataclysmDroppedItem::StaticClass(),
+			At + ScatterOffset(AlreadyOnTheFloor + Index, TotalDrops),
+			FRotator::ZeroRotator, Parameters);
+		if (!Drop)
+		{
+			continue;
+		}
+
+		// ONE PER DROP, NOT A STACK ON THE FLOOR. Each roll is one material, and
+		// they stack when they are picked up rather than where they lie -- so a
+		// player can see how many fell and can leave some.
+		Drop->Material = Material;
+		Drop->MaterialQuantity = 1;
+		Drop->MaterialTier = Tier;
+		Drop->DisplayName =
+			UCataclysmDropRoll::MaterialNameOf(Materials, Material);
+		Drop->NameColour =
+			UCataclysmDropRoll::MaterialColourFor(TierTable, Tier);
 
 		++Spawned;
 	}

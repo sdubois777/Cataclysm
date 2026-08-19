@@ -35,7 +35,7 @@
       "asset": "DT_CraftingMaterials",
       "csv": "CraftingMaterials.csv",
       "rows": 37,
-      "csv_sha256": "da140eb11b7b5cb42b3054a1f9fb7283f704cf510b1b02ec46971b5bf002f2ab"
+      "csv_sha256": "e508856f3637ac9bc1af40631d85f21fa08b6478409356cf4d8408c65b2d0d43"
     },
     {
       "asset": "DT_DungeonModifiers",

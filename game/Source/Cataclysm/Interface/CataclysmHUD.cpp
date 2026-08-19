@@ -403,7 +403,8 @@ void ACataclysmHUD::DrawDropNames()
 		// keeps index N of one describing the same drop as index N of the other.
 		const FBox2D Text = MeasureTextCentred(Drop->DisplayName, Screen.X,
 											   Screen.Y, 1.0f);
-		DropNameRects.Add(UCataclysmDropPickup::TagAround(Text, Drop->Rarity));
+		DropNameRects.Add(UCataclysmDropPickup::TagAround(
+			Text, UCataclysmDropPickup::NameBorderThicknessOf(*Drop)));
 		DropsNamed.Add(Drop);
 	}
 
@@ -423,7 +424,7 @@ void ACataclysmHUD::DrawDropNames()
 
 		const FBox2D& Tag = DropNameRects[Index];
 		const int32 Thickness =
-			UCataclysmDropPickup::NameBorderThicknessFor(Drop->Rarity);
+			UCataclysmDropPickup::NameBorderThicknessOf(*Drop);
 
 		// THE BORDER IS THE SECOND CHANNEL, and it is drawn before the text so
 		// the letters sit on top of it rather than under it.

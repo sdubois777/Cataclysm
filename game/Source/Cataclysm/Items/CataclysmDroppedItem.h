@@ -66,6 +66,40 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
 	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
 
+	/**
+	 * Which crafting material this drop is, as a row key in
+	 * `game/Data/CraftingMaterials.csv`. None when the drop is gear.
+	 *
+	 * ONE ACTOR FOR BOTH KINDS, because everything about lying on a floor is
+	 * the same for both: a position, a name, a colour, a border and a click.
+	 * What differs is only where the name and the colour come from, which is
+	 * settled once at spawn. A second actor class would be a second copy of the
+	 * scatter, the projection, the layout and the pick-up.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Material;
+
+	/** How many of that material lie here. Zero when the drop is gear. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	int32 MaterialQuantity = 0;
+
+	/**
+	 * Which material tier this drop is, 1 to 5. Zero when the drop is gear.
+	 *
+	 * KEPT BESIDE THE MATERIAL for the reason Rarity is kept beside the item:
+	 * the border's thickness is read every frame and the tier cannot change
+	 * while the drop lies there.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	int32 MaterialTier = 0;
+
+	/** Whether this drop is crafting materials rather than a piece of gear. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	bool IsMaterial() const
+	{
+		return !Material.IsNone() && MaterialQuantity > 0;
+	}
+
 	/** How far above the actor's own position the name is drawn, in
 	 *  centimetres. Clear of the floor without floating. */
 	static constexpr float NameHeightCm = 60.0f;
@@ -141,6 +175,33 @@ public:
 	static int32 SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 							   float MagicFind, float LootQuantity,
 							   const FVector& At, FRandomStream& Stream);
+
+	/**
+	 * Roll the crafting materials a kill drops and put them on the floor.
+	 *
+	 * CALLED BY SpawnDropsFor RATHER THAN BY A KILL. Materials come at twice the
+	 * gear rate on their own separate roll -- chosen by the project owner on
+	 * 2026-08-18, so an empire node raising material quantity does not also
+	 * reduce gear -- but they come from the same kill, so nothing outside has to
+	 * remember to ask for them.
+	 *
+	 * HOW MANY IS PASSED IN RATHER THAN ROLLED HERE. SpawnDropsFor rolls both
+	 * counts before it spawns anything, so gear and materials can share one
+	 * scatter circle; a material that worked out its own total would sit at a
+	 * different radius from the gear and could land on top of it.
+	 *
+	 * @param Count              how many materials to place
+	 * @param AlreadyOnTheFloor  how many places on the circle the gear took, so
+	 *                           the materials continue round it
+	 * @param TotalDrops         how many drops this kill produces in all, which
+	 *                           is what sets the circle's size
+	 *
+	 * @return how many actors were spawned
+	 */
+	static int32 SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
+								   float MagicFind, const FVector& At,
+								   int32 Count, int32 AlreadyOnTheFloor,
+								   int32 TotalDrops, FRandomStream& Stream);
 };
 
 /**
@@ -280,6 +341,26 @@ public:
 	 */
 	static int32 NameBorderThicknessFor(ECataclysmRarity Rarity);
 
+	/**
+	 * How thick the border around a crafting material's name is, for its tier.
+	 *
+	 * ONE PIXEL A TIER, so Common sits inside one and Extremely Rare inside
+	 * five. The same rule the gear names follow and the same requirement it
+	 * answers: the Interface Colour section of `docs/Cataclysm_GDD_v2.md` says
+	 * the drop marker must differ by shape or motion as well as by colour, and a
+	 * material's name is a drop marker.
+	 *
+	 * A TIER 3 MATERIAL AND A SUPERB GEAR ITEM THEREFORE SHARE A THICKNESS. That
+	 * is accepted rather than overlooked: the two are told apart by hue family
+	 * -- every material is cyan and no gear rarity is -- and by the words in the
+	 * name. A third shape channel to separate the categories would be one more
+	 * thing for a player to learn. `docs/DECISIONS.md` records it.
+	 */
+	static int32 NameBorderThicknessForMaterialTier(int32 Tier);
+
+	/** The border thickness for whichever kind a drop is. */
+	static int32 NameBorderThicknessOf(const ACataclysmDroppedItem& Drop);
+
 	/** The thinnest border any rarity gets. Everyday's. */
 	static constexpr int32 ThinnestNameBorderPx = 1;
 
@@ -302,8 +383,12 @@ public:
 	 * pixels wider and taller than its text on every side; leaving that out
 	 * would let two tags print over each other while their texts did not, and
 	 * would leave a click on the border finding nothing.
+	 *
+	 * IT TAKES THE THICKNESS RATHER THAN THE RARITY, because a crafting material
+	 * has a tier and no rarity and needs the same tag. NameBorderThicknessOf
+	 * answers the thickness for whichever kind a drop is.
 	 */
-	static FBox2D TagAround(const FBox2D& Text, ECataclysmRarity Rarity);
+	static FBox2D TagAround(const FBox2D& Text, int32 BorderThickness);
 
 	/**
 	 * Moves a drop's item into an inventory and takes the drop off the floor.

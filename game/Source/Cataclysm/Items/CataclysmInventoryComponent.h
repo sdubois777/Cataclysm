@@ -47,6 +47,56 @@
  * - **Replication.** Co-op is issue #56 and nothing in this project replicates
  *   yet; adding it here alone would be one replicated system in a game with none.
  */
+/**
+ * One slot of the carried inventory: a gear item, a stack of one crafting
+ * material, or nothing.
+ *
+ * ONE BAG HOLDS BOTH, because the design says so: the carried inventory is 48
+ * slots and a character carries whatever it has picked up in them. A second
+ * store for materials would be a second bag with a second capacity, and the
+ * pressure the design wants -- a full inventory being a choice about what to
+ * leave behind -- only exists if everything competes for the same 48.
+ *
+ * A MATERIAL IS A NAME AND A COUNT, NOT AN ITEM. It has no affixes, no upgrade
+ * level, no sockets and no residue; two of the same material are the same thing
+ * twice. That is why they stack and gear cannot.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmCarriedSlot
+{
+	GENERATED_BODY()
+
+	/**
+	 * The gear item in this slot. Its Base is None when the slot holds no gear.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Inventory")
+	FCataclysmItem Item;
+
+	/**
+	 * Which crafting material is stacked here, as a row key in
+	 * `game/Data/CraftingMaterials.csv`. None when the slot holds no material.
+	 *
+	 * THE MATERIAL'S NAME AND NOT ITS TIER. Four materials share tier 1 and they
+	 * are different things -- a Corrupted Mote is not a Whispering Ash -- so
+	 * stacking by tier would merge four materials into one pile.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Inventory")
+	FName Material;
+
+	/**
+	 * How many of that material are stacked here. Zero when the slot holds no
+	 * material.
+	 *
+	 * NO CEILING. The project owner decided on 2026-08-19 that all crafting
+	 * materials stack, and set no maximum. The Storage section of
+	 * `docs/Cataclysm_GDD_v2.md` records that an unbounded stack means materials
+	 * never contribute to a full inventory, and that a ceiling is the lever if
+	 * carrying them should ever cost something.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Inventory")
+	int32 Quantity = 0;
+};
+
 UCLASS(ClassGroup = (Cataclysm), meta = (BlueprintSpawnableComponent))
 class CATACLYSM_API UCataclysmInventoryComponent : public UActorComponent
 {
@@ -79,13 +129,16 @@ public:
 	UCataclysmInventoryComponent();
 
 	/**
-	 * Whether a slot holds nothing.
+	 * Whether a loose gear item is really an item.
 	 *
 	 * A STATIC, because the drop spawner and the interface both need to ask the
 	 * question about a loose item rather than about a slot, and neither should
 	 * have to know that "no base" is how emptiness is spelled.
 	 */
 	static bool SlotIsEmpty(const FCataclysmItem& Item);
+
+	/** Whether a slot of the bag holds neither gear nor a material stack. */
+	static bool SlotIsEmpty(const FCataclysmCarriedSlot& Slot);
 
 	/** How many of the 48 slots hold an item. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
@@ -135,7 +188,43 @@ public:
 	void RemoveEverything();
 
 	/**
-	 * The item in a slot, or nullptr when the slot is empty or is not a slot.
+	 * Adds crafting materials, stacking them onto any already carried.
+	 *
+	 * @return the slot they went into, or **INDEX_NONE when there was no room**,
+	 *         in which case nothing was stored.
+	 *
+	 * A STACK FIRST, A FREE SLOT SECOND. All crafting materials stack, decided
+	 * by the project owner on 2026-08-19, so a second Corrupted Mote joins the
+	 * first rather than taking a slot of its own. Only a material nothing is
+	 * carrying yet needs a slot, which is what stops a Cataclysm Boss's
+	 * twenty-four materials filling half the bag.
+	 *
+	 * BY NAME AND NOT BY TIER. Four materials share tier 1 and they are
+	 * different things; stacking by tier would merge them.
+	 *
+	 * AN EXISTING STACK ALWAYS HAS ROOM, because no ceiling is set. So this can
+	 * only fail for a material not already carried, and only when every slot is
+	 * full.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Inventory")
+	int32 AddMaterial(FName Material, int32 Quantity);
+
+	/** How many of a crafting material are carried, across every slot. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
+	int32 CountOfMaterial(FName Material) const;
+
+	/**
+	 * The slot a crafting material is stacked in, or INDEX_NONE for none.
+	 *
+	 * ONE STACK PER MATERIAL. AddMaterial always joins the stack it finds, so
+	 * there is never a second one to find.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
+	int32 SlotOfMaterial(FName Material) const;
+
+	/**
+	 * The item in a slot, or nullptr when the slot is empty, holds a material,
+	 * or is not a slot.
 	 *
 	 * NOT REACHABLE FROM BLUEPRINT, because a pointer to a struct is not a thing
 	 * Blueprint can hold. The screen that needs this is issue #49 and it can take
@@ -145,16 +234,16 @@ public:
 
 	/** Every slot in order, the empty ones included. Always 48 long. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
-	const TArray<FCataclysmItem>& GetSlots() const { return Slots; }
+	const TArray<FCataclysmCarriedSlot>& GetSlots() const { return Slots; }
 
 private:
 	/**
-	 * The 48 slots, filled with empty items at construction and never resized.
+	 * The 48 slots, empty at construction and never resized.
 	 *
 	 * Nothing here changes its length, so `Slots.Num()` is 48 for the whole life
 	 * of the component and every slot number from 0 to 47 is addressable whether
 	 * or not anything is in it.
 	 */
 	UPROPERTY()
-	TArray<FCataclysmItem> Slots;
+	TArray<FCataclysmCarriedSlot> Slots;
 };

@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmItem.h"
 #include "Misc/FileHelper.h"
@@ -282,14 +283,18 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 
 	int32 Found = 0;
 
-	// EVERY PLACE A DROP SHOULD BE, built from the same function the spawner
-	// uses. Each drop found takes one entry off this list, so the list being
-	// empty at the end means every position was filled exactly once.
-	TArray<FVector> Expected;
-	for (int32 Index = 0; Index < BossDrops; ++Index)
-	{
-		Expected.Add(Where + UCataclysmDropSpawner::ScatterOffset(Index, BossDrops));
-	}
+	// WHERE EACH DROP LANDED, so no two can be found on the same spot.
+	TArray<FVector> Landed;
+
+	// THE CIRCLE THEY ALL SIT ON. ScatterOffset spreads N drops around a circle
+	// of 25 cm per drop, so every drop from one kill is exactly that far from
+	// where the creature died.
+	//
+	// THE RADIUS IS COMPUTED FROM WHAT WAS SPAWNED rather than predicted,
+	// because a kill drops gear and crafting materials on one circle and this
+	// test cannot know how many of each were rolled. What it can check is the
+	// property: one circle, the right size, with nothing doubled up.
+	const double Radius = 25.0 * static_cast<double>(BossDrops);
 
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 	{
@@ -302,6 +307,66 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 		{
 			AddError(TEXT("an item reached the floor with no name"));
 			return false;
+		}
+
+		// WHERE IT LANDED IS CHECKED FOR BOTH KINDS, before anything below
+		// that is about gear only. A kill scatters its gear and its crafting
+		// materials around one circle, and every one of them has to be on it.
+		//
+		// THE TOLERANCE USED TO BE 1000 cm AND THE CHECK COULD NOT FAIL. `Where`
+		// is 360 cm from the world origin, so a drop left sitting at (0,0,0) was
+		// 360 cm away and satisfied a check whose own comment said "not at the
+		// world origin". Every drop was in fact at the origin, because
+		// ACataclysmDroppedItem created no root component, and an actor without
+		// one cannot be positioned at all: SpawnActor's location is discarded
+		// and GetActorLocation answers zero. The project owner saw it as every
+		// item from every kill piled in the middle of the room.
+		const FVector Landing = Drop->GetActorLocation();
+
+		// ON THE CIRCLE, AT THE RIGHT DISTANCE FROM THE KILL.
+		const double Away = FVector::Dist2D(Landing, Where);
+		if (FMath::Abs(Away - Radius) > 1.0)
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' landed %.1f cm from the kill at %s and the scatter "
+					 "circle for %d drops has a radius of %.1f"),
+				*Drop->DisplayName, Away, *Where.ToCompactString(), BossDrops,
+				Radius));
+			return false;
+		}
+
+		// AND AT THE KILL'S OWN HEIGHT, which is what the origin fault broke:
+		// every drop sat at Z=0 rather than at the height of the corpse.
+		if (!FMath::IsNearlyEqual(Landing.Z, Where.Z, 1.0))
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' landed at height %.1f and the kill was at %.1f"),
+				*Drop->DisplayName, Landing.Z, Where.Z));
+			return false;
+		}
+
+		// AND NOT ON TOP OF ANOTHER ONE. Two drops on one spot draw two names
+		// at one place and neither can be read or clicked.
+		for (const FVector& Taken : Landed)
+		{
+			if (FVector::Dist2D(Taken, Landing) < 1.0)
+			{
+				AddError(FString::Printf(
+					TEXT("'%s' landed on top of another drop at %s"),
+					*Drop->DisplayName, *Landing.ToCompactString()));
+				return false;
+			}
+		}
+		Landed.Add(Landing);
+
+		// A CRAFTING MATERIAL IS NOT A PIECE OF GEAR, and a kill drops both onto
+		// the same circle. Everything above this line is true of either kind --
+		// where it landed, that it has a name -- and everything below is about
+		// gear only. Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo is
+		// what checks the other kind.
+		if (Drop->IsMaterial())
+		{
+			continue;
 		}
 
 		// AND IT IS A WHOLE ITEM rather than an empty one.
@@ -371,36 +436,6 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		// IT LANDED ON ONE OF THE PLACES THE SCATTER PUTS A DROP, and on a
-		// place no other drop has already taken.
-		//
-		// THE TOLERANCE USED TO BE 1000 cm AND THE CHECK COULD NOT FAIL. `Where`
-		// is 360 cm from the world origin, so a drop left sitting at (0,0,0) was
-		// 360 cm away and satisfied a check whose own comment said "not at the
-		// world origin". Every drop was in fact at the origin, because
-		// ACataclysmDroppedItem created no root component, and an actor without
-		// one cannot be positioned at all: SpawnActor's location is discarded
-		// and GetActorLocation answers zero. The project owner saw it as every
-		// item from every kill piled in the middle of the room.
-		const int32 Match = Expected.IndexOfByPredicate(
-			[Drop](const FVector& Candidate)
-			{
-				return Drop->GetActorLocation().Equals(Candidate, 1.0f);
-			});
-
-		if (Match == INDEX_NONE)
-		{
-			AddError(FString::Printf(
-				TEXT("'%s' landed at %s, which is not the kill at %s plus any "
-					 "of the %d scatter offsets, or is where another drop "
-					 "already lies"),
-				*Drop->DisplayName, *Drop->GetActorLocation().ToCompactString(),
-				*Where.ToCompactString(), Expected.Num()));
-			return false;
-		}
-
-		// TAKEN, so two drops on one spot cannot both match it.
-		Expected.RemoveAt(Match);
 	}
 
 	// THE SPAWNER'S ANSWER AND THE WORLD AGREE. That is the part that
@@ -409,10 +444,10 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("every item the spawner reported is in the world"),
 		Found, BossDrops);
 
-	// AND NO POSITION WAS LEFT UNFILLED, which is the other half of "no two
-	// drops share a spot": five drops covering four positions leaves one here.
-	TestEqual(TEXT("every scatter position got exactly one drop"),
-		Expected.Num(), 0);
+	// AND EVERY ONE OF THEM WAS CHECKED, which is the other half: a loop that
+	// found nothing would pass every assertion inside it.
+	TestEqual(TEXT("every drop the spawner made was examined"),
+		Landed.Num(), BossDrops);
 
 	// A CREATURE WHOSE RARITY IS NOT IN THE TABLE DROPS NOTHING, rather than
 	// dropping Common loot or crashing.
@@ -528,6 +563,306 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
 		++Again;
 	}
 	TestEqual(TEXT("and a second death drops nothing more"), Again, After);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Crafting materials reach the floor too
+// ---------------------------------------------------------------------------
+
+/**
+ * A kill puts named, coloured crafting materials on the floor beside its gear.
+ *
+ * WHAT THIS GUARDS. Issue #717: the material roll ran on every kill and its
+ * result was thrown away, so a player got the gear half of what a kill is
+ * designed to give and silently lost the other half. Materials come at twice the
+ * gear rate, so the half that was missing was the larger one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialDropsReachTheFloorTest,
+	"Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialDropsReachTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDroppedItemTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UDataTable* MaterialTiers =
+		LoadTable<FCataclysmMaterialTierRow>(TEXT("MaterialTiers.csv"));
+	UDataTable* Materials =
+		LoadTable<FCataclysmCraftingMaterialRow>(TEXT("CraftingMaterials.csv"));
+	if (!TestNotNull(TEXT("MaterialTiers.csv loads"), MaterialTiers)
+		|| !TestNotNull(TEXT("CraftingMaterials.csv loads"), Materials))
+	{
+		return false;
+	}
+
+	// A CATACLYSM BOSS, WHICH AVERAGES 24 MATERIALS. Its rate makes an empty
+	// material roll vanishingly unlikely at any seed.
+	constexpr int32 CataclysmBossStep = 5;
+
+	FRandomStream Stream(/*InSeed=*/20260819);
+	const FVector Where(500.0f, 250.0f, 40.0f);
+
+	const int32 Spawned = UCataclysmDropSpawner::SpawnDropsFor(
+		World, CataclysmBossStep, /*MagicFind=*/0.0f,
+		UCataclysmDropRoll::BaselineLootQuantity, Where, Stream);
+	if (!TestTrue(TEXT("the kill dropped something"), Spawned > 0))
+	{
+		return false;
+	}
+
+	int32 FoundMaterials = 0;
+	int32 FoundGear = 0;
+
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		const ACataclysmDroppedItem* Drop = *It;
+		if (!Drop->IsMaterial())
+		{
+			++FoundGear;
+			continue;
+		}
+		++FoundMaterials;
+
+		// A MATERIAL DROP IS NOT ALSO A GEAR DROP. One actor carries both kinds,
+		// so a drop that answered yes to both would be drawn and picked up as
+		// whichever the caller asked about first.
+		if (!Drop->Item.Base.IsNone())
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' is a material and also carries the gear base '%s'"),
+				*Drop->DisplayName, *Drop->Item.Base.ToString()));
+			return false;
+		}
+
+		// IT IS A REAL MATERIAL FROM THE TABLE, not an invented name.
+		const FCataclysmCraftingMaterialRow* Row =
+			Materials->FindRow<FCataclysmCraftingMaterialRow>(
+				Drop->Material, TEXT("material drop"), false);
+		if (!Row)
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' is not a row in CraftingMaterials.csv"),
+				*Drop->Material.ToString()));
+			return false;
+		}
+
+		// AND IT IS A MATERIAL RATHER THAN A CRAFTING ACTION. Nineteen rows of
+		// that table are actions such as "Reroll Affix Value", carrying a tier
+		// of 0, and nothing should ever drop one.
+		if (Row->Tier <= 0)
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' dropped and it is a crafting action, not a material"),
+				*Row->MaterialName));
+			return false;
+		}
+
+		if (Drop->MaterialTier != Row->Tier)
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' is tier %d in the table and the drop says %d"),
+				*Row->MaterialName, Row->Tier, Drop->MaterialTier));
+			return false;
+		}
+
+		// THE PLAYER READS THE MATERIAL'S OWN NAME, not its tier.
+		if (Drop->DisplayName != Row->MaterialName)
+		{
+			AddError(FString::Printf(
+				TEXT("a drop of '%s' is labelled '%s'"),
+				*Row->MaterialName, *Drop->DisplayName));
+			return false;
+		}
+
+		// AND IN ITS TIER'S COLOUR, which is what says it is a material at all.
+		const FLinearColor Wanted =
+			UCataclysmDropRoll::MaterialColourFor(MaterialTiers, Row->Tier);
+		if (!Drop->NameColour.Equals(Wanted, 0.001f))
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' is drawn %s and tier %d's colour is %s"),
+				*Row->MaterialName, *Drop->NameColour.ToString(), Row->Tier,
+				*Wanted.ToString()));
+			return false;
+		}
+
+		// ONE PER DROP. They stack when they are picked up rather than where
+		// they lie, so a player can see how many fell and can leave some.
+		if (Drop->MaterialQuantity != 1)
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' lies on the floor as %d at once"),
+				*Row->MaterialName, Drop->MaterialQuantity));
+			return false;
+		}
+	}
+
+	TestTrue(*FString::Printf(
+			TEXT("a Cataclysm Boss dropped crafting materials (%d)"),
+			FoundMaterials),
+		FoundMaterials > 0);
+	TestTrue(*FString::Printf(TEXT("and gear as well (%d)"), FoundGear),
+		FoundGear > 0);
+	TestEqual(TEXT("and the spawner counted every actor it made"),
+		FoundMaterials + FoundGear, Spawned);
+
+	return true;
+}
+
+/**
+ * Picking up a material stacks it, and a full bag leaves it on the floor.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialPickupTest,
+	"Cataclysm.Drop.PickingUpAMaterialStacksItInTheInventory",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialPickupTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDroppedItemTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const FName Mote(TEXT("Material_Corrupted_Mote"));
+
+	// THREE OF THE SAME MATERIAL LYING SEPARATELY, which is what one kill
+	// produces: each roll is its own drop.
+	for (int32 Which = 0; Which < 3; ++Which)
+	{
+		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(
+			FVector(100.0f * static_cast<float>(Which), 0.0f, 0.0f),
+			FRotator::ZeroRotator);
+		if (!TestNotNull(TEXT("a material drop"), Drop))
+		{
+			return false;
+		}
+		Drop->Material = Mote;
+		Drop->MaterialQuantity = 1;
+		Drop->MaterialTier = 1;
+		Drop->DisplayName = TEXT("Corrupted Mote");
+
+		TestTrue(TEXT("it was taken"),
+			UCataclysmDropPickup::TakeInto(Inventory, Drop));
+	}
+
+	TestEqual(TEXT("three are carried"), Inventory->CountOfMaterial(Mote), 3);
+	TestEqual(TEXT("in one slot"), Inventory->NumItems(), 1);
+
+	// A FULL BAG LEAVES A MATERIAL IT IS NOT CARRYING ON THE FLOOR.
+	Inventory->RemoveEverything();
+	for (int32 N = 0; N < UCataclysmInventoryComponent::SlotCount; ++N)
+	{
+		FCataclysmItem Filler;
+		Filler.Base = FName(*FString::Printf(TEXT("Filler%d"), N));
+		Inventory->AddItem(Filler);
+	}
+
+	ACataclysmDroppedItem* Refused = World->SpawnActor<ACataclysmDroppedItem>(
+		FVector(700.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a drop for the full bag"), Refused))
+	{
+		return false;
+	}
+	Refused->Material = Mote;
+	Refused->MaterialQuantity = 1;
+	Refused->MaterialTier = 1;
+	Refused->DisplayName = TEXT("Corrupted Mote");
+
+	TestFalse(TEXT("a full bag cannot take a new material"),
+		UCataclysmDropPickup::TakeInto(Inventory, Refused));
+	TestTrue(TEXT("so it stays on the floor"), IsValid(Refused));
+	TestEqual(TEXT("and none of it is carried"),
+		Inventory->CountOfMaterial(Mote), 0);
+
+	return true;
+}
+
+/**
+ * A material's border is one pixel a tier, the same rule the gear names follow.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialBorderTest,
+	"Cataclysm.Drop.AMaterialsNameCarriesItsTierAsABorder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialBorderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDroppedItemTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	TestEqual(TEXT("tier 1 sits inside one pixel"),
+		UCataclysmDropPickup::NameBorderThicknessForMaterialTier(1), 1);
+	TestEqual(TEXT("and tier 5 inside five"),
+		UCataclysmDropPickup::NameBorderThicknessForMaterialTier(5), 5);
+
+	// ONE THICKER A TIER, WITH NO TWO THE SAME.
+	int32 Previous = 0;
+	for (int32 Tier = 1; Tier <= 5; ++Tier)
+	{
+		const int32 Thickness =
+			UCataclysmDropPickup::NameBorderThicknessForMaterialTier(Tier);
+		TestTrue(*FString::Printf(
+				TEXT("tier %d is thicker than the tier below (%d after %d)"),
+				Tier, Thickness, Previous),
+			Thickness > Previous);
+		Previous = Thickness;
+	}
+
+	// A DROP IS ASKED WHICH KIND IT IS. The heads-up display draws one border
+	// for both kinds and has to read the tier for a material and the rarity for
+	// gear; getting that backwards would give every material an Everyday border.
+	ACataclysmDroppedItem* Material = World->SpawnActor<ACataclysmDroppedItem>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmDroppedItem* Gear = World->SpawnActor<ACataclysmDroppedItem>(
+		FVector(200.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a material drop"), Material)
+		|| !TestNotNull(TEXT("a gear drop"), Gear))
+	{
+		return false;
+	}
+
+	Material->Material = FName(TEXT("Material_Purified_Essence"));
+	Material->MaterialQuantity = 1;
+	Material->MaterialTier = 5;
+
+	Gear->Item.Base = FName(TEXT("Greataxe"));
+	Gear->Rarity = ECataclysmRarity::Cataclysmic;
+
+	TestEqual(TEXT("a tier 5 material gets a five pixel border"),
+		UCataclysmDropPickup::NameBorderThicknessOf(*Material), 5);
+	TestEqual(TEXT("and a Cataclysmic item gets eight"),
+		UCataclysmDropPickup::NameBorderThicknessOf(*Gear), 8);
+
+	// A TIER THAT FAILED TO READ STILL GETS A BORDER rather than none, because a
+	// missing border would look like a fault in the drawing rather than the data.
+	TestEqual(TEXT("tier 0 still gets the thinnest border"),
+		UCataclysmDropPickup::NameBorderThicknessForMaterialTier(0), 1);
 
 	return true;
 }

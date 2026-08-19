@@ -121,9 +121,9 @@ bool FCataclysmInventoryHoldsFortyEightTest::RunTest(const FString&)
 	// AND THE REFUSED ITEM IS NOWHERE IN IT. Counting to 48 would still pass if
 	// the new item had replaced one that was already carried.
 	bool bRefusedIsStored = false;
-	for (const FCataclysmItem& Stored : Inventory->GetSlots())
+	for (const FCataclysmCarriedSlot& Stored : Inventory->GetSlots())
 	{
-		bRefusedIsStored = bRefusedIsStored || Stored.Base == Refused.Base;
+		bRefusedIsStored = bRefusedIsStored || Stored.Item.Base == Refused.Base;
 	}
 	TestFalse(TEXT("the refused item did not overwrite a carried one"),
 		bRefusedIsStored);
@@ -416,6 +416,209 @@ bool FCataclysmPlayerCarriesAnInventoryTest::RunTest(const FString&)
 	TestEqual(TEXT("an item can be put into it"),
 		Inventory->AddItem(ItemNumber(1)), 0);
 	TestEqual(TEXT("and is then carried"), Inventory->NumItems(), 1);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Crafting materials, which stack
+// ---------------------------------------------------------------------------
+
+/**
+ * Every crafting material of one kind takes one slot however many are held.
+ *
+ * WHY IT MATTERS. A Cataclysm Boss averages 24 materials against a 48-slot bag,
+ * so without stacking one kill could fill half of it with dust and leave no room
+ * for the gear the same kill dropped. The project owner decided on 2026-08-19
+ * that all crafting materials stack. Issue #717.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialsStackTest,
+	"Cataclysm.Inventory.CraftingMaterialsStackIntoOneSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialsStackTest::RunTest(const FString&)
+{
+	using namespace CataclysmInventoryTest;
+
+	UCataclysmInventoryComponent* Inventory = MakeInventory();
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const FName Mote(TEXT("Material_Corrupted_Mote"));
+	const FName Ash(TEXT("Material_Whispering_Ash"));
+
+	TestEqual(TEXT("nothing is carried to begin with"),
+		Inventory->CountOfMaterial(Mote), 0);
+	TestEqual(TEXT("and no slot holds it"),
+		Inventory->SlotOfMaterial(Mote), INDEX_NONE);
+
+	TestEqual(TEXT("the first one takes the first slot"),
+		Inventory->AddMaterial(Mote, 1), 0);
+	TestEqual(TEXT("and one is carried"), Inventory->CountOfMaterial(Mote), 1);
+	TestEqual(TEXT("and one slot is used"), Inventory->NumItems(), 1);
+
+	// TWENTY-THREE MORE, WHICH IS WHAT A CATACLYSM BOSS AVERAGES. Still one slot.
+	for (int32 More = 0; More < 23; ++More)
+	{
+		TestEqual(TEXT("every one after the first joins the stack"),
+			Inventory->AddMaterial(Mote, 1), 0);
+	}
+
+	TestEqual(TEXT("twenty-four are carried"),
+		Inventory->CountOfMaterial(Mote), 24);
+	TestEqual(TEXT("in one slot"), Inventory->NumItems(), 1);
+	TestEqual(TEXT("so forty-seven are still free"),
+		Inventory->NumFreeSlots(), 47);
+
+	// A DIFFERENT MATERIAL IS A DIFFERENT STACK. Four materials share tier 1 and
+	// a Corrupted Mote is not a Whispering Ash; stacking by tier would merge
+	// them, which is why the stack key is the material's own name.
+	TestEqual(TEXT("another material takes its own slot"),
+		Inventory->AddMaterial(Ash, 5), 1);
+	TestEqual(TEXT("five of it are carried"),
+		Inventory->CountOfMaterial(Ash), 5);
+	TestEqual(TEXT("and the first stack is untouched"),
+		Inventory->CountOfMaterial(Mote), 24);
+	TestEqual(TEXT("two slots are used"), Inventory->NumItems(), 2);
+
+	// SEVERAL AT ONCE, which is what picking up a whole stack would be.
+	TestEqual(TEXT("adding several at once joins the same stack"),
+		Inventory->AddMaterial(Mote, 10), 0);
+	TestEqual(TEXT("thirty-four are carried"),
+		Inventory->CountOfMaterial(Mote), 34);
+
+	// NOTHING IS NOT A DROP.
+	TestEqual(TEXT("no material cannot be added"),
+		Inventory->AddMaterial(NAME_None, 5), INDEX_NONE);
+	TestEqual(TEXT("nor can none of one"),
+		Inventory->AddMaterial(Mote, 0), INDEX_NONE);
+	TestEqual(TEXT("nor a negative number"),
+		Inventory->AddMaterial(Mote, -3), INDEX_NONE);
+	TestEqual(TEXT("and none of that changed the stack"),
+		Inventory->CountOfMaterial(Mote), 34);
+
+	// PUTTING THE SLOT DOWN TAKES THE WHOLE STACK.
+	TestTrue(TEXT("the stack's slot can be emptied"),
+		Inventory->RemoveItemAt(0));
+	TestEqual(TEXT("and none of it is carried"),
+		Inventory->CountOfMaterial(Mote), 0);
+	TestEqual(TEXT("while the other material is untouched"),
+		Inventory->CountOfMaterial(Ash), 5);
+
+	return true;
+}
+
+/**
+ * Gear does not stack, and a material slot is not a gear slot.
+ *
+ * BOTH HALVES MATTER. Two items of one base carry different affixes, upgrade
+ * levels, sockets and residue, so merging them would silently destroy one; and a
+ * slot holding materials must not answer as though it held gear, or the
+ * inventory screen would draw a stack of dust as a sword.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGearDoesNotStackTest,
+	"Cataclysm.Inventory.GearDoesNotStackAndAMaterialSlotHoldsNoItem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGearDoesNotStackTest::RunTest(const FString&)
+{
+	using namespace CataclysmInventoryTest;
+
+	UCataclysmInventoryComponent* Inventory = MakeInventory();
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	// THE SAME BASE THREE TIMES TAKES THREE SLOTS.
+	FCataclysmItem Sword;
+	Sword.Base = FName(TEXT("Greataxe"));
+
+	TestEqual(TEXT("the first goes into slot 0"), Inventory->AddItem(Sword), 0);
+	TestEqual(TEXT("the second into slot 1"), Inventory->AddItem(Sword), 1);
+	TestEqual(TEXT("the third into slot 2"), Inventory->AddItem(Sword), 2);
+	TestEqual(TEXT("three slots are used"), Inventory->NumItems(), 3);
+
+	// A MATERIAL SLOT HOLDS NO ITEM.
+	const FName Mote(TEXT("Material_Corrupted_Mote"));
+	const int32 Stack = Inventory->AddMaterial(Mote, 7);
+	if (!TestEqual(TEXT("the material took the next slot"), Stack, 3))
+	{
+		return false;
+	}
+
+	TestNull(TEXT("reading the material's slot as gear gives nothing"),
+		Inventory->ItemAt(Stack));
+	TestEqual(TEXT("and the slot itself carries the material"),
+		Inventory->GetSlots()[Stack].Material, Mote);
+	TestEqual(TEXT("and its quantity"),
+		Inventory->GetSlots()[Stack].Quantity, 7);
+
+	// A GEAR SLOT HOLDS NO MATERIAL.
+	TestTrue(TEXT("no material is stacked in a gear slot"),
+		Inventory->GetSlots()[0].Material.IsNone());
+	TestEqual(TEXT("and it has no quantity"),
+		Inventory->GetSlots()[0].Quantity, 0);
+	TestNotNull(TEXT("but it does hold an item"), Inventory->ItemAt(0));
+
+	return true;
+}
+
+/**
+ * A full bag has no room for a material it is not already carrying, and always
+ * has room for one it is.
+ *
+ * THAT ASYMMETRY IS THE POINT OF STACKING. It is what stops a Cataclysm Boss's
+ * materials filling the bag, and it is what a caller has to be able to rely on.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFullBagAndMaterialsTest,
+	"Cataclysm.Inventory.AFullBagStillTakesMoreOfAMaterialItCarries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFullBagAndMaterialsTest::RunTest(const FString&)
+{
+	using namespace CataclysmInventoryTest;
+
+	UCataclysmInventoryComponent* Inventory = MakeInventory();
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const FName Mote(TEXT("Material_Corrupted_Mote"));
+	const FName Ash(TEXT("Material_Whispering_Ash"));
+
+	// ONE MATERIAL AND FORTY-SEVEN PIECES OF GEAR FILLS IT.
+	TestEqual(TEXT("the material takes slot 0"),
+		Inventory->AddMaterial(Mote, 2), 0);
+	for (int32 N = 0; N < 47; ++N)
+	{
+		Inventory->AddItem(ItemNumber(N));
+	}
+	if (!TestTrue(TEXT("the bag is full"), Inventory->IsFull()))
+	{
+		return false;
+	}
+
+	// MORE OF WHAT IS ALREADY CARRIED STILL FITS, because it needs no slot.
+	TestEqual(TEXT("more of the carried material joins its stack"),
+		Inventory->AddMaterial(Mote, 100), 0);
+	TestEqual(TEXT("and the stack grew"),
+		Inventory->CountOfMaterial(Mote), 102);
+	TestTrue(TEXT("and the bag is still full"), Inventory->IsFull());
+
+	// A MATERIAL IT IS NOT CARRYING NEEDS A SLOT, AND THERE IS NONE.
+	TestEqual(TEXT("a new material is refused"),
+		Inventory->AddMaterial(Ash, 1), INDEX_NONE);
+	TestEqual(TEXT("and none of it was stored"),
+		Inventory->CountOfMaterial(Ash), 0);
+
+	// AND SO IS A PIECE OF GEAR.
+	TestEqual(TEXT("gear is refused too"),
+		Inventory->AddItem(ItemNumber(999)), INDEX_NONE);
 
 	return true;
 }
