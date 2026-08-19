@@ -123,9 +123,9 @@ void ACataclysmHUD::DrawBar(float ScreenX, float ScreenY, float Width,
 	DrawRect(Drawn, ScreenX, ScreenY, Filled, Height);
 }
 
-void ACataclysmHUD::DrawTextCentred(const FString& Text,
-									const FLinearColor& Colour, float CentreX,
-									float TopY, float Scale)
+FBox2D ACataclysmHUD::DrawTextCentred(const FString& Text,
+									  const FLinearColor& Colour, float CentreX,
+									  float TopY, float Scale)
 {
 	UFont* Font = OverlayFont();
 
@@ -181,6 +181,12 @@ void ACataclysmHUD::DrawTextCentred(const FString& Text,
 	}
 
 	DrawText(Text, Colour, Left, TopY, Font, Sized);
+
+	// THE RECTANGLE THE TEXT ITSELF FILLED, not the outline around it. The
+	// outline is one pixel of spread and including it would make two names
+	// drawn close together overlap slightly more than they look like they do.
+	return FBox2D(FVector2D(Left, TopY),
+				  FVector2D(Left + Width, TopY + Height));
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
@@ -338,9 +344,15 @@ void ACataclysmHUD::DrawDropNames()
 	// up, and neither of those happens through this class; keeping a copy would
 	// be a second record of what is on the floor and a way for the two to
 	// disagree.
+	// REBUILT EVERY FRAME, because a name that was not drawn this frame is not
+	// clickable this frame. A drop behind the camera, or one just picked up, has
+	// to leave this list or a click at its old position would still find it.
+	DropNameRects.Reset();
+	DropsNamed.Reset();
+
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 	{
-		const ACataclysmDroppedItem* Drop = *It;
+		ACataclysmDroppedItem* Drop = *It;
 		if (!Drop || Drop->DisplayName.IsEmpty())
 		{
 			continue;
@@ -357,9 +369,28 @@ void ACataclysmHUD::DrawDropNames()
 			continue;
 		}
 
-		DrawTextCentred(Drop->DisplayName, Drop->NameColour, Screen.X, Screen.Y,
-						1.0f);
+		const FBox2D Rect = DrawTextCentred(Drop->DisplayName, Drop->NameColour,
+											Screen.X, Screen.Y, 1.0f);
+
+		// THE TWO ARRAYS ARE APPENDED TOGETHER AND NOWHERE ELSE, which is what
+		// keeps index N of one describing the same drop as index N of the other.
+		DropNameRects.Add(Rect);
+		DropsNamed.Add(Drop);
 	}
+}
+
+ACataclysmDroppedItem* ACataclysmHUD::DropUnderPoint(const FVector2D& Point) const
+{
+	const int32 Index =
+		UCataclysmDropPickup::IndexOfNameUnderPoint(DropNameRects, Point);
+	if (Index == INDEX_NONE || !DropsNamed.IsValidIndex(Index))
+	{
+		return nullptr;
+	}
+
+	// GET() RATHER THAN A RAW POINTER, because the drop may have been destroyed
+	// since it was drawn. A weak pointer answers nullptr; a raw one would not.
+	return DropsNamed[Index].Get();
 }
 
 void ACataclysmHUD::DrawDamageNumbers()

@@ -44,13 +44,28 @@ def read(path: pathlib.Path) -> str:
 
 
 def centred_text_body() -> str:
-    """Just `ACataclysmHUD::DrawTextCentred`, so a match elsewhere cannot pass."""
+    """Just `ACataclysmHUD::DrawTextCentred`, so a match elsewhere cannot pass.
+
+    THE RETURN TYPE IS NOT PART OF THE ANCHOR. It was `void` until issue #707
+    made the function hand back the rectangle it filled, so that a drop's name
+    could be clicked, and this test failed on the signature while the outline it
+    guards was untouched. What is being guarded is the body.
+
+    THE OPEN PARENTHESIS IS PART OF THE ANCHOR, and it is the part that makes a
+    rename fail here rather than pass silently. Without it the pattern matches
+    any function whose name merely STARTS with `DrawTextCentred`, so renaming
+    this one to `DrawTextCentredSomewhere` would leave the guard reading a
+    different function's body and reporting success. The plain `str.find` this
+    replaced had the same hole; it was found by breaking the guard on purpose.
+    """
     text = read(HUD)
-    start = text.find("void ACataclysmHUD::DrawTextCentred")
-    assert start != -1, (
+    match = re.search(r"^\w[\w:<>&* ]*ACataclysmHUD::DrawTextCentred\(",
+                      text, re.MULTILINE)
+    assert match is not None, (
         "ACataclysmHUD::DrawTextCentred no longer exists. Every piece of text "
         "the heads-up display draws went through it; if that changed, this "
         "guard has to move with it.")
+    start = match.start()
     end = text.find("\n}", start)
     assert end != -1
     return text[start:end]

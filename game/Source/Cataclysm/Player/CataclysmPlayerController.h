@@ -7,6 +7,7 @@
 #include "GameplayTagContainer.h"
 #include "CataclysmPlayerController.generated.h"
 
+class ACataclysmDroppedItem;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmInputConfig;
 class UInputMappingContext;
@@ -91,8 +92,49 @@ private:
 	 */
 	bool IsPawnStunned() const;
 
+	/**
+	 * The drop whose drawn name the cursor is over, or nullptr for none.
+	 *
+	 * ASKS THE HEADS-UP DISPLAY, because it drew the names and is the only thing
+	 * that knows where they landed. A controller with no ACataclysmHUD, or no
+	 * mouse at all, answers nullptr and every click stays a move order.
+	 */
+	ACataclysmDroppedItem* DropUnderCursor() const;
+
+	/**
+	 * Takes a drop if the character can reach it.
+	 *
+	 * @return true when the item is now in the inventory and the drop is gone.
+	 *         **False when the inventory was full**, which is not a failure and
+	 *         not retried: the design says an item that will not fit stays on
+	 *         the floor for the player to choose about.
+	 */
+	bool TakeDrop(ACataclysmDroppedItem* Drop);
+
+	/**
+	 * Takes the drop the player clicked, once walking has brought them near it.
+	 *
+	 * WHY A CLICK ALONE IS NOT ENOUGH. A name can be clicked from anywhere on
+	 * screen and the character has to be within
+	 * UCataclysmDropPickup::PickupRangeCm to reach it, so a click from further
+	 * off is a walk followed by a pick-up. Every game in the genre does this.
+	 *
+	 * RUNS EVERY FRAME, from PostProcessInput, because arriving is not an event
+	 * anything here is told about.
+	 */
+	void UpdatePendingPickup();
+
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;
+
+	/**
+	 * The drop the player clicked and is walking toward, if any.
+	 *
+	 * WEAK, because the drop can be destroyed by anything at any time and a
+	 * raw pointer would outlive it. Cleared when it is taken, when it goes
+	 * away, when the player orders a move somewhere else, and on a stun.
+	 */
+	TWeakObjectPtr<ACataclysmDroppedItem> PendingPickup;
 
 	/** How long the move button has been held this press, in seconds. */
 	float FollowTime = 0.0f;
