@@ -909,6 +909,23 @@ struct FCataclysmCraftingMaterialRow : public FTableRowBase
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString MaterialName;
+
+	/**
+	 * Which material tier this belongs to, 1 to 5, or 0 for a crafting action.
+	 *
+	 * THE CRAFTING SHEET HOLDS TWO KINDS OF ROW. Eighteen are materials a player
+	 * can hold and nineteen are actions a player can take -- "Reroll Affix
+	 * Value", "Add Socket" -- which have no tier because they are not things
+	 * that drop. Zero is what says so, and it is what stops a drop rolling an
+	 * action.
+	 *
+	 * READ OFF TierAndSource AT GENERATION rather than here. That cell is prose
+	 * -- "Tier 3 (Rare). Drop from Dungeon Bosses/Elites." -- and the generator
+	 * already parses it to check each tier's material count, so publishing the
+	 * number costs nothing and saves the engine parsing English at runtime.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") int32 Tier = 0;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString TierAndSource;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString PrimaryUse;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString Functions;

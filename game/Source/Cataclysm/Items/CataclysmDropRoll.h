@@ -353,6 +353,7 @@ public:
 
 	static const TCHAR* EnemyDropTableAssetPath;
 	static const TCHAR* MaterialTierTableAssetPath;
+	static const TCHAR* CraftingMaterialTableAssetPath;
 
 	/** What each enemy rarity drops, or null with the reason logged. */
 	static const UDataTable* LoadEnemyDropTable();
@@ -453,6 +454,42 @@ public:
 	static void MaterialTierDistribution(const UDataTable* MaterialTierTable,
 										 float MagicFind,
 										 TArray<float>& OutShares);
+
+	/** The crafting material table, loaded once. Null when it cannot be read. */
+	static const UDataTable* LoadCraftingMaterialTable();
+
+	/**
+	 * Which crafting material drops, given the tier it rolled.
+	 *
+	 * @return the row key in `game/Data/CraftingMaterials.csv`, or NAME_None
+	 *         when the tier holds no material.
+	 *
+	 * EQUAL CHANCE WITHIN THE TIER. `roll_material_tier` in
+	 * `sim/cataclysm_sim/loot.py` picks the tier and says the choice of material
+	 * within it belongs to "whoever holds that table", which is this. Four
+	 * materials share tier 1 and three share tier 5, so Purified Essence -- the
+	 * only thing that clears the Consumption Threshold -- is one material drop
+	 * in 1,023, which is the figure the tier weights were chosen against.
+	 *
+	 * THE CRAFTING SHEET HOLDS ACTIONS AS WELL AS MATERIALS, nineteen of them,
+	 * and they carry a tier of 0 so that nothing can drop "Reroll Affix Value".
+	 */
+	static FName RollMaterial(const UDataTable* CraftingMaterialTable,
+							  int32 Tier, FRandomStream& Stream);
+
+	/**
+	 * What a material of this tier is called, as a player reads it.
+	 *
+	 * The material's own name from the table, so "Purified Essence" rather than
+	 * "Tier 5 material". Empty when the row is missing.
+	 */
+	static FString MaterialNameOf(const UDataTable* CraftingMaterialTable,
+								  FName Material);
+
+	/** The colour a material of this tier has its name drawn in, or white when
+	 *  the table is missing it. */
+	static FLinearColor MaterialColourFor(const UDataTable* MaterialTierTable,
+										  int32 Tier);
 
 	/**
 	 * The tier one affix rolls at on a drop at this difficulty tier.

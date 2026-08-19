@@ -660,7 +660,8 @@ bool FCataclysmNameTagTest::RunTest(const FString&)
 	const FBox2D Text = MakeRect(100.0f, 200.0f, 300.0f, 220.0f);
 
 	// EVERYDAY: three pixels of padding and one of border, so four on each side.
-	const FBox2D Thin = FPickup::TagAround(Text, ECataclysmRarity::Everyday);
+	const FBox2D Thin = FPickup::TagAround(
+		Text, FPickup::NameBorderThicknessFor(ECataclysmRarity::Everyday));
 	TestEqual(TEXT("an Everyday tag starts four pixels left of its text"),
 		Thin.Min.X, 96.0);
 	TestEqual(TEXT("and four above it"), Thin.Min.Y, 196.0);
@@ -668,7 +669,8 @@ bool FCataclysmNameTagTest::RunTest(const FString&)
 	TestEqual(TEXT("and four below it"), Thin.Max.Y, 224.0);
 
 	// CATACLYSMIC: three of padding and eight of border, so eleven a side.
-	const FBox2D Thick = FPickup::TagAround(Text, ECataclysmRarity::Cataclysmic);
+	const FBox2D Thick = FPickup::TagAround(
+		Text, FPickup::NameBorderThicknessFor(ECataclysmRarity::Cataclysmic));
 	TestEqual(TEXT("a Cataclysmic tag starts eleven pixels left of its text"),
 		Thick.Min.X, 89.0);
 	TestEqual(TEXT("and eleven below it"), Thick.Max.Y, 231.0);
@@ -681,7 +683,8 @@ bool FCataclysmNameTagTest::RunTest(const FString&)
 									 ECataclysmRarity::Masterful,
 									 ECataclysmRarity::Cataclysmic })
 	{
-		const FBox2D Tag = FPickup::TagAround(Text, Rarity);
+		const FBox2D Tag =
+			FPickup::TagAround(Text, FPickup::NameBorderThicknessFor(Rarity));
 		const double Inset = FPickup::NameBorderPaddingPx
 						   + FPickup::NameBorderThicknessFor(Rarity);
 
@@ -695,7 +698,8 @@ bool FCataclysmNameTagTest::RunTest(const FString&)
 	for (ECataclysmRarity Rarity : { ECataclysmRarity::Everyday,
 									 ECataclysmRarity::Cataclysmic })
 	{
-		const FBox2D Tag = FPickup::TagAround(Text, Rarity);
+		const FBox2D Tag =
+			FPickup::TagAround(Text, FPickup::NameBorderThicknessFor(Rarity));
 		TestTrue(TEXT("the tag contains the text"),
 			Tag.Min.X < Text.Min.X && Tag.Min.Y < Text.Min.Y
 			&& Tag.Max.X > Text.Max.X && Tag.Max.Y > Text.Max.Y);
@@ -704,7 +708,9 @@ bool FCataclysmNameTagTest::RunTest(const FString&)
 	// AN UNSET RECTANGLE IS LEFT ALONE. A drop that failed to project has no
 	// place on screen to grow a border around.
 	TestFalse(TEXT("an unset text box gives an unset tag"),
-		FPickup::TagAround(FBox2D(), ECataclysmRarity::Superb).bIsValid);
+		FPickup::TagAround(
+			FBox2D(),
+			FPickup::NameBorderThicknessFor(ECataclysmRarity::Superb)).bIsValid);
 
 	return true;
 }

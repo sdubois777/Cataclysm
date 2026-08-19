@@ -1,38 +1,38 @@
-Name,MaterialName,TierAndSource,PrimaryUse,Functions,CRMetric,Formula,Outcome
-Material_Aetherial_Shard,Aetherial Shard,Tier 3 (Rare). Drop from Dungeon Bosses/Elites.,Imprinting Catalyst.,Used for imprinting enchantments on an item.,Gold Cost Multiplier,(CR / 50) + 1,CR 50: (50/50) + 1 = 2x Cost
-Material_Chaos_Stabilizer,Chaos Stabilizer,Tier 3 (Rare). Drop from Dungeon Bosses/Elites.,Risk Reduction (CR).,Reduces the CR gain of the next craft by 50%.,Craft Time Penalty,CR / 100 (Rounded Down),CR 100: 100/100 = +1 Day Penalty
-Material_Corrupted_Mote,Corrupted Mote,Tier 1 (Common).,Affix Reroll Currency.,Used for Reroll Affix Value.,,,
-Material_Crystal_of_Instability,Crystal of Instability,Tier 4 (Very Rare).,The Transmutation Material.,Used for Affix Shifting only.,,,
-Material_Dismantling_Dust,Dismantling Dust,Tier 1 (Common). Dropped from dismantling items with sockets.,Safe Unsocketing.,Used for Unsocket Gem only.,Item's Current CR,Gold Cost Multiplier,Craft Time Penalty (Days)
-Material_Focusing_Lens,Focusing Lens,Tier 4 (Very Rare).,Socket Modification.,Required to Change Socket Type.,0 CR (New Item),1x,+0 Days
-Material_Jeweler_s_Setting_Agent,Jeweler's Setting Agent,Tier 1 (Common).,Gem Socketing.,Used for Socket Gem only.,50 CR,2x,+0 Days
-Material_Primal_Spark,Primal Spark,Tier 5 (Extremely Rare).,The Perfection Material.,Used to perfect the rolls on gear.,99 CR (Max Pre-Penalty),3x,+0 Days
-Material_Purified_Essence,Purified Essence,Tier 5 (Extremely Rare),CR Management.,Used for the partial CR Cleanse action.,100 CR (The Break Point),3x,+1 Day
-Material_Schematic_Fragments,Schematic Fragments,Tier 1 (Common). Gained from dismantling items.,Deterministic crafting,Used to craft specific affixes onto equipment.,200 CR,5x,+2 Days
-Material_Shattered_Core,Shattered Core,Tier 3 (Rare).,Item Structuring.,Used for Add Socket only.,500 CR,11x,+5 Days
-Material_Tainted_Shard,Tainted Shard,Tier 2 (Uncommon).,Time Accelleration.,Used to remove 1 day of crafting time.,,,
-Material_Upgrade_Stone_x,Upgrade Stone (x),Tier 2 (Uncommon).,Item Level Upgrade.,Used for Upgrade Item Level (1 Tier).,,,
-Material_Elemental_Cinder,Elemental Cinder,Tier 2 (Uncommon).,Random Damage Type,Used to add a random damage type to a weapon.,,,
-Material_Prismatic_Catalyst,Prismatic Catalyst,Tier 3 (Rare),Damage Transmutation,Used to change a damage type on a weapon.,,,
-Material_Sovereign_Ingot,Sovereign Ingot,Tier 4 (Very Rare).,Damage Attunement,Used to add a specific damage type to a weapon.,,,
-Material_Potency_Crystal,Potency Crystal,Tier 2 (Uncommon).,Affix Leveling,"Used to increase an affix to the next tier, up to t7. No difficulty tier gate; cost is the limit.",,,
-Material_Regret_Essence,Regret Essence,Tier 5 (Extremely Rare).,Enchantment Negative Refinement,Used to change the Negative effect of an enchantment.,,,
-Material_Action,Action,Core Materials Used,CR Impact,Base Days,,,
-Material_Imprint_Enchantment,Imprint Enchantment,Aetherial Shard,5 CR,2,,,
-Material_Reduce_CR_Gain_1_Craft,Reduce CR Gain (1 Craft),Chaos Stabilizer,-50% CR gain,0,,,
-Material_Reroll_Affix_Value,Reroll Affix Value,Corrupted Mote,2 CR,0,,,
-Material_Affix_Shifting_Stat_Type,Affix Shifting (Stat Type),Crystal of Instability,15 CR,1,,,
-Material_Unsocket_Gem,Unsocket Gem,Dismantling Dust,3 CR,1,,,
-Material_Change_Socket_Type,Change Socket Type,Focusing Lens,10 CR,2,,,
-Material_Socket_Gem,Socket Gem,Jeweler's Setting Agent,5 CR,1,,,
-Material_Perfect_Roll_Attempt,Perfect Roll Attempt,Primal Spark,50 CR,5,,,
-Material_CR_Cleanse_Partial,CR Cleanse (Partial),Purified Essence,-50% CR,1 day per 500 CR,,,
-Material_Deterministic_Affix,Deterministic Affix,Schematic Fragments,5 CR per tier of affix,1 day per tier of affix. (Max of 8),,,
-Material_Add_Socket,Add Socket,Shattered Core,15 CR,3,,,
-Material_Accelerate_Craft,Accelerate Craft,Tainted Shard,0 CR,-1,,,
-Material_Upgrade_Item_Level_1_Tier,Upgrade Item Level (1 Tier),Upgrade Stone (x),25 CR per tier,1 day per tier. (Max of 10),,,
-Material_Infuse_Random_Damage_Type,Infuse Random Damage Type,Elemental Cinder,10 CR,1,,,
-Material_Change_Damage_Type,Change Damage Type,Prismatic Catalyst,20 CR,0,,,
-Material_Infuse_Specific_Damage_Type,Infuse Specific Damage Type,Sovereign Ingot,50 CR,5,,,
-Material_Upgrade_Affix_Tier,Upgrade Affix Tier,Potency Crystal,10 CR*(Current affix tier),1(current affix tier),,,
-Material_Change_Enchantment_Negative,Change Enchantment Negative,Regret Essence,100 CR,7,,,
+Name,MaterialName,Tier,TierAndSource,PrimaryUse,Functions,CRMetric,Formula,Outcome
+Material_Aetherial_Shard,Aetherial Shard,3,Tier 3 (Rare). Drop from Dungeon Bosses/Elites.,Imprinting Catalyst.,Used for imprinting enchantments on an item.,Gold Cost Multiplier,(CR / 50) + 1,CR 50: (50/50) + 1 = 2x Cost
+Material_Chaos_Stabilizer,Chaos Stabilizer,3,Tier 3 (Rare). Drop from Dungeon Bosses/Elites.,Risk Reduction (CR).,Reduces the CR gain of the next craft by 50%.,Craft Time Penalty,CR / 100 (Rounded Down),CR 100: 100/100 = +1 Day Penalty
+Material_Corrupted_Mote,Corrupted Mote,1,Tier 1 (Common).,Affix Reroll Currency.,Used for Reroll Affix Value.,,,
+Material_Crystal_of_Instability,Crystal of Instability,4,Tier 4 (Very Rare).,The Transmutation Material.,Used for Affix Shifting only.,,,
+Material_Dismantling_Dust,Dismantling Dust,1,Tier 1 (Common). Dropped from dismantling items with sockets.,Safe Unsocketing.,Used for Unsocket Gem only.,Item's Current CR,Gold Cost Multiplier,Craft Time Penalty (Days)
+Material_Focusing_Lens,Focusing Lens,4,Tier 4 (Very Rare).,Socket Modification.,Required to Change Socket Type.,0 CR (New Item),1x,+0 Days
+Material_Jeweler_s_Setting_Agent,Jeweler's Setting Agent,1,Tier 1 (Common).,Gem Socketing.,Used for Socket Gem only.,50 CR,2x,+0 Days
+Material_Primal_Spark,Primal Spark,5,Tier 5 (Extremely Rare).,The Perfection Material.,Used to perfect the rolls on gear.,99 CR (Max Pre-Penalty),3x,+0 Days
+Material_Purified_Essence,Purified Essence,5,Tier 5 (Extremely Rare),CR Management.,Used for the partial CR Cleanse action.,100 CR (The Break Point),3x,+1 Day
+Material_Schematic_Fragments,Schematic Fragments,1,Tier 1 (Common). Gained from dismantling items.,Deterministic crafting,Used to craft specific affixes onto equipment.,200 CR,5x,+2 Days
+Material_Shattered_Core,Shattered Core,3,Tier 3 (Rare).,Item Structuring.,Used for Add Socket only.,500 CR,11x,+5 Days
+Material_Tainted_Shard,Tainted Shard,2,Tier 2 (Uncommon).,Time Accelleration.,Used to remove 1 day of crafting time.,,,
+Material_Upgrade_Stone_x,Upgrade Stone (x),2,Tier 2 (Uncommon).,Item Level Upgrade.,Used for Upgrade Item Level (1 Tier).,,,
+Material_Elemental_Cinder,Elemental Cinder,2,Tier 2 (Uncommon).,Random Damage Type,Used to add a random damage type to a weapon.,,,
+Material_Prismatic_Catalyst,Prismatic Catalyst,3,Tier 3 (Rare),Damage Transmutation,Used to change a damage type on a weapon.,,,
+Material_Sovereign_Ingot,Sovereign Ingot,4,Tier 4 (Very Rare).,Damage Attunement,Used to add a specific damage type to a weapon.,,,
+Material_Potency_Crystal,Potency Crystal,2,Tier 2 (Uncommon).,Affix Leveling,"Used to increase an affix to the next tier, up to t7. No difficulty tier gate; cost is the limit.",,,
+Material_Regret_Essence,Regret Essence,5,Tier 5 (Extremely Rare).,Enchantment Negative Refinement,Used to change the Negative effect of an enchantment.,,,
+Material_Action,Action,0,Core Materials Used,CR Impact,Base Days,,,
+Material_Imprint_Enchantment,Imprint Enchantment,0,Aetherial Shard,5 CR,2,,,
+Material_Reduce_CR_Gain_1_Craft,Reduce CR Gain (1 Craft),0,Chaos Stabilizer,-50% CR gain,0,,,
+Material_Reroll_Affix_Value,Reroll Affix Value,0,Corrupted Mote,2 CR,0,,,
+Material_Affix_Shifting_Stat_Type,Affix Shifting (Stat Type),0,Crystal of Instability,15 CR,1,,,
+Material_Unsocket_Gem,Unsocket Gem,0,Dismantling Dust,3 CR,1,,,
+Material_Change_Socket_Type,Change Socket Type,0,Focusing Lens,10 CR,2,,,
+Material_Socket_Gem,Socket Gem,0,Jeweler's Setting Agent,5 CR,1,,,
+Material_Perfect_Roll_Attempt,Perfect Roll Attempt,0,Primal Spark,50 CR,5,,,
+Material_CR_Cleanse_Partial,CR Cleanse (Partial),0,Purified Essence,-50% CR,1 day per 500 CR,,,
+Material_Deterministic_Affix,Deterministic Affix,0,Schematic Fragments,5 CR per tier of affix,1 day per tier of affix. (Max of 8),,,
+Material_Add_Socket,Add Socket,0,Shattered Core,15 CR,3,,,
+Material_Accelerate_Craft,Accelerate Craft,0,Tainted Shard,0 CR,-1,,,
+Material_Upgrade_Item_Level_1_Tier,Upgrade Item Level (1 Tier),0,Upgrade Stone (x),25 CR per tier,1 day per tier. (Max of 10),,,
+Material_Infuse_Random_Damage_Type,Infuse Random Damage Type,0,Elemental Cinder,10 CR,1,,,
+Material_Change_Damage_Type,Change Damage Type,0,Prismatic Catalyst,20 CR,0,,,
+Material_Infuse_Specific_Damage_Type,Infuse Specific Damage Type,0,Sovereign Ingot,50 CR,5,,,
+Material_Upgrade_Affix_Tier,Upgrade Affix Tier,0,Potency Crystal,10 CR*(Current affix tier),1(current affix tier),,,
+Material_Change_Enchantment_Negative,Change Enchantment Negative,0,Regret Essence,100 CR,7,,,
