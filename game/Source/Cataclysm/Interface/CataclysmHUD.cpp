@@ -6,10 +6,13 @@
 #include "Character/CataclysmEnemyRarity.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
+#include "Engine/EngineTypes.h"
 #include "Engine/Font.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Interface/CataclysmCreaturePanel.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Player/CataclysmPlayerController.h"
 
 ACataclysmHUD::ACataclysmHUD()
 {
@@ -57,6 +60,14 @@ void ACataclysmHUD::DrawHUD()
 
 	DrawDamageNumbers();
 	DrawDropNames();
+
+	// LAST, SO IT SITS ON TOP OF EVERYTHING. The panel hides most of what is
+	// behind it and covers a strip of the screen; a damage number or a drop
+	// name drawn after it would print over the text describing the creature.
+	if (UCataclysmCreaturePanel::CreaturePanelEnabled())
+	{
+		DrawCreaturePanel();
+	}
 }
 
 void ACataclysmHUD::AddDamageNumber(const FCataclysmDamageNumber& Number)
@@ -432,6 +443,206 @@ void ACataclysmHUD::DrawRarityNames()
 							- UCataclysmCombatOverlay::RarityNameGapPx
 							- BarBackingInsetPx,
 						UCataclysmCombatOverlay::RarityNameScale);
+	}
+}
+
+const ACataclysmEnemyCharacter* ACataclysmHUD::CreatureUnderCursor() const
+{
+	const ACataclysmPlayerController* Player =
+		Cast<ACataclysmPlayerController>(GetOwningPlayerController());
+	if (!Player)
+	{
+		return nullptr;
+	}
+
+	// A CURSOR OVER AN OPEN SCREEN POINTS AT NOTHING IN THE WORLD. See the
+	// header: without this a cursor resting on an inventory cell would describe
+	// whatever creature happens to stand behind the panel.
+	if (Player->CursorIsOverInterface())
+	{
+		return nullptr;
+	}
+
+	// PAWN OBJECTS RATHER THAN THE VISIBILITY CHANNEL, which is the whole trick
+	// and is explained on the header. The engine's stock Pawn and CharacterMesh
+	// collision profiles both set Visibility to Ignore, so a visibility trace
+	// goes straight through every creature in the game.
+	TArray<TEnumAsByte<EObjectTypeQuery>> Creatures;
+	Creatures.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+
+	FHitResult Hit;
+	if (!Player->GetHitResultUnderCursorForObjects(
+			Creatures, /*bTraceComplex=*/false, Hit))
+	{
+		return nullptr;
+	}
+
+	// A MINION AND THE PLAYER ARE PAWNS TOO, and neither is described here: a
+	// minion has no rarity and no archetype, and the player's own health is on
+	// the frame already. The cast is what excludes them.
+	return Cast<ACataclysmEnemyCharacter>(Hit.GetActor());
+}
+
+void ACataclysmHUD::DrawCreaturePanel()
+{
+	const ACataclysmEnemyCharacter* Creature = CreatureUnderCursor();
+	if (!Creature)
+	{
+		return;
+	}
+
+	float Health = 0.0f;
+	float MaxHealth = 0.0f;
+	if (!UCataclysmCombatOverlay::VitalsOf(Creature, Health, MaxHealth))
+	{
+		return;
+	}
+
+	if (!UCataclysmCreaturePanel::ShouldShowFor(Creature, GetOwningPawn(),
+											   Health, MaxHealth))
+	{
+		return;
+	}
+
+	// THE WORDS FIRST, ALL OF THEM, before anything is measured. Each comes out
+	// of a generated table rather than out of this file, so a creature or a rung
+	// renamed in the design workbook is renamed on screen.
+	const FString Title = UCataclysmCreaturePanel::TitleFor(
+		UCataclysmCreaturePanel::ArchetypeNameForRow(
+			UCataclysmCreaturePanel::LoadEnemyArchetypeTable(),
+			Creature->ArchetypeRow),
+		UCataclysmEnemyRarity::RarityNameForStep(
+			UCataclysmEnemyRarity::LoadEnemyRarityTable(),
+			Creature->RarityStep));
+
+	const FString HealthText =
+		UCataclysmCreaturePanel::HealthTextFor(Health, MaxHealth);
+
+	TArray<FString> Modifiers;
+	UCataclysmCreaturePanel::ModifierNamesFor(
+		UCataclysmCreaturePanel::LoadEnemyModifierTable(),
+		Creature->ModifierRows, Modifiers);
+
+	// MEASURED IN FULL BEFORE ANYTHING IS DRAWN, because the panel is as wide as
+	// the widest line inside it. The X and Y passed here are throwaway: only the
+	// width and height of each measurement are used, and the real positions are
+	// worked out once the panel's box is known.
+	const FBox2D TitleBox = MeasureTextCentred(
+		Title, 0.0f, 0.0f, UCataclysmCreaturePanel::TitleScale);
+	const FBox2D FiguresBox = MeasureTextCentred(
+		HealthText, 0.0f, 0.0f, UCataclysmCreaturePanel::LineScale);
+
+	const float TitleHeight = static_cast<float>(TitleBox.Max.Y - TitleBox.Min.Y);
+	const float FiguresHeight =
+		static_cast<float>(FiguresBox.Max.Y - FiguresBox.Min.Y);
+
+	// THE HEALTH ROW IS AS TALL AS THE TALLER OF THE TWO THINGS IN IT. The
+	// figures are drawn centred ON the bar, the way the player's own pools are
+	// drawn, and the text is taller than the bar at every size this uses -- so
+	// sizing the row to the bar alone would clip the figures against the
+	// panel's edge.
+	const float HealthRowHeight = FMath::Max(
+		UCataclysmCreaturePanel::HealthBarHeightPx, FiguresHeight);
+
+	float ContentWidth = FMath::Max(
+		static_cast<float>(TitleBox.Max.X - TitleBox.Min.X),
+		static_cast<float>(FiguresBox.Max.X - FiguresBox.Min.X));
+	float ContentHeight =
+		TitleHeight + UCataclysmCreaturePanel::LineGapPx + HealthRowHeight;
+
+	TArray<FBox2D> ModifierBoxes;
+	ModifierBoxes.Reserve(Modifiers.Num());
+	for (const FString& Name : Modifiers)
+	{
+		const FBox2D Box = MeasureTextCentred(
+			Name, 0.0f, 0.0f, UCataclysmCreaturePanel::LineScale);
+		ModifierBoxes.Add(Box);
+
+		ContentWidth = FMath::Max(
+			ContentWidth, static_cast<float>(Box.Max.X - Box.Min.X));
+		ContentHeight += UCataclysmCreaturePanel::LineGapPx
+			+ static_cast<float>(Box.Max.Y - Box.Min.Y);
+	}
+
+	const FBox2D Panel = UCataclysmCreaturePanel::PanelBoxFor(
+		FVector2D(Canvas->SizeX, Canvas->SizeY), ContentWidth, ContentHeight);
+
+	FLinearColor Fill = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCreaturePanel::PanelHex);
+	Fill.A = UCataclysmCreaturePanel::PanelOpacity;
+	DrawRect(Fill, static_cast<float>(Panel.Min.X),
+			 static_cast<float>(Panel.Min.Y),
+			 static_cast<float>(Panel.Max.X - Panel.Min.X),
+			 static_cast<float>(Panel.Max.Y - Panel.Min.Y));
+
+	// THE EDGE, WHICH IS THE ONLY THING THAT MAKES THE PANEL A SHAPE. The fill
+	// is near-black so the text stays readable, and a near-black panel over a
+	// floor at the brightness the design caps a world surface at measures
+	// 1.86:1 -- so on pale stone the fill alone is very nearly invisible.
+	// UCataclysmCreaturePanel::EdgeHex carries the measurements.
+	DrawBorder(Panel, UCataclysmCreaturePanel::EdgePx,
+			   UCataclysmCombatOverlay::ColourFromHex(
+				   UCataclysmCreaturePanel::EdgeHex));
+
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCreaturePanel::InkHex);
+
+	const float CentreX =
+		static_cast<float>(Panel.Min.X + Panel.Max.X) * 0.5f;
+	const float InnerLeft =
+		static_cast<float>(Panel.Min.X) + UCataclysmCreaturePanel::PaddingPx;
+	const float InnerWidth = static_cast<float>(Panel.Max.X - Panel.Min.X)
+		- UCataclysmCreaturePanel::PaddingPx * 2.0f;
+
+	float Top = static_cast<float>(Panel.Min.Y)
+		+ UCataclysmCreaturePanel::PaddingPx;
+
+	DrawTextCentred(Title, Ink, CentreX, Top,
+					UCataclysmCreaturePanel::TitleScale);
+	Top += TitleHeight + UCataclysmCreaturePanel::LineGapPx;
+
+	// THE BAR SITS IN THE MIDDLE OF ITS ROW and the figures sit in the middle of
+	// the bar, so the two stay lined up whichever of them is the taller.
+	const float BarTop = Top
+		+ (HealthRowHeight - UCataclysmCreaturePanel::HealthBarHeightPx) * 0.5f;
+
+	// AN OUTLINE AND A FILL RATHER THAN DrawBar, WHICH IS A TRACK AND A FILL.
+	// DrawBar paints its dark backing in UCataclysmCombatOverlay::BarBackingHex,
+	// which is the same near-black this panel is, so inside the panel the
+	// backing would be invisible and the bar would have no visible extent at
+	// all. See UCataclysmCreaturePanel::BarOutlinePx for why a lighter track
+	// cannot be used instead: there is no grey that separates from both the
+	// panel and the health red.
+	DrawRect(UCataclysmCombatOverlay::ColourFromHex(
+				 UCataclysmCombatOverlay::HealthFillHex),
+			 InnerLeft, BarTop,
+			 InnerWidth * UCataclysmCombatOverlay::BarFractionFor(Health,
+																  MaxHealth),
+			 UCataclysmCreaturePanel::HealthBarHeightPx);
+
+	DrawBorder(FBox2D(FVector2D(InnerLeft, BarTop),
+					  FVector2D(InnerLeft + InnerWidth,
+								BarTop + UCataclysmCreaturePanel::HealthBarHeightPx)),
+			   UCataclysmCreaturePanel::BarOutlinePx,
+			   UCataclysmCombatOverlay::ColourFromHex(
+				   UCataclysmCreaturePanel::EdgeHex));
+
+	DrawTextCentred(HealthText, Ink, CentreX,
+					Top + (HealthRowHeight - FiguresHeight) * 0.5f,
+					UCataclysmCreaturePanel::LineScale);
+	Top += HealthRowHeight;
+
+	// THE MODIFIERS LAST, WHICH IS THE REASON THIS PANEL EXISTS. There will be
+	// none of them until something grants them, which is issue #742; see
+	// ACataclysmEnemyCharacter::ModifierRows, which is what lets a creature
+	// placed in a level be given some by hand in the meantime.
+	for (int32 Index = 0; Index < ModifierBoxes.Num(); ++Index)
+	{
+		Top += UCataclysmCreaturePanel::LineGapPx;
+		DrawTextCentred(Modifiers[Index], Ink, CentreX, Top,
+						UCataclysmCreaturePanel::LineScale);
+		Top += static_cast<float>(
+			ModifierBoxes[Index].Max.Y - ModifierBoxes[Index].Min.Y);
 	}
 }
 

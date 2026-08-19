@@ -9,6 +9,7 @@
 #include "CataclysmHUD.generated.h"
 
 class ACataclysmDroppedItem;
+class ACataclysmEnemyCharacter;
 class UFont;
 
 /**
@@ -132,6 +133,55 @@ private:
 	 * header gives.
 	 */
 	void DrawRarityNames();
+
+	/**
+	 * The panel at the top of the screen describing the creature under the
+	 * cursor.
+	 *
+	 * WHAT IT IS FOR, WHICH IS NOT WHAT THE WORD OVER THE HEAD IS FOR. The word
+	 * says which creature in a pack to look at. This says what that one
+	 * creature is, and it is the only place a creature's MODIFIERS can ever
+	 * appear -- one per rung above Common, five for a Cataclysm Boss, and they
+	 * are mechanical effects that change how it has to be fought. Issue #740.
+	 *
+	 * NOTHING HERE DECIDES ANYTHING, for the reason this class's header gives.
+	 * Whether a panel is drawn is UCataclysmCreaturePanel::ShouldShowFor, what
+	 * its first line says is UCataclysmCreaturePanel::TitleFor, and where it
+	 * goes is UCataclysmCreaturePanel::PanelBoxFor. This measures, lays out and
+	 * draws.
+	 *
+	 * MEASURED IN FULL BEFORE ANYTHING IS DRAWN, the same two-pass shape
+	 * DrawDropNames uses and for a sharper version of its reason: the panel is
+	 * as wide as the widest line inside it, so the first line cannot be printed
+	 * until the last one has been measured.
+	 */
+	void DrawCreaturePanel();
+
+	/**
+	 * The creature the cursor is pointing at, or nullptr.
+	 *
+	 * AN OBJECT QUERY FOR PAWNS, NOT A TRACE ON THE VISIBILITY CHANNEL, and
+	 * that is the one thing about this worth knowing. The engine's stock `Pawn`
+	 * collision profile sets `Visibility` to Ignore and its `CharacterMesh`
+	 * profile does the same, so the visibility trace
+	 * ACataclysmPlayerController::UpdateCachedDestination uses passes straight
+	 * through every creature in the game and lands on the floor behind it --
+	 * which is exactly why clicking an enemy walks to it rather than doing
+	 * something else. Asking for Pawn OBJECTS instead is what finds the
+	 * creature, and it is the same channel UCataclysmTargeting already uses to
+	 * find things to hit.
+	 *
+	 * A CURSOR OVER AN OPEN SCREEN POINTS AT NOTHING. Without that test a
+	 * cursor resting on an inventory cell would describe whatever creature
+	 * happens to stand behind the panel, which is the same fault issue #731
+	 * fixed for clicks.
+	 *
+	 * NOT TESTABLE, AND DELIBERATELY SHORT BECAUSE OF IT. It needs a player
+	 * controller, a mouse and a physics scene; the automation command in
+	 * tools/unreal_build.py passes -nullrhi. Everything it feeds is testable
+	 * and lives on UCataclysmCreaturePanel.
+	 */
+	const ACataclysmEnemyCharacter* CreatureUnderCursor() const;
 
 	/** Every floating number that has not yet faded. */
 	void DrawDamageNumbers();

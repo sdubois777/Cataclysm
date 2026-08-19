@@ -144,6 +144,12 @@ ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
 	// break silently if the base ever stopped ticking.
 	PrimaryActorTick.bCanEverTick = true;
 
+	// WHICH ROW OF game/Data/EnemyArchetypes.csv THIS CREATURE IS. It is what
+	// lets the hover panel call it an Abyssal Warden; see
+	// ACataclysmEnemyCharacter::ArchetypeRow. Nothing reads the creature's stats
+	// out of that row yet.
+	ArchetypeRow = TEXT("Abyssal_Warden");
+
 	MeleeReachCm = DesignedMeleeReachCm;
 	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
 	ResistancePercent = DesignedResistancePercent;

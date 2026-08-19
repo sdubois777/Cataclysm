@@ -4341,11 +4341,27 @@ Giving it six is a separate decision and belongs in the workbook first.
 
 **A panel at the top of the screen shows the rest, on hover.** The word over the
 head answers "which of these should I look at"; the panel answers "what is this
-one". The panel is where a creature's modifiers go -- one per rung above Common,
-up to five for a Cataclysm Boss -- because a word has no room for them. Last
-Epoch puts the same information in the same place, and Path of Exile has both a
-marker on the creature and a panel at the top for the same division of labour.
-`DECISIONS.md` names the sources.
+one". It carries **its name, its rarity, its health and its modifiers**, and the
+modifiers are the reason it exists -- one per rung above Common, up to five for a
+Cataclysm Boss, and a word over a head has no room for them. Last Epoch puts the
+same information in the same place, and Path of Exile has both a marker on the
+creature and a panel at the top for the same division of labour. `DECISIONS.md`
+names the sources.
+
+
+
+**Every rung is described, including Common, which is the opposite of the rule
+above.** A word over the head is refused for a Common because it would be a word
+over most of the screen. Nothing is cluttered by the panel: the player pointed at
+one creature and asked what it is, and "Common Brute" is the answer to that
+question.
+
+
+
+**A modifier is named and not explained.** The design gives each one a full
+sentence, and five sentences at the top of the screen during a fight is a wall of
+text over the thing being fought. Path of Exile names modifiers the same way and
+its players learn them.
 
 
 
