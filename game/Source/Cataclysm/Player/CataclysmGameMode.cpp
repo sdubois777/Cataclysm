@@ -168,6 +168,11 @@ int32 ACataclysmGameMode::SpawnAbyssalWardens()
 		// zero and made no difference to anything.
 		Warden->SetArmour(AbyssalWardenArmour);
 
+		// RARITY ARRIVES FROM THE SPAWNER TOO, and until issue #721 nothing
+		// anywhere called this outside the automation tests, so every
+		// creature in a play session was Common and dropped 0.16 items.
+		Warden->SetRarityStep(AbyssalWardenRarityStep);
+
 		AbyssalWardens.Add(Warden);
 		++Spawned;
 	}
@@ -247,6 +252,9 @@ int32 ACataclysmGameMode::SpawnBrutes()
 		// issue #525.
 		Brute->SetArmour(BruteArmour);
 
+		// See the note beside the Abyssal Warden's call.
+		Brute->SetRarityStep(BruteRarityStep);
+
 		Brutes.Add(Brute);
 		++Spawned;
 	}
@@ -316,6 +324,7 @@ int32 ACataclysmGameMode::SpawnTrainingDummies()
 		// system has been wired up yet. See ACataclysmEnemyCharacter::SetHealth.
 		Dummy->SetHealth(TrainingDummyHealth);
 		Dummy->SetAttackDamage(TrainingDummyAttackDamage);
+		Dummy->SetRarityStep(TrainingDummyRarityStep);
 
 		TrainingDummies.Add(Dummy);
 		++Spawned;
