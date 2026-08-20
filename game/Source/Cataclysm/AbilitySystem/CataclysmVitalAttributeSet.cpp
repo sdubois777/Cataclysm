@@ -401,6 +401,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				SetHealth(FMath::Clamp(GetHealth() - Outcome.DealtToHealth,
 									   0.0f, GetMaxHealth()));
 				NotifyIfHealthReachedZero();
+				NotifyHealthChanged();
 			}
 
 			// A BLUNT WEAPON MAY STUN WHAT IT HITS. Issue #639, and the last
@@ -456,6 +457,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	{
 		SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
 		NotifyIfHealthReachedZero();
+		NotifyHealthChanged();
 	}
 	else if (Data.EvaluatedData.Attribute == GetManaAttribute())
 	{
@@ -578,6 +580,33 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()
 	}
 
 	Character->HandleDeath();
+}
+
+void UCataclysmVitalAttributeSet::NotifyHealthChanged()
+{
+	// EVERY WRITE TO HEALTH, NOT ONLY THE ONE THAT REACHES ZERO, which is the
+	// difference between this and NotifyIfHealthReachedZero beside it. A
+	// health-triggered phase begins part way down rather than at the end.
+	//
+	// THE AVATAR, NOT THE OWNER, for the reason its sibling records: a
+	// player's ability system is owned by the player state and the pawn is the
+	// avatar, so asking the owner returns something that is not a character.
+	const UAbilitySystemComponent* AbilitySystem =
+		GetOwningAbilitySystemComponent();
+	ACataclysmCharacterBase* Character = AbilitySystem
+		? Cast<ACataclysmCharacterBase>(AbilitySystem->GetAvatarActor())
+		: nullptr;
+	if (!Character)
+	{
+		return;
+	}
+
+	// NOT SKIPPED FOR A DEAD CHARACTER, unlike the death notice, and it costs
+	// nothing: a creature at zero health is already in its last phase and
+	// RefreshPhase only moves forward, so a burn ticking on a corpse changes
+	// nothing. Adding a check here would be a second place that has to agree
+	// with what counts as dead.
+	Character->HealthChanged();
 }
 
 TArray<FGameplayAttribute> UCataclysmVitalAttributeSet::GetAllAttributes()

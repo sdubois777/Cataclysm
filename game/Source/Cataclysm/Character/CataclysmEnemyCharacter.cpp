@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For turning an ability's tag list into a container, the same way a player's
@@ -298,6 +299,79 @@ void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	AdvanceCharge(DeltaSeconds);
 	RefreshCommanderBuff();
+}
+
+void ACataclysmEnemyCharacter::HealthChanged()
+{
+	RefreshPhase();
+}
+
+bool ACataclysmEnemyCharacter::RefreshPhase()
+{
+	if (PhaseHealthFractions.IsEmpty())
+	{
+		// No phases designed. Every ability's default phase is 1 and so is this,
+		// so nothing is ever skipped.
+		return false;
+	}
+
+	if (!AbilitySystemComponent)
+	{
+		return false;
+	}
+
+	const float MaxHealth = AbilitySystemComponent->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (MaxHealth <= 0.0f)
+	{
+		// Before ApplyStartingAttributes has run there is nothing to be a
+		// fraction of, and dividing by it would put the creature in its last
+		// phase on the frame it spawned.
+		return false;
+	}
+
+	const float Health = AbilitySystemComponent->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float Fraction = Health / MaxHealth;
+
+	// HIGHEST THRESHOLD FIRST, so the count of thresholds already passed is the
+	// number of phases begun since the first. `(0.60, 0.30)` at 25% health
+	// passes both and gives phase 3.
+	int32 Wanted = 1;
+	for (const float Threshold : PhaseHealthFractions)
+	{
+		if (Fraction <= Threshold)
+		{
+			++Wanted;
+		}
+	}
+
+	// **FORWARD ONLY.** See the header: a creature healed back above a threshold
+	// keeps the phase it reached, because "phases add, they do not take away".
+	if (Wanted <= PhaseReached)
+	{
+		return false;
+	}
+
+	const int32 From = PhaseReached;
+	PhaseReached = Wanted;
+
+	// SAID OUT LOUD, BECAUSE NOTHING ON SCREEN SAYS IT. A phase changes which
+	// abilities are in the rotation and changes no number, so the only visible
+	// sign is a creature doing something it had not done before -- which is
+	// indistinguishable from a cooldown coming up. Issue #740 is the screen work
+	// that would make this line unnecessary.
+	UE_LOG(LogCataclysm, Log,
+		TEXT("%s entered phase %d of %d at %.1f%% health. A phase adds "
+			 "abilities and changes no number."),
+		*GetNameSafe(this), PhaseReached, PhaseHealthFractions.Num() + 1,
+		Fraction * 100.0f);
+
+	// The value is unused today and is what a future transition animation or
+	// a screen effect would hang off.
+	(void)From;
+
+	return true;
 }
 
 float ACataclysmEnemyCharacter::CommanderMultiplier() const

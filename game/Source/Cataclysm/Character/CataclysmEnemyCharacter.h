@@ -577,6 +577,59 @@ public:
 	 */
 	void RefreshCommanderBuff();
 
+	// ----------------------------------------------------------------------
+	// Phases
+	//
+	// ONE CREATURE HAS THEM AND EVERY CREATURE CAN. The Gatekeeper is the only
+	// enemy the design gives phases to, and putting the machinery here rather
+	// than on that one class costs nothing -- a creature that leaves
+	// `PhaseHealthFractions` empty is in phase 1 for ever, which is what every
+	// ability's default phase of 1 already assumes.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The health fractions at which each later phase begins, highest first.
+	 *
+	 * `PHASE_TRANSITIONS["Gatekeeper"]` in
+	 * `sim/cataclysm_sim/enemy_abilities.py` is `(0.60, 0.30)`: N entries make
+	 * N+1 phases, so two entries mean three phases, beginning at full health,
+	 * at 60% and at 30%.
+	 *
+	 * **HEALTH AND NOTHING ELSE.** The research recorded with issue #354 in
+	 * `docs/DECISIONS.md` found no shipped ARPG boss whose phases are triggered
+	 * by a timer; a timer appears only as a fail-window inside a transition.
+	 *
+	 * EMPTY FOR EVERY CREATURE BUT THE BOSS, which is what keeps them all in
+	 * phase 1.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TArray<float> PhaseHealthFractions;
+
+	virtual int32 CurrentPhase() const override { return PhaseReached; }
+
+	virtual void HealthChanged() override;
+
+	/**
+	 * Work out which phase this creature's health puts it in, and move to it.
+	 *
+	 * **IT ONLY EVER GOES FORWARD.** A creature healed back above a threshold
+	 * keeps the phase it reached. Nothing heals a creature today -- see the note
+	 * in `ApplyStartingAttributes` about why a creature has no regeneration --
+	 * so this is a guard against a future healer rather than a live case. It is
+	 * written that way because a boss that un-learned an ability mid-fight is
+	 * exactly what "phases add, they do not take away" forbids, and because a
+	 * fight that oscillated across a threshold would flicker its whole rotation.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT DEALING DAMAGE.
+	 *
+	 * @return whether the phase changed
+	 */
+	bool RefreshPhase();
+
+	/** The highest phase this creature has reached. One until it loses health. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 PhaseReached = 1;
+
 	/**
 	 * How close it must be to hit, in centimetres.
 	 *
