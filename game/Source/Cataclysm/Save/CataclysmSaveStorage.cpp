@@ -6,6 +6,8 @@
 #include "JsonObjectConverter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
+#include "PlatformFeatures.h"
+#include "SaveGameSystem.h"
 #include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecord.h"
 #include "Serialization/JsonReader.h"
@@ -226,6 +228,61 @@ bool FCataclysmSaveStorage::WriteToSlot(const UCataclysmSaveRecord* Record, cons
 		OutError = FString::Printf(TEXT("the save system would not write to slot '%s'"), *SlotName);
 		return false;
 	}
+
+	return true;
+}
+
+bool FCataclysmSaveStorage::WriteToSlotAsync(const UCataclysmSaveRecord* Record,
+											 const FString& SlotName, int32 UserIndex,
+											 TFunction<void(bool)> WhenDone,
+											 FString& OutError)
+{
+	OutError.Reset();
+
+	if (SlotName.IsEmpty())
+	{
+		OutError = TEXT("there is no slot name to write to");
+		return false;
+	}
+
+	ISaveGameSystem* SaveSystem = IPlatformFeaturesModule::Get().GetSaveGameSystem();
+	if (!SaveSystem)
+	{
+		OutError = TEXT("this platform has no save game system");
+		return false;
+	}
+
+	// BUILT NOW, ON THIS THREAD. See the header: handing the record itself to a
+	// background thread would race the next frame's gather, and using the
+	// engine's own async call would write binary instead of JSON.
+	FString Json;
+	if (!ToJson(Record, Json, OutError))
+	{
+		return false;
+	}
+
+	TSharedRef<TArray<uint8>> Bytes = MakeShared<TArray<uint8>>();
+	ToUtf8(Json, *Bytes);
+	if (Bytes->Num() == 0)
+	{
+		OutError = FString::Printf(TEXT("a %s record produced no bytes to write"),
+			*Record->RecordType().ToString());
+		return false;
+	}
+
+	const FPlatformUserId User = FPlatformMisc::GetPlatformUserForUserIndex(UserIndex);
+	SaveSystem->SaveGameAsync(/*bAttemptToUseUI=*/false, *SlotName, User, Bytes,
+		[WhenDone](const FString&, FPlatformUserId, bool bSucceeded)
+		{
+			// THE ENGINE PROMISES THIS RUNS ON THE GAME THREAD, and
+			// UGameplayStatics::AsyncSaveGameToSlot checks it with the same
+			// assertion. A caller may therefore touch the world from here.
+			check(IsInGameThread());
+			if (WhenDone)
+			{
+				WhenDone(bSucceeded);
+			}
+		});
 
 	return true;
 }

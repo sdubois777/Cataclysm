@@ -15,6 +15,7 @@
 #include "EngineUtils.h"
 #include "Engine/Engine.h"
 #include "HAL/IConsoleManager.h"
+#include "Save/CataclysmSaveWriter.h"
 
 /**
  * Play at a difficulty tier without editing the game mode's default.
@@ -106,6 +107,28 @@ void ACataclysmGameMode::StartPlay()
 	SpawnTrainingDummies();
 	SpawnBrutes();
 	SpawnAbyssalWardens();
+
+	// AND THE GAME STARTS SAVING ITSELF. `docs/Save_System_Design.md` section
+	// 6, set by the project owner on 2026-08-20: the game saves itself, often,
+	// and there is no manual save. Until something tells the writer which run
+	// and which character it is playing it has no slot to write to, so this is
+	// what switches it on.
+	//
+	// A FRESH RUN EVERY SESSION, AND NOTHING EVER READS IT BACK. There is no
+	// new-game or continue flow and no screen that would offer one, so a run
+	// begun here is written to a slot named after an identifier generated a
+	// moment ago and forgotten when the session ends. **That is the honest
+	// state of the save system**: the writing half is built and the choosing
+	// half is not. What it buys today is that the files can be looked at.
+	//
+	// THE FLOOR IS NAMED FOR THE SANDBOX AND NUMBERED 1, because the sandbox
+	// is the only level there is and a floor of zero means "nobody is in a
+	// dungeon", which would make the record say the fight is not happening.
+	if (UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(GetWorld()))
+	{
+		Writer->BeginRun(FGuid::NewGuid(), FGuid::NewGuid(),
+						 FName(TEXT("Sandbox")), /*Floor=*/1);
+	}
 }
 
 int32 ACataclysmGameMode::RarityStepFor(int32 Setting,

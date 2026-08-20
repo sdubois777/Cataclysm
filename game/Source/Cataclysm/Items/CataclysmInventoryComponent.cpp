@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Items/CataclysmInventoryComponent.h"
+#include "Save/CataclysmSaveWriter.h"
 
 UCataclysmInventoryComponent::UCataclysmInventoryComponent()
 {
@@ -85,6 +86,12 @@ int32 UCataclysmInventoryComponent::AddItem(const FCataclysmItem& Item)
 	// same thing. The design says so and the header on AddMaterial says why the
 	// other kind is different.
 	Slots[Slot].Item = Item;
+
+	// AN ITEM ENTERING THE INVENTORY IS ONE OF THE FIVE EVENTS SECTION 6
+	// WRITES ON. What a character is carrying lives in its own record rather
+	// than in the run's, so this is one of the two triggers that writes it.
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+										ECataclysmSaveTrigger::InventoryChanged);
 	return Slot;
 }
 
@@ -142,6 +149,8 @@ int32 UCataclysmInventoryComponent::AddMaterial(FName Material, int32 Quantity)
 	if (Stacked != INDEX_NONE)
 	{
 		Slots[Stacked].Quantity += Quantity;
+		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+											ECataclysmSaveTrigger::InventoryChanged);
 		return Stacked;
 	}
 
@@ -156,6 +165,9 @@ int32 UCataclysmInventoryComponent::AddMaterial(FName Material, int32 Quantity)
 
 	Slots[Slot].Material = Material;
 	Slots[Slot].Quantity = Quantity;
+
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+										ECataclysmSaveTrigger::InventoryChanged);
 	return Slot;
 }
 
@@ -173,6 +185,12 @@ bool UCataclysmInventoryComponent::RemoveItemAt(int32 Slot)
 	// is no way to put down some of a stack and keep the rest; splitting one is
 	// interface work and belongs with the inventory screen, issue #49.
 	Slots[Slot] = FCataclysmCarriedSlot();
+
+	// LEAVING COUNTS AS WELL AS ARRIVING. Section 6 says "an item entering or
+	// leaving the inventory", and a record written only on arrival would hand
+	// back an item the player had put down.
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+										ECataclysmSaveTrigger::InventoryChanged);
 	return true;
 }
 

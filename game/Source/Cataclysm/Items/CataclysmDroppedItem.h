@@ -100,6 +100,33 @@ public:
 		return !Material.IsNone() && MaterialQuantity > 0;
 	}
 
+	/**
+	 * Work out this drop's printed name, its colour, its rarity and its
+	 * material tier from what the drop IS.
+	 *
+	 * WHY A DROP CAN NEED TELLING. A drop the spawner made was described as it
+	 * was made, with tables the spawner had already loaded for the whole batch.
+	 * A drop restored from a save record arrives with only its substance -- the
+	 * item, or the material and how many -- because `FCataclysmSavedGroundItem`
+	 * deliberately does not persist anything that can be worked out again. Issue
+	 * #751.
+	 *
+	 * PERSISTING THE NAME WOULD BE WORSE THAN RECOMPUTING IT. An item renamed in
+	 * the design workbook would come back off an old save under the name it had
+	 * when it dropped, and nothing would ever correct it.
+	 *
+	 * IT LOADS THE DATA TABLES ITSELF, one drop at a time, which is why the
+	 * spawner does not call it: the spawner is placing a whole kill's worth of
+	 * drops in a loop and loads each table once for all of them.
+	 * `Cataclysm.SaveApply.ARestoredDropIsDescribedTheSameWayASpawnedOneIs` is
+	 * what keeps the two answers together.
+	 *
+	 * A MISSING TABLE LEAVES THE DROP UNDESCRIBED rather than failing. That is
+	 * what the spawner does too, and each Load call has already said which table
+	 * is missing and why.
+	 */
+	void DescribeItself();
+
 	/** How far above the actor's own position the name is drawn, in
 	 *  centimetres. Clear of the floor without floating. */
 	static constexpr float NameHeightCm = 60.0f;

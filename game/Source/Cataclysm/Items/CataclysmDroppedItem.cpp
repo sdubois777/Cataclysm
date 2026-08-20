@@ -36,6 +36,47 @@ ACataclysmDroppedItem::ACataclysmDroppedItem()
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 }
 
+void ACataclysmDroppedItem::DescribeItself()
+{
+	if (IsMaterial())
+	{
+		const UDataTable* Materials = UCataclysmDropRoll::LoadCraftingMaterialTable();
+		const UDataTable* Tiers = UCataclysmDropRoll::LoadMaterialTierTable();
+		if (!Materials || !Tiers)
+		{
+			return;
+		}
+
+		// THE TIER COMES FROM THE MATERIAL rather than being remembered, which
+		// is the whole reason it is not in the save record: four materials share
+		// tier 1 and the tier is a property of which material this is.
+		MaterialTier = UCataclysmDropRoll::MaterialTierOf(Materials, Material);
+		DisplayName = UCataclysmDropRoll::MaterialNameOf(Materials, Material);
+		NameColour = UCataclysmDropRoll::MaterialColourFor(Tiers, MaterialTier);
+		return;
+	}
+
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
+	const UDataTable* Rarities = UCataclysmDropRoll::LoadGearRarityTable();
+	if (!Bases || !Affixes || !Rarities)
+	{
+		return;
+	}
+
+	DisplayName = UCataclysmItemName::NameOf(Item, Bases, Affixes);
+
+	// THE RARITY IS KEPT AS WELL AS THE COLOUR IT PRODUCES, because the name's
+	// border thickness needs the rung rather than the hue. Issue #718.
+	ECataclysmRarity Rung = ECataclysmRarity::Everyday;
+	if (UCataclysmItemValues::RarityOf(Item.EnchantmentCount,
+									   Item.Affixes.Num(), Rung))
+	{
+		Rarity = Rung;
+		NameColour = UCataclysmDropSpawner::ColourFor(Rarities, Rung);
+	}
+}
+
 bool UCataclysmDropPickup::IsWithinPickupRange(const FVector& Character,
 											  const FVector& Drop)
 {

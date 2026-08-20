@@ -22,7 +22,9 @@
 				},
 				"Yaw": 135.5,
 				"Health": 812.25,
-				"EnergyShield": 0
+				"MaxHealth": 4000,
+				"EnergyShield": 0,
+				"MaxEnergyShield": 0
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -35,7 +37,9 @@
 				},
 				"Yaw": 0,
 				"Health": 240,
-				"EnergyShield": 60.5
+				"MaxHealth": 600,
+				"EnergyShield": 60.5,
+				"MaxEnergyShield": 121
 			}
 		],
 		"GroundItems": [
@@ -48,6 +52,8 @@
 					"Sockets": 0,
 					"Residue": 2.5
 				},
+				"Material": "None",
+				"MaterialQuantity": 0,
 				"Location": {
 					"X": 1100,
 					"Y": -500,

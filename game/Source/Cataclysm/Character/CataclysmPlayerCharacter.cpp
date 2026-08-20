@@ -21,6 +21,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Save/CataclysmSaveWriter.h"
 
 namespace
 {
@@ -260,6 +261,27 @@ void ACataclysmPlayerCharacter::OnMovementSpeedChanged(const FOnAttributeChangeD
 
 void ACataclysmPlayerCharacter::HandleDeath()
 {
+	// THE SAVE IS WRITTEN FIRST, SYNCHRONOUSLY, AND BEFORE THE CHARACTER IS
+	// EVEN MARKED DEAD. `docs/Save_System_Design.md` section 6 names this as
+	// the one rule that cannot be relaxed: for a Hardcore character, death is
+	// the event the whole feature exists to make stick, so it is written in
+	// the same frame health reaches zero, before the death is otherwise
+	// processed.
+	//
+	// BEFORE THE MARK, NOT AFTER IT, AND THAT IS THE POINT. The gather skips
+	// a character it can see is dead, so a write placed one line lower would
+	// record a floor with nobody standing on it -- and putting that back
+	// would restore the fight without the death. Written here, the record
+	// holds the character where it fell with the health it had, which is
+	// none, so the death is what comes back.
+	//
+	// IT IS NOT INSIDE THE ONCE-ONLY GUARD BELOW FOR THAT REASON, and it does
+	// not need to be: `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`
+	// already returns early for a character that is dead, so this is reached
+	// once. Reaching it twice would write the same bytes twice.
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+										ECataclysmSaveTrigger::CharacterDied);
+
 	if (!UCataclysmSkillEffects::MarkDead(this))
 	{
 		// Already dead. Health can be written at zero repeatedly -- a burn

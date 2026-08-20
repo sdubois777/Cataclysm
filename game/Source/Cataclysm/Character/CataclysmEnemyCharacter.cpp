@@ -26,6 +26,7 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Save/CataclysmSaveWriter.h"
 
 namespace
 {
@@ -127,6 +128,21 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		// Already dead. Nothing here is safe to run twice.
 		return;
 	}
+
+	// A CREATURE DYING IS ONE OF THE FIVE EVENTS SECTION 6 WRITES ON, and it
+	// is the one that fires most: it is what stops a player killing a boss,
+	// quitting, and coming back to find it alive again.
+	//
+	// AFTER THE MARK RATHER THAN BEFORE IT, WHICH IS THE OPPOSITE OF THE
+	// PLAYER'S. The gather skips a dead creature, and that is exactly what is
+	// wanted here: the record should show the creature gone. The player's own
+	// death wants the opposite, so its write is placed above its mark.
+	//
+	// THE WRITE IS ASYNCHRONOUS, so this costs the frame the time to build
+	// the JSON and no more. Several creatures dying together share one write,
+	// because the run record is written at most once a frame.
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+										ECataclysmSaveTrigger::CreatureDied);
 
 	// WHATEVER IT WAS DOING STOPS. A charge already in flight is the one that
 	// matters: it advances per frame from Tick and would otherwise carry the
