@@ -9,6 +9,13 @@ effect's description, and that file is GENERATED from the Buffs sheet of
 `docs/All_Things_Cataclysm.xlsx` -- so a change starts in the workbook and
 `python tools/generate_datatables.py` writes the CSV. Never edit the CSV by hand.
 
+AND IT IS SAID IN TWO TABLES. `game/Data/EnemyModifiers.csv` carries a
+`War_Commander` row for the modifier a War elite can roll, which is a separate
+row that shares the name on purpose -- an innate ability may not duplicate a
+modifier its OWN Cataclysm can roll, and a Demonic Succubus can never roll a
+War modifier. The two described different effects between 2026-08-20 and the
+same day, which was issue #771. They are now held together below.
+
 WHY THESE READ SOURCE TEXT RATHER THAN RUNNING ANYTHING. Continuous integration
 never builds the C++ and never opens the editor, so an automation test cannot run
 on a pull request. `CataclysmEnemyCommanderTests.cpp` checks the arithmetic by
@@ -36,6 +43,7 @@ ENEMY_HEADER = CHARACTER_DIR / "CataclysmEnemyCharacter.h"
 ENEMY_SOURCE = CHARACTER_DIR / "CataclysmEnemyCharacter.cpp"
 SUCCUBUS_HEADER = CHARACTER_DIR / "CataclysmSuccubusCharacter.h"
 STATUS_EFFECTS = REPO_ROOT / "game" / "Data" / "StatusEffects.csv"
+ENEMY_MODIFIERS = REPO_ROOT / "game" / "Data" / "EnemyModifiers.csv"
 GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 DECISIONS = REPO_ROOT / "docs" / "DECISIONS.md"
 
@@ -145,6 +153,53 @@ def test_the_design_document_says_the_same_two():
             f"the Dominion paragraph of docs/Cataclysm_GDD_v2.md does not "
             f"mention {stat!r}, so the document and the effect table disagree "
             f"about what the aura does.")
+
+
+def test_the_war_modifier_describes_the_same_effect():
+    """Two rows in two generated tables are both called Commander.
+
+    THEY ARE NOT A DUPLICATE TO BE MERGED. `game/Data/StatusEffects.csv` holds
+    the effect the Succubus's aura grants; `game/Data/EnemyModifiers.csv` holds
+    the modifier an elite War enemy can roll. They share a name on purpose --
+    an innate ability may not duplicate a modifier its own Cataclysm can roll,
+    and a Demonic enemy can never roll a War modifier, which is what made the
+    Succubus's aura legal in the first place.
+
+    **BUT ONE NAME MUST NOT MEAN TWO THINGS.** The status effect was narrowed
+    from "stats" to movement speed and attack speed on 2026-08-20 and the
+    modifier was not, so for a while they disagreed. That was issue #771. The
+    modifier's own wording is its own -- it says "inspires allies" where the
+    effect says "all nearby allies gain" -- so this checks the STATS and the
+    PERCENTAGE rather than the sentence.
+    """
+    modifier = None
+    for line in source(ENEMY_MODIFIERS).splitlines():
+        if line.startswith("War_Commander,"):
+            modifier = line
+            break
+
+    assert modifier is not None, (
+        "game/Data/EnemyModifiers.csv has no War_Commander row. That file is "
+        "generated from the Enemy Modifiers sheet of "
+        "docs/All_Things_Cataclysm.xlsx.")
+
+    lowered = modifier.lower()
+
+    for stat in BUFFED_STATS:
+        assert stat in lowered, (
+            f"the War_Commander modifier row does not mention {stat!r}, so it "
+            f"describes a different effect from the Buff_Commander row of "
+            f"game/Data/StatusEffects.csv. One name must not mean two things. "
+            f"The row reads: {modifier}")
+
+    designed = constant("CommanderIncreasePercent", ENEMY_HEADER)
+    match = re.search(r"(\d+(?:\.\d+)?)\s*%", modifier)
+    assert match is not None, (
+        f"the War_Commander modifier row states no percentage: {modifier}")
+
+    assert float(match.group(1)) == pytest.approx(designed), (
+        f"the War_Commander modifier says {match.group(1)}% and the effect and "
+        f"the C++ both say {designed}%.")
 
 
 def test_the_decision_and_its_reasoning_are_recorded():
