@@ -192,24 +192,6 @@ FString UCataclysmCreaturePanel::TitleFor(const FString& ArchetypeName,
 	return RarityName + TEXT(" ") + Name;
 }
 
-FString UCataclysmCreaturePanel::HealthTextFor(float Health, float MaxHealth)
-{
-	if (MaxHealth <= 0.0f)
-	{
-		return FString();
-	}
-
-	// A LIVING CREATURE NEVER READS ZERO. See the header: health is an unrounded
-	// float, so 0.3 health is alive, hittable, and would print "0" from
-	// rounding alone.
-	const int32 Current = Health > 0.0f
-		? FMath::Max(1, FMath::RoundToInt(Health))
-		: 0;
-
-	return FString::Printf(TEXT("%d / %d"), Current,
-						   FMath::RoundToInt(MaxHealth));
-}
-
 FBox2D UCataclysmCreaturePanel::PanelBoxFor(const FVector2D& Viewport,
 											float ContentWidth,
 											float ContentHeight)
