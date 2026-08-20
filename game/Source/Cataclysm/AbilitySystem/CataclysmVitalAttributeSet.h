@@ -44,6 +44,10 @@ protected:
 	 */
 	void NotifyIfHealthReachedZero();
 
+	/** Tell the character its health moved, so a health-triggered phase can
+	 *  begin. Called from the same two places its sibling above is. */
+	void NotifyHealthChanged();
+
 	/**
 	 * Play the hit effect where the blow landed.
 	 *

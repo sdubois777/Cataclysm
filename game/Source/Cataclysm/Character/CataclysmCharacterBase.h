@@ -111,6 +111,30 @@ struct FCataclysmEnemyAbility
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	float MarkerRadiusCm = 0.0f;
+
+	/**
+	 * Which phase of the fight this becomes available in. 1 from the start.
+	 *
+	 * **A PHASE SELECTS WHICH ABILITIES ARE IN THE ROTATION AND CHANGES NO
+	 * NUMBER.** That is the finding the whole design leans on, from the
+	 * research recorded with issue #354 in `docs/DECISIONS.md`: across ten
+	 * shipped bosses in Path of Exile and Last Epoch, not one gains damage,
+	 * armour, attack speed or critical strike at a transition. Escalation is
+	 * adding a named ability. So this field is the whole of what a phase does,
+	 * and the two-layer rule -- rarity scales magnitude, archetype sets
+	 * behaviour -- survives a multi-phase boss untouched.
+	 *
+	 * **PHASES ADD, THEY NEVER TAKE AWAY.** An ability available from phase N
+	 * stays available in every later phase, so
+	 * `ACataclysmEnemyController::ChooseAbility` asks whether this is at most
+	 * the creature's current phase rather than equal to it.
+	 *
+	 * ONE IS THE DEFAULT AND EVERY CREATURE BUT THE BOSS LEAVES IT THERE. A
+	 * creature with no phases is a creature permanently in phase 1, which
+	 * costs one comparison and needs no special case anywhere.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	int32 Phase = 1;
 };
 
 /**
@@ -184,6 +208,32 @@ public:
 
 	/** Seconds between one of its attacks and the next. */
 	virtual float SecondsBetweenAttacks() const { return 1.0f; }
+
+	/**
+	 * Which phase of its fight this character is in. One unless it says
+	 * otherwise.
+	 *
+	 * HERE RATHER THAN ON THE ENEMY, so the controller can ask any character
+	 * it drives without a cast, the same arrangement the other five hooks on
+	 * this class use. A character with no phases answers 1 for ever and every
+	 * ability, whose default phase is also 1, is available to it.
+	 */
+	virtual int32 CurrentPhase() const { return 1; }
+
+	/**
+	 * Its health just changed. Inert here.
+	 *
+	 * THE SAME SHAPE AS `HandleDeath`, and called from the same two places in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` -- every write
+	 * to health goes through one of them. A creature with health-triggered
+	 * phases overrides this; everything else pays one virtual call per hit.
+	 *
+	 * WHY NOT FROM Tick. A phase decides which ability the brain may choose,
+	 * and the brain thinks on its own schedule, so a phase that arrived a
+	 * frame late could be a phase that arrived after the choice it should
+	 * have changed. Noticing on the hit removes the question.
+	 */
+	virtual void HealthChanged() {}
 
 	/**
 	 * How far from where it started it wanders with nothing in sight, in

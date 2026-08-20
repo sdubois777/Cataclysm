@@ -821,9 +821,23 @@ int32 ACataclysmEnemyController::ChooseAbility(float DistanceCm) const
 	// priority order, which is the pawn's business rather than the brain's:
 	// only the creature knows which of its attacks it would rather land.
 	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+	const int32 Phase = Driven->CurrentPhase();
 	for (int32 Index = 0; Index < Abilities.Num(); ++Index)
 	{
 		const FCataclysmEnemyAbility& Ability = Abilities[Index];
+
+		// A PHASE THE FIGHT HAS NOT REACHED YET. **At most, not equal to**:
+		// phases ADD and never take away, so an ability from phase 2 is still
+		// there in phase 3. The research this rests on is recorded with issue
+		// #354 in docs/DECISIONS.md.
+		//
+		// EVERY CREATURE BUT THE BOSS IS IN PHASE 1 FOR EVER and every ability
+		// defaults to phase 1, so this skips nothing for six of the seven and
+		// needs no special case for them.
+		if (Ability.Phase > Phase)
+		{
+			continue;
+		}
 		if (DistanceCm < Ability.MinRangeCm || DistanceCm > Ability.MaxRangeCm)
 		{
 			continue;
