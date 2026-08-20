@@ -50,18 +50,10 @@ const TCHAR* ACataclysmCorruptedSentinelCharacter::DeathAnimationNames
 	TEXT("Death_E"), TEXT("Death_F"), TEXT("Death_G"), TEXT("Death_H"),
 };
 
-namespace
-{
-	/** Where one clip in this creature's folder lives, in full.
-	 *
-	 *  THE FORMAT STRING IS A LITERAL HERE AND HAS TO BE. Unreal 5.8's
-	 *  `FString::Printf` takes a `TCheckedFormatString`, which cannot be built
-	 *  from a `const TCHAR*` variable. */
-	FString ClipPathIn(const TCHAR* Folder, const TCHAR* Name)
-	{
-		return FString::Printf(TEXT("%s/%s.%s"), Folder, Name, Name);
-	}
-}
+// WHERE THE CLIP PATH HELPER WENT. See the note in CataclysmImpCharacter.cpp:
+// an identical copy in an anonymous namespace in each of the two files broke the
+// build as soon as both landed in the same unity blob. It is now
+// ACataclysmEnemyCharacter::ClipPathIn.
 
 /**
  * Seconds between shots, for tuning one while playing.

@@ -66,19 +66,13 @@ const TCHAR* ACataclysmImpCharacter::DeathAnimationNames[DeathAnimationCount] = 
 	TEXT("Death_E"),
 };
 
-namespace
-{
-	/** Where one clip in this creature's folder lives, in full.
-	 *
-	 *  THE FORMAT STRING IS A LITERAL HERE AND HAS TO BE. Unreal 5.8's
-	 *  `FString::Printf` takes a `TCheckedFormatString`, which cannot be built
-	 *  from a `const TCHAR*` variable, so the folder and the name are the
-	 *  arguments and the shape is fixed at the call site. */
-	FString ClipPathIn(const TCHAR* Folder, const TCHAR* Name)
-	{
-		return FString::Printf(TEXT("%s/%s.%s"), Folder, Name, Name);
-	}
-}
+// WHERE THE CLIP PATH HELPER WENT. It was an identical copy in an anonymous
+// namespace here and in CataclysmCorruptedSentinelCharacter.cpp, which is the
+// ordinary way to keep a helper private to one file -- and it broke the build
+// the moment both landed in the same unity blob, because Unreal merges a
+// module's .cpp files into one translation unit. It is now
+// ACataclysmEnemyCharacter::ClipPathIn, whose header comment records the whole
+// incident.
 
 /**
  * Seconds between claw swipes, for tuning one while playing.
