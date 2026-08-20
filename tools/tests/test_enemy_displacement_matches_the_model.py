@@ -34,6 +34,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 CHARACTER_DIR = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
 BRUTE_HEADER = CHARACTER_DIR / "CataclysmBruteCharacter.h"
 WARDEN_HEADER = CHARACTER_DIR / "CataclysmAbyssalWardenCharacter.h"
+HELLHOUND_HEADER = CHARACTER_DIR / "CataclysmHellhoundCharacter.h"
 
 #: Metres to centimetres. The model states a shove in metres, as every distance
 #: in the design does; the engine works in centimetres.
@@ -147,24 +148,20 @@ def test_an_ability_that_also_stuns_takes_the_smaller_shove() -> None:
 
 
 # --------------------------------------------------------------------------
-# The third one, which cannot be built yet
+# The third one, built 2026-08-20
 # --------------------------------------------------------------------------
 
-def test_the_hellhound_has_a_distance_and_no_class_to_put_it_on() -> None:
-    """The Hellhound is not built. Only the Brute and the Abyssal Warden have
-    character classes, so Hellrush has nothing to attach a shove to and the third
-    of the three abilities issue #625 names is unimplemented.
+def test_the_hellhounds_hellrush_shoves_what_the_model_says() -> None:
+    """The third of the three, and the last to be built.
 
-    THIS FAILS AS SOON AS THE HELLHOUND EXISTS, which is the point of it. At that
-    moment the distance is already decided and recorded, and the remaining work
-    is to pass it to the charge exactly as the Abyssal Warden does.
+    THIS REPLACED A GUARD THAT WAS WAITING FOR IT. Until 2026-08-20 the test
+    here asserted that no CataclysmHellhoundCharacter.h existed, because
+    issue #625 could build two of the three shoves and not this one: the
+    creature had no class to put it on. That test's own failure message said
+    to replace it with this one.
     """
-    assert knockback_metres("Hellhound", "Hellrush") == pytest.approx(4.0)
-
-    hellhound_header = CHARACTER_DIR / "CataclysmHellhoundCharacter.h"
-    assert not hellhound_header.is_file(), (
-        "the Hellhound now has a character class, so the third ability the "
-        "design names as displacing the player can finally be built. Give it a "
-        "HellrushKnockbackCm of 400 and pass it to BeginCharge the way "
-        "ACataclysmAbyssalWardenCharacter does, then replace this test with one "
-        "checking that constant against the model.")
+    assert constant(HELLHOUND_HEADER, "HellrushKnockbackCm") == pytest.approx(
+        knockback_metres("Hellhound", "Hellrush") * CM_PER_METRE), (
+        "HellrushKnockbackCm in game/Source/Cataclysm/Character/"
+        "CataclysmHellhoundCharacter.h has drifted from Hellrush's Knockback "
+        "in sim/cataclysm_sim/enemy_abilities.py, which is authoritative.")

@@ -111,6 +111,31 @@ public:
 	 *
 	 * @param MaxTargets  zero means no limit
 	 */
+	/**
+	 * Everything in a lane that can hold damage, whichever side it is on, and
+	 * including the actor the lane belongs to.
+	 *
+	 * THE ONLY SEARCH IN THIS FILE THAT DOES NOT TAKE A SIDE, and there is
+	 * exactly one thing in the design that needs it: the Hellhound's Hellrush
+	 * leaves a burning lane, and `ABILITIES['Hellhound']` in
+	 * `sim/cataclysm_sim/enemy_abilities.py` says "The fire burns other enemies
+	 * and the Hellhound itself". The roster in `docs/Cataclysm_GDD_v2.md` says
+	 * the same of no other creature.
+	 *
+	 * IT STILL REFUSES SCENERY AND THE DEAD. Something that cannot hold damage
+	 * is not in a search of any kind, and a corpse is not either -- both for the
+	 * reasons `MatchesAttitude` records. What it drops is the question of sides
+	 * and nothing else.
+	 *
+	 * @param Origin  the actor the lane belongs to. **It is a legal result**,
+	 *                which is the whole point and is the opposite of every
+	 *                other search here.
+	 */
+	static TArray<AActor*> FindEveryoneInLine(const UWorld* World,
+											  const AActor* Origin,
+											  const FVector& Start, const FVector& End,
+											  float HalfWidthCm);
+
 	static TArray<AActor*> FindAlliesInSphere(const UWorld* World,
 											  const AActor* Instigator,
 											  const FVector& Origin,
@@ -156,8 +181,17 @@ private:
 	 * happened to return first, so Searing Hook's single target would be an
 	 * arbitrary enemy in front of the player rather than the closest one.
 	 */
+	/**
+	 * @param bEveryone  ignore `Wanted` and the instigator's own exclusion, and
+	 *                   keep anything that can hold damage. One caller,
+	 *                   `FindEveryoneInLine`. It is a parameter rather than a
+	 *                   second copy of this body because the two differ in
+	 *                   exactly two lines, and a copy would be the place a fix
+	 *                   to one of them failed to reach.
+	 */
 	static TArray<AActor*> Gather(const UWorld* World, const AActor* Instigator,
 								  const FVector& Origin, float SearchRadiusCm,
 								  int32 MaxTargets, ETeamAttitude::Type Wanted,
-								  TFunctionRef<bool(const FVector&)> Predicate);
+								  TFunctionRef<bool(const FVector&)> Predicate,
+								  bool bEveryone = false);
 };

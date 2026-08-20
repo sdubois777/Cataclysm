@@ -58,6 +58,15 @@ ANIMATIONS = [
     "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Run_Fwd",
     "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/TravelMode_Fwd",
     "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Idle",
+    # The Hellhound, added 2026-08-20 for issue #39. It is played by
+    # IggyScorch, which is a goblin riding a fire-breathing mount, so this is
+    # the first rig measured here that is not one animal. Whether the IK foot
+    # bones follow the mount's feet or the rider's is exactly what the idle
+    # control below answers: if the method is measuring the wrong thing on
+    # this rig, standing still will not read as zero.
+    "/Game/ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations/Jog_Fwd",
+    "/Game/ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations/Travelmode_Fwd",
+    "/Game/ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations/IggyScorch_Idle",
 ]
 
 FOOT_BONES = ["ik_foot_l", "ik_foot_r"]

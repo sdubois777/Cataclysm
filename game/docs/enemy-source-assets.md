@@ -546,21 +546,70 @@ on the lines beginning `PROBE|`.
 Three speeds of the same primary attack give room to tune without editing
 animation.
 
-### The Hellhound — Scorch
+### The Hellhound — IggyScorch
 
-Scorch's own animations are prefixed `Scorch_`. The rest of the pack is Iggy.
+**Re-measured 2026-08-20** with `tools/probe_hellhound_animation.py` and
+`tools/measure_animation_stride.py`, for issue #39, which builds this creature.
+Every figure below was read from the asset.
 
-| Animation | Length | Note |
+**THIS IS THE ONE PACK IN THE PROJECT THAT IS TWO CREATURES.** Iggy is a goblin
+who rides Scorch, and the pack holds **one** skeletal mesh, `IggyScorch`, and one
+skeleton for the pair. There is no Scorch half to load: of the pack's 144
+animations, exactly two carry the `Scorch_` prefix and are not aim offsets, and
+every other clip drives both. So `ACataclysmHellhoundCharacter` wears the rider
+as well, and whether that is acceptable is issue
+[#756](https://github.com/sdubois777/Cataclysm/issues/756).
+
+**The mesh's 17 material slots say which creature each belongs to**, which is
+what makes hiding the rider possible at all:
+
+| Slots | Named | Whose |
+|---|---|---|
+| 0, 1, 6, 7, 8 | `M00_Mount_Front`, `M01_Mount_Rear`, `M06_Mount_Eyeshadow`, `M07_Mount_TearLine`, `M08_Mount_Eyes` | the mount |
+| 2 | `M02_Mount_Oils`, material `M_OilPouch` | named for the mount; likely the rider's fuel strapped to it. **Look before deciding** |
+| 3, 4, 5, 15, 16 | `M03_Items` through `M16_Thrower` | the rider's equipment and weapon |
+| 9 to 14 | `M09_Pilot` through `M14_Pilot_GoggleGlass` | the rider |
+
+**What the creature actually plays**, from `ACataclysmHellhoundCharacter`:
+
+| Animation | Length | What plays it |
 |---|:-:|---|
-| `Scorch_Primary_Fire_Fast` | 0.53 | |
-| `Scorch_Primary_Fire_Med` | 0.97 | Fits the 1.1 s interval |
-| `R_Ability_FireBreath_Start` | 1.13 | |
-| `R_Ability_FireBreath_Loop` | 3.10 | |
-| `R_Ability_FireBreath_End` | 1.77 | |
-| `R_Ability_Fire` | 6.00 | Full uninterrupted breath |
+| `Scorch_Primary_Fire_Med` | 0.9667 | Maul, the bite. Fits the 1.1 s interval with 0.13 s to spare |
+| `R_Ability_FireBreath_Start` | 1.1333 | Hellrush's wind-up, compressed to a play rate of 1.366 to fit inside 0.83 s. **The only compressed clip on this creature** |
+| `IggyScorch_Idle` | 10.0000 | Standing |
+| `Jog_Fwd` | 2.3000 | Walking, at a play rate of 750 / 302.6 = 2.478 |
+| `Death_Front` | 1.6667 | Dying. One of two, drawn per death |
+| `Death_Back` | 1.6667 | The other |
 
-The start, loop and end breath is the closest existing motion to the fire trail
-the design gives this enemy.
+**Measured and not used:**
+
+| Animation | Length | Why not |
+|---|:-:|---|
+| `Scorch_Primary_Fire_Fast` | 0.5333 | Would leave 0.57 s of the creature standing still between every bite |
+| `R_Ability_FireBreath_Loop` | 3.1000 | Nothing holds a breath open |
+| `R_Ability_FireBreath_End` | 1.7667 | |
+| `R_Ability_Fire` | 6.0000 | Full uninterrupted breath |
+| `IggyScorch_HitReact_Front` | 0.8333 | Nothing plays a hit reaction yet. Issue #745 |
+| `IggyScorch_KnockBack` | 2.0000 | Nothing plays one when a creature is shoved |
+
+**The walk is the tightest animation fit in the project.**
+`tools/measure_animation_stride.py` reports **302.6 cm/s** on the -Y axis for
+`Jog_Fwd`, with `IggyScorch_Idle` reading 0.0 as the control -- which mattered
+more here than on any other rig, because this is the first one measured that is
+two creatures and the IK foot bones could have been following either. The
+designed speed is 750 cm/s, so the play rate is **2.478 against a ceiling of
+2.5**. Nothing else in the project comes near it: the Abyssal Warden needs 0.994
+and the Brute 1.11 to walk.
+
+**There is no faster clip to switch to.** `Travelmode_Fwd` was measured as the
+alternative and is *slower*, at 268.1 cm/s. So the creature will read as a
+sped-up film rather than as a running animal, and the answers are an animation
+Blueprint or a slower designed speed. **Only the project owner can judge whether
+it needs one**: the automation command runs with `-nullrhi`.
+
+**Nothing in the pack is a charge.** Hellrush plays the fire-breath start
+instead, which is the closest existing motion, and its speed is therefore the
+one number on this creature that was chosen rather than derived from a clip.
 
 ### The Abyssal Warden — Grux, molten
 

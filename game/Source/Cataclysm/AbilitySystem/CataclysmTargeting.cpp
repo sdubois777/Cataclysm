@@ -155,10 +155,28 @@ bool UCataclysmTargeting::IsFriendlyTo(const AActor* Actor, const AActor* Instig
 	return MatchesAttitude(Actor, Instigator, ETeamAttitude::Friendly);
 }
 
+TArray<AActor*> UCataclysmTargeting::FindEveryoneInLine(
+	const UWorld* World, const AActor* Origin, const FVector& Start,
+	const FVector& End, float HalfWidthCm)
+{
+	// THE SAME SPHERE FindEnemiesInLine USES, around the middle of the segment
+	// rather than around Start, so one overlap covers the whole line.
+	const FVector Middle = (Start + End) * 0.5f;
+	const float SearchRadius = FVector::Dist(Start, End) * 0.5f + HalfWidthCm;
+
+	return Gather(World, Origin, Middle, SearchRadius, /*MaxTargets=*/0,
+		ETeamAttitude::Hostile,
+		[&](const FVector& Point)
+		{
+			return IsInLine(Start, End, Point, HalfWidthCm);
+		},
+		/*bEveryone=*/true);
+}
+
 TArray<AActor*> UCataclysmTargeting::Gather(
 	const UWorld* World, const AActor* Instigator, const FVector& Origin,
 	float SearchRadiusCm, int32 MaxTargets, ETeamAttitude::Type Wanted,
-	TFunctionRef<bool(const FVector&)> Predicate)
+	TFunctionRef<bool(const FVector&)> Predicate, bool bEveryone)
 {
 	TArray<AActor*> Found;
 	if (!World || SearchRadiusCm <= 0.0f)
@@ -167,8 +185,11 @@ TArray<AActor*> UCataclysmTargeting::Gather(
 	}
 
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(CataclysmSkillTargets), /*bInTraceComplex=*/false);
-	if (Instigator)
+	if (Instigator && !bEveryone)
 	{
+		// A SEARCH THAT TAKES NO SIDE KEEPS THE INSTIGATOR IN. The Hellhound's
+		// burning lane is the one thing that must be able to reach the creature
+		// that made it, so the collision query cannot be told to ignore it.
 		Query.AddIgnoredActor(Instigator);
 	}
 
@@ -184,7 +205,16 @@ TArray<AActor*> UCataclysmTargeting::Gather(
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		AActor* Actor = Overlap.GetActor();
-		if (!MatchesAttitude(Actor, Instigator, Wanted) || Seen.Contains(Actor))
+
+		// TAKING NO SIDE STILL REFUSES SCENERY AND THE DEAD, which is what
+		// MatchesAttitude asks first and what a bare `bEveryone` would have
+		// dropped along with the question of sides.
+		const bool bWanted = bEveryone
+			? (IsValid(Actor) && AbilitySystemOf(Actor) != nullptr
+			   && !UCataclysmSkillEffects::IsDead(Actor))
+			: MatchesAttitude(Actor, Instigator, Wanted);
+
+		if (!bWanted || Seen.Contains(Actor))
 		{
 			continue;
 		}
