@@ -20,6 +20,106 @@ applied or still pending.
 
 ---
 
+## 2026-08-19 — A panel at the top of the screen says what the creature under the cursor is
+
+**Affects:** the "How an enemy's rarity is shown" subsection of section X of
+`docs/Cataclysm_GDD_v2.md`, a new `UCataclysmCreaturePanel`, and two new fields
+on `ACataclysmEnemyCharacter`. Applied. Closes issue #740.
+
+### What the word over the head could not do
+
+The first half of issue #740 put a creature's rarity over its head as a word.
+That answers "which of these should I look at". It cannot answer "what is this
+one", and the part a player most needs is exactly the part that will not fit:
+**the design gives an enemy one modifier per rung above Common, up to five for a
+Cataclysm Boss**, and those are mechanical effects — a burning aura, a charm on
+being hit — that change how a creature has to be fought. Five of those over a
+creature's head is not a label, it is a paragraph.
+
+The project owner asked for the panel by name on 2026-08-19, giving Path of
+Exile 2 as the reference.
+
+### The decision
+
+**A panel at the top centre of the screen, while the cursor is over a creature,
+carrying its name, its rarity, its health and its modifiers.**
+
+| Decision | Why |
+| :-- | :-- |
+| **Every rung is described, Common included** | The opposite of the word's rule, and deliberately. A word over the head is refused for a Common because it would be a word over 60% of the screen. Nothing is cluttered by the panel: the player pointed at one creature and asked. |
+| **A modifier is named, not explained** | The table gives each one a full sentence. Five sentences at the top of the screen during a fight is a wall of text over the thing being fought. Path of Exile names modifiers the same way and its players learn them. The descriptions stay in the table for a fuller view later. |
+| **The panel keeps a minimum width** | Health is redrawn every frame and its figures change width with their digits, so a panel sized only to its contents would breathe in and out through a fight. |
+| **It stays for one second after the cursor leaves** | Asked for by the project owner on 2026-08-19 after playing the first version. Pointing at one creature in a pack means putting the cursor on a moving body, so a panel with no hold is unreadable for exactly the creature it matters most for. Pointing at a different creature replaces it at once rather than waiting. There is no fade: every contrast figure below is measured at full opacity, and fading text passes through every ratio under the measured one on its way out. |
+| **The name comes from `game/Data/EnemyArchetypes.csv`** | It is generated from the design workbook, so a creature renamed in the design is renamed on screen without anybody editing C++. Until this, no enemy in the game had a name anywhere. |
+
+### What the genre research settles, and what it does not
+
+**It settles the place.** Last Epoch puts a rare monster's modifiers "under the
+health bar at the top of the screen", from a player's description on the official
+forum. Path of Exile ships both a marker on the creature and a panel, and its own
+feedback board carries the complaint that the panel alone is not enough — in a
+pack of thirty it is "impossible to know if one of them is an 'elite' mob without
+first killing everything, or seeing one of its mods go off". The two answer
+different questions, so the game has both. Sources:
+[Enemy Types and Stats?, forum.lastepoch.com](https://forum.lastepoch.com/t/enemy-types-and-stats/47338)
+and
+[Health bar colors for bosses/rares/uniques/etc, pathofexile.com](https://www.pathofexile.com/forum/view-thread/3653198).
+
+**Path of Exile 2's own behaviour is still unverified.** The project owner named
+it as the reference and it was not checked, exactly as the previous entry
+recorded. Nothing here rests on it.
+
+### What the measurements decided, which was not what was expected
+
+The panel's colours were measured rather than chosen, against the design's own
+rule that **a world surface may not exceed 30% brightness**. Two results changed
+the design:
+
+- **The panel's fill cannot carry its own boundary.** A near-black panel over a
+  surface at that cap measures **1.86:1**, and no opacity fixes it, because the
+  panel has to stay near-black for the text to be readable. So the panel is a
+  shape only because of its edge, and the edge is held to 3:1 against **both**
+  sides of itself: the panel within and the brightest floor without. It measures
+  5.98:1 and 3.21:1. That is what forced it lighter than the inventory screen's
+  edge, which only ever has to be seen against its own panel and sits at 2.43:1.
+
+- **The health bar has an outline and no track.** The ordinary shape — a grey
+  track with a red fill over part of it — needs three colours separable from each
+  other, and there is no grey that works. To clear 3:1 against this panel a track
+  has to reach about 14% relative luminance and the health red is already at
+  14.3%, so `#606B78` measures 3.21:1 against the panel and **1.00:1 against the
+  fill**. The filled part and the empty part would be one flat block to anybody
+  who cannot separate the hues. The bar is drawn instead as red against the panel
+  itself, which measures 3.20:1, inside a thin outline that shows its extent.
+
+The ink measures 13.75:1. `tools/tests/test_the_creature_panel_is_readable.py`
+holds all of it.
+
+### One correction to the issue's own notes
+
+Issue #740 said the creature under the cursor was one call away because
+`ACataclysmPlayerController` already calls `GetHitResultUnderCursor`. **That call
+cannot find a creature.** It traces on the visibility channel, and the engine's
+stock `Pawn` and `CharacterMesh` collision profiles both set `Visibility` to
+Ignore — which is why clicking an enemy walks to the floor under it rather than
+doing something else. The panel asks for Pawn **objects** instead, the same
+channel `UCataclysmTargeting` already uses to find things to hit.
+
+### What is deliberately still missing
+
+**Nothing grants a creature a modifier.** `ACataclysmEnemyCharacter::ModifierRows`
+is a list of row names the panel prints, and a creature given Hellfire Aura by
+hand does not burn anybody, because the aura does not exist. The field is
+`EditInstanceOnly` for the same reason `RarityStep` was made typeable: without it
+the one thing the panel exists for could never be looked at by anybody.
+
+Two issues carry the rest. **Issue #742** is that nothing assigns a modifier to
+any creature, so the design's one-per-rung-above-Common rule has never run.
+**Issue #674** is that five of the modifiers grant flat damage reduction and
+none of them does anything. Building the effects is part of issue #39.
+
+---
+
 ## 2026-08-19 — An enemy's rarity is a word over its head, shown before the fight
 
 **Affects:** a new "How an enemy's rarity is shown" subsection in section X of

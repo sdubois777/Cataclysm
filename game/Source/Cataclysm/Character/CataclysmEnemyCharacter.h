@@ -290,6 +290,68 @@ public:
 	int32 RarityStep = 0;
 
 	/**
+	 * Which row of `game/Data/EnemyArchetypes.csv` this creature is.
+	 *
+	 * WHAT IT IS FOR TODAY, AND IT IS ONE THING: the panel that describes the
+	 * creature under the cursor has to be able to say what the creature is
+	 * called, and until this existed no enemy in the game had a name anywhere.
+	 * `UCataclysmCreaturePanel::ArchetypeNameForRow` turns the row key
+	 * `Abyssal_Warden` into "Abyssal Warden", so a creature renamed in the
+	 * design workbook is renamed on screen without anybody editing C++. Issue
+	 * #740.
+	 *
+	 * IT IS NOT WHERE THE CREATURE'S STATS COME FROM, and it deliberately does
+	 * not become that here. Every enemy still carries its own copied figures,
+	 * for the reason `ACataclysmGameMode` states: reading a share out of this
+	 * table needs a Power Score to multiply it by, and that has no port at all.
+	 * Issue #355 builds the transport and issue #39 wires the creatures onto it.
+	 * When they do, this field is what they join on.
+	 *
+	 * EditDefaultsOnly, NOT EditInstanceOnly, WHICH IS THE OPPOSITE OF
+	 * RarityStep ABOVE. Rarity is the encounter's business -- the same Brute is
+	 * a Common in one room and an Elite in the next -- and an archetype is the
+	 * class's: a Brute is a Brute wherever it is standing. So this is set in the
+	 * subclass constructor and a placed creature cannot be typed into a
+	 * different species.
+	 *
+	 * NONE BY DEFAULT, because the base class is what the sandbox spawns as a
+	 * training dummy, and a practice target is not one of the designed
+	 * archetypes. `UCataclysmCreaturePanel::UnnamedCreature` is what the panel
+	 * says for those.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	FName ArchetypeRow;
+
+	/**
+	 * Which rows of `game/Data/EnemyModifiers.csv` this creature carries.
+	 *
+	 * THE DESIGN GIVES AN ENEMY ONE PER RUNG ABOVE COMMON, up to five for a
+	 * Cataclysm Boss, and they are mechanical effects -- a burning aura, a charm
+	 * on being hit -- that change how the creature has to be fought.
+	 *
+	 * **NOTHING GRANTS THE EFFECT YET, AND THIS DOES NOT.** It is a list of
+	 * names that the panel reads and prints. A creature given Hellfire Aura here
+	 * does not burn anybody, because the aura does not exist. Two issues cover
+	 * the gap: issue #742 is that nothing ASSIGNS a modifier to any creature, so
+	 * the design's one-per-rung-above-Common rule has never run, and issue #674
+	 * is that five of the modifiers grant flat damage reduction and none of them
+	 * DOES anything. Building the effects is part of issue #39.
+	 *
+	 * SO WHY IS IT HERE AT ALL. Because otherwise the one thing the hover panel
+	 * exists for could never be seen by anybody. This is the same answer, for
+	 * the same reason, that `RarityStep` above got when it was made typeable: an
+	 * EditInstanceOnly field lets a creature placed in a level be given two
+	 * modifiers by hand, so the panel's modifier lines can be looked at and
+	 * judged before the generator that assigns them exists.
+	 *
+	 * EditInstanceOnly, LIKE RarityStep AND FOR ITS REASON. Which modifiers a
+	 * creature carries is the encounter's business. A list baked into the Brute
+	 * Blueprint would be a class-wide answer to a per-encounter question.
+	 */
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TArray<FName> ModifierRows;
+
+	/**
 	 * The first rung of the ladder that is a boss.
 	 *
 	 * 4 IS "Boss", AND THE TWO RUNGS FROM IT UP ARE THE BOSSES: Boss and

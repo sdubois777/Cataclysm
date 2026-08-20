@@ -50,6 +50,22 @@ public:
 	 */
 	virtual void PostProcessInput(const float DeltaTime, const bool bGamePaused) override;
 
+	/**
+	 * Whether the cursor is over an interface screen that is open right now.
+	 *
+	 * ASKS THE WIDGET, which knows its own geometry. Answers false when the
+	 * screen has never been opened, when it is closed, and when there is no
+	 * mouse.
+	 *
+	 * PUBLIC SINCE ISSUE #740, AND THE SECOND CALLER IS WHY. The heads-up
+	 * display has to ask it before describing the creature under the cursor:
+	 * without that, a cursor resting on an inventory cell would describe
+	 * whatever creature stands behind the panel. It is the same fault this
+	 * function was written for -- a click going through an open screen to the
+	 * floor behind it, issue #731 -- asked about hovering rather than clicking.
+	 */
+	bool CursorIsOverInterface() const;
+
 protected:
 	/** Every binding in the game, as data. Path set in Config/DefaultGame.ini. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Input")
@@ -94,15 +110,6 @@ private:
 	 * the viewport costs nothing while it is not there.
 	 */
 	void Input_ToggleInventory();
-
-	/**
-	 * Whether the cursor is over an interface screen that is open right now.
-	 *
-	 * ASKS THE WIDGET, which knows its own geometry. Answers false when the
-	 * screen has never been opened, when it is closed, and when there is no
-	 * mouse.
-	 */
-	bool CursorIsOverInterface() const;
 
 	/** Puts CachedDestination under the cursor. False if the cursor hit nothing. */
 	bool UpdateCachedDestination();

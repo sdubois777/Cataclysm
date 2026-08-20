@@ -221,6 +221,11 @@ ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 	// now ABP_Brute's job.
 	PrimaryActorTick.bCanEverTick = true;
 
+	// WHICH ROW OF game/Data/EnemyArchetypes.csv THIS CREATURE IS. It is what
+	// lets the hover panel call it a Brute; see ACataclysmEnemyCharacter::
+	// ArchetypeRow. Nothing reads the creature's stats out of that row yet.
+	ArchetypeRow = TEXT("Brute");
+
 	// The designed numbers, overriding the base enemy's judgement figures. Each
 	// one is cited on its declaration in the header.
 	MeleeReachCm = DesignedMeleeReachCm;
