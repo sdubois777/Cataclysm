@@ -147,9 +147,14 @@ by `git add` with no error and no warning. Guarded by
   (issue [#49](https://github.com/sdubois777/Cataclysm/issues/49)), and the port
   of the combat overlay to UMG is issue
   [#650](https://github.com/sdubois777/Cataclysm/issues/650).
-- **No save or persistence.** There is no `USaveGame` anywhere, so a play session
-  keeps nothing (issue
-  [#21](https://github.com/sdubois777/Cataclysm/issues/21)).
+- **Nothing writes a save, so a play session still keeps nothing.** The
+  storage layer does exist: three `USaveGame` records in
+  `Source/Cataclysm/Save/`, written as JSON, with a schema version, a
+  migration chain and committed example files in `Tests/SaveFixtures/` as its
+  test (issue [#529](https://github.com/sdubois777/Cataclysm/issues/529)). **Nothing in the game calls it.** There
+  is no autosave clock, no write when something happens, and no death write
+  (issue [#750](https://github.com/sdubois777/Cataclysm/issues/750)), and nothing copies a live floor or a live
+  character into a record or puts one back (issue [#751](https://github.com/sdubois777/Cataclysm/issues/751)).
 - **No empire layer runtime.** `CataclysmEmpire` is a module with a build file
   and nothing in it; the day clock, cities and surges are still only the Python
   model in `sim/` (issue

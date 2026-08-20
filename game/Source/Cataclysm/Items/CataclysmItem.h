@@ -45,11 +45,11 @@ struct CATACLYSM_API FCataclysmRolledAffix
 	GENERATED_BODY()
 
 	/** Row name in the Affixes table. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	FName Affix;
 
 	/** 1 to 7. Tier N is worth N sevenths of the affix's top value. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	int32 Tier = 1;
 
 	/**
@@ -59,7 +59,7 @@ struct CATACLYSM_API FCataclysmRolledAffix
 	 * the piece's upgrade level and on whether the piece is a two-handed weapon,
 	 * both of which change after the item exists.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	float Roll = 1.0f;
 
 	/**
@@ -71,7 +71,7 @@ struct CATACLYSM_API FCataclysmRolledAffix
 	 * Left empty on a family covering all eight, since there is no choice to
 	 * make.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	TArray<FName> DamageTypes;
 };
 
@@ -83,6 +83,14 @@ struct CATACLYSM_API FCataclysmRolledAffix
  * in a socket, which is issue #46, and which enchantments a piece carries, which
  * is issue #45 -- only the COUNT of enchantments is here, because rarity cannot
  * be computed without it.
+ *
+ * EVERY FIELD ON THIS STRUCT AND ON FCataclysmRolledAffix IS MARKED `SaveGame`,
+ * and it has to be, one field at a time. An item is persisted inside a character
+ * record, and `FCataclysmSaveStorage` converts only properties carrying that flag
+ * -- a rule it applies all the way down, into structs held by structs. A field
+ * added here without the flag is dropped from every save with no error and no
+ * warning, and the item comes back with that value at its default. Issue #529 and
+ * `docs/Save_System_Design.md` section 4.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmItem
@@ -90,15 +98,15 @@ struct CATACLYSM_API FCataclysmItem
 	GENERATED_BODY()
 
 	/** Row name in the ItemBases table. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	FName Base;
 
 	/** The +0 to +10 upgrade level. It multiplies every affix and implicit on
 	 *  the piece, by about 3.52 at +10. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	int32 GearLevel = 0;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	TArray<FCataclysmRolledAffix> Affixes;
 
 	/**
@@ -107,7 +115,7 @@ struct CATACLYSM_API FCataclysmItem
 	 * The enchantments themselves are not modelled yet. The count is, because
 	 * an item carrying one is a Legendary and rarity cannot be read without it.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	int32 EnchantmentCount = 0;
 
 	/**
@@ -117,7 +125,7 @@ struct CATACLYSM_API FCataclysmItem
 	 * A drop rolls this uniformly, so a piece can arrive with none, and the Add
 	 * Socket craft only has something to do because of that.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	int32 Sockets = 0;
 
 	/**
@@ -128,7 +136,7 @@ struct CATACLYSM_API FCataclysmItem
 	 * hunted by a corrupted copy of itself. An item carries some from the moment
 	 * it drops, in a band set by its rarity.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Item")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	float Residue = 0.0f;
 };
 

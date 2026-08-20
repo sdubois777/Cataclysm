@@ -1,0 +1,73 @@
+{
+	"SchemaVersion": 1,
+	"RunId": "1D3F5A7B9C0E2468ACE013579BDF2468",
+	"Day": 118,
+	"Characters": [
+		"5C0B1A4E5B7F4D2E9A3C6F81D24E7B03"
+	],
+	"Floor": {
+		"Dungeon": "Hell_On_Earth",
+		"Floor": 6,
+		"Creatures": [
+			{
+				"ArchetypeRow": "Brute",
+				"RarityStep": 4,
+				"ModifierRows": [
+					"Demonic_Hellfire_Aura"
+				],
+				"Location": {
+					"X": 1250.5,
+					"Y": -640.25,
+					"Z": 96
+				},
+				"Yaw": 135.5,
+				"Health": 812.25,
+				"EnergyShield": 0
+			},
+			{
+				"ArchetypeRow": "AbyssalWarden",
+				"RarityStep": 0,
+				"ModifierRows": [],
+				"Location": {
+					"X": 900,
+					"Y": -120,
+					"Z": 96
+				},
+				"Yaw": 0,
+				"Health": 240,
+				"EnergyShield": 60.5
+			}
+		],
+		"GroundItems": [
+			{
+				"Item": {
+					"Base": "Circlet",
+					"GearLevel": 0,
+					"Affixes": [],
+					"EnchantmentCount": 1,
+					"Sockets": 0,
+					"Residue": 2.5
+				},
+				"Location": {
+					"X": 1100,
+					"Y": -500,
+					"Z": 96
+				}
+			}
+		],
+		"Characters": [
+			{
+				"CharacterId": "5C0B1A4E5B7F4D2E9A3C6F81D24E7B03",
+				"Location": {
+					"X": 1000,
+					"Y": -600,
+					"Z": 96
+				},
+				"Yaw": -45,
+				"Health": 318.75,
+				"Mana": 82.5,
+				"EnergyShield": 25
+			}
+		]
+	}
+}
