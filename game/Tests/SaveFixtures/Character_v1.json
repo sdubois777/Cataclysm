@@ -1,0 +1,56 @@
+{
+	"SchemaVersion": 1,
+	"CharacterId": "5C0B1A4E5B7F4D2E9A3C6F81D24E7B03",
+	"CharacterName": "Vesper",
+	"Partition": {
+		"Lethality": "Hardcore",
+		"Population": "Online",
+		"bSoloSelfFound": false
+	},
+	"Level": 42,
+	"Experience": 12884901888,
+	"CataclysmicResidue": 13.5,
+	"CarriedSlots": [
+		{
+			"Item": {
+				"Base": "Circlet",
+				"GearLevel": 7,
+				"Affixes": [
+					{
+						"Affix": "PrefixLifeFlat",
+						"Tier": 5,
+						"Roll": 0.75,
+						"DamageTypes": []
+					},
+					{
+						"Affix": "SuffixResistanceSingle",
+						"Tier": 3,
+						"Roll": 0.5,
+						"DamageTypes": [
+							"Fire"
+						]
+					}
+				],
+				"EnchantmentCount": 0,
+				"Sockets": 2,
+				"Residue": 4.25
+			},
+			"Material": "None",
+			"Quantity": 0
+		},
+		{
+			"Item": {
+				"Base": "None",
+				"GearLevel": 0,
+				"Affixes": [],
+				"EnchantmentCount": 0,
+				"Sockets": 0,
+				"Residue": 0
+			},
+			"Material": "Whispering_Ash",
+			"Quantity": 12
+		}
+	],
+	"PrivateEmpireUpgradePoints": 0,
+	"PrivateStash": []
+}

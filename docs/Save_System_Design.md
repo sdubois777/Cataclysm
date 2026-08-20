@@ -3,9 +3,17 @@
 This is the design for what the game writes to disk, how it is partitioned, and
 how it survives the schema changing. It answers issue #21.
 
-**Nothing here is implemented.** A search of `game/Source/` on 2026-08-12 for
-`USaveGame`, `SaveGameToSlot`, `LoadGameFromSlot` and `SaveSystem` returns
-nothing. This document is the design that implementation is built to.
+**What is built, as of 2026-08-20.** The storage layer exists: the three
+records, the partition rule, JSON reading and writing, the migration chain,
+and committed example save files as its test. Issue #529.
+
+| Section | Built? |
+| :-- | :-- |
+| 1 and 2, the three records | The record classes exist. **Most of the fields listed do not**, because nothing in the game produces a character level, an attribute allocation, a passive tree, 18 equipped slots, a stash, an empire graph or a dungeon timer yet. Each record says which of its fields are absent and why |
+| 3, partitioning | Built. `UCataclysmSavePartition` |
+| 4, storage format | Built. `FCataclysmSaveStorage` |
+| 5, versioning and migration | Built. `FCataclysmSaveMigration`, and `game/Tests/SaveFixtures/` |
+| 6, when a save is written | **Not built.** There is no clock, no write on an event, and no death write. Nothing in the game calls the storage layer at all |
 
 ---
 
@@ -185,10 +193,18 @@ schema version as the first field.**
 
 ### Why `USaveGame` rather than writing files directly
 
-It is the engine's own mechanism, it works through `UGameplayStatics::SaveGameToSlot`
-and `LoadGameFromSlot`, and it is the only route that works unchanged on consoles,
-where raw file access is restricted. Section XV lists platform ports, so writing
-straight to a file path would have to be undone later.
+It is the engine's own mechanism, it goes through `ISaveGameSystem`, and it is
+the only route that works unchanged on consoles, where raw file access is
+restricted. Section XV lists platform ports, so writing straight to a file path
+would have to be undone later.
+
+**Not through `UGameplayStatics::SaveGameToSlot`, though, and this cost a cycle
+to find out.** That call takes a `USaveGame` object and serialises it with the
+engine's binary archive, so using it would throw away the readable file this
+section chose JSON for. `SaveDataToSlot` and `LoadDataFromSlot` take raw bytes
+and reach the same `ISaveGameSystem` underneath, so the JSON is built here and
+the bytes handed to the engine. The platform abstraction is kept and the file
+stays readable. Section 6 records the same finding for the asynchronous write.
 
 Mark persisted fields `UPROPERTY(SaveGame)` and serialise with an archive that has
 `ArIsSaveGame = true`, so the set of persisted fields is declared on the field
@@ -294,7 +310,17 @@ proves only that the code agrees with itself.
 
 Per `CLAUDE.md`, confirm the test fails when it should: change one migration step
 to drop a field and check the test that covers that version fails, using
-`tools/prove_guard.py`.
+`tools/unreal_build.prove_cpp_guard`.
+
+**The files are in `game/Tests/SaveFixtures/`**, and its `README.md` says what
+each one is and what to do when a version is added.
+
+**With every record at version 1 there is no migration to exercise**, so the
+chain is proved on a record that exists only to be old:
+`UCataclysmSaveExampleRecord`, at version 3, with a step that renames a field
+and a step that splits one field into two. Inventing a fake version bump on the
+character record instead would mean committing an example file for a version
+that never existed.
 
 ---
 

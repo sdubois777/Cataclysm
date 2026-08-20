@@ -1,0 +1,54 @@
+# Example save files, one per historical schema version
+
+These are the test fixtures for the save system, issue
+[#529](https://github.com/sdubois777/Cataclysm/issues/529). They are committed on
+purpose and they are read by the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveMigrationTests.cpp` and
+`CataclysmSaveRecordTests.cpp`.
+
+## Why the fixtures are the test
+
+`docs/Save_System_Design.md` section 5 says why the obvious version of this test
+is worthless:
+
+> **Commit example save files, one per historical schema version, as test
+> fixtures.** A test loads each and asserts the result matches what the current
+> schema should produce. [...] a test that writes a save with the current code
+> and reads it back proves only that the code agrees with itself.
+
+So these files were written by hand rather than produced by the code that reads
+them, and once a file is here it is never edited again. **When a schema version is
+added, add a new file for the version being left behind and leave the older ones
+alone.**
+
+## What is here
+
+| File | What it is |
+| :-- | :-- |
+| `Account_v1.json` | An account record at schema version 1. An online Hardcore partition with two characters in it |
+| `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
+| `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
+| `Example_v1.json` | The example record at version 1 |
+| `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
+| `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
+
+The three `Example_` files describe **the same record three times**, so the test
+loads all three and checks they produce identical results. That is what proves
+the chain runs the right steps in the right order rather than merely running
+something.
+
+`UCataclysmSaveExampleRecord` exists only for these, because all three real
+records are at version 1 and version 1 is the first, so none of them has a
+migration to run yet. Its header says more.
+
+## Two things to keep in mind when editing one
+
+**Every number here is exactly representable in binary** — 13.5, 4.25, 0.75,
+96 — so a value written out and read back is bit for bit the same and a test can
+compare it without a tolerance. Adding 0.1 to a fixture would make a comparison
+fail for a reason that has nothing to do with the save system.
+
+**A field added to a record must be added to that record's fixture.**
+`Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` loads each
+fixture, writes it back out and compares the two, so a field in the C++ that the
+fixture does not carry fails the test rather than being quietly defaulted.

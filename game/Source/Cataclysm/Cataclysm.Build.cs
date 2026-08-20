@@ -61,6 +61,19 @@ public class Cataclysm : ModuleRules
 		{
 			"NetCore",
 
+			// Save files. `FCataclysmSaveStorage` writes the three save records
+			// as JSON through FJsonObjectConverter, which is JsonUtilities, and
+			// the migration chain works on an FJsonObject, which is Json.
+			//
+			// PRIVATE, AND IT STAYS PRIVATE ONLY WHILE NOTHING OUTSIDE THIS
+			// MODULE INCLUDES `Save/CataclysmSaveMigration.h`. That header names
+			// FJsonObject in a function signature, so another module including
+			// it would need Json itself. Nothing does today. If one ever has to,
+			// move Json to the public list rather than forward-declaring around
+			// it -- the same cost UMG above already pays. Issue #529.
+			"Json",
+			"JsonUtilities",
+
 			// Particle effects. Private rather than public, and deliberately:
 			// no header in this module exposes a Niagara type, and the only
 			// thing that needs it is the automation test reading the four

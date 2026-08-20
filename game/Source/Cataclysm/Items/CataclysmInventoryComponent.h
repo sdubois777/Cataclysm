@@ -60,6 +60,10 @@
  * A MATERIAL IS A NAME AND A COUNT, NOT AN ITEM. It has no affixes, no upgrade
  * level, no sockets and no residue; two of the same material are the same thing
  * twice. That is why they stack and gear cannot.
+ *
+ * EVERY FIELD HERE IS MARKED `SaveGame` for the reason FCataclysmItem gives: a
+ * carried slot is persisted inside a character record, and a field without the
+ * flag is dropped from the save silently. Issue #529.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmCarriedSlot
@@ -69,7 +73,7 @@ struct CATACLYSM_API FCataclysmCarriedSlot
 	/**
 	 * The gear item in this slot. Its Base is None when the slot holds no gear.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Inventory")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Inventory")
 	FCataclysmItem Item;
 
 	/**
@@ -80,7 +84,7 @@ struct CATACLYSM_API FCataclysmCarriedSlot
 	 * are different things -- a Corrupted Mote is not a Whispering Ash -- so
 	 * stacking by tier would merge four materials into one pile.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Inventory")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Inventory")
 	FName Material;
 
 	/**
@@ -93,7 +97,7 @@ struct CATACLYSM_API FCataclysmCarriedSlot
 	 * never contribute to a full inventory, and that a ceiling is the lever if
 	 * carrying them should ever cost something.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cataclysm|Inventory")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Inventory")
 	int32 Quantity = 0;
 };
 
