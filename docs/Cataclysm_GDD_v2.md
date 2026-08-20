@@ -109,6 +109,19 @@ This is what makes a mode worth anything: a Heretic Solo Self-Found character
 carried those rules for its whole life, and could not have switched them off at
 the moment they became inconvenient.
 
+
+
+**Nor can a fight be switched off at the moment it becomes inconvenient.** The
+game saves itself constantly and there is no manual save, so closing the game
+part way through a losing boss fight does not undo it: the character comes back
+at the health it had, in front of a boss at the health it had. The fight resumes
+from a still moment rather than mid-blow, so what quitting buys is a breather
+and not a reset. `Save_System_Design.md` section 6 states exactly what is
+restored, what is not, and the one thing this cannot prevent: an **offline**
+save file can be copied and put back, so an offline Hardcore character is on its
+honour and the game should say so rather than implying a guarantee it does not
+have.
+
 **Each lethality mode has its own empire upgrade tree.** A character's empire
 meta-progression is shared with every other character in the same mode and with
 no character in another one, so choosing Hardcore or Heretic for the first time
