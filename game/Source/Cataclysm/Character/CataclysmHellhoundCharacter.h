@@ -15,12 +15,20 @@
  *   Maul       Strike    Basic     a bite at whatever it is standing against
  *   Hellrush   Movement  Movement  a 10 m charge that leaves the lane burning
  *
- * **THE BURNING LANE IS THE ONLY THING IN THE GAME THAT BURNS ITS OWN SIDE.**
- * `GroundHitsAllies=1` in the model, and its note says what that means: "The
- * fire burns other enemies and the Hellhound itself." The roster in
- * `docs/Cataclysm_GDD_v2.md` says the same of no other creature. Every ground
- * effect before this one belonged to whoever cast it and hurt the other side,
- * so `ACataclysmGroundZone` gained a `bBurnsEveryone` for exactly this.
+ * **THE BURNING LANE IS THE ONLY THING IN THE GAME THAT BURNS THE CREATURE
+ * THAT LIT IT.** `GroundHitsAllies=1` in the model, and its note says what
+ * that means: "The fire burns other enemies and the Hellhound itself." Every
+ * ground effect before this one belonged to whoever cast it and hurt the
+ * other side, so `ACataclysmGroundZone` gained a `bBurnsEveryone` for exactly
+ * this.
+ *
+ * **IT IS NO LONGER THE ONLY ABILITY CARRYING THAT RIDER.** The Gatekeeper's
+ * Soulfall carries it too, and the two are not the same claim: Soulfall's
+ * note says its ground "also burns the Gatekeeper's own summons" and says
+ * nothing about the Gatekeeper. So `bBurnsEveryone`, which means "burn
+ * everything INCLUDING the owner", is right for this creature and may not be
+ * right for that one. Issue #759 flags it as something to read carefully
+ * before wiring, and issue #774 is where the rider was restored to Soulfall.
  *
  * WHAT MAKES THIS CREATURE DIFFERENT FROM THE OTHER TWO THAT EXIST. It is the
  * fastest thing in the roster at 7.5 metres per second, against a Brute's 3.0

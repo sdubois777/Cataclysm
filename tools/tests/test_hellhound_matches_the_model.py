@@ -352,30 +352,46 @@ def test_the_charge_speed_beats_walking_and_reads_like_the_other_one():
         f"rather than leaving this failing.")
 
 
-def test_the_burning_lane_is_the_only_thing_that_burns_its_own_side():
+def test_the_burning_lane_is_one_of_exactly_two_that_burn_their_own_side():
     """`GroundHitsAllies=1`, and the model's note: "The fire burns other enemies
     and the Hellhound itself."
 
-    NO OTHER ABILITY IN THE MODEL SAYS IT, which is what makes this worth
-    guarding: the ground zone gained a whole option for one creature, and if that
-    creature stops needing it the option is dead code.
+    **TWO ABILITIES CARRY THE RIDER, NOT ONE, SINCE 2026-08-20.** This test used
+    to assert the Hellhound was the only one, and that was true only because the
+    Gatekeeper's Soulfall had lost the rider out of the model -- the design
+    document stated it the whole time. Issue #774. Its own failure message said
+    what to do when a second appeared, and this is that.
+
+    THE TWO DO NOT MEAN THE SAME THING, which is why they are named here rather
+    than counted. The Hellhound's fire burns the Hellhound ITSELF; Soulfall's
+    note says it burns "the Gatekeeper's own summons" and says nothing about
+    the Gatekeeper. `ACataclysmGroundZone`'s `bBurnsEveryone` means "burn
+    everything including the owner", so it fits the first and may not fit the
+    second. Issue #759 flags that as something to settle when Soulfall is built.
+
+    A THIRD STILL TRIPS THIS, because the option is a real cost in the ground
+    zone and each user of it should be a decision rather than a habit.
     """
     from cataclysm_sim.enemy_abilities import ABILITIES
 
     assert hellrush().params.get("GroundHitsAllies") == 1, (
         "Hellrush no longer burns its own side, so ACataclysmGroundZone's "
-        "bBurnsEveryone has no caller left.")
+        "bBurnsEveryone has one caller fewer.")
 
-    others = [
+    carriers = sorted(
         (enemy, entry.name)
         for enemy, entries in ABILITIES.items()
         for entry in entries
-        if entry.params.get("GroundHitsAllies") and enemy != "Hellhound"
-    ]
-    assert not others, (
-        f"something other than the Hellhound now leaves fire that burns its own "
-        f"side: {others}. That is fine, and the comments saying the Hellhound is "
-        f"the only one need changing.")
+        if entry.params.get("GroundHitsAllies")
+    )
+    assert carriers == [("Gatekeeper", "Soulfall"),
+                        ("Hellhound", "Hellrush")], (
+        f"the abilities leaving fire that burns their own side are now "
+        f"{carriers}, and the design has exactly two: the Hellhound's "
+        f"Hellrush and the Gatekeeper's Soulfall. A third is fine and the "
+        f"comments naming these two need changing -- in this file, in "
+        f"sim/cataclysm_sim/enemy_abilities.py and in "
+        f"game/Source/Cataclysm/Character/CataclysmHellhoundCharacter.h.")
 
     assert "bBurnsEveryone=*/true" in source(HELLHOUND_SOURCE).replace(" ", ""), (
         "CataclysmHellhoundCharacter.cpp no longer asks for a lane that burns "
