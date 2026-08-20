@@ -15,6 +15,7 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "GameFramework/PlayerStart.h"
@@ -659,6 +660,155 @@ bool FCataclysmSandboxHellhoundHasRoomToChargeTest::RunTest(const FString& Param
 	const FVector TowardsCentre = (Centre - Where).GetSafeNormal2D();
 	TestTrue(TEXT("it is facing the player start"),
 		FVector::DotProduct(Forward.GetSafeNormal2D(), TowardsCentre) > 0.9);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSandboxImpsArriveAsAPackTest,
+	"Cataclysm.Sandbox.TheImpsArriveAsAPackOfTenStandingTogether",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSandboxImpsArriveAsAPackTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSandboxTest;
+
+	// WHAT THIS EXISTS FOR. The other three creatures are placed one each,
+	// around the player start. **A single Imp shows almost nothing**: it takes
+	// 48 seconds to kill a geared character on its own, where ten take 4.9. So
+	// this spawner does something none of the others does -- it places a group
+	// around a point of their own -- and this is the check that it really did.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
+	if (!GameMode)
+	{
+		AddError(TEXT("Could not spawn the game mode."));
+		return false;
+	}
+
+	const int32 Placed = GameMode->SpawnImps();
+
+	// TEN, WHICH IS THE FIGURE THE DESIGN STATES OUTRIGHT under a subsection
+	// headed "A pack is ten". It is three more than one full ring of seven,
+	// which is what makes the second ring -- and this creature's reach -- matter
+	// in an ordinary encounter rather than only in a swarm event.
+	TestEqual(TEXT("the sandbox places a pack of ten"), Placed, 10);
+	TestEqual(TEXT("and it kept a record of every one of them"),
+		GameMode->Imps.Num(), Placed);
+
+	if (Placed <= 0)
+	{
+		return false;
+	}
+
+	// NO PLAYER START IN THIS WORLD, so the spawner falls back to the world
+	// origin and every position below is measured from (0,0).
+	const FVector Centre = FVector::ZeroVector;
+
+	FVector Middle = FVector::ZeroVector;
+	double Nearest = TNumericLimits<double>::Max();
+	double Furthest = 0.0;
+
+	for (const ACataclysmImpCharacter* Imp : GameMode->Imps)
+	{
+		if (!IsValid(Imp))
+		{
+			AddError(TEXT("One of the pack did not survive spawning."));
+			return false;
+		}
+
+		const double Out = FVector::Dist2D(Imp->GetActorLocation(), Centre);
+		Nearest = FMath::Min(Nearest, Out);
+		Furthest = FMath::Max(Furthest, Out);
+		Middle += Imp->GetActorLocation();
+
+		// EVERY ONE OF THEM CARRIES HEALTH AND NO ARMOUR. The armour is the
+		// interesting half: this is the only creature in the roster whose
+		// designed armour share is zero, and `TheDesignedCreaturesSpawnWithArmour`
+		// above deliberately does not include it.
+		const UAbilitySystemComponent* AbilitySystem =
+			UCataclysmTargeting::AbilitySystemOf(Imp);
+		if (!AbilitySystem)
+		{
+			AddError(TEXT("An Imp has no ability system."));
+			continue;
+		}
+
+		TestTrue(TEXT("an Imp carries health"),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetHealthAttribute()) > 0.0f);
+		TestEqual(TEXT("and no armour, which is its designed defence"),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetArmorAttribute()), 0.0f);
+	}
+
+	Middle /= static_cast<double>(GameMode->Imps.Num());
+
+	// THEY STAND TOGETHER RATHER THAN AROUND THE PLAYER. The middle of the pack
+	// is well away from the player start, and the whole pack sits within its own
+	// radius of that middle. A spawner that spread them around the player start
+	// the way the other three do would put the middle AT the player start, so
+	// this is what tells the two arrangements apart.
+	const double MiddleIsOut = FVector::Dist2D(Middle, Centre);
+
+	TestTrue(FString::Printf(
+			TEXT("the middle of the pack is %.0f cm from the player start"),
+			MiddleIsOut),
+		MiddleIsOut > 1000.0);
+
+	for (const ACataclysmImpCharacter* Imp : GameMode->Imps)
+	{
+		const double FromTheMiddle =
+			FVector::Dist2D(Imp->GetActorLocation(), Middle);
+		TestTrue(FString::Printf(
+				TEXT("an Imp stands %.0f cm from the middle of its own pack"),
+				FromTheMiddle),
+			FromTheMiddle < 1000.0);
+	}
+
+	// AND NONE OF THEM STARTS INSIDE ANOTHER. Ten bodies 60 cm across on a ring
+	// have to be further apart than that, or the movement component spends the
+	// first frames pushing them out of each other.
+	for (int32 Left = 0; Left < GameMode->Imps.Num(); ++Left)
+	{
+		for (int32 Right = Left + 1; Right < GameMode->Imps.Num(); ++Right)
+		{
+			const double Between = FVector::Dist2D(
+				GameMode->Imps[Left]->GetActorLocation(),
+				GameMode->Imps[Right]->GetActorLocation());
+			TestTrue(FString::Printf(
+					TEXT("two Imps stand %.0f cm apart, clear of their %.0f cm "
+						 "bodies"),
+					Between, 2.0 * ACataclysmImpCharacter::ImpCapsuleRadius),
+				Between > 2.0 * ACataclysmImpCharacter::ImpCapsuleRadius);
+		}
+	}
+
+	// THE WHOLE PACK IS BEYOND ITS OWN NOTICE RADIUS, so it does not set off at
+	// a player who has only just appeared. Measured at the nearest one, which is
+	// the Imp that would notice first.
+	TestTrue(FString::Printf(
+			TEXT("the nearest Imp stands %.0f cm out, beyond the %.0f cm at "
+				 "which it notices anybody"),
+			Nearest, ACataclysmImpCharacter::ImpNoticeRadiusCm),
+		Nearest > ACataclysmImpCharacter::ImpNoticeRadiusCm);
+
+	// AND THE WHOLE PACK IS ON THE FLOOR. The sandbox floor is 4000 cm across,
+	// so it reaches 2000 cm, and an Imp beyond that has no navigation mesh under
+	// it and cannot path at all.
+	constexpr double SandboxFloorReachCm = 2000.0;
+	TestTrue(FString::Printf(
+			TEXT("the furthest Imp stands %.0f cm out, inside the floor's %.0f "
+				 "cm reach"),
+			Furthest, SandboxFloorReachCm),
+		Furthest + ACataclysmImpCharacter::ImpCapsuleRadius
+			< SandboxFloorReachCm);
 
 	return true;
 }

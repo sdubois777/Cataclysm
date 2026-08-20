@@ -9,6 +9,7 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Interface/CataclysmHUD.h"
 #include "Engine/World.h"
@@ -109,6 +110,7 @@ void ACataclysmGameMode::StartPlay()
 	SpawnBrutes();
 	SpawnAbyssalWardens();
 	SpawnHellhounds();
+	SpawnImps();
 
 	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
 	// here, so that a test can reach it: StartPlay wants a player controller and
@@ -366,6 +368,100 @@ int32 ACataclysmGameMode::SpawnHellhounds()
 		ACataclysmHellhoundCharacter::HellrushRangeCm,
 		ACataclysmHellhoundCharacter::HellrushCooldownSeconds,
 		ACataclysmHellhoundCharacter::HellrushGroundSeconds);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnImps()
+{
+	UWorld* World = GetWorld();
+	if (!World || ImpCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction the
+	// other three spawners make. This creature's capsule is 7.95 cm taller than
+	// the base enemy's, which is the smallest difference of the four.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmImpCharacter::ImpCapsuleHalfHeight - BaseEnemyCapsuleHalfHeight;
+
+	// THE MIDDLE OF THE PACK, NOT WHERE ANY ONE OF THEM STANDS. Every other
+	// spawner spreads its creatures around the player start; this one spreads
+	// them around a point of their own, so ten arrive as a group standing
+	// together rather than as a ring already surrounding the player.
+	const float BearingRadians = FMath::DegreesToRadians(ImpBearingDegrees);
+	const FVector PackCentre = Centre + FVector(
+		FMath::Cos(BearingRadians) * ImpDistanceCm,
+		FMath::Sin(BearingRadians) * ImpDistanceCm,
+		RiseCm);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < ImpCount; ++Index)
+	{
+		const float Angle = 2.0f * PI * static_cast<float>(Index)
+						  / static_cast<float>(FMath::Max(ImpCount, 1));
+		const FVector Where = PackCentre + FVector(
+			FMath::Cos(Angle) * ImpPackRadiusCm,
+			FMath::Sin(Angle) * ImpPackRadiusCm,
+			0.0f);
+
+		// EACH FACES THE PLAYER START rather than the middle of its own pack,
+		// which is what makes ten of them read as one group looking the same way.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmImpCharacter* Imp = World->SpawnActor<ACataclysmImpCharacter>(
+			ACataclysmImpCharacter::StaticClass(), Where, Facing, SpawnParams);
+		if (!Imp)
+		{
+			continue;
+		}
+
+		Imp->SetHealth(ImpHealth);
+		Imp->SetAttackDamage(ImpAttackDamage);
+
+		// NO SetArmour CALL, AND IT IS DELIBERATE. See the header: this
+		// creature's designed armour share is exactly zero and it is the only
+		// one in the roster with none. Calling SetArmour(0) would look like a
+		// figure somebody chose rather than one the design refuses to give.
+		Imp->SetRarityStep(RarityStepFor(ImpRarityStep, Imp));
+
+		Imps.Add(Imp);
+		++Spawned;
+	}
+
+	// THE LOG SAYS WHAT THE PACK IS WORTH TOGETHER, because no single one of
+	// these creatures is worth anything and reading ten separate spawn lines
+	// does not add up to that.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Imps around a point %.0f cm from %s on a bearing of %.0f "
+			 "degrees, each %.0f cm from the middle of the pack. Each has %.0f "
+			 "health, NO ARMOUR, and 25%% evasion, and swipes for %.0f every "
+			 "%.1f s at a reach of %.0f cm -- which is the SECOND rank of a "
+			 "crowd, so twenty can hit a player at once. Together they are "
+			 "%.0f health and %.0f damage a second. They move at %.0f cm/s, "
+			 "faster than any player class, so walking away is not an escape. "
+			 "They will not queue into rings until issue #761 lands."),
+		Spawned, ImpDistanceCm, *Centre.ToCompactString(), ImpBearingDegrees,
+		ImpPackRadiusCm, ImpHealth, ImpAttackDamage,
+		ACataclysmImpCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmImpCharacter::DesignedMeleeReachCm,
+		ImpHealth * Spawned,
+		ImpAttackDamage * Spawned
+			/ ACataclysmImpCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmImpCharacter::DesignedWalkSpeedCmPerSecond);
 
 	return Spawned;
 }

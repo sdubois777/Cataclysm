@@ -300,14 +300,83 @@ also has locomotion, hit reactions, deaths and stuns.
 
 Under `ParagonMinions/Characters/Minions/Down_Minions/Animations/Melee/`.
 
-| Animation | Length |
-|---|:-:|
-| `Attack_A_SetA` .. `Attack_E_SetA` | 0.80 each |
-| `Attack_A_SetB` .. `Attack_E_SetB` | 0.83 each |
-| `Attack_A` .. `Attack_D` | 1.00 each |
+**Measured 2026-08-20** with `tools/probe_imp_animation.py` and
+`tools/measure_animation_stride.py`, when the creature was built. Every length
+recorded here on 2026-08-07 was read again and matched; everything else in this
+section is new.
 
-The ten `_SetA` and `_SetB` variants fit the 0.9 s interval. The four unsuffixed
-attacks do not, and should not be used for the basic attack.
+| Animation | Length | Note |
+|---|:-:|---|
+| `Attack_A_SetA` .. `Attack_E_SetA` | 0.80 each | **The five the creature uses.** All fit the 0.9 s interval as authored |
+| `Attack_A_SetB` .. `Attack_E_SetB` | 0.83 each | Also fit. Unused, so that all five drawn clips are the same length |
+| `Attack_A` .. `Attack_D` | 1.00 each | Longer than the interval. **Not usable** for the basic attack |
+| `NonCombat_Idle` | 10.17 | Standing. **The only idle in the folder** — there is no combat idle to prefer |
+| `NonCombat_JogFwd_B` | 1.50 | **The walk the creature wears.** See the speeds below |
+| `NonCombat_JogFwd`, `_A` | 2.03 each | |
+| `Combat_JogFwd`, `_AggroMinion` | 1.80 each | |
+| `Combat_JogFwd_Start` | 0.37 | Leads into the combat walk |
+| `Death_A` | 2.13 | |
+| `Death_B` | 0.50 | |
+| `Death_C` | 0.60 | |
+| `Death_D` | 0.51 | |
+| `Death_E` | 0.64 | |
+| `HitReact_Front`, `_Back`, `_Left`, `_Right` | 0.67 each | Nothing plays these yet |
+| `Stun` | 3.67 | |
+| `KnockUp`, `KnockUp_A` | 2.00 each | |
+
+**Five deaths, which is more than any other creature in the project has.** The
+Brute ships one, the Abyssal Warden and the Hellhound two.
+`ACataclysmEnemyCharacter::PlayDeathAnimation` draws one of however many it is
+given, and this is the creature that dies ten at a time. All five are inside
+`UCataclysmEnemyDeath::LongestCorpseSeconds`, which is 4.0.
+
+#### The walk, and why it wears a clip named for not being in combat
+
+Authored ground speeds, measured from the planted foot:
+
+| Animation | Authored speed | Play rate for 650 cm/s | Verdict |
+|---|:-:|:-:|---|
+| `NonCombat_JogFwd_B` | **382.6 cm/s** | **1.699** | Used |
+| `NonCombat_JogFwd`, `_A` | 277.9 cm/s | 2.339 | Fits, slower |
+| `Combat_JogFwd`, `_AggroMinion` | 241.1 cm/s | 2.696 | **Above the 2.50 ceiling** |
+| `NonCombat_Idle` | 0.0 cm/s | — | The control |
+
+So the combat walk cannot be worn by a creature designed to move at 6.5 metres
+per second, and the fastest clip in the pack is one of the non-combat variants.
+
+**This rig is the one that found the stride measurement was lying.**
+`Minion_Lane_Core_Skeleton` animates 69 bones and **not one of them is an `ik_`
+bone**, and `tools/measure_animation_stride.py` read the planted foot through
+Epic's `ik_foot_l` and `ik_foot_r`. A bone the skeleton does not have returns an
+identity transform rather than raising, so both walks and the idle all measured
+0.0 cm/s and the walks looked like idles. The tool now picks the rig from the
+bones a clip really drives — this one is tracked through `foot_l` and `foot_r` up
+the leg — and refuses out loud when it recognises none.
+
+#### How wide it actually is
+
+The reference-pose bounds say 174.2 cm across, and that is an arm span. Measured
+from the skeleton instead:
+
+| Measurement | Value |
+|---|:-:|
+| Shoulder to shoulder | **63.5 cm** |
+| Hip to hip | 16.7 cm |
+| Mesh height | 175.9 cm |
+
+**The mesh at its authored size already is the width the design specifies.** The
+Imp's designed body radius is 0.30 m, so the creature is 60 cm across, and the
+shoulders are 63.5. That is why `ACataclysmImpCharacter::ImpMeshScale` is 1 and
+why the note above — that a small swarming creature means scaling this mesh down
+— was not followed: scaling it down would make the body narrower than its own
+collision, and it could not be paid for anyway, because a smaller mesh takes a
+shorter stride and needs a higher play rate. At 90 cm tall the walk would need
+3.32 against a ceiling of 2.50. Issue
+[#760](https://github.com/sdubois777/Cataclysm/issues/760) is whether the
+resulting person-sized imp reads as a swarm.
+
+The mesh has **one material slot**, `M00_Dawn_Melee`, so there is nothing on it
+to hide or recolour by section.
 
 ### The Corrupted Sentinel — siege lane minion
 
