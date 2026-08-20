@@ -18,7 +18,7 @@ Death_Final_Curse,Death,Final Curse,"Upon death, curse the player for 5 seconds,
 Death_Funeral_Pyre,Death,Funeral Pyre,Summon deadly bone pyres when hit that explode if not destroyed quickly.
 Death_Soul_Tether,Death,Soul Tether,Transfer a portion damage taken to the player as health degeneration over time.
 Death_Mortal_Reminder,Death,Mortal Reminder,"Attacks apply a debuff that prevents the player from being healed above their current HP for 4 seconds. It caps your ""recovery ceiling."""
-War_Commander,War,Commander,"Inspires allies, increasing their stats by 20%."
+War_Commander,War,Commander,"Inspires allies, increasing their movement speed and attack speed by 20%."
 War_Battle_Cry,War,Battle Cry,Emit a terrifying shout that reduces the player's resistances or armor for 5 seconds.
 War_Armored_Juggernaut,War,Armored Juggernaut,Gain 50% armor
 War_Drums_of_War,War,Drums of War,Increases nearby allies move speed and attack speed by 50%.

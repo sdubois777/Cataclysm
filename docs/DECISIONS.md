@@ -113,13 +113,30 @@ expired cannot leave a creature walking fast for ever.
 **The designed walk speed is read off the movement component in `BeginPlay`**
 rather than declared again per creature, so there is one copy of the number.
 
-### What it does not cover
+### The same words in the other table that uses them
 
-**The `War_Commander` row of `game/Data/EnemyModifiers.csv` still says
-"Inspires allies, increasing their stats by 20%."** That is a modifier an elite
-War enemy can roll, and it is a separate row in a separate table that happens to
-share a name; nothing applies any enemy modifier yet. The two now disagree about
-what Commander does. Issue #771.
+**`game/Data/EnemyModifiers.csv` has a `War_Commander` row too**, for the
+modifier an elite War enemy can roll, and it said "Inspires allies, increasing
+their stats by 20%." It now says movement speed and attack speed as well.
+Issue #771, closed the same day.
+
+**THEY ARE NOT A DUPLICATE TO BE MERGED**, which is why this needed saying
+rather than deleting one of them. An innate ability may not duplicate a
+modifier its OWN Cataclysm can roll; Commander is a War modifier and the
+Succubus is Demonic, so it can never roll one, and that is exactly what made
+the aura legal. Two rows, one name, on purpose.
+
+**The wordings stay different and only the substance is held together.** The
+modifier says "inspires allies" where the effect says "all nearby allies
+gain", because they are read in different places -- one on a creature's own
+panel, one in the effect table.
+`tools/tests/test_commander_buff_matches_the_design.py` checks the two stats
+and the percentage rather than the sentence.
+
+Nothing applies any enemy modifier yet: every row of that table is read only by
+`UCataclysmCreaturePanel` and `UCataclysmHUD`, which display it. So this costs
+nothing today and is what stops the person who builds `War_Commander` later
+from building something its own description does not describe.
 
 ---
 
