@@ -28,6 +28,7 @@ time a player can read.
 
 from __future__ import annotations
 
+import math
 import pathlib
 import re
 import sys
@@ -418,3 +419,198 @@ def test_the_asset_notes_record_what_was_measured():
             f"game/docs/enemy-source-assets.md does not record {figure}, which "
             f"CataclysmHellhoundCharacter.h depends on. Measurements belong in "
             f"the notes as well as in the class.")
+
+
+# --------------------------------------------------------------------------
+# The sandbox scaffolding
+#
+# WHAT THIS SECTION IS FOR. A creature can be built, tested and merged without
+# anything ever putting one in the level, and then nobody has seen it. The
+# Hellhound was in exactly that state until `ACataclysmGameMode::SpawnHellhounds`
+# was written. These check the figures that spawner hands the creature, and the
+# geometry of where it stands, against the same model everything else here reads.
+# --------------------------------------------------------------------------
+
+GAME_MODE_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player"
+                    / "CataclysmGameMode.h")
+GAME_MODE_SOURCE = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player"
+                    / "CataclysmGameMode.cpp")
+LEVEL_SCRIPT = REPO_ROOT / "tools" / "generate_input_assets.py"
+
+
+def property_default(name: str, path: pathlib.Path = GAME_MODE_HEADER) -> float:
+    """The value of a `float <name> = <number>f;` property default."""
+    match = re.search(
+        rf"\bfloat\s+{re.escape(name)}\s*=\s*(-?\d+(?:\.\d+)?)f\s*;",
+        source(path))
+    if match is None:
+        pytest.fail(
+            f"{path.name} has no 'float {name} = <number>f;' line. If the "
+            f"setting was renamed, rename it here too; if it was deleted, the "
+            f"sandbox no longer decides this and nothing is guarding it.")
+    return float(match.group(1))
+
+
+def whole_number_property(name: str,
+                          path: pathlib.Path = GAME_MODE_HEADER) -> int:
+    """The value of an `int32 <name> = <number>;` property default."""
+    match = re.search(
+        rf"\bint32\s+{re.escape(name)}\s*=\s*(-?\d+)\s*;", source(path))
+    if match is None:
+        pytest.fail(f"{path.name} has no 'int32 {name} = <number>;' line.")
+    return int(match.group(1))
+
+
+def sandbox_stat_block():
+    """The one encounter the sandbox's health and armour figures come from.
+
+    The same encounter the Brute's and the Abyssal Warden's test files read, and
+    the same one the comment block in `CataclysmGameMode.h` names. Issue #525.
+    """
+    from cataclysm_sim.enemy_stats import stats_on_floor
+
+    return stats_on_floor("Common", 1, "Cataclysm", total_floors=50, floor=50,
+                          kind="Hellhound")
+
+
+def test_the_sandbox_actually_spawns_one():
+    """A creature nobody spawns is a creature nobody has seen.
+
+    THIS IS THE GUARD FOR THE WHOLE SECTION. Every other check below reads a
+    figure that only matters if a Hellhound is placed at all, and a count of
+    zero would leave every one of them passing while the sandbox held none.
+    """
+    assert whole_number_property("HellhoundCount") > 0, (
+        "HellhoundCount is zero, so no Hellhound is placed in the sandbox and "
+        "the creature cannot be looked at. Every other check in this section "
+        "would still pass.")
+
+    assert "SpawnHellhounds();" in source(GAME_MODE_SOURCE), (
+        "ACataclysmGameMode::StartPlay does not call SpawnHellhounds, so the "
+        "spawner exists and nothing runs it.")
+
+
+def test_the_sandbox_health_is_the_models_tier_one_figure():
+    """The sandbox Hellhound is the design model's Common Hellhound at tier 1.
+
+    THE LOWEST HEALTH OF THE THREE BUILT CREATURES, and that is the design. Its
+    health share is 0.75 against the Brute's 2.20 and the Abyssal Warden's 3.50:
+    it survives by not being hit rather than by absorbing.
+    """
+    designed = sandbox_stat_block().health
+    written = property_default("HellhoundHealth")
+
+    assert written == pytest.approx(round(designed)), (
+        f"HellhoundHealth is {written} and the design model gives a Common "
+        f"Hellhound at tier 1, on the last floor of a 50-floor Cataclysm "
+        f"dungeon, {designed:.2f}. The model is authoritative.")
+
+
+def test_the_sandbox_armour_is_the_models_tier_one_figure():
+    """The layer that reached no creature at all until issue #525."""
+    designed = sandbox_stat_block().armor
+    written = property_default("HellhoundArmour")
+
+    assert written == pytest.approx(round(designed)), (
+        f"HellhoundArmour is {written} and the design model gives "
+        f"{designed:.2f} at the same encounter as its health.")
+
+
+def test_the_sandbox_damage_is_the_dummys_times_the_designed_share():
+    dummy = property_default("TrainingDummyAttackDamage")
+    expected = dummy * hellhound().damage_share
+    written = property_default("HellhoundAttackDamage")
+
+    assert written == pytest.approx(expected), (
+        f"HellhoundAttackDamage is {written} and the training dummy's {dummy} "
+        f"times the designed damage share of {hellhound().damage_share} is "
+        f"{expected}.")
+
+
+def test_it_is_spawned_on_the_far_side_of_the_player_start():
+    """The one creature with a bearing, and it is required rather than tidy.
+
+    Every spawner puts a single creature at angle zero, which is +X. The Brute
+    at 1200 cm and the Abyssal Warden at 1900 cm already stand on that line, and
+    the sandbox floor only reaches 2000 cm, so there is no room left along it. A
+    Hellhound placed there would have nowhere to charge that is not through
+    another creature, and the lane it leaves burning would set both of them
+    alight every five seconds.
+    """
+    bearing = property_default("HellhoundBearingDegrees")
+
+    assert bearing != 0.0, (
+        "HellhoundBearingDegrees is zero, so the Hellhound spawns on the same "
+        "line as the Brute and the Abyssal Warden, with the floor's edge just "
+        "beyond them and no room for its 10 metre charge.")
+
+    # Behind the player start, measured as a cosine rather than as an equality
+    # to 180, so a bearing moved for some other reason still passes as long as
+    # it keeps the property that matters.
+    assert math.cos(math.radians(bearing)) < 0.0, (
+        f"HellhoundBearingDegrees is {bearing}, which puts the creature in "
+        f"front of the player start alongside the Brute and the Abyssal Warden "
+        f"rather than behind it.")
+
+
+def test_it_is_spawned_beyond_its_own_notice_radius():
+    """So it does not set off at a player who has only just appeared.
+
+    The player walks towards it and it starts when they are 10 metres away,
+    which is also the far end of Hellrush's range, so the charge is legal from
+    the first moment the creature has seen anything at all.
+    """
+    distance = property_default("HellhoundDistanceCm")
+    notices_at = constant("HellhoundNoticeRadiusCm")
+
+    assert distance > notices_at, (
+        f"the Hellhound spawns {distance} cm out and notices at {notices_at} "
+        f"cm, so it sets off at the player the instant the level opens.")
+
+
+def test_it_is_spawned_inside_the_sandbox_floor():
+    """Outside the navigation bounds a creature cannot path at all.
+
+    `FLOOR_EXTENT` in `tools/generate_input_assets.py` is passed as both the
+    floor's size and the navigation bounds volume's size, and both are full
+    widths rather than half-extents, so each reaches half of it from the player
+    start.
+    """
+    floor_extent = re.search(r"^FLOOR_EXTENT\s*=\s*(\d+(?:\.\d+)?)",
+                             source(LEVEL_SCRIPT), re.MULTILINE)
+    assert floor_extent is not None, (
+        "tools/generate_input_assets.py no longer defines FLOOR_EXTENT, so how "
+        "far the sandbox floor reaches cannot be read and this check would be "
+        "guessing.")
+
+    reach = float(floor_extent.group(1)) / 2.0
+    distance = property_default("HellhoundDistanceCm")
+    body = constant("HellhoundCapsuleRadius")
+
+    assert distance + body < reach, (
+        f"the Hellhound spawns {distance} cm out with a body {body} cm wide, "
+        f"and the sandbox floor only reaches {reach} cm. It would stand over "
+        f"the edge, where there is no navigation mesh and it cannot path.")
+
+
+def test_its_charge_lane_is_clear_of_the_other_two_creatures():
+    """Its 10 metre lane burns whatever stands in it, its own side included.
+
+    That is the one thing that makes this creature different, and it is correct.
+    What it must not do is happen on top of the other two every five seconds by
+    accident, because then watching any of the three is much harder.
+    """
+    hellhound_distance = property_default("HellhoundDistanceCm")
+    bearing = math.radians(property_default("HellhoundBearingDegrees"))
+    where = (hellhound_distance * math.cos(bearing),
+             hellhound_distance * math.sin(bearing))
+
+    needed = constant("HellrushRangeCm") + constant("HellrushRadiusCm")
+
+    # The other two spawn at angle zero, which is +X.
+    for name in ("BruteDistanceCm", "AbyssalWardenDistanceCm"):
+        gap = math.dist(where, (property_default(name), 0.0))
+        assert gap > needed, (
+            f"the Hellhound stands {gap:.0f} cm from the creature {name} "
+            f"places, and its charge plus the width of the lane it leaves "
+            f"burning needs {needed:.0f} cm of clear ground.")

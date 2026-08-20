@@ -159,9 +159,10 @@ void ACataclysmHellhoundCharacter::BeginPlay()
 
 void ACataclysmHellhoundCharacter::Tick(float DeltaSeconds)
 {
-	// Super FIRST, because that is what advances a running charge on the base
-	// class. This creature has no charge yet; the ordering is kept so that
-	// adding Hellrush does not need this line moved.
+	// Super FIRST, because that is what advances a running Hellrush. The base
+	// class owns the charge and this creature only starts one, so a Tick that
+	// did its own work before calling up would read a position the charge had
+	// not moved yet.
 	Super::Tick(DeltaSeconds);
 	UpdateLoopingAnimation();
 }

@@ -14,6 +14,7 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmHellhoundCharacter.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "GameFramework/PlayerStart.h"
@@ -256,9 +257,11 @@ bool FCataclysmSandboxEnemiesAreArmouredTest::RunTest(const FString& Parameters)
 
 	const int32 Brutes = GameMode->SpawnBrutes();
 	const int32 Wardens = GameMode->SpawnAbyssalWardens();
+	const int32 Hellhounds = GameMode->SpawnHellhounds();
 
 	TestTrue(TEXT("The sandbox spawns a Brute"), Brutes > 0);
 	TestTrue(TEXT("and an Abyssal Warden"), Wardens > 0);
+	TestTrue(TEXT("and a Hellhound"), Hellhounds > 0);
 
 	const FGameplayAttribute Armour =
 		UCataclysmCombatAttributeSet::GetArmorAttribute();
@@ -268,7 +271,9 @@ bool FCataclysmSandboxEnemiesAreArmouredTest::RunTest(const FString& Parameters)
 	for (const TPair<FString, AActor*>& Creature : TArray<TPair<FString, AActor*>>{
 			{TEXT("Brute"), Brutes > 0 ? GameMode->Brutes[0].Get() : nullptr},
 			{TEXT("Abyssal Warden"),
-			 Wardens > 0 ? GameMode->AbyssalWardens[0].Get() : nullptr}})
+			 Wardens > 0 ? GameMode->AbyssalWardens[0].Get() : nullptr},
+			{TEXT("Hellhound"),
+			 Hellhounds > 0 ? GameMode->Hellhounds[0].Get() : nullptr}})
 	{
 		if (!IsValid(Creature.Value))
 		{
@@ -519,6 +524,141 @@ bool FCataclysmSpawnedRarityTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("the dummy spawned at its own rarity"),
 			Dummy->RarityStep, EliteStep);
 	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSandboxHellhoundHasRoomToChargeTest,
+	"Cataclysm.Sandbox.TheHellhoundIsPlacedWithAClearLaneToChargeDown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSandboxHellhoundHasRoomToChargeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSandboxTest;
+
+	// WHAT THIS EXISTS FOR. All three spawners put a single creature at angle
+	// zero, which is +X, so the Brute and the Abyssal Warden already stand on
+	// one line with the sandbox floor's edge just beyond them. A Hellhound put
+	// on that same line would have nowhere to charge that is not through another
+	// creature, and the lane it leaves burning would set both of them alight
+	// every five seconds -- which is correct behaviour and makes watching any of
+	// the three much harder.
+	//
+	// IT IS A GEOMETRY CHECK ON REAL SPAWNED ACTORS rather than on the settings,
+	// because the settings are already held to the model in
+	// tools/tests/test_hellhound_matches_the_model.py and what can still go
+	// wrong here is the arithmetic that turns a bearing into a position.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
+	if (!GameMode)
+	{
+		AddError(TEXT("Could not spawn the game mode."));
+		return false;
+	}
+
+	// NO PLAYER START IN THIS WORLD, so all three spawners fall back to the
+	// world origin as their centre. That is what makes the distances below
+	// readable: every position is measured from (0,0).
+	const int32 Brutes = GameMode->SpawnBrutes();
+	const int32 Wardens = GameMode->SpawnAbyssalWardens();
+	const int32 Hellhounds = GameMode->SpawnHellhounds();
+
+	if (Brutes <= 0 || Wardens <= 0 || Hellhounds <= 0)
+	{
+		AddError(FString::Printf(
+			TEXT("The sandbox placed %d Brutes, %d Abyssal Wardens and %d "
+				 "Hellhounds, and this test needs one of each."),
+			Brutes, Wardens, Hellhounds));
+		return false;
+	}
+
+	const ACataclysmHellhoundCharacter* Hellhound = GameMode->Hellhounds[0].Get();
+	const ACataclysmBruteCharacter* Brute = GameMode->Brutes[0].Get();
+	const ACataclysmAbyssalWardenCharacter* Warden =
+		GameMode->AbyssalWardens[0].Get();
+	if (!IsValid(Hellhound) || !IsValid(Brute) || !IsValid(Warden))
+	{
+		AddError(TEXT("One of the three creatures did not survive spawning."));
+		return false;
+	}
+
+	const FVector Centre = FVector::ZeroVector;
+	const FVector Where = Hellhound->GetActorLocation();
+
+	// IT IS ON THE OPPOSITE SIDE OF THE PLAYER START FROM THE OTHER TWO, which
+	// both stand at positive X. This is the assertion the whole bearing exists
+	// for, and it is what a bearing accidentally reset to zero would fail.
+	TestTrue(FString::Printf(
+			TEXT("the Brute is at x=%.0f and the Abyssal Warden at x=%.0f, both "
+				 "in front of the player start"),
+			Brute->GetActorLocation().X, Warden->GetActorLocation().X),
+		Brute->GetActorLocation().X > 0.0 && Warden->GetActorLocation().X > 0.0);
+
+	TestTrue(FString::Printf(
+			TEXT("and the Hellhound is at x=%.0f, on the other side of the "
+				 "player start from both"),
+			Where.X),
+		Where.X < 0.0);
+
+	// AND FAR ENOUGH FROM EACH THAT ITS WHOLE CHARGE LANE IS CLEAR. The lane
+	// runs 10 metres from where it stands towards the player start, so the
+	// nearest either of the others may be is that length plus the lane's own
+	// half-width.
+	const double ClearanceNeeded =
+		ACataclysmHellhoundCharacter::HellrushRangeCm
+		+ ACataclysmHellhoundCharacter::HellrushRadiusCm;
+
+	for (const TPair<FString, const AActor*>& Other :
+		 TArray<TPair<FString, const AActor*>>{
+			{TEXT("Brute"), Brute}, {TEXT("Abyssal Warden"), Warden}})
+	{
+		const double Gap =
+			FVector::Dist2D(Where, Other.Value->GetActorLocation());
+		TestTrue(FString::Printf(
+				TEXT("the %s is %.0f cm away, clear of the %.0f cm the "
+					 "Hellhound's charge and its burning lane need"),
+				*Other.Key, Gap, ClearanceNeeded),
+			Gap > ClearanceNeeded);
+	}
+
+	// AND IT IS STILL ON THE FLOOR. The sandbox floor is 4000 cm across, so it
+	// reaches 2000 cm from the player start in every direction, and a creature
+	// placed beyond that has no navigation mesh under it and cannot path at all.
+	constexpr double SandboxFloorReachCm = 2000.0;
+	const double OutFromCentre = FVector::Dist2D(Where, Centre);
+	const double HalfABody =
+		ACataclysmHellhoundCharacter::HellhoundCapsuleRadius;
+
+	TestTrue(FString::Printf(
+			TEXT("it stands %.0f cm out and its body is %.0f cm wide, inside "
+				 "the floor's %.0f cm reach"),
+			OutFromCentre, HalfABody, SandboxFloorReachCm),
+		OutFromCentre + HalfABody < SandboxFloorReachCm);
+
+	// AND BEYOND ITS OWN NOTICE RADIUS, so it does not set off at a player who
+	// has only just appeared. The player walks towards it and it starts when
+	// they are 10 metres away, which is also the far end of its charge's range.
+	TestTrue(FString::Printf(
+			TEXT("it stands %.0f cm out, beyond the %.0f cm at which it notices "
+				 "anybody"),
+			OutFromCentre,
+			ACataclysmHellhoundCharacter::HellhoundNoticeRadiusCm),
+		OutFromCentre
+			> ACataclysmHellhoundCharacter::HellhoundNoticeRadiusCm);
+
+	// AND IT IS FACING THE PLAYER START rather than away from it, which is what
+	// the other two spawners do and what makes the first thing it does visible.
+	const FVector Forward = Hellhound->GetActorForwardVector();
+	const FVector TowardsCentre = (Centre - Where).GetSafeNormal2D();
+	TestTrue(TEXT("it is facing the player start"),
+		FVector::DotProduct(Forward.GetSafeNormal2D(), TowardsCentre) > 0.9);
 
 	return true;
 }

@@ -74,6 +74,21 @@ public:
 	int32 SpawnAbyssalWardens();
 
 	/**
+	 * Puts Hellhounds in the sandbox. Returns how many were placed.
+	 *
+	 * IT IS THE OPPOSITE OF THE ABYSSAL WARDEN, AND THAT CHANGES WHAT WATCHING
+	 * IT IS LIKE. It moves at 7.5 metres per second against player classes at
+	 * 3.5, 4.0 and 4.6, so walking away from it does not work. It is the first
+	 * creature in this project designed to catch the player rather than to be
+	 * escaped, and the instinct the other two teach is the wrong one to bring.
+	 *
+	 * IT IS PLACED ON THE FAR SIDE OF THE PLAYER START FROM THE OTHER TWO. See
+	 * `HellhoundBearingDegrees` for why that is required rather than tidy.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnHellhounds();
+
+	/**
 	 * Tell the save writer which run and which character this session is
 	 * playing, which is what makes the game start saving itself.
 	 *
@@ -117,6 +132,10 @@ public:
 	/** Every Abyssal Warden this game mode placed. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<class ACataclysmAbyssalWardenCharacter>> AbyssalWardens;
+
+	/** Every Hellhound this game mode placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmHellhoundCharacter>> Hellhounds;
 
 	// ----------------------------------------------------------------------
 	// Difficulty
@@ -431,6 +450,94 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float AbyssalWardenAttackDamage = 38.0f;
 
+	/** How many Hellhounds to place. Zero for none. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 HellhoundCount = 1;
+
+	/**
+	 * How far from the player start each one is put, in centimetres.
+	 *
+	 * THE SAME DISTANCE THE ABYSSAL WARDEN STANDS AT, on the opposite bearing.
+	 * See `HellhoundBearingDegrees` for why the bearing exists at all.
+	 *
+	 * BEYOND ITS OWN NOTICE RADIUS ON PURPOSE. The creature notices at 1000 cm,
+	 * so at this distance it does not set off at a player who has just appeared;
+	 * the player walks towards it and it starts when they are 10 metres away.
+	 * That distance is also exactly the far end of Hellrush's range, and
+	 * `ACataclysmEnemyController::ChooseAbility` allows a distance equal to the
+	 * maximum, so the charge is legal from the first moment the creature has
+	 * seen anything at all.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float HellhoundDistanceCm = 1900.0f;
+
+	/**
+	 * Which direction from the player start it is placed in, in degrees.
+	 *
+	 * THE ONLY CREATURE WITH ONE, AND IT IS REQUIRED RATHER THAN TIDY. All three
+	 * spawners put a single creature at angle zero, which is +X, so the Brute at
+	 * 1200 cm and the Abyssal Warden at 1900 cm already stand on that one line.
+	 * The sandbox floor is 4000 cm across -- `FLOOR_EXTENT` in
+	 * `tools/generate_input_assets.py` is both the floor's size and the
+	 * navigation bounds volume's size -- so it reaches 2000 cm from the player
+	 * start and the Warden is already 100 cm from its edge. There is no room
+	 * further out along +X, and a creature placed between the other two would
+	 * stand inside the Warden's 650 cm ring.
+	 *
+	 * AND THIS CREATURE NEEDS TEN METRES OF CLEAR GROUND IN FRONT OF IT, which
+	 * is the length of its charge. 180 degrees is the point of the same circle
+	 * furthest from both, and the whole lane between it and the player start is
+	 * ground neither of the others is standing on.
+	 *
+	 * ITS FIRE WOULD OTHERWISE BURN THEM. The lane it leaves burns whatever
+	 * stands in it, its own side included, which is correct and is the one thing
+	 * that makes this creature different. A Hellhound charging down the line the
+	 * other two are on would set both of them alight every five seconds, and
+	 * watching any of the three would be much harder for it.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox")
+	float HellhoundBearingDegrees = 180.0f;
+
+	/**
+	 * How much health each one has.
+	 *
+	 * THE DESIGN MODEL'S OWN FIGURE, on exactly the reasoning `BruteHealth`
+	 * records. It is `stats_on_floor("Common", tier=1, "Cataclysm",
+	 * kind="Hellhound")` in `sim/cataclysm_sim/enemy_stats.py`, rounded to a
+	 * whole number, and `tools/tests/test_hellhound_matches_the_model.py` holds
+	 * it against that file.
+	 *
+	 * THE LOWEST OF THE THREE, AND THAT IS THE DESIGN RATHER THAN AN OVERSIGHT.
+	 * Its health share is 0.75 against the Brute's 2.20 and the Abyssal Warden's
+	 * 3.50: it is a fast skirmisher that survives by not being hit, and an
+	 * `evasion` of 20 with an `armor_share` of 0.30 is how the model says so. It
+	 * dies to a few uses of Molten Cleave, which is what a creature that reaches
+	 * the player in under two seconds has to do.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float HellhoundHealth = 187.0f;
+
+	/**
+	 * How much armour each one has. See `BruteArmour` for why nothing set this
+	 * on any creature before issue #525. From the same stat block as
+	 * `HellhoundHealth`. At tier 1 it removes 1.84% of a hit, which is almost
+	 * nothing and is what an `armor_share` of 0.30 means.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float HellhoundArmour = 15.0f;
+
+	/**
+	 * What one of its bites is worth. The training dummy's 20 times the designed
+	 * damage share of 0.95, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`.
+	 *
+	 * ONE PASS OF HELLRUSH IS WORTH ONE OF THESE, because the Movement slot is
+	 * 100%, and standing in the whole four seconds of the lane it leaves is
+	 * worth one more.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float HellhoundAttackDamage = 19.0f;
+
 public:
 	// ----------------------------------------------------------------------
 	// WHICH RARITY THE SANDBOX SPAWNS EACH CREATURE AT.
@@ -487,6 +594,11 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 AbyssalWardenRarityStep = -1;
+
+	/** Which rung each Hellhound spawns at, or -1 to draw one. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 HellhoundRarityStep = -1;
 
 	/**
 	 * Which rung each training dummy spawns at, or -1 to draw one.
