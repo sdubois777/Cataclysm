@@ -355,6 +355,7 @@ say so.
 | `Jog_Biped_Fwd` | 1.00 | The walk |
 | `Sprint_Biped_Fwd` | 1.00 | Not a second gait. Measured identical to the jog to 0.0000 cm; see below |
 | `Jog_Quad_Fwd` | 0.53 | The chase, on all fours |
+| `Death_A` | 0.7667 | Dying. **The only death clip the pack ships**, so this creature always falls the same way. Measured 2026-08-19 for issue #522 |
 | `Sprint_Quad_Fwd` | 0.53 | Not a second gait either. Measured identical to 0.0000 cm; see below |
 
 **Rip and Toss**, the thrown rock. Measured 2026-08-08 and never recorded here
@@ -580,7 +581,8 @@ clip plays on it without retargeting.
 | `Ultimate_Roar` | 1.4000 | Molten Roar. Fits inside the 2.0 s wind-up at authored speed, with 0.6 s of held pose after it |
 | `Idle` | 24.3333 | Standing |
 | `Jog_Fwd` | 1.5333 | Walking, at a play rate of 280 / 281.6 = 0.994 |
-| `Death_A` | 1.6667 | Dying |
+| `Death_A` | 1.6667 | Dying. One of two, drawn per death |
+| `Death_B` | 1.6333 | The other. Measured 2026-08-19 for issue #522 |
 
 **One basic attack is three clips, and the reason is measured.**
 `tools/measure_warden_recovery.py` compares each clip's last pose against the

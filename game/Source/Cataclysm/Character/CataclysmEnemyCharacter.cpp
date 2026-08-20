@@ -12,11 +12,14 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmEnemyDeath.h"
 // For what a kill drops. The rules live in the item module; this file
 // only says when they run and where the result lands.
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Animation/AnimSequence.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/StaticMesh.h"
@@ -131,6 +134,21 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// issue #499.
 	CancelCharge();
 
+	// AND SO DOES EVERY PER-FRAME JOB THE CREATURE HAD, which matters more
+	// than it looks now that the body stays on screen for a clip's length.
+	// The Abyssal Warden's UpdateLoopingAnimation runs from Tick and would
+	// put an idle loop back over the death pose within a frame or two, since
+	// a corpse has no velocity and therefore reads as standing. The Brute's
+	// Tick keeps a rock and a crater in step with a wind-up that is no longer
+	// happening. Neither of those checks whether the creature is dead, and a
+	// check in each would be a thing every future creature had to remember.
+	//
+	// IT DOES NOT STOP THE ANIMATION. AActor::SetActorTickEnabled sets
+	// PrimaryActorTick and nothing else; a skeletal mesh component has its
+	// own tick function and that is what evaluates the clip, so the death
+	// animation plays out with the actor's own Tick switched off.
+	SetActorTickEnabled(false);
+
 	// DisableMovement CLEARS THE VELOCITY TOO, so there is no separate call to
 	// stop it. UCharacterMovementComponent::OnMovementModeChanged runs
 	// StopMovementKeepPathing when the new mode is MOVE_None -- "Kill velocity
@@ -171,14 +189,83 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			Stream);
 	}
 
+	// WHAT DYING LOOKS LIKE, AND HOW LONG THE BODY IS KEPT FOR IT. Before
+	// issue #522 a creature played nothing and was gone within a frame.
+	CorpseSeconds = PlayDeathAnimation();
+
 	if (UWorld* World = GetWorld())
 	{
-		World->GetTimerManager().SetTimerForNextTick(
+		FTimerDelegate Removal =
 			FTimerDelegate::CreateWeakLambda(this, [this]()
 			{
 				Destroy();
-			}));
+			});
+
+		if (CorpseSeconds > 0.0f)
+		{
+			// THE BODY OUTLIVES THE KILLING BLOW BY EXACTLY ITS CLIP. Removing
+			// it any earlier would cut the animation off part way through,
+			// and keeping it any longer is a design decision about corpses
+			// that has not been made. UCataclysmEnemyDeath::CorpseSecondsFor
+			// is where it would be made.
+			FTimerHandle Handle;
+			World->GetTimerManager().SetTimer(Handle, Removal, CorpseSeconds,
+										  /*bLoop=*/false);
+		}
+		else
+		{
+			// NOTHING TO PLAY, SO NOTHING TO WAIT FOR. A creature with no art
+			// goes on the next tick, which is what every creature did before
+			// this. It is stated rather than left as an accident: five of the
+			// seven vertical slice creatures reach it every time they die.
+			World->GetTimerManager().SetTimerForNextTick(Removal);
+		}
 	}
+}
+
+float ACataclysmEnemyCharacter::PlayDeathAnimation()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
+	{
+		return 0.0f;
+	}
+
+	// ITS OWN STREAM, seeded from this creature and the moment it died so two
+	// creatures dying in the same frame do not fall the same way, and salted
+	// so it is not the stream the drops were rolled from. See the header for
+	// why those must not be the same stream.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	FRandomStream Stream(GetUniqueID()
+		^ static_cast<int32>(Now * 1000.0f) ^ DeathDrawSalt);
+
+	const int32 Index =
+		UCataclysmEnemyDeath::ClipToPlay(DeathAnimations.Num(), Stream);
+	if (!DeathAnimations.IsValidIndex(Index))
+	{
+		return 0.0f;
+	}
+
+	// A NULL ENTRY IS A CLIP THAT FAILED TO LOAD, which is what a subclass
+	// leaves behind when its pack is absent. It is not dropped from the array,
+	// because doing so would change how many clips there are and therefore
+	// which one every OTHER creature drew.
+	UAnimSequence* Clip = DeathAnimations[Index].Get();
+	if (!Clip)
+	{
+		return 0.0f;
+	}
+
+	DiedWith = Clip;
+
+	// AT ITS AUTHORED SPEED. Nothing constrains a death to a window, unlike
+	// every other clip in this project, which has to fit inside a telegraph or
+	// an attack interval.
+	MeshComponent->PlayAnimation(Clip, /*bLooping=*/false);
+	MeshComponent->SetPlayRate(1.0f);
+
+	return UCataclysmEnemyDeath::CorpseSecondsFor(Clip->GetPlayLength());
 }
 
 void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)

@@ -70,6 +70,12 @@ const TCHAR* ACataclysmBruteCharacter::AttackAnimationPath =
 	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
 		 "Attack_Biped_Melee_A.Attack_Biped_Melee_A");
 
+// THE ONE CLIP THIS CREATURE DIES WITH. Measured in the editor on 2026-08-19
+// at 0.7667 seconds. The pack ships no second death clip.
+const TCHAR* ACataclysmBruteCharacter::DeathAnimationPath =
+	TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/"
+		 "Death_A.Death_A");
+
 /**
  * Live override for the chase speed, for judging it by eye.
  *
@@ -1238,6 +1244,13 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 
 		AttackAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(AttackAnimationPath).TryLoad());
+
+		// THE DEATH CLIP, AND A NULL ENTRY IS KEPT rather than skipped. See
+		// ACataclysmEnemyCharacter::PlayDeathAnimation: dropping one would
+		// change how many clips there are and therefore which one is drawn.
+		DeathAnimations.Reset();
+		DeathAnimations.Add(Cast<UAnimSequence>(
+			FSoftObjectPath(DeathAnimationPath).TryLoad()));
 
 		// TWO MONTAGES INSTEAD OF SIX CLIPS. Each one holds its ability's
 		// wind-up and release back to back, so this class no longer loads,

@@ -70,6 +70,17 @@ const TCHAR* ACataclysmAbyssalWardenCharacter::IdleAnimationPath =
 const TCHAR* ACataclysmAbyssalWardenCharacter::JogAnimationPath =
 	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Jog_Fwd.Jog_Fwd");
 
+// THE TWO CLIPS THIS CREATURE DIES WITH. Measured in the editor on
+// 2026-08-19: Death_A is 1.6667 seconds and Death_B is 1.6333. One is drawn
+// per death and the body is kept for exactly that clip's length.
+const TCHAR* ACataclysmAbyssalWardenCharacter::FirstDeathAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
+		 "Death_A.Death_A");
+
+const TCHAR* ACataclysmAbyssalWardenCharacter::SecondDeathAnimationPath =
+	TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
+		 "Death_B.Death_B");
+
 const FName ACataclysmAbyssalWardenCharacter::AttackSlotName =
 	FName(TEXT("DefaultSlot"));
 
@@ -597,6 +608,15 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(MoltenRoarAnimationPath).TryLoad());
 		StampedeAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(StampedeAnimationPath).TryLoad());
+
+		// BOTH DEATH CLIPS, AND A NULL ENTRY IS KEPT rather than skipped. See
+		// ACataclysmEnemyCharacter::PlayDeathAnimation: dropping one would
+		// change how many clips there are and therefore which one is drawn.
+		DeathAnimations.Reset();
+		DeathAnimations.Add(Cast<UAnimSequence>(
+			FSoftObjectPath(FirstDeathAnimationPath).TryLoad()));
+		DeathAnimations.Add(Cast<UAnimSequence>(
+			FSoftObjectPath(SecondDeathAnimationPath).TryLoad()));
 		IdleAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(IdleAnimationPath).TryLoad());
 		JogAnimation = Cast<UAnimSequence>(
