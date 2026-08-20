@@ -119,9 +119,10 @@ by `git add` with no error and no warning. Guarded by
 
 ## What is not here yet
 
-- **Five characters have art. Everything else is an engine primitive.** The
+- **Six characters have art. Everything else is an engine primitive.** The
   Brute wears the Paragon Rampage model, the Abyssal Warden wears GruxMolten
-  from the Paragon Grux pack, the Hellhound wears IggyScorch, and the Imp and
+  from the Paragon Grux pack, the Hellhound wears IggyScorch, the Succubus
+  wears SM_Countess from the Paragon Countess pack, and the Imp and
   the Corrupted Sentinel wear the melee and siege lane minions from the Paragon
   Minions pack; the player,
   the summoned imp and the training dummies are still primitive meshes from

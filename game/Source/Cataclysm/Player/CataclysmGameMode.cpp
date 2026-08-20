@@ -12,6 +12,7 @@
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
 #include "Interface/CataclysmHUD.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerStart.h"
@@ -113,6 +114,7 @@ void ACataclysmGameMode::StartPlay()
 	SpawnHellhounds();
 	SpawnImps();
 	SpawnCorruptedSentinels();
+	SpawnSuccubi();
 
 	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
 	// here, so that a test can reach it: StartPlay wants a player controller and
@@ -558,6 +560,102 @@ int32 ACataclysmGameMode::SpawnCorruptedSentinels()
 		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarRadiusCm,
 		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarWindUpSeconds,
 		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarCooldownSeconds);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnSuccubi()
+{
+	UWorld* World = GetWorld();
+	if (!World || SuccubusCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction every
+	// other spawner makes. This creature is 90.4 cm to the base enemy's 80, so
+	// it rises 10.4 cm.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmSuccubusCharacter::SuccubusCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	const float BearingRadians = FMath::DegreesToRadians(SuccubusBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < SuccubusCount; ++Index)
+	{
+		const float Angle = BearingRadians
+			+ 2.0f * PI * static_cast<float>(Index)
+				/ static_cast<float>(FMath::Max(SuccubusCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * SuccubusDistanceCm,
+			FMath::Sin(Angle) * SuccubusDistanceCm,
+			RiseCm);
+
+		// FACING THE PLAYER START. It turns at 480 degrees a second and it can
+		// walk, so where it starts pointed only decides what it sees first.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmSuccubusCharacter* Succubus =
+			World->SpawnActor<ACataclysmSuccubusCharacter>(
+				ACataclysmSuccubusCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Succubus)
+		{
+			continue;
+		}
+
+		Succubus->SetHealth(SuccubusHealth);
+		Succubus->SetAttackDamage(SuccubusAttackDamage);
+		Succubus->SetArmour(SuccubusArmour);
+		Succubus->SetRarityStep(RarityStepFor(SuccubusRarityStep, Succubus));
+
+		Succubi.Add(Succubus);
+		++Spawned;
+	}
+
+	// THE LOG SAYS WHAT THE AURA DOES, because nothing on screen does. A buffed
+	// creature is a creature with a gameplay tag on it and no outward sign, so
+	// without this line the one thing that makes this creature different is
+	// invisible. Issue #768 is the magnitude it does not yet apply.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Succubi %.0f cm from %s on a bearing of %.0f degrees -- "
+			 "**the first diagonal, because the four cardinal ones are taken**. "
+			 "Each has %.0f health with a further %.0f%% of it as an energy "
+			 "shield, %.0f armour at difficulty tier %d, and walks at %.0f "
+			 "cm/s. Its Soulfire marks a %.0f cm lane for %.2f s and then flies "
+			 "%.0f cm at %.0f cm/s, every %.1f s. Its Wither the Living curses "
+			 "one target within %.0f cm for %.0f s, every %.0f s, **with no "
+			 "ground marker at all** -- it is read off the caster and answered "
+			 "by interrupting. Its Dominion is held on for as long as it lives "
+			 "and grants %s to every ALLY within %.0f cm."),
+		Spawned, SuccubusDistanceCm, *Centre.ToCompactString(),
+		SuccubusBearingDegrees, SuccubusHealth,
+		ACataclysmSuccubusCharacter::DesignedEnergyShieldFraction * 100.0f,
+		SuccubusArmour, DifficultyTierFor(this),
+		ACataclysmSuccubusCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmSuccubusCharacter::SoulfireRadiusCm,
+		ACataclysmSuccubusCharacter::SoulfireWindUpSeconds,
+		ACataclysmSuccubusCharacter::SoulfireRangeCm,
+		ACataclysmSuccubusCharacter::SoulfireSpeedCmPerSecond,
+		ACataclysmSuccubusCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmSuccubusCharacter::WitherRangeCm,
+		ACataclysmSuccubusCharacter::WitherDurationSeconds,
+		ACataclysmSuccubusCharacter::WitherCooldownSeconds,
+		ACataclysmSuccubusCharacter::DominionEffectName,
+		ACataclysmSuccubusCharacter::DominionRadiusCm);
 
 	return Spawned;
 }
