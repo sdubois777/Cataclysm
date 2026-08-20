@@ -3,9 +3,18 @@
 This is the design for what the game writes to disk, how it is partitioned, and
 how it survives the schema changing. It answers issue #21.
 
-**What is built, as of 2026-08-20.** The storage layer exists: the three
+**What is built, as of 2026-08-20.** The whole of the writing half: the three
 records, the partition rule, JSON reading and writing, the migration chain,
-and committed example save files as its test. Issue #529.
+committed example save files as its test, the clock and the write triggers,
+and reading a live floor into a record and putting it back. Issues #529, #750
+and #751.
+
+**What is NOT built is the choosing half.** Nothing reads a save back at
+start-up, because nothing decides between starting a new run and continuing
+one -- there is no such screen and no such design. `ACataclysmGameMode` begins
+a fresh run every session, so the files the game writes are written and never
+read. **Everything below describes a save system that saves and does not yet
+load.**
 
 | Section | Built? |
 | :-- | :-- |
@@ -13,7 +22,7 @@ and committed example save files as its test. Issue #529.
 | 3, partitioning | Built. `UCataclysmSavePartition` |
 | 4, storage format | Built. `FCataclysmSaveStorage` |
 | 5, versioning and migration | Built. `FCataclysmSaveMigration`, and `game/Tests/SaveFixtures/` |
-| 6, when a save is written | **Not built.** There is no clock, no write on an event, and no death write. Nothing in the game calls the storage layer at all |
+| 6, when a save is written | Built. `UCataclysmSaveWriter` holds the clock and the triggers, `FCataclysmSaveGather` reads a floor and `FCataclysmSaveApply` puts one back. **Nothing reads a save back**, because nothing chooses between starting a run and continuing one |
 
 ---
 
@@ -347,6 +356,13 @@ Decided 2026-08-20: **a neutral restart with the damage kept.**
 come back at the health they had, standing in front of a boss at the health it
 had.
 
+**A creature also carries what full health would be**, which the table above does
+not say and which is not redundant. A creature’s maximum health belongs to the
+ENCOUNTER rather than to the species -- the same Brute is tougher deeper in a
+dungeon -- so a restored creature that fell back on its class default would have
+the wrong maximum, and the health left would be clamped down to it. That was a
+real failure caught by a test: a boss with 137 health left came back with 100.
+
 **Why the mid-blow state is deliberately left out.** It is the data most likely to
 change shape with every patch — a creature's brain, how far into a wind-up it is,
 a projectile's flight — and section 5 requires a migration for any persisted field
@@ -371,6 +387,27 @@ Two triggers, and both are needed:
 The second is what makes the gap inside a fight near zero without writing
 constantly while a player walks around a city. **The interval and the health
 threshold are tuning constants and only playing settles them.**
+
+### What raises each trigger today
+
+| Trigger | What raises it |
+| :-- | :-- |
+| The clock | `UCataclysmSaveWriter::Tick`, every 15 seconds. **A starting figure, not a measured one** |
+| A fight starting | `ACataclysmEnemyController` the moment a creature notices somebody it could not see before |
+| A creature dying | `ACataclysmEnemyCharacter::HandleDeath` |
+| Health falling through the threshold | `UCataclysmSaveWriter::Tick`, sampling once a frame at half of maximum health. **Also a starting figure** |
+| Changing floor | **Nothing.** `UCataclysmSaveWriter::SetFloor` is the entry point and nothing calls it, because nothing in the game has floors |
+| An item entering or leaving the inventory | `UCataclysmInventoryComponent`, on adding an item, stacking a material and emptying a slot |
+| The character dying | `ACataclysmPlayerCharacter::HandleDeath`, **before the character is marked dead**, so the record holds it where it fell rather than a floor with nobody on it |
+
+**The run record is written at most once a frame**, unless it is a death.
+Several creatures dying together raise several triggers in one frame, and each
+write but the last would be overwritten before it reached the disk.
+
+**The health threshold is sampled once a frame rather than checked inside the
+damage calculation.** That is at most one frame later than the blow that
+caused it, and it keeps the save system out of the path every hit in the game
+runs through.
 
 ### Death is written first, and synchronously
 

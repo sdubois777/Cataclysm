@@ -147,14 +147,17 @@ by `git add` with no error and no warning. Guarded by
   (issue [#49](https://github.com/sdubois777/Cataclysm/issues/49)), and the port
   of the combat overlay to UMG is issue
   [#650](https://github.com/sdubois777/Cataclysm/issues/650).
-- **Nothing writes a save, so a play session still keeps nothing.** The
-  storage layer does exist: three `USaveGame` records in
-  `Source/Cataclysm/Save/`, written as JSON, with a schema version, a
-  migration chain and committed example files in `Tests/SaveFixtures/` as its
-  test (issue [#529](https://github.com/sdubois777/Cataclysm/issues/529)). **Nothing in the game calls it.** There
-  is no autosave clock, no write when something happens, and no death write
-  (issue [#750](https://github.com/sdubois777/Cataclysm/issues/750)), and nothing copies a live floor or a live
-  character into a record or puts one back (issue [#751](https://github.com/sdubois777/Cataclysm/issues/751)).
+- **The game saves itself and cannot load what it saved.** Three `USaveGame`
+  records in `Source/Cataclysm/Save/` are written as JSON, with a schema
+  version and a migration chain (issue
+  [#529](https://github.com/sdubois777/Cataclysm/issues/529)); `UCataclysmSaveWriter` writes them on a 15 second
+  clock and immediately when a fight starts, a creature dies, health falls
+  through half, or an item moves, and **a death is written before the frame
+  ends** (issue [#750](https://github.com/sdubois777/Cataclysm/issues/750)); and a live floor can be read into a
+  record and put back with every creature's damage kept (issue [#751](https://github.com/sdubois777/Cataclysm/issues/751)).
+  **Nothing reads a save back at start-up**, because nothing chooses between
+  starting a run and continuing one, so `ACataclysmGameMode` begins a fresh
+  run each session and its files are never read.
 - **No empire layer runtime.** `CataclysmEmpire` is a module with a build file
   and nothing in it; the day clock, cities and surges are still only the Python
   model in `sim/` (issue

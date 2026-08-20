@@ -79,21 +79,72 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float Health = 0.0f;
 
+	/**
+	 * The health it would have at full.
+	 *
+	 * KEPT AS WELL AS THE HEALTH LEFT, AND IT IS NOT REDUNDANT. A creature's
+	 * maximum health is a property of the ENCOUNTER rather than of the species:
+	 * the same Brute is tougher deeper in a dungeon, and `ACataclysmGameMode`
+	 * already sets it per spawn. Without this, a restored creature would fall
+	 * back to whatever its class defaults to -- and the vital attribute set
+	 * clamps health to the maximum, so a boss with 137 health left and a
+	 * default maximum of 100 would come back with 100. **That was a real
+	 * failure and a test caught it**, which is why the field exists.
+	 *
+	 * ZERO MEANS THE CREATURE KEEPS WHATEVER ITS CLASS GIVES IT, which is what
+	 * a record written before this field existed reads back as.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float MaxHealth = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float EnergyShield = 0.0f;
+
+	/** The energy shield it would have at full. Zero for the same reason.
+	 *  Most creatures have none at all. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float MaxEnergyShield = 0.0f;
 };
 
-/** One item lying on the floor that nobody picked up. Section 6 keeps these. */
+/**
+ * One drop lying on the floor that nobody picked up. Section 6 keeps these.
+ *
+ * A DROP IS EITHER GEAR OR A STACK OF CRAFTING MATERIALS, never both, and
+ * `ACataclysmDroppedItem` is one actor class for the two because everything
+ * about lying on a floor is the same for them: a position, a name, a colour and
+ * a click. This mirrors that, and the pair of material fields is the pair
+ * `FCataclysmCarriedSlot` already uses for the same distinction.
+ *
+ * WHAT IS NOT HERE: the drop's printed name, the colour it is drawn in, its
+ * rarity and the material's tier. All four are worked out from the two fields
+ * above plus the game's data tables, so persisting them would store a second
+ * copy of something derived -- and a copy written by an older build would be
+ * the OLD name after an item was renamed in the design workbook.
+ * `ACataclysmDroppedItem::DescribeItself` is what fills them in again.
+ */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmSavedGroundItem
 {
 	GENERATED_BODY()
 
+	/** The gear item. Its Base is None when the drop is crafting materials. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FCataclysmItem Item;
 
+	/** Which crafting material this is, as a row key in
+	 *  `game/Data/CraftingMaterials.csv`. None when the drop is gear. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Material;
+
+	/** How many of that material lie here. Zero when the drop is gear. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 MaterialQuantity = 0;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FVector Location = FVector::ZeroVector;
+
+	/** Whether this drop is crafting materials rather than a piece of gear. */
+	bool IsMaterial() const { return !Material.IsNone() && MaterialQuantity > 0; }
 };
 
 /**

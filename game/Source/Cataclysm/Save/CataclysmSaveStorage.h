@@ -109,9 +109,39 @@ public:
 		ECataclysmSaveLoadResult& OutResult,
 		FString& OutMessage);
 
-	/** Write a record to a slot. Synchronous. */
+	/**
+	 * Write a record to a slot. Synchronous.
+	 *
+	 * THE ROUTE FOR THE DEATH WRITE, which section 6 says must happen in the
+	 * same frame health reaches zero. Every other write should use
+	 * `WriteToSlotAsync` below.
+	 */
 	static bool WriteToSlot(const UCataclysmSaveRecord* Record, const FString& SlotName,
 							int32 UserIndex, FString& OutError);
+
+	/**
+	 * Write a record to a slot without stalling the frame.
+	 *
+	 * THE JSON IS BUILT HERE, ON THE CALLING THREAD, AND ONLY THE BYTES GO
+	 * AWAY. That is not an optimisation, it is the whole reason this exists:
+	 * `UGameplayStatics::AsyncSaveGameToSlot` takes the record object and
+	 * serialises it with the engine's binary archive, which would throw away
+	 * the readable file section 4 chose JSON for. Building the text first and
+	 * handing `ISaveGameSystem::SaveGameAsync` a byte array is the same call
+	 * `AsyncSaveGameToSlot` makes once it has finished serialising.
+	 *
+	 * IT ALSO MEANS THE RECORD IS READ BEFORE THIS RETURNS, so the caller may
+	 * change or discard it immediately. A record handed to a background thread
+	 * and read there would be a race against the next frame's gather.
+	 *
+	 * @param WhenDone  called on the GAME THREAD when the write finishes, with
+	 *                  whether it worked. May be unset.
+	 * @return whether the write was STARTED. A true answer says the bytes were
+	 *         built and handed over, not that they reached the disk.
+	 */
+	static bool WriteToSlotAsync(const UCataclysmSaveRecord* Record,
+								 const FString& SlotName, int32 UserIndex,
+								 TFunction<void(bool)> WhenDone, FString& OutError);
 
 	/**
 	 * Read a record from a slot, migrating it if it is older than this build.

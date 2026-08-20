@@ -21,6 +21,28 @@ them, and once a file is here it is never edited again. **When a schema version 
 added, add a new file for the version being left behind and leave the older ones
 alone.**
 
+### The one exception, and when it stops applying
+
+**Nothing has ever loaded a save.** `ACataclysmGameMode` begins a fresh run
+every session and nothing reads one back, so no file these fixtures describe
+has ever existed on a player's disk. Until that changes, a fixture may be
+edited to match a field added to its record, because there is no history to
+preserve -- the fixture is describing a shape rather than a file somebody has.
+
+`Run_v1.json` was edited twice under that exception, both on 2026-08-20 and
+both to add a field the record had gained:
+
+- `Material` and `MaterialQuantity` on a ground item, because a drop on the
+  floor can be crafting materials and the record could not say so.
+- `MaxHealth` and `MaxEnergyShield` on a creature, because a creature's
+  maximum health is set by the encounter rather than by its class, and
+  without it a restored creature was clamped down to its class default.
+
+**Once the game can load a save, this exception is gone.** From then on a
+file here is a file a player might have, and changing one means changing what
+an old build wrote -- which is a lie about history and defeats the whole point
+of committing them. Add a schema version and a migration step instead.
+
 ## What is here
 
 | File | What it is |

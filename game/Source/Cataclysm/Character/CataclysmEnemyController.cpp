@@ -15,6 +15,7 @@
 #include "NavigationSystem.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "TimerManager.h"
+#include "Save/CataclysmSaveWriter.h"
 
 ACataclysmEnemyController::ACataclysmEnemyController()
 {
@@ -254,7 +255,21 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	}
 
 	AActor* Target = ChooseTarget();
+
+	// A FIGHT STARTS WHEN A CREATURE NOTICES SOMEBODY IT COULD NOT SEE BEFORE.
+	// That is the first of the five events section 6 writes on, and this is
+	// the only moment in the game that answers to the description. Losing a
+	// target and finding it again counts as a second fight starting, which is
+	// right: the player walked away and came back.
+	const bool bJustNoticedSomebody = Target != nullptr && CurrentTarget == nullptr;
+
 	CurrentTarget = Target;
+
+	if (bJustNoticedSomebody)
+	{
+		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+											ECataclysmSaveTrigger::FightStarted);
+	}
 
 	if (!Target)
 	{
