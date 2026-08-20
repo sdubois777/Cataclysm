@@ -239,6 +239,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	}
 }
 
+FString ACataclysmEnemyCharacter::ClipPathIn(const TCHAR* Folder,
+											 const TCHAR* Name)
+{
+	// AN UNREAL ASSET PATH REPEATS THE ASSET'S NAME after the package path. See
+	// the header for why this lives on the base class rather than as a private
+	// helper in each creature's own file.
+	return FString::Printf(TEXT("%s/%s.%s"), Folder, Name, Name);
+}
+
 float ACataclysmEnemyCharacter::PlayDeathAnimation()
 {
 	USkeletalMeshComponent* MeshComponent = GetMesh();

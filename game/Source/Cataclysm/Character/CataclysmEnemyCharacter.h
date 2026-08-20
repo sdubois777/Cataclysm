@@ -414,6 +414,37 @@ public:
 	TArray<TObjectPtr<class UAnimSequence>> DeathAnimations;
 
 	/**
+	 * Where one animation in a folder lives, in full.
+	 *
+	 * An Unreal asset path repeats the asset's name after the package path, so
+	 * a clip called `Death_A` in a folder `X` is at `X/Death_A.Death_A`. Every
+	 * creature that loads a list of clips writes that out.
+	 *
+	 * **IT IS HERE BECAUSE TWO CREATURES HAVING THEIR OWN COPY BROKE THE
+	 * BUILD.** The Imp and the Corrupted Sentinel each carried an identical
+	 * `ClipPathIn` in an anonymous namespace in their own `.cpp`, which is the
+	 * ordinary way to keep a helper private to one file. That works for as long
+	 * as the two files are compiled separately, and Unreal merges a module's
+	 * `.cpp` files into one translation unit -- so the moment both landed in the
+	 * same unity blob the definitions collided with "function already has a
+	 * body". It reached `development` on 2026-08-20, because UnrealBuildTool
+	 * uses `git status` to decide which files to compile on their own: while
+	 * either file was modified it was kept out of the blob and the collision
+	 * could not happen. **The build passed for a reason that went away when the
+	 * work was committed.**
+	 *
+	 * `tools/tests/test_no_two_files_share_an_anonymous_helper.py` is the guard
+	 * that catches it on a pull request, since continuous integration never
+	 * builds the C++ and so cannot catch it the way the compiler did.
+	 *
+	 * THE FORMAT STRING IS A LITERAL AND HAS TO BE. Unreal 5.8's
+	 * `FString::Printf` takes a `TCheckedFormatString`, which cannot be built
+	 * from a `const TCHAR*` variable, so the folder and the name are arguments
+	 * and the shape is fixed inside this function.
+	 */
+	static FString ClipPathIn(const TCHAR* Folder, const TCHAR* Name);
+
+	/**
 	 * What the death clip's draw is salted with, so it is not the draw the
 	 * drops came from.
 	 *
