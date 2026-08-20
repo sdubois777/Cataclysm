@@ -20,6 +20,92 @@ applied or still pending.
 
 ---
 
+## 2026-08-20 — A dying creature plays a death clip and its body waits for it
+
+**Affects:** a new "What dying looks like" subsection in section X of
+`docs/Cataclysm_GDD_v2.md`, a new `UCataclysmEnemyDeath`, two new fields on
+`ACataclysmEnemyCharacter`, and three new rows in
+`game/docs/enemy-source-assets.md`. Applied. Closes issue #522.
+
+### The gap
+
+An enemy whose health reached zero stopped acting and was destroyed on the next
+tick. **It played nothing and was gone within a frame.** That is the smallest
+thing that makes a fight end, and it reads as a fault even when everything behind
+it is correct. Death is the most visible moment in a fight and this project
+settles combat by playing it.
+
+### The three decisions the issue asked for
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| **Which clip, when a creature has more than one** | Drawn at random per death | It is the genre norm and it is one line. Choosing by HOW the creature died — burnt, crushed, shot — would need the damage type carried into the death path, and nothing carries it. |
+| **Whether the body stays after the clip** | It goes when the clip ends | Corpses are a look rather than a requirement, and they cost one actor each on a floor the design expects to hold a great many creatures. |
+| **What a creature with no art does** | Removed on the next frame, as before | Five of the seven vertical slice creatures have no art and fight as a placeholder cylinder, which has nothing to play. It is now written down rather than being a branch nobody noticed. |
+
+### The measurements
+
+Read out of the live editor on 2026-08-19, and now in
+`game/docs/enemy-source-assets.md`:
+
+| Creature | Clip | Seconds |
+| :-- | :-- | --: |
+| Abyssal Warden (Grux) | `Death_A` | 1.6667 |
+| Abyssal Warden (Grux) | `Death_B` | 1.6333 |
+| Brute (Rampage) | `Death_A` | 0.7667 |
+
+The Warden's `Death_A` was already recorded at 1.6667 and the new measurement
+matched it exactly. The Rampage pack ships **one** death clip; the whole
+animation folder was read, and `KnockBack` and `Stun_Start` are staggers rather
+than deaths.
+
+### The part that would have broken silently, and it is not playing the clip
+
+Playing a clip is one call. **Keeping it on screen is the hard half.**
+
+`ACataclysmAbyssalWardenCharacter::UpdateLoopingAnimation` runs every frame and
+puts an idle loop on the mesh whenever the creature is not moving. **A corpse is
+not moving.** So the death pose would be replaced within a frame or two and the
+creature would appear to stand up before vanishing — and nothing about the code
+that played the clip would look wrong.
+
+The answer is `SetActorTickEnabled(false)` in `HandleDeath`, which stops every
+per-frame job on the body at once, for every creature present and future, rather
+than a dead check inside each creature's own `Tick` that the next creature would
+have to remember. **It does not stop the animation**: `AActor::SetActorTickEnabled`
+sets `PrimaryActorTick` and nothing else, and a skeletal mesh component has its
+own tick function, which is what evaluates the clip.
+
+### Two smaller decisions worth recording
+
+**The death clip is played onto the mesh component in single-node mode**, which
+takes it off its animation Blueprint. That is wanted here and nowhere else: a
+living creature needs its graph because the graph is what blends its locomotion,
+and a dead one has nothing left to blend into. It is also the one path that works
+for both creatures, since the Brute has an animation Blueprint and the Abyssal
+Warden does not — which is why the death clip is handled on the shared base
+rather than three times over in the subclasses.
+
+A single-node one-shot **holds its last frame forever**. That is a fault
+everywhere else in this project — the project owner reported it on 2026-08-09 for
+the Abyssal Warden's attack — and it is exactly right for a death: the body keeps
+the pose it fell into until it is removed.
+
+**The clip is drawn from its own random stream, not the one the drops came from.**
+Both are seeded from the same two facts, this creature and the moment it died,
+because those are the only two available; without a salt the two streams are
+identical and which clip a creature fell with would shift what it dropped. That
+is a coupling nobody would look for and no test would catch.
+
+### One thing found while reading the packs, and not fixed here
+
+**Nothing plays a hit reaction.** Both packs ship `HitReact_Front`, `_Back`,
+`_Left` and `_Right`, and a creature being hit shows nothing at all. That is the
+same class of gap as this one and it is visible on every blow rather than on
+every kill. Filed as issue #745.
+
+---
+
 ## 2026-08-19 — A panel at the top of the screen says what the creature under the cursor is
 
 **Affects:** the "How an enemy's rarity is shown" subsection of section X of
