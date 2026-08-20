@@ -409,6 +409,57 @@ single pose does that with no seam. Rampage's 0.03 second
 `Ability_GroundSmash_Loop` exists for the same purpose and the Brute's C++ notes
 say so.
 
+**Measured again on 2026-08-20** when the creature was built. Every length above
+was read a third time and every one matched. Everything below is new.
+
+| Animation | Length | Note |
+|---|:-:|---|
+| `Idle` | 7.40 | The STANDING idle. This creature never stands up, so nothing plays it |
+| `Death_A` | 0.63 | |
+| `Death_B` | 0.47 | |
+| `Death_C` | 0.47 | |
+| `Death_D` | 0.43 | |
+| `Death_E` | 0.50 | |
+| `Death_F` | 0.47 | |
+| `Death_G` | 0.67 | |
+| `Death_H` | 0.77 | |
+
+**Eight deaths, which is the most in the project.** The Brute ships one, the
+Abyssal Warden and the Hellhound two, the Imp five.
+`ACataclysmEnemyCharacter::PlayDeathAnimation` draws one of however many it is
+given. All eight are inside `UCataclysmEnemyDeath::LongestCorpseSeconds`, which
+is 4.0, with more than three seconds to spare.
+
+The mesh, `Minion_Lane_Siege_Dawn`, measures **196.2 cm tall** with reference-pose
+bounds of 155.9 across X and 211.1 across Y, and carries **one material slot** on
+the skeleton `Minion_Lane_Siege_Skeleton`. It is worn at its authored size:
+`ACataclysmCorruptedSentinelCharacter::SentinelCapsuleHalfHeight` is 98.1.
+
+#### When the shot leaves the weapon is still unknown
+
+Issue [#478](https://github.com/sdubois777/Cataclysm/issues/478) asks for the
+release moment inside `Fire_Planted`, so the telegraph and the shot can be lined
+up the way `ACataclysmBruteCharacter::RockThrowStrikeIntoReleaseSeconds` lines up
+the thrown rock. **Two ways of measuring it have been tried and both failed their
+control**, so there is still no figure. `tools/measure_sentinel_release.py` is the
+script, and it reports no release moment rather than a number nobody should use.
+
+| Method | `Fire_Planted` | `PlantedIntro`, which fires nothing |
+|---|:-:|:-:|
+| Largest muzzle acceleration | 485 cm/s/s | **502 cm/s/s** |
+| Slide furthest from the gun body | 55.0 cm | **102.8 cm** |
+
+In both cases the clip with no shot in it reads at least as hard as the clip with
+one. The likely reason is the warning this file already gives about Rampage: a
+Paragon rig's weapon bones may be props the animator drives for effect rather
+than parts of a working weapon. **Of the four `gun_` and `weapon_gun_` bones the
+melee lane minion carries, this skeleton's firing clips drive only `gun_slide`**;
+`weapon_gun_r`, `gun_foregrip` and `gun_stock_retractor` are not animated at all.
+
+Until it is measured the creature fires at the end of its wind-up, which is what
+every other telegraphed ability in the project does. What is lost is only the
+guarantee that the visible muzzle flash agrees with it.
+
 ### The Brute — Rampage
 
 | Animation | Length | Note |

@@ -46,6 +46,25 @@ HIT_REACTIONS = [
     "HitReact_Right_Planted",
 ]
 
+#: EIGHT DEATHS, WHICH IS THE MOST IN THE PROJECT. The Brute ships one, the
+#: Abyssal Warden and the Hellhound two, the Imp five.
+#: `ACataclysmEnemyCharacter::PlayDeathAnimation` draws one of however many it is
+#: given, and every one has to be inside
+#: `UCataclysmEnemyDeath::LongestCorpseSeconds`, so their lengths are needed
+#: before the creature can be dressed. Added 2026-08-20 for issue #39.
+DEATHS = ["Death_A", "Death_B", "Death_C", "Death_D",
+          "Death_E", "Death_F", "Death_G", "Death_H"]
+
+#: The two idles. `Idle_Planted` is the rooted one and is a single pose; `Idle`
+#: is the standing one, which this creature never uses because it never stands
+#: up. Both measured so the difference is on the record.
+IDLES = ["Idle_Planted", "Idle"]
+
+#: The mesh, so the capsule's half-height comes from a measurement rather than
+#: from the figure in `game/docs/enemy-source-assets.md` being trusted twice.
+MESH = ("/Game/ParagonMinions/Characters/Minions/Down_Minions"
+        "/Meshes/Minion_Lane_Siege_Dawn.Minion_Lane_Siege_Dawn")
+
 #: What the model designs, from `ARCHETYPES` in
 #: `sim/cataclysm_sim/enemy_stats.py`. Written here rather than imported because
 #: this runs inside the editor's own Python, which does not have `sim/` on its
@@ -76,9 +95,45 @@ def measure(names):
     return lengths
 
 
+def describe_the_mesh():
+    mesh = unreal.load_asset(MESH)
+    if mesh is None:
+        say("  THE MESH WAS NOT FOUND AT " + MESH)
+        return
+
+    extent = mesh.get_bounds().box_extent
+    say("  reference-pose bounds, full width in centimetres:")
+    say("    X {0:.1f}   Y {1:.1f}   Z (height) {2:.1f}".format(
+        extent.x * 2.0, extent.y * 2.0, extent.z * 2.0))
+    say("  so half its height, which is what a capsule wants, is {0:.2f}"
+        .format(float(extent.z)))
+
+    slots = mesh.get_editor_property("materials")
+    say("  material slots: {0}".format(len(slots)))
+    skeleton = mesh.get_editor_property("skeleton")
+    say("  skeleton: {0}".format(skeleton.get_name() if skeleton else "(none)"))
+
+
 def main():
+    say("=== HOW BIG THE CORRUPTED SENTINEL'S MESH IS ===")
+    describe_the_mesh()
+
+    say("")
     say("=== THE CORRUPTED SENTINEL'S CLIPS ===")
     lengths = measure(INTERESTING)
+
+    say("")
+    say("=== STANDING, ROOTED AND NOT ===")
+    measure(IDLES)
+
+    say("")
+    say("=== DYING, EIGHT WAYS ===")
+    deaths = measure(DEATHS)
+    say("  UCataclysmEnemyDeath::LongestCorpseSeconds is 4.0, and every clip "
+        "above has to be inside it or the body is removed mid-fall.")
+    for name in sorted(deaths):
+        if deaths[name] > 4.0:
+            say("  {0:26} IS LONGER THAN THE CORPSE IS KEPT".format(name))
 
     say("")
     say("=== ROOTED HIT REACTIONS ===")

@@ -7,6 +7,7 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
@@ -111,6 +112,7 @@ void ACataclysmGameMode::StartPlay()
 	SpawnAbyssalWardens();
 	SpawnHellhounds();
 	SpawnImps();
+	SpawnCorruptedSentinels();
 
 	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
 	// here, so that a test can reach it: StartPlay wants a player controller and
@@ -462,6 +464,100 @@ int32 ACataclysmGameMode::SpawnImps()
 		ImpAttackDamage * Spawned
 			/ ACataclysmImpCharacter::DesignedAttackIntervalSeconds,
 		ACataclysmImpCharacter::DesignedWalkSpeedCmPerSecond);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnCorruptedSentinels()
+{
+	UWorld* World = GetWorld();
+	if (!World || CorruptedSentinelCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction every
+	// other spawner makes. **It matters more for this creature than for any of
+	// them**, because it cannot walk: a creature spawned with its feet buried
+	// normally has the movement component push it out, and this one has no
+	// movement to do it with.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmCorruptedSentinelCharacter::SentinelCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	const float BearingRadians =
+		FMath::DegreesToRadians(CorruptedSentinelBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < CorruptedSentinelCount; ++Index)
+	{
+		const float Angle = BearingRadians
+			+ 2.0f * PI * static_cast<float>(Index)
+				/ static_cast<float>(FMath::Max(CorruptedSentinelCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * CorruptedSentinelDistanceCm,
+			FMath::Sin(Angle) * CorruptedSentinelDistanceCm,
+			RiseCm);
+
+		// FACING THE PLAYER START, AND IT CANNOT WALK ROUND TO FACE ANYTHING
+		// ELSE. It turns at 480 degrees a second, so it tracks a player who
+		// circles it; where it starts pointed still decides what it sees first.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmCorruptedSentinelCharacter* Sentinel =
+			World->SpawnActor<ACataclysmCorruptedSentinelCharacter>(
+				ACataclysmCorruptedSentinelCharacter::StaticClass(), Where,
+				Facing, SpawnParams);
+		if (!Sentinel)
+		{
+			continue;
+		}
+
+		Sentinel->SetHealth(CorruptedSentinelHealth);
+		Sentinel->SetAttackDamage(CorruptedSentinelAttackDamage);
+		Sentinel->SetArmour(CorruptedSentinelArmour);
+		Sentinel->SetRarityStep(
+			RarityStepFor(CorruptedSentinelRarityStep, Sentinel));
+
+		CorruptedSentinels.Add(Sentinel);
+		++Spawned;
+	}
+
+	// THE LOG SAYS IT CANNOT MOVE, because a creature standing still while being
+	// shot at looks broken and is not.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Corrupted Sentinels %.0f cm from %s on a bearing of %.0f "
+			 "degrees. Each has %.0f health with %.0f%% of it as an energy "
+			 "shield, %.0f armour at difficulty tier %d, and **CANNOT MOVE AT "
+			 "ALL** -- its designed speed is zero, so walking out of its range "
+			 "ends the fight. Its Siege Bolt marks a %.0f cm lane for %.2f s "
+			 "and then flies %.0f cm, every %.1f s. Its Brimstone Mortar marks "
+			 "a %.0f cm circle for %.2f s and lobs onto it, every %.0f s."),
+		Spawned, CorruptedSentinelDistanceCm, *Centre.ToCompactString(),
+		CorruptedSentinelBearingDegrees,
+		CorruptedSentinelHealth,
+		ACataclysmCorruptedSentinelCharacter::DesignedEnergyShieldFraction
+			* 100.0f,
+		CorruptedSentinelArmour, DifficultyTierFor(this),
+		ACataclysmCorruptedSentinelCharacter::SiegeBoltRadiusCm,
+		ACataclysmCorruptedSentinelCharacter::SiegeBoltWindUpSeconds,
+		ACataclysmCorruptedSentinelCharacter::SiegeBoltRangeCm,
+		ACataclysmCorruptedSentinelCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarRadiusCm,
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarWindUpSeconds,
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarCooldownSeconds);
 
 	return Spawned;
 }
