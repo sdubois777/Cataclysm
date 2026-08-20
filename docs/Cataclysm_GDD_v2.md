@@ -4387,6 +4387,37 @@ rather than waiting, so moving between two enemies never shows the wrong one.
 
 
 
+### **What dying looks like**
+
+**A creature plays a death animation and its body is removed when the clip
+ends.** Before this it was removed on the frame after the killing blow and
+played nothing, which reads as a fault even when everything behind it is
+correct. Death is the most visible moment in a fight and this project settles
+combat by playing it.
+
+
+
+**A creature with more than one death clip draws one per death.** The Abyssal
+Warden's art has two. Choosing by how the creature died -- burnt, crushed,
+shot -- is a larger design that would need the damage type carried into the
+death, and nothing carries it.
+
+
+
+**The body goes when the clip ends, and corpses do not remain.** Leaving them
+is a look rather than a requirement, and it costs one actor each on a floor
+the design expects to hold a great many creatures. If corpses are ever wanted,
+this is the sentence that would change.
+
+
+
+**A creature with no art is still removed on the next frame.** Five of the
+seven vertical slice creatures have no art and fight as a placeholder
+cylinder, which has nothing to play. That is stated rather than left as an
+accident, because it is what most creatures do today.
+
+
+
 ## **Enemy Score Formula**
 
 Every enemy's score is built from **the width of its difficulty tier**: the gap between the maximum Power Score a player is expected to reach at the end of this tier and the end of the tier below. Nothing in the formula multiplies. Each contribution is a fraction of that width, or a flat number of points, and they are added.

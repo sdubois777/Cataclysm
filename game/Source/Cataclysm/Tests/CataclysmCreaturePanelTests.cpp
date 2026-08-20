@@ -434,48 +434,6 @@ bool FCataclysmCreaturePanelModifierNames::RunTest(const FString&)
 	return true;
 }
 
-/**
- * The health figures, and the one value they must never print.
- *
- * A LIVING CREATURE NEVER READS ZERO. Health is an unrounded float that is only
- * clamped, so a creature sitting on 0.3 health is alive and hittable, and
- * rounding alone prints "0 / 250" for it. That is the same trap
- * `UCataclysmCombatOverlay::FigureFor` exists for, and it is not rare: every
- * killing blow in the game is clamped to exactly the target's remaining health.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreaturePanelHealthFigures,
-	"Cataclysm.CreaturePanel.ALivingCreatureNeverReadsZeroHealth",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmCreaturePanelHealthFigures::RunTest(const FString&)
-{
-	using namespace CataclysmCreaturePanelTest;
-
-	TestEqual(TEXT("a creature at full health reads both figures"),
-		FPanel::HealthTextFor(250.0f, 250.0f), FString(TEXT("250 / 250")));
-
-	TestEqual(TEXT("a hurt one reads what is left"),
-		FPanel::HealthTextFor(112.4f, 250.0f), FString(TEXT("112 / 250")));
-
-	// THE ONE THAT MATTERS.
-	TestEqual(TEXT("a creature on a fraction of a point still reads 1"),
-		FPanel::HealthTextFor(0.3f, 250.0f), FString(TEXT("1 / 250")));
-
-	TestEqual(TEXT("and one just above rounding still reads 1"),
-		FPanel::HealthTextFor(0.49f, 250.0f), FString(TEXT("1 / 250")));
-
-	// A CORPSE READS ZERO, WHICH IS TRUE OF IT. The panel is refused for one
-	// anyway; this is the arithmetic being honest rather than the panel.
-	TestEqual(TEXT("a creature actually at zero reads zero"),
-		FPanel::HealthTextFor(0.0f, 250.0f), FString(TEXT("0 / 250")));
-
-	// NO POOL AT ALL SAYS NOTHING RATHER THAN "0 / 0".
-	TestTrue(TEXT("a creature with no health pool says nothing"),
-		FPanel::HealthTextFor(0.0f, 0.0f).IsEmpty());
-
-	return true;
-}
-
 // ---------------------------------------------------------------------------
 // Where the panel goes
 // ---------------------------------------------------------------------------

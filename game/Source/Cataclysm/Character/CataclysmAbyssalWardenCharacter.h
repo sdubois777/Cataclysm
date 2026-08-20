@@ -605,6 +605,17 @@ public:
 	TObjectPtr<class UAnimSequence> StampedeAnimation;
 
 	/**
+	 * The two clips this creature may die with, from the Grux pack.
+	 *
+	 * TWO, AND ONE IS DRAWN PER DEATH. Measured 2026-08-19 in the editor:
+	 * Death_A is 1.6667 seconds and Death_B is 1.6333. Which one plays is
+	 * UCataclysmEnemyDeath::ClipToPlay, and the body is kept for exactly the
+	 * clip's own length.
+	 */
+	static const TCHAR* FirstDeathAnimationPath;
+	static const TCHAR* SecondDeathAnimationPath;
+
+	/**
 	 * The clips still to play from the current attack, in order.
 	 *
 	 * THE STAND-IN FOR A MONTAGE. Each is started as the one before it ends,

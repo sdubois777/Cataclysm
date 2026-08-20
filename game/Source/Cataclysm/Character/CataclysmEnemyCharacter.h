@@ -394,6 +394,62 @@ public:
 	 */
 	void ApplyStartingAttributes();
 
+	//~ Dying. Issue #522.
+
+	/**
+	 * The clips this creature may die with, in no particular order.
+	 *
+	 * FILLED BY THE SUBCLASS THAT OWNS THE ART, in its ResolveBody, beside
+	 * every other clip it loads. It is held on the base rather than on each
+	 * creature because what is done WITH it is the same for all of them --
+	 * play one, wait for it, remove the body -- and that lives in HandleDeath
+	 * below.
+	 *
+	 * EMPTY IS THE ORDINARY CASE AND NOT A FAULT. Five of the seven vertical
+	 * slice creatures have no art yet and die wearing a placeholder cylinder,
+	 * which has nothing to play. Those are removed on the next tick, which is
+	 * what every creature did before issue #522.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TArray<TObjectPtr<class UAnimSequence>> DeathAnimations;
+
+	/**
+	 * What the death clip's draw is salted with, so it is not the draw the
+	 * drops came from.
+	 *
+	 * BOTH ARE SEEDED FROM THE SAME TWO FACTS -- this creature and the moment
+	 * it died -- because those are the only two facts available, and two
+	 * streams from one seed answer identically. Without a salt, which clip a
+	 * creature fell with would move in step with what it dropped.
+	 *
+	 * THE VALUE ITSELF MEANS NOTHING. Any constant that is not zero separates
+	 * the two streams; this one is arbitrary and is written down rather than
+	 * typed inline so that nobody reads it as a designed number.
+	 */
+	static constexpr int32 DeathDrawSalt = 0x5EAD;
+
+	/**
+	 * The clip this creature actually died with, once it has.
+	 *
+	 * READ BY TESTS, WHICH CANNOT OTHERWISE SEE WHAT WAS PLAYED. It is the
+	 * same reason ACataclysmAbyssalWardenCharacter::LastPlayedAnimation
+	 * exists: nothing reaches a screen under -nullrhi, so the only evidence a
+	 * clip was chosen is the choice being recorded.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> DiedWith;
+
+	/**
+	 * How long this creature's body is being kept, in seconds.
+	 *
+	 * ZERO MEANS THE NEXT TICK, which is what a creature with no death clip
+	 * gets. Recorded for the same reason DiedWith is: a timer is not visible
+	 * to a test, and the difference between waiting for a clip and not waiting
+	 * at all is the whole of issue #522.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float CorpseSeconds = 0.0f;
+
 	/** A stand-in body, so an enemy is visible before there is any art. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
 	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
@@ -639,6 +695,30 @@ protected:
 	static constexpr float LongestChargeStepCm = 75.0f;
 
 private:
+	/**
+	 * Plays one of this creature's death clips, if it has any.
+	 *
+	 * ONTO THE COMPONENT IN SINGLE-NODE MODE, WHICH TAKES THE MESH OFF ITS
+	 * ANIMATION BLUEPRINT. That is what is wanted here and nowhere else: a
+	 * living creature needs its graph, because the graph is what blends its
+	 * locomotion, and a dead one has nothing left to blend into. The Brute has
+	 * an animation Blueprint and the Abyssal Warden does not, and this is the
+	 * one path that works for both -- which is why the death clip is handled
+	 * here rather than three times over in the subclasses.
+	 *
+	 * A SINGLE-NODE ONE-SHOT HOLDS ITS LAST FRAME FOREVER, which is a fault
+	 * everywhere else in this project -- the project owner reported it on
+	 * 2026-08-09 for the Abyssal Warden's attack -- and is exactly right for a
+	 * death: the body keeps the pose it fell into until it is removed.
+	 *
+	 * ITS OWN RANDOM STREAM, NOT THE ONE THE DROPS CAME FROM. Sharing one
+	 * would make which clip a creature died with change what it dropped, which
+	 * is a coupling nobody would look for and which no test would catch.
+	 *
+	 * @return how long the body should be kept, or 0 when nothing was played
+	 */
+	float PlayDeathAnimation();
+
 	FCataclysmAbilitySetHandles GrantedHandles;
 
 	/** Whether a charge is running. See BeginCharge. */

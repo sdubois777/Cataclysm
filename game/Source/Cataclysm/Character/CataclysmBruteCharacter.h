@@ -1351,6 +1351,16 @@ public:
 	static const TCHAR* AttackAnimationPath;
 
 	/**
+	 * The one clip this creature dies with.
+	 *
+	 * ONE, BECAUSE THE PACK SHIPS ONE. Measured 2026-08-19 in the editor at
+	 * 0.7667 seconds, which is less than half the Abyssal Warden's. The whole
+	 * Rampage animation folder was read and Death_A is the only death clip in
+	 * it; KnockBack and Stun_Start are staggers rather than deaths.
+	 */
+	static const TCHAR* DeathAnimationPath;
+
+	/**
 	 * The two figures the walking and chasing gaits are played back at, and where
 	 * they now live.
 	 *
