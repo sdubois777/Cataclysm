@@ -43,6 +43,7 @@ SOURCE = REPO_ROOT / "game" / "Source" / "Cataclysm"
 TRIGGERS_CPP = SOURCE / "Save" / "CataclysmSaveTriggers.cpp"
 TRIGGERS_H = SOURCE / "Save" / "CataclysmSaveTriggers.h"
 WRITER_CPP = SOURCE / "Save" / "CataclysmSaveWriter.cpp"
+GAME_MODE_CPP = SOURCE / "Player" / "CataclysmGameMode.cpp"
 PLAYER_CPP = SOURCE / "Character" / "CataclysmPlayerCharacter.cpp"
 SAVE_DESIGN = REPO_ROOT / "docs" / "Save_System_Design.md"
 
@@ -186,3 +187,26 @@ def test_the_interval_and_the_threshold_are_real_numbers() -> None:
         f"the health threshold is {threshold}, and it has to be a share of maximum "
         f"health between none and all of it. Zero switches the check off and one "
         f"fires on the first scratch.")
+
+
+def test_starting_play_turns_the_save_writer_on() -> None:
+    """The one line no automation test can reach.
+
+    `ACataclysmGameMode::StartPlay` wants a player controller and a pawn, so it
+    cannot be called from an automation test -- which is why
+    `CataclysmSandboxTests.cpp` calls the three spawners directly rather than
+    through it. `BeginSavingThisRun` exists as its own method for the same
+    reason and IS covered, by
+    `Cataclysm.SaveWriter.TheGameModeIsWhatTurnsTheWriterOn`.
+
+    WHAT IS LEFT UNCOVERED IS THE CALL ITSELF, and this is what covers it.
+    Without the call the save system is built, tested, and switched off in the
+    running game, and every other test in the project goes on passing.
+    """
+    body = function_body(read(GAME_MODE_CPP), "void ACataclysmGameMode::StartPlay()")
+
+    assert "BeginSavingThisRun" in body, (
+        "ACataclysmGameMode::StartPlay no longer calls BeginSavingThisRun, so the "
+        "game never tells the save writer which run it is playing and nothing is "
+        "ever written. docs/Save_System_Design.md section 6: the game saves "
+        "itself, often, and there is no manual save.")

@@ -74,6 +74,31 @@ public:
 	int32 SpawnAbyssalWardens();
 
 	/**
+	 * Tell the save writer which run and which character this session is
+	 * playing, which is what makes the game start saving itself.
+	 *
+	 * NOTHING IS WRITTEN UNTIL THIS RUNS. A record is stored in a slot named
+	 * after a generated identifier, and until one is supplied there is no slot.
+	 * `docs/Save_System_Design.md` section 6, set by the project owner on
+	 * 2026-08-20: the game saves itself, often, and there is no manual save.
+	 *
+	 * A FRESH RUN EVERY SESSION, AND NOTHING EVER READS IT BACK. There is no
+	 * new-game or continue flow, so a run begun here is written to a slot named
+	 * after an identifier generated a moment ago and forgotten when the session
+	 * ends. **That is the honest state of the save system**: the writing half is
+	 * built and the choosing half is not. Issue #753.
+	 *
+	 * PUBLIC SO A TEST CAN CALL IT, which is the same reason the three spawners
+	 * above are public. `StartPlay` cannot be called from an automation test --
+	 * it wants a player controller and a pawn -- so a call left inside it would
+	 * be the one line turning this whole feature on with nothing covering it.
+	 *
+	 * @return whether the writer was found and told
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Save")
+	bool BeginSavingThisRun();
+
+	/**
 	 * The rung a creature spawns at, given what its sandbox setting holds.
 	 *
 	 * NOT A UFUNCTION. Nothing in Blueprint calls it, and it takes a raw actor
