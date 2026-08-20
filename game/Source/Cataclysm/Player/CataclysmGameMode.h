@@ -107,6 +107,18 @@ public:
 	int32 SpawnImps();
 
 	/**
+	 * Puts Corrupted Sentinels in the sandbox. Returns how many were placed.
+	 *
+	 * **IT CANNOT MOVE AT ALL**, which is the first thing anybody watching it
+	 * will notice and is the whole creature rather than a defect. It shoots 14
+	 * metres, which is further than anything else in the game reaches, and the
+	 * design's line about it is "forces the player to stay mobile". Walk into
+	 * its range and it fires every two seconds; walk out and it can do nothing.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnCorruptedSentinels();
+
+	/**
 	 * Tell the save writer which run and which character this session is
 	 * playing, which is what makes the game start saving itself.
 	 *
@@ -158,6 +170,11 @@ public:
 	/** Every Imp this game mode placed. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<class ACataclysmImpCharacter>> Imps;
+
+	/** Every Corrupted Sentinel this game mode placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmCorruptedSentinelCharacter>>
+		CorruptedSentinels;
 
 	// ----------------------------------------------------------------------
 	// Difficulty
@@ -647,6 +664,70 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float ImpAttackDamage = 9.0f;
 
+	/** How many Corrupted Sentinels to place. Zero for none. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 CorruptedSentinelCount = 1;
+
+	/**
+	 * How far from the player start each one is put, in centimetres.
+	 *
+	 * A HUNDRED CENTIMETRES BEYOND ITS OWN RANGE, which is the tightest margin
+	 * of any creature here and is deliberate. It shoots 14 metres and notices at
+	 * 14 metres -- the two are one number for a creature that cannot close the
+	 * difference -- so at 1500 it can see and hit nothing at the player start,
+	 * and one step forward puts the player inside its range at the exact edge.
+	 * Anything much further out would mean walking a long way to find out what
+	 * the creature does, since it will not come to you.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float CorruptedSentinelDistanceCm = 1500.0f;
+
+	/**
+	 * Which direction from the player start it is placed in, in degrees.
+	 *
+	 * THE FOURTH DIRECTION, AND THE LAST ONE FREE. The Brute and the Abyssal
+	 * Warden stand in front of the player start at 0 degrees, the Hellhound
+	 * behind it at 180, the pack of Imps to one side at 90, and this one to the
+	 * other. The sandbox floor is 4000 cm across so it reaches 2000 cm in every
+	 * direction, and a fifth creature will need somewhere else to go.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox")
+	float CorruptedSentinelBearingDegrees = 270.0f;
+
+	/**
+	 * How much health each one has.
+	 *
+	 * THE DESIGN MODEL'S OWN FIGURE, on exactly the reasoning `BruteHealth`
+	 * records. It is `stats_on_floor("Common", tier=1, "Cataclysm",
+	 * kind="Corrupted Sentinel")`, rounded to a whole number.
+	 *
+	 * **AND 35% OF IT IS AN ENERGY SHIELD**, which no other creature in the
+	 * sandbox has. That is set by the creature's own class rather than here,
+	 * from `energy_shield_fraction`, and it sits in front of the health rather
+	 * than adding to it.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float CorruptedSentinelHealth = 324.0f;
+
+	/**
+	 * How much armour each one has. From the same stat block as its health, and
+	 * the most of any creature in the sandbox: its `armor_share` is 2.2 against
+	 * the Brute's 2.0. At tier 1 it removes 12.09% of a hit.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float CorruptedSentinelArmour = 110.0f;
+
+	/**
+	 * What one of its bolts is worth. The training dummy's 20 times the designed
+	 * damage share of 1.10, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`.
+	 *
+	 * ITS MORTAR IS WORTH ONE AND A HALF OF THESE, because the Special slot is
+	 * 150%.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float CorruptedSentinelAttackDamage = 22.0f;
+
 	// NO ImpArmour, AND THAT IS THE DESIGN RATHER THAN AN OVERSIGHT. The Imp's
 	// `armor_share` is exactly 0.0 and it is the only creature in the roster
 	// with none at all: its defence is 25% evasion, which is why area damage
@@ -729,6 +810,11 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 ImpRarityStep = -1;
+
+	/** Which rung each Corrupted Sentinel spawns at, or -1 to draw one. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 CorruptedSentinelRarityStep = -1;
 
 	/**
 	 * Which rung each training dummy spawns at, or -1 to draw one.
