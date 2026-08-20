@@ -108,27 +108,33 @@ void ACataclysmGameMode::StartPlay()
 	SpawnBrutes();
 	SpawnAbyssalWardens();
 
-	// AND THE GAME STARTS SAVING ITSELF. `docs/Save_System_Design.md` section
-	// 6, set by the project owner on 2026-08-20: the game saves itself, often,
-	// and there is no manual save. Until something tells the writer which run
-	// and which character it is playing it has no slot to write to, so this is
-	// what switches it on.
-	//
-	// A FRESH RUN EVERY SESSION, AND NOTHING EVER READS IT BACK. There is no
-	// new-game or continue flow and no screen that would offer one, so a run
-	// begun here is written to a slot named after an identifier generated a
-	// moment ago and forgotten when the session ends. **That is the honest
-	// state of the save system**: the writing half is built and the choosing
-	// half is not. What it buys today is that the files can be looked at.
-	//
-	// THE FLOOR IS NAMED FOR THE SANDBOX AND NUMBERED 1, because the sandbox
-	// is the only level there is and a floor of zero means "nobody is in a
-	// dungeon", which would make the record say the fight is not happening.
-	if (UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(GetWorld()))
+	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
+	// here, so that a test can reach it: StartPlay wants a player controller and
+	// a pawn and cannot be called from one.
+	BeginSavingThisRun();
+}
+
+bool ACataclysmGameMode::BeginSavingThisRun()
+{
+	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(GetWorld());
+	if (!Writer)
 	{
-		Writer->BeginRun(FGuid::NewGuid(), FGuid::NewGuid(),
-						 FName(TEXT("Sandbox")), /*Floor=*/1);
+		// NOT A FAILURE WORTH LOGGING. A world with no save writer is a world
+		// built without subsystems, which is a thing a test does deliberately.
+		return false;
 	}
+
+	// TWO IDENTIFIERS GENERATED HERE AND NOWHERE ELSE. When something chooses
+	// between a new run and a saved one -- issue #753 -- this is the line it
+	// replaces: the identifiers come out of the character being continued
+	// instead of out of thin air.
+	//
+	// THE FLOOR IS NAMED FOR THE SANDBOX AND NUMBERED 1, because the sandbox is
+	// the only level there is and a floor of zero means "nobody is in a
+	// dungeon", which would make the record say the fight is not happening.
+	Writer->BeginRun(FGuid::NewGuid(), FGuid::NewGuid(),
+					 FName(TEXT("Sandbox")), /*Floor=*/1);
+	return true;
 }
 
 int32 ACataclysmGameMode::RarityStepFor(int32 Setting,

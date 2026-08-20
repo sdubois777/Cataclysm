@@ -10,6 +10,7 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
+#include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveTriggers.h"
@@ -502,6 +503,82 @@ bool FCataclysmSaveWriterHealthThreshold::RunTest(const FString&)
 		Writer->WritesStarted(), 1);
 
 	Forget(Writer);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The game mode is what turns the writer on, and until it does nothing is
+ * written.
+ *
+ * WHY THIS TEST EXISTS AT ALL. Every other test in this file calls
+ * `BeginRun` itself, so all of them would go on passing with the game never
+ * calling it -- and the save system would be built, tested, and switched off in
+ * the running game with nothing saying so.
+ *
+ * IT CALLS `BeginSavingThisRun` RATHER THAN `StartPlay`. StartPlay wants a
+ * player controller and a pawn and cannot be reached from an automation test,
+ * which is the same reason `CataclysmSandboxTests.cpp` calls the three
+ * spawners directly. The one line StartPlay contributes is the call itself.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterTurnedOnByTheGameMode,
+	"Cataclysm.SaveWriter.TheGameModeIsWhatTurnsTheWriterOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterTurnedOnByTheGameMode::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
+
+	if (!Writer || !GameMode)
+	{
+		AddError(TEXT("a writer and a game mode were both needed"));
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	TestFalse(TEXT("the writer is off before the game mode says anything"),
+		Writer->IsWriting());
+
+	TestTrue(TEXT("the game mode found the writer and told it"),
+		GameMode->BeginSavingThisRun());
+
+	TestTrue(TEXT("and the writer is now writing"), Writer->IsWriting());
+	TestFalse(TEXT("it has a run slot to write to"),
+		Writer->RunSlotName().IsEmpty());
+	TestFalse(TEXT("and a character slot"),
+		Writer->CharacterSlotName().IsEmpty());
+
+	// AND IT REALLY WRITES. Being switched on is not the same as writing, and
+	// a test that stopped at the flag would pass with the storage layer gone.
+	Forget(Writer);
+	TestTrue(TEXT("a death now reaches the disk"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied));
+	TestTrue(TEXT("and the file is there"),
+		UGameplayStatics::DoesSaveGameExist(Writer->RunSlotName(), UserIndex));
+
+	// TWO SESSIONS DO NOT SHARE A SLOT. Each run gets its own identifier, so
+	// one session cannot overwrite another's record -- which is what a fixed
+	// slot name would do.
+	const FString FirstRun = Writer->RunSlotName();
+	GameMode->BeginSavingThisRun();
+	TestNotEqual(TEXT("a second run is written somewhere else"),
+		Writer->RunSlotName(), FirstRun);
+
+	Forget(Writer);
+	if (UGameplayStatics::DoesSaveGameExist(FirstRun, UserIndex))
+	{
+		UGameplayStatics::DeleteGameInSlot(FirstRun, UserIndex);
+	}
+
 	World->DestroyWorld(false);
 	return true;
 }
