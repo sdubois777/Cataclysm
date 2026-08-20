@@ -638,8 +638,12 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # by simply walking during the 0.83 second wind-up -- which is the
             # test a charge has to pass to be worth having at all.
             #
-            # The trail is the same three riders Flamedart carries, plus the one
-            # thing that is new in the whole slice: GroundHitsAllies.
+            # The trail is the same three riders Flamedart carries, plus
+            # GroundHitsAllies, which was new here. The Gatekeeper's Soulfall
+            # is the second and last ability to carry it, and the two mean
+            # different things: this fire burns the Hellhound ITSELF as well
+            # as its allies, and Soulfall's burns the Gatekeeper's summons
+            # and says nothing about the Gatekeeper. See issue #774.
             params={"Mode": "Charge", "Range": 10, "Radius": 1.5, "Burn": 1,
                     "GroundRadius": 1.5, "GroundDuration": 4,
                     # 25% per second for 4 seconds, so standing in the trail
@@ -1178,7 +1182,25 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # rather than invented: both abilities exist to answer a player who
             # stands off, and the Sentinel's were settled first. Radius 3.0 the
             # same. Wind-up 0.4 + 3.0 / 3.5 = 1.26 s inside a 4.0 s half-cycle.
-            params={"Range": 14, "Radius": 3.0, "Pierce": 0, "Arc": 0.25},
+            # THE FIVE RIDERS BELOW WERE MISSING UNTIL 2026-08-20, and the
+            # paragraph above described them as though they were here. The
+            # Gatekeeper's row in docs/Cataclysm_GDD_v2.md stated all five
+            # the whole time, and that document is authoritative, so this
+            # was data lost from the model rather than a design question.
+            # Nothing here is invented: GroundDuration is the cooldown,
+            # GroundRadius is the burst radius, GroundPercent is the
+            # project's rule of 100 / GroundDuration, and GroundHitsAllies
+            # is the Hellhound's rider. Issue #774, and the guard that
+            # could not see it is fixed in the same change.
+            params={"Range": 14, "Radius": 3.0, "Pierce": 0, "Arc": 0.25,
+                    "Burn": 1,
+                    "GroundRadius": 3.0, "GroundDuration": 10,
+                    # 10% a second for 10 seconds, so standing in a patch
+                    # for its whole life costs one full hit. The general
+                    # rule is 100 / GroundDuration, the same arithmetic the
+                    # Hellhound's 25 over 4 seconds comes from.
+                    "GroundPercent": 10,
+                    "GroundHitsAllies": 1},
             # The top of the Special slot's 3-to-10 band in
             # game/Data/SkillSlots.csv, because the burning ground it leaves
             # must not accumulate faster than one patch per expiry.

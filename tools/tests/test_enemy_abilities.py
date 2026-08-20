@@ -162,17 +162,81 @@ def succubus_abilities():
     return abilities("Succubus")
 
 
+def parameters_the_document_states(ability) -> dict[str, str]:
+    """The parameter cell of this ability's row in the document, parsed.
+
+    READ FROM THE FILE RATHER THAN FROM THE SECTION PASSED IN, because
+    `unwrapped` collapses every newline to a space, so the section handed to
+    `assert_row_matches` is one long line with no rows left in it. That is
+    right for the prose checks it was written for and useless for a table.
+
+    A row reads `| Name | Slot | Shape | <parameters> | runs on |
+    telegraphed |` with the parameters in backticks, and a creature that has
+    phases carries an extra phase column. So the cell is found by looking for
+    the backticked one rather than by counting columns.
+
+    AN ABILITY NAME IS UNIQUE ACROSS THE DOCUMENT, which is what makes
+    searching the whole file safe rather than only one enemy's subsection. No
+    two of the twenty designed abilities share a name.
+    """
+    text = GDD.read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        if not line.startswith(f"| {ability.name} |"):
+            continue
+        for cell in (c.strip() for c in line.strip("|").split("|")):
+            if cell.startswith("`") and "=" in cell:
+                out = {}
+                for part in cell.strip("`").split(";"):
+                    key, _, value = part.partition("=")
+                    if key.strip():
+                        out[key.strip()] = value.strip()
+                return out
+        return {}
+    return {}
+
+
 def assert_row_matches(section: str, ability, enemy: str) -> None:
-    """The document's ability table row must match the data exactly."""
-    heading = f"| {ability.name} | {ability.slot} | {ability.shape} |"
+    """The document's ability table row must match the data exactly.
+
+    **BOTH DIRECTIONS, SINCE 2026-08-20.** Until then this walked the MODEL's
+    parameters and checked each appeared in the document, and never the
+    reverse -- so a parameter the document stated and the model lacked passed
+    in silence. That is what happened to the Gatekeeper's Soulfall, which
+    lost five riders including the burning ground the whole ability exists to
+    leave behind. Issue #774. A guard that checks one direction is not
+    checking the thing its name claims.
+    """
+    heading = f"| {ability.name} |"
     assert heading in section, (
-        f"the {enemy}'s ability table has no row reading {heading!r}, which is "
-        "what ABILITIES in sim/cataclysm_sim/enemy_abilities.py holds.")
-    for key, value in ability.params.items():
-        text = f"{key}={value}"
-        assert text in section, (
-            f"the {enemy}'s ability table does not state {text}, which is in "
-            f"{ability.name}'s params in sim/cataclysm_sim/enemy_abilities.py.")
+        f"the {enemy}'s ability table has no row for {ability.name!r}, which "
+        "is in ABILITIES in sim/cataclysm_sim/enemy_abilities.py.")
+
+    for column in (ability.slot, ability.shape):
+        assert f"| {column} |" in section, (
+            f"the {enemy}'s ability table does not state {column!r} for "
+            f"{ability.name}, which is what the model holds.")
+
+    stated = parameters_the_document_states(ability)
+    model = {key: str(value) for key, value in ability.params.items()}
+
+    # THE MODEL INTO THE DOCUMENT.
+    for key, value in model.items():
+        assert key in stated, (
+            f"the {enemy}'s ability table does not state {key} for "
+            f"{ability.name}, which is in its params in "
+            f"sim/cataclysm_sim/enemy_abilities.py.")
+        assert stated[key] == value, (
+            f"the {enemy}'s ability table says {key}={stated[key]} for "
+            f"{ability.name} and the model says {key}={value}.")
+
+    # AND THE DOCUMENT INTO THE MODEL, which is the half that was missing.
+    for key, value in stated.items():
+        assert key in model, (
+            f"the {enemy}'s ability table states {key}={value} for "
+            f"{ability.name} and the model does not carry it at all. The "
+            f"document is authoritative, so add it to ABILITIES in "
+            f"sim/cataclysm_sim/enemy_abilities.py. Issue #774 is this "
+            f"happening to Soulfall's burning ground.")
 
 
 # --------------------------------------------------------------------------
@@ -2360,3 +2424,105 @@ def test_a_zero_body_radius_is_rejected():
         ARCHETYPES["Imp"] = original
 
     assert isinstance(ARCHETYPES["Imp"], Archetype)
+
+# --------------------------------------------------------------------------
+# The Gatekeeper
+#
+# **IT HAD NO COMPARISON AT ALL UNTIL 2026-08-20**, and that is exactly why
+# its Soulfall lost five riders without anything noticing. Six of the seven
+# designed enemies had a table check and the boss did not. Issue #774.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def gatekeeper_section() -> str:
+    return subsection("Gatekeeper")
+
+
+@pytest.fixture(scope="module")
+def gatekeeper():
+    from cataclysm_sim.enemy_stats import archetype
+    return archetype("Gatekeeper")
+
+
+@pytest.fixture(scope="module")
+def gatekeeper_abilities():
+    from cataclysm_sim.enemy_abilities import abilities
+    return abilities("Gatekeeper")
+
+
+def test_the_gatekeeper_ability_table_matches_the_data(gatekeeper_section,
+                                                       gatekeeper_abilities):
+    """Four abilities, and the document's table must carry all four exactly as
+    the data holds them -- in both directions.
+
+    **THIS IS THE TEST THAT DID NOT EXIST**, and its absence is why the
+    Gatekeeper's Soulfall carried `Range`, `Radius`, `Pierce` and `Arc` in the
+    model while the document stated those four plus `Burn`, `GroundRadius`,
+    `GroundDuration`, `GroundPercent` and `GroundHitsAllies`. The burning
+    ground the whole ability exists to leave behind was in the design and
+    absent from the data. Issue #774."""
+    assert len(gatekeeper_abilities) == 4, (
+        f"the Gatekeeper now has {len(gatekeeper_abilities)} abilities in "
+        "sim/cataclysm_sim/enemy_abilities.py. The design document describes "
+        "four: a telegraphed sweep, a lobbed gout, a summon and a ring.")
+    for ability in gatekeeper_abilities:
+        assert_row_matches(gatekeeper_section, ability, "Gatekeeper")
+
+
+def test_soulfall_leaves_burning_ground_that_lasts_its_whole_cooldown(
+        gatekeeper_abilities):
+    """The design's claim is that the arena shrinks by one patch per cycle and
+    that one patch is always down: "GroundDuration equals the cooldown, so in
+    steady state one patch of burning ground is always down". That only holds
+    while the two numbers are equal."""
+    soulfall = next(a for a in gatekeeper_abilities if a.name == "Soulfall")
+
+    assert "GroundDuration" in soulfall.params, (
+        "Soulfall states no GroundDuration, so it leaves no burning ground at "
+        "all and the boss has no answer to a player who stands off beyond one "
+        "burst. Issue #774 is this happening once already.")
+
+    assert soulfall.params["GroundDuration"] == pytest.approx(
+            soulfall.cooldown), (
+        f"Soulfall's ground lasts {soulfall.params['GroundDuration']} s on a "
+        f"{soulfall.cooldown} s cooldown. The design requires them equal: "
+        f"shorter and the arena stops shrinking, longer and the patches "
+        f"accumulate faster than they expire.")
+
+
+def test_soulfalls_burning_ground_costs_one_full_hit_over_its_life(
+        gatekeeper_abilities):
+    """The project's stated rule for a burning patch is `100 / GroundDuration`
+    per second, so standing in one for its whole life costs exactly one hit.
+    The Hellhound's 25 over 4 seconds is the same arithmetic."""
+    soulfall = next(a for a in gatekeeper_abilities if a.name == "Soulfall")
+
+    duration = soulfall.params.get("GroundDuration")
+    percent = soulfall.params.get("GroundPercent")
+    assert duration and percent, (
+        "Soulfall states no GroundDuration or no GroundPercent, so how much "
+        "its burning ground is worth is undefined.")
+
+    assert percent == pytest.approx(100.0 / duration), (
+        f"Soulfall's ground deals {percent}% a second for {duration} s, which "
+        f"is {percent * duration}% of a hit over its life. The rule is "
+        f"100 / GroundDuration, which here is {100.0 / duration}.")
+
+
+def test_soulfalls_ground_burns_the_gatekeepers_own_summons(
+        gatekeeper_abilities):
+    """The design's own words: it "also burns the Gatekeeper's own summons".
+
+    That is the counterplay phase 2 depends on -- the Imps chase the player
+    through the fire and burn in it -- so a Soulfall that spared allies would
+    make the summons strictly better rather than a mixed blessing."""
+    soulfall = next(a for a in gatekeeper_abilities if a.name == "Soulfall")
+
+    assert soulfall.params.get("GroundHitsAllies"), (
+        "Soulfall's ground does not hit allies, and the design says it burns "
+        "the Gatekeeper's own summons. Without it, Call the Damned in phase 2 "
+        "has no cost at all.")
+
+    assert "burns the Gatekeeper's own summons" in soulfall.note, (
+        "Soulfall's note no longer says its ground burns the summons, so the "
+        "rider above and the prose beside it disagree.")
