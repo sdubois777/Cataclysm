@@ -60,7 +60,15 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	virtual void AttackTarget(AActor* Target) override;
-	virtual float SecondsBetweenAttacks() const override;
+	/**
+	 * Seconds between its attacks, BEFORE any buff.
+	 *
+	 * NOT `SecondsBetweenAttacks`, WHICH IS `final` ON THE ENEMY BASE. That
+	 * one divides this by whatever the creature's buffs are worth, and a
+	 * creature that overrode it instead would ignore every buff in the game
+	 * without a word. See ACataclysmEnemyCharacter::CommanderMultiplier.
+	 */
+	virtual float DesignedSecondsBetweenAttacks() const override;
 
 	/**
 	 * HOW FAR IT WANDERS BEFORE IT HAS SEEN ANYTHING.

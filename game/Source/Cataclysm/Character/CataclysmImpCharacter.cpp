@@ -143,7 +143,7 @@ float ACataclysmImpCharacter::AttackIntervalSecondsInUse()
 	return Override > 0.0f ? Override : DesignedAttackIntervalSeconds;
 }
 
-float ACataclysmImpCharacter::SecondsBetweenAttacks() const
+float ACataclysmImpCharacter::DesignedSecondsBetweenAttacks() const
 {
 	return AttackIntervalSecondsInUse();
 }

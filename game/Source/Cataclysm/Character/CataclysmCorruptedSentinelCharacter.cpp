@@ -146,7 +146,7 @@ float ACataclysmCorruptedSentinelCharacter::BrimstoneMortarCooldownSecondsInUse(
 	return Override > 0.0f ? Override : BrimstoneMortarCooldownSeconds;
 }
 
-float ACataclysmCorruptedSentinelCharacter::SecondsBetweenAttacks() const
+float ACataclysmCorruptedSentinelCharacter::DesignedSecondsBetweenAttacks() const
 {
 	return AttackIntervalSecondsInUse();
 }

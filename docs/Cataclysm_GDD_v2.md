@@ -4788,7 +4788,7 @@ The telegraph table above draws a marker for Strike, Projectile, Aura and Moveme
 
   
 
-**Dominion grants Commander** — "all nearby allies gain 20% increased stats", already in `game/Data/StatusEffects.csv` — to every allied enemy within 8 metres, for as long as the Succubus is alive. Commander is also a **War** enemy modifier, which a Demonic enemy can never roll, so the rule above is satisfied.
+**Dominion grants Commander** — "all nearby allies gain 20% increased movement speed and attack speed", already in `game/Data/StatusEffects.csv` — to every allied enemy within 8 metres, for as long as the Succubus is alive. **Those two stats and not every stat**, set by the project owner on 2026-08-20: the effect had said only "stats", which named none. Both are felt from watching a creature rather than read off a screen, and both compound with how many allies are standing in the field, which is what this enemy is for. Maximum health was ruled out because current health does not rise with it and is clamped down when the buff ends, so an ally walking in and out of the field would lose health from an effect meant to help it. `docs/DECISIONS.md` carries the reasoning. Commander is also a **War** enemy modifier, which a Demonic enemy can never roll, so the rule above is satisfied.
 
   
 

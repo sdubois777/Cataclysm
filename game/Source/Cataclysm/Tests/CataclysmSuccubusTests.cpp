@@ -55,12 +55,12 @@
  *    it every time and Wither the Living would never be cast. That is issue #491
  *    on the Abyssal Warden with the numbers changed.
  *
- * WHAT THESE DELIBERATELY DO NOT CHECK. That a buffed ally has better
- * statistics, because it does not: Dominion grants the `Status.Commander` tag
- * and no magnitude. Issue #768 is that gap and it is a design decision rather
- * than an omission -- "20% increased stats" does not say which stats, and
- * applying it to maximum health would let an ally lose health by walking out of
- * the field.
+ * WHAT A BUFFED ALLY ACTUALLY GAINS is 20% more movement speed and 20% more
+ * attack speed, and nothing else. The project owner set those two on
+ * 2026-08-20; the design had said only "20% increased stats", which named
+ * none. The arithmetic is checked in CataclysmEnemyCommanderTests.cpp rather
+ * than here, because what the tag DOES belongs to every creature and not to
+ * the one that grants it.
  */
 
 namespace CataclysmSuccubusTest

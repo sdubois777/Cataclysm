@@ -488,9 +488,94 @@ public:
 	//~ Driven by ACataclysmEnemyController
 	virtual float AttackReachCm() const override { return MeleeReachCm; }
 	virtual float SightRadiusCm() const override { return NoticeRadiusCm; }
-	virtual float SecondsBetweenAttacks() const override { return AttackIntervalSeconds; }
 	virtual void AttackTarget(AActor* Target) override;
 	//~ End
+
+	// ----------------------------------------------------------------------
+	// Commander, the only thing in the game that makes a creature better
+	//
+	// GRANTED BY THE SUCCUBUS'S AURA and by nothing else today.
+	// `ACataclysmSuccubusCharacter::PulseDominion` puts the `Status.Commander`
+	// tag on every ally within 8 metres and takes it off again when they leave
+	// or when it dies. This is what the tag DOES.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How much a creature holding Commander gains, as a percentage.
+	 *
+	 * TWENTY, FROM THE DESIGN. `game/Data/StatusEffects.csv` and the Buffs sheet
+	 * of `docs/All_Things_Cataclysm.xlsx` both state it.
+	 */
+	static constexpr float CommanderIncreasePercent = 20.0f;
+
+	/**
+	 * What Commander multiplies, or 1.0 when this creature does not hold it.
+	 *
+	 * **IT COVERS TWO STATS AND NOT EVERY STAT**, decided by the project owner
+	 * on 2026-08-20. The design's own words were "20% increased stats", which
+	 * does not say which; the answer is **movement speed and attack speed**.
+	 * `docs/DECISIONS.md` records why the other candidates were left out, and
+	 * maximum health in particular: an enemy's attributes are BASE values, and
+	 * current health does not rise with the maximum, so an ally walking in and
+	 * out of the field would lose health permanently from an effect meant to
+	 * help it.
+	 */
+	float CommanderMultiplier() const;
+
+	/**
+	 * Seconds between this creature's attacks BEFORE any buff.
+	 *
+	 * **THIS IS THE ONE A CREATURE OVERRIDES**, not `SecondsBetweenAttacks`
+	 * below, which is `final` so that the mistake is a compile error rather than
+	 * a creature that silently ignores every buff. Five creatures overrode the
+	 * other one before Commander had a magnitude, and every one of them would
+	 * have opted itself out without a word.
+	 */
+	virtual float DesignedSecondsBetweenAttacks() const
+	{
+		return AttackIntervalSeconds;
+	}
+
+	/**
+	 * Seconds between this creature's attacks, buffs included.
+	 *
+	 * DIVIDED RATHER THAN MULTIPLIED, because this is an INTERVAL and the buff
+	 * is a speed. 20% more attack speed is 2.6 seconds becoming 2.167, not 3.12.
+	 *
+	 * `final`. See `DesignedSecondsBetweenAttacks` above.
+	 */
+	virtual float SecondsBetweenAttacks() const override final
+	{
+		return DesignedSecondsBetweenAttacks() / CommanderMultiplier();
+	}
+
+	/**
+	 * How fast this creature walks BEFORE any buff, in centimetres per second.
+	 *
+	 * READ OFF THE MOVEMENT COMPONENT IN BeginPlay rather than declared per
+	 * creature, because every creature already sets `MaxWalkSpeed` in its own
+	 * constructor and a second copy of that number would be one that could
+	 * disagree. Zero until BeginPlay has run.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float DesignedWalkSpeedCmPerSecond = 0.0f;
+
+	/**
+	 * Bring this creature's walk speed back into line with the buffs it holds.
+	 *
+	 * WHY WALK SPEED NEEDS THIS AND ATTACK SPEED DOES NOT. An interval is asked
+	 * for each time the brain thinks, so it can be computed on demand. Walk
+	 * speed is a STORED number the movement component reads every frame, so
+	 * something has to write it when the buff lands and when it lapses.
+	 *
+	 * CALLED FROM Tick, so it is self-correcting. The Succubus takes the tag
+	 * away explicitly in every path it controls, but an effect that simply
+	 * expired would otherwise leave a creature walking fast for ever. One tag
+	 * lookup a frame is a hash lookup and a comparison.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD.
+	 */
+	void RefreshCommanderBuff();
 
 	/**
 	 * How close it must be to hit, in centimetres.

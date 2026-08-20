@@ -13,7 +13,7 @@ Buff_Dervish,Buff,Dervish,Increases your attack speed for melee attacks by 10% p
 Buff_Famished,Buff,Famished,Increases all of your leech by 5%.,0.0,0.0
 Buff_Warzone_Control_Points,Buff,Warzone Control Points,Holding these provides strategic advantages.,0.0,0.0
 Buff_Divine_Aegis,Buff,Divine Aegis,"Gain a divine shield when below 50% HP, reducing all damage taken by 75%.",0.0,0.0
-Buff_Commander,Buff,Commander,All nearby allies gain 20% increased stats.,0.0,0.0
+Buff_Commander,Buff,Commander,All nearby allies gain 20% increased movement speed and attack speed.,0.0,0.0
 Buff_Chaotic_Barrier,Buff,Chaotic Barrier,Temporarily grants a random buff when attacked.,0.0,0.0
 Buff_The_Ascended,Buff,The Ascended,A powerful buff granted to all nearby enemies when this enemy is killed.,0.0,0.0
 Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feast"" every time it is hit, and for every stack, its attack speed is increased.",0.0,0.0

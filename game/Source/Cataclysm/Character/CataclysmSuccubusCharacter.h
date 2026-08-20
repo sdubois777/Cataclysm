@@ -70,7 +70,15 @@ public:
 	virtual void HandleDeath() override;
 
 	virtual void AttackTarget(AActor* Target) override;
-	virtual float SecondsBetweenAttacks() const override;
+	/**
+	 * Seconds between its attacks, BEFORE any buff.
+	 *
+	 * NOT `SecondsBetweenAttacks`, WHICH IS `final` ON THE ENEMY BASE. That
+	 * one divides this by whatever the creature's buffs are worth, and a
+	 * creature that overrode it instead would ignore every buff in the game
+	 * without a word. See ACataclysmEnemyCharacter::CommanderMultiplier.
+	 */
+	virtual float DesignedSecondsBetweenAttacks() const override;
 
 	virtual TArray<FCataclysmEnemyAbility> EnemyAbilities() const override;
 	virtual void UseEnemyAbility(int32 Index, AActor* Target,
@@ -340,10 +348,22 @@ public:
 	 */
 	static constexpr float DominionRadiusCm = 800.0f;
 
-	/** The name of the effect it grants, from `game/Data/StatusEffects.csv`,
-	 *  whose description is "All nearby allies gain 20% increased stats".
-	 *  `UCataclysmSkillShapes::StatusTagFor` turns this into
-	 *  `Status.Commander`. */
+	/**
+	 * The name of the effect it grants, from `game/Data/StatusEffects.csv`,
+	 * whose description is "All nearby allies gain 20% increased movement
+	 * speed and attack speed". `UCataclysmSkillShapes::StatusTagFor` turns
+	 * this into `Status.Commander`.
+	 *
+	 * **WHAT THE TAG DOES IS NOT THIS CLASS'S BUSINESS.** The Succubus grants
+	 * and removes it; `ACataclysmEnemyCharacter::CommanderMultiplier` is what
+	 * reads it and turns it into a number. That split is what lets a second
+	 * source of Commander appear later without touching this creature.
+	 *
+	 * THOSE TWO STATS AND NOT EVERY STAT, decided by the project owner on
+	 * 2026-08-20. The design had said only "stats", which named none.
+	 * `docs/DECISIONS.md` records why maximum health in particular was
+	 * ruled out.
+	 */
 	static const TCHAR* DominionEffectName;
 
 	/**

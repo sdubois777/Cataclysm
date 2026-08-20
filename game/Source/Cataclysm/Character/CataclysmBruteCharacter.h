@@ -64,7 +64,15 @@ public:
 	 * See the console variable for why shortening it is not free: the telegraph
 	 * rule sizes the Stomp's ground marker from this number.
 	 */
-	virtual float SecondsBetweenAttacks() const override;
+	/**
+	 * Seconds between its attacks, BEFORE any buff.
+	 *
+	 * NOT `SecondsBetweenAttacks`, WHICH IS `final` ON THE ENEMY BASE. That
+	 * one divides this by whatever the creature's buffs are worth, and a
+	 * creature that overrode it instead would ignore every buff in the game
+	 * without a word. See ACataclysmEnemyCharacter::CommanderMultiplier.
+	 */
+	virtual float DesignedSecondsBetweenAttacks() const override;
 
 	//~ The two abilities beyond the ordinary swing. Driven by the controller.
 	virtual TArray<FCataclysmEnemyAbility> EnemyAbilities() const override;

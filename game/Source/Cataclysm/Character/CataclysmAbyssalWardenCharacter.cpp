@@ -303,7 +303,7 @@ float ACataclysmAbyssalWardenCharacter::StampedeSpeedCmPerSecondInUse()
 	return Override > 0.0f ? Override : StampedeSpeedCmPerSecond;
 }
 
-float ACataclysmAbyssalWardenCharacter::SecondsBetweenAttacks() const
+float ACataclysmAbyssalWardenCharacter::DesignedSecondsBetweenAttacks() const
 {
 	return AttackIntervalSecondsInUse();
 }
