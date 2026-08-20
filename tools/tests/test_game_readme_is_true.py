@@ -169,13 +169,14 @@ def test_no_empire_runtime_claim_is_still_true() -> None:
 
 
 #: How the readme may spell each count of dressed characters. Only the numbers
-#: that have ever been true are listed; adding a third character means adding a
+#: that have ever been true are listed; dressing another character means adding a
 #: word here, which is a deliberate speed bump rather than an oversight.
 ART_CLAIM_WORDS = {
     "No character has art": 0,
     "One character has art": 1,
     "Two characters have art": 2,
     "Three characters have art": 3,
+    "Four characters have art": 4,
 }
 
 

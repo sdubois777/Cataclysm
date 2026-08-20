@@ -89,6 +89,24 @@ public:
 	int32 SpawnHellhounds();
 
 	/**
+	 * Puts a pack of Imps in the sandbox. Returns how many were placed.
+	 *
+	 * A PACK RATHER THAN A CREATURE, WHICH NO OTHER SPAWNER HERE DOES. The other
+	 * three place one each and spread several around a circle if asked for more.
+	 * This one places ten in a cluster of their own, because ten is what
+	 * `docs/Cataclysm_GDD_v2.md` calls a pack and because one Imp shows almost
+	 * nothing: the design's own line is that a single Common enemy is not the
+	 * threat, a pack is. One Imp takes 48 seconds to kill a geared character;
+	 * ten take 4.9.
+	 *
+	 * THEY WILL NOT QUEUE INTO RINGS YET. The ring behaviour the design
+	 * describes is what crowd avoidance produces, and this project has none at
+	 * all: issue #761. Until that lands they will shove rather than surround.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnImps();
+
+	/**
 	 * Tell the save writer which run and which character this session is
 	 * playing, which is what makes the game start saving itself.
 	 *
@@ -136,6 +154,10 @@ public:
 	/** Every Hellhound this game mode placed. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<class ACataclysmHellhoundCharacter>> Hellhounds;
+
+	/** Every Imp this game mode placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmImpCharacter>> Imps;
 
 	// ----------------------------------------------------------------------
 	// Difficulty
@@ -538,6 +560,101 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float HellhoundAttackDamage = 19.0f;
 
+	/**
+	 * How many Imps to place. Zero for none.
+	 *
+	 * **TEN, WHICH IS THE ONLY FIGURE HERE THE DESIGN STATES OUTRIGHT.**
+	 * `docs/Cataclysm_GDD_v2.md` has a subsection headed "A pack is ten", and it
+	 * gives the reason: ten is the pack that kills a geared character in 4.9
+	 * seconds, and it is three more than one full ring of seven, which is what
+	 * makes the second ring -- and therefore this creature's 1.32 metre reach --
+	 * matter in an ordinary encounter rather than only in a swarm event.
+	 *
+	 * ONE IMP SHOWS ALMOST NOTHING. It takes 48 seconds to kill a geared
+	 * character on its own. Spawning one the way the other three creatures are
+	 * spawned would put a creature in the level that cannot demonstrate the only
+	 * thing it is for.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 ImpCount = 10;
+
+	/**
+	 * How far the middle of the pack is from the player start, in centimetres.
+	 *
+	 * BEYOND THE PACK'S OWN NOTICE RADIUS EVEN AT ITS NEAR EDGE. The creature
+	 * notices at 1000 cm and the nearest of the ten stands 1300 cm out, so the
+	 * pack does not set off at a player who has just appeared. Walk towards it
+	 * and it comes, at 6.5 metres per second, and walking back is not an escape.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float ImpDistanceCm = 1500.0f;
+
+	/**
+	 * Which direction from the player start the pack is placed in, in degrees.
+	 *
+	 * THE SECOND SPAWNER WITH A BEARING, AND THE THIRD DIRECTION USED. The Brute
+	 * and the Abyssal Warden stand in front of the player start at 0 degrees, the
+	 * Hellhound behind it at 180, and this pack to one side. The sandbox floor is
+	 * 4000 cm across so it reaches 2000 cm in every direction, and four creatures
+	 * on one line would not fit; putting each on its own bearing is what lets
+	 * each be walked up to on its own.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox")
+	float ImpBearingDegrees = 90.0f;
+
+	/**
+	 * How far from the middle of the pack each Imp stands, in centimetres.
+	 *
+	 * A CLUSTER RATHER THAN A LINE OR A GRID. Ten on a circle of this radius sit
+	 * 126 cm apart, which clears their own 60 cm bodies with room, so none of
+	 * them starts inside another and the movement component does not have to
+	 * push them apart before anything happens.
+	 *
+	 * IT IS NOT THE RING THE DESIGN DESCRIBES. That ring forms around the PLAYER
+	 * when the pack has closed, out of crowd avoidance, and this project has no
+	 * crowd avoidance yet -- issue #761. This is only where they are standing
+	 * when the level opens.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float ImpPackRadiusCm = 200.0f;
+
+	/**
+	 * How much health each one has.
+	 *
+	 * THE DESIGN MODEL'S OWN FIGURE, on exactly the reasoning `BruteHealth`
+	 * records. It is `stats_on_floor("Common", tier=1, "Cataclysm", kind="Imp")`
+	 * in `sim/cataclysm_sim/enemy_stats.py`, rounded to a whole number.
+	 *
+	 * THE LOWEST IN THE ROSTER, AND THAT IS THE CREATURE. Its health share is
+	 * 0.35 against the Brute's 2.20; the design calls it "weak individually,
+	 * overwhelming in packs" and this is the first half of that sentence as a
+	 * number. Ten of them together carry 870, which is more than the Abyssal
+	 * Warden's 873 by nothing at all -- and that is the second half.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float ImpHealth = 87.0f;
+
+	/**
+	 * What one of its claw swipes is worth. The training dummy's 20 times the
+	 * designed damage share of 0.45, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`.
+	 *
+	 * TEN OF THESE EVERY 0.9 SECONDS is what a pack does, which is 100 damage a
+	 * second against a character starting at 100 health. That is the design's
+	 * own claim -- ten Imps kill a geared character in 4.9 seconds -- arriving
+	 * from the numbers rather than being aimed at.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float ImpAttackDamage = 9.0f;
+
+	// NO ImpArmour, AND THAT IS THE DESIGN RATHER THAN AN OVERSIGHT. The Imp's
+	// `armor_share` is exactly 0.0 and it is the only creature in the roster
+	// with none at all: its defence is 25% evasion, which is why area damage
+	// answers a pack and single-target damage does not. So this spawner does not
+	// call SetArmour, and the Imp is deliberately left out of the automation
+	// test `Cataclysm.Sandbox.TheDesignedCreaturesSpawnWithArmour`, which
+	// requires a creature to carry some.
+
 public:
 	// ----------------------------------------------------------------------
 	// WHICH RARITY THE SANDBOX SPAWNS EACH CREATURE AT.
@@ -599,6 +716,19 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 HellhoundRarityStep = -1;
+
+	/**
+	 * Which rung each Imp spawns at, or -1 to draw one.
+	 *
+	 * TEN INDEPENDENT DRAWS, WHICH IS THE FIRST TIME THE LADDER IS VISIBLE IN
+	 * ONE PLACE. Each creature draws its own from the weights in
+	 * `game/Data/EnemyRarities.csv` -- Common 0.60, Elite 0.20, Legendary 0.15,
+	 * Herald 0.04, Boss 0.01 -- so a pack of ten usually holds two or three
+	 * creatures above Common and drops accordingly.
+	 */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 ImpRarityStep = -1;
 
 	/**
 	 * Which rung each training dummy spawns at, or -1 to draw one.
