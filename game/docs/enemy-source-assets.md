@@ -651,20 +651,60 @@ on the lines beginning `PROBE|`.
 
 ### The Succubus — Countess
 
-| Animation | Length | Note |
-|---|:-:|---|
-| `Primary_Attack_Fast_V1` | 0.60 | |
-| `Primary_Attack_Normal` | 0.90 | |
-| `Primary_Attack_Slow` | 1.50 | |
-| `Primary_Attack_Slow_Recovery` | 1.33 | |
-| `Ability_Q` | 0.97 | |
-| `Ability_E` | 1.17 | |
-| `Ability_RMB` | 1.33 | |
-| `Ability_Ultimate` | 3.17 | Exceeds the 2.6 s interval; not a basic attack |
-| `Cast` | 1.13 | |
+**Re-measured 2026-08-20** with `tools/probe_succubus_animation.py` and
+`tools/measure_animation_stride.py`, for issue #39, which builds this creature.
+Every figure below was read from the asset. The nine ability clips recorded on
+2026-08-07 all came back identical.
 
-Three speeds of the same primary attack give room to tune without editing
-animation.
+The mesh is `SM_Countess`, **180.8 cm tall**, on `S_Countess_Skeleton` with 16
+material slots. Half its height is 90.4 cm, which is the capsule half-height
+`ACataclysmSuccubusCharacter` uses.
+
+**What the creature actually plays**, from `ACataclysmSuccubusCharacter`:
+
+| Animation | Length | What plays it |
+|---|:-:|---|
+| `Primary_Attack_Normal` | 0.9000 | Soulfire's wind-up. Played as authored, so the creature holds the last pose for 0.4 s of the 1.3 s telegraph. Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
+| `Cast` | 1.1333 | Wither the Living. **A different clip from the attack on purpose**: the design's counter to the curse is interrupting it, and a player cannot interrupt what they cannot tell apart from an ordinary attack |
+| `Idle_Relaxed` | 42.3333 | Standing. **The longest idle in the project by four times**, against the Hellhound's 10.0 |
+| `Jog_Fwd` | 1.8000 | Walking, at a play rate of 350 / 321.0 = 1.090 |
+| `Death` | 1.6667 | Dying. **One clip, the fewest in the project** along with the Brute's |
+
+**Measured and not used:**
+
+| Animation | Length | Why not |
+|---|:-:|---|
+| `Primary_Attack_Fast_V1` | 0.6000 | Would leave 0.7 s of the 1.3 s telegraph with the creature holding a pose |
+| `Primary_Attack_Slow` | 1.5000 | Would fill the telegraph almost exactly at a play rate of 1.1538, and is the **only** primary attack in the pack that ships a separate recovery clip. Nothing here plays a recovery. Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
+| `Primary_Attack_Slow_Recovery` | 1.3333 | The recovery that clip needs |
+| `Idle_Straight` | 7.5000 | The alternative idle. `Idle_Pose`, `Idle_Additive` and `Idle_Facial` are all 7.5000 and are a pose and two additive layers rather than something to loop |
+| `Jog_Fwd_Combat` | 1.8000 | Identical in length and in authored speed to `Jog_Fwd`; measured so the choice was made against numbers |
+| `Sprint_Fwd` | 1.2333 | Nothing sprints. Authored at 399.4 cm/s |
+| `Ability_Q` | 0.9667 | No ability uses a hero's ability clips; this creature has two casts and both are covered above |
+| `Ability_E` | 1.1667 | |
+| `Ability_RMB` | 1.3333 | |
+| `Ability_Ultimate` | 3.1667 | Longer than the 2.6 s attack interval, so it could not be a basic attack even if something wanted it |
+| `Hitreact_Fwd`, `_Bwd`, `_Left`, `_Right` | 1.0000 each | Nothing plays a hit reaction yet. Issue [#745](https://github.com/sdubois777/Cataclysm/issues/745) |
+
+**The walk is the gentlest animation fit in the project.**
+`tools/measure_animation_stride.py` reports **321.0 cm/s** on the -Y axis for
+`Jog_Fwd`, with `Idle_Relaxed` reading 0.0 as the control -- which is what says
+the method found the right axis on this rig rather than measuring nothing. The
+designed speed is 350 cm/s, so the play rate is **1.090**, against the Imp's
+1.699 and the Hellhound's 2.478.
+
+The -Y forward axis confirms the engine's usual character-mesh convention holds
+for this rig, which is what the -90 degree yaw in `ResolveBody` relies on.
+
+**Re-run the measurements after importing or replacing any of these:**
+
+```
+python tools/run_editor_python.py tools/probe_succubus_animation.py
+python tools/run_editor_python.py tools/measure_animation_stride.py
+```
+
+Both change nothing. The results land in
+`game/Saved/Logs/run_editor_python.log`, the first on lines beginning `PROBE|`.
 
 ### The Hellhound — IggyScorch
 

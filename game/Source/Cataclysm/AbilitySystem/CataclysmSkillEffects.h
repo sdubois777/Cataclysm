@@ -317,6 +317,32 @@ public:
 									const FGameplayTag& EffectTag,
 									float DurationSeconds);
 
+	/**
+	 * Take back every effect on this actor that grants the tag.
+	 *
+	 * THE OTHER HALF OF ApplyTagForDuration, AND THE FIRST THING THAT NEEDED
+	 * ONE. Everything granted before this was granted for a stated duration and
+	 * left to expire, which is right for a curse or a burn: the moment it ends
+	 * is part of what it is. An AURA is not like that. The Succubus's Dominion
+	 * is held on for as long as the creature lives, and the design's whole point
+	 * is that killing it ends the buff AT ONCE -- "killing it first is the
+	 * correct play". Waiting out a duration would make that false, and no
+	 * duration short enough to hide it is long enough to survive between
+	 * refreshes.
+	 *
+	 * IT REMOVES BY TAG RATHER THAN BY HANDLE, which is a deliberate
+	 * simplification and has a consequence worth stating: two casters granting
+	 * the same tag to one target share one effect, because these are all single
+	 * stack, so either caster removing it removes it for both. The survivor's
+	 * next refresh puts it back. Keeping handles per grantor would make that
+	 * exact and is more machinery than the gap is worth. Issue #768 is where
+	 * that would be revisited.
+	 *
+	 * @return how many effects were removed
+	 */
+	static int32 RemoveEffectsGranting(AActor* Target,
+									   const FGameplayTag& EffectTag);
+
 	/** Whether this actor currently carries the tag. */
 	static bool HasTag(const AActor* Actor, const FGameplayTag& Tag);
 

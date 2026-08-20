@@ -119,6 +119,20 @@ public:
 	int32 SpawnCorruptedSentinels();
 
 	/**
+	 * Puts Succubi in the sandbox. Returns how many were placed.
+	 *
+	 * **IT MAKES EVERY OTHER CREATURE NEAR IT STRONGER**, which is the only
+	 * thing in the game that does. Its aura Dominion reaches 8 metres and is
+	 * held on for as long as the creature is alive, so killing it first is the
+	 * correct play and killing it ends the buff at once.
+	 *
+	 * IT IS PLACED ON THE FIRST DIAGONAL BEARING, because the four cardinal ones
+	 * are taken by the five creatures before it. See `SuccubusBearingDegrees`.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnSuccubi();
+
+	/**
 	 * Tell the save writer which run and which character this session is
 	 * playing, which is what makes the game start saving itself.
 	 *
@@ -175,6 +189,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<class ACataclysmCorruptedSentinelCharacter>>
 		CorruptedSentinels;
+
+	/** Every Succubus this game mode placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmSuccubusCharacter>> Succubi;
 
 	// ----------------------------------------------------------------------
 	// Difficulty
@@ -728,6 +746,90 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float CorruptedSentinelAttackDamage = 22.0f;
 
+	/** How many Succubi to place. Zero for none. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 SuccubusCount = 1;
+
+	/**
+	 * How far from the player start each one is put, in centimetres.
+	 *
+	 * BEYOND ITS OWN NOTICE RADIUS, which is 1000 cm, so it is standing about
+	 * rather than already walking at the player when the level opens. Unlike the
+	 * Corrupted Sentinel it CAN close: it walks at 3.5 metres per second, so
+	 * five metres of approach brings it into its own 1000 cm notice radius and
+	 * it comes the rest of the way on its own.
+	 *
+	 * AND FAR ENOUGH FROM THE OTHER FIVE. `SuccubusBearingDegrees` explains why
+	 * the diagonal was needed at all; at 1500 cm along it the nearest neighbour
+	 * is the Brute at 1070 cm, which clears the 1000 cm rule
+	 * `test_it_is_spawned_on_a_bearing_of_its_own` holds every creature to.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float SuccubusDistanceCm = 1500.0f;
+
+	/**
+	 * Which direction from the player start it is placed in, in degrees.
+	 *
+	 * **THE FIFTH DIRECTION, AND THE FIRST THAT IS NOT A CARDINAL ONE.** The
+	 * four before it are taken: the Brute and the Abyssal Warden in front of the
+	 * player start at 0 degrees, the Hellhound behind it at 180, the pack of
+	 * Imps to one side at 90 and the Corrupted Sentinel to the other at 270.
+	 * `CorruptedSentinelBearingDegrees` said in as many words that a fifth
+	 * creature would need somewhere else to go. This is that somewhere.
+	 *
+	 * THE DIAGONAL COSTS NOTHING IN FLOOR SPACE. The sandbox floor is a 4000 cm
+	 * square, so it reaches 2000 cm along each axis and further into the corners.
+	 * At 45 degrees and 1500 cm the creature stands at 1061 cm on each axis,
+	 * which is further inside the floor than any of the four cardinal placements.
+	 *
+	 * **ITS AURA IS EMPTY WHERE IT STANDS, AND THAT IS FORCED RATHER THAN
+	 * CHOSEN.** Dominion reaches 800 cm and the separation rule above requires
+	 * 1000 cm from every other creature, so no placement that passes the rule can
+	 * have anything to buff at spawn. The field fills when the Imps or the Brute
+	 * chase the player past it. Issue #769 is whether the sandbox should hold a
+	 * deliberate group so the one thing this creature does differently can be
+	 * seen without setting the fight up by hand.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox")
+	float SuccubusBearingDegrees = 45.0f;
+
+	/**
+	 * How much health each one has.
+	 *
+	 * THE DESIGN MODEL'S OWN FIGURE, on exactly the reasoning `BruteHealth`
+	 * records. It is `stats_on_floor("Common", tier=1, "Cataclysm",
+	 * kind="Succubus")`, rounded to a whole number.
+	 *
+	 * **AND ANOTHER HALF OF IT AGAIN IS AN ENERGY SHIELD**, the largest fraction
+	 * of any creature in the roster. That is set by the creature's own class
+	 * rather than here, from `energy_shield_fraction`, and it sits in front of
+	 * the health rather than adding to it. So 150 health means 75 of shield and
+	 * then 150 of health, and the shield refills three seconds after the last
+	 * damage it took.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float SuccubusHealth = 150.0f;
+
+	/**
+	 * How much armour each one has. From the same stat block as its health, and
+	 * **the least of any creature in the sandbox that has any at all**: its
+	 * `armor_share` is 0.20 against the Corrupted Sentinel's 2.20. What keeps
+	 * this creature alive is the shield, not the armour.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float SuccubusArmour = 10.0f;
+
+	/**
+	 * What one of its bolts is worth. The training dummy's 20 times the designed
+	 * damage share of 1.60, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`.
+	 *
+	 * **THE HARDEST ORDINARY HIT IN THE SANDBOX**, ahead of the Brute's 35, and
+	 * it can double on a critical strike at 10% for 200%.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float SuccubusAttackDamage = 32.0f;
+
 	// NO ImpArmour, AND THAT IS THE DESIGN RATHER THAN AN OVERSIGHT. The Imp's
 	// `armor_share` is exactly 0.0 and it is the only creature in the roster
 	// with none at all: its defence is 25% evasion, which is why area damage
@@ -815,6 +917,11 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 CorruptedSentinelRarityStep = -1;
+
+	/** Which rung each Succubus spawns at, or -1 to draw one. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 SuccubusRarityStep = -1;
 
 	/**
 	 * Which rung each training dummy spawns at, or -1 to draw one.

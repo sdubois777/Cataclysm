@@ -102,6 +102,22 @@ ANIMATIONS = [
      "/Animations/Melee/NonCombat_JogFwd_B"),
     ("/Game/ParagonMinions/Characters/Minions/Down_Minions"
      "/Animations/Melee/NonCombat_Idle"),
+    # The Succubus, added 2026-08-20 for issue #39. It is played by the Countess,
+    # a hero rig rather than a minion one, so which of the two rigs below it
+    # lands on is not known in advance. `Idle_Relaxed` is the control: standing
+    # still must read as zero, and if it does not then the figures beside it are
+    # measuring the wrong axis or the wrong bones and none of them may be used.
+    #
+    # BOTH WALKS ARE READ BEFORE EITHER IS CHOSEN. `Jog_Fwd` is what every other
+    # creature here uses and `Jog_Fwd_Combat` is the pack's fighting stance
+    # version of it, which for a caster that walks to eight metres and stops may
+    # be the better read.
+    "/Game/ParagonCountess/Characters/Heroes/Countess/Animations/Jog_Fwd",
+    ("/Game/ParagonCountess/Characters/Heroes/Countess"
+     "/Animations/Jog_Fwd_Combat"),
+    "/Game/ParagonCountess/Characters/Heroes/Countess/Animations/Sprint_Fwd",
+    ("/Game/ParagonCountess/Characters/Heroes/Countess"
+     "/Animations/Idle_Relaxed"),
 ]
 
 #: The rigs this knows how to read, and which bones each keeps its feet in.

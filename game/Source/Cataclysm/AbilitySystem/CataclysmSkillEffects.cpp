@@ -677,3 +677,32 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 
 	return true;
 }
+
+int32 UCataclysmSkillEffects::RemoveEffectsGranting(
+	AActor* Target, const FGameplayTag& EffectTag)
+{
+	if (!EffectTag.IsValid())
+	{
+		return 0;
+	}
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// ASKED BEFORE AND AFTER, because RemoveActiveEffectsWithGrantedTags returns
+	// void. A caller that cannot tell whether anything was taken away cannot be
+	// tested, and the aura this exists for needs exactly that: a test has to be
+	// able to say that killing the Succubus took the buff OFF, rather than that
+	// it called something.
+	const bool bHadIt = AbilitySystem->HasMatchingGameplayTag(EffectTag);
+
+	FGameplayTagContainer Granted;
+	Granted.AddTag(EffectTag);
+	AbilitySystem->RemoveActiveEffectsWithGrantedTags(Granted);
+
+	return (bHadIt && !AbilitySystem->HasMatchingGameplayTag(EffectTag)) ? 1 : 0;
+}
