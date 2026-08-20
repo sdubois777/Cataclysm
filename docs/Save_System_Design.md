@@ -89,6 +89,12 @@ this record is never deleted as a consequence of play.
   requires
 - The identifiers of the character records taking part, one in solo play and up
   to four in co-operative play
+- **The floor being fought on, as it stands**: where each character is, the
+  health of every creature still alive, each creature's rarity and modifiers,
+  and items lying on the floor that were not picked up. This is what lets a
+  player who was cut off come back into the same fight rather than to the
+  start of it. Section 6 says exactly how much of a fight is restored, and
+  what is deliberately not
 - Schema version
 
 ---
@@ -292,7 +298,101 @@ to drop a field and check the test that covers that version fails, using
 
 ---
 
-## 6. What this design deliberately does not settle
+## 6. When a save is written, and what quitting costs
+
+**The game saves itself, often, and there is no manual save.** The project owner
+set this on 2026-08-20: a Hardcore character must not be able to leave a losing
+boss fight by closing the game, and a player who is cut off must come back where
+they were.
+
+### What resuming restores, and what it does not
+
+Decided 2026-08-20: **a neutral restart with the damage kept.**
+
+| Restored | Not restored |
+| :-- | :-- |
+| Which floor, and where on it the character is standing | Any wind-up in progress. Every creature resumes from a still moment |
+| The character's health, mana and energy shield | Projectiles and ground effects already in flight |
+| Every creature that was alive, with the health it had. **A boss keeps every point taken off it** | How far through its attack cycle each creature was |
+| Each creature's rarity and its modifiers | Remaining durations on buffs and debuffs |
+| Items lying on the floor that were not picked up | The ability the character was casting |
+
+**What a player gains by quitting mid-fight is a breather, not a reset.** They
+come back at the health they had, standing in front of a boss at the health it
+had.
+
+**Why the mid-blow state is deliberately left out.** It is the data most likely to
+change shape with every patch — a creature's brain, how far into a wind-up it is,
+a projectile's flight — and section 5 requires a migration for any persisted field
+whose shape changes. Persisting combat choreography would mean writing a migration
+every patch for state nobody wants preserved, which is the cost with none of the
+benefit. Keeping the damage and dropping the choreography removes what the escape
+is worth while leaving the save format stable.
+
+**It can be tightened later without changing anything else.** If play shows the
+breather is worth having, individual pieces of the right-hand column can move to
+the left one at a time, each as its own schema bump.
+
+### When a save is written
+
+Two triggers, and both are needed:
+
+1. **On a clock**, so nothing is ever far from being written.
+2. **On events that matter, immediately.** A fight starting, a creature dying, the
+   character's health falling through a threshold, changing floor, an item
+   entering or leaving the inventory.
+
+The second is what makes the gap inside a fight near zero without writing
+constantly while a player walks around a city. **The interval and the health
+threshold are tuning constants and only playing settles them.**
+
+### Death is written first, and synchronously
+
+The one rule that cannot be relaxed. For a Hardcore character, death is the event
+this whole feature exists to make stick, so it is written in the same frame the
+health reaches zero, through the synchronous write, before the death is otherwise
+processed. Everything else may be written asynchronously.
+
+### Writing must not stall the frame
+
+`UGameplayStatics::AsyncSaveGameToSlot` takes a `USaveGame` object and serialises
+it with the engine's binary archive, which would throw away the readable file
+section 4 chose JSON for. The route that keeps both, and it is the engine's own:
+gather the state and build the JSON on the game thread, then hand the bytes to
+`ISaveGameSystem::SaveGameAsync`. That is the same call `AsyncSaveGameToSlot`
+makes once it has finished serialising, and its callback returns on the game
+thread.
+
+### The three records already pay for this
+
+The thing that changes constantly is the run. The thing that is large is the
+account record's 600-slot stash. They are separate records, so they are written on
+separate triggers: the run record on the cadence above, the account record only
+when it actually changes. That split was made in section 1 for a different reason
+and it is what makes a frequent save affordable.
+
+### What this does not prevent, said plainly
+
+**An offline save file can be copied before a boss and put back afterwards.** No
+arrangement of writes prevents that. Section 7 already accepted that local files
+can be edited, from #505, and this does not change it.
+
+**Full enforcement exists only for an online character**, whose record is held
+where the player cannot reach it. An offline Hardcore character is on its honour.
+The game should say so plainly rather than implying a guarantee it does not have.
+
+### The escape moves to whatever other way out exists
+
+Path of Exile 2 removed logout macros, and players on its official forum report
+that the escape simply moved: a boss fight can be paused, and "Respawn at
+Checkpoint" taken instead. **So every other way out of a fight has to answer the
+same rule or this work buys nothing.** In this design that means the Last Stand
+and any town portal or dungeon exit. It is named here because it is the failure
+this feature is most likely to have.
+
+---
+
+## 7. What this design deliberately does not settle
 
 - **Whether an offline character can be converted to an online one**, one way,
   leaving everything behind. Diablo II allows the safe direction and blocks the
@@ -305,8 +405,10 @@ to drop a field and check the test that covers that version fails, using
   business model question. Not designed here.
 - **Auction house and ladder storage.** Server-side, not a save file, and
   downstream of #501. #57, #58 and #179 cover them.
-- **How often the run record is written.** An autosave cadence is a tuning
-  question that needs a measured write cost, and there is nothing to measure yet.
+- **The exact autosave interval, in seconds.** Section 6 settles that there IS
+  one, that it is joined by writes on events, and that death is written
+  synchronously. The number itself is a tuning constant that needs a measured
+  write cost, and there is still nothing to measure.
 
 ---
 
@@ -319,6 +421,30 @@ The format comparison was taken from how shipped games in the genre solve it:
   [save editor thread describing the JSON format](https://fearlessrevolution.com/viewtopic.php?t=17089)
 - Grim Dawn uses a custom binary `.gdc` format, at `Documents\My Games\Grim Dawn\save`
   — [PCGamingWiki](https://www.pcgamingwiki.com/wiki/Grim_Dawn)
+
+The rules in section 6 about quitting a fight were taken from what shipped
+games do about it:
+
+- Diablo IV hardcore holds the character in the world for **10 seconds** after
+  a logout is started, and it can die during them: "Leaving the game instantly
+  is NOT an easy escape of your inevitable doom". A Scroll of Escape is
+  consumed automatically if the player disconnects while monsters are attacking
+  them — [Maxroll hardcore guide](https://maxroll.gg/d4/resources/hardcore-guide)
+- Path of Exile 1 permits instant logout as a defensive technique, and a
+  single-button logout macro is explicitly allowed
+- Path of Exile 2 removed logout macros and its players report the escape moved
+  rather than closed, to pausing in a boss fight and taking "Respawn at
+  Checkpoint" — [What is the future of Hardcore Logouts, pathofexile.com](https://www.pathofexile.com/forum/view-thread/3828741).
+  There is no developer reply in that thread; it is player feedback and is
+  recorded as such
+- Hades autosaves between rooms and does **not** save during combat, so quitting
+  mid-fight costs the room rather than saving the player
+
+**Two numbers that are widely quoted for Path of Exile were NOT used**, because
+the page carrying them is on Fandom and it refused to serve the page: a 6 second
+delay before the server logs out a client whose connection was lost, and a 40
+second timer at the start of a new area. Neither is cited above and nothing here
+rests on them.
 
 The partition rules are not from research. They are read directly out of
 `docs/Cataclysm_GDD_v2.md`, section "Difficulty Options", and `docs/DECISIONS.md`,

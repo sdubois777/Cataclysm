@@ -20,6 +20,110 @@ applied or still pending.
 
 ---
 
+## 2026-08-20 — The game saves itself constantly, so quitting a fight does not undo it
+
+**Affects:** a new section 6 in `docs/Save_System_Design.md`, an addition to the
+Difficulty Options section of `docs/Cataclysm_GDD_v2.md`, and the Run record's
+contents. Applied. Toward issue #529.
+
+### The requirement
+
+The project owner set it on 2026-08-20: **the game saves automatically and often
+enough that a Hardcore character cannot get out of a losing boss fight by closing
+the game**, and a player who is cut off comes back where they were.
+
+### The decision
+
+**A neutral restart with the damage kept.** Chosen by the project owner on
+2026-08-20 from three options that were put with their costs.
+
+| Restored | Not restored |
+| :-- | :-- |
+| The floor, and where the character stands on it | Any wind-up in progress |
+| The character's health, mana and energy shield | Projectiles and ground effects in flight |
+| Every creature alive, with the health it had. A boss keeps every point taken off it | How far through its attack cycle each creature was |
+| Each creature's rarity and modifiers | Buff and debuff durations |
+| Items on the floor, not yet picked up | The ability the character was casting |
+
+**What quitting mid-fight buys is a breather, not a reset.**
+
+**Why the mid-blow state is left out**, which is the part worth recording. It is
+the data most likely to change shape with every patch — a creature's brain, its
+wind-up, a projectile's flight — and section 5 of the save design requires a
+migration for any persisted field whose shape changes. Persisting combat
+choreography would mean writing a migration every patch for state nobody wants
+preserved. It can be tightened later, one field at a time, each as its own schema
+bump.
+
+**Two triggers, not one.** A clock, so nothing is ever far from being written;
+and an immediate write on events that matter — a fight starting, a creature dying,
+health falling through a threshold, changing floor, an item entering or leaving
+the inventory. The second is what makes the gap inside a fight near zero without
+writing constantly while a player walks around a city.
+
+**Death is written first and synchronously**, in the same frame health reaches
+zero, before the death is otherwise processed. It is the one event the whole
+feature exists to make stick.
+
+### What the genre does
+
+- **Diablo IV hardcore** holds the character in the world for **10 seconds** after
+  a logout is started, and it can die during them. Its own guide says outright
+  that "Leaving the game instantly is NOT an easy escape of your inevitable
+  doom", and a Scroll of Escape is consumed automatically if the player
+  disconnects while monsters are attacking. Source:
+  [Maxroll hardcore guide](https://maxroll.gg/d4/resources/hardcore-guide)
+- **Path of Exile 1** permits instant logout as a defensive technique; a
+  single-button logout macro is explicitly allowed.
+- **Path of Exile 2 removed logout macros, and its players report it did not
+  work.** The escape moved rather than closed: a boss fight can be paused, and
+  "Respawn at Checkpoint" taken instead. Source:
+  [What is the future of Hardcore Logouts, pathofexile.com](https://www.pathofexile.com/forum/view-thread/3828741).
+  There is no developer reply in that thread; it is player feedback and is
+  recorded as such.
+- **Hades** autosaves between rooms and does not save during combat at all, so
+  quitting mid-fight costs the room rather than saving the player. That was the
+  third option offered and was not chosen, because a power cut five minutes into a
+  boss fight would lose the fight.
+
+**What could not be verified.** Two numbers widely quoted for Path of Exile — a 6
+second delay before a lost client is logged out, and a 40 second timer at the
+start of a new area — are on a Fandom page which refused to serve. They are not
+cited anywhere and nothing rests on them. This is the same refusal recorded in the
+2026-08-19 entry on enemy rarity.
+
+### The lesson taken from Path of Exile 2, and it is the important one
+
+**Whatever exit is closed, the escape moves to whatever exit is left.** Closing
+the game is only one way out of a fight. **The Last Stand and any town portal or
+dungeon exit have to answer the same rule**, or this work buys nothing. Written
+into section 6 of the save design because it is the failure this feature is most
+likely to have.
+
+### What this cannot do, stated rather than discovered later
+
+**An offline save file can be copied before a boss and put back afterwards.** No
+arrangement of writes prevents it. Issue #505 already accepted that local files
+can be edited and answered it by making offline and online populations
+non-transferable. **Full enforcement exists only for an online character**, whose
+record is held where the player cannot reach it, so an offline Hardcore character
+is on its honour and the game should say so.
+
+### One consequence for the records
+
+The Run record now holds **the floor as it stands** — where each character is, the
+health of every creature still alive, their rarities and modifiers, and items on
+the floor. It did not before; it held the day, the empire graph, dungeons and
+timers.
+
+**The existing three-record split is what makes a frequent save affordable**, and
+that was not why it was made. The thing that changes constantly is the run; the
+thing that is large is the account record's 600-slot stash. They are separate
+records written on separate triggers, so a frequent write does not rewrite a
+stash.
+
+---
+
 ## 2026-08-19 — A panel at the top of the screen says what the creature under the cursor is
 
 **Affects:** the "How an enemy's rarity is shown" subsection of section X of
