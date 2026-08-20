@@ -485,9 +485,38 @@ const ACataclysmEnemyCharacter* ACataclysmHUD::CreatureUnderCursor() const
 
 void ACataclysmHUD::DrawCreaturePanel()
 {
-	const ACataclysmEnemyCharacter* Creature = CreatureUnderCursor();
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+
+	// POINTING AT A CREATURE RESTARTS THE CLOCK, and pointing at a DIFFERENT
+	// creature replaces the one being described on the same frame. So moving
+	// between two enemies in a pack never shows the wrong one, and only
+	// pointing at nothing leaves the last one on screen.
+	if (const ACataclysmEnemyCharacter* Pointed = CreatureUnderCursor())
+	{
+		Described = Pointed;
+		DescribedAt = Now;
+	}
+
+	// GET() RATHER THAN A RAW POINTER, because the creature may have been
+	// destroyed since the cursor was on it. A weak pointer answers nullptr.
+	const ACataclysmEnemyCharacter* Creature = Described.Get();
 	if (!Creature)
 	{
+		return;
+	}
+
+	// AND IT DOES NOT GO THE MOMENT THE CURSOR DOES. See
+	// UCataclysmCreaturePanel::StillDescribed for why the panel is held on
+	// screen after the cursor has left the creature.
+	if (!UCataclysmCreaturePanel::StillDescribed(Now - DescribedAt))
+	{
+		Described.Reset();
 		return;
 	}
 

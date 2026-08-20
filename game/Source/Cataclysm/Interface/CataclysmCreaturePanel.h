@@ -77,6 +77,33 @@ public:
 							  const AActor* LocalPlayerPawn, float Health,
 							  float MaxHealth);
 
+	/**
+	 * Whether a creature is still described this long after the cursor last
+	 * pointed at it.
+	 *
+	 * IT DOES NOT GO THE MOMENT THE CURSOR DOES. Pointing at a creature in a
+	 * pack means putting the cursor on a body that is moving, being fought
+	 * around, and often smaller than the cursor travels in one flick of the
+	 * hand. A panel that vanished on the frame the cursor slipped off would be
+	 * unreadable for exactly the creature it matters most for, which is one in
+	 * a crowd. The project owner asked for this on 2026-08-19 after playing the
+	 * first version.
+	 *
+	 * THE CREATURE IS STILL ASKED ABOUT WHILE IT LINGERS. Its health is read
+	 * again every frame, so the bar keeps moving if it is being hit; and
+	 * ShouldShowFor still refuses a corpse, so a creature killed during the
+	 * linger takes its panel with it rather than leaving one over nothing.
+	 *
+	 * NO FADE, AND THAT IS DELIBERATE. Every contrast figure on this class is
+	 * measured at full opacity, and text fading out passes through every ratio
+	 * below the one that was measured on its way to nothing. A panel that is
+	 * either there or not there is the readable answer.
+	 *
+	 * @param SecondsSincePointedAt  zero while the cursor is on the creature,
+	 *        and rising once it has left
+	 */
+	static bool StillDescribed(float SecondsSincePointedAt);
+
 	/** The enemy archetype table, loaded once. Null when it cannot be read. */
 	static const UDataTable* LoadEnemyArchetypeTable();
 
@@ -180,6 +207,19 @@ public:
 
 	//~ Layout, in pixels at an unscaled viewport. None of this can be seen by a
 	//~ test; every figure is a starting point and only play settles it.
+
+	/**
+	 * How long the panel stays after the cursor has left the creature, in
+	 * seconds.
+	 *
+	 * ONE SECOND IS THE PROJECT OWNER'S OWN FIGURE, asked for on 2026-08-19
+	 * after playing a build with no hold at all. It is long enough to finish
+	 * reading five modifier lines after the cursor has moved, and short enough
+	 * that pointing at a second creature does not feel like waiting -- and
+	 * pointing at a second creature does not wait anyway, because a new
+	 * creature replaces the old one on the frame it is pointed at.
+	 */
+	static constexpr float LingerSeconds = 1.0f;
 
 	/** Clear space between the top of the screen and the panel. */
 	static constexpr float TopMarginPx = 24.0f;

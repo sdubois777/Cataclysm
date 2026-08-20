@@ -78,6 +78,15 @@ bool UCataclysmCreaturePanel::ShouldShowFor(const AActor* Creature,
 	return true;
 }
 
+bool UCataclysmCreaturePanel::StillDescribed(float SecondsSincePointedAt)
+{
+	// A TIME THAT HAS GONE BACKWARDS COUNTS AS NOW rather than as expired.
+	// The world's clock is what this is measured against and it restarts with
+	// the level, so the comparison has to answer safely on a negative age; a
+	// panel held one frame too long is better than one that blinks out.
+	return SecondsSincePointedAt < LingerSeconds;
+}
+
 const UDataTable* UCataclysmCreaturePanel::LoadEnemyArchetypeTable()
 {
 	const UDataTable* Table = LoadObject<UDataTable>(

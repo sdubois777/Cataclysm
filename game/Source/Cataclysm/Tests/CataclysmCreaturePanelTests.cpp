@@ -203,6 +203,59 @@ bool FCataclysmCreaturePanelShownForEveryRung::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * The panel is held on screen for a second after the cursor leaves.
+ *
+ * WHY IT IS HELD AT ALL. Pointing at a creature in a pack means putting the
+ * cursor on a body that is moving and being fought around. A panel that went on
+ * the frame the cursor slipped off would be unreadable for exactly the creature
+ * it matters most for. The project owner asked for the hold on 2026-08-19 after
+ * playing a build without one.
+ *
+ * WHAT IS CHECKED HERE AND WHAT IS NOT. The rule over plain seconds is checked.
+ * That ACataclysmHUD remembers the right creature between frames is not, and
+ * cannot be: it needs a cursor, and the automation command in
+ * tools/unreal_build.py passes -nullrhi.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreaturePanelLingers,
+	"Cataclysm.CreaturePanel.ItStaysOnScreenAfterTheCursorHasLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreaturePanelLingers::RunTest(const FString&)
+{
+	using namespace CataclysmCreaturePanelTest;
+
+	// THE HOLD IS REAL RATHER THAN NOMINAL. A value of zero would make every
+	// check below pass while the panel still blinked out on the frame the
+	// cursor left, which is the thing this exists to stop.
+	TestTrue(TEXT("the panel is held for a positive length of time"),
+		FPanel::LingerSeconds > 0.0f);
+
+	TestTrue(TEXT("a creature the cursor is on right now is described"),
+		FPanel::StillDescribed(0.0f));
+
+	TestTrue(TEXT("and one the cursor left half the hold ago still is"),
+		FPanel::StillDescribed(FPanel::LingerSeconds * 0.5f));
+
+	TestTrue(TEXT("and one a single frame short of the whole hold"),
+		FPanel::StillDescribed(FPanel::LingerSeconds - 0.016f));
+
+	// AND THEN IT STOPS.
+	TestFalse(TEXT("a creature left for the whole hold is no longer described"),
+		FPanel::StillDescribed(FPanel::LingerSeconds));
+
+	TestFalse(TEXT("and neither is one left long ago"),
+		FPanel::StillDescribed(FPanel::LingerSeconds * 10.0f));
+
+	// A CLOCK THAT WENT BACKWARDS COUNTS AS NOW. The world's time restarts
+	// with the level, and a panel held one frame too long is better than one
+	// that blinks out.
+	TestTrue(TEXT("a negative age is treated as the cursor being on it"),
+		FPanel::StillDescribed(-5.0f));
+
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // What the panel says
 // ---------------------------------------------------------------------------

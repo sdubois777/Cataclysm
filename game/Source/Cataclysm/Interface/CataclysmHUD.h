@@ -268,6 +268,20 @@ private:
 	TArray<FBox2D> DropNameRects;
 	TArray<TWeakObjectPtr<ACataclysmDroppedItem>> DropsNamed;
 
+	/**
+	 * The creature the panel is describing, which may be one the cursor has
+	 * already left.
+	 *
+	 * WEAK, because a creature is destroyed on the tick after it dies and this
+	 * deliberately outlives the cursor pointing at it. A raw pointer would
+	 * outlive the creature as well, and the panel would then read health off
+	 * freed memory for up to a second.
+	 */
+	TWeakObjectPtr<const ACataclysmEnemyCharacter> Described;
+
+	/** The world's time in seconds when the cursor last pointed at it. */
+	float DescribedAt = 0.0f;
+
 	//~ Layout, in pixels at an unscaled viewport.
 
 	/** The player's own bars, measured in from the bottom left corner. */

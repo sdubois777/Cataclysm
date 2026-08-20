@@ -198,6 +198,38 @@ def test_a_cursor_over_an_open_screen_describes_nothing() -> None:
         "inventory cell describes whatever creature stands behind the panel.")
 
 
+def test_the_panel_is_held_after_the_cursor_leaves() -> None:
+    """It does not go on the frame the cursor slips off the creature.
+
+    WHY IT MATTERS. Pointing at a creature in a pack means putting the cursor on
+    a body that is moving and being fought around, so a panel with no hold is
+    unreadable for exactly the creature it matters most for. The project owner
+    asked for the hold on 2026-08-19 after playing a build without one.
+
+    WHAT THE MISTAKE LOOKS LIKE. Returning as soon as `CreatureUnderCursor`
+    answers nothing, which is what the first version did. Everything still
+    draws; the panel simply flickers.
+    """
+    body = function_body(
+        read(HUD_CPP), "void ACataclysmHUD::DrawCreaturePanel")
+
+    assert "StillDescribed(" in body, (
+        "DrawCreaturePanel does not call StillDescribed, so the panel goes on "
+        "the frame the cursor leaves the creature. Issue #740.")
+
+    found = re.search(
+        r"static\s+constexpr\s+float\s+LingerSeconds\s*=\s*([\d.]+)f\s*;",
+        read(PANEL_H))
+    assert found, (
+        "UCataclysmCreaturePanel has no LingerSeconds. It is how long the panel "
+        "stays after the cursor has left the creature.")
+
+    assert float(found.group(1)) > 0.0, (
+        f"LingerSeconds is {found.group(1)}, so the panel is held for no time at "
+        f"all and goes on the frame the cursor leaves. That is the behaviour the "
+        f"hold was added to replace.")
+
+
 # ---------------------------------------------------------------------------
 # Whether a panel appears, which is NOT the rarity word's rule
 # ---------------------------------------------------------------------------

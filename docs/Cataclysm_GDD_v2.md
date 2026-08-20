@@ -4365,6 +4365,15 @@ its players learn them.
 
 
 
+**The panel stays for a second after the cursor leaves the creature.** Pointing
+at one creature in a pack means putting the cursor on a body that is moving and
+being fought around, and often smaller than the cursor travels in one flick of
+the hand. Without the hold the panel is unreadable for exactly the creature it
+matters most for. Pointing at a **different** creature replaces the panel at once
+rather than waiting, so moving between two enemies never shows the wrong one.
+
+
+
 ## **Enemy Score Formula**
 
 Every enemy's score is built from **the width of its difficulty tier**: the gap between the maximum Power Score a player is expected to reach at the end of this tier and the end of the tier below. Nothing in the formula multiplies. Each contribution is a fraction of that width, or a flat number of points, and they are added.
