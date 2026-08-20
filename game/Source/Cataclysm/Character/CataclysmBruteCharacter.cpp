@@ -996,7 +996,7 @@ void ACataclysmBruteCharacter::UseEnemyAbility(int32 Index, AActor* Target,
 	}
 }
 
-float ACataclysmBruteCharacter::SecondsBetweenAttacks() const
+float ACataclysmBruteCharacter::DesignedSecondsBetweenAttacks() const
 {
 	const float Override = CVarBruteAttackInterval.GetValueOnAnyThread();
 	return Override > 0.0f ? Override : AttackIntervalSeconds;

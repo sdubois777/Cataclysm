@@ -20,6 +20,109 @@ applied or still pending.
 
 ---
 
+## 2026-08-20 — Commander increases movement speed and attack speed, not every stat
+
+**Affects:** the Buffs sheet of `docs/All_Things_Cataclysm.xlsx`, which generates
+the `Buff_Commander` row of `game/Data/StatusEffects.csv`; the Succubus section
+of `docs/Cataclysm_GDD_v2.md`; and
+`ACataclysmEnemyCharacter::CommanderMultiplier`. Applied. Closes issue #768.
+
+### The question
+
+**Commander said "all nearby allies gain 20% increased stats", and "stats" does
+not name any.** The Succubus's aura Dominion grants it to every allied creature
+within 8 metres, so it is the only thing in the game that makes a creature
+better. When the Succubus was built on 2026-08-20 the aura was left granting the
+`Status.Commander` tag and no magnitude at all — a buffed creature had a tag on
+it and identical numbers — because choosing the stats would have been inventing
+design rather than implementing it.
+
+### The decision
+
+**Movement speed and attack speed. Twenty per cent of each.** Set by the project
+owner on 2026-08-20.
+
+The 20% was already the design's own figure and did not change. What changed is
+that "stats" now names two.
+
+### Why those two and not more
+
+**Both are felt immediately and neither is a number on a screen.** A creature
+that arrives sooner and swings more often reads as buffed from watching it, which
+matters for an effect that has no other outward sign — nothing in the game draws
+a mark on a buffed creature today.
+
+**And they compound with a pack rather than with one creature.** Ten Imps at 20%
+more attack speed is ten more swings a second landing on the player; ten Imps
+with 20% more armour is barely visible. The Succubus's design is that it makes
+the fight around it harder, so the stats it lifts should be the ones that scale
+with how many allies are standing in the field.
+
+### Why maximum health was ruled out, which is the part worth recording
+
+**It would let an ally LOSE health by walking out of the aura**, from an effect
+meant to help it.
+
+An enemy's attributes are written as BASE values by
+`ACataclysmEnemyCharacter::ApplyStartingAttributes`, and a gameplay effect layers
+on top of a base, so raising `MaxHealth` by 20% would work. But current health
+does not rise with the maximum, so a buffed ally would read as damaged the moment
+it was buffed; and `UCataclysmVitalAttributeSet` clamps health to the maximum, so
+when the buff came off, health would be clamped DOWN. A creature walking in and
+out of the field repeatedly would be ground down by its own ally.
+
+Scaling current health with the maximum avoids that and buys a different problem:
+a Succubus arriving would be a partial heal for everything near it, which is a
+real change to how a fight goes and was not what was asked for.
+
+### Why armour, evasion and critical strike were ruled out
+
+Not because they are wrong — all three are safe to modify, unlike maximum health
+— but because they are **invisible**. Armour removes a fraction of a hit,
+evasion changes how often one lands, and a critical strike is a number the player
+sees on one blow in ten. None of them is legible as "that creature is being
+buffed" in the moment, and legibility is the whole requirement for an effect
+whose counter is to kill the creature granting it.
+
+They remain available if 20% on two stats turns out not to be felt.
+
+### What it cost in the engine
+
+**Every creature overrode the wrong function**, and there was no way to tell.
+`SecondsBetweenAttacks` was virtual and six creatures overrode it to return their
+own designed interval. A buff applied on the base class would have been thrown
+away by all six silently.
+
+So the enemy base now declares `DesignedSecondsBetweenAttacks`, which is what a
+creature overrides, and `SecondsBetweenAttacks` is `final` and returns
+`DesignedSecondsBetweenAttacks() / CommanderMultiplier()`. **A creature that
+overrides the wrong one no longer compiles**, which is the only kind of guard
+that cannot be forgotten by the next creature.
+
+**Divided rather than multiplied**, because the stored figure is an INTERVAL and
+the buff is a SPEED. 20% more attack speed takes the Succubus's own 2.6 seconds
+to 2.167, not to 3.12.
+
+**Walk speed needed a different shape from attack speed.** An interval is asked
+for every time the brain thinks, so it can be computed on demand; `MaxWalkSpeed`
+is a stored number the movement component reads every frame, so something has to
+write it. `ACataclysmEnemyCharacter::RefreshCommanderBuff` runs from Tick and
+writes it from the tag, which makes it self-correcting: an effect that simply
+expired cannot leave a creature walking fast for ever.
+
+**The designed walk speed is read off the movement component in `BeginPlay`**
+rather than declared again per creature, so there is one copy of the number.
+
+### What it does not cover
+
+**The `War_Commander` row of `game/Data/EnemyModifiers.csv` still says
+"Inspires allies, increasing their stats by 20%."** That is a modifier an elite
+War enemy can roll, and it is a separate row in a separate table that happens to
+share a name; nothing applies any enemy modifier yet. The two now disagree about
+what Commander does. Issue #771.
+
+---
+
 ## 2026-08-20 — The game saves itself constantly, so quitting a fight does not undo it
 
 **Affects:** a new section 6 in `docs/Save_System_Design.md`, an addition to the

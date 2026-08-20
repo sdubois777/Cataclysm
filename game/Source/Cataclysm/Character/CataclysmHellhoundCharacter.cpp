@@ -296,7 +296,7 @@ void ACataclysmHellhoundCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 	PlayOneShot(HellrushAnimation.Get(), HellrushWindUpSeconds);
 }
 
-float ACataclysmHellhoundCharacter::SecondsBetweenAttacks() const
+float ACataclysmHellhoundCharacter::DesignedSecondsBetweenAttacks() const
 {
 	return AttackIntervalSecondsInUse();
 }

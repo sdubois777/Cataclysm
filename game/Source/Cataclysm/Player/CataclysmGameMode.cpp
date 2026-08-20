@@ -626,10 +626,9 @@ int32 ACataclysmGameMode::SpawnSuccubi()
 		++Spawned;
 	}
 
-	// THE LOG SAYS WHAT THE AURA DOES, because nothing on screen does. A buffed
-	// creature is a creature with a gameplay tag on it and no outward sign, so
-	// without this line the one thing that makes this creature different is
-	// invisible. Issue #768 is the magnitude it does not yet apply.
+	// THE LOG SAYS WHAT THE AURA DOES, because nothing on screen does. Nothing
+	// draws a mark on a buffed creature, so the only way to see the aura is to
+	// notice that the creatures near the Succubus move and swing faster.
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("Put %d Succubi %.0f cm from %s on a bearing of %.0f degrees -- "
 			 "**the first diagonal, because the four cardinal ones are taken**. "

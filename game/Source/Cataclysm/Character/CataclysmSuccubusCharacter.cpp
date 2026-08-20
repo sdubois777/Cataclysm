@@ -197,7 +197,7 @@ float ACataclysmSuccubusCharacter::WitherCooldownSecondsInUse()
 	return Override > 0.0f ? Override : WitherCooldownSeconds;
 }
 
-float ACataclysmSuccubusCharacter::SecondsBetweenAttacks() const
+float ACataclysmSuccubusCharacter::DesignedSecondsBetweenAttacks() const
 {
 	return AttackIntervalSecondsInUse();
 }

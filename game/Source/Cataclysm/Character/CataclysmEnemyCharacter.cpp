@@ -297,6 +297,49 @@ void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	AdvanceCharge(DeltaSeconds);
+	RefreshCommanderBuff();
+}
+
+float ACataclysmEnemyCharacter::CommanderMultiplier() const
+{
+	// THE TAG IS THE SINGLE SOURCE OF TRUTH, rather than a flag this class
+	// keeps in step with one. The Succubus grants and removes the tag; nothing
+	// here has to be told.
+	const FGameplayTag Commander = UCataclysmSkillShapes::StatusTagFor(
+		TEXT("Commander"));
+
+	if (!UCataclysmSkillEffects::HasTag(this, Commander))
+	{
+		return 1.0f;
+	}
+
+	return 1.0f + CommanderIncreasePercent / 100.0f;
+}
+
+void ACataclysmEnemyCharacter::RefreshCommanderBuff()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// NOTHING TO SCALE UNTIL BeginPlay HAS READ THE DESIGNED FIGURE. Writing
+	// zero here would freeze every creature in place for a frame.
+	if (DesignedWalkSpeedCmPerSecond <= 0.0f)
+	{
+		return;
+	}
+
+	const float Wanted = DesignedWalkSpeedCmPerSecond * CommanderMultiplier();
+
+	// ONLY ON A CHANGE. Assigning the same float every frame is harmless, and
+	// checking first says out loud that this is a state that changes rarely
+	// rather than a value being recomputed.
+	if (!FMath::IsNearlyEqual(Movement->MaxWalkSpeed, Wanted))
+	{
+		Movement->MaxWalkSpeed = Wanted;
+	}
 }
 
 void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
@@ -853,6 +896,20 @@ void ACataclysmEnemyCharacter::BeginPlay()
 	// Owner and avatar are both this actor, so there is no possession or
 	// replication ordering to wait for. BeginPlay is sufficient on both sides.
 	InitAbilityActorInfo();
+
+	// WHAT THIS CREATURE WALKS AT WITH NOTHING HELPING IT, captured before
+	// anything can change it. Every creature sets MaxWalkSpeed in its own
+	// constructor, so by now it holds the designed figure; recording it here
+	// rather than declaring it again per creature means there is one copy of
+	// the number and it cannot drift.
+	//
+	// A CREATURE DESIGNED AT ZERO STAYS AT ZERO. The Corrupted Sentinel's
+	// designed speed really is 0.0, and 20% more of nothing is nothing, which is
+	// the right answer: an aura does not un-root a turret.
+	if (const UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		DesignedWalkSpeedCmPerSecond = Movement->MaxWalkSpeed;
+	}
 }
 
 void ACataclysmEnemyCharacter::InitAbilityActorInfo()
