@@ -169,21 +169,6 @@ public:
 							const FString& RarityName);
 
 	/**
-	 * The health figures, as they are printed on the bar.
-	 *
-	 * A LIVING CREATURE NEVER READS ZERO. Health is an unrounded float that is
-	 * only clamped, so a creature sitting on 0.3 health is alive and hittable,
-	 * and rounding alone would print "0 / 250" for it -- which is the one thing
-	 * a health readout must not say about something that is still standing. This
-	 * is the same rule and the same reason `UCataclysmCombatOverlay::FigureFor`
-	 * exists for a damage number.
-	 *
-	 * @return an empty string when the creature has no health pool at all, which
-	 *         is every creature before its ability system has been initialised
-	 */
-	static FString HealthTextFor(float Health, float MaxHealth);
-
-	/**
 	 * Where the whole panel goes, given how much is inside it.
 	 *
 	 * THE TOP CENTRE OF THE SCREEN. That is where the project owner asked for

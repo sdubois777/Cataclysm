@@ -342,6 +342,34 @@ public:
 	/** How much of a bar is filled, 0 to 1. Zero when the maximum is not real. */
 	static float BarFractionFor(float Current, float Maximum);
 
+	/**
+	 * One pool's figures, as they are printed on the bar: "112 / 250".
+	 *
+	 * A POOL THAT IS NOT EMPTY NEVER READS ZERO, and that is the whole reason
+	 * this is a function rather than a call to FString::Printf. Health, mana
+	 * and the energy shield are unrounded floats that are only clamped, so a
+	 * character sitting on 0.3 health is alive, standing and hittable --
+	 * and rounding alone prints "0 / 500" for them. A health readout saying
+	 * zero about something that is not dead is the one thing it must never do,
+	 * and it is the figure a player looks at hardest at exactly that moment.
+	 *
+	 * IT IS NOT A RARE CASE. UCataclysmDamageCalculation::Resolve ends with
+	 * FMath::Min(Damage, Vitals->GetHealth()), so a blow that would have killed
+	 * leaves health at exactly what was there rather than at a round number,
+	 * and regeneration adds fractions every tick. Issue #743 found it on the
+	 * player's own bars, where it had been since they were built.
+	 *
+	 * THE SAME RULE FigureFor FOLLOWS FOR A DAMAGE NUMBER, and for the same
+	 * reason. The two are separate functions because they print different
+	 * things: that one prints one figure and this prints a pair with a divider.
+	 *
+	 * @param Current  what is left in the pool
+	 * @param Maximum  how large the pool is
+	 * @return an empty string when there is no pool at all, which is every
+	 *         creature and every character before its attributes arrive
+	 */
+	static FString PoolTextFor(float Current, float Maximum);
+
 	//~ An enemy's rarity, said in a word over its head. Issue #740.
 
 	/**

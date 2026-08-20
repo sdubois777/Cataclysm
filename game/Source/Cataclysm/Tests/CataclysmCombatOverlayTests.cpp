@@ -678,6 +678,62 @@ bool FCataclysmOverlayNoBarOverACorpse::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A pool with anything left in it never prints zero.
+ *
+ * THE ONE THING A HEALTH READOUT MUST NOT SAY about something still standing.
+ * Health, mana and the energy shield are unrounded floats that are only
+ * clamped, so a character sitting on 0.3 health is alive, standing and
+ * hittable -- and rounding alone prints "0 / 500" for them, at exactly the
+ * moment the figure is being read hardest. Issue #743 found it on the player's
+ * own bars, where it had been since they were built; the creature panel had
+ * the rule and the frame did not, so the two disagreed about the same pool.
+ *
+ * IT IS NOT A RARE CASE. UCataclysmDamageCalculation::Resolve ends with
+ * FMath::Min(Damage, Vitals->GetHealth()), so a blow that would have killed
+ * leaves health at exactly what was there rather than at a round number.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayPoolNeverReadsZeroWhenAlive,
+	"Cataclysm.Overlay.APoolWithAnythingLeftInItNeverReadsZero",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOverlayPoolNeverReadsZeroWhenAlive::RunTest(const FString&)
+{
+	using FOverlay = UCataclysmCombatOverlay;
+
+	TestEqual(TEXT("a full pool reads both figures"),
+		FOverlay::PoolTextFor(250.0f, 250.0f), FString(TEXT("250 / 250")));
+
+	TestEqual(TEXT("a part-used one reads what is left"),
+		FOverlay::PoolTextFor(112.4f, 250.0f), FString(TEXT("112 / 250")));
+
+	// THE ONE THAT MATTERS, and it is what issue #743 was.
+	TestEqual(TEXT("a fraction of a point still reads 1"),
+		FOverlay::PoolTextFor(0.3f, 250.0f), FString(TEXT("1 / 250")));
+
+	TestEqual(TEXT("and so does one just under half a point"),
+		FOverlay::PoolTextFor(0.49f, 250.0f), FString(TEXT("1 / 250")));
+
+	// AN EMPTY POOL READS ZERO, WHICH IS TRUE OF IT. Issue #653 is why the
+	// figures are drawn at all: a mana pool at zero and one at one look the
+	// same on a bar that short, and the difference decides whether anything
+	// can be cast. So zero has to be reachable and has to mean zero.
+	TestEqual(TEXT("a pool actually at zero reads zero"),
+		FOverlay::PoolTextFor(0.0f, 250.0f), FString(TEXT("0 / 250")));
+	TestEqual(TEXT("and so does one somehow below it"),
+		FOverlay::PoolTextFor(-4.0f, 250.0f), FString(TEXT("0 / 250")));
+
+	// NO POOL AT ALL SAYS NOTHING RATHER THAN "0 / 0". That is every
+	// character before its attributes have arrived, and every class with no
+	// energy shield, which is a design position rather than an error.
+	TestTrue(TEXT("a pool that does not exist says nothing"),
+		FOverlay::PoolTextFor(0.0f, 0.0f).IsEmpty());
+	TestTrue(TEXT("and neither does a negative maximum"),
+		FOverlay::PoolTextFor(10.0f, -1.0f).IsEmpty());
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayBarFractionIsBounded,
 	"Cataclysm.Overlay.ABarIsNeverFilledPastItsEndsOrBelowZero",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

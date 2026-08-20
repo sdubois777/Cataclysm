@@ -48,6 +48,7 @@ SOURCE = REPO_ROOT / "game" / "Source" / "Cataclysm"
 HUD_CPP = SOURCE / "Interface" / "CataclysmHUD.cpp"
 PANEL_H = SOURCE / "Interface" / "CataclysmCreaturePanel.h"
 PANEL_CPP = SOURCE / "Interface" / "CataclysmCreaturePanel.cpp"
+OVERLAY_CPP = SOURCE / "Interface" / "CataclysmCombatOverlay.cpp"
 ENEMY_H = SOURCE / "Character" / "CataclysmEnemyCharacter.h"
 CHARACTERS = SOURCE / "Character"
 ARCHETYPES = REPO_ROOT / "game" / "Data" / "EnemyArchetypes.csv"
@@ -285,15 +286,46 @@ def test_a_living_creature_never_reads_zero_health() -> None:
     FMath::Min(Damage, Health), so a killing blow leaves health at exactly what
     was there; and a creature on 0.3 health is alive, hittable, and would be
     printed as "0 / 250". That is the one thing a health readout must not say
-    about something still standing. UCataclysmCombatOverlay::FigureFor exists
-    for the same reason on the damage numbers.
+    about something still standing.
+
+    THE RULE LIVES ON UCataclysmCombatOverlay AND NOT ON THE PANEL, since issue
+    #743. The panel had it and the player's own bars on the frame did not, so
+    the same character read "1 / 500" when a creature was pointed at and
+    "0 / 500" in the corner. One rule in one place is what stops that.
     """
     body = function_body(
-        read(PANEL_CPP), "FString UCataclysmCreaturePanel::HealthTextFor")
+        read(OVERLAY_CPP), "FString UCataclysmCombatOverlay::PoolTextFor")
 
     assert re.search(r"FMath::Max\s*\(\s*1\s*,", body), (
-        "HealthTextFor rounds the current health without a floor of 1, so a "
-        "creature alive on a fraction of a point reads as 0. Issue #740.")
+        "PoolTextFor rounds what is left in the pool without a floor of 1, so "
+        "anything alive on a fraction of a point reads as 0. Issues #740 and "
+        "#743.")
+
+
+def test_the_panel_and_the_frame_print_their_figures_the_same_way() -> None:
+    """Two copies of this rule is how issue #743 happened.
+
+    The creature panel floored its figure at 1 and the player's own bars did
+    not, so the same number was printed two different ways depending on which
+    part of the screen it appeared in. Both now ask the same function.
+    """
+    hud = read(HUD_CPP)
+
+    panel = function_body(hud, "void ACataclysmHUD::DrawCreaturePanel")
+    assert "PoolTextFor(" in panel, (
+        "DrawCreaturePanel does not ask UCataclysmCombatOverlay::PoolTextFor "
+        "for its health figures, so it is printing them some other way.")
+
+    frame = function_body(hud, "void ACataclysmHUD::DrawPlayerPool")
+    assert "PoolTextFor(" in frame, (
+        "DrawPlayerPool does not ask UCataclysmCombatOverlay::PoolTextFor for "
+        "its figures. That was issue #743: it printed \"0 / 500\" for a "
+        "character alive on a fraction of a point.")
+
+    assert "FString::Printf" not in frame, (
+        "DrawPlayerPool builds its figures itself again. The rule that a pool "
+        "with anything left in it never reads zero lives in one place, and a "
+        "second copy here is exactly how issue #743 happened.")
 
 
 # ---------------------------------------------------------------------------

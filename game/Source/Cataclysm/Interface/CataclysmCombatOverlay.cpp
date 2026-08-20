@@ -326,6 +326,23 @@ bool UCataclysmCombatOverlay::ShouldShowRarityNameFor(int32 RarityStep,
 	return true;
 }
 
+FString UCataclysmCombatOverlay::PoolTextFor(float Current, float Maximum)
+{
+	if (Maximum <= 0.0f)
+	{
+		return FString();
+	}
+
+	// A POOL THAT IS NOT EMPTY NEVER READS ZERO. See the header: a character
+	// on 0.3 health is alive, and rounding alone would print "0" for them.
+	const int32 Left = Current > 0.0f
+		? FMath::Max(1, FMath::RoundToInt(Current))
+		: 0;
+
+	return FString::Printf(TEXT("%d / %d"), Left,
+						   FMath::RoundToInt(Maximum));
+}
+
 float UCataclysmCombatOverlay::BarFractionFor(float Current, float Maximum)
 {
 	if (Maximum <= 0.0f)

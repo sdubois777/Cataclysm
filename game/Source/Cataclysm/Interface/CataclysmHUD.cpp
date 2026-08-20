@@ -241,9 +241,14 @@ void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
 	// about the second one, and issue #653 showed the first is not enough on its
 	// own either: a mana pool at zero and a mana pool at one look the same on a
 	// bar that short, and the difference decides whether anything can be cast.
+	//
+	// AND THE FIGURES ARE NOT PRINTED HERE. UCataclysmCombatOverlay::PoolTextFor
+	// is what builds them, because a pool with anything left in it must never
+	// read zero and rounding alone breaks that. Issue #743: this printed
+	// "0 / 500" for a character alive on a fraction of a point, which is the
+	// one thing a health readout must not say about somebody still standing.
 	DrawTextCentred(
-		FString::Printf(TEXT("%d / %d"), FMath::RoundToInt(Current),
-						FMath::RoundToInt(Maximum)),
+		UCataclysmCombatOverlay::PoolTextFor(Current, Maximum),
 		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
 }
 
@@ -545,7 +550,7 @@ void ACataclysmHUD::DrawCreaturePanel()
 			Creature->RarityStep));
 
 	const FString HealthText =
-		UCataclysmCreaturePanel::HealthTextFor(Health, MaxHealth);
+		UCataclysmCombatOverlay::PoolTextFor(Health, MaxHealth);
 
 	TArray<FString> Modifiers;
 	UCataclysmCreaturePanel::ModifierNamesFor(
