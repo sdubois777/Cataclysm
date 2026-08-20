@@ -31,7 +31,7 @@ ACataclysmGroundZone* ACataclysmGroundZone::Spawn(
 
 ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 	AActor* Owner, const FVector& Start, const FVector& End, float HalfWidthCm,
-	float Duration, float DamagePerTick)
+	float Duration, float DamagePerTick, bool bBurnsEveryone)
 {
 	if (!IsValid(Owner) || HalfWidthCm <= 0.0f || Duration <= 0.0f)
 	{
@@ -62,6 +62,7 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 
 	Zone->RadiusCm = RadiusCm;
 	Zone->DamagePerTick = DamagePerTick;
+	Zone->bBurnsEveryone = bBurnsEveryone;
 
 	// Read back from the actor rather than trusting Start, because AlwaysSpawn
 	// still lets the engine adjust a spawn position, and the near end has to be
@@ -106,8 +107,15 @@ void ACataclysmGroundZone::Sweep()
 	// point is a circle of RadiusCm at that point, because IsInLine treats a
 	// segment of no length that way, so a round zone and a long one cannot drift
 	// apart in behaviour.
-	const TArray<AActor*> Inside = UCataclysmTargeting::FindEnemiesInLine(
-		GetWorld(), Source, GetActorLocation(), FarEnd, RadiusCm);
+	// WHICH SEARCH DEPENDS ON WHOSE FIRE IT IS. Almost every zone belongs to
+	// whoever cast it and burns the other side. The Hellhound's lane burns
+	// whatever is standing in it, the Hellhound included, which is the one
+	// thing in the design that asks for it.
+	const TArray<AActor*> Inside = bBurnsEveryone
+		? UCataclysmTargeting::FindEveryoneInLine(
+			GetWorld(), Source, GetActorLocation(), FarEnd, RadiusCm)
+		: UCataclysmTargeting::FindEnemiesInLine(
+			GetWorld(), Source, GetActorLocation(), FarEnd, RadiusCm);
 
 	for (AActor* Target : Inside)
 	{

@@ -68,10 +68,29 @@ public:
 	 * only be damaged by one Flame Wall at a time.
 	 *
 	 * @param HalfWidthCm  how far either side of the line it reaches
+	 * @param bBurnsEveryone  whether it burns whatever is standing in it rather
+	 *                        than only the owner's enemies -- **including the
+	 *                        owner**. One thing in the design needs it: the
+	 *                        Hellhound's burning lane, whose model entry says
+	 *                        "The fire burns other enemies and the Hellhound
+	 *                        itself". Everything else leaves a zone that knows
+	 *                        whose side it is on.
 	 */
 	static ACataclysmGroundZone* SpawnAlong(AActor* Owner, const FVector& Start,
 											const FVector& End, float HalfWidthCm,
-											float Duration, float DamagePerTick);
+											float Duration, float DamagePerTick,
+											bool bBurnsEveryone = false);
+
+	/**
+	 * Whether it burns whatever is standing in it, including its own owner.
+	 *
+	 * FALSE FOR EVERY ZONE BUT ONE. A skill's ground effect belongs to whoever
+	 * cast it and hurts the other side; this is the exception the Hellhound's
+	 * design asks for, and it is a field rather than a separate class because
+	 * the only thing that differs is which search the sweep runs.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	bool bBurnsEveryone = false;
 
 	/** Seconds between one sweep of who is standing in it and the next. */
 	static constexpr float TickSeconds = 1.0f;

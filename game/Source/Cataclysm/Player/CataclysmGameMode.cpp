@@ -8,6 +8,7 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Interface/CataclysmHUD.h"
 #include "Engine/World.h"
@@ -107,6 +108,7 @@ void ACataclysmGameMode::StartPlay()
 	SpawnTrainingDummies();
 	SpawnBrutes();
 	SpawnAbyssalWardens();
+	SpawnHellhounds();
 
 	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
 	// here, so that a test can reach it: StartPlay wants a player controller and
@@ -268,6 +270,102 @@ int32 ACataclysmGameMode::SpawnAbyssalWardens()
 		ACataclysmAbyssalWardenCharacter::DesignedWalkSpeedCmPerSecond,
 		ACataclysmAbyssalWardenCharacter::MoltenRoarRadiusCm,
 		ACataclysmAbyssalWardenCharacter::MoltenRoarCooldownSeconds);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnHellhounds()
+{
+	UWorld* World = GetWorld();
+	if (!World || HellhoundCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction the
+	// other two spawners make. The player start sits at the height a default
+	// capsule needs, and this creature's is 26.25 cm taller than the base
+	// enemy's, so spawning at the same height buries its feet until the movement
+	// component pushes it out.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmHellhoundCharacter::HellhoundCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	// FROM A BEARING RATHER THAN FROM ZERO, and this is the only spawner that
+	// does. The header says why: a single creature otherwise goes directly in
+	// front at +X, and the Brute and the Abyssal Warden already stand on that
+	// line with no floor left beyond them.
+	const float BearingRadians = FMath::DegreesToRadians(HellhoundBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < HellhoundCount; ++Index)
+	{
+		// Spread around the same centre when there is more than one, starting
+		// from the bearing rather than from +X.
+		const float Angle = BearingRadians
+						  + 2.0f * PI * static_cast<float>(Index)
+							  / static_cast<float>(FMath::Max(HellhoundCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * HellhoundDistanceCm,
+			FMath::Sin(Angle) * HellhoundDistanceCm,
+			RiseCm);
+
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmHellhoundCharacter* Hellhound =
+			World->SpawnActor<ACataclysmHellhoundCharacter>(
+				ACataclysmHellhoundCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Hellhound)
+		{
+			continue;
+		}
+
+		Hellhound->SetHealth(HellhoundHealth);
+		Hellhound->SetAttackDamage(HellhoundAttackDamage);
+		Hellhound->SetArmour(HellhoundArmour);
+		Hellhound->SetRarityStep(RarityStepFor(HellhoundRarityStep, Hellhound));
+
+		Hellhounds.Add(Hellhound);
+		++Spawned;
+	}
+
+	// THE LOG SAYS IT CATCHES THE PLAYER, because that is the first thing
+	// anybody watching it will notice and it is the design rather than the
+	// defect issue #417 records on the Brute.
+	//
+	// AND THAT ITS FIRE BURNS ITSELF, because a creature losing health while
+	// nothing is attacking it looks like a bug and is not one.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Hellhounds %.0f cm from %s on a bearing of %.0f degrees. "
+			 "Each has %.0f health and %.0f armour at difficulty tier %d, "
+			 "bites for %.0f every %.1f s, and moves at %.0f cm/s -- faster "
+			 "than any player class, so it cannot be walked away from. Its "
+			 "Hellrush charges %.0f cm every %.0f s and leaves that lane "
+			 "burning for %.0f s, and THAT FIRE BURNS THE HELLHOUND ITSELF and "
+			 "any other enemy standing in it. It is the only thing in the game "
+			 "that does."),
+		Spawned, HellhoundDistanceCm, *Centre.ToCompactString(),
+		HellhoundBearingDegrees,
+		HellhoundHealth, HellhoundArmour, DifficultyTierFor(this),
+		HellhoundAttackDamage,
+		ACataclysmHellhoundCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmHellhoundCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmHellhoundCharacter::HellrushRangeCm,
+		ACataclysmHellhoundCharacter::HellrushCooldownSeconds,
+		ACataclysmHellhoundCharacter::HellrushGroundSeconds);
 
 	return Spawned;
 }

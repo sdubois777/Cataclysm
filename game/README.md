@@ -119,10 +119,15 @@ by `git add` with no error and no warning. Guarded by
 
 ## What is not here yet
 
-- **Two characters have art. Everything else is an engine primitive.** The Brute
-  wears the Paragon Rampage model and the Abyssal Warden wears GruxMolten from
-  the Paragon Grux pack; the player, the summoned imp and the training dummies
-  are still primitive meshes from `/Engine/BasicShapes/`. The six free
+- **Three characters have art. Everything else is an engine primitive.** The
+  Brute wears the Paragon Rampage model, the Abyssal Warden wears GruxMolten
+  from the Paragon Grux pack, and the Hellhound wears IggyScorch; the player,
+  the summoned imp and the training dummies are still primitive meshes from
+  `/Engine/BasicShapes/`. **The Hellhound's mesh is two creatures**, a goblin
+  riding a fire-breathing mount, because the pack holds one skeletal mesh for
+  the pair and there is no separate mount to load; whether the rider should be
+  hidden is issue
+  [#756](https://github.com/sdubois777/Cataclysm/issues/756). The six free
   Paragon packs that will play the seven vertical slice enemies are downloaded
   into `Content/` but are excluded from git, so on a fresh clone both fall back
   to a primitive and say so in the log. **Only the Brute has an animation

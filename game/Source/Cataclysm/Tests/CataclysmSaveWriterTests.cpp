@@ -48,7 +48,53 @@ namespace CataclysmSaveWriterTest
 		FGuid CharacterId = FGuid::NewGuid();
 	};
 
-	static void Forget(const UCataclysmSaveWriter* Writer)
+	/**
+	 * How long to let a background write finish before deleting its slot.
+	 *
+	 * **DELETING A FILE OUT FROM UNDER A WRITE IS WHAT MADE THIS SUITE FLAKY.**
+	 * An asynchronous write runs on a background thread, so a test that started
+	 * one and then cleaned up was racing it: the write landed on a file that had
+	 * just been deleted, failed, and `UCataclysmSaveWriter::Write` logged an
+	 * Error -- which fails whichever automation test is running when the callback
+	 * arrives, and that need not be the test that started the write. It passed
+	 * four full runs before it failed.
+	 *
+	 * TWO SECONDS IS FAR MORE THAN A TWO-KILOBYTE WRITE NEEDS and costs nothing
+	 * when the file is already there, which is the ordinary case: the wait ends
+	 * as soon as it appears.
+	 */
+	static constexpr float LongestWaitForAWriteSeconds = 2.0f;
+
+	/** Wait, briefly, for a slot to appear. Returns whether it did. */
+	static bool WaitForSlot(const FString& SlotName)
+	{
+		if (SlotName.IsEmpty())
+		{
+			return false;
+		}
+
+		const double GiveUpAt = FPlatformTime::Seconds() + LongestWaitForAWriteSeconds;
+		while (FPlatformTime::Seconds() < GiveUpAt)
+		{
+			if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))
+			{
+				return true;
+			}
+			FPlatformProcess::Sleep(0.01f);
+		}
+		return false;
+	}
+
+	/**
+	 * Delete whatever a writer wrote, once anything in flight has landed.
+	 *
+	 * @param bWriteWasStarted  whether a write was started that has not been
+	 *                          seen to finish. When it was, this waits for the
+	 *                          file before deleting it, so the background write
+	 *                          cannot arrive afterwards and fail.
+	 */
+	static void Forget(const UCataclysmSaveWriter* Writer,
+					   bool bWriteWasStarted = false)
 	{
 		if (!Writer)
 		{
@@ -57,8 +103,17 @@ namespace CataclysmSaveWriterTest
 
 		for (const FString& Slot : { Writer->RunSlotName(), Writer->CharacterSlotName() })
 		{
-			if (!Slot.IsEmpty()
-				&& UGameplayStatics::DoesSaveGameExist(Slot, UserIndex))
+			if (Slot.IsEmpty())
+			{
+				continue;
+			}
+
+			if (bWriteWasStarted)
+			{
+				WaitForSlot(Slot);
+			}
+
+			if (UGameplayStatics::DoesSaveGameExist(Slot, UserIndex))
 			{
 				UGameplayStatics::DeleteGameInSlot(Slot, UserIndex);
 			}
@@ -177,7 +232,7 @@ bool FCataclysmSaveWriterWaitsForARun::RunTest(const FString&)
 		Writer->CharacterSlotName(),
 		UCataclysmSavePartition::CharacterSlotName(Run.CharacterId));
 
-	Forget(Writer);
+	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
 	return true;
 }
@@ -242,7 +297,7 @@ bool FCataclysmSaveWriterDeathIsOnDiskImmediately::RunTest(const FString&)
 	TestEqual(TEXT("and it was counted as a synchronous write"),
 		Writer->SynchronousWrites(), 1);
 
-	Forget(Writer);
+	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
 	return true;
 }
@@ -289,7 +344,7 @@ bool FCataclysmSaveWriterOtherWritesAreHandedOver::RunTest(const FString&)
 	TestEqual(TEXT("one write was started"), Writer->WritesStarted(), 1);
 	TestEqual(TEXT("and none of them was synchronous"), Writer->SynchronousWrites(), 0);
 
-	Forget(Writer);
+	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
 	return true;
 }
@@ -351,7 +406,7 @@ bool FCataclysmSaveWriterRunRecordOncePerFrame::RunTest(const FString&)
 	TestEqual(TEXT("which makes two writes"), Writer->WritesStarted(), 2);
 	TestEqual(TEXT("one of them synchronous"), Writer->SynchronousWrites(), 1);
 
-	Forget(Writer);
+	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
 	return true;
 }
@@ -407,7 +462,7 @@ bool FCataclysmSaveWriterClockWaits::RunTest(const FString&)
 	TestTrue(TEXT("the clock was restarted"),
 		Writer->SecondsSinceTheClockWrote() < Interval);
 
-	Forget(Writer);
+	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
 	return true;
 }
@@ -502,7 +557,7 @@ bool FCataclysmSaveWriterHealthThreshold::RunTest(const FString&)
 	TestEqual(TEXT("staying below the line writes nothing further this frame"),
 		Writer->WritesStarted(), 1);
 
-	Forget(Writer);
+	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
 	return true;
 }
