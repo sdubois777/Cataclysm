@@ -53,6 +53,16 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ability")
 	FString SkillDescription;
 
+	/**
+	 * The designed name, so the skill bar can write it even though this ability
+	 * does nothing when activated.
+	 *
+	 * A SLOT HOLDING ONE OF THESE IS NOT AN EMPTY SLOT, and the difference is
+	 * worth showing. The skill is named in the design and granted by the equipped
+	 * weapon; what it has no numbers for is behaviour.
+	 */
+	virtual FString DisplayedName() const override { return SkillName; }
+
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 								 const FGameplayAbilityActorInfo* ActorInfo,
 								 const FGameplayAbilityActivationInfo ActivationInfo,

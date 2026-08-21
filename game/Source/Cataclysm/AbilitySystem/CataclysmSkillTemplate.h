@@ -40,6 +40,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FString SkillDescription;
 
+	/** The designed name, for anything showing the player their own abilities. */
+	virtual FString DisplayedName() const override { return SkillName; }
+
 	/** This skill's numbers, parsed from its Shape Params cell. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FCataclysmSkillShapeParams Params;

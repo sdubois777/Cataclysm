@@ -66,6 +66,32 @@ public:
 	 */
 	bool CursorIsOverInterface() const;
 
+	/**
+	 * Which key fires the ability in a slot right now.
+	 *
+	 * PUBLIC BECAUSE THE SKILL BAR HAS TO LABEL ITS BOXES, and because the answer
+	 * is not a constant anybody could write into the interface instead. The
+	 * Support slot is on **W** under mouse movement and on **1** under keyboard
+	 * movement, because keyboard movement needs W for walking forward --
+	 * `tools/generate_input_assets.py` builds the two mapping contexts and says
+	 * so where it does it. A label written down anywhere else would be wrong for
+	 * half of the players.
+	 *
+	 * THE FIRST KEY WHEN SEVERAL ARE BOUND. Nothing binds two keys to one slot
+	 * today; if something does, a box has room for one label and the first is as
+	 * good an answer as any.
+	 *
+	 * IT DOES NOT LOAD THE INPUT CONFIGURATION. The heads-up display calls this
+	 * from its draw pass, and a synchronous asset load there would stall a frame.
+	 * A configuration that is not loaded yet answers with no key, which draws an
+	 * unlabelled box for the frames before input has been set up.
+	 *
+	 * @param SlotTag a Slot.* tag. Anything else answers no key.
+	 * @return the key, or an invalid `FKey` when nothing is bound
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Input")
+	FKey KeyForAbilitySlot(FGameplayTag SlotTag) const;
+
 protected:
 	/** Every binding in the game, as data. Path set in Config/DefaultGame.ini. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Input")
