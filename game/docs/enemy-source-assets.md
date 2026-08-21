@@ -146,11 +146,85 @@ runs at its authored speed. Against the 1.2 second interval that leaves a fifth
 of a second between one swing ending and the next starting, and it is the reason
 the interval must not go below 1.0.
 
-**Wind-up durations are not in this file because they have not been measured.**
-The attack telegraph rule in section X of `docs/Cataclysm_GDD_v2.md` caps the
-wind-up at half the attack interval. `SequenceLength` gives the whole animation,
-not the moment inside it when damage lands. Finding that needs the animation
-notifies read per asset.
+## When each ordinary attack actually strikes
+
+Measured 2026-08-21 by `tools/measure_attack_impact.py` for issue
+[#526](https://github.com/sdubois777/Cataclysm/issues/526), which replaces the
+paragraph that used to sit here saying these had never been measured.
+
+**NOT ONE OF THE THIRTEEN CLIPS CARRIES AN ANIMATION NOTIFY.** Issue #526 asked
+for the authored notify where there was one and inspection where there was not.
+`tools/probe_attack_impact_sources.py` read every clip through
+`unreal.AnimationLibrary.get_animation_notify_events` and every one came back
+empty, each with a single empty notify track named `1`. The Paragon packs were
+authored for a different game and carry no damage markers, **so every figure
+below is from inspection and none is from a notify.**
+
+`clip.get_editor_property("notifies")` does not work at all:
+`UAnimSequenceBase::Notifies` is protected and Python refuses it for every clip.
+`unreal.AnimationLibrary` is the route that works.
+
+**THREE RULES, AND THEIR AGREEMENT IS THE EVIDENCE.** Choosing one definition of
+"the moment it strikes" and trusting it is how the stride measurement came to
+report 0.0 cm/s for three walking clips — it followed one bone that looked right
+and was never driven, which is issue
+[#778](https://github.com/sdubois777/Cataclysm/issues/778). So three independent
+answers are computed for each clip: the sample where the striking bone moves
+fastest, the sample where it is furthest from the pelvis, and the sample where it
+is nearest the ground. Where they agree the answer is solid; where they do not,
+the clip is left unmeasured rather than guessed at.
+
+| Creature | Clip | Strikes at | Method |
+|---|---|:-:|---|
+| Brute | `Attack_Biped_Melee_A` | **0.331 s** | inspection; peak speed and lowest point agree |
+| Imp | `Attack_A_SetA` | **0.242 s** | inspection; peak speed and furthest reach agree |
+| Imp | `Attack_B_SetA` | **not measured** | the three rules disagree by 0.167 s |
+| Imp | `Attack_C_SetA` | **not measured** | the three rules disagree by 0.330 s |
+| Imp | `Attack_D_SetA` | **0.278 s** | inspection; peak speed and furthest reach agree |
+| Imp | `Attack_E_SetA` | **0.308 s** | inspection; peak speed and furthest reach agree |
+| Hellhound | `Scorch_Primary_Fire_Med` | **not measured** | the three rules disagree by 0.338 s |
+| Abyssal Warden | `PrimaryAttack_LA_Fast` | **0.176 s** | inspection; peak speed and furthest reach agree |
+| Abyssal Warden | `PrimaryAttack_RA_Fast` | **0.168 s** | inspection; peak speed and furthest reach agree |
+| Corrupted Sentinel | `Fire_Planted` | **not measured** | the three rules disagree by 1.040 s |
+| Corrupted Sentinel | `Fire_Planted_B` | **1.755 s** | inspection; peak speed and lowest point agree |
+| Succubus | `Primary_Attack_Normal` | **0.156 s** | inspection; peak speed and furthest reach agree, and `hand_l` peaks at the same moment |
+| Gatekeeper | `Swing1_Medium` | **0.282 s** | inspection; **all three rules agree within 0.057 s** |
+
+Nine of the thirteen are measured. **Four are not, and a number was not invented
+for them.**
+
+### What that means in play, and both answers are wrong
+
+The damage moment is not where the animation puts it, for any of the seven.
+
+| Creature | Play rate | Strike in play | Damage lands at | Gap |
+|---|:-:|:-:|:-:|---|
+| Brute | 1.00 | 0.331 s | 0 s, before the clip starts | damage **0.33 s early** |
+| Imp | 1.00 | 0.242 to 0.308 s | 0 s | damage **0.24 to 0.31 s early** |
+| Abyssal Warden | 1.00 | 0.168 to 0.176 s | 0 s | damage **0.17 s early** |
+| Corrupted Sentinel | 1.20 | 1.463 s | 1.000 s, the wind-up's end | damage **0.46 s early** |
+| Gatekeeper | 1.1667 | 0.242 s | 0.971 s, the wind-up's end | damage **0.73 s late** |
+| Succubus | 1.00 | 0.156 s | 1.300 s, the wind-up's end | damage **1.14 s late** |
+
+Two separate causes, so two issues:
+
+- [#783](https://github.com/sdubois777/Cataclysm/issues/783) — the four creatures
+  whose ordinary attack is **not** telegraphed apply their damage and then start
+  the clip, so the hit always lands before the blow.
+- [#784](https://github.com/sdubois777/Cataclysm/issues/784) — the three whose
+  ordinary attack **is** telegraphed fit the clip to the wind-up by its whole
+  length, so its strike frame lands wherever the arithmetic leaves it.
+
+**Re-run the measurement after importing or replacing any of these:**
+
+```
+python tools/run_editor_python.py tools/probe_attack_impact_sources.py
+python tools/run_editor_python.py tools/measure_attack_impact.py
+```
+
+Both change nothing. The results land in
+`game/Saved/Logs/run_editor_python.log`, on lines beginning `PROBE|` and
+`IMPACT|`.
 
 ## How fast the locomotion animations were authored to move
 
