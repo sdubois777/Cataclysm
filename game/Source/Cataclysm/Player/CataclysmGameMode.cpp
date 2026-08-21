@@ -109,14 +109,21 @@ void ACataclysmGameMode::StartPlay()
 	// After the player start exists and before anything can be pressed. Spawning
 	// from here rather than from the level means the sandbox's contents are
 	// reviewable text rather than bytes inside L_Sandbox.umap.
-	SpawnTrainingDummies();
-	SpawnBrutes();
-	SpawnAbyssalWardens();
-	SpawnHellhounds();
-	SpawnImps();
-	SpawnCorruptedSentinels();
-	SpawnSuccubi();
-	SpawnGatekeepers();
+	//
+	// SKIPPED ENTIRELY BY A DUNGEON. Every one of these places its creatures at
+	// a fixed offset from the world origin, which is where the sandbox's flat
+	// floor is and is not where a generated dungeon floor is walkable.
+	if (bSpawnsSandboxCreatures)
+	{
+		SpawnTrainingDummies();
+		SpawnBrutes();
+		SpawnAbyssalWardens();
+		SpawnHellhounds();
+		SpawnImps();
+		SpawnCorruptedSentinels();
+		SpawnSuccubi();
+		SpawnGatekeepers();
+	}
 
 	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
 	// here, so that a test can reach it: StartPlay wants a player controller and
@@ -143,7 +150,7 @@ bool ACataclysmGameMode::BeginSavingThisRun()
 	// the only level there is and a floor of zero means "nobody is in a
 	// dungeon", which would make the record say the fight is not happening.
 	Writer->BeginRun(FGuid::NewGuid(), FGuid::NewGuid(),
-					 FName(TEXT("Sandbox")), /*Floor=*/1);
+					 RunFloorName(), RunFloorNumber());
 	return true;
 }
 

@@ -151,8 +151,16 @@ by `git add` with no error and no warning. Guarded by
   [#17](https://github.com/sdubois777/Cataclysm/issues/17),
   [#18](https://github.com/sdubois777/Cataclysm/issues/18) and
   [#19](https://github.com/sdubois777/Cataclysm/issues/19)).
-- **No procedural dungeon generation.** `L_Sandbox` is the only map (issue
-  [#40](https://github.com/sdubois777/Cataclysm/issues/40)).
+- **A dungeon floor generates and can be walked, and nothing else about a
+  dungeon exists.** `L_Dungeon` builds one floor from a seed when play begins
+  and stands the player on it. The floor is a grid of four-metre cells carved
+  by one of three layout families, drawn as untextured blocks, with a
+  navigation mesh over it that a character can path across. **There are no
+  enemies on it, the stairs down do nothing, and there is no dungeon** — no
+  floor count, no boss, no timer, no empire layer. `L_Sandbox` is still where
+  creatures are fought (issues
+  [#40](https://github.com/sdubois777/Cataclysm/issues/40) and
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)).
 - **No interface screens, and only combat is visible on screen.** Nothing in the
   project uses UMG. `ACataclysmHUD` draws three things on the canvas — a bar over
   creatures that have been hurt, a floating number where each blow lands, and the

@@ -30,6 +30,21 @@ public:
 	virtual void StartPlay() override;
 
 	/**
+	 * Whether `StartPlay` puts the sandbox's creatures in the world.
+	 *
+	 * TRUE, BECAUSE THE SANDBOX IS WHAT THIS GAME MODE IS FOR. It exists so a
+	 * creature can be watched, and a sandbox with nothing in it was issue #170.
+	 *
+	 * A DUNGEON TURNS IT OFF. `ACataclysmDungeonGameMode` derives from this one
+	 * for the difficulty tier and the save writing, and wants neither the ring
+	 * of training dummies nor the creatures beyond it: both are placed at fixed
+	 * offsets from the world origin, which on a generated floor is as likely to
+	 * be inside solid rock as on the ground.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox")
+	bool bSpawnsSandboxCreatures = true;
+
+	/**
 	 * Puts training dummies in a ring around the player start.
 	 *
 	 * Public so a test can call it against a world it built, and so it can be
@@ -171,6 +186,23 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Save")
 	bool BeginSavingThisRun();
+
+	/**
+	 * Which floor the save record says the party is standing on.
+	 *
+	 * `FCataclysmSavedFloor` holds a dungeon name and a floor counted from 1,
+	 * and zero means nobody is in a dungeon. This answers "Sandbox" and 1,
+	 * because the sandbox is a place a fight happens and a floor of zero would
+	 * make the record say the fight is not happening.
+	 *
+	 * OVERRIDDEN BY A DUNGEON, which knows its own name and depth. Split out so
+	 * that a derived game mode changes what is recorded without reimplementing
+	 * `BeginSavingThisRun` and its two generated identifiers.
+	 */
+	virtual FName RunFloorName() const { return FName(TEXT("Sandbox")); }
+
+	/** Which floor of it, counted from 1. See `RunFloorName`. */
+	virtual int32 RunFloorNumber() const { return 1; }
 
 	/**
 	 * The rung a creature spawns at, given what its sandbox setting holds.
