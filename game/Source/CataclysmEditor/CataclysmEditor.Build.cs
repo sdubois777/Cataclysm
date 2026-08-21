@@ -15,6 +15,13 @@ public class CataclysmEditor : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		// The same flat layout the Cataclysm module uses, and for the same
+		// reason: without the module root here, an include such as
+		// "CataclysmLevelAuthoring.h" from a file in Tests/ does not resolve,
+		// because UnrealBuildTool only adds Public and Private automatically
+		// and this module has neither.
+		PublicIncludePaths.Add(ModuleDirectory);
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",

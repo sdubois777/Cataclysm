@@ -2,6 +2,7 @@
 
 #include "Dungeon/CataclysmDungeonFloor.h"
 
+#include "AI/NavigationSystemBase.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Engine/StaticMesh.h"
@@ -67,6 +68,24 @@ ACataclysmDungeonFloor::ACataclysmDungeonFloor()
 	Ground->SetCollisionProfileName(TEXT("BlockAll"));
 	Walls->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Walls->SetCollisionProfileName(TEXT("BlockAll"));
+
+	// AND SAYING SO, BECAUSE COLLISION ALONE IS NOT ENOUGH AND THE DEFAULT IS NO.
+	//
+	// `UActorComponent::bCanEverAffectNavigation` is set to false in both
+	// `UActorComponent`'s constructor and `UPrimitiveComponent`'s, and neither
+	// `UStaticMeshComponent` nor `UInstancedStaticMeshComponent` turns it back
+	// on. So a mesh component created in C++ is invisible to the navigation
+	// system however solid it is, and `UPrimitiveComponent::IsNavigationRelevant`
+	// returns false before it looks at collision at all.
+	//
+	// WITHOUT THIS A DUNGEON FLOOR COULD NEVER HAVE HAD A NAVIGATION MESH. It was
+	// found by `Cataclysm.DungeonFloor.AGeneratedFloorGetsANavigationMeshOverIt`,
+	// which reported the navigable world bounds as zero-sized while the floor's
+	// own extent was 8,000 by 8,000 centimetres. Nothing else noticed, because
+	// every other test asks where a block is rather than whether anything can
+	// walk on it.
+	Ground->SetCanEverAffectNavigation(true);
+	Walls->SetCanEverAffectNavigation(true);
 
 	// `ConstructorHelpers::FObjectFinder` RATHER THAN `LoadObject`, and it is not
 	// a style preference. A constructor runs while the class default object is
@@ -156,6 +175,14 @@ bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
 			Walls->AddInstance(Block);
 		}
 	}
+
+	// TELL THE NAVIGATION SYSTEM THE GEOMETRY CHANGED. It notices a component
+	// being registered and a component moving; it does not notice instances
+	// being added to one that is already registered and standing still. Taking
+	// the stairs down rebuilds this actor in place, so without this the second
+	// floor of a dungeon would be walked on the first floor's navigation mesh.
+	FNavigationSystem::UpdateComponentData(*Ground);
+	FNavigationSystem::UpdateComponentData(*Walls);
 
 	return IsBuilt();
 }
