@@ -541,10 +541,73 @@ public:
 	static constexpr float SoulfallAnimationSeconds = 1.8333f;
 	static constexpr float UltimateAnimationSeconds = 2.6333f;
 
+	/**
+	 * When inside the sweep clip the hammer actually connects.
+	 *
+	 * **MEASURED, AND IT IS THE MOST CERTAIN FIGURE IN THE PROJECT.**
+	 * `tools/measure_attack_impact.py` computes three independent answers --
+	 * the moment the hammer moves fastest, the moment it is furthest from the
+	 * pelvis, and the moment it is nearest the ground -- and on this clip **all
+	 * three agree within 0.057 seconds**. It beats its own control, the `Idle`
+	 * clip which strikes nothing, by 299 times: 5973 cm/s against 20.
+	 *
+	 * **`Swing1_Medium` IS A QUARTER SWING AND THREE QUARTERS RECOVERY.** That
+	 * is why this matters: fitting the clip to the wind-up by its whole LENGTH
+	 * put the strike a quarter of the way in, so the hammer passed through the
+	 * player 0.73 seconds before the damage arrived. Issue #784, and issue #526
+	 * is the measurement.
+	 *
+	 * NO ANIMATION NOTIFY EXISTS TO READ INSTEAD. All thirteen basic-attack
+	 * clips in the project were checked through
+	 * `unreal.AnimationLibrary.get_animation_notify_events` and every one is
+	 * empty; the Paragon packs were authored for a different game.
+	 */
+	static constexpr float CleaveStrikeSeconds = 0.282f;
+
+	static_assert(
+		CleaveStrikeSeconds < CleaveAnimationSeconds,
+		"The Gatekeeper's sweep is measured as striking after its own clip "
+		"ends, which cannot be true. Re-run tools/measure_attack_impact.py.");
+
 	/** Play rate floor and ceiling, the same two figures every other creature
 	 *  clamps to. */
 	static constexpr float MinimumPlayRate = 0.2f;
 	static constexpr float MaximumPlayRate = 2.5f;
+
+	/**
+	 * The rate the sweep clip plays at, and how long after the wind-up begins it
+	 * starts, so the hammer connects exactly as the damage lands.
+	 *
+	 * **1.00 AND 0.689 SECONDS.** The clip strikes at 0.282 and the blow lands
+	 * at 0.9714, so the clip does not need speeding up at all -- it needs to
+	 * wait. `ACataclysmEnemyCharacter::StrikeAlignedPlayRate` and
+	 * `StrikeAlignedDelaySeconds` are the shared rule and the Brute has used it
+	 * since 2026-08-08.
+	 *
+	 * PUBLIC SO A TEST CAN ASK, and so the two figures have one definition
+	 * rather than being written out again in a test.
+	 */
+	static float CleavePlayRate();
+	static float CleaveDelaySeconds();
+
+	/** Which ability's clip is waiting to start, or -1 for none. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 PendingWindUpAbility = -1;
+
+	/** When the wind-up this creature is in began, in world seconds. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float WindUpBeganAtSeconds = 0.0f;
+
+	/**
+	 * Start a waiting clip once its delay has elapsed. Called from Tick, and by
+	 * tests.
+	 *
+	 * IT CHECKS THE CREATURE IS STILL WINDING UP THE SAME ABILITY. A wind-up
+	 * that was cancelled -- the creature stunned, the target lost, the phase
+	 * changed under it -- must not have its clip start afterwards, and this is
+	 * the whole fault class rather than a patch for one case.
+	 */
+	void StartPendingWindUpClip();
 
 	static_assert(
 		CleaveAnimationSeconds <= DreadCleaveWindUpSeconds * MaximumPlayRate,
@@ -657,8 +720,16 @@ public:
 	int32 ImpsStillAlive();
 
 private:
-	/** Plays one clip once and records it. Returns how long it will take. */
+	/** Plays one clip once and records it. Returns how long it will take.
+	 *
+	 *  IT WORKS OUT ITS OWN RATE from the clip's length and the window, which is
+	 *  right for a clip whose END should meet the window's end. For the sweep,
+	 *  whose STRIKE should meet it, `PlayOneShotAtRate` is called directly with
+	 *  the rate `CleavePlayRate` computed. */
 	float PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
+
+	/** Plays one clip once at a stated rate. Returns how long it will take. */
+	float PlayOneShotAtRate(class UAnimSequence* Animation, float Rate);
 
 	/** Everything Dread Cleave and Soul Harvest have in common: sweep, hit. */
 	void StrikeAround(float RadiusCm, float AngleDegrees, float DamagePercent);

@@ -13,6 +13,7 @@
 #include "AbilitySystemComponent.h"
 #include "Animation/AnimSequence.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -124,6 +125,19 @@ namespace CataclysmSuccubusTest
 		}
 		return AbilitySystem->GetNumericAttribute(
 			UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
+
+	/** Move the world clock forward without ticking anything.
+	 *
+	 *  A world built by UWorld::CreateWorld is never ticked, so its clock
+	 *  never moves and nothing that waits can finish. Everything under test
+	 *  here reads the clock through GetTimeSeconds and nothing else, so
+	 *  moving the clock is the whole of what "time passed" means to it. The
+	 *  same helper is in CataclysmEnemyBehaviourTests.cpp, where the reasoning
+	 *  is written out in full. */
+	static void AdvanceWorldClock(UWorld* World, double Seconds)
+	{
+		World->TimeSeconds += Seconds;
 	}
 
 	static FGameplayTag CommanderTag()
@@ -790,6 +804,106 @@ bool FCataclysmSuccubusWearsItsMeshAndHidesThePlaceholder::RunTest(const FString
 			TEXT("the walk's play rate is %.4f, inside the %.1f to %.1f clamp"),
 			Rate, Succubus_t::MinimumPlayRate, Succubus_t::MaximumPlayRate),
 		Rate > Succubus_t::MinimumPlayRate && Rate < Succubus_t::MaximumPlayRate);
+
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmSuccubusCastReleasesWhenItsBoltLeaves,
+	"Cataclysm.Succubus.ItsCastReleasesWhenItsBoltLeaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSuccubusCastReleasesWhenItsBoltLeaves::RunTest(const FString&)
+{
+	using namespace CataclysmSuccubusTest;
+	using Succubus_t = ACataclysmSuccubusCharacter;
+
+	// **WHAT THIS EXISTS FOR.** The bolt is fired exactly when the wind-up ends.
+	// The cast clip releases 0.156 seconds in and runs for 0.9, so fitting it to
+	// the 1.3 second wind-up by its whole LENGTH released the cast 1.14 seconds
+	// before the bolt appeared. Issue #784, measured under issue #526.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmSuccubusCharacter* Succubus =
+		SpawnSuccubus(World, FVector::ZeroVector);
+	if (!Succubus)
+	{
+		AddError(TEXT("could not spawn a Succubus"));
+		return false;
+	}
+
+	const float Rate = Succubus_t::SoulfirePlayRate();
+	const float Delay = Succubus_t::SoulfireDelaySeconds();
+
+	TestEqual(TEXT("the cast plays at its authored speed"), Rate, 1.0f);
+
+	TestTrue(*FString::Printf(TEXT("and waits %.4f s before starting"), Delay),
+		Delay > 0.0f);
+
+	// **THE ONE EQUATION THIS WHOLE CHANGE IS.**
+	TestEqual(TEXT("the delay plus the release is the wind-up, so the cast "
+				   "leaves the hand as the bolt is fired"),
+		Delay + Succubus_t::SoulfireReleaseSeconds / Rate,
+		Succubus_t::SoulfireWindUpSeconds, 0.001f);
+
+	TestTrue(*FString::Printf(
+			TEXT("the clip finishes %.4f s in, inside the %.2f s interval"),
+			Delay + Succubus_t::AttackAnimationSeconds / Rate,
+			Succubus_t::DesignedAttackIntervalSeconds),
+		Delay + Succubus_t::AttackAnimationSeconds / Rate
+			< Succubus_t::DesignedAttackIntervalSeconds);
+
+	// --- and the creature really waits ------------------------------------
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Succubus->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("the Succubus has no controller"));
+		return false;
+	}
+
+	Succubus->LastPlayedAnimation = nullptr;
+	Succubus->BeginEnemyAbilityWindUp(Succubus_t::SoulfireAbility, nullptr);
+
+	TestEqual(TEXT("beginning the wind-up schedules the cast rather than "
+				   "playing it"),
+		Succubus->PendingWindUpAbility, (int32)Succubus_t::SoulfireAbility);
+
+	TestNull(TEXT("so nothing is playing yet"),
+		Succubus->LastPlayedAnimation.Get());
+
+	Brain->WindingUpAbility = Succubus_t::SoulfireAbility;
+
+	AdvanceWorldClock(World, Delay + 0.01);
+	Succubus->StartPendingWindUpClip();
+
+	TestEqual(TEXT("**once the wait is over the cast starts**"),
+		Succubus->PendingWindUpAbility, (int32)INDEX_NONE);
+
+	// --- a cancelled cast never starts ------------------------------------
+
+	Succubus->LastPlayedAnimation = nullptr;
+	Succubus->BeginEnemyAbilityWindUp(Succubus_t::SoulfireAbility, nullptr);
+	Brain->WindingUpAbility = INDEX_NONE;
+
+	AdvanceWorldClock(World, Delay + 1.0);
+	Succubus->StartPendingWindUpClip();
+
+	TestEqual(TEXT("**a cancelled cast is forgotten rather than started**"),
+		Succubus->PendingWindUpAbility, (int32)INDEX_NONE);
+
+	TestNull(TEXT("and nothing was played"),
+		Succubus->LastPlayedAnimation.Get());
 
 	return true;
 }

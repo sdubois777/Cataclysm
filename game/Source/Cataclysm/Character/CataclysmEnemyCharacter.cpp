@@ -306,6 +306,61 @@ void ACataclysmEnemyCharacter::HealthChanged()
 	RefreshPhase();
 }
 
+float ACataclysmEnemyCharacter::StrikeAlignedPlayRate(float StrikeSeconds,
+													  float LandsAtSeconds,
+													  float MinimumRate,
+													  float MaximumRate)
+{
+	if (StrikeSeconds <= 0.0f || LandsAtSeconds <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	// NEVER SLOWER THAN AUTHORED. See the header: stretching a clip to fill a
+	// longer window was tried and read as slow motion, so a clip that strikes
+	// too early is DELAYED rather than slowed.
+	return FMath::Clamp(FMath::Max(1.0f, StrikeSeconds / LandsAtSeconds),
+						MinimumRate, MaximumRate);
+}
+
+float ACataclysmEnemyCharacter::StrikeAlignedDelaySeconds(float StrikeSeconds,
+														  float LandsAtSeconds,
+														  float MinimumRate,
+														  float MaximumRate)
+{
+	if (StrikeSeconds <= 0.0f || LandsAtSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Rate = StrikeAlignedPlayRate(StrikeSeconds, LandsAtSeconds,
+											 MinimumRate, MaximumRate);
+
+	// WAIT OUT WHATEVER THE ANIMATION DOES NOT COVER. At rate 1 the Gatekeeper's
+	// hammer reaches the ground 0.282 seconds in and its blow lands at 0.971, so
+	// this is 0.689. Where the clip had to be compressed instead, the rate above
+	// has already put the strike at the blow and this is zero.
+	//
+	// **DIVIDING BY THE RATE CANNOT CHANGE THE ANSWER TODAY, AND NO TEST CAN
+	// PROVE IT.** Breaking it to `LandsAtSeconds - StrikeSeconds` was tried on
+	// 2026-08-21 and every test still passed, because the rate rule above makes
+	// the two forms agree for every input:
+	//
+	//   strike <= lands   the rate is exactly 1, so dividing by it does nothing
+	//   strike >  lands   the rate is strike/lands, so strike/rate is lands and
+	//                     this is zero -- and so is lands minus strike, after the
+	//                     Max below
+	//   rate at its ceiling   strike/rate still exceeds lands, so both are zero
+	//
+	// IT IS KEPT RATHER THAN DELETED BECAUSE IT IS WHAT MAKES THE LINE TRUE
+	// RATHER THAN COINCIDENTALLY RIGHT. The two forms agree only because the
+	// rate is never below 1; remove that floor -- which `StrikeAlignedPlayRate`
+	// has its own guard against -- and this division becomes load-bearing at
+	// once. Writing the arithmetic that is actually meant is worth more than
+	// writing the shortest arithmetic that happens to match it.
+	return FMath::Max(0.0f, LandsAtSeconds - StrikeSeconds / Rate);
+}
+
 bool ACataclysmEnemyCharacter::RefreshPhase()
 {
 	if (PhaseHealthFractions.IsEmpty())

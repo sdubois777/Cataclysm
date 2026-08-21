@@ -230,27 +230,41 @@ afterwards and the creature fails it, so the agreement was two rules agreeing
 about ordinary movement rather than about a shot. It is recorded here because a
 withdrawn figure that leaves no trace gets published again.
 
-### What that means in play, and both answers are wrong
+### What that means in play
 
-The damage moment is not where the animation puts it, for any of the six that
-could be measured.
+**Two of the five are fixed and three are not.**
 
 | Creature | Play rate | Strike in play | Damage lands at | Gap |
 |---|:-:|:-:|:-:|---|
+| Gatekeeper | 1.00, after waiting 0.689 s | 0.971 s | 0.971 s, the wind-up's end | **none** |
+| Succubus | 1.00, after waiting 1.144 s | 1.300 s | 1.300 s, the wind-up's end | **none** |
 | Brute | 1.00 | 0.331 s | 0 s, before the clip starts | damage **0.33 s early** |
 | Imp | 1.00 | 0.242 to 0.308 s | 0 s | damage **0.24 to 0.31 s early** |
 | Abyssal Warden | 1.00 | 0.168 to 0.176 s | 0 s | damage **0.17 s early** |
-| Gatekeeper | 1.1667 | 0.242 s | 0.971 s, the wind-up's end | damage **0.73 s late** |
-| Succubus | 1.00 | 0.156 s | 1.300 s, the wind-up's end | damage **1.14 s late** |
 
-Two separate causes, so two issues:
+**The two that are fixed wait rather than speed up.** Their clips reach the blow
+sooner than the damage arrives, so the clip is started later instead of being
+stretched — stretching one to fill a window was tried on the Brute and reported
+from a play session as slow motion. The creature stands in its ordinary idle,
+which moves, and then performs the whole attack as one movement.
 
-- [#783](https://github.com/sdubois777/Cataclysm/issues/783) — the creatures whose
-  ordinary attack is **not** telegraphed apply their damage and then start the
-  clip, so the hit always lands before the blow.
-- [#784](https://github.com/sdubois777/Cataclysm/issues/784) — the ones whose
-  ordinary attack **is** telegraphed fit the clip to the wind-up by its whole
-  length, so its strike frame lands wherever the arithmetic leaves it.
+`ACataclysmEnemyCharacter::StrikeAlignedPlayRate` and `StrikeAlignedDelaySeconds`
+are the shared rule. The Brute has used it for its two abilities since
+2026-08-08 and it moved to the base on 2026-08-21 so these two could use it
+rather than a second copy of it. Issue
+[#784](https://github.com/sdubois777/Cataclysm/issues/784).
+
+**The three that are not fixed have a different cause**, which is why they are a
+different issue: their ordinary attack is not telegraphed at all, so there is no
+window to start a clip inside. `AttackTarget` applies the damage and then starts
+the clip, so the hit always lands before the blow. Issue
+[#783](https://github.com/sdubois777/Cataclysm/issues/783), and it needs a
+decision about whether a delayed hit should still land if the creature dies
+between the swing and the blow.
+
+**And two creatures have no answer at all**, because their strike moment could
+not be measured: the Hellhound, and the Corrupted Sentinel, which is the only one
+of the seven that fails the control outright.
 
 **Re-run the measurement after importing or replacing any of these:**
 

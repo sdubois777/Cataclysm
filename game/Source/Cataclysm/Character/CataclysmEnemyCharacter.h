@@ -630,6 +630,66 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	int32 PhaseReached = 1;
 
+	// ----------------------------------------------------------------------
+	// Lining an attack animation up with the moment it deals damage
+	//
+	// **THE PROBLEM THESE TWO SOLVE.** A telegraphed attack lands exactly when
+	// its wind-up ends: `ACataclysmEnemyController::ContinueWindUp` dismisses
+	// the marker and then calls `UseEnemyAbility`. For the animation to keep
+	// that promise, the frame in which the blow actually connects has to be at
+	// the end of the wind-up too. Fitting the clip to the window by its whole
+	// LENGTH does not do that -- it lines up the clip's end and leaves the
+	// strike wherever the arithmetic puts it.
+	//
+	// Measured on 2026-08-21 under issue #526, that left the Gatekeeper's
+	// hammer connecting 0.73 seconds before its damage and the Succubus's cast
+	// releasing 1.14 seconds before its bolt. Issue #784.
+	//
+	// **THE RULE IS THE BRUTE'S, FROM 2026-08-08, AND THIS IS ITS ONE COPY.**
+	// `ACataclysmBruteCharacter::MontageRateFor` and `MontageDelaySecondsFor`
+	// have used it for that creature's two abilities since then and now call
+	// these. A second copy of an arithmetic rule in this repository is how the
+	// power model drifted twice.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The rate a clip must play at for its strike to arrive when the blow lands.
+	 *
+	 * **NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE.**
+	 * Where the clip reaches its strike sooner than the attack lands this
+	 * answers 1 and `StrikeAlignedDelaySeconds` waits instead. Slowing a clip
+	 * down to fill the gap was tried on the Brute and reported from a play
+	 * session as slow motion.
+	 *
+	 * COMPRESSION IS STILL NEEDED THE OTHER WAY, for a clip whose strike falls
+	 * after the blow does. Where even the ceiling is not enough the clip cannot
+	 * fit and the caller has a design question rather than an arithmetic one --
+	 * that is issue #416 on the Brute's rock throw.
+	 *
+	 * @param StrikeSeconds   when the clip strikes, at its authored speed
+	 * @param LandsAtSeconds  when the attack deals its damage
+	 */
+	static float StrikeAlignedPlayRate(float StrikeSeconds, float LandsAtSeconds,
+									   float MinimumRate, float MaximumRate);
+
+	/**
+	 * Seconds after the wind-up begins that the clip should start, so its strike
+	 * arrives exactly when the blow lands.
+	 *
+	 * **A DELAY RATHER THAN A HELD POSE.** Holding the clip on its first frame
+	 * for the difference was tried on the Brute and read as the creature seizing
+	 * up. Waiting before starting means the creature stands in its ordinary idle
+	 * -- which moves -- and then performs the whole attack as one continuous
+	 * movement.
+	 *
+	 * ZERO WHERE THE CLIP HAS TO BE COMPRESSED INSTEAD, because the rate above
+	 * has already brought the strike forward to the moment the blow lands.
+	 */
+	static float StrikeAlignedDelaySeconds(float StrikeSeconds,
+										   float LandsAtSeconds,
+										   float MinimumRate,
+										   float MaximumRate);
+
 	/**
 	 * How close it must be to hit, in centimetres.
 	 *

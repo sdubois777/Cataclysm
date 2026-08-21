@@ -496,6 +496,73 @@ public:
 	static constexpr float MinimumPlayRate = 0.2f;
 	static constexpr float MaximumPlayRate = 2.5f;
 
+	/**
+	 * When inside the cast clip the bolt actually leaves.
+	 *
+	 * MEASURED on 2026-08-21 by `tools/measure_attack_impact.py`, which computes
+	 * three independent answers and reports whether they agree. Two of the three
+	 * agree here -- the moment the casting arm moves fastest and the moment it
+	 * is furthest from the pelvis -- and `hand_l` peaks at the same instant as
+	 * the tail bone that travels furthest, which is what says the arm and the
+	 * throw are one movement rather than two.
+	 *
+	 * IT BEATS ITS CONTROL 24 TIMES: 4914 cm/s against the `Idle_Relaxed` clip's
+	 * 201. That control matters more than the agreement does. The Corrupted
+	 * Sentinel's figure was withdrawn on the same day precisely because it
+	 * failed one, so a strike figure without a margin over a clip that strikes
+	 * nothing is not evidence. Issues #526 and #478.
+	 *
+	 * **AT 0.156 OF A 0.9 SECOND CLIP THE CAST IS AN EARLY FLICK**, and the
+	 * remaining three quarters is the creature settling. Fitting the clip to the
+	 * 1.3 second wind-up by its whole LENGTH therefore released it 1.14 seconds
+	 * before the bolt appeared. Issue #784.
+	 *
+	 * NO ANIMATION NOTIFY EXISTS TO READ INSTEAD. All thirteen basic-attack
+	 * clips in the project were checked and every one is empty.
+	 */
+	static constexpr float SoulfireReleaseSeconds = 0.156f;
+
+	static_assert(
+		SoulfireReleaseSeconds < AttackAnimationSeconds,
+		"The Succubus's cast is measured as releasing after its own clip ends, "
+		"which cannot be true. Re-run tools/measure_attack_impact.py.");
+
+	/**
+	 * The rate the cast clip plays at, and how long after the wind-up begins it
+	 * starts, so the bolt leaves the hand exactly as the bolt is fired.
+	 *
+	 * **1.00 AND 1.144 SECONDS.** The clip releases at 0.156 and the bolt is
+	 * fired at 1.3, so the clip does not need speeding up -- it needs to wait.
+	 *
+	 * **THE CREATURE STANDS IN ITS IDLE FOR THAT WAIT, NOT FROZEN.** Holding a
+	 * clip on one frame was tried on the Brute and read as the creature seizing
+	 * up; waiting before starting means it keeps moving and then performs the
+	 * whole cast as one movement. Issue #767 asks whether the pause reads badly
+	 * and is still open -- it is now a longer pause in an idle rather than a
+	 * shorter one in a held pose.
+	 *
+	 * PUBLIC SO A TEST CAN ASK.
+	 */
+	static float SoulfirePlayRate();
+	static float SoulfireDelaySeconds();
+
+	/** Which ability's clip is waiting to start, or -1 for none. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 PendingWindUpAbility = -1;
+
+	/** When the wind-up this creature is in began, in world seconds. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float WindUpBeganAtSeconds = 0.0f;
+
+	/**
+	 * Start a waiting clip once its delay has elapsed. Called from Tick, and by
+	 * tests.
+	 *
+	 * IT CHECKS THE CREATURE IS STILL WINDING UP THE SAME ABILITY, so a wind-up
+	 * that was cancelled does not have its clip start afterwards.
+	 */
+	void StartPendingWindUpClip();
+
 	static_assert(
 		AttackAnimationSeconds <= SoulfireWindUpSeconds * MaximumPlayRate,
 		"The Succubus's attack clip no longer fits inside Soulfire's wind-up "
@@ -571,7 +638,15 @@ public:
 
 private:
 	/** Plays one clip once and records it. Returns how long it will take. */
+	/** Plays one clip once and records it. Returns how long it will take.
+	 *
+	 *  IT WORKS OUT ITS OWN RATE from the clip's length and the window, which is
+	 *  right for a clip whose END should meet the window's end. For the cast,
+	 *  whose RELEASE should meet it, `PlayOneShotAtRate` is called directly. */
 	float PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
+
+	/** Plays one clip once at a stated rate. Returns how long it will take. */
+	float PlayOneShotAtRate(class UAnimSequence* Animation, float Rate);
 
 	/** Runs `PulseDominion` from the world's timer manager. */
 	void DominionTick();

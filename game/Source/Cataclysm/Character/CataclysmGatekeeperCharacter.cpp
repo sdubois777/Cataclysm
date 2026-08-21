@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Animation/AnimSequence.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -162,7 +163,64 @@ void ACataclysmGatekeeperCharacter::BeginPlay()
 void ACataclysmGatekeeperCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// BEFORE THE LOOPING ANIMATION, so a sweep that becomes due this frame owns
+	// the mesh for the rest of it rather than being overwritten by an idle that
+	// was chosen a line earlier.
+	StartPendingWindUpClip();
 	UpdateLoopingAnimation();
+}
+
+float ACataclysmGatekeeperCharacter::CleavePlayRate()
+{
+	return StrikeAlignedPlayRate(CleaveStrikeSeconds, DreadCleaveWindUpSeconds,
+								 MinimumPlayRate, MaximumPlayRate);
+}
+
+float ACataclysmGatekeeperCharacter::CleaveDelaySeconds()
+{
+	return StrikeAlignedDelaySeconds(CleaveStrikeSeconds,
+									 DreadCleaveWindUpSeconds,
+									 MinimumPlayRate, MaximumPlayRate);
+}
+
+void ACataclysmGatekeeperCharacter::StartPendingWindUpClip()
+{
+	if (PendingWindUpAbility == INDEX_NONE)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// **THE WIND-UP HAS TO STILL BE HAPPENING.** A cancelled one -- the target
+	// lost, the creature stunned -- must not have its clip start afterwards.
+	// Checked against the brain rather than remembered here, so there is one
+	// answer to "is this creature still winding that up".
+	const ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(GetController());
+	if (!Brain || Brain->WindingUpAbility != PendingWindUpAbility)
+	{
+		PendingWindUpAbility = INDEX_NONE;
+		return;
+	}
+
+	// COMPARED AGAINST THE CLOCK EVERY FRAME RATHER THAN SET AS A DEADLINE. A
+	// timer fixes its deadline when it is created, which is how a held clip on
+	// the Brute came to fire on the wrong side of the pass that landed its
+	// ability. This cannot be out of order with anything.
+	const float Elapsed = World->GetTimeSeconds() - WindUpBeganAtSeconds;
+	if (Elapsed + UE_KINDA_SMALL_NUMBER < CleaveDelaySeconds())
+	{
+		return;
+	}
+
+	PendingWindUpAbility = INDEX_NONE;
+	PlayOneShotAtRate(CleaveAnimation.Get(), CleavePlayRate());
 }
 
 float ACataclysmGatekeeperCharacter::AttackIntervalSecondsInUse()
@@ -304,10 +362,29 @@ void ACataclysmGatekeeperCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*
 	// wind-up: the blow lands as the telegraph ends, so the swing should end
 	// there too. The Corrupted Sentinel is the one creature that does this
 	// differently and its reason is particular to it.
+	// **THE SWEEP WAITS. IT DOES NOT START HERE.** Its clip strikes 0.282
+	// seconds in and the blow lands at 0.9714, so starting it now would put the
+	// hammer through the player 0.73 seconds before the damage. Issue #784.
+	// StartPendingWindUpClip, from Tick, starts it once the delay has passed.
+	//
+	// THE OTHER TWO STILL START AT ONCE, and that is not an oversight: their
+	// strike moments have not been measured. Issue #526 measured the ordinary
+	// attack of all seven creatures and nothing else.
+	PendingWindUpAbility = INDEX_NONE;
+
 	switch (Index)
 	{
 	case DreadCleaveAbility:
-		PlayOneShot(CleaveAnimation.Get(), DreadCleaveWindUpSeconds);
+		if (const UWorld* World = GetWorld())
+		{
+			WindUpBeganAtSeconds = World->GetTimeSeconds();
+			if (CleaveDelaySeconds() > 0.0f)
+			{
+				PendingWindUpAbility = DreadCleaveAbility;
+				return;
+			}
+		}
+		PlayOneShotAtRate(CleaveAnimation.Get(), CleavePlayRate());
 		return;
 
 	case SoulfallAbility:
@@ -603,6 +680,28 @@ void ACataclysmGatekeeperCharacter::UpdateLoopingAnimation()
 float ACataclysmGatekeeperCharacter::PlayOneShot(UAnimSequence* Animation,
 												 float HoldSeconds)
 {
+	const float Length = Animation ? Animation->GetPlayLength() : 0.0f;
+
+	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
+	// same rule every other creature here uses: stretching a short clip across a
+	// long window was tried and read as slow motion. A clip shorter than its
+	// window holds its last pose instead.
+	//
+	// THIS LINES UP THE CLIP'S END WITH THE WINDOW'S END, which is right for a
+	// clip that finishes on its blow. The sweep does not -- it strikes a quarter
+	// of the way in -- so it is played through PlayOneShotAtRate instead.
+	const float Hold = HoldSeconds > 0.0f ? HoldSeconds : Length;
+	const float Rate = Hold > 0.0f
+		? FMath::Clamp(FMath::Max(1.0f, Length / Hold),
+					   MinimumPlayRate, MaximumPlayRate)
+		: 1.0f;
+
+	return PlayOneShotAtRate(Animation, Rate);
+}
+
+float ACataclysmGatekeeperCharacter::PlayOneShotAtRate(UAnimSequence* Animation,
+													   float Rate)
+{
 	LastPlayedAnimation = Animation;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -612,18 +711,10 @@ float ACataclysmGatekeeperCharacter::PlayOneShot(UAnimSequence* Animation,
 	}
 
 	const float Length = Animation->GetPlayLength();
-	if (Length <= 0.0f)
+	if (Length <= 0.0f || Rate <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
-	// same rule every other creature here uses: stretching a short clip across a
-	// long window was tried and read as slow motion. A clip shorter than its
-	// window holds its last pose instead.
-	const float Hold = HoldSeconds > 0.0f ? HoldSeconds : Length;
-	const float Rate = FMath::Clamp(FMath::Max(1.0f, Length / Hold),
-									MinimumPlayRate, MaximumPlayRate);
 
 	MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
 	MeshComponent->SetPlayRate(Rate);
