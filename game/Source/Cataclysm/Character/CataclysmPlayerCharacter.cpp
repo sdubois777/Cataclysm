@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmPlayerClassStats.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -430,6 +431,43 @@ void ACataclysmPlayerCharacter::PossessedBy(AController* NewController)
 
 	// Server path. The player state exists by the time possession happens.
 	InitAbilityActorInfo();
+
+	// THE CLASS STAT LINE, WHICH NOTHING APPLIED UNTIL ISSUE #806. Without it
+	// the player kept the placeholder 100 health that
+	// UCataclysmVitalAttributeSet's constructor writes, and whose own comment
+	// says the real values come from a class stat line. A Brute deals 35 a hit,
+	// so three of them killed the character and no dungeon floor could be
+	// finished.
+	//
+	// HERE AND NOT IN InitAbilityActorInfo, AND THE DIFFERENCE IS NOT COSMETIC.
+	// That function is documented as safe to run twice and really does: the
+	// server reaches it from here and a client from OnRep_PlayerState. Writing a
+	// whole stat line from it would overwrite any attribute something else had
+	// already set, and would refill the character's health every time it ran.
+	// Cataclysm.Player.MovementSpeedFollowsTheAttribute caught exactly that --
+	// it sets the movement speed attribute before wiring the pawn up, and a stat
+	// line applied from InitAbilityActorInfo overwrote it. Possession happens
+	// once, which is what "this character is starting" actually means.
+	//
+	// WRITING THE MovementSpeed ATTRIBUTE FIRES THE HANDLER InitAbilityActorInfo
+	// bound a moment ago, so the pawn's walking speed follows from this without
+	// being applied again here.
+	ApplyChosenClassStats();
+}
+
+void ACataclysmPlayerCharacter::ApplyChosenClassStats()
+{
+	UCataclysmAbilitySystemComponent* ASC =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!ASC)
+	{
+		return;
+	}
+
+	UCataclysmPlayerClassStats::ApplyTo(
+		ASC, UCataclysmPlayerClassStats::LoadTable(),
+		UCataclysmPlayerClassStats::ChosenClass(),
+		UCataclysmPlayerClassStats::ChosenLevel());
 }
 
 void ACataclysmPlayerCharacter::OnRep_PlayerState()
