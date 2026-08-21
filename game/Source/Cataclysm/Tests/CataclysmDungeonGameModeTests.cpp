@@ -10,6 +10,7 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -294,6 +295,253 @@ bool FCataclysmDungeonModeSaveRecordTest::RunTest(const FString& Parameters)
 			  Sandbox->RunFloorName(), FName(TEXT("Sandbox")));
 	TestEqual(TEXT("on floor 1, because a floor of zero would say nobody is in "
 				   "a dungeon"), Sandbox->RunFloorNumber(), 1);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Looking at another floor without rebuilding
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModeTest
+{
+	/**
+	 * Sets a console variable for as long as it is in scope, and puts it back.
+	 *
+	 * A TEST THAT LEFT ONE SET WOULD CHANGE EVERY TEST AFTER IT. Console
+	 * variables are global and the automation suite runs in one process, so
+	 * `Cataclysm.DungeonLayout` left at 1 would quietly carve caverns for the
+	 * five tests above and they would still pass, which is worse than failing.
+	 *
+	 * SET AT THE CONSOLE'S OWN PRIORITY, the same as
+	 * `CataclysmTestWorld::FScopedCritRoll` and for the reason recorded there:
+	 * Unreal remembers who set a console variable and silently discards a write
+	 * from code once the command line has set one.
+	 */
+	struct FScopedConsoleInt
+	{
+		FScopedConsoleInt(const TCHAR* Name, int32 Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetInt();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedConsoleInt()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		int32 Previous = 0;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSeedControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSeedControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->DungeonSeed = 5;
+
+	// Zero leaves the game mode's own setting alone, which is what a person who
+	// has never typed the command gets.
+	{
+		FScopedConsoleInt Untouched(TEXT("Cataclysm.DungeonSeed"), 0);
+		TestEqual(TEXT("with the console variable at zero, the setting decides"),
+				  Mode->ChooseSeed(), 5);
+	}
+
+	// A number above zero is that dungeon.
+	{
+		FScopedConsoleInt Asked(TEXT("Cataclysm.DungeonSeed"), 91);
+		TestEqual(TEXT("a number above zero is the dungeon walked"),
+				  Mode->ChooseSeed(), 91);
+	}
+
+	// Minus one rolls a new one. The entropy is passed in rather than read from
+	// the clock, because a test that rolled twice and expected two different
+	// numbers would be a test that usually passes.
+	{
+		FScopedConsoleInt Rolling(TEXT("Cataclysm.DungeonSeed"), -1);
+
+		const int32 First = Mode->ChooseSeed(/*Entropy=*/123456789);
+		const int32 Second = Mode->ChooseSeed(/*Entropy=*/987654321);
+
+		TestNotEqual(TEXT("two different moments give two different dungeons"),
+					 First, Second);
+		TestTrue(TEXT("and both are seeds the generator will accept"),
+				 First > 0 && Second > 0);
+
+		// AND IT DOES NOT SIMPLY RETURN THE SETTING, which is how this would
+		// look if the -1 case were never reached.
+		TestNotEqual(TEXT("a rolled seed is not the game mode's own setting"),
+					 First, Mode->DungeonSeed);
+
+		// The same moment gives the same dungeon, because the generator is
+		// deterministic and only the choice of seed is rolled.
+		TestEqual(TEXT("the same moment gives the same dungeon"),
+				  Mode->ChooseSeed(/*Entropy=*/123456789), First);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeFloorControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherFloorOfTheSameDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeFloorControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->FloorNumber = 3;
+
+	{
+		FScopedConsoleInt Untouched(TEXT("Cataclysm.DungeonFloor"), 0);
+		TestEqual(TEXT("with the console variable at zero, the setting decides"),
+				  Mode->ChooseFloorNumber(), 3);
+	}
+
+	{
+		FScopedConsoleInt Asked(TEXT("Cataclysm.DungeonFloor"), 40);
+		TestEqual(TEXT("a number above zero is the floor walked"),
+				  Mode->ChooseFloorNumber(), 40);
+
+		// AND IT REACHES THE FLOOR THAT IS BUILT, not only this answer. A
+		// console variable nothing reads is a control that does nothing.
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+
+		FCataclysmFloorRequest Request;
+		Request.DungeonSeed = Mode->DungeonSeed;
+		Request.FloorNumber = 40;
+		Request.Layout = Mode->Layout;
+
+		TestTrue(TEXT("and the floor built is floor 40"),
+				 Floor->GetPlan().Cells
+					 == FCataclysmFloorGenerator::Generate(Request).Cells);
+	}
+
+	// Floors are counted from 1, so a negative asked for at the console cannot
+	// produce floor zero, which would mean nobody is in a dungeon.
+	{
+		FScopedConsoleInt Nonsense(TEXT("Cataclysm.DungeonFloor"), -7);
+		TestTrue(TEXT("a floor number is never below 1, whatever is typed"),
+				 Mode->ChooseFloorNumber() >= 1);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeLayoutControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherLayoutFamily",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeLayoutControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->Layout = ECataclysmFloorLayout::Halls;
+
+	// MINUS ONE MEANS "USE THE SETTING" HERE AND ZERO DOES NOT, unlike the other
+	// two controls, because zero is a real answer: it is the Halls family.
+	{
+		FScopedConsoleInt Untouched(TEXT("Cataclysm.DungeonLayout"), -1);
+		TestEqual(TEXT("with the console variable at minus one, the setting decides"),
+				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
+	}
+
+	// Every family can be asked for by number, including the first one.
+	for (uint8 Which = 0; Which < static_cast<uint8>(ECataclysmFloorLayout::Count); ++Which)
+	{
+		FScopedConsoleInt Asked(TEXT("Cataclysm.DungeonLayout"), Which);
+		TestEqual(FString::Printf(TEXT("layout %d is %s"), Which,
+				  CataclysmFloorLayoutName(static_cast<ECataclysmFloorLayout>(Which))),
+				  Mode->ChooseLayout(), static_cast<ECataclysmFloorLayout>(Which));
+	}
+
+	// AND IT REACHES THE FLOOR THAT IS BUILT. Asking for caverns and getting
+	// halls is the failure this rules out.
+	{
+		FScopedConsoleInt Caverns(TEXT("Cataclysm.DungeonLayout"),
+			static_cast<int32>(ECataclysmFloorLayout::Caverns));
+
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+		TestEqual(TEXT("asking for caverns builds a cavern"),
+				  Floor->GetPlan().Layout, ECataclysmFloorLayout::Caverns);
+		TestNotEqual(TEXT("which is not the family the setting asks for"),
+					 Floor->GetPlan().Layout, Mode->Layout);
+	}
+
+	// A number nobody should type is refused rather than cast. Casting 40 to the
+	// enum would carve nothing and leave the player standing in the void.
+	{
+		FScopedConsoleInt Nonsense(TEXT("Cataclysm.DungeonLayout"), 40);
+		TestEqual(TEXT("a layout number out of range falls back to the setting"),
+				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
+	}
+	{
+		FScopedConsoleInt Nonsense(TEXT("Cataclysm.DungeonLayout"),
+			static_cast<int32>(ECataclysmFloorLayout::Count));
+		TestEqual(TEXT("and the count itself is not a layout"),
+				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
+	}
 
 	return true;
 }
