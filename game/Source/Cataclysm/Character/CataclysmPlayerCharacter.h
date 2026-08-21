@@ -83,6 +83,22 @@ public:
 	/** Server: the pawn has been possessed and the player state is available. */
 	virtual void PossessedBy(AController* NewController) override;
 
+	/**
+	 * Puts the class stat line named by `Cataclysm.PlayerClass`, resolved at the
+	 * level named by `Cataclysm.PlayerLevel`, onto this character.
+	 *
+	 * CALLED FROM PossessedBy AND NOWHERE ELSE. Not from InitAbilityActorInfo,
+	 * which is documented as safe to run twice and does: a whole stat line
+	 * written from there would overwrite anything else that had set an attribute
+	 * and would refill the character's health each time.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason the projectile
+	 * exposes `Step` and the strike template exposes `SwingOnce`. A test world
+	 * built with `UWorld::CreateWorld` has no controller to possess with, so
+	 * possession itself cannot be reached; this is the one step that matters.
+	 */
+	void ApplyChosenClassStats();
+
 	/** Client: the player state has replicated. There is no PossessedBy here. */
 	virtual void OnRep_PlayerState() override;
 
