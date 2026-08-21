@@ -52,6 +52,83 @@ enum class ECataclysmFloorCell : uint8
 };
 
 /**
+ * What one floor is LIKE, as opposed to how it is arranged.
+ *
+ * WHY THIS EXISTS. Every number here used to be a compile-time constant, so
+ * every floor of every dungeon was 40 by 40 cells, held ten to sixteen
+ * rectangular rooms, and joined them with corridors exactly two cells wide.
+ * The arrangement varied and nothing else did. Over a dungeon of fifty floors
+ * that reads as the same floor fifty times, which is what the project owner
+ * said on 2026-08-21: "Nobody wants to play a 50 floor dungeon where every
+ * floor is the same layout."
+ *
+ * ROLLED PER FLOOR FROM ITS SEED, so it costs nothing and stays deterministic.
+ * The same seed still gives the same floor, which issue #40 requires twice over
+ * -- a dungeon must look the same when the player leaves and returns, and a bug
+ * in a floor has to be reproducible from its seed.
+ *
+ * THESE ARE THE KNOBS THE GENRE SAYS MATTER. Cogmind's author, writing about
+ * keeping procedurally generated maps from repeating, puts the question as
+ * "Many small rooms or fewer large rooms? Lots of long corridors, or no
+ * corridors at all?", and notes these change how a map PLAYS rather than only
+ * how it looks. Diablo 1 reached the same place from the other direction: its
+ * four dungeon themes differ in exactly these terms -- the Cathedral is large
+ * rooms joined by doors, the Catacombs are cramped with tight passages, Hell is
+ * very large rooms joined by short wide halls. Sources are on issue #34.
+ *
+ * WHAT IS NOT HERE, and is the next thing worth adding: hand-built set pieces.
+ * The same writing is clear that a memorable floor comes from a deliberate room
+ * somebody placed, not from a knob. That needs art direction.
+ */
+struct CATACLYSM_API FCataclysmFloorShape
+{
+	/** Cells across. */
+	int32 Width = 40;
+
+	/** Cells down. Rolled separately, so a floor can be long rather than square. */
+	int32 Height = 40;
+
+	/** The smallest area the room splitter will divide. Decides room size. */
+	int32 MinLeafSide = 8;
+
+	/** How many cells across a connection between two rooms is. */
+	int32 ConnectionWidth = 2;
+
+	/** Connections beyond the ones that make the floor one piece. Loops. */
+	int32 ExtraConnections = 3;
+
+	/** How much a room may be smaller than the space it was given. */
+	int32 MostRoomShrink = 2;
+
+	/** How much of the grid a cavern starts as floor, before smoothing. */
+	float CavernInitialFloorChance = 0.48f;
+
+	/** How many times a cavern's smoothing rule is applied. */
+	int32 CavernSmoothingPasses = 5;
+
+	/**
+	 * How many of a cell's eight neighbours must be solid for it to become
+	 * solid, when a cavern is smoothed.
+	 *
+	 * A LOWER NUMBER FILLS MORE IN, so four gives tight chambers joined by necks
+	 * and six gives wide open caves. It was fixed at five, which is why every
+	 * cavern came out about equally open.
+	 */
+	int32 CavernSolidNeighboursToFill = 5;
+
+	/**
+	 * How far an arena reaches across and along, as a fraction of the floor.
+	 *
+	 * ROLLED SEPARATELY SO AN ARENA CAN BE LONG. Both were between 0.88 and 1.00,
+	 * so every arena was a near-circle and the walk across one was the floor's
+	 * width whatever the seed. An arena is one open space by definition, so its
+	 * shape is the only thing it has to vary.
+	 */
+	float ArenaScaleX = 1.0f;
+	float ArenaScaleY = 1.0f;
+};
+
+/**
  * One floor, as a grid of cells, with an entrance and an exit.
  *
  * WHAT IT IS NOT: geometry. There is no mesh, no actor and no map here. This is
@@ -96,6 +173,16 @@ struct CATACLYSM_API FCataclysmFloorPlan
 
 	/** The seed this floor was carved from. Derived, not the dungeon's own. */
 	int32 Seed = 0;
+
+	/**
+	 * What this floor was rolled to be like: its size, its room size, how wide
+	 * its corridors are, how loopy it is.
+	 *
+	 * KEPT SO IT CAN BE ASKED ABOUT. A test that wants to show floors differ in
+	 * character rather than only in arrangement has to be able to read the
+	 * character.
+	 */
+	FCataclysmFloorShape Shape;
 
 	/**
 	 * How many times generation had to re-roll before this floor was accepted.

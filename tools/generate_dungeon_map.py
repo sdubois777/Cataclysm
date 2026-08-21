@@ -35,17 +35,21 @@ DUNGEON_LEVEL = "L_Dungeon"
 
 # --- how big the level has to be ---------------------------------------------
 #
-# A floor is DefaultWidth by DefaultHeight cells of CellSizeCm, all three of them
-# constants in game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.h. 40 cells
-# of 4 metres is 160 metres across.
+# A floor is between LeastFloorSide and MostFloorSide cells on each axis, rolled
+# per floor, of CellSizeCm each. All three are constants in
+# game/Source/Cataclysm/Dungeon/CataclysmFloorGenerator.h.
+#
+# THE LARGEST IS WHAT MATTERS HERE, not the usual one. The level is authored
+# once and every floor is played in it, so the bounds have to cover the biggest
+# floor that can be rolled. 48 cells of 4 metres is 192 metres across.
 #
 # THESE NUMBERS ARE A COPY AND THAT IS A RISK, so it is guarded:
 # tools/tests/test_the_dungeon_map_covers_a_whole_floor.py reads the C++
-# constants and fails if the bounds below stop covering a floor. Without it,
-# raising the floor size would silently leave the outer ring of every dungeon
-# without a navigation mesh, and nothing reports that -- enemies simply stop
-# pathing out there.
-FLOOR_CELLS_ACROSS = 40
+# constants and fails if the bounds below stop covering the largest floor.
+# Without it, raising the floor size would silently leave the outer ring of the
+# larger dungeons without a navigation mesh, and nothing reports that --
+# enemies simply stop pathing out there.
+FLOOR_CELLS_ACROSS = 48
 CELL_SIZE_CM = 400.0
 FLOOR_WIDTH_CM = FLOOR_CELLS_ACROSS * CELL_SIZE_CM
 

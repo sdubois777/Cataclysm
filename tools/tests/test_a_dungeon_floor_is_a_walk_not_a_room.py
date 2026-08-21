@@ -97,13 +97,13 @@ def cell_size_cm() -> float:
 
 
 @pytest.fixture(scope="module")
-def default_width() -> float:
-    return constant("DefaultWidth", "int32")
+def smallest_floor_cells() -> float:
+    return constant("LeastFloorSide", "int32")
 
 
 @pytest.fixture(scope="module")
-def default_height() -> float:
-    return constant("DefaultHeight", "int32")
+def largest_floor_cells() -> float:
+    return constant("MostFloorSide", "int32")
 
 
 @pytest.fixture(scope="module")
@@ -119,26 +119,33 @@ def test_the_walk_speed_is_a_real_number(walk_speed_metres) -> None:
     )
 
 
-def test_crossing_a_floor_takes_a_stated_time(cell_size_cm, default_width,
-                                              default_height,
-                                              walk_speed_metres) -> None:
-    """Walking the long side of a floor once lands inside the stated band."""
-    longest_side_cells = max(default_width, default_height)
-    metres = longest_side_cells * cell_size_cm / CM_PER_METRE
-    seconds = metres / walk_speed_metres
+def test_crossing_the_smallest_and_largest_floor_both_take_a_stated_time(
+        cell_size_cm, smallest_floor_cells, largest_floor_cells,
+        walk_speed_metres) -> None:
+    """Both ends of the size range land inside the stated band.
 
-    assert LEAST_SECONDS_TO_CROSS <= seconds <= MOST_SECONDS_TO_CROSS, (
-        f"a dungeon floor is {longest_side_cells:.0f} cells of "
-        f"{cell_size_cm:.0f} cm, which is {metres:.0f} metres, and crossing it "
-        f"once at the designed {walk_speed_metres:.1f} m/s takes "
-        f"{seconds:.0f} seconds. That is outside the "
-        f"{LEAST_SECONDS_TO_CROSS:.0f} to {MOST_SECONDS_TO_CROSS:.0f} second "
-        f"band this test holds. The project owner's target is two to five "
-        f"minutes for a whole floor including fighting and finding the stairs, "
-        f"so one crossing has to fit inside that several times over. Either the "
-        f"grid size or the cell size moved; decide which is right rather than "
-        f"widening the band."
-    )
+    BOTH ENDS, BECAUSE A FLOOR'S SIZE IS ROLLED. It used to be one number and
+    this used to check one number. Checking only the largest would let the
+    smallest shrink to a room; checking only the smallest would let the largest
+    grow past what a two to five minute floor can carry.
+    """
+    for name, cells in (("smallest", smallest_floor_cells),
+                        ("largest", largest_floor_cells)):
+        metres = cells * cell_size_cm / CM_PER_METRE
+        seconds = metres / walk_speed_metres
+
+        assert LEAST_SECONDS_TO_CROSS <= seconds <= MOST_SECONDS_TO_CROSS, (
+            f"the {name} dungeon floor is {cells:.0f} cells of "
+            f"{cell_size_cm:.0f} cm, which is {metres:.0f} metres, and crossing "
+            f"it once at the designed {walk_speed_metres:.1f} m/s takes "
+            f"{seconds:.0f} seconds. That is outside the "
+            f"{LEAST_SECONDS_TO_CROSS:.0f} to {MOST_SECONDS_TO_CROSS:.0f} second "
+            f"band this test holds. The project owner's target is two to five "
+            f"minutes for a whole floor including fighting and finding the "
+            f"stairs, so one crossing has to fit inside that several times "
+            f"over. Either the size range or the cell size moved; decide which "
+            f"is right rather than widening the band."
+        )
 
 
 def test_a_passage_two_cells_wide_is_wide_enough_to_be_a_corridor(
@@ -159,34 +166,40 @@ def test_a_passage_two_cells_wide_is_wide_enough_to_be_a_corridor(
 
 
 def test_the_header_says_the_floors_size_in_metres_correctly(
-        cell_size_cm, default_width) -> None:
-    """The prose beside the constant must agree with the constant.
+        cell_size_cm, smallest_floor_cells, largest_floor_cells) -> None:
+    """The prose beside the constants must agree with the constants.
 
     Issue #468 records this class of failure: prose next to a number went stale
-    for a day and nothing noticed. The header says, beside `DefaultWidth`, how
-    many metres the floor is. This checks the arithmetic in that sentence.
+    for a day and nothing noticed. The header states, beside the size range, how
+    many metres each end of it is. This checks the arithmetic in both sentences.
     """
     text = source(GENERATOR_HEADER)
-    match = re.search(r"(\d+)\s*x\s*(\d+)\s*m is (\d+) metres", text)
-    if match is None:
+    said = re.findall(r"(\d+) x (\d+) m is (\d+) metres", text)
+
+    if len(said) != 2:
         pytest.fail(
-            "CataclysmFloorGenerator.h no longer states the floor's size in "
-            "metres in the form '40 x 4 m is 160 metres'. Either restore the "
-            "sentence or delete this test, but do not leave a claim about "
-            "metres in the header that nothing checks."
+            f"CataclysmFloorGenerator.h states {len(said)} floor sizes in metres "
+            f"in the form '32 x 4 m is 128 metres'; it should state two, the "
+            f"smallest and the largest. Either restore the sentence or delete "
+            f"this test, but do not leave a claim about metres in the header "
+            f"that nothing checks."
         )
 
-    said_cells, said_cell_metres, said_total = (int(part) for part in match.groups())
+    cell_metres = int(cell_size_cm / CM_PER_METRE)
+    wanted = sorted((int(smallest_floor_cells), int(largest_floor_cells)))
+    stated = sorted(int(cells) for cells, _, _ in said)
 
-    assert said_cells == int(default_width), (
-        f"the header says a floor is {said_cells} cells across and "
-        f"DefaultWidth is {default_width:.0f}"
+    assert stated == wanted, (
+        f"the header says floors are {stated} cells across and the constants "
+        f"say {wanted}"
     )
-    assert said_cell_metres == int(cell_size_cm / CM_PER_METRE), (
-        f"the header says a cell is {said_cell_metres} m and CellSizeCm is "
-        f"{cell_size_cm:.0f} cm"
-    )
-    assert said_total == said_cells * said_cell_metres, (
-        f"the header says {said_cells} x {said_cell_metres} m is {said_total} "
-        f"metres, and it is {said_cells * said_cell_metres}"
-    )
+
+    for cells, said_cell_metres, said_total in said:
+        assert int(said_cell_metres) == cell_metres, (
+            f"the header says a cell is {said_cell_metres} m and CellSizeCm is "
+            f"{cell_size_cm:.0f} cm"
+        )
+        assert int(said_total) == int(cells) * cell_metres, (
+            f"the header says {cells} x {said_cell_metres} m is {said_total} "
+            f"metres, and it is {int(cells) * cell_metres}"
+        )

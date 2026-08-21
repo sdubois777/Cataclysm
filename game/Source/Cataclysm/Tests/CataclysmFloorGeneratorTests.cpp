@@ -7,6 +7,7 @@
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "HAL/PlatformTime.h"
+#include "Math/RandomStream.h"
 
 /**
  * Tests for the procedural floor generator, issue #40.
@@ -528,6 +529,267 @@ bool FCataclysmFloorSeedTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("a floor seed is never negative, including for negative "
 				  "dungeon seeds"), bAllPositive);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Floors differ from one another
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFloorTest
+{
+	/**
+	 * What the generator will roll one floor to be like.
+	 *
+	 * MIRRORS `Generate`'s FIRST ATTEMPT EXACTLY, and
+	 * `Cataclysm.Dungeon.TheRolledShapeIsTheShapeTheFloorIsBuiltTo` proves it.
+	 * Without that proof this whole file could be sweeping numbers nothing uses.
+	 */
+	FCataclysmFloorShape ShapeFor(int32 DungeonSeed, int32 FloorNumber)
+	{
+		FCataclysmFloorRequest Request;
+		Request.DungeonSeed = DungeonSeed;
+		Request.FloorNumber = FloorNumber;
+
+		const int32 Seed =
+			FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, FloorNumber);
+		FRandomStream Stream(FCataclysmFloorGenerator::SeedForFloor(Seed, 1));
+
+		return FCataclysmFloorGenerator::RollShape(Stream, Request);
+	}
+
+	/** How many different values a run of numbers took, and the commonest share. */
+	struct FSpread
+	{
+		int32 Distinct = 0;
+		float CommonestShare = 1.0f;
+		int32 Least = MAX_int32;
+		int32 Most = MIN_int32;
+	};
+
+	FSpread SpreadOf(const TArray<int32>& Values)
+	{
+		FSpread Out;
+		if (Values.Num() == 0)
+		{
+			return Out;
+		}
+
+		TMap<int32, int32> Counts;
+		for (const int32 Value : Values)
+		{
+			++Counts.FindOrAdd(Value);
+			Out.Least = FMath::Min(Out.Least, Value);
+			Out.Most = FMath::Max(Out.Most, Value);
+		}
+
+		int32 Commonest = 0;
+		for (const TPair<int32, int32>& Pair : Counts)
+		{
+			Commonest = FMath::Max(Commonest, Pair.Value);
+		}
+
+		Out.Distinct = Counts.Num();
+		Out.CommonestShare =
+			static_cast<float>(Commonest) / static_cast<float>(Values.Num());
+		return Out;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorShapeIsUsedTest,
+	"Cataclysm.Dungeon.TheRolledShapeIsTheShapeTheFloorIsBuiltTo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorShapeIsUsedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorTest;
+
+	// THE CONTROL FOR EVERY VARIETY TEST BELOW. They sweep what `RollShape`
+	// returns, which would be a set of numbers nothing reads if the generator
+	// ignored them. This checks the floor that comes out really is the size it
+	// was rolled to be, and really has the corridor width it was rolled.
+	int32 Checked = 0;
+	for (int32 Seed = 1; Seed <= 60; ++Seed)
+	{
+		const FCataclysmFloorPlan Plan = Build(Seed, 1, ECataclysmFloorLayout::Halls);
+
+		// Only floors that came out on the first attempt, because a re-roll rolls
+		// a new shape and the helper above only mirrors the first.
+		if (Plan.Attempts != 1)
+		{
+			continue;
+		}
+		++Checked;
+
+		const FCataclysmFloorShape Rolled = ShapeFor(Seed, 1);
+
+		TestEqual(FString::Printf(TEXT("dungeon %d: the floor is as wide as it "
+									   "was rolled"), Seed),
+				  Plan.Width, Rolled.Width);
+		TestEqual(FString::Printf(TEXT("dungeon %d: and as deep"), Seed),
+				  Plan.Height, Rolled.Height);
+		TestEqual(FString::Printf(TEXT("dungeon %d: and the plan reports the "
+									   "shape it was built to"), Seed),
+				  Plan.Shape.MinLeafSide, Rolled.MinLeafSide);
+		TestEqual(FString::Printf(TEXT("dungeon %d: including its corridor width"),
+				  Seed), Plan.Shape.ConnectionWidth, Rolled.ConnectionWidth);
+	}
+
+	TestTrue(FString::Printf(TEXT("there were floors to check: %d"), Checked),
+			 Checked > 40);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorVarietyTest,
+	"Cataclysm.Dungeon.FloorsDifferInCharacterAndNotOnlyInArrangement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorVarietyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorTest;
+
+	// THE FAULT THIS EXISTS FOR, in the project owner's words on 2026-08-21:
+	// "Nobody wants to play a 50 floor dungeon where every floor is the same
+	// layout, or just some combination of 3 different layouts."
+	//
+	// Before this, every floor was 40 by 40 cells with corridors exactly two
+	// cells wide and between ten and sixteen rectangular rooms. The arrangement
+	// varied and nothing else did, and no test could tell -- every guarantee in
+	// this file is about ONE floor being good, and a thousand identical good
+	// floors satisfy all of them.
+	//
+	// SWEPT OVER ONE DUNGEON'S FLOORS, NOT OVER DUNGEONS. Floors 1 to 200 of
+	// dungeon 1 is the case that matters: a player walks down through them one
+	// after another. Variety across dungeons would not help them at all.
+	constexpr int32 Floors = 200;
+
+	TArray<int32> Widths, Heights, RoomSizes, CorridorWidths, Loops;
+	for (int32 Floor = 1; Floor <= Floors; ++Floor)
+	{
+		const FCataclysmFloorShape Shape = ShapeFor(/*DungeonSeed=*/1, Floor);
+		Widths.Add(Shape.Width);
+		Heights.Add(Shape.Height);
+		RoomSizes.Add(Shape.MinLeafSide);
+		CorridorWidths.Add(Shape.ConnectionWidth);
+		Loops.Add(Shape.ExtraConnections);
+	}
+
+	struct FKnob
+	{
+		const TCHAR* Name;
+		const TArray<int32>* Values;
+		int32 LeastDistinct;
+		float MostCommonShare;
+	};
+
+	// EACH LIMIT IS WELL INSIDE WHAT THE RANGES ALLOW, so this fails when a knob
+	// stops varying and not when a roll comes out lopsided. A knob rolled over
+	// seventeen values that produced only three would be a knob barely varying.
+	const FKnob Knobs[] = {
+		{ TEXT("floor width"),   &Widths,         8, 0.30f },
+		{ TEXT("floor depth"),   &Heights,        8, 0.30f },
+		{ TEXT("room size"),     &RoomSizes,      5, 0.40f },
+		{ TEXT("corridor width"), &CorridorWidths, 2, 0.85f },
+		{ TEXT("loops"),         &Loops,          5, 0.40f },
+	};
+
+	for (const FKnob& Knob : Knobs)
+	{
+		const FSpread Spread = SpreadOf(*Knob.Values);
+
+		UE_LOG(LogTemp, Display,
+			TEXT("CataclysmFloorVariety %s: %d different values over %d floors, "
+				 "%d..%d, commonest is %.0f%%"),
+			Knob.Name, Spread.Distinct, Floors, Spread.Least, Spread.Most,
+			Spread.CommonestShare * 100.0f);
+
+		TestTrue(FString::Printf(
+			TEXT("%s takes at least %d different values across %d floors of one "
+				 "dungeon; it took %d (%d to %d)"),
+			Knob.Name, Knob.LeastDistinct, Floors, Spread.Distinct,
+			Spread.Least, Spread.Most),
+			Spread.Distinct >= Knob.LeastDistinct);
+
+		TestTrue(FString::Printf(
+			TEXT("no single %s covers more than %.0f%% of floors; the commonest "
+				 "covers %.0f%%"),
+			Knob.Name, Knob.MostCommonShare * 100.0f,
+			Spread.CommonestShare * 100.0f),
+			Spread.CommonestShare <= Knob.MostCommonShare);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPlayVarietyTest,
+	"Cataclysm.Dungeon.WalkingDownADungeonIsNotTheSameWalkEveryTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPlayVarietyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorTest;
+
+	// THE KNOBS VARYING IS NOT THE POINT; WHAT COMES OUT OF THEM IS. This builds
+	// real floors and measures two things a player would notice: how far the
+	// stairs are, and how much of the floor is open space. A generator whose
+	// knobs varied but whose floors all played the same would pass the test above
+	// and fail this one.
+	constexpr int32 Floors = 60;
+
+	for (const ECataclysmFloorLayout Layout : EveryLayout())
+	{
+		TArray<int32> Walks;
+		TArray<int32> OpenPercents;
+
+		for (int32 Floor = 1; Floor <= Floors; ++Floor)
+		{
+			const FCataclysmFloorPlan Plan = Build(/*DungeonSeed=*/1, Floor, Layout);
+			const FCataclysmFloorQuality Quality = CataclysmMeasureFloor(Plan);
+			Walks.Add(Quality.PathLength);
+			OpenPercents.Add(FMath::RoundToInt(Quality.OpenFraction * 100.0f));
+		}
+
+		const FSpread Walk = SpreadOf(Walks);
+		const FSpread Open = SpreadOf(OpenPercents);
+
+		UE_LOG(LogTemp, Display,
+			TEXT("CataclysmFloorVariety %s over %d floors: walk %d..%d cells "
+				 "(%d different), open %d..%d%% (%d different)"),
+			CataclysmFloorLayoutName(Layout), Floors, Walk.Least, Walk.Most,
+			Walk.Distinct, Open.Least, Open.Most, Open.Distinct);
+
+		// THE WALK IS THE ONE A PLAYER FEELS, AND IT IS JUDGED AS A RATIO.
+		//
+		// A limit counted in cells would have to be three different limits. An
+		// arena is one open space by definition, so its walk is close to the
+		// floor's diameter and is bounded by how big a floor may be; halls wander
+		// and can be far longer. Measured over sixty floors of one dungeon: halls
+		// ran 49 to 111 cells, caverns 57 to 89, arenas 30 to 60 -- ratios of
+		// 2.27, 1.56 and 2.00.
+		//
+		// A ratio says the thing worth saying once, for all three: the longest
+		// floor of a dungeon takes meaningfully longer to cross than the shortest.
+		// 1.4 sits under all three with margin and well above 1.0, which is what a
+		// generator with nothing varying would produce.
+		constexpr float LeastWalkRatio = 1.4f;
+		const float WalkRatio = (Walk.Least > 0)
+			? static_cast<float>(Walk.Most) / static_cast<float>(Walk.Least)
+			: 0.0f;
+
+		TestTrue(FString::Printf(
+			TEXT("%s: the longest floor of a dungeon is at least %.1f times the "
+				 "walk of the shortest; it ran %d to %d cells, a ratio of %.2f"),
+			CataclysmFloorLayoutName(Layout), LeastWalkRatio, Walk.Least,
+			Walk.Most, WalkRatio),
+			WalkRatio >= LeastWalkRatio);
+
+		TestTrue(FString::Printf(
+			TEXT("%s: how open a floor is varies by at least 10 points; it ran "
+				 "%d%% to %d%%"),
+			CataclysmFloorLayoutName(Layout), Open.Least, Open.Most),
+			Open.Most - Open.Least >= 10);
+	}
 
 	return true;
 }

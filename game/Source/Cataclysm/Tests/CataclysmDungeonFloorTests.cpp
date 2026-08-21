@@ -138,16 +138,20 @@ bool FCataclysmFloorWallsEncloseTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonFloorTest;
 
-	// Walls are built only where solid rock touches walkable ground, because
-	// about half the grid is solid and most of it is buried behind the cells
-	// that face the floor. The saving is only safe if nothing that should be
-	// walled is missed. This checks both directions: no wall stands where one is
-	// not needed, and none is missing where one is.
+	// A WALL IS A FACE, NOT A CELL. One piece stands on each side where walkable
+	// ground meets rock, plus one in each corner where two of those meet at a
+	// right angle and leave a hole. Nothing is built against rock nobody can see.
+	//
+	// This checks both directions: no piece stands where one is not needed, and
+	// none is missing where one is.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{
 		return false;
 	}
+
+	int32 TotalWalls = 0;
+	int32 TotalGround = 0;
 
 	for (const ECataclysmFloorLayout Layout : EveryLayout())
 	{
@@ -162,72 +166,106 @@ bool FCataclysmFloorWallsEncloseTest::RunTest(const FString& Parameters)
 			}
 			Floor->Build(Plan);
 
-			int32 Wanted = 0;
-			for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
-			{
-				Wanted += ACataclysmDungeonFloor::NeedsWall(Plan, Plan.CellAt(Index)) ? 1 : 0;
-			}
+			const int32 Wanted = ACataclysmDungeonFloor::WallPiecesFor(Plan);
 
 			TestEqual(FString::Printf(
-				TEXT("%s seed %d: a wall stands on every solid cell that touches "
-					 "walkable ground, and nowhere else"),
+				TEXT("%s seed %d: a wall piece stands on every side where ground "
+					 "meets rock, and in every corner, and nowhere else"),
 				CataclysmFloorLayoutName(Layout), Seed),
 				Floor->WallBlockCount(), Wanted);
 
-			// The saving is real and worth having: fewer walls than solid cells.
-			const int32 Solid = Plan.Cells.Num() - Plan.FloorCount();
+			// EVERY PIECE STANDS AGAINST GROUND. A floor with no walkable cells
+			// would need none, and a floor with some needs at least four -- the
+			// grid's border is always rock, so the walkable area always ends
+			// somewhere.
 			TestTrue(FString::Printf(
-				TEXT("%s seed %d: %d walls for %d solid cells, which is fewer"),
-				CataclysmFloorLayoutName(Layout), Seed, Floor->WallBlockCount(), Solid),
-				Floor->WallBlockCount() < Solid);
+				TEXT("%s seed %d: a floor with %d walkable cells has walls: %d"),
+				CataclysmFloorLayoutName(Layout), Seed, Plan.FloorCount(),
+				Floor->WallBlockCount()),
+				Floor->WallBlockCount() >= 4);
+
+			TotalWalls += Floor->WallBlockCount();
+			TotalGround += Plan.FloorCount();
 
 			Floor->Destroy();
 		}
 	}
+
+	// AND THE WALL IS A SKIN, NOT A SOLID. Building walls as faces is only worth
+	// anything if there are far fewer of them than there is ground: a floor whose
+	// wall pieces outnumbered its walkable cells would be one where the walls
+	// cost more than the room they enclose.
+	//
+	// ASKED OF THE WHOLE SWEEP RATHER THAN OF EACH FLOOR, because a small
+	// enough floor can legitimately be almost all edge.
+	TestTrue(FString::Printf(
+		TEXT("across the sweep, %d wall pieces enclose %d walkable cells, which "
+			 "is %.0f%% and the limit is 60%%"),
+		TotalWalls, TotalGround,
+		(TotalGround > 0) ? 100.0f * TotalWalls / TotalGround : 100.0f),
+		TotalGround > 0 && TotalWalls <= TotalGround * 6 / 10);
 
 	World->DestroyWorld(false);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorNeedsWallRuleTest,
-	"Cataclysm.DungeonFloor.ACornerTouchCountsAsTouching",
+	"Cataclysm.DungeonFloor.AWallIsBuiltOnEverySideAndInEveryCorner",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmFloorNeedsWallRuleTest::RunTest(const FString& Parameters)
 {
 	// THE CONTROL FOR THE TEST ABOVE, which compares the built walls against
-	// this same rule and would agree with it however wrong the rule was.
+	// this same rule and would agree with it however wrong the rule was. Worked
+	// out by hand here instead.
 	//
-	// A hand-made 5 by 5 plan with one walkable cell in the middle. Its eight
-	// neighbours all touch it, four squarely and four at a corner. A rule that
-	// used only the four square neighbours would leave a gap in the wall exactly
-	// where two corridors meet.
-	FCataclysmFloorPlan Plan;
-	Plan.Reset(5, 5);
-	Plan.Carve(FIntPoint(2, 2));
-	Plan.Entrance = FIntPoint(2, 2);
-	Plan.Exit = FIntPoint(2, 2);
+	// ONE WALKABLE CELL ALONE ON A 5 BY 5 GRID needs eight pieces: four sides,
+	// and four corners. A rule that skipped the corners would leave a hole you
+	// can see through at every corner of every room, because each side piece
+	// spans only its own cell's width.
+	FCataclysmFloorPlan Alone;
+	Alone.Reset(5, 5);
+	Alone.Carve(FIntPoint(2, 2));
 
-	int32 Walled = 0;
-	for (int32 Y = 0; Y < 5; ++Y)
-	{
-		for (int32 X = 0; X < 5; ++X)
-		{
-			Walled += ACataclysmDungeonFloor::NeedsWall(Plan, FIntPoint(X, Y)) ? 1 : 0;
-		}
-	}
+	TestEqual(TEXT("a lone walkable cell needs four sides and four corners"),
+			  ACataclysmDungeonFloor::WallPiecesFor(Alone), 8);
 
-	TestEqual(TEXT("all eight neighbours of a lone walkable cell get a wall, "
-				   "including the four that touch only at a corner"), Walled, 8);
+	// TWO CELLS SIDE BY SIDE need six sides, not eight: the side they share is
+	// ground on both sides and gets nothing. And four corners, not eight: on the
+	// side each cell shares with the other there is no corner to fill, because
+	// that side is ground.
+	//
+	// TWELVE WAS WRITTEN HERE FIRST AND THE CODE SAID TEN. The code was right.
+	// That is what a hand-worked control is for; it is only worth having if it is
+	// worked out independently, and independent means it can be the one that is
+	// wrong.
+	FCataclysmFloorPlan Pair;
+	Pair.Reset(5, 5);
+	Pair.Carve(FIntPoint(2, 2));
+	Pair.Carve(FIntPoint(3, 2));
 
-	TestFalse(TEXT("the walkable cell itself gets no wall"),
-			  ACataclysmDungeonFloor::NeedsWall(Plan, FIntPoint(2, 2)));
+	TestEqual(TEXT("two cells side by side need six sides and four corners"),
+			  ACataclysmDungeonFloor::WallPiecesFor(Pair), 10);
 
-	TestFalse(TEXT("a solid cell two cells away gets no wall"),
-			  ACataclysmDungeonFloor::NeedsWall(Plan, FIntPoint(0, 0)));
+	// TWO CELLS TOUCHING ONLY AT A CORNER still get a piece in the corner
+	// between them. Nothing can walk that diagonal, and without the piece there
+	// is a two-metre hole the navigation mesh would route a character through.
+	// Each cell needs four sides and four corners: sixteen.
+	FCataclysmFloorPlan Diagonal;
+	Diagonal.Reset(5, 5);
+	Diagonal.Carve(FIntPoint(1, 1));
+	Diagonal.Carve(FIntPoint(2, 2));
 
-	TestFalse(TEXT("a cell off the grid gets no wall"),
-			  ACataclysmDungeonFloor::NeedsWall(Plan, FIntPoint(-1, 2)));
+	TestEqual(TEXT("two cells touching only at a corner are still walled apart"),
+			  ACataclysmDungeonFloor::WallPiecesFor(Diagonal), 16);
+
+	// AN EMPTY PLAN NEEDS NOTHING, which is the case a rule that counted solid
+	// cells rather than faces would get wrong: it would want a wall on all 25.
+	FCataclysmFloorPlan Empty;
+	Empty.Reset(5, 5);
+
+	TestEqual(TEXT("a plan with no walkable cells needs no walls"),
+			  ACataclysmDungeonFloor::WallPiecesFor(Empty), 0);
 
 	return true;
 }
