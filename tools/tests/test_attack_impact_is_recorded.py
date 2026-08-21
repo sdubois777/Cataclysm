@@ -236,9 +236,14 @@ def test_the_recorded_play_rate_is_the_one_the_code_computes(
         f"{computed:.4f}.")
 
 
+#: THE CORRUPTED SENTINEL IS NOT HERE, AND ITS ABSENCE IS THE POINT. Its
+#: `Fire_Planted_B` release was published at 1.755 s and withdrawn the same day:
+#: the creature fails the negative control -- `PlantedIntro`, which fires
+#: nothing, moves its hands faster than the firing clip does -- so the two rules
+#: that agreed were agreeing about ordinary movement rather than about a shot.
+#: `test_the_withdrawn_sentinel_figure_is_not_reinstated` refuses it coming back.
 @pytest.mark.parametrize("creature,clip", [
     ("Brute", "Attack_Biped_Melee_A"),
-    ("Corrupted Sentinel", "Fire_Planted_B"),
     ("Gatekeeper", "Swing1_Medium"),
     ("Succubus", "Primary_Attack_Normal"),
 ])
@@ -268,9 +273,7 @@ def test_the_strike_in_play_is_the_strike_in_the_clip_over_the_play_rate(
         f"{in_clip / rate:.4f} s.")
 
 
-@pytest.mark.parametrize("creature", [
-    "Corrupted Sentinel", "Gatekeeper", "Succubus",
-])
+@pytest.mark.parametrize("creature", ["Gatekeeper", "Succubus"])
 def test_the_recorded_gap_is_the_distance_between_the_two_moments(creature):
     """The number the two issues rest on. It is the distance between when the
     animation strikes and when the damage lands, and nothing else."""
@@ -293,6 +296,49 @@ def test_the_recorded_gap_is_the_distance_between_the_two_moments(creature):
         f"the notes give {creature} a gap of {gap} s, and the distance between "
         f"a strike at {in_play} s and damage at {damage_at} s is "
         f"{abs(damage_at - in_play):.4f} s.")
+
+
+def test_the_measurement_records_its_negative_control():
+    """**AGREEMENT BETWEEN THE THREE RULES IS NOT ENOUGH ON ITS OWN**, and the
+    notes have to say so. Three rules that all read hand motion agree with each
+    other on any clip where the hand simply moves. The control is a clip on the
+    same rig that strikes nothing, and the attack has to beat it.
+
+    Without this the table reads as eight measured clips rather than as eight
+    clips that beat a control and five that did not."""
+    text = notes()
+
+    assert "The control, and one creature fails it" in notes(), (
+        "game/docs/enemy-source-assets.md no longer has the control section. "
+        "Every strike figure in it rests on the attack clip beating a clip that "
+        "strikes nothing, and without that section the figures read as though "
+        "agreement between the rules were sufficient. It is not: "
+        "tools/measure_sentinel_release.py established on 2026-08-20 that a "
+        "clip which fires nothing can read more strongly than one that does.")
+
+    for control in ("PlantedIntro", "NonCombat_Idle", "Idle_Relaxed"):
+        assert control in text, (
+            f"the control section no longer names {control}, so the reader "
+            f"cannot tell which clip each attack was measured against.")
+
+
+def test_the_withdrawn_sentinel_figure_is_not_reinstated():
+    """1.755 s was published for `Fire_Planted_B` and withdrawn the same day.
+    A withdrawn figure that leaves no trace gets published again, so the notes
+    keep it named as withdrawn and this refuses it appearing as a measurement."""
+    rows = strike_rows()
+
+    assert rows.get("Fire_Planted_B") == "not measured", (
+        f"game/docs/enemy-source-assets.md records "
+        f"{rows.get('Fire_Planted_B')!r} for Fire_Planted_B. The Corrupted "
+        f"Sentinel fails its negative control, so no strike figure from this "
+        f"method means anything for it. If a NEW method has measured it, this "
+        f"test's reasoning is stale and issue #478 should say how it was done.")
+
+    assert rows.get("Fire_Planted") == "not measured", (
+        f"game/docs/enemy-source-assets.md records "
+        f"{rows.get('Fire_Planted')!r} for Fire_Planted, which could not be "
+        f"read at all: its three rules disagree by 1.04 seconds.")
 
 
 def test_the_two_issues_the_measurements_produced_are_named():
