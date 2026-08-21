@@ -12,8 +12,11 @@
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
+#include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
+#include "Save/CataclysmSaveWriter.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/DateTime.h"
 #include "GameFramework/Pawn.h"
@@ -41,10 +44,21 @@ namespace
 			 "above 0 is that dungeon, -1 rolls a new one every time play begins."),
 		ECVF_Default);
 
+	/**
+	 * The floor control's name, written once.
+	 *
+	 * TWO THINGS USE IT: the registration below, and the lookup in
+	 * `DungeonGameModeFollowFloorAtTheConsole`, which cannot reach the variable
+	 * any other way -- `FAutoConsoleVariableRef` inherits privately from
+	 * `FAutoConsoleObject`, so its `AsVariable` is not accessible. Two spellings
+	 * of the same name would fail as a lookup that silently finds nothing.
+	 */
+	const TCHAR* const GCataclysmDungeonFloorVariableName = TEXT("Cataclysm.DungeonFloor");
+
 	/** Which floor of it. 0 uses the setting, above 0 is that floor. */
 	static int32 GCataclysmDungeonFloorOverride = 0;
 	static FAutoConsoleVariableRef CVarCataclysmDungeonFloor(
-		TEXT("Cataclysm.DungeonFloor"),
+		GCataclysmDungeonFloorVariableName,
 		GCataclysmDungeonFloorOverride,
 		TEXT("Which floor of the dungeon to generate. 0 uses the game mode's "
 			 "own setting."),
@@ -86,6 +100,43 @@ namespace
 			 "designed density. Below 0 uses the game mode's own setting, 0 "
 			 "empties the floor, 1 is the designed density, 2 is twice as many."),
 		ECVF_Default);
+
+	/**
+	 * Keeps the console's floor override on the floor actually being walked.
+	 *
+	 * WITHOUT THIS THE STAIRS SILENTLY DO NOTHING for anybody who has typed
+	 * `Cataclysm.DungeonFloor 5`. That override wins over the game mode's own
+	 * setting every time a floor is built, so walking down from floor 5 would set
+	 * the setting to 6, build floor 5 again, and look exactly like a bug in the
+	 * stairs.
+	 *
+	 * IT ONLY FOLLOWS AN OVERRIDE THAT IS ALREADY SET. Zero means "use the game
+	 * mode's own setting", and turning that into a number would take the choice
+	 * away from anybody who had not made one.
+	 *
+	 * IT WRITES THROUGH THE CONSOLE VARIABLE AND NOT THROUGH `GCataclysmDungeon-
+	 * FloorOverride`, AND THAT IS NOT A STYLE PREFERENCE. `FAutoConsoleVariableRef`
+	 * keeps a copy of the value beside the variable it references, and answers
+	 * `GetInt` from the copy. Assigning to the variable moves what the game reads
+	 * and leaves what the console reports behind, so `Cataclysm.DungeonFloor`
+	 * would have said 5 while the player walked floor 6. Measured on 2026-08-21.
+	 *
+	 * AT THE CONSOLE'S OWN PRIORITY, because Unreal remembers who last set a
+	 * console variable and silently discards a lower-priority write. An override
+	 * above zero was typed at the console, so a write from code would be thrown
+	 * away. A floor pinned on the command line is higher still and will not
+	 * follow; that is a person asking for one floor over and over.
+	 */
+	void DungeonGameModeFollowFloorAtTheConsole(int32 NewFloorNumber)
+	{
+		IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(
+			GCataclysmDungeonFloorVariableName);
+
+		if (Variable && Variable->GetInt() > 0)
+		{
+			Variable->Set(NewFloorNumber, ECVF_SetByConsole);
+		}
+	}
 
 	/** How far above the walking surface a pawn's capsule middle has to sit. */
 	float DungeonGameModeStandingHeightOf(const APawn* Pawn)
@@ -138,15 +189,18 @@ ACataclysmDungeonGameMode::ACataclysmDungeonGameMode()
 
 void ACataclysmDungeonGameMode::StartPlay()
 {
-	// The floor is built BEFORE `Super::StartPlay`, and the order matters. The
-	// parent starts the save writer, which records the floor being stood on, and
-	// a floor that does not exist yet is one the record cannot describe.
-	BuildFloor();
-
-	// AND ITS CREATURES ARE PUT ON IT. Separate from building it, because a test
-	// that only wants the geometry should not pay for sixty spawned characters,
-	// and because `Cataclysm.DungeonEnemyScale 0` is how a floor is walked empty.
-	PopulateFloor();
+	// THE SAME CALL TAKING THE STAIRS MAKES, so beginning play and going down a
+	// floor cannot drift apart into two lists of steps in two orders. It builds
+	// the floor, puts creatures on it and places the way down.
+	//
+	// BEFORE `Super::StartPlay`, and the order matters. The parent starts the
+	// save writer, which records the floor being stood on, and a floor that does
+	// not exist yet is one the record cannot describe.
+	//
+	// ITS LAST STEP, STANDING THE PLAYER AT THE ENTRANCE, DOES NOTHING HERE and
+	// that is expected rather than a waste: there is no pawn until the parent has
+	// run, so it is done again below.
+	GoToFloor(ChooseFloorNumber());
 
 	Super::StartPlay();
 
@@ -454,4 +508,109 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		FCataclysmFloorPopulator::LeastCellsBetweenPacks);
 
 	return Spawned;
+}
+
+// ---------------------------------------------------------------------------
+// The stairs down
+// ---------------------------------------------------------------------------
+
+ACataclysmDungeonStairs* ACataclysmDungeonGameMode::PlaceStairs()
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return nullptr;
+	}
+
+	if (!Stairs)
+	{
+		Stairs = World->SpawnActor<ACataclysmDungeonStairs>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!Stairs)
+		{
+			return nullptr;
+		}
+
+		// BOUND ONCE, WHEN THE ACTOR IS MADE, rather than on every floor. A
+		// dynamic multicast delegate's `AddDynamic` binds with `AddUnique`, so
+		// binding the same object and function again would be discarded and the
+		// player would not descend two floors for one flight of stairs. Doing it
+		// here anyway says what is meant instead of relying on that.
+		Stairs->OnTaken.AddDynamic(this,
+			&ACataclysmDungeonGameMode::HandleStairsTaken);
+	}
+
+	Stairs->PlaceAt(CurrentFloor->ExitWorld());
+	Stairs->StartWatching();
+
+	return Stairs;
+}
+
+void ACataclysmDungeonGameMode::HandleStairsTaken()
+{
+	GoDownOneFloor();
+}
+
+bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
+{
+	// FROM THE FLOOR ACTUALLY BEING WALKED rather than from the setting, because
+	// those are not always the same number: `Cataclysm.DungeonFloor` can pin one.
+	if (!GoToFloor(ChooseFloorNumber() + 1, PawnToMove))
+	{
+		return false;
+	}
+
+	++FloorsDescended;
+	return true;
+}
+
+bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMove)
+{
+	FloorNumber = FMath::Max(1, NewFloorNumber);
+	DungeonGameModeFollowFloorAtTheConsole(FloorNumber);
+
+	if (!BuildFloor())
+	{
+		// NOTHING ELSE IS TOUCHED. The floor before is still standing and still
+		// has its creatures on it, which is a better place to be left than on a
+		// floor that does not exist.
+		return false;
+	}
+
+	PopulateFloor();
+	PlaceStairs();
+
+	// AND THE PLAYER IS STOOD ON IT, AFTER the floor is built and not before, or
+	// they would be placed at the previous floor's entrance.
+	//
+	// NOTHING TO MOVE DURING `StartPlay`, where the pawn does not exist yet and
+	// the caller does this again afterwards.
+	APawn* Moving = PawnToMove;
+	if (!Moving)
+	{
+		const APlayerController* Controller =
+			GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+		Moving = Controller ? Controller->GetPawn() : nullptr;
+	}
+
+	PlaceAtEntrance(Moving);
+
+	// AND THE SAVE RECORD FOLLOWS. `UCataclysmSaveWriter::SetFloor` has existed
+	// since the save system was built and nothing called it, because nothing
+	// changed floors. It notes an `ECataclysmSaveTrigger::ChangedFloor`, so going
+	// down is now one of the moments the game saves itself.
+	//
+	// ONLY ONCE THE RUN HAS BEGUN. During `StartPlay` this runs before the parent
+	// starts the writer, and telling a writer with nowhere to write would count a
+	// refused trigger for no reason. `BeginRun` records the floor a moment later
+	// anyway.
+	if (UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(GetWorld()))
+	{
+		if (Writer->IsWriting())
+		{
+			Writer->SetFloor(DungeonName, FloorNumber);
+		}
+	}
+
+	return true;
 }

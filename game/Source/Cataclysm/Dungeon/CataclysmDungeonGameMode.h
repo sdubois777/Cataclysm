@@ -10,6 +10,7 @@
 #include "CataclysmDungeonGameMode.generated.h"
 
 class ACataclysmDungeonFloor;
+class ACataclysmDungeonStairs;
 class ACataclysmEnemyCharacter;
 
 /**
@@ -36,10 +37,14 @@ class ACataclysmEnemyCharacter;
  * list of cells can be swept over a thousand seeds and sixty spawned characters
  * cannot.
  *
- * WHAT IT DOES NOT DO YET. Taking the stairs does nothing: `FloorNumber` is a
- * setting rather than something the game advances. That is the next piece of
- * work. There is also no boss, because a boss belongs at the end of a dungeon
- * and nothing holds a floor count -- issue #41.
+ * AND THE STAIRS WORK. `ACataclysmDungeonStairs` stands at the floor's exit and
+ * says when the player has reached it; `GoDownOneFloor` below builds the next
+ * floor, puts its creatures on it, moves the marker to its exit and stands the
+ * player at its entrance. `FloorNumber` is no longer only a setting.
+ *
+ * WHAT IT DOES NOT DO YET. There is no bottom to the dungeon, so the stairs go
+ * down for ever: a dungeon with a floor count and a boss on its last floor is
+ * issue #41's side of the join, and nothing here holds one.
  */
 UCLASS(Config = Game)
 class CATACLYSM_API ACataclysmDungeonGameMode : public ACataclysmGameMode
@@ -236,6 +241,78 @@ public:
 	 * @return null for a creature with no class, which nothing should produce
 	 */
 	static TSubclassOf<ACataclysmEnemyCharacter> ClassFor(ECataclysmDungeonCreature Creature);
+
+	// ----------------------------------------------------------------------
+	// The stairs down
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Puts the marker for the way down at the current floor's exit, and starts
+	 * it watching for the player.
+	 *
+	 * ONE ACTOR FOR THE WHOLE DUNGEON, MOVED RATHER THAN REPLACED. Spawning a
+	 * second and destroying the first on every floor is one more thing to destroy
+	 * at the wrong moment, and the marker carries the binding that makes the
+	 * stairs work.
+	 *
+	 * @return the marker, or null if it could not be placed
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	ACataclysmDungeonStairs* PlaceStairs();
+
+	/** The way down, once `PlaceStairs` has run. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	TObjectPtr<ACataclysmDungeonStairs> Stairs;
+
+	/**
+	 * Builds a floor, puts its creatures on it, moves the stairs to its exit and
+	 * stands the player at its entrance.
+	 *
+	 * THE WHOLE FLOOR CHANGE IN ONE CALL, so that taking the stairs and beginning
+	 * play do the same four things in the same order rather than two lists that
+	 * can drift apart. Every step it calls is public and separately tested.
+	 *
+	 * IT ALSO TELLS THE SAVE WRITER. `UCataclysmSaveWriter::SetFloor` has existed
+	 * since the save system was built and nothing ever called it, because nothing
+	 * changed floors. It notes an `ECataclysmSaveTrigger::ChangedFloor`, so a
+	 * floor change is now one of the moments the game saves itself.
+	 *
+	 * @param NewFloorNumber which floor, counted from 1. Below 1 is clamped.
+	 * @param PawnToMove    who to stand at the new floor's entrance. Null means
+	 *                      the pawn the first player controller is driving, which
+	 *                      is what play passes.
+	 *
+	 *                      IT IS A PARAMETER SO A TEST CAN REACH THE STEP. An
+	 *                      automation test world has no player controller, so a
+	 *                      floor change that could only find the player through
+	 *                      `GetFirstPlayerController` would leave the most
+	 *                      player-visible thing about the stairs untested: a
+	 *                      player who is not moved is left standing where the old
+	 *                      floor's exit was, which on the new floor is as likely
+	 *                      to be solid rock, or nothing at all, as ground.
+	 *
+	 * @return whether the floor was built
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	bool GoToFloor(int32 NewFloorNumber, APawn* PawnToMove = nullptr);
+
+	/** The floor below the one being walked. See `GoToFloor`. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	bool GoDownOneFloor(APawn* PawnToMove = nullptr);
+
+	/**
+	 * How many floors down the player has gone since play began.
+	 *
+	 * KEPT SO A TEST CAN TELL A FLOOR CHANGE FROM A REBUILD. Building floor 2 by
+	 * hand and walking down to floor 2 leave the world in the same state, and
+	 * only one of them is the stairs working.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	int32 FloorsDescended = 0;
+
+	/** What the stairs call when the player reaches them. */
+	UFUNCTION()
+	void HandleStairsTaken();
 
 	/** The dungeon's name, so the save record does not say "Sandbox". */
 	virtual FName RunFloorName() const override { return DungeonName; }

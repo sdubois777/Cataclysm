@@ -81,7 +81,13 @@ public:
 	 */
 	bool NoteTrigger(ECataclysmSaveTrigger Trigger);
 
-	/** Which floor the party is on. Nothing changes floors yet. */
+	/**
+	 * Which floor the party is on.
+	 *
+	 * `ACataclysmDungeonGameMode::GoToFloor` calls it when the player takes the
+	 * stairs down. It was written when the save system was built and nothing
+	 * called it until then, because nothing changed floors.
+	 */
 	void SetFloor(FName InDungeon, int32 InFloor);
 
 	//~ The clock, and health.
