@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystemComponent.h"
 #include "Components/SceneComponent.h"
@@ -148,7 +149,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactColoursComeFromTheTable,
 
 bool FCataclysmImpactColoursComeFromTheTable::RunTest(const FString& Parameters)
 {
-	const UDataTable* Table = UCataclysmImpactEffect::LoadElementVisuals();
+	const UDataTable* Table = UCataclysmElementVisuals::LoadTable();
 	if (!Table)
 	{
 		AddError(TEXT("DT_ElementVisuals does not exist."));
@@ -172,7 +173,7 @@ bool FCataclysmImpactColoursComeFromTheTable::RunTest(const FString& Parameters)
 
 		FLinearColor Primary;
 		FLinearColor Secondary;
-		if (!UCataclysmImpactEffect::ColoursFor(DamageType, Primary, Secondary))
+		if (!UCataclysmElementVisuals::ColoursFor(DamageType, Primary, Secondary))
 		{
 			AddError(FString::Printf(
 				TEXT("a %s hit found no colours, so it would draw the "
@@ -204,7 +205,7 @@ bool FCataclysmImpactColoursComeFromTheTable::RunTest(const FString& Parameters)
 	FLinearColor Unused;
 	FLinearColor AlsoUnused;
 	TestFalse(TEXT("an untyped hit finds no row"),
-		UCataclysmImpactEffect::ColoursFor(NAME_None, Unused, AlsoUnused));
+		UCataclysmElementVisuals::ColoursFor(NAME_None, Unused, AlsoUnused));
 
 	return true;
 }

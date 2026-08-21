@@ -2,8 +2,7 @@
 
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
-#include "Data/CataclysmDataRows.h"
-#include "Engine/DataTable.h"
+#include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystemComponent.h"
 #include "Engine/HitResult.h"
 #include "Engine/World.h"
@@ -15,27 +14,27 @@
 const TCHAR* UCataclysmImpactEffect::SystemAssetPath =
 	TEXT("/Game/Effects/Systems/Impacts/NS_Impact_Point.NS_Impact_Point");
 
-const TCHAR* UCataclysmImpactEffect::ElementVisualsAssetPath =
-	TEXT("/Game/Data/DT_ElementVisuals.DT_ElementVisuals");
-
-const FName UCataclysmImpactEffect::ElementColourParameter(TEXT("ElementColour"));
-const FName UCataclysmImpactEffect::ElementColourDarkParameter(TEXT("ElementColourDark"));
-const FName UCataclysmImpactEffect::TargetPositionParameter(TEXT("TargetPosition"));
-const FName UCataclysmImpactEffect::ImpactNormalParameter(TEXT("ImpactNormal"));
+const FName UCataclysmImpactEffect::ElementColourParameter(
+	CataclysmEffectParameterNames::ElementColour);
+const FName UCataclysmImpactEffect::ElementColourDarkParameter(
+	CataclysmEffectParameterNames::ElementColourDark);
+const FName UCataclysmImpactEffect::TargetPositionParameter(
+	CataclysmEffectParameterNames::TargetPosition);
+const FName UCataclysmImpactEffect::ImpactNormalParameter(
+	CataclysmEffectParameterNames::ImpactNormal);
 
 namespace
 {
 	/**
-	 * Kept alive deliberately. Both of these are loaded on the first hit of a
-	 * session and every hit afterwards reuses them; the Niagara system is 475 KB
-	 * and loading it per blow would be a stall in the middle of a fight.
+	 * Kept alive deliberately. It is loaded on the first hit of a session and
+	 * every hit afterwards reuses it; the Niagara system is 475 KB and loading
+	 * it per blow would be a stall in the middle of a fight.
 	 *
-	 * AddToRoot rather than a plain pointer, because nothing else references
-	 * either asset -- the effect is spawned from code, not placed in a level --
-	 * so garbage collection would otherwise be free to take them back and the
-	 * next hit would pay the load again.
+	 * AddToRoot rather than a plain pointer, because nothing else references the
+	 * asset -- the effect is spawned from code, not placed in a level -- so
+	 * garbage collection would otherwise be free to take it back and the next
+	 * hit would pay the load again.
 	 */
-	TWeakObjectPtr<const UDataTable> CachedElementVisuals;
 	TWeakObjectPtr<UNiagaraSystem> CachedImpactSystem;
 
 	UNiagaraSystem* LoadImpactSystem()
@@ -54,23 +53,6 @@ namespace
 		}
 		return System;
 	}
-}
-
-const UDataTable* UCataclysmImpactEffect::LoadElementVisuals()
-{
-	if (CachedElementVisuals.IsValid())
-	{
-		return CachedElementVisuals.Get();
-	}
-
-	const UDataTable* Table =
-		LoadObject<UDataTable>(nullptr, ElementVisualsAssetPath);
-	if (Table)
-	{
-		const_cast<UDataTable*>(Table)->AddToRoot();
-		CachedElementVisuals = Table;
-	}
-	return Table;
 }
 
 bool UCataclysmImpactEffect::ShouldDrawFor(const FCataclysmIncomingHit& Hit,
@@ -125,42 +107,6 @@ FVector UCataclysmImpactEffect::ImpactLocationFor(const FHitResult* Landed,
 	return Landed->ImpactPoint;
 }
 
-bool UCataclysmImpactEffect::ColoursFor(FName DamageType,
-										FLinearColor& OutPrimary,
-										FLinearColor& OutSecondary)
-{
-	// An untyped hit is a normal case, not a fault: player damage carries no
-	// damage type because the enemy resists everything equally, so a type would
-	// be choosing between copies of one number. See
-	// UCataclysmDamageCalculation's note on the generic resistance.
-	if (DamageType.IsNone())
-	{
-		return false;
-	}
-
-	const UDataTable* Table = LoadElementVisuals();
-	if (!Table)
-	{
-		return false;
-	}
-
-	// The row key is the leaf of the damage type's tag -- `Element.Demonic`
-	// gives a row named `Demonic` -- which is exactly what DamageType holds, so
-	// no second lookup table stands between a hit and its colours.
-	// Cataclysm.Data.ElementVisualsCarryTheDesignedValues pins that convention.
-	const FCataclysmElementVisualRow* Row =
-		Table->FindRow<FCataclysmElementVisualRow>(
-			DamageType, TEXT("CataclysmImpactEffect"), /*bWarnIfMissing=*/false);
-	if (!Row)
-	{
-		return false;
-	}
-
-	OutPrimary = Row->PrimaryColour;
-	OutSecondary = Row->SecondaryColour;
-	return true;
-}
-
 UNiagaraComponent* UCataclysmImpactEffect::SpawnAt(
 	const UObject* WorldContextObject,
 	const FVector& Location,
@@ -204,7 +150,7 @@ UNiagaraComponent* UCataclysmImpactEffect::SpawnAt(
 
 	FLinearColor Primary;
 	FLinearColor Secondary;
-	if (ColoursFor(DamageType, Primary, Secondary))
+	if (UCataclysmElementVisuals::ColoursFor(DamageType, Primary, Secondary))
 	{
 		Component->SetVariableLinearColor(ElementColourParameter, Primary);
 		Component->SetVariableLinearColor(ElementColourDarkParameter, Secondary);

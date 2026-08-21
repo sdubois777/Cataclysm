@@ -133,6 +133,17 @@ failed, and the answer is to fix the template rather than add the asset.
 the exact failure this document exists to prevent. Damage type is a parameter
 value, not a location.
 
+**A SHAPE USED BY BOTH SIDES GOES IN `Skills/`.** The split above sorts a system
+by who casts it, and section 5's whole argument is that a shape does not belong
+to a caster: `NS_Proj_Body` is fired by ten designed player skills and by the
+Brute, the Corrupted Sentinel, the Succubus and the Gatekeeper, and it is one
+asset for all of them. `Impacts/` was the obvious second candidate and it is
+described as "shared hit and death reactions", which a projectile in flight is
+not. So the rule is: **`Enemies/` holds a shape only a creature can produce, and
+everything shared goes in `Skills/`** rather than a third folder being invented
+for it. Added on 2026-08-21, when building the first system that has two
+casters.
+
 **Bought asset packs are never renamed and never moved.** They go to
 `/Game/ThirdParty/<PackName>/` untouched. `tools/tests/test_third_party_packs_are_not_committed.py`
 already keeps them out of git, and renaming them would break that and buy
@@ -417,6 +428,15 @@ default. Only systems on a named list may use it, and adding one is a decision t
 record. It exists so that "this must never disappear" is an explicit choice
 rather than the accident of forgetting to set an effect type.
 
+**A SHAPE WITH TWO CASTERS TAKES `FXT_Enemy`.** The first four names split by who
+casts, and section 5's whole argument is that a shape does not belong to a
+caster. Where one asset serves both -- `NS_Proj_Body` is fired by ten designed
+player skills and by four creatures -- `FXT_Enemy` is the one to pick: it is the
+tighter of the two on distance, 4000 cm against 6000, and the looser on instance
+count, 60 against 40, which is the safer pair for something that can be numerous.
+**That is a choice between two unmeasured sets of numbers and not a measurement**
+-- issue #547 is still the missing budget. Added on 2026-08-21.
+
 **Judgement.** Every authored system sets one of these four. A system with no
 effect type is not reviewable and should not be committed.
 
@@ -603,7 +623,7 @@ figure.
 
 **Judgement.** Each step proves something the next depends on.
 
-**Steps 1 and 2 are done. Step 3 is what to build next.**
+**Steps 1 to 6 are done. Step 7 is what to build next.**
 
 1. ~~**Decide the eight hues.**~~ Done in issue #546. Nothing else could be
    built correctly first, and it was a design decision that needed the project
@@ -611,23 +631,48 @@ figure.
 2. ~~**Build `DT_ElementVisuals` and its test.**~~ Done in issue #549. Eight
    rows against the existing tags, generated from the design workbook's
    "Element Visuals" sheet. No Niagara yet.
-3. **Build the four effect type assets**, with every switch explicitly set. An
-   hour of work, and the difference between twenty enemies being playable and
-   not. Build them *before* the first system, so no system can be authored
-   without one.
-4. **Build `NS_Impact_Point`.** The first Niagara asset. It goes first because
-   enemies already land hits, so it is immediately visible in the sandbox, and
-   because it exercises the whole convention at once. Done means: it spawns on an
-   enemy hit; changing a row in `DT_ElementVisuals` changes it with no asset edit;
-   the debug display shows the instance count capping with twenty Brutes
-   attacking; and it disappears at 4000 cm and does not come back.
-5. **Extract `NMS_ElementTint` and `NDS_IntensityCurve`** from step 4, before
-   there is a second system to keep in sync. This is where the library either
-   becomes a library or becomes hundreds of copies.
-6. **Build `NS_Proj_Body`.** The first real test of reuse — it should consume both
-   scripts unmodified. If it does not, they were extracted wrong, and now is the
-   cheap time to find out.
-7. **The rest.** By this point each new system is hours rather than days.
+3. ~~**Build the four effect type assets**, with every switch explicitly set.~~
+   Done in issue #555. An hour of work, and the difference between twenty
+   enemies being playable and not. Built *before* the first system, so no system
+   could be authored without one.
+4. ~~**Build `NS_Impact_Point`.**~~ Done in issue #558. The first Niagara asset.
+   It went first because enemies already land hits, so it is immediately visible
+   in the sandbox, and because it exercises the whole convention at once. Two of
+   its five acceptance criteria are still unmet and both need somebody to press
+   Play: the debug display showing the instance count capping, and the effect
+   being refused past 4000 cm.
+5. ~~**Extract `NMS_ElementTint` and `NDS_IntensityCurve`** from step 4.~~
+   **There was nothing to extract, and that is the finding rather than a step
+   that was skipped.** `GetSystemDependencies` on the finished
+   `NS_Impact_Point` reports twelve modules and three dynamic inputs, and every
+   one of them is a stock engine asset — no scratch pad module was ever
+   authored. The element tint is not a module at all: it is the stock
+   `InitializeParticle`'s `Color` input **linked** to `User.ElementColour`, and
+   an intensity curve is the stock `FloatFromCurve` dynamic input. A link and a
+   stock dynamic input are already the shared mechanism this step was meant to
+   create, and copying them into an authored module would add an asset to
+   maintain and change nothing.
+
+   **What did need extracting was in the C++, not in Niagara.** The parameter
+   spellings and the `DT_ElementVisuals` lookup lived inside
+   `UCataclysmImpactEffect`, where a second system could not reach them without
+   asking a class called "impact effect" for its colours. They are now
+   `CataclysmEffectParameterNames` and `UCataclysmElementVisuals`, and
+   `Cataclysm.Effects.ProjectileBodyExposesTheStandardParameterBlock` asserts
+   that both effect classes write the same names.
+6. ~~**Build `NS_Proj_Body`.**~~ Done. Two emitters: a `Core` in **local** space,
+   which is one looping sprite riding the projectile as its glowing head, and a
+   `Trail` in **world** space, whose sparks stay where they were born and fade
+   from `User.ElementColour` to `User.ElementColourDark` while their opacity
+   falls to nothing. `User.Scale` drives the sprite sizes and `User.Intensity`
+   the trail's spawn rate, both through the stock `Multiply_Float` dynamic
+   input, so neither touches the component's transform.
+7. **The rest.** By this point each new system is hours rather than days. The
+   six shapes still unbuilt are `NS_Impact_Ground`, `NS_Beam`,
+   `NS_Aura_Persistent`, `NS_Cast_Windup`, `NS_Death_Dissolve` and
+   `NS_Status_Applied`. `NS_Status_Applied` is the one with a bug waiting on it:
+   a burn ticking currently draws nothing, because `NS_Impact_Point` was taught
+   to refuse damage over time rather than give it its own shape.
 
 ---
 

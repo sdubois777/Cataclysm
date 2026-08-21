@@ -7,7 +7,6 @@
 #include "CataclysmImpactEffect.generated.h"
 
 class UAbilitySystemComponent;
-class UDataTable;
 struct FCataclysmDamageResult;
 struct FCataclysmIncomingHit;
 struct FHitResult;
@@ -47,20 +46,16 @@ public:
 	/** The system built in issue #558. */
 	static const TCHAR* SystemAssetPath;
 
-	/** The eight damage types' colours, built in issue #549. */
-	static const TCHAR* ElementVisualsAssetPath;
-
 	/**
 	 * The user parameters this class writes. Bare names without the `User.`
-	 * prefix, which Niagara adds itself.
+	 * prefix, which Niagara adds itself, and taken from
+	 * CataclysmEffectParameterNames so there is one spelling of each in the
+	 * whole project rather than one copy per effect class.
 	 */
 	static const FName ElementColourParameter;
 	static const FName ElementColourDarkParameter;
 	static const FName TargetPositionParameter;
 	static const FName ImpactNormalParameter;
-
-	/** Null when the table asset is missing. Loaded once and kept. */
-	static const UDataTable* LoadElementVisuals();
 
 	/**
 	 * Where the effect plays, and which way up it faces.
@@ -125,16 +120,12 @@ public:
 		const UAbilitySystemComponent* AbilitySystem);
 
 	/**
-	 * The two colours for a damage type, looked up by the leaf of its
-	 * `Element.*` tag -- `Demonic`, `Void` and so on, which is exactly what
-	 * FCataclysmIncomingHit::DamageType holds.
-	 *
-	 * Returns false and writes nothing when the type has no row, which includes
-	 * every untyped hit. Player damage carries no damage type by design, so
-	 * that is a normal case and not a fault.
+	 * THE COLOUR LOOKUP MOVED OUT OF THIS CLASS and is now
+	 * UCataclysmElementVisuals::ColoursFor. It lived here while the hit burst
+	 * was the only particle system in the project; NS_Proj_Body needs exactly
+	 * the same two colours from exactly the same table, and a projectile asking
+	 * a class called "impact effect" for them would have been the wrong shape.
 	 */
-	static bool ColoursFor(FName DamageType, FLinearColor& OutPrimary,
-						   FLinearColor& OutSecondary);
 
 	/**
 	 * Plays the impact where a blow landed.

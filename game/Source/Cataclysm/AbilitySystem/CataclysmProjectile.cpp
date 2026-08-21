@@ -2,6 +2,7 @@
 
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmMeshWidth.h"
+#include "AbilitySystem/CataclysmProjectileEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -230,6 +231,17 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->SkillTags = InSkillTags;
 	Projectile->CritChancePercent = InCritChancePercent;
 	Projectile->bBurns = bInBurns;
+
+	// LAST, AND THE ORDER MATTERS. The effect reads BodyRadiusCm for its size
+	// and the firer for its colour, and the firer is the actor's Owner, which
+	// SpawnActor set above. Attaching it any earlier would size every projectile
+	// at the clamped minimum and colour every one of them white.
+	//
+	// ITS RETURN VALUE IS DELIBERATELY DROPPED. Null is the ordinary answer past
+	// the effect type's cull distance, outside the view frustum, beyond twenty
+	// live instances, and in every automation test, which runs with -nullrhi.
+	// None of those is a reason not to fire the projectile.
+	UCataclysmProjectileEffect::AttachTo(Projectile);
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("A projectile left %s at %.0f cm/s for %.0f cm, piercing %d."),
