@@ -20,6 +20,87 @@ applied or still pending.
 
 ---
 
+## 2026-08-20 — A creature does not burn itself or its own side
+
+**Affects:** section V's rider list and the Hellhound and Gatekeeper subsections
+of `docs/Cataclysm_GDD_v2.md`; the `Hellrush` and `Soulfall` entries of
+`ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`; and
+`ACataclysmHellhoundCharacter::UseEnemyAbility`. Applied. **It reverses the
+2026-08-09 entries on both creatures.**
+
+### The decision
+
+**A creature does not burn itself or its allies.** Set by the project owner on
+2026-08-20 as a general rule, when the question was asked about the Gatekeeper's
+Soulfall and the answer was given about creatures.
+
+Two abilities carried `GroundHitsAllies=1` and neither does now:
+
+| Ability | Burned | Burns now |
+| :-- | :-- | :-- |
+| The Hellhound's Hellrush trail | Other demons, and the Hellhound itself | The player only |
+| The Gatekeeper's Soulfall ground | The Gatekeeper's summoned Imps | The player only |
+
+No designed ability sets the rider. No player skill ever did.
+
+### What it reverses, quoted rather than summarised
+
+The 2026-08-09 Hellhound entry said: "**The trail burns the Hellhound too.**
+That is the simple version of the rule rather than an exception bolted onto it,
+and it earns its place: a Hellhound whose return path crosses its own lane takes
+its own fire."
+
+The Gatekeeper's design said: "`GroundHitsAllies=1`: the Gatekeeper's own
+summons burn in it, and kiting them through the fire is intended counterplay."
+
+Both were deliberate and both are now wrong. They are left in this log as
+history rather than edited, which is what a log is for.
+
+### What it costs, stated rather than glossed
+
+**The player loses a reason to read the ground.** A Hellhound whose return path
+crossed its own lane took its own fire, so moving ALONG the trail rather than
+across it was rewarded. What remains is a lane the player must not stand in,
+which is what every other burning ground in the game already is. If the trail
+needs something of its own later, the levers are its duration or its damage.
+
+**The Gatekeeper's phase 2 is cheaper for the boss than it was.** Call the
+Damned summons three Imps to a cap of six, and their cost was that they burned in
+the Soulfall ground the boss was already laying — kiting them through it was
+intended counterplay. That cost is gone and the summons are now strictly good for
+the boss. **If phase 2 turns out too strong, the first levers are the cap of 6
+and the 10 second cooldown, not bringing friendly fire back.**
+
+**And a piece of the engine now has no callers.**
+`ACataclysmGroundZone::bBurnsEveryone` and
+`UCataclysmTargeting::FindEveryoneInLine` were both written for the Hellhound's
+trail and nothing sets the flag any more.
+
+### What was kept and why
+
+**`bBurnsEveryone` is kept rather than deleted**, and so is the
+`GroundHitsAllies` word in the rider vocabulary. Chosen by the project owner from
+three options, the third of which was deleting the flag outright. Keeping it puts
+the option on the record as considered and rejected rather than never thought of.
+
+**The flag is still exercised by a test**, in
+`Cataclysm.Hellhound.TheLaneItLeavesSparesTheHellhoundAndItsAllies`, which turns
+it on as its control. A kept feature that nothing exercises is a feature nobody
+notices has rotted.
+
+**And the argument is written out at the Hellhound's call site** rather than left
+to the default, which is also false. That call site is the one the rule was
+written against, so a reader arriving from the design finds the answer there.
+
+### Where it is guarded
+
+`test_nothing_burns_its_own_side` in
+`tools/tests/test_hellhound_matches_the_model.py` refuses any designed ability
+that sets the rider, and names the documents that would have to change with it.
+It replaced a test asserting the Hellhound was the only ability that did.
+
+---
+
 ## 2026-08-20 — Commander increases movement speed and attack speed, not every stat
 
 **Affects:** the Buffs sheet of `docs/All_Things_Cataclysm.xlsx`, which generates

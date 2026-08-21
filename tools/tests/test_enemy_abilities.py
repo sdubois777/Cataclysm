@@ -1056,7 +1056,12 @@ def test_the_trail_is_riders_on_the_charge_not_a_third_ability(
     """Exactly the shape the player's Flamedart already uses, plus the one new
     rider."""
     charge = next(a for a in hellhound_abilities if a.shape == "Movement")
-    for rider in ("Burn", "GroundRadius", "GroundDuration", "GroundHitsAllies"):
+
+    # `GroundHitsAllies` WAS IN THIS LIST UNTIL 2026-08-20, when the project
+    # owner set the rule that a creature does not burn itself or its own side.
+    # `test_nothing_burns_its_own_side` in
+    # tools/tests/test_hellhound_matches_the_model.py is what holds that now.
+    for rider in ("Burn", "GroundRadius", "GroundDuration"):
         assert rider in charge.params, (
             f"the Hellhound's charge no longer carries {rider}. The fire trail "
             "is riders on the charge rather than an ability of its own.")
@@ -1067,10 +1072,19 @@ def test_the_trail_is_riders_on_the_charge_not_a_third_ability(
         "the Hellhound subsection no longer says the trail is a rider.")
 
 
-def test_the_new_rider_is_declared_in_the_shared_vocabulary(hellhound_section):
-    """GroundHitsAllies has to exist in section V's rider list and in the
-    generator that validates player skills, or an enemy would be the only thing
-    that knows about it."""
+def test_the_unused_rider_is_still_declared_in_the_shared_vocabulary(
+        hellhound_section):
+    """`GroundHitsAllies` stays in the vocabulary with nothing using it.
+
+    **NOTHING SETS IT SINCE 2026-08-20.** The Hellhound's trail and the
+    Gatekeeper's Soulfall both carried it and neither does now: the project
+    owner set the rule that a creature does not burn itself or its own side.
+
+    THE WORD IS KEPT RATHER THAN DELETED, by the owner's choice, so the option
+    is on the record as considered and rejected rather than never thought of.
+    This checks that the record survives; `test_nothing_burns_its_own_side`
+    checks that nothing uses it.
+    """
     from cataclysm_sim.enemy_abilities import RIDERS
 
     assert "GroundHitsAllies" in RIDERS
@@ -1093,15 +1107,18 @@ def test_the_new_rider_is_declared_in_the_shared_vocabulary(hellhound_section):
         "section V no longer enumerates the riders that work like "
         "GroundRadius and GroundDuration.")
     assert "`GroundHitsAllies`" in listing.group(1), (
-        "section V's rider list no longer includes GroundHitsAllies. The "
-        "Hellhound's fire trail is the only thing that sets it, and a rider "
-        "only that enemy knows about is a rider nothing validates. Issue #350.")
-    assert "no player skill does" in riders_text, (
-        "section V no longer says that GroundHitsAllies is off unless set and "
-        "that no player skill sets it.")
-    assert "burns the hellhound too" in hellhound_section.lower(), (
-        "the Hellhound subsection no longer says its own trail burns it, which "
-        "is what makes the rule one line rather than an exception.")
+        "section V's rider list no longer includes GroundHitsAllies. Nothing "
+        "sets it, and it is kept on purpose so the option is on the record as "
+        "considered and rejected. Deleting it is a decision for the project "
+        "owner rather than a tidy-up.")
+    assert "nothing sets it" in riders_text.lower(), (
+        "section V no longer says that NOTHING sets GroundHitsAllies. It said "
+        "'no player skill does' while the Hellhound still set it; since "
+        "2026-08-20 no creature does either.")
+    assert "own side" in hellhound_section.lower(), (
+        "the Hellhound subsection no longer says whose side its trail burns. "
+        "It burned the Hellhound itself until 2026-08-20 and the document "
+        "should say what changed, not go quiet about it.")
 
 
 def test_the_trail_tick_rate_is_the_ground_zone_class_constant(
@@ -2509,20 +2526,32 @@ def test_soulfalls_burning_ground_costs_one_full_hit_over_its_life(
         f"100 / GroundDuration, which here is {100.0 / duration}.")
 
 
-def test_soulfalls_ground_burns_the_gatekeepers_own_summons(
+def test_soulfalls_ground_burns_the_player_and_nobody_else(
         gatekeeper_abilities):
-    """The design's own words: it "also burns the Gatekeeper's own summons".
+    """It burned the Gatekeeper's own summons until 2026-08-20.
 
-    That is the counterplay phase 2 depends on -- the Imps chase the player
-    through the fire and burn in it -- so a Soulfall that spared allies would
-    make the summons strictly better rather than a mixed blessing."""
+    **THAT WAS THE COUNTERPLAY PHASE 2 DEPENDED ON** -- the Imps chased the
+    player through the fire and burned in it -- and the project owner's rule
+    that a creature does not burn itself or its own side removes it. Phase 2 is
+    cheaper for the boss than it was. `docs/DECISIONS.md` records that as the
+    price of the rule and names the levers to reach for first if phase 2 turns
+    out too strong: the summon's cap of 6 or its 10 second cooldown.
+    """
     soulfall = next(a for a in gatekeeper_abilities if a.name == "Soulfall")
 
-    assert soulfall.params.get("GroundHitsAllies"), (
-        "Soulfall's ground does not hit allies, and the design says it burns "
-        "the Gatekeeper's own summons. Without it, Call the Damned in phase 2 "
-        "has no cost at all.")
+    assert not soulfall.params.get("GroundHitsAllies"), (
+        "Soulfall's ground hits allies again. A creature does not burn itself "
+        "or its own side -- if that rule has changed, docs/Cataclysm_GDD_v2.md "
+        "and docs/DECISIONS.md both say it has not.")
 
-    assert "burns the Gatekeeper's own summons" in soulfall.note, (
-        "Soulfall's note no longer says its ground burns the summons, so the "
-        "rider above and the prose beside it disagree.")
+    # THE GROUND IS STILL THERE. Removing the rider must not have removed the
+    # burning ground with it: that is the whole of what the ability leaves
+    # behind and issue #774 is it going missing once already.
+    for rider in ("Burn", "GroundRadius", "GroundDuration", "GroundPercent"):
+        assert rider in soulfall.params, (
+            f"Soulfall no longer carries {rider}, so it leaves no burning "
+            f"ground at all. Only GroundHitsAllies was meant to go.")
+
+    assert "nobody on the Gatekeeper's own side" in soulfall.note, (
+        "Soulfall's note no longer says whose side its ground burns, so the "
+        "riders above and the prose beside them do not agree.")

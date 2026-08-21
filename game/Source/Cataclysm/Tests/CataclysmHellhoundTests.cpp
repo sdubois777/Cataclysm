@@ -31,16 +31,20 @@
  * WHAT THESE GUARD, and every one of them is something the creature can fail at
  * without anything saying so:
  *
- * 1. THE LANE BURNING THE HELLHOUND ITSELF. This is the only genuinely new
- *    behaviour on the creature and nothing else in the project has it.
- *    `ACataclysmGroundZone::bBurnsEveryone` and
- *    `UCataclysmTargeting::FindEveryoneInLine` were both written for it and
- *    were reached by no test at all before this file. A zone whose flag was
- *    dropped still burns the player, so the defect is invisible from the
- *    outside: the creature simply stops paying the price its design says it
- *    pays. `TheLaneItLeavesBurnsTheHellhoundItself` proves it both ways, by
- *    turning the flag off on the same zone and requiring the same sweep to
- *    spare the same two creatures.
+ * 1. **THE LANE BURNING THE HELLHOUND OR ITS OWN SIDE.** It did until
+ *    2026-08-20, when the project owner set a general rule that a creature
+ *    does not burn itself or its allies. This creature is the one that rule
+ *    was written against: its trail was the one source of friendly fire in the
+ *    game.
+ *
+ *    A lane that started burning its own side again would still burn the
+ *    player perfectly well, so the defect is invisible from the outside: the
+ *    creature would simply start killing its own pack.
+ *    `TheLaneItLeavesSparesTheHellhoundAndItsAllies` proves it both ways, by
+ *    turning `ACataclysmGroundZone::bBurnsEveryone` ON on the same zone and
+ *    requiring the same sweep to burn the same two creatures. That control is
+ *    also the only thing in the game that exercises that flag at all, which is
+ *    now kept with no callers by the owner's choice.
  *
  * 2. BEING A HELLHOUND RATHER THAN AN INHERITED TRAINING DUMMY. Every assertion
  *    on a designed figure also asserts it differs from the base enemy's,
@@ -588,12 +592,14 @@ bool FCataclysmHellhoundChargeLeavesItsLaneBurning::RunTest(const FString&)
 		Lane->DamagePerTick,
 		AttackDamage * Hellhound_t::HellrushGroundPercent / 100.0f);
 
-	// AND IT BURNS EVERYTHING, WHICH IS THE FLAG THE NEXT TEST PROVES DOES
-	// SOMETHING. Checked here as well because it is set at the call site and a
-	// caller that stopped passing it would leave every other assertion in this
-	// test passing.
-	TestTrue(TEXT("it is flagged to burn whatever stands in it rather than only "
-				  "the creature's enemies"),
+	// AND IT BURNS ONLY THE CREATURE'S ENEMIES. It burned everything standing
+	// in it, including the Hellhound, until 2026-08-20, when the project owner
+	// set the rule that a creature does not burn itself or its own side.
+	// Checked here as well as in the next test because it is decided at the
+	// call site, and a caller that started passing true again would leave every
+	// other assertion in this test passing.
+	TestFalse(TEXT("it burns only the creature's enemies, not whatever stands "
+				   "in it"),
 		Lane->bBurnsEveryone);
 
 	// FOUR SECONDS AND THEN GONE. Read off the actor's own lifespan, which is
@@ -615,27 +621,30 @@ bool FCataclysmHellhoundChargeLeavesItsLaneBurning::RunTest(const FString&)
 // --------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmHellhoundLaneBurnsItsOwnSide,
-	"Cataclysm.Hellhound.TheLaneItLeavesBurnsTheHellhoundItself",
+	FCataclysmHellhoundLaneSparesItsOwnSide,
+	"Cataclysm.Hellhound.TheLaneItLeavesSparesTheHellhoundAndItsAllies",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmHellhoundLaneBurnsItsOwnSide::RunTest(const FString&)
+bool FCataclysmHellhoundLaneSparesItsOwnSide::RunTest(const FString&)
 {
 	using namespace CataclysmHellhoundTest;
 
-	// THE ONLY THING IN THE GAME THAT BURNS ITS OWN SIDE. `GroundHitsAllies=1`
-	// in `sim/cataclysm_sim/enemy_abilities.py`, and its note says what that
-	// means: "The fire burns other enemies and the Hellhound itself." The roster
-	// in `docs/Cataclysm_GDD_v2.md` says it of no other creature.
+	// **A CREATURE DOES NOT BURN ITSELF OR ITS OWN SIDE**, set by the project
+	// owner on 2026-08-20 as a general rule. This creature is the one it was
+	// written against: its trail carried `GroundHitsAllies=1` and burned other
+	// demons and the Hellhound itself, and the design document called it the
+	// one source of friendly fire in the game.
 	//
-	// WHY IT NEEDS A TEST OF ITS OWN. Every ground effect before this one
-	// belonged to whoever cast it and hurt the other side, so
-	// `ACataclysmGroundZone` gained a `bBurnsEveryone` and
-	// `UCataclysmTargeting` gained a `FindEveryoneInLine` for exactly this
-	// creature. A zone that lost the flag still burns the player perfectly well,
-	// so the defect is invisible from the outside: the creature simply stops
-	// paying the price its design says it pays, and every other test in this
-	// file goes on passing.
+	// WHY IT NEEDS A TEST OF ITS OWN, IN BOTH DIRECTIONS. A lane that started
+	// burning its own side again would still burn the player perfectly well, so
+	// the defect is invisible from the outside: the creature would simply start
+	// killing its own pack, and every other test in this file would go on
+	// passing.
+	//
+	// AND THE CONTROL AT THE END STILL EXERCISES `bBurnsEveryone`, which now
+	// has no callers anywhere in the game. It is kept by the project owner's
+	// choice so the option is on the record; a kept feature nothing exercises
+	// is a feature nobody notices has rotted.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!World)
 	{
@@ -707,30 +716,37 @@ bool FCataclysmHellhoundLaneBurnsItsOwnSide::RunTest(const FString&)
 	// nothing would ever fire.
 	Lane->Sweep();
 
-	TestEqual(TEXT("the sweep found all three standing in the lane"),
-		Lane->LastSweepCount, 3);
+	TestEqual(TEXT("the sweep found only the player's side standing in the "
+				   "lane, of the three that are"),
+		Lane->LastSweepCount, 1);
 
-	// THE WHOLE POINT OF THE CREATURE.
-	TestTrue(FString::Printf(
-			TEXT("the Hellhound burned itself: %.1f health to %.1f"),
-			HellhoundBefore, HealthOf(Hellhound)),
-		HealthOf(Hellhound) < HellhoundBefore);
+	// **THE RULE.**
+	TestEqual(FString::Printf(
+			TEXT("the Hellhound did not burn itself: %.1f health"),
+			HealthOf(Hellhound)),
+		HealthOf(Hellhound), HellhoundBefore);
 
-	TestTrue(FString::Printf(
-			TEXT("it burned another enemy on its own side: %.1f health to %.1f"),
-			AllyBefore, HealthOf(Ally)),
-		HealthOf(Ally) < AllyBefore);
+	TestEqual(FString::Printf(
+			TEXT("nor another enemy on its own side: %.1f health"),
+			HealthOf(Ally)),
+		HealthOf(Ally), AllyBefore);
 
+	// AND THE ABILITY STILL DOES ITS JOB, which is the half that makes the two
+	// above mean something rather than describing a lane that burns nobody.
 	TestTrue(FString::Printf(
-			TEXT("and it still burns the player's side: %.1f health to %.1f"),
+			TEXT("and it burns the player's side: %.1f health to %.1f"),
 			PlayerBefore, HealthOf(Player)),
 		HealthOf(Player) < PlayerBefore);
 
 	// AND NOW THE CONTROL, WHICH IS WHAT MAKES THE THREE ABOVE MEAN SOMETHING.
 	// The same zone, the same three creatures, the same sweep, with the one flag
-	// turned off. If the flag is not what decides, this passes as well and the
-	// test is worthless.
-	Lane->bBurnsEveryone = false;
+	// turned ON. If the flag is not what decides, the assertions above pass for
+	// some other reason -- a sweep that finds nobody, an ally with no ability
+	// system -- and the test is worthless.
+	//
+	// **NOTHING IN THE GAME SETS IT.** This is the only place it is set at all,
+	// and it is set here on a zone the test owns rather than on a creature.
+	Lane->bBurnsEveryone = true;
 
 	const float HellhoundAfterFirst = HealthOf(Hellhound);
 	const float AllyAfterFirst = HealthOf(Ally);
@@ -738,16 +754,16 @@ bool FCataclysmHellhoundLaneBurnsItsOwnSide::RunTest(const FString&)
 
 	Lane->Sweep();
 
-	TestEqual(TEXT("without the flag the sweep finds only the player's side"),
-		Lane->LastSweepCount, 1);
+	TestEqual(TEXT("with the flag set the sweep finds all three"),
+		Lane->LastSweepCount, 3);
 
-	TestEqual(TEXT("without the flag the Hellhound is not burned by its own "
-				   "lane"),
-		HealthOf(Hellhound), HellhoundAfterFirst);
-	TestEqual(TEXT("nor is another enemy on its side"),
-		HealthOf(Ally), AllyAfterFirst);
-	TestTrue(TEXT("and the player's side is burned either way, which is why "
-				  "dropping the flag would be invisible in play"),
+	TestTrue(TEXT("with the flag set the Hellhound IS burned by its own lane, "
+				  "which is what says the flag is what decides"),
+		HealthOf(Hellhound) < HellhoundAfterFirst);
+	TestTrue(TEXT("and so is another enemy on its side"),
+		HealthOf(Ally) < AllyAfterFirst);
+	TestTrue(TEXT("and the player's side is burned either way, which is why a "
+				  "caller passing true again would be invisible in play"),
 		HealthOf(Player) < PlayerAfterFirst);
 
 	return true;

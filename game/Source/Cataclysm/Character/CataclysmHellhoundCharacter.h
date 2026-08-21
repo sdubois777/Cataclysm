@@ -15,20 +15,22 @@
  *   Maul       Strike    Basic     a bite at whatever it is standing against
  *   Hellrush   Movement  Movement  a 10 m charge that leaves the lane burning
  *
- * **THE BURNING LANE IS THE ONLY THING IN THE GAME THAT BURNS THE CREATURE
- * THAT LIT IT.** `GroundHitsAllies=1` in the model, and its note says what
- * that means: "The fire burns other enemies and the Hellhound itself." Every
- * ground effect before this one belonged to whoever cast it and hurt the
- * other side, so `ACataclysmGroundZone` gained a `bBurnsEveryone` for exactly
- * this.
+ * **THE BURNING LANE USED TO BURN THIS CREATURE AND ITS ALLIES, AND NO
+ * LONGER DOES.** Until 2026-08-20 it carried `GroundHitsAllies=1` and was
+ * the one source of friendly fire in the game: other demons burned in it and
+ * so did the Hellhound. The project owner then set a general rule -- **a
+ * creature does not burn itself or its own side** -- and this creature is
+ * the one that rule was written against.
  *
- * **IT IS NO LONGER THE ONLY ABILITY CARRYING THAT RIDER.** The Gatekeeper's
- * Soulfall carries it too, and the two are not the same claim: Soulfall's
- * note says its ground "also burns the Gatekeeper's own summons" and says
- * nothing about the Gatekeeper. So `bBurnsEveryone`, which means "burn
- * everything INCLUDING the owner", is right for this creature and may not be
- * right for that one. Issue #759 flags it as something to read carefully
- * before wiring, and issue #774 is where the rider was restored to Soulfall.
+ * WHAT IT COST, WHICH IS WORTH KNOWING BEFORE ANYBODY PROPOSES IT AGAIN. The
+ * old behaviour rewarded a player for reading the ground, because a Hellhound
+ * whose return path crossed its own lane took its own fire. That is gone, and
+ * the lane is now a place the player must not stand, like every other burning
+ * ground in the game. `docs/DECISIONS.md` carries the reversal and says the
+ * levers to reach for first if the trail needs something of its own: its
+ * duration or its damage, not friendly fire.
+ *
+ * `ACataclysmGroundZone::bBurnsEveryone` still exists and has no callers.
  *
  * WHAT MAKES THIS CREATURE DIFFERENT FROM THE OTHER TWO THAT EXIST. It is the
  * fastest thing in the roster at 7.5 metres per second, against a Brute's 3.0
