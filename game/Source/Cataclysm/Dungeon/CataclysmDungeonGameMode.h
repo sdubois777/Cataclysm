@@ -47,8 +47,7 @@ public:
 	 * The dungeon's seed. Every floor of one dungeon shares it.
 	 *
 	 * A SETTING RATHER THAN SOMETHING CHOSEN, because there is no dungeon object
-	 * to take it from -- that is issue #41. Change it here or with the
-	 * `Cataclysm.DungeonSeed` console variable to walk a different dungeon.
+	 * to take it from -- that is issue #41.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	int32 DungeonSeed = 1;
@@ -60,6 +59,50 @@ public:
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
+
+	// ----------------------------------------------------------------------
+	// Looking at another floor without rebuilding
+	// ----------------------------------------------------------------------
+	//
+	// THE THREE SETTINGS ABOVE CANNOT BE CHANGED WITHOUT A REBUILD. They are
+	// `EditDefaultsOnly` on a C++ class, and `L_Dungeon`'s world settings point
+	// at that class directly rather than at a Blueprint, so there is nothing in
+	// the editor to edit them on. Three console variables answer each of them
+	// instead, and each is read once when the floor is built:
+	//
+	//     Cataclysm.DungeonSeed    0 uses the setting, above 0 is that dungeon,
+	//                              -1 rolls a new one every time play begins
+	//     Cataclysm.DungeonFloor   0 uses the setting, above 0 is that floor
+	//     Cataclysm.DungeonLayout  -1 uses the setting, 0 Halls, 1 Caverns,
+	//                              2 Arena
+	//
+	// ROLLING A SEED DOES NOT MAKE GENERATION RANDOM, and the difference
+	// matters. The generator is deterministic and has to stay so: a dungeon must
+	// look the same when the player leaves and returns, and a bug in a floor has
+	// to be reproducible from its seed. What -1 changes is which seed is handed
+	// to it, which is the empire layer's job once that exists.
+
+	/**
+	 * The dungeon seed that will actually be used, console variable included.
+	 *
+	 * PUBLIC AND TAKING ITS OWN ENTROPY, so a test can ask what it will choose
+	 * without depending on the clock. A test that rolled a seed twice and
+	 * expected two different numbers would be a test that usually passes.
+	 *
+	 * @param Entropy what to roll from when the console variable asks for a new
+	 *                seed. Zero means read the clock, which is what play does.
+	 * @return a seed above zero
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	int32 ChooseSeed(int64 Entropy = 0) const;
+
+	/** The floor number that will actually be used, console variable included. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	int32 ChooseFloorNumber() const;
+
+	/** The layout family that will actually be used, console variable included. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	ECataclysmFloorLayout ChooseLayout() const;
 
 	/**
 	 * What the save record calls this dungeon.
