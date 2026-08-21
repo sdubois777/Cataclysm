@@ -17,10 +17,10 @@ struct CATACLYSM_API FCataclysmFloorRequest
 	/** Which family carves it. */
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
 
-	/** Cells across, or 0 for `FCataclysmFloorGenerator::DefaultWidth`. */
+	/** Cells across, or 0 to let the floor's seed decide. */
 	int32 Width = 0;
 
-	/** Cells down, or 0 for `FCataclysmFloorGenerator::DefaultHeight`. */
+	/** Cells down, or 0 to let the floor's seed decide. */
 	int32 Height = 0;
 };
 
@@ -63,75 +63,108 @@ public:
 	 */
 	static constexpr float CellSizeCm = 400.0f;
 
-	/** Cells across, unless the request says otherwise. 40 x 4 m is 160 metres. */
-	static constexpr int32 DefaultWidth = 40;
+	/**
+	 * The smallest and largest a floor may be on one axis, in cells.
+	 *
+	 * 32 x 4 m is 128 metres and 48 x 4 m is 192 metres.
+	 *
+	 * `MostFloorSide` IS WHAT THE DUNGEON LEVEL HAS TO BE BIG ENOUGH FOR. A
+	 * navigation mesh is only built inside a bounds volume,
+	 * `L_Dungeon` holds one sized once, and a floor that outgrew it would lose its
+	 * outer ring with nothing reporting it.
+	 * `tools/tests/test_the_dungeon_map_covers_a_whole_floor.py` holds them
+	 * together.
+	 *
+	 * THE RANGE IS NOT WIDER THAN THIS FOR A REASON. 48 cells is 192 metres, and
+	 * the walk to the stairs on the largest floors already reaches the top of what
+	 * a two to five minute floor can carry.
+	 */
+	static constexpr int32 LeastFloorSide = 32;
+	static constexpr int32 MostFloorSide = 48;
 
-	/** Cells down, unless the request says otherwise. */
-	static constexpr int32 DefaultHeight = 40;
+	/**
+	 * The smallest and largest area the room splitter will divide.
+	 *
+	 * This decides whether a floor is a handful of great halls or two dozen
+	 * ordinary rooms, and it is the knob that was most obviously fixed before:
+	 * every floor had between ten and sixteen rooms.
+	 */
+	static constexpr int32 LeastLeafSide = 7;
+	static constexpr int32 MostLeafSide = 18;
+
+	/**
+	 * The narrowest and widest a connection between two rooms may be, in cells.
+	 *
+	 * TWO IS THE FLOOR AND IT IS NOT NEGOTIABLE. A passage one cell wide can only
+	 * be left the way it was entered, which is what
+	 * `FCataclysmFloorQuality::LongestNarrowRun` counts and what the project owner
+	 * asked to avoid.
+	 */
+	static constexpr int32 LeastConnectionWidth = 2;
+	static constexpr int32 MostConnectionWidth = 4;
+
+	/**
+	 * The fewest and most connections beyond the ones that make a floor whole.
+	 *
+	 * ONE AT LEAST, NEVER ZERO. With none the floor is a tree, and a tree has
+	 * exactly one route between any two rooms, so every side room is a trip out
+	 * and back. That is the fault Diablo 4 patched out of its dungeons.
+	 */
+	static constexpr int32 LeastExtraConnections = 1;
+	static constexpr int32 MostExtraConnections = 8;
+
+	/** The most a room may be smaller than the space it was given, in cells. */
+	static constexpr int32 MostRoomShrink = 4;
+
+	/**
+	 * How open a cavern may start, before smoothing.
+	 *
+	 * WIDER THAN IT WAS, because it is now where a cavern's tightness comes from.
+	 * The smoothing threshold was going to carry some of that and cannot; see it
+	 * below.
+	 */
+	static constexpr float LeastCavernFloorChance = 0.44f;
+	static constexpr float MostCavernFloorChance = 0.58f;
+
+	/** How many times a cavern's smoothing rule may be applied. */
+	static constexpr int32 LeastCavernPasses = 3;
+	static constexpr int32 MostCavernPasses = 6;
+
+	/**
+	 * How many solid neighbours may turn a cell solid when a cavern is smoothed.
+	 *
+	 * Five fills more in and six less, so this is part of what decides whether a
+	 * cavern is chambers joined by necks or one wide cave.
+	 *
+	 * FOUR WAS TRIED AND IS OUT. It filled in so much that the largest surviving
+	 * chamber was 8% of the grid on some seeds, and all eight attempts were used
+	 * before one was shipped anyway, against a promise of at least 25%. It was
+	 * found by the thousand-seed measurement and not by the assertions, which
+	 * sweep 120 -- see the note on `SweepSeeds` in the test file.
+	 */
+	static constexpr int32 LeastCavernFillThreshold = 5;
+	static constexpr int32 MostCavernFillThreshold = 6;
+
+	/**
+	 * How far an arena may reach across the floor, as a fraction of it.
+	 *
+	 * The two axes are rolled separately, so 0.6 on one and 1.0 on the other is a
+	 * long arena rather than a small round one. Below 0.6 an arena stops filling
+	 * enough of its floor to pass the open-space check and is simply re-rolled.
+	 */
+	static constexpr float LeastArenaScale = 0.60f;
+	static constexpr float MostArenaScale = 1.00f;
 
 	// ----------------------------------------------------------------------
 	// Halls
 	// ----------------------------------------------------------------------
 
-	/**
-	 * The smallest area the splitter will divide, in cells.
-	 *
-	 * THIS IS WHAT KEEPS ROOMS LARGE. The grid is split in half repeatedly and
-	 * stops when neither half would be this big, so no room is ever smaller than
-	 * this less its walls. Diablo 3 reached the same place from the other
-	 * direction: its tiles are large and its entrances offset, so the grid
-	 * underneath is not obvious. Lowering this is how a floor becomes the warren
-	 * of small rooms the project owner asked to avoid.
-	 */
-	static constexpr int32 MinLeafSide = 8;
-
 	/** No room is narrower than this in either direction. */
 	static constexpr int32 MinRoomSide = 5;
-
-	/**
-	 * How many cells wide a connection between two rooms is.
-	 *
-	 * TWO, AND NOT ONE, ON PURPOSE. A passage one cell wide is a passage the
-	 * player can only enter and leave the way they came, and it is what
-	 * `FCataclysmFloorQuality::NarrowCells` counts. Two is the smallest width
-	 * that is not that.
-	 */
-	static constexpr int32 ConnectionWidth = 2;
-
-	/**
-	 * Connections added beyond the ones that make the floor connected.
-	 *
-	 * WITHOUT THESE THE FLOOR IS A TREE, and a tree has exactly one route between
-	 * any two rooms, so every side room is a trip out and back. That is the fault
-	 * Diablo 4 patched out of its dungeons. Each extra connection closes a loop.
-	 */
-	static constexpr int32 ExtraConnections = 3;
 
 	// ----------------------------------------------------------------------
 	// Caverns
 	// ----------------------------------------------------------------------
-
-	/**
-	 * How much of the grid starts as floor before smoothing.
-	 *
-	 * MEASURED, NOT PICKED. At 0.55 the smoothing settles into a single open
-	 * mass: the sweep in `Cataclysm.Dungeon.MeasureWhatEachLayoutProduces` put
-	 * every cavern above 73% walkable and every walk to the stairs between 63 and
-	 * 72 cells, so one cavern looked much like the next and much like an arena.
-	 * Lower leaves more rock standing between the chambers.
-	 */
-	static constexpr float CavernInitialFloorChance = 0.48f;
-
-	/** How many times the smoothing rule is applied. */
-	static constexpr int32 CavernSmoothingPasses = 5;
-
-	/**
-	 * How many of a cell's eight neighbours must be solid for it to become solid.
-	 *
-	 * The usual cellular-automaton cave rule. Five of eight is the value that
-	 * settles into rounded chambers rather than into noise or into a solid block.
-	 */
-	static constexpr int32 CavernSolidNeighboursToFill = 5;
 
 	// ----------------------------------------------------------------------
 	// Giving up
@@ -163,6 +196,19 @@ public:
 	 * without a sign to reason about.
 	 */
 	static int32 SeedForFloor(int32 DungeonSeed, int32 FloorNumber);
+
+	/**
+	 * Rolls what one floor is like, from a stream already seeded for that floor.
+	 *
+	 * PUBLIC SO A TEST CAN SWEEP IT without building a floor for every roll, and
+	 * so a test can show the knobs really do vary rather than that one floor
+	 * happened to differ from another.
+	 *
+	 * The request's width and height win when set, because a test that asks for a
+	 * particular size is asking about something else.
+	 */
+	static FCataclysmFloorShape RollShape(FRandomStream& Stream,
+										 const FCataclysmFloorRequest& Request);
 
 	/** Builds the floor the request asks for. */
 	static FCataclysmFloorPlan Generate(const FCataclysmFloorRequest& Request);

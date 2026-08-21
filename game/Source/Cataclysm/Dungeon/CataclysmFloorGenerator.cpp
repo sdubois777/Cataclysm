@@ -310,7 +310,8 @@ namespace
 	}
 
 	/** Large rectangular rooms joined by connections two cells across. */
-	void GenCarveHalls(FCataclysmFloorPlan& Plan, FRandomStream& Stream)
+	void GenCarveHalls(FCataclysmFloorPlan& Plan, FRandomStream& Stream,
+					   const FCataclysmFloorShape& Shape)
 	{
 		// Split the grid in half repeatedly, stopping when neither half would
 		// still be MinLeafSide across. The split point is anywhere that leaves
@@ -330,8 +331,8 @@ namespace
 			{
 				const int32 LeafWidth = Leaf.Max.X - Leaf.Min.X;
 				const int32 LeafHeight = Leaf.Max.Y - Leaf.Min.Y;
-				const bool bCanSplitX = LeafWidth >= 2 * FGen::MinLeafSide;
-				const bool bCanSplitY = LeafHeight >= 2 * FGen::MinLeafSide;
+				const bool bCanSplitX = LeafWidth >= 2 * Shape.MinLeafSide;
+				const bool bCanSplitY = LeafHeight >= 2 * Shape.MinLeafSide;
 
 				if (!bCanSplitX && !bCanSplitY)
 				{
@@ -353,15 +354,15 @@ namespace
 
 				if (bVertical)
 				{
-					const int32 At = Leaf.Min.X + FGen::MinLeafSide
-						+ Stream.RandRange(0, LeafWidth - 2 * FGen::MinLeafSide);
+					const int32 At = Leaf.Min.X + Shape.MinLeafSide
+						+ Stream.RandRange(0, LeafWidth - 2 * Shape.MinLeafSide);
 					Next.Add(FIntRect(Leaf.Min, FIntPoint(At, Leaf.Max.Y)));
 					Next.Add(FIntRect(FIntPoint(At, Leaf.Min.Y), Leaf.Max));
 				}
 				else
 				{
-					const int32 At = Leaf.Min.Y + FGen::MinLeafSide
-						+ Stream.RandRange(0, LeafHeight - 2 * FGen::MinLeafSide);
+					const int32 At = Leaf.Min.Y + Shape.MinLeafSide
+						+ Stream.RandRange(0, LeafHeight - 2 * Shape.MinLeafSide);
 					Next.Add(FIntRect(Leaf.Min, FIntPoint(Leaf.Max.X, At)));
 					Next.Add(FIntRect(FIntPoint(Leaf.Min.X, At), Leaf.Max));
 				}
@@ -388,9 +389,9 @@ namespace
 			}
 
 			const int32 ShrinkX = Stream.RandRange(0,
-				FMath::Min(2, RoomWidth - FGen::MinRoomSide));
+				FMath::Min(Shape.MostRoomShrink, RoomWidth - FGen::MinRoomSide));
 			const int32 ShrinkY = Stream.RandRange(0,
-				FMath::Min(2, RoomHeight - FGen::MinRoomSide));
+				FMath::Min(Shape.MostRoomShrink, RoomHeight - FGen::MinRoomSide));
 			const int32 LeftOf = Stream.RandRange(0, ShrinkX);
 			const int32 TopOf = Stream.RandRange(0, ShrinkY);
 
@@ -468,7 +469,7 @@ namespace
 		// The connections that close loops, so a side room is not a trip out and
 		// back. Each joins a random room to its nearest room it is not already
 		// joined to.
-		for (int32 Extra = 0; Extra < FGen::ExtraConnections; ++Extra)
+		for (int32 Extra = 0; Extra < Shape.ExtraConnections; ++Extra)
 		{
 			const int32 From = Stream.RandRange(0, RoomCount - 1);
 			int32 BestTo = INDEX_NONE;
@@ -507,25 +508,26 @@ namespace
 		for (const TPair<int32, int32>& Pair : Connections)
 		{
 			GenCarveConnection(Plan, Centres[Pair.Key], Centres[Pair.Value],
-							   FGen::ConnectionWidth);
+							   Shape.ConnectionWidth);
 		}
 	}
 
 	/** Rounded chambers with no straight walls. */
-	void GenCarveCaverns(FCataclysmFloorPlan& Plan, FRandomStream& Stream)
+	void GenCarveCaverns(FCataclysmFloorPlan& Plan, FRandomStream& Stream,
+						 const FCataclysmFloorShape& Shape)
 	{
 		for (int32 Y = 1; Y < Plan.Height - 1; ++Y)
 		{
 			for (int32 X = 1; X < Plan.Width - 1; ++X)
 			{
-				if (Stream.FRand() < FGen::CavernInitialFloorChance)
+				if (Stream.FRand() < Shape.CavernInitialFloorChance)
 				{
 					Plan.Carve(FIntPoint(X, Y));
 				}
 			}
 		}
 
-		for (int32 Pass = 0; Pass < FGen::CavernSmoothingPasses; ++Pass)
+		for (int32 Pass = 0; Pass < Shape.CavernSmoothingPasses; ++Pass)
 		{
 			TArray<ECataclysmFloorCell> Next = Plan.Cells;
 			for (int32 Y = 1; Y < Plan.Height - 1; ++Y)
@@ -544,7 +546,7 @@ namespace
 							Solid += Plan.IsFloor(FIntPoint(X + DX, Y + DY)) ? 0 : 1;
 						}
 					}
-					Next[Y * Plan.Width + X] = (Solid >= FGen::CavernSolidNeighboursToFill)
+					Next[Y * Plan.Width + X] = (Solid >= Shape.CavernSolidNeighboursToFill)
 						? ECataclysmFloorCell::Solid
 						: ECataclysmFloorCell::Floor;
 				}
@@ -561,7 +563,8 @@ namespace
 	}
 
 	/** One open space, wobbled so that two seeds are not the same arena. */
-	void GenCarveArena(FCataclysmFloorPlan& Plan, FRandomStream& Stream)
+	void GenCarveArena(FCataclysmFloorPlan& Plan, FRandomStream& Stream,
+					   const FCataclysmFloorShape& Shape)
 	{
 		const float CentreX = (Plan.Width - 1) * 0.5f;
 		const float CentreY = (Plan.Height - 1) * 0.5f;
@@ -571,8 +574,8 @@ namespace
 		const float Phase = Stream.FRand() * 2.0f * PI;
 		const int32 Lobes = Stream.RandRange(3, 6);
 		const float Wobble = 0.06f + Stream.FRand() * 0.06f;
-		const float ScaleX = 0.88f + Stream.FRand() * 0.12f;
-		const float ScaleY = 0.88f + Stream.FRand() * 0.12f;
+		const float ScaleX = Shape.ArenaScaleX;
+		const float ScaleY = Shape.ArenaScaleY;
 
 		for (int32 Y = 1; Y < Plan.Height - 1; ++Y)
 		{
@@ -592,6 +595,67 @@ namespace
 	}
 }
 
+FCataclysmFloorShape FCataclysmFloorGenerator::RollShape(
+	FRandomStream& Stream, const FCataclysmFloorRequest& Request)
+{
+	FCataclysmFloorShape Shape;
+
+	// SIZE FIRST, AND THE TWO AXES SEPARATELY, so a floor can be long and
+	// narrow rather than always square. A square floor of a fixed size is the
+	// single biggest reason two floors read the same before anything inside
+	// them is looked at.
+	Shape.Width = (Request.Width > 0) ? Request.Width
+		: Stream.RandRange(LeastFloorSide, MostFloorSide);
+	Shape.Height = (Request.Height > 0) ? Request.Height
+		: Stream.RandRange(LeastFloorSide, MostFloorSide);
+
+	// HOW BIG A ROOM IS, WHICH DECIDES HOW MANY THERE ARE. The splitter halves
+	// an area while both halves would still be this wide, so a large value
+	// gives a handful of great halls and a small one gives a warren.
+	//
+	// CAPPED SO AT LEAST ONE SPLIT HAPPENS ON THE SHORTER AXIS. Without the cap
+	// a large value on a small floor produces one room, which is an arena that
+	// says it is a hall.
+	const int32 Shorter = FMath::Min(Shape.Width, Shape.Height) - 2;
+	Shape.MinLeafSide = Stream.RandRange(
+		LeastLeafSide, FMath::Max(LeastLeafSide, FMath::Min(MostLeafSide, Shorter / 2)));
+
+	// HOW WIDE A CORRIDOR IS. Two is the narrowest that is not single file;
+	// four reads as a hall rather than a passage. Tied to the room size, because
+	// a four-wide corridor into a five-wide room is not a corridor.
+	Shape.ConnectionWidth = Stream.RandRange(
+		LeastConnectionWidth,
+		FMath::Max(LeastConnectionWidth,
+				   FMath::Min(MostConnectionWidth, Shape.MinLeafSide / 3)));
+
+	// HOW MANY WAYS ROUND. Connections beyond the ones that make the floor one
+	// piece are what close loops, and a floor with none is a tree where every
+	// side room is a trip out and back -- the fault Diablo 4 patched out of its
+	// dungeons. So the least is one, never zero.
+	Shape.ExtraConnections = Stream.RandRange(LeastExtraConnections,
+											  MostExtraConnections);
+
+	// HOW MUCH A ROOM MAY BE SMALLER THAN THE SPACE IT WAS GIVEN. At zero every
+	// room fills its share exactly and the floor looks like a grid.
+	Shape.MostRoomShrink = Stream.RandRange(0, MostRoomShrink);
+
+	// HOW OPEN A CAVERN IS, and how smooth its walls. More floor to begin with
+	// settles into wide caves; less settles into chambers joined by necks.
+	Shape.CavernInitialFloorChance = Stream.FRandRange(LeastCavernFloorChance,
+													   MostCavernFloorChance);
+	Shape.CavernSmoothingPasses = Stream.RandRange(LeastCavernPasses,
+												   MostCavernPasses);
+	Shape.CavernSolidNeighboursToFill = Stream.RandRange(
+		LeastCavernFillThreshold, MostCavernFillThreshold);
+
+	// HOW LONG AN ARENA IS. Separately per axis, so an arena can be a corridor
+	// of a room rather than always a circle.
+	Shape.ArenaScaleX = Stream.FRandRange(LeastArenaScale, MostArenaScale);
+	Shape.ArenaScaleY = Stream.FRandRange(LeastArenaScale, MostArenaScale);
+
+	return Shape;
+}
+
 int32 FCataclysmFloorGenerator::SeedForFloor(int32 DungeonSeed, int32 FloorNumber)
 {
 	uint32 Mixed = static_cast<uint32>(DungeonSeed) * 0x9E3779B1u
@@ -606,36 +670,42 @@ int32 FCataclysmFloorGenerator::SeedForFloor(int32 DungeonSeed, int32 FloorNumbe
 
 FCataclysmFloorPlan FCataclysmFloorGenerator::Generate(const FCataclysmFloorRequest& Request)
 {
-	const int32 Width = (Request.Width > 0) ? Request.Width : DefaultWidth;
-	const int32 Height = (Request.Height > 0) ? Request.Height : DefaultHeight;
 	const int32 Seed = SeedForFloor(Request.DungeonSeed, Request.FloorNumber);
-	const int32 EnoughFloor = FMath::CeilToInt(MinOpenFraction * Width * Height);
 
 	FCataclysmFloorPlan Plan;
 
 	for (int32 Attempt = 1; Attempt <= MaxAttempts; ++Attempt)
 	{
-		Plan.Reset(Width, Height);
-		Plan.Layout = Request.Layout;
-		Plan.Seed = Seed;
-		Plan.Attempts = Attempt;
-
 		// A re-roll is as deterministic as the first try: its stream is derived
 		// from the floor's own seed and the attempt number, so the whole sequence
 		// is fixed by the seed.
 		FRandomStream Stream(SeedForFloor(Seed, Attempt));
 
+		// THE SHAPE IS ROLLED BEFORE ANYTHING IS CARVED, and a re-roll rolls a
+		// new one. That matters: an attempt fails when the floor came out too
+		// small, and trying the same shape again with a different arrangement is
+		// a worse bet than trying a different shape.
+		const FCataclysmFloorShape Shape = RollShape(Stream, Request);
+		const int32 EnoughFloor =
+			FMath::CeilToInt(MinOpenFraction * Shape.Width * Shape.Height);
+
+		Plan.Reset(Shape.Width, Shape.Height);
+		Plan.Layout = Request.Layout;
+		Plan.Seed = Seed;
+		Plan.Attempts = Attempt;
+		Plan.Shape = Shape;
+
 		switch (Request.Layout)
 		{
 		case ECataclysmFloorLayout::Caverns:
-			GenCarveCaverns(Plan, Stream);
+			GenCarveCaverns(Plan, Stream, Shape);
 			break;
 		case ECataclysmFloorLayout::Arena:
-			GenCarveArena(Plan, Stream);
+			GenCarveArena(Plan, Stream, Shape);
 			break;
 		case ECataclysmFloorLayout::Halls:
 		default:
-			GenCarveHalls(Plan, Stream);
+			GenCarveHalls(Plan, Stream, Shape);
 			break;
 		}
 

@@ -27,6 +27,16 @@ namespace
 	 * `tools/tests/test_no_two_files_share_an_anonymous_helper.py`.
 	 */
 	constexpr float DungeonFloorUnitCubeSizeCm = 100.0f;
+
+	/** The four sides of a cell. Named for this file; see the note above. */
+	const FIntPoint DungeonFloorSteps[4] = {
+		FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)
+	};
+
+	/** Its four corners. */
+	const FIntPoint DungeonFloorCorners[4] = {
+		FIntPoint(1, 1), FIntPoint(1, -1), FIntPoint(-1, 1), FIntPoint(-1, -1)
+	};
 }
 
 ACataclysmDungeonFloor::ACataclysmDungeonFloor()
@@ -101,28 +111,34 @@ ACataclysmDungeonFloor::ACataclysmDungeonFloor()
 	}
 }
 
-bool ACataclysmDungeonFloor::NeedsWall(const FCataclysmFloorPlan& InPlan, FIntPoint Cell)
+int32 ACataclysmDungeonFloor::WallPiecesFor(const FCataclysmFloorPlan& InPlan)
 {
-	if (InPlan.IsFloor(Cell) || !InPlan.Contains(Cell))
-	{
-		return false;
-	}
+	int32 Pieces = 0;
 
-	for (int32 OffsetY = -1; OffsetY <= 1; ++OffsetY)
+	for (int32 Index = 0; Index < InPlan.Cells.Num(); ++Index)
 	{
-		for (int32 OffsetX = -1; OffsetX <= 1; ++OffsetX)
+		const FIntPoint Here = InPlan.CellAt(Index);
+		if (!InPlan.IsFloor(Here))
 		{
-			if (OffsetX == 0 && OffsetY == 0)
-			{
-				continue;
-			}
-			if (InPlan.IsFloor(Cell + FIntPoint(OffsetX, OffsetY)))
-			{
-				return true;
-			}
+			continue;
+		}
+
+		for (const FIntPoint& Step : DungeonFloorSteps)
+		{
+			Pieces += InPlan.IsFloor(Here + Step) ? 0 : 1;
+		}
+
+		for (const FIntPoint& Corner : DungeonFloorCorners)
+		{
+			const bool bBothSidesAreRock =
+				!InPlan.IsFloor(Here + FIntPoint(Corner.X, 0))
+				&& !InPlan.IsFloor(Here + FIntPoint(0, Corner.Y));
+
+			Pieces += bBothSidesAreRock ? 1 : 0;
 		}
 	}
-	return false;
+
+	return Pieces;
 }
 
 bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
@@ -145,6 +161,8 @@ bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
 
 	const float Cell = DungeonFloorCellSize();
 	const float BlockScale = Cell / DungeonFloorUnitCubeSizeCm;
+	const float ThickScale = WallThicknessCm / DungeonFloorUnitCubeSizeCm;
+	const float TallScale = WallHeightCm / DungeonFloorUnitCubeSizeCm;
 
 	// The ground block's top surface has to land at the actor's own height, so a
 	// character put at `WorldOfCell` stands on the floor rather than in it. The
@@ -152,27 +170,61 @@ bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
 	// thickness below.
 	const FVector GroundScale(BlockScale, BlockScale,
 							  GroundThicknessCm / DungeonFloorUnitCubeSizeCm);
-	const FVector WallScale(BlockScale, BlockScale,
-							WallHeightCm / DungeonFloorUnitCubeSizeCm);
+
+	// How far from a cell's middle a wall on its edge stands: to the edge, then
+	// out by half the wall's thickness, so the wall sits against the ground
+	// rather than over it.
+	const float OutTo = Cell * 0.5f + WallThicknessCm * 0.5f;
+	const FVector Up(0.0f, 0.0f, WallHeightCm * 0.5f);
 
 	for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
 	{
 		const FIntPoint Here = Plan.CellAt(Index);
+		if (!Plan.IsFloor(Here))
+		{
+			continue;
+		}
+
 		const FVector Middle = WorldOfCell(Here) - GetActorLocation();
 
-		if (Plan.IsFloor(Here))
+		Ground->AddInstance(FTransform(FRotator::ZeroRotator,
+			Middle - FVector(0.0f, 0.0f, GroundThicknessCm * 0.5f), GroundScale));
+
+		// A wall on each side where this cell's ground stops and rock begins. It
+		// spans the full width of that side and is only as thick as a wall.
+		for (const FIntPoint& Step : DungeonFloorSteps)
 		{
-			FTransform Block(FRotator::ZeroRotator,
-							 Middle - FVector(0.0f, 0.0f, GroundThicknessCm * 0.5f),
-							 GroundScale);
-			Ground->AddInstance(Block);
+			if (Plan.IsFloor(Here + Step))
+			{
+				continue;
+			}
+
+			const FVector Out(Step.X * OutTo, Step.Y * OutTo, 0.0f);
+			const FVector Scale = (Step.X != 0)
+				? FVector(ThickScale, BlockScale, TallScale)
+				: FVector(BlockScale, ThickScale, TallScale);
+
+			Walls->AddInstance(FTransform(FRotator::ZeroRotator,
+										  Middle + Out + Up, Scale));
 		}
-		else if (NeedsWall(Plan, Here))
+
+		// And a piece in each corner where two of those walls meet at a right
+		// angle. Neither of them covers it, because each spans only its own
+		// cell's width, and the hole left is exactly a wall's thickness square.
+		for (const FIntPoint& Corner : DungeonFloorCorners)
 		{
-			FTransform Block(FRotator::ZeroRotator,
-							 Middle + FVector(0.0f, 0.0f, WallHeightCm * 0.5f),
-							 WallScale);
-			Walls->AddInstance(Block);
+			const bool bBothSidesAreRock =
+				!Plan.IsFloor(Here + FIntPoint(Corner.X, 0))
+				&& !Plan.IsFloor(Here + FIntPoint(0, Corner.Y));
+
+			if (!bBothSidesAreRock)
+			{
+				continue;
+			}
+
+			const FVector Out(Corner.X * OutTo, Corner.Y * OutTo, 0.0f);
+			Walls->AddInstance(FTransform(FRotator::ZeroRotator,
+				Middle + Out + Up, FVector(ThickScale, ThickScale, TallScale)));
 		}
 	}
 

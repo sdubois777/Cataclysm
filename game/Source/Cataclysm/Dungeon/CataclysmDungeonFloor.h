@@ -64,6 +64,20 @@ public:
 	static constexpr float WallHeightCm = 400.0f;
 
 	/**
+	 * How thick a wall is, in centimetres.
+	 *
+	 * HALF A CELL. A wall used to fill a whole cell, so every wall between two
+	 * rooms was four metres of solid rock and a floor read as blocks with gaps
+	 * rather than as rooms with walls. Set by the project owner on 2026-08-21:
+	 * "maybe make the walls half as thick".
+	 *
+	 * THE HEIGHT IS UNCHANGED at `WallHeightCm`. Thickness is what was asked
+	 * about; how tall a wall is under a camera that looks down is a separate
+	 * question and nobody has looked at it yet.
+	 */
+	static constexpr float WallThicknessCm = 200.0f;
+
+	/**
 	 * How thick the ground block under a walkable cell is, in centimetres.
 	 *
 	 * Its top surface sits at the actor's own height, so a character placed at
@@ -159,16 +173,27 @@ public:
 	int32 WallBlockCount() const;
 
 	/**
-	 * Whether a solid cell needs a wall block: it touches a walkable cell.
+	 * How many wall pieces a floor needs.
 	 *
-	 * EIGHT NEIGHBOURS AND NOT FOUR. A solid cell that touches walkable ground
-	 * only at a corner is still seen from inside, and skipping it leaves a gap in
-	 * the wall exactly where two corridors meet.
+	 * A WALL IS A FACE, NOT A CELL. One piece stands on each side where walkable
+	 * ground meets rock, just outside the ground rather than filling a cell of
+	 * its own. That is what makes a wall half a cell thick instead of a whole
+	 * one, and it means no piece is ever built against rock nobody can see.
 	 *
-	 * WHY NOT WALL EVERY SOLID CELL. About half the grid is solid and most of it
-	 * is rock nobody can see, buried behind the cells that face the floor.
+	 * PLUS ONE PIECE PER CONVEX CORNER. Two walls meeting at a right angle each
+	 * span their own cell's width and leave a square hole between them, because
+	 * neither walkable cell owns that corner. It is filled by a piece the
+	 * thickness of a wall on each side. Without it every corner of every room has
+	 * a hole you can see through.
+	 *
+	 * A CORNER IS NEEDED WHENEVER BOTH SIDES ARE ROCK, whatever lies diagonally
+	 * beyond it. The rule once also asked that the diagonal cell be rock, which
+	 * left the hole open wherever two walkable cells touch only at a corner.
+	 * Nothing can walk that diagonal -- movement is along sides -- but the hole is
+	 * two metres across and the navigation mesh would route a character through
+	 * it, taking a shortcut the floor plan says is solid.
 	 */
-	static bool NeedsWall(const FCataclysmFloorPlan& Plan, FIntPoint Cell);
+	static int32 WallPiecesFor(const FCataclysmFloorPlan& Plan);
 
 private:
 	/** The plan the geometry was built from. */

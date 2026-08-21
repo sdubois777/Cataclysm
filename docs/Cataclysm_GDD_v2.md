@@ -3362,7 +3362,7 @@ A floor is **one level of the dungeon**: a single connected space with one entra
 
   
 
-**A floor is built on a grid of cells, and a cell is four metres.** The default floor is 40 by 40 cells, which is 160 metres square. The grid decides which cells can be walked on before any art is chosen, and room pieces are placed onto the result afterwards. Deciding walkability separately is what makes two properties testable: the same seed always produces the same floor, and the stairs down can always be walked to.
+**A floor is built on a grid of cells, and a cell is four metres.** How many cells is rolled per floor, between 32 and 48 on each axis, so floors differ in size and shape rather than all being the same square: 128 to 192 metres across. The grid decides which cells can be walked on before any art is chosen, and room pieces are placed onto the result afterwards. Deciding walkability separately is what makes two properties testable: the same seed always produces the same floor, and the stairs down can always be walked to.
 
   
 

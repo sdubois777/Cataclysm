@@ -79,8 +79,12 @@ def script_constant(name: str) -> float:
 
 @pytest.fixture(scope="module")
 def floor_width_cm() -> float:
-    """How wide a dungeon floor is, from the C++."""
-    return (cpp_constant(GENERATOR_HEADER, "DefaultWidth", "int32")
+    """How wide the LARGEST dungeon floor is, from the C++.
+
+    The largest and not the usual one. A floor's size is rolled per floor, the
+    level is authored once, and every floor is played in it.
+    """
+    return (cpp_constant(GENERATOR_HEADER, "MostFloorSide", "int32")
             * cpp_constant(GENERATOR_HEADER, "CellSizeCm", "float"))
 
 
@@ -92,24 +96,37 @@ def test_the_map_script_agrees_with_the_cpp_about_a_cell() -> None:
         "about how wide a cell is. The C++ is authoritative."
     )
     assert script_constant("FLOOR_CELLS_ACROSS") == cpp_constant(
-        GENERATOR_HEADER, "DefaultWidth", "int32"), (
+        GENERATOR_HEADER, "MostFloorSide", "int32"), (
         "tools/generate_dungeon_map.py and CataclysmFloorGenerator.h disagree "
-        "about how many cells a floor is across. The C++ is authoritative."
+        "about how many cells the LARGEST floor is across. The C++ is "
+        "authoritative, and the largest is what the level has to cover."
     )
 
 
-def test_a_floor_is_square_or_the_bounds_need_two_numbers() -> None:
-    """The script sizes the bounds from one number, so a floor must be square.
+def test_floors_really_do_vary_in_size() -> None:
+    """The two ends of the range are different, so a floor's size is rolled.
 
-    Not a rule anyone chose, just a thing that is true today. If a floor ever
-    stops being square, `NAV_WIDTH_CM` has to become two numbers and this test
-    is the thing that says so.
+    THIS USED TO CHECK A FLOOR WAS SQUARE, because the script sizes the bounds
+    from a single number and a floor was 40 by 40 always. Both axes are now
+    rolled from the same range, so one number still covers both, and what is
+    worth checking instead is that the range is a range.
+
+    It is the cheapest guard there is against the whole variety of floor sizes
+    being quietly turned off, which is the state this project was in until
+    2026-08-21: every floor of every dungeon exactly the same size.
     """
-    assert (cpp_constant(GENERATOR_HEADER, "DefaultWidth", "int32")
-            == cpp_constant(GENERATOR_HEADER, "DefaultHeight", "int32")), (
-        "a dungeon floor is no longer square, and tools/generate_dungeon_map.py "
-        "sizes the navigation bounds from a single width. Give it a separate "
-        "depth before this stops covering the floor."
+    least = cpp_constant(GENERATOR_HEADER, "LeastFloorSide", "int32")
+    most = cpp_constant(GENERATOR_HEADER, "MostFloorSide", "int32")
+
+    assert most > least, (
+        f"a dungeon floor is always {most:.0f} cells on a side, so every floor "
+        f"of a dungeon is the same size. LeastFloorSide and MostFloorSide in "
+        f"CataclysmFloorGenerator.h are what make floors differ in size."
+    )
+    assert most - least >= 8, (
+        f"a dungeon floor is between {least:.0f} and {most:.0f} cells, a range "
+        f"of {most - least:.0f}. That is too narrow to read as two different "
+        f"floors; 8 cells is 32 metres."
     )
 
 
