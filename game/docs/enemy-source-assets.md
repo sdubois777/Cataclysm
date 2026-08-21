@@ -174,44 +174,81 @@ fastest, the sample where it is furthest from the pelvis, and the sample where i
 is nearest the ground. Where they agree the answer is solid; where they do not,
 the clip is left unmeasured rather than guessed at.
 
+### The control, and one creature fails it
+
+**AGREEMENT BETWEEN THE THREE RULES IS NOT ENOUGH ON ITS OWN.** Three rules that
+all read hand motion will agree with each other on a clip where the hand simply
+moves, whether or not anything is being struck. So the same measurement is run
+over a clip on the same rig that strikes nothing — an idle — and the attack has
+to beat it.
+
+That control is not new. `tools/measure_sentinel_release.py` established on
+2026-08-20 that hand and muzzle motion cannot say when the Corrupted Sentinel
+fires: two methods were tried and `PlantedIntro`, which fires nothing, read at
+least as strongly as `Fire_Planted`.
+
+| Creature | Attack peak speed | Control clip | Control peak speed | Margin |
+|---|:-:|---|:-:|:-:|
+| Brute | 4717 cm/s | `Idle` | 4 cm/s | 1179× |
+| Gatekeeper | 5973 cm/s | `Idle` | 20 cm/s | 299× |
+| Imp | 2766–4238 cm/s | `NonCombat_Idle` | 36 cm/s | 77× |
+| Abyssal Warden | 4466–4837 cm/s | `Idle` | 89 cm/s | 50× |
+| Succubus | 4914 cm/s | `Idle_Relaxed` | 201 cm/s | 24× |
+| Hellhound | 264 cm/s | `IggyScorch_Idle` | 72 cm/s | **3.7×, too close to trust** |
+| **Corrupted Sentinel** | **526 cm/s** | `PlantedIntro` | **674 cm/s** | **FAILS: the clip that fires nothing moves faster** |
+
+**The Corrupted Sentinel cannot be measured this way and no figure for it is
+recorded below.** It is planted, so its hands barely move, and the intro clip
+that roots it moves them more than the firing clip does. That is the third method
+to fail on this creature; issue
+[#478](https://github.com/sdubois777/Cataclysm/issues/478) carries the other two.
+
+### The measurements
+
 | Creature | Clip | Strikes at | Method |
 |---|---|:-:|---|
-| Brute | `Attack_Biped_Melee_A` | **0.331 s** | inspection; peak speed and lowest point agree |
+| Brute | `Attack_Biped_Melee_A` | **0.331 s** | inspection; peak speed and lowest point agree, control beaten 1179× |
 | Imp | `Attack_A_SetA` | **0.242 s** | inspection; peak speed and furthest reach agree |
 | Imp | `Attack_B_SetA` | **not measured** | the three rules disagree by 0.167 s |
 | Imp | `Attack_C_SetA` | **not measured** | the three rules disagree by 0.330 s |
 | Imp | `Attack_D_SetA` | **0.278 s** | inspection; peak speed and furthest reach agree |
 | Imp | `Attack_E_SetA` | **0.308 s** | inspection; peak speed and furthest reach agree |
-| Hellhound | `Scorch_Primary_Fire_Med` | **not measured** | the three rules disagree by 0.338 s |
+| Hellhound | `Scorch_Primary_Fire_Med` | **not measured** | the three rules disagree by 0.338 s, and it beats its control only 3.7× |
 | Abyssal Warden | `PrimaryAttack_LA_Fast` | **0.176 s** | inspection; peak speed and furthest reach agree |
 | Abyssal Warden | `PrimaryAttack_RA_Fast` | **0.168 s** | inspection; peak speed and furthest reach agree |
 | Corrupted Sentinel | `Fire_Planted` | **not measured** | the three rules disagree by 1.040 s |
-| Corrupted Sentinel | `Fire_Planted_B` | **1.755 s** | inspection; peak speed and lowest point agree |
-| Succubus | `Primary_Attack_Normal` | **0.156 s** | inspection; peak speed and furthest reach agree, and `hand_l` peaks at the same moment |
-| Gatekeeper | `Swing1_Medium` | **0.282 s** | inspection; **all three rules agree within 0.057 s** |
+| Corrupted Sentinel | `Fire_Planted_B` | **not measured** | the rules agreed, **but the creature fails its control** and the agreement is worthless |
+| Succubus | `Primary_Attack_Normal` | **0.156 s** | inspection; peak speed and furthest reach agree, `hand_l` peaks at the same moment, control beaten 24× |
+| Gatekeeper | `Swing1_Medium` | **0.282 s** | inspection; **all three rules agree within 0.057 s**, control beaten 299× |
 
-Nine of the thirteen are measured. **Four are not, and a number was not invented
+Eight of the thirteen are measured. **Five are not, and a number was not invented
 for them.**
+
+**`Fire_Planted_B` WAS PUBLISHED AS 1.755 s AND THAT WAS WITHDRAWN THE SAME DAY.**
+Its three rules agreed, which is why it was published; the control was added
+afterwards and the creature fails it, so the agreement was two rules agreeing
+about ordinary movement rather than about a shot. It is recorded here because a
+withdrawn figure that leaves no trace gets published again.
 
 ### What that means in play, and both answers are wrong
 
-The damage moment is not where the animation puts it, for any of the seven.
+The damage moment is not where the animation puts it, for any of the six that
+could be measured.
 
 | Creature | Play rate | Strike in play | Damage lands at | Gap |
 |---|:-:|:-:|:-:|---|
 | Brute | 1.00 | 0.331 s | 0 s, before the clip starts | damage **0.33 s early** |
 | Imp | 1.00 | 0.242 to 0.308 s | 0 s | damage **0.24 to 0.31 s early** |
 | Abyssal Warden | 1.00 | 0.168 to 0.176 s | 0 s | damage **0.17 s early** |
-| Corrupted Sentinel | 1.20 | 1.463 s | 1.000 s, the wind-up's end | damage **0.46 s early** |
 | Gatekeeper | 1.1667 | 0.242 s | 0.971 s, the wind-up's end | damage **0.73 s late** |
 | Succubus | 1.00 | 0.156 s | 1.300 s, the wind-up's end | damage **1.14 s late** |
 
 Two separate causes, so two issues:
 
-- [#783](https://github.com/sdubois777/Cataclysm/issues/783) — the four creatures
-  whose ordinary attack is **not** telegraphed apply their damage and then start
-  the clip, so the hit always lands before the blow.
-- [#784](https://github.com/sdubois777/Cataclysm/issues/784) — the three whose
+- [#783](https://github.com/sdubois777/Cataclysm/issues/783) — the creatures whose
+  ordinary attack is **not** telegraphed apply their damage and then start the
+  clip, so the hit always lands before the blow.
+- [#784](https://github.com/sdubois777/Cataclysm/issues/784) — the ones whose
   ordinary attack **is** telegraphed fit the clip to the wind-up by its whole
   length, so its strike frame lands wherever the arithmetic leaves it.
 
@@ -224,7 +261,8 @@ python tools/run_editor_python.py tools/measure_attack_impact.py
 
 Both change nothing. The results land in
 `game/Saved/Logs/run_editor_python.log`, on lines beginning `PROBE|` and
-`IMPACT|`.
+`IMPACT|`. **Read the control section at the end of the second one before using
+any figure from it.**
 
 ## How fast the locomotion animations were authored to move
 

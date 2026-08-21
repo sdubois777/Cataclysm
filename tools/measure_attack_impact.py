@@ -104,6 +104,42 @@ CLIPS = [
      "Swing1_Medium"),
 ]
 
+#: A clip on the same rig that strikes nothing, for each creature. **THE
+#: CONTROL, AND IT IS THE POINT.**
+#:
+#: `tools/measure_sentinel_release.py` established on 2026-08-20 that hand and
+#: muzzle motion cannot say when the Corrupted Sentinel fires: two methods were
+#: tried and `PlantedIntro`, which fires nothing, read at least as strongly as
+#: `Fire_Planted`. A measurement without a control cannot tell the difference
+#: between finding a strike and finding ordinary movement.
+#:
+#: A REAL SWING PEAKS AT THOUSANDS OF CENTIMETRES A SECOND. If the control peaks
+#: comparably on a rig, this method is not measuring a strike there and that
+#: creature's figure must be thrown away rather than reported.
+CONTROLS = [
+    ("Brute",
+     "/Game/ParagonRampage/Characters/Heroes/Rampage/Animations/Idle"),
+    ("Imp",
+     "/Game/ParagonMinions/Characters/Minions/Down_Minions/Animations/Melee/"
+     "NonCombat_Idle"),
+    ("Hellhound",
+     "/Game/ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations/"
+     "IggyScorch_Idle"),
+    ("Abyssal Warden",
+     "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/Idle"),
+    # `PlantedIntro` RATHER THAN `Idle_Planted`, which is a single pose 0.03
+    # seconds long and would read as motionless whatever the method. This is the
+    # control `tools/measure_sentinel_release.py` already uses.
+    ("Corrupted Sentinel",
+     "/Game/ParagonMinions/Characters/Minions/Down_Minions/Animations/Siege/"
+     "PlantedIntro"),
+    ("Succubus",
+     "/Game/ParagonCountess/Characters/Heroes/Countess/Animations/"
+     "Idle_Relaxed"),
+    ("Gatekeeper",
+     "/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations/Idle"),
+]
+
 #: Bones that can be the striking part, matched as substrings of the lowercased
 #: bone name. Which of these a rig drives is measured rather than assumed.
 #:
@@ -328,6 +364,33 @@ def report(creature, interval, path, options):
                 "needs judging by eye.".format(spread, length))
 
 
+def control(creature, path, options):
+    """The same measurement on a clip that strikes nothing."""
+    name = path.rsplit("/", 1)[1]
+    clip = unreal.load_asset("{0}.{1}".format(path, name))
+    if clip is None:
+        say("{0}: control {1} NOT FOUND, so this rig has NO CONTROL and its "
+            "figure above is unchecked.".format(creature, name))
+        return
+
+    pose = unreal.AnimPoseExtensions.get_anim_pose_at_time(clip, 0.0, options)
+    names = [str(bone) for bone in
+             unreal.AnimPoseExtensions.get_bone_names(pose)]
+
+    bone, samples, travel = striking_bone(clip, names, options)
+    if bone is None or travel < MOVED_AT_ALL_CM:
+        say("{0}: control {1} moves nothing, peak speed 0 cm/s. **The method "
+            "can tell this rig's attack from its idle.**".format(
+                creature, name))
+        return
+
+    fastest_at, fastest = peak_speed_at(samples)
+    say("{0}: control {1} ({2:.4f} s), bone {3} travels {4:.0f} cm, peak speed "
+        "{5:.0f} cm/s at {6:.4f} s".format(
+            creature, name, clip.get_play_length(), bone, travel, fastest,
+            fastest_at))
+
+
 def main():
     say("==== when each ordinary attack strikes ====")
     say("Issue #526. NO CLIP CARRIES AN ANIMATION NOTIFY -- checked for all "
@@ -339,6 +402,19 @@ def main():
         try:
             report(creature, interval, path, options)
         except Exception as problem:        # noqa: BLE001 - reported, not raised
+            say("{0}: {1} FAILED: {2}".format(creature, path, problem))
+
+    say("")
+    say("=" * 70)
+    say("==== THE CONTROL: the same rules on clips that strike nothing ====")
+    say("A real swing peaks at thousands of centimetres a second. Where a")
+    say("control peaks comparably, this method is not measuring a strike on")
+    say("that rig and the figure above must be thrown away.")
+
+    for creature, path in CONTROLS:
+        try:
+            control(creature, path, options)
+        except Exception as problem:        # noqa: BLE001
             say("{0}: {1} FAILED: {2}".format(creature, path, problem))
 
     say("")
