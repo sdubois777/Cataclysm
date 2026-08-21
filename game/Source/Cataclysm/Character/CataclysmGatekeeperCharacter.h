@@ -18,11 +18,18 @@
  *   Call the Damned   Summon      Special    2  three Imps out of the ground
  *   Soul Harvest      Strike      Ultimate   3  a 6.5 m ring at its feet
  *
- * **IT IS THE LARGEST THING IN THE GAME BY EVERY MEASURE.** `health_share` 5.00
- * against the Abyssal Warden's 3.50, `armor_share` 2.50, the slowest attack
- * interval at 3.0 seconds, the highest critical multiplier at 250%, and a mesh
- * 3.11 metres tall -- which is the design document's "towering" as a
- * measurement rather than an adjective.
+ * **IT HITS HARDEST AND LASTS LONGEST, AND THE ABYSSAL WARDEN IS STILL HARDER
+ * TO HURT.** `health_share` 5.00 against the Warden's 3.50, `damage_share` 2.10
+ * against its 1.90, the slowest attack interval in the roster at 3.0 seconds,
+ * the highest critical multiplier at 250%, and a mesh 3.11 metres tall -- which
+ * is the design document's "towering" as a measurement rather than an
+ * adjective.
+ *
+ * **IT IS NOT THE BEST DEFENDED, AND THAT IS DELIBERATE.** Its `armor_share` is
+ * 2.50 against the Abyssal Warden's 3.50 and the Brute's 3.00, and its
+ * `resistance` is 30.0 against the Warden's 35.0. `enemy_stats.py` says beside
+ * both figures that the Warden is the one creature the design singles out for
+ * resistance. This creature's threat is its size, its damage and its phases.
  *
  * **THREE PHASES, AND A PHASE CHANGES NO NUMBER.** `PHASE_TRANSITIONS` is
  * `(0.60, 0.30)`: the fight opens in phase 1, phase 2 begins at 60% health and
@@ -116,8 +123,9 @@ public:
 	 *  size a marker from half the cycle it runs on. */
 	static constexpr float DesignedAttackIntervalSeconds = 3.0f;
 
-	/** Percent of all incoming damage resisted. `resistance` is 30.0, **the most
-	 *  of anything designed**, against the Corrupted Sentinel's 20. */
+	/** Percent of all incoming damage resisted. `resistance` is 30.0: **high, and
+	 *  below the Abyssal Warden's 35.0**, which is the creature the design
+	 *  singles out for resistance. The Corrupted Sentinel's 20 is next. */
 	static constexpr float DesignedResistancePercent = 30.0f;
 
 	/** `crit_chance` 15.0 and `crit_multiplier` 250.0. **The highest multiplier

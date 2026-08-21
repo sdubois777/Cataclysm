@@ -910,8 +910,9 @@ protected:
 	float GatekeeperHealth = 1248.0f;
 
 	/** How much armour it has. From the same stat block as its health. Its
-	 *  `armor_share` is 2.50, the most of anything designed, and it carries 30%
-	 *  resistance on top of that. */
+	 *  `armor_share` is 2.50 -- **below the Abyssal Warden's 3.50 and the Brute's
+	 *  3.00** -- and it carries 30% resistance on top of that. Its health is what
+	 *  makes it take a long time to kill, not its armour. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float GatekeeperArmour = 125.0f;
 
