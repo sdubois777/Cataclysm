@@ -141,6 +141,14 @@ void UCataclysmGameplayAbility::EnsureSlotNumbersLoaded() const
 	SlotManaOnHitAtLevel100 = Numbers.ManaOnHitAtLevel100;
 }
 
+FString UCataclysmGameplayAbility::DisplayedName() const
+{
+	// NOTHING, RATHER THAN THE CLASS NAME. A box on the skill bar reading
+	// "CataclysmUndesignedSkill_C" would be worse than one reading "Special",
+	// and the caller is the one that knows which slot it is asking about.
+	return FString();
+}
+
 float UCataclysmGameplayAbility::GetBaseCooldown() const
 {
 	if (CooldownOverride >= 0.0f)

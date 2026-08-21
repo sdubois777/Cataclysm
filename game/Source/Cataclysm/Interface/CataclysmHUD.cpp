@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Interface/CataclysmCreaturePanel.h"
+#include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Player/CataclysmPlayerController.h"
 
@@ -46,6 +47,14 @@ void ACataclysmHUD::DrawHUD()
 	if (UCataclysmCombatOverlay::PlayerVitalsEnabled())
 	{
 		DrawPlayerVitals();
+	}
+
+	// THE BOTTOM MIDDLE, WHICH THE VITALS DO NOT USE. They stack upward from the
+	// bottom LEFT, so the two do not collide -- and
+	// `Cataclysm.SkillBar.TheBarDoesNotRunIntoTheHealthAndManaBars` holds that.
+	if (UCataclysmSkillBar::Enabled())
+	{
+		DrawSkillBar();
 	}
 
 	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
@@ -250,6 +259,81 @@ void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
 	DrawTextCentred(
 		UCataclysmCombatOverlay::PoolTextFor(Current, Maximum),
 		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
+}
+
+void ACataclysmHUD::DrawSkillBar()
+{
+	const APawn* Pawn = GetOwningPawn();
+	if (!Pawn || !Canvas)
+	{
+		return;
+	}
+
+	const TArray<FCataclysmSkillBarSlot> Slots = UCataclysmSkillBar::Read(Pawn);
+	if (Slots.Num() == 0)
+	{
+		return;
+	}
+
+	const float Size = UCataclysmSkillBar::BoxSizePx;
+	const FLinearColor Edge =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::BoxEdgeHex);
+
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		const FCataclysmSkillBarSlot& Box = Slots[Index];
+		const FVector2D At = UCataclysmSkillBar::BoxOriginFor(
+			Index, Slots.Num(), Canvas->SizeX, Canvas->SizeY);
+
+		// THE DARK EDGE IS DRAWN WIDER THAN THE BOX ON EVERY SIDE, the same trick
+		// the health bars use and for the reason recorded on `DrawBar`: the
+		// contrast becomes a property of the box rather than of whatever the
+		// player happens to be standing on.
+		DrawRect(Edge, At.X - BarBackingInsetPx, At.Y - BarBackingInsetPx,
+				 Size + BarBackingInsetPx * 2.0f,
+				 Size + BarBackingInsetPx * 2.0f);
+
+		DrawRect(UCataclysmSkillBar::TintFor(Box), At.X, At.Y, Size, Size);
+
+		// THE WAIT IS A DARK SWEEP THAT DRAINS FROM THE TOP, so the box uncovers
+		// itself as the wait runs down and a glance says how much is left without
+		// reading the number.
+		const float Waiting = UCataclysmSkillBar::CooldownFractionFor(
+			Box.CooldownRemaining, Box.CooldownDuration);
+
+		if (Waiting > 0.0f)
+		{
+			DrawRect(UCataclysmCombatOverlay::ColourFromHex(
+						 UCataclysmSkillBar::CoolingHex),
+					 At.X, At.Y, Size, Size * Waiting);
+		}
+
+		const float Centre = At.X + Size * 0.5f;
+		const FLinearColor Ink = FLinearColor::White;
+
+		// THE KEY IN THE TOP CORNER, the skill's name across the bottom, and the
+		// seconds left in the middle where the eye already is while waiting.
+		if (!Box.Key.IsEmpty())
+		{
+			DrawTextCentred(Box.Key, Ink, Centre, At.Y + SkillBarKeyInsetPx,
+							SkillBarKeyScale);
+		}
+
+		const FString Waited = UCataclysmSkillBar::CooldownTextFor(Box.CooldownRemaining);
+		if (!Waited.IsEmpty())
+		{
+			DrawTextCentred(Waited, Ink, Centre,
+							At.Y + Size * 0.5f - SkillBarWaitInsetPx,
+							SkillBarWaitScale);
+		}
+
+		const FString Name = UCataclysmSkillBar::ShortNameFor(Box.Name);
+		if (!Name.IsEmpty())
+		{
+			DrawTextCentred(Name, Ink, Centre, At.Y + Size + SkillBarNameGapPx,
+							SkillBarNameScale);
+		}
+	}
 }
 
 void ACataclysmHUD::DrawPlayerVitals()

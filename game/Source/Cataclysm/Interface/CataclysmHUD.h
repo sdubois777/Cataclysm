@@ -111,6 +111,18 @@ private:
 	void DrawPlayerPool(float Top, float Current, float Maximum,
 						const TCHAR* FillHex);
 
+	/**
+	 * The player's six ability slots, along the bottom middle of the screen.
+	 *
+	 * WHAT IT DECIDES IS NOTHING. `UCataclysmSkillBar` answers what each box
+	 * holds, where it goes, what colour it is and what the wait on it reads as;
+	 * this turns those answers into rectangles and text. The split is there
+	 * because `DrawHUD` never runs under test -- the automation command passes
+	 * `-nullrhi`, so there is no canvas at all -- and it is the same split this
+	 * class already has with `UCataclysmCombatOverlay` for everything else.
+	 */
+	void DrawSkillBar();
+
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
 
@@ -284,9 +296,19 @@ private:
 
 	//~ Layout, in pixels at an unscaled viewport.
 
-	/** The player's own bars, measured in from the bottom left corner. */
+public:
+	/**
+	 * The player's own bars, measured in from the bottom left corner.
+	 *
+	 * PUBLIC BECAUSE THE SKILL BAR HAS TO STAY CLEAR OF THEM.
+	 * `Cataclysm.SkillBar.TheBarDoesNotRunIntoTheHealthAndManaBars` works out
+	 * where these end and checks the bar starts further right. Writing the same
+	 * two numbers into that test instead would make it pass while the bars moved.
+	 */
 	static constexpr float PlayerBarMarginPx = 28.0f;
 	static constexpr float PlayerBarWidthPx = 280.0f;
+
+private:
 	static constexpr float PlayerBarHeightPx = 20.0f;
 
 	/** Clear space between one of the player's bars and the next. */
@@ -298,6 +320,26 @@ private:
 
 	/** How thick the dark backing sticks out past the fill, on every side. */
 	static constexpr float BarBackingInsetPx = 2.0f;
+
+	// -- The skill bar's three pieces of text ------------------------------
+	//
+	// THREE SIZES BECAUSE THEY ARE READ AT DIFFERENT MOMENTS. The key is looked
+	// at once, while learning which box is which. The seconds left are read while
+	// waiting, which is when the box matters most, so they are the largest. The
+	// skill's name is read rarely and sits outside the box, so it is smallest.
+	// `UCataclysmSkillBar::MostNameCharacters` is worked out against this scale.
+
+	/** How far below the top of a box the key sits. */
+	static constexpr float SkillBarKeyInsetPx = 3.0f;
+	static constexpr float SkillBarKeyScale = 1.0f;
+
+	/** How far above the middle of a box the seconds left sit. */
+	static constexpr float SkillBarWaitInsetPx = 9.0f;
+	static constexpr float SkillBarWaitScale = 1.7f;
+
+	/** Clear space between the bottom of a box and the skill's name. */
+	static constexpr float SkillBarNameGapPx = 4.0f;
+	static constexpr float SkillBarNameScale = 1.0f;
 
 public:
 	/**

@@ -81,6 +81,24 @@ public:
 	bool bActivateOnGranted = false;
 
 	/**
+	 * What to call this ability somewhere a player can read it.
+	 *
+	 * EMPTY ON THE BASE, AND THAT IS THE HONEST ANSWER RATHER THAN A GAP. An
+	 * ability with no designed name has none to give. A caller that needs
+	 * something to write falls back to the slot's own name, which is what
+	 * `UCataclysmSkillBar::NameForEmptySlot` is for.
+	 *
+	 * WHY A FUNCTION RATHER THAN A FIELD READ DIRECTLY. Two subclasses carry a
+	 * `SkillName` of their own -- `UCataclysmSkillTemplate` for a skill that has
+	 * numbers and `UCataclysmUndesignedSkill` for one that does not -- and they
+	 * are separate fields on separate classes. Without this, anything wanting a
+	 * name would have to know about both and try each in turn, and would silently
+	 * miss a third when one is added.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
+	virtual FString DisplayedName() const;
+
+	/**
 	 * Seconds before this ability can be used again. Negative means take the
 	 * slot's figure, which is what every designed skill does.
 	 *

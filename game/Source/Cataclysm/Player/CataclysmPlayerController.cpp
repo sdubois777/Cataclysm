@@ -259,6 +259,57 @@ void ACataclysmPlayerController::Input_ToggleInventory()
 	InventoryScreen->AddToViewport();
 }
 
+FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
+{
+	if (!SlotTag.IsValid())
+	{
+		return FKey();
+	}
+
+	// `Get` RATHER THAN `LoadSynchronous`. See the header: this runs inside the
+	// heads-up display's draw pass and a synchronous load there stalls a frame.
+	const UCataclysmInputConfig* Config = InputConfig.Get();
+	if (!Config)
+	{
+		return FKey();
+	}
+
+	const UInputAction* Action = nullptr;
+	for (const FCataclysmAbilityInputAction& Binding : Config->GetAbilityActions())
+	{
+		if (Binding.SlotTag == SlotTag)
+		{
+			Action = Binding.InputAction;
+			break;
+		}
+	}
+
+	if (!Action)
+	{
+		return FKey();
+	}
+
+	// NAMED `Local` AND NOT `Player`, because `APlayerController` already has a
+	// member called `Player` and shadowing it is a warning this project builds
+	// as an error.
+	const ULocalPlayer* Local = GetLocalPlayer();
+	const UEnhancedInputLocalPlayerSubsystem* Input =
+		Local ? Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+
+	if (!Input)
+	{
+		// NO SUBSYSTEM MEANS THIS IS NOT A LOCAL PLAYER. A remote client's
+		// controller on the server has no keys of its own to report.
+		return FKey();
+	}
+
+	// ASKED OF THE SUBSYSTEM RATHER THAN OF `DefaultMappingContext`, because the
+	// mapping context in force is what actually decides the key, and the two
+	// schemes bind the Support slot differently.
+	const TArray<FKey> Keys = Input->QueryKeysMappedToAction(Action);
+	return Keys.Num() > 0 ? Keys[0] : FKey();
+}
+
 bool ACataclysmPlayerController::CursorIsOverInterface() const
 {
 	if (!InventoryScreen || !InventoryScreen->IsInViewport())
