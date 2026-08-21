@@ -133,6 +133,21 @@ public:
 	int32 SpawnSuccubi();
 
 	/**
+	 * Puts Gatekeepers in the sandbox. Returns how many were placed.
+	 *
+	 * **IT IS THE BOSS, AND THE ONLY CREATURE IN THE GAME WITH PHASES.** It
+	 * opens with a telegraphed sweep and a lobbed gout that leaves the ground
+	 * burning; at 60% health it starts summoning Imps; at 30% it adds a 6.5
+	 * metre ring worth four ordinary hits. A phase adds an ability and
+	 * changes no number.
+	 *
+	 * IT IS PLACED FURTHER OUT THAN ANYTHING ELSE. See
+	 * `GatekeeperDistanceCm`.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
+	int32 SpawnGatekeepers();
+
+	/**
 	 * Tell the save writer which run and which character this session is
 	 * playing, which is what makes the game start saving itself.
 	 *
@@ -193,6 +208,10 @@ public:
 	/** Every Succubus this game mode placed. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
 	TArray<TObjectPtr<class ACataclysmSuccubusCharacter>> Succubi;
+
+	/** Every Gatekeeper this game mode placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")
+	TArray<TObjectPtr<class ACataclysmGatekeeperCharacter>> Gatekeepers;
 
 	// ----------------------------------------------------------------------
 	// Difficulty
@@ -830,6 +849,83 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float SuccubusAttackDamage = 32.0f;
 
+	/** How many Gatekeepers to place. Zero for none. **One**, because it is a
+	 *  boss and two of them is not a thing the design has. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	int32 GatekeeperCount = 1;
+
+	/**
+	 * How far from the player start it is put, in centimetres.
+	 *
+	 * **FURTHER OUT THAN ANY OTHER CREATURE, AND FORCED RATHER THAN CHOSEN.**
+	 * Every creature must stand further from every other than its own notice
+	 * radius, and this one's is 1400 cm -- the largest in the game, because
+	 * like the Corrupted Sentinel it can never close a gap on an unwilling
+	 * player and so must notice as far as its longest attack reaches.
+	 *
+	 * At 2000 cm the nearest neighbour is 1417 cm away, which clears the rule
+	 * by 17 cm. At 2200 the margin is 157 cm, which is the difference between
+	 * a rule that holds and a rule that holds today.
+	 *
+	 * WHAT IT COSTS THE PERSON LOOKING AT IT: about eight metres of walking
+	 * before the creature notices them. That is the price of a sandbox with
+	 * seven creatures in it and a floor 40 metres across.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float GatekeeperDistanceCm = 2200.0f;
+
+	/**
+	 * Which direction from the player start it is placed in, in degrees.
+	 *
+	 * **THE SEVENTH DIRECTION AND THE SECOND DIAGONAL.** The four cardinal
+	 * ones are taken -- the Brute and the Abyssal Warden in front at 0, the
+	 * Hellhound behind at 180, the Imp pack at 90 and the Corrupted Sentinel
+	 * at 270 -- and the Succubus took the first diagonal at 45. This is the
+	 * opposite diagonal, so the boss stands behind the player start and away
+	 * from everything else.
+	 *
+	 * 135 AND 315 WOULD ALSO WORK at this distance, and were checked rather
+	 * than assumed. 225 is chosen because it puts the boss furthest from the
+	 * two creatures that come to meet you: the Hellhound, which is the
+	 * fastest thing in the game, and the Imp pack, which is ten of them.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox")
+	float GatekeeperBearingDegrees = 225.0f;
+
+	/**
+	 * How much health it has.
+	 *
+	 * THE DESIGN MODEL'S OWN FIGURE, on exactly the reasoning `BruteHealth`
+	 * records. It is `stats_on_floor("Common", tier=1, "Cataclysm",
+	 * kind="Gatekeeper")`, rounded to a whole number.
+	 *
+	 * **BY FAR THE LARGEST IN THE SANDBOX**, at nearly four times the
+	 * Corrupted Sentinel's 324 and eight times the Succubus's 150. Its
+	 * `health_share` is 5.00 against the Abyssal Warden's 3.50.
+	 *
+	 * AND IT IS WHAT THE PHASE THRESHOLDS ARE FRACTIONS OF: phase 2 begins at
+	 * 749 and phase 3 at 374.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float GatekeeperHealth = 1248.0f;
+
+	/** How much armour it has. From the same stat block as its health. Its
+	 *  `armor_share` is 2.50, the most of anything designed, and it carries 30%
+	 *  resistance on top of that. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float GatekeeperArmour = 125.0f;
+
+	/**
+	 * What one Dread Cleave sweep is worth. The training dummy's 20 times the
+	 * designed damage share of 2.10, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`.
+	 *
+	 * **SOUL HARVEST IS WORTH FOUR OF THESE**, because the Ultimate slot is
+	 * 400%, and Soulfall one and a half because the Special slot is 150%.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float GatekeeperAttackDamage = 42.0f;
+
 	// NO ImpArmour, AND THAT IS THE DESIGN RATHER THAN AN OVERSIGHT. The Imp's
 	// `armor_share` is exactly 0.0 and it is the only creature in the roster
 	// with none at all: its defence is 25% evasion, which is why area damage
@@ -922,6 +1018,17 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 SuccubusRarityStep = -1;
+
+	/** Which rung the Gatekeeper spawns at, or -1 to draw one.
+	 *
+	 *  IT DRAWS LIKE EVERYTHING ELSE, and it is worth saying why a boss is not
+	 *  forced to the Boss rung: rarity decides what a kill drops and whether
+	 *  the creature can be stunned, and it does NOT decide the stat block --
+	 *  that comes from the settings above. Forcing a rung here would make
+	 *  every play session drop five items from one creature. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 GatekeeperRarityStep = -1;
 
 	/**
 	 * Which rung each training dummy spawns at, or -1 to draw one.

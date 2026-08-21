@@ -863,23 +863,78 @@ visible, and walking does not blend, so the creature slides rather than steps.
 
 ### The Gatekeeper — Sevarog
 
-| Animation | Length | Note |
+**Re-measured 2026-08-20** with `tools/probe_gatekeeper_animation.py`, for issue
+[#759](https://github.com/sdubois777/Cataclysm/issues/759), which builds this
+creature. Every one of the eighteen clips recorded on 2026-08-07 came back
+identical.
+
+The mesh is `Sevarog`, **311.1 cm tall**, on `Sevarog_Skeleton` with 6 material
+slots. Half its height is 155.53 cm, which is the capsule half-height
+`ACataclysmGatekeeperCharacter` uses and **by far the largest in the project** --
+the Corrupted Sentinel, the next tallest, is 98.1.
+
+**What the creature actually plays**, from `ACataclysmGatekeeperCharacter`:
+
+| Animation | Length | What plays it |
 |---|:-:|---|
-| `Swing1_FAST_v2` .. `Swing3_FAST_v2` | 0.53 | |
-| `Swing1_120fps` .. `Swing3_120fps` | 1.00 | |
-| `Swing1_Medium` .. `Swing3_Medium` | 1.13 | |
-| `Swing1_Slow` .. `Swing3_Slow` | 1.70 | |
-| `Ultimate_Targeting` | 0.87 | |
-| `Ultimate_Targeting_Loop` | 2.23 | Holds while aiming |
-| `Ultimate_Swing_120fps` | 2.63 | |
-| `Soul_Siphon` | 1.83 | |
-| `Subjugation` | 2.87 | |
-| `Knock_back` | 2.67 | |
-| `Stage_1` .. `Stage_4` | 0.03 each | Marker poses, not animations |
+| `Swing1_Medium` | 1.1333 | Dread Cleave, across its 0.9714 s wind-up at a play rate of 1.1667 |
+| `Soul_Siphon` | 1.8333 | Soulfall, across its 1.2571 s wind-up at 1.4584 |
+| `Subjugation` | 2.8667 | Call the Damned. **No wind-up to fit** -- a Summon draws no marker -- so it plays at its authored speed |
+| `Ultimate_Swing_120fps` | 2.6333 | Soul Harvest, across its 2.0 s wind-up at 1.3167. Issue [#779](https://github.com/sdubois777/Cataclysm/issues/779): the pack authors this ultimate as three clips and only this one is played |
+| `Idle` | 8.9000 | Standing |
+| `Jog_Fwd` | 9.0000 | Walking. **The play rate is a placeholder of 1.0 and not a derivation.** See below |
+| `Death_front` | 0.9667 | Dying. **One clip, the fewest in the project** along with the Brute's and the Succubus's |
+
+**THE WALK SPEED COULD NOT BE MEASURED, AND THE PLAY RATE IS A GUESS.**
+`tools/measure_animation_stride.py` **failed its own control** on this rig: run on
+2026-08-20 it reported 0.0 cm/s for `Walk_Fwd`, `Jog_Fwd` and `Run_Fwd`, and
+**14.7 cm/s for `Idle`**, which is the control and must read zero. Wrong in both
+directions, so none of its numbers may be used. Issue
+[#778](https://github.com/sdubois777/Cataclysm/issues/778) carries the evidence.
+
+`tools/probe_gatekeeper_foot_bones.py`, written to find out why, measured how far
+each leg bone really travels across each clip:
+
+| Clip | `ik_foot_l` travel | `foot_l` travel | `pelvis` travel | Animated tracks |
+|---|:-:|:-:|:-:|:-:|
+| `Walk_Fwd` | **0.00 cm** | 0.00 cm | 5.64 cm | 127 |
+| `Run_Fwd` | **0.00 cm** | 0.00 cm | 5.64 cm | 127 |
+| `Jog_Fwd` | 27.01 cm | 0.00 cm | 27.46 cm | 155 |
+| `Idle` | **159.52 cm** | 0.00 cm | 13.10 cm | 155 |
+
+**`Walk_Fwd` and `Run_Fwd` animate no leg bone at all** -- every foot, calf and
+thigh reads 0.00 cm across the whole 1.6 seconds, and both carry 127 animated
+tracks where the other two carry 155. They appear to be partial clips rather than
+complete ones, and should not be reached for again without checking. `Jog_Fwd` is
+the only locomotion clip whose feet move, which is why it is the one in use.
+
+**Measured and not used:**
+
+| Animation | Length | Why not |
+|---|:-:|---|
+| `Swing1_FAST_v2` .. `Swing3_FAST_v2` | 0.5333 | Shorter than the 0.9714 s wind-up, so the creature would hold a pose |
+| `Swing1_120fps` .. `Swing3_120fps` | 1.0000 | Would fit, and `Swing1_Medium` fills the wind-up more completely |
+| `Swing2_Medium`, `Swing3_Medium` | 1.1333 | The pack ships three swing chains; only one is played today. Alternating them the way the Corrupted Sentinel alternates its two firing clips would stop continuous swinging reading as one clip looping |
+| `Swing1_Slow` .. `Swing3_Slow` | 1.7000 | Needs a play rate of 1.7501 to fit the wind-up |
+| `Ultimate_Targeting` | 0.8667 | The start of the three-clip ultimate. Issue [#779](https://github.com/sdubois777/Cataclysm/issues/779) |
+| `Ultimate_Targeting_Loop` | 2.2333 | The hold of it |
+| `Knock_back` | 2.6667 | Nothing knocks this creature back |
+| `Walk_Fwd`, `Run_Fwd` | 1.6000 each | Animate no leg bone. See above |
+| `Sprint_Fwd` | 4.0000 | Nothing sprints |
+| `Idle_additive` | 8.9000 | An additive layer rather than something to loop |
+| `Hitreact_Front`, `_Back`, `_Left`, `_Right` | 1.7667, 1.9000, 1.9667, 1.5667 | Nothing plays a hit reaction yet. Issue [#745](https://github.com/sdubois777/Cataclysm/issues/745) |
+| `Stage_1` .. `Stage_4` | 0.0333 each | Single marker poses. **This creature has three phases, not four**, so at best three could be used, and nothing plays one today |
 
 Three swing chains at four speeds each give a boss enough distinct motion to read
 as having phases. The targeting animation splitting into a start and a hold is
 the same shape the Brute's stomp has, and is what a telegraph needs.
 
-`Stage_1` through `Stage_4` are 0.03 second poses. Whether they are usable as the
-boss's four phases has not been checked. #354 designs those phases.
+**Re-run the measurements after importing or replacing any of these:**
+
+```
+python tools/run_editor_python.py tools/probe_gatekeeper_animation.py
+python tools/run_editor_python.py tools/probe_gatekeeper_foot_bones.py
+```
+
+Both change nothing. The results land in
+`game/Saved/Logs/run_editor_python.log`, on lines beginning `PROBE|`.

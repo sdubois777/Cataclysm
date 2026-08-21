@@ -118,6 +118,17 @@ ANIMATIONS = [
     "/Game/ParagonCountess/Characters/Heroes/Countess/Animations/Sprint_Fwd",
     ("/Game/ParagonCountess/Characters/Heroes/Countess"
      "/Animations/Idle_Relaxed"),
+    # The Gatekeeper, added 2026-08-20 for issue #759. It is played by
+    # Sevarog, the tallest creature in the project at 3.11 metres, and its
+    # designed speed of 3.0 m/s is SLOW for a creature that size -- which is
+    # why the walk is read as well as the jog. `Jog_Fwd` measures 9.0000
+    # seconds against `Walk_Fwd` and `Run_Fwd` at 1.6000, so it is not an
+    # ordinary gait cycle and the number below says what it really is.
+    # `Idle` is the control: standing still must read as zero.
+    "/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations/Walk_Fwd",
+    "/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations/Jog_Fwd",
+    "/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations/Run_Fwd",
+    "/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations/Idle",
 ]
 
 #: The rigs this knows how to read, and which bones each keeps its feet in.
