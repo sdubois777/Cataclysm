@@ -343,10 +343,16 @@ def make_sandbox_level():
                                           FLOOR_EXTENT / 100.0,
                                           FLOOR_THICKNESS / 100.0))
     # Static, because the floor never moves and a static mesh is cheaper to
-    # render. Navigation no longer depends on this: the navigation mesh is built
-    # when the game starts, from collision geometry, whatever its mobility. See
-    # RuntimeGeneration in game/Config/DefaultEngine.ini. Mobility belongs to the
-    # component, not the actor.
+    # render. Mobility belongs to the component, not the actor.
+    #
+    # THIS COMMENT USED TO SAY NAVIGATION NO LONGER DEPENDED ON MOBILITY,
+    # because the navigation mesh was built at run time from collision geometry,
+    # and pointed at RuntimeGeneration in game/Config/DefaultEngine.ini. That
+    # file had no navigation section in it at all, and the engine default
+    # resolves to Static, which only ever builds in the editor. The setting was
+    # added on 2026-08-21 for the procedural dungeon floor, which cannot have a
+    # navigation mesh baked into a map because it does not exist until the game
+    # runs. So the claim is true now; it was not before.
     floor.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
 
     sun = actor_subsystem.spawn_actor_from_class(
