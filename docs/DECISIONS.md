@@ -20,6 +20,153 @@ applied or still pending.
 
 ---
 
+## 2026-08-21 — What a dungeon floor is: a grid of cells, carved by one of several layout families
+
+**Affects:** section VIII of `docs/Cataclysm_GDD_v2.md`, under Dungeon Basics.
+Applied. Implemented in `game/Source/Cataclysm/Dungeon/` by pull request #788.
+It answers the first two bullets of issue #34 and unblocks issue #40.
+
+### The question, and why it was open
+
+The design document said "Procedurally generated layouts" and nothing more.
+Issue #34 asked it plainly: "What is a 'floor' spatially — one room, a level, a
+zone?" Nothing anywhere answered, and issue #40 could not start without it.
+
+The project owner had already settled part of it in a comment on #34: a floor is
+one level of the dungeon, themed by the Cataclysm and by the dungeon's type and
+sub-type; it takes two to five minutes if the player is efficient and unlucky
+searching for the stairs down; and a Horde dungeon is one big arena where a floor
+is a wave rather than a layout.
+
+What was open was how a floor is assembled.
+
+### What shipped games in the genre do
+
+| Game | What gets placed | What varies |
+| :-- | :-- | :-- |
+| Diablo 1 | A level is a 40×40 tile grid. Two passes: a "predungeon" walkability map carved recursively out of solid rock, then converted into tileset pieces. **Four separate generators, one per theme** — recursive room budding for the Cathedral, recursive subdivision for the Catacombs, edge growth then erosion for the Caves, a mirrored variant for Hell | The carve |
+| Diablo 2 | Hand-authored rooms saved as `.ds1` presets, stitched by matching tile-grid edges. Staircases between levels are "warps" | Which rooms, and where |
+| Diablo 3 | Pre-generated tiles snapping to a grid, each joined to a neighbour by at least one cardinal side. Three layout classes: Exact, Fixed border, Variable | Class per area |
+| Diablo 4 | The same family. Players report the grid and the repeated chunks are visible | — |
+| Path of Exile | Hand-designed rooms placed using tile keys over tile-based geometry; rooms may overlap and custom rules resolve the conflicts that creates | Room choice and placement per area instance |
+| Last Epoch | Three levels: two maps and a boss room. "The map itself will always be the same, but you will encounter different roadblocks" | Which paths are blocked |
+
+Four things are true in every one of them, and they are what the research
+settles rather than what anyone judged:
+
+1. **A floor is one bounded, connected level with an entrance and an exit.** Not
+   a room, and not a multi-level zone.
+2. **The pieces are hand-authored and only the arrangement is random.** No game
+   in this genre generates level geometry from noise.
+3. **Walkability is decided before art.** Diablo 1 makes it a named separate pass.
+4. **A fixed skeleton with a varying interior is the usual choice**, and the
+   cheapest version of it still ships. Last Epoch keeps the whole map and moves
+   only the roadblocks.
+
+### What the project owner decided
+
+Asked on 2026-08-21 whether every floor should be one shape:
+
+> "I think we can be a bit more creative. Maybe some dungeons are rectangle rooms
+> and such and others are more cavernous, theme to each cataclysm etc. I mostly
+> just want to avoid tiny tedious rooms and hallways that make it annoying for
+> the player to navigate."
+
+Both halves have direct support in the genre. Diablo 1 already ships four
+generators, one per theme. And the navigation complaint is the
+best-documented layout lesson there is: **Diablo 4 shipped exactly that fault and
+patched it out** — its dungeons sent the player down a hallway to a side room and
+back to the critical path, and Blizzard repositioned objectives onto main
+pathways to "minimize the need for backtracking" — while **Path of Exile's
+players sort maps into linear, open and maze layouts and avoid the maze ones.**
+
+### The decision
+
+**A floor is one bounded rectangular grid of cells, with one entrance and one
+stairwell down, and the stairwell is always reachable. A cell is four metres. The
+default grid is 40 by 40 cells, which is 160 metres square.**
+
+**More than one layout family carves that grid, chosen by theme.** Three exist:
+
+| Family | What it carves |
+| :-- | :-- |
+| Halls | The grid split in half until neither half would still be 8 cells across, one large room per piece, joined by corridors two cells wide |
+| Caverns | A random fill smoothed five times into rounded chambers, tendrils pruned, single-file necks widened |
+| Arena | One open space with a wobbled edge. What a Horde floor is, and what a boss floor wants |
+
+**The grid is bookkeeping, not appearance.** A cavern and a hall differ in which
+cells are carved, not in what a cell is. That is what makes two properties
+provable for every family at once rather than argued for each: the same seed
+gives the same floor, and the stairs can always be walked to. Adding a fourth
+family is one function.
+
+**Generation runs in two passes, walkability first.** The reason to copy Diablo's
+order is narrower here than it was for Blizzard: **the automation tests run with
+`-nullrhi`** (issue #559), so a grid of cells can be checked headless and a room
+full of art cannot.
+
+**"Annoying to navigate" is a measured number, not an opinion.**
+`FCataclysmFloorQuality` records how open a floor is, how much of it is single
+file, the longest unbroken single-file stretch, dead ends, unreachable cells, and
+the length of the walk to the stairs. What the generator produces over a thousand
+seeds of each family:
+
+| | walkable share | longest single-file run | dead ends | walk to the stairs |
+| :-- | --: | --: | --: | --: |
+| Halls | ≥ 0.466 | ≤ 1 cell | 0 | 58–133 cells |
+| Caverns | ≥ 0.263 | ≤ 3 cells | 0 | 42–105 cells |
+| Arena | ≥ 0.521 | ≤ 2 cells | 0 | 42–56 cells |
+
+### What was rejected, and why
+
+**Unreal's Procedural Content Generation framework deciding the floor's shape.**
+Both issue #34 and issue #40 named it "the obvious starting point". Epic's own
+overview describes what PCG produces as "Points: Locations in 3D space that are
+generated by the PCG graph and are often used to spawn meshes". It scatters
+assets over an area; it has no notion of "the exit must be reachable from the
+entrance", which is the one property a dungeon floor cannot ship without, and its
+graphs are assets rather than code an automation test can call.
+
+**PCG is still the right tool for dressing the inside of a room** — rubble,
+props, torches, the per-Cataclysm theming — and that is what it should do.
+
+**A free room graph rather than a grid.** Path of Exile's tile-key system is a
+grid with a cleverer edge rule and a much larger authoring cost. The failure a
+free graph produces, a room that cannot be reached, is far harder to write a test
+for.
+
+### What is a judgement rather than a finding
+
+Labelled, because the research does not settle them:
+
+- **Four metres per cell, and 40 by 40 cells.** Crossing the floor once at the
+  designed walking speed of 4 metres per second takes 40 seconds, which has to
+  fit several times inside the owner's two-to-five minute target alongside
+  fighting and searching. It has not been played.
+- **Two cells as the narrowest corridor.** One cell can only be left the way it
+  was entered, so two is the smallest width that is not that.
+- **Horde as a second generator behind the same interface** rather than a special
+  case inside the first.
+
+### What this leaves open
+
+The capital's layout, which is issue #34's remaining bullet. Room art and the map
+to place it in. Enemy placement. Per-Cataclysm theming: which family each of the
+eight Cataclysms uses is not decided, only that the choice exists.
+
+### Sources
+
+- Dungeon Generation in Diablo 1, BorisTheBrave — https://www.boristhebrave.com/2019/07/14/dungeon-generation-in-diablo-1/
+- Diablo 2 level presets and warps, The Phrozen Keep — https://d2mods.info/forum/viewtopic.php?t=58651
+- Diablo 3 level generation and its three layout classes, DiabloFans — https://www.diablofans.com/news/47142-anniversary-update-level-generation-beta
+- Procedural World Generation in Path of Exile, Rhys Abraham (senior programmer, Grinding Gear Games), ExileCon 2019 — https://www.youtube.com/watch?v=EXnoHTqO7TE
+- Last Epoch dungeons: fixed maps with moving roadblocks, Icy Veins — https://www.icy-veins.com/last-epoch/last-epoch-dungeons-guide
+- Diablo 4 dungeons reworked to reduce backtracking, GameSpot — https://www.gamespot.com/articles/diablo-4-dungeons-are-becoming-less-repetitive-and-tedious-thanks-to-beta-feedback/1100-6513284/
+- Procedural Content Generation Overview, Unreal Engine 5.8 documentation — https://dev.epicgames.com/documentation/unreal-engine/procedural-content-generation-overview
+- Diablo 3 Greater Rift speed brackets, for pacing comparison, Maxroll — https://maxroll.gg/d3/resources/greater-rift-explained
+
+---
+
 ## 2026-08-20 — A creature does not burn itself or its own side
 
 **Affects:** section V's rider list and the Hellhound and Gatekeeper subsections
