@@ -4,11 +4,15 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "Dungeon/CataclysmFloorPopulation.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
@@ -341,6 +345,38 @@ namespace CataclysmDungeonModeTest
 		IConsoleVariable* Variable = nullptr;
 		int32 Previous = 0;
 	};
+
+	/**
+	 * The same for a console variable holding a number with a fraction.
+	 *
+	 * A SEPARATE TYPE RATHER THAN A TEMPLATE. `IConsoleVariable` has a separate
+	 * `GetFloat` and `GetInt`, and `GetInt` on a float variable truncates, so a
+	 * scope guard that read the wrong one would restore 0.25 as 0 and silently
+	 * empty every floor in every test after it.
+	 */
+	struct FScopedConsoleFloat
+	{
+		FScopedConsoleFloat(const TCHAR* Name, float Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedConsoleFloat()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = 0.0f;
+	};
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSeedControlTest,
@@ -542,6 +578,338 @@ bool FCataclysmDungeonModeLayoutControlTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("and the count itself is not a layout"),
 				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
 	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Creatures on the floor
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeClassForTest,
+	"Cataclysm.DungeonMode.EveryCreatureThePlannerCanNameHasACharacterClass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeClassForTest::RunTest(const FString& Parameters)
+{
+	// THE FAULT THIS RULES OUT IS SILENT AND SURVIVES EVERY OTHER TEST. The
+	// populator names creatures with a plain enum so it can be swept headlessly;
+	// the game mode maps each name to a class. A creature added to the enum and
+	// forgotten in that map is a creature the populator places and nothing
+	// spawns, so the floor is quietly short of creatures and every count in
+	// every log line still looks reasonable.
+	for (uint8 Which = 0; Which < static_cast<uint8>(ECataclysmDungeonCreature::Count); ++Which)
+	{
+		const ECataclysmDungeonCreature Creature =
+			static_cast<ECataclysmDungeonCreature>(Which);
+
+		TestNotNull(FString::Printf(TEXT("a %s can be spawned"),
+					CataclysmDungeonCreatureName(Creature)),
+					ACataclysmDungeonGameMode::ClassFor(Creature).Get());
+	}
+
+	// AND NO ORDINARY FLOOR CARRIES THE BOSS. The design places a Gatekeeper at
+	// the end of a dungeon, one per dungeon. Nothing holds a floor count yet --
+	// that is issue #41 -- so the way to keep the promise today is that no
+	// creature the populator can name maps to it.
+	for (uint8 Which = 0; Which < static_cast<uint8>(ECataclysmDungeonCreature::Count); ++Which)
+	{
+		const ECataclysmDungeonCreature Creature =
+			static_cast<ECataclysmDungeonCreature>(Which);
+
+		TestNotEqual(FString::Printf(
+			TEXT("a %s is not the boss"), CataclysmDungeonCreatureName(Creature)),
+			ACataclysmDungeonGameMode::ClassFor(Creature).Get(),
+			static_cast<UClass*>(ACataclysmGatekeeperCharacter::StaticClass()));
+	}
+
+	// THE CONTROL. Without it the loop above passes on a `ClassFor` that returns
+	// null for everything, which is exactly the failure it is written against.
+	TestEqual(TEXT("and the map really is a map: an Imp gives the Imp class"),
+		ACataclysmDungeonGameMode::ClassFor(ECataclysmDungeonCreature::Imp).Get(),
+		static_cast<UClass*>(ACataclysmImpCharacter::StaticClass()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModePopulatesTest,
+	"Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModePopulatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// POPULATING BEFORE THERE IS A FLOOR PLACES NOTHING AND SAYS SO. A silent
+	// success here would put sixty creatures at the world origin.
+	TestEqual(TEXT("nothing can be placed before a floor has been built"),
+			  Mode->PopulateFloor(), 0);
+
+	ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built a floor"), Floor))
+	{
+		return false;
+	}
+
+	// BUILDING A FLOOR DOES NOT POPULATE IT. The two are separate calls so that a
+	// test wanting only geometry does not pay for spawned characters, and so that
+	// walking an empty floor is one console command.
+	TestEqual(TEXT("building a floor puts nothing on it by itself"),
+			  Mode->FloorEnemies.Num(), 0);
+
+	const int32 Spawned = Mode->PopulateFloor();
+	TestTrue(FString::Printf(TEXT("populating it spawned creatures: %d"), Spawned),
+			 Spawned > 0);
+	TestEqual(TEXT("and the game mode remembers all of them"),
+			  Mode->FloorEnemies.Num(), Spawned);
+
+	int32 InRock = 0;
+	int32 SunkIntoTheGround = 0;
+	int32 Bosses = 0;
+
+	// HOW FAR THE BOTTOM OF A CAPSULE ENDS UP FROM THE WALKING SURFACE, at both
+	// ends. A count on its own says the height is wrong and nothing about
+	// whether it is a centimetre or a metre, and the two mean different faults.
+	float LowestOffset = MAX_flt;
+	float HighestOffset = -MAX_flt;
+
+	for (ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+
+		if (Enemy->IsA(ACataclysmGatekeeperCharacter::StaticClass()))
+		{
+			++Bosses;
+		}
+
+		const FVector Where = Enemy->GetActorLocation();
+		const FIntPoint Cell = Floor->CellOfWorld(Where);
+
+		if (!Floor->GetPlan().IsFloor(Cell))
+		{
+			++InRock;
+			continue;
+		}
+
+		// ITS CAPSULE'S BOTTOM RESTS ON THE WALKING SURFACE. A character is a
+		// capsule whose origin is its middle, so putting that origin on the
+		// surface buries the lower half. The six creatures placed here are
+		// between 87.95 and 114 cm in half height and none of them is the base
+		// enemy's 80, so a single shared correction would be wrong for all six.
+		const UCapsuleComponent* Capsule = Enemy->GetCapsuleComponent();
+		const float HalfHeight = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 0.0f;
+		const float Surface = Floor->WorldOfCell(Cell).Z;
+		const float Offset = Where.Z - HalfHeight - Surface;
+
+		LowestOffset = FMath::Min(LowestOffset, Offset);
+		HighestOffset = FMath::Max(HighestOffset, Offset);
+
+		// A BAND RATHER THAN A SINGLE HEIGHT, AND THE REASON IS THE ENGINE'S AND
+		// NOT THIS PROJECT'S. A creature is spawned with its capsule bottom
+		// exactly on the surface, and Unreal's character movement then settles it
+		// a little way clear of the ground: `MAX_FLOOR_DIST` is 2.4 cm and every
+		// creature measured on 2026-08-21 ended up at exactly that. Asserting an
+		// exact height failed on 74 of 105 creatures for that reason alone.
+		//
+		// WHAT THE BAND STILL CATCHES is the fault worth catching: a creature
+		// buried in the floor, which is a negative offset, and one hanging in the
+		// air, which is a large positive one. Both are what a wrong capsule half
+		// height produces, and the six creatures here differ by 26 cm in half
+		// height so a shared constant would be wrong by far more than this band.
+		constexpr float DeepestAllowedCm = -0.5f;
+		constexpr float HighestAllowedCm = 5.0f;
+
+		if (Offset < DeepestAllowedCm || Offset > HighestAllowedCm)
+		{
+			++SunkIntoTheGround;
+		}
+	}
+
+	TestEqual(TEXT("no creature stands in solid rock"), InRock, 0);
+	TestEqual(FString::Printf(
+		TEXT("every creature rests on the walking surface rather than in it or "
+			 "above it; the capsule bottoms sat between %.2f and %.2f cm from "
+			 "the surface"), LowestOffset, HighestOffset),
+		SunkIntoTheGround, 0);
+	TestEqual(TEXT("and no boss is on an ordinary floor"), Bosses, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeClearsOldCreaturesTest,
+	"Cataclysm.DungeonMode.GoingToAnotherFloorRemovesTheLastFloorsCreatures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeClearsOldCreaturesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// THE SHAPE TAKING THE STAIRS WILL USE, and the fault it must not have.
+	// `BuildFloor` replaces the floor inside the same actor, so creatures from
+	// the floor before would be left standing in mid-air over the new one, or
+	// inside its rock, still hunting the player. Nothing at run time reports it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// A THIN FLOOR ON PURPOSE. This test is about removal and not about density,
+	// and spawning two full floors' worth of characters to prove it would be
+	// slower for no extra evidence.
+	Mode->EnemyScale = 0.1f;
+	Mode->FloorNumber = 1;
+
+	if (!TestNotNull(TEXT("it built the first floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and put creatures on it"), Mode->PopulateFloor() > 0))
+	{
+		return false;
+	}
+
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> FromTheFirstFloor;
+	for (ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		FromTheFirstFloor.Add(Enemy);
+	}
+
+	Mode->FloorNumber = 2;
+	if (!TestNotNull(TEXT("it built the second floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	const int32 OnTheSecond = Mode->PopulateFloor();
+	TestTrue(TEXT("and put creatures on that one too"), OnTheSecond > 0);
+
+	int32 Survivors = 0;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Old : FromTheFirstFloor)
+	{
+		if (Old.IsValid() && !Old->IsActorBeingDestroyed())
+		{
+			++Survivors;
+		}
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("none of the first floor's %d creatures is still in the world"),
+		FromTheFirstFloor.Num()), Survivors, 0);
+	TestEqual(TEXT("and the game mode's list holds only the new floor's"),
+			  Mode->FloorEnemies.Num(), OnTheSecond);
+
+	// AND CLEARING BY HAND EMPTIES IT, which is what an empty floor needs.
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("clearing removes every creature from the list"),
+			  Mode->FloorEnemies.Num(), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeEnemyScaleTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForMoreCreaturesOrForNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeEnemyScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->EnemyScale = 0.25f;
+
+	// BELOW ZERO MEANS "USE THE SETTING" HERE AND ZERO DOES NOT, unlike the seed
+	// and floor controls, because zero is a real answer: it is a floor with
+	// nothing on it.
+	{
+		FScopedConsoleFloat Untouched(TEXT("Cataclysm.DungeonEnemyScale"), -1.0f);
+		TestEqual(TEXT("below zero, the game mode's own setting decides"),
+				  Mode->ChooseEnemyScale(), 0.25f);
+	}
+	{
+		FScopedConsoleFloat Asked(TEXT("Cataclysm.DungeonEnemyScale"), 2.0f);
+		TestEqual(TEXT("a number at or above zero is the density used"),
+				  Mode->ChooseEnemyScale(), 2.0f);
+	}
+
+	// A NEGATIVE SETTING IS NOT A NEGATIVE NUMBER OF CREATURES. The property
+	// carries a clamp in the editor; a default saved before that clamp existed
+	// would not be re-clamped, and a negative reaching the populator would ask
+	// for a negative count.
+	{
+		FScopedConsoleFloat Untouched(TEXT("Cataclysm.DungeonEnemyScale"), -1.0f);
+		Mode->EnemyScale = -5.0f;
+		TestEqual(TEXT("a negative setting is read as an empty floor"),
+				  Mode->ChooseEnemyScale(), 0.0f);
+		Mode->EnemyScale = 0.25f;
+	}
+
+	// AND IT REACHES THE FLOOR THAT IS BUILT. A console variable nothing reads is
+	// a control that does nothing, which is the failure the layout control's own
+	// test was written against.
+	if (!TestNotNull(TEXT("it built a floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	int32 WithNone = 0;
+	{
+		FScopedConsoleFloat Empty(TEXT("Cataclysm.DungeonEnemyScale"), 0.0f);
+		WithNone = Mode->PopulateFloor();
+	}
+
+	int32 WithSome = 0;
+	{
+		FScopedConsoleFloat Some(TEXT("Cataclysm.DungeonEnemyScale"), 0.1f);
+		WithSome = Mode->PopulateFloor();
+	}
+
+	int32 WithMore = 0;
+	{
+		FScopedConsoleFloat More(TEXT("Cataclysm.DungeonEnemyScale"), 0.4f);
+		WithMore = Mode->PopulateFloor();
+	}
+
+	TestEqual(TEXT("a scale of zero leaves the floor empty"), WithNone, 0);
+	TestTrue(FString::Printf(TEXT("a small scale puts some on it: %d"), WithSome),
+			 WithSome > 0);
+	TestTrue(FString::Printf(
+		TEXT("and a larger scale puts more on it: %d against %d"),
+		WithMore, WithSome), WithMore > WithSome);
 
 	return true;
 }

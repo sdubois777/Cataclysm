@@ -2,6 +2,14 @@
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
 
+#include "Cataclysm.h"
+#include "Character/CataclysmAbyssalWardenCharacter.h"
+#include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmCorruptedSentinelCharacter.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmHellhoundCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
@@ -57,6 +65,28 @@ namespace
 			 "setting, 0 Halls, 1 Caverns, 2 Arena."),
 		ECVF_Default);
 
+	/**
+	 * How dense the floor's creatures are. Below 0 uses the game mode's setting.
+	 *
+	 * BELOW ZERO RATHER THAN ZERO MEANS "USE THE SETTING", unlike the seed and
+	 * floor controls above, because zero is a real answer here: it is a floor
+	 * with nothing standing on it, which is what walking one to look at its shape
+	 * wants. The layout control takes -1 for the same reason.
+	 *
+	 * WHAT IT IS FOR. How many creatures a floor should hold is the one number in
+	 * this feature that the design document does not answer and that nobody has
+	 * played. Being able to type another one and press Play again is how it gets
+	 * judged rather than argued.
+	 */
+	static float GCataclysmDungeonEnemyScaleOverride = -1.0f;
+	static FAutoConsoleVariableRef CVarCataclysmDungeonEnemyScale(
+		TEXT("Cataclysm.DungeonEnemyScale"),
+		GCataclysmDungeonEnemyScaleOverride,
+		TEXT("How many creatures a dungeon floor holds, as a multiple of the "
+			 "designed density. Below 0 uses the game mode's own setting, 0 "
+			 "empties the floor, 1 is the designed density, 2 is twice as many."),
+		ECVF_Default);
+
 	/** How far above the walking surface a pawn's capsule middle has to sit. */
 	float DungeonGameModeStandingHeightOf(const APawn* Pawn)
 	{
@@ -68,6 +98,34 @@ namespace
 
 		// A pawn with no capsule is not a character. Placing it exactly on the
 		// surface is the honest answer: there is no half height to raise it by.
+		return 0.0f;
+	}
+
+	/**
+	 * The same question for a creature that has not been spawned yet.
+	 *
+	 * READ FROM THE CLASS DEFAULT OBJECT rather than corrected by a constant. The
+	 * sandbox's spawners each carry their own `RiseCm` worked out from a base
+	 * enemy's 80 cm capsule, which is six copies of the same arithmetic and six
+	 * chances for one to be left behind when a creature is resized. The default
+	 * object already holds the answer.
+	 *
+	 * A SEPARATE NAME RATHER THAN AN OVERLOAD, because a `TSubclassOf` converts
+	 * to a `UClass*` and an overload set that also takes a pointer is a place for
+	 * the wrong one to be chosen silently.
+	 */
+	float DungeonGameModeStandingHeightOfClass(
+		const TSubclassOf<ACataclysmEnemyCharacter>& Class)
+	{
+		const ACataclysmEnemyCharacter* Default =
+			Class ? Class->GetDefaultObject<ACataclysmEnemyCharacter>() : nullptr;
+
+		if (const UCapsuleComponent* Capsule =
+				Default ? Default->GetCapsuleComponent() : nullptr)
+		{
+			return Capsule->GetScaledCapsuleHalfHeight();
+		}
+
 		return 0.0f;
 	}
 }
@@ -84,6 +142,11 @@ void ACataclysmDungeonGameMode::StartPlay()
 	// parent starts the save writer, which records the floor being stood on, and
 	// a floor that does not exist yet is one the record cannot describe.
 	BuildFloor();
+
+	// AND ITS CREATURES ARE PUT ON IT. Separate from building it, because a test
+	// that only wants the geometry should not pay for sixty spawned characters,
+	// and because `Cataclysm.DungeonEnemyScale 0` is how a floor is walked empty.
+	PopulateFloor();
 
 	Super::StartPlay();
 
@@ -142,6 +205,20 @@ ECataclysmFloorLayout ACataclysmDungeonGameMode::ChooseLayout() const
 	return Layout;
 }
 
+float ACataclysmDungeonGameMode::ChooseEnemyScale() const
+{
+	if (GCataclysmDungeonEnemyScaleOverride >= 0.0f)
+	{
+		return GCataclysmDungeonEnemyScaleOverride;
+	}
+
+	// CLAMPED RATHER THAN TRUSTED, the same as the layout control. The setting
+	// carries `ClampMin` in the editor and a Blueprint default set before that
+	// meta was added would not be re-clamped, so a negative here would silently
+	// mean "read the console variable" a second time.
+	return FMath::Max(0.0f, EnemyScale);
+}
+
 ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 {
 	UWorld* World = GetWorld();
@@ -188,4 +265,193 @@ bool ACataclysmDungeonGameMode::PlaceAtEntrance(APawn* Pawn)
 	// between here and there and leave the player inside it.
 	return Pawn->TeleportTo(Standing, Pawn->GetActorRotation(),
 						    /*bIsATest=*/false, /*bNoCheck=*/true);
+}
+
+// ---------------------------------------------------------------------------
+// Putting creatures on the floor
+// ---------------------------------------------------------------------------
+
+TSubclassOf<ACataclysmEnemyCharacter> ACataclysmDungeonGameMode::ClassFor(
+	ECataclysmDungeonCreature Creature)
+{
+	switch (Creature)
+	{
+	case ECataclysmDungeonCreature::Imp:
+		return ACataclysmImpCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Hellhound:
+		return ACataclysmHellhoundCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Brute:
+		return ACataclysmBruteCharacter::StaticClass();
+	case ECataclysmDungeonCreature::AbyssalWarden:
+		return ACataclysmAbyssalWardenCharacter::StaticClass();
+	case ECataclysmDungeonCreature::CorruptedSentinel:
+		return ACataclysmCorruptedSentinelCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Succubus:
+		return ACataclysmSuccubusCharacter::StaticClass();
+	default:
+		// NOT A FALLBACK TO SOMETHING SPAWNABLE, deliberately. A creature added
+		// to the enum and forgotten here should show up as a creature that never
+		// appears, which a test can see, rather than as a floor quietly full of
+		// Imps, which nothing can.
+		return nullptr;
+	}
+}
+
+void ACataclysmDungeonGameMode::ApplyDesignedStats(
+	ACataclysmEnemyCharacter* Enemy, ECataclysmDungeonCreature Creature) const
+{
+	if (!Enemy)
+	{
+		return;
+	}
+
+	switch (Creature)
+	{
+	case ECataclysmDungeonCreature::Imp:
+		Enemy->SetHealth(ImpHealth);
+		Enemy->SetAttackDamage(ImpAttackDamage);
+		// NO SetArmour CALL. See the header: this creature's designed armour
+		// share is exactly zero and it is the only one in the roster with none.
+		Enemy->SetRarityStep(RarityStepFor(ImpRarityStep, Enemy));
+		break;
+
+	case ECataclysmDungeonCreature::Hellhound:
+		Enemy->SetHealth(HellhoundHealth);
+		Enemy->SetArmour(HellhoundArmour);
+		Enemy->SetAttackDamage(HellhoundAttackDamage);
+		Enemy->SetRarityStep(RarityStepFor(HellhoundRarityStep, Enemy));
+		break;
+
+	case ECataclysmDungeonCreature::Brute:
+		Enemy->SetHealth(BruteHealth);
+		Enemy->SetArmour(BruteArmour);
+		Enemy->SetAttackDamage(BruteAttackDamage);
+		Enemy->SetRarityStep(RarityStepFor(BruteRarityStep, Enemy));
+		break;
+
+	case ECataclysmDungeonCreature::AbyssalWarden:
+		Enemy->SetHealth(AbyssalWardenHealth);
+		Enemy->SetArmour(AbyssalWardenArmour);
+		Enemy->SetAttackDamage(AbyssalWardenAttackDamage);
+		Enemy->SetRarityStep(RarityStepFor(AbyssalWardenRarityStep, Enemy));
+		break;
+
+	case ECataclysmDungeonCreature::CorruptedSentinel:
+		Enemy->SetHealth(CorruptedSentinelHealth);
+		Enemy->SetArmour(CorruptedSentinelArmour);
+		Enemy->SetAttackDamage(CorruptedSentinelAttackDamage);
+		Enemy->SetRarityStep(RarityStepFor(CorruptedSentinelRarityStep, Enemy));
+		break;
+
+	case ECataclysmDungeonCreature::Succubus:
+		Enemy->SetHealth(SuccubusHealth);
+		Enemy->SetArmour(SuccubusArmour);
+		Enemy->SetAttackDamage(SuccubusAttackDamage);
+		Enemy->SetRarityStep(RarityStepFor(SuccubusRarityStep, Enemy));
+		break;
+
+	default:
+		break;
+	}
+}
+
+void ACataclysmDungeonGameMode::ClearFloorEnemies()
+{
+	for (ACataclysmEnemyCharacter* Enemy : FloorEnemies)
+	{
+		// ALREADY GONE IS THE ORDINARY CASE, not an error: the player kills
+		// creatures, and a killed one destroys itself once its death animation
+		// has played.
+		if (IsValid(Enemy))
+		{
+			// DESTROYING THE PAWN DESTROYS ITS BRAIN TOO. `APawn::Destroyed`
+			// detaches the controller, and `AController::PawnPendingDestroy`
+			// destroys any controller with no player state, which every AI
+			// controller here is. Doing it by hand as well would be destroying
+			// an actor twice.
+			Enemy->Destroy();
+		}
+	}
+
+	FloorEnemies.Reset();
+}
+
+int32 ACataclysmDungeonGameMode::PopulateFloor()
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return 0;
+	}
+
+	// FIRST, because this is called again every time the floor is replaced.
+	ClearFloorEnemies();
+
+	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
+		CurrentFloor->GetPlan(), ChooseEnemyScale());
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	const FVector Entrance = CurrentFloor->EntranceWorld();
+
+	int32 Spawned = 0;
+	for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+	{
+		const TSubclassOf<ACataclysmEnemyCharacter> Class = ClassFor(Placement.Creature);
+		if (!Class)
+		{
+			continue;
+		}
+
+		// RAISED BY ITS OWN CAPSULE'S HALF HEIGHT, read from the class rather
+		// than assumed, because the six creatures placed here range from 87.95
+		// to 114 cm and none of them is the base enemy's 80. Putting a capsule's
+		// middle on the walking surface buries its lower half in the ground,
+		// which is the same fault `PlaceAtEntrance` above exists to avoid for the
+		// player.
+		const FVector Where = CurrentFloor->WorldOfCell(Placement.Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+
+		// FACING THE WAY THE PLAYER WILL COME FROM, flattened so nothing leans
+		// back to look up a slope. It costs nothing and it means a group reads as
+		// waiting rather than as six creatures pointing in six directions.
+		FVector Toward = Entrance - Where;
+		Toward.Z = 0.0f;
+		const FRotator Facing = Toward.IsNearlyZero()
+			? FRotator::ZeroRotator : Toward.Rotation();
+
+		ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(
+			Class, Where, Facing, SpawnParams);
+		if (!Enemy)
+		{
+			continue;
+		}
+
+		ApplyDesignedStats(Enemy, Placement.Creature);
+
+		FloorEnemies.Add(Enemy);
+		++Spawned;
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d creatures on the dungeon floor in %d groups: %d Imps, %d "
+			 "Hellhounds, %d Brutes, %d Abyssal Wardens, %d Corrupted Sentinels "
+			 "and %d Succubi. The floor has %d walkable cells and the density "
+			 "asked for %d. No creature stands within %d cells of where the "
+			 "player arrives, and no two group middles are within %d cells of "
+			 "each other."),
+		Spawned, Population.PackCount,
+		Population.HowMany(ECataclysmDungeonCreature::Imp),
+		Population.HowMany(ECataclysmDungeonCreature::Hellhound),
+		Population.HowMany(ECataclysmDungeonCreature::Brute),
+		Population.HowMany(ECataclysmDungeonCreature::AbyssalWarden),
+		Population.HowMany(ECataclysmDungeonCreature::CorruptedSentinel),
+		Population.HowMany(ECataclysmDungeonCreature::Succubus),
+		CurrentFloor->GetPlan().FloorCount(), Population.Wanted,
+		FCataclysmFloorPopulator::LeastCellsFromEntrance,
+		FCataclysmFloorPopulator::LeastCellsBetweenPacks);
+
+	return Spawned;
 }

@@ -5,9 +5,12 @@
 #include "CoreMinimal.h"
 #include "Player/CataclysmGameMode.h"
 #include "Dungeon/CataclysmFloorPlan.h"
+#include "Dungeon/CataclysmFloorPopulation.h"
+#include "Templates/SubclassOf.h"
 #include "CataclysmDungeonGameMode.generated.h"
 
 class ACataclysmDungeonFloor;
+class ACataclysmEnemyCharacter;
 
 /**
  * Puts the player on a generated dungeon floor when play begins.
@@ -25,9 +28,18 @@ class ACataclysmDungeonFloor;
  * sandbox's flat floor is, and is as likely to be inside solid rock on a
  * generated floor as on the ground.
  *
- * WHAT IT DOES NOT DO YET. It places no enemies, and taking the stairs does
- * nothing: `FloorNumber` is a setting rather than something the game advances.
- * Both are the next piece of work.
+ * IT PUTS CREATURES ON THE FLOOR, and does it from the floor plan rather than
+ * from an offset. `FCataclysmFloorPopulator` decides which creature stands on
+ * which cell; `PopulateFloor` below turns that list into characters. The
+ * decision and the spawning are separate for the reason the floor plan itself is
+ * separate from the geometry: the automation tests run with `-nullrhi`, so a
+ * list of cells can be swept over a thousand seeds and sixty spawned characters
+ * cannot.
+ *
+ * WHAT IT DOES NOT DO YET. Taking the stairs does nothing: `FloorNumber` is a
+ * setting rather than something the game advances. That is the next piece of
+ * work. There is also no boss, because a boss belongs at the end of a dungeon
+ * and nothing holds a floor count -- issue #41.
  */
 UCLASS(Config = Game)
 class CATACLYSM_API ACataclysmDungeonGameMode : public ACataclysmGameMode
@@ -60,21 +72,39 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
 
+	/**
+	 * How many creatures the floor holds, as a multiple of the designed density.
+	 *
+	 * ONE MEANS `FCataclysmFloorPopulator::EnemiesPerWalkableCell`, which puts
+	 * roughly 48 to 88 creatures on a typical floor. Zero empties the floor,
+	 * which is what walking one to look at its shape wants.
+	 *
+	 * THE NUMBER OF CREATURES IS NOT A SETTING AND SHOULD NOT BECOME ONE. Floor
+	 * size is rolled per floor, so a count would make a small floor crowded and a
+	 * large one empty. What is settable is how dense, and this is that.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon", meta = (ClampMin = "0"))
+	float EnemyScale = 1.0f;
+
 	// ----------------------------------------------------------------------
 	// Looking at another floor without rebuilding
 	// ----------------------------------------------------------------------
 	//
-	// THE THREE SETTINGS ABOVE CANNOT BE CHANGED WITHOUT A REBUILD. They are
+	// THE FOUR SETTINGS ABOVE CANNOT BE CHANGED WITHOUT A REBUILD. They are
 	// `EditDefaultsOnly` on a C++ class, and `L_Dungeon`'s world settings point
 	// at that class directly rather than at a Blueprint, so there is nothing in
-	// the editor to edit them on. Three console variables answer each of them
+	// the editor to edit them on. Four console variables answer each of them
 	// instead, and each is read once when the floor is built:
 	//
-	//     Cataclysm.DungeonSeed    0 uses the setting, above 0 is that dungeon,
-	//                              -1 rolls a new one every time play begins
-	//     Cataclysm.DungeonFloor   0 uses the setting, above 0 is that floor
-	//     Cataclysm.DungeonLayout  -1 uses the setting, 0 Halls, 1 Caverns,
-	//                              2 Arena
+	//     Cataclysm.DungeonSeed        0 uses the setting, above 0 is that
+	//                                  dungeon, -1 rolls a new one every time
+	//                                  play begins
+	//     Cataclysm.DungeonFloor       0 uses the setting, above 0 is that floor
+	//     Cataclysm.DungeonLayout      -1 uses the setting, 0 Halls, 1 Caverns,
+	//                                  2 Arena
+	//     Cataclysm.DungeonEnemyScale  below 0 uses the setting, 0 empties the
+	//                                  floor, 1 is the designed density, 2 is
+	//                                  twice as many
 	//
 	// ROLLING A SEED DOES NOT MAKE GENERATION RANDOM, and the difference
 	// matters. The generator is deterministic and has to stay so: a dungeon must
@@ -103,6 +133,17 @@ public:
 	/** The layout family that will actually be used, console variable included. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout ChooseLayout() const;
+
+	/**
+	 * How dense the floor's creatures will be, console variable included.
+	 *
+	 * BELOW ZERO AT THE CONSOLE MEANS "USE THE SETTING", not zero, because zero
+	 * is a real answer here: it is a floor with nothing on it, which is what
+	 * walking one to look at its shape wants. The layout control next door takes
+	 * -1 for the same reason.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	float ChooseEnemyScale() const;
 
 	/**
 	 * What the save record calls this dungeon.
@@ -149,9 +190,75 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	TObjectPtr<ACataclysmDungeonFloor> CurrentFloor;
 
+	// ----------------------------------------------------------------------
+	// Putting creatures on it
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Puts creatures on the floor that has been built, removing any left from
+	 * the floor before.
+	 *
+	 * SEPARATE FROM `BuildFloor` RATHER THAN PART OF IT, so that a test which
+	 * only wants to check the geometry does not pay for sixty spawned characters,
+	 * and so that walking an empty floor is one call rather than a setting. The
+	 * sandbox's creature spawners are split from its `StartPlay` for the same
+	 * reason and say so.
+	 *
+	 * REMOVING THE OLD ONES IS NOT TIDINESS. Going down the stairs replaces the
+	 * floor in the same actor, and creatures from the floor before would be left
+	 * standing in mid-air, or inside the new floor's rock, still hunting the
+	 * player.
+	 *
+	 * @return how many were spawned
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	int32 PopulateFloor();
+
+	/** Removes every creature this game mode put on the floor. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	void ClearFloorEnemies();
+
+	/** Every creature standing on the current floor, in the order placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	TArray<TObjectPtr<ACataclysmEnemyCharacter>> FloorEnemies;
+
+	/**
+	 * Which character class stands in for one of the designed creatures.
+	 *
+	 * THE ONE PLACE THE TWO HALVES MEET. `FCataclysmFloorPopulator` names
+	 * creatures with a plain enum so that it stays free of actor classes and can
+	 * be swept in a headless test; this turns a name into something spawnable.
+	 *
+	 * STATIC AND PUBLIC so a test can check that every creature the populator can
+	 * name has a class, which is the failure this would otherwise have: a new
+	 * creature added to the enum, forgotten here, and silently never spawned.
+	 *
+	 * @return null for a creature with no class, which nothing should produce
+	 */
+	static TSubclassOf<ACataclysmEnemyCharacter> ClassFor(ECataclysmDungeonCreature Creature);
+
 	/** The dungeon's name, so the save record does not say "Sandbox". */
 	virtual FName RunFloorName() const override { return DungeonName; }
 
 	/** Which floor of it. See `RunFloorName`. */
 	virtual int32 RunFloorNumber() const override { return FloorNumber; }
+
+protected:
+
+	/**
+	 * Gives one spawned creature the health, armour and attack damage its design
+	 * calls for, and rolls its rarity.
+	 *
+	 * THE SAME FIGURES THE SANDBOX USES, read from the same settings on
+	 * `ACataclysmGameMode`, so a Brute in a dungeon and a Brute in the sandbox
+	 * are the same creature. A second set of numbers here would be a second
+	 * place for them to drift from the design model.
+	 *
+	 * THE IMP IS GIVEN NO ARMOUR ON PURPOSE. Its designed armour share is exactly
+	 * zero and it is the only creature in the roster with none, so calling
+	 * `SetArmour(0)` would look like a figure somebody chose. The sandbox's own
+	 * Imp spawner says the same thing.
+	 */
+	void ApplyDesignedStats(ACataclysmEnemyCharacter* Enemy,
+							ECataclysmDungeonCreature Creature) const;
 };
