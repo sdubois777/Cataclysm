@@ -145,26 +145,40 @@ def test_no_save_system_claim_is_still_true() -> None:
     )
 
 
-def test_no_empire_runtime_claim_is_still_true() -> None:
-    """`CataclysmEmpire` is a module with a build file and nothing in it."""
-    if "No empire layer runtime" not in readme_text():
-        pytest.skip("The readme no longer claims the empire module is empty.")
+def test_the_empire_layer_claim_is_still_true() -> None:
+    """`CataclysmEmpire` holds a day clock and nothing else.
+
+    THE CLAIM NARROWED RATHER THAN GOING AWAY. It used to say the module was
+    empty and it was, until `UCataclysmDayClock` landed for issue #41. What is
+    still true is what is still missing -- cities, surges, the consequence of a
+    dungeon resolving, and the upgrade tree -- and this is what notices when that
+    stops being true.
+
+    A SKIP HERE WOULD MEAN THE GUARD DID NOT RUN, which is why the phrase it
+    looks for is part of the sentence about what is missing rather than the old
+    headline. Rewriting the bullet without saying what is missing turns this off.
+    """
+    if "Cities, surges" not in readme_text():
+        pytest.skip("The readme no longer says what the empire layer is missing.")
 
     empire = GAME_SOURCE / "CataclysmEmpire"
-    boilerplate = {
+    expected = {
         "CataclysmEmpire.Build.cs",
         "CataclysmEmpire.cpp",
         "CataclysmEmpire.h",
+        "CataclysmDayClock.h",
+        "CataclysmDayClock.cpp",
+        "CataclysmDayClockTests.cpp",
     }
-    real = sorted(
+    unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()
         for path in empire.rglob("*")
-        if path.is_file() and path.name not in boilerplate
+        if path.is_file() and path.name not in expected
     )
-    assert not real, (
-        "game/README.md still says the empire layer has no runtime, but "
-        f"game/Source/CataclysmEmpire/ now holds: {', '.join(real)}. Delete that "
-        "bullet from the 'What is not here yet' section."
+    assert not unexpected, (
+        "game/README.md still says the empire layer holds only a day clock, but "
+        f"game/Source/CataclysmEmpire/ now also holds: {', '.join(unexpected)}. "
+        "Update that bullet in the 'What is not here yet' section."
     )
 
 

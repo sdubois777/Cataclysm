@@ -17,6 +17,14 @@ public class CataclysmEmpire : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		// This module uses a flat layout (DayClock/, Tests/) rather than the
+		// Public/Private split, the same as the Cataclysm module beside it and
+		// for the same reason recorded there. Without adding the module root,
+		// includes such as "DayClock/CataclysmDayClock.h" do not resolve, because
+		// UnrealBuildTool only adds Public and Private automatically. The failure
+		// is a plain "Cannot open include file" and it costs a build to find.
+		PublicIncludePaths.Add(ModuleDirectory);
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
