@@ -3344,7 +3344,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
 
 ## **Dungeon Basics**
 
-  - Procedurally generated layouts.
+  - Procedurally generated layouts. What a floor is spatially is under What a Floor Is below.
   - Each dungeon has: a time-to-clear estimate, a resolve timer, floor count, modifiers, and a dungeon score.
   - More floors = better rewards but more time cost.
   - Every dungeon has a boss on the final floor.
@@ -3353,6 +3353,36 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary).
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
   - Every dungeon defeated adds one floor to the Cataclysm boss dungeon.
+
+  
+
+## **What a Floor Is**
+
+A floor is **one level of the dungeon**: a single connected space with one entrance and one stairwell down, themed by the dungeon's Cataclysm and by its type and sub-type. A floor should take an efficient player between two and five minutes, including finding the stairs. One floor costs exactly one day of empire time, which is why a floor is a substantial space rather than a single room.
+
+  
+
+**A floor is built on a grid of cells, and a cell is four metres.** The default floor is 40 by 40 cells, which is 160 metres square. The grid decides which cells can be walked on before any art is chosen, and room pieces are placed onto the result afterwards. Deciding walkability separately is what makes two properties testable: the same seed always produces the same floor, and the stairs down can always be walked to.
+
+  
+
+**More than one layout family carves that grid**, so floors differ by theme rather than all looking alike:
+
+  - **Halls** — large rectangular rooms joined by corridors two cells wide.
+  - **Caverns** — rounded chambers with no straight walls.
+  - **Arena** — one open space. This is what a Horde dungeon's floor is, where a floor is a wave of enemies rather than a layout, and what a boss floor uses.
+
+  
+
+Which family each Cataclysm uses still has to be chosen. That there is a choice to make is settled.
+
+  
+
+**No floor is a maze of single-file passages.** A passage one cell wide can only be left the way it was entered, and a floor built of them is tedious to cross. The narrowest corridor is two cells, no floor has a dead end, and how much of a floor is single file is measured rather than assumed.
+
+  
+
+**A floor is generated from the dungeon's seed mixed with the floor number.** So floor 7 can be built without floors 1 to 6 ever existing, a dungeon is the same when the player leaves and returns, a bug in a floor is reproducible from its seed, and only the floor the player is standing on has to exist. A dungeon of 150 floors costs nothing to hold.
 
   
 
