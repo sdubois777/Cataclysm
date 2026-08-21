@@ -5401,11 +5401,11 @@ Two things. Everything else is read off `game/Data/WeaponSkills.csv`, `game/Data
 
   
 
-#### **Dread Cleave is the only telegraphed basic attack in the slice**
+#### **Dread Cleave is the only telegraphed basic attack that is a melee swing**
 
   
 
-A hammer sweep across a 120 degree cone, 2 metres out, warned for 0.97 seconds, every 3.0 seconds. The other six enemies' ordinary attacks are contact swings under the 1 metre marker floor; this one is drawn, because a hit that takes half the player's survivable damage cannot arrive unannounced. Its 2.0 metre radius is a judgement bounded twice — above the 1 metre floor, below the 3.85 metres its own interval would allow — so the basic swing stays visibly smaller than anything on a cooldown. Unlike every other basic attack it has no target cap: everything standing in the cone is hit.
+A hammer sweep across a 120 degree cone, 2 metres out, warned for 0.97 seconds, every 3.0 seconds. **Three of the seven enemies telegraph their ordinary attack, and this is the only one that is a melee swing** — the Corrupted Sentinel's Siege Bolt and the Succubus's Soulfire are the other two and both are projectiles fired from range. Of the four that go unmarked, the Abyssal Warden's Sunder, the Brute's Slam and the Hellhound's Maul all reach 0.9 metres, under the 1 metre marker floor; the Imp's Rend reaches 1.32 metres and is over that floor, and goes unmarked instead because its 0.9 second attack interval allows a marker of only 0.17 metres. This one is drawn because a hit that takes half the player's survivable damage cannot arrive unannounced. Its 2.0 metre radius is a judgement bounded twice — above the 1 metre floor, below the 3.85 metres its own interval would allow — so the basic swing stays visibly smaller than anything on a cooldown. **It has no target cap, and neither do the other two telegraphed basics**: those three are exactly the ordinary attacks that mark an area, and an area attack hits what is standing in it. The four contact swings each state `MaxTargets=1`.
 
   
 

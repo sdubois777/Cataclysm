@@ -453,3 +453,126 @@ def test_the_section_answers_the_dense_pack_readability_problem(section):
         "the section raises the dense-pack problem without stating the answer. "
         "The answer falls out of the same rule: the swarm enemies are excluded "
         "by their own attack speed, so no marker comes from a pack.")
+
+# --------------------------------------------------------------------------
+# What the rest of the document says about basic attacks
+#
+# THE THREE CHECKS BELOW READ THE WHOLE DOCUMENT, not the `section` fixture.
+# Every other test in this file reads the Attack Telegraphs subsection alone,
+# and that is exactly why issue #763 went unnoticed: both claims it found false
+# sit in the Gatekeeper's own section, several pages later, where nothing was
+# looking.
+# --------------------------------------------------------------------------
+
+def telegraphed_basic_attacks() -> list[tuple[str, str]]:
+    """Every designed enemy whose ORDINARY attack draws a marker, computed."""
+    from cataclysm_sim.enemy_abilities import ABILITIES, is_telegraphed
+    from cataclysm_sim.enemy_stats import archetype
+
+    return sorted(
+        (enemy, ability.name)
+        for enemy, abilities in ABILITIES.items()
+        for ability in abilities
+        if ability.slot == "Basic" and is_telegraphed(ability, archetype(enemy))
+    )
+
+
+def uncapped_basic_attacks() -> list[tuple[str, str]]:
+    """Every designed enemy whose ordinary attack hits more than one target."""
+    from cataclysm_sim.enemy_abilities import ABILITIES
+
+    return sorted(
+        (enemy, ability.name)
+        for enemy, abilities in ABILITIES.items()
+        for ability in abilities
+        if ability.slot == "Basic" and "MaxTargets" not in ability.params
+    )
+
+
+#: Ways of saying that exactly one enemy telegraphs its ordinary attack. The
+#: first is what the document said until 2026-08-21; the others are the obvious
+#: rewordings, listed so a reworded claim is caught too.
+LONE_TELEGRAPH_CLAIMS = (
+    "only telegraphed basic attack in the slice",
+    "only basic attack in the slice that is telegraphed",
+    "only enemy whose basic attack is telegraphed",
+    "only enemy that telegraphs its basic attack",
+    "only telegraphed ordinary attack in the slice",
+)
+
+
+def test_no_prose_claims_a_lone_telegraphed_basic_attack():
+    """**THE CLAIM ISSUE #763 FOUND FALSE.** The document said, under a heading
+    of its own, that the Gatekeeper's Dread Cleave is "the only telegraphed
+    basic attack in the slice". Three of the seven are, and the document's own
+    ability tables say so about the other two a few pages earlier.
+
+    It mattered because it was about to mislead: a builder reading that heading
+    would reasonably conclude a telegraphed ordinary attack is a special case
+    reserved for the boss, and give the next creature an unannounced one.
+    """
+    telegraphed = telegraphed_basic_attacks()
+    if len(telegraphed) == 1:
+        pytest.skip(
+            f"only {telegraphed[0][0]} telegraphs its basic attack, so the "
+            f"claim would be true and there is nothing to refuse. A skip means "
+            f"this did not run, not that it passed.")
+
+    text = GDD.read_text(encoding="utf-8").lower()
+    for claim in LONE_TELEGRAPH_CLAIMS:
+        assert claim not in text, (
+            f"docs/Cataclysm_GDD_v2.md says {claim!r}, and "
+            f"{len(telegraphed)} of the seven enemies telegraph their ordinary "
+            f"attack: {telegraphed}. What is true of Dread Cleave is that it "
+            f"is the only telegraphed basic that is a melee swing; the other "
+            f"two are projectiles. Issue #763.")
+
+
+def test_the_document_states_how_many_basic_attacks_are_telegraphed():
+    """A count written out in prose goes stale silently, so it is checked.
+
+    The document states it as a word rather than a numeral, which is its own
+    style throughout, so the word is what this looks for."""
+    telegraphed = telegraphed_basic_attacks()
+    words = {1: "one", 2: "two", 3: "three", 4: "four",
+             5: "five", 6: "six", 7: "seven"}
+
+    count = words.get(len(telegraphed))
+    assert count is not None, (
+        f"{len(telegraphed)} enemies telegraph their ordinary attack, which is "
+        f"outside the one-to-seven this check knows how to spell.")
+
+    text = unwrapped(GDD.read_text(encoding="utf-8")).lower()
+    sentence = f"{count} of the seven enemies telegraph their ordinary attack"
+
+    assert sentence in text, (
+        f"docs/Cataclysm_GDD_v2.md does not say {sentence!r}. "
+        f"{len(telegraphed)} do: {telegraphed}. The Gatekeeper's section states "
+        f"this count in prose and a count in prose goes stale in silence, which "
+        f"is what issue #763 was.")
+
+
+def test_the_basics_with_no_target_cap_are_exactly_the_telegraphed_ones():
+    """**THE SECOND CLAIM ISSUE #763's SECTION GOT WRONG**, which the issue
+    itself did not notice. The document said of Dread Cleave "Unlike every
+    other basic attack it has no target cap". Three basic attacks have no cap,
+    and they are the same three that are telegraphed.
+
+    THAT AGREEMENT IS NOT A COINCIDENCE AND IS WORTH HOLDING. A telegraphed
+    ordinary attack marks an area, and an area attack hits what is standing in
+    it; a contact swing hits the one thing it reaches. If the two sets ever
+    stop matching, one of the two rules has been broken and the document's
+    sentence saying they are the same set is wrong."""
+    telegraphed = telegraphed_basic_attacks()
+    uncapped = uncapped_basic_attacks()
+
+    assert telegraphed == uncapped, (
+        f"the basic attacks that are telegraphed are {telegraphed} and the "
+        f"ones with no MaxTargets are {uncapped}. The Gatekeeper's section in "
+        f"docs/Cataclysm_GDD_v2.md says those are the same set, because a "
+        f"marked area hits what stands in it and a contact swing hits one "
+        f"thing. Whichever changed, the document now says something false.")
+
+    assert len(telegraphed) > 1, (
+        f"only {telegraphed} is left, so the document's sentence about \"the "
+        f"other two telegraphed basics\" is now wrong.")
