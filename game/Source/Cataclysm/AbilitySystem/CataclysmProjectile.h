@@ -62,8 +62,13 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmProjectileFinished, ACataclysmProj
  * fire bolt and a thrown boulder the same appearance, because all 398 rows of
  * `game/Data/WeaponSkills.csv` come through here. Issues #403 and #404.
  *
- * NO PARTICLE EFFECT, on the other hand. That is a content gap and it is the
- * same gap `ACataclysmGroundZone` has.
+ * IT ALSO CARRIES A PARTICLE EFFECT, and that one IS baked in rather than being
+ * the caller's business, because it is the same shape for every projectile:
+ * `UCataclysmProjectileEffect::AttachTo` gives it the glowing head and the trail
+ * of `NS_Proj_Body`, coloured from the firer's damage type. One asset serves all
+ * eight types, so a Demonic bolt and a Void bolt differ by a data row rather
+ * than by an asset -- see `docs/Niagara_Conventions.md` section 5.
+ * `ACataclysmGroundZone` still has the gap this one used to have.
  *
  * WHY IT DEALS ITS OWN DAMAGE rather than calling back into the ability that
  * fired it. A projectile can outlive its caster, and an ability that ended

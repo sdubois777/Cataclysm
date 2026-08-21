@@ -38,14 +38,22 @@ the table below records.
 | Effect | Texture | Through which material |
 |---|---|---|
 | `NS_Impact_Point` | `T_Vfx_BasicDot` | `M_Impact_Sprite` |
+| `NS_Proj_Body` | `T_Vfx_BasicDot` | `M_Impact_Sprite` |
 
 Full path of the texture:
 `/Game/_SplineVFX/_GenericSource/Texture/T_Vfx_BasicDot.T_Vfx_BasicDot`.
 
 `M_Impact_Sprite` lives at `/Game/Effects/Materials/`, is authored by this
-project, and is the only thing that names the texture. Both of
-`NS_Impact_Point`'s emitters use that one material, so re-pointing the texture is
-a single edit in one place rather than an edit per emitter.
+project, and is the only thing that names the texture. All four emitters across
+the two systems use that one material, so re-pointing the texture is a single
+edit in one place rather than an edit per emitter.
+
+**Its name is now narrower than its use, and it was left alone deliberately.**
+It is not impact-specific in any way -- it is the project's unlit translucent
+sprite material, and the projectile's head and trail draw with it for exactly the
+reason the impact's two emitters do. Renaming a binary asset that two systems
+reference costs a re-point in both and buys a better name and nothing else, so it
+is worth doing when a third system needs it and not before.
 
 ## The textures worth knowing about
 
