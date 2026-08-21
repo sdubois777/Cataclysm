@@ -579,8 +579,13 @@ float ACataclysmBruteCharacter::MontageRateFor(float ImpactSeconds,
 	// needs a great deal of it: the rock does not leave its hand until 1.672
 	// seconds and its telegraph allows 1.000, so it plays at 1.67 and looks
 	// hurried. Issue #416 asks whether its telegraph should be longer.
-	return FMath::Clamp(FMath::Max(1.0f, ImpactSeconds / LandsAtSeconds),
-						MinimumPlayRate, MaximumPlayRate);
+	//
+	// **THE ARITHMETIC MOVED TO THE BASE ON 2026-08-21** so the Gatekeeper and
+	// the Succubus could use the same rule rather than a second copy of it.
+	// Issue #784. This function keeps its name and its montage-shaped signature
+	// because a dozen tests and three call sites use them.
+	return StrikeAlignedPlayRate(ImpactSeconds, LandsAtSeconds,
+								 MinimumPlayRate, MaximumPlayRate);
 }
 
 float ACataclysmBruteCharacter::MontageDelaySecondsFor(
@@ -593,13 +598,15 @@ float ACataclysmBruteCharacter::MontageDelaySecondsFor(
 	}
 
 	const float LandsAt = LandsAtSecondsFor(WindUpSecondsFor(Index));
-	const float Rate = MontageRateFor(Impact, LandsAt);
 
 	// WAIT OUT WHATEVER THE ANIMATION DOES NOT COVER. At rate 1 the ground smash
 	// takes 1.012 seconds to reach the ground and the attack lands at 1.500, so
-	// this is 0.488. Where the montage cannot fit at all the rate above has
-	// already compressed it, and this is zero.
-	return FMath::Max(0.0f, LandsAt - Impact / Rate);
+	// this is 0.488. Where the montage cannot fit at all the rate has already
+	// compressed it, and this is zero.
+	//
+	// SHARED WITH THE GATEKEEPER AND THE SUCCUBUS since 2026-08-21. Issue #784.
+	return StrikeAlignedDelaySeconds(Impact, LandsAt,
+									 MinimumPlayRate, MaximumPlayRate);
 }
 
 void ACataclysmBruteCharacter::PlayAbilityMontage(int32 Index)

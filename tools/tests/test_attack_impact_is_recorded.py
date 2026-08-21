@@ -89,7 +89,11 @@ def in_play_rows() -> dict[str, dict[str, str]]:
 
     found = {}
     for match in re.finditer(
-            r"\|\s*([A-Za-z ]+?)\s*\|\s*([\d.]+)\s*\|\s*([^|]+?)\s*\|"
+            # THE RATE CELL IS NOT A BARE NUMBER ANY MORE. Two creatures
+            # wait before starting their clip, so theirs reads "1.00, after
+            # waiting 0.689 s". Requiring a number here dropped both rows
+            # and the tests that use them failed reading "no such row".
+            r"\|\s*([A-Za-z ]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|"
             r"\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|",
             text[start:]):
         creature = match.group(1).strip()
@@ -208,94 +212,144 @@ def test_the_unmeasured_clips_are_named_rather_than_left_out():
 #: clip is fitted to. Only the creatures whose row states one figure rather than
 #: a range are here; the Imp and the Abyssal Warden alternate several clips and
 #: their rows state a band.
-FITTED_CLIPS = [
-    ("Gatekeeper", "Swing1_Medium", "CataclysmGatekeeperCharacter.h",
-     "CleaveAnimationSeconds", "DreadCleaveWindUpSeconds"),
+#: The creatures whose attack clip is now started so that its STRIKE meets the
+#: moment the damage lands, rather than so that its END does. Issue #784.
+#:
+#: Each entry is the creature, the header holding its constants, the measured
+#: strike moment, the window the clip is fitted to, and the clip's own length.
+ALIGNED = [
+    ("Gatekeeper", "CataclysmGatekeeperCharacter.h", "Swing1_Medium",
+     "CleaveStrikeSeconds", "DreadCleaveWindUpSeconds",
+     "CleaveAnimationSeconds", "DesignedAttackIntervalSeconds"),
+    ("Succubus", "CataclysmSuccubusCharacter.h", "Primary_Attack_Normal",
+     "SoulfireReleaseSeconds", "SoulfireWindUpSeconds",
+     "AttackAnimationSeconds", "DesignedAttackIntervalSeconds"),
 ]
 
 
-@pytest.mark.parametrize("creature,clip,header,length_name,window_name",
-                         FITTED_CLIPS)
-def test_the_recorded_play_rate_is_the_one_the_code_computes(
-        creature, clip, header, length_name, window_name):
-    """`PlayOneShot` sets the rate to `max(1, clip length / window)`. The notes
-    state that rate, and a rate written by hand goes stale when either constant
-    moves."""
-    length = constant(length_name, header)
+def aligned_play_rate(strike: float, window: float,
+                      floor: float, ceiling: float) -> float:
+    """`ACataclysmEnemyCharacter::StrikeAlignedPlayRate`, in Python.
+
+    NEVER SLOWER THAN AUTHORED. A clip that reaches its blow sooner than the
+    damage lands is DELAYED rather than slowed; stretching one was tried on the
+    Brute and read as slow motion."""
+    if strike <= 0.0 or window <= 0.0:
+        return 1.0
+    return min(max(max(1.0, strike / window), floor), ceiling)
+
+
+def aligned_delay(strike: float, window: float,
+                  floor: float, ceiling: float) -> float:
+    """`ACataclysmEnemyCharacter::StrikeAlignedDelaySeconds`, in Python."""
+    if strike <= 0.0 or window <= 0.0:
+        return 0.0
+    return max(0.0, window - strike / aligned_play_rate(strike, window,
+                                                        floor, ceiling))
+
+
+@pytest.mark.parametrize(
+    "creature,header,clip,strike_name,window_name,length_name,interval_name",
+    ALIGNED)
+def test_the_measured_strike_reached_the_code(
+        creature, header, clip, strike_name, window_name, length_name,
+        interval_name):
+    """**THE JOIN BETWEEN THE MEASUREMENT AND THE GAME.** The strike moment was
+    measured in the editor and written into `game/docs/enemy-source-assets.md`;
+    the C++ carries its own copy because it has to compute a delay from it.
+
+    Two copies of one number drift, and in this repository they have. This is
+    the one check that keeps them together."""
+    recorded = seconds_in(strike_rows().get(clip, ""))
+    assert recorded is not None, (
+        f"game/docs/enemy-source-assets.md records no single strike time for "
+        f"{clip}, and {header} carries {strike_name} computed from one.")
+
+    written = constant(strike_name, header)
+    assert written == pytest.approx(recorded, abs=CLOSE_ENOUGH), (
+        f"{header} says {strike_name} is {written} and the measurement "
+        f"recorded for {clip} is {recorded}. Re-run "
+        f"tools/measure_attack_impact.py and change both or neither.")
+
+
+@pytest.mark.parametrize(
+    "creature,header,clip,strike_name,window_name,length_name,interval_name",
+    ALIGNED)
+def test_the_strike_arrives_exactly_when_the_damage_does(
+        creature, header, clip, strike_name, window_name, length_name,
+        interval_name):
+    """**THE ONE EQUATION THE WHOLE CHANGE IS.** Wait, then play, and the blow
+    connects at the moment the damage lands.
+
+    Recomputed from the C++ constants rather than compared against a copy, so a
+    change to the wind-up or to the measured strike fails here."""
+    strike = constant(strike_name, header)
     window = constant(window_name, header)
-    computed = max(1.0, length / window)
+    floor = constant("MinimumPlayRate", header)
+    ceiling = constant("MaximumPlayRate", header)
 
-    rows = in_play_rows()
-    assert creature in rows, (
-        f"the 'What that means in play' table has no {creature} row.")
+    rate = aligned_play_rate(strike, window, floor, ceiling)
+    delay = aligned_delay(strike, window, floor, ceiling)
 
-    written = float(rows[creature]["rate"])
-    assert written == pytest.approx(computed, abs=0.001), (
-        f"the notes give {creature} a play rate of {written} and "
-        f"{length_name} / {window_name} is {length} / {window} = "
-        f"{computed:.4f}.")
+    assert delay + strike / rate == pytest.approx(window, abs=CLOSE_ENOUGH), (
+        f"{creature}: waiting {delay:.4f} s and then playing to a strike at "
+        f"{strike} s at rate {rate} reaches it at "
+        f"{delay + strike / rate:.4f} s, and the damage lands at {window} s.")
 
 
-#: THE CORRUPTED SENTINEL IS NOT HERE, AND ITS ABSENCE IS THE POINT. Its
-#: `Fire_Planted_B` release was published at 1.755 s and withdrawn the same day:
-#: the creature fails the negative control -- `PlantedIntro`, which fires
-#: nothing, moves its hands faster than the firing clip does -- so the two rules
-#: that agreed were agreeing about ordinary movement rather than about a shot.
-#: `test_the_withdrawn_sentinel_figure_is_not_reinstated` refuses it coming back.
-@pytest.mark.parametrize("creature,clip", [
-    ("Brute", "Attack_Biped_Melee_A"),
-    ("Gatekeeper", "Swing1_Medium"),
-    ("Succubus", "Primary_Attack_Normal"),
-])
-def test_the_strike_in_play_is_the_strike_in_the_clip_over_the_play_rate(
-        creature, clip):
-    """The one piece of arithmetic joining the two tables. A clip played faster
-    than authored reaches its strike sooner, in exact proportion."""
-    rows = in_play_rows()
-    assert creature in rows, (
-        f"the 'What that means in play' table has no {creature} row.")
+@pytest.mark.parametrize(
+    "creature,header,clip,strike_name,window_name,length_name,interval_name",
+    ALIGNED)
+def test_the_whole_clip_still_fits_inside_the_attack_interval(
+        creature, header, clip, strike_name, window_name, length_name,
+        interval_name):
+    """Waiting pushes the recovery later. If it pushed it past the next attack,
+    the creature would be cut off mid-swing every time."""
+    strike = constant(strike_name, header)
+    window = constant(window_name, header)
+    length = constant(length_name, header)
+    interval = constant(interval_name, header)
+    floor = constant("MinimumPlayRate", header)
+    ceiling = constant("MaximumPlayRate", header)
 
-    in_clip = seconds_in(strike_rows().get(clip, ""))
-    if in_clip is None:
-        pytest.fail(
-            f"{clip} has no single measured strike time in the first table, so "
-            f"the {creature} row in the second cannot be checked against it.")
+    rate = aligned_play_rate(strike, window, floor, ceiling)
+    finishes = aligned_delay(strike, window, floor, ceiling) + length / rate
 
-    rate = float(rows[creature]["rate"])
-    in_play = seconds_in(rows[creature]["strike_in_play"])
-    assert in_play is not None, (
-        f"the {creature} row states {rows[creature]['strike_in_play']!r} for "
-        f"the strike in play, which is not a single time.")
-
-    assert in_play == pytest.approx(in_clip / rate, abs=CLOSE_ENOUGH), (
-        f"the notes say {creature} strikes at {in_play} s in play, and "
-        f"{in_clip} s in the clip at a play rate of {rate} is "
-        f"{in_clip / rate:.4f} s.")
+    assert finishes < interval, (
+        f"{creature}'s clip finishes {finishes:.4f} s after the wind-up began "
+        f"and its attack interval is {interval} s, so the next attack cuts the "
+        f"recovery off.")
 
 
 @pytest.mark.parametrize("creature", ["Gatekeeper", "Succubus"])
-def test_the_recorded_gap_is_the_distance_between_the_two_moments(creature):
-    """The number the two issues rest on. It is the distance between when the
-    animation strikes and when the damage lands, and nothing else."""
+def test_the_notes_say_these_two_have_no_gap_left(creature):
+    """The table is what a reader consults. Fixing the code and leaving the
+    table saying the damage is 0.73 seconds late would be worse than either."""
     rows = in_play_rows()
     assert creature in rows, (
         f"the 'What that means in play' table has no {creature} row.")
 
-    in_play = seconds_in(rows[creature]["strike_in_play"])
-    damage_at = seconds_in(rows[creature]["damage_at"])
-    gap = seconds_in(rows[creature]["gap"])
+    gap = rows[creature]["gap"].strip().lower()
+    assert "none" in gap, (
+        f"the notes give {creature} a gap of {rows[creature]['gap']!r}. Its "
+        f"clip is now started so its strike meets the damage, so the gap is "
+        f"none. Issue #784.")
 
-    for name, value in (("strike in play", in_play), ("damage lands at",
-                                                      damage_at),
-                        ("gap", gap)):
-        assert value is not None, (
-            f"the {creature} row's {name} cell states no single figure: "
-            f"{rows[creature]}")
 
-    assert gap == pytest.approx(abs(damage_at - in_play), abs=CLOSE_ENOUGH), (
-        f"the notes give {creature} a gap of {gap} s, and the distance between "
-        f"a strike at {in_play} s and damage at {damage_at} s is "
-        f"{abs(damage_at - in_play):.4f} s.")
+@pytest.mark.parametrize("creature", ["Brute", "Imp", "Abyssal Warden"])
+def test_the_notes_still_say_the_other_three_are_wrong(creature):
+    """They are a different issue with a different cause and are NOT fixed.
+    A table that quietly stopped saying so would hide three live defects."""
+    rows = in_play_rows()
+    assert creature in rows, (
+        f"the 'What that means in play' table has no {creature} row.")
+
+    gap = rows[creature]["gap"].strip().lower()
+    assert "early" in gap, (
+        f"the notes give {creature} a gap of {rows[creature]['gap']!r}. Its "
+        f"ordinary attack is not telegraphed, so there is no window to start a "
+        f"clip inside and its damage still lands before its blow. That is "
+        f"issue #783 and it is open.")
 
 
 def test_the_measurement_records_its_negative_control():

@@ -1436,9 +1436,32 @@ bool FCataclysmGatekeeperPutsItsLoopBackAfterAOneShot::RunTest(const FString&)
 
 	// --- A SWEEP INTERRUPTS IT --------------------------------------------
 
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Boss->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("the Gatekeeper has no controller, so its waiting sweep "
+					  "cannot be started"));
+		return false;
+	}
+
 	Boss->BeginEnemyAbilityWindUp(Gatekeeper_t::DreadCleaveAbility, nullptr);
 
-	TestEqual(TEXT("winding up the sweep plays the sweep clip"),
+	// **THE SWEEP WAITS BEFORE IT STARTS, SINCE ISSUE #784.** Its clip strikes
+	// 0.282 seconds in and the blow lands at 0.9714, so starting it as the
+	// wind-up began put the hammer through the player 0.73 seconds early. It now
+	// waits 0.689 seconds and then plays at its authored speed.
+	//
+	// THIS TEST FAILED HERE WHEN THAT CHANGED, which is the change being
+	// noticed rather than a fault.
+	TestEqual(TEXT("beginning the wind-up schedules the sweep"),
+		Boss->PendingWindUpAbility, (int32)Gatekeeper_t::DreadCleaveAbility);
+
+	Brain->WindingUpAbility = Gatekeeper_t::DreadCleaveAbility;
+	AdvanceWorldClock(World, Gatekeeper_t::CleaveDelaySeconds() + 0.01);
+	Boss->StartPendingWindUpClip();
+
+	TestEqual(TEXT("and once the wait is over the sweep clip is playing"),
 		Boss->LastPlayedAnimation.Get(), Boss->CleaveAnimation.Get());
 
 	TestNull(TEXT("and the loop is cleared, so something has to put it back"),
@@ -1472,6 +1495,190 @@ bool FCataclysmGatekeeperPutsItsLoopBackAfterAOneShot::RunTest(const FString&)
 	TestEqual(TEXT("the summon plays its own clip, from UseEnemyAbility rather "
 				   "than from the wind-up hook, because it has no wind-up"),
 		Boss->LastPlayedAnimation.Get(), Boss->CallAnimation.Get());
+
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmGatekeeperSweepConnectsWhenItsDamageLands,
+	"Cataclysm.Gatekeeper.ItsSweepConnectsWhenItsDamageLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGatekeeperSweepConnectsWhenItsDamageLands::RunTest(const FString&)
+{
+	using namespace CataclysmGatekeeperTest;
+	using Gatekeeper_t = ACataclysmGatekeeperCharacter;
+
+	// **WHAT THIS EXISTS FOR.** The damage of a telegraphed attack lands exactly
+	// when its wind-up ends. The sweep clip strikes 0.282 seconds in and runs for
+	// 1.1333, so fitting it to the 0.9714 second wind-up by its whole LENGTH put
+	// the hammer through the player 0.73 seconds before the damage arrived.
+	// Issue #784, measured under issue #526.
+	//
+	// The answer is the Brute's, from 2026-08-08: start the clip LATER rather
+	// than slow it down, so the creature stands in its ordinary idle -- which
+	// moves -- and then performs the whole swing as one continuous movement.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmGatekeeperCharacter* Boss =
+		SpawnGatekeeper(World, FVector::ZeroVector);
+	if (!Boss)
+	{
+		AddError(TEXT("could not spawn a Gatekeeper"));
+		return false;
+	}
+
+	// --- the arithmetic ---------------------------------------------------
+
+	const float Rate = Gatekeeper_t::CleavePlayRate();
+	const float Delay = Gatekeeper_t::CleaveDelaySeconds();
+
+	// NOT SPED UP AT ALL. The clip reaches its strike sooner than the blow
+	// lands, so the answer is to wait rather than to compress.
+	TestEqual(TEXT("the sweep plays at its authored speed"), Rate, 1.0f);
+
+	TestTrue(*FString::Printf(
+			TEXT("and waits %.4f s before starting"), Delay),
+		Delay > 0.0f);
+
+	// **THE ONE EQUATION THIS WHOLE CHANGE IS.** Wait, then play, and the strike
+	// arrives exactly as the damage does.
+	TestEqual(TEXT("the delay plus the strike is the wind-up, so the hammer "
+				   "connects as the damage lands"),
+		Delay + Gatekeeper_t::CleaveStrikeSeconds / Rate,
+		Gatekeeper_t::DreadCleaveWindUpSeconds, 0.001f);
+
+	// AND THE WHOLE CLIP STILL FITS INSIDE THE ATTACK INTERVAL, so the recovery
+	// is not cut off by the next swing.
+	TestTrue(*FString::Printf(
+			TEXT("the clip finishes %.4f s in, inside the %.2f s interval"),
+			Delay + Gatekeeper_t::CleaveAnimationSeconds / Rate,
+			Gatekeeper_t::DesignedAttackIntervalSeconds),
+		Delay + Gatekeeper_t::CleaveAnimationSeconds / Rate
+			< Gatekeeper_t::DesignedAttackIntervalSeconds);
+
+	// --- and the creature really waits ------------------------------------
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Boss->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("the Gatekeeper has no controller"));
+		return false;
+	}
+
+	Boss->LastPlayedAnimation = nullptr;
+	Boss->BeginEnemyAbilityWindUp(Gatekeeper_t::DreadCleaveAbility, nullptr);
+
+	TestEqual(TEXT("beginning the wind-up schedules the sweep rather than "
+				   "playing it"),
+		Boss->PendingWindUpAbility, (int32)Gatekeeper_t::DreadCleaveAbility);
+
+	TestNull(TEXT("so nothing is playing yet"),
+		Boss->LastPlayedAnimation.Get());
+
+	// THE BRAIN HAS TO AGREE IT IS STILL WINDING THAT UP, and it has to agree
+	// BEFORE the first pass rather than after. Set here rather than driven
+	// through Think, because this test is about the waiting and not about how a
+	// wind-up begins.
+	//
+	// THE FIRST VERSION OF THIS TEST SET IT AFTER THE HALF-WAY CHECK BELOW, so
+	// that check found a wind-up the brain was not doing and correctly threw the
+	// waiting clip away. The ordering was the test's fault, not the code's.
+	Brain->WindingUpAbility = Gatekeeper_t::DreadCleaveAbility;
+
+	// PART WAY THROUGH THE WAIT, still nothing.
+	AdvanceWorldClock(World, Delay / 2.0);
+	Boss->StartPendingWindUpClip();
+
+	TestEqual(TEXT("half way through the wait it is still waiting"),
+		Boss->PendingWindUpAbility, (int32)Gatekeeper_t::DreadCleaveAbility);
+
+	TestNull(TEXT("and still playing nothing"), Boss->LastPlayedAnimation.Get());
+
+	AdvanceWorldClock(World, Delay / 2.0 + 0.01);
+	Boss->StartPendingWindUpClip();
+
+	TestEqual(TEXT("**once the wait is over the sweep starts**"),
+		Boss->PendingWindUpAbility, (int32)INDEX_NONE);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmGatekeeperCancelledSweepNeverStarts,
+	"Cataclysm.Gatekeeper.ItsCancelledSweepNeverStarts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGatekeeperCancelledSweepNeverStarts::RunTest(const FString&)
+{
+	using namespace CataclysmGatekeeperTest;
+	using Gatekeeper_t = ACataclysmGatekeeperCharacter;
+
+	// **WHAT THIS EXISTS FOR.** Waiting before starting a clip opens a fault the
+	// old code could not have: a wind-up that is cancelled while its clip is
+	// still waiting. Without a check the creature would swing at nothing,
+	// seconds after whatever it was aiming at had gone.
+	//
+	// It is answered by asking the brain rather than by remembering here, so
+	// there is one answer to "is this creature still winding that up".
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmGatekeeperCharacter* Boss =
+		SpawnGatekeeper(World, FVector::ZeroVector);
+	ACataclysmEnemyController* Brain =
+		Boss ? Cast<ACataclysmEnemyController>(Boss->GetController()) : nullptr;
+	if (!Boss || !Brain)
+	{
+		AddError(TEXT("could not spawn a Gatekeeper with a controller"));
+		return false;
+	}
+
+	Boss->LastPlayedAnimation = nullptr;
+	Boss->BeginEnemyAbilityWindUp(Gatekeeper_t::DreadCleaveAbility, nullptr);
+
+	if (Boss->PendingWindUpAbility != Gatekeeper_t::DreadCleaveAbility)
+	{
+		AddError(TEXT("the sweep was not scheduled, so this test would pass by "
+					  "doing nothing"));
+		return false;
+	}
+
+	// THE WIND-UP IS CANCELLED. The brain is winding up nothing, which is what
+	// it reports after a stun, a lost target, or a landed ability.
+	Brain->WindingUpAbility = INDEX_NONE;
+
+	AdvanceWorldClock(World, Gatekeeper_t::CleaveDelaySeconds() + 1.0);
+	Boss->StartPendingWindUpClip();
+
+	TestEqual(TEXT("**the cancelled sweep is forgotten rather than started**"),
+		Boss->PendingWindUpAbility, (int32)INDEX_NONE);
+
+	TestNull(TEXT("and nothing was played"), Boss->LastPlayedAnimation.Get());
+
+	// AND ASKING AGAIN DOES NOTHING EITHER, which is what says it was forgotten
+	// rather than merely postponed.
+	Boss->StartPendingWindUpClip();
+
+	TestNull(TEXT("and still nothing after a second pass"),
+		Boss->LastPlayedAnimation.Get());
 
 	return true;
 }

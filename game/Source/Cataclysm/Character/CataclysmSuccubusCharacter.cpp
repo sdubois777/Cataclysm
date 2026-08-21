@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Animation/AnimSequence.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -164,7 +165,63 @@ void ACataclysmSuccubusCharacter::EndPlay(const EEndPlayReason::Type EndPlayReas
 void ACataclysmSuccubusCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// BEFORE THE LOOPING ANIMATION, so a cast that becomes due this frame owns
+	// the mesh for the rest of it rather than being overwritten by an idle
+	// chosen a line earlier.
+	StartPendingWindUpClip();
 	UpdateLoopingAnimation();
+}
+
+float ACataclysmSuccubusCharacter::SoulfirePlayRate()
+{
+	return StrikeAlignedPlayRate(SoulfireReleaseSeconds, SoulfireWindUpSeconds,
+								 MinimumPlayRate, MaximumPlayRate);
+}
+
+float ACataclysmSuccubusCharacter::SoulfireDelaySeconds()
+{
+	return StrikeAlignedDelaySeconds(SoulfireReleaseSeconds,
+									 SoulfireWindUpSeconds,
+									 MinimumPlayRate, MaximumPlayRate);
+}
+
+void ACataclysmSuccubusCharacter::StartPendingWindUpClip()
+{
+	if (PendingWindUpAbility == INDEX_NONE)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// **THE WIND-UP HAS TO STILL BE HAPPENING.** Asked of the brain rather than
+	// remembered here, so there is one answer to "is this creature still
+	// winding that up" and a cancelled cast cannot start its clip afterwards.
+	const ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(GetController());
+	if (!Brain || Brain->WindingUpAbility != PendingWindUpAbility)
+	{
+		PendingWindUpAbility = INDEX_NONE;
+		return;
+	}
+
+	// COMPARED AGAINST THE CLOCK EVERY FRAME RATHER THAN SET AS A DEADLINE, for
+	// the reason the Brute's version gives: a timer fixes its deadline when it
+	// is created and can fire on the wrong side of the pass that lands the
+	// ability.
+	const float Elapsed = World->GetTimeSeconds() - WindUpBeganAtSeconds;
+	if (Elapsed + UE_KINDA_SMALL_NUMBER < SoulfireDelaySeconds())
+	{
+		return;
+	}
+
+	PendingWindUpAbility = INDEX_NONE;
+	PlayOneShotAtRate(AttackAnimation.Get(), SoulfirePlayRate());
 }
 
 void ACataclysmSuccubusCharacter::HandleDeath()
@@ -288,9 +345,23 @@ void ACataclysmSuccubusCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 	// differently, and its reason is particular to it -- a firing animation that
 	// aims, fires and recovers rather than one that winds up.
 	//
-	// AT 0.9000 SECONDS INTO 1.3, THE RATE IS 1.0 AND THE CREATURE HOLDS THE
-	// LAST POSE FOR 0.4 SECONDS. Issue #767 is whether that reads badly.
-	PlayOneShot(AttackAnimation.Get(), SoulfireWindUpSeconds);
+	// **THE CAST WAITS. IT DOES NOT START HERE.** Its clip releases 0.156
+	// seconds in and the bolt is fired at 1.3, so starting it now released the
+	// cast 1.14 seconds before the bolt appeared. Issue #784.
+	// StartPendingWindUpClip, from Tick, starts it once the delay has passed.
+	PendingWindUpAbility = INDEX_NONE;
+
+	if (const UWorld* World = GetWorld())
+	{
+		WindUpBeganAtSeconds = World->GetTimeSeconds();
+		if (SoulfireDelaySeconds() > 0.0f)
+		{
+			PendingWindUpAbility = SoulfireAbility;
+			return;
+		}
+	}
+
+	PlayOneShotAtRate(AttackAnimation.Get(), SoulfirePlayRate());
 }
 
 void ACataclysmSuccubusCharacter::UseEnemyAbility(
@@ -535,6 +606,28 @@ void ACataclysmSuccubusCharacter::UpdateLoopingAnimation()
 float ACataclysmSuccubusCharacter::PlayOneShot(UAnimSequence* Animation,
 											   float HoldSeconds)
 {
+	const float Length = Animation ? Animation->GetPlayLength() : 0.0f;
+
+	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
+	// same rule every other creature here uses, for the reason recorded there:
+	// stretching a short clip across a long window was tried and read as slow
+	// motion. A clip shorter than its window holds its last pose instead.
+	//
+	// THIS LINES UP THE CLIP'S END WITH THE WINDOW'S END, which is right for a
+	// clip that finishes on its blow. The cast does not -- it releases a sixth
+	// of the way in -- so it goes through PlayOneShotAtRate instead. Issue #784.
+	const float Hold = HoldSeconds > 0.0f ? HoldSeconds : Length;
+	const float Rate = Hold > 0.0f
+		? FMath::Clamp(FMath::Max(1.0f, Length / Hold),
+					   MinimumPlayRate, MaximumPlayRate)
+		: 1.0f;
+
+	return PlayOneShotAtRate(Animation, Rate);
+}
+
+float ACataclysmSuccubusCharacter::PlayOneShotAtRate(UAnimSequence* Animation,
+													 float Rate)
+{
 	LastPlayedAnimation = Animation;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -544,19 +637,10 @@ float ACataclysmSuccubusCharacter::PlayOneShot(UAnimSequence* Animation,
 	}
 
 	const float Length = Animation->GetPlayLength();
-	if (Length <= 0.0f)
+	if (Length <= 0.0f || Rate <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
-	// same rule every other creature here uses, for the reason recorded there:
-	// stretching a short clip across a long window was tried and read as slow
-	// motion. A clip shorter than its window holds its last pose instead, which
-	// for this creature is 0.4 seconds and is issue #767.
-	const float Hold = HoldSeconds > 0.0f ? HoldSeconds : Length;
-	const float Rate = FMath::Clamp(FMath::Max(1.0f, Length / Hold),
-									MinimumPlayRate, MaximumPlayRate);
 
 	MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
 	MeshComponent->SetPlayRate(Rate);
