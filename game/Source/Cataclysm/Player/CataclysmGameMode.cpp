@@ -12,6 +12,7 @@
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Interface/CataclysmHUD.h"
 #include "Engine/World.h"
@@ -115,6 +116,7 @@ void ACataclysmGameMode::StartPlay()
 	SpawnImps();
 	SpawnCorruptedSentinels();
 	SpawnSuccubi();
+	SpawnGatekeepers();
 
 	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
 	// here, so that a test can reach it: StartPlay wants a player controller and
@@ -655,6 +657,119 @@ int32 ACataclysmGameMode::SpawnSuccubi()
 		ACataclysmSuccubusCharacter::WitherCooldownSeconds,
 		ACataclysmSuccubusCharacter::DominionEffectName,
 		ACataclysmSuccubusCharacter::DominionRadiusCm);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnGatekeepers()
+{
+	UWorld* World = GetWorld();
+	if (!World || GatekeeperCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction every
+	// other spawner makes, and **by far the largest of them**: this creature is
+	// 155.53 cm to the base enemy's 80, so it rises 75.53 cm. Spawned without it,
+	// three quarters of a metre of a three metre creature would be underground.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmGatekeeperCharacter::GatekeeperCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	const float BearingRadians =
+		FMath::DegreesToRadians(GatekeeperBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < GatekeeperCount; ++Index)
+	{
+		const float Angle = BearingRadians
+			+ 2.0f * PI * static_cast<float>(Index)
+				/ static_cast<float>(FMath::Max(GatekeeperCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * GatekeeperDistanceCm,
+			FMath::Sin(Angle) * GatekeeperDistanceCm,
+			RiseCm);
+
+		// FACING THE PLAYER START. It turns at 480 degrees a second and it walks,
+		// so where it starts pointed only decides what it sees first.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmGatekeeperCharacter* Gatekeeper =
+			World->SpawnActor<ACataclysmGatekeeperCharacter>(
+				ACataclysmGatekeeperCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Gatekeeper)
+		{
+			continue;
+		}
+
+		// **HEALTH BEFORE ANYTHING ELSE, AND IT IS WHAT THE PHASES ARE FRACTIONS
+		// OF.** `SetHealth` writes both the maximum and the current value, and
+		// `RefreshPhase` divides one by the other -- so a creature whose health
+		// has not been set yet has a maximum of zero and refuses to move phase at
+		// all. That refusal is deliberate; see RefreshPhase.
+		Gatekeeper->SetHealth(GatekeeperHealth);
+		Gatekeeper->SetAttackDamage(GatekeeperAttackDamage);
+		Gatekeeper->SetArmour(GatekeeperArmour);
+		Gatekeeper->SetRarityStep(
+			RarityStepFor(GatekeeperRarityStep, Gatekeeper));
+
+		Gatekeepers.Add(Gatekeeper);
+		++Spawned;
+	}
+
+	// THE LOG SAYS WHERE THE PHASES ARE, because nothing on screen does. A phase
+	// adds an ability and changes no number, so the only visible sign is the
+	// creature doing something it had not done before -- which is
+	// indistinguishable from a cooldown coming up. Issue #740 is the screen work
+	// that would make this line unnecessary.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Gatekeepers %.0f cm from %s on a bearing of %.0f degrees -- "
+			 "**the seventh direction, and further out than anything else because "
+			 "it notices at %.0f cm**. Each has %.0f health, %.0f armour at "
+			 "difficulty tier %d, %.0f%% resistance, and stands %.2f m tall. "
+			 "**PHASE 2 BEGINS AT %.0f HEALTH AND PHASE 3 AT %.0f**, and a phase "
+			 "adds an ability and changes no number. It opens with Dread Cleave, "
+			 "a %.0f cm sweep marked for %.2f s every %.1f s, and Soulfall, a "
+			 "%.0f cm circle lobbed up to %.0f cm that leaves the ground burning "
+			 "for %.0f s. At phase 2 it calls %d Imps every %.0f s to a cap of "
+			 "%d. At phase 3 it adds Soul Harvest, a %.0f cm ring marked for "
+			 "%.1f s and worth %.0f%% of a hit."),
+		Spawned, GatekeeperDistanceCm, *Centre.ToCompactString(),
+		GatekeeperBearingDegrees,
+		ACataclysmGatekeeperCharacter::GatekeeperNoticeRadiusCm,
+		GatekeeperHealth, GatekeeperArmour, DifficultyTierFor(this),
+		ACataclysmGatekeeperCharacter::DesignedResistancePercent,
+		ACataclysmGatekeeperCharacter::GatekeeperCapsuleHalfHeight * 2.0f / 100.0f,
+		GatekeeperHealth
+			* ACataclysmGatekeeperCharacter::SecondPhaseHealthFraction,
+		GatekeeperHealth
+			* ACataclysmGatekeeperCharacter::ThirdPhaseHealthFraction,
+		ACataclysmGatekeeperCharacter::DreadCleaveRadiusCm,
+		ACataclysmGatekeeperCharacter::DreadCleaveWindUpSeconds,
+		ACataclysmGatekeeperCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmGatekeeperCharacter::SoulfallRadiusCm,
+		ACataclysmGatekeeperCharacter::SoulfallRangeCm,
+		ACataclysmGatekeeperCharacter::SoulfallGroundSeconds,
+		ACataclysmGatekeeperCharacter::CallTheDamnedCount,
+		ACataclysmGatekeeperCharacter::CallTheDamnedCooldownSeconds,
+		ACataclysmGatekeeperCharacter::CallTheDamnedMaxAlive,
+		ACataclysmGatekeeperCharacter::SoulHarvestRadiusCm,
+		ACataclysmGatekeeperCharacter::SoulHarvestWindUpSeconds,
+		ACataclysmGatekeeperCharacter::SoulHarvestDamagePercent);
 
 	return Spawned;
 }

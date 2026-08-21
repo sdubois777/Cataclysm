@@ -179,6 +179,7 @@ ART_CLAIM_WORDS = {
     "Four characters have art": 4,
     "Five characters have art": 5,
     "Six characters have art": 6,
+    "Seven characters have art": 7,
 }
 
 

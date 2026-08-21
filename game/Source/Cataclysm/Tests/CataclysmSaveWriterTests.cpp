@@ -400,6 +400,33 @@ bool FCataclysmSaveWriterRunRecordOncePerFrame::RunTest(const FString&)
 	TestEqual(TEXT("so one write was started for four events"),
 		Writer->WritesStarted(), 1);
 
+	// **LET THAT ASYNCHRONOUS WRITE LAND BEFORE ANYTHING TOUCHES ITS SLOT.**
+	//
+	// The write above went to the background. The one below is SYNCHRONOUS and
+	// goes to the SAME slot, and `Forget` at the end of this test deletes that
+	// slot -- after waiting only for the file to EXIST, which the synchronous
+	// write has by then already created. So without this the slot was deleted
+	// out from under a write that was still running, the write failed, and its
+	// callback logged an Error that the automation framework charged to
+	// whichever test was running when it arrived.
+	//
+	// THAT IS THE FAILURE MODE `LongestWaitForAWriteSeconds` ABOVE ALREADY
+	// DESCRIBES. It was intermittent -- the comment records it passing four
+	// full runs before failing -- and it became reproducible on 2026-08-21 when
+	// the Gatekeeper's automation tests were added: those load the 1.35 GB
+	// Paragon Sevarog pack, which delays the background write past the
+	// deletion every time on this machine.
+	//
+	// IT DOES NOT CHANGE WHAT THIS TEST IS ABOUT. The premise is that four
+	// triggers in ONE frame produce one write, and `WriteTheRunRecord` decides
+	// that by comparing `GFrameCounter`. That counter is advanced by the
+	// engine's frame loop, which does not run inside a synchronous automation
+	// test body, so sleeping here does not advance it and every assertion below
+	// is still about the same frame.
+	TestTrue(TEXT("the asynchronous write reached the disk before anything "
+				  "else touched its slot"),
+		WaitForSlot(Writer->RunSlotName()));
+
 	// AND A DEATH IN THE SAME FRAME WRITES ANYWAY.
 	TestTrue(TEXT("the character dying writes despite the limit"),
 		Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied));
