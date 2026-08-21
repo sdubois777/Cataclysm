@@ -1145,26 +1145,43 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             name="Dread Cleave",
             shape="Strike",
             slot="Basic",
-            # THE ONLY BASIC ATTACK IN THE SLICE THAT IS TELEGRAPHED, and the
-            # whole fight rests on that. This creature kills the reference
-            # geared character in 2 hits and 6.0 seconds -- the table in
-            # docs/Cataclysm_GDD_v2.md -- so its ordinary swing cannot be an
-            # untelegraphed contact hit the way the other six enemies' are. A
-            # 2.0 metre cone warns for 0.97 seconds, which its 3.0 second
-            # interval holds with half a cycle to spare (1.5 allowed).
+            # THE ONLY TELEGRAPHED BASIC ATTACK THAT IS A MELEE SWING, and the
+            # whole fight rests on it being telegraphed at all. This creature
+            # kills the reference geared character in 2 hits and 6.0 seconds
+            # -- the table in docs/Cataclysm_GDD_v2.md -- so its ordinary
+            # swing cannot be an untelegraphed contact hit the way the Abyssal
+            # Warden's, the Brute's, the Hellhound's and the Imp's are. A 2.0
+            # metre cone warns for 0.97 seconds, which its 3.0 second interval
+            # holds with half a cycle to spare (1.5 allowed).
+            #
+            # THREE OF THE SEVEN BASICS ARE TELEGRAPHED, NOT ONE. The
+            # Corrupted Sentinel's Siege Bolt and the Succubus's Soulfire are
+            # the other two, and both are projectiles rather than swings.
+            # `is_telegraphed` computes it from the numbers rather than from
+            # this comment, and `tools/tests/test_enemy_telegraphs.py` holds
+            # the design document's prose to what it computes. This comment
+            # and that document both said "the only" until 2026-08-21, which
+            # is issue #763.
             #
             # RADIUS 2.0 IS A JUDGEMENT, bounded twice. Above the 1 metre
             # marker floor, or nothing is drawn and a 2-hit kill arrives
             # unannounced. Under the 3.85 metres its own interval allows, so
             # the basic swing stays visibly smaller than everything on a
-            # cooldown. NO MaxTargets, unlike the other six basics: a boss
-            # swing hits everything standing in it.
+            # cooldown. NO MaxTargets, WHICH IT SHARES WITH THE OTHER TWO
+            # TELEGRAPHED BASICS AND WITH NOTHING ELSE: those three are
+            # exactly the ordinary attacks that mark an area, and an area
+            # attack hits what is standing in it. The four contact swings
+            # state MaxTargets=1. This comment said "unlike the other six"
+            # until 2026-08-21; issue #763.
             params={"Radius": 2.0, "Angle": 120},
             note="A hammer sweep across a 120 degree arc, 2 metres out, marked "
-                 "for 0.97 seconds first. The only telegraphed basic attack in "
-                 "the slice, because two of these kill the reference geared "
-                 "character. Sevarog's three swing chains at their slow speeds "
-                 "(1.70 s) fit inside the 3.0 second interval.",
+                 "for 0.97 seconds first. The only telegraphed basic attack "
+                 "that is a melee swing; the Corrupted Sentinel's Siege Bolt "
+                 "and the Succubus's Soulfire are the other two telegraphed "
+                 "basics and both are projectiles. It is telegraphed because "
+                 "two of these kill the reference geared character. Sevarog's "
+                 "three swing chains at their slow speeds (1.70 s) fit inside "
+                 "the 3.0 second interval.",
         ),
         Ability(
             name="Soulfall",
