@@ -1791,7 +1791,7 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
-**`GroundHitsAllies` is off unless a skill sets it, and no player skill does.** Burning ground normally hurts only the caster's enemies, which is what every one of the eight player skills that leaves some wants. The Hellhound's fire trail is the only thing in the game that sets it, and that is what makes the trail the one source of friendly fire.
+**`GroundHitsAllies` is off unless a skill sets it, and NOTHING sets it.** Burning ground hurts only the caster's enemies, which is what every one of the eight player skills that leaves some wants and, since 2026-08-20, what every creature does too: **a creature does not burn itself or its own side**, set by the project owner as a general rule. The Hellhound's fire trail and the Gatekeeper's Soulfall both carried this rider until then and neither does now. The word is kept in the vocabulary rather than deleted, so the option is on the record as considered and rejected; `docs/DECISIONS.md` carries what the reversal cost.
 
   
 
@@ -4837,7 +4837,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
 | Maul | Basic | Strike | `Radius=0.9; Angle=90; MaxTargets=1; Burn=1` | its 1.1 s attack interval | No |
-| Hellrush | Movement | Movement | `Mode=Charge; Range=10; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25; GroundHitsAllies=1; Knockback=4` | a 5 s cooldown | Yes, 0.83 s wind-up |
+| Hellrush | Movement | Movement | `Mode=Charge; Range=10; Radius=1.5; Burn=1; GroundRadius=1.5; GroundDuration=4; GroundPercent=25; Knockback=4` | a 5 s cooldown | Yes, 0.83 s wind-up |
 
   
 
@@ -4906,11 +4906,11 @@ The Attack Telegraphs subsection calls the Imp and the Hellhound "the two swarm 
 
   
 
-**`GroundHitsAllies=1` is what makes it burn other demons.** Section V's rider list carries this and nothing else in the game sets it. Every enemy is on one side, so no enemy's attack can touch another; this rider is a property of the burning ground rather than a change of side, in the same way the Madness debuff is an attitude rather than a third team.
+**The trail burns the player and nobody on the Hellhound's own side.** It carried `GroundHitsAllies=1` until 2026-08-20 and burned other demons and the Hellhound itself, which made it the one source of friendly fire in the game. The project owner then set a general rule -- **a creature does not burn itself or its own side** -- and this is the creature that rule was written against.
 
   
 
-**It burns the Hellhound too.** That is the simple version of the rule rather than an exception bolted onto it, and it earns its place: a Hellhound whose return path crosses the lane it just laid takes its own fire, so a player who moves along the trail rather than across it is rewarded for reading the ground.
+**What that costs, stated rather than glossed.** The old behaviour gave the player a reason to read the ground: a Hellhound whose return path crossed its own lane took its own fire, so moving along the trail rather than across it was rewarded. That is gone. What remains is a lane the player must not stand in, which is the same thing every other burning ground in the game already is. If the trail turns out to need something of its own, the lever to reach for is its duration or its damage rather than bringing friendly fire back.
 
   
 
@@ -5379,7 +5379,7 @@ Two things. Everything else is read off `game/Data/WeaponSkills.csv`, `game/Data
 | Ability | Phase | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-: | :-- | :-: | :-: |
 | Dread Cleave | 1 | Basic | Strike | `Radius=2.0; Angle=120` | its 3.0 s attack interval | Yes, 0.97 s wind-up |
-| Soulfall | 1 | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25; Burn=1; GroundRadius=3.0; GroundDuration=10; GroundPercent=10; GroundHitsAllies=1` | a 10 s cooldown | Yes, 1.26 s wind-up |
+| Soulfall | 1 | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25; Burn=1; GroundRadius=3.0; GroundDuration=10; GroundPercent=10` | a 10 s cooldown | Yes, 1.26 s wind-up |
 | Call the Damned | 2 | Special | Summon | `Range=4; Radius=2; Count=3; MaxActive=6` | a 10 s cooldown | No |
 | Soul Harvest | 3 | Ultimate | Strike | `Radius=6.5; Angle=360` | a 20 s cooldown | Yes, 2.0 s wind-up |
 
@@ -5417,7 +5417,7 @@ The Gatekeeper moves at 3.0 metres per second against classes at 3.5, 4.0 and 4.
 
   
 
-**What it leaves behind is the arena changing.** The burst leaves burning ground the same 3 metres wide for 10 seconds — equal to its cooldown, so in steady state one patch is always on the floor and standing ground is lost one circle at a time. That is the persistence lever the genre research found real bosses use, and it is the Hellhound's existing riders (`Burn`, `GroundRadius`, `GroundDuration`) rather than a new mechanic. `GroundHitsAllies=1`: the Gatekeeper's own summons burn in it, and kiting them through the fire is intended counterplay.
+**What it leaves behind is the arena changing.** The burst leaves burning ground the same 3 metres wide for 10 seconds — equal to its cooldown, so in steady state one patch is always on the floor and standing ground is lost one circle at a time. That is the persistence lever the genre research found real bosses use, and it is the Hellhound's existing riders (`Burn`, `GroundRadius`, `GroundDuration`) rather than a new mechanic. **It burns the player and nobody on the Gatekeeper's own side.** It carried `GroundHitsAllies=1` until 2026-08-20, so the summons of phase 2 burned in it and kiting them through the fire was intended counterplay; the project owner's rule that a creature does not burn itself or its own side removes that. **Phase 2 is cheaper for the boss than it was**, because its summons no longer have a cost attached. If phase 2 turns out too strong, the first lever is the summon's own cap of 6 or its 10 second cooldown rather than the burning ground.
 
   
 

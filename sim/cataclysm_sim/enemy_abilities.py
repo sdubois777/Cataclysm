@@ -96,6 +96,13 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 #: slam can all shove. While it was a Strike parameter, Shockwave Leap knocked
 #: back in its prose and could not say so in its data, and two of the three enemy
 #: abilities that will displace the player are charges, which are Movement.
+#: `GroundHitsAllies` IS IN THE VOCABULARY AND NO ABILITY USES IT. The
+#: Hellhound's trail and the Gatekeeper's Soulfall both carried it until
+#: 2026-08-20, when the project owner set the rule that a creature does not
+#: burn itself or its own side. The word is kept rather than deleted, by the
+#: owner's choice, so that the option is on the record as considered and
+#: rejected rather than never thought of.
+#: `test_nothing_burns_its_own_side` refuses an ability that sets it.
 RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "Burn", "Effect", "StunSeconds", "FinalHitPercent",
           "HealthCostPercent", "Knockback")
@@ -638,12 +645,15 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # by simply walking during the 0.83 second wind-up -- which is the
             # test a charge has to pass to be worth having at all.
             #
-            # The trail is the same three riders Flamedart carries, plus
-            # GroundHitsAllies, which was new here. The Gatekeeper's Soulfall
-            # is the second and last ability to carry it, and the two mean
-            # different things: this fire burns the Hellhound ITSELF as well
-            # as its allies, and Soulfall's burns the Gatekeeper's summons
-            # and says nothing about the Gatekeeper. See issue #774.
+            # The trail is the same three riders Flamedart carries.
+            #
+            # **IT NO LONGER BURNS THE HELLHOUND OR ITS ALLIES**, and it did
+            # until 2026-08-20. The project owner set a general rule that
+            # day: a creature does not burn itself or its own side. So the
+            # `GroundHitsAllies` rider is gone from here and from the
+            # Gatekeeper's Soulfall, and no designed ability carries it. See
+            # `docs/DECISIONS.md` for what the reversal costs and why it was
+            # accepted.
             params={"Mode": "Charge", "Range": 10, "Radius": 1.5, "Burn": 1,
                     "GroundRadius": 1.5, "GroundDuration": 4,
                     # 25% per second for 4 seconds, so standing in the trail
@@ -651,7 +661,6 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                     # design's number and it was prose only; issue #361 made it
                     # a rider, and the general rule is 100 / GroundDuration.
                     "GroundPercent": 25,
-                    "GroundHitsAllies": 1,
                     # 4 METRES BECAUSE IT IS A CHARGE THAT DOES NOT STUN, the
                     # same figure and the same reason as the Abyssal Warden's
                     # Stampede. Issue #625 chose the three distances; the design
@@ -669,8 +678,8 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             cooldown=5.0,
             note="Charges in a straight line fixed when the wind-up starts, "
                  "burning everything it passes and leaving that lane on fire "
-                 "for 4 seconds. The fire burns other enemies and the "
-                 "Hellhound itself.",
+                 "for 4 seconds. The fire burns the player and nobody on the "
+                 "Hellhound's own side, including the Hellhound.",
         ),
     ),
     "Brute": (
@@ -1174,9 +1183,17 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # persistence, not replacement. GroundDuration equals the cooldown,
             # so in steady state one patch of burning ground is always down and
             # the arena shrinks by exactly one patch per cycle until the old
-            # one expires. GroundHitsAllies=1, the Hellhound's rider, so the
-            # summoned Imps of phase 2 burn in it too -- kiting adds through
-            # the fire is deliberate counterplay.
+            # one expires.
+            #
+            # **IT BURNS THE PLAYER AND NOBODY ELSE.** It carried
+            # `GroundHitsAllies=1` until 2026-08-20, so the summoned Imps of
+            # phase 2 burned in it and kiting them through the fire was
+            # counterplay. The project owner then set a general rule that a
+            # creature does not burn itself or its own side, which removes
+            # that. **PHASE 2 IS CHEAPER FOR THE BOSS THAN IT WAS**, because
+            # the summons no longer have a cost attached; `docs/DECISIONS.md`
+            # records that as the price of the rule and says what would be
+            # tuned first if phase 2 turns out too strong.
             #
             # RANGE 14 AND ARC 0.25 ARE THE SENTINEL'S MORTAR FIGURES, reused
             # rather than invented: both abilities exist to answer a player who
@@ -1189,9 +1206,10 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # was data lost from the model rather than a design question.
             # Nothing here is invented: GroundDuration is the cooldown,
             # GroundRadius is the burst radius, GroundPercent is the
-            # project's rule of 100 / GroundDuration, and GroundHitsAllies
-            # is the Hellhound's rider. Issue #774, and the guard that
-            # could not see it is fixed in the same change.
+            # project's rule of 100 / GroundDuration. Issue #774, and the
+            # guard that could not see it is fixed in the same change.
+            # `GroundHitsAllies` was among the five restored and was removed
+            # again the same day by the rule above.
             params={"Range": 14, "Radius": 3.0, "Pierce": 0, "Arc": 0.25,
                     "Burn": 1,
                     "GroundRadius": 3.0, "GroundDuration": 10,
@@ -1199,15 +1217,15 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                     # for its whole life costs one full hit. The general
                     # rule is 100 / GroundDuration, the same arithmetic the
                     # Hellhound's 25 over 4 seconds comes from.
-                    "GroundPercent": 10,
-                    "GroundHitsAllies": 1},
+                    "GroundPercent": 10},
             # The top of the Special slot's 3-to-10 band in
             # game/Data/SkillSlots.csv, because the burning ground it leaves
             # must not accumulate faster than one patch per expiry.
             cooldown=10.0,
             note="A lobbed gout of soulfire that bursts 3 metres wide where it "
                  "lands and leaves burning ground the same size for 10 "
-                 "seconds, which also burns the Gatekeeper's own summons. "
+                 "seconds, which burns the player and nobody on the "
+                 "Gatekeeper's own side. "
                  "Marked at the landing circle for 1.26 seconds. It is what a "
                  "boss that cannot walk anybody down does about a player who "
                  "stands off, and it shrinks the arena one patch at a time.",

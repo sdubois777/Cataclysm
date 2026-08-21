@@ -84,10 +84,20 @@ public:
 	/**
 	 * Whether it burns whatever is standing in it, including its own owner.
 	 *
-	 * FALSE FOR EVERY ZONE BUT ONE. A skill's ground effect belongs to whoever
-	 * cast it and hurts the other side; this is the exception the Hellhound's
-	 * design asks for, and it is a field rather than a separate class because
-	 * the only thing that differs is which search the sweep runs.
+	 * **NOTHING SETS THIS. It is false for every zone in the game.** The
+	 * Hellhound's burning trail was the one caller until 2026-08-20, when the
+	 * project owner set a general rule that a creature does not burn itself or
+	 * its own side. The Gatekeeper's Soulfall was designed to set it too and
+	 * never did, because the rule arrived before that creature was built.
+	 *
+	 * **IT IS KEPT RATHER THAN DELETED, BY THE OWNER'S CHOICE**, so the option
+	 * is on the record as considered and rejected rather than never thought of.
+	 * `docs/DECISIONS.md` carries the reversal.
+	 *
+	 * IF SOMETHING SETS IT AGAIN, that is a design decision and not a detail:
+	 * `test_nothing_burns_its_own_side` in
+	 * `tools/tests/test_hellhound_matches_the_model.py` refuses it, and the
+	 * failure names the documents that would have to change with it.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	bool bBurnsEveryone = false;

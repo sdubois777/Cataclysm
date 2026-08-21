@@ -352,31 +352,23 @@ def test_the_charge_speed_beats_walking_and_reads_like_the_other_one():
         f"rather than leaving this failing.")
 
 
-def test_the_burning_lane_is_one_of_exactly_two_that_burn_their_own_side():
-    """`GroundHitsAllies=1`, and the model's note: "The fire burns other enemies
-    and the Hellhound itself."
+def test_nothing_burns_its_own_side():
+    """**A creature does not burn itself or its own side.** Set by the project
+    owner on 2026-08-20 as a general rule.
 
-    **TWO ABILITIES CARRY THE RIDER, NOT ONE, SINCE 2026-08-20.** This test used
-    to assert the Hellhound was the only one, and that was true only because the
-    Gatekeeper's Soulfall had lost the rider out of the model -- the design
-    document stated it the whole time. Issue #774. Its own failure message said
-    what to do when a second appeared, and this is that.
+    THIS TEST USED TO ASSERT THE OPPOSITE. The Hellhound's trail carried
+    `GroundHitsAllies=1` and burned other demons and the Hellhound itself, and
+    the design document called that the one source of friendly fire in the
+    game. The Gatekeeper's Soulfall was designed to do the same to its summons.
+    Neither does now.
 
-    THE TWO DO NOT MEAN THE SAME THING, which is why they are named here rather
-    than counted. The Hellhound's fire burns the Hellhound ITSELF; Soulfall's
-    note says it burns "the Gatekeeper's own summons" and says nothing about
-    the Gatekeeper. `ACataclysmGroundZone`'s `bBurnsEveryone` means "burn
-    everything including the owner", so it fits the first and may not fit the
-    second. Issue #759 flags that as something to settle when Soulfall is built.
-
-    A THIRD STILL TRIPS THIS, because the option is a real cost in the ground
-    zone and each user of it should be a decision rather than a habit.
+    WHAT THE REVERSAL COST, so nobody proposes it back without knowing: the old
+    behaviour rewarded a player for moving along the trail rather than across
+    it, because the Hellhound's return path could cross its own fire. And it
+    gave the Gatekeeper's phase 2 summons a cost. `docs/DECISIONS.md` carries
+    both and names the levers to reach for instead.
     """
     from cataclysm_sim.enemy_abilities import ABILITIES
-
-    assert hellrush().params.get("GroundHitsAllies") == 1, (
-        "Hellrush no longer burns its own side, so ACataclysmGroundZone's "
-        "bBurnsEveryone has one caller fewer.")
 
     carriers = sorted(
         (enemy, entry.name)
@@ -384,18 +376,30 @@ def test_the_burning_lane_is_one_of_exactly_two_that_burn_their_own_side():
         for entry in entries
         if entry.params.get("GroundHitsAllies")
     )
-    assert carriers == [("Gatekeeper", "Soulfall"),
-                        ("Hellhound", "Hellrush")], (
-        f"the abilities leaving fire that burns their own side are now "
-        f"{carriers}, and the design has exactly two: the Hellhound's "
-        f"Hellrush and the Gatekeeper's Soulfall. A third is fine and the "
-        f"comments naming these two need changing -- in this file, in "
-        f"sim/cataclysm_sim/enemy_abilities.py and in "
-        f"game/Source/Cataclysm/Character/CataclysmHellhoundCharacter.h.")
+    assert not carriers, (
+        f"these abilities leave fire that burns their own side: {carriers}. "
+        f"A creature does not burn itself or its own side. If that rule has "
+        f"changed, it changed in docs/Cataclysm_GDD_v2.md section V and in the "
+        f"creature's own subsection first, and this test and the comments in "
+        f"game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h need "
+        f"changing with it.")
 
-    assert "bBurnsEveryone=*/true" in source(HELLHOUND_SOURCE).replace(" ", ""), (
-        "CataclysmHellhoundCharacter.cpp no longer asks for a lane that burns "
-        "everyone, so the fire would spare the creature that lit it.")
+    # THE TRAIL IS STILL THERE. Removing the rider must not have removed the
+    # burning ground with it, which is a different thing and is most of what
+    # the charge is for.
+    for rider in ("Burn", "GroundRadius", "GroundDuration", "GroundPercent"):
+        assert rider in hellrush().params, (
+            f"Hellrush no longer carries {rider}, so it leaves no burning lane "
+            f"at all. Only GroundHitsAllies was meant to go.")
+
+    # AND THE ENGINE ASKS FOR THE ORDINARY KIND OF GROUND. The argument is
+    # written out at the call site rather than left to the default, because
+    # that call site is the one the rule was written against.
+    assert "bBurnsEveryone=*/false" in source(HELLHOUND_SOURCE).replace(" ", ""), (
+        "CataclysmHellhoundCharacter.cpp does not pass bBurnsEveryone=false "
+        "explicitly. It passed true until 2026-08-20. Leaving it to the "
+        "default would be correct and silent; written out, a reader arriving "
+        "from the design finds the answer at the call site.")
 
 
 # --------------------------------------------------------------------------

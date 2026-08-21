@@ -256,9 +256,18 @@ void ACataclysmHellhoundCharacter::UseEnemyAbility(int32 Index,
 	// because a lane that appeared only after the charge finished would burn
 	// nobody who was standing in it during the run.
 	//
-	// AND IT BURNS EVERYTHING, INCLUDING THIS CREATURE. `GroundHitsAllies=1` in
-	// the model: "The fire burns other enemies and the Hellhound itself." It is
-	// the only thing in the game that does.
+	// AND IT BURNS THE PLAYER AND NOBODY ON THIS CREATURE'S OWN SIDE. It burned
+	// other demons and the Hellhound itself until 2026-08-20, through
+	// `GroundHitsAllies=1` in the model, and was the one source of friendly
+	// fire in the game. The project owner then set a general rule: **a creature
+	// does not burn itself or its own side.** `docs/DECISIONS.md` records what
+	// that cost -- the player no longer gains anything from moving along the
+	// trail rather than across it -- and why it was accepted anyway.
+	//
+	// THE ARGUMENT IS PASSED EXPLICITLY RATHER THAN LEFT TO THE DEFAULT, which
+	// is also false. Written out because this is the call site the rule was
+	// written against, so a reader arriving from the design should find the
+	// answer here rather than have to go and look up a default.
 	//
 	// PRICED ONCE, WHEN THE FIRE IS LAID, and priced off this creature's own
 	// attack damage. A patch outlives the ability that left it, so reading the
@@ -275,7 +284,7 @@ void ACataclysmHellhoundCharacter::UseEnemyAbility(int32 Index,
 
 	LastLaneLeftBurning = ACataclysmGroundZone::SpawnAlong(
 		this, From, AimedAt, HellrushGroundRadiusCm, HellrushGroundSeconds,
-		PerSecond, /*bBurnsEveryone=*/true);
+		PerSecond, /*bBurnsEveryone=*/false);
 }
 
 void ACataclysmHellhoundCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
