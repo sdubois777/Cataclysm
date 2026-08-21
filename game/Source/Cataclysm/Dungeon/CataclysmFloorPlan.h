@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CataclysmFloorPlan.generated.h"
 
 /**
  * Which layout family carved a floor.
@@ -19,20 +20,28 @@
  * what makes "the same seed gives the same floor" and "the exit is reachable"
  * provable in a headless test. A cavern and a hall differ in which cells are
  * carved, not in what a cell is.
+ *
+ * REFLECTED, WHILE THE STRUCTS BELOW ARE NOT. `FCataclysmFloorPlan`'s comment
+ * says to add reflection when something actually needs it, and
+ * `ACataclysmDungeonGameMode` does: a layout that cannot be chosen in the
+ * editor is a layout nobody can try. Unreal's header tool refuses a
+ * `UPROPERTY` of an unreflected type outright. The enum is reflected and
+ * nothing else in this file is.
  */
+UENUM(BlueprintType)
 enum class ECataclysmFloorLayout : uint8
 {
 	/** Large rectangular rooms joined by connections two cells wide. */
-	Halls,
+	Halls UMETA(DisplayName = "Halls"),
 
 	/** Organic, rounded chambers with no straight walls. */
-	Caverns,
+	Caverns UMETA(DisplayName = "Caverns"),
 
 	/** One open space. What a Horde floor is, and what a boss floor wants. */
-	Arena,
+	Arena UMETA(DisplayName = "Arena"),
 
 	/** Not a layout. The number of them, for a test that must cover every one. */
-	Count
+	Count UMETA(Hidden)
 };
 
 /** What one cell of a floor is. */
