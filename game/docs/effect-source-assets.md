@@ -20,7 +20,7 @@ Paragon skeletal meshes on exactly the same terms.
 | Folder under `game/Content/` | Installed | Size | What this project takes from it |
 |---|---|---|---|
 | `_SplineVFX/` | 2026-08-14 | 75 MB | `T_Vfx_BasicDot`, the soft round sprite every emitter drew with until 2026-08-22, and `MI_Basic_trail05` for the projectile's ribbon streak |
-| `SplineEffect2/` | 2026-08-22 | 63 MB | Nothing yet. Spline-driven beam meshes, materials and textures, for the `NS_Beam` shape that is not built |
+| `SplineEffect2/` | 2026-08-22 | 63 MB | `SM_FractalElement`, the octahedron the projectile head is drawn as. Also spline-driven beam meshes and textures, for the `NS_Beam` shape that is not built |
 | `Vefects/` | 2026-08-22 | 356 MB | Two shockwave meshes and four materials: the ground shockwave on the hit burst, the ground ring, and the flare and heat haze on the cast burst. Three packs in one folder: Easy Shockwaves VFX, Free Fire and Zap VFX |
 | `Knife_light/` | 2026-08-22 | 41 MB | `SM_slash` and `MI_mid01`, the melee swing arc |
 
@@ -64,7 +64,8 @@ the table below records.
 | `NS_Impact_Point` | `Core` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
 | `NS_Impact_Point` | `Sparks` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
 | `NS_Impact_Point` | `Shockwave` | mesh `SM_VFX_Cyl_In_Out_Floor_01` | `M_VFX_Shockwave_01` | `Vefects` |
-| `NS_Proj_Body` | `Core`, `Trail` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
+| `NS_Proj_Body` | `Core` | mesh `SM_FractalElement` | `MI_VFX_Shockwave_01_Additive` | `SplineEffect2` and `Vefects` |
+| `NS_Proj_Body` | `Trail` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
 | `NS_Proj_Body` | `Streak` | ribbon `T_Vfx_trail_05` | `MI_Basic_trail05` | `_SplineVFX` |
 | `NS_Strike_Arc` | `Arc` | mesh `SM_slash` | `MI_Strike_Arc`, this project's own instance of `MI_mid01`'s master | `Knife_light` |
 | `NS_Impact_Ground` | `Ring` | mesh `SM_VFX_Cyl_In_Out_Floor_01` | `M_VFX_Shockwave_01` | `Vefects` |

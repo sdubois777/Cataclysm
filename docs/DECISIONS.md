@@ -20,6 +20,46 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — The projectile head is an octahedron, not a round dot, and it is as wide as the projectile hits
+
+**Affects:** `docs/Niagara_Conventions.md` section 5A,
+`game/docs/effect-source-assets.md`.
+
+**The rule this follows.** Section 5A, written the same day: "A round dot has no
+silhouette: it is the same shape from every angle, at every rotation, at every
+distance. It cannot be a primary shape because there is nothing to read." The
+project owner used the word "orb" in all three rounds of feedback on the
+effects, and the head of a projectile was a soft round sprite.
+
+**What it is now.** `SM_FractalElement` from the SplineEffect2 pack: an open
+octahedron of eight triangular faces meeting at points. It is pointed along the
+direction of travel and spun around that axis as it flies. Its outline is
+readable from any angle, which is the thing a round dot cannot do.
+
+**How big.** The mesh is 256.57 cm across at scale one, measured rather than
+guessed, and the head is drawn at `User.Scale × 200 / 256.57` so that its width
+is exactly the projectile's hit diameter. That is the rule
+`ACataclysmProjectile::SetBodyMesh` already follows for a thrown object: what
+the player sees and what hits them stay the same size.
+
+**Why there is no size or transparency curve over its life, which section 5A
+otherwise requires of every emitter.** The head's lifetime is five seconds and
+that is a ceiling, not a flight time -- a projectile is destroyed when it lands.
+A curve over the fraction of life elapsed would make a bolt that flies for a
+fifth of a second look nothing like one that flies for two seconds. The spin is
+driven by elapsed time instead, so a bolt looks the same at every range. This is
+a deliberate exception and it is recorded rather than left as an oversight.
+
+**The trail stays round, and that is correct.** The same section says a
+secondary element should support the primary through value and saturation rather
+than compete with it. A soft round glow strung out behind an angular head is
+that; two angular shapes fighting each other is the visual mud it warns against.
+
+**What is still unsettled.** Whether an open wireframe reads as a finished magic
+bolt is a judgement the project owner has not made yet. It was looked at in the
+sandbox at its real size and it does have a clear outline; whether it is the
+right outline for this game is a separate question.
+
 ## 2026-08-22 — The cast effect fires when the skill fires, not before it, because no skill has a cast time
 
 **Affects:** `docs/Niagara_Conventions.md` section 5, which names the shape
