@@ -2,15 +2,19 @@
 
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmCombatOverlay.h"
+#include "Interface/CataclysmGearPanel.h"
 #include "Interface/CataclysmInventoryScreen.h"
 #include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Blueprint/SlateBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Brushes/SlateColorBrush.h"
 #include "Components/Border.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/SizeBox.h"
@@ -91,12 +95,14 @@ void UCataclysmInventoryWidget::NativeTick(const FGeometry& MyGeometry,
 	// at all; holding a pointer here would be a second record of what the
 	// controller already knows.
 	const UCataclysmInventoryComponent* Inventory = nullptr;
+	const UCataclysmEquipmentComponent* Equipment = nullptr;
 	if (const APawn* Pawn = GetOwningPlayerPawn())
 	{
 		Inventory = Pawn->FindComponentByClass<UCataclysmInventoryComponent>();
+		Equipment = Pawn->FindComponentByClass<UCataclysmEquipmentComponent>();
 	}
 
-	Refresh(Inventory);
+	Refresh(Inventory, Equipment);
 }
 
 void UCataclysmInventoryWidget::BuildTree()
@@ -145,9 +151,27 @@ void UCataclysmInventoryWidget::BuildTree()
 	Inside->SetPadding(FMargin(FScreen::PanelPaddingPx));
 	Panel->SetContent(Inside);
 
+	// THE WORN GEAR ON THE LEFT AND WHAT IS CARRIED ON THE RIGHT. Issue #831.
+	// Both are columns of their own so each keeps its own heading, and the
+	// width they need together is what UCataclysmInventoryScreen::CellSizeFor
+	// now works the cell size out from.
+	UHorizontalBox* Across = WidgetTree->ConstructWidget<UHorizontalBox>(
+		UHorizontalBox::StaticClass(), TEXT("Across"));
+	Inside->SetContent(Across);
+
+	UVerticalBox* GearColumn = WidgetTree->ConstructWidget<UVerticalBox>(
+		UVerticalBox::StaticClass(), TEXT("GearColumn"));
+	UHorizontalBoxSlot* GearColumnSlot =
+		Across->AddChildToHorizontalBox(GearColumn);
+	GearColumnSlot->SetPadding(FMargin(0.0f, 0.0f, FScreen::CellGapPx, 0.0f));
+	GearColumnSlot->SetVerticalAlignment(VAlign_Top);
+
+	BuildGearPanel(GearColumn);
+
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(
 		UVerticalBox::StaticClass(), TEXT("Column"));
-	Inside->SetContent(Column);
+	UHorizontalBoxSlot* ColumnSlot = Across->AddChildToHorizontalBox(Column);
+	ColumnSlot->SetVerticalAlignment(VAlign_Top);
 
 	Header = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(),
 													 TEXT("Header"));
@@ -199,12 +223,63 @@ void UCataclysmInventoryWidget::BuildTree()
 	for (int32 SlotIndex = 0;
 		 SlotIndex < UCataclysmInventoryComponent::SlotCount; ++SlotIndex)
 	{
-		BuildCell(Grid, SlotIndex);
+		BuildCell(Grid,
+				  /*Row=*/SlotIndex / UCataclysmInventoryComponent::Columns,
+				  /*Column=*/SlotIndex % UCataclysmInventoryComponent::Columns,
+				  Cells);
 	}
 }
 
-void UCataclysmInventoryWidget::BuildCell(UUniformGridPanel* Grid,
-										  int32 SlotIndex)
+void UCataclysmInventoryWidget::BuildGearPanel(UVerticalBox* Into)
+{
+	GearHeader = WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("GearHeader"));
+	GearHeader->SetColorAndOpacity(FSlateColor(InkColour()));
+	GearHeader->SetFontSize(static_cast<float>(FScreen::HeaderFontPx));
+	GearHeader->SetJustification(ETextJustify::Center);
+
+	// THE SAME HEADER BAND AND RULE AS THE CARRIED GRID, so the two columns
+	// line up. Their headings sit on one line and their first row of cells
+	// starts at the same height.
+	USizeBox* Band = WidgetTree->ConstructWidget<USizeBox>(
+		USizeBox::StaticClass(), TEXT("GearHeaderBand"));
+	Band->SetHeightOverride(FScreen::HeaderHeightPx
+							- FScreen::HeaderRulePx - FScreen::CellGapPx);
+	Band->SetContent(GearHeader);
+	Into->AddChildToVerticalBox(Band)->SetHorizontalAlignment(HAlign_Fill);
+
+	UBorder* Rule = WidgetTree->ConstructWidget<UBorder>(
+		UBorder::StaticClass(), TEXT("GearHeaderRule"));
+	Rule->SetBrush(FSlateColorBrush(EdgeColour()));
+
+	USizeBox* RuleBand = WidgetTree->ConstructWidget<USizeBox>(
+		USizeBox::StaticClass(), TEXT("GearHeaderRuleBand"));
+	RuleBand->SetHeightOverride(FScreen::HeaderRulePx);
+	RuleBand->SetContent(Rule);
+
+	UVerticalBoxSlot* RuleSlot = Into->AddChildToVerticalBox(RuleBand);
+	RuleSlot->SetHorizontalAlignment(HAlign_Fill);
+	RuleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, FScreen::CellGapPx));
+
+	UUniformGridPanel* GearGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(
+		UUniformGridPanel::StaticClass(), TEXT("GearGrid"));
+	GearGrid->SetSlotPadding(FMargin(FScreen::CellGapPx * 0.5f));
+	Into->AddChildToVerticalBox(GearGrid);
+
+	GearCells.Reset();
+	GearCells.Reserve(UCataclysmGearSlots::AllSlots().Num());
+	for (const ECataclysmGearSlot GearSlot : UCataclysmGearSlots::AllSlots())
+	{
+		int32 Row = INDEX_NONE;
+		int32 Column = INDEX_NONE;
+		UCataclysmGearPanel::PlacementFor(GearSlot, Row, Column);
+		BuildCell(GearGrid, Row, Column, GearCells);
+	}
+}
+
+void UCataclysmInventoryWidget::BuildCell(
+	UUniformGridPanel* Grid, int32 Row, int32 Column,
+	TArray<FCataclysmInventoryCellWidgets>& Into)
 {
 	FCataclysmInventoryCellWidgets Widgets;
 
@@ -266,18 +341,17 @@ void UCataclysmInventoryWidget::BuildCell(UUniformGridPanel* Grid,
 	// its neighbours.
 	Widgets.Size->SetClipping(EWidgetClipping::ClipToBounds);
 
-	UUniformGridSlot* GridSlot = Grid->AddChildToUniformGrid(
-		Widgets.Size,
-		/*InRow=*/SlotIndex / UCataclysmInventoryComponent::Columns,
-		/*InColumn=*/SlotIndex % UCataclysmInventoryComponent::Columns);
+	UUniformGridSlot* GridSlot =
+		Grid->AddChildToUniformGrid(Widgets.Size, Row, Column);
 	GridSlot->SetHorizontalAlignment(HAlign_Fill);
 	GridSlot->SetVerticalAlignment(VAlign_Fill);
 
-	Cells.Add(Widgets);
+	Into.Add(Widgets);
 }
 
 void UCataclysmInventoryWidget::Refresh(
-	const UCataclysmInventoryComponent* Inventory)
+	const UCataclysmInventoryComponent* Inventory,
+	const UCataclysmEquipmentComponent* Equipment)
 {
 	if (Cells.Num() != UCataclysmInventoryComponent::SlotCount || !Header)
 	{
@@ -385,6 +459,131 @@ void UCataclysmInventoryWidget::Refresh(
 											   Materials)));
 		}
 	}
+
+	// THE WORN GEAR IS REBUILT EVERY FRAME AND THE CARRIED CELLS ARE NOT, and
+	// the difference is only that there is no cheap way to notice a change to
+	// what is worn: UCataclysmEquipmentComponent raises a delegate rather than
+	// keeping a count, and this widget is not the thing bound to it. Nineteen
+	// cells is a small enough loop to do plainly; if it ever stops being one,
+	// the answer is a change count of the same shape the inventory has.
+	RefreshGear(Equipment, Bases, Affixes, Rarities, Materials, Tiers,
+				bResized, CellPx, LabelFontPx);
+}
+
+void UCataclysmInventoryWidget::RefreshGear(
+	const UCataclysmEquipmentComponent* Equipment, const UDataTable* Bases,
+	const UDataTable* Affixes, const UDataTable* Rarities,
+	const UDataTable* Materials, const UDataTable* Tiers, bool bResized,
+	float CellPx, float LabelFontPx)
+{
+	if (GearCells.Num() != UCataclysmGearSlots::AllSlots().Num() || !GearHeader)
+	{
+		return;
+	}
+
+	GearHeader->SetText(FText::FromString(UCataclysmGearPanel::HeaderTextFor(
+		Equipment ? Equipment->NumEquipped() : 0, GearCells.Num())));
+
+	const FCataclysmCarriedSlot Nothing;
+	for (int32 Index = 0; Index < GearCells.Num(); ++Index)
+	{
+		const FCataclysmInventoryCellWidgets& Widgets = GearCells[Index];
+		const ECataclysmGearSlot GearSlot =
+			static_cast<ECataclysmGearSlot>(Index);
+
+		const FCataclysmItem* Worn =
+			Equipment ? Equipment->EquippedAt(GearSlot) : nullptr;
+
+		// A CARRIED SLOT HOLDING THE WORN ITEM, so the colour, the frame's
+		// thickness and the tool tip all come from the same functions the
+		// carried grid uses. A worn Cataclysmic helm should not be a different
+		// colour from the same helm sitting in the bag.
+		FCataclysmCarriedSlot AsCarried = Nothing;
+		if (Worn)
+		{
+			AsCarried.Item = *Worn;
+		}
+
+		if (bResized)
+		{
+			Widgets.Size->SetWidthOverride(CellPx);
+			Widgets.Size->SetHeightOverride(CellPx);
+			Widgets.Label->SetFontSize(LabelFontPx);
+		}
+
+		Widgets.Frame->SetBrush(FSlateColorBrush(
+			FScreen::ColourFor(AsCarried, Rarities, Materials, Tiers)));
+		Widgets.Frame->SetPadding(FMargin(static_cast<float>(
+			FScreen::BorderThicknessFor(AsCarried, Materials))));
+
+		Widgets.Label->SetText(FText::FromString(
+			UCataclysmGearPanel::LabelFor(GearSlot, Worn, Bases)));
+
+		// THE SECOND HAND SAYS WHY IT IS EMPTY when a two-handed weapon fills
+		// both. Otherwise a player sees a free hand and tries to use it.
+		if (UCataclysmGearPanel::SlotIsBlocked(GearSlot, Equipment))
+		{
+			Widgets.Frame->SetToolTipText(FText::FromString(
+				TEXT("Both hands are holding the two-handed weapon.")));
+			continue;
+		}
+
+		Widgets.Frame->SetToolTipText(FText::FromString(
+			Worn ? UCataclysmItemTooltip::TextFor(AsCarried, Bases, Affixes,
+												  Materials)
+				 : FString()));
+	}
+}
+
+int32 UCataclysmInventoryWidget::CarriedSlotUnderCursor(
+	const FVector2D& ViewportPoint) const
+{
+	return IndexOfCellUnderCursor(Cells, ViewportPoint);
+}
+
+ECataclysmGearSlot UCataclysmInventoryWidget::GearSlotUnderCursor(
+	const FVector2D& ViewportPoint) const
+{
+	const int32 Index = IndexOfCellUnderCursor(GearCells, ViewportPoint);
+	return Index == INDEX_NONE ? ECataclysmGearSlot::Count
+							   : static_cast<ECataclysmGearSlot>(Index);
+}
+
+int32 UCataclysmInventoryWidget::IndexOfCellUnderCursor(
+	const TArray<FCataclysmInventoryCellWidgets>& From,
+	const FVector2D& ViewportPoint) const
+{
+	// THE MOUSE POSITION IS IN VIEWPORT PIXELS AND A GEOMETRY IS IN SLATE'S
+	// ABSOLUTE COORDINATES, and the two differ by the interface's scale. This
+	// is the same conversion CursorIsOverPanel does.
+	FVector2D Absolute = FVector2D::ZeroVector;
+	USlateBlueprintLibrary::ScreenToWidgetAbsolute(
+		const_cast<UCataclysmInventoryWidget*>(this), ViewportPoint, Absolute,
+		/*bIncludeWindowPosition=*/false);
+
+	for (int32 Index = 0; Index < From.Num(); ++Index)
+	{
+		const UBorder* Frame = From[Index].Frame;
+		if (!Frame)
+		{
+			continue;
+		}
+
+		const FGeometry& Geometry = Frame->GetCachedGeometry();
+		if (FVector2D(Geometry.GetLocalSize()).IsNearlyZero())
+		{
+			// NEVER PAINTED, so it is nowhere. The one frame between the key
+			// press that opens the screen and the first time it is drawn.
+			continue;
+		}
+
+		if (Geometry.IsUnderLocation(Absolute))
+		{
+			return Index;
+		}
+	}
+
+	return INDEX_NONE;
 }
 
 bool UCataclysmInventoryWidget::CursorIsOverPanel(

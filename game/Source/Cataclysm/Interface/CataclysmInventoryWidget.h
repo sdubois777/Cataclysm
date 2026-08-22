@@ -4,14 +4,17 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "CataclysmInventoryWidget.generated.h"
 
 class UBorder;
+class UCataclysmEquipmentComponent;
 class UCataclysmInventoryComponent;
 class UDataTable;
 class USizeBox;
 class UTextBlock;
 class UUniformGridPanel;
+class UVerticalBox;
 
 /**
  * One cell of the carried grid: the widgets that have to be written to when
@@ -109,7 +112,29 @@ public:
 	 * player character has. Every cell then reads as empty rather than keeping
 	 * what the last pawn was carrying.
 	 */
-	void Refresh(const UCataclysmInventoryComponent* Inventory);
+	void Refresh(const UCataclysmInventoryComponent* Inventory,
+				 const UCataclysmEquipmentComponent* Equipment);
+
+	/**
+	 * Which carried slot the cursor is over, or INDEX_NONE.
+	 *
+	 * ASKED OF SLATE'S OWN GEOMETRY rather than of arithmetic this class
+	 * does. Every cell knows where it was last painted, so the question is a
+	 * loop and a containment test; the port in issue #735 deleted the
+	 * arithmetic that used to answer it and there is no reason to bring it
+	 * back.
+	 *
+	 * IT CANNOT BE TESTED HERE, and neither can CursorIsOverPanel beside it:
+	 * a cached geometry is empty until the widget has been painted and the
+	 * automation command passes -nullrhi. What happens once a slot is named
+	 * is UCataclysmWearing, which is covered.
+	 */
+	int32 CarriedSlotUnderCursor(const FVector2D& ViewportPoint) const;
+
+	/**
+	 * Which worn gear slot the cursor is over, or ECataclysmGearSlot::Count.
+	 */
+	ECataclysmGearSlot GearSlotUnderCursor(const FVector2D& ViewportPoint) const;
 
 	/**
 	 * Whether the panel covers a point, given in viewport pixels.
@@ -152,7 +177,32 @@ private:
 	void BuildTree();
 
 	/** Builds one cell and records the widgets the refresh writes to. */
-	void BuildCell(UUniformGridPanel* Grid, int32 SlotIndex);
+	/**
+	 * One cell, built into a grid at a row and column, appended to a list.
+	 *
+	 * THE ROW AND COLUMN COME FROM THE CALLER because the two grids place
+	 * their cells by different rules. The carried grid runs its 48 slots
+	 * across twelve columns in order; the panel of worn gear puts the armour
+	 * in one column, the eight rings in another and the weapons in a third,
+	 * which is UCataclysmGearPanel::PlacementFor.
+	 */
+	void BuildCell(UUniformGridPanel* Grid, int32 Row, int32 Column,
+				   TArray<FCataclysmInventoryCellWidgets>& Into);
+
+	/** Which cell of a list the cursor is over, or INDEX_NONE. */
+	int32 IndexOfCellUnderCursor(
+		const TArray<FCataclysmInventoryCellWidgets>& From,
+		const FVector2D& ViewportPoint) const;
+
+	/** Builds the panel of worn gear into a column. Called from BuildTree. */
+	void BuildGearPanel(UVerticalBox* Into);
+
+	/** Fills the panel of worn gear. Called from Refresh. */
+	void RefreshGear(const UCataclysmEquipmentComponent* Equipment,
+					 const UDataTable* Bases, const UDataTable* Affixes,
+					 const UDataTable* Rarities, const UDataTable* Materials,
+					 const UDataTable* Tiers, bool bResized, float CellPx,
+					 float LabelFontPx);
 
 	/** The panel behind everything. What CursorIsOverPanel measures. */
 	UPROPERTY()
@@ -168,6 +218,19 @@ private:
 	 */
 	UPROPERTY()
 	TArray<FCataclysmInventoryCellWidgets> Cells;
+
+	/**
+	 * The panel of worn gear, one entry per ECataclysmGearSlot in its order.
+	 *
+	 * INDEXED BY THE ENUM'S VALUE, which holds because the cells are built by
+	 * walking UCataclysmGearSlots::AllSlots, and that is built from 0 upwards.
+	 */
+	UPROPERTY()
+	TArray<FCataclysmInventoryCellWidgets> GearCells;
+
+	/** The line above the panel of worn gear. */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> GearHeader = nullptr;
 
 	/**
 	 * The cell size the widgets were last set to.

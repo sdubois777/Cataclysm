@@ -54,17 +54,22 @@ float UCataclysmInventoryScreen::CellSizeFor(float ViewportWidth,
 {
 	// WHAT IS LEFT FOR THE CELLS THEMSELVES once the panel's share of the
 	// viewport has given up its padding, its header and the gaps between cells.
+	// EVERY COLUMN THE PANEL HOLDS, not only the carried grid's twelve.
+	// The panel of worn gear sits beside it and its columns come out of the
+	// same width. Issue #831.
+	constexpr int32 AllColumns = Columns + ColumnsBeside;
 	const float AcrossWidth = ViewportWidth * PanelWidthShare
-		- PanelPaddingPx * 2.0f - CellGapPx * (Columns - 1);
+		- PanelPaddingPx * 2.0f - CellGapPx * (AllColumns - 1);
 	const float DownHeight = ViewportHeight * PanelHeightShare
 		- PanelPaddingPx * 2.0f - HeaderHeightPx - CellGapPx * (Rows - 1);
 
-	const float Fits = FMath::Min(AcrossWidth / Columns, DownHeight / Rows);
+	const float Fits = FMath::Min(AcrossWidth / AllColumns,
+								  DownHeight / Rows);
 
-	// THE FLOOR IS ONE PIXEL AND IS NOT A READABLE SIZE. It exists so that a
-	// viewport too small to hold the padding cannot produce a negative cell,
-	// which Slate treats as an error rather than as a very small box.
-	return FMath::Clamp(Fits, 1.0f, MaxCellPx);
+	// THE FLOOR IS A READABLE SIZE RATHER THAN A GUARD AGAINST A NEGATIVE
+	// ONE. See SmallestCellPx: a frame is padding inside its cell, so a cell
+	// under twice the thickest frame has no interior left for its label.
+	return FMath::Clamp(Fits, SmallestCellPx, MaxCellPx);
 }
 
 int32 UCataclysmInventoryScreen::LabelFontSizeFor(float CellPx)

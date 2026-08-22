@@ -426,12 +426,35 @@ bool FCataclysmInventoryFrameThicknessTest::RunTest(const FString&)
 	TestTrue(TEXT("which is a frame rather than none"),
 		FScreen::EmptyCellBorderPx > 0);
 
-	// AND NO FRAME IS THICK ENOUGH TO SWALLOW ITS OWN CELL. The frame is drawn
-	// as padding inside the cell, so a thickness at or above half the cell's
-	// size would leave no interior for the label at the smallest cell drawn.
-	const float SmallestCell = FScreen::CellSizeFor(400.0f, 300.0f);
-	TestTrue(TEXT("the thickest frame still leaves an interior in a small cell"),
-		8.0f * 2.0f < SmallestCell);
+	// AND NO FRAME IS THICK ENOUGH TO SWALLOW ITS OWN CELL, AT ANY WINDOW.
+	// The frame is drawn as padding inside the cell, so a thickness at or
+	// above half the cell's size leaves no interior for the label.
+	//
+	// IT USED TO CHECK ONE WINDOW AND THAT WAS NOT ENOUGH. Adding the three
+	// columns of the worn gear panel in issue #831 made a 400 by 300 window
+	// produce a cell of 14.9 against a thickest frame of 8, and only that
+	// one window was being asked. The floor UCataclysmInventoryScreen::
+	// SmallestCellPx now puts under the cell is what makes the rule hold
+	// everywhere, so the test asks everywhere rather than somewhere.
+	const int32 Thickest = FMath::Max(
+		FScreen::BorderThicknessFor(
+			MaterialSlot(TEXT("Material_Purified_Essence"), 1), Materials),
+		FScreen::EmptyCellBorderPx);
+
+	for (const FVector2D Viewport : {FVector2D(3840.0, 2160.0),
+									 FVector2D(1920.0, 1080.0),
+									 FVector2D(1024.0, 768.0),
+									 FVector2D(400.0, 300.0),
+									 FVector2D(1.0, 1.0)})
+	{
+		const float Cell = FScreen::CellSizeFor(
+			static_cast<float>(Viewport.X), static_cast<float>(Viewport.Y));
+		TestTrue(FString::Printf(
+			TEXT("a %.0f by %.0f window leaves an interior: cell %.1f against "
+				 "a thickest frame of %d each side"),
+			Viewport.X, Viewport.Y, Cell, Thickest),
+			static_cast<float>(Thickest) * 2.0f < Cell);
+	}
 
 	return true;
 }
