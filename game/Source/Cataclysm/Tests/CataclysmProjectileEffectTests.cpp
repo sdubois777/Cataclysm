@@ -17,6 +17,7 @@
 #include "NiagaraEmitter.h"
 #include "NiagaraEmitterHandle.h"
 #include "NiagaraLightRendererProperties.h"
+#include "NiagaraMeshRendererProperties.h"
 #include "NiagaraRibbonRendererProperties.h"
 #include "NiagaraSpriteRendererProperties.h"
 #include "NiagaraSystem.h"
@@ -260,35 +261,69 @@ bool FCataclysmProjectileHeadRidesAndTrailStaysBehind::RunTest(const FString& Pa
 	TestTrue(TEXT("all three emitters are enabled"),
 		Head->GetIsEnabled() && Trail->GetIsEnabled() && Streak->GetIsEnabled());
 
-	// THE MATERIALS, BECAUSE A MISSING ONE IS INVISIBLE RATHER THAN LOUD. A
-	// material without the matching Niagara usage flag makes the renderer fall
-	// back to the engine default in silence, which is what happened to
-	// NS_Impact_Point while it was being built. The head and the sparks share
-	// one sprite material so that re-pointing the texture is a single edit; the
-	// streak needs a ribbon material and uses the trail material out of the
-	// installed pack.
-	for (const TPair<const TCHAR*, const FVersionedNiagaraEmitterData*> Pair :
-			{ TPair<const TCHAR*, const FVersionedNiagaraEmitterData*>(
-				  TEXT("Core"), HeadData),
-			  TPair<const TCHAR*, const FVersionedNiagaraEmitterData*>(
-				  TEXT("Trail"), TrailData) })
+	// THE HEAD IS A MESH AND NOT A ROUND SPRITE, AND THAT IS THE WHOLE POINT OF
+	// THIS ASSERTION. docs/Niagara_Conventions.md section 5A: "A round dot has
+	// no silhouette: it is the same shape from every angle, at every rotation,
+	// at every distance. It cannot be a primary shape because there is nothing
+	// to read." The project owner called the result "orbs" three times. Until
+	// 2026-08-22 this test asserted the opposite -- that the head drew with the
+	// shared sprite material -- so it pinned the fault in place.
+	//
+	// THE MESH REFERENCE IS CHECKED RATHER THAN ITS CONTENTS, because it comes
+	// out of an installed pack and is absent on a fresh clone, exactly as the
+	// Paragon meshes are. A renderer whose mesh was never assigned carries null
+	// and fails here.
+	bool bFoundAShapedHead = false;
+	for (const UNiagaraRendererProperties* Renderer : HeadData->GetRenderers())
 	{
-		bool bFoundTheSharedMaterial = false;
-		for (const UNiagaraRendererProperties* Renderer : Pair.Value->GetRenderers())
+		const auto* Meshes = Cast<UNiagaraMeshRendererProperties>(Renderer);
+		if (Meshes && Meshes->Meshes.Num() > 0 && Meshes->Meshes[0].Mesh)
 		{
-			const auto* Sprites =
-				Cast<UNiagaraSpriteRendererProperties>(Renderer);
-			if (Sprites && Sprites->Material &&
-				Sprites->Material->GetName() == TEXT("M_Impact_Sprite"))
-			{
-				bFoundTheSharedMaterial = true;
-			}
+			bFoundAShapedHead = true;
+			TestFalse(TEXT("the head's mesh is not a sphere, which would be the "
+						   "round non-shape again in three dimensions"),
+				Meshes->Meshes[0].Mesh->GetName().Contains(TEXT("Sphere")));
 		}
-		TestTrue(FString::Printf(
-			TEXT("%s draws with M_Impact_Sprite rather than the engine's "
-				 "default sprite material"), Pair.Key),
-			bFoundTheSharedMaterial);
 	}
+	TestTrue(TEXT("the head is drawn by a mesh renderer with a mesh assigned, "
+				  "so it has an outline to read rather than being a round dot"),
+		bFoundAShapedHead);
+
+	bool bHeadStillDrawsARoundSprite = false;
+	for (const UNiagaraRendererProperties* Renderer : HeadData->GetRenderers())
+	{
+		if (Cast<UNiagaraSpriteRendererProperties>(Renderer))
+		{
+			bHeadStillDrawsARoundSprite = true;
+		}
+	}
+	TestFalse(TEXT("and draws no sprite of its own, so the shape is not buried "
+				   "under the dot it replaced"),
+		bHeadStillDrawsARoundSprite);
+
+	// THE TRAIL IS STILL SPRITES, AND THAT IS CORRECT. The same section says a
+	// secondary element should support the primary through value and saturation
+	// rather than competing with it. A soft round glow strung out behind an
+	// angular head is that; two angular shapes fighting each other is the
+	// "visual mud" it warns about.
+	//
+	// A MISSING MATERIAL IS INVISIBLE RATHER THAN LOUD. One without the matching
+	// Niagara usage flag makes the renderer fall back to the engine default in
+	// silence, which is what happened to NS_Impact_Point while it was being
+	// built and to NS_Cast_Windup after it.
+	bool bFoundTheSpriteMaterial = false;
+	for (const UNiagaraRendererProperties* Renderer : TrailData->GetRenderers())
+	{
+		const auto* Sprites = Cast<UNiagaraSpriteRendererProperties>(Renderer);
+		if (Sprites && Sprites->Material &&
+			Sprites->Material->GetName() == TEXT("M_Impact_Sprite"))
+		{
+			bFoundTheSpriteMaterial = true;
+		}
+	}
+	TestTrue(TEXT("the trail draws with M_Impact_Sprite rather than the "
+				  "engine's default sprite material"),
+		bFoundTheSpriteMaterial);
 
 	// THE STREAK IS A RIBBON AND NOT A LINE OF SPRITES, which is the difference
 	// between a continuous streak and a dotted one. A ribbon renderer is a
