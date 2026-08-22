@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCastEffect.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -2797,6 +2798,105 @@ bool FCataclysmEverySwingAsksForAnArc::RunTest(const FString&)
 	Strike->SwingOnce();
 	TestEqual(TEXT("three swings ask for three arcs"),
 		UCataclysmStrikeEffect::TimesAsked, Before + 3);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The burst at the caster, which every skill asks for
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillAsksForACastBurstTest,
+	"Cataclysm.Effects.EverySkillAsksForACastBurstWhenItGoesOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillAsksForACastBurstTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// A STRIKE STANDS IN FOR ALL EIGHT SHAPES. The call is in
+	// UCataclysmSkillTemplate::CommitAndBegin, which every shape calls first, so
+	// one of them exercising it exercises the line all of them share.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=90"),
+		TEXT("Cinderslash"), TEXT("Element.Demonic, Type.Strike"));
+	if (!TestNotNull(TEXT("a granted strike"), Strike))
+	{
+		return false;
+	}
+
+	const int32 Before = UCataclysmCastEffect::TimesAsked;
+	UCataclysmCastEffect::LastDamageTypeAsked = NAME_None;
+
+	if (!TestTrue(TEXT("the skill activates"), Activate(Caster, Strike)))
+	{
+		return false;
+	}
+
+	// THE WHOLE POINT. Before 2026-08-22 a skill began with nothing happening at
+	// the caster at all: the bolt and the hit burst existed and the third of the
+	// three systems had never been built. Issue #811.
+	TestEqual(TEXT("using a skill asks for a burst at the caster"),
+		UCataclysmCastEffect::TimesAsked, Before + 1);
+
+	// AND IN THE SKILL'S OWN COLOUR, which is the other half. A player's hits
+	// carry no damage type, so without the skill's Element tag reaching the
+	// effect this would be None and the burst would draw the authored white.
+	// Issue #803.
+	TestEqual(TEXT("and asks for it in the damage type the skill row names"),
+		UCataclysmCastEffect::LastDamageTypeAsked, FName(TEXT("Demonic")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRefusedSkillDrawsNoBurstTest,
+	"Cataclysm.Effects.ASkillThatNeverStartsDrawsNoCastBurst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRefusedSkillDrawsNoBurstTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=90"),
+		TEXT("Cinderslash"), TEXT("Element.Demonic, Type.Strike"));
+	if (!TestNotNull(TEXT("a granted strike"), Strike))
+	{
+		return false;
+	}
+
+	// ONE MANA, WHICH IS HOW
+	// Cataclysm.Skills.ASkillIsRefusedWhenTheManaIsNotThere makes a skill refuse
+	// itself: the Heavy slot costs more than that.
+	Caster.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1.0f);
+
+	const int32 Before = UCataclysmCastEffect::TimesAsked;
+	TestFalse(TEXT("the skill is refused"), Activate(Caster, Strike));
+
+	// A SKILL NOBODY CAN PAY FOR DRAWS NOTHING. A flash on a skill that never
+	// fired would read as a bug and would tell the player a skill went off when
+	// it did not.
+	//
+	// WHAT THIS DOES NOT PROVE, AND IT WAS WRITTEN BELIEVING IT DID. It does not
+	// show that the call sits PAST CommitAbility inside CommitAndBegin. Moving
+	// the call above the commit still passes this test, which was measured with
+	// prove_cast.py rather than assumed: the ability system checks the cost in
+	// TryActivateAbility and refuses the activation before the skill's body runs
+	// at all, so nothing inside CommitAndBegin executes either way. The
+	// placement is still right -- CommitAbility can refuse for reasons the
+	// earlier check did not see -- but no test in this suite distinguishes it.
+	TestEqual(TEXT("a skill that could not pay its cost draws nothing"),
+		UCataclysmCastEffect::TimesAsked, Before);
 
 	return true;
 }

@@ -21,7 +21,7 @@ Paragon skeletal meshes on exactly the same terms.
 |---|---|---|---|
 | `_SplineVFX/` | 2026-08-14 | 75 MB | `T_Vfx_BasicDot`, the soft round sprite every emitter drew with until 2026-08-22, and `MI_Basic_trail05` for the projectile's ribbon streak |
 | `SplineEffect2/` | 2026-08-22 | 63 MB | Nothing yet. Spline-driven beam meshes, materials and textures, for the `NS_Beam` shape that is not built |
-| `Vefects/` | 2026-08-22 | 356 MB | `SM_VFX_Cyl_In_Out_Floor_01` and `M_VFX_Shockwave_01`, the ground shockwave on the hit burst. Three packs in one folder: Easy Shockwaves VFX, Free Fire and Zap VFX |
+| `Vefects/` | 2026-08-22 | 356 MB | Two shockwave meshes and four materials: the ground shockwave on the hit burst, the ground ring, and the flare and heat haze on the cast burst. Three packs in one folder: Easy Shockwaves VFX, Free Fire and Zap VFX |
 | `Knife_light/` | 2026-08-22 | 41 MB | `SM_slash` and `MI_mid01`, the melee swing arc |
 
 **The 2026-08-22 three were installed by the project owner** through the editor's
@@ -66,7 +66,25 @@ the table below records.
 | `NS_Impact_Point` | `Shockwave` | mesh `SM_VFX_Cyl_In_Out_Floor_01` | `M_VFX_Shockwave_01` | `Vefects` |
 | `NS_Proj_Body` | `Core`, `Trail` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
 | `NS_Proj_Body` | `Streak` | ribbon `T_Vfx_trail_05` | `MI_Basic_trail05` | `_SplineVFX` |
-| `NS_Strike_Arc` | `Arc` | mesh `SM_slash` | `MI_mid01` | `Knife_light` |
+| `NS_Strike_Arc` | `Arc` | mesh `SM_slash` | `MI_Strike_Arc`, this project's own instance of `MI_mid01`'s master | `Knife_light` |
+| `NS_Impact_Ground` | `Ring` | mesh `SM_VFX_Cyl_In_Out_Floor_01` | `M_VFX_Shockwave_01` | `Vefects` |
+| `NS_Cast_Windup` | `Flare` | mesh `SM_VFX_In_Out_Cyl_01` | `MI_VFX_Shockwave_01_Additive` | `Vefects` |
+| `NS_Cast_Windup` | `Sparks`, `Glow` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
+| `NS_Cast_Windup` | `Haze` | sprite | `MI_VFX_HeatDistortion_Light` | `Vefects` |
+
+**`MI_Strike_Arc` exists because `MI_mid01` sets both of its colour parameters
+to BLACK**, so the damage type's colour multiplied to nothing and the melee arc
+shipped as a black smear on 2026-08-22. This project's own instance of the same
+master material sets them to white. Issue #811.
+
+**`MI_VFX_HeatDistortion_Light` is drawn on a SPRITE renderer and not a mesh
+one, and that was measured rather than chosen.** On a mesh renderer Niagara
+reports "Some materials do not have the correct usage flags set, and will use
+the default material" -- the material carries `bUsedWithNiagaraSprites` and not
+`bUsedWithNiagaraMeshParticles`. A usage flag lives on the master material,
+which is inside a pack that is not in git, so setting it would be lost on the
+next install. A camera-facing sprite is the conventional way to draw heat haze
+anyway.
 
 **The two mesh emitters are the only things in the project that are not a flat
 tinted sprite**, and that is the whole point of them. The project owner said of
