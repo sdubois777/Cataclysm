@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -77,6 +78,24 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 void ACataclysmGroundZone::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// DRAWN, WHICH UNTIL ISSUE #811 IT WAS NOT. Every patch of burning ground in
+	// the game was invisible: this class had a scene component and nothing else,
+	// and its own header said so. Eight of the sixteen designed Demonic skills
+	// leave one, and a player could stand in any of them and see nothing.
+	//
+	// HERE RATHER THAN IN Spawn AND SpawnAlong, because both of those end at the
+	// same actor and doing it once is one place to get wrong instead of two. It
+	// also means a zone placed in a level by hand draws as well as one a skill
+	// left.
+	//
+	// THE COLOUR COMES FROM THE OWNER AND IS NAME_None FOR A PLAYER, so a zone a
+	// player leaves draws the system's authored white. That is issue #803 and
+	// not a fault here: a zone carries no skill tags of its own to read an
+	// Element.* tag from, unlike UCataclysmStrikeSkill which does.
+	UCataclysmGroundEffect::PlayFor(this, GetActorLocation(), FarEnd, RadiusCm,
+									GetLifeSpan(),
+									UCataclysmSkillEffects::DamageTypeOf(GetOwner()));
 
 	if (UWorld* World = GetWorld())
 	{

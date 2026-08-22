@@ -72,9 +72,15 @@ FName UCataclysmProjectileEffect::DamageTypeFor(
 	return UCataclysmSkillEffects::DamageTypeOf(Projectile->GetOwner());
 }
 
+int32 UCataclysmProjectileEffect::TimesAsked = 0;
+
 UNiagaraComponent* UCataclysmProjectileEffect::AttachTo(
 	ACataclysmProjectile* Projectile)
 {
+	// COUNTED FIRST, BEFORE ANYTHING CAN REFUSE. See the declaration: this is
+	// the only thing an automation test can observe about this function.
+	++TimesAsked;
+
 	if (!Projectile || !Projectile->GetRootComponent())
 	{
 		return nullptr;

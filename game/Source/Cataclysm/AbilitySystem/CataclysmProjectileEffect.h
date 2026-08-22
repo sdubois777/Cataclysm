@@ -130,9 +130,15 @@ public:
 	 *
 	 * THAT LAST ONE IS NOT A FAILURE. It is FXT_Enemy working: past 4000 cm, or
 	 * outside the view frustum, or beyond twenty live instances of this system,
-	 * the effect is refused before it starts and the projectile crosses the room
-	 * as the bare sphere it was before. That is the whole reason the effect type
-	 * exists.
+	 * the effect is refused before it starts. That is the whole reason the
+	 * effect type exists.
+	 *
+	 * WHAT A REFUSAL COSTS GOT BIGGER ON 2026-08-22. It used to leave the
+	 * projectile crossing the room as a bare sphere. The constructor no longer
+	 * loads that sphere -- it had no material and drew in Unreal's default grey,
+	 * which is issue #811 -- so a spell whose effect is refused now draws
+	 * nothing at all. That is the right trade at 4000 cm and off screen, and it
+	 * is worth knowing.
 	 *
 	 * IT ALSO RETURNS NULL IN EVERY AUTOMATION TEST, and that is a property of
 	 * the harness rather than of this code. Niagara's CreateNiagaraSystem checks
@@ -148,4 +154,21 @@ public:
 	 * place, so there is nothing to see through.
 	 */
 	static UNiagaraComponent* AttachTo(ACataclysmProjectile* Projectile);
+
+	/**
+	 * How many times a projectile has asked for its body since the editor
+	 * started.
+	 *
+	 * IT EXISTS BECAUSE NO TEST IN THIS PROJECT CAN SEE A NIAGARA SPAWN, as the
+	 * comment on `AttachTo` above already explains at length. Issue #559.
+	 *
+	 * WITHOUT IT NOTHING CONNECTED THIS TO THE GAME. Until 2026-08-22 the only
+	 * test standing between a fired projectile and an invisible one asserted
+	 * that the placeholder component had a static mesh -- which passed because
+	 * the constructor loaded an engine sphere, not because this function was
+	 * ever called. Delete the `AttachTo` line from `ACataclysmProjectile::Fire`
+	 * and the whole suite stayed green.
+	 * `Cataclysm.AI.AFiredProjectileHasSomethingOnScreenToSee` reads this now.
+	 */
+	static int32 TimesAsked;
 };

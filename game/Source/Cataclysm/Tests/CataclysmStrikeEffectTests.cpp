@@ -250,31 +250,45 @@ bool FCataclysmStrikeArcDrawsAMeshAndLightsTheFloor::RunTest(const FString& Para
 				  "ground around the caster"),
 		bFoundALight);
 
-	// THE MESH AND MATERIAL COME OUT OF A GITIGNORED PACK. On a fresh clone they
-	// resolve to null and the arc draws with the engine's default material,
-	// which is the same state the enemy Blueprints are in without the Paragon
-	// packs. That is reported rather than failed, and the rest of this test
-	// still ran.
-	const bool bHasMesh = Mesh->Meshes.Num() > 0 && Mesh->Meshes[0].Mesh != nullptr;
+	// THE MATERIAL IS THIS PROJECT'S OWN AND IS COMMITTED, so it resolves on a
+	// fresh clone and is asserted unconditionally.
+	//
+	// IT USED TO BE THE PACK'S OWN `MI_mid01` AND THAT DREW A BLACK SMEAR. That
+	// instance sets both of its colour parameters to black, so the particle
+	// colour multiplied into black and a swing appeared as a dark translucent
+	// shape on the ground. It shipped that way on 2026-08-22 and was found by
+	// placing the effect in the level and looking at it, which is the procedure
+	// docs/Niagara_Conventions.md section 5A now describes. `MI_Strike_Arc` is
+	// the same master material with those two colours set to white, so the
+	// damage type's colour is what tints the arc.
 	const bool bHasMaterial = Mesh->bOverrideMaterials
 		&& Mesh->OverrideMaterials.Num() > 0
 		&& Mesh->OverrideMaterials[0].ExplicitMat != nullptr;
+	if (!TestTrue(TEXT("the arc has a material override at all"), bHasMaterial))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is this project's own slash material, not the pack's "
+				   "black one"),
+		Mesh->OverrideMaterials[0].ExplicitMat->GetName(),
+		FString(TEXT("MI_Strike_Arc")));
 
-	if (!bHasMesh || !bHasMaterial)
+	// THE MESH STILL COMES OUT OF A GITIGNORED PACK, so on a fresh clone it
+	// resolves to null and the arc draws nothing. Reported rather than failed,
+	// which is the same arrangement the Paragon-dependent tests use.
+	const bool bHasMesh = Mesh->Meshes.Num() > 0 && Mesh->Meshes[0].Mesh != nullptr;
+	if (!bHasMesh)
 	{
 		CataclysmTestSkip::ReportSkippedHalf(*this,
-			TEXT("which mesh and material the arc draws with is not checked; "
-				 "the renderer class, the light, the emitter count, the effect "
-				 "type and the parameter block are. The Knife_light pack is not "
-				 "installed, so the arc draws with the engine default."));
+			TEXT("which mesh the arc draws is not checked; the material, the "
+				 "renderer class, the light, the emitter count, the effect type "
+				 "and the parameter block are. The Knife_light pack is not "
+				 "installed."));
 		return true;
 	}
 
 	TestEqual(TEXT("the arc draws the pack's slash mesh"),
 		Mesh->Meshes[0].Mesh->GetName(), FString(TEXT("SM_slash")));
-	TestEqual(TEXT("the arc draws with the pack's slash material"),
-		Mesh->OverrideMaterials[0].ExplicitMat->GetName(),
-		FString(TEXT("MI_mid01")));
 
 	return true;
 }

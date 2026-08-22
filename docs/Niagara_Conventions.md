@@ -616,6 +616,189 @@ its range.
 
 ---
 
+## 5A. What a finished ability effect is made of
+
+**Written on 2026-08-22, after the project owner rejected the effects for the
+third time.** The first two attempts added parts to a single system and the
+verdict did not change: "Still just shooting regular looking grey orbs with some
+mediocre effects on them, the big stomps and ring aoes are still nothing.
+Nothing looks remotely close to a finished skill." This section is the research
+that was missing, so the next attempt has a standard to build to rather than a
+feeling to chase.
+
+### One skill is three systems, not one
+
+**Practice, and it is the structural finding.** Commercial Niagara ability packs
+are organised as *muzzle*, *projectile*, *hit* — three separate systems that a
+skill combines. Gabriel Aguiar's Magic Projectiles Mega Pack volume 1 ships 240
+effects and states the split exactly: **91 projectiles, 83 hits and 66 muzzles.**
+
+That is the same three beats Riot's League of Legends VFX style guide calls
+**anticipation, impact and dissipation**. Its stated purpose: "Lead the brain
+with anticipation and then overload the brain in that moment that it's been
+waiting for, and then you want to give the brain time to process what just
+happened."
+
+**So a skill with no muzzle has no anticipation, and a player's brain is never
+led.** That is a third of the effect missing, and it is missing from every skill
+in this project: `NS_Cast_Windup` has never been built.
+
+### The layers inside one system
+
+**Practice.** A hit or a burst is conventionally built from four kinds of layer,
+and each does a different job:
+
+| Layer | What it does | Timing |
+| :-- | :-- | :-- |
+| **Core flash** | the bright shape at the centre | fast, bright, gone quickly |
+| **Debris and sparks** | small pieces thrown outward | outlive the flash |
+| **Energy and glow** | the lingering aura or afterimage | slowest to fade |
+| **Distortion** | heat haze, a shockwave, camera shake | brief, and it is what sells force |
+
+**This project had one of the four.** Every emitter drew a sprite, which is the
+core flash and the sparks and nothing else. There was no distortion anywhere
+until 2026-08-22 and there is still no camera shake.
+
+### Primary and secondary shapes, and why an orb reads as a placeholder
+
+**Practice.** Riot's guide: use "distinct primary and secondary shapes to
+minimise distracting noise". The primary shape must deliver immediate clarity
+without the player having to decipher it; secondary elements support it through
+value and saturation rather than competing with it. Layering many similar shapes
+produces visual mud.
+
+**Judgement, and it explains the word the project owner keeps using.** A round
+dot has no silhouette: it is the same shape from every angle, at every rotation,
+at every distance. It cannot be a primary shape because there is nothing to
+read. **A sphere, a soft round sprite and a circular glow are the same non-shape
+three times over**, and stacking them is the visual mud the guide warns about.
+That is why "orb" and "placeholder" have meant the same thing in every round of
+feedback on this project.
+
+### Nothing may be constant over a particle's life
+
+**Practice, and it is the cheapest thing that separates finished work from
+unfinished.** The consistent beginner diagnosis across VFX writing is the same:
+do not leave size, colour or alpha at a constant. Fade out over lifetime, ease
+scale in and out, and give even a "static" element a slow drift, because a
+little movement reads as living and intentional.
+
+**Judgement, stated as a rule this project can be held to:** every emitter must
+change at least two of size, colour, alpha and rotation across its life. An
+emitter whose particles are born and die at the same size and the same colour is
+not finished.
+
+### Value and colour have working ranges, and the ends are not in them
+
+**Practice.** Riot's guide: avoid the extremes of 0% and 100% brightness, and
+avoid 0% and 100% saturation. A fully saturated colour blends into the interface
+and a fully desaturated one blends into the environment. Use one dominant colour
+with supporting secondaries rather than several competing ones. A wider value
+range inside those bounds draws more attention, which is how a big skill is made
+to feel bigger than a small one.
+
+**This is already half-built here.** `DT_ElementVisuals` gives each damage type a
+primary and a darker secondary for exactly this reason, and section 5 above
+explains why the darker one exists. What was missing is the rule that the
+brightest part of an effect is not pure white and the dimmest is not pure black.
+
+### Timing: short, and shorter than it feels
+
+**Practice.** Riot's guide on duration: if an effect "feels long, they're waaaaay
+too long". Reduce the time effects stay on screen. Outros should be subdued and
+should fade through value, hue, opacity or size rather than simply stopping.
+
+**Judgement, the working numbers for this project**, to be moved once somebody
+plays them:
+
+| Beat | Duration |
+| :-- | :-- |
+| Cast wind-up | the skill's own wind-up, and it must end exactly when the skill fires |
+| Melee swing arc | 0.25 to 0.30 s |
+| Impact core flash | 0.10 to 0.15 s |
+| Impact sparks and glow | 0.4 to 0.6 s |
+| Ground shockwave ring | 0.35 to 0.5 s |
+| Ground area effect | the zone's own duration, which the design gives in seconds |
+
+### Scale is meaning, not decoration
+
+**Practice.** Riot: effect scale must match the tier of the ability; a basic
+attack must not look like an ultimate. Diablo IV does the same thing at runtime
+rather than per asset — its lead visual effects artist confirmed skill intensity
+rises with skill points and legendary affixes, and section 5 above already
+records his statement that intensity changes spawn rate, velocity, emissivity and
+colour range rather than uniformly scaling the effect.
+
+### MEASURED 2026-08-22: the colours are being used about forty times too dim
+
+**This is the largest single fault found in the effects and it was found by
+looking at one, which nothing in this project had ever done.** It is written
+first because it applies to every emitter, not to one shape.
+
+**What was measured.** A ground shockwave ring was placed in `L_Sandbox`, the
+level viewport camera was pointed at it, and the viewport was captured. At the
+`DT_ElementVisuals` Demonic primary colour used at face value -- linear
+`(1.000, 0.195, 0.027)` -- the ring is **almost invisible against the light grey
+floor**. Multiplying that colour by roughly **40** produces a bright, obviously
+readable ring. Nothing else changed between the two captures except the colour
+and the size.
+
+**Why it happens.** The pack materials for meshes are additive, and additive
+blending adds the effect's colour to what is behind it. Against a near-white
+floor there is almost no headroom left to add into, so a colour whose channels
+top out at 1.0 changes the pixel barely at all. The same colour would read
+adequately against a dark floor, which is presumably why it was never caught:
+nobody looked at one on light ground.
+
+**`EmissiveMultiplier` EXISTS FOR THIS AND IS 1.0 IN EVERY ROW.** Section 5
+above specifies the column and says what it is for -- "how far above 1.0 the
+emissive pushes", the place where breaking physically based rendering for
+gameplay readability is quantified per damage type. `game/Data/ElementVisuals.csv`
+carries it, `DT_ElementVisuals` carries it, and **nothing in the game reads it**.
+Every effect therefore draws at multiplier 1.
+
+**Judgement, the working figures**, to be moved once somebody plays them:
+
+| Where the effect is drawn | Multiplier |
+| :-- | :-- |
+| An additive mesh on light ground: a shockwave, a ground ring | about 40 |
+| A translucent sprite over a character: an impact core, sparks | to be measured; translucency does not have the same problem |
+
+**The rule this produces:** an effect colour is never used at face value. It is
+the damage type's colour times that damage type's `EmissiveMultiplier`, and the
+multiplier is a per-damage-type number in the data because a near-black
+secondary colour and a near-white primary need different amounts of push.
+
+### The verification loop that found it, which should be used every time
+
+**Nothing in the automation suite can see an effect** -- the test command passes
+`-nullrhi` and Niagara refuses to create a component when `FApp::CanEverRender()`
+is false, which is issue #559. But the **editor** can, and the Unreal MCP
+toolset can drive it:
+
+1. Duplicate the system to a throwaway name.
+2. On the copy, set every emitter's `Loop Behavior` to `Infinite` **and set
+   `Loop Duration` to roughly the particle lifetime**. Leaving the default 5
+   second loop duration under a 0.4 second particle means the effect is on
+   screen 8% of the time and a capture almost always lands in the gap. That
+   wasted three captures on 2026-08-22 and looked exactly like "it does not
+   render at all".
+3. `SceneTools.add_to_scene_from_asset` the copy into `L_Sandbox`.
+4. `EditorAppToolset.CaptureViewport` with an explicit `captureTransform`.
+5. Look at the image. Then delete the actor and the copy.
+
+**A system that has never been looked at should not be described as built.**
+
+### The two rules that follow for this project
+
+1. **A skill is built as three systems**, and a shape with no wind-up is
+   unfinished no matter how good the other two are.
+2. **Every emitter answers: what is my primary shape, what changes over my life,
+   and which of the four layers am I.** An emitter that cannot answer all three
+   is decoration and should be deleted rather than tuned.
+
+---
+
 ## 6. What to build first
 
 ### Do not convert the attack warning marker to Niagara
@@ -727,6 +910,29 @@ Each of these is worth an issue rather than a guess.
   <https://news.blizzard.com/en-us/article/23746639/diablo-iv-quarterly-updatedecember-2021>
 - Square Enix, Final Fantasy XIV Backstage Investigators number 8:
   <https://na.finalfantasyxiv.com/blog/003308.html>
+
+Added 2026-08-22 for section 5A:
+
+- Riot Games, League of Legends VFX Style Guide, 2017:
+  <https://nexus.leagueoflegends.com/en-us/2017/10/dev-leagues-vfx-style-guide/>
+- Riot Games, the style guide itself as a slide deck, including the timing
+  section: <https://www.deck.gallery/league-of-legends-2017/slide/32-importance-timing-vfx-the/>
+- VFX Apprentice, ten design tips drawn from that guide, which is where the
+  value and saturation percentages and the primary-versus-secondary shape rule
+  are stated plainly:
+  <https://www.vfxapprentice.com/blog/10-league-of-legends-vfx-design-tips>
+- Gabriel Aguiar, Magic Projectiles Mega Pack volume 1, whose contents list is
+  the evidence for the muzzle, projectile and hit split:
+  <https://www.artstation.com/marketplace/p/9VbXb/magic-projectiles-mega-pack-vol-1>
+- Blizzard, Diablo IV skill intensity confirmed to rise with skill points and
+  legendary affixes:
+  <https://www.wowhead.com/diablo-4/news/spell-and-skill-intensity-confirmed-dynamic-player-skills-vfx-in-diablo-iv-332192>
+- Blizzard, the Diablo IV art blast covering the visual effects team's approach:
+  <https://magazine.artstation.com/2023/07/blizzard-entertainment-diablo-iv-character-animation-technical-art-vfx-art-blast/>
+- The four-layer breakdown of an impact -- core flash, debris and sparks, energy
+  and glow, distortion -- and the "nothing constant over life" rule:
+  <https://www.gamineai.com/blog/how-to-create-game-vfx-particle-systems-visual-effects>
+  and <https://www.animaticsassetstore.com/2025/11/05/vfx-for-games-with-gpu-particles-a-practical-guide/>
 
 The engine defaults in section 4 were read from the local Unreal 5.8.1 install
 under `Engine/Plugins/FX/Niagara/`, not from documentation. The naming audit

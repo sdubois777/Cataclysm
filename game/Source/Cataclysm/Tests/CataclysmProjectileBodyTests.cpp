@@ -26,15 +26,22 @@
  * what all 398 rows of `game/Data/WeaponSkills.csv` fire through, so a rock in
  * its constructor would have armed every player fire bolt with one.
  *
- * THE TWO THINGS THAT CAN GO WRONG. A caster that passes nothing losing its
- * placeholder, which would make every player skill invisible again; and a mesh
- * arriving at the wrong size, because the engine's basic shapes occupy a 100
- * centimetre cube and an art-pack mesh does not, so a scale worked out for one is
- * meaningless for the other.
+ * WHAT CHANGED ON 2026-08-22, because it reverses part of what is above. The
+ * engine sphere is gone. It had no material and rendered as Unreal's default
+ * grey, so every player fire bolt was a grey ball with a particle effect around
+ * it -- which is what the project owner meant by "still just shooting regular
+ * looking grey orbs". Issue #811. A magic bolt is now drawn entirely by
+ * NS_Proj_Body and the mesh component is only used by a projectile that is a
+ * physical object, which today means the Brute's rock.
+ *
+ * THE TWO THINGS THAT CAN GO WRONG NOW. A projectile quietly growing a mesh
+ * again, which puts the grey ball back; and a mesh arriving at the wrong size,
+ * because the engine's basic shapes occupy a 100 centimetre cube and an art-pack
+ * mesh does not, so a scale worked out for one is meaningless for the other.
  *
  * ART-DEPENDENT ASSERTIONS SAY SO WHEN THEY SKIP. The Paragon packs are
- * gitignored, so on a fresh clone the rock is absent and the sphere is correct
- * behaviour rather than a failure.
+ * gitignored, so on a fresh clone the rock is absent and a throw that draws no
+ * mesh at all is correct behaviour rather than a failure.
  */
 
 namespace CataclysmProjectileBodyTest
@@ -46,18 +53,6 @@ namespace CataclysmProjectileBodyTest
 
 	/** Metres, so these read the way the design document does. */
 	constexpr float M = 100.0f;
-
-	/**
-	 * The scale the old formula produced for a body of DefaultBodyRadiusCm.
-	 *
-	 * WHY IT IS WRITTEN DOWN. Sizing used to be
-	 * `(BodyRadiusCm * 2) / BasicShapeSize`, which assumed the mesh occupied a
-	 * 100 centimetre cube -- true of the engine's sphere and of nothing out of an
-	 * art pack. It is now taken from the mesh's own bounds. That is only a safe
-	 * rewrite if the sphere still comes out at the size it always did, so this is
-	 * the number the old arithmetic gave and the test below insists on it.
-	 */
-	constexpr float SphereScaleUnderTheOldFormula = 0.8f;
 
 	/** What a projectile is drawing, as a plain pointer.
 	 *
@@ -95,14 +90,28 @@ namespace CataclysmProjectileBodyTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmProjectileKeepsItsPlaceholder,
-	"Cataclysm.Projectile.ACasterThatPassesNoMeshKeepsThePlaceholderSphere",
+	FCataclysmProjectileDrawsNoMeshOfItsOwn,
+	"Cataclysm.Projectile.ACasterThatPassesNoMeshDrawsNoGreyBall",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmProjectileKeepsItsPlaceholder::RunTest(const FString&)
+bool FCataclysmProjectileDrawsNoMeshOfItsOwn::RunTest(const FString&)
 {
 	using namespace CataclysmProjectileBodyTest;
 
+	// THIS TEST USED TO ASSERT THE OPPOSITE AND THE REVERSAL IS THE POINT. It
+	// was called "ACasterThatPassesNoMeshKeepsThePlaceholderSphere" and it
+	// insisted that a projectile given no mesh flies `/Engine/BasicShapes/Sphere`,
+	// because before NS_Proj_Body existed the alternative was an invisible
+	// projectile.
+	//
+	// THAT SPHERE HAS NO MATERIAL, so it rendered with Unreal's default grey,
+	// and the project owner's judgement on 2026-08-22 was "still just shooting
+	// regular looking grey orbs with some mediocre effects on them". The grey
+	// orb was not the particle effect. It was this. Issue #811.
+	//
+	// A MAGIC BOLT IS DRAWN ENTIRELY BY ITS PARTICLE SYSTEM now, and a mesh is
+	// for a projectile that is a physical object -- the Brute's thrown rock, one
+	// test below.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
 	{
@@ -127,31 +136,31 @@ bool FCataclysmProjectileKeepsItsPlaceholder::RunTest(const FString&)
 		return false;
 	}
 
-	if (!TestNotNull(TEXT("and it has a body to draw"), Bolt->PlaceholderBody.Get()))
+	// THE COMPONENT STAYS, because a projectile that IS an object needs one.
+	// Removing it as well would break the Brute's rock, which arrives through
+	// SetBodyMesh on this same component.
+	if (!TestNotNull(TEXT("the projectile still has a mesh component, for the "
+						  "case where it is a real object"),
+					 Bolt->PlaceholderBody.Get()))
 	{
 		return false;
 	}
-	if (!TestNotNull(TEXT("with a mesh on it"), MeshOf(Bolt)))
-	{
-		return false;
-	}
 
-	// THE ENGINE SPHERE, BY NAME. A player fire bolt must not become a rock
-	// because the Brute needed one.
-	TestEqual(TEXT("which is the engine sphere"),
-		MeshOf(Bolt)->GetName(), FString(TEXT("Sphere")));
+	// AND IT IS EMPTY. This is the assertion the change exists for.
+	TestNull(TEXT("but a bolt nobody gave a mesh draws no mesh, so there is no "
+				  "grey engine sphere inside the effect"),
+		MeshOf(Bolt));
 
-	// AT EXACTLY THE SIZE THE OLD ARITHMETIC GAVE. Sizing is now taken from the
-	// mesh's own bounds instead of assuming a 100 centimetre cube, and this is
-	// the assertion that says the rewrite changed nothing for the sphere.
-	TestEqual(TEXT("at the scale the previous formula produced"),
-		static_cast<float>(Bolt->PlaceholderBody->GetRelativeScale3D().X),
-		SphereScaleUnderTheOldFormula);
-
-	// AND THAT SCALE MEANS THE RIGHT THING. What the player sees and what the
-	// sweep uses have to be the same width.
-	TestEqual(TEXT("so what is drawn is as wide as what the sweep uses"),
-		DrawnHalfWidthCm(Bolt), Bolt->BodyRadiusCm);
+	// THE SWEEP IS UNAFFECTED, which is the thing that must not have moved. What
+	// the projectile hits is decided by BodyRadiusCm and not by what is drawn,
+	// so removing the drawn body must not have changed the width it strikes at.
+	//
+	// IT IS THE BODY WIDTH AND NOT THE SKILL'S RADIUS. Fire's InRadiusCm above
+	// is how far the skill reaches; a projectile's own body stays the standard
+	// width unless a piercing skill widens it. Writing 150 here failed once,
+	// which is the distinction being recorded.
+	TestEqual(TEXT("and the width it sweeps at is still the standard body"),
+		Bolt->BodyRadiusCm, ACataclysmProjectile::DefaultBodyRadiusCm);
 
 	return true;
 }
@@ -283,19 +292,24 @@ bool FCataclysmBruteThrowsTheRock::RunTest(const FString&)
 	{
 		return false;
 	}
-	if (!TestNotNull(TEXT("with something to draw"), MeshOf(Thrown)))
-	{
-		return false;
-	}
-
 	if (Rock)
 	{
+		if (!TestNotNull(TEXT("with something to draw"), MeshOf(Thrown)))
+		{
+			return false;
+		}
 		TestTrue(TEXT("and what it flies is the rock"), MeshOf(Thrown) == Rock);
 	}
 	else
 	{
-		TestEqual(TEXT("and without the pack it falls back to the engine sphere"),
-			MeshOf(Thrown)->GetName(), FString(TEXT("Sphere")));
+		// WITHOUT THE PACK IT NOW FLIES NO MESH AT ALL, and that changed on
+		// 2026-08-22. It used to fall back to `/Engine/BasicShapes/Sphere`,
+		// which has no material and rendered as a grey ball -- the thing the
+		// project owner has called a grey orb. Issue #811 removed it, so a
+		// throw without the art is drawn by NS_Proj_Body alone.
+		TestNull(TEXT("and without the pack it flies no mesh rather than a grey "
+					  "engine sphere"),
+			MeshOf(Thrown));
 	}
 
 	return true;
