@@ -9,6 +9,7 @@
 #include "Tests/CataclysmTestSkip.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmProjectileEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -19,6 +20,7 @@
 #include "Animation/AnimSequence.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
@@ -2009,8 +2011,23 @@ bool FCataclysmProjectileIsVisibleTest::RunTest(const FString&)
 	// skill dealt their damage with nothing travelling between the two. Reported
 	// from a play session on 2026-08-08 as the rock throw not throwing a rock.
 	//
-	// NO PARAGON ART NEEDED. The placeholder is an engine basic shape, so this
-	// runs in continuous integration and on a fresh clone.
+	// WHAT MAKES ONE VISIBLE CHANGED ON 2026-08-22, AND THIS TEST WAS WRONG.
+	// It asserted that a projectile fired with no mesh had a static mesh, and
+	// that passed only because the constructor loaded /Engine/BasicShapes/Sphere
+	// behind everyone's back. That sphere had no material and drew in Unreal's
+	// default grey: it is what the project owner meant by "regular looking grey
+	// orbs", and it is gone. Issue #811.
+	//
+	// SO THE ASSERTION MOVED TO WHERE THE VISIBILITY ACTUALLY LIVES. The body of
+	// a magic bolt is NS_Proj_Body, attached by UCataclysmProjectileEffect, and
+	// until now NOTHING asserted that Fire called it -- the call could have been
+	// deleted and this suite would have stayed green, with the grey sphere
+	// covering for it. TimesAsked is the only part a -nullrhi test can see.
+	//
+	// NO PARAGON ART NEEDED, and none is installed in continuous integration.
+	// The first rock below is thrown with no mesh at all, which is exactly the
+	// fresh-clone case: no rock asset, and the throw must still be something the
+	// player can see.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!World)
 	{
@@ -2034,6 +2051,8 @@ bool FCataclysmProjectileIsVisibleTest::RunTest(const FString&)
 		8.0f * ACataclysmBruteCharacter::RockThrowApexFraction * ThrownCm
 		/ ACataclysmProjectile::LobGravityCmPerSecondSquared);
 
+	const int32 AskedBefore = UCataclysmProjectileEffect::TimesAsked;
+
 	ACataclysmProjectile* Rock = ACataclysmProjectile::Fire(
 		Thrower.Actor, FVector::ZeroVector, FVector(ThrownCm, 0.0f, 0.0f),
 		ACataclysmBruteCharacter::RockThrowRadiusCm,
@@ -2053,24 +2072,22 @@ bool FCataclysmProjectileIsVisibleTest::RunTest(const FString&)
 	if (!Rock->PlaceholderBody)
 	{
 		AddError(TEXT("A fired projectile has no placeholder body component, so "
-					  "there is nothing on screen when one is thrown."));
+					  "a thrown rock has nowhere to be drawn."));
 		return false;
 	}
 
-	TestTrue(TEXT("the placeholder has a mesh set, so it draws something"),
-		Rock->PlaceholderBody->GetStaticMesh() != nullptr);
+	// THE THING ITSELF: firing asked for a body. Everything past this point in
+	// UCataclysmProjectileEffect::AttachTo is unobservable under -nullrhi, so
+	// this counter is the whole of what a test can hold on to. Issue #559.
+	TestEqual(TEXT("firing a projectile asks for the body that draws it"),
+		UCataclysmProjectileEffect::TimesAsked, AskedBefore + 1);
 
-	// SIZED TO WHAT IT HITS WITH, so what the player sees and what the sweep
-	// uses cannot become two different widths.
-	//
-	// DOUBLE, NOT FLOAT. FVector components are double in Unreal 5, and mixing
-	// the two makes TestEqual ambiguous and stops the module compiling.
-	const double Expected = static_cast<double>(Rock->BodyRadiusCm * 2.0f)
-		/ static_cast<double>(ACataclysmCharacterBase::BasicShapeSize);
-	TestEqual(TEXT("and is scaled to the width the projectile actually hits with"),
-		Rock->PlaceholderBody->GetRelativeScale3D().X, Expected);
-
-	TestTrue(TEXT("which is a real size rather than zero"), Expected > 0.0);
+	// AND IT IS NOT SECRETLY DRAWING A GREY BALL AS WELL. Nobody handed this
+	// throw a mesh, so the component must be empty. This is the same fact as
+	// Cataclysm.Projectile.ACasterThatPassesNoMeshDrawsNoGreyBall, asserted here
+	// because this is the test that used to demand the opposite.
+	TestNull(TEXT("and draws no mesh of its own, having been given none"),
+		Rock->PlaceholderBody->GetStaticMesh().Get());
 
 	// IT MUST NOT COLLIDE. The projectile sweeps the world itself to find what
 	// it passes through, so a colliding mesh would give it a second and
@@ -2078,6 +2095,49 @@ bool FCataclysmProjectileIsVisibleTest::RunTest(const FString&)
 	TestEqual(TEXT("the placeholder does not collide"),
 		static_cast<int32>(Rock->PlaceholderBody->GetCollisionEnabled()),
 		static_cast<int32>(ECollisionEnabled::NoCollision));
+
+	// A PROJECTILE THAT IS A REAL OBJECT STILL DRAWS A MESH, and no other test
+	// fires one to check it. The Brute's rock arrives this way when the Paragon
+	// pack is installed; an engine shape stands in for it here so the coverage
+	// does not depend on art that continuous integration does not have.
+	UStaticMesh* Stand = Cast<UStaticMesh>(
+		FSoftObjectPath(TEXT("/Engine/BasicShapes/Sphere.Sphere")).TryLoad());
+	if (!Stand)
+	{
+		AddError(TEXT("Could not load the engine sphere to stand in for a rock."));
+		return false;
+	}
+
+	ACataclysmProjectile* Real = ACataclysmProjectile::Fire(
+		Thrower.Actor, FVector::ZeroVector, FVector(ThrownCm, 0.0f, 0.0f),
+		ACataclysmBruteCharacter::RockThrowRadiusCm,
+		/*InSpeed=*/0.0f,
+		/*InPierce=*/0, /*bInReturns=*/false,
+		ACataclysmBruteCharacter::RockThrowDamagePercent,
+		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/Stand,
+		FlightSeconds);
+
+	if (!Real || !Real->PlaceholderBody)
+	{
+		AddError(TEXT("Firing a projectile with a mesh returned nothing."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Real)) { Real->Destroy(); } };
+
+	TestNotNull(TEXT("a projectile handed a real object draws it"),
+		Real->PlaceholderBody->GetStaticMesh().Get());
+
+	// SIZED TO WHAT IT HITS WITH, so what the player sees and what the sweep
+	// uses cannot become two different widths.
+	//
+	// DOUBLE, NOT FLOAT. FVector components are double in Unreal 5, and mixing
+	// the two makes TestEqual ambiguous and stops the module compiling.
+	const double Expected = static_cast<double>(Real->BodyRadiusCm * 2.0f)
+		/ static_cast<double>(ACataclysmCharacterBase::BasicShapeSize);
+	TestEqual(TEXT("and is scaled to the width the projectile actually hits with"),
+		Real->PlaceholderBody->GetRelativeScale3D().X, Expected);
+
+	TestTrue(TEXT("which is a real size rather than zero"), Expected > 0.0);
 
 	return true;
 }
