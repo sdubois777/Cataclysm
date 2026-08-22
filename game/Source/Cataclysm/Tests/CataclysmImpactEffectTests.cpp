@@ -154,13 +154,33 @@ bool FCataclysmImpactPointThrowsAShockwave::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// THREE AND EXACTLY THREE. Counted rather than merely looked up by name,
+	// FIVE AND EXACTLY FIVE. Counted rather than merely looked up by name,
 	// because a system created from an engine template arrives carrying that
 	// template's own emitter, and the Niagara stack reports a clean compile with
 	// the stray still in it. NS_Proj_Body had exactly that and only counting
-	// found it. This system had two emitters until 2026-08-22.
-	TestEqual(TEXT("NS_Impact_Point has three emitters and no leftovers"),
-		System->GetEmitterHandles().Num(), 3);
+	// found it. This system had two emitters until 2026-08-22, then three, and
+	// then five when the two layers below were added.
+	TestEqual(TEXT("NS_Impact_Point has five emitters and no leftovers"),
+		System->GetEmitterHandles().Num(), 5);
+
+	// THE FOUR LAYERS A BURST IS MADE OF. docs/Niagara_Conventions.md section
+	// 5A: a core flash, debris and sparks, a lingering glow, and distortion.
+	// This system had the first two and a ground shockwave; it had no glow and
+	// no distortion at all, which is what the project owner was seeing when a
+	// hit read as thin. Naming them means deleting one is noticed rather than
+	// merely changing the count.
+	TSet<FName> Layers;
+	for (const FNiagaraEmitterHandle& Handle : System->GetEmitterHandles())
+	{
+		Layers.Add(Handle.GetName());
+	}
+	for (const TCHAR* Wanted : { TEXT("Core"), TEXT("Sparks"),
+								 TEXT("Shockwave"), TEXT("Glow"),
+								 TEXT("Haze") })
+	{
+		TestTrue(*FString::Printf(TEXT("NS_Impact_Point has a %s layer"), Wanted),
+			Layers.Contains(FName(Wanted)));
+	}
 
 	const FNiagaraEmitterHandle* Wave = nullptr;
 	for (const FNiagaraEmitterHandle& Handle : System->GetEmitterHandles())

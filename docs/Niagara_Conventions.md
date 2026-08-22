@@ -655,9 +655,21 @@ and each does a different job:
 | **Energy and glow** | the lingering aura or afterimage | slowest to fade |
 | **Distortion** | heat haze, a shockwave, camera shake | brief, and it is what sells force |
 
-**This project had one of the four.** Every emitter drew a sprite, which is the
-core flash and the sparks and nothing else. There was no distortion anywhere
-until 2026-08-22 and there is still no camera shake.
+**This project had one of the four when this was written.** Every emitter drew a
+sprite, which is the core flash and the sparks and nothing else.
+
+**Two systems have all four as of 2026-08-22.** `NS_Cast_Windup` was built with
+them, and `NS_Impact_Point` gained a lingering glow and a heat distortion layer
+the same day. There is still no camera shake anywhere.
+
+**BOTH OF THE HIT BURST'S ORIGINAL LAYERS HAD NO BRIGHTNESS GAIN, AND ITS CORE
+FLASH WAS DRAWN IN THE DARK ANCHOR.** The forty times measurement below was
+applied to the ground ring and the shockwave and not to these two, so the burst
+was close to invisible against light ground: the core linked
+`User.ElementColourDark`, which for Demonic is (0.042, 0.003, 0.0006), at a gain
+of one. Both now use the primary hue at ten. Found by capturing the system from
+the game's own camera distance, 800 cm at 60 degrees down, which is the check
+worth repeating on any layer that looks thin.
 
 ### Primary and secondary shapes, and why an orb reads as a placeholder
 
