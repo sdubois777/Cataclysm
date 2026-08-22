@@ -251,20 +251,52 @@ def test_the_tree_is_built_where_it_actually_appears() -> None:
         "screen and nothing says so. Build it in RebuildWidget.")
 
 
-def test_nothing_in_the_screen_is_hit_testable() -> None:
-    """The premise the click guard rests on.
+def test_the_cells_can_be_hovered_but_the_widget_does_not_eat_the_click() -> None:
+    """Two rules that pull against each other, and both have to hold.
 
-    If Slate could consume the click instead, that would be a reasonable answer
-    too, but the two mechanisms disagree about which one is running and neither
-    can be tested here. The guard the project owner has played is the one kept.
+    THE FIRST: A CELL HAS TO TAKE PART IN HIT TESTING. A Slate tool tip is only
+    offered on a widget that does, and issue #733 puts one on every cell.
+
+    THE SECOND: THE WIDGET ITSELF MUST NOT CONSUME THE CLICK. The left mouse
+    button orders a move, and a widget eating the press would stop the character
+    walking through a mechanism that disagrees with the controller's own guard.
+    Which of the two is running cannot be tested here, so the guard the project
+    owner has played is the one kept.
+
+    `SelfHitTestInvisible` is the one value that satisfies both: it exempts this
+    widget and not its children, and a `UBorder` binds no mouse handler, so
+    `SBorder::OnMouseButtonDown` returns the event unhandled and it carries on to
+    the viewport.
+
+    WHY THIS TEST CHANGED ON 2026-08-22. It used to require
+    `HitTestInvisible`, which applies to the whole subtree. The tool tips of
+    issue #733 merged under it and **could never be shown**: the text was written
+    onto all 48 cells every time the contents changed and Slate had no reason to
+    ask for any of it. Eleven automation tests covering the wording all passed,
+    because the wording was right. No test in this project can watch a widget
+    draw -- the automation command passes `-nullrhi`, which is issue #559 -- so
+    there was nothing to fail.
     """
     text = read(WIDGET_CPP)
 
-    assert "ESlateVisibility::HitTestInvisible" in text, (
+    assert "ESlateVisibility::SelfHitTestInvisible" in text, (
         "CataclysmInventoryWidget.cpp does not set its visibility to "
-        "HitTestInvisible. Some of the screen would then consume mouse events "
-        "and some would not, and which is which decides whether a click reaches "
-        "the controller's guard at all. Issue #735.")
+        "SelfHitTestInvisible. If it sets HitTestInvisible instead, that applies "
+        "to the whole subtree and no cell can be hovered, so the tool tips of "
+        "issue #733 are written and never shown. If it sets Visible, the widget "
+        "itself starts consuming mouse events and the controller's click guard "
+        "stops being the thing that decides. Issue #735.")
+
+    # THE OPPOSITE MISTAKE, AND IT IS NOT CAUGHT BY THE CHECK ABOVE, because
+    # SelfHitTestInvisible could be set on one widget while the tree's root was
+    # set to something that swallows the whole subtree.
+    for swallowing in ("ESlateVisibility::HitTestInvisible",
+                       "ESlateVisibility::Collapsed",
+                       "ESlateVisibility::Hidden"):
+        assert swallowing not in text, (
+            f"CataclysmInventoryWidget.cpp sets {swallowing}, which applies to "
+            f"the whole subtree and stops every cell taking part in hit testing. "
+            f"A Slate tool tip is only offered on a widget that does.")
 
 
 def test_a_click_on_the_panel_is_not_a_move_order() -> None:

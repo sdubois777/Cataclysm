@@ -101,9 +101,22 @@ void UCataclysmInventoryWidget::NativeTick(const FGeometry& MyGeometry,
 
 void UCataclysmInventoryWidget::BuildTree()
 {
-	// NOTHING IN THIS TREE IS HIT-TESTABLE. See the header for why the click is
-	// stopped by the controller rather than eaten by Slate.
-	SetVisibility(ESlateVisibility::HitTestInvisible);
+	// THE WIDGET ITSELF IS NOT HIT-TESTABLE AND ITS CELLS ARE, which is the
+	// difference between SelfHitTestInvisible and HitTestInvisible and it is
+	// not a detail.
+	//
+	// HitTestInvisible APPLIES TO THE WHOLE SUBTREE. It was right while the
+	// screen only had to be looked at. A Slate tool tip is only shown on a
+	// widget that takes part in hit testing, so under HitTestInvisible the
+	// tool tip text issue #733 sets on every cell could never appear -- it was
+	// set correctly, and Slate had no reason to ask for it.
+	//
+	// THE CLICK STILL REACHES THE GAME. A UBorder does not bind a mouse
+	// handler, so SBorder::OnMouseButtonDown returns unhandled and the event
+	// carries on to the viewport exactly as before. What stops the character
+	// walking when the player clicks the open screen is the controller asking
+	// CursorIsOverPanel, which the header describes and which is untouched.
+	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 
 	UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(
 		UOverlay::StaticClass(), TEXT("Root"));
