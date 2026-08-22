@@ -138,22 +138,46 @@ public:
 	 * cells on each axis, so a fixed count would make a small floor crowded and a
 	 * large one empty, with nothing saying so.
 	 *
-	 * THE NUMBER ITSELF IS A JUDGEMENT AND NOBODY HAS PLAYED IT. What the genre
-	 * gives is an order of magnitude, not this constant. Diablo IV's own
-	 * before-and-after comparison for the Nostrava Deepwood dungeon, published
-	 * when patch 1.1.1 raised monster density in answer to players saying there
-	 * was too little, moved that dungeon from 120 creatures to 181. A typical
-	 * floor here has roughly 600 to 1,100 walkable cells, so 0.08 puts 48 to 88
-	 * creatures on one.
+	 * THE NUMBER CAME FROM PLAYING IT. It was 0.08 until 2026-08-21, chosen
+	 * before anybody had walked a floor. The project owner played one and said
+	 * "mob density is way too low", and separately that a floor had "a ton of
+	 * empty space" which they then explained was mostly the same complaint:
+	 * the size and the layout of a floor were fine, there were simply not many
+	 * creatures in a lot of it. They chose three times the old figure. Issue
+	 * #809 has the report and #810 the explanation.
 	 *
-	 * THAT IS DELIBERATELY BELOW THE GENRE FIGURE, and the reason is measurement
-	 * rather than taste: nothing in this project has measured what sixty
-	 * characters with ability systems cost per frame, and an automation test
-	 * running with `-nullrhi` cannot measure it. Starting under the figure and
-	 * raising it is cheap; the `Cataclysm.DungeonEnemyScale` console variable
-	 * raises it without a rebuild. Sources are recorded on issue #40.
+	 * WHAT HELD THE OLD FIGURE DOWN IS PART ANSWERED AND PART STILL OPEN. It
+	 * was set below the genre figure because nothing here had measured what
+	 * sixty characters with ability systems cost per frame, and an automation
+	 * test running with `-nullrhi` still cannot measure it. The project owner
+	 * played a floor at 0.08 and said it worked fine, so frame rate was not
+	 * what made that floor read badly. **NOBODY HAS PLAYED 0.24 YET**, so the
+	 * frame cost of three times as many creatures is unmeasured and #547 is
+	 * still the missing written performance budget. `Cataclysm.DungeonEnemyScale`
+	 * is how it gets walked back without a rebuild if it turns out to cost too
+	 * much.
+	 *
+	 * WHAT IT PUTS ON A FLOOR, MEASURED over 1,000 seeds of each layout by
+	 * `Cataclysm.DungeonEnemies.MeasureWhatAFloorIsPopulatedWith`:
+	 *
+	 *     Halls     108 to 420 creatures in  20 to 135 groups
+	 *     Caverns    84 to 510 creatures in  15 to 155 groups
+	 *     Arena      73 to 350 creatures in  16 to 102 groups
+	 *
+	 * At 0.08 the same sweep gave a third of those counts. For comparison,
+	 * Diablo IV's own before-and-after for the Nostrava Deepwood dungeon,
+	 * published when patch 1.1.1 raised monster density in answer to players
+	 * saying there was too little, moved that dungeon from 120 creatures to
+	 * 181. Sources are recorded on issue #40.
+	 *
+	 * THE TIGHTEST FLOORS NO LONGER QUITE REACH IT, which is new at this
+	 * density and is a fact about the geometry rather than a fault. See
+	 * `LeastCellsBetweenPacks` below.
+	 *
+	 * `Cataclysm.DungeonEnemyScale` still multiplies this without a rebuild,
+	 * so 0.5 walks the old density and 2 walks twice the new one.
 	 */
-	static constexpr float EnemiesPerWalkableCell = 0.08f;
+	static constexpr float EnemiesPerWalkableCell = 0.24f;
 
 	// ----------------------------------------------------------------------
 	// Where
@@ -183,10 +207,24 @@ public:
 	 * a floor reads as a series of encounters rather than as one crowd that
 	 * arrives together.
 	 *
-	 * IT ALSO BOUNDS HOW MANY GROUPS FIT, which is why it is not larger. Each
-	 * accepted group claims the cells within this distance of it, so a floor of
-	 * 800 walkable cells holds at most about 25 groups at four cells and about
-	 * 11 at six. The density above wants roughly 18.
+	 * IT ALSO BOUNDS HOW MANY GROUPS FIT, which is why it is not larger, and at
+	 * the density above that bound is now close enough to matter. Each accepted
+	 * group claims the cells within this distance of it, so no two groups stand
+	 * closer than four cells and the floor can only hold so many of them.
+	 *
+	 * MEASURED RATHER THAN ESTIMATED, over 1,000 seeds of each layout by
+	 * `Cataclysm.DungeonEnemies.MeasureWhatAFloorIsPopulatedWith`: a floor holds
+	 * 20 to 135 groups on Halls, 15 to 155 on Caverns and 16 to 102 on Arena.
+	 * The comment here used to guess "at most about 25 groups on 800 walkable
+	 * cells", which was four times too low because it assumed the claimed
+	 * regions do not overlap, and neighbouring groups' claims overlap heavily.
+	 *
+	 * THE BOUND IS REACHED ON THE TIGHTEST FLOORS. Ten floors in the 360-floor
+	 * sweep no longer hold quite the number the density asks for; the worst of
+	 * those held 0.850 of it, and over the wider 1,000-seed measurement the
+	 * worst was 0.837. That is measured and asserted in
+	 * `Cataclysm.DungeonEnemies.ABiggerFloorHoldsMoreCreatures`, which is where
+	 * to look first if this constant or the density above is changed again.
 	 */
 	static constexpr int32 LeastCellsBetweenPacks = 4;
 
