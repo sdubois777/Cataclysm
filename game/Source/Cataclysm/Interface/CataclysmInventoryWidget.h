@@ -73,12 +73,24 @@ struct FCataclysmInventoryCellWidgets
  * whose width is the padding. That is what carries the rarity as a thickness, and
  * the Interface Colour section of `docs/Cataclysm_GDD_v2.md` requires it.
  *
- * EVERYTHING IN IT IS HIT-TEST INVISIBLE, so Slate never consumes a mouse event.
- * Letting a widget eat the click would also stop the character walking, and would
- * be the more usual answer, but whether it happens depends on the input mode and
- * on which widgets are hit-testable and none of that can be tested here -- the
+ * THE WIDGET ITSELF IS NOT HIT-TESTABLE AND ITS CELLS ARE. It used to be
+ * HitTestInvisible, which applies to the whole subtree, so that Slate never
+ * consumed a mouse event: letting a widget eat the click would also stop the
+ * character walking, and whether that happens depends on the input mode and on
+ * which widgets are hit-testable, none of which can be tested here because the
  * automation command passes -nullrhi. The controller's existing guard, which the
- * project owner has played, is kept instead and asks CursorIsOverPanel.
+ * project owner has played, was kept instead and asks CursorIsOverPanel.
+ *
+ * THAT MADE THE TOOL TIPS OF ISSUE #733 IMPOSSIBLE TO SHOW, and it was found
+ * after they had merged. A Slate tool tip is only offered on a widget that takes
+ * part in hit testing, so the text was being set on all 48 cells every time the
+ * contents changed and Slate had no reason to ask for any of it. Nothing failed:
+ * the tests cover the wording, which was correct.
+ *
+ * SelfHitTestInvisible EXEMPTS THIS WIDGET AND NOT ITS CHILDREN, so a cell can
+ * be hovered. The click still reaches the game -- a UBorder binds no mouse
+ * handler, so SBorder::OnMouseButtonDown returns unhandled and the event carries
+ * on to the viewport -- and CursorIsOverPanel is untouched.
  *
  * NOTHING HERE DECIDES ANYTHING. What a cell says, what colour and how thick its
  * frame is, how big a cell is and what the header reads are all static functions
