@@ -14,10 +14,12 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "TimerManager.h"
@@ -102,6 +104,10 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// empty until something picks a drop up.
 	Inventory = CreateDefaultSubobject<UCataclysmInventoryComponent>(TEXT("Inventory"));
 
+	// WHAT THE CHARACTER IS WEARING. Issue #828. Empty until something is
+	// equipped, which is the state every character was permanently in before.
+	Equipment = CreateDefaultSubobject<UCataclysmEquipmentComponent>(TEXT("Equipment"));
+
 	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderBody"));
 	PlaceholderBody->SetupAttachment(RootComponent);
 	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -141,6 +147,16 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 void ACataclysmPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// HERE RATHER THAN IN THE CONSTRUCTOR. A constructor also runs for the
+	// class default object, and binding a live pawn's handler from it would
+	// put the archetype in the delegate's list. BeginPlay runs once, on the
+	// instance, which is what this needs.
+	if (Equipment)
+	{
+		Equipment->EquipmentChanged.AddUObject(
+			this, &ACataclysmPlayerCharacter::OnEquipmentChanged);
+	}
 
 	// Taken from the boom rather than repeated as a number here. The resting
 	// distance is stated once, in the constructor, and clamping it means a boom
@@ -464,10 +480,62 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 		return;
 	}
 
+	// THE CLASS LINE PLUS WHAT IS WORN, and until issue #828 it was the class
+	// line alone. GatherModifiers answers an empty map for a character wearing
+	// nothing, which gives exactly the old behaviour, so this is not a
+	// different result for an unequipped character.
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		Equipment ? Equipment->GatherModifiers()
+				  : TMap<FName, TArray<FCataclysmStatModifier>>();
+
 	UCataclysmPlayerClassStats::ApplyTo(
 		ASC, UCataclysmPlayerClassStats::LoadTable(),
 		UCataclysmPlayerClassStats::ChosenClass(),
-		UCataclysmPlayerClassStats::ChosenLevel());
+		UCataclysmPlayerClassStats::ChosenLevel(),
+		&Modifiers,
+		// A CHARACTER STARTING. This runs from PossessedBy, which happens once,
+		// so filling the pools is right here and is exactly what it did before.
+		// OnEquipmentChanged is the path that must not fill them.
+		ECataclysmPoolFill::FillToMaximum);
+}
+
+void ACataclysmPlayerCharacter::OnEquipmentChanged()
+{
+	if (UCataclysmAbilitySystemComponent* ASC =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		if (Equipment)
+		{
+			Equipment->RefreshAttributes(ASC);
+		}
+	}
+
+	// THE WEAPON DECIDES WHICH ABILITIES EXIST, so a change to what is worn
+	// has to reach the ability slots and not only the numbers. EquipWeaponType
+	// takes back everything it granted before it grants again, so calling it
+	// for a change that was not a weapon refills the same six slots with the
+	// same six abilities rather than doubling them.
+	if (!WeaponSlots || !Equipment)
+	{
+		return;
+	}
+
+	const FString WornWeapon = Equipment->EquippedWeaponType();
+	if (!WornWeapon.IsEmpty())
+	{
+		WeaponSlots->EquipWeaponType(WornWeapon);
+		return;
+	}
+
+	// NOTHING WORN FALLS BACK TO THE STARTING WEAPON RATHER THAN TO NOTHING,
+	// and that is not tidiness -- it is the difference between this change
+	// being an addition and being a regression. Characters start wearing
+	// nothing, and there is no character creator to choose a weapon in yet
+	// (issue #50), so a player whose ability slots emptied the moment they
+	// took a ring off would have lost every skill they had. The starting
+	// weapon type on UCataclysmWeaponSlotsComponent stays the answer until a
+	// real weapon is worn over it.
+	WeaponSlots->EquipStartingWeapon();
 }
 
 void ACataclysmPlayerCharacter::OnRep_PlayerState()
@@ -559,3 +627,249 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 		WeaponSlots->EquipStartingWeapon();
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Wearing something, from the console
+// ---------------------------------------------------------------------------
+
+/**
+ * `Cataclysm.Equip`, `Cataclysm.Unequip` and `Cataclysm.ShowEquipment`.
+ *
+ * WHY CONSOLE COMMANDS AND NOT THE INVENTORY SCREEN. Issue #828 built the
+ * equipment slots and made a worn item's stats reach the character. The screen
+ * that lets a player do it by clicking is step 5 of that issue and is not built:
+ * `UCataclysmInventoryWidget` draws the 48 carried cells and has no gear panel.
+ *
+ * Without these three commands the whole system would be unreachable in play --
+ * every rule tested, nothing usable -- so somebody would have to take the tests
+ * on trust. They are a stepping stone to the screen and not a substitute for it.
+ *
+ * THE BAG IS WHERE EVERYTHING COMES FROM AND GOES BACK TO, because an item that
+ * is neither worn nor carried has been destroyed. `AddItem` answers where an
+ * item went rather than assuming it went anywhere, and every use below reads
+ * that answer.
+ */
+namespace CataclysmEquipConsole
+{
+	/** The player's pawn as this class, or null with the reason printed. */
+	ACataclysmPlayerCharacter* Player(UWorld* World, FOutputDevice& Ar)
+	{
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		ACataclysmPlayerCharacter* Character =
+			Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+		if (!Character)
+		{
+			Ar.Log(TEXT("There is no player character. Press Play first."));
+		}
+		return Character;
+	}
+
+	/** A gear slot named on the command line, or Count when it names none. */
+	ECataclysmGearSlot SlotNamed(const FString& Name)
+	{
+		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::AllSlots())
+		{
+			const UEnum* Enum = StaticEnum<ECataclysmGearSlot>();
+			const FString Plain = Enum
+				? Enum->GetNameStringByValue(static_cast<int64>(Slot)) : FString();
+			if (Plain.Equals(Name, ESearchCase::IgnoreCase))
+			{
+				return Slot;
+			}
+		}
+		return ECataclysmGearSlot::Count;
+	}
+
+	/** Every slot name, for a message that has to tell somebody what to type. */
+	FString SlotNames()
+	{
+		TArray<FString> Names;
+		const UEnum* Enum = StaticEnum<ECataclysmGearSlot>();
+		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::AllSlots())
+		{
+			if (Enum)
+			{
+				Names.Add(Enum->GetNameStringByValue(static_cast<int64>(Slot)));
+			}
+		}
+		return FString::Join(Names, TEXT(", "));
+	}
+}
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEquip(
+	TEXT("Cataclysm.Equip"),
+	TEXT("Wear the item in a carried inventory slot, 0 to 47. Whatever comes "
+		 "off goes back into the bag."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character || !Character->GetInventory() || !Character->GetEquipment())
+			{
+				return;
+			}
+
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Cataclysm.Equip <carried slot 0 to 47>. "
+							"Cataclysm.ShowEquipment lists what is carried."));
+				return;
+			}
+
+			const int32 BagSlot = FCString::Atoi(*Args[0]);
+			const FCataclysmItem* Carried = Character->GetInventory()->ItemAt(BagSlot);
+			if (!Carried)
+			{
+				Ar.Logf(TEXT("Carried slot %d holds no item."), BagSlot);
+				return;
+			}
+			const FCataclysmItem Item = *Carried;
+
+			// A TWO-HANDED WEAPON CAN TAKE TWO WEAPONS OFF FOR ONE GOING ON, so
+			// it needs a spare slot beyond the one its own removal frees. This
+			// refuses rather than working out in advance exactly how many would
+			// come off, because doing that would mean repeating the slot-choosing
+			// rules that live in UCataclysmEquipmentComponent::Equip, and a
+			// second copy of those would go stale.
+			const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(
+				Item, UCataclysmItemModifiers::LoadBaseTable());
+			if (bTwoHanded && Character->GetInventory()->NumFreeSlots() < 1)
+			{
+				Ar.Log(TEXT("The bag is full. A two-handed weapon can replace two "
+							"weapons at once, so it needs a free slot to put the "
+							"second one in."));
+				return;
+			}
+
+			// Taking it out first is what guarantees room for what comes off.
+			Character->GetInventory()->RemoveItemAt(BagSlot);
+
+			FCataclysmItem First;
+			FCataclysmItem Second;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			const ECataclysmEquipResult Result =
+				Character->GetEquipment()->Equip(Item, First, Second, Slot);
+
+			if (Result != ECataclysmEquipResult::Equipped
+				&& Result != ECataclysmEquipResult::Swapped)
+			{
+				// It always fits: the slot it came out of is still free.
+				Character->GetInventory()->AddItem(Item);
+				Ar.Logf(TEXT("%s cannot be worn. It goes in no slot this "
+							 "character has."), *Item.Base.ToString());
+				return;
+			}
+
+			for (const FCataclysmItem& CameOff : {First, Second})
+			{
+				if (CameOff.Base.IsNone())
+				{
+					continue;
+				}
+				if (Character->GetInventory()->AddItem(CameOff) == INDEX_NONE)
+				{
+					// Reported loudly rather than swallowed. The check above is
+					// what should make this impossible; if it ever prints, that
+					// check is wrong and an item has been lost.
+					Ar.Logf(TEXT("THE BAG WOULD NOT TAKE %s AND IT IS NOW GONE. "
+								 "This is a bug in Cataclysm.Equip."),
+							*CameOff.Base.ToString());
+				}
+			}
+
+			Ar.Logf(TEXT("Wearing %s in the %s slot."),
+					*Item.Base.ToString(),
+					*UCataclysmGearSlots::DisplayName(Slot));
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmUnequip(
+	TEXT("Cataclysm.Unequip"),
+	TEXT("Take off what is worn in a named gear slot and put it in the bag."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character || !Character->GetInventory() || !Character->GetEquipment())
+			{
+				return;
+			}
+
+			if (Args.Num() < 1)
+			{
+				Ar.Logf(TEXT("Cataclysm.Unequip <slot>. The slots are: %s"),
+						*SlotNames());
+				return;
+			}
+
+			const ECataclysmGearSlot Slot = SlotNamed(Args[0]);
+			if (Slot == ECataclysmGearSlot::Count)
+			{
+				Ar.Logf(TEXT("There is no slot called %s. The slots are: %s"),
+						*Args[0], *SlotNames());
+				return;
+			}
+
+			if (Character->GetInventory()->IsFull())
+			{
+				Ar.Log(TEXT("The bag is full, so there is nowhere to put it. "
+							"Nothing was taken off."));
+				return;
+			}
+
+			FCataclysmItem TakenOff;
+			if (!Character->GetEquipment()->Unequip(Slot, TakenOff))
+			{
+				Ar.Logf(TEXT("Nothing is worn in the %s slot."),
+						*UCataclysmGearSlots::DisplayName(Slot));
+				return;
+			}
+
+			Character->GetInventory()->AddItem(TakenOff);
+			Ar.Logf(TEXT("Took off %s."), *TakenOff.Base.ToString());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
+	TEXT("Cataclysm.ShowEquipment"),
+	TEXT("List what is worn, and what is carried, with the slot numbers "
+		 "Cataclysm.Equip takes."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character || !Character->GetInventory() || !Character->GetEquipment())
+			{
+				return;
+			}
+
+			Ar.Log(TEXT("--- worn ---"));
+			for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::AllSlots())
+			{
+				const FCataclysmItem* Worn = Character->GetEquipment()->EquippedAt(Slot);
+				Ar.Logf(TEXT("  %-12s %s"),
+						*UCataclysmGearSlots::DisplayName(Slot),
+						Worn ? *Worn->Base.ToString() : TEXT("-"));
+			}
+
+			Ar.Log(TEXT("--- carried ---"));
+			const TArray<FCataclysmCarriedSlot>& Carried =
+				Character->GetInventory()->GetSlots();
+			for (int32 Index = 0; Index < Carried.Num(); ++Index)
+			{
+				const FCataclysmItem* Item = Character->GetInventory()->ItemAt(Index);
+				if (Item)
+				{
+					Ar.Logf(TEXT("  %2d  %s"), Index, *Item->Base.ToString());
+				}
+			}
+
+			Ar.Logf(TEXT("Weapon type in hand: %s"),
+					Character->GetEquipment()->EquippedWeaponType().IsEmpty()
+						? TEXT("none")
+						: *Character->GetEquipment()->EquippedWeaponType());
+		}));

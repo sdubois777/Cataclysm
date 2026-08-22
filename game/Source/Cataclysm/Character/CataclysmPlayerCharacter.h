@@ -8,6 +8,7 @@
 #include "CataclysmPlayerCharacter.generated.h"
 
 class UCameraComponent;
+class UCataclysmEquipmentComponent;
 class UCataclysmInventoryComponent;
 class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
@@ -157,6 +158,18 @@ public:
 	/** Whether the player is currently dead and waiting to come back. */
 	bool IsAwaitingRespawn() const;
 
+	/**
+	 * What the character carries, and what it is wearing.
+	 *
+	 * ACCESSORS RATHER THAN MAKING THE COMPONENTS PUBLIC, because the
+	 * pointers are protected so that only this class decides when they are
+	 * replaced. Reading them is safe; reassigning them is not.
+	 */
+	UCataclysmInventoryComponent* GetInventory() const { return Inventory; }
+
+	/** What the character is wearing. Issue #828. */
+	UCataclysmEquipmentComponent* GetEquipment() const { return Equipment; }
+
 protected:
 	virtual void InitAbilityActorInfo() override;
 
@@ -238,6 +251,21 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Items")
 	TObjectPtr<UCataclysmInventoryComponent> Inventory;
 
+	/**
+	 * What the character is wearing. Issue #828.
+	 *
+	 * On the pawn for the same reason the carried inventory and the weapon
+	 * slots are: what is worn is a property of the body.
+	 *
+	 * WHAT IT IS FOR. Until it existed, a character's stats came from the
+	 * class line alone, so every character at a given level was identical and
+	 * nothing the player found changed anything. ApplyChosenClassStats now
+	 * asks it for the modifiers the worn items grant, and OnEquipmentChanged
+	 * recomputes when they change.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Items")
+	TObjectPtr<UCataclysmEquipmentComponent> Equipment;
+
 private:
 	/** Passes the attribute's new value, in metres per second, to
 	 *  ApplyMovementSpeed. Bound in InitAbilityActorInfo. */
@@ -247,6 +275,17 @@ private:
 	 *  adding a second one. That function runs from both PossessedBy and
 	 *  OnRep_PlayerState, and on a listen server both happen. */
 	FDelegateHandle MovementSpeedChangedHandle;
+
+	/**
+	 * Recomputes the stat line and refills the ability slots after a change
+	 * to what is worn.
+	 *
+	 * BOTH, AND NOT JUST THE STATS. A weapon is the one piece of gear that
+	 * decides which abilities the character has, so equipping one has to reach
+	 * UCataclysmWeaponSlotsComponent as well. Everything else only moves
+	 * numbers.
+	 */
+	void OnEquipmentChanged();
 
 	/** What the starting ability set granted, so it can be removed on unequip. */
 	FCataclysmAbilitySetHandles GrantedHandles;
