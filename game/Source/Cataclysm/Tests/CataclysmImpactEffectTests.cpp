@@ -14,6 +14,9 @@
 #include "Engine/World.h"
 #include "NiagaraComponent.h"
 #include "NiagaraEffectType.h"
+#include "NiagaraEmitter.h"
+#include "NiagaraEmitterHandle.h"
+#include "NiagaraLightRendererProperties.h"
 #include "NiagaraSystem.h"
 
 /**
@@ -76,6 +79,60 @@ bool FCataclysmImpactPointSetsItsEffectType::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("NS_Impact_Point uses FXT_Enemy"),
 		Type->GetName(), FString(TEXT("FXT_Enemy")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactPointFlashesALight,
+	"Cataclysm.Effects.ImpactPointFlashesALight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmImpactPointFlashesALight::RunTest(const FString& Parameters)
+{
+	UNiagaraSystem* System = CataclysmImpactEffectTest::LoadImpactSystem();
+	if (!System)
+	{
+		AddError(TEXT("NS_Impact_Point does not exist."));
+		return false;
+	}
+
+	// A HIT THAT LIGHTS THE ROOM FOR A MOMENT, rather than a bright shape drawn
+	// on top of an unlit one. It matches the light NS_Proj_Body's head carries,
+	// so a bolt that lights the floor on the way in does not land in the dark.
+	//
+	// ON THE CORE AND NOT ON THE SPARKS, deliberately. The core is one particle;
+	// the sparks are dozens, and a light renderer on that emitter would put
+	// dozens of dynamic lights on screen for one blow. Counting is what says so:
+	// looking only for "a light somewhere" would pass just as well with the
+	// renderer on the wrong emitter.
+	bool bTheCoreHasOne = false;
+	int32 EmittersWithALight = 0;
+	for (const FNiagaraEmitterHandle& Handle : System->GetEmitterHandles())
+	{
+		const FVersionedNiagaraEmitterData* Data = Handle.GetEmitterData();
+		if (!Data)
+		{
+			continue;
+		}
+		for (const UNiagaraRendererProperties* Renderer : Data->GetRenderers())
+		{
+			if (Cast<UNiagaraLightRendererProperties>(Renderer))
+			{
+				++EmittersWithALight;
+				if (Handle.GetName() == FName(TEXT("Core")))
+				{
+					bTheCoreHasOne = true;
+				}
+			}
+		}
+	}
+
+	TestTrue(TEXT("the impact's core carries a light renderer, so a blow lights "
+				  "what it lands on"),
+		bTheCoreHasOne);
+	TestEqual(TEXT("and exactly one emitter carries one, so a single burst is "
+				   "not dozens of dynamic lights"),
+		EmittersWithALight, 1);
 
 	return true;
 }
