@@ -20,6 +20,49 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — Effect colours are used at a per-emitter gain, not at the value in the table
+
+**Affects:** `docs/Niagara_Conventions.md` section 5, `docs/Cataclysm_GDD_v2.md`
+section XIII, `game/Data/ElementVisuals.csv`.
+
+**What was found.** The first effect ever looked at in the editor was almost
+invisible. The eight damage-type colours were being fed to Niagara at their
+table values, whose channels top out at 1.0, and the pack mesh materials the
+effects use are additive. Against light ground an additive layer at 1.0 barely
+moves the pixel. Measured by capturing the same ring twice, at the table value
+and at forty times it: the first is a faint smudge, the second reads as a spell.
+
+**Why this was not caught earlier.** Nothing had ever looked. No automation test
+can — the harness runs with `-nullrhi` and Niagara refuses to create a component
+when `FApp::CanEverRender()` is false, which is issue #559. Two rounds of effects
+work were built and shipped on arithmetic alone and the project owner rejected
+both. The third round started by building a way to see, and found this within
+the hour.
+
+**The decision.** The gain lives on the emitter, as a
+`Multiply_LinearColorByFloat` between the user parameter and the particle
+colour, and each effect shape carries its own number. About 40 for an additive
+mesh on the ground, about 8 to 10 for a translucent one in the air.
+
+**The alternative that was rejected, and why.** `DT_ElementVisuals` already has
+an `EmissiveMultiplier` column. It is 1.0 in all eight rows and nothing reads it.
+Wiring it up was the obvious move and it is the wrong shape: it is one number per
+*damage type*, and what varies here is the *blend mode and the background*, which
+belong to the effect shape. Fire and Cold need the same gain in the same shape.
+A single column would have to be set to whichever of 8 and 40 hurt least.
+
+**What is left open.** `EmissiveMultiplier` should probably become a per-damage-
+type trim on top of the per-shape gain — the place to say that Shadow is dimmer
+than Fire — rather than the gain itself. Nothing reads it today, so it is dead
+weight either way until that is settled. Section XIII of the design document
+already predicted this moment: it says the palette "becomes judgeable when the
+first effect exists in the sandbox" and to expect the values to move then. They
+have not moved; only the gain has.
+
+**Not yet judged against real play.** These numbers came from a static capture of
+a single effect on an empty floor, not from a fight. A dungeon floor is darker
+than the sandbox and has twenty creatures on it. Expect the gains to come down.
+
 ## 2026-08-22 — A melee swing gets its own effect shape, and it is the ninth
 
 **Affects:** section 5 of `docs/Niagara_Conventions.md`, which listed eight
