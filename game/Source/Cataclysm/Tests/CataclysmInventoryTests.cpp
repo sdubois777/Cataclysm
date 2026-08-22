@@ -623,4 +623,64 @@ bool FCataclysmFullBagAndMaterialsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryCountsItsChanges,
+	"Cataclysm.Inventory.EveryChangeToWhatIsCarriedRaisesTheChangeCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInventoryCountsItsChanges::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmInventoryTest;
+
+	// WHAT THE COUNT IS FOR. UCataclysmInventoryWidget refreshes from NativeTick
+	// and walks all 48 cells, and an item's tool tip is a dozen table lookups and
+	// a string join. Rebuilding 48 of those every frame would be a great deal of
+	// work for something that changes when the player picks something up, so the
+	// widget rebuilds them only when this moves. Issue #733.
+	//
+	// A COUNT THAT MISSES A CHANGE IS THE FAILURE THAT MATTERS, because the
+	// player would be shown a tool tip for an item they no longer have. A count
+	// that rises when nothing changed only costs one frame's work, which is why
+	// the refusal case below is checked but is the less serious of the two.
+	UCataclysmInventoryComponent* Inventory = MakeInventory();
+
+	const int32 Start = Inventory->ChangeCount();
+
+	Inventory->AddItem(ItemNumber(1));
+	const int32 AfterAdd = Inventory->ChangeCount();
+	TestTrue(TEXT("putting an item in raises the count"), AfterAdd > Start);
+
+	Inventory->AddMaterial(FName(TEXT("Material_Aetherial_Shard")), 3);
+	const int32 AfterMaterial = Inventory->ChangeCount();
+	TestTrue(TEXT("putting a material in raises it"), AfterMaterial > AfterAdd);
+
+	// A SECOND OF THE SAME MATERIAL JOINS THE STACK RATHER THAN TAKING A SLOT,
+	// and the stack getting bigger is still a change: the tool tip states how
+	// many are carried.
+	Inventory->AddMaterial(FName(TEXT("Material_Aetherial_Shard")), 2);
+	const int32 AfterStack = Inventory->ChangeCount();
+	TestTrue(TEXT("adding to an existing stack raises it"),
+		AfterStack > AfterMaterial);
+
+	Inventory->RemoveItemAt(0);
+	const int32 AfterRemove = Inventory->ChangeCount();
+	TestTrue(TEXT("taking something out raises it"), AfterRemove > AfterStack);
+
+	// A REFUSED CHANGE IS NOT A CHANGE. Removing from an empty slot answers
+	// false and touches nothing.
+	Inventory->RemoveItemAt(0);
+	TestEqual(TEXT("removing from an empty slot does not raise it"),
+		Inventory->ChangeCount(), AfterRemove);
+
+	// An item with no base is not an item, so it is refused.
+	Inventory->AddItem(FCataclysmItem());
+	TestEqual(TEXT("a refused add does not raise it"),
+		Inventory->ChangeCount(), AfterRemove);
+
+	Inventory->RemoveEverything();
+	TestTrue(TEXT("emptying it raises it"),
+		Inventory->ChangeCount() > AfterRemove);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
