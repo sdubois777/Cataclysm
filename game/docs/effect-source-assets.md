@@ -38,7 +38,23 @@ the table below records.
 | Effect | Texture | Through which material |
 |---|---|---|
 | `NS_Impact_Point` | `T_Vfx_BasicDot` | `M_Impact_Sprite` |
-| `NS_Proj_Body` | `T_Vfx_BasicDot` | `M_Impact_Sprite` |
+| `NS_Proj_Body`, head and sparks | `T_Vfx_BasicDot` | `M_Impact_Sprite` |
+| `NS_Proj_Body`, streak | `T_Vfx_trail_05` | `MI_Basic_trail05` |
+
+**The streak's material comes out of the pack rather than being authored here,
+and that is a different arrangement from the row above it.** `M_Impact_Sprite` is
+this project's own material and names the pack's texture; `MI_Basic_trail05` is
+the pack's own material instance, used unchanged. A ribbon needs
+`bUsedWithNiagaraRibbons` rather than `bUsedWithNiagaraSprites`, and authoring a
+second material to set one flag would buy nothing while the pack already ships a
+trail material with it set. The Niagara stack reports no usage warning for it,
+which is the check.
+
+**So a fresh clone has a projectile whose streak draws with the engine's default
+ribbon material**, because the pack is gitignored. That is the same state the
+enemy Blueprints are in without the Paragon packs, and
+`Cataclysm.Effects.ProjectileHeadRidesAndTrailStaysBehind` names the material it
+expects so the substitution is reported rather than silent.
 
 Full path of the texture:
 `/Game/_SplineVFX/_GenericSource/Texture/T_Vfx_BasicDot.T_Vfx_BasicDot`.

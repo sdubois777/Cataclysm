@@ -16,6 +16,8 @@
 #include "NiagaraEffectType.h"
 #include "NiagaraEmitter.h"
 #include "NiagaraEmitterHandle.h"
+#include "NiagaraLightRendererProperties.h"
+#include "NiagaraRibbonRendererProperties.h"
 #include "NiagaraSpriteRendererProperties.h"
 #include "NiagaraSystem.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -208,26 +210,28 @@ bool FCataclysmProjectileHeadRidesAndTrailStaysBehind::RunTest(const FString& Pa
 		return false;
 	}
 
-	// TWO AND EXACTLY TWO. Counted rather than merely looked up by name, because
-	// a system created from an engine template arrives carrying that template's
-	// own emitter. This system did: the Niagara stack reported no error, no
-	// warning and a clean compile with a stray `Fountain` emitter in it, and the
-	// only thing that said so was counting.
-	TestEqual(TEXT("NS_Proj_Body has two emitters and no leftovers"),
-		System->GetEmitterHandles().Num(), 2);
+	// THREE AND EXACTLY THREE. Counted rather than merely looked up by name,
+	// because a system created from an engine template arrives carrying that
+	// template's own emitter. This system did: the Niagara stack reported no
+	// error, no warning and a clean compile with a stray `Fountain` emitter in
+	// it, and the only thing that said so was counting.
+	TestEqual(TEXT("NS_Proj_Body has three emitters and no leftovers"),
+		System->GetEmitterHandles().Num(), 3);
 
 	const FNiagaraEmitterHandle* Head = EmitterNamed(System, TEXT("Core"));
 	const FNiagaraEmitterHandle* Trail = EmitterNamed(System, TEXT("Trail"));
-	if (!Head || !Trail)
+	const FNiagaraEmitterHandle* Streak = EmitterNamed(System, TEXT("Streak"));
+	if (!Head || !Trail || !Streak)
 	{
-		AddError(TEXT("NS_Proj_Body must have an emitter named Core and one "
-					  "named Trail."));
+		AddError(TEXT("NS_Proj_Body must have emitters named Core, Trail and "
+					  "Streak."));
 		return false;
 	}
 
 	const FVersionedNiagaraEmitterData* HeadData = Head->GetEmitterData();
 	const FVersionedNiagaraEmitterData* TrailData = Trail->GetEmitterData();
-	if (!HeadData || !TrailData)
+	const FVersionedNiagaraEmitterData* StreakData = Streak->GetEmitterData();
+	if (!HeadData || !TrailData || !StreakData)
 	{
 		AddError(TEXT("an emitter of NS_Proj_Body carries no data."));
 		return false;
@@ -245,14 +249,24 @@ bool FCataclysmProjectileHeadRidesAndTrailStaysBehind::RunTest(const FString& Pa
 				   "left behind rather than dragged along"),
 		TrailData->bLocalSpace);
 
-	TestTrue(TEXT("both emitters are enabled"),
-		Head->GetIsEnabled() && Trail->GetIsEnabled());
+	// AND SO IS THE STREAK, for the same reason and more strongly: a ribbon
+	// joins its particles in the order they were born, so one simulated in local
+	// space collapses into a stub at the projectile rather than stretching out
+	// behind it.
+	TestFalse(TEXT("the streak is simulated in world space, so the ribbon "
+				   "stretches out behind the projectile"),
+		StreakData->bLocalSpace);
 
-	// THE MATERIAL, BECAUSE A MISSING ONE IS INVISIBLE RATHER THAN LOUD. A
-	// sprite material without the Niagara sprites usage flag makes the renderer
-	// fall back to the engine default in silence, which is what happened to
-	// NS_Impact_Point while it was being built. Both emitters share one
-	// material so that re-pointing the texture is a single edit.
+	TestTrue(TEXT("all three emitters are enabled"),
+		Head->GetIsEnabled() && Trail->GetIsEnabled() && Streak->GetIsEnabled());
+
+	// THE MATERIALS, BECAUSE A MISSING ONE IS INVISIBLE RATHER THAN LOUD. A
+	// material without the matching Niagara usage flag makes the renderer fall
+	// back to the engine default in silence, which is what happened to
+	// NS_Impact_Point while it was being built. The head and the sparks share
+	// one sprite material so that re-pointing the texture is a single edit; the
+	// streak needs a ribbon material and uses the trail material out of the
+	// installed pack.
 	for (const TPair<const TCHAR*, const FVersionedNiagaraEmitterData*> Pair :
 			{ TPair<const TCHAR*, const FVersionedNiagaraEmitterData*>(
 				  TEXT("Core"), HeadData),
@@ -275,6 +289,46 @@ bool FCataclysmProjectileHeadRidesAndTrailStaysBehind::RunTest(const FString& Pa
 				 "default sprite material"), Pair.Key),
 			bFoundTheSharedMaterial);
 	}
+
+	// THE STREAK IS A RIBBON AND NOT A LINE OF SPRITES, which is the difference
+	// between a continuous streak and a dotted one. A ribbon renderer is a
+	// different class from a sprite renderer, so this cannot be satisfied by an
+	// emitter that merely draws something.
+	//
+	// ITS MATERIAL COMES OUT OF THE INSTALLED PACK and is therefore absent on a
+	// fresh clone, exactly as the Paragon meshes are. The reference is checked
+	// rather than the asset's contents, so this still says something when the
+	// pack is not installed: a renderer whose material was never assigned
+	// carries null and would fail here.
+	bool bFoundARibbon = false;
+	for (const UNiagaraRendererProperties* Renderer : StreakData->GetRenderers())
+	{
+		const auto* Ribbon = Cast<UNiagaraRibbonRendererProperties>(Renderer);
+		if (Ribbon && Ribbon->Material)
+		{
+			bFoundARibbon = true;
+			TestEqual(TEXT("the streak draws with the pack's trail material"),
+				Ribbon->Material->GetName(), FString(TEXT("MI_Basic_trail05")));
+		}
+	}
+	TestTrue(TEXT("the streak is drawn by a ribbon renderer, so it is a "
+				  "continuous streak rather than a line of separate sprites"),
+		bFoundARibbon);
+
+	// A LIGHT ON THE HEAD, which is what makes a bolt light the floor it passes
+	// over rather than being a bright shape pasted on top of an unlit room. It
+	// is the one part of this effect that changes anything outside itself.
+	bool bFoundALight = false;
+	for (const UNiagaraRendererProperties* Renderer : HeadData->GetRenderers())
+	{
+		if (Cast<UNiagaraLightRendererProperties>(Renderer))
+		{
+			bFoundALight = true;
+		}
+	}
+	TestTrue(TEXT("the head carries a light renderer, so the projectile lights "
+				  "what it flies past"),
+		bFoundALight);
 
 	return true;
 }
