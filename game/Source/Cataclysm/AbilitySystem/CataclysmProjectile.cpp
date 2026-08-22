@@ -10,7 +10,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
-#include "UObject/ConstructorHelpers.h"
 
 namespace
 {
@@ -58,24 +57,39 @@ ACataclysmProjectile::ACataclysmProjectile()
 	Anchor = CreateDefaultSubobject<USceneComponent>(TEXT("Anchor"));
 	SetRootComponent(Anchor);
 
-	// SOMETHING TO SEE. Until this, every projectile in the game was invisible:
-	// the actor's only component was the anchor above. Scaled in Fire, once
-	// BodyRadiusCm is known -- a piercing skill's projectile is as wide as the
-	// line it hits along, and everything else uses the standard body width.
+	// A COMPONENT FOR A PROJECTILE THAT IS A PHYSICAL OBJECT, and nothing in it
+	// by default. Scaled in Fire, once BodyRadiusCm is known -- a piercing
+	// skill's projectile is as wide as the line it hits along, and everything
+	// else uses the standard body width.
 	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(
 		TEXT("PlaceholderBody"));
 	PlaceholderBody->SetupAttachment(Anchor);
 	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// Engine content, found by path, so this adds no asset to the project. A
-	// sphere rather than the cylinder and cone the characters use, so a thing in
-	// the air is not mistaken for a thing standing on the ground.
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(
-		TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-	if (SphereMesh.Succeeded())
-	{
-		PlaceholderBody->SetStaticMesh(SphereMesh.Object);
-	}
+	// IT USED TO LOAD `/Engine/BasicShapes/Sphere` HERE AND THAT WAS THE SINGLE
+	// WORST-LOOKING THING IN THE GAME. The engine sphere has no material
+	// assigned, so it renders with Unreal's default grey. Every player fire bolt
+	// was a grey ball with a particle effect stuck around it, which is what the
+	// project owner meant on 2026-08-22 by "still just shooting regular looking
+	// grey orbs with some mediocre effects on them". Issue #811.
+	//
+	// THE REASON IT WAS ADDED HAS GONE. The comment that stood here said
+	// "SOMETHING TO SEE. Until this, every projectile in the game was
+	// invisible", and that was true: the actor's only component was the anchor
+	// and no effect existed. `NS_Proj_Body` was built in #558 and
+	// `UCataclysmProjectileEffect::AttachTo` gives every projectile a head, a
+	// trail and a light. The particle system IS the body of a magic bolt, and a
+	// grey ball inside it is not a fallback, it is something drawn on top of the
+	// art.
+	//
+	// A PROJECTILE THAT IS A REAL OBJECT STILL DRAWS A MESH, which is why the
+	// component stays. `SetBodyMesh` is how the Brute's thrown rock arrives, and
+	// a rock is a thing rather than a spell.
+	//
+	// WHAT THIS COSTS. A projectile whose effect is refused draws nothing at
+	// all. `FXT_Enemy` refuses one past 4000 cm, outside the view frustum, or
+	// beyond twenty live instances -- so what is lost is a grey ball in
+	// situations where the effect was already judged not worth drawing.
 }
 
 void ACataclysmProjectile::SetBodyMesh(UStaticMesh* Mesh)
@@ -93,8 +107,12 @@ void ACataclysmProjectile::SetBodyMesh(UStaticMesh* Mesh)
 	const UStaticMesh* Shown = PlaceholderBody->GetStaticMesh();
 	if (!Shown)
 	{
-		// No art at all: the Paragon pack is absent AND the engine sphere was
-		// not found. The projectile still flies and still deals damage.
+		// NO MESH IS THE NORMAL CASE AND NOT A FAILURE. Since 2026-08-22 the
+		// constructor loads nothing, so every projectile that was not handed a
+		// real object arrives here with an empty component and is drawn entirely
+		// by NS_Proj_Body. There is nothing to size. It also covers the Brute
+		// throwing without the Paragon pack installed: no rock, no mesh, and the
+		// throw still flies and still deals damage.
 		return;
 	}
 
