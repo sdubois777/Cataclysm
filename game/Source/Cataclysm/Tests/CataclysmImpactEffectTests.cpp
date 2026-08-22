@@ -16,8 +16,12 @@
 #include "NiagaraEffectType.h"
 #include "NiagaraEmitter.h"
 #include "NiagaraEmitterHandle.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "NiagaraLightRendererProperties.h"
+#include "NiagaraMeshRendererProperties.h"
 #include "NiagaraSystem.h"
+#include "Tests/CataclysmTestSkip.h"
 
 /**
  * NS_Impact_Point, and the chain that colours it from the damage type table.
@@ -133,6 +137,108 @@ bool FCataclysmImpactPointFlashesALight::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and exactly one emitter carries one, so a single burst is "
 				   "not dozens of dynamic lights"),
 		EmittersWithALight, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpactPointThrowsAShockwave,
+	"Cataclysm.Effects.ImpactPointThrowsAGroundShockwave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmImpactPointThrowsAShockwave::RunTest(const FString& Parameters)
+{
+	UNiagaraSystem* System = CataclysmImpactEffectTest::LoadImpactSystem();
+	if (!System)
+	{
+		AddError(TEXT("NS_Impact_Point does not exist."));
+		return false;
+	}
+
+	// THREE AND EXACTLY THREE. Counted rather than merely looked up by name,
+	// because a system created from an engine template arrives carrying that
+	// template's own emitter, and the Niagara stack reports a clean compile with
+	// the stray still in it. NS_Proj_Body had exactly that and only counting
+	// found it. This system had two emitters until 2026-08-22.
+	TestEqual(TEXT("NS_Impact_Point has three emitters and no leftovers"),
+		System->GetEmitterHandles().Num(), 3);
+
+	const FNiagaraEmitterHandle* Wave = nullptr;
+	for (const FNiagaraEmitterHandle& Handle : System->GetEmitterHandles())
+	{
+		if (Handle.GetName() == FName(TEXT("Shockwave")))
+		{
+			Wave = &Handle;
+		}
+	}
+
+	if (!Wave)
+	{
+		AddError(TEXT("NS_Impact_Point must have an emitter named Shockwave. "
+					  "Without it a hit is a puff of sprites again."));
+		return false;
+	}
+
+	TestTrue(TEXT("the shockwave emitter is enabled"), Wave->GetIsEnabled());
+
+	const FVersionedNiagaraEmitterData* WaveData = Wave->GetEmitterData();
+	if (!WaveData)
+	{
+		AddError(TEXT("the Shockwave emitter carries no data."));
+		return false;
+	}
+
+	// A MESH AND NOT A SPRITE, WHICH IS THE WHOLE REASON IT WAS ADDED. Every
+	// other emitter in this project draws a flat camera-facing sprite, and the
+	// project owner's judgement of that on 2026-08-21 was that it reads as a
+	// placeholder. A sprite renderer here would satisfy "the impact has a third
+	// emitter" and lose the point, so the class is asserted rather than merely
+	// that a renderer exists. Issue #811.
+	const UNiagaraMeshRendererProperties* Mesh = nullptr;
+	for (const UNiagaraRendererProperties* Renderer : WaveData->GetRenderers())
+	{
+		if (const auto* AsMesh = Cast<UNiagaraMeshRendererProperties>(Renderer))
+		{
+			Mesh = AsMesh;
+		}
+	}
+
+	if (!Mesh)
+	{
+		AddError(TEXT("the Shockwave emitter has no mesh renderer, so the ring "
+					  "is a flat sprite or nothing at all."));
+		return false;
+	}
+
+	// THE MESH AND MATERIAL COME OUT OF A GITIGNORED PACK, so on a fresh clone
+	// they resolve to null and the ring draws with the engine default. Reported
+	// rather than failed, as the Paragon-dependent tests do; the emitter count
+	// and the renderer class above were checked either way.
+	const bool bHasMesh = Mesh->Meshes.Num() > 0 && Mesh->Meshes[0].Mesh != nullptr;
+	const bool bHasMaterial = Mesh->bOverrideMaterials
+		&& Mesh->OverrideMaterials.Num() > 0
+		&& Mesh->OverrideMaterials[0].ExplicitMat != nullptr;
+
+	if (!bHasMesh || !bHasMaterial)
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this,
+			TEXT("which mesh and material the shockwave draws with is not "
+				 "checked; the emitter count and the renderer class are. The "
+				 "Easy Shockwaves VFX pack is not installed, so the ring draws "
+				 "with the engine default."));
+		return true;
+	}
+
+	TestEqual(TEXT("the shockwave draws the pack's floor ring mesh"),
+		Mesh->Meshes[0].Mesh->GetName(),
+		FString(TEXT("SM_VFX_Cyl_In_Out_Floor_01")));
+	TestEqual(TEXT("through the pack's shockwave material"),
+		Mesh->OverrideMaterials[0].ExplicitMat->GetName(),
+		FString(TEXT("M_VFX_Shockwave_01")));
+
+	// AND IT CASTS NO SHADOW. A ring expanding across the floor with shadows on
+	// would put a moving shadow under every blow landed on the level, which is
+	// both wrong-looking and a cost nothing budgeted for -- issue #547.
+	TestFalse(TEXT("the shockwave casts no shadow"), Mesh->bCastShadows);
 
 	return true;
 }

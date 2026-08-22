@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Components/BoxComponent.h"
@@ -2732,6 +2733,70 @@ bool FCataclysmShippedSlotTagsTest::RunTest(const FString&)
 	// Guards the loop itself. If SkillsFor returned nothing the assertions above
 	// would all pass without testing anything.
 	TestTrue(TEXT("Some skills were actually checked"), Checked >= 10);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// That the swing is still drawn at all
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEverySwingAsksForAnArc,
+	"Cataclysm.Effects.EverySwingAsksForAnArc",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEverySwingAsksForAnArc::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// THIS IS THE TEST THE WHOLE SHAPE DEPENDS ON, and it lives in this file
+	// rather than beside the other NS_Strike_Arc tests because the harness that
+	// can grant and drive a real skill is here.
+	//
+	// WHAT IT REPAIRS. NS_Strike_Arc could be authored perfectly, every asset
+	// test above it could pass, and a melee swing could still draw nothing --
+	// which is exactly what UCataclysmClassStats did before issue #807: it
+	// worked, it had tests, and no code path reached it. Deleting the
+	// UCataclysmStrikeEffect::PlayAt call from UCataclysmStrikeSkill::SwingOnce
+	// fails this and nothing else in the suite.
+	//
+	// IT COUNTS ASKS RATHER THAN ARCS. No test in this project can observe a
+	// Niagara component: the automation command passes -nullrhi and Niagara
+	// refuses to create one when FApp::CanEverRender() is false. Issue #559.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const int32 Before = UCataclysmStrikeEffect::TimesAsked;
+
+	// SWUNG WITH NOTHING IN RANGE, ON PURPOSE. A swing that misses still
+	// happened, and the arc is drawn whether or not anything was hit -- the
+	// opposite of the impact burst, which refuses to draw for a blow that
+	// connected with nothing. A player who saw nothing when they hit thin air
+	// would read it as the button not working.
+	const int32 Hit = Strike->SwingOnce();
+	TestEqual(TEXT("nothing was in range, so this is a swing at thin air"),
+		Hit, 0);
+
+	TestEqual(TEXT("a swing asks for exactly one arc"),
+		UCataclysmStrikeEffect::TimesAsked, Before + 1);
+
+	// AND A REPEATING STRIKE ASKS AGAIN EACH TIME. Pyroclasm swings every 0.2
+	// seconds for three seconds; an arc drawn once at the start and never again
+	// would leave fourteen of its fifteen swings invisible.
+	Strike->SwingOnce();
+	Strike->SwingOnce();
+	TestEqual(TEXT("three swings ask for three arcs"),
+		UCataclysmStrikeEffect::TimesAsked, Before + 3);
 
 	return true;
 }

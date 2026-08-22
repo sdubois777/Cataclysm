@@ -20,6 +20,83 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — A melee swing gets its own effect shape, and it is the ninth
+
+**Affects:** section 5 of `docs/Niagara_Conventions.md`, which listed eight
+shapes and now lists nine. Applied. Issue #811.
+
+### The question, and why it was open
+
+`docs/Niagara_Conventions.md` fixed eight effect shapes before the first Niagara
+asset existed, deliberately: eight shapes times eight damage types is 64 assets
+built the wrong way and 8 assets plus 8 data rows built the right way. **A melee
+swing was not one of the eight.**
+
+That was not noticed until somebody counted what the skills actually are.
+`game/Data/WeaponSkills.csv` gives the `Strike` shape to **16 of the 51 designed
+Demonic skills**, against `Projectile`'s 10 — making it the most common shape in
+the game. All 16 drew nothing at all. A swing happened, damage landed, and the
+screen did not change until the hit burst went off on the target.
+
+The project owner played it on 2026-08-21 and said: "your skills effects are
+basically the same as they were before. Just a basic orb shape with some weird
+streak behind it. That hardly counts as a real game skill." That was the second
+time the same judgement had been given.
+
+### Why it is not a reuse of the hit burst
+
+`NS_Impact_Point` was the closest existing shape, and reusing it was considered
+and rejected. **The two are different moments and they disagree about a rule.**
+
+| | `NS_Impact_Point` | `NS_Strike_Arc` |
+| :-- | :-- | :-- |
+| Where | on the target | on the caster |
+| When | the blow lands | the swing starts |
+| Shape | a burst outward from a point | an arc sweeping across the front |
+| Drawn when nothing was hit | **no** | **yes** |
+
+That last row is the one that settles it. `UCataclysmImpactEffect::ShouldDrawFor`
+refuses to draw for a blow that was evaded or mitigated to nothing, because that
+effect means "that landed". A swing that misses still happened, and a player who
+saw nothing when they hit thin air would read it as the button not working. One
+asset cannot obey both rules.
+
+### The decision
+
+**A ninth shape, `NS_Strike_Arc`, spawned once per swing from
+`UCataclysmStrikeSkill::SwingOnce`.** One system serving all eight damage types
+on the same terms as the other eight shapes: the colours come from
+`DT_ElementVisuals` at the moment of the swing, so changing one is a data edit
+and touches no asset.
+
+**It draws a mesh rather than a sprite, and that is the substance of the
+change.** Every emitter in the project until 2026-08-22 drew a flat
+camera-facing sprite of a single texture, tinted — which is a literal
+description of what the project owner called a placeholder. The arc uses
+`SM_slash` and `MI_mid01` out of the Knife_light pack, and the hit burst gained
+a ground shockwave using `SM_VFX_Cyl_In_Out_Floor_01` and `M_VFX_Shockwave_01`
+out of Easy Shockwaves VFX at the same time.
+
+**Taking a mesh and a material from a pack while authoring the system here is
+the rule section 3 already states**, and it is not a new compromise: "take
+textures and materials from packs; author the systems". A bought Niagara system
+brings its own effect type, its own parameter names and its own unbudgeted
+emitter counts; a bought mesh brings none of those.
+
+### What is still missing
+
+**Six of the nine shapes are still unbuilt**: `NS_Impact_Ground`, `NS_Beam`,
+`NS_Aura_Persistent`, `NS_Cast_Windup`, `NS_Death_Dissolve` and
+`NS_Status_Applied`. `NS_Cast_Windup` is the one the project owner's list in
+#811 names directly — "a build-up on the caster. Nothing happens on the
+character before a skill goes off" — and it is not done.
+
+**Nothing measures what any of this costs.** Two mesh emitters and a second
+dynamic light per swing are added on top of an effects budget that has never
+been written down. Issue #547.
+
+---
+
 ## 2026-08-22 — Three times as many creatures on a dungeon floor, and the floors themselves stay the size they are
 
 **Affects:** nothing in `docs/Cataclysm_GDD_v2.md` states a creature density, so
