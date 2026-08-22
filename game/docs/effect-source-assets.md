@@ -4,18 +4,42 @@ Which imported texture each authored Niagara system draws with. This is the
 effects equivalent of `enemy-source-assets.md`, which does the same job for the
 seven enemies and their Paragon meshes.
 
-**The pack is installed and is deliberately not in git.** It sits at
-`game/Content/_SplineVFX/`, and `.gitignore` excludes it inside the fenced block
+**Four packs are installed and none of them is in git.** They sit directly under
+`game/Content/`, and `.gitignore` excludes each one inside the fenced block
 between `# THIRD-PARTY-PACKS-BEGIN` and `# THIRD-PARTY-PACKS-END`, which
-`tools/third_party_content.py` parses. Issue #557 put it there. So a fresh
-checkout has the systems but not the art they draw with, and this file is the
-record of what to install to get it back.
+`tools/third_party_content.py` parses. Issue #557 put the first one there. So a
+fresh checkout has the systems but not the art they draw with, and this file is
+the record of what to install to get it back.
 
 **A committed asset referencing an uncommitted one is the arrangement this
 project already has**, not a new compromise: the enemy Blueprints reference
 Paragon skeletal meshes on exactly the same terms.
 
-## The pack
+## The four packs
+
+| Folder under `game/Content/` | Installed | Size | What this project takes from it |
+|---|---|---|---|
+| `_SplineVFX/` | 2026-08-14 | 75 MB | `T_Vfx_BasicDot`, the soft round sprite every emitter drew with until 2026-08-22, and `MI_Basic_trail05` for the projectile's ribbon streak |
+| `SplineEffect2/` | 2026-08-22 | 63 MB | Nothing yet. Spline-driven beam meshes, materials and textures, for the `NS_Beam` shape that is not built |
+| `Vefects/` | 2026-08-22 | 356 MB | `SM_VFX_Cyl_In_Out_Floor_01` and `M_VFX_Shockwave_01`, the ground shockwave on the hit burst. Three packs in one folder: Easy Shockwaves VFX, Free Fire and Zap VFX |
+| `Knife_light/` | 2026-08-22 | 41 MB | `SM_slash` and `MI_mid01`, the melee swing arc |
+
+**The 2026-08-22 three were installed by the project owner** through the editor's
+Fab tab, in answer to issue #811. They could not be installed from here: the Fab
+tab is a web page embedded in the editor and exposes no widgets to the editor's
+own UI automation, and the desktop mouse control refuses to attach to the Unreal
+Editor because it has no Start menu entry. The Epic Games Launcher's own Fab
+Library was tried instead and its **Add To Project** button reports "No
+compatible user projects found" for every pack, including one already installed,
+because the launcher's project list is empty for this project. So installing a
+pack is an operator step.
+
+**One of them changed `game/Cataclysm.uproject`.** A pack enabled the
+`MovieRenderPipeline` plugin and stripped the file's trailing newline. The plugin
+was left enabled rather than reverted, because a pack that asked for it may load
+its own content with it, and disabling it would be undone by the next install.
+
+## The first pack, in detail
 
 | What | Value |
 |---|---|
@@ -33,13 +57,34 @@ names and its own unbudgeted emitter counts. The rule that document states is
 "take textures and materials from packs; author the systems", and that is what
 the table below records.
 
-## Which texture each effect uses
+## Which pack asset each emitter uses
 
-| Effect | Texture | Through which material |
-|---|---|---|
-| `NS_Impact_Point` | `T_Vfx_BasicDot` | `M_Impact_Sprite` |
-| `NS_Proj_Body`, head and sparks | `T_Vfx_BasicDot` | `M_Impact_Sprite` |
-| `NS_Proj_Body`, streak | `T_Vfx_trail_05` | `MI_Basic_trail05` |
+| System | Emitter | Draws | Through which material | From |
+|---|---|---|---|---|
+| `NS_Impact_Point` | `Core` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
+| `NS_Impact_Point` | `Sparks` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
+| `NS_Impact_Point` | `Shockwave` | mesh `SM_VFX_Cyl_In_Out_Floor_01` | `M_VFX_Shockwave_01` | `Vefects` |
+| `NS_Proj_Body` | `Core`, `Trail` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
+| `NS_Proj_Body` | `Streak` | ribbon `T_Vfx_trail_05` | `MI_Basic_trail05` | `_SplineVFX` |
+| `NS_Strike_Arc` | `Arc` | mesh `SM_slash` | `MI_mid01` | `Knife_light` |
+
+**The two mesh emitters are the only things in the project that are not a flat
+tinted sprite**, and that is the whole point of them. The project owner said of
+the sprite-only effects, twice, that they read as a placeholder: "just a basic
+orb shape with some weird streak behind it". Issue #811.
+
+**Both pack materials contain a `ParticleColor` node**, which is what lets one
+system serve all eight damage types. A mesh material without one would look
+correct and would silently make `User.ElementColour` do nothing. Both also carry
+`bUsedWithNiagaraMeshParticles`, without which the renderer falls back to the
+engine's default material in silence.
+
+**`M_VFX_Shockwave_01` is additive and `MI_mid01` is translucent.** That matters
+for `ElementColourDark`: under additive blending a near-black colour adds nothing
+and disappears, and section 5 of `docs/Niagara_Conventions.md` says the darker
+colour exists specifically to stay legible when the primary hue matches the
+floor. The shockwave uses the primary colour only, so the additive blend costs
+nothing there; anything that wants the dark colour must not be additive.
 
 **The streak's material comes out of the pack rather than being authored here,
 and that is a different arrangement from the row above it.** `M_Impact_Sprite` is

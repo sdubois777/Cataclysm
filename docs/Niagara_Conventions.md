@@ -484,19 +484,34 @@ They already exist as gameplay tags in `game/Config/Tags/CataclysmTags.ini`:
 
 The shapes:
 
-| System | What it is |
-| :-- | :-- |
-| `NS_Impact_Point` | a hit landing on a target |
-| `NS_Impact_Ground` | an area attack landing on the floor |
-| `NS_Proj_Body` | a projectile in flight, with its trail |
-| `NS_Beam` | a continuous line from caster to target |
-| `NS_Aura_Persistent` | a looping field around a caster |
-| `NS_Cast_Windup` | the caster's own build-up |
-| `NS_Death_Dissolve` | an enemy's death |
-| `NS_Status_Applied` | an ailment landing |
+| System | What it is | Built |
+| :-- | :-- | :-- |
+| `NS_Impact_Point` | a hit landing on a target | yes |
+| `NS_Strike_Arc` | a melee swing leaving the caster | yes |
+| `NS_Impact_Ground` | an area attack landing on the floor | no |
+| `NS_Proj_Body` | a projectile in flight, with its trail | yes |
+| `NS_Beam` | a continuous line from caster to target | no |
+| `NS_Aura_Persistent` | a looping field around a caster | no |
+| `NS_Cast_Windup` | the caster's own build-up | no |
+| `NS_Death_Dissolve` | an enemy's death | no |
+| `NS_Status_Applied` | an ailment landing | no |
 
-**Eight shapes times eight damage types is 64 assets built the wrong way. Built
-this way it is 8 assets and 8 data rows.**
+**`NS_Strike_Arc` IS A NINTH SHAPE ADDED ON 2026-08-22, and adding it was a
+design decision rather than only an authoring job.** This document listed eight
+and a melee swing was not among them, while `game/Data/WeaponSkills.csv` gives
+the `Strike` shape to 16 of the 51 designed Demonic skills against
+`Projectile`'s 10 -- making it the most common skill shape in the game and the
+only one that drew nothing at all. Issue #811.
+
+**It is not a reuse of `NS_Impact_Point` and the difference is the moment, not
+the look.** An impact is what a blow looks like where it LANDS: at the target,
+lasting an instant, and refused entirely for a blow that connected with nothing.
+A strike arc is what the swing looks like where it STARTS: at the caster,
+sweeping, and drawn whether or not anything was hit, because a swing that misses
+still happened. One asset cannot be both without one of those rules being wrong.
+
+**Nine shapes times eight damage types is 72 assets built the wrong way. Built
+this way it is 9 assets and 8 data rows.**
 
 ### The data row
 

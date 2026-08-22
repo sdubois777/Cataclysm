@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -87,6 +88,27 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// issue #626 moved it into HitTargets so that every shape can shove, which
 	// is what making it a rider means.
 	HitTargets(Targets, DamagePercent);
+
+	// AND THE SWING IS DRAWN, WHICH UNTIL ISSUE #811 IT WAS NOT. This is the one
+	// place a Strike swings, so it is the one place the arc has to be spawned
+	// from; every repeating strike reaches here through Repeat and Finish as
+	// well, so a spin draws an arc per interval rather than one at the start.
+	//
+	// DRAWN WHETHER OR NOT ANYTHING WAS HIT, and that is deliberate and the
+	// opposite of what the impact burst does. UCataclysmImpactEffect::ShouldDrawFor
+	// refuses to draw for a blow that connected with nothing, because that effect
+	// means "that landed". This one means "you swung", and a swing that misses
+	// still happened -- a player who saw nothing when they hit thin air would
+	// read it as the button not working.
+	// COLOURED FROM THE SKILL AND NOT ONLY FROM THE CASTER. A player's damage
+	// carries no type by design, so asking the caster alone would draw every
+	// player swing white -- which is what every other effect in the project
+	// still does. Issue #803. `ElementTag` is the skill's own `Element.*` tag
+	// out of the Weapon Skills sheet.
+	UCataclysmStrikeEffect::PlayAt(Self, Self->GetActorLocation(), AimDirection(),
+								   UCataclysmStrikeEffect::DamageTypeFor(
+									   Self, ElementTag()),
+								   Params.RadiusCm);
 
 	++SwingsMade;
 	return Targets.Num();
