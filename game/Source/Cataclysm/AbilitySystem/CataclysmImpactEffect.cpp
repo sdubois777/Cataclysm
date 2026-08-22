@@ -107,12 +107,21 @@ FVector UCataclysmImpactEffect::ImpactLocationFor(const FHitResult* Landed,
 	return Landed->ImpactPoint;
 }
 
+int32 UCataclysmImpactEffect::TimesAsked = 0;
+FName UCataclysmImpactEffect::LastDamageTypeAsked = NAME_None;
+
 UNiagaraComponent* UCataclysmImpactEffect::SpawnAt(
 	const UObject* WorldContextObject,
 	const FVector& Location,
 	const FVector& ImpactNormal,
 	FName DamageType)
 {
+	// RECORDED FIRST, BEFORE ANYTHING CAN REFUSE. See the declarations: these
+	// two are the only things an automation test can observe about this
+	// function.
+	++TimesAsked;
+	LastDamageTypeAsked = DamageType;
+
 	if (!WorldContextObject)
 	{
 		return nullptr;

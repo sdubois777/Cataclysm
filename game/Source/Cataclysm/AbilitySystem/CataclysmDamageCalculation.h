@@ -27,6 +27,28 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	FName DamageType;
 
+	/**
+	 * Which of the eight this hit is DRAWN as. Empty means the effect keeps the
+	 * colours it was authored with.
+	 *
+	 * A SECOND FIELD BECAUSE THESE ARE TWO QUESTIONS. `DamageType` above answers
+	 * "which resistance applies", and for a player's hit the answer is none: an
+	 * enemy holds one generic resistance and has nothing to choose between, so a
+	 * player's damage arrives untyped by design. That was settled on 2026-08-12
+	 * and it is still true.
+	 *
+	 * But a player's skill DOES have a damage type -- 51 of the 58 shaped rows
+	 * of `game/Data/WeaponSkills.csv` are Demonic and 7 are War -- and it is
+	 * what the bolt and the burst should be coloured by. Answering both
+	 * questions with one field meant every player effect drew white, which is
+	 * the colour that was chosen to mean "nothing set this". Issue #803.
+	 *
+	 * FOR AN ENEMY THE TWO ARE ALWAYS EQUAL, because an enemy's damage is typed
+	 * and the type is the same tag. The fields only differ for a player.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	FName EffectDamageType;
+
 	/** Percentage points subtracted from the defender's resistance. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float ResistancePenetration = 0.0f;
@@ -397,6 +419,27 @@ public:
 	 */
 	static const TCHAR* SkillCritChanceDataTagName;
 
+	/**
+	 * The marker that says an effect's `Element.*` tag is about colour only.
+	 *
+	 * `Data.ElementIsForColourOnly`. A player's damage effect carries its
+	 * skill's element tag so the bolt and the burst can be coloured by it, and
+	 * carries this beside it so the defender does not read that tag as a
+	 * resistance to apply. Issue #803.
+	 *
+	 * PUT ON AT THE SOURCE, NOT DECIDED AT THE FAR END. The obvious alternative
+	 * was for the defender to ask who hit it and work the answer out. That
+	 * breaks when the attacker is gone: an enemy's burn ticking on the player
+	 * after the enemy is dead would find no attacker and stop applying the
+	 * player's resistance to it part way through. The marker is stamped on the
+	 * effect while the attacker is still there, so it survives.
+	 *
+	 * `Data.` IS THE ENGINE'S OWN NAMESPACE FOR A TAG THAT NAMES A MECHANISM
+	 * rather than a property, which is why `Data.SkillCritChance` above uses it
+	 * too. Nothing scopes a modifier by it.
+	 */
+	static const TCHAR* ElementIsForColourOnlyTagName;
+
 	/** `Type.AOE`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag AreaDamageTag();
 
@@ -414,6 +457,12 @@ public:
 
 	/** `Data.SkillCritChance`, or an invalid tag if the vocabulary lost it. */
 	static FGameplayTag SkillCritChanceDataTag();
+
+	/**
+	 * `Data.ElementIsForColourOnly`, or an invalid tag if the vocabulary lost
+	 * it.
+	 */
+	static FGameplayTag ElementIsForColourOnlyTag();
 
 	/**
 	 * A damage type as the gameplay tag that carries it on an effect.
