@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmProjectileEffect.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -65,11 +66,32 @@ FName UCataclysmProjectileEffect::DamageTypeFor(
 		return NAME_None;
 	}
 
-	// GetOwner and not GetInstigator: ACataclysmProjectile::Fire sets
-	// FActorSpawnParameters::Owner to whoever fired, and every other part of
-	// this class -- the sweep's ignore list, the damage it deals, the burn it
-	// applies -- reads the firer back the same way.
-	return UCataclysmSkillEffects::DamageTypeOf(Projectile->GetOwner());
+	// THE FIRER FIRST. GetOwner and not GetInstigator: ACataclysmProjectile::Fire
+	// sets FActorSpawnParameters::Owner to whoever fired, and every other part
+	// of this class -- the sweep's ignore list, the damage it deals, the burn it
+	// applies -- reads the firer back the same way. An enemy's own damage type
+	// is what its hits are resisted as, and a bolt that disagreed with it would
+	// mislead in the one case where the colour tells the player something they
+	// can act on.
+	const FName FromFirer =
+		UCataclysmSkillEffects::DamageTypeOf(Projectile->GetOwner());
+	if (!FromFirer.IsNone())
+	{
+		return FromFirer;
+	}
+
+	// THEN THE SKILL THAT FIRED IT, which is what makes a player's bolt draw in
+	// its own colour instead of white. A player's damage carries no type, by a
+	// decision about resistances that says nothing about what a bolt looks like;
+	// the skill row names a damage type for all 58 shaped rows and nothing was
+	// reading it. Issue #803.
+	//
+	// THE TAGS ARE ALREADY HERE. ACataclysmProjectile::Fire is handed the firing
+	// skill's whole tag container and keeps it, because the sweep needs it to
+	// decide whether the hit can be evaded. One of those tags is the skill's
+	// `Element.*`.
+	return UCataclysmDamageCalculation::DamageTypeFromTags(
+		Projectile->FiringSkillTags());
 }
 
 int32 UCataclysmProjectileEffect::TimesAsked = 0;

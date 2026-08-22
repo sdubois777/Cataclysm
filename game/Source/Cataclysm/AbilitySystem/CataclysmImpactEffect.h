@@ -155,4 +155,30 @@ public:
 									  const FVector& Location,
 									  const FVector& ImpactNormal,
 									  FName DamageType);
+
+	/**
+	 * How many times a landed blow has asked for a burst since the editor
+	 * started.
+	 *
+	 * IT EXISTS BECAUSE NO TEST IN THIS PROJECT CAN SEE A NIAGARA SPAWN, as the
+	 * comment on `SpawnAt` above says at length. Issue #559.
+	 *
+	 * WITHOUT IT NOTHING CONNECTED THIS TO THE GAME. `SpawnAt` has one
+	 * production call site, in `UCataclysmVitalAttributeSet`, and until
+	 * 2026-08-22 nothing asserted that line was ever reached: deleting it would
+	 * have stopped every hit in the game drawing an impact and the suite would
+	 * have stayed green. Issue #815.
+	 */
+	static int32 TimesAsked;
+
+	/**
+	 * The damage type the last burst was asked for, or None.
+	 *
+	 * THE ONLY WAY TO SEE WHAT COLOUR A HIT DREW IN. Everything past the spawn
+	 * is invisible under `-nullrhi`, so the value handed in is as far as a test
+	 * can follow it. Issue #803 needs exactly this: its whole subject is that a
+	 * player's burst was drawing white instead of the damage type its skill row
+	 * names, and the two cases are told apart only by this name.
+	 */
+	static FName LastDamageTypeAsked;
 };

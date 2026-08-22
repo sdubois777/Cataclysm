@@ -126,6 +126,28 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	float CritChancePercent = -1.0f;
 
+	/**
+	 * The `Element.*` tag of the skill dealing this blow, for colour only.
+	 *
+	 * WHAT IT IS FOR. A player's effects were all drawn white because the only
+	 * damage type anything could see was the attacker's, and a player's hits
+	 * carry none. This carries the skill's own, which the skill row states and
+	 * which nothing was reading. Issue #803.
+	 *
+	 * IT NEVER DECIDES A RESISTANCE. `UCataclysmSkillEffects::ApplyTypedSpec`
+	 * puts it on the damage effect together with
+	 * `Data.ElementIsForColourOnly`, and that marker is what stops the defender
+	 * treating it as a damage type. See the marker's own declaration on
+	 * `UCataclysmDamageCalculation` for why the two are separated at the source
+	 * rather than at the far end.
+	 *
+	 * AN INVALID TAG IS THE ORDINARY CASE for everything that has no skill row:
+	 * an enemy's attack, a minion's blow, a burning patch of ground. Those are
+	 * typed by their attacker already, or are meant to be untyped.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	FGameplayTag SkillElement;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{

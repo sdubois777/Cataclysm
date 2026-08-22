@@ -20,6 +20,49 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — A hit's damage type answers two questions, and they have different answers
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` section XIII, `docs/Niagara_Conventions.md`
+section 5, and the Tags sheet of `docs/All_Things_Cataclysm.xlsx`.
+
+**The decision being kept.** A player's damage reaches the defender untyped. The
+project owner settled that on 2026-08-12: a player has eight resistances because
+eight Cataclysms attack them, so an enemy's hit has to say which one applies; an
+enemy has one generic resistance that meets every hit whatever it is, so a
+player's hit has nothing to choose between. That is unchanged.
+
+**The decision being added.** A player's skill still HAS a damage type — every
+one of the 58 shaped rows of `game/Data/WeaponSkills.csv` names one, 51 Demonic
+and 7 War — and its effects are drawn in that type's colours. The ruling above is
+about resistances and says nothing about what a bolt looks like, but one function
+was giving both answers, so every effect a player skill produced drew in the
+authored default. That default is white, which is the colour chosen to mean
+"nothing set this", so a Demonic skill and a War skill were indistinguishable and
+both looked unfinished. Issue #803.
+
+**How the two are separated.** A player's damage effect now carries its skill's
+`Element.*` tag, and carries a second tag beside it,
+`Data.ElementIsForColourOnly`. The defender reads the element tag twice: always
+as what to draw, and as a resistance to apply only when that marker is absent.
+
+**Why the marker rides on the effect instead of being worked out at the far
+end.** The obvious alternative was for the defender to ask who hit it. That
+breaks when the attacker is gone: an enemy's burn ticking on the player after the
+enemy is dead would find no attacker and stop applying the player's resistance
+part way through the burn. The marker is stamped where the attacker is known and
+alive, so it survives.
+
+**What was rejected.** Simply putting the element tag on a player's hit with no
+marker. `ResistanceFor` returns the generic figure early for a defender that
+holds no eight-figure resistance set, so against an enemy it would change no
+damage today — but it would silently re-type a player's hit for everything else
+that reads the type, and it would overturn a recorded decision as a side effect
+of a colour change. Both are worse than one extra tag.
+
+**What is still open.** A ground zone a player leaves still draws in the default
+colour, because a zone carries no skill tags of its own. Nothing measures what
+any of the effects cost — issue #547.
+
 ## 2026-08-22 — Effect colours are used at a per-emitter gain, not at the value in the table
 
 **Affects:** `docs/Niagara_Conventions.md` section 5, `docs/Cataclysm_GDD_v2.md`

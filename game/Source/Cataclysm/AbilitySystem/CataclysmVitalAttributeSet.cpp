@@ -170,8 +170,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 
 			FGameplayTagContainer AssetTags;
 			Data.EffectSpec.GetAllAssetTags(AssetTags);
-			Hit.DamageType =
+
+			// THE ELEMENT TAG ANSWERS TWO QUESTIONS AND THEY HAVE DIFFERENT
+			// ANSWERS. What to draw the hit as is always the tag on the effect.
+			// Which of the defender's resistances applies is the same tag ONLY
+			// when the hit is really of that type -- a player's hit carries its
+			// skill's element for colour and is marked so that it is not read as
+			// a resistance, because an enemy holds one generic resistance and
+			// has nothing to choose between. Issue #803.
+			const FName ElementOnTheEffect =
 				UCataclysmDamageCalculation::DamageTypeFromTags(AssetTags);
+			const bool bColourOnly = AssetTags.HasTag(
+				UCataclysmDamageCalculation::ElementIsForColourOnlyTag());
+
+			Hit.EffectDamageType = ElementOnTheEffect;
+			Hit.DamageType = bColourOnly ? NAME_None : ElementOnTheEffect;
 			Hit.bIsArea = AssetTags.HasTag(
 				UCataclysmDamageCalculation::AreaDamageTag());
 			Hit.bIsDamageOverTime = AssetTags.HasTag(
@@ -545,7 +558,11 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 	const FVector Location =
 		UCataclysmImpactEffect::ImpactLocationFor(Landed, Struck, Normal);
 
-	UCataclysmImpactEffect::SpawnAt(Struck, Location, Normal, Hit.DamageType);
+	// DRAWN AS THE SKILL'S TYPE, NOT AS THE RESISTED TYPE. For an enemy's hit
+	// the two are the same. For a player's they differ on purpose: the hit
+	// resists as nothing and draws as the skill's own element. Issue #803.
+	UCataclysmImpactEffect::SpawnAt(Struck, Location, Normal,
+									Hit.EffectDamageType);
 }
 
 void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()

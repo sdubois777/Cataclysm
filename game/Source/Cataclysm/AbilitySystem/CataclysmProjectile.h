@@ -141,6 +141,20 @@ public:
 	void SetBodyMesh(UStaticMesh* Mesh);
 
 	/**
+	 * The tags of the skill that fired this, which include its `Element.*`.
+	 *
+	 * READ ONLY, AND DELIBERATELY NOT A SETTER. The tags are decided once by
+	 * `Fire` and a projectile whose firing skill could be changed in flight
+	 * would resolve its damage against modifiers that were not in play when it
+	 * was thrown.
+	 *
+	 * WHAT READS IT FROM OUTSIDE. `UCataclysmProjectileEffect::DamageTypeFor`,
+	 * to draw a player's bolt in the damage type its skill row names instead of
+	 * the authored white. Issue #803.
+	 */
+	const FGameplayTagContainer& FiringSkillTags() const { return SkillTags; }
+
+	/**
 	 * Move forward by one step and hit whatever that step passed through.
 	 *
 	 * PUBLIC SO A TEST CAN DRIVE IT. The automation tests build a world with

@@ -87,6 +87,8 @@ const TCHAR* UCataclysmDamageCalculation::NoWeaponSubTypeTagName =
 	TEXT("Keyword.NoWeaponSubType");
 const TCHAR* UCataclysmDamageCalculation::SkillCritChanceDataTagName =
 	TEXT("Data.SkillCritChance");
+const TCHAR* UCataclysmDamageCalculation::ElementIsForColourOnlyTagName =
+	TEXT("Data.ElementIsForColourOnly");
 
 namespace
 {
@@ -128,6 +130,11 @@ FGameplayTag UCataclysmDamageCalculation::NoPenetrationTag()
 FGameplayTag UCataclysmDamageCalculation::NoWeaponSubTypeTag()
 {
 	return TagNamed(NoWeaponSubTypeTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::ElementIsForColourOnlyTag()
+{
+	return TagNamed(ElementIsForColourOnlyTagName);
 }
 
 FGameplayTag UCataclysmDamageCalculation::SkillCritChanceDataTag()

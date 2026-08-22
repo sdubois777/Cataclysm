@@ -150,6 +150,22 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	FCataclysmHitDelivery Arrived = Delivery;
 	Arrived.bIsArea = Arrived.bIsArea || IsAreaDamage(SkillTags);
 
+	// AND THE SKILL'S OWN DAMAGE TYPE GOES WITH IT, so the bolt and the burst
+	// can be drawn in it. Only for colour: see the field's declaration. Set here
+	// and not by each caller because this is the one place every damaging skill
+	// passes through holding its own tags. Issue #803.
+	//
+	// ROUND-TRIPPED THROUGH THE ONE DECODER rather than by looking for a tag
+	// under `Element` here. DamageTypeFromTags and ElementTagFor are the only
+	// encoding and decoding of a damage type in the project and their comments
+	// say why they live beside each other. A third place that picked the tag out
+	// itself is how the two would come to disagree.
+	if (!Arrived.SkillElement.IsValid())
+	{
+		Arrived.SkillElement = UCataclysmDamageCalculation::ElementTagFor(
+			UCataclysmDamageCalculation::DamageTypeFromTags(SkillTags));
+	}
+
 	return ApplyDirectDamage(Instigator, Target, Damage, Arrived) ? Damage : 0.0f;
 }
 
@@ -244,11 +260,35 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	// reaches the defender: see UCataclysmDamageCalculation::ElementTagFor.
 	FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
 
+	// THE ATTACKER'S TYPE FIRST, AND IT IS THE ONE THAT DECIDES A RESISTANCE.
+	// Unchanged: an enemy's hit says which of the player's eight resistances
+	// meets it, and a player's hit says nothing, because an enemy holds one
+	// generic resistance and has nothing to choose between.
 	const FGameplayTag Element =
 		UCataclysmDamageCalculation::ElementTagFor(DamageTypeOf(Attacker));
 	if (Element.IsValid())
 	{
 		Spec.AddDynamicAssetTag(Element);
+	}
+	else if (Delivery.SkillElement.IsValid())
+	{
+		// A PLAYER'S HIT: THE SKILL'S TYPE, FOR COLOUR AND NOTHING ELSE. Without
+		// this every effect a player skill produced drew in the authored
+		// default, which is white, so a Demonic skill and a War skill looked the
+		// same and both looked like the "nothing set this" case. Issue #803.
+		//
+		// THE MARKER IS WHAT KEEPS THE DAMAGE RULE INTACT. The defender reads
+		// the element tag for what to draw either way, and reads it as a
+		// resistance to apply only when this marker is absent. Stamped here,
+		// where the attacker is known and alive, so an enemy's burn still
+		// resolves correctly after the enemy is dead.
+		const FGameplayTag ColourOnly =
+			UCataclysmDamageCalculation::ElementIsForColourOnlyTag();
+		if (ColourOnly.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Delivery.SkillElement);
+			Spec.AddDynamicAssetTag(ColourOnly);
+		}
 	}
 
 	// HOW THE HIT ARRIVED, as two more tags on the same spec. Added only when
