@@ -664,16 +664,33 @@ bool FCataclysmPopulationDensityTest::RunTest(const FString& Parameters)
 		FMath::RoundToInt(static_cast<float>(SmallPlan.FloorCount())
 			* FCataclysmFloorPopulator::EnemiesPerWalkableCell));
 
-	// AND THE DENSITY IS REACHED RATHER THAN ATTEMPTED. Placement can fall short:
-	// it stops looking once the count is met, and a group that finds too few free
-	// cells is placed smaller. A floor that quietly delivered half of what its
-	// density asked for would look right in every other test here.
+	// AND THE DENSITY IS NEARLY ALWAYS REACHED, WHICH IS A WEAKER STATEMENT THAN
+	// IT USED TO MAKE AND THE CHANGE IS DELIBERATE. Placement can fall short: it
+	// stops looking once the count is met, a group that finds too few free cells
+	// is placed smaller, and once every candidate cell is claimed by a group
+	// already standing there is nowhere left to put another. A floor that quietly
+	// delivered half of what its density asked for would look right in every
+	// other test here, so something has to watch it.
 	//
-	// MEASURED OVER THREE THOUSAND FLOORS, where the worst floor of every layout
-	// reached 1.000 of what it asked for. It is at least and not exactly because
-	// a whole group is placed even when only two more creatures were wanted.
+	// AT THE OLD DENSITY OF 0.08 EVERY FLOOR REACHED 1.000 OF WHAT IT ASKED FOR
+	// and this test asserted exactly that. At 0.24, chosen by the project owner
+	// in issue #809, ten floors in 360 fall short, and the reason is geometry
+	// rather than a fault: groups must stand `LeastCellsBetweenPacks` apart and
+	// a group's members within `MostCellsFromPackSite` of its middle, and on the
+	// tightest floors those two rules together cannot fit three times as many
+	// creatures. Measured over 1,000 seeds of each layout, the worst floor
+	// reached 0.837 of what it asked for -- 0.971 on Halls, 0.880 on Caverns,
+	// 0.837 on Arena.
+	//
+	// SO TWO NUMBERS ARE ASSERTED RATHER THAN ONE, because a single loose floor
+	// would let a real collapse through. The worst single floor catches a floor
+	// that gave up; the average across the sweep catches placement getting worse
+	// everywhere at once, which a per-floor limit set below the worst case would
+	// not notice.
 	int32 ShortFloors = 0;
 	int32 Floors = 0;
+	float WorstFilled = 1.0f;
+	double TotalFilled = 0.0;
 
 	for (const ECataclysmFloorLayout Layout : EveryLayout())
 	{
@@ -692,13 +709,38 @@ bool FCataclysmPopulationDensityTest::RunTest(const FString& Parameters)
 			{
 				++ShortFloors;
 			}
+
+			// A FLOOR THAT ASKED FOR NOTHING COUNTS AS FULL. Dividing by
+			// `Wanted` when it is zero is the one way this measurement can go
+			// wrong, and it would go wrong silently.
+			const float Filled = (Population.Wanted > 0)
+				? static_cast<float>(Population.Enemies.Num())
+					/ static_cast<float>(Population.Wanted)
+				: 1.0f;
+
+			WorstFilled = FMath::Min(WorstFilled, Filled);
+			TotalFilled += Filled;
 		}
 	}
 
 	TestTrue(TEXT("the sweep actually populated floors to check"), Floors > 0);
-	TestEqual(FString::Printf(
-		TEXT("every one of %d floors holds at least the number its density "
-			 "asked for"), Floors), ShortFloors, 0);
+
+	const float MeanFilled = (Floors > 0)
+		? static_cast<float>(TotalFilled / Floors) : 0.0f;
+
+	UE_LOG(LogTemp, Display,
+		TEXT("CataclysmPopulationFill: %d floors, %d short, worst %.3f, mean %.4f"),
+		Floors, ShortFloors, WorstFilled, MeanFilled);
+
+	TestTrue(FString::Printf(
+		TEXT("the worst of %d floors still holds three quarters of the number "
+			 "its density asked for: %.3f"), Floors, WorstFilled),
+		WorstFilled >= 0.75f);
+
+	TestTrue(FString::Printf(
+		TEXT("and across all %d floors the average is within one percent of "
+			 "what was asked for: %.4f"), Floors, MeanFilled),
+		MeanFilled >= 0.99f);
 
 	return true;
 }

@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — Three times as many creatures on a dungeon floor, and the floors themselves stay the size they are
+
+**Affects:** nothing in `docs/Cataclysm_GDD_v2.md` states a creature density, so
+there is nothing to fold into it. The number lives in
+`game/Source/Cataclysm/Dungeon/CataclysmFloorPopulation.h`. Applied. Issue #809,
+and it answers issue #810.
+
+### The question, and why it was open
+
+The density was set to 0.08 creatures per walkable cell before anybody had played
+a floor. The comment beside it said so plainly: the genre gives an order of
+magnitude and not a constant, and the number was deliberately put below the genre
+figure because nothing here had measured what sixty characters with ability
+systems cost per frame.
+
+On 2026-08-21 the project owner played a floor twice. The first time they had 100
+health and died within seconds of the first group, and when asked whether 25 to
+174 creatures was a fight or a slideshow they said "it works fine". **That answer
+was later reversed and it is worth recording why.** They had not seen a floor.
+After the class stat line raised the player to 385 health they walked one, and
+said "mob density is way too low".
+
+They said two other things in the same session: that a floor had "a ton of empty
+space", and that the skill effects still did not read as a real game skill.
+
+### The ambiguity that had to be resolved before any work started
+
+"Ton of empty space" has two readings with two different fixes, and issue #810
+recorded both rather than guessing:
+
+1. **Too much ground.** The floors are too large for what is on them. The fix is
+   in `CataclysmFloorGenerator.h` — smaller floors, or the same area carved into
+   tighter rooms and corridors.
+2. **Too little on the ground.** The area is fine and what is missing is props,
+   rubble, pillars, cover, height and materials.
+
+**The project owner answered on 2026-08-22, in their own words:** "Mostly I meant
+a lack of mob density. The size of the maps is fine and so is how they're laid
+out, but there weren't a lot of mobs in a lot of areas. But yes also we don't
+have props or anything that makes it look like an actual level, but that doesn't
+need to be done now."
+
+So the first reading is ruled out. Floor size and layout stay as they are. The
+second reading is real but deferred.
+
+### What the genre gives
+
+The shape of the number, not the number. Diablo II gives every area a `MonDen`
+column, which the Phrozen Keep's column reference describes as "a chance in
+100000ths that a monster pack will spawn on a tile" — a rate per unit of area
+rather than a count per level. That is why this is a density and not a count:
+floor size is rolled per floor between 32 and 48 cells on each axis, so a fixed
+count would make a small floor crowded and a large one empty.
+
+For the magnitude, Diablo IV published a before-and-after for its Nostrava
+Deepwood dungeon when patch 1.1.1 raised monster density in answer to players
+saying there was too little. That dungeon moved from 120 creatures to 181.
+
+### The decision
+
+**0.24 creatures per walkable cell, three times the old figure.** Chosen by the
+project owner from three options measured out for them: double, triple or
+quadruple. Measured over 1,000 seeds of each layout, that gives:
+
+| Layout | Creatures | Groups |
+| :-- | :-- | :-- |
+| Halls | 108 to 420 | 20 to 135 |
+| Caverns | 84 to 510 | 15 to 155 |
+| Arena | 73 to 350 | 16 to 102 |
+
+**Nothing else changed.** Group sizes, the four-cell spacing between groups, the
+three-cell spread inside one, and the eight-cell keep-out around the entrance are
+all as they were. More creatures arrive as more groups rather than as bigger
+ones, which is what the project owner's phrasing asked for: not many creatures
+"in a lot of areas".
+
+### What it cost, and what is still unmeasured
+
+**The density is no longer always reachable.** Ten floors in a 360-floor sweep
+now hold slightly fewer creatures than the density asks for, worst case 0.850 of
+it. Groups must stand four cells apart and their members within three cells of
+the middle, and on the tightest floors those two rules together cannot fit three
+times as many creatures. This is a fact about the geometry rather than a fault,
+and the test that used to demand exactly 1.000 now asserts a worst case and an
+average instead.
+
+**The frame cost is unmeasured and that is the risk this carries.** The project
+owner said the frame rate was fine at 0.08, not at 0.24. An automation test
+running with `-nullrhi` cannot measure it. Issue #547 is still the missing
+written performance budget. `Cataclysm.DungeonEnemyScale 0.33` walks the old
+density without a rebuild if it turns out to cost too much.
+
+---
+
 ## 2026-08-21 — What a dungeon floor is: a grid of cells, carved by one of several layout families
 
 **Affects:** section VIII of `docs/Cataclysm_GDD_v2.md`, under Dungeon Basics.

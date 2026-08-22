@@ -80,9 +80,12 @@ public:
 	/**
 	 * How many creatures the floor holds, as a multiple of the designed density.
 	 *
-	 * ONE MEANS `FCataclysmFloorPopulator::EnemiesPerWalkableCell`, which puts
-	 * roughly 48 to 88 creatures on a typical floor. Zero empties the floor,
-	 * which is what walking one to look at its shape wants.
+	 * ONE MEANS `FCataclysmFloorPopulator::EnemiesPerWalkableCell`, which since
+	 * 2026-08-21 puts between 73 and 510 creatures on a floor depending on its
+	 * size and layout -- three times what it used to, because the project owner
+	 * played a floor and said the density was way too low. Issue #809. Zero
+	 * empties the floor, which is what walking one to look at its shape wants,
+	 * and 0.33 walks the old density.
 	 *
 	 * THE NUMBER OF CREATURES IS NOT A SETTING AND SHOULD NOT BECOME ONE. Floor
 	 * size is rolled per floor, so a count would make a small floor crowded and a
