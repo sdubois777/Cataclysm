@@ -4,11 +4,31 @@
 
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmPlayerClassStats.generated.h"
 
 class UAbilitySystemComponent;
 class UDataTable;
+
+/**
+ * Whether health, mana and the energy shield are filled after stats are written.
+ *
+ * THE TWO CASES ARE GENUINELY DIFFERENT AND GETTING IT WRONG IS A CHEAT.
+ * A character arriving in the world should stand up with full pools. A
+ * character whose gear changed should not: a player who swapped a helmet
+ * during a fight would be healed to full by doing it, and swapping back and
+ * forth would be an unlimited heal.
+ */
+UENUM()
+enum class ECataclysmPoolFill : uint8
+{
+	/** A character arriving in the world. Health, mana and shield go to maximum. */
+	FillToMaximum,
+
+	/** A character already in play. The pools are left exactly where they are. */
+	LeaveAsTheyAre,
+};
 
 /**
  * Puts a class's stat line onto the player, which nothing did before this.
@@ -95,12 +115,28 @@ public:
 	 * The Masochist's Anguish builds from health lost and starts empty; a
 	 * resource that began full would be the opposite of what the design says.
 	 *
+	 * MODIFIERS COME FROM ANYWHERE, AND UNTIL 2026-08-22 THEY CAME FROM
+	 * NOWHERE. This wrote the class line alone, so every character at a given
+	 * level was identical whatever they found or chose. Gear is the first
+	 * source (issue #828, `UCataclysmEquipmentComponent::GatherModifiers`);
+	 * the passive tree (#38, #50) and buffs are the next two and plug in here
+	 * rather than needing their own path.
+	 *
+	 * They are keyed by the character-sheet stat name, which is the same key
+	 * `StatToAttribute` above uses, so a modifier naming a stat no class line
+	 * mentions is simply not written -- the loop is over the attribute map, not
+	 * over the modifiers. That is deliberate: an affix granting a stat with no
+	 * attribute behind it has nowhere to go, and inventing an attribute for it
+	 * here would hide the gap rather than report it.
+	 *
 	 * @return how many attributes were written, so a caller and a test can tell
 	 *         "applied nothing" from "applied everything"
 	 */
 	static int32 ApplyTo(UAbilitySystemComponent* AbilitySystem,
 						 const UDataTable* ClassTable,
-						 const FString& ClassName, int32 Level);
+						 const FString& ClassName, int32 Level,
+						 const TMap<FName, TArray<FCataclysmStatModifier>>* Modifiers = nullptr,
+						 ECataclysmPoolFill PoolFill = ECataclysmPoolFill::FillToMaximum);
 
 	/**
 	 * The level a character starts at until levelling exists.

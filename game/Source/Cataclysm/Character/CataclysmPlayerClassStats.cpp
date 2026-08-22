@@ -136,9 +136,12 @@ int32 UCataclysmPlayerClassStats::ChosenLevel()
 						UCataclysmClassStats::MaxLevel);
 }
 
-int32 UCataclysmPlayerClassStats::ApplyTo(UAbilitySystemComponent* AbilitySystem,
-										  const UDataTable* ClassTable,
-										  const FString& ClassName, int32 Level)
+int32 UCataclysmPlayerClassStats::ApplyTo(
+	UAbilitySystemComponent* AbilitySystem,
+	const UDataTable* ClassTable,
+	const FString& ClassName, int32 Level,
+	const TMap<FName, TArray<FCataclysmStatModifier>>* Modifiers,
+	ECataclysmPoolFill PoolFill)
 {
 	if (!AbilitySystem || !ClassTable)
 	{
@@ -162,11 +165,40 @@ int32 UCataclysmPlayerClassStats::ApplyTo(UAbilitySystemComponent* AbilitySystem
 		// name the stat, and to zero when neither does. Zero is the right answer
 		// there and not a failure: most classes leave most stats alone, and a
 		// Ritualist really does have no armour.
-		const float Value = UCataclysmClassStats::BaseFor(
+		const float Base = UCataclysmClassStats::BaseFor(
 			ClassTable, ClassName, Pair.Key, Level);
+
+		// THE THREE-BUCKET PIPELINE, NOT ADDITION. A gear affix can be flat or
+		// increased, and the design's whole damage model is
+		// (base + flat) x (1 + increases) x more, so adding the numbers up here
+		// would give a different answer from the one every skill already uses.
+		//
+		// AN EMPTY TAG CONTAINER, AND THAT IS THE POINT OF PASSING ONE. A stat
+		// on the character sheet has no skill in hand, so a modifier scoped to
+		// something -- "increased damage against Demons" -- must not apply.
+		// UCataclysmStatPipeline::ModifierApplies is what enforces that; only
+		// globally scoped modifiers survive an empty container.
+		float Value = Base;
+		if (Modifiers)
+		{
+			if (const TArray<FCataclysmStatModifier>* ForStat =
+					Modifiers->Find(FName(*Pair.Key)))
+			{
+				Value = UCataclysmStatPipeline::Evaluate(
+					Base, *ForStat, FGameplayTagContainer()).Final;
+			}
+		}
 
 		AbilitySystem->SetNumericAttributeBase(Pair.Value, Value);
 		++Written;
+	}
+
+	// A CHARACTER ALREADY IN PLAY KEEPS ITS POOLS WHERE THEY ARE. Filling
+	// them below is right for a character arriving in the world and is a free
+	// heal for one that only changed a helmet. See ECataclysmPoolFill.
+	if (PoolFill == ECataclysmPoolFill::LeaveAsTheyAre)
+	{
+		return Written;
 	}
 
 	// THE POOLS COME LAST, AND THAT IS THE WHOLE REASON THIS IS TWO STEPS.
