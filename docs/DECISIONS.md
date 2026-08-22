@@ -20,6 +20,128 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — Particle effects get a frame-time budget of 2 milliseconds, and the numbers that were guesses are now measured
+
+**Affects:** `docs/Niagara_Conventions.md` section 4,
+`game/Config/DefaultEngine.ini`, `tools/generate_effect_types.py`. Applied.
+Answers issue #547.
+
+**What was missing.** Section 4 of `docs/Niagara_Conventions.md` sets a cull
+distance, an instance cap and an update frequency on four Niagara effect type
+assets, and said of them in its own words: "Every number below is a starting
+point with no measurement behind it." Nothing had ever measured any of them, and
+nothing said what effects were allowed to cost. That mattered more after
+2026-08-22 than before it, because the amount of particle work per fight rose a
+long way in a single day: the creature density tripled, the hit effect went from
+three layers to five and started rendering at all, every skill activation gained
+a four-layer burst, and the projectile gained a mesh head.
+
+**The frame-time budget: 2 ms on each of three thread groups.** Unreal has a
+budget system built in, `fx.Budget.GameThread`, `fx.Budget.GameThreadConcurrent`
+and `fx.Budget.RenderThread`, each defaulting to 2 ms. The decision is to adopt
+those defaults as this project's stated budget rather than invent figures.
+
+Epic publishes no numeric target: its page on measuring performance in Niagara
+says to capture a window of your own game rather than apply a universal figure.
+So the engine's own 2 ms is the only published reference there is, and it is
+generous here — a frame at 60 frames per second is 16.7 ms, so this allows
+effects an eighth of it for what is currently five sprite-and-mesh bursts.
+
+**THE ENGINE SHIPS THAT BUDGET SWITCHED OFF, AND THAT IS THE REAL CHANGE.**
+`fx.Budget.Enabled` and `fx.Budget.EnabledInEditor` are both false by default.
+Until now that meant nothing in this project tracked what effects cost, the
+Budget column of the Niagara debug display read zero whatever was happening, and
+the "cull by global budget" switch on an effect type had no input to act on even
+if somebody had turned it on. `game/Config/DefaultEngine.ini` now sets all five
+values under `[SystemSettings]`.
+
+**Tracking the budget is not enforcing it, and enforcing it waits.** Culling by
+it also needs `bCullByGlobalBudget` on each effect type, which is false on all
+four. `tools/generate_effect_types.py` now writes that false explicitly rather
+than leaving it to whatever a previous run left behind. Issue #824 is the
+decision to turn it on and is blocked on #822, because what it does when it
+fires is kill effects and effects already disappear for another reason (below).
+
+**The video memory budget, 512 MB of the card's 7250 MB, is a judgement and is
+labelled as one.** What was measured is the whole game: 1331 MB on average and
+1420 MB at peak on the development machine's 8 GB RTX 3070. The effects' own
+share was not separated out, and issue #826 is the work to separate it.
+
+**The procedure.** Section 4 of `docs/Niagara_Conventions.md` now carries a
+seven-step method anyone can repeat in about ten minutes with no build: set a
+named dungeon seed, turn the Niagara debug display on **before** pressing Play,
+get into a fight, run `fx.ParticlePerfStats.RunTest 600 1 1 0`, read the
+per-system microseconds out of `game/Saved/Profiling/ParticlePerf/`, read what
+was culled and why off the debug display, and use `csvprofile start` / `stop` for
+the frame as a whole.
+
+**What the measurement found, and none of the four effect types' numbers moved.**
+A dungeon floor at the designed creature density, seed 547, Halls layout, 232 to
+267 creatures, with the player at the densest point of the floor and twelve to
+seventeen creatures within eight metres. Three captures of 600 frames.
+
+| Budget | Allowed | Average | Worst frame |
+| :-- | --: | --: | --: |
+| `fx.Budget.GameThread` | 2.0 ms | 0.12 ms | 0.95 ms |
+| `fx.Budget.GameThreadConcurrent` | 2.0 ms | 0.91 ms | **2.37 ms** |
+| `fx.Budget.RenderThread` | 2.0 ms | 0.47 ms | 1.05 ms |
+
+**The worst frame is already over one of the three, and that is recorded rather
+than accommodated.** Raising a budget to fit a measurement defeats the point of
+having one. Issue #822 is the work that brings it down.
+
+Of the five culling limits, **one does all the work and four have never fired.**
+The cap of 20 instances of a single system is the one: switching it off
+multiplied the hit effect's game-thread cost by 4.6 and its worst frame by 3.7.
+The distance cull at 4000 cm, the visibility and view frustum culls and the cap
+of 60 across the whole effect type never fired at all — the most alive at once
+across every system was 15, against a cap of 60.
+
+**Three things the measurement found that were not what it went looking for.**
+
+  **One system is 80 per cent of all particle cost.** `NS_Impact_Point` costs 726
+  microseconds per frame on the game thread against 906 for everything together,
+  and it is the only system whose cap ever fires. Issue #822.
+
+  **That cap killed 70 instances in a single fight**, and the cull reaction is
+  Kill and Clear, so a hit past the cap draws nothing and one already playing can
+  be cut short. The project owner's verdict on the effects that day was "it looks
+  alright for now, kinda messy but it's fine". Effects winking out is a candidate
+  for what "messy" means and it has not been ruled out.
+
+  **Effects are not why a dungeon floor is slow.** The frame averaged 23.66 ms,
+  which is 42 frames per second, and the game thread is all of it. On the hundred
+  slowest frames the interface cost 5.43 ms and animation 5.50 ms, against 0.14
+  ms for every particle system in the game together — **the interface is
+  thirty-eight times more expensive than all the effects.** Issue #825. This also
+  answers the frame-rate question #809 was closed with unconfirmed.
+
+**Nothing this project spawns is marked as belonging to the local player.** The
+debug display's `# Player` column reads zero for every system, including the one
+only the player can cause. Section 4 of this very document warned about that
+trap in writing before the first system existed, and the judgement it drew —
+"Mark every player-cast spawn as a player effect explicitly" — was never carried
+out. It is latent rather than live today, because the Distance significance
+handler keeps the closest instances and the player's own are the closest. Issue
+#823.
+
+**A test gap found on the way.** `NS_Cast_Windup` was committed on 2026-08-22
+with no test that it sets an effect type, and a system with no effect type is
+culled by nothing whatsoever. The per-shape tests each name their own asset, so
+they only ever cover a system somebody remembered to write a test for.
+`Cataclysm.Effects.EverySystemSetsOneOfTheFourEffectTypes` now walks every
+`.uasset` under `game/Content/Effects/Systems/` instead, so the sixth system is
+covered the moment it is committed.
+
+**What is unsettled.** How much of the editor's frame time is the editor. Every
+figure here comes from play-in-editor on a Development build with the editor's
+own Slate drawing inside the frame, and no packaged build of this project has
+ever been measured. The per-effect microsecond figures are the same work either
+way and the budget is set on those; the frame rate is not comparable and is not
+quoted as if it were.
+
+---
+
 ## 2026-08-22 — The hit burst gains a lingering glow and a heat distortion, and its core stops being drawn in the darkest colour available
 
 **Affects:** `docs/Niagara_Conventions.md` section 5A,
