@@ -101,6 +101,46 @@ public:
 	 */
 	static float CellSizeFor(float ViewportWidth, float ViewportHeight);
 
+	/**
+	 * How many further columns of cells sit beside the carried grid.
+	 *
+	 * THE PANEL OF WORN GEAR, issue #831, which is three columns: the
+	 * armour head to foot, the eight rings, and the two weapon slots.
+	 *
+	 * IT IS STATED HERE BECAUSE CellSizeFor HAS TO FIT THEM. A cell size
+	 * worked out for twelve columns and then used for fifteen makes a
+	 * panel wider than the share of the viewport it was given, and on a
+	 * small window that runs off the edge.
+	 *
+	 * Cataclysm.GearPanel.TheScreenReservesRoomForEveryGearColumn checks
+	 * this against UCataclysmGearPanel::Columns, so the two cannot drift.
+	 */
+	static constexpr int32 ColumnsBeside = 3;
+
+	/**
+	 * The smallest a cell is allowed to be.
+	 *
+	 * A FRAME IS DRAWN AS PADDING INSIDE ITS CELL, so a cell smaller than
+	 * twice the thickest frame has no interior left for its label. The
+	 * thickest is 8 pixels, on a Cataclysmic item and on a tier 5 material,
+	 * so 20 leaves four pixels of interior at the very worst.
+	 *
+	 * IT USED TO BE ONE PIXEL, which was a guard against a negative cell
+	 * rather than a readable size, and it was harmless while the panel held
+	 * twelve columns. Adding the three of the worn gear panel (issue #831)
+	 * made a 400 by 300 window produce a cell of 14.9, and a Cataclysmic
+	 * item in one would have been a solid square of colour with the label
+	 * squeezed to nothing.
+	 *
+	 * A WINDOW TOO SMALL FOR THE PANEL NOW OVERFLOWS RATHER THAN SHRINKING
+	 * BELOW THIS, and that is the deliberate trade. Both are wrong at a
+	 * window that small; a panel running past the edge can at least be
+	 * read where it is visible, and a cell with no interior cannot be read
+	 * anywhere. The smallest window this actually costs anything at is
+	 * below 640 wide, and at 1024 by 768 the cell is 50 pixels.
+	 */
+	static constexpr float SmallestCellPx = 20.0f;
+
 	//~ Type sizes, in points.
 
 	/**

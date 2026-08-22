@@ -16,6 +16,7 @@
 #include "EngineUtils.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Items/CataclysmWearing.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -706,7 +707,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEquip(
 			using namespace CataclysmEquipConsole;
 
 			ACataclysmPlayerCharacter* Character = Player(World, Ar);
-			if (!Character || !Character->GetInventory() || !Character->GetEquipment())
+			if (!Character)
 			{
 				return;
 			}
@@ -718,70 +719,26 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEquip(
 				return;
 			}
 
-			const int32 BagSlot = FCString::Atoi(*Args[0]);
-			const FCataclysmItem* Carried = Character->GetInventory()->ItemAt(BagSlot);
-			if (!Carried)
-			{
-				Ar.Logf(TEXT("Carried slot %d holds no item."), BagSlot);
-				return;
-			}
-			const FCataclysmItem Item = *Carried;
-
-			// A TWO-HANDED WEAPON CAN TAKE TWO WEAPONS OFF FOR ONE GOING ON, so
-			// it needs a spare slot beyond the one its own removal frees. This
-			// refuses rather than working out in advance exactly how many would
-			// come off, because doing that would mean repeating the slot-choosing
-			// rules that live in UCataclysmEquipmentComponent::Equip, and a
-			// second copy of those would go stale.
-			const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(
-				Item, UCataclysmItemModifiers::LoadBaseTable());
-			if (bTwoHanded && Character->GetInventory()->NumFreeSlots() < 1)
-			{
-				Ar.Log(TEXT("The bag is full. A two-handed weapon can replace two "
-							"weapons at once, so it needs a free slot to put the "
-							"second one in."));
-				return;
-			}
-
-			// Taking it out first is what guarantees room for what comes off.
-			Character->GetInventory()->RemoveItemAt(BagSlot);
-
-			FCataclysmItem First;
-			FCataclysmItem Second;
+			// THE RULE IS NOT HERE, AND IT USED TO BE. Every step of taking an
+			// item out of the bag, putting it on and stowing what came off lived
+			// inside this lambda when the equipment slots landed in issue #828.
+			// The gear panel of issue #831 needs exactly the same steps, and a
+			// second copy of a rule whose failure mode is a destroyed item is
+			// not a thing to have. UCataclysmWearing is the one copy, and unlike
+			// a console command it can be tested.
 			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
-			const ECataclysmEquipResult Result =
-				Character->GetEquipment()->Equip(Item, First, Second, Slot);
+			const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
+				Character->GetInventory(), Character->GetEquipment(),
+				FCString::Atoi(*Args[0]), Slot);
 
-			if (Result != ECataclysmEquipResult::Equipped
-				&& Result != ECataclysmEquipResult::Swapped)
+			Ar.Log(*UCataclysmWearing::Explain(Result));
+
+			if (Result == ECataclysmWearResult::Worn
+				|| Result == ECataclysmWearResult::Swapped)
 			{
-				// It always fits: the slot it came out of is still free.
-				Character->GetInventory()->AddItem(Item);
-				Ar.Logf(TEXT("%s cannot be worn. It goes in no slot this "
-							 "character has."), *Item.Base.ToString());
-				return;
+				Ar.Logf(TEXT("It went in the %s slot."),
+						*UCataclysmGearSlots::DisplayName(Slot));
 			}
-
-			for (const FCataclysmItem& CameOff : {First, Second})
-			{
-				if (CameOff.Base.IsNone())
-				{
-					continue;
-				}
-				if (Character->GetInventory()->AddItem(CameOff) == INDEX_NONE)
-				{
-					// Reported loudly rather than swallowed. The check above is
-					// what should make this impossible; if it ever prints, that
-					// check is wrong and an item has been lost.
-					Ar.Logf(TEXT("THE BAG WOULD NOT TAKE %s AND IT IS NOW GONE. "
-								 "This is a bug in Cataclysm.Equip."),
-							*CameOff.Base.ToString());
-				}
-			}
-
-			Ar.Logf(TEXT("Wearing %s in the %s slot."),
-					*Item.Base.ToString(),
-					*UCataclysmGearSlots::DisplayName(Slot));
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmUnequip(
@@ -793,7 +750,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmUnequip(
 			using namespace CataclysmEquipConsole;
 
 			ACataclysmPlayerCharacter* Character = Player(World, Ar);
-			if (!Character || !Character->GetInventory() || !Character->GetEquipment())
+			if (!Character)
 			{
 				return;
 			}
@@ -813,23 +770,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmUnequip(
 				return;
 			}
 
-			if (Character->GetInventory()->IsFull())
-			{
-				Ar.Log(TEXT("The bag is full, so there is nowhere to put it. "
-							"Nothing was taken off."));
-				return;
-			}
-
-			FCataclysmItem TakenOff;
-			if (!Character->GetEquipment()->Unequip(Slot, TakenOff))
-			{
-				Ar.Logf(TEXT("Nothing is worn in the %s slot."),
-						*UCataclysmGearSlots::DisplayName(Slot));
-				return;
-			}
-
-			Character->GetInventory()->AddItem(TakenOff);
-			Ar.Logf(TEXT("Took off %s."), *TakenOff.Base.ToString());
+			Ar.Log(*UCataclysmWearing::Explain(UCataclysmWearing::TakeOffInto(
+				Character->GetInventory(), Character->GetEquipment(), Slot)));
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(

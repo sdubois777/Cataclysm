@@ -6,6 +6,7 @@
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Items/CataclysmWearing.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -329,6 +330,65 @@ bool ACataclysmPlayerController::CursorIsOverInterface() const
 	return InventoryScreen->CursorIsOverPanel(FVector2D(X, Y));
 }
 
+void ACataclysmPlayerController::PressOnTheInventoryScreen()
+{
+	if (!InventoryScreen)
+	{
+		return;
+	}
+
+	float X = 0.0f;
+	float Y = 0.0f;
+	if (!GetMousePosition(X, Y))
+	{
+		return;
+	}
+	const FVector2D Point(X, Y);
+
+	ACataclysmPlayerCharacter* Wearer =
+		Cast<ACataclysmPlayerCharacter>(GetPawn());
+	if (!Wearer)
+	{
+		return;
+	}
+
+	// THE CARRIED GRID FIRST. The two panels cannot overlap, so the order only
+	// decides which is asked first and not which answers.
+	const int32 Carried = InventoryScreen->CarriedSlotUnderCursor(Point);
+	if (Carried != INDEX_NONE)
+	{
+		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+		const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
+			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went);
+
+		// LOGGED RATHER THAN SHOWN, and that is a gap rather than a decision.
+		// A press that changes nothing -- a full bag refusing a two-handed
+		// weapon, an item that fits no slot -- looks exactly like a press that
+		// missed. There is nowhere on the screen to say so yet; issue #831
+		// records it.
+		if (Result != ECataclysmWearResult::Worn
+			&& Result != ECataclysmWearResult::Swapped)
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("%s"),
+				   *UCataclysmWearing::Explain(Result));
+		}
+		return;
+	}
+
+	const ECataclysmGearSlot Worn = InventoryScreen->GearSlotUnderCursor(Point);
+	if (Worn != ECataclysmGearSlot::Count)
+	{
+		const ECataclysmWearResult Result = UCataclysmWearing::TakeOffInto(
+			Wearer->GetInventory(), Wearer->GetEquipment(), Worn);
+
+		if (Result != ECataclysmWearResult::TakenOff)
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("%s"),
+				   *UCataclysmWearing::Explain(Result));
+		}
+	}
+}
+
 void ACataclysmPlayerController::Input_MoveToCursorStarted()
 {
 	// A PRESS THAT LANDS ON AN OPEN SCREEN IS NOT A MOVE ORDER, and it does not
@@ -339,6 +399,10 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 	bPressBeganOnInterface = CursorIsOverInterface();
 	if (bPressBeganOnInterface)
 	{
+		// IT IS NOT A MOVE ORDER, AND SINCE ISSUE #831 IT IS NOT NOTHING
+		// EITHER. A press on a carried cell wears what is in it and a press
+		// on a worn slot takes that piece off.
+		PressOnTheInventoryScreen();
 		return;
 	}
 

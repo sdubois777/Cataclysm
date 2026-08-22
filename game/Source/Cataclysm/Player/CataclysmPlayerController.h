@@ -67,6 +67,26 @@ public:
 	bool CursorIsOverInterface() const;
 
 	/**
+	 * Acts on a press that landed on the open inventory screen.
+	 *
+	 * Clicking a carried cell wears what is in it; clicking a worn gear
+	 * slot takes that piece off into the bag. Issue #831.
+	 *
+	 * HERE RATHER THAN IN THE WIDGET, and that is the arrangement the
+	 * screen already had. Nothing in the widget's tree consumes a mouse
+	 * event -- see UCataclysmInventoryWidget's header -- so the controller
+	 * is what learns about the click, and it already had to ask whether the
+	 * press landed on the screen before deciding it was not a move order.
+	 * Asking which cell is one more question of the same kind.
+	 *
+	 * WHAT IT DECIDES IS NOWHERE NEAR HERE. UCataclysmWearing holds the
+	 * rule for moving an item between the bag and the body without ever
+	 * losing one, and it is covered by automation tests. This function
+	 * finds the slot and calls it.
+	 */
+	void PressOnTheInventoryScreen();
+
+	/**
 	 * Which key fires the ability in a slot right now.
 	 *
 	 * PUBLIC BECAUSE THE SKILL BAR HAS TO LABEL ITS BOXES, and because the answer
