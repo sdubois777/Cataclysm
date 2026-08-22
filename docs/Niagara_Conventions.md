@@ -488,11 +488,11 @@ The shapes:
 | :-- | :-- | :-- |
 | `NS_Impact_Point` | a hit landing on a target | yes |
 | `NS_Strike_Arc` | a melee swing leaving the caster | yes |
-| `NS_Impact_Ground` | an area attack landing on the floor | no |
+| `NS_Impact_Ground` | an area attack landing on the floor | yes |
 | `NS_Proj_Body` | a projectile in flight, with its trail | yes |
 | `NS_Beam` | a continuous line from caster to target | no |
 | `NS_Aura_Persistent` | a looping field around a caster | no |
-| `NS_Cast_Windup` | the caster's own build-up | no |
+| `NS_Cast_Windup` | the caster's own build-up | yes |
 | `NS_Death_Dissolve` | an enemy's death | no |
 | `NS_Status_Applied` | an ailment landing | no |
 

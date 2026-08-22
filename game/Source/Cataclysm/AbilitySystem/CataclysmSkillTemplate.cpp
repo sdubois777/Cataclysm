@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmCastEffect.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -74,6 +75,31 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	}
 
 	PayHealthCost();
+
+	// THE BURST AT THE CASTER, AND THIS IS THE ONLY PLACE IT IS ASKED FOR.
+	// Every one of the eight skill shapes calls this function first, so one call
+	// here gives all of them the beat that was missing: a skill used to begin
+	// with nothing happening at the caster at all. See UCataclysmCastEffect for
+	// why that matters and why this fires at the moment of release rather than
+	// before it. Issue #811.
+	//
+	// AFTER THE COMMIT, NOT BEFORE IT. CommitAbility returns false when the cost
+	// or the cooldown refuses the skill, and this line is past that return, so a
+	// skill that did not fire draws nothing. A flash on a refused skill would
+	// read as a bug.
+	//
+	// ITS RETURN VALUE IS DELIBERATELY DROPPED. Null is the ordinary answer past
+	// the effect type's cull distance, outside the view frustum, and in every
+	// automation test, which runs with -nullrhi. None of those is a reason not
+	// to use the skill.
+	if (AActor* Self = Avatar())
+	{
+		UCataclysmCastEffect::PlayFor(
+			Self, AimDirection(),
+			UCataclysmCastEffect::DamageTypeFor(Self, ElementTag()),
+			Params.RadiusCm);
+	}
+
 	return true;
 }
 

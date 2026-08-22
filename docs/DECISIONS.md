@@ -20,6 +20,40 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — The cast effect fires when the skill fires, not before it, because no skill has a cast time
+
+**Affects:** `docs/Niagara_Conventions.md` section 5, which names the shape
+`NS_Cast_Windup`.
+
+**What the research asked for.** A skill is three systems: something at the
+caster, something travelling, something where it lands. Riot's visual effects
+style guide calls the three beats anticipation, impact and dissipation, and its
+stated purpose for the first is to "lead the brain" before the moment it is
+waiting for. A commercial pack of 240 effects is 66 muzzles, 91 projectiles and
+83 hits. This project had the second and third and nothing at the caster, so
+every skill began with nothing happening.
+
+**Why what was built is a muzzle flash and not anticipation.** Anticipation
+needs a window before the skill acts, and no skill in this project has one:
+every template's `ActivateAbility` commits and acts in the same frame. Giving
+skills a cast time would change how the game plays -- it is a combat decision
+about how responsive a button press feels, not an effects decision -- so the
+burst fires at the same instant the skill does.
+
+**The shape keeps the document's name, `NS_Cast_Windup`,** so the asset and the
+document do not drift apart, even though "wind-up" overstates what it does. The
+class that plays it says so in its own comment.
+
+**What this leaves open.** Whether skills should have a cast time at all is a
+real design question and this does not answer it. If they ever get one, this
+effect is the thing that would play during it and the change would be to its
+timing rather than to the asset.
+
+**It is the first system to use `FXT_PlayerSkill`.** Skill templates are granted
+only through the player's weapon slots, so nothing an enemy does reaches this
+shape. Every other authored system takes `FXT_Enemy` under the rule that a shape
+with two casters takes the tighter distance.
+
 ## 2026-08-22 — A hit's damage type answers two questions, and they have different answers
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` section XIII, `docs/Niagara_Conventions.md`
