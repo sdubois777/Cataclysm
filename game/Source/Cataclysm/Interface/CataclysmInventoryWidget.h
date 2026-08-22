@@ -166,4 +166,24 @@ private:
 	 * frame would rebuild Slate's font atlas for a value that had not moved.
 	 */
 	float LastCellPx = 0.0f;
+
+	/**
+	 * What UCataclysmInventoryComponent::ChangeCount read last refresh.
+	 *
+	 * A tool tip's text is rebuilt only when this moves. Refresh runs from
+	 * NativeTick and walks all 48 cells, and a tool tip is a dozen table
+	 * lookups and a string join, so rebuilding them every frame would be a
+	 * lot of work for something that changes when the player picks
+	 * something up. Issue #733.
+	 */
+	int32 LastChangeCount = 0;
+
+	/**
+	 * Whether tool tips have been built at all since the tree was made.
+	 *
+	 * NEEDED SEPARATELY FROM THE COUNT, because a fresh widget and a fresh
+	 * inventory both start at zero, so the first refresh would see no
+	 * change and leave all 48 cells with no tool tip at all.
+	 */
+	bool bToolTipsBuilt = false;
 };

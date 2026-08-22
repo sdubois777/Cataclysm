@@ -240,6 +240,24 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
 	const TArray<FCataclysmCarriedSlot>& GetSlots() const { return Slots; }
 
+	/**
+	 * How many times the contents have changed, for a screen that redraws
+	 * every frame and should not redo work every frame.
+	 *
+	 * WHY A COUNT RATHER THAN COMPARING THE SLOTS. UCataclysmInventoryWidget
+	 * refreshes from NativeTick, so anything it works out per cell it works
+	 * out 48 times a frame. An item's tool tip is a dozen table lookups and a
+	 * string join, and it changes when the player picks something up rather
+	 * than when the frame advances. Comparing the slots to spot that would
+	 * cost almost as much as rebuilding them.
+	 *
+	 * IT IS NOT A SAVED FIELD AND MUST NOT BECOME ONE. It says nothing about
+	 * what is carried, only that it differs from a moment ago, and a loaded
+	 * character starting again from zero is correct.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
+	int32 ChangeCount() const { return Changes; }
+
 private:
 	/**
 	 * The 48 slots, empty at construction and never resized.
@@ -248,6 +266,15 @@ private:
 	 * of the component and every slot number from 0 to 47 is addressable whether
 	 * or not anything is in it.
 	 */
+	/**
+	 * Raised by every function that changes what is carried. See ChangeCount.
+	 *
+	 * DELIBERATELY NOT SaveGame. Every other field on this component carries
+	 * that flag because an inventory is persisted inside a character record;
+	 * this one describes the session rather than the character.
+	 */
+	int32 Changes = 0;
+
 	UPROPERTY()
 	TArray<FCataclysmCarriedSlot> Slots;
 };

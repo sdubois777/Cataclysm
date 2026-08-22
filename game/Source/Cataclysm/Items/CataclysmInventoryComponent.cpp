@@ -90,6 +90,7 @@ int32 UCataclysmInventoryComponent::AddItem(const FCataclysmItem& Item)
 	// AN ITEM ENTERING THE INVENTORY IS ONE OF THE FIVE EVENTS SECTION 6
 	// WRITES ON. What a character is carrying lives in its own record rather
 	// than in the run's, so this is one of the two triggers that writes it.
+	++Changes;
 	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
 										ECataclysmSaveTrigger::InventoryChanged);
 	return Slot;
@@ -149,6 +150,7 @@ int32 UCataclysmInventoryComponent::AddMaterial(FName Material, int32 Quantity)
 	if (Stacked != INDEX_NONE)
 	{
 		Slots[Stacked].Quantity += Quantity;
+		++Changes;
 		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
 											ECataclysmSaveTrigger::InventoryChanged);
 		return Stacked;
@@ -166,6 +168,7 @@ int32 UCataclysmInventoryComponent::AddMaterial(FName Material, int32 Quantity)
 	Slots[Slot].Material = Material;
 	Slots[Slot].Quantity = Quantity;
 
+	++Changes;
 	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
 										ECataclysmSaveTrigger::InventoryChanged);
 	return Slot;
@@ -189,6 +192,7 @@ bool UCataclysmInventoryComponent::RemoveItemAt(int32 Slot)
 	// LEAVING COUNTS AS WELL AS ARRIVING. Section 6 says "an item entering or
 	// leaving the inventory", and a record written only on arrival would hand
 	// back an item the player had put down.
+	++Changes;
 	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
 										ECataclysmSaveTrigger::InventoryChanged);
 	return true;
@@ -200,6 +204,12 @@ void UCataclysmInventoryComponent::RemoveEverything()
 	{
 		Slot = FCataclysmCarriedSlot();
 	}
+
+	// UNCONDITIONALLY, EVEN WHEN NOTHING WAS CARRIED. A screen reading
+	// this only needs to know it cannot trust what it built last time, and
+	// an extra rebuild costs one frame's work while a missed one shows the
+	// player a tool tip for an item they no longer have.
+	++Changes;
 }
 
 const FCataclysmItem* UCataclysmInventoryComponent::ItemAt(int32 Slot) const

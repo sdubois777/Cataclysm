@@ -3,6 +3,7 @@
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmInventoryScreen.h"
+#include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
@@ -285,6 +286,23 @@ void UCataclysmInventoryWidget::Refresh(
 	const UDataTable* Materials = UCataclysmDropRoll::LoadCraftingMaterialTable();
 	const UDataTable* Tiers = UCataclysmDropRoll::LoadMaterialTierTable();
 
+	// THE AFFIX TABLE IS ONLY THE TOOL TIP'S BUSINESS. A cell's label is the
+	// base's own name and its colour is its rarity, neither of which needs to
+	// know what the affixes are; the tool tip states every one of them.
+	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
+
+	// TOOL TIPS ARE REBUILT WHEN THE CONTENTS CHANGE AND NOT EVERY FRAME.
+	// This function runs from NativeTick, so anything done per cell is done
+	// 48 times a frame; a tool tip's text is a dozen table lookups and a
+	// string join, and what it says changes when the player picks something
+	// up. UCataclysmInventoryComponent::ChangeCount is what makes that
+	// cheap to notice. Issue #733.
+	const int32 Changes = Inventory ? Inventory->ChangeCount() : 0;
+	const bool bContentsChanged = Changes != LastChangeCount
+		|| !bToolTipsBuilt;
+	LastChangeCount = Changes;
+	bToolTipsBuilt = true;
+
 	float CellPx = LastCellPx;
 	if (const APlayerController* Controller = GetOwningPlayer())
 	{
@@ -339,6 +357,20 @@ void UCataclysmInventoryWidget::Refresh(
 
 		Widgets.Quantity->SetText(
 			FText::FromString(FScreen::QuantityTextFor(Carried)));
+
+		if (bContentsChanged)
+		{
+			// ON THE FRAME RATHER THAN ON THE SIZE BOX. A USizeBox lays out and
+			// does not take part in hit testing, so a tool tip on one is never
+			// shown. The frame is a UBorder, which paints and is hit-testable,
+			// and it is the outermost widget of the cell that is.
+			//
+			// AN EMPTY STRING REMOVES THE TOOL TIP RATHER THAN SHOWING A BLANK
+			// BOX, which is what an empty cell should do.
+			Widgets.Frame->SetToolTipText(FText::FromString(
+				UCataclysmItemTooltip::TextFor(Carried, Bases, Affixes,
+											   Materials)));
+		}
 	}
 }
 
