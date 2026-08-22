@@ -64,6 +64,8 @@ the table below records.
 | `NS_Impact_Point` | `Core` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
 | `NS_Impact_Point` | `Sparks` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
 | `NS_Impact_Point` | `Shockwave` | mesh `SM_VFX_Cyl_In_Out_Floor_01` | `M_VFX_Shockwave_01` | `Vefects` |
+| `NS_Impact_Point` | `Glow` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
+| `NS_Impact_Point` | `Haze` | sprite | `MI_VFX_HeatDistortion_Light` | `Vefects` |
 | `NS_Proj_Body` | `Core` | mesh `SM_FractalElement` | `MI_VFX_Shockwave_01_Additive` | `SplineEffect2` and `Vefects` |
 | `NS_Proj_Body` | `Trail` | sprite `T_Vfx_BasicDot` | `M_Impact_Sprite` | `_SplineVFX` |
 | `NS_Proj_Body` | `Streak` | ribbon `T_Vfx_trail_05` | `MI_Basic_trail05` | `_SplineVFX` |

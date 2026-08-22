@@ -20,6 +20,41 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — The hit burst gains a lingering glow and a heat distortion, and its core stops being drawn in the darkest colour available
+
+**Affects:** `docs/Niagara_Conventions.md` section 5A,
+`game/docs/effect-source-assets.md`.
+
+**What was missing.** Section 5A says a burst is four layers: a core flash,
+debris and sparks, a lingering glow, and distortion. `NS_Impact_Point` had the
+first two and a ground shockwave ring. It had no glow and no distortion at all.
+Both are added, and they are the same two layers `NS_Cast_Windup` was built with
+the same day, so the two bursts are made the same way.
+
+**What was wrong, and it was worse than what was missing.** Neither of the two
+original layers had any brightness multiplication, and the core flash was linked
+to `User.ElementColourDark` -- the dark anchor, which for Demonic is
+(0.042, 0.003, 0.0006). The forty times measurement made earlier that day was
+applied to the ground ring and to the shockwave and never to these two. The
+result was a hit burst that could not be seen at all from the game's own camera
+distance. The core and the sparks now use the primary hue at a gain of ten,
+which is what section 5A gives for a translucent sprite.
+
+**How that was found.** By capturing the system from 800 cm at 60 degrees down,
+which is what `CataclysmPlayerCharacter` sets the camera to. At a closer
+distance the burst was also invisible and it was not obvious why; putting the
+camera where the player's is, and then raising every size to prove the system
+spawned at all, separated "too dim" from "not there".
+
+**The core also stops being one size.** Section 5A requires every emitter to
+change at least two of size, colour, alpha and rotation across its life. The
+core changed alpha only. A curve over the fraction of life elapsed is correct
+here, unlike the projectile head, because nothing destroys a hit burst early.
+
+**No light on the new layers.** `Cataclysm.Effects.ImpactPointLightsWhatItLandsOn`
+counts them and requires exactly one, on the core. A light per layer would put
+several dynamic lights on screen for a single blow.
+
 ## 2026-08-22 — The projectile head is an octahedron, not a round dot, and it is as wide as the projectile hits
 
 **Affects:** `docs/Niagara_Conventions.md` section 5A,
