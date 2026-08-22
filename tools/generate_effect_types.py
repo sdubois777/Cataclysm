@@ -26,14 +26,36 @@ IT OVERWRITES EVERY PROPERTY IT OWNS, so an asset edited by hand in the editor
 loses that edit on the next run. That matches `tools/generate_input_assets.py`
 and is stated in `game/README.md`.
 
-## Every number here is a starting point
+## Every number here was measured on 2026-08-22, and none of them moved
 
-`docs/Niagara_Conventions.md` says so outright: "Every number below is a starting
-point with no measurement behind it and must be re-derived by measuring." Issue
-#547 is the missing performance budget and profiling method. The 4000 cm figure
-is the only one with any reasoning attached: `CataclysmPlayerCharacter.cpp` sets
-the camera arm to 800 cm, clamped between 500 and 1200, at a downward pitch of
-60 degrees, so 4000 cm is comfortably past the edge of the frame at maximum zoom.
+Until then they were guesses and this docstring said so. Issue #547 measured a
+dungeon floor at the designed creature density with the player in a fight
+against twelve to seventeen creatures. Section 4 of
+`docs/Niagara_Conventions.md` holds the figures and the procedure. What the
+measurement said about each number:
+
+  **4000 cm, the distance cull.** Never fired. In a fight everything is near the
+  player by definition, so this limit is for effects elsewhere on the floor. It
+  was the one figure that already had reasoning behind it:
+  `CataclysmPlayerCharacter.cpp` sets the camera arm to 800 cm, clamped between
+  500 and 1200, at a downward pitch of 60 degrees, so 4000 cm is comfortably
+  past the edge of the frame at maximum zoom.
+
+  **60 instances across the effect type.** Never approached. The most that were
+  alive at once across every system was 15, and 26 with the per-system cap
+  switched off. Kept as headroom, now knowing it is headroom.
+
+  **20 instances of one system.** THE ONLY LIMIT THAT EVER FIRES, and it fires
+  hard: 70 instances of NS_Impact_Point were killed in a single fight. Switching
+  it off multiplied that system's game-thread cost by 4.6 and its worst frame by
+  3.7, which is why it is not being raised. Issue #822 is the work to make the
+  effect cheap enough that the cap stops mattering.
+
+  **Visibility and view frustum culling.** Never fired either.
+
+So the values below are unchanged. That is the outcome the measurement gave, not
+an outcome anybody wanted in advance -- and it is worth stating plainly, because
+"the numbers did not move" reads like nothing was checked.
 
 ## THE DOCUMENT'S SETTING NAMES ARE THE EDITOR'S, NOT THE ENGINE'S
 
@@ -252,6 +274,36 @@ def apply_scalability(asset, wanted):
     visibility.set_editor_property("cull_by_view_frustum",
                                    wanted.cull_by_view_frustum)
     entry.set_editor_property("visibility_culling", visibility)
+
+    # CULLING BY THE FRAME-TIME BUDGET IS OFF, AND IT IS OFF ON PURPOSE.
+    #
+    # This property was not written at all before 2026-08-22, which meant it
+    # held whatever a previous run of a previous version of this file had left
+    # -- exactly the silent case `build_one` below spends its docstring warning
+    # about. Writing it makes the state a decision.
+    #
+    # WHY FALSE. `game/Config/DefaultEngine.ini` now sets a budget of 2 ms on
+    # each of the three FX thread groups and turns the engine's tracking of it
+    # on, so the budget is measurable. Culling by it would also need this, and
+    # the measurement says it would fire in real fights today: the worst frame
+    # reached 2.37 ms against the 2 ms budget. What happens when it fires is
+    # that effects are killed, and issue #822 records that effects already
+    # disappear from the instance-count cap, which has not been ruled out as
+    # part of what the project owner called "kinda messy". Adding a second
+    # thing that kills effects before anyone has looked at the first would make
+    # that harder to tell apart rather than easier.
+    #
+    # Issue #824 is the decision to turn it on, and it is blocked on #822.
+    #
+    # IT IS ON A NESTED STRUCT AND NOT ON THE ENTRY. `bCullByGlobalBudget` reads
+    # like a sibling of `bCullByDistance` and it is not: it lives on
+    # `FNiagaraGlobalBudgetScaling`, reached through the entry's `BudgetScaling`
+    # member, the same shape as `visibility_culling` above. Setting it on the
+    # entry raises "Failed to find property", which is the good outcome and is
+    # how this was found.
+    budget = entry.get_editor_property("budget_scaling")
+    budget.set_editor_property("cull_by_global_budget", False)
+    entry.set_editor_property("budget_scaling", budget)
 
     holder = asset.get_editor_property("system_scalability_settings")
     holder.set_editor_property("settings", [entry])

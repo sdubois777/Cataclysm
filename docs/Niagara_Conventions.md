@@ -401,9 +401,15 @@ engineering task rather than a checkbox.
 
 ### The four effect types to author
 
-**Judgement.** Four assets in `/Game/Effects/EffectTypes/`. **Every number below
-is a starting point with no measurement behind it** and must be re-derived by
-measuring. The setting names are exact.
+**Judgement.** Four assets in `/Game/Effects/EffectTypes/`. The setting names
+are exact.
+
+**EVERY NUMBER BELOW WAS MEASURED ON 2026-08-22 AND NONE OF THEM MOVED.** Until
+then they were guesses and this paragraph said so. What the measurement found is
+under "MEASURED 2026-08-22" further down; the short version is that one of the
+five limits does all the work and the other four have never fired. **"The
+numbers did not move" is an outcome rather than the absence of one** -- issue
+#547 is what produced it.
 
 **`FXT_Enemy`** — the twenty-at-once case.
 Update frequency `Medium`, significance handler `Distance`, cull reaction
@@ -414,7 +420,9 @@ frustum both on.
 The 4000 cm comes from this project's own camera rather than a generic figure:
 `CataclysmPlayerCharacter.cpp` sets the camera arm to 800 cm, clamped between 500
 and 1200, at a downward pitch of 60 degrees. 4000 cm is comfortably past the edge
-of the frame at maximum zoom. Measure it and tighten it.
+of the frame at maximum zoom. **Measured 2026-08-22: it never fires in a fight**,
+because in a fight everything is near the player by definition. It is there for
+effects elsewhere on the floor.
 
 **`FXT_PlayerSkill`** — update frequency `Low`, handler `Distance`, reaction
 `Kill and Clear`, distance **6000 cm**, maximum instances **40**.
@@ -434,8 +442,11 @@ caster. Where one asset serves both -- `NS_Proj_Body` is fired by ten designed
 player skills and by four creatures -- `FXT_Enemy` is the one to pick: it is the
 tighter of the two on distance, 4000 cm against 6000, and the looser on instance
 count, 60 against 40, which is the safer pair for something that can be numerous.
-**That is a choice between two unmeasured sets of numbers and not a measurement**
--- issue #547 is still the missing budget. Added on 2026-08-21.
+That was a choice between two unmeasured sets of numbers when it was made on
+2026-08-21. Both sets have since been measured and neither moved, and the
+measurement supports the choice for a reason nobody had in mind at the time:
+`NS_Proj_Body` costs 102 microseconds per instance, the most of any system in
+the game, so the tighter distance is the right one for it.
 
 **Judgement.** Every authored system sets one of these four. A system with no
 effect type is not reviewable and should not be committed.
@@ -455,21 +466,244 @@ click-to-move targeting, most player skills are exactly that shape.
 **Judgement.** Mark every player-cast spawn as a player effect explicitly rather
 than relying on attachment.
 
-### Measuring
+### The budget
 
-**Standard.** The Niagara Debug Heads-Up Display is a console command:
+**Decided 2026-08-22, issue #547.** Until that date this project had no
+performance budget for effects of any kind and no way of measuring against one,
+and every number in the four effect types above was a guess that said so.
+
+#### Frame time: 2 milliseconds on each of three thread groups
+
+| Console variable | Budget | What it covers |
+| :-- | :-- | :-- |
+| `fx.Budget.GameThread` | 2.0 ms | FX work that runs only on the game thread |
+| `fx.Budget.GameThreadConcurrent` | 2.0 ms | FX work on the game thread or on a task spawned from it |
+| `fx.Budget.RenderThread` | 2.0 ms | FX work on the render thread |
+
+**These are Unreal's own defaults, and keeping them is the decision rather than
+the absence of one.** Epic publishes no numeric target: its page on measuring
+performance in Niagara says to capture a window of your own game rather than
+apply a universal figure. So 2 ms is the only published reference there is. It
+is also generous here -- a frame at 60 frames per second is 16.7 ms, so this
+allows effects an eighth of it, for a game whose effects are five sprite and
+mesh bursts.
+
+**THE ENGINE SHIPS THIS BUDGET SWITCHED OFF.** `fx.Budget.Enabled` and
+`fx.Budget.EnabledInEditor` are both false by default. Until 2026-08-22 that
+meant nothing tracked what effects cost, the Budget column of the Niagara debug
+display read zero whatever was happening, and the `bCullByGlobalBudget` switch
+on an effect type had no input to act on even if somebody had turned it on.
+`game/Config/DefaultEngine.ini` now sets all five values under
+`[SystemSettings]`.
+
+**Tracking the budget is not the same as enforcing it.** Culling by it also
+needs `bCullByGlobalBudget` on the effect type, and that is false on all four.
+`tools/generate_effect_types.py` now writes that false explicitly, so it is a
+decision rather than a property nothing touched. Issue #824 is the decision to
+turn it on and says why it waits.
+
+#### Video memory: 512 MB of the card's 7250 MB
+
+**This one is a judgement and not a measurement, and the difference is the point
+of this whole section.** What was measured on 2026-08-22 is the whole game:
+**1331 MB on average and 1420 MB at peak**, against the 7250 MB the driver
+offers on the development machine's 8 GB RTX 3070. The effects' own share of
+that was not separated out. Issue #826 is the work to separate it.
+
+512 MB is roughly a third of everything the game uses today. It is far more room
+than five sprite systems can consume, and it keeps the game under half the card
+even if effects grew into all of it. `docs/DECISIONS.md` records the 8 GB card
+as the binding hardware constraint and Paragon's 4K character textures as what
+presses on it; effects are not the pressure.
+
+---
+
+### How to measure against it
+
+**Everything below is typed into the `Cmd` box at the bottom of the editor
+window.** It takes about ten minutes and needs no build.
+
+**1. Set up a repeatable floor.** A named seed so the same run can be compared
+against itself later.
 
 ```
-fx.Niagara.Debug.Hud Enabled=1
-fx.Niagara.Debug.Hud SystemFilter=NS_Impact_Point
-fx.Niagara.Debug.Hud OverviewEnabled=1
+Cataclysm.DungeonSeed 547
+Cataclysm.DungeonLayout 0
+Cataclysm.DungeonEnemyScale 1
 ```
 
-**Unsettled.** No profiling method, no graphics memory target and no frame-time
-budget for effects exists anywhere in this project. The graphics card's 8 GB is
-the binding constraint on the development machine and nothing quantifies what
-share of it effects may use. The numbers in the four effect types above are
-starting points, not measurements.
+**2. Turn the Niagara debug display on BEFORE pressing Play.**
+
+```
+fx.Niagara.Debug.Hud Enabled=1 OverviewEnabled=1 OverviewMode=1
+```
+
+`NiagaraDebugHud 1` is the short form of the same thing. `fx.Niagara.Debug.Hud`
+with no arguments prints the full list of keys it accepts to the output log.
+
+**IT DRAWS ON THE SCREEN AND IT DOES NOT APPEAR IN A CAPTURED IMAGE.** Neither
+`EditorAppToolset.CaptureEditorImage` nor `SlateInspectorToolset.Screenshot`
+includes the debug-draw layer, although both capture the game's own heads-up
+display drawn on the same canvas. Somebody has to look at the screen. This was
+nearly recorded as "the documented profiling method does not work" during #547,
+and the project owner saying "the debug hud is showing" is what corrected it.
+
+**3. Press Play and get into a fight.** Not an empty floor -- a fight is the
+case the effect types exist for. Twelve to twenty creatures around the player is
+the worst realistic case; the design commits to twenty attacking at once.
+
+**4. Capture.** 600 frames is about seventeen seconds at the frame rate a fight
+runs at.
+
+```
+fx.ParticlePerfStats.RunTest 600 1 1 0
+```
+
+The four arguments are the number of frames, whether to gather per-world
+statistics, whether to gather per-system statistics, and whether to gather
+per-component statistics. Per-component is a great deal of output and is rarely
+what the question is.
+
+**5. Read the result.** It is written twice: to the output log, and as a file
+under `game/Saved/Profiling/ParticlePerf/`. **Every figure is microseconds.**
+The columns that matter:
+
+| Column | What it is |
+| :-- | :-- |
+| Average PerFrame GameThread | the system's cost per frame, game thread and its concurrent tasks together |
+| Average PerInstance GameThread | the same divided by how many were alive |
+| Average PerFrame RenderThread | the same on the render thread |
+| NumFrames, Total Instances | divide the second by the first for the average number alive at once |
+| Max PerFrame GameThread | the worst single frame, which is what the budget is really about |
+
+**Two traps in that file.** The scalar in the `Max PerFrame RenderThread` column
+is not what the heading says -- the engine writes the maximum **per instance**
+there and puts the per-frame maxima in the bracketed list beside it. And a
+system with no instances during the capture is left out of the table entirely
+rather than printed as a row of zeroes, so an absent system means "did not
+happen", not "cost nothing".
+
+**6. Read the debug display for what was culled.** Its overview names every
+system and splits what was culled by why: distance, visibility, instance count,
+budget. It also has a `# Player` column, which counts effects exempted as the
+local player's. This is the only place that number can be seen.
+
+**7. For the frame as a whole rather than the effects,** capture with the CSV
+profiler instead. It writes to `game/Saved/Profiling/CSV/`, one row per frame,
+and carries `FrameTime`, `GameThreadTime`, `RenderThreadTime`, `GPUTime`,
+`GPUMem/LocalUsedMB`, `GPUMem/LocalBudgetMB` and a per-bucket breakdown
+including `Exclusive/GameThread/Effects`.
+
+```
+csvprofile start
+csvprofile stop
+```
+
+**WHAT THIS MEASURES IS THE EDITOR AND NOT THE GAME.** Play-in-editor runs a
+Development build with the editor's own Slate drawing inside the frame. The
+frame rate it reports is pessimistic and no packaged build of this project has
+ever been measured. **The microsecond figures per effect are still comparable**,
+because they are the same work either way, and the budget is set on those rather
+than on frame rate.
+
+---
+
+### MEASURED 2026-08-22: what it actually costs
+
+**Conditions.** Unreal 5.8 Development editor build, play-in-editor in the level
+viewport, RTX 3070 8 GB. Level `L_Dungeon`, seed 547, Halls layout, the designed
+creature density. 232 to 267 creatures on the floor. The player was placed at the
+densest point on the floor, with twelve to seventeen creatures within eight
+metres, and at `Cataclysm.PlayerLevel 100` so the fight lasted through the
+capture. Three captures of 600 frames each.
+
+#### Per system, with the effect types as they are
+
+Microseconds per frame, from `fx.ParticlePerfStats.RunTest 600 1 1 0`.
+
+| System | Game thread | Render thread | Alive at once | Worst frame, game thread |
+| :-- | --: | --: | --: | --: |
+| `NS_Impact_Point` | 726 | 431 | 12.8 | 2016 |
+| `NS_Cast_Windup` | 95 | 19 | 1.3 | 424 |
+| `NS_Strike_Arc` | 83 | 17 | 1.3 | 342 |
+| `NS_Proj_Body` | 102 | 88 | 1.0 | 199 |
+| `NS_Impact_Ground` | did not play | | | |
+| **everything** | **906** | **468** | **15.4** | **2373** |
+
+**One system is 80 per cent of the game-thread cost and 92 per cent of the
+render-thread cost of every effect in the game.** Issue #822 is the work on it.
+
+#### Against the budget
+
+| Budget | Allowed | Average | Worst frame |
+| :-- | --: | --: | --: |
+| `fx.Budget.GameThread` | 2.0 ms | 0.12 ms | 0.95 ms |
+| `fx.Budget.GameThreadConcurrent` | 2.0 ms | 0.91 ms | **2.37 ms** |
+| `fx.Budget.RenderThread` | 2.0 ms | 0.47 ms | 1.05 ms |
+
+**The worst frame is already over one of the three.** That is recorded rather
+than accommodated: raising a budget to fit a measurement defeats the point of
+having one.
+
+The two game-thread rows differ because they measure different things and the
+difference is easy to misread. `Exclusive/GameThread/Effects` from the CSV
+profiler is work on the game thread alone. `fx.ParticlePerfStats`'s
+"PerFrame GameThread" includes the concurrent tasks spawned from it, which is
+by far the larger part -- 454 ms of the 543 ms total across a 599-frame capture
+-- and which does not sit on the game thread's critical path.
+
+#### What each culling number turned out to be worth
+
+| Setting | Value | What the measurement said |
+| :-- | --: | :-- |
+| Distance | 4000 cm | **Never fired.** In a fight everything is near the player. It is for effects elsewhere on the floor |
+| Visibility and view frustum | on | **Never fired** |
+| Instances of one system | 20 | **The only limit that ever fires**, and it fires hard |
+| Instances across the type | 60 | **Never approached.** The most alive at once across every system was 15, and 26 with the per-system cap off |
+| Global budget | off | Fires nothing because it is off. Issue #824 |
+
+**Switching the per-system cap off, in the same fight:**
+
+| | Cap at 20 | Cap off | Change |
+| :-- | --: | --: | --: |
+| `NS_Impact_Point` alive at once | 9.8 | 23.6 | 2.4x |
+| `NS_Impact_Point` game thread | 418 us | 1915 us | **4.6x** |
+| `NS_Impact_Point` worst frame | 1337 us | 4894 us | **3.7x** |
+
+So the cap is doing real work and is not being raised. **It is also throwing
+effects away**: the debug display counted **70 instances of `NS_Impact_Point`
+killed by instance-count culling in a single fight**, and the cull reaction is
+Kill and Clear, so a hit past the cap draws nothing and one already playing can
+be cut short. Issue #822.
+
+The same reading showed **`# Player: 0` for every system** -- nothing this
+project spawns is marked as belonging to the local player, which is exactly the
+trap the previous subsection warned about before the first system existed. Issue
+#823.
+
+#### The frame as a whole, which is not about effects at all
+
+From a 2382-frame CSV capture of the same fight, milliseconds.
+
+| Game thread bucket | Average | The 100 slowest frames |
+| :-- | --: | --: |
+| Interface | 5.10 | 5.43 |
+| Animation | 4.75 | 5.50 |
+| Character movement | 2.64 | 3.30 |
+| Ticking actors | 1.66 | 1.73 |
+| **Effects** | **0.12** | **0.14** |
+
+The frame averaged 23.66 ms, which is 42 frames per second, and the game thread
+is all of it -- the render thread averaged 4.33 ms and the GPU 7.06 ms.
+
+**On the hundred slowest frames the interface costs thirty-eight times what
+every particle system in the game costs together.** Whatever is making a dungeon
+floor slow, it is not the effects. Issue #825.
+
+**That is also worth holding against the project owner's words on the effects,
+"kinda messy but it's fine".** Messy is not a load problem in the sense of
+particles crowding out the frame. The one way load could be part of it is the
+70 killed instances above, which look like effects winking out.
 
 ---
 
