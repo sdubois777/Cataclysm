@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "GameplayTagsManager.h"
 #include "Items/CataclysmItem.h"
@@ -1290,6 +1291,57 @@ bool FCataclysmSkillRowCritChanceReachesTheAbilityTest::RunTest(const FString&)
 		(*SilentSkill)->GetDamagePercent() > 0.0f);
 	TestTrue(TEXT("and takes its slot's cooldown"),
 		(*SilentSkill)->GetBaseCooldown() > 0.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The starting weapon is named in two places. Issue #840
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStartingWeaponItemMatchesType,
+	"Cataclysm.WeaponSlots.TheStartingWeaponItemMatchesTheStartingWeaponType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStartingWeaponItemMatchesType::RunTest(const FString& Parameters)
+{
+	// TWO PLACES NAME THE STARTING WEAPON AND THEY HAVE TO AGREE.
+	// ACataclysmPlayerCharacter::StartingWeaponBase names an ItemBases row and is
+	// what the character actually wears since issue #840.
+	// UCataclysmWeaponSlotsComponent::StartingWeaponType names a weapon type and
+	// is what the fallback in OnEquipmentChanged still uses if no weapon is worn.
+	//
+	// IF THEY DRIFTED APART NOTHING WOULD FAIL. The character would wear one
+	// weapon and, in the case where the fallback runs, be granted a different
+	// weapon's six skills. Both paths would look like they worked.
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (!TestNotNull(TEXT("the item bases table loads"), BaseTable))
+	{
+		return false;
+	}
+
+	const FName StartingBase =
+		GetDefault<ACataclysmPlayerCharacter>()->GetStartingWeaponBase();
+	if (!TestFalse(TEXT("the player character names a starting weapon item"),
+			StartingBase.IsNone()))
+	{
+		return false;
+	}
+
+	const FCataclysmItemBaseRow* Row = BaseTable->FindRow<FCataclysmItemBaseRow>(
+		StartingBase, TEXT("TheStartingWeaponItemMatchesTheStartingWeaponType"),
+		/*bWarnIfMissing=*/false);
+	if (!TestNotNull(TEXT("and it is a row in game/Data/ItemBases.csv"), Row))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("and that row is a weapon rather than a piece of armour"),
+		Row->WeaponType.IsEmpty());
+
+	TestEqual(TEXT("the starting item's weapon type is the starting weapon type"),
+		Row->WeaponType,
+		GetDefault<UCataclysmWeaponSlotsComponent>()->GetStartingWeaponType());
 
 	return true;
 }

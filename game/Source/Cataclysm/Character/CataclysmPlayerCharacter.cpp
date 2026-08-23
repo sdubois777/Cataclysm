@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -159,6 +160,32 @@ void ACataclysmPlayerCharacter::BeginPlay()
 			this, &ACataclysmPlayerCharacter::OnEquipmentChanged);
 	}
 
+	// THE CHARACTER PUTS ON ITS STARTING WEAPON. Issue #840: before this, a
+	// character wearing nothing still swung a Greataxe, because the ability
+	// slots were filled from a weapon TYPE and no item existed to show. The gear
+	// panel drew an empty weapon slot and equipping a whip looked like the
+	// character getting weaker for no reason.
+	//
+	// HERE RATHER THAN AT POSSESSION, AND THE ORDER MATTERS. Wearing an item
+	// broadcasts EquipmentChanged, which reaches OnEquipmentChanged, which
+	// applies the whole class stat line through
+	// UCataclysmEquipmentComponent::RefreshAttributes. At this point the ability
+	// system does not exist yet -- it lives on the player state and arrives with
+	// possession -- so that call does nothing, which is exactly what is wanted.
+	// Doing this at possession instead applies a stat line over attributes
+	// something else has already set, and fails
+	// Cataclysm.Player.MovementSpeedFollowsTheAttribute among others.
+	//
+	// The axe still reaches the character's attributes: ApplyChosenClassStats
+	// runs at possession and asks the equipment for its modifiers.
+	//
+	// SERVER ONLY, because giving a character an item is a server decision, in
+	// the same way granting its abilities is.
+	if (HasAuthority())
+	{
+		GiveStartingWeapon();
+	}
+
 	// Taken from the boom rather than repeated as a number here. The resting
 	// distance is stated once, in the constructor, and clamping it means a boom
 	// set outside the range cannot leave the first wheel notch jumping.
@@ -166,9 +193,11 @@ void ACataclysmPlayerCharacter::BeginPlay()
 		MinCameraDistance, MaxCameraDistance);
 	CameraBoom->TargetArmLength = TargetCameraDistance;
 
-	// THE BASIC ATTACK STARTS LOOKING FOR SOMETHING TO HIT. Nothing swings yet:
-	// at this point no weapon is equipped, so the attack speed is zero and the
-	// first attempt only re-arms the clock. Issues #36 and #647.
+	// THE BASIC ATTACK STARTS LOOKING FOR SOMETHING TO HIT. Nothing swings yet.
+	// A weapon is worn by this point, since issue #840, but the ability system
+	// lives on the player state and does not exist until possession, so no
+	// attack speed has been written to anything. It reads as zero and the first
+	// attempt only re-arms the clock. Issues #36 and #647.
 	ScheduleNextBasicAttack(0.0f);
 }
 
@@ -516,27 +545,97 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	// takes back everything it granted before it grants again, so calling it
 	// for a change that was not a weapon refills the same six slots with the
 	// same six abilities rather than doubling them.
-	if (!WeaponSlots || !Equipment)
+	FillAbilitySlotsFromWornWeapon();
+}
+
+void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon()
+{
+	if (!WeaponSlots)
 	{
 		return;
 	}
 
-	const FString WornWeapon = Equipment->EquippedWeaponType();
+	const FString WornWeapon =
+		Equipment ? Equipment->EquippedWeaponType() : FString();
 	if (!WornWeapon.IsEmpty())
 	{
 		WeaponSlots->EquipWeaponType(WornWeapon);
 		return;
 	}
 
-	// NOTHING WORN FALLS BACK TO THE STARTING WEAPON RATHER THAN TO NOTHING,
-	// and that is not tidiness -- it is the difference between this change
-	// being an addition and being a regression. Characters start wearing
-	// nothing, and there is no character creator to choose a weapon in yet
-	// (issue #50), so a player whose ability slots emptied the moment they
-	// took a ring off would have lost every skill they had. The starting
-	// weapon type on UCataclysmWeaponSlotsComponent stays the answer until a
-	// real weapon is worn over it.
+	// THIS IS NOW A NET UNDER A CASE THAT SHOULD NOT ARISE, AND IT SAYS SO WHEN
+	// IT CATCHES ONE. It used to be the ordinary path: characters started
+	// wearing nothing, so without it taking a ring off would have emptied every
+	// ability slot. That is what made issue #840 possible -- an empty weapon
+	// slot swung a Greataxe, nothing on screen said so, and equipping a whip
+	// read as the character getting weaker for no reason.
+	//
+	// Two things now stand between a character and an empty weapon slot:
+	// GiveStartingWeapon wears a real Greataxe at the start, and
+	// UCataclysmWearing::TakeOffInto refuses to remove the only weapon worn
+	// (issue #841). So reaching here means one of those failed -- most likely
+	// the item bases table could not be read, or StartingWeaponBase names a row
+	// that is not there.
+	if (Equipment)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("No weapon is worn, so the ability slots were filled from the "
+				 "starting weapon type instead of from an item. Since issue "
+				 "#840 a character is supposed to be wearing a real weapon by "
+				 "this point. Check that StartingWeaponBase on the player "
+				 "character names a row in game/Data/ItemBases.csv and that the "
+				 "table loaded."));
+	}
+
 	WeaponSlots->EquipStartingWeapon();
+}
+
+void ACataclysmPlayerCharacter::GiveStartingWeapon()
+{
+	if (!Equipment || StartingWeaponBase.IsNone())
+	{
+		return;
+	}
+
+	// ASKED RATHER THAN REMEMBERED, so that running twice cannot produce two
+	// axes. InitAbilityActorInfo runs from PossessedBy and from
+	// OnRep_PlayerState, and on a listen server both happen. Anything at all in
+	// either weapon slot means there is nothing to do: either this already ran,
+	// or the character loaded a save holding something better, and replacing
+	// that would be worse than doing nothing.
+	for (const ECataclysmGearSlot WeaponSlot :
+		 UCataclysmGearSlots::WeaponSlots())
+	{
+		if (!Equipment->SlotIsEmpty(WeaponSlot))
+		{
+			return;
+		}
+	}
+
+	// AN EVERYDAY ITEM, AND THAT IS NOT A CHOICE MADE HERE. Rarity is computed
+	// from what fills an item's four slots rather than stored, so a base with no
+	// affixes and no enchantments IS an Everyday. UCataclysmItemValues::RarityOf.
+	FCataclysmItem Starting;
+	Starting.Base = StartingWeaponBase;
+	Starting.GearLevel = 0;
+
+	FCataclysmItem CameOff;
+	FCataclysmItem AlsoCameOff;
+	ECataclysmGearSlot WentTo = ECataclysmGearSlot::Weapon1;
+	const ECataclysmEquipResult Result =
+		Equipment->Equip(Starting, CameOff, AlsoCameOff, WentTo);
+
+	if (Result != ECataclysmEquipResult::Equipped)
+	{
+		// LOUD, BECAUSE THE SYMPTOM IS THE BUG THIS FIXED. A character who does
+		// not get this weapon falls through to the starting weapon type above
+		// and swings a Greataxe nobody can see.
+		UE_LOG(LogCataclysm, Error,
+			TEXT("The starting weapon %s could not be worn, so the character "
+				 "begins holding nothing visible. Check that it names a weapon "
+				 "row in game/Data/ItemBases.csv."),
+			*StartingWeaponBase.ToString());
+	}
 }
 
 void ACataclysmPlayerCharacter::OnRep_PlayerState()
@@ -623,10 +722,23 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	//
 	// Safe to run twice. EquipWeaponType takes back everything it granted before
 	// it grants again, so a second possession refills rather than doubling.
-	if (WeaponSlots)
-	{
-		WeaponSlots->EquipStartingWeapon();
-	}
+	//
+	// THE SLOTS ARE FILLED FROM THE WORN WEAPON SINCE ISSUE #840, and the weapon
+	// itself is put on in BeginPlay rather than here. Before #840 this filled
+	// them from a weapon type with no item behind it, so the gear panel showed
+	// an empty weapon slot on a character swinging a Greataxe.
+	//
+	// FillAbilitySlotsFromWornWeapon AND NOT OnEquipmentChanged, which is the
+	// same call with UCataclysmEquipmentComponent::RefreshAttributes in front of
+	// it. That applies the whole class stat line, and this function runs more
+	// than once -- the server reaches it from PossessedBy and a client from
+	// OnRep_PlayerState -- so a stat line applied here overwrites attributes
+	// something else has already set. Calling OnEquipmentChanged from here was
+	// tried and failed three tests: Cataclysm.Player.MovementSpeedFollowsTheAttribute,
+	// Cataclysm.PlayerStats.APlayerCharacterLeavesThePlaceholderBehind and
+	// Cataclysm.Death.APlayerStandsBackUpRatherThanBeingRemoved. The comment on
+	// ApplyChosenClassStats above says the same thing and names the same test.
+	FillAbilitySlotsFromWornWeapon();
 }
 
 // ---------------------------------------------------------------------------

@@ -44,6 +44,24 @@ enum class ECataclysmWearResult : uint8
 	 */
 	NoRoomInTheBag		UMETA(DisplayName = "No room in the bag"),
 
+	/**
+	 * Refused, because it is the only weapon worn and a character must hold one.
+	 *
+	 * TEMPORARY, AND ISSUE #841 IS THE NOTE TO REMOVE IT. A character holding no
+	 * weapon has no weapon skills, because UCataclysmWeaponSlotsComponent grants
+	 * the six ability slots from the worn weapon's type. Four of the fourteen
+	 * weapon types -- 2H Crossbow, Crossbow, Shield and Spear -- have no Demonic
+	 * skills written yet, and Demonic is the default damage type, so an empty
+	 * skill bar today would mean missing rows in game/Data/WeaponSkills.csv
+	 * rather than a designed consequence of fighting bare handed. Once those
+	 * rows exist this refusal should go and being unarmed should be allowed to
+	 * mean it.
+	 *
+	 * SWAPPING IS NOT REFUSED, only taking the last one off. Wearing a different
+	 * weapon over this one goes through WearFromCarried and never reaches here.
+	 */
+	TheLastWeapon		UMETA(DisplayName = "That is your only weapon"),
+
 	/** One of the two components was missing. */
 	NothingToWorkWith	UMETA(DisplayName = "Nothing to work with"),
 };

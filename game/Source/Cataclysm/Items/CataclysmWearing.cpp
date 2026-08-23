@@ -116,6 +116,40 @@ ECataclysmWearResult UCataclysmWearing::TakeOffInto(
 		return ECataclysmWearResult::NothingWorn;
 	}
 
+	// -- refuse before anything moves --------------------------------------
+	// A CHARACTER MUST KEEP HOLD OF A WEAPON, AND ISSUE #841 IS THE NOTE TO
+	// STOP REQUIRING IT. UCataclysmWeaponSlotsComponent grants the six ability
+	// slots from the worn weapon's type, and four of the fourteen weapon types
+	// -- 2H Crossbow, Crossbow, Shield and Spear -- have no Demonic skills in
+	// game/Data/WeaponSkills.csv yet, with Demonic the default damage type. So
+	// an unarmed character today would have an empty skill bar because rows are
+	// missing, not because fighting bare handed is supposed to cost you your
+	// skills. Once those rows exist this refusal should go.
+	//
+	// COUNTED RATHER THAN READ OFF THE SLOT. A two-handed weapon is stored in
+	// the first weapon slot alone and leaves the second empty, so it counts as
+	// one and is refused, which is right -- it is the only weapon. Two
+	// one-handed weapons count as two and either one may come off.
+	//
+	// SWAPPING IS UNAFFECTED. Wearing a different weapon over this one goes
+	// through WearFromCarried, which never calls this.
+	if (UCataclysmGearSlots::IsWeaponSlot(Slot))
+	{
+		int32 WeaponsWorn = 0;
+		for (const ECataclysmGearSlot WeaponSlot :
+			 UCataclysmGearSlots::WeaponSlots())
+		{
+			if (!Equipment->SlotIsEmpty(WeaponSlot))
+			{
+				++WeaponsWorn;
+			}
+		}
+		if (WeaponsWorn <= 1)
+		{
+			return ECataclysmWearResult::TheLastWeapon;
+		}
+	}
+
 	// ASKED BEFORE THE PIECE COMES OFF. Taking it off first and finding nowhere
 	// to put it would leave it held by a local variable about to go out of
 	// scope, and there is no floor to drop it on from a screen.
@@ -152,6 +186,9 @@ FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 		return TEXT("That goes in no slot this character has.");
 	case ECataclysmWearResult::NoRoomInTheBag:
 		return TEXT("There is no room in the bag, so nothing was moved.");
+	case ECataclysmWearResult::TheLastWeapon:
+		return TEXT("That is your only weapon, and you have to hold one. "
+					"Wear a different weapon over it instead.");
 	case ECataclysmWearResult::NothingToWorkWith:
 		return TEXT("This character has no inventory or no equipment.");
 	}
