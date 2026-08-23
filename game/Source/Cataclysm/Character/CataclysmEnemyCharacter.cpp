@@ -832,31 +832,23 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	// drawing reads, so a bigger creature's attack shapes follow without a
 	// second rule.
 	//
-	// AND THE FEET STAY WHERE THEY WERE. A capsule grows from its middle, so
-	// scaling one buries its lower half in the ground: the dungeon places a
-	// creature by raising it by its own half height, and it reads that off the
-	// CLASS DEFAULT OBJECT before the actor exists -- which is before this
-	// runs, so the placement cannot know the creature is about to grow.
+	// IT DOES NOT MOVE THE CREATURE, AND THAT WAS TRIED AND UNDONE. A capsule
+	// grows from its middle, so a creature placed for its unscaled size ends
+	// up half-buried, and the obvious answer is to read where the feet were,
+	// scale, and put them back. That works when a creature is first placed and
+	// is WRONG WHEN ONE IS RESTORED FROM A SAVE: the saved height already
+	// accounts for the scale, so correcting it again raises the creature by
+	// the same amount a second time. Three save tests caught it, one reporting
+	// a creature saved at Z=90 coming back at Z=740.
 	//
-	// EIGHTY-FIVE CREATURES WERE IN THE FLOOR, UP TO 460 CM DEEP, before this
-	// was added, and Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt
-	// is what found them. Reading the bottom, scaling, and putting the bottom
-	// back is the whole of it, and it is right whatever the old scale was.
-	const UCapsuleComponent* Capsule = GetCapsuleComponent();
-	const bool bStanding = Capsule != nullptr;
-	const float FeetBefore = bStanding
-		? GetActorLocation().Z - Capsule->GetScaledCapsuleHalfHeight()
-		: 0.0f;
-
+	// THE TWO CASES CANNOT BE TOLD APART FROM HERE, and the header above says
+	// the order a spawner calls these setters in must not matter. So this only
+	// scales, and whoever places a creature does it after its size is known.
+	// ACataclysmDungeonGameMode::SpawnFloorCreatures is the one place that has
+	// to; the sandbox spawners do not, because their own comments record that
+	// the movement component pushes a buried creature back out.
 	SetActorScale3D(FVector(UCataclysmEnemyRarity::BodyScaleForStep(
 		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep)));
-
-	if (bStanding)
-	{
-		FVector Where = GetActorLocation();
-		Where.Z = FeetBefore + Capsule->GetScaledCapsuleHalfHeight();
-		SetActorLocation(Where);
-	}
 
 	// RE-APPLIED, BECAUSE THE RARITY IS PART OF THE STAT BLOCK SINCE ISSUE #848.
 	// Every other setter here re-applies for the reason SetHealth states: a
