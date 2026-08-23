@@ -6,7 +6,11 @@
 
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Components/CapsuleComponent.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
+#include "GameFramework/Character.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Engine/DataTable.h"
 
@@ -16,12 +20,16 @@
  * WHAT IS COVERED. That the weights reaching the engine are the ones the design
  * states, that a draw follows them, that a Cataclysm Boss is never drawn, and
  * that a missing or empty table answers Common rather than something worse.
+ * Since issue #849, also how big a creature at each rarity is, and since #885
+ * that the biggest of them still fits the narrowest corridor a floor can hold.
  *
  * WHAT IS NOT. That the game mode calls any of this, and that a play session
  * therefore shows a spread of rarities. Spawning a creature needs a world, and
  * `Cataclysm.Sandbox.ACreatureSpawnsAtTheRarityItWasConfiguredWith` covers the
  * spawner writing what it was told. Whether the mix reads well over a real
- * session is a judgement only playing settles.
+ * session is a judgement only playing settles, and so is whether a creature at
+ * a given size looks right: the automation command runs with `-nullrhi` and
+ * nothing here can watch a creature draw. Issue #559.
  */
 namespace CataclysmEnemyRarityTest
 {
@@ -420,24 +428,90 @@ bool FCataclysmRarityBodyScaleTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a Common creature is its own size"),
 		FRarity::BodyScaleForStep(Table, 0), 1.0f);
 
-	// HALF AS BIG AGAIN EACH STEP, decided by the project owner on 2026-08-24.
-	// Compared step against step rather than against written figures, so the
-	// rule is what is checked and not a copy of its output.
-	for (int32 Step = 1; Step <= 5; ++Step)
+	// ONE RATIO, THE SAME AT EVERY RUNG, AND IT IS READ FROM THE DATA RATHER
+	// THAN WRITTEN HERE. Issue #885. This used to assert `Below * 1.5f`, so
+	// when the project owner changed the step from 50% to 20% on 2026-08-23
+	// the test had to be edited to match the data it was meant to be checking
+	// -- which is not a check at all. The ratio now comes from the first pair
+	// and every later rung is held against it.
+	//
+	// WHAT THAT STILL CATCHES: a ladder that is not geometric. One rung
+	// generated wrong, a linear ladder, or a value that stopped compounding
+	// all fail here. What it deliberately does NOT claim is what the ratio
+	// should be. That belongs to one file --
+	// `BODY_SCALE_PER_STEP` in `sim/cataclysm_sim/enemy_stats.py` -- and
+	// `tools/tests/test_rarity_scaling_matches_the_model.py` holds the
+	// generated data against it, so a second copy of the figure here would be
+	// a second answer to a settled question.
+	const float Common = FRarity::BodyScaleForStep(Table, 0);
+	const float Ratio = FRarity::BodyScaleForStep(Table, 1) / Common;
+
+	// A RARER CREATURE IS BIGGER, WHICH IS THE WHOLE FEATURE. A ratio of one
+	// or less is a ladder that does not climb, and every per-rung check below
+	// would still pass on one.
+	TestTrue(FString::Printf(
+			TEXT("each rung is bigger than the one below it (ratio %.4f)"),
+			Ratio),
+		Ratio > 1.0f);
+
+	for (int32 Step = 2; Step <= 5; ++Step)
 	{
 		const float Below = FRarity::BodyScaleForStep(Table, Step - 1);
 		const float Here = FRarity::BodyScaleForStep(Table, Step);
 		TestTrue(FString::Printf(
-				TEXT("step %d is half as big again as step %d (%.4f, %.4f)"),
-				Step, Step - 1, Below, Here),
-			FMath::IsNearlyEqual(Here, Below * 1.5f, 0.0001f));
+				TEXT("step %d climbs by the same ratio as every other step "
+					 "(%.4f, %.4f, ratio %.4f)"),
+				Step, Below, Here, Ratio),
+			FMath::IsNearlyEqual(Here, Below * Ratio, 0.0001f));
 	}
 
-	// IT COMPOUNDS, so the top of the ladder is far above the bottom. 7.59 is
-	// 1.5 to the fifth. Stated here because the number is the point of the
-	// feature: a Cataclysm Boss has to be unmistakable before it moves.
-	TestTrue(TEXT("a Cataclysm Boss is more than seven times a Common"),
-		FRarity::BodyScaleForStep(Table, 5) > 7.0f);
+	// AND THE BIGGEST CREATURE IN THE GAME FITS THE NARROWEST CORRIDOR BESIDE
+	// A PLAYER. This is what issue #885 changed and it is why the compounding
+	// is safe now: at 50% a step a Cataclysm Boss was 729 cm and did not fit
+	// at all, and what kept a player out of that passage was its spawn weight
+	// of zero. At 20% it is 239 cm and fits with room to spare, so the size
+	// rule no longer leans on the weight.
+	//
+	// MEASURED RATHER THAN WRITTEN DOWN. The two bodies come from the class
+	// default objects' own capsules and the corridor from the floor
+	// generator's own constants, so resizing a creature, the player, or a
+	// cell moves this check with them.
+	//
+	// IT FAILS ON ITS OWN, WHICH THE PYTHON GUARD BESIDE IT CANNOT DO HERE.
+	// `test_anything_too_wide_for_a_corridor_never_spawns_in_one` only asks
+	// that anything too wide have a spawn weight of zero, and a Cataclysm
+	// Boss has one either way. Putting the step back to 50% passes there and
+	// fails here.
+	const auto UnscaledRadiusOf = [](const UClass* Class) -> float
+	{
+		const ACharacter* Default =
+			Class ? Class->GetDefaultObject<ACharacter>() : nullptr;
+		const UCapsuleComponent* Capsule =
+			Default ? Default->GetCapsuleComponent() : nullptr;
+		return Capsule ? Capsule->GetUnscaledCapsuleRadius() : 0.0f;
+	};
+
+	const float CreatureWide =
+		UnscaledRadiusOf(ACataclysmEnemyCharacter::StaticClass()) * 2.0f;
+	const float PlayerWide =
+		UnscaledRadiusOf(ACataclysmPlayerCharacter::StaticClass()) * 2.0f;
+	const float CorridorWide = FCataclysmFloorGenerator::CellSizeCm
+		* static_cast<float>(FCataclysmFloorGenerator::LeastConnectionWidth);
+
+	// A ZERO HERE WOULD MAKE THE CHECK BELOW PASS ON NOTHING, so the
+	// measurements are confirmed before they are used.
+	TestTrue(TEXT("a creature's body was measured"), CreatureWide > 0.0f);
+	TestTrue(TEXT("the player's body was measured"), PlayerWide > 0.0f);
+	TestTrue(TEXT("a corridor has a width"), CorridorWide > 0.0f);
+
+	const float BiggestWide =
+		CreatureWide * FRarity::BodyScaleForStep(Table, CataclysmBossStep);
+
+	TestTrue(FString::Printf(
+			TEXT("the biggest creature is %.0f cm and a player %.0f cm can "
+				 "still get past it in a %.0f cm corridor"),
+			BiggestWide, PlayerWide, CorridorWide),
+		BiggestWide + PlayerWide <= CorridorWide);
 
 	// A MISSING TABLE LEAVES A CREATURE ITS OWN SIZE rather than scaling it to
 	// nothing, which is what a zero default would do.

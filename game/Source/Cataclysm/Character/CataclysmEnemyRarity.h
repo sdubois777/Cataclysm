@@ -138,8 +138,9 @@ public:
 	 * How much bigger a creature at this rarity step is than a Common one.
 	 *
 	 * SO A PLAYER CAN TELL WHAT THEY ARE FACING BEFORE IT HITS THEM, which is
-	 * what issue #849 asked for. Half as big again each step, so a Cataclysm
-	 * Boss is 7.59 times a Common.
+	 * what issue #849 asked for. A fifth bigger each step, so a Cataclysm
+	 * Boss is 2.49 times a Common. It was half as big again a step until the
+	 * project owner played it and said that was far too much; issue #885.
 	 *
 	 * READ DIRECTLY AND NOT DIVIDED BY COMMON'S, unlike ScalingFromCommon
 	 * above. The three stats there are shares of an encounter's Power Score

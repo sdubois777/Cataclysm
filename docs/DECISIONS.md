@@ -20,6 +20,82 @@ applied or still pending.
 
 ---
 
+## 2026-08-23 — A rarer enemy is a fifth bigger each step, not half as big again
+
+**Affects:** `BODY_SCALE_PER_STEP` in `sim/cataclysm_sim/enemy_stats.py`, which
+`game/Data/EnemyRarities.csv` and its DataTable asset are generated from.
+**Applied there.** No section of `docs/Cataclysm_GDD_v2.md` states how big an
+enemy is at any rarity, so there is nothing to change in it and this log is the
+only record of the rule.
+
+### What was asked
+
+Issue #849 asked that a higher rarity enemy be physically bigger, so a player can
+tell what they are facing before it hits them. The project owner chose 50% a step
+and it was built and merged the same day, 2026-08-23, in #884.
+
+Playing it that evening, the owner said it was far too much and asked for 20%.
+Issue #885. That is what is recorded here. The shape is unchanged: one multiplier
+applied once per rarity step, compounding up the ladder.
+
+### What it does
+
+| Rarity | Step | At 50% a step | At 20% a step |
+| :-- | :-- | :-- | :-- |
+| Common | 0 | 1.00, 96 cm | 1.00, 96 cm |
+| Elite | 1 | 1.50, 144 cm | 1.20, 115 cm |
+| Legendary | 2 | 2.25, 216 cm | 1.44, 138 cm |
+| Herald | 3 | 3.38, 324 cm | 1.73, 166 cm |
+| Boss | 4 | 5.06, 486 cm | 2.07, 199 cm |
+| Cataclysm Boss | 5 | 7.59, 729 cm | 2.49, 239 cm |
+
+A Common creature's body is 96 cm across, twice the 48 cm capsule radius in
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`.
+
+### What the genre evidence is, and what it is not
+
+Issue #849 stated, before the first version was built, that Diablo IV and Last
+Epoch scale rare and champion enemies by roughly ten to thirty per cent a rung
+and keep dramatic size for actual bosses. 50% a step is above that range at every
+rung; 20% is inside it.
+
+**That range carries no source, and none was found when writing this entry.** It
+is recorded because it is the only genre evidence the project has on the
+question, not because it has been checked. Project law asks for named sources
+before proposing a formula; the shape here was not in question and the figure is
+a constant the project owner set from play, which that rule leaves to tuning
+rather than to argument. Anyone revisiting the number should treat the
+ten-to-thirty range as unverified.
+
+### What this changes about the corridor rule
+
+At 50% a step a Cataclysm Boss was 729 cm across and did not fit the narrowest
+corridor the floor generator will build — two 400 cm cells — once an 84 cm player
+was in it as well. What made that acceptable was the project owner's answer on
+2026-08-23 that a Cataclysm Boss fights in its own final arena at the end of its
+dungeon and never stands in a corridor, which is true in the data because its
+spawn weight is zero.
+
+**That is still the design and is not revisited here.** What changed is that
+creature size no longer depends on it: at 20% a step every rung including the top
+one fits, with 477 cm to spare.
+
+The guard that held size and spawn weight together,
+`test_anything_too_wide_for_a_corridor_never_spawns_in_one` in
+`tools/tests/test_rarity_scaling_matches_the_model.py`, therefore has slack in it
+now — at 20% a step, giving a Cataclysm Boss a spawn weight would pass it. A
+second check in `game/Source/Cataclysm/Tests/CataclysmEnemyRarityTests.cpp`
+covers the half it can no longer reach, that the biggest rung fits at all
+whatever its spawn weight, and fails at 50% where the Python one passes.
+
+### What nobody has confirmed
+
+**Whether 20% reads well on screen.** No test in this project can watch a
+creature draw: the automation command runs with `-nullrhi`, which is issue #559.
+50% was wrong and only playing found that out. The same is true of 20%.
+
+---
+
 ## 2026-08-23 — The inventory and gear screen: a 20 by 12 grid of 48-pixel cells
 
 **Affects:** a new document, `docs/Inventory_Screen_Design.md`.

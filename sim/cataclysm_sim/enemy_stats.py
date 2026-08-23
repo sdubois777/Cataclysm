@@ -254,9 +254,17 @@ ARMOR_PER_STEP = 1.35
 #: How much bigger a creature is than a Common one, so a player can tell what
 #: they are facing before it hits them. Issue #849.
 #:
-#: HALF AS BIG AGAIN EACH STEP, decided by the project owner on 2026-08-24.
+#: A FIFTH BIGGER EACH STEP, decided by the project owner on 2026-08-23.
 #: Unlike the three stats above this is not a share of anything: a Common is
 #: 1.0 and every rung multiplies that.
+#:
+#: IT WAS HALF AS BIG AGAIN A STEP UNTIL ISSUE #885. The project owner played
+#: that version and said it was far too much. 20% is also where the genre
+#: sits: issue #849 recorded, before the first version was built, that
+#: Diablo IV and Last Epoch scale rare and champion enemies by ten to thirty
+#: per cent a rung and keep dramatic size for actual bosses. 50% a step was
+#: above that range at every rung and 20% is inside it. That range is the
+#: issue's own claim and carries no source; see `docs/DECISIONS.md`.
 #:
 #: IT COMPOUNDS, AND THAT WAS CHECKED AGAINST THE DUNGEON RATHER THAN
 #: ASSUMED. A creature's body is 96 cm across, the narrowest corridor the
@@ -264,29 +272,31 @@ ARMOR_PER_STEP = 1.35
 #: wide. So the question is whether a player can get past one:
 #:
 #:     Common          1.00      96 cm    passable
-#:     Elite           1.50     144 cm    passable
-#:     Legendary       2.25     216 cm    passable
-#:     Herald          3.38     324 cm    passable
-#:     Boss            5.06     486 cm    passable, 314 cm to spare
-#:     Cataclysm Boss  7.59     729 cm    NOT passable in a 800 cm corridor
+#:     Elite           1.20     115 cm    passable
+#:     Legendary       1.44     138 cm    passable
+#:     Herald          1.73     166 cm    passable
+#:     Boss            2.07     199 cm    passable
+#:     Cataclysm Boss  2.49     239 cm    passable, 477 cm to spare
 #:
-#: A CATACLYSM BOSS NEVER STANDS IN A CORRIDOR, which is why the last row is
-#: allowed. The project owner's answer on 2026-08-24: they fight in their own
-#: final arenas at the end of their dungeons. `spawn_weight` gives that rung
-#: zero, so the random rarity roll never produces one and it is placed
-#: deliberately or not at all.
+#: EVERY RUNG FITS NOW, INCLUDING THE TOP ONE, and that is what changed here.
+#: At 1.50 a step a Cataclysm Boss was 729 cm and did not fit at all. What
+#: made that safe was its spawn weight of zero: it is placed in its own final
+#: arena at the end of its dungeon rather than rolled onto a floor, which is
+#: the project owner's answer of 2026-08-23. That is still the design and
+#: `spawn_weight` still gives that rung zero. The size rule no longer leans
+#: on it.
 #:
-#: SO THE RULE DEPENDS ON THAT WEIGHT STAYING ZERO, and
-#: `tools/tests/test_rarity_scaling_matches_the_model.py` holds the two
-#: together: any rung too wide for the narrowest corridor beside a player
-#: must have a spawn weight of zero. Giving a Cataclysm Boss a weight without
-#: reading this would put one in a passage nobody can get out of.
+#: THE GUARD THAT HELD THE TWO TOGETHER STAYS, and it is still worth having.
+#: `tools/tests/test_rarity_scaling_matches_the_model.py` says any rung too
+#: wide for the narrowest corridor beside a player must have a spawn weight
+#: of zero. Today it has room to spare rather than nothing to catch, so it
+#: fails if this constant is raised far enough to trap a player again.
 #:
 #: WRITTEN AS A GROWTH RATE HERE AND EXPANDED IN THE CSV, matching the three
 #: above, so reading a creature's size at run time is a table lookup rather
 #: than an exponent.
 BODY_SCALE_AT_COMMON = 1.0
-BODY_SCALE_PER_STEP = 1.50
+BODY_SCALE_PER_STEP = 1.20
 
 
 # --------------------------------------------------------------------------
