@@ -249,3 +249,49 @@ def test_the_two_formulas_are_stated_in_the_document(forge_section):
     assert "CR / 100" in forge_section, (
         "The craft time formula is not stated in section VII."
     )
+
+
+def test_every_material_sits_at_the_tier_the_sheet_gives_it(split, forge_section):
+    """The rarity band each material drops in, not only that it is listed.
+
+    WHY THIS IS SEPARATE FROM THE NAME CHECK ABOVE. That one asks whether the
+    document lists every material, and it answered yes for a year while three of
+    them sat in the wrong band: the document put Purified Essence and Primal
+    Spark below their real rarity and Jeweler's Setting Agent above it. Issue
+    #864.
+
+    A BAND IS NOT DECORATION. A material drop picks evenly among the materials
+    sharing a band, so the band is how often a material turns up. The document
+    called Jeweler's Setting Agent Rare where the sheet makes it Common, which is
+    a factor of sixteen in drop weight.
+
+    The sheet is authoritative, as everywhere else in this project. When this
+    fails, the fix is to correct the design document.
+    """
+    materials, _ = split
+
+    wrong = []
+    for row in materials:
+        name = str(row[0] or "").strip()
+        on_sheet = re.search(r"Tier\s+(\d+)\s*\(([^)]+)\)", str(row[1] or ""))
+        assert on_sheet, (
+            f"the Crafting sheet's Tier & Source cell for {name!r} does not begin "
+            f"'Tier N (Name)', so this test cannot read a band from it: {row[1]!r}")
+
+        in_document = re.search(
+            r"^\|\s*" + re.escape(name) + r"\s*\|\s*([^|]+?)\s*\|",
+            forge_section, re.MULTILINE)
+        assert in_document, (
+            f"{name!r} is on the Crafting sheet but has no row in the material "
+            "table in section VII of the design document.")
+
+        want = f"{int(on_sheet.group(1))} ({on_sheet.group(2).strip()})"
+        got = in_document.group(1)
+        if got != want:
+            wrong.append(f"{name}: document says {got!r}, sheet says {want!r}")
+
+    assert not wrong, (
+        "the material table in section VII of docs/Cataclysm_GDD_v2.md puts these "
+        "materials in a different rarity band from the Crafting sheet of "
+        f"docs/All_Things_Cataclysm.xlsx: {'; '.join(wrong)}"
+    )

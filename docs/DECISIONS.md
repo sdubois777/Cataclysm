@@ -2146,6 +2146,13 @@ count on having. That figure is what the weight was chosen against, and
 count per tier against the Crafting sheet rather than against a restatement of
 it.
 
+**The count moved on 2026-08-23, in issue #852.** The ten upgrade stones
+replaced one placeholder row and were spread two to a rarity band, so the top
+band holds five materials rather than three and a named one is one drop in
+1,705 rather than 1,023. The reasoning above is unchanged and the tier weight
+was not adjusted; only the count of materials sharing the band moved. Issue
+#865.
+
 **Magic find raising material tier departs from Path of Exile**, where item
 rarity does not affect currency at all. It applies here because the enemy rarity
 contribution exists so that a harder enemy is more rewarding, and materials are

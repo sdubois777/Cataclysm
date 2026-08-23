@@ -22,12 +22,14 @@ would describe a different game from the one being played.
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
+DESIGN_DOCUMENT = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 SHEET = "Gear Rarity"
 
 
@@ -171,3 +173,54 @@ def test_the_gates_match_the_design_document(sheet) -> None:
         "the Gear Level Gate column disagrees with the rarity table in section "
         f"VI of docs/Cataclysm_GDD_v2.md: {'; '.join(wrong)}"
     )
+
+
+#: Spelled-out counts the design document uses in the sentence below.
+NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
+
+
+def test_the_named_material_drop_rate_in_the_document_matches_the_model(model) -> None:
+    """Section VI states how often a named top-tier material drops, and the
+    model computes it. They have to agree.
+
+    WHY THIS EXISTS. On 2026-08-23 issue #852 added ten upgrade stones and put
+    two of them in the top rarity band, taking it from three materials to five.
+    sim/cataclysm_sim/loot.py, sim/tests/test_loot.py and
+    game/Source/Cataclysm/Tests/CataclysmDropRollTests.cpp were each updated to
+    one drop in 1,705. The design document was missed and nothing noticed,
+    because no test read that sentence. Issue #865.
+
+    THE FIGURE IS PARSED OUT OF THE DOCUMENT rather than restated here. A test
+    that writes 1,705 on both sides passes no matter what the document says,
+    which is the hole this fills rather than repeats.
+    """
+    if not DESIGN_DOCUMENT.is_file():
+        pytest.skip(f"{DESIGN_DOCUMENT.name} is not present")
+    whole = DESIGN_DOCUMENT.read_text(encoding="utf-8")
+    start = whole.index("# **VI. Itemization")
+    section = whole[start:whole.index("# **VII.", start)]
+
+    stated = re.search(
+        r"since (\w+) materials share that tier, a named one such as "
+        r"Purified Essence is one in ([\d,]+)", section)
+    assert stated, (
+        "section VI of docs/Cataclysm_GDD_v2.md no longer contains the sentence "
+        "stating how often a named top-tier material drops, which begins 'since N "
+        "materials share that tier'. If the wording changed deliberately, update "
+        "this pattern rather than deleting the test.")
+
+    document_count = NUMBER_WORDS[stated.group(1)]
+    document_rate = int(stated.group(2).replace(",", ""))
+
+    model_count = model.MATERIALS_IN_TIER["Extremely Rare"]
+    model_rate = 1 / model.material_tier_distribution(0.0)["Extremely Rare"] * model_count
+
+    assert document_count == model_count, (
+        f"the design document says {document_count} materials share the top rarity "
+        f"band; sim/cataclysm_sim/loot.py says {model_count}")
+    assert abs(document_rate - model_rate) < 6, (
+        f"the design document says a named top-tier material is one drop in "
+        f"{document_rate:,}; the model computes one in {model_rate:,.0f}")
