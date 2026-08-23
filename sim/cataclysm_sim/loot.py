@@ -877,18 +877,30 @@ def roll_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
 #: and a shared roll would make that node also reduce the number of gear items
 #: that drop.
 #:
-#: TWICE THE GEAR RATE FOR THE SAME ENEMY. A craft consumes a material and a
-#: full loadout takes several hundred crafts -- eighteen pieces of promotion,
-#: upgrade and socketing is well over three hundred -- while a piece of gear is
-#: kept rather than spent. The two columns are stored separately rather than one
-#: being computed from the other, so either can be tuned without the other.
+#: THE SAME RATE AS GEAR, HALVED FROM TWICE IT ON 2026-08-23. The project owner
+#: played and reported far too many materials dropping and cluttering the
+#: screen, and chose to halve the column. Issue #850.
+#:
+#: WHAT THE DOUBLING WAS FOR, because halving it gave that reason up rather than
+#: disproving it: a craft CONSUMES a material and a full loadout takes several
+#: hundred crafts -- eighteen pieces of promotion, upgrade and socketing is well
+#: over three hundred -- while a piece of gear is kept rather than spent. So the
+#: economy now supplies half what that argument asked for, and if a run turns out
+#: not to yield enough to craft with, this is the number that moved.
+#:
+#: THE CLUTTER AND THE ECONOMY ARE TWO DIFFERENT PROBLEMS and this lever moves
+#: both. Issue #851 is the other one: collecting nearby materials in one pickup
+#: reduces the nuisance without touching the supply.
+#:
+#: The two columns are stored separately rather than one being computed from the
+#: other, so either can be tuned without the other. They happen to be equal now.
 ENEMY_MATERIAL_DROPS: dict[str, float] = {
-    "Common":          0.32,
-    "Elite":           1.0,
-    "Legendary":       2.0,
-    "Herald":          4.0,
-    "Boss":           10.0,
-    "Cataclysm Boss": 24.0,
+    "Common":          0.16,
+    "Elite":           0.5,
+    "Legendary":       1.0,
+    "Herald":          2.0,
+    "Boss":            5.0,
+    "Cataclysm Boss": 12.0,
 }
 
 #: The five crafting material tiers, weakest first, as the Crafting sheet names
