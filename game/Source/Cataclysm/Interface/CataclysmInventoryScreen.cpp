@@ -168,10 +168,22 @@ int32 UCataclysmInventoryScreen::BorderThicknessFor(
 										   Slot.Material));
 }
 
-FString UCataclysmInventoryScreen::HeaderTextFor(int32 Used, int32 Capacity)
+FString UCataclysmInventoryScreen::HeaderTextFor(int32 Used, int32 Capacity,
+												 const FString& HeldName)
 {
 	// BOTH FIGURES, NOT A FRACTION OR A BAR. The number that matters when the
 	// bag fills is how many slots are left, and the design makes a full bag a
 	// choice about what to leave on the floor rather than a state to avoid.
-	return FString::Printf(TEXT("Carried    %d / %d"), Used, Capacity);
+	const FString Counted =
+		FString::Printf(TEXT("Carried    %d / %d"), Used, Capacity);
+
+	// NOTHING SAID WHEN NOTHING IS HELD. A line reading "holding nothing" is
+	// there every time the screen is open and tells the player something they
+	// already know.
+	if (HeldName.IsEmpty())
+	{
+		return Counted;
+	}
+
+	return FString::Printf(TEXT("%s        holding %s"), *Counted, *HeldName);
 }

@@ -192,6 +192,25 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 
 void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 {
+	// A MOUSE PRESS THAT LANDS ON AN OPEN SCREEN IS A SCREEN CLICK AND NOT A
+	// SKILL. The left button has worked that way since issue #731. The right
+	// button did not, so right clicking an item both failed to wear it and
+	// fired the Heavy ability at whatever floor lay behind the panel.
+	// Issue #853.
+	//
+	// ASKED BY KEY RATHER THAN BY SLOT, so it stays true if a mapping context
+	// moves the Heavy ability to another button, and so a keyboard slot is
+	// untouched: pressing Q with the bag open still casts.
+	//
+	// BEFORE THE STUN CHECK, matching the left button, which diverts in
+	// Input_MoveToCursorStarted before anything asks whether the character can
+	// act. Rearranging a bag is not an action the character takes.
+	if (KeyForAbilitySlot(SlotTag).IsMouseButton() && CursorIsOverInterface())
+	{
+		RightPressOnTheInventoryScreen();
+		return;
+	}
+
 	// A stunned character cannot act at all, and that includes skills. The
 	// press is dropped rather than queued, so nothing fires when it wears off.
 	if (IsPawnStunned())
@@ -253,6 +272,14 @@ void ACataclysmPlayerController::Input_ToggleInventory()
 
 	if (InventoryScreen->IsInViewport())
 	{
+		// NOTHING STAYS ON THE CURSOR ONCE THE SCREEN IS GONE. A held item
+		// never left its slot, so this loses nothing; it stops the next
+		// opening from beginning part way through a move. Issue #853.
+		if (ACataclysmPlayerCharacter* Wearer =
+				Cast<ACataclysmPlayerCharacter>(GetPawn()))
+		{
+			UCataclysmWearing::ReleaseHeld(Wearer->GetInventory());
+		}
 		InventoryScreen->RemoveFromParent();
 		return;
 	}
@@ -330,62 +357,112 @@ bool ACataclysmPlayerController::CursorIsOverInterface() const
 	return InventoryScreen->CursorIsOverPanel(FVector2D(X, Y));
 }
 
-void ACataclysmPlayerController::PressOnTheInventoryScreen()
+bool ACataclysmPlayerController::InventoryPressTarget(
+	FVector2D& OutPoint, ACataclysmPlayerCharacter*& OutWearer) const
 {
 	if (!InventoryScreen)
 	{
-		return;
+		return false;
 	}
 
 	float X = 0.0f;
 	float Y = 0.0f;
 	if (!GetMousePosition(X, Y))
 	{
-		return;
+		return false;
 	}
-	const FVector2D Point(X, Y);
 
 	ACataclysmPlayerCharacter* Wearer =
 		Cast<ACataclysmPlayerCharacter>(GetPawn());
 	if (!Wearer)
 	{
+		return false;
+	}
+
+	OutPoint = FVector2D(X, Y);
+	OutWearer = Wearer;
+	return true;
+}
+
+void ACataclysmPlayerController::ReportInventoryPress(
+	ECataclysmWearResult Result) const
+{
+	switch (Result)
+	{
+	case ECataclysmWearResult::Worn:
+	case ECataclysmWearResult::Swapped:
+	case ECataclysmWearResult::TakenOff:
+	case ECataclysmWearResult::PickedUp:
+	case ECataclysmWearResult::PutDown:
+	case ECataclysmWearResult::Exchanged:
+		return;
+	default:
+		UE_LOG(LogCataclysm, Log, TEXT("%s"),
+			   *UCataclysmWearing::Explain(Result));
+	}
+}
+
+void ACataclysmPlayerController::PressOnTheInventoryScreen()
+{
+	FVector2D Point = FVector2D::ZeroVector;
+	ACataclysmPlayerCharacter* Wearer = nullptr;
+	if (!InventoryPressTarget(Point, Wearer))
+	{
 		return;
 	}
+
+	UCataclysmInventoryComponent* Bag = Wearer->GetInventory();
 
 	// THE CARRIED GRID FIRST. The two panels cannot overlap, so the order only
 	// decides which is asked first and not which answers.
 	const int32 Carried = InventoryScreen->CarriedSlotUnderCursor(Point);
 	if (Carried != INDEX_NONE)
 	{
-		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-		const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
-			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went);
-
-		// LOGGED RATHER THAN SHOWN, and that is a gap rather than a decision.
-		// A press that changes nothing -- a full bag refusing a two-handed
-		// weapon, an item that fits no slot -- looks exactly like a press that
-		// missed. There is nowhere on the screen to say so yet; issue #831
-		// records it.
-		if (Result != ECataclysmWearResult::Worn
-			&& Result != ECataclysmWearResult::Swapped)
-		{
-			UE_LOG(LogCataclysm, Log, TEXT("%s"),
-				   *UCataclysmWearing::Explain(Result));
-		}
+		// ONE BUTTON, TWO HALVES OF ONE GESTURE. Holding nothing, a press picks
+		// up; holding something, the same press puts it down, exchanging with
+		// whatever is in the cell. Pressing the cell it came from puts it back.
+		ReportInventoryPress(Bag && Bag->IsHolding()
+			? UCataclysmWearing::PutDownCarried(Bag, Carried)
+			: UCataclysmWearing::PickUpCarried(Bag, Carried));
 		return;
 	}
 
 	const ECataclysmGearSlot Worn = InventoryScreen->GearSlotUnderCursor(Point);
 	if (Worn != ECataclysmGearSlot::Count)
 	{
-		const ECataclysmWearResult Result = UCataclysmWearing::TakeOffInto(
-			Wearer->GetInventory(), Wearer->GetEquipment(), Worn);
+		// A WORN PIECE COMES OFF ONTO THE CURSOR. Putting one back ON with a
+		// left press is not defined by docs/Inventory_Screen_Design.md, whose
+		// table gives left only "pick it up off the body the same way", so a
+		// press on a gear slot while holding something is refused rather than
+		// given behaviour nobody chose.
+		ReportInventoryPress(UCataclysmWearing::PickUpWorn(
+			Bag, Wearer->GetEquipment(), Worn));
+	}
+}
 
-		if (Result != ECataclysmWearResult::TakenOff)
-		{
-			UE_LOG(LogCataclysm, Log, TEXT("%s"),
-				   *UCataclysmWearing::Explain(Result));
-		}
+void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
+{
+	FVector2D Point = FVector2D::ZeroVector;
+	ACataclysmPlayerCharacter* Wearer = nullptr;
+	if (!InventoryPressTarget(Point, Wearer))
+	{
+		return;
+	}
+
+	const int32 Carried = InventoryScreen->CarriedSlotUnderCursor(Point);
+	if (Carried != INDEX_NONE)
+	{
+		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+		ReportInventoryPress(UCataclysmWearing::WearFromCarried(
+			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went));
+		return;
+	}
+
+	const ECataclysmGearSlot Worn = InventoryScreen->GearSlotUnderCursor(Point);
+	if (Worn != ECataclysmGearSlot::Count)
+	{
+		ReportInventoryPress(UCataclysmWearing::TakeOffInto(
+			Wearer->GetInventory(), Wearer->GetEquipment(), Worn));
 	}
 }
 
@@ -400,8 +477,8 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 	if (bPressBeganOnInterface)
 	{
 		// IT IS NOT A MOVE ORDER, AND SINCE ISSUE #831 IT IS NOT NOTHING
-		// EITHER. A press on a carried cell wears what is in it and a press
-		// on a worn slot takes that piece off.
+		// EITHER. Since issue #853 a left press picks an item up onto the
+		// cursor and puts it down again; wearing moved to the right button.
 		PressOnTheInventoryScreen();
 		return;
 	}

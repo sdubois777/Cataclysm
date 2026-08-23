@@ -8,11 +8,19 @@
 #include "CataclysmPlayerController.generated.h"
 
 class ACataclysmDroppedItem;
+class ACataclysmPlayerCharacter;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
 class UInputMappingContext;
 struct FInputActionValue;
+
+// THE UNDERLYING TYPE IS PART OF THE DECLARATION for a scoped enum, and it
+// has to match CataclysmWearing.h exactly or the two are different types.
+// Declared rather than included, because the header is only needed for one
+// parameter and including it here would pull the item system into every
+// translation unit that knows about the controller.
+enum class ECataclysmWearResult : uint8;
 
 /**
  * The player's controller: it owns input, the cursor, and the movement order.
@@ -67,10 +75,15 @@ public:
 	bool CursorIsOverInterface() const;
 
 	/**
-	 * Acts on a press that landed on the open inventory screen.
+	 * Acts on a LEFT press that landed on the open inventory screen.
 	 *
-	 * Clicking a carried cell wears what is in it; clicking a worn gear
-	 * slot takes that piece off into the bag. Issue #831.
+	 * Left picks an item up onto the cursor and puts it down again, so the
+	 * grid can be rearranged. Right wears and takes off, which is what left
+	 * used to do. Issues #831 and #853.
+	 *
+	 * WHY THE TWO BUTTONS ARE SPLIT THIS WAY. Path of Exile, Last Epoch and
+	 * Diablo all do it, so it is what a player expects without being told, and
+	 * `docs/Inventory_Screen_Design.md` settles it for this game.
 	 *
 	 * HERE RATHER THAN IN THE WIDGET, and that is the arrangement the
 	 * screen already had. Nothing in the widget's tree consumes a mouse
@@ -85,6 +98,35 @@ public:
 	 * finds the slot and calls it.
 	 */
 	void PressOnTheInventoryScreen();
+
+	/**
+	 * Acts on a RIGHT press that landed on the open inventory screen.
+	 *
+	 * Wears what is in a carried cell, or takes a worn piece off into the
+	 * bag. This is what a left press did before issue #853.
+	 */
+	void RightPressOnTheInventoryScreen();
+
+	/**
+	 * The cursor's place on screen and the character it is acting on, or
+	 * false when there is no open screen, no cursor or no pawn.
+	 *
+	 * SHARED BY BOTH BUTTONS RATHER THAN COPIED. A second copy of a
+	 * file-local helper in this module is how a name collided with a
+	 * neighbouring translation unit and reached `development` despite a full
+	 * build, because Unreal's unity build leaves modified files out.
+	 */
+	bool InventoryPressTarget(FVector2D& OutPoint,
+							  ACataclysmPlayerCharacter*& OutWearer) const;
+
+	/**
+	 * Says what a press did, when it did not do what was asked.
+	 *
+	 * LOGGED RATHER THAN SHOWN, and that is a gap rather than a decision. A
+	 * press that changes nothing looks exactly like a press that missed.
+	 * There is nowhere on the screen to say so yet; issue #831 records it.
+	 */
+	void ReportInventoryPress(ECataclysmWearResult Result) const;
 
 	/**
 	 * Which key fires the ability in a slot right now.

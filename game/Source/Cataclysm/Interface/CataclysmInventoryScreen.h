@@ -248,8 +248,25 @@ public:
 	static int32 BorderThicknessFor(const FCataclysmCarriedSlot& Slot,
 									const UDataTable* CraftingMaterialTable);
 
-	/** The line above the grid: how many of the slots are used. */
-	static FString HeaderTextFor(int32 Used, int32 Capacity);
+	/**
+	 * The line above the grid: how many of the slots are used, and what is
+	 * on the cursor.
+	 *
+	 * WHY WHAT IS HELD IS SAID HERE. A held item does not leave its slot, so
+	 * the grid looks identical whether something is held or not and a player
+	 * who pressed once could not tell. Issue #853.
+	 *
+	 * THIS IS A STAND-IN FOR DRAWING IT UNDER THE CURSOR, which is what
+	 * docs/Inventory_Screen_Design.md describes and what the genre does. That
+	 * needs a widget following the mouse and cannot be checked by any test
+	 * here, because the automation command passes -nullrhi.
+	 *
+	 * @param HeldName  what is on the cursor, from LabelFor. Empty when
+	 *                  nothing is held, which says nothing rather than saying
+	 *                  "holding nothing"
+	 */
+	static FString HeaderTextFor(int32 Used, int32 Capacity,
+								 const FString& HeldName = FString());
 
 	//~ Colours. Six-digit hex, the same form UCataclysmCombatOverlay uses.
 
