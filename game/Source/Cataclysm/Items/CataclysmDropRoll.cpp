@@ -228,13 +228,28 @@ const FCataclysmGearRarityRow* UCataclysmDropRoll::RarityRow(
 // Which rarity a drop rolls
 // ---------------------------------------------------------------------------
 
-ECataclysmRarity UCataclysmDropRoll::BestRarityOnADrop(int32 DifficultyTier)
+ECataclysmRarity UCataclysmDropRoll::HighestUnpenalisedRarity(
+	int32 DifficultyTier)
 {
 	const int32 Tier = FMath::Clamp(DifficultyTier, 1, DifficultyTiers);
 
 	// The tier is one-based and the ladder is zero-based, so tier 1 alone
-	// reaches Everyday and Quality: index (1 - 1) + 1.
+	// reaches Everyday and Quality unpenalised: index (1 - 1) + 1.
 	return RarityAt(Tier - 1 + RaritiesAboveDifficulty);
+}
+
+float UCataclysmDropRoll::PenaltyAboveTheTier(ECataclysmRarity Rarity,
+											  int32 DifficultyTier)
+{
+	const int32 Above = LadderIndex(Rarity)
+		- LadderIndex(HighestUnpenalisedRarity(DifficultyTier));
+	if (Above <= 0)
+	{
+		return 1.0f;
+	}
+
+	return FMath::Pow(RarityPenaltyAboveTheTier,
+					  static_cast<float>(Above));
 }
 
 int32 UCataclysmDropRoll::GearLevelGateFor(const UDataTable* GearRarityTable,
@@ -325,7 +340,11 @@ float UCataclysmDropRoll::DropWeightAt(const UDataTable* GearRarityTable,
 
 	const int32 Rung = LadderIndex(Rarity);
 	const float Change = OrdinaryFallAt(DifficultyTier) / OrdinaryFallAtTierOne;
-	const float Lucky = MagicFindMultiplier(Rarity, MagicFind);
+	// MAGIC FIND MULTIPLIES AND THE ABOVE-THE-TIER PENALTY DIVIDES. Neither
+	// touches OrdinaryWeightTotal below, which is the shaped weight only, so
+	// the enchanted rungs cannot receive either of them twice.
+	const float Lucky = MagicFindMultiplier(Rarity, MagicFind)
+		/ PenaltyAboveTheTier(Rarity, DifficultyTier);
 
 	if (Rung < OrdinaryRarities)
 	{
@@ -668,9 +687,9 @@ void UCataclysmDropRoll::RarityDistribution(const UDataTable* GearRarityTable,
 {
 	OutShares.Init(0.0f, RarityCount);
 
-	const int32 Best = LadderIndex(BestRarityOnADrop(DifficultyTier));
+	// THE WHOLE LADDER, since the cap became a penalty on 2026-08-23.
 	float Left = 1.0f;
-	for (int32 Rung = Best; Rung >= 1; --Rung)
+	for (int32 Rung = RarityCount - 1; Rung >= 1; --Rung)
 	{
 		const float Chance = RarityStepChance(GearRarityTable, RarityAt(Rung),
 											  DifficultyTier, MagicFind);
@@ -688,8 +707,8 @@ ECataclysmRarity UCataclysmDropRoll::RollRarity(const UDataTable* GearRarityTabl
 												float MagicFind,
 												FRandomStream& Stream)
 {
-	const int32 Best = LadderIndex(BestRarityOnADrop(DifficultyTier));
-	for (int32 Rung = Best; Rung >= 1; --Rung)
+	// THE WHOLE LADDER, since the cap became a penalty on 2026-08-23.
+	for (int32 Rung = RarityCount - 1; Rung >= 1; --Rung)
 	{
 		if (Stream.FRand() < RarityStepChance(GearRarityTable, RarityAt(Rung),
 											  DifficultyTier, MagicFind))

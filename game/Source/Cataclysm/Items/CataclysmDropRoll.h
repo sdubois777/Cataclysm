@@ -72,13 +72,39 @@ public:
 	static constexpr int32 DifficultyTiers = 8;
 
 	/**
-	 * How far above the difficulty tier's own rarity a drop may roll.
+	 * How far above the difficulty tier's own rarity a drop rolls unpenalised.
 	 *
-	 * The same one-above the affix tier gate uses. With the cap sitting exactly
-	 * on the tier, the best thing a dungeon can produce is something the player
-	 * can already make, so the only reason to run one is quantity.
+	 * The same one-above the affix tier gate uses. With the ceiling sitting
+	 * exactly on the tier, the best thing a dungeon can produce at full weight
+	 * is something the player can already make, so the only reason to run one
+	 * is quantity.
+	 *
+	 * IT USED TO BE A HARD CAP AND IS NOW WHERE A PENALTY STARTS. See
+	 * RarityPenaltyAboveTheTier below.
 	 */
 	static constexpr int32 RaritiesAboveDifficulty = 1;
+
+	/**
+	 * What a rarity's weight is divided by for each rung it sits above the
+	 * tier's own reach.
+	 *
+	 * EVERY GEAR RARITY DROPS AT EVERY DIFFICULTY TIER. RaritiesAboveDifficulty
+	 * used to be a hard cap: nothing above it could drop at all, which left
+	 * difficulty tier 1 producing only Everyday and Quality items. The project
+	 * owner played that on 2026-08-23 and said it was too strict. Nothing is
+	 * forbidden now; a Cataclysmic at tier 1 is divided by 2 six times over, so
+	 * it arrives about one drop in 1.5 million rather than never.
+	 *
+	 * DIABLO II'S SHAPE. It has no hard gate on item quality either: a shallow
+	 * monster can produce a high-level unique at a much reduced chance.
+	 *
+	 * IT IS ZERO STEPS AT TIERS 7 AND 8, so both are a division by one and every
+	 * figure the 2026-08-18 decision set survives untouched. Mirrors
+	 * `RARITY_PENALTY_ABOVE_THE_TIER` in `sim/cataclysm_sim/loot.py`, and
+	 * `tools/tests/test_gear_rarity_gate_is_stated_everywhere.py` fails when the
+	 * two copies disagree.
+	 */
+	static constexpr float RarityPenaltyAboveTheTier = 2.0f;
 
 	/**
 	 * How many rarities sit below the enchantment boundary. Everyday to
@@ -213,14 +239,33 @@ public:
 	// -----------------------------------------------------------------------
 
 	/**
-	 * The highest rarity a drop may roll at a difficulty tier.
+	 * The highest rarity a drop rolls at full weight at a difficulty tier.
+	 *
+	 * NOT A CAP, AND IT USED TO BE ONE. This was BestRarityOnADrop and named
+	 * the highest rarity a drop could roll at all; anything above it was
+	 * impossible. The project owner played that on 2026-08-23 and said it was
+	 * too strict, so every rarity now drops at every difficulty tier and this
+	 * is where RarityPenaltyAboveTheTier starts instead.
 	 *
 	 * Gear rarity equals the difficulty tier, plus the one-above that makes a
-	 * drop worth reading, capped at Cataclysmic. So tiers 7 and 8 both reach
-	 * Cataclysmic, the same way affix tiers 6, 7 and 8 all reach T7.
+	 * drop worth reading, stopping at Cataclysmic because nothing is above it.
+	 * So tiers 7 and 8 are both unpenalised the whole way up, the same way
+	 * affix tiers 6, 7 and 8 all reach T7.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
-	static ECataclysmRarity BestRarityOnADrop(int32 DifficultyTier);
+	static ECataclysmRarity HighestUnpenalisedRarity(int32 DifficultyTier);
+
+	/**
+	 * What a rarity's weight is divided by at this difficulty tier.
+	 *
+	 * One at or below the tier's own reach, and RarityPenaltyAboveTheTier once
+	 * per rung above it. Never zero and never infinite, so nothing is ever
+	 * forbidden -- which is the whole of the change. Mirrors
+	 * `penalty_above_the_tier` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float PenaltyAboveTheTier(ECataclysmRarity Rarity,
+									 int32 DifficultyTier);
 
 	/** The upgrade level a piece must reach before it can be this rarity. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")

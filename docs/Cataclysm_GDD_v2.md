@@ -2463,7 +2463,7 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 
 
-| Difficulty tier | Highest affix tier a drop can roll | Highest gear rarity a drop can roll | What else that tier brings |
+| Difficulty tier | Highest affix tier a drop can roll | Highest gear rarity a drop rolls unpenalised | What else that tier brings |
 | :-: | :-: | :-: | :-- |
 | 1 | T2 | Quality | +3 upgrade level |
 | 2 | T3 | Superb | +4 |
@@ -2476,9 +2476,15 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 *Upgrade level is the reference progression stated in section IV.*
 
-**Gear rarity is one above the tier, and it used to say "equal".** Issue #870. The rule here is the same one-above the affix tier column uses, and for the same reason: with the cap sitting exactly on the tier, the best thing a dungeon can produce is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 share a ceiling, exactly as affix tiers 6, 7 and 8 all reach T7.
+**The gear rarity column is not a cap. Every gear rarity can drop at every difficulty tier.** It says how far up the ladder a drop rolls at full weight. Above that, a rarity is halved once for each further rung, so a Cataclysmic at tier 1 is divided by two six times over and arrives about one drop in 1.5 million rather than never. Going from tier 1 to tier 8 is worth fifty-nine times at the top of the ladder.
 
-**A cap is not a distribution.** This column says what a drop *may* roll, not what it is likely to be. What a drop is likely to be also moves with the difficulty tier, since issue #886: the four ordinary rarities flatten toward Masterful as a player goes deeper, while Legendary and above keep the same share at every tier. A tier 8 player mostly finds Masterful and Superb; a tier 1 player mostly finds Everyday.
+**It was a hard cap until the project owner played it.** Nothing above the column could drop at all, which left difficulty tier 1 producing only Everyday and Quality items. Issues #870 and #886. Diablo II has no hard gate on item quality either: a shallow monster can produce a high-level unique at a much reduced chance rather than never.
+
+**Why the unpenalised reach is one above the tier rather than level with it.** The same reason the affix tier column gives: with it sitting exactly on the tier, the best thing a dungeon produces at full weight is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 are unpenalised the whole way up, exactly as affix tiers 6, 7 and 8 all reach T7.
+
+**What a drop *may* be is not what it is *likely* to be.** The likely answer also moves with the difficulty tier: the four ordinary rarities flatten toward Masterful as a player goes deeper, while Legendary and above keep the same share at every tier. A tier 8 player mostly finds Masterful and Superb; a tier 1 player mostly finds Everyday.
+
+**The affix tier column IS still a hard cap.** Only gear rarity changed.
 
 
 

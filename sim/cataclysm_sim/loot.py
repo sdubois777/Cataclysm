@@ -27,46 +27,36 @@ It does not conflict with rarity being computed rather than stored. An ITEM stil
 carries no rarity field; the generator uses the label as a step and stores only
 the contents, and `affixes.rarity_of` recovers the same label from them.
 
-THE CAP IS ONE RARITY ABOVE THE DIFFICULTY TIER, WHICH IS NOT A NEW MECHANISM. `docs/Cataclysm_GDD_v2.md` says the difficulty tier is the design's
-own gate three times over -- gear and gem rarity equal it, the best upgrade stone
-that can drop is capped by it, and a weapon rolls damage types up to it -- and
-`affixes.max_affix_tier_on_a_drop` is the fourth, gating affix tiers at tier plus
-one. This is the fifth use of the same shape.
+EVERY RARITY DROPS AT EVERY DIFFICULTY TIER, AND THE TIER DECIDES HOW LIKELY
+RATHER THAN WHETHER. `docs/Cataclysm_GDD_v2.md` uses the difficulty tier as a
+gate three times over -- gear rarity, the best upgrade stone that can drop, and
+how many damage types a weapon rolls -- and `affixes.max_affix_tier_on_a_drop`
+gates affix tiers at tier plus one. Gear rarity used to be a fourth hard gate of
+the same shape. It is not any more: the project owner played it on 2026-08-23 and
+found difficulty tier 1 could drop only Everyday and Quality items.
 
-The cap RAISES the ceiling rather than lifting the floor, which is the point of
-it, quoted from the affix version: every tier at or below the cap "stays in the
-pool, so a deep drop is better on average without being predictable, which is
-what makes a drop worth reading". Path of Exile gates modifier tiers on item
-level and Last Epoch on area level, and both expand which tiers are available
-rather than removing the low ones.
+WHAT REPLACED IT. `highest_unpenalised_rarity` is still the tier plus one, and a
+rarity above it is divided by `RARITY_PENALTY_ABOVE_THE_TIER` once per rung.
+Nothing is forbidden and depth still matters: at tier 1 a Cataclysmic arrives
+about one drop in 1.5 million and at tier 8 one in 25,531. Diablo II has the same
+shape, with no hard gate on item quality and a much reduced chance instead. The
+affix tier gate IS still hard; only gear rarity changed.
 
-How the rarities inside that cap are weighted against each other is a separate
-question, and it is the one tunable described below. They are all equal today,
-which is what makes the distribution flat.
+THREE THINGS DECIDE A DROP WEIGHT, AND `drop_weight` APPLIES THEM IN ORDER: the
+per-tier shape, magic find, and that penalty. Each is a multiplication by one at
+difficulty tier 8 with no magic find, so the Gear Rarity sheet of
+`docs/All_Things_Cataclysm.xlsx` describes tier 8 exactly and every deeper figure
+is worked out from it. `RARITY_DROP_WEIGHT` below mirrors that sheet the way
+every other sheet is mirrored into this package.
 
-THERE IS EXACTLY ONE TUNABLE HERE AND IT LIVES IN THE WORKBOOK. The Gear Rarity
-sheet of `docs/All_Things_Cataclysm.xlsx` gives each rarity a drop weight, and
-`RARITY_DROP_WEIGHT` below mirrors it the way every other sheet is mirrored into
-this package. All eight weights are 1 today, which is what makes the distribution
-flat.
-
-**FLAT IS GENEROUS AND IS THE FIRST NUMBER TO REVISIT.** At difficulty tier 8 with
-no magic find at all it makes one drop in eight Cataclysmic, which is far above
-what the genre does with its top rarities. It is shipped anyway, for two reasons.
-It is the shape the design already applies to affix tiers rather than a curve
-invented here, and the lever that really controls how much good gear a player sees
-is how many items drop, which is not built yet -- so tuning the split between
-rarities before the quantity exists would be tuning half a system. Changing it is
-a column in the workbook and no code change. Issue #81 and the project owner's
-standing rule both say balance numbers wait until the systems around them can be
-played.
-
-WHAT IS DELIBERATELY NOT BUILT. Diminishing returns on magic find. Diablo 2 has
-them, per rarity and weaker the rarer the tier -- uniques (MF*250)/(MF+250), sets
-(MF*500)/(MF+500), rares (MF*600)/(MF+600), with ordinary magic items not
-diminished at all -- but every one of those is a chosen constant, and this module
-has none. Saturating at 1 is the only ceiling, and whether that is enough is a
-question for play.
+MAGIC FIND HAS DIMINISHING RETURNS AND THIS FILE USED TO SAY IT DID NOT. Diablo
+II has them per rarity and weaker the rarer the tier -- uniques (MF*250)/(MF+250),
+sets (MF*500)/(MF+500), rares (MF*600)/(MF+600). This module said "saturating at
+1 is the only ceiling, and whether that is enough is a question for play". It was
+not enough: a Boss carries +300% magic find, that saturation removed every rarity
+below whichever rung reached certainty, and a tier 8 Boss dropped Masterful 97.6%
+of the time and nothing under it. Issue #890. Magic find now multiplies weights
+rather than cascade steps, and passes through `MAGIC_FIND_CEILING` first.
 
 Sources: Drop rate, PoE Wiki, https://www.poewiki.net/wiki/Drop_rate ; Rarity,
 PoE Wiki, https://www.poewiki.net/wiki/Rarity ; Magic find diminishing returns,
@@ -81,13 +71,42 @@ import math
 from . import affixes as af
 from . import player_power
 
-#: How far above the difficulty tier's own rarity a drop may roll.
+#: How far above the difficulty tier's own rarity a drop rolls without penalty.
 #:
 #: THE SAME ONE-ABOVE THE AFFIX TIER GATE USES, and for the reason the project
-#: owner gave for that one in issue #241: with the cap sitting exactly on the
+#: owner gave for that one in issue #241: with the ceiling sitting exactly on the
 #: tier, the best thing a dungeon can produce is something the player can already
 #: make, so the only reason to run one is quantity.
+#:
+#: IT USED TO BE A HARD CAP AND IS NOW WHERE A PENALTY STARTS. The project owner
+#: played the capped version on 2026-08-23 and said it was too strict: at
+#: difficulty tier 1 only Everyday and Quality could drop at all. Every rarity now
+#: drops at every tier, and `RARITY_PENALTY_ABOVE_THE_TIER` is what keeps the ones
+#: far above the tier rare instead of forbidden.
 DROP_RARITIES_ABOVE_DIFFICULTY = 1
+
+#: What a rarity's weight is divided by for each rung it sits above the tier's
+#: own reach.
+#:
+#: EVERY RARITY DROPS AT EVERY DIFFICULTY TIER, which is what the project owner
+#: asked for on 2026-08-23 after playing the capped version. Nothing is forbidden;
+#: a Cataclysmic at tier 1 is divided by 2 six times over, so it is one drop in
+#: 1.5 million rather than impossible.
+#:
+#: DIABLO II'S SHAPE, AND THE RESEARCH FOR #886 IS WHERE IT CAME FROM. It has no
+#: hard gate on quality either: its chance improves by
+#: `(MonsterLevel - ItemLevel) / Divisor`, so a shallow monster can produce a
+#: high-level unique at a much reduced chance rather than never. `docs/DECISIONS.md`
+#: carries the sources.
+#:
+#: 2 RATHER THAN SOMETHING STEEPER, chosen by the project owner from measured
+#: candidates. At tier 1 it puts Superb at one drop in 19, Legendary at one in
+#: 1,497 and Cataclysmic at one in 1.5 million, and going from tier 1 to tier 8
+#: is worth 59 times at the top of the ladder.
+#:
+#: IT IS ZERO STEPS AT TIERS 7 AND 8, so both are a division by one and every
+#: figure the 2026-08-18 decision set survives untouched.
+RARITY_PENALTY_ABOVE_THE_TIER = 2.0
 
 #: How heavily each rarity is weighted on a drop, mirroring the Drop Weight
 #: column of the Gear Rarity sheet in `docs/All_Things_Cataclysm.xlsx`.
@@ -288,8 +307,14 @@ def ordinary_fall_at(tier: int) -> float:
 
 
 def _ordinary_total(tier: int) -> float:
-    """The ordinary segment's weights added up at a difficulty tier."""
-    return sum(drop_weight(rarity_at_index(index), tier)
+    """The ordinary segment's shaped weights added up at a difficulty tier.
+
+    THE SHAPED WEIGHT AND NOT THE FINISHED ONE, so neither magic find nor the
+    above-the-tier penalty is in it. This total exists to pin the enchanted
+    rarities' share against the per-tier flattening and nothing else; folding
+    either of the other two in would apply them to the enchanted rungs twice.
+    """
+    return sum(_shaped_weight(rarity_at_index(index), tier)
                for index in range(1, ORDINARY_RARITIES + 1))
 
 
@@ -391,14 +416,15 @@ def magic_find_multiplier(rarity: str, magic_find: float = 0.0) -> float:
     return (1.0 + effective / 100.0) ** share
 
 
-def drop_weight(rarity: str, tier: int, magic_find: float = 0.0) -> float:
-    """How heavily a rarity is weighted on a drop at this difficulty tier.
+def _shaped_weight(rarity: str, tier: int) -> float:
+    """The drop weight with the per-tier shape applied and nothing else.
 
-    `RARITY_DROP_WEIGHT` is this at tier 1 and every deeper tier is worked out
-    from it, so the sheet holds one number per rarity and no per-tier table
-    exists anywhere. Issue #886.
+    THE FIRST OF THREE STEPS, AND THE ONLY ONE THE PINNING MAY SEE. Magic find
+    and the above-the-tier penalty are applied on top of this by `drop_weight`;
+    keeping them out here is what stops the enchanted rarities receiving either
+    of them twice, once directly and once through `_ordinary_total`.
 
-    HOW THE TWO SEGMENTS MOVE, and they move differently on purpose:
+    HOW THE TWO SEGMENTS MOVE, and they move differently on purpose. Issue #886:
 
         ORDINARY, Everyday to Masterful. Masterful is the anchor and never
         moves. Each rarity below it is multiplied by the fall ratio's own change
@@ -415,33 +441,52 @@ def drop_weight(rarity: str, tier: int, magic_find: float = 0.0) -> float:
     2,952, so leaving the enchanted four at 125, 25, 5 and 1 would make a
     Cataclysmic drop one in 4,156 rather than one in 25,531. Measured, not
     reasoned: `sim/analyse_per_tier_rarity.py` prints both.
-
-    AND MAGIC FIND MULTIPLIES THE RESULT, since issue #890. It used to multiply
-    each rung of the cascade instead, which let a rung saturate and wipe out
-    every rarity below it. See `MAGIC_FIND_REACH` above. At zero it is a
-    multiplication by one, so every figure quoted in this file is unaffected.
     """
-    if rarity not in RARITY_DROP_WEIGHT:
-        raise ValueError(f"{rarity!r} is not a rarity; expected one of "
-                         f"{list(af.RARITIES)}")
-
-    base = RARITY_DROP_WEIGHT[rarity] * magic_find_multiplier(rarity, magic_find)
+    base = RARITY_DROP_WEIGHT[rarity]
     change = ordinary_fall_at(tier) / ORDINARY_FALL_AT_TIER_ONE
     index = rarity_index(rarity)
 
     if index <= ORDINARY_RARITIES:
         return base * change ** (ORDINARY_RARITIES - index)
 
-    # THE ENCHANTED FOUR FOLLOW THE ORDINARY SEGMENT'S TOTAL, which is what keeps
-    # their share of the ladder fixed. At tier 1 the two totals are equal and this
-    # is a multiplication by one, so the sheet's own figures come straight through.
-    #
-    # THE TOTAL IS TAKEN WITHOUT MAGIC FIND ON PURPOSE. It exists to undo the
-    # flattening, which magic find has nothing to do with; folding magic find in
-    # here as well would apply it to the enchanted rungs twice.
+    # At tier 1 the two totals are equal and this is a multiplication by one, so
+    # the Gear Rarity sheet's own figures come straight through.
     at_tier_one = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
                       for rung in range(1, ORDINARY_RARITIES + 1))
     return base * _ordinary_total(tier) / at_tier_one
+
+
+def drop_weight(rarity: str, tier: int, magic_find: float = 0.0) -> float:
+    """How heavily a rarity is weighted on a drop at this difficulty tier.
+
+    `RARITY_DROP_WEIGHT` is this at tier 1 with nothing else applied, and every
+    deeper tier is worked out from it, so the sheet holds one number per rarity
+    and no per-tier table exists anywhere.
+
+    THREE THINGS IN ORDER, AND THE ORDER MATTERS:
+
+        THE PER-TIER SHAPE, in `_shaped_weight` above. Issue #886.
+
+        MAGIC FIND, which multiplies it, and multiplies the rarer rarities more.
+        Issue #890. It used to multiply each rung of the CASCADE instead, which
+        let a rung saturate and wipe out every rarity below it. See
+        `MAGIC_FIND_REACH`.
+
+        THE ABOVE-THE-TIER PENALTY, which divides it. Issue #886 again, after
+        the project owner played it: every rarity now drops at every difficulty
+        tier, and being far above the tier makes a rarity rarer rather than
+        impossible. See `RARITY_PENALTY_ABOVE_THE_TIER`.
+
+    ALL THREE ARE MULTIPLICATIONS BY ONE AT DIFFICULTY TIER 8 WITH NO MAGIC
+    FIND, which is why every figure the 2026-08-18 decision set survives.
+    """
+    if rarity not in RARITY_DROP_WEIGHT:
+        raise ValueError(f"{rarity!r} is not a rarity; expected one of "
+                         f"{list(af.RARITIES)}")
+
+    return (_shaped_weight(rarity, tier)
+            * magic_find_multiplier(rarity, magic_find)
+            / penalty_above_the_tier(rarity, tier))
 
 
 def rarity_index(rarity: str) -> int:
@@ -463,17 +508,40 @@ def rarity_at_index(index: int) -> str:
     return af.RARITIES[index - 1]
 
 
-def best_rarity_on_a_drop(tier: int) -> str:
-    """The highest rarity a drop may roll at a difficulty tier.
+def highest_unpenalised_rarity(tier: int) -> str:
+    """The highest rarity a drop rolls at full weight at a difficulty tier.
+
+    NOT A CAP, AND IT USED TO BE ONE. This function was `best_rarity_on_a_drop`
+    and named the highest rarity a drop could roll at all; anything above it was
+    impossible. The project owner played that on 2026-08-23 and said it was too
+    strict, so every rarity now drops at every tier and this is where the penalty
+    in `RARITY_PENALTY_ABOVE_THE_TIER` starts instead.
 
     Gear rarity equals the difficulty tier, plus the one-above that makes a drop
-    worth reading, capped at Cataclysmic. So tiers 7 and 8 both reach
-    Cataclysmic, the same way affix tiers 6, 7 and 8 all reach T7.
+    worth reading, and it stops at Cataclysmic because there is nothing above it.
+    So tiers 7 and 8 are both penalty-free the whole way up, the same way affix
+    tiers 6, 7 and 8 all reach T7.
     """
     if not 1 <= tier <= af.DIFFICULTY_TIERS:
         raise ValueError(f"tier {tier} is outside 1 to {af.DIFFICULTY_TIERS}")
     return rarity_at_index(
         min(len(af.RARITIES), tier + DROP_RARITIES_ABOVE_DIFFICULTY))
+
+
+def rungs_above_the_tier(rarity: str, tier: int) -> int:
+    """How far above this tier's own reach a rarity sits. Zero at or below it."""
+    return max(0, rarity_index(rarity)
+               - rarity_index(highest_unpenalised_rarity(tier)))
+
+
+def penalty_above_the_tier(rarity: str, tier: int) -> float:
+    """What a rarity's weight is divided by at this difficulty tier.
+
+    One at or below the tier's own reach, and `RARITY_PENALTY_ABOVE_THE_TIER`
+    once per rung above it. Never zero and never infinite, so nothing is ever
+    forbidden -- which is the whole of the change.
+    """
+    return RARITY_PENALTY_ABOVE_THE_TIER ** rungs_above_the_tier(rarity, tier)
 
 
 def gear_level_gate(rarity: str) -> int:
@@ -596,15 +664,15 @@ def rarity_distribution(tier: int, magic_find: float = 0.0) -> dict[str, float]:
     thousand rolls and then arguing about noise. `roll_rarity` draws from exactly
     this distribution, and a test compares the two.
 
-    Every rarity is a key, including the ones this tier cannot reach, which carry
-    zero. A caller asking about a rarity out of reach should get 0.0 rather than
-    a KeyError.
+    EVERY RARITY CARRIES A SHARE ABOVE ZERO AT EVERY TIER, since the project
+    owner removed the cap on 2026-08-23. It used to walk only as far as the
+    cap and leave everything above it at zero; now it walks the whole ladder
+    and being far above the tier makes a rarity rare rather than impossible.
+    See `RARITY_PENALTY_ABOVE_THE_TIER`.
     """
-    best = rarity_index(best_rarity_on_a_drop(tier))
-
     out = {rarity: 0.0 for rarity in af.RARITIES}
     left = 1.0
-    for index in range(best, 1, -1):
+    for index in range(len(af.RARITIES), 1, -1):
         chance = rarity_step_chance(index, tier, magic_find)
         out[rarity_at_index(index)] = left * chance
         left *= 1.0 - chance
@@ -622,10 +690,11 @@ def roll_rarity(tier: int, magic_find: float, rng) -> str:
     which is the cascade itself rather than a lookup into `rarity_distribution`.
     Written that way on purpose: the test that the two agree is what proves the
     exact distribution above describes what actually happens.
-    """
-    best = rarity_index(best_rarity_on_a_drop(tier))
 
-    for index in range(best, 1, -1):
+    WALKS THE WHOLE LADDER, since the cap was removed on 2026-08-23. Every
+    rung is reachable at every difficulty tier.
+    """
+    for index in range(len(af.RARITIES), 1, -1):
         if rng.random() < rarity_step_chance(index, tier, magic_find):
             return rarity_at_index(index)
     return af.RARITIES[0]
@@ -1377,7 +1446,8 @@ def _check_the_distribution_matches_the_weights() -> None:
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
         spread = rarity_distribution(tier)
-        reachable = rarity_index(best_rarity_on_a_drop(tier))
+        # EVERY RUNG, since the cap went on 2026-08-23.
+        reachable = len(af.RARITIES)
         total = sum(drop_weight(rarity_at_index(rung), tier)
                     for rung in range(1, reachable + 1))
 
@@ -1391,20 +1461,27 @@ def _check_the_distribution_matches_the_weights() -> None:
 
 
 def _check_difficulty_tier_one_is_the_sheet_untouched() -> None:
-    """The curve starts where the workbook already is, so tier 1 is unchanged.
+    """The per-tier shape starts where the workbook already is.
 
     THE WHOLE PER-TIER RULE RESTS ON THIS. `RARITY_DROP_WEIGHT` mirrors the Gear
-    Rarity sheet and the sheet is authoritative, so a tier 1 that came out as
-    anything other than the sheet's own figures would mean the sheet had stopped
-    describing any tier at all, and the cross-check against it would be comparing
-    two different things without saying so.
+    Rarity sheet and the sheet is authoritative, so a tier 1 shape that came out
+    as anything other than the sheet's own figures would mean the sheet had
+    stopped describing any tier at all, and the cross-check against it would be
+    comparing two different things without saying so.
+
+    IT COMPARES THE SHAPED WEIGHT AND NOT THE FINISHED ONE, and this check
+    noticed the difference itself when the cap became a penalty on 2026-08-23.
+    `drop_weight` also divides by the above-the-tier penalty, and at difficulty
+    tier 1 that penalty is real: Superb sits two rungs above tier 1's own reach,
+    so its finished weight is a quarter of the sheet's on purpose. The claim
+    being made here is about the flattening only.
     """
     for rarity, weight in RARITY_DROP_WEIGHT.items():
-        got = drop_weight(rarity, 1)
+        got = _shaped_weight(rarity, 1)
         if abs(got - weight) > 1e-9:
             raise AssertionError(
-                f"at difficulty tier 1 {rarity} weighs {got}, against the "
-                f"{weight} the Gear Rarity sheet gives it")
+                f"at difficulty tier 1 {rarity}'s shaped weight is {got}, "
+                f"against the {weight} the Gear Rarity sheet gives it")
 
 
 def _check_the_ordinary_segment_is_where_the_gate_starts() -> None:
@@ -1434,33 +1511,41 @@ def _check_the_enchanted_rarities_keep_their_share_at_every_tier() -> None:
     scaling inside `drop_weight` rather than being written down anywhere, so
     nothing else in the project would notice them drifting.
 
-    STATED AGAINST THE SHEET'S OWN WEIGHTS RATHER THAN AS "the same share at
-    every tier", and the difference is not pedantry. The shares are NOT equal
-    across tiers, because the cap decides how many rungs are reachable and the
-    cascade divides by the weight of those and no others: at tier 4 nothing
-    above Legendary is reachable, so it takes a share of five rungs rather than
-    of eight and comes out a part in a thousand higher.
+    CHECKED AT THE TIERS WHERE NOTHING IS PENALISED, which is 7 and 8. Below
+    them the above-the-tier penalty divides the enchanted rungs down on purpose,
+    so their share is deliberately not the sheet's there and comparing it to the
+    sheet would be checking that the penalty had been skipped.
 
-    What is the same at every tier is the share the sheet's weights give it over
-    whatever the cap leaves reachable, which is what this compares.
+    THIS IS WHY THAT MATTERS RATHER THAN BEING A CONVENIENCE. Two separate
+    scalings act on the enchanted rungs and they must not be confused: the
+    pinning, which undoes the per-tier flattening and is meant to leave their
+    share alone, and the penalty, which is meant to move it. If the pinning ever
+    started reading penalised weights it would undo the penalty as well, and the
+    tiers below 7 would quietly go back to the sheet's figures.
     """
-    for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        spread = rarity_distribution(tier)
-        cap = rarity_index(best_rarity_on_a_drop(tier))
-        reachable = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
-                        for rung in range(1, cap + 1))
+    penalty_free = [tier for tier in range(1, af.DIFFICULTY_TIERS + 1)
+                    if highest_unpenalised_rarity(tier) == af.RARITIES[-1]]
+    if not penalty_free:
+        raise AssertionError(
+            "no difficulty tier reaches the top of the ladder without a "
+            "penalty, so the sheet's own figures describe no tier at all")
 
-        for index in range(ORDINARY_RARITIES + 1, cap + 1):
+    whole_ladder = sum(RARITY_DROP_WEIGHT.values())
+
+    for tier in penalty_free:
+        spread = rarity_distribution(tier)
+
+        for index in range(ORDINARY_RARITIES + 1, len(af.RARITIES) + 1):
             rarity = rarity_at_index(index)
-            expected = RARITY_DROP_WEIGHT[rarity] / reachable
+            expected = RARITY_DROP_WEIGHT[rarity] / whole_ladder
 
             if abs(spread[rarity] - expected) > 1e-9:
                 raise AssertionError(
-                    f"at difficulty tier {tier}, {rarity} is "
-                    f"{spread[rarity]:.8f} of drops against the {expected:.8f} "
-                    "the Gear Rarity sheet's own weights give it over the "
-                    "rungs this tier can reach. Only the four ordinary "
-                    "rarities are meant to move with the tier")
+                    f"at difficulty tier {tier}, where nothing is penalised, "
+                    f"{rarity} is {spread[rarity]:.8f} of drops against the "
+                    f"{expected:.8f} the Gear Rarity sheet's own weights give "
+                    "it. Only the four ordinary rarities are meant to move "
+                    "with the tier")
 
 
 def _check_no_magic_find_can_wipe_out_a_rarity() -> None:
@@ -1478,7 +1563,7 @@ def _check_no_magic_find_can_wipe_out_a_rarity() -> None:
     the step chances is what this notices.
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        reachable = rarity_index(best_rarity_on_a_drop(tier))
+        reachable = len(af.RARITIES)
 
         for magic_find in (0.0, 300.0, 500.0, 5_000.0, 1_000_000.0):
             spread = rarity_distribution(tier, magic_find)
@@ -1532,10 +1617,8 @@ def _check_magic_find_only_ever_moves_the_mix_upward() -> None:
     every rarity would still drop and every distribution would still sum to one.
     """
     weakest = af.RARITIES[0]
+    best = af.RARITIES[-1]
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        best = best_rarity_on_a_drop(tier)
-        if best == weakest:
-            continue
 
         plain = rarity_distribution(tier, 0.0)
         lucky = rarity_distribution(tier, 300.0)
@@ -1577,17 +1660,62 @@ def _check_a_deeper_tier_never_drops_more_of_the_weakest() -> None:
                 "deeper drops more of the weakest thing rather than less")
 
 
-def _check_nothing_drops_above_the_tier_cap() -> None:
-    """Not even with a magic find nothing could reach."""
-    for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        spread = rarity_distribution(tier, magic_find=1000.0)
-        reachable = rarity_index(best_rarity_on_a_drop(tier))
+def _check_every_rarity_drops_at_every_difficulty_tier() -> None:
+    """What the project owner asked for on 2026-08-23, checked directly.
 
-        for index in range(reachable + 1, len(af.RARITIES) + 1):
-            if spread[rarity_at_index(index)] != 0.0:
+    THIS REPLACED A CHECK THAT SAID THE OPPOSITE. It was
+    `_check_nothing_drops_above_the_tier_cap`, and it held that a rarity above
+    the tier's cap carried a share of exactly zero however much magic find was
+    applied. The cap is gone: at difficulty tier 1 only Everyday and Quality
+    could drop, and the project owner played that and said it was too strict.
+
+    WITH AND WITHOUT MAGIC FIND, because they act on the same weights and could
+    in principle cancel. They do not: the penalty divides and magic find
+    multiplies, and neither can reach zero.
+    """
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        for magic_find in (0.0, 300.0, 5_000.0):
+            spread = rarity_distribution(tier, magic_find)
+
+            for rarity in af.RARITIES:
+                if spread[rarity] <= 0.0:
+                    raise AssertionError(
+                        f"{rarity} never drops at difficulty tier {tier} with "
+                        f"{magic_find}% magic find. Every rarity is meant to "
+                        "drop at every tier")
+
+
+def _check_going_above_the_tier_costs_something() -> None:
+    """The other half: nothing is forbidden, but depth still has to be worth it.
+
+    A PENALTY OF 1 WOULD PASS EVERY OTHER CHECK IN THIS FILE. Every rarity would
+    still drop at every tier, every distribution would still sum to one, and a
+    tier 1 character would find Cataclysmic items exactly as often as a tier 8
+    one. This is what notices.
+    """
+    if RARITY_PENALTY_ABOVE_THE_TIER <= 1.0:
+        raise AssertionError(
+            f"the above-the-tier penalty is {RARITY_PENALTY_ABOVE_THE_TIER}, "
+            "which does not make a rarity above the tier any rarer")
+
+    rarest = af.RARITIES[-1]
+    shallow = rarity_distribution(1)[rarest]
+    deep = rarity_distribution(af.DIFFICULTY_TIERS)[rarest]
+
+    if deep <= shallow:
+        raise AssertionError(
+            f"{rarest} is {deep:.10f} of drops at the deepest difficulty tier "
+            f"against {shallow:.10f} at the first, so going deeper does not "
+            "make the rarest thing in the game any likelier")
+
+    # AND THE TWO DEEPEST TIERS PAY NOTHING, which is what keeps every figure
+    # the 2026-08-18 decision set intact.
+    for tier in (af.DIFFICULTY_TIERS - 1, af.DIFFICULTY_TIERS):
+        for rarity in af.RARITIES:
+            if penalty_above_the_tier(rarity, tier) != 1.0:
                 raise AssertionError(
-                    f"tier {tier} can drop {rarity_at_index(index)}, which is "
-                    f"above its cap of {best_rarity_on_a_drop(tier)}")
+                    f"{rarity} is penalised at difficulty tier {tier}, which "
+                    "reaches the top of the ladder on its own")
 
 
 def _check_a_distribution_always_sums_to_one() -> None:
@@ -1731,7 +1859,8 @@ _check_a_deeper_tier_never_drops_more_of_the_weakest()
 _check_no_magic_find_can_wipe_out_a_rarity()
 _check_magic_find_never_passes_its_ceiling()
 _check_magic_find_only_ever_moves_the_mix_upward()
-_check_nothing_drops_above_the_tier_cap()
+_check_every_rarity_drops_at_every_difficulty_tier()
+_check_going_above_the_tier_costs_something()
 _check_a_distribution_always_sums_to_one()
 _check_every_enemy_rarity_has_a_drop_rate()
 _check_a_better_enemy_never_drops_less()
