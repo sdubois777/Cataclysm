@@ -101,7 +101,7 @@
       "asset": "DT_ItemBases",
       "csv": "ItemBases.csv",
       "rows": 55,
-      "csv_sha256": "e70350db5fa2dd1aa3b700765bb0c6d3f3339c84d47be680eefb2c46a174a934"
+      "csv_sha256": "06c85d143e2c4859d99e74d44bca3cecbc321cebbc59bd5a24c79b058fb945cc"
     },
     {
       "asset": "DT_ItemSockets",

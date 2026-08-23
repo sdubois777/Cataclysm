@@ -411,6 +411,27 @@ struct FCataclysmItemBaseRow : public FTableRowBase
 	int32 MaxDamageTypes = 0;
 
 	/**
+	 * How many cells wide and high the piece is in the carried bag.
+	 *
+	 * From the footprint table in `docs/Inventory_Screen_Design.md`, which
+	 * #854 settled: a ring is 1 by 1, a chest 2 by 3, a two-handed weapon 2 by
+	 * 6. Issue #855.
+	 *
+	 * EVERY BASE HAS ONE, and tools/generate_datatables.py refuses to write
+	 * the file if any is missing or below one. A zero would read as a piece
+	 * that takes no room rather than as a base somebody forgot.
+	 *
+	 * NOTHING READS THESE YET. The carried bag is still a flat array of 48
+	 * slots where every item takes one, and rebuilding it to pack rectangles
+	 * is the rest of #855. These are the data that has to exist first.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base")
+	int32 CellsWide = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base")
+	int32 CellsHigh = 1;
+
+	/**
 	 * Attacks per second before any increase. Zero on anything that is not a
 	 * weapon.
 	 *
