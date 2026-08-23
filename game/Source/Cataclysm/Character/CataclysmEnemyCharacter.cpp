@@ -831,8 +831,32 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	// GetScaledCapsuleRadius report the real size, which is what the telegraph
 	// drawing reads, so a bigger creature's attack shapes follow without a
 	// second rule.
+	//
+	// AND THE FEET STAY WHERE THEY WERE. A capsule grows from its middle, so
+	// scaling one buries its lower half in the ground: the dungeon places a
+	// creature by raising it by its own half height, and it reads that off the
+	// CLASS DEFAULT OBJECT before the actor exists -- which is before this
+	// runs, so the placement cannot know the creature is about to grow.
+	//
+	// EIGHTY-FIVE CREATURES WERE IN THE FLOOR, UP TO 460 CM DEEP, before this
+	// was added, and Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt
+	// is what found them. Reading the bottom, scaling, and putting the bottom
+	// back is the whole of it, and it is right whatever the old scale was.
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const bool bStanding = Capsule != nullptr;
+	const float FeetBefore = bStanding
+		? GetActorLocation().Z - Capsule->GetScaledCapsuleHalfHeight()
+		: 0.0f;
+
 	SetActorScale3D(FVector(UCataclysmEnemyRarity::BodyScaleForStep(
 		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep)));
+
+	if (bStanding)
+	{
+		FVector Where = GetActorLocation();
+		Where.Z = FeetBefore + Capsule->GetScaledCapsuleHalfHeight();
+		SetActorLocation(Where);
+	}
 
 	// RE-APPLIED, BECAUSE THE RARITY IS PART OF THE STAT BLOCK SINCE ISSUE #848.
 	// Every other setter here re-applies for the reason SetHealth states: a
