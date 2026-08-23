@@ -269,6 +269,63 @@ void UCataclysmItemModifiers::AccumulateInto(
 			continue;
 		}
 
+		// A HYBRID GRANTS TWO STATS AND HAS NONE OF ITS OWN, so it has to be
+		// resolved before anything below reads Stat, ValueKind or TopValue. All
+		// three of those columns are empty or zero on a hybrid row: it names its
+		// two halves in HybridPart1 and HybridPart2 instead.
+		//
+		// UNTIL ISSUE #847 THIS FELL THROUGH TO THE CHECK BELOW, which refused
+		// the empty ValueKind and skipped the affix in silence, so a hybrid on a
+		// piece of gear granted the player NOTHING AT ALL. It was reported from
+		// play as an affix showing a value of zero, which is what the tool tip
+		// made of the same empty row.
+		if (Affix->AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
+		{
+			for (const FString& PartName : { Affix->HybridPart1, Affix->HybridPart2 })
+			{
+				const FCataclysmAffixRow* Part = AffixNamed(AffixTable, PartName);
+				if (!Part)
+				{
+					if (!PartName.IsEmpty())
+					{
+						UE_LOG(LogCataclysm, Warning,
+							TEXT("The hybrid affix '%s' names a part '%s' that "
+								 "is not in the Affixes table, so half of it "
+								 "grants nothing."),
+							*Affix->AffixName, *PartName);
+					}
+					continue;
+				}
+
+				ECataclysmStatBucket PartBucket;
+				if (!BucketFromKind(Part->ValueKind, PartBucket)
+					|| Part->Stat.IsEmpty())
+				{
+					UE_LOG(LogCataclysm, Warning,
+						TEXT("The hybrid affix '%s' names '%s' as a half, and "
+							 "that row grants no stat, so half of it grants "
+							 "nothing."),
+						*Affix->AffixName, *PartName);
+					continue;
+				}
+
+				// EACH HALF AT 70% OF THE WHOLE AFFIX, which the design states
+				// and the simulation derives. See UCataclysmItemValues::
+				// HybridFraction for where the figure comes from.
+				//
+				// THE HALF'S OWN TOP VALUE, NOT THE HYBRID'S. A hybrid is
+				// defined in terms of the affixes it combines rather than by
+				// copying their numbers, so it cannot drift from them.
+				Add(FName(*Part->Stat), PartBucket,
+					ECataclysmModifierSource::GearAffix,
+					UCataclysmItemValues::AffixValue(
+						Part->TopValue, Rolled.Tier, Rolled.Roll,
+						Item.GearLevel, bTwoHanded)
+						* UCataclysmItemValues::HybridFraction);
+			}
+			continue;
+		}
+
 		ECataclysmStatBucket Bucket;
 		if (!BucketFromKind(Affix->ValueKind, Bucket))
 		{
@@ -320,6 +377,27 @@ void UCataclysmItemModifiers::AccumulateInto(
 // ---------------------------------------------------------------------------
 // The weapon's own damage, looked up by weapon type
 // ---------------------------------------------------------------------------
+
+const FCataclysmAffixRow* UCataclysmItemModifiers::AffixNamed(
+	const UDataTable* AffixTable, const FString& AffixName)
+{
+	if (!AffixTable || AffixName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	const FCataclysmAffixRow* Found = nullptr;
+	AffixTable->ForeachRow<FCataclysmAffixRow>(
+		TEXT("UCataclysmItemModifiers::AffixNamed"),
+		[&](const FName&, const FCataclysmAffixRow& Row)
+		{
+			if (!Found && Row.AffixName.Equals(AffixName, ESearchCase::IgnoreCase))
+			{
+				Found = &Row;
+			}
+		});
+	return Found;
+}
 
 const TCHAR* UCataclysmItemModifiers::AttackDamageStat = TEXT("attack_damage");
 

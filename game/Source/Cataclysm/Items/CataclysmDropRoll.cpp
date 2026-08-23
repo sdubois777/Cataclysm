@@ -676,33 +676,6 @@ int32 UCataclysmDropRoll::RollAffixTier(const UDataTable* AffixTierTable,
 
 namespace
 {
-	/** The Affixes table row whose AffixName is this, or null.
-	 *
-	 * BY NAME RATHER THAN BY ROW KEY, because a hybrid names its two parts as
-	 * the affix names they are ("Flat magic find") and the row key is decorated
-	 * with the kind ("Stat_Flat_magic_find").
-	 */
-	const FCataclysmAffixRow* AffixNamed(const UDataTable* AffixTable,
-										 const FString& AffixName)
-	{
-		if (!AffixTable || AffixName.IsEmpty())
-		{
-			return nullptr;
-		}
-
-		const FCataclysmAffixRow* Found = nullptr;
-		AffixTable->ForeachRow<FCataclysmAffixRow>(TEXT("AffixNamed"),
-			[&](const FName&, const FCataclysmAffixRow& Row)
-			{
-				if (!Found && Row.AffixName.Equals(AffixName,
-												   ESearchCase::IgnoreCase))
-				{
-					Found = &Row;
-				}
-			});
-		return Found;
-	}
-
 	/** The group one stat affix occupies: "<stat>.<flat or increased>". */
 	FString StatGroup(const FString& Stat, const FString& ValueKind)
 	{
@@ -752,7 +725,7 @@ void UCataclysmDropRoll::GroupsOf(const UDataTable* AffixTable,
 	{
 		for (const FString& PartName : { Affix.HybridPart1, Affix.HybridPart2 })
 		{
-			const FCataclysmAffixRow* Part = AffixNamed(AffixTable, PartName);
+			const FCataclysmAffixRow* Part = UCataclysmItemModifiers::AffixNamed(AffixTable, PartName);
 			if (Part)
 			{
 				OutGroups.Add(StatGroup(Part->Stat, Part->ValueKind));

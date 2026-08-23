@@ -810,4 +810,300 @@ bool FCataclysmAttackSpeedAverages::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Hybrid affixes grant both of their halves. Issue #847
+// ---------------------------------------------------------------------------
+
+/**
+ * A hybrid affix grants BOTH stats it names, each at seventy per cent.
+ *
+ * WHAT WENT WRONG WITHOUT THIS. Reported from play on 2026-08-23 as an affix
+ * showing a value of zero. A hybrid row has no stat, no value kind and a top
+ * value of 0.0 -- it names its two halves in two other columns -- so
+ * `AccumulateInto` refused its empty value kind and skipped it in SILENCE. A
+ * hybrid on a piece of gear granted the player nothing at all.
+ *
+ * THIRTEEN OF THE EIGHTY-FIVE AFFIXES IN THE DATA ARE HYBRIDS, so this was not
+ * a rare corner.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHybridAffixGrantsBothHalves,
+	"Cataclysm.Items.AHybridAffixGrantsBothOfItsHalves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHybridAffixGrantsBothHalves::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!Bases || !Affixes)
+	{
+		AddError(TEXT("could not load ItemBases.csv or Affixes.csv"));
+		return false;
+	}
+
+	// A REAL HYBRID FROM THE DATA rather than an invented one, so a hybrid whose
+	// halves stopped resolving would fail here rather than being tested against
+	// a fixture that cannot go wrong. It pairs flat maximum health with flat
+	// armour and rolls on a Belt among others.
+	FCataclysmItem Belt;
+	Belt.Base = FName(TEXT("Belt_Sash"));
+	Belt.GearLevel = 10;
+
+	FCataclysmRolledAffix Rolled;
+	Rolled.Affix = FName(TEXT("Hybrid_Health_and_armor"));
+	Rolled.Tier = UCataclysmItemValues::MaxAffixTier;
+	Rolled.Roll = 1.0f;
+	Belt.Affixes.Add(Rolled);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmItemModifiers::ModifiersFor(Belt, Bases, Affixes);
+
+	const TArray<FCataclysmStatModifier>* Health =
+		Modifiers.Find(FName(TEXT("max_health")));
+	const TArray<FCataclysmStatModifier>* Armour =
+		Modifiers.Find(FName(TEXT("armor")));
+
+	if (!TestNotNull(TEXT("the hybrid grants maximum health"), Health)
+		|| !TestNotNull(TEXT("and armour"), Armour))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("one modifier for health"), Health->Num(), 1)
+		|| !TestEqual(TEXT("and one for armour"), Armour->Num(), 1))
+	{
+		return false;
+	}
+
+	// NEITHER IS ZERO, which is the whole report. Before this they were not
+	// small, they were absent.
+	TestTrue(FString::Printf(TEXT("the health half is worth something, got %.2f"),
+							 (*Health)[0].Value),
+		(*Health)[0].Value > 0.0f);
+	TestTrue(FString::Printf(TEXT("and so is the armour half, got %.2f"),
+							 (*Armour)[0].Value),
+		(*Armour)[0].Value > 0.0f);
+
+	// SEVENTY PER CENT OF WHAT THE WHOLE AFFIX WOULD GRANT, measured against the
+	// single affix rather than against a number written here. That is what makes
+	// a hybrid a compromise: more in total across two stats, less of either.
+	FCataclysmItem WholeHealth;
+	WholeHealth.Base = Belt.Base;
+	WholeHealth.GearLevel = Belt.GearLevel;
+	FCataclysmRolledAffix Single;
+	Single.Affix = FName(TEXT("Stat_Flat_maximum_health"));
+	Single.Tier = UCataclysmItemValues::MaxAffixTier;
+	Single.Roll = 1.0f;
+	WholeHealth.Affixes.Add(Single);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> WholeModifiers =
+		UCataclysmItemModifiers::ModifiersFor(WholeHealth, Bases, Affixes);
+	const TArray<FCataclysmStatModifier>* WholeHealthMods =
+		WholeModifiers.Find(FName(TEXT("max_health")));
+
+	if (TestNotNull(TEXT("the single affix grants maximum health"), WholeHealthMods)
+		&& WholeHealthMods->Num() == 1)
+	{
+		TestEqual(TEXT("and the hybrid's half is 70% of it"),
+			(*Health)[0].Value,
+			(*WholeHealthMods)[0].Value * UCataclysmItemValues::HybridFraction,
+			0.01f);
+
+		// AND STRICTLY LESS THAN THE WHOLE, stated separately so that a
+		// HybridFraction accidentally set to 1.0 fails here as well as above.
+		TestTrue(TEXT("which is less than the single affix grants"),
+			(*Health)[0].Value < (*WholeHealthMods)[0].Value);
+	}
+
+	return true;
+}
+
+/**
+ * The hybrid share is the ratio the project already set, not a number picked.
+ *
+ * `sim/cataclysm_sim/affixes.py` derives it rather than writing it down, and
+ * says why: it is the ratio between the two-resistance affix and the
+ * single-resistance one, so the whole pool moves together if that ratio ever
+ * changes. The game holds it as a constant for speed, and this is what stops
+ * the two drifting apart in silence.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHybridShareIsTheResistanceRatio,
+	"Cataclysm.Items.TheHybridShareIsTheResistanceRatio",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHybridShareIsTheResistanceRatio::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!Affixes)
+	{
+		AddError(TEXT("could not load Affixes.csv"));
+		return false;
+	}
+
+	const FCataclysmAffixRow* Single = Affixes->FindRow<FCataclysmAffixRow>(
+		FName(TEXT("Resistance_Single_resistance")), TEXT("HybridShare"),
+		/*bWarnIfMissing=*/false);
+	const FCataclysmAffixRow* Two = Affixes->FindRow<FCataclysmAffixRow>(
+		FName(TEXT("Resistance_Two_resistances")), TEXT("HybridShare"),
+		/*bWarnIfMissing=*/false);
+
+	if (!TestNotNull(TEXT("the single resistance affix is in the data"), Single)
+		|| !TestNotNull(TEXT("and the two-resistance one"), Two))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the single resistance affix is worth something"),
+			Single->TopValue > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the hybrid share is the two-resistance affix over the single"),
+		UCataclysmItemValues::HybridFraction,
+		Two->TopValue / Single->TopValue, 0.0001f);
+
+	return true;
+}
+
+/**
+ * NO AFFIX IN THE DATA GRANTS NOTHING AT ALL.
+ *
+ * THIS IS THE GUARD THAT WOULD HAVE CAUGHT ISSUE #847 BEFORE A PLAY TEST DID.
+ * Thirteen hybrid affixes granted no modifier whatsoever and nothing noticed,
+ * because every test that existed asked what a PARTICULAR affix was worth and
+ * none asked whether every affix was worth anything.
+ *
+ * ROLLED AT THE TOP TIER ON A FULLY UPGRADED PIECE, so a value of zero here
+ * means the affix is broken rather than merely small. Issue #858 is the
+ * separate question of affixes that are worth very little at the bottom.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryAffixGrantsSomething,
+	"Cataclysm.Items.EveryAffixInTheDataGrantsSomething",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEveryAffixGrantsSomething::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!Bases || !Affixes)
+	{
+		AddError(TEXT("could not load ItemBases.csv or Affixes.csv"));
+		return false;
+	}
+
+	// WHAT THE BARE PIECE IS WORTH, MEASURED FIRST. ModifiersFor returns the
+	// base's own implicits as well as its affixes, and a Ring_Band carries a
+	// flat attack damage implicit of 10. The first version of this test looked
+	// for any non-zero modifier and therefore always found that implicit, so it
+	// could not fail -- it passed while thirteen hybrid affixes granted nothing
+	// at all, which is the exact fault it was written to catch.
+	FCataclysmItem BareRing;
+	BareRing.Base = FName(TEXT("Ring_Band"));
+	BareRing.GearLevel = UCataclysmItemValues::MaxGearLevel;
+
+	const auto TotalOf =
+		[](const TMap<FName, TArray<FCataclysmStatModifier>>& Modifiers)
+	{
+		float Total = 0.0f;
+		int32 Count = 0;
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Pair : Modifiers)
+		{
+			for (const FCataclysmStatModifier& Modifier : Pair.Value)
+			{
+				Total += Modifier.Value;
+				++Count;
+			}
+		}
+		return TPair<float, int32>(Total, Count);
+	};
+
+	const TPair<float, int32> Bare = TotalOf(
+		UCataclysmItemModifiers::ModifiersFor(BareRing, Bases, Affixes));
+
+	int32 Checked = 0;
+	int32 HybridsChecked = 0;
+
+	Affixes->ForeachRow<FCataclysmAffixRow>(
+		TEXT("EveryAffixInTheDataGrantsSomething"),
+		[&](const FName& Key, const FCataclysmAffixRow& Row)
+		{
+			// AN AILMENT AFFIX GRANTS A CHANCE AT AN EFFECT AND NOT A STAT, so
+			// it correctly produces no modifier and is not a failure. It is
+			// applied where the hit is resolved.
+			if (Row.AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase))
+			{
+				return;
+			}
+
+			// A ring takes almost every affix in the pool and is not two-handed,
+			// so nothing here is doubled and the figures are the plain ones.
+			FCataclysmItem Ring;
+			Ring.Base = FName(TEXT("Ring_Band"));
+			Ring.GearLevel = UCataclysmItemValues::MaxGearLevel;
+
+			FCataclysmRolledAffix Rolled;
+			Rolled.Affix = Key;
+			Rolled.Tier = UCataclysmItemValues::MaxAffixTier;
+			Rolled.Roll = 1.0f;
+
+			// A resistance family says how many types it covers and the item
+			// says which, so it has to be given as many as it expects.
+			if (Row.Breadth > 0)
+			{
+				const TArray<FName>& AllTypes =
+					UCataclysmItemModifiers::DamageTypeNames();
+				for (int32 Index = 0;
+					 Index < Row.Breadth && Index < AllTypes.Num(); ++Index)
+				{
+					Rolled.DamageTypes.Add(AllTypes[Index]);
+				}
+			}
+
+			Ring.Affixes.Add(Rolled);
+
+			const TPair<float, int32> WithAffix = TotalOf(
+				UCataclysmItemModifiers::ModifiersFor(Ring, Bases, Affixes));
+
+			++Checked;
+			if (Row.AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
+			{
+				++HybridsChecked;
+			}
+
+			// MEASURED AGAINST THE BARE RING, so what is being asserted is what
+			// the AFFIX added and not what the piece was already worth.
+			TestTrue(FString::Printf(
+				TEXT("%s adds a modifier, bare ring had %d and with it %d"),
+				*Key.ToString(), Bare.Value, WithAffix.Value),
+				WithAffix.Value > Bare.Value);
+
+			TestTrue(FString::Printf(
+				TEXT("%s adds some value at top tier on a +10 piece, %.4f to %.4f"),
+				*Key.ToString(), Bare.Key, WithAffix.Key),
+				WithAffix.Key > Bare.Key + 0.0001f);
+		});
+
+	// Without this the loop above passes on an empty table, which is what a
+	// stale or unbuilt asset actually looks like.
+	TestTrue(FString::Printf(TEXT("most of the affix pool was checked, %d of it"),
+							 Checked),
+		Checked >= 60);
+
+	// AND THE HYBRIDS SPECIFICALLY WERE AMONG THEM. There are thirteen in the
+	// data and they are the ones that were granting nothing, so a run that
+	// quietly skipped them would report success having checked the affixes that
+	// already worked.
+	TestTrue(FString::Printf(TEXT("the hybrid affixes were checked, %d of them"),
+							 HybridsChecked),
+		HybridsChecked >= 13);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
