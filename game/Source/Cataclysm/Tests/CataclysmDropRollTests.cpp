@@ -852,10 +852,12 @@ namespace CataclysmDropRollTest
 		UDataTable* Rarities = nullptr;
 		UDataTable* Sockets = nullptr;
 		UDataTable* AffixTiers = nullptr;
+		UDataTable* WeaponSkills = nullptr;
 
 		bool AllPresent() const
 		{
-			return Bases && Affixes && Rarities && Sockets && AffixTiers;
+			return Bases && Affixes && Rarities && Sockets && AffixTiers
+				&& WeaponSkills;
 		}
 	};
 
@@ -867,6 +869,11 @@ namespace CataclysmDropRollTest
 		Out.Rarities = LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
 		Out.Sockets = LoadTable<FCataclysmItemSocketRow>(TEXT("ItemSockets.csv"));
 		Out.AffixTiers = LoadTable<FCataclysmAffixTierRow>(TEXT("AffixTiers.csv"));
+		// FROM THE CSV, NOT THE GENERATED ASSET, like every table above it. The
+		// asset is produced from this same file, so reading the file keeps a
+		// test failing for a data reason rather than an import reason.
+		Out.WeaponSkills =
+			LoadTable<FCataclysmWeaponSkillRow>(TEXT("WeaponSkills.csv"));
 		return Out;
 	}
 
@@ -875,8 +882,17 @@ namespace CataclysmDropRollTest
 			  float MagicFind, FRandomStream& Stream, FCataclysmItem& OutItem)
 	{
 		return FDrop::RollItem(Tables.Bases, Tables.Affixes, Tables.Rarities,
-							   Tables.Sockets, Tables.AffixTiers, Slot, Tier,
-							   MagicFind, Stream, OutItem);
+							   Tables.Sockets, Tables.AffixTiers,
+							   Tables.WeaponSkills, Slot, Tier, MagicFind, Stream,
+							   OutItem);
+	}
+
+	/** The base row a rolled item came from, or null. */
+	const FCataclysmItemBaseRow* BaseOf(const FTables& Tables,
+										const FCataclysmItem& Item)
+	{
+		return Tables.Bases->FindRow<FCataclysmItemBaseRow>(
+			Item.Base, TEXT("BaseOf"), /*bWarnIfMissing=*/false);
 	}
 }
 
@@ -1467,6 +1483,218 @@ bool FCataclysmUpgradeStoneCapTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the first argument is the material band, not the tier"),
 		BandOne, 1);
 	TestEqual(TEXT("and it still is when the two are swapped"), BandFive, 5);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// The damage types a weapon carries. Issue #857.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAvailableDamageTypesTest,
+	"Cataclysm.Drop.AWeaponTypeCarriesOnlyTheDamageTypesDesignedForIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAvailableDamageTypesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	// THE DESIGN DOCUMENT'S OWN TABLE, spot-checked at both ends of it. The
+	// Damage Types and Skill Availability table in docs/Cataclysm_GDD_v2.md
+	// gives a Shield three types and excludes Wand and Staff from War, which it
+	// says has no caster build.
+	const TArray<FName> Shield =
+		FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, TEXT("Shield"));
+	TestEqual(TEXT("a Shield carries three damage types"), Shield.Num(), 3);
+	TestTrue(TEXT("a Shield can carry War"), Shield.Contains(TEXT("War")));
+	TestTrue(TEXT("a Shield can carry Celestial"),
+		Shield.Contains(TEXT("Celestial")));
+	TestTrue(TEXT("a Shield can carry Chaos"), Shield.Contains(TEXT("Chaos")));
+
+	const TArray<FName> Wand =
+		FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, TEXT("Wand"));
+	TestFalse(TEXT("a Wand cannot carry War"), Wand.Contains(TEXT("War")));
+
+	// THE AURAS DO NOT COUNT. Their weapon type is "All" because they apply
+	// whatever is held, and counting them would give every weapon all eight and
+	// erase the table. A Shield would read 8 rather than 3 if that went wrong.
+	TestTrue(TEXT("no weapon reads as carrying every damage type"),
+		Shield.Num() < 8 && Wand.Num() < 8);
+
+	// AND THE ORDER IS THE CANONICAL ONE, so one seed rolls one weapon whatever
+	// order the rows happen to sit in.
+	const TArray<FName>& Canonical = UCataclysmItemModifiers::DamageTypeNames();
+	int32 Previous = -1;
+	for (const FName& Each : Shield)
+	{
+		const int32 Where = Canonical.IndexOfByKey(Each);
+		TestTrue(TEXT("the available types are in canonical order"),
+			Where > Previous);
+		Previous = Where;
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledDamageTypesTest,
+	"Cataclysm.Drop.ADroppedWeaponCarriesDamageTypesItIsAllowedToHold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRolledDamageTypesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	// EVERY TIER, because the tier is one of the three limits and for most of
+	// the game it is the one that binds.
+	int32 Weapons = 0;
+	int32 NonWeapons = 0;
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		FRandomStream Stream(/*InSeed=*/8570 + Tier);
+		for (int32 Attempt = 0; Attempt < 400; ++Attempt)
+		{
+			const FString Slot = FDrop::RollSlot(Tables.Bases, Stream);
+			FCataclysmItem Item;
+			if (!Roll(Tables, Slot, Tier, 0.0f, Stream, Item))
+			{
+				AddError(FString::Printf(TEXT("a %s failed to roll at tier %d"),
+					*Slot, Tier));
+				return false;
+			}
+
+			const FCataclysmItemBaseRow* Row = BaseOf(Tables, Item);
+			if (!Row)
+			{
+				AddError(FString::Printf(TEXT("%s has no base row"),
+					*Item.Base.ToString()));
+				return false;
+			}
+
+			if (Row->MaxDamageTypes <= 0)
+			{
+				++NonWeapons;
+				if (Item.DamageTypes.Num() != 0)
+				{
+					AddError(FString::Printf(
+						TEXT("a %s carries %d damage types and holds at most 0"),
+						*Row->BaseName, Item.DamageTypes.Num()));
+					return false;
+				}
+				continue;
+			}
+
+			++Weapons;
+			const TArray<FName> Allowed =
+				FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, Row->WeaponType);
+			const int32 Most = FDrop::MaxDamageTypesFor(*Row, Tier, Allowed.Num());
+
+			// FROM ONE, not from zero: the design says a weapon rolls "from one
+			// damage type up to" its cap, so a weapon with none is not a drop.
+			if (Item.DamageTypes.Num() < 1 || Item.DamageTypes.Num() > Most)
+			{
+				AddError(FString::Printf(
+					TEXT("a %s at tier %d carries %d damage types; it may carry 1 to "
+						 "%d (base limit %d, tier %d, %d designed for a %s)"),
+					*Row->BaseName, Tier, Item.DamageTypes.Num(), Most,
+					Row->MaxDamageTypes, Tier, Allowed.Num(), *Row->WeaponType));
+				return false;
+			}
+
+			TSet<FName> Seen;
+			for (const FName& Each : Item.DamageTypes)
+			{
+				if (!Allowed.Contains(Each))
+				{
+					AddError(FString::Printf(
+						TEXT("a %s carries %s and no %s skill is designed for that "
+							 "damage type"), *Row->BaseName, *Each.ToString(),
+						*Row->WeaponType));
+					return false;
+				}
+				if (Seen.Contains(Each))
+				{
+					AddError(FString::Printf(
+						TEXT("a %s carries %s twice"), *Row->BaseName,
+						*Each.ToString()));
+					return false;
+				}
+				Seen.Add(Each);
+			}
+		}
+	}
+
+	// THE RUN HAS TO HAVE SEEN BOTH KINDS, or the checks above passed by never
+	// running. Ten of the eleven slots are not weapons, so a run that rolled no
+	// weapon at all would report success having checked nothing.
+	TestTrue(TEXT("the run rolled some weapons"), Weapons > 0);
+	TestTrue(TEXT("the run rolled some non-weapons"), NonWeapons > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageTypeCapTest,
+	"Cataclysm.Drop.TheDamageTypeCapIsTheLowestOfTheThreeLimits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDamageTypeCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	FCataclysmItemBaseRow OneHanded;
+	OneHanded.Hands = 1;
+	OneHanded.MaxDamageTypes = 4;
+	OneHanded.WeaponType = TEXT("Sword");
+
+	FCataclysmItemBaseRow TwoHanded;
+	TwoHanded.Hands = 2;
+	TwoHanded.MaxDamageTypes = 8;
+	TwoHanded.WeaponType = TEXT("Greatsword");
+
+	// THE TIER BINDS BELOW THE BASE LIMIT for most of the game. Mirrors
+	// max_damage_types() in sim/cataclysm_sim/affixes.py.
+	TestEqual(TEXT("a one-hander at tier 2 rolls at most 2"),
+		FDrop::MaxDamageTypesFor(OneHanded, 2, 8), 2);
+	TestEqual(TEXT("a one-hander at tier 8 is still held to its own 4"),
+		FDrop::MaxDamageTypesFor(OneHanded, 8, 8), 4);
+	TestEqual(TEXT("a two-hander at tier 5 rolls at most 5"),
+		FDrop::MaxDamageTypesFor(TwoHanded, 5, 8), 5);
+
+	// AND HOW MANY TYPES EXIST FOR THE WEAPON IS THE THIRD LIMIT, which neither
+	// the design document nor the Python model states. A Greatsword has six
+	// designed, so tier 8 and a base limit of eight still cannot exceed six.
+	const TArray<FName> ForAGreatsword =
+		FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, TEXT("Greatsword"));
+	TestEqual(TEXT("a Greatsword at tier 8 is held to what is designed for it"),
+		FDrop::MaxDamageTypesFor(TwoHanded, 8, ForAGreatsword.Num()),
+		ForAGreatsword.Num());
+	TestTrue(TEXT("and that is fewer than its base limit of eight"),
+		ForAGreatsword.Num() < TwoHanded.MaxDamageTypes);
+
+	// A NON-WEAPON IS ZERO AND NEVER NEGATIVE.
+	FCataclysmItemBaseRow Boots;
+	Boots.MaxDamageTypes = 0;
+	Boots.WeaponType = FString();
+	TestEqual(TEXT("a non-weapon rolls no damage types"),
+		FDrop::MaxDamageTypesFor(Boots, 8, 0), 0);
 
 	return true;
 }

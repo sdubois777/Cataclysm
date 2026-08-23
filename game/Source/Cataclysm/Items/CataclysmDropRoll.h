@@ -339,6 +339,54 @@ public:
 						  FRandomStream& Stream);
 
 	/**
+	 * Which damage types a weapon of this type can carry at all.
+	 *
+	 * The design document's Damage Types and Skill Availability table, read
+	 * out of the weapon skill matrix rather than restated. A Wand carries no
+	 * War because War has no caster build; a Shield carries only War,
+	 * Celestial and Chaos.
+	 *
+	 * A PAIRING COUNTS WHETHER OR NOT ITS SKILL IS DESIGNED. The matrix holds
+	 * a row for every combination the design allows and leaves SkillName
+	 * empty where the skill has not been written, so an undesigned pairing is
+	 * visible rather than absent. What a weapon may CARRY is what the design
+	 * allows, so this reads whether the row exists and not what is in it.
+	 * UCataclysmWeaponSkills::SkillsFor does the opposite on purpose, because
+	 * it returns skills rather than availability.
+	 *
+	 * @return the types in UCataclysmItemModifiers::DamageTypeNames order, so
+	 *         one seed rolls one weapon however the rows are sorted
+	 */
+	static TArray<FName> DamageTypesAvailableTo(const UDataTable* WeaponSkillTable,
+												const FString& WeaponType);
+
+	/**
+	 * The most damage types a weapon of this base can roll at this tier.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`: "A weapon rolls from one damage type up to
+	 * the lower of its own limit and the tier it dropped on." Mirrors
+	 * max_damage_types() in `sim/cataclysm_sim/affixes.py`.
+	 *
+	 * THERE IS A THIRD LIMIT THAT NEITHER STATES, and for some weapons it is
+	 * the one that binds: how many damage types that weapon type has at all.
+	 * A Shield's base limit is four and only three types exist for it. A 2H
+	 * Crossbow's base limit is eight and only three exist for it. Without
+	 * this a roll would ask for more distinct types than there are to draw.
+	 */
+	static int32 MaxDamageTypesFor(const FCataclysmItemBaseRow& BaseRow,
+								   int32 DifficultyTier, int32 AvailableCount);
+
+	/**
+	 * The damage types one dropped weapon carries. Empty for a non-weapon.
+	 *
+	 * @param Stream  drawn from without replacement, so no type repeats
+	 */
+	static TArray<FName> RollDamageTypes(const UDataTable* WeaponSkillTable,
+										 const FCataclysmItemBaseRow& BaseRow,
+										 int32 DifficultyTier,
+										 FRandomStream& Stream);
+
+	/**
 	 * Roll one whole item for a gear slot at a difficulty tier.
 	 *
 	 * THE ORDER IS RARITY, THEN CONTENTS. The rarity says how many enchantments
@@ -356,6 +404,7 @@ public:
 						 const UDataTable* GearRarityTable,
 						 const UDataTable* SocketTable,
 						 const UDataTable* AffixTierTable,
+						 const UDataTable* WeaponSkillTable,
 						 const FString& Slot, int32 DifficultyTier,
 						 float MagicFind, FRandomStream& Stream,
 						 FCataclysmItem& OutItem);

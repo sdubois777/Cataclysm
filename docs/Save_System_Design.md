@@ -83,7 +83,8 @@ this record is never deleted as a consequence of play.
 - Passive class tree allocation
 - Class resource state where it persists between runs
 - Inventory contents
-- Equipped items, all 18 slots, with their rolled affixes
+- Equipped items, all 19 slots, with their rolled affixes and, on a weapon,
+  the damage types it carries
 - Cataclysmic Residue held
 - **Lethality mode**, set at creation, never changes
 - **Solo Self-Found flag**, set at creation, never comes off

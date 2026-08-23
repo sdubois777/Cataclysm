@@ -7,6 +7,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Components/SceneComponent.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
 
@@ -312,7 +313,10 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
 	const UDataTable* Sockets = UCataclysmDropRoll::LoadItemSocketTable();
 	const UDataTable* Tiers = UCataclysmDropRoll::LoadAffixTierTable();
-	if (!Drops || !Rarities || !Bases || !Affixes || !Sockets || !Tiers)
+	const UDataTable* WeaponSkills =
+		UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!Drops || !Rarities || !Bases || !Affixes || !Sockets || !Tiers
+		|| !WeaponSkills)
 	{
 		// Each Load* has already said which table is missing and why.
 		return 0;
@@ -377,8 +381,8 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 
 		FCataclysmItem Item;
 		if (!UCataclysmDropRoll::RollItem(Bases, Affixes, Rarities, Sockets,
-										  Tiers, Slot, DifficultyTier,
-										  Together, Stream, Item))
+										  Tiers, WeaponSkills, Slot,
+										  DifficultyTier, Together, Stream, Item))
 		{
 			// RollItem has already said why. One item failing to roll is not a
 			// reason to drop the rest on the floor unspawned.

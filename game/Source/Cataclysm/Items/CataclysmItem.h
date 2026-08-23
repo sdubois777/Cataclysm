@@ -106,6 +106,29 @@ struct CATACLYSM_API FCataclysmItem
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	int32 GearLevel = 0;
 
+	/**
+	 * The damage types this weapon carries. Empty on anything but a weapon.
+	 *
+	 * THE WEAPON'S OWN, NOT AN AFFIX'S. FCataclysmRolledAffix above also has
+	 * a DamageTypes array and it is a different thing: that one says which
+	 * types a resistance affix covers. This one is what the weapon itself
+	 * grants, and it is what unlocks class trees and skills.
+	 *
+	 * ROLLED WHEN THE ITEM DROPS and never afterwards, from one type up to
+	 * the lower of the base's MaxDamageTypes, the difficulty tier, and how
+	 * many types that weapon type has at all.
+	 * UCataclysmDropRoll::RollDamageTypes does it and carries the design
+	 * document's wording for the rule.
+	 *
+	 * NOTHING READS IT YET, AND THAT IS THE REST OF ISSUE #857.
+	 * UCataclysmWeaponSlotsComponent still picks a character's skills from a
+	 * single damage type held on the component as a stand-in. Moving that
+	 * onto the worn weapon needs a rule for which six of many skills fill the
+	 * slots, and that chooser is issue #837.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	TArray<FName> DamageTypes;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	TArray<FCataclysmRolledAffix> Affixes;
 
