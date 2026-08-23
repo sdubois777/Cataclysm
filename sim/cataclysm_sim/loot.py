@@ -933,9 +933,19 @@ MATERIAL_TIER_DROP_WEIGHT: dict[str, float] = {
 #: How many materials share each tier, from the Crafting sheet. Only used to say
 #: how likely a NAMED material is, which is what the tier weights above are
 #: judged against.
+#:
+#: EVERY TIER GAINED TWO ON 2026-08-23, issue #852. The one placeholder row named
+#: "Upgrade Stone (x)" became ten stones, "+1" through "+10", and the project
+#: owner chose to spread them two to a tier rather than leave them all Uncommon.
+#: Ten in one tier would have made ten of that tier's thirteen materials upgrade
+#: stones, and a material drop picks evenly among the materials sharing its tier.
+#:
+#: SO A NAMED MATERIAL IS RARER THAN IT WAS. Purified Essence was one drop in
+#: 1,023 and is now one in 1,705, because five materials share the top tier
+#: rather than three.
 MATERIALS_IN_TIER: dict[str, int] = {
-    "Common": 4, "Uncommon": 4, "Rare": 4, "Very Rare": 3,
-    "Extremely Rare": 3,
+    "Common": 6, "Uncommon": 5, "Rare": 6, "Very Rare": 5,
+    "Extremely Rare": 5,
 }
 
 

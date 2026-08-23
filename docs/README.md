@@ -63,7 +63,7 @@ or if a sheet is added or removed without this table changing.
 | Buffs | 18 | one description per row, no heading row |
 | Debuffs | 26 | one description per row, no heading row |
 | DoTs | 8 | one description per row, no heading row |
-| Crafting | 37 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
+| Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
 | Affixes | 85 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
 | Class Stats | 33 | Class, Stat, Base, Per Level |
@@ -86,7 +86,7 @@ which group it is in:
   enchantments in columns A to D and 195 negative ones in columns F to I.
 - **Enemy Modifiers** is a matrix, one column per Cataclysm and each cell holding
   `Name: Description`. Its 11 rows across 8 columns hold 79 modifiers.
-- **Crafting** is three tables stacked: 18 materials, a heading row whose first
+- **Crafting** is three tables stacked: 27 materials, a heading row whose first
   cell is the word "Action", and 18 Forge operations. Rows 5 to 11 also carry an
   unrelated six-row table in columns 7 to 9.
   `tools/tests/test_crafting_section_matches_the_sheet.py` explains that shape in

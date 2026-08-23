@@ -111,7 +111,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// and no affix could reach.
 	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   27)
 	CHECK_TABLE(FCataclysmCityUpgradeRow,       "CityUpgrades.csv",           24)
-	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      37)
+	// 46 SINCE 2026-08-23, issue #852, and it was 37. The one row named
+	// "Upgrade Stone (x)" was a placeholder that showed on screen that way.
+	// It became ten stones, "+1" through "+10", spread two to a rarity tier
+	// because ten in one tier would have crowded out everything else in it.
+	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      46)
 	// 55 bases across 11 slots, at least three per slot, because one base in a
 	// slot is not a choice.
 	CHECK_TABLE(FCataclysmItemBaseRow,          "ItemBases.csv",              55)

@@ -3241,7 +3241,13 @@ by itself takes a new item to the break point where days start being charged.
 
 ## **Crafting Materials**
 
-Eighteen materials. Tier is the rarity band it drops in, not an item level.
+Twenty-seven materials. Tier is the rarity band it drops in, not an item level.
+
+  
+
+**The ten upgrade stones are one material family spread across all five rarity bands**, two to a band, decided by the project owner on 2026-08-23. A stone is named for the level it takes an item to, so a +8 stone is what raises a piece to +8, and two of them are consumed. See Upgrading Gear for how they combine.
+
+**Why they are not all one band.** A material drop picks evenly among the materials sharing its rarity band, so ten stones in one band would make ten of that band's thirteen materials upgrade stones and crowd out everything else in it. Spreading them also makes a stone's rarity track how far into a piece's life it is used: a +1 stone is Common and a +10 stone is Extremely Rare, so finishing a piece is a long errand rather than a purchase.
 
   
 
@@ -3250,27 +3256,38 @@ Eighteen materials. Tier is the rarity band it drops in, not an item level.
 | Corrupted Mote | 1 (Common) | | Affix reroll currency |
 | Dismantling Dust | 1 (Common) | Dismantling items with sockets | Safe unsocketing |
 | Schematic Fragments | 1 (Common) | Dismantling items | Deterministic crafting |
+| Upgrade Stone +1 | 1 (Common) | | Raises an item to +1 |
+| Upgrade Stone +2 | 1 (Common) | | Raises an item to +2 |
 | Tainted Shard | 2 (Uncommon) | | Removes one day of crafting time |
-| Upgrade Stone | 2 (Uncommon) | | Raises item level by one tier |
+| Upgrade Stone +3 | 2 (Uncommon) | | Raises an item to +3 |
+| Upgrade Stone +4 | 2 (Uncommon) | | Raises an item to +4 |
 | Elemental Cinder | 2 (Uncommon) | | Adds a random damage type to a weapon |
 | Potency Crystal | 2 (Uncommon) | | Raises an affix to the next tier, to a maximum of 7 |
 | Aetherial Shard | 3 (Rare) | Dungeon bosses and elites | Imprinting catalyst |
 | Chaos Stabilizer | 3 (Rare) | Dungeon bosses and elites | Halves the next craft's CR gain |
 | Shattered Core | 3 (Rare) | | Adds a socket |
 | Prismatic Catalyst | 3 (Rare) | | Changes a weapon's damage type |
+| Upgrade Stone +5 | 3 (Rare) | | Raises an item to +5 |
+| Upgrade Stone +6 | 3 (Rare) | | Raises an item to +6 |
 | Purified Essence | 3 (Rare) | | Halves accumulated CR |
 | Jeweler's Setting Agent | 3 (Rare) | | Sockets a gem |
 | Crystal of Instability | 4 (Very Rare) | | Affix shifting |
 | Focusing Lens | 4 (Very Rare) | | Changes a socket's type |
 | Sovereign Ingot | 4 (Very Rare) | | Adds a specific damage type to a weapon |
+| Upgrade Stone +7 | 4 (Very Rare) | | Raises an item to +7 |
+| Upgrade Stone +8 | 4 (Very Rare) | | Raises an item to +8 |
 | Primal Spark | 4 (Very Rare) | | Forces a maximum stat roll |
+| Upgrade Stone +9 | 5 (Extremely Rare) | | Raises an item to +9 |
+| Upgrade Stone +10 | 5 (Extremely Rare) | | Raises an item to +10, the maximum |
 | Regret Essence | 5 (Extremely Rare) | | Changes an enchantment's negative effect |
 
   
 
-**Seven of the eighteen have no stated source.** Where a material drops is not
+**Seven of them have no stated source.** Where a material drops is not
 designed yet for those, and the loot tables that would answer it do not exist.
-That is issue #531, and it does not block the operations above.
+That is issue #531, and it does not block the operations above. The ten upgrade
+stones are not among the seven: they drop in their rarity band like any other
+material.
 
   
 

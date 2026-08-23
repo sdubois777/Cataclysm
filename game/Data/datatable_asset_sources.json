@@ -34,8 +34,8 @@
     {
       "asset": "DT_CraftingMaterials",
       "csv": "CraftingMaterials.csv",
-      "rows": 37,
-      "csv_sha256": "e508856f3637ac9bc1af40631d85f21fa08b6478409356cf4d8408c65b2d0d43"
+      "rows": 46,
+      "csv_sha256": "8aaaded1721039a0f6fba01e8b342ae7559ea488cfc3aa295932478f3f2da2d4"
     },
     {
       "asset": "DT_DungeonModifiers",
@@ -119,7 +119,7 @@
       "asset": "DT_MaterialTiers",
       "csv": "MaterialTiers.csv",
       "rows": 5,
-      "csv_sha256": "3377c3204a507f5a75c4f98e24baabbe0024f44639c2e97bc7152d95d3473f56"
+      "csv_sha256": "1ddb2ed8c862162184fe314b5de3126a9dcc508de5a9f41e32efda7ea5d736c2"
     },
     {
       "asset": "DT_MinionScaling",
