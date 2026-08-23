@@ -47,15 +47,27 @@ enum class ECataclysmWearResult : uint8
 	/**
 	 * Refused, because it is the only weapon worn and a character must hold one.
 	 *
-	 * TEMPORARY, AND ISSUE #841 IS THE NOTE TO REMOVE IT. A character holding no
-	 * weapon has no weapon skills, because UCataclysmWeaponSlotsComponent grants
-	 * the six ability slots from the worn weapon's type. Four of the fourteen
-	 * weapon types -- 2H Crossbow, Crossbow, Shield and Spear -- have no Demonic
-	 * skills written yet, and Demonic is the default damage type, so an empty
-	 * skill bar today would mean missing rows in game/Data/WeaponSkills.csv
-	 * rather than a designed consequence of fighting bare handed. Once those
-	 * rows exist this refusal should go and being unarmed should be allowed to
-	 * mean it.
+	 * A CHOICE RATHER THAN A STOPGAP, AND THIS COMMENT SAID OTHERWISE UNTIL
+	 * 2026-08-23. It claimed the refusal was waiting on four weapon types to be
+	 * given Demonic skills. THAT WILL NEVER HAPPEN. The design document's table
+	 * of which weapon types each damage type covers gives Demonic exactly ten,
+	 * and 2H Crossbow, Crossbow, Shield and Spear are deliberately not among
+	 * them; it adds that Demonic's ten "are now designed". So the stated
+	 * condition for removing this described something that was never going to
+	 * arrive, which is worse than giving no reason at all, because the next
+	 * person reads it as a plan.
+	 *
+	 * WHAT IS ACTUALLY TRUE. A character holding no weapon has no weapon skills,
+	 * because UCataclysmWeaponSlotsComponent grants the six ability slots from
+	 * the worn weapon's type. That is equally true of a Demonic character
+	 * holding a Spear, and the design accepts THAT deliberately --
+	 * Cataclysm.WeaponSlots.AWeaponItsDamageTypeDoesNotCoverOffersNothing
+	 * asserts it on purpose so that nobody "fixes" it later.
+	 *
+	 * SO THE OPEN QUESTION IS ONLY WHETHER AN UNARMED CHARACTER SHOULD HAVE NO
+	 * SKILLS, and issue #841 is where that is decided. Letting the slots empty
+	 * was recommended when this was built and the project owner chose this
+	 * instead. It stays or goes on its own merits, not on any content arriving.
 	 *
 	 * SWAPPING IS NOT REFUSED, only taking the last one off. Wearing a different
 	 * weapon over this one goes through WearFromCarried and never reaches here.
