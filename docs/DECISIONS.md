@@ -20,6 +20,124 @@ applied or still pending.
 
 ---
 
+## 2026-08-22 — A skill slot is a key, so a skill carries its own damage, cooldown and mana cost
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Skill Slots and What a Skill Is
+Worth subsections of section IV. Applied to the document. **The code and the data
+do not match it yet**; issues #836 and #837 are that work.
+
+### The question, and it was already answered once
+
+Building the equipment slots (#828) exposed a case nothing in the code handled: a
+character holding two one-handed weapons of different types has two candidate
+skills for each slot, and `UCataclysmWeaponSlotsComponent` takes one weapon type
+and no more. The code answered with whichever weapon slot happened to be first,
+which made the skill set depend on which hand the player dropped a weapon into.
+Issue #829 was raised calling it undefined.
+
+**It was not undefined. The design document already said it**, in two places,
+and the issue was written from the code without finding them. The Skill Slots
+subsection:
+
+> The equipped weapons determine the **pool** of skills a player can draw from,
+> not the contents of each slot. Every combination of an equipped weapon type and
+> an available damage type contributes its skills to that pool. The player then
+> chooses which skills to use and assigns them to slots.
+
+And Dual Wielding:
+
+> The player does not receive a button for every available skill. They choose
+> from the available pool and assign chosen skills to slots.
+
+### What the project owner settled, which the document did not
+
+Two things the paragraphs above leave open.
+
+**A matched pair needs no choice.** Two weapons of the same type carrying the
+same damage types contribute the same skills, so the pool is what one of them
+would have given. The choice appears the moment the two differ in either.
+
+**Any skill may go in any slot.** "Assigns them to slots" could have meant a
+skill goes in the slot it was designed for and the player picks between
+candidates for that slot. It does not. A player who wants two heavy attacks and
+no aura may have them.
+
+### What that costs, and it was not obvious
+
+**A skill has no damage figure of its own.** `game/Data/WeaponSkills.csv` carries
+a skill's name, description, tags and shape and no numbers at all;
+`game/Data/SkillSlots.csv` carries damage, cooldown and mana cost per slot, and
+`CataclysmGameplayAbility.cpp` reads them by slot when the skill runs.
+
+So free assignment on the code as it stands would mean **the same skill is worth
+250% of weapon damage on the right mouse button and 400% on R**, with a different
+cooldown and mana cost. Its power would follow the key rather than the skill.
+
+The owner was asked once with that figure in front of them and chose to move the
+numbers onto the skill. **A slot is a key and nothing else**; a skill is worth
+what it is worth wherever it is put.
+
+### Why the numbers were on the slot, and why that was right until now
+
+`tools/generate_datatables.py` states the reason in `skill_slots`:
+
+> They are per slot rather than per skill: no designed skill states its own, and
+> a column on the Weapon Skills sheet would be 77 copies of seven values.
+>
+> A skill states its own figure only when it differs, which is what Skull
+> Splitter does at 500% weapon damage.
+
+That was correct while a skill could only sit in its designed slot: the slot's
+figure and the skill's figure were the same number, so storing it once was
+storing it in the right place. What changed is not that the reasoning was wrong,
+but that its premise stopped holding.
+
+**The design already allowed the exception.** Four skills state their own figure
+today — Skull Splitter at 500%, Annihilator at 300%, Bulwark's 200% cap and
+Haymaker's 100% wall impact — and all four say so in prose in the design document
+rather than in any data the game reads. This decision makes the exception the
+rule.
+
+### What the per-slot table becomes
+
+Guidance for whoever writes a skill, rather than something the game applies. A
+skill written for the Heavy slot still starts at 250% of weapon damage with a
+moderate cooldown, because that is what the slot is usually used for. Nothing
+enforces it.
+
+`game/Data/SkillSlots.csv` keeps its other job.
+`tools/tests/test_skill_slot_sheet_matches_the_model.py` checks it against
+`SKILL_SLOTS` in `sim/cataclysm_sim/character.py`, where the balance tuning
+happens, and that comparison is unaffected.
+
+### What has to happen next, in order
+
+**Issue #836 first.** Three columns on the Weapon Skills sheet of
+`docs/All_Things_Cataclysm.xlsx`, read through to `FCataclysmWeaponSkillRow`, and
+`UCataclysmGameplayAbility` asking the skill before the slot. **It can land
+before any number is written**: with every cell empty the fallback to the slot's
+figure gives exactly today's behaviour. Then 112 designed skills need numbers,
+which is design work and not a bulk edit.
+
+**Issue #837 second**, and it is blocked on #836. Six chosen skills stored on the
+character and written to the save, a screen to choose on, and a decision about
+what happens to a chosen skill when the weapon that granted it comes off.
+
+### What is unsettled
+
+**What happens to a chosen slot when its skill leaves the pool.** Taking off the
+weapon that granted it has to do something and nothing says what. Clearing the
+slot is the obvious answer and it is a decision rather than a default. Recorded
+on #837.
+
+**Whether two heavy attacks is a build or a hole.** Nothing stops a player
+filling all six slots from one slot's worth of skills, and whether that is
+interesting or degenerate is a question only play answers. It is the kind of
+freedom the design has chosen elsewhere, so it is allowed rather than guarded
+against.
+
+---
+
 ## 2026-08-22 — Particle effects get a frame-time budget of 2 milliseconds, and the numbers that were guesses are now measured
 
 **Affects:** `docs/Niagara_Conventions.md` section 4,

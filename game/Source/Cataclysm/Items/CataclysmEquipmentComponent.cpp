@@ -431,7 +431,12 @@ FString UCataclysmEquipmentComponent::EquippedWeaponType() const
 			// THE FIRST OCCUPIED SLOT, AND THAT IS A PLACEHOLDER. With two
 			// one-handed weapons of different types the answer depends on which
 			// slot the player dropped which weapon into, and the two slots are
-			// supposed to carry no meaning. Issue #829 is the design question.
+			// supposed to carry no meaning.
+			//
+			// THE ANSWER IS NOT TO PICK A BETTER WEAPON HERE. Both weapons
+			// contribute their skills to one pool and the player assigns any of
+			// them to any slot, which the design said before this was written.
+			// Issue #837 is that work and this function goes with it.
 			return Base->WeaponType;
 		}
 	}

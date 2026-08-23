@@ -429,6 +429,18 @@ A player carrying several damage types will have far more skills available than 
 
   
 
+**A SLOT IS A KEY, AND NOTHING ELSE.** Any skill from the pool may go in any slot. The names in the table below say what a slot is usually used for and what key presses it; they do not restrict what may be put there. A player who wants two heavy attacks and no aura may have them.
+
+  
+
+**WHICH MEANS A SKILL CARRIES ITS OWN DAMAGE, COOLDOWN AND MANA COST.** Those used to come from the slot, so the same skill would have been worth 250% of weapon damage on the right mouse button and 400% on R. A skill is worth what it is worth wherever it is put. Decided 2026-08-22; see the entry in `docs/DECISIONS.md` for what it costs.
+
+  
+
+**A MATCHED PAIR OF WEAPONS CHANGES NOTHING HERE.** Two weapons of the same type carrying the same damage types contribute the same skills, so the pool is what one of them would have given and there is no choice to make. The choice appears the moment the two differ in either.
+
+  
+
 | Slot | Description |
 | :-: | :-: |
 | Basic Attack | Automatic — augmented by all damage types on the weapon. Can be a damage source or resource generator depending on build. |
@@ -467,7 +479,11 @@ Every skill deals a percentage of **weapon damage**, which means the weapon's ow
 
   
 
-**A skill may state its own figure, and four already do.** Skull Splitter says 500% weapon damage, Annihilator says 300%, Bulwark caps stored damage at 200%, and Haymaker's wall impact adds 100%. **The Ultimate range above is exactly those two Ultimates**, so it is read off the design rather than chosen.
+**EVERY SKILL STATES ITS OWN FIGURE, AND THE TABLE ABOVE IS WHAT A SKILL FOR THAT SLOT IS TYPICALLY WORTH.** It is guidance for whoever writes a skill rather than a rule the game applies. Four skills already stated their own before this was general: Skull Splitter says 500% weapon damage, Annihilator says 300%, Bulwark caps stored damage at 200%, and Haymaker's wall impact adds 100%. **The Ultimate range above is exactly those two Ultimates**, so it is read off the design rather than chosen.
+
+  
+
+**IT USED TO BE THE OTHER WAY ROUND AND THAT IS WHY THE TABLE READS AS IT DOES.** A skill had no damage figure of its own: `game/Data/SkillSlots.csv` held one per slot and the game applied it to whatever skill sat there. That worked while a skill could only go in the slot it was designed for. Once any skill may go in any slot it stops working, because a skill's power would follow the key rather than the skill. Decided 2026-08-22.
 
   
 

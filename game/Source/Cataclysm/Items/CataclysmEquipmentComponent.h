@@ -251,11 +251,19 @@ public:
 	 * off the item actually worn, which is what makes a dropped weapon change
 	 * what the player can do.
 	 *
-	 * WITH TWO ONE-HANDED WEAPONS IT ANSWERS THE FIRST OCCUPIED SLOT'S. That is
-	 * a placeholder and it is stated as one: the design says a pair blends into
-	 * one swing with no primary hand, so which of the two names the skill set is
-	 * a real design question that the Dual Wielding section does not settle.
-	 * Issue #829.
+	 * WITH TWO ONE-HANDED WEAPONS IT ANSWERS THE FIRST OCCUPIED SLOT'S, AND
+	 * THAT IS THE WRONG SHAPE RATHER THAN THE WRONG CHOICE. The design was
+	 * settled on 2026-08-22 and it is not "pick a weapon": both weapons
+	 * contribute their skills to one pool and the player assigns any of them
+	 * to any slot. The Skill Slots section of docs/Cataclysm_GDD_v2.md said
+	 * so before this function was written; issue #829 was raised calling it
+	 * undefined and was wrong.
+	 *
+	 * SO THIS FUNCTION SHOULD NOT EXIST IN THE END. It is what lets
+	 * UCataclysmWeaponSlotsComponent keep working while it still takes one
+	 * weapon type, and it goes when issue #837 gives the player the choice.
+	 * A matched pair -- same weapon type, same damage types -- is unaffected
+	 * either way, because both weapons contribute the same skills.
 	 *
 	 * @return the weapon type, or an empty string when no weapon is worn.
 	 */
