@@ -823,6 +823,17 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	// IsBoss's comparison quietly meaningless.
 	RarityStep = FMath::Max(0, NewStep);
 
+	// A RARER CREATURE IS PHYSICALLY BIGGER, so a player can tell what they
+	// are facing before it hits them. Issue #849.
+	//
+	// THE ACTOR'S SCALE AND NOT THE CAPSULE'S, so the collision capsule, the
+	// body and everything attached move together. It is also what makes
+	// GetScaledCapsuleRadius report the real size, which is what the telegraph
+	// drawing reads, so a bigger creature's attack shapes follow without a
+	// second rule.
+	SetActorScale3D(FVector(UCataclysmEnemyRarity::BodyScaleForStep(
+		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep)));
+
 	// RE-APPLIED, BECAUSE THE RARITY IS PART OF THE STAT BLOCK SINCE ISSUE #848.
 	// Every other setter here re-applies for the reason SetHealth states: a
 	// spawner sets these on the lines after SpawnActor, in whatever order suits
