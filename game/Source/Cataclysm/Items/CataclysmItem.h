@@ -201,6 +201,25 @@ public:
 	static constexpr float GearLevelFactor = 0.25245807054891267f;
 
 	/**
+	 * What each half of a hybrid affix is worth, against the whole affix.
+	 *
+	 * THE DESIGN STATES IT TWICE. `docs/Cataclysm_GDD_v2.md`, on why a hybrid
+	 * and one of its halves cannot sit on one piece: "A hybrid grants each half
+	 * at 70%". And the Hybrid Affixes section: "A hybrid is worth 1.4 affixes
+	 * spread across two stats, where a single affix is worth 1.0 concentrated in
+	 * one. So it wins a slot when a build needs both and loses when it needs one
+	 * badly."
+	 *
+	 * IT IS DERIVED RATHER THAN CHOSEN, and `sim/cataclysm_sim/affixes.py` says
+	 * why: it is the ratio the project owner already set between the
+	 * two-resistance affix and the single-resistance one, 14 against 20. Both
+	 * rows are in game/Data/Affixes.csv, and
+	 * Cataclysm.Items.TheHybridShareIsTheResistanceRatio reads them and fails if
+	 * this constant stops matching, rather than the two quietly drifting.
+	 */
+	static constexpr float HybridFraction = 0.7f;
+
+	/**
 	 * What a two-handed weapon multiplies its own implicits and affixes by.
 	 *
 	 * DERIVED, NOT CHOSEN. Two one-handed weapons hold eight affix slots against
@@ -326,6 +345,23 @@ public:
 	/** Whether the base is a two-handed weapon, which doubles its values. */
 	static bool IsTwoHanded(const FCataclysmItem& Item,
 							const UDataTable* BaseTable);
+
+	/**
+	 * The Affixes table row whose AffixName is this, or null.
+	 *
+	 * BY DISPLAY NAME RATHER THAN BY ROW KEY, because a hybrid affix names its
+	 * two halves as the affix names they are ("Flat magic find") and the row key
+	 * is decorated with the kind ("Stat_Flat_magic_find").
+	 *
+	 * SHARED RATHER THAN COPIED, and that is not tidiness. It lived in an
+	 * anonymous namespace in CataclysmDropRoll.cpp, and a second copy in another
+	 * file of this module would compile alone and collide the moment both files
+	 * were clean at once, because Unreal's unity build merges them and excludes
+	 * only the files you have modified. That has broken `development` once
+	 * already.
+	 */
+	static const FCataclysmAffixRow* AffixNamed(const UDataTable* AffixTable,
+												const FString& AffixName);
 
 	/** The stat name a weapon's own damage is carried under, in every sheet. */
 	static const TCHAR* AttackDamageStat;
