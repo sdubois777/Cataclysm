@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmItemTooltip.h"
 
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
@@ -224,6 +225,87 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 // The whole panel
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// What a weapon is
+// ---------------------------------------------------------------------------
+
+TArray<FString> UCataclysmItemTooltip::WeaponLines(const FCataclysmItem& Item,
+												   const UDataTable* BaseTable)
+{
+	TArray<FString> Lines;
+
+	const FCataclysmItemBaseRow* Base =
+		BaseTable ? BaseTable->FindRow<FCataclysmItemBaseRow>(
+						Item.Base, TEXT("UCataclysmItemTooltip::WeaponLines"),
+						/*bWarnIfMissing=*/false)
+				  : nullptr;
+	if (!Base || Base->WeaponType.IsEmpty())
+	{
+		// NOT A WEAPON, which game/Data/ItemBases.csv says by leaving the
+		// WeaponType column blank. None of the lines below means anything on a
+		// helm, and forty-one of the fifty-five bases are not weapons.
+		return Lines;
+	}
+
+	// WHAT IT IS. The sub type is not trivia: a hit's sub type is the one every
+	// weapon swung agrees on and a mixed pair carries none, so a player picking
+	// a second weapon cannot otherwise see what that choice costs them.
+	FString What = FString::Printf(TEXT("%s %s"),
+		Base->Hands == 2 ? TEXT("Two-handed") : TEXT("One-handed"),
+		*Base->WeaponType);
+	if (!Base->SubType.IsEmpty())
+	{
+		What.Append(TEXT(", ")).Append(Base->SubType);
+	}
+	Lines.Add(What);
+
+	// HOW FAST IT SWINGS, AND ONLY FOR A WEAPON THAT IS SWUNG. A Shield is a
+	// one-handed weapon carrying no attack damage implicit, so it contributes
+	// neither damage nor swing rate to a hit -- UCataclysmItemModifiers::
+	// BlendedAttackSpeed averages over the weapons that arm and leaves it out.
+	// Its base row still carries an AttackSpeed of 1.2, and printing that would
+	// tell a player a shield is swung.
+	//
+	// TWO DECIMALS RATHER THAN NumberInWords. The designed rates are 1.20, 1.25
+	// and 1.28, and one decimal place makes three different weapons read alike.
+	if (Base->AttackSpeed > 0.0f
+		&& UCataclysmItemModifiers::WeaponDamageForItem(Item, BaseTable) > 0.0f)
+	{
+		Lines.Add(FString::Printf(TEXT("%.2f attacks per second"),
+								  Base->AttackSpeed));
+	}
+
+	// WHAT DAMAGE TYPES IT CARRIES, rolled when it dropped. Issue #857.
+	if (Item.DamageTypes.Num() > 0)
+	{
+		TArray<FString> Named;
+		for (const FName& Each : Item.DamageTypes)
+		{
+			Named.Add(Each.ToString());
+		}
+		Lines.Add(FString::Join(Named, TEXT(", ")));
+	}
+
+	// AND HOW MANY IT COULD EVER CARRY, which is the lower of its base's own
+	// limit and how many damage types are designed for its weapon type.
+	//
+	// THE BASE'S FIGURE ALONE WOULD BE WRONG FOR HALF THE WEAPON TYPES. Every
+	// two-handed base states 8 and not one has 8 designed for it: a Staff has
+	// 7, a Greatsword 6, a Greataxe 4, a 2H Crossbow 3. A Shield states 4 and
+	// has 3. Whether the design intends that is issue #875; either way a number
+	// shown to a player has to be one they can reach.
+	const int32 Designed = UCataclysmDropRoll::DamageTypesAvailableTo(
+		UCataclysmWeaponSkills::LoadGeneratedTable(), Base->WeaponType).Num();
+	const int32 Ceiling = FMath::Min(Base->MaxDamageTypes, Designed);
+	if (Ceiling > 0)
+	{
+		Lines.Add(FString::Printf(TEXT("Holds up to %d damage type%s"), Ceiling,
+								  Ceiling == 1 ? TEXT("") : TEXT("s")));
+	}
+
+	return Lines;
+}
+
 TArray<FString> UCataclysmItemTooltip::LinesFor(
 	const FCataclysmCarriedSlot& Slot, const UDataTable* BaseTable,
 	const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable)
@@ -284,6 +366,11 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 	{
 		Lines.Add(FString::Printf(TEXT("+%d"), Item.GearLevel));
 	}
+
+	// WHAT A WEAPON IS, BEFORE WHAT IT GRANTS. Its type, its sub type, its
+	// swing rate and its damage types describe the item itself; the implicits
+	// and affixes below describe what carrying it does to the character.
+	Lines.Append(WeaponLines(Item, BaseTable));
 
 	const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable);
 
