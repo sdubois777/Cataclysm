@@ -57,6 +57,18 @@ namespace CataclysmSaveRecordTest
 		Material.Quantity = 12;
 		Record->CarriedSlots.Add(Material);
 
+		// A WEAPON, BECAUSE ONLY A WEAPON CARRIES DAMAGE TYPES. The gear above
+		// is a Circlet and every item in the committed fixtures is one, so
+		// without this the whole save suite only ever writes an empty
+		// Item.DamageTypes and a fault serialising a filled one would not show.
+		// War and Void are both designed for a Greatsword. Issue #857.
+		FCataclysmCarriedSlot Weapon;
+		Weapon.Item.Base = FName(TEXT("Greatsword"));
+		Weapon.Item.GearLevel = 3;
+		Weapon.Item.DamageTypes.Add(FName(TEXT("War")));
+		Weapon.Item.DamageTypes.Add(FName(TEXT("Void")));
+		Record->CarriedSlots.Add(Weapon);
+
 		return Record;
 	}
 
@@ -272,9 +284,9 @@ bool FCataclysmSaveWritesOnlyMarkedFields::RunTest(const FString&)
 	// AND THE MARKED FIELDS DID GET THERE, all the way down. A converter that
 	// wrote nothing at all would also pass the check above.
 	const TArray<TSharedPtr<FJsonValue>>* Slots = nullptr;
-	if (!Written->TryGetArrayField(TEXT("CarriedSlots"), Slots) || Slots->Num() != 2)
+	if (!Written->TryGetArrayField(TEXT("CarriedSlots"), Slots) || Slots->Num() != 3)
 	{
-		AddError(TEXT("the two carried slots did not reach the file"));
+		AddError(TEXT("the three carried slots did not reach the file"));
 		return false;
 	}
 
@@ -372,9 +384,9 @@ bool FCataclysmSaveRoundTripKeepsEveryField::RunTest(const FString&)
 		Read->Experience, static_cast<int64>(12884901888));
 	TestEqual(TEXT("the residue came back"), Read->CataclysmicResidue, 13.5f);
 
-	if (Read->CarriedSlots.Num() != 2)
+	if (Read->CarriedSlots.Num() != 3)
 	{
-		AddError(FString::Printf(TEXT("%d carried slots came back, expected 2"),
+		AddError(FString::Printf(TEXT("%d carried slots came back, expected 3"),
 			Read->CarriedSlots.Num()));
 		return false;
 	}
@@ -396,6 +408,23 @@ bool FCataclysmSaveRoundTripKeepsEveryField::RunTest(const FString&)
 	TestEqual(TEXT("the material's name came back"), Read->CarriedSlots[1].Material,
 		FName(TEXT("Whispering_Ash")));
 	TestEqual(TEXT("the material's count came back"), Read->CarriedSlots[1].Quantity, 12);
+
+	// THE WEAPON'S DAMAGE TYPES, IN ORDER. A list that came back reordered
+	// would still hold the same types and would still be wrong, because the
+	// order is what makes one seed roll one weapon. Issue #857.
+	TestEqual(TEXT("the weapon's base came back"), Read->CarriedSlots[2].Item.Base,
+		FName(TEXT("Greatsword")));
+	if (Read->CarriedSlots[2].Item.DamageTypes.Num() != 2)
+	{
+		AddError(FString::Printf(
+			TEXT("%d of the weapon's damage types came back, expected 2"),
+			Read->CarriedSlots[2].Item.DamageTypes.Num()));
+		return false;
+	}
+	TestEqual(TEXT("the weapon's first damage type came back"),
+		Read->CarriedSlots[2].Item.DamageTypes[0], FName(TEXT("War")));
+	TestEqual(TEXT("the weapon's second damage type came back"),
+		Read->CarriedSlots[2].Item.DamageTypes[1], FName(TEXT("Void")));
 
 	return true;
 }

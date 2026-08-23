@@ -47,6 +47,7 @@
 				"Item": {
 					"Base": "Circlet",
 					"GearLevel": 0,
+					"DamageTypes": [],
 					"Affixes": [],
 					"EnchantmentCount": 1,
 					"Sockets": 0,
