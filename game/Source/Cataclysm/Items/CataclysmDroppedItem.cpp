@@ -3,6 +3,7 @@
 #include "Items/CataclysmDroppedItem.h"
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
+#include "Player/CataclysmGameMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Components/SceneComponent.h"
@@ -350,6 +351,23 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	const float Together =
 		MagicFind + UCataclysmDropRoll::MagicFindFrom(Drops, EnemyRarity);
 
+	// THE TIER BEING PLAYED, AND UNTIL ISSUE #868 THIS WAS THE CONSTANT 8. That
+	// placeholder was put here when nothing in the engine knew the tier, and it
+	// stopped being true: ACataclysmGameMode::DifficultyTierIn answers it, the
+	// `Cataclysm.DifficultyTier` console variable sets it, and
+	// UCataclysmVitalAttributeSet already resolves damage through it. So combat
+	// respected the chosen tier and loot did not.
+	//
+	// THREE GATES RUN THROUGH THIS ONE NUMBER. Gear rarity equals the tier,
+	// affixes roll up to the tier plus one, and the best upgrade stone that can
+	// drop is the tier plus two. Every one of them was reading 8, so a character
+	// on tier 1 could be handed Cataclysmic gear with T7 affixes.
+	//
+	// THE PLACEHOLDER'S REASON WAS A GOOD ONE and is not lost: a drop seen in
+	// the editor exercised the whole roll rather than a slice of it. Set
+	// `Cataclysm.DifficultyTier 8` to get that back deliberately.
+	const int32 DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
+
 	int32 Spawned = 0;
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
@@ -359,7 +377,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 
 		FCataclysmItem Item;
 		if (!UCataclysmDropRoll::RollItem(Bases, Affixes, Rarities, Sockets,
-										  Tiers, Slot, UntrackedDifficultyTier,
+										  Tiers, Slot, DifficultyTier,
 										  Together, Stream, Item))
 		{
 			// RollItem has already said why. One item failing to roll is not a
