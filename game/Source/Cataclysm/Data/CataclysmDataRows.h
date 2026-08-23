@@ -1382,10 +1382,11 @@ struct FCataclysmEnemyRarityRow : public FTableRowBase
 	 * of an encounter's Power Score and have to be divided by Common's to give
 	 * a multiplier; this one already is one, and Common is 1.
 	 *
-	 * HALF AS BIG AGAIN EACH STEP, so a Cataclysm Boss is 7.59 times a Common.
+	 * A FIFTH BIGGER EACH STEP, so a Cataclysm Boss is 2.49 times a Common.
 	 * `BODY_SCALE_PER_STEP` in `sim/cataclysm_sim/enemy_stats.py` states the
 	 * rule and its comment carries the arithmetic against the dungeon's
-	 * narrowest corridor, which is what makes the top rung safe.
+	 * narrowest corridor. It was half as big again a step until issue #885:
+	 * at 20% every rung fits that corridor, and at 50% the top one did not.
 	 *
 	 * DEFAULTS TO 1 AND NOT 0. A row that failed to load must leave a creature
 	 * its own size rather than shrinking it to nothing.

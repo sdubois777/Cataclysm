@@ -1,7 +1,7 @@
 Name,RarityName,Step,HealthPerScore,DamagePerScore,ArmorPerScore,SpawnWeight,BodyScale
 Common,Common,0,0.5,0.65,0.1,0.6,1.0
-Elite,Elite,1,0.925,0.91,0.135,0.2,1.5
-Legendary,Legendary,2,1.71125,1.274,0.18225,0.15,2.25
-Herald,Herald,3,3.165813,1.7836,0.246038,0.04,3.375
-Boss,Boss,4,5.856753,2.49704,0.332151,0.01,5.0625
-Cataclysm_Boss,Cataclysm Boss,5,10.834993,3.495856,0.448403,0.0,7.59375
+Elite,Elite,1,0.925,0.91,0.135,0.2,1.2
+Legendary,Legendary,2,1.71125,1.274,0.18225,0.15,1.44
+Herald,Herald,3,3.165813,1.7836,0.246038,0.04,1.728
+Boss,Boss,4,5.856753,2.49704,0.332151,0.01,2.0736
+Cataclysm_Boss,Cataclysm Boss,5,10.834993,3.495856,0.448403,0.0,2.48832

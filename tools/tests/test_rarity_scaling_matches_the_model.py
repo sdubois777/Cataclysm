@@ -224,19 +224,26 @@ def test_a_common_creature_is_its_own_size(rarities) -> None:
 def test_anything_too_wide_for_a_corridor_never_spawns_in_one(rarities) -> None:
     """THE CHECK THAT MAKES THE COMPOUNDING SAFE, and the reason it is allowed.
 
-    The body scale compounds, so a Cataclysm Boss is 7.59 times a Common and
-    729 cm across. The narrowest corridor the floor generator will build is two
+    The body scale compounds, so a Cataclysm Boss is 2.49 times a Common and
+    239 cm across. The narrowest corridor the floor generator will build is two
     cells, and a player is 84 cm wide, so a creature wider than the corridor
     less the player traps them: there is no way past it.
 
-    THE PROJECT OWNER'S ANSWER ON 2026-08-24 is what allows the top rung: a
-    Cataclysm Boss fights in its own final arena at the end of its dungeon, and
-    never stands in a corridor. What makes that true in the data is its spawn
-    weight of zero, so the random rarity roll never produces one.
+    NOTHING IS TOO WIDE TODAY, AND THAT IS NEW. Until issue #885 the step was
+    50% rather than 20%, which put a Cataclysm Boss at 729 cm -- wider than
+    the 800 cm corridor once an 84 cm player is in it as well. What allowed
+    that was the project owner's answer on 2026-08-23: a Cataclysm Boss fights
+    in its own final arena at the end of its dungeon and never stands in a
+    corridor, which is true in the data because its spawn weight is zero. That
+    is still the design, and the size rule no longer depends on it.
 
-    SO THE TWO ARE HELD TOGETHER HERE. Giving a Cataclysm Boss a spawn weight,
-    or making a rung that already spawns bigger, would put a creature in a
-    passage a player cannot get out of, and this is what says so.
+    SO THIS HAS SLACK IN IT NOW RATHER THAN NOTHING TO CATCH, AND SAY SO
+    PLAINLY: at 20% a step, giving a Cataclysm Boss a spawn weight would pass
+    here. What still fails is making a rung that already spawns wide enough to
+    block a passage, which is what this is for. The other half -- that the
+    biggest rung fits at all, spawn weight or no spawn weight -- is checked in
+    C++ by `Cataclysm.EnemyRarity.ARarerCreatureIsPhysicallyBigger`, which
+    fails at 50% where this test passes.
     """
     body = a_constant(ENEMY_CHARACTER, "EnemyCapsuleRadius") * 2.0
     player = a_constant(PLAYER_CHARACTER, "CapsuleRadius") * 2.0
