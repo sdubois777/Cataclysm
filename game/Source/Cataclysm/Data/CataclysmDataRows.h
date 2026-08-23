@@ -1376,6 +1376,24 @@ struct FCataclysmEnemyRarityRow : public FTableRowBase
 	float ArmorPerScore = 0.0f;
 
 	/**
+	 * How much bigger this rarity's body is than a Common one. Issue #849.
+	 *
+	 * NOT A SHARE OF ANYTHING, unlike the three figures above. Those are parts
+	 * of an encounter's Power Score and have to be divided by Common's to give
+	 * a multiplier; this one already is one, and Common is 1.
+	 *
+	 * HALF AS BIG AGAIN EACH STEP, so a Cataclysm Boss is 7.59 times a Common.
+	 * `BODY_SCALE_PER_STEP` in `sim/cataclysm_sim/enemy_stats.py` states the
+	 * rule and its comment carries the arithmetic against the dungeon's
+	 * narrowest corridor, which is what makes the top rung safe.
+	 *
+	 * DEFAULTS TO 1 AND NOT 0. A row that failed to load must leave a creature
+	 * its own size rather than shrinking it to nothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
+	float BodyScale = 1.0f;
+
+	/**
 	 * How common this rarity is among the enemies on one dungeon floor.
 	 *
 	 * A SHARE OF A FLOOR'S POPULATION, NOT AN INDEPENDENT CHANCE. The five that

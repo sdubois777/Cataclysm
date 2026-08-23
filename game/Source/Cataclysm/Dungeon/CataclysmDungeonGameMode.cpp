@@ -485,6 +485,20 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 		ApplyDesignedStats(Enemy, Placement.Creature);
 
+		// PLACED AGAIN NOW ITS SIZE IS KNOWN. `Where` above was raised by the
+		// half height of the CLASS, which is the creature at Common. Since
+		// issue #849 a rarer creature is bigger, and ApplyDesignedStats is what
+		// decides its rarity -- so until it has run there is no way to know how
+		// far to raise it. A capsule grows from its middle, so getting this
+		// wrong buries a Boss 4.6 metres into the floor, which is what
+		// Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt found.
+		//
+		// HERE RATHER THAN IN SetRarityStep, because that setter cannot tell a
+		// creature being placed from one being restored from a save, whose
+		// height already accounts for its size. Its own comment says so.
+		Enemy->SetActorLocation(CurrentFloor->WorldOfCell(Placement.Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Enemy)));
+
 		FloorEnemies.Add(Enemy);
 		++Spawned;
 	}

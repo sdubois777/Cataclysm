@@ -2149,6 +2149,9 @@ def enemy_rarities(_book=None) -> list[dict]:
             "ArmorPerScore": _six_places(
                 model.ARMOR_AT_COMMON * model.ARMOR_PER_STEP ** step),
             "SpawnWeight": _six_places(model.spawn_weight(rarity)),
+            "BodyScale": _six_places(
+                model.BODY_SCALE_AT_COMMON
+                * model.BODY_SCALE_PER_STEP ** step),
         })
 
     if not out:

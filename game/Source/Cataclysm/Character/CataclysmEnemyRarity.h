@@ -135,6 +135,24 @@ public:
 								  float& OutArmour);
 
 	/**
+	 * How much bigger a creature at this rarity step is than a Common one.
+	 *
+	 * SO A PLAYER CAN TELL WHAT THEY ARE FACING BEFORE IT HITS THEM, which is
+	 * what issue #849 asked for. Half as big again each step, so a Cataclysm
+	 * Boss is 7.59 times a Common.
+	 *
+	 * READ DIRECTLY AND NOT DIVIDED BY COMMON'S, unlike ScalingFromCommon
+	 * above. The three stats there are shares of an encounter's Power Score
+	 * and only become a multiplier once divided; this column already is one,
+	 * and Common's entry is 1.
+	 *
+	 * @return 1 when the table is missing or holds no row for the step, which
+	 *         leaves the creature its own size rather than shrinking it away
+	 */
+	static float BodyScaleForStep(const UDataTable* EnemyRarityTable,
+								  int32 Step);
+
+	/**
 	 * The value a sandbox setting carries to mean "draw one" rather than "use
 	 * this rung".
 	 *

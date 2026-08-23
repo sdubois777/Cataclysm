@@ -132,6 +132,31 @@ int32 UCataclysmEnemyRarity::RollRarityStep(const UDataTable* EnemyRarityTable,
 	return Steps.Last();
 }
 
+float UCataclysmEnemyRarity::BodyScaleForStep(
+	const UDataTable* EnemyRarityTable, int32 Step)
+{
+	// ONE BY DEFAULT, SO A FAILURE CHANGES NOTHING, for the same reason
+	// ScalingFromCommon below defaults to one: a missing table has to leave
+	// the creature as it was rather than scaling it to nothing.
+	float Found = 1.0f;
+	if (!EnemyRarityTable)
+	{
+		return Found;
+	}
+
+	EnemyRarityTable->ForeachRow<FCataclysmEnemyRarityRow>(
+		TEXT("UCataclysmEnemyRarity::BodyScaleForStep"),
+		[&](const FName&, const FCataclysmEnemyRarityRow& Row)
+		{
+			if (Row.Step == Step && Row.BodyScale > 0.0f)
+			{
+				Found = Row.BodyScale;
+			}
+		});
+
+	return Found;
+}
+
 bool UCataclysmEnemyRarity::ScalingFromCommon(
 	const UDataTable* EnemyRarityTable, int32 Step,
 	float& OutHealth, float& OutDamage, float& OutArmour)

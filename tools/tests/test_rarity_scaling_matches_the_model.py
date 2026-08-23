@@ -155,3 +155,131 @@ def test_the_document_warns_against_compounding_the_step_multipliers(
         "boss-to-common ratios without saying that the second is not the first "
         "compounded. Issue #484 made exactly that inference and drew a wrong "
         "conclusion from it.")
+
+
+# --------------------------------------------------------------------------
+# How big a creature is, and where it is allowed to stand. Issue #849.
+# --------------------------------------------------------------------------
+
+import csv  # noqa: E402
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
+RARITIES_CSV = REPO / "game" / "Data" / "EnemyRarities.csv"
+ENEMY_CHARACTER = (REPO / "game" / "Source" / "Cataclysm" / "Character"
+                   / "CataclysmEnemyCharacter.cpp")
+PLAYER_CHARACTER = (REPO / "game" / "Source" / "Cataclysm" / "Character"
+                    / "CataclysmPlayerCharacter.cpp")
+FLOOR_GENERATOR = (REPO / "game" / "Source" / "Cataclysm" / "Dungeon"
+                   / "CataclysmFloorGenerator.h")
+
+
+def a_constant(path: pathlib.Path, name: str) -> float:
+    """One `constexpr float name = <number>;` read out of a C++ file.
+
+    READ RATHER THAN RESTATED, because the whole point of the check below is
+    that it stays true when somebody widens a corridor or resizes a creature.
+    """
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present")
+    found = re.search(rf"{name}\s*=\s*([0-9.]+)f?\s*;",
+                      path.read_text(encoding="utf-8"))
+    assert found, f"{path.name} no longer declares {name}"
+    return float(found.group(1))
+
+
+@pytest.fixture(scope="module")
+def rarities() -> list[dict]:
+    if not RARITIES_CSV.is_file():
+        pytest.skip(f"{RARITIES_CSV.name} is not present")
+    with RARITIES_CSV.open(newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_every_body_scale_matches_the_model(rarities, model) -> None:
+    """The data is generated from the model, so this only fails if the
+    generator stops carrying the figure through or somebody edits the CSV."""
+    wrong = []
+    for row in rarities:
+        step = int(row["Step"])
+        expected = (model.BODY_SCALE_AT_COMMON
+                    * model.BODY_SCALE_PER_STEP ** step)
+        if abs(float(row["BodyScale"]) - expected) > 1e-6:
+            wrong.append(f"{row['RarityName']}: data {row['BodyScale']}, "
+                         f"model {expected:.6f}")
+    assert not wrong, (
+        "game/Data/EnemyRarities.csv disagrees with BODY_SCALE_PER_STEP in "
+        f"sim/cataclysm_sim/enemy_stats.py: {wrong}")
+
+
+def test_a_common_creature_is_its_own_size(rarities) -> None:
+    """Step 0 has to be exactly 1, or every creature in the game changes size
+    at once and the three stat columns stop describing the same creature the
+    size column does."""
+    common = [row for row in rarities if int(row["Step"]) == 0]
+    assert len(common) == 1, "there is not exactly one step 0 rarity"
+    assert float(common[0]["BodyScale"]) == 1.0, (
+        f"a Common creature's body scale is {common[0]['BodyScale']}, not 1")
+
+
+def test_anything_too_wide_for_a_corridor_never_spawns_in_one(rarities) -> None:
+    """THE CHECK THAT MAKES THE COMPOUNDING SAFE, and the reason it is allowed.
+
+    The body scale compounds, so a Cataclysm Boss is 7.59 times a Common and
+    729 cm across. The narrowest corridor the floor generator will build is two
+    cells, and a player is 84 cm wide, so a creature wider than the corridor
+    less the player traps them: there is no way past it.
+
+    THE PROJECT OWNER'S ANSWER ON 2026-08-24 is what allows the top rung: a
+    Cataclysm Boss fights in its own final arena at the end of its dungeon, and
+    never stands in a corridor. What makes that true in the data is its spawn
+    weight of zero, so the random rarity roll never produces one.
+
+    SO THE TWO ARE HELD TOGETHER HERE. Giving a Cataclysm Boss a spawn weight,
+    or making a rung that already spawns bigger, would put a creature in a
+    passage a player cannot get out of, and this is what says so.
+    """
+    body = a_constant(ENEMY_CHARACTER, "EnemyCapsuleRadius") * 2.0
+    player = a_constant(PLAYER_CHARACTER, "CapsuleRadius") * 2.0
+    cell = a_constant(FLOOR_GENERATOR, "CellSizeCm")
+    cells = re.search(r"LeastConnectionWidth\s*=\s*(\d+)\s*;",
+                      FLOOR_GENERATOR.read_text(encoding="utf-8"))
+    assert cells, "the floor generator no longer states LeastConnectionWidth"
+    corridor = cell * int(cells.group(1))
+
+    trapped = []
+    for row in rarities:
+        wide = body * float(row["BodyScale"])
+        if wide + player > corridor and float(row["SpawnWeight"]) > 0.0:
+            trapped.append(
+                f"{row['RarityName']} is {wide:.0f} cm across and spawns at "
+                f"weight {row['SpawnWeight']}; with an {player:.0f} cm player "
+                f"that needs {wide + player:.0f} cm and a corridor is "
+                f"{corridor:.0f} cm")
+
+    assert not trapped, (
+        "a creature too wide to get past in the narrowest corridor can be "
+        f"rolled onto an ordinary floor: {trapped}. Either make it smaller or "
+        "give it a spawn weight of zero and place it in an arena, which is "
+        "what the Cataclysm Boss does.")
+
+
+def test_the_largest_creature_that_actually_spawns_still_fits(rarities) -> None:
+    """The other half, and it would fail if every rung were given weight zero
+    to satisfy the check above. Something has to spawn, and the biggest thing
+    that does has to be passable."""
+    body = a_constant(ENEMY_CHARACTER, "EnemyCapsuleRadius") * 2.0
+    player = a_constant(PLAYER_CHARACTER, "CapsuleRadius") * 2.0
+    cell = a_constant(FLOOR_GENERATOR, "CellSizeCm")
+    cells = re.search(r"LeastConnectionWidth\s*=\s*(\d+)\s*;",
+                      FLOOR_GENERATOR.read_text(encoding="utf-8"))
+    corridor = cell * int(cells.group(1))
+
+    spawning = [row for row in rarities if float(row["SpawnWeight"]) > 0.0]
+    assert spawning, "no rarity spawns at all, so a floor would be empty"
+
+    widest = max(spawning, key=lambda row: float(row["BodyScale"]))
+    wide = body * float(widest["BodyScale"])
+    assert wide + player <= corridor, (
+        f"the widest creature that spawns is a {widest['RarityName']} at "
+        f"{wide:.0f} cm, and with an {player:.0f} cm player that does not fit "
+        f"a {corridor:.0f} cm corridor")

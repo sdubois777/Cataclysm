@@ -823,6 +823,33 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	// IsBoss's comparison quietly meaningless.
 	RarityStep = FMath::Max(0, NewStep);
 
+	// A RARER CREATURE IS PHYSICALLY BIGGER, so a player can tell what they
+	// are facing before it hits them. Issue #849.
+	//
+	// THE ACTOR'S SCALE AND NOT THE CAPSULE'S, so the collision capsule, the
+	// body and everything attached move together. It is also what makes
+	// GetScaledCapsuleRadius report the real size, which is what the telegraph
+	// drawing reads, so a bigger creature's attack shapes follow without a
+	// second rule.
+	//
+	// IT DOES NOT MOVE THE CREATURE, AND THAT WAS TRIED AND UNDONE. A capsule
+	// grows from its middle, so a creature placed for its unscaled size ends
+	// up half-buried, and the obvious answer is to read where the feet were,
+	// scale, and put them back. That works when a creature is first placed and
+	// is WRONG WHEN ONE IS RESTORED FROM A SAVE: the saved height already
+	// accounts for the scale, so correcting it again raises the creature by
+	// the same amount a second time. Three save tests caught it, one reporting
+	// a creature saved at Z=90 coming back at Z=740.
+	//
+	// THE TWO CASES CANNOT BE TOLD APART FROM HERE, and the header above says
+	// the order a spawner calls these setters in must not matter. So this only
+	// scales, and whoever places a creature does it after its size is known.
+	// ACataclysmDungeonGameMode::SpawnFloorCreatures is the one place that has
+	// to; the sandbox spawners do not, because their own comments record that
+	// the movement component pushes a buried creature back out.
+	SetActorScale3D(FVector(UCataclysmEnemyRarity::BodyScaleForStep(
+		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep)));
+
 	// RE-APPLIED, BECAUSE THE RARITY IS PART OF THE STAT BLOCK SINCE ISSUE #848.
 	// Every other setter here re-applies for the reason SetHealth states: a
 	// spawner sets these on the lines after SpawnActor, in whatever order suits

@@ -251,6 +251,43 @@ DAMAGE_PER_STEP = 1.40
 ARMOR_AT_COMMON = 0.10
 ARMOR_PER_STEP = 1.35
 
+#: How much bigger a creature is than a Common one, so a player can tell what
+#: they are facing before it hits them. Issue #849.
+#:
+#: HALF AS BIG AGAIN EACH STEP, decided by the project owner on 2026-08-24.
+#: Unlike the three stats above this is not a share of anything: a Common is
+#: 1.0 and every rung multiplies that.
+#:
+#: IT COMPOUNDS, AND THAT WAS CHECKED AGAINST THE DUNGEON RATHER THAN
+#: ASSUMED. A creature's body is 96 cm across, the narrowest corridor the
+#: floor generator will build is two 400 cm cells, and the player is 84 cm
+#: wide. So the question is whether a player can get past one:
+#:
+#:     Common          1.00      96 cm    passable
+#:     Elite           1.50     144 cm    passable
+#:     Legendary       2.25     216 cm    passable
+#:     Herald          3.38     324 cm    passable
+#:     Boss            5.06     486 cm    passable, 314 cm to spare
+#:     Cataclysm Boss  7.59     729 cm    NOT passable in a 800 cm corridor
+#:
+#: A CATACLYSM BOSS NEVER STANDS IN A CORRIDOR, which is why the last row is
+#: allowed. The project owner's answer on 2026-08-24: they fight in their own
+#: final arenas at the end of their dungeons. `spawn_weight` gives that rung
+#: zero, so the random rarity roll never produces one and it is placed
+#: deliberately or not at all.
+#:
+#: SO THE RULE DEPENDS ON THAT WEIGHT STAYING ZERO, and
+#: `tools/tests/test_rarity_scaling_matches_the_model.py` holds the two
+#: together: any rung too wide for the narrowest corridor beside a player
+#: must have a spawn weight of zero. Giving a Cataclysm Boss a weight without
+#: reading this would put one in a passage nobody can get out of.
+#:
+#: WRITTEN AS A GROWTH RATE HERE AND EXPANDED IN THE CSV, matching the three
+#: above, so reading a creature's size at run time is a table lookup rather
+#: than an exponent.
+BODY_SCALE_AT_COMMON = 1.0
+BODY_SCALE_PER_STEP = 1.50
+
 
 # --------------------------------------------------------------------------
 # Archetypes: what KIND of thing the enemy is

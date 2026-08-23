@@ -396,4 +396,59 @@ bool FCataclysmRarityNameShownTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// How big a creature is at each rarity. Issue #849.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityBodyScaleTest,
+	"Cataclysm.EnemyRarity.ARarerCreatureIsPhysicallyBigger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRarityBodyScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnemyRarityTest;
+
+	const UDataTable* Table = FRarity::LoadEnemyRarityTable();
+	if (!TestNotNull(TEXT("the enemy rarity table loads"), Table))
+	{
+		return false;
+	}
+
+	// A COMMON CREATURE IS ITS OWN SIZE. Every other figure is a multiple of
+	// this one, so a Common that was not exactly one would resize the whole game.
+	TestEqual(TEXT("a Common creature is its own size"),
+		FRarity::BodyScaleForStep(Table, 0), 1.0f);
+
+	// HALF AS BIG AGAIN EACH STEP, decided by the project owner on 2026-08-24.
+	// Compared step against step rather than against written figures, so the
+	// rule is what is checked and not a copy of its output.
+	for (int32 Step = 1; Step <= 5; ++Step)
+	{
+		const float Below = FRarity::BodyScaleForStep(Table, Step - 1);
+		const float Here = FRarity::BodyScaleForStep(Table, Step);
+		TestTrue(FString::Printf(
+				TEXT("step %d is half as big again as step %d (%.4f, %.4f)"),
+				Step, Step - 1, Below, Here),
+			FMath::IsNearlyEqual(Here, Below * 1.5f, 0.0001f));
+	}
+
+	// IT COMPOUNDS, so the top of the ladder is far above the bottom. 7.59 is
+	// 1.5 to the fifth. Stated here because the number is the point of the
+	// feature: a Cataclysm Boss has to be unmistakable before it moves.
+	TestTrue(TEXT("a Cataclysm Boss is more than seven times a Common"),
+		FRarity::BodyScaleForStep(Table, 5) > 7.0f);
+
+	// A MISSING TABLE LEAVES A CREATURE ITS OWN SIZE rather than scaling it to
+	// nothing, which is what a zero default would do.
+	TestEqual(TEXT("no table means no scaling"),
+		FRarity::BodyScaleForStep(nullptr, 3), 1.0f);
+
+	// AND SO DOES A STEP THE TABLE DOES NOT HOLD. The ladder is 0 to 5.
+	TestEqual(TEXT("a step off the end of the ladder means no scaling"),
+		FRarity::BodyScaleForStep(Table, 99), 1.0f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

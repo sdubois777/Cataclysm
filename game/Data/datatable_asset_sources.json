@@ -83,7 +83,7 @@
       "asset": "DT_EnemyRarities",
       "csv": "EnemyRarities.csv",
       "rows": 6,
-      "csv_sha256": "a5d3a425700f712cb85a1617a53251451ecf6263e19659bbb48cf6989cf8ffb7"
+      "csv_sha256": "a5462968a50431703ca7ff08446b59f5057864e3eec55a55305222746da00358"
     },
     {
       "asset": "DT_GearRarity",
