@@ -1327,4 +1327,148 @@ bool FCataclysmItemNameTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * The best upgrade stone a drop may produce is capped by the difficulty tier.
+ *
+ * ISSUE #863. The design document names this as one of the difficulty tier's
+ * own gates -- "The best upgrade stone that can drop is capped by the current
+ * difficulty tier" -- and nothing enforced it. Every stone up to +10 dropped at
+ * every tier, so a character on tier 1 could be handed the stone that takes a
+ * piece to +10 before owning anything worth putting it on.
+ *
+ * THE LADDER IS STATED RATHER THAN COMPUTED. Asking MaxUpgradeStoneOnADrop what
+ * it expects would agree with the code by construction; earlier in this project
+ * a test written that way passed while thirteen affixes granted nothing. These
+ * eight rows are the design document's table copied out by hand, so changing
+ * the rule fails here and has to be a decision rather than an accident.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUpgradeStoneCapTest,
+	"Cataclysm.Drop.TheBestUpgradeStoneIsCappedByTheDifficultyTier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUpgradeStoneCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	// The "What else that tier brings" column of the difficulty tier table in
+	// section VI of docs/Cataclysm_GDD_v2.md, which reads "+3 upgrade level"
+	// at tier 1 through to "+10" at tier 8.
+	const int32 Documented[8] = { 3, 4, 5, 6, 7, 8, 9, 10 };
+	for (int32 Tier = 1; Tier <= 8; ++Tier)
+	{
+		TestEqual(*FString::Printf(
+			TEXT("difficulty tier %d drops upgrade stones up to +%d"),
+			Tier, Documented[Tier - 1]),
+			FDrop::MaxUpgradeStoneOnADrop(Tier), Documented[Tier - 1]);
+	}
+
+	// A TIER OUTSIDE 1 TO 8 IS CLAMPED RATHER THAN TRUSTED, the same as the
+	// affix gate. A zero from an unset console variable must not mean "+2".
+	TestEqual(TEXT("tier 0 is treated as tier 1"),
+		FDrop::MaxUpgradeStoneOnADrop(0), Documented[0]);
+	TestEqual(TEXT("tier 99 is treated as tier 8"),
+		FDrop::MaxUpgradeStoneOnADrop(99), Documented[7]);
+
+	UDataTable* Materials =
+		LoadTable<FCataclysmCraftingMaterialRow>(TEXT("CraftingMaterials.csv"));
+	if (!TestNotNull(TEXT("the crafting material table"), Materials))
+	{
+		return false;
+	}
+
+	// THE TEN STONES ARE IN THE DATA AND CARRY THEIR LEVEL. The level is derived
+	// by tools/generate_datatables.py from the name, so a rename in the workbook
+	// turns it into a zero, and a zero reads as "not a stone" and would drop
+	// everywhere. This is what notices.
+	TSet<int32> Levels;
+	Materials->ForeachRow<FCataclysmCraftingMaterialRow>(
+		TEXT("the upgrade stone ladder"),
+		[&](const FName& Key, const FCataclysmCraftingMaterialRow& Row)
+		{
+			const bool bNamedAsAStone =
+				Row.MaterialName.StartsWith(TEXT("Upgrade Stone +"));
+			if (bNamedAsAStone != (Row.UpgradeLevel > 0))
+			{
+				AddError(FString::Printf(
+					TEXT("'%s' is named as an upgrade stone but carries level "
+						 "%d, or the other way round. The level is read off the "
+						 "name by tools/generate_datatables.py."),
+					*Row.MaterialName, Row.UpgradeLevel));
+			}
+			if (Row.UpgradeLevel > 0)
+			{
+				Levels.Add(Row.UpgradeLevel);
+			}
+		});
+
+	for (int32 Level = 1; Level <= UCataclysmItemValues::MaxGearLevel; ++Level)
+	{
+		if (!Levels.Contains(Level))
+		{
+			AddError(FString::Printf(
+				TEXT("no crafting material upgrades gear to +%d"), Level));
+		}
+	}
+
+	// WHAT THE CAP ACTUALLY DOES TO A ROLL, drawn rather than reasoned about.
+	// Tier 5 materials are where the +9 and +10 stones live, so a tier 1
+	// character rolling that band must never see either.
+	const auto BestStoneDrawn = [&](int32 MaterialTier, int32 DifficultyTier)
+	{
+		FRandomStream Stream(/*InSeed=*/863 * DifficultyTier + MaterialTier);
+		int32 Best = 0;
+		for (int32 Draw = 0; Draw < 400; ++Draw)
+		{
+			const FName Rolled = FDrop::RollMaterial(
+				Materials, MaterialTier, DifficultyTier, Stream);
+			const FCataclysmCraftingMaterialRow* Row =
+				Materials->FindRow<FCataclysmCraftingMaterialRow>(
+					Rolled, TEXT("BestStoneDrawn"), /*bWarnIfMissing=*/false);
+			if (Row)
+			{
+				Best = FMath::Max(Best, Row->UpgradeLevel);
+			}
+		}
+		return Best;
+	};
+
+	TestEqual(TEXT("a tier 1 character drawing tier 5 materials sees no stone"),
+		BestStoneDrawn(/*MaterialTier=*/5, /*DifficultyTier=*/1), 0);
+	TestEqual(TEXT("a tier 8 character drawing tier 5 materials reaches +10"),
+		BestStoneDrawn(/*MaterialTier=*/5, /*DifficultyTier=*/8), 10);
+
+	// AND THE BAND STILL PRODUCES SOMETHING when its stones are excluded. Every
+	// band keeps at least three materials that are not stones, so no cap can
+	// empty one -- but that is a property of the data, not of the code, so it
+	// is checked rather than assumed.
+	for (int32 MaterialTier = 1; MaterialTier <= 5; ++MaterialTier)
+	{
+		FRandomStream Stream(/*InSeed=*/MaterialTier);
+		const FName Rolled = FDrop::RollMaterial(
+			Materials, MaterialTier, /*DifficultyTier=*/1, Stream);
+		if (Rolled.IsNone())
+		{
+			AddError(FString::Printf(
+				TEXT("material tier %d rolls nothing at difficulty tier 1, so "
+					 "the upgrade stone cap emptied a band. A band needs a "
+					 "material that is not an upgrade stone."), MaterialTier));
+		}
+	}
+
+	// THE TWO TIERS ARE NOT INTERCHANGEABLE. They are adjacent int32 parameters,
+	// so a call site that swaps them compiles. Band 1 at difficulty 5 and band 5
+	// at difficulty 1 are the swap of each other, and they must differ.
+	FRandomStream OneWay(/*InSeed=*/863);
+	FRandomStream TheOther(/*InSeed=*/863);
+	const int32 BandOne = FDrop::MaterialTierOf(Materials,
+		FDrop::RollMaterial(Materials, 1, 5, OneWay));
+	const int32 BandFive = FDrop::MaterialTierOf(Materials,
+		FDrop::RollMaterial(Materials, 5, 1, TheOther));
+	TestEqual(TEXT("the first argument is the material band, not the tier"),
+		BandOne, 1);
+	TestEqual(TEXT("and it still is when the two are swapped"), BandFive, 5);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

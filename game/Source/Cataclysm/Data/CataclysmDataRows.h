@@ -944,11 +944,11 @@ struct FCataclysmCraftingMaterialRow : public FTableRowBase
 	/**
 	 * Which material tier this belongs to, 1 to 5, or 0 for a crafting action.
 	 *
-	 * THE CRAFTING SHEET HOLDS TWO KINDS OF ROW. Eighteen are materials a player
-	 * can hold and nineteen are actions a player can take -- "Reroll Affix
-	 * Value", "Add Socket" -- which have no tier because they are not things
-	 * that drop. Zero is what says so, and it is what stops a drop rolling an
-	 * action.
+	 * THE CRAFTING SHEET HOLDS TWO KINDS OF ROW. Twenty-seven are materials a
+	 * player can hold and the rest are actions a player can take -- "Reroll
+	 * Affix Value", "Add Socket" -- which have no tier because they are not
+	 * things that drop. Zero is what says so, and it is what stops a drop
+	 * rolling an action.
 	 *
 	 * READ OFF TierAndSource AT GENERATION rather than here. That cell is prose
 	 * -- "Tier 3 (Rare). Drop from Dungeon Bosses/Elites." -- and the generator
@@ -956,6 +956,25 @@ struct FCataclysmCraftingMaterialRow : public FTableRowBase
 	 * number costs nothing and saves the engine parsing English at runtime.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") int32 Tier = 0;
+
+	/**
+	 * How far this stone upgrades a piece of gear, 1 to 10, or 0 for anything
+	 * that is not an upgrade stone.
+	 *
+	 * THIS IS NOT THE TIER. The tier above is the rarity band the stone drops
+	 * in; this is what it does when it is used. The ten stones were spread two
+	 * to a band, so a band holds two different levels and neither number can be
+	 * worked out from the other.
+	 *
+	 * READ OFF THE NAME AT GENERATION, like the tier and for the same reason.
+	 * The stones are named "Upgrade Stone +1" through "+10", so the level is
+	 * already stated and the engine would otherwise parse a name for every
+	 * material that drops.
+	 *
+	 * WHAT READS IT: UCataclysmDropRoll::RollMaterial, which will not drop a
+	 * stone above what the difficulty tier being played allows.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") int32 UpgradeLevel = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString TierAndSource;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crafting") FString PrimaryUse;
@@ -1280,9 +1299,14 @@ struct FCataclysmMaterialTierRow : public FTableRowBase
 	 *
 	 * NOT DECORATION. How often a NAMED material drops is the tier's share
 	 * divided by this, and Purified Essence -- the only thing that clears the
-	 * Consumption Threshold -- is one of the three in the top tier, which puts
-	 * it at one material drop in 1,023. That figure is what the weights above
-	 * were chosen against.
+	 * Consumption Threshold -- is one of the five in the top tier, which puts
+	 * it at one material drop in 1,705. 1,023 is what the weights above were
+	 * chosen against, when three shared the top tier; the ten upgrade stones
+	 * added on 2026-08-23 for issue #852 are what changed it.
+	 *
+	 * AND IT IS NO LONGER A SINGLE FIGURE, because two of those five are the +9
+	 * and +10 stones and the difficulty tier caps which stones may drop. See
+	 * UCataclysmDropRoll::RollMaterial, which works it through tier by tier.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Material Tier")
 	int32 Materials = 0;

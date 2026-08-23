@@ -83,6 +83,23 @@ public:
 	/** The same plus one, for which affix tiers a drop may reach. */
 	static constexpr int32 AffixTiersAboveDifficulty = 1;
 
+	/**
+	 * How far above the difficulty tier the best upgrade stone that can drop is.
+	 *
+	 * TWO, NOT ONE, AND THE DOCUMENT SAYS SO OUTRIGHT: "Gear level is tier + 2
+	 * capped at +10, which clears every rarity gate in section VI and reaches
+	 * exactly +10 at tier 8." Its difficulty tier table restates it a step at a
+	 * time, tier 1 giving "+3 upgrade level" through to tier 8 giving "+10".
+	 *
+	 * WHY TWO WHERE RARITY AND AFFIXES GET ONE. Those two gate a single roll,
+	 * and this gates a ladder: upgrading consumes two stones, and two stones of
+	 * a level combine into one of the next, so the stones a player finds are
+	 * spent well below the level they are aiming at. Two also makes the ladder
+	 * end where the game does -- tier 8 is the deepest tier, so a one-above cap
+	 * would mean the +10 stone never drops anywhere.
+	 */
+	static constexpr int32 UpgradeLevelsAboveDifficulty = 2;
+
 	/** How many rarities there are. Eight, one per ECataclysmRarity entry. */
 	static constexpr int32 RarityCount = 8;
 
@@ -459,23 +476,59 @@ public:
 	static const UDataTable* LoadCraftingMaterialTable();
 
 	/**
-	 * Which crafting material drops, given the tier it rolled.
+	 * Which crafting material drops, given the material tier it rolled and the
+	 * difficulty tier being played.
 	 *
+	 * @param MaterialTier   the rarity band, 1 to 5, from RollMaterialTier
+	 * @param DifficultyTier which of the eight tiers is being played, which caps
+	 *                       the upgrade stones this may produce
 	 * @return the row key in `game/Data/CraftingMaterials.csv`, or NAME_None
-	 *         when the tier holds no material.
+	 *         when the band holds nothing this tier may have.
 	 *
-	 * EQUAL CHANCE WITHIN THE TIER. `roll_material_tier` in
-	 * `sim/cataclysm_sim/loot.py` picks the tier and says the choice of material
-	 * within it belongs to "whoever holds that table", which is this. Four
-	 * materials share tier 1 and three share tier 5, so Purified Essence -- the
-	 * only thing that clears the Consumption Threshold -- is one material drop
-	 * in 1,023, which is the figure the tier weights were chosen against.
+	 * THE TWO TIERS ARE DIFFERENT THINGS and the parameters are in the order the
+	 * roll happens: the material tier comes out of RollMaterialTier, and the
+	 * difficulty tier comes from the world. Passing them the wrong way round
+	 * compiles, so `AMaterialTierIsNotADifficultyTier` pins the difference.
 	 *
-	 * THE CRAFTING SHEET HOLDS ACTIONS AS WELL AS MATERIALS, nineteen of them,
-	 * and they carry a tier of 0 so that nothing can drop "Reroll Affix Value".
+	 * EQUAL CHANCE AMONG WHAT THE BAND ALLOWS. `roll_material_tier` in
+	 * `sim/cataclysm_sim/loot.py` picks the band and says the choice of material
+	 * within it belongs to "whoever holds that table", which is this.
+	 *
+	 * SO THE UPGRADE STONE CAP CHANGES THE ODDS OF EVERYTHING ELSE, because
+	 * excluding a stone leaves fewer materials to share the band. Five materials
+	 * share tier 5, of which two are the +9 and +10 stones, so Purified Essence
+	 * -- the only thing that clears the Consumption Threshold -- is one material
+	 * drop in 1,023 at tiers 1 to 6 where neither stone may drop, one in 1,364
+	 * at tier 7 where +9 may, and one in 1,705 at tier 8 where both may. 1,023
+	 * is the figure the tier weights were originally chosen against; the sim
+	 * models the uncapped 1,705, and `MATERIALS_IN_TIER` in loot.py says why it
+	 * rose. THE TOOL THE DESIGN LEANS ON GOT COMMONER WHERE IT IS NEEDED MOST,
+	 * which is the shallow tiers, and that is a consequence of the cap rather
+	 * than a thing the cap was chosen for.
+	 *
+	 * EVERY BAND KEEPS AT LEAST THREE NON-STONE MATERIALS, so no cap can empty
+	 * one. `validate_upgrade_stone_levels` in `tools/generate_datatables.py`
+	 * guards the stone ladder itself.
+	 *
+	 * THE CRAFTING SHEET HOLDS ACTIONS AS WELL AS MATERIALS, and they carry a
+	 * tier of 0 so that nothing can drop "Reroll Affix Value".
 	 */
 	static FName RollMaterial(const UDataTable* CraftingMaterialTable,
-							  int32 Tier, FRandomStream& Stream);
+							  int32 MaterialTier, int32 DifficultyTier,
+							  FRandomStream& Stream);
+
+	/**
+	 * The highest upgrade stone a drop may produce at a difficulty tier.
+	 *
+	 * Tier + 2, capped at +10, which is the design document's rule word for
+	 * word. Tier 1 gives +3 and tier 8 gives +10.
+	 *
+	 * IT DOES NOT CAP CRAFTING, exactly as the affix gate does not. Two stones
+	 * of a level combine into one of the next, so a player at a low tier can
+	 * still build a stone above what drops there -- it just costs the climb.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static int32 MaxUpgradeStoneOnADrop(int32 DifficultyTier);
 
 	/**
 	 * What a material of this tier is called, as a player reads it.

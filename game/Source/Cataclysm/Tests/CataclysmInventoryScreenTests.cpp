@@ -589,14 +589,18 @@ bool FCataclysmMaterialTierOfTest::RunTest(const FString&)
 
 	// EVERY MATERIAL THE ROLL CAN PRODUCE READS BACK AS THE TIER IT WAS ROLLED
 	// FOR. This is the round trip the screen depends on, and it covers all
-	// eighteen droppable materials rather than the five above.
+	// twenty-seven droppable materials rather than the five above.
+	//
+	// ROLLED AT THE DEEPEST DIFFICULTY TIER, because that is the one tier at
+	// which no upgrade stone is capped out and every material is reachable.
+	// This test is about the tier round trip, not about the cap.
 	for (int32 Tier = 1; Tier <= 5; ++Tier)
 	{
 		FRandomStream Stream(Tier * 977);
 		for (int32 Draw = 0; Draw < 40; ++Draw)
 		{
-			const FName Material =
-				UCataclysmDropRoll::RollMaterial(Materials, Tier, Stream);
+			const FName Material = UCataclysmDropRoll::RollMaterial(
+				Materials, Tier, UCataclysmDropRoll::DifficultyTiers, Stream);
 			if (Material.IsNone())
 			{
 				AddError(FString::Printf(TEXT("tier %d rolled no material"),
