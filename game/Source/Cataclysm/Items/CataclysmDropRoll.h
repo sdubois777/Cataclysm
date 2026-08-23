@@ -114,6 +114,42 @@ public:
 	static constexpr float OrdinaryFallAtTierOne = 2.5f;
 	static constexpr float OrdinaryFallAtDeepest = 0.8f;
 
+	/**
+	 * How much of magic find's multiplier the top of the rarity ladder gets.
+	 *
+	 * MAGIC FIND MULTIPLIES A RARITY'S WEIGHT, NOT ITS STEP OF THE CASCADE.
+	 * Everyday receives none of it and Cataclysmic receives the multiplier
+	 * raised to this power, with the rungs between spread evenly on the
+	 * exponent. Mirrors `MAGIC_FIND_REACH` in `sim/cataclysm_sim/loot.py`.
+	 *
+	 * WHY IT MOVED OFF THE STEP CHANCES. Issue #890. Magic find used to
+	 * multiply each rung, and a rung's chance stops at 1. Once a rung
+	 * saturated, every rarity below it became impossible and that rung took
+	 * everything reaching it: a Boss carries +300% magic find, so at difficulty
+	 * tier 8 it dropped Masterful 97.6% of the time and nothing below it, and
+	 * at tier 1 it dropped Quality 100% of the time. A weight cannot do that,
+	 * because a rung's share of the weight at or below it is always under one.
+	 */
+	static constexpr float MagicFindReach = 4.0f;
+
+	/**
+	 * What magic find approaches however much of it a character carries.
+	 *
+	 * BOTH HALVES OF ISSUE #890 WERE NEEDED. Putting magic find on the weights
+	 * stops it wiping out a rarity; on its own it then runs away instead,
+	 * because the multiplier is raised to MagicFindReach. +400% made a
+	 * Cataclysmic drop 77 times likelier where the design note of 2026-08-18
+	 * expected about 5.
+	 *
+	 * SO IT PASSES THROUGH `mf * Ceiling / (mf + Ceiling)` FIRST, which is
+	 * Diablo II's shape with a larger ceiling. It approaches this and never
+	 * reaches it, so no amount of stacked magic find takes a Cataclysmic drop
+	 * past about one in 333 at difficulty tier 8. Mirrors
+	 * `MAGIC_FIND_CEILING` in `sim/cataclysm_sim/loot.py`, where the reasoning
+	 * and the measurements are written out.
+	 */
+	static constexpr float MagicFindCeiling = 400.0f;
+
 	/** The same plus one, for which affix tiers a drop may reach. */
 	static constexpr int32 AffixTiersAboveDifficulty = 1;
 
@@ -238,9 +274,30 @@ public:
 	 *
 	 * @return 0 when the table is missing or holds no row for the rarity
 	 */
+	/**
+	 * What magic find is worth after diminishing returns.
+	 *
+	 * Approaches MagicFindCeiling and never reaches it, so stacking magic find
+	 * always helps and never runs away. Mirrors `effective_magic_find` in
+	 * `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float EffectiveMagicFind(float MagicFind);
+
+	/**
+	 * What magic find multiplies this rarity's drop weight by.
+	 *
+	 * ONE AT THE BOTTOM OF THE LADDER AND LARGEST AT THE TOP. Everyday's weight
+	 * is never touched, which is what stops magic find scaling the floor away.
+	 * Mirrors `magic_find_multiplier` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float MagicFindMultiplier(ECataclysmRarity Rarity, float MagicFind);
+
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	static float DropWeightAt(const UDataTable* GearRarityTable,
-							  ECataclysmRarity Rarity, int32 DifficultyTier);
+							  ECataclysmRarity Rarity, int32 DifficultyTier,
+							  float MagicFind = 0.0f);
 
 	/**
 	 * The chance the cascade stops at this rung, given that it reached it.

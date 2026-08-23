@@ -271,45 +271,75 @@ def test_an_unknown_rarity_has_no_drop_weight():
         loot.drop_weight("Splendid", 4)
 
 
-def test_magic_find_stops_the_weakest_rarity_dropping_sooner_at_depth():
-    """A consequence of #886 that nobody asked for and that is worth keeping.
+def test_no_amount_of_magic_find_stops_a_rarity_dropping():
+    """The opposite of what this file asserted before issue #890.
 
-    Magic find multiplies each cascade step and a step saturates at 1. Once the
-    ordinary segment has flattened, Quality's step is a much larger share of the
-    weight at or below it, so a smaller magic find takes it to certainty and the
-    cascade can never fall through to Everyday at all.
+    IT USED TO CHECK THAT MAGIC FIND REMOVED THE WEAKEST RARITY, and treated
+    that as a feature: magic find multiplied each cascade step, a step saturates
+    at 1, and past about +80% at difficulty tier 8 nothing could fall through to
+    Everyday. That reading was wrong. The same arithmetic made a Boss drop
+    Masterful 97.6% of the time at tier 8 and Quality 100% of the time at tier 1,
+    which is the complaint #886 was filed about, in a worse form.
 
-    Measured, the magic find at which Everyday stops dropping runs from about
-    +250% at difficulty tier 1 down to about +80% at tier 8. Before #886 it was
-    +250% at every tier, because the segment did not flatten. So a deep, well
-    geared character stops seeing the weakest rarity and a shallow one does not.
-
-    THIS IS WHAT DIABLO IV DOES, ARRIVED AT SIDEWAYS. It stops showing the player
-    Normal, Magic and Rare items in its deepest difficulties. Nothing was added
-    here to do that; the existing saturation rule met a flatter segment.
+    Magic find now multiplies weights instead. Every weight stays above zero, so
+    a rung's share of the weight at or below it is always under one and no rarity
+    can be removed at any magic find at all.
     """
-    def stops_at(tier: int) -> float:
-        low, high = 0.0, 1000.0
-        for _ in range(60):
-            middle = (low + high) / 2
-            if loot.rarity_distribution(tier, middle)["Everyday"] > 0.0:
-                low = middle
-            else:
-                high = middle
-        return high
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        reachable = loot.rarity_index(loot.best_rarity_on_a_drop(tier))
 
-    thresholds = [stops_at(tier) for tier in range(1, af.DIFFICULTY_TIERS + 1)]
+        for magic_find in (0.0, 80.0, 300.0, 500.0, 10_000.0, 1e9):
+            spread = loot.rarity_distribution(tier, magic_find)
+            for rung in range(1, reachable + 1):
+                rarity = loot.rarity_at_index(rung)
+                assert spread[rarity] > 0.0, (
+                    f"{rarity} never drops at difficulty tier {tier} with "
+                    f"{magic_find}% magic find, though the tier can reach it")
 
-    assert thresholds == sorted(thresholds, reverse=True), (
-        "the magic find that removes Everyday should get easier to reach as "
-        f"the tier rises, not harder: {[round(t) for t in thresholds]}")
-    assert thresholds[-1] < thresholds[0] / 2, (
-        "and it should be far easier at the deepest tier than at the first: "
-        f"{thresholds[0]:.0f}% against {thresholds[-1]:.0f}%")
 
-    # AND IT REALLY IS ZERO PAST IT, rather than merely small.
-    assert loot.rarity_distribution(
-        af.DIFFICULTY_TIERS, thresholds[-1] + 1.0)["Everyday"] == 0.0
+def test_a_boss_kill_drops_a_spread_of_rarities_rather_than_one():
+    """The fault issue #890 was about, checked from the player's side.
+
+    A Boss carries +300% magic find and dropped Masterful 97.6% of the time at
+    difficulty tier 8, with Everyday, Quality and Superb impossible. At tier 1 it
+    dropped Quality 100% of the time -- every item identical.
+    """
+    for tier in (1, af.DIFFICULTY_TIERS):
+        for enemy in ("Boss", "Cataclysm Boss"):
+            spread = loot.rarity_distribution(tier, loot.magic_find_from(enemy))
+            reachable = [share for share in spread.values() if share > 0.0]
+
+            assert max(reachable) < 0.90, (
+                f"a {enemy} kill at difficulty tier {tier} drops one rarity "
+                f"{max(reachable) * 100:.1f}% of the time, which is the fault "
+                "#890 was about")
+            assert len(reachable) == loot.rarity_index(
+                loot.best_rarity_on_a_drop(tier)), (
+                f"a {enemy} kill at difficulty tier {tier} cannot drop every "
+                "rarity the tier reaches")
+
+
+def test_magic_find_cannot_run_away_however_much_is_carried():
+    """The ceiling, and why both halves of #890 were needed.
+
+    Putting magic find on the weights stops it removing a rarity. On its own it
+    then runs away instead, because the multiplier is raised to
+    `MAGIC_FIND_REACH`: +400% made a Cataclysmic drop 77 times likelier, where
+    the note of 2026-08-18 expected about 5. Diminishing returns bound it.
+    """
+    assert loot.effective_magic_find(0.0) == 0.0
+
+    for magic_find in (1.0, 400.0, 10_000.0, 1e12):
+        effective = loot.effective_magic_find(magic_find)
+        assert 0.0 < effective < loot.MAGIC_FIND_CEILING
+        assert effective <= magic_find
+
+    # AND THE CONSEQUENCE THE CEILING EXISTS FOR: the rarest drop settles rather
+    # than climbing without limit.
+    huge = loot.rarity_distribution(8, 1e9)["Cataclysmic"]
+    assert 1 / huge > 300, (
+        f"with unlimited magic find a Cataclysmic drops one in {1 / huge:.0f}, "
+        "which is not a ceiling")
 
 
 def test_a_distribution_sums_to_one_at_every_tier_and_magic_find():
@@ -323,18 +353,30 @@ def test_a_distribution_sums_to_one_at_every_tier_and_magic_find():
 # Magic find
 # --------------------------------------------------------------------------
 
-def test_a_hundred_percent_magic_find_doubles_the_rarest_drop():
-    """The genre's own statement, made concrete.
+def test_magic_find_is_worth_more_the_rarer_the_item():
+    """What magic find does since issue #890, stated as the ordering.
 
-    Path of Exile: +100% increased item rarity gives "twice as many magic items,
-    twice as many rares and twice as many uniques". At tier 8 the rarest is
-    Cataclysmic at one drop in eight, so it becomes one in four.
+    IT USED TO DOUBLE THE RAREST DROP AT +100%, which was Path of Exile's own
+    statement made concrete. That went with the mechanism: magic find multiplied
+    every rung of the cascade equally, which is also what let a rung saturate and
+    wipe out every rarity below it.
+
+    It now multiplies each rarity's WEIGHT, and the rarer the rarity the more of
+    the multiplier it receives. So the effect is no longer one figure for the
+    whole ladder, and the thing worth holding is the ordering rather than any
+    number: every rarity above the floor gains, the floor loses, and each gains
+    more than the one below it.
     """
     plain = loot.rarity_distribution(8)
-    doubled = loot.rarity_distribution(8, magic_find=100.0)
+    lucky = loot.rarity_distribution(8, magic_find=100.0)
 
-    assert doubled["Cataclysmic"] == pytest.approx(
-        2 * plain["Cataclysmic"], abs=1e-9)
+    gains = [lucky[rarity] / plain[rarity] for rarity in af.RARITIES]
+
+    assert gains[0] < 1.0, "the weakest rarity should lose share, not gain it"
+    assert gains == sorted(gains), (
+        "each rarity should gain more from magic find than the one below it: "
+        + ", ".join(f"{r} {g:.2f}x" for r, g in zip(af.RARITIES, gains, strict=True)))
+    assert gains[-1] > 1.0
 
 
 def test_magic_find_moves_weight_upward_and_takes_it_from_the_floor():
@@ -593,22 +635,35 @@ def test_a_split_never_exceeds_either_cap_or_loses_a_slot():
 def test_a_cataclysmic_item_carries_no_regular_affixes():
     """Four enchantments and nothing else, which is what the design says it is.
 
-    A MAGIC FIND NO CHARACTER COULD HAVE, on purpose. A Cataclysmic drop is one
-    in 25,531 at difficulty tier 8, so rolling until one appears would take a
-    hundred thousand items and several seconds. Magic find multiplies the top
-    rung's chance until it saturates at certainty, which is the real code path
-    rather than a hand-built item.
+    THE WEIGHT TABLE IS SWAPPED RATHER THAN THE RARITY FORCED, so this still
+    goes through `roll_item` and every step it takes, which is the point: a
+    hand-built item would prove nothing about the code path.
+
+    IT USED TO USE A MAGIC FIND NO CHARACTER COULD HAVE, relying on the top
+    rung saturating at certainty. Issue #890 removed saturation deliberately --
+    it was what made a Boss drop one rarity of item -- so magic find can no
+    longer force a rarity, and at its ceiling a Cataclysmic is still only about
+    one drop in 333.
     """
-    rng = random.Random(1234)
-    seen = False
-    for _ in range(200):
-        item = loot.roll_item("Relic", tier=8, magic_find=5_000_000.0, rng=rng)
-        if item.rarity != "Cataclysmic":
-            continue
-        seen = True
-        assert item.affixes == ()
-        assert item.enchantments == 4
-        assert item.gear_level == 10
+    top_heavy = dict.fromkeys(loot.RARITY_DROP_WEIGHT, 1.0)
+    top_heavy["Cataclysmic"] = 10_000.0
+
+    original = loot.RARITY_DROP_WEIGHT
+    try:
+        loot.RARITY_DROP_WEIGHT = top_heavy
+        rng = random.Random(1234)
+        seen = False
+        for _ in range(200):
+            item = loot.roll_item("Relic", tier=8, magic_find=0.0, rng=rng)
+            if item.rarity != "Cataclysmic":
+                continue
+            seen = True
+            assert item.affixes == ()
+            assert item.enchantments == 4
+            assert item.gear_level == 10
+    finally:
+        loot.RARITY_DROP_WEIGHT = original
+
     assert seen, "no Cataclysmic item dropped, so the assertions never ran"
 
 

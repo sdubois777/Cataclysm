@@ -72,20 +72,33 @@ def test_a_cataclysmic_item_is_named_without_a_word():
     """It carries four enchantments and no regular affixes at all, so there is
     no suffix to name it after.
 
-    A MAGIC FIND NO CHARACTER COULD HAVE, on purpose. A Cataclysmic drop is one
-    in 25,531 at difficulty tier 8, so rolling until one appears would take a
-    hundred thousand items and several seconds. Magic find multiplies the top
-    rung's chance until it saturates at certainty, which is the real code path
-    rather than a hand-built item.
+    THE WEIGHT TABLE IS SWAPPED RATHER THAN THE RARITY FORCED, so this still
+    goes through `roll_item` and every step it takes, which is the point: a
+    hand-built item would prove nothing about the code path.
+
+    IT USED TO USE A MAGIC FIND NO CHARACTER COULD HAVE, relying on the top
+    rung saturating at certainty. Issue #890 removed saturation deliberately --
+    it was what made a Boss drop one rarity of item -- so magic find can no
+    longer force a rarity, and at its ceiling a Cataclysmic is still only about
+    one drop in 333.
     """
-    rng = random.Random(4242)
-    seen = False
-    for _ in range(200):
-        item = loot.roll_item("Relic", tier=8, magic_find=5_000_000.0, rng=rng)
-        if item.rarity != "Cataclysmic":
-            continue
-        seen = True
-        assert naming.name_of(item) == f"Cataclysmic {item.base.name}"
+    top_heavy = dict.fromkeys(loot.RARITY_DROP_WEIGHT, 1.0)
+    top_heavy["Cataclysmic"] = 10_000.0
+
+    original = loot.RARITY_DROP_WEIGHT
+    try:
+        loot.RARITY_DROP_WEIGHT = top_heavy
+        rng = random.Random(4242)
+        seen = False
+        for _ in range(200):
+            item = loot.roll_item("Relic", tier=8, magic_find=0.0, rng=rng)
+            if item.rarity != "Cataclysmic":
+                continue
+            seen = True
+            assert naming.name_of(item) == f"Cataclysmic {item.base.name}"
+    finally:
+        loot.RARITY_DROP_WEIGHT = original
+
     assert seen, "no Cataclysmic item was rolled, so nothing was checked"
 
 

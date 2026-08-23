@@ -119,6 +119,34 @@ def main() -> None:
               f"   Cataclysmic {one_in(floated[tier]['Cataclysmic']):>12}")
 
     print()
+    print("WHAT A KILL ACTUALLY DROPS, which is not the same question")
+    print("=" * 78)
+    print("A rarer enemy adds magic find to its own drops, so the tables above,")
+    print("which carry none, are not what a player sees. Measuring without it is")
+    print("how issue #890 was shipped: the tables above looked right while a Boss")
+    print("dropped one rarity of item.")
+    print()
+    print(f"{'tier':>4} {'enemy':>15} "
+          + " ".join(f"{r[:9]:>9}" for r in RARITIES))
+    for tier in (1, 4, af.DIFFICULTY_TIERS):
+        for enemy in loot.ENEMY_MAGIC_FIND:
+            share = loot.rarity_distribution(tier, loot.magic_find_from(enemy))
+            cells = " ".join(f"{share[r] * 100:8.3f}%" for r in RARITIES)
+            print(f"{tier:>4} {enemy:>15} {cells}")
+        print()
+
+    print("AND NOTHING IS EVER REMOVED, however much magic find is carried")
+    print("=" * 78)
+    for magic_find in (0.0, 300.0, 1_000.0, 1e9):
+        share = loot.rarity_distribution(af.DIFFICULTY_TIERS, magic_find)
+        gone = [r for r in RARITIES if share[r] <= 0.0]
+        rarest = share[RARITIES[-1]]
+        print(f"  +{magic_find:>12,.0f}% -> worth "
+              f"+{loot.effective_magic_find(magic_find):6.1f}%, "
+              f"one Cataclysmic in {1 / rarest:>9,.0f}, "
+              f"{'nothing removed' if not gone else 'REMOVED: ' + ', '.join(gone)}")
+
+    print()
     print("ENDPOINTS: difficulty tier 8 only, as the endpoint was chosen from")
     print("=" * 78)
     print(f"{'ratio':>6} " + " ".join(f"{r[:9]:>9}" for r in RARITIES)
