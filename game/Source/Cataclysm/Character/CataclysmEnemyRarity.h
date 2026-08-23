@@ -108,6 +108,33 @@ public:
 							   TArray<int32>& OutSteps);
 
 	/**
+	 * What a Common enemy's stats are multiplied by at this rarity step.
+	 *
+	 * WHY A RATIO RATHER THAN THE FIGURE ITSELF. `game/Data/EnemyRarities.csv`
+	 * states each stat as a share of an encounter's Power Score, and the game
+	 * has no Power Score at run time -- the creature stats it spawns with are
+	 * designed figures taken from `sim/cataclysm_sim/enemy_stats.py` at Common.
+	 * Dividing the step's share by Common's gives the multiplier that turns one
+	 * into the other, so the existing tuning is preserved exactly at Common and
+	 * every rung above it follows the model.
+	 *
+	 * THE THREE STATS CLIMB AT DIFFERENT RATES, which is the whole point of the
+	 * table having three columns. From the shipped data: health multiplies by
+	 * 1.85 a step, damage by 1.4 and armour by 1.35. So a Legendary has 3.42
+	 * times a Common's health but only 1.96 times its damage -- it takes much
+	 * longer to kill and hits somewhat harder, rather than both together.
+	 *
+	 * COMMON ITSELF ANSWERS ONE, ONE, ONE, which is what makes this safe to
+	 * apply unconditionally.
+	 *
+	 * @return false when the table is missing or holds no row for the step or
+	 *         for Common, in which case the three outputs are left at one
+	 */
+	static bool ScalingFromCommon(const UDataTable* EnemyRarityTable, int32 Step,
+								  float& OutHealth, float& OutDamage,
+								  float& OutArmour);
+
+	/**
 	 * The value a sandbox setting carries to mean "draw one" rather than "use
 	 * this rung".
 	 *
