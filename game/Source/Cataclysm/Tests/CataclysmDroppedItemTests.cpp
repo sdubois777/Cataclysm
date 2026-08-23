@@ -984,4 +984,120 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * An upgrade stone that reaches the floor respects the tier being played.
+ *
+ * ISSUE #863, AND THIS IS THE HALF A UNIT TEST CANNOT COVER.
+ * `Cataclysm.Drop.TheBestUpgradeStoneIsCappedByTheDifficultyTier` proves
+ * UCataclysmDropRoll::RollMaterial obeys the cap it is handed. It cannot prove
+ * the drop site hands it the tier being played rather than a constant, which is
+ * exactly the bug #868 was: gear was rolled at a hard-coded tier 8 for weeks
+ * and the whole suite passed throughout.
+ *
+ * SO THIS ONE WALKS THE FLOOR. It kills things at tier 1 and at tier 8 and
+ * reads the upgrade level off the materials that actually landed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDroppedStonesRespectTheTier,
+	"Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDroppedStonesRespectTheTier::RunTest(const FString& Parameters)
+{
+	IConsoleVariable* TierVariable = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.DifficultyTier"));
+	if (!TestNotNull(TEXT("the Cataclysm.DifficultyTier console variable"),
+			TierVariable))
+	{
+		return false;
+	}
+
+	const int32 Previous = TierVariable->GetInt();
+	ON_SCOPE_EXIT { TierVariable->Set(Previous, ECVF_SetByConsole); };
+
+	const UDataTable* Materials =
+		UCataclysmDropRoll::LoadCraftingMaterialTable();
+	if (!TestNotNull(TEXT("the crafting material table"), Materials))
+	{
+		return false;
+	}
+
+	// THE BEST STONE OVER SEVERAL KILLS, and how many materials were seen at
+	// all. Without the count, a tier that dropped nothing would report a best
+	// of zero and read as the cap working.
+	const auto BestStoneOverKills = [&](int32 Tier, int32& OutMaterials)
+	{
+		TierVariable->Set(Tier, ECVF_SetByConsole);
+		OutMaterials = 0;
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return -1;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FRandomStream Stream(/*InSeed=*/20260823);
+		constexpr int32 CataclysmBossStep = 5;
+
+		for (int32 Kill = 0; Kill < 8; ++Kill)
+		{
+			UCataclysmDropSpawner::SpawnDropsFor(
+				World, CataclysmBossStep, /*MagicFind=*/0.0f,
+				UCataclysmDropRoll::BaselineLootQuantity,
+				FVector(Kill * 400.0f, 0.0f, 40.0f), Stream);
+		}
+
+		int32 Best = 0;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			const ACataclysmDroppedItem* Drop = *It;
+			if (!Drop || !Drop->IsMaterial())
+			{
+				continue;
+			}
+
+			++OutMaterials;
+			const FCataclysmCraftingMaterialRow* Row =
+				Materials->FindRow<FCataclysmCraftingMaterialRow>(
+					Drop->Material, TEXT("BestStoneOverKills"),
+					/*bWarnIfMissing=*/false);
+			if (Row)
+			{
+				Best = FMath::Max(Best, Row->UpgradeLevel);
+			}
+		}
+		return Best;
+	};
+
+	int32 MaterialsAtOne = 0;
+	int32 MaterialsAtEight = 0;
+	const int32 AtTierOne = BestStoneOverKills(1, MaterialsAtOne);
+	const int32 AtTierEight = BestStoneOverKills(8, MaterialsAtEight);
+
+	if (!TestTrue(TEXT("materials dropped at tier 1"), MaterialsAtOne > 0)
+		|| !TestTrue(TEXT("materials dropped at tier 8"), MaterialsAtEight > 0))
+	{
+		return false;
+	}
+
+	// TIER 1 REACHES +3 AND NO FURTHER. Stated outright rather than read back
+	// from MaxUpgradeStoneOnADrop, so a change to the rule fails here. It is
+	// the design document's own figure for tier 1.
+	constexpr int32 CapAtTierOne = 3;
+	TestTrue(*FString::Printf(
+		TEXT("a tier 1 kill drops no stone above +%d, best was +%d over %d "
+			 "materials"), CapAtTierOne, AtTierOne, MaterialsAtOne),
+		AtTierOne <= CapAtTierOne);
+
+	// AND THE TIER ACTUALLY CHANGES WHAT LANDS, which is the half that fails if
+	// the drop site stops reading the tier. A comparison rather than a fixed
+	// level, so re-tuning the ladder does not break it.
+	TestTrue(*FString::Printf(
+		TEXT("a tier 8 kill drops a better stone than a tier 1 kill, +%d "
+			 "against +%d"), AtTierEight, AtTierOne),
+		AtTierEight > AtTierOne);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

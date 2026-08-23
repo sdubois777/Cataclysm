@@ -838,6 +838,18 @@ def crafting_materials(book) -> list[dict]:
     is what `roll_material_tier` in `sim/cataclysm_sim/loot.py` says belongs to
     "whoever holds that table". Zero means the row is an action rather than a
     material, so nothing can drop it.
+
+    AND SO IS AN UPGRADE STONE'S LEVEL, for the same reason and by the same
+    route. The ten stones are named "Upgrade Stone +1" through "+10", so the
+    level is already stated; publishing it as a number means the engine does not
+    parse a name at run time, which it would otherwise do for every material
+    that drops. Zero for everything that is not a stone.
+
+    A STONE'S LEVEL IS NOT ITS TIER. The tier is the rarity band it drops in and
+    the level is how far it upgrades a piece. The ten were deliberately spread
+    two to a band, so a band holds two different levels and neither can be
+    derived from the other. Issue #863 is what needs the level: the best stone
+    that can drop is capped by the difficulty tier.
     """
     out = []
     for index, raw in enumerate(book["Crafting"].iter_rows(values_only=True), 1):
@@ -846,8 +858,16 @@ def crafting_materials(book) -> list[dict]:
         name = clean(raw[0])
         source = clean(raw[1])
         found = MATERIAL_TIER_AND_SOURCE.match(source or "")
+        stone = UPGRADE_STONE_NAME.match(name or "")
+        upgrade_level = int(stone.group(1)) if stone else 0
+        if upgrade_level > MAX_UPGRADE_STONE_LEVEL:
+            raise DataError(
+                f"Crafting row {index}: {name!r} names upgrade level "
+                f"{upgrade_level}, and gear runs from +1 to "
+                f"+{MAX_UPGRADE_STONE_LEVEL}")
         out.append({"Name": row_name("Material", name), "MaterialName": name,
                     "Tier": int(found.group(1)) if found else 0,
+                    "UpgradeLevel": upgrade_level,
                     "TierAndSource": source,
                     "PrimaryUse": clean(raw[2]),
                     "Functions": clean(raw[3]),
@@ -2313,6 +2333,15 @@ def validate_enemy_drop_rarities(tables: dict[str, list[dict]]) -> list[str]:
 #: `Tier 3 (Rare). Drop from Dungeon Bosses/Elites.` -- the tier and its name.
 MATERIAL_TIER_AND_SOURCE = re.compile(r"Tier\s*(\d)\s*\(([^)]+)\)")
 
+#: `Upgrade Stone +7` -- the level the stone takes a piece of gear to.
+UPGRADE_STONE_NAME = re.compile(r"Upgrade\s+Stone\s*\+(\d+)$")
+
+#: The highest a piece of gear goes. Section VII of the design document states
+#: it twice: the Upgrade Item Level operation is "1 per tier, maximum 10", and
+#: the stone that reaches it "Raises an item to +10, which is the maximum".
+#: Nothing above that can be crafted, so nothing above it can drop.
+MAX_UPGRADE_STONE_LEVEL = 10
+
 
 def validate_material_tier_counts(tables: dict[str, list[dict]]) -> list[str]:
     """Every material tier's stated count must match how many materials it has.
@@ -2357,6 +2386,46 @@ def validate_material_tier_counts(tables: dict[str, list[dict]]) -> list[str]:
         problems.append(
             f"MaterialTiers: CraftingMaterials has {counted[name]} material(s) "
             f"in a tier called {name!r}, and MaterialTiers has no such row")
+    return problems
+
+
+def validate_upgrade_stone_levels(tables: dict[str, list[dict]]) -> list[str]:
+    """The ten upgrade stones must publish levels +1 to +10, one stone each.
+
+    THE LEVEL IS DERIVED FROM THE NAME, so a rename in the workbook silently
+    turns it into a zero rather than into an error. A zero reads as "not a
+    stone", and `UCataclysmDropRoll::RollMaterial` caps what may drop by that
+    level -- so a stone with a zero would be droppable at every difficulty tier,
+    which is the exact bug #863 is about, arriving the other way round.
+
+    Checked as a set rather than as a count. Two stones both named "+7" would
+    keep the count at ten and put a hole in the ladder.
+    """
+    materials = tables.get("CraftingMaterials")
+    if not materials:
+        return []
+
+    levels: dict[int, list[str]] = {}
+    for row in materials:
+        if row["UpgradeLevel"]:
+            levels.setdefault(row["UpgradeLevel"], []).append(row["MaterialName"])
+
+    if not levels:
+        return ["CraftingMaterials: no material is named 'Upgrade Stone +N', so "
+                "no upgrade stone can drop at all. The ten stones were renamed "
+                "or removed, or UPGRADE_STONE_NAME no longer matches them."]
+
+    problems = []
+    for level in range(1, MAX_UPGRADE_STONE_LEVEL + 1):
+        if level not in levels:
+            problems.append(
+                f"CraftingMaterials: nothing upgrades gear to +{level}. Gear "
+                f"runs +1 to +{MAX_UPGRADE_STONE_LEVEL} and each step needs a "
+                f"stone.")
+        elif len(levels[level]) > 1:
+            problems.append(
+                f"CraftingMaterials: {len(levels[level])} materials upgrade "
+                f"gear to +{level}: {sorted(levels[level])}")
     return problems
 
 
@@ -2758,6 +2827,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_socket_slots(tables)
                 + validate_enemy_drop_rarities(tables)
                 + validate_material_tier_counts(tables)
+                + validate_upgrade_stone_levels(tables)
                 + validate_weapon_skill_types(tables)
                 + validate_weapon_skill_damage_types(tables, declared_tags(book))
                 + validate_weapon_tags(tables, declared_tags(book))

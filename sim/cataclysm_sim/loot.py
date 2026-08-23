@@ -917,11 +917,16 @@ MATERIAL_TIERS: tuple[str, ...] = ("Common", "Uncommon", "Rare", "Very Rare",
 #: the ordinary gear rarities step by 2.5, the enchanted ones by 5, and the
 #: affix tiers by 2.
 #:
-#: WHY THE TOP IS NOT RARER THAN THAT. Three materials share Tier 5, so a named
+#: WHY THE TOP IS NOT RARER THAN THAT. Five materials share Tier 5, so a named
 #: one -- Purified Essence, which is the only thing that clears the Consumption
-#: Threshold -- is one drop in 1,023. Making the tier itself rarer would make
+#: Threshold -- is one drop in 1,705. Making the tier itself rarer would make
 #: the tool the design relies on to manage residue something a player cannot
 #: count on having.
+#:
+#: IT SAID THREE AND 1,023 UNTIL 2026-08-23. That was the count before the ten
+#: upgrade stones were added, and `MATERIALS_IN_TIER` below already recorded the
+#: change while this said the old figure. The weights were chosen against 1,023
+#: and are unchanged; what moved is how many ways the top tier is shared.
 MATERIAL_TIER_DROP_WEIGHT: dict[str, float] = {
     "Common":         256.0,
     "Uncommon":        64.0,

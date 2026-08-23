@@ -216,18 +216,26 @@ public:
 	 * scatter circle; a material that worked out its own total would sit at a
 	 * different radius from the gear and could land on top of it.
 	 *
+	 * THE DIFFICULTY TIER IS PASSED IN RATHER THAN ASKED FOR HERE, though this
+	 * has the world to ask with. SpawnDropsFor already resolved it for the gear,
+	 * and one kill's gear and materials answering differently would be a bug
+	 * nothing could see.
+	 *
 	 * @param Count              how many materials to place
 	 * @param AlreadyOnTheFloor  how many places on the circle the gear took, so
 	 *                           the materials continue round it
 	 * @param TotalDrops         how many drops this kill produces in all, which
 	 *                           is what sets the circle's size
+	 * @param DifficultyTier     which of the eight tiers is being played, which
+	 *                           caps the upgrade stones this may drop
 	 *
 	 * @return how many actors were spawned
 	 */
 	static int32 SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 								   float MagicFind, const FVector& At,
 								   int32 Count, int32 AlreadyOnTheFloor,
-								   int32 TotalDrops, FRandomStream& Stream);
+								   int32 TotalDrops, int32 DifficultyTier,
+								   FRandomStream& Stream);
 };
 
 /**

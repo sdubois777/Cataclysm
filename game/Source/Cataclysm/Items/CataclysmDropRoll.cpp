@@ -399,33 +399,70 @@ const UDataTable* UCataclysmDropRoll::LoadCraftingMaterialTable()
 					   TEXT("CraftingMaterials.csv"), TEXT("Crafting"));
 }
 
-FName UCataclysmDropRoll::RollMaterial(const UDataTable* CraftingMaterialTable,
-									   int32 Tier, FRandomStream& Stream)
+int32 UCataclysmDropRoll::MaxUpgradeStoneOnADrop(int32 DifficultyTier)
 {
-	if (!CraftingMaterialTable || Tier <= 0)
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, DifficultyTiers);
+	return FMath::Min(UCataclysmItemValues::MaxGearLevel,
+					  Tier + UpgradeLevelsAboveDifficulty);
+}
+
+FName UCataclysmDropRoll::RollMaterial(const UDataTable* CraftingMaterialTable,
+									   int32 MaterialTier, int32 DifficultyTier,
+									   FRandomStream& Stream)
+{
+	if (!CraftingMaterialTable || MaterialTier <= 0)
 	{
 		return NAME_None;
 	}
 
+	const int32 BestStone = MaxUpgradeStoneOnADrop(DifficultyTier);
+
 	// GATHERED RATHER THAN COUNTED THEN INDEXED, because a DataTable is a map
 	// and walking it twice is not guaranteed to walk it in the same order.
 	TArray<FName> InTier;
+	int32 StonesTooGood = 0;
 	CraftingMaterialTable->ForeachRow<FCataclysmCraftingMaterialRow>(
 		TEXT("UCataclysmDropRoll::RollMaterial"),
 		[&](const FName& Key, const FCataclysmCraftingMaterialRow& Row)
 		{
-			if (Row.Tier == Tier)
+			if (Row.Tier != MaterialTier)
 			{
-				InTier.Add(Key);
+				return;
 			}
+
+			// AN UPGRADE STONE IS CAPPED BY THE DIFFICULTY TIER, issue #863, and
+			// UpgradeLevel is 0 for everything that is not one, so this leaves
+			// every other material alone.
+			if (Row.UpgradeLevel > BestStone)
+			{
+				++StonesTooGood;
+				return;
+			}
+
+			InTier.Add(Key);
 		});
 
 	if (InTier.Num() == 0)
 	{
+		// TWO DIFFERENT FAULTS, SAID DIFFERENTLY. An empty band is a data fault;
+		// a band emptied by the cap would be a design fault, and no band can be,
+		// because each keeps at least three materials that are not stones.
+		if (StonesTooGood > 0)
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Material tier %d holds nothing but upgrade stones above "
+					 "+%d, which is the most difficulty tier %d may drop, so "
+					 "the roll produced nothing. A tier needs a material that "
+					 "is not an upgrade stone. Check "
+					 "game/Data/CraftingMaterials.csv."),
+				MaterialTier, BestStone, DifficultyTier);
+			return NAME_None;
+		}
+
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("No crafting material is in tier %d, so a material that "
 				 "rolled that tier cannot become anything. Check "
-				 "game/Data/CraftingMaterials.csv."), Tier);
+				 "game/Data/CraftingMaterials.csv."), MaterialTier);
 		return NAME_None;
 	}
 

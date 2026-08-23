@@ -419,7 +419,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	// roll still used up its place: leaving a gap is better than putting a
 	// material on top of the item after it.
 	Spawned += SpawnMaterialsFor(World, EnemyRarity, Together, At, MaterialCount,
-								 Count, Total, Stream);
+								 Count, Total, DifficultyTier, Stream);
 
 	return Spawned;
 }
@@ -429,6 +429,7 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 											   const FVector& At, int32 Count,
 											   int32 AlreadyOnTheFloor,
 											   int32 TotalDrops,
+											   int32 DifficultyTier,
 											   FRandomStream& Stream)
 {
 	if (!World || Count <= 0)
@@ -449,8 +450,8 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 	{
 		const int32 Tier =
 			UCataclysmDropRoll::RollMaterialTier(TierTable, MagicFind, Stream);
-		const FName Material =
-			UCataclysmDropRoll::RollMaterial(Materials, Tier, Stream);
+		const FName Material = UCataclysmDropRoll::RollMaterial(
+			Materials, Tier, DifficultyTier, Stream);
 		if (Material.IsNone())
 		{
 			// RollMaterial has already said why. One material failing to roll is
