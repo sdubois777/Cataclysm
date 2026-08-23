@@ -7,15 +7,15 @@ materials and no operations; the Crafting sheet of
 nothing compared them.
 
 WHAT THE SHEET ACTUALLY IS, because it is not obvious and the issue got it
-wrong. It is three tables stacked in one sheet, not one table of 37 materials:
+wrong. It is three tables stacked in one sheet, not one table of 46 materials:
 
-    rows 1-18   the materials, with tier, source and use
+    rows 1-27   the materials, with tier, source and use
     rows 5-11   ALSO carry, in columns 7 to 9, a six-row table of the global CR
                 penalty scale. Those columns have nothing to do with the
                 material on the same row. The header of that inner table sits
                 on the Dismantling Dust row.
-    row 19      a header row whose first cell is the literal word "Action"
-    rows 20-37  the eighteen Forge operations
+    row 28      a header row whose first cell is the literal word "Action"
+    rows 29-46  the eighteen Forge operations
 
 So a reader who takes the sheet at face value concludes that materials carry
 their own CR formulas. They do not. `(CR / 50) + 1` and `CR / 100` sit on the
@@ -105,8 +105,11 @@ def test_the_sheet_still_has_the_shape_this_file_assumes(split):
     """Everything below reads the sheet through this split. If it is wrong the
     other tests compare the wrong things and pass for the wrong reason."""
     materials, actions = split
-    assert len(materials) == 18, (
-        f"Expected 18 materials before the {ACTIONS_HEADER!r} row, found "
+    # TWENTY-SEVEN SINCE 2026-08-23, issue #852. It was eighteen: the one row
+    # named "Upgrade Stone (x)" was a placeholder and became ten stones, "+1"
+    # through "+10", spread two to a rarity tier.
+    assert len(materials) == 27, (
+        f"Expected 27 materials before the {ACTIONS_HEADER!r} row, found "
         f"{len(materials)}. If a material was added, add it to the design "
         "document's material table too and update this number."
     )

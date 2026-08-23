@@ -746,9 +746,13 @@ bool FCataclysmMaterialTierTest::RunTest(const FString& Parameters)
 				< MaterialShareAtNoMagicFind[Index] * 1e-4f);
 	}
 
-	// THE FIGURE THE WEIGHTS WERE CHOSEN AGAINST. Three materials share the top
-	// tier, and Purified Essence is the only thing that clears the Consumption
-	// Threshold, so how often it turns up is what mattered.
+	// THE FIGURE THE WEIGHTS WERE CHOSEN AGAINST. Purified Essence is the only
+	// thing that clears the Consumption Threshold, so how often it turns up is
+	// what mattered.
+	//
+	// THE TIER ITSELF IS UNCHANGED AT ONE DROP IN 341. What moved on 2026-08-23
+	// is how many materials share it: five rather than three, because the +9 and
+	// +10 upgrade stones joined it. Issue #852.
 	TestTrue(*FString::Printf(
 		TEXT("an Extremely Rare material is one drop in 341 (%.0f)"),
 		1.0f / Shares[4]), FMath::Abs(1.0f / Shares[4] - 341.0f) < 1.0f);
@@ -762,11 +766,16 @@ bool FCataclysmMaterialTierTest::RunTest(const FString& Parameters)
 				InTopTier = Row.Materials;
 			}
 		});
-	TestEqual(TEXT("three materials share the top tier"), InTopTier, 3);
+	// FIVE SINCE 2026-08-23, AND IT WAS THREE. A named top-tier material is now
+	// two thirds as likely to turn up, and the tier's own weight was not
+	// adjusted to compensate. That is a real dilution rather than an accounting
+	// change, and if Purified Essence turns out too scarce the weight is the
+	// lever. `sim/tests/test_loot.py` states the same pair of figures.
+	TestEqual(TEXT("five materials share the top tier"), InTopTier, 5);
 	TestTrue(*FString::Printf(
-		TEXT("so a named one is one drop in 1,023 (%.0f)"),
+		TEXT("so a named one is one drop in 1,705 (%.0f)"),
 		1.0f / Shares[4] * InTopTier),
-		FMath::Abs(1.0f / Shares[4] * InTopTier - 1023.0f) < 4.0f);
+		FMath::Abs(1.0f / Shares[4] * InTopTier - 1705.0f) < 6.0f);
 
 	// EVERY DISTRIBUTION SUMS TO ONE. It is a cascade, so the commonest tier
 	// takes whatever fell through; a sum below one would be material drops that

@@ -979,13 +979,23 @@ def test_the_top_material_tier_is_one_drop_in_the_stated_number():
     assert 1 / shares["Extremely Rare"] == pytest.approx(341, abs=1)
 
 
-def test_a_named_top_tier_material_is_one_drop_in_a_thousand():
-    """Three materials share the top tier, and Purified Essence is the only
-    thing that clears the Consumption Threshold, so how often it turns up is
-    the figure the tier weight was chosen against."""
+def test_a_named_top_tier_material_is_one_drop_in_seventeen_hundred():
+    """Purified Essence is the only thing that clears the Consumption
+    Threshold, so how often it turns up is the figure the tier weight was
+    chosen against.
+
+    IT WAS ONE IN 1,023 AND IS NOW ONE IN 1,705, because the top tier went from
+    three materials to five on 2026-08-23. The ten upgrade stones replaced one
+    placeholder row and were spread two to a tier, so the +9 and +10 stones
+    share this rung. Issue #852.
+
+    THAT IS A REAL DILUTION AND NOT AN ACCOUNTING CHANGE. A named top-tier
+    material is now two thirds as likely to turn up as it was, and the tier
+    weight was not adjusted to compensate.
+    """
     shares = loot.material_tier_distribution(0.0)
     in_tier = loot.MATERIALS_IN_TIER["Extremely Rare"]
-    assert 1 / shares["Extremely Rare"] * in_tier == pytest.approx(1023, abs=3)
+    assert 1 / shares["Extremely Rare"] * in_tier == pytest.approx(1705, abs=5)
 
 
 def test_the_material_distribution_always_sums_to_one():
