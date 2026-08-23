@@ -953,6 +953,21 @@ def item_bases(book) -> list[dict]:
         basic_shape = _cell(raw, headers, "Basic Shape")
         basic_params = _cell(raw, headers, "Basic Shape Params")
 
+        # HOW MANY CELLS THE PIECE OCCUPIES IN THE CARRIED BAG, from the
+        # footprint table in docs/Inventory_Screen_Design.md. Issue #855.
+        #
+        # REQUIRED OF EVERY BASE. A base with no footprint could not be put
+        # in the bag at all, and a zero would read as an item that takes no
+        # room rather than as a base somebody forgot.
+        wide = _cell(raw, headers, "Cells Wide")
+        high = _cell(raw, headers, "Cells High")
+        for label, figure in (("Cells Wide", wide), ("Cells High", high)):
+            if not figure or int(float(figure)) < 1:
+                raise DataError(
+                    f"Item Bases row {index}: {name} has no {label}. Every\n"
+                    "base needs a footprint of at least one cell; see the\n"
+                    "footprint table in docs/Inventory_Screen_Design.md.")
+
         entry = {
             "Name": row_name(slot, name),
             "BaseName": name,
@@ -965,6 +980,8 @@ def item_bases(book) -> list[dict]:
             "AttackSpeed": float(attack_speed) if attack_speed else 0.0,
             "BasicShape": basic_shape,
             "BasicShapeParams": basic_params,
+            "CellsWide": int(float(wide)),
+            "CellsHigh": int(float(high)),
         }
 
         implicits = 0

@@ -1,56 +1,56 @@
-Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value
-Head_Helm,Helm,Head,0,,,0,0.0,,,armor,flat,200.0,,,0.0
-Head_Hood,Hood,Head,0,,,0,0.0,,,evasion,flat,4.0,,,0.0
-Head_Circlet,Circlet,Head,0,,,0,0.0,,,max_energy_shield,flat,55.0,,,0.0
-Head_Visage,Visage,Head,0,,,0,0.0,,,max_health,flat,70.0,crowd_control_resistance,flat,4.0
-Chest_Cuirass,Cuirass,Chest,0,,,0,0.0,,,armor,flat,440.0,,,0.0
-Chest_Jerkin,Jerkin,Chest,0,,,0,0.0,,,evasion,flat,8.0,,,0.0
-Chest_Vestment,Vestment,Chest,0,,,0,0.0,,,max_energy_shield,flat,120.0,,,0.0
-Chest_Hauberk,Hauberk,Chest,0,,,0,0.0,,,max_health,flat,180.0,,,0.0
-Chest_Carapace,Carapace,Chest,0,,,0,0.0,,,armor,flat,220.0,max_health,flat,90.0
-Shoulders_Pauldrons,Pauldrons,Shoulders,0,,,0,0.0,,,armor,flat,165.0,,,0.0
-Shoulders_Mantle,Mantle,Shoulders,0,,,0,0.0,,,evasion,flat,3.5,,,0.0
-Shoulders_Epaulets,Epaulets,Shoulders,0,,,0,0.0,,,health_regen,flat,1.1,,,0.0
-Shoulders_Spaulders,Spaulders,Shoulders,0,,,0,0.0,,,retaliation,flat,11.0,,,0.0
-Gloves_Gauntlets,Gauntlets,Gloves,0,,,0,0.0,,,armor,flat,130.0,,,0.0
-Gloves_Grips,Grips,Gloves,0,,,0,0.0,,,attack_speed,increased,9.0,,,0.0
-Gloves_Handwraps,Handwraps,Gloves,0,,,0,0.0,,,crit_chance,flat,5.0,,,0.0
-Gloves_Vambraces,Vambraces,Gloves,0,,,0,0.0,,,attack_damage,flat,12.0,,,0.0
-Pants_Greaves,Greaves,Pants,0,,,0,0.0,,,armor,flat,250.0,,,0.0
-Pants_Leggings,Leggings,Pants,0,,,0,0.0,,,evasion,flat,5.0,,,0.0
-Pants_Kilt,Kilt,Pants,0,,,0,0.0,,,max_health,flat,130.0,,,0.0
-Pants_Trousers,Trousers,Pants,0,,,0,0.0,,,max_energy_shield,flat,65.0,,,0.0
-Boots_Sabatons,Sabatons,Boots,0,,,0,0.0,,,armor,flat,145.0,movement_speed,increased,5.0
-Boots_Treads,Treads,Boots,0,,,0,0.0,,,movement_speed,increased,12.0,,,0.0
-Boots_Striders,Striders,Boots,0,,,0,0.0,,,evasion,flat,3.0,movement_speed,increased,8.0
-Boots_Sollerets,Sollerets,Boots,0,,,0,0.0,,,max_health,flat,80.0,movement_speed,increased,6.0
-Belt_Girdle,Girdle,Belt,0,,,0,0.0,,,max_health,flat,130.0,,,0.0
-Belt_Sash,Sash,Belt,0,,,0,0.0,,,max_mana,flat,60.0,,,0.0
-Belt_Cord,Cord,Belt,0,,,0,0.0,,,health_regen,flat,1.3,,,0.0
-Belt_Cinch,Cinch,Belt,0,,,0,0.0,,,armor,flat,150.0,,,0.0
-Ring_Band,Band,Ring,0,,,0,0.0,,,attack_damage,flat,10.0,,,0.0
-Ring_Signet,Signet,Ring,0,,,0,0.0,,,crit_multiplier,flat,16.0,,,0.0
-Ring_Loop,Loop,Ring,0,,,0,0.0,,,max_health,flat,60.0,,,0.0
-Ring_Circle,Circle,Ring,0,,,0,0.0,,,max_mana,flat,30.0,mana_regen,flat,0.5
-Necklace_Amulet,Amulet,Necklace,0,,,0,0.0,,,max_mana,flat,60.0,,,0.0
-Necklace_Pendant,Pendant,Necklace,0,,,0,0.0,,,crit_chance,flat,6.0,,,0.0
-Necklace_Torc,Torc,Necklace,0,,,0,0.0,,,max_health,flat,95.0,,,0.0
-Necklace_Locket,Locket,Necklace,0,,,0,0.0,,,max_energy_shield,flat,55.0,,,0.0
-Relic_Idol,Idol,Relic,0,,,0,0.0,,,crit_multiplier,flat,28.0,,,0.0
-Relic_Fetish,Fetish,Relic,0,,,0,0.0,,,area_of_effect,increased,10.0,,,0.0
-Relic_Reliquary,Reliquary,Relic,0,,,0,0.0,,,cooldown_reduction,increased,10.0,,,0.0
-Relic_Effigy,Effigy,Relic,0,,,0,0.0,,,dot_frequency,increased,10.0,,,0.0
-Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8; Angle=90; MaxTargets=1,attack_damage,flat,40.0,attack_speed,increased,5.0
-Weapon_Dagger,Dagger,Weapon,1,Piercing,Dagger,4,1.5,Strike,Radius=1.5; Angle=60; MaxTargets=1,attack_damage,flat,26.0,crit_chance,flat,8.0
-Weapon_Axe,Axe,Weapon,1,Slashing,Axe,4,1.25,Strike,Radius=1.8; Angle=100; MaxTargets=1,attack_damage,flat,46.0,,,0.0
-Weapon_Fist,Fist,Weapon,1,Blunt,Fist,4,1.45,Strike,Radius=1.5; Angle=60; MaxTargets=1,attack_damage,flat,30.0,attack_speed,increased,10.0
-Weapon_Wand,Wand,Weapon,1,Magic,Wand,4,1.35,Projectile,Range=8.4; Radius=0.6; Pierce=0; Speed=2600,attack_damage,flat,38.0,spell_damage,increased,18.0
-Weapon_Whip,Whip,Weapon,1,Slashing,Whip,4,1.4,Strike,Radius=3; Angle=45; MaxTargets=1,attack_damage,flat,32.0,area_of_effect,increased,12.0
-Weapon_Shield,Shield,Weapon,1,Blunt,Shield,4,1.2,,,block_chance,flat,12.0,armor,flat,260.0
-Weapon_Crossbow,Crossbow,Weapon,1,Piercing,Crossbow,4,1.35,Projectile,Range=10; Radius=0.4; Pierce=0; Speed=2400,attack_damage,flat,38.0,crit_multiplier,flat,20.0
-Weapon_Greatsword,Greatsword,Weapon,2,Slashing,Greatsword,8,1.25,Strike,Radius=2.7; Angle=140; MaxTargets=1,attack_damage,flat,78.0,,,0.0
-Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,8,1.28,Strike,Radius=2.4; Angle=120; MaxTargets=1,attack_damage,flat,72.0,crit_multiplier,flat,22.0
-Weapon_Spear,Spear,Weapon,2,Piercing,Spear,8,1.35,Strike,Radius=3.3; Angle=40; MaxTargets=1,attack_damage,flat,64.0,penetration,flat,6.0
-Weapon_Staff,Staff,Weapon,2,Magic,Staff,8,1.3,Projectile,Range=7.2; Radius=0.9; Pierce=0; Speed=2000,attack_damage,flat,66.0,spell_damage,increased,32.0
-Weapon_Two_Handed_Crossbow,Two-Handed Crossbow,Weapon,2,Piercing,2H Crossbow,8,1.3,Projectile,Range=12; Radius=0.9; Pierce=0; Speed=1800,attack_damage,flat,66.0,crit_chance,flat,7.0
-Weapon_Warhammer,Warhammer,Weapon,2,Blunt,Warhammer,8,1.2,Strike,Radius=2.1; Angle=80; MaxTargets=1,attack_damage,flat,84.0,,,0.0
+Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value
+Head_Helm,Helm,Head,0,,,0,0.0,,,2,2,armor,flat,200.0,,,0.0
+Head_Hood,Hood,Head,0,,,0,0.0,,,2,2,evasion,flat,4.0,,,0.0
+Head_Circlet,Circlet,Head,0,,,0,0.0,,,2,2,max_energy_shield,flat,55.0,,,0.0
+Head_Visage,Visage,Head,0,,,0,0.0,,,2,2,max_health,flat,70.0,crowd_control_resistance,flat,4.0
+Chest_Cuirass,Cuirass,Chest,0,,,0,0.0,,,2,3,armor,flat,440.0,,,0.0
+Chest_Jerkin,Jerkin,Chest,0,,,0,0.0,,,2,3,evasion,flat,8.0,,,0.0
+Chest_Vestment,Vestment,Chest,0,,,0,0.0,,,2,3,max_energy_shield,flat,120.0,,,0.0
+Chest_Hauberk,Hauberk,Chest,0,,,0,0.0,,,2,3,max_health,flat,180.0,,,0.0
+Chest_Carapace,Carapace,Chest,0,,,0,0.0,,,2,3,armor,flat,220.0,max_health,flat,90.0
+Shoulders_Pauldrons,Pauldrons,Shoulders,0,,,0,0.0,,,2,2,armor,flat,165.0,,,0.0
+Shoulders_Mantle,Mantle,Shoulders,0,,,0,0.0,,,2,2,evasion,flat,3.5,,,0.0
+Shoulders_Epaulets,Epaulets,Shoulders,0,,,0,0.0,,,2,2,health_regen,flat,1.1,,,0.0
+Shoulders_Spaulders,Spaulders,Shoulders,0,,,0,0.0,,,2,2,retaliation,flat,11.0,,,0.0
+Gloves_Gauntlets,Gauntlets,Gloves,0,,,0,0.0,,,2,2,armor,flat,130.0,,,0.0
+Gloves_Grips,Grips,Gloves,0,,,0,0.0,,,2,2,attack_speed,increased,9.0,,,0.0
+Gloves_Handwraps,Handwraps,Gloves,0,,,0,0.0,,,2,2,crit_chance,flat,5.0,,,0.0
+Gloves_Vambraces,Vambraces,Gloves,0,,,0,0.0,,,2,2,attack_damage,flat,12.0,,,0.0
+Pants_Greaves,Greaves,Pants,0,,,0,0.0,,,2,2,armor,flat,250.0,,,0.0
+Pants_Leggings,Leggings,Pants,0,,,0,0.0,,,2,2,evasion,flat,5.0,,,0.0
+Pants_Kilt,Kilt,Pants,0,,,0,0.0,,,2,2,max_health,flat,130.0,,,0.0
+Pants_Trousers,Trousers,Pants,0,,,0,0.0,,,2,2,max_energy_shield,flat,65.0,,,0.0
+Boots_Sabatons,Sabatons,Boots,0,,,0,0.0,,,2,2,armor,flat,145.0,movement_speed,increased,5.0
+Boots_Treads,Treads,Boots,0,,,0,0.0,,,2,2,movement_speed,increased,12.0,,,0.0
+Boots_Striders,Striders,Boots,0,,,0,0.0,,,2,2,evasion,flat,3.0,movement_speed,increased,8.0
+Boots_Sollerets,Sollerets,Boots,0,,,0,0.0,,,2,2,max_health,flat,80.0,movement_speed,increased,6.0
+Belt_Girdle,Girdle,Belt,0,,,0,0.0,,,2,1,max_health,flat,130.0,,,0.0
+Belt_Sash,Sash,Belt,0,,,0,0.0,,,2,1,max_mana,flat,60.0,,,0.0
+Belt_Cord,Cord,Belt,0,,,0,0.0,,,2,1,health_regen,flat,1.3,,,0.0
+Belt_Cinch,Cinch,Belt,0,,,0,0.0,,,2,1,armor,flat,150.0,,,0.0
+Ring_Band,Band,Ring,0,,,0,0.0,,,1,1,attack_damage,flat,10.0,,,0.0
+Ring_Signet,Signet,Ring,0,,,0,0.0,,,1,1,crit_multiplier,flat,16.0,,,0.0
+Ring_Loop,Loop,Ring,0,,,0,0.0,,,1,1,max_health,flat,60.0,,,0.0
+Ring_Circle,Circle,Ring,0,,,0,0.0,,,1,1,max_mana,flat,30.0,mana_regen,flat,0.5
+Necklace_Amulet,Amulet,Necklace,0,,,0,0.0,,,1,1,max_mana,flat,60.0,,,0.0
+Necklace_Pendant,Pendant,Necklace,0,,,0,0.0,,,1,1,crit_chance,flat,6.0,,,0.0
+Necklace_Torc,Torc,Necklace,0,,,0,0.0,,,1,1,max_health,flat,95.0,,,0.0
+Necklace_Locket,Locket,Necklace,0,,,0,0.0,,,1,1,max_energy_shield,flat,55.0,,,0.0
+Relic_Idol,Idol,Relic,0,,,0,0.0,,,1,2,crit_multiplier,flat,28.0,,,0.0
+Relic_Fetish,Fetish,Relic,0,,,0,0.0,,,1,2,area_of_effect,increased,10.0,,,0.0
+Relic_Reliquary,Reliquary,Relic,0,,,0,0.0,,,1,2,cooldown_reduction,increased,10.0,,,0.0
+Relic_Effigy,Effigy,Relic,0,,,0,0.0,,,1,2,dot_frequency,increased,10.0,,,0.0
+Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8; Angle=90; MaxTargets=1,1,3,attack_damage,flat,40.0,attack_speed,increased,5.0
+Weapon_Dagger,Dagger,Weapon,1,Piercing,Dagger,4,1.5,Strike,Radius=1.5; Angle=60; MaxTargets=1,1,3,attack_damage,flat,26.0,crit_chance,flat,8.0
+Weapon_Axe,Axe,Weapon,1,Slashing,Axe,4,1.25,Strike,Radius=1.8; Angle=100; MaxTargets=1,1,3,attack_damage,flat,46.0,,,0.0
+Weapon_Fist,Fist,Weapon,1,Blunt,Fist,4,1.45,Strike,Radius=1.5; Angle=60; MaxTargets=1,1,3,attack_damage,flat,30.0,attack_speed,increased,10.0
+Weapon_Wand,Wand,Weapon,1,Magic,Wand,4,1.35,Projectile,Range=8.4; Radius=0.6; Pierce=0; Speed=2600,1,3,attack_damage,flat,38.0,spell_damage,increased,18.0
+Weapon_Whip,Whip,Weapon,1,Slashing,Whip,4,1.4,Strike,Radius=3; Angle=45; MaxTargets=1,1,3,attack_damage,flat,32.0,area_of_effect,increased,12.0
+Weapon_Shield,Shield,Weapon,1,Blunt,Shield,4,1.2,,,2,3,block_chance,flat,12.0,armor,flat,260.0
+Weapon_Crossbow,Crossbow,Weapon,1,Piercing,Crossbow,4,1.35,Projectile,Range=10; Radius=0.4; Pierce=0; Speed=2400,1,3,attack_damage,flat,38.0,crit_multiplier,flat,20.0
+Weapon_Greatsword,Greatsword,Weapon,2,Slashing,Greatsword,8,1.25,Strike,Radius=2.7; Angle=140; MaxTargets=1,2,6,attack_damage,flat,78.0,,,0.0
+Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,8,1.28,Strike,Radius=2.4; Angle=120; MaxTargets=1,2,6,attack_damage,flat,72.0,crit_multiplier,flat,22.0
+Weapon_Spear,Spear,Weapon,2,Piercing,Spear,8,1.35,Strike,Radius=3.3; Angle=40; MaxTargets=1,2,6,attack_damage,flat,64.0,penetration,flat,6.0
+Weapon_Staff,Staff,Weapon,2,Magic,Staff,8,1.3,Projectile,Range=7.2; Radius=0.9; Pierce=0; Speed=2000,2,6,attack_damage,flat,66.0,spell_damage,increased,32.0
+Weapon_Two_Handed_Crossbow,Two-Handed Crossbow,Weapon,2,Piercing,2H Crossbow,8,1.3,Projectile,Range=12; Radius=0.9; Pierce=0; Speed=1800,2,6,attack_damage,flat,66.0,crit_chance,flat,7.0
+Weapon_Warhammer,Warhammer,Weapon,2,Blunt,Warhammer,8,1.2,Strike,Radius=2.1; Angle=80; MaxTargets=1,2,6,attack_damage,flat,84.0,,,0.0

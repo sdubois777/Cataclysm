@@ -686,7 +686,7 @@ class TestBasicAttacks:
     HEADERS = ["Base Name", "Slot", "Hands", "Sub-Type", "Weapon Type",
                "Max Damage Types", "Implicit 1 Stat", "Implicit 1 Kind",
                "Implicit 1 Value", "Attack Speed", "Basic Shape",
-               "Basic Shape Params"]
+               "Basic Shape Params", "Cells Wide", "Cells High"]
 
     def sheet(self, tmp_path, *rows) -> "openpyxl.Workbook":
         path = workbook_with(tmp_path / "b.xlsx",
@@ -696,10 +696,31 @@ class TestBasicAttacks:
     def armed(self, **changes) -> list:
         row = ["Sword", "Weapon", 1, "Slashing", "Sword", 4,
                "attack_damage", "flat", 40.0, 1.3,
-               "Strike", "Radius=1.8; Angle=90; MaxTargets=1"]
+               "Strike", "Radius=1.8; Angle=90; MaxTargets=1", 1, 3]
         for column, value in changes.items():
             row[self.HEADERS.index(column)] = value
         return row
+
+    def test_a_base_with_no_footprint_is_refused(self, tmp_path):
+        """Issue #855. Every base needs one, because a base with no
+        footprint could not be placed in the bag at all and a zero would
+        read as a piece that takes no room rather than as one somebody
+        forgot to measure."""
+        for column in ("Cells Wide", "Cells High"):
+            with pytest.raises(gen.DataError, match=f"no {column}"):
+                gen.item_bases(self.sheet(
+                    tmp_path, self.armed(**{column: ""})))
+            with pytest.raises(gen.DataError, match=f"no {column}"):
+                gen.item_bases(self.sheet(
+                    tmp_path, self.armed(**{column: 0})))
+
+    def test_a_footprint_reaches_the_generated_row(self, tmp_path):
+        """The figures come from the footprint table in
+        docs/Inventory_Screen_Design.md and have to survive the trip."""
+        rows = gen.item_bases(self.sheet(
+            tmp_path, self.armed(**{"Cells Wide": 2, "Cells High": 6})))
+        assert rows[0]["CellsWide"] == 2
+        assert rows[0]["CellsHigh"] == 6
 
     def test_an_armed_weapon_keeps_its_basic_attack(self, tmp_path):
         rows = gen.item_bases(self.sheet(tmp_path, self.armed()))

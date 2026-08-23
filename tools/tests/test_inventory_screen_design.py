@@ -278,3 +278,35 @@ def test_the_design_carries_the_item_count_the_storage_section_states(
     assert in_design == in_storage, (
         f"{DESIGN.name} sizes the grid to hold {in_design} items; the Storage "
         f"section of docs/Cataclysm_GDD_v2.md says the bag holds {in_storage}")
+
+
+# --------------------------------------------------------------------------
+# The footprint the game actually reads
+# --------------------------------------------------------------------------
+
+def test_every_item_base_carries_the_footprint_the_design_gives_it(
+        bases, footprints) -> None:
+    """THE DESIGN AND THE DATA, COMPARED ROW BY ROW. Issue #855 put a Cells Wide
+    and a Cells High column on every base in the Item Bases sheet of
+    `docs/All_Things_Cataclysm.xlsx`, and `game/Data/ItemBases.csv` is generated
+    from it. The figures were taken from the footprint table in the design
+    document, and nothing kept them there.
+
+    WHAT WOULD GO WRONG WITHOUT IT. A footprint edited in the workbook and not in
+    the document, or the other way round, produces a bag that packs differently
+    from the design that sized the grid, and the capacity argument the grid rests
+    on quietly stops describing the game. Neither side errors.
+    """
+    wrong = []
+    for row in bases:
+        wide, high = footprint_of(row, footprints)
+        in_data = (int(row["CellsWide"]), int(row["CellsHigh"]))
+        if in_data != (wide, high):
+            wrong.append(
+                f"{row['BaseName']} ({row['Slot']}): data says "
+                f"{in_data[0]} by {in_data[1]}, the design says {wide} by {high}")
+
+    assert not wrong, (
+        "game/Data/ItemBases.csv gives a base a different footprint from the "
+        f"table in {DESIGN.name}: {'; '.join(wrong)}")
+
