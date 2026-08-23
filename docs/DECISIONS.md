@@ -20,6 +20,80 @@ applied or still pending.
 
 ---
 
+## 2026-08-23 — A character wears a real starting weapon, and cannot take its last weapon off
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Item Slots subsection of section IV.
+**Not yet applied to the document.** The code matches this entry; the document
+does not mention a starting weapon at all.
+
+### What went wrong
+
+The project owner played on 2026-08-23 and reported that equipping a whip, and
+then a second whip, made the character deal far less damage than it had before
+equipping anything. Issue #840.
+
+The character had never been unarmed. `UCataclysmWeaponSlotsComponent` carries a
+`StartingWeaponType` of `Greataxe`, and `ACataclysmPlayerCharacter::OnEquipmentChanged`
+fell back to it whenever no weapon was worn. From `game/Data/ItemBases.csv` a
+Greataxe supplies 72 attack damage and is two-handed, which doubles it to 144; a
+Whip supplies 32 and is one-handed. Every skill deals a percentage of weapon
+damage. So putting a whip on took the character to roughly 22% of the damage it
+had, and nothing on screen explained it, because there was no item anywhere to
+look at. The weapon slot was drawn empty.
+
+That fallback was added deliberately in #830, and for a good reason: characters
+started wearing nothing, so without it taking a ring off would have emptied every
+ability slot.
+
+### The decision
+
+**A character begins wearing a real Everyday Greataxe**, as an actual item in
+weapon slot 1, rather than falling back to a weapon type with no item behind it.
+The gear panel draws it, `Cataclysm.ShowEquipment` lists it, and putting a whip
+on is a swap the player can watch happen.
+
+Everyday is the weakest of the eight rarities and is not a separate choice: an
+item's rarity is computed from what fills its four slots, so a base with no
+affixes and no enchantments is an Everyday.
+
+**A character cannot take off its only weapon.** Swapping one weapon for another
+is unaffected; only removing the last one is refused.
+
+### Why refusing, rather than allowing an unarmed character
+
+Allowing it was the recommendation, on the grounds that an empty slot should mean
+what it says. The project owner chose the refusal instead, for a reason about
+content rather than design: **the skills do not exist yet.**
+
+The default damage type is Demonic. Of the fourteen weapon types in
+`game/Data/ItemBases.csv`, ten have five Demonic skills each in
+`game/Data/WeaponSkills.csv`. Four have none — 2H Crossbow, Crossbow, Shield and
+Spear. An unarmed character today would therefore have an empty skill bar because
+rows are missing, not because fighting bare handed is meant to cost the player
+their skills.
+
+**This refusal is temporary and issue #841 is the note to remove it**, once those
+four weapon types have their Demonic skills. That issue names the exact code to
+delete.
+
+### What this does not fix
+
+Issue #840 named three faults and this entry settles the first. The other two are
+still open and are separate concerns:
+
+- **Two one-handed weapons do not sum their damage.** The Item Slots subsection
+  of the design document says this game blends two weapons into one swing,
+  summing their base damage and averaging their attack speed.
+  `UCataclysmEquipmentComponent::EquippedWeaponType` answers one weapon type,
+  taken from the first occupied slot, and the code already carries a comment
+  calling that a placeholder. This is why the owner's second whip changed
+  nothing.
+- **A worn weapon's upgrade level never reaches its damage.**
+  `UCataclysmWeaponSlotsComponent::WeaponGearLevel` is 0 and nothing outside the
+  automation tests sets it, so a +5 whip is computed as a +0 whip.
+
+---
+
 ## 2026-08-22 — A skill slot is a key, so a skill carries its own damage, cooldown and mana cost
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Skill Slots and What a Skill Is

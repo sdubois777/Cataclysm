@@ -399,4 +399,203 @@ bool FCataclysmWearingExplainsItself::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Keeping hold of a weapon. Issues #840 and #841
+// ---------------------------------------------------------------------------
+
+/**
+ * A CHARACTER MUST KEEP A WEAPON ON, AND THAT IS TEMPORARY. Issue #841 is the
+ * note to lift it, once 2H Crossbow, Crossbow, Shield and Spear have Demonic
+ * skills in game/Data/WeaponSkills.csv. Until then an unarmed character would
+ * have an empty skill bar because rows are missing rather than because being
+ * unarmed is meant to cost the player their skills.
+ *
+ * THE RULE IS ABOUT REMOVING, NOT ABOUT WEARING. Swapping one weapon for
+ * another goes through WearFromCarried and must stay unaffected, which is what
+ * the last test here checks. A refusal that leaked into swapping would stop the
+ * player ever changing weapon.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingKeepsTheLastWeaponOn,
+	"Cataclysm.Wearing.TheOnlyWeaponCannotBeTakenOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingKeepsTheLastWeaponOn::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	FCarriedAndWorn Character;
+
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	const int32 Slot = Character.Inventory->AddItem(Of(OneHandedBase));
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+									   Slot, Went);
+	const int32 Before = Character.Everything();
+	const int32 CarriedBefore = Character.Inventory->NumItems();
+
+	const ECataclysmWearResult Result = UCataclysmWearing::TakeOffInto(
+		Character.Inventory, Character.Equipment, Went);
+
+	TestTrue(TEXT("taking off the only weapon is refused"),
+		Result == ECataclysmWearResult::TheLastWeapon);
+	TestEqual(TEXT("and nothing was destroyed"),
+		Character.Everything(), Before);
+	TestEqual(TEXT("nothing moved into the bag either"),
+		Character.Inventory->NumItems(), CarriedBefore);
+	TestNotNull(TEXT("the weapon is still worn"),
+		Character.Equipment->EquippedAt(Went));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingTakesOffOneOfTwoWeapons,
+	"Cataclysm.Wearing.OneOfTwoWeaponsComesOffAndThenTheSecondWillNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingTakesOffOneOfTwoWeapons::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	FCarriedAndWorn Character;
+
+	ECataclysmGearSlot First = ECataclysmGearSlot::Count;
+	ECataclysmGearSlot Second = ECataclysmGearSlot::Count;
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+		Character.Inventory->AddItem(Of(OneHandedBase)), First);
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+		Character.Inventory->AddItem(Of(OtherOneHandedBase)), Second);
+
+	if (!TestEqual(TEXT("both weapons are worn"),
+			Character.Equipment->NumEquipped(), 2))
+	{
+		return false;
+	}
+	const int32 Before = Character.Everything();
+
+	// TWO WORN MEANS EITHER MAY COME OFF, because one is still held afterwards.
+	TestTrue(TEXT("with two weapons on, one comes off"),
+		UCataclysmWearing::TakeOffInto(Character.Inventory, Character.Equipment,
+									   First) == ECataclysmWearResult::TakenOff);
+	TestEqual(TEXT("and nothing was destroyed"),
+		Character.Everything(), Before);
+
+	// AND NOW THE SECOND IS THE LAST ONE. This is the half of the rule that a
+	// test checking only the single-weapon case would miss: the count is read
+	// each time rather than the first weapon being special.
+	TestTrue(TEXT("but the second one will not come off"),
+		UCataclysmWearing::TakeOffInto(Character.Inventory, Character.Equipment,
+									   Second) == ECataclysmWearResult::TheLastWeapon);
+	TestEqual(TEXT("and still nothing was destroyed"),
+		Character.Everything(), Before);
+	TestNotNull(TEXT("the remaining weapon is still worn"),
+		Character.Equipment->EquippedAt(Second));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingKeepsATwoHandedWeaponOn,
+	"Cataclysm.Wearing.ATwoHandedWeaponCountsAsTheOnlyWeaponAndStaysOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingKeepsATwoHandedWeaponOn::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	// A TWO-HANDED WEAPON IS STORED IN THE FIRST WEAPON SLOT ALONE and leaves
+	// the second empty, so counting occupied weapon slots answers one. That is
+	// the right answer -- it is the only weapon -- but it is worth a test of its
+	// own, because a count that had been written to expect two would let the
+	// character strip down to nothing while holding a greatsword.
+	FCarriedAndWorn Character;
+
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+		Character.Inventory->AddItem(Of(TwoHandedBase)), Went);
+	const int32 Before = Character.Everything();
+
+	TestTrue(TEXT("the greatsword will not come off"),
+		UCataclysmWearing::TakeOffInto(Character.Inventory, Character.Equipment,
+									   Went) == ECataclysmWearResult::TheLastWeapon);
+	TestEqual(TEXT("and nothing was destroyed"),
+		Character.Everything(), Before);
+	TestNotNull(TEXT("it is still worn"), Character.Equipment->EquippedAt(Went));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingStillTakesOffArmour,
+	"Cataclysm.Wearing.ArmourStillComesOffWhileTheOnlyWeaponIsWorn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingStillTakesOffArmour::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	// THE RULE IS ABOUT WEAPON SLOTS AND NOTHING ELSE. A version that refused
+	// whenever one item was worn would lock the character into its whole outfit,
+	// and every other test here would still pass.
+	FCarriedAndWorn Character;
+
+	ECataclysmGearSlot WeaponWent = ECataclysmGearSlot::Count;
+	ECataclysmGearSlot HelmWent = ECataclysmGearSlot::Count;
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+		Character.Inventory->AddItem(Of(OneHandedBase)), WeaponWent);
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+		Character.Inventory->AddItem(Of(HelmBase)), HelmWent);
+	const int32 Before = Character.Everything();
+
+	TestTrue(TEXT("the helm comes off even though one weapon is worn"),
+		UCataclysmWearing::TakeOffInto(Character.Inventory, Character.Equipment,
+									   HelmWent) == ECataclysmWearResult::TakenOff);
+	TestEqual(TEXT("and nothing was destroyed"),
+		Character.Everything(), Before);
+	TestNotNull(TEXT("the weapon is untouched"),
+		Character.Equipment->EquippedAt(WeaponWent));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingSwapsTheOnlyWeapon,
+	"Cataclysm.Wearing.TheOnlyWeaponCanStillBeSwappedForAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingSwapsTheOnlyWeapon::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	// THE POINT OF THE WHOLE RULE IS THAT THIS STILL WORKS. Issue #840 was
+	// reported as putting a whip on making the character worse; if keeping a
+	// weapon on had been written as "refuse to empty a weapon slot" rather than
+	// as a check inside TakeOffInto, changing weapon would have been refused too
+	// and the fix would have been worse than the fault.
+	FCarriedAndWorn Character;
+
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+		Character.Inventory->AddItem(Of(OneHandedBase)), Went);
+
+	const int32 Carried = Character.Inventory->AddItem(Of(TwoHandedBase, 3));
+	const int32 Before = Character.Everything();
+
+	// A TWO-HANDED WEAPON OVER A ONE-HANDED ONE TAKES THE OLD ONE OFF, so this
+	// is the case that empties the weapon the character was holding.
+	ECataclysmGearSlot SwappedInto = ECataclysmGearSlot::Count;
+	const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
+		Character.Inventory, Character.Equipment, Carried, SwappedInto);
+
+	TestTrue(TEXT("the new weapon goes on and the old one comes off"),
+		Result == ECataclysmWearResult::Swapped);
+	TestEqual(TEXT("and nothing was destroyed"),
+		Character.Everything(), Before);
+
+	const FCataclysmItem* Worn = Character.Equipment->EquippedAt(SwappedInto);
+	if (TestNotNull(TEXT("a weapon is worn afterwards"), Worn))
+	{
+		TestEqual(TEXT("and it is the new one"), Worn->Base,
+			FName(TwoHandedBase));
+		TestEqual(TEXT("upgrade level and all"), Worn->GearLevel, 3);
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

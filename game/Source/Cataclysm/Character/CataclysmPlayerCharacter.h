@@ -170,6 +170,9 @@ public:
 	/** What the character is wearing. Issue #828. */
 	UCataclysmEquipmentComponent* GetEquipment() const { return Equipment; }
 
+	/** The ItemBases row the character begins wearing. Issue #840. */
+	FName GetStartingWeaponBase() const { return StartingWeaponBase; }
+
 protected:
 	virtual void InitAbilityActorInfo() override;
 
@@ -266,7 +269,56 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Items")
 	TObjectPtr<UCataclysmEquipmentComponent> Equipment;
 
+	/**
+	 * The weapon the character begins wearing. A row name in ItemBases.
+	 *
+	 * A REAL ITEM, WORN IN A REAL SLOT, and that is the point of it. Issue #840
+	 * was reported as equipping a whip making the character much weaker than
+	 * holding nothing. It was not holding nothing: the weapon slot was empty and
+	 * UCataclysmWeaponSlotsComponent::StartingWeaponType made it swing a
+	 * Greataxe anyway, worth 72 attack damage doubled for being two-handed
+	 * against a whip's 32. Nothing on screen said so, because there was no item
+	 * to show. Giving the character an actual Everyday Greataxe means the gear
+	 * panel draws it, Cataclysm.ShowEquipment lists it, and putting a whip on is
+	 * a swap the player can see rather than a silent downgrade.
+	 *
+	 * IT MUST NAME THE SAME WEAPON TYPE AS UCataclysmWeaponSlotsComponent'S
+	 * StartingWeaponType, which is still what the fallback in OnEquipmentChanged
+	 * uses. The two are checked against each other by
+	 * Cataclysm.WeaponSlots.TheStartingWeaponItemMatchesTheStartingWeaponType.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Items")
+	FName StartingWeaponBase = TEXT("Weapon_Greataxe");
+
 private:
+	/**
+	 * Wears StartingWeaponBase, if the character is wearing no weapon at all.
+	 *
+	 * ASKS WHETHER A WEAPON IS WORN RATHER THAN KEEPING A FLAG, so that running
+	 * twice cannot produce two axes. Possession happens more than once on a
+	 * listen server, and everything else in InitAbilityActorInfo is written to
+	 * survive that.
+	 */
+	void GiveStartingWeapon();
+
+	/**
+	 * Fills the six ability slots from the weapon that is worn.
+	 *
+	 * SEPARATE FROM OnEquipmentChanged BECAUSE THAT ONE ALSO WRITES ATTRIBUTES,
+	 * and writing them is only correct when something actually changed.
+	 * OnEquipmentChanged calls UCataclysmEquipmentComponent::RefreshAttributes,
+	 * which applies the whole class stat line. InitAbilityActorInfo runs more
+	 * than once -- the server reaches it from PossessedBy and a client from
+	 * OnRep_PlayerState -- so applying a stat line from there overwrites any
+	 * attribute something else has already set. Three tests exist because that
+	 * happened once already: Cataclysm.Player.MovementSpeedFollowsTheAttribute,
+	 * Cataclysm.PlayerStats.APlayerCharacterLeavesThePlaceholderBehind and
+	 * Cataclysm.Death.APlayerStandsBackUpRatherThanBeingRemoved.
+	 *
+	 * So possession fills the ability slots and nothing else.
+	 */
+	void FillAbilitySlotsFromWornWeapon();
+
 	/** Passes the attribute's new value, in metres per second, to
 	 *  ApplyMovementSpeed. Bound in InitAbilityActorInfo. */
 	void OnMovementSpeedChanged(const FOnAttributeChangeData& Data);
