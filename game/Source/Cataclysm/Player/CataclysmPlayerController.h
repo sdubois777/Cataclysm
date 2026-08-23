@@ -221,6 +221,21 @@ private:
 	ACataclysmDroppedItem* DropUnderCursor() const;
 
 	/**
+	 * Takes every crafting material lying near the character. Issue #851.
+	 *
+	 * RUN EVERY FRAME, beside UpdatePendingPickup, because the character walks
+	 * and the drops do not: there is no moment to hook other than arriving
+	 * somewhere, and arriving somewhere is what every frame is.
+	 *
+	 * A FULL BAG STOPS IT AND THAT IS NOT A FAILURE. UCataclysmDropPickup::
+	 * TakeInto leaves the drop lying there when it will not fit, so a material
+	 * that cannot be carried stays on the floor and is collected later if room
+	 * appears. Nothing is destroyed and nothing is retried in a way that
+	 * costs anything: the sweep runs anyway.
+	 */
+	void CollectMaterialsNearby();
+
+	/**
 	 * Takes a drop if the character can reach it.
 	 *
 	 * @return true when the item is now in the inventory and the drop is gone.

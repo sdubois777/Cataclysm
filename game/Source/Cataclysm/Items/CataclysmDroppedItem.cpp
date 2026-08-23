@@ -87,6 +87,23 @@ bool UCataclysmDropPickup::IsWithinPickupRange(const FVector& Character,
 	return Flat.SizeSquared() <= PickupRangeCm * PickupRangeCm;
 }
 
+bool UCataclysmDropPickup::ComesAutomatically(bool bIsMaterial,
+											  const FVector& Character,
+											  const FVector& Drop)
+{
+	// GEAR NEVER DOES, AT ANY DISTANCE. Checked before the arithmetic so the
+	// rule reads as the rule rather than as a consequence of a radius.
+	if (!bIsMaterial)
+	{
+		return false;
+	}
+
+	// FLAT. See the header for why height is ignored.
+	const FVector2D Flat(Character.X - Drop.X, Character.Y - Drop.Y);
+	return Flat.SizeSquared()
+		<= AutomaticMaterialRangeCm * AutomaticMaterialRangeCm;
+}
+
 int32 UCataclysmDropPickup::IndexOfNameUnderPoint(const TArray<FBox2D>& Rects,
 												 const FVector2D& Point)
 {

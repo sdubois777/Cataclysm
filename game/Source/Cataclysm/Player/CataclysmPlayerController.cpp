@@ -12,6 +12,7 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputComponent.h"
 #include "Input/CataclysmInputConfig.h"
+#include "EngineUtils.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -168,6 +169,7 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	}
 
 	UpdatePendingPickup();
+	CollectMaterialsNearby();
 
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
@@ -661,6 +663,51 @@ void ACataclysmPlayerController::UpdatePendingPickup()
 	// inventory does not leave the character trying again every frame.
 	TakeDrop(Drop);
 	PendingPickup = nullptr;
+}
+
+void ACataclysmPlayerController::CollectMaterialsNearby()
+{
+	const APawn* ControlledPawn = GetPawn();
+	UWorld* World = GetWorld();
+	if (!ControlledPawn || !World)
+	{
+		return;
+	}
+
+	ACataclysmPlayerCharacter* Wearer =
+		Cast<ACataclysmPlayerCharacter>(GetPawn());
+	UCataclysmInventoryComponent* Inventory =
+		Wearer ? Wearer->GetInventory() : nullptr;
+	if (!Inventory)
+	{
+		return;
+	}
+
+	const FVector Standing = ControlledPawn->GetActorLocation();
+
+	// GATHERED BEFORE ANY IS TAKEN. UCataclysmDropPickup::TakeInto destroys
+	// the actor it took, and destroying an actor while a TActorIterator is
+	// walking the level is not something to rely on.
+	//
+	// ITERATING EVERY DROP EACH FRAME IS WHAT THE HEADS-UP DISPLAY ALREADY
+	// DOES to draw their names, so this adds a second pass over the same small
+	// set rather than a new kind of cost.
+	TArray<ACataclysmDroppedItem*> Coming;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		ACataclysmDroppedItem* Drop = *It;
+		if (IsValid(Drop)
+			&& UCataclysmDropPickup::ComesAutomatically(
+				   Drop->IsMaterial(), Standing, Drop->GetActorLocation()))
+		{
+			Coming.Add(Drop);
+		}
+	}
+
+	for (ACataclysmDroppedItem* Drop : Coming)
+	{
+		UCataclysmDropPickup::TakeInto(Inventory, Drop);
+	}
 }
 
 void ACataclysmPlayerController::Input_Zoom(const FInputActionValue& Value)

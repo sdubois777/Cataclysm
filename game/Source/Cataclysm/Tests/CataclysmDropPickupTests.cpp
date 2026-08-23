@@ -715,4 +715,85 @@ bool FCataclysmNameTagTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// A crafting material coming to the character on its own. Issue #851.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialsComeToTheCharacter,
+	"Cataclysm.Drop.ACraftingMaterialComesToTheCharacterAndGearDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialsComeToTheCharacter::RunTest(const FString& Parameters)
+{
+	using FPickup = UCataclysmDropPickup;
+
+	const FVector Standing(0.0f, 0.0f, 0.0f);
+	constexpr bool Material = true;
+	constexpr bool Gear = false;
+
+	// FIVE TIMES THE CLICK RANGE, decided by the project owner on 2026-08-23.
+	// Compared against the click range rather than written out as 1500, so
+	// tuning one and forgetting the other fails here.
+	TestEqual(TEXT("the automatic range is five times the click range"),
+		FPickup::AutomaticMaterialRangeCm, FPickup::PickupRangeCm * 5.0f);
+
+	// GEAR NEVER COMES, AT ANY DISTANCE, INCLUDING NONE. This is the rule, not a
+	// consequence of a radius: a piece of gear is a decision and has to be walked
+	// to and looked at.
+	TestFalse(TEXT("gear underfoot does not come"),
+		FPickup::ComesAutomatically(Gear, Standing, Standing));
+	TestFalse(TEXT("gear one metre away does not come"),
+		FPickup::ComesAutomatically(Gear, Standing, FVector(100.0f, 0.0f, 0.0f)));
+	TestFalse(TEXT("gear well inside the automatic range does not come"),
+		FPickup::ComesAutomatically(Gear, Standing, FVector(500.0f, 0.0f, 0.0f)));
+
+	// A MATERIAL DOES, OUT TO THE STATED RANGE.
+	TestTrue(TEXT("a material underfoot comes"),
+		FPickup::ComesAutomatically(Material, Standing, Standing));
+	TestTrue(TEXT("a material ten metres away comes"),
+		FPickup::ComesAutomatically(Material, Standing,
+									FVector(1000.0f, 0.0f, 0.0f)));
+	TestTrue(TEXT("a material exactly at the range comes"),
+		FPickup::ComesAutomatically(Material, Standing,
+			FVector(FPickup::AutomaticMaterialRangeCm, 0.0f, 0.0f)));
+	TestFalse(TEXT("a material one centimetre past the range does not"),
+		FPickup::ComesAutomatically(Material, Standing,
+			FVector(FPickup::AutomaticMaterialRangeCm + 1.0f, 0.0f, 0.0f)));
+	TestFalse(TEXT("a material thirty metres away does not"),
+		FPickup::ComesAutomatically(Material, Standing,
+									FVector(3000.0f, 0.0f, 0.0f)));
+
+	// DIAGONAL, so the check cannot pass by comparing one axis. 1060 on each of
+	// two axes is 1499 apart; 1062 on each is 1502.
+	TestTrue(TEXT("1499 cm diagonally comes"),
+		FPickup::ComesAutomatically(Material, Standing,
+									FVector(1060.0f, 1060.0f, 0.0f)));
+	TestFalse(TEXT("1502 cm diagonally does not"),
+		FPickup::ComesAutomatically(Material, Standing,
+									FVector(1062.0f, 1062.0f, 0.0f)));
+
+	// HEIGHT IS IGNORED, for the same reason the click range ignores it: a drop
+	// from a tall creature, or one that died on a step, must not be quietly
+	// harder to collect than the same drop on flat ground. Ten metres away and
+	// twenty metres up is 22.4 m apart in three dimensions, so a 3D test would
+	// refuse it.
+	TestTrue(TEXT("a material twenty metres overhead still comes"),
+		FPickup::ComesAutomatically(Material, Standing,
+									FVector(1000.0f, 0.0f, 2000.0f)));
+	TestTrue(TEXT("and one twenty metres below does too"),
+		FPickup::ComesAutomatically(Material, Standing,
+									FVector(1000.0f, 0.0f, -2000.0f)));
+
+	// IT REACHES FURTHER THAN A CLICK AND THAT IS THE POINT. A material a player
+	// would have had to click for is now collected by walking near it.
+	const FVector Beyond(FPickup::PickupRangeCm + 100.0f, 0.0f, 0.0f);
+	TestFalse(TEXT("that spot is out of clicking reach"),
+		FPickup::IsWithinPickupRange(Standing, Beyond));
+	TestTrue(TEXT("and a material there still comes on its own"),
+		FPickup::ComesAutomatically(Material, Standing, Beyond));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
