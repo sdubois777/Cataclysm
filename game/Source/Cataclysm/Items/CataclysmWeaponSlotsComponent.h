@@ -173,29 +173,6 @@ public:
 	/** Uses this item base table instead of the generated one. For tests. */
 	void SetItemBaseTable(const UDataTable* Table) { ItemBaseTable = Table; }
 
-	/** How upgraded the equipped weapon is. For tests; see the field below. */
-	void SetWeaponGearLevel(int32 Level) { WeaponGearLevel = Level; }
-
-	/**
-	 * The weapons the character is actually wearing, which decide its damage.
-	 *
-	 * WHAT THIS REPLACES. Without it, damage came from the equipped weapon TYPE
-	 * and the WeaponGearLevel below, so two worn weapons were worth one weapon
-	 * and a worn +5 weapon was computed as a +0 one. Both were issue #840.
-	 *
-	 * SETTING IT APPLIES IT IMMEDIATELY, so a caller that changes what is worn
-	 * does not also have to remember to re-equip. Passing an empty array puts
-	 * the component back on the weapon type, which is what every test that only
-	 * calls EquipWeaponType relies on.
-	 */
-	void SetWornWeapons(const TArray<FCataclysmItem>& Weapons);
-
-	/** What the worn weapons supply between them, or the type's figure. */
-	float CurrentAttackDamage() const;
-
-	/** The rate the worn weapons swing at, or the type's figure. */
-	float CurrentAttackSpeed() const;
-
 protected:
 	/**
 	 * The weapon skill matrix. Loaded from the generated CSV on first use when
@@ -254,39 +231,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon")
 	TSubclassOf<UCataclysmGameplayAbility> UndesignedSkillClass;
 
-	/**
-	 * How upgraded the weapon NAMED BY TYPE is, from 0 to 10.
-	 *
-	 * ONLY USED WHEN NO WORN WEAPON HAS BEEN SUPPLIED. A worn weapon carries its
-	 * own upgrade level and WornWeapons below is read instead. This is what the
-	 * fallback path uses, and what the tests that equip a bare weapon type use.
-	 *
-	 * IT USED TO BE THE ONLY ANSWER AND IT WAS ALWAYS ZERO. Nothing outside the
-	 * automation tests ever set it, so every worn weapon was computed as a +0
-	 * one however upgraded it really was. That was issue #840.
-	 *
-	 * IT CHANGES THE DAMAGE A LOT. The sheets state the +10 figures, so a
-	 * Greataxe supplies about 41 at level 0 and 144 at level 10.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon",
-			  meta = (ClampMin = "0", ClampMax = "10"))
-	int32 WeaponGearLevel = 0;
-
-	/**
-	 * The weapons the character is wearing, or empty when none was supplied.
-	 *
-	 * NOT THE SAME QUESTION AS EquippedWeaponType. That names one type and
-	 * decides which six skills exist. This holds the actual items and decides
-	 * what a swing is worth: their damage is SUMMED and their rate AVERAGED, as
-	 * the Dual Wielding section of docs/Cataclysm_GDD_v2.md requires.
-	 *
-	 * EMPTY IS A REAL STATE AND NOT AN ERROR. It means nobody supplied worn
-	 * weapons, so the weapon type and WeaponGearLevel above answer instead.
-	 */
-	UPROPERTY(Transient)
-	TArray<FCataclysmItem> WornWeapons;
-
-	/** The item base table, for the equipped weapon's own damage. */
+	/** The item base table, for the equipped weapon's sub-type and basic attack. */
 	UPROPERTY(Transient)
 	TObjectPtr<const UDataTable> ItemBaseTable;
 
@@ -294,13 +239,27 @@ protected:
 private:
 	UCataclysmAbilitySystemComponent* GetAbilitySystem() const;
 
+	// THIS COMPONENT NO LONGER WRITES ATTACK DAMAGE OR ATTACK SPEED, and it did
+	// until issue #845. It wrote them from the equipped weapon TYPE, which meant
+	// a second worn weapon changed nothing and an upgrade level never applied
+	// (issue #840), and it also meant two things wrote the same attribute, which
+	// is why a weapon's attack damage affixes were gathered and then dropped.
+	// UCataclysmPlayerClassStats::ApplyTo is the only writer now, and a weapon's
+	// damage reaches it as an ordinary modifier from
+	// UCataclysmEquipmentComponent::GatherModifiers. What is left here is which
+	// SKILLS a weapon grants.
+
 	/**
-	 * Puts the equipped weapon's own damage onto the character.
+	 * Puts the base critical strike chance of the granted skills on the
+	 * character, or zero when nothing is held.
 	 *
-	 * Called on every equip and every unequip, so the attribute always matches
-	 * what is held.
+	 * IT DID NOT MOVE TO THE CHARACTER STATS WITH THE OTHER TWO, and that is a
+	 * design point rather than an oversight. Attack damage and attack speed are
+	 * properties of what is WORN. Critical strike chance belongs to the skill in
+	 * hand: the design's stat source table says so, and adds that a character
+	 * has no critical strike chance in the abstract.
 	 */
-	void ApplyWeaponDamage();
+	void ApplyBaseCritChance();
 
 	UPROPERTY() FString EquippedWeaponType;
 	UPROPERTY() TArray<FCataclysmWeaponSkill> AvailableSkills;

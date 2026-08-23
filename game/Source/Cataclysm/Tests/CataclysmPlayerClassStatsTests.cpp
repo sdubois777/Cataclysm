@@ -145,8 +145,37 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 
 	// AND NOTHING IN THE MAP IS ABSENT FROM THE TABLE, which would be a stat
 	// being written from a line that does not exist.
+	//
+	// EXCEPT THE TWO THAT COME FROM THE WEAPONS. Issue #845 put attack damage
+	// and attack speed in the map deliberately, and no class line names either:
+	// they are supplied entirely by what the character is holding. A weapon's
+	// damage arrives as an ordinary flat modifier from
+	// UCataclysmEquipmentComponent::GatherModifiers, and its swing rate arrives
+	// as a base override from StatBasesFromWeapons.
+	//
+	// NAMED HERE RATHER THAN THE CHECK BEING WEAKENED. A third stat added to the
+	// map with no class line and no weapon behind it still fails, which is the
+	// case this guard exists for. If a class ever does state one of these two,
+	// delete it from this list rather than leaving the exemption standing.
+	const TSet<FString> SuppliedByTheWeapons = {
+		TEXT("attack_damage"), TEXT("attack_speed"),
+	};
+
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)
 	{
+		if (SuppliedByTheWeapons.Contains(Pair.Key))
+		{
+			// The exemption is only honest if the stat really is absent from the
+			// table. One that quietly gained a class line would sit here
+			// unchecked, so say so rather than skipping in silence.
+			TestFalse(FString::Printf(
+				TEXT("'%s' is supplied by the weapons, so no class line should "
+					 "name it. One does now, so remove it from the exemption "
+					 "list in this test."), *Pair.Key),
+				NamedByTheDesign.Contains(Pair.Key));
+			continue;
+		}
+
 		TestTrue(FString::Printf(
 			TEXT("the mapped stat '%s' is one the class table actually names"),
 			*Pair.Key),
