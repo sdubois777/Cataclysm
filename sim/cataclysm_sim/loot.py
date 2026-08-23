@@ -293,7 +293,105 @@ def _ordinary_total(tier: int) -> float:
                for index in range(1, ORDINARY_RARITIES + 1))
 
 
-def drop_weight(rarity: str, tier: int) -> float:
+#: How much of magic find's multiplier the top of the rarity ladder receives.
+#:
+#: MAGIC FIND MULTIPLIES A RARITY'S WEIGHT, NOT ITS STEP OF THE CASCADE, and this
+#: is how much more of that multiplier the rarest rung gets than the commonest.
+#: Everyday receives none of it and Cataclysmic receives the multiplier raised to
+#: this power, with the rungs between spread evenly on the exponent.
+#:
+#: WHY IT MOVED OFF THE STEP CHANCES. Issue #890. Magic find used to multiply
+#: each rung of the cascade, and a rung's chance stops at 1. Once a rung
+#: saturated, every rarity below it became impossible and that rung took
+#: everything reaching it. A Boss carries +300% magic find, so at difficulty tier
+#: 8 it dropped Masterful 97.6% of the time and nothing at all below Masterful.
+#: At tier 1 a Boss dropped Quality 100% of the time -- every item identical.
+#:
+#: THE SHAPE CANNOT DO THAT. Every weight stays above zero however large magic
+#: find is, so no rarity can ever be eliminated and no rung can take everything.
+#: That is a property of the arithmetic rather than of the numbers in it.
+#:
+#: DIABLO II SHIPPED THIS EXACT FAULT AND ITS FIX WAS DIFFERENT. Before patch
+#: 1.11 it had no diminishing returns on magic find and all-unique drops were
+#: possible; 1.11 added `MF * X / (MF + X)`. Measured here, copying that fixes
+#: the collapse but makes a Boss WORSE at dropping the rarest items than it was:
+#: Cataclysmic falls from 0.016% to 0.009%. Cutting the multiplier cuts it for
+#: the rungs you want as well as the ones you do not. Path of Exile is the model
+#: followed instead -- its item rarity never stops white items dropping.
+#: `docs/DECISIONS.md` carries the sources.
+#:
+#: WHY 4, chosen by the project owner on 2026-08-23 from measured candidates. At
+#: a tier 8 Boss it is the only one where the drop gets better at EVERY rarity
+#: than it was before: Everyday 3.0%, Superb 22.7%, Masterful 62.6%, Legendary
+#: 2.01% against 1.95%, Cataclysmic 0.173% against 0.016%. Reach 3 gives a wider
+#: spread but leaves Legendary rarer from a Boss than it used to be.
+#:
+#: IT IS NOT APPLIED TO CRAFTING MATERIALS, and that is deliberate rather than an
+#: oversight. Their ladder is five rungs falling four times a step, so this same
+#: exponent very nearly cancels their whole weight spread: a Boss would drop 20%
+#: of each of the five tiers. They keep the older mechanism and their own milder
+#: version of the same fault, which is issue #891.
+MAGIC_FIND_REACH = 4.0
+
+#: What magic find approaches however much of it a character carries.
+#:
+#: DIABLO II'S OTHER FIX, AND BOTH ARE NEEDED. Putting magic find on the weights
+#: stops it wiping out a rarity, but on its own it runs away: raising a
+#: multiplier to the fourth power means +400% made a Cataclysmic drop 77 times
+#: likelier, where the project owner's note of 2026-08-18 expected about 5. The
+#: magic find affix is 10 a utility slot, so a character who stacks it and fights
+#: a Boss passes +400% without trying.
+#:
+#: SO IT PASSES THROUGH `mf * CEILING / (mf + CEILING)` FIRST, which is Diablo
+#: II's shape for uniques with a larger ceiling. It approaches this figure and
+#: never reaches it, so no amount of stacked magic find can take a Cataclysmic
+#: drop past about one in 384 at difficulty tier 8.
+#:
+#: 400 RATHER THAN DIABLO II'S 250, chosen by the project owner on 2026-08-23
+#: from measured candidates: it keeps magic find a strong choice for a character
+#: built around it. A Boss at +300% carries an effective +171%, which makes a
+#: Cataclysmic drop one in 1,569 against one in 6,250 before this change.
+#:
+#: IT DOES NOT APPLY TO CRAFTING MATERIALS EITHER, for the reason above.
+MAGIC_FIND_CEILING = 400.0
+
+
+def effective_magic_find(magic_find: float = 0.0) -> float:
+    """What magic find is worth after diminishing returns.
+
+    Approaches `MAGIC_FIND_CEILING` and never reaches it, so stacking magic find
+    always helps and never runs away. Diablo II's shape; see that constant.
+    """
+    if magic_find < 0.0:
+        raise ValueError(
+            f"magic find is {magic_find}; it is an added percentage with a "
+            "baseline of zero and cannot be negative")
+    if magic_find == 0.0:
+        return 0.0
+
+    return magic_find * MAGIC_FIND_CEILING / (magic_find + MAGIC_FIND_CEILING)
+
+
+def magic_find_multiplier(rarity: str, magic_find: float = 0.0) -> float:
+    """What magic find multiplies this rarity's drop weight by.
+
+    ONE AT THE BOTTOM OF THE LADDER AND LARGEST AT THE TOP. Everyday's weight is
+    never touched, which is what stops magic find scaling the floor away, and
+    Cataclysmic's is multiplied by the effective figure raised to
+    `MAGIC_FIND_REACH`.
+
+    @param magic_find  an added percentage with a baseline of zero
+    """
+    effective = effective_magic_find(magic_find)
+    if effective == 0.0:
+        return 1.0
+
+    rungs = len(af.RARITIES) - 1
+    share = (rarity_index(rarity) - 1) / rungs * MAGIC_FIND_REACH
+    return (1.0 + effective / 100.0) ** share
+
+
+def drop_weight(rarity: str, tier: int, magic_find: float = 0.0) -> float:
     """How heavily a rarity is weighted on a drop at this difficulty tier.
 
     `RARITY_DROP_WEIGHT` is this at tier 1 and every deeper tier is worked out
@@ -317,12 +415,17 @@ def drop_weight(rarity: str, tier: int) -> float:
     2,952, so leaving the enchanted four at 125, 25, 5 and 1 would make a
     Cataclysmic drop one in 4,156 rather than one in 25,531. Measured, not
     reasoned: `sim/analyse_per_tier_rarity.py` prints both.
+
+    AND MAGIC FIND MULTIPLIES THE RESULT, since issue #890. It used to multiply
+    each rung of the cascade instead, which let a rung saturate and wipe out
+    every rarity below it. See `MAGIC_FIND_REACH` above. At zero it is a
+    multiplication by one, so every figure quoted in this file is unaffected.
     """
     if rarity not in RARITY_DROP_WEIGHT:
         raise ValueError(f"{rarity!r} is not a rarity; expected one of "
                          f"{list(af.RARITIES)}")
 
-    base = RARITY_DROP_WEIGHT[rarity]
+    base = RARITY_DROP_WEIGHT[rarity] * magic_find_multiplier(rarity, magic_find)
     change = ordinary_fall_at(tier) / ORDINARY_FALL_AT_TIER_ONE
     index = rarity_index(rarity)
 
@@ -332,6 +435,10 @@ def drop_weight(rarity: str, tier: int) -> float:
     # THE ENCHANTED FOUR FOLLOW THE ORDINARY SEGMENT'S TOTAL, which is what keeps
     # their share of the ladder fixed. At tier 1 the two totals are equal and this
     # is a multiplication by one, so the sheet's own figures come straight through.
+    #
+    # THE TOTAL IS TAKEN WITHOUT MAGIC FIND ON PURPOSE. It exists to undo the
+    # flattening, which magic find has nothing to do with; folding magic find in
+    # here as well would apply it to the enchanted rungs twice.
     at_tier_one = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
                       for rung in range(1, ORDINARY_RARITIES + 1))
     return base * _ordinary_total(tier) / at_tier_one
@@ -458,21 +565,28 @@ def rarity_step_chance(index: int, tier: int, magic_find: float = 0.0) -> float:
     Issue #886. Before it they were read straight out of `RARITY_DROP_WEIGHT` and
     every tier had the same shape, which is what made tiers 4 to 8 identical.
 
-    MAGIC FIND MULTIPLIES IT, which is Path of Exile's stated behaviour: +100%
-    increased item rarity gives twice as many of every rarity above the floor.
-    Saturating at 1 is the only ceiling; see the module docstring for the
-    diminishing returns that are deliberately not built.
+    MAGIC FIND IS INSIDE THE WEIGHTS AND NOT APPLIED TO THIS CHANCE. Issue #890,
+    and the zero passed to `_cascade_step_chance` below is the whole of the fix
+    rather than an oversight. Multiplying this chance is what let a rung reach 1
+    and wipe out every rarity below it; a weight cannot do that, because a rung's
+    share of the weight at or below it is always under one. `MAGIC_FIND_REACH`
+    carries the reasoning and the measurements.
+
+    THE MATERIAL TIER LADDER STILL MULTIPLIES ITS STEP CHANCES, through the same
+    `_cascade_step_chance`. That is deliberate; see `MAGIC_FIND_REACH`.
     """
     if 1 <= index <= len(af.RARITIES):
-        at_or_below = sum(drop_weight(rarity_at_index(rung), tier)
+        at_or_below = sum(drop_weight(rarity_at_index(rung), tier, magic_find)
                           for rung in range(1, index + 1))
         if at_or_below <= 0.0:
             raise ValueError(
                 f"every rarity up to {rarity_at_index(index)} has a drop weight "
                 "of zero, so there is nothing for the cascade to choose between")
 
-    weights = [drop_weight(rarity, tier) for rarity in af.RARITIES]
-    return _cascade_step_chance(weights, index, magic_find, "the rarity ladder")
+    # NEGATIVE MAGIC FIND IS STILL REFUSED, by `magic_find_multiplier` inside
+    # `drop_weight`, so passing zero on does not lose that check.
+    weights = [drop_weight(rarity, tier, magic_find) for rarity in af.RARITIES]
+    return _cascade_step_chance(weights, index, 0.0, "the rarity ladder")
 
 
 def rarity_distribution(tier: int, magic_find: float = 0.0) -> dict[str, float]:
@@ -1349,6 +1463,96 @@ def _check_the_enchanted_rarities_keep_their_share_at_every_tier() -> None:
                     "rarities are meant to move with the tier")
 
 
+def _check_no_magic_find_can_wipe_out_a_rarity() -> None:
+    """The promise issue #890 was fixed to keep, at magic find nobody can reach.
+
+    THE FAULT THIS REPLACED. Magic find used to multiply each rung of the
+    cascade, and a rung's chance stops at 1. Once a rung saturated, every rarity
+    below it was impossible: a Boss at +300% dropped Masterful 97.6% of the time
+    at difficulty tier 8 and nothing below it, and at tier 1 it dropped Quality
+    100% of the time.
+
+    WHY THIS CANNOT FAIL BY TUNING, ONLY BY THE SHAPE CHANGING BACK. Magic find
+    now multiplies weights, every weight stays above zero, and a rung's share of
+    the weight at or below it is therefore always under one. Moving it back onto
+    the step chances is what this notices.
+    """
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        reachable = rarity_index(best_rarity_on_a_drop(tier))
+
+        for magic_find in (0.0, 300.0, 500.0, 5_000.0, 1_000_000.0):
+            spread = rarity_distribution(tier, magic_find)
+
+            for index in range(1, reachable + 1):
+                rarity = rarity_at_index(index)
+                if spread[rarity] <= 0.0:
+                    raise AssertionError(
+                        f"at difficulty tier {tier} with {magic_find}% magic "
+                        f"find, {rarity} never drops at all even though the "
+                        "tier can reach it. Magic find is not allowed to wipe "
+                        "out a rarity")
+
+
+def _check_magic_find_never_passes_its_ceiling() -> None:
+    """However much is carried, it is worth less than `MAGIC_FIND_CEILING`.
+
+    WHY IT IS CHECKED RATHER THAN READ OFF THE FORMULA. `mf * C / (mf + C)` is
+    obviously under C, but the reason the ceiling exists is what the formula
+    feeds: the multiplier is raised to `MAGIC_FIND_REACH`, so an unbounded figure
+    there does not grow, it explodes. Losing the diminishing returns would leave
+    every other check in this file passing.
+    """
+    for magic_find in (0.0, 1.0, 400.0, 5_000.0, 1_000_000.0, 1e12):
+        effective = effective_magic_find(magic_find)
+
+        if effective >= MAGIC_FIND_CEILING:
+            raise AssertionError(
+                f"{magic_find}% magic find comes out worth {effective}%, which "
+                f"is not below the ceiling of {MAGIC_FIND_CEILING}%")
+        if effective > magic_find:
+            raise AssertionError(
+                f"{magic_find}% magic find comes out worth {effective}%, which "
+                "is more than was carried")
+
+    # AND MORE IS ALWAYS WORTH MORE, or stacking it would stop paying at some
+    # point and a character would be punished for finding another one.
+    climbing = [effective_magic_find(mf)
+                for mf in (0.0, 50.0, 100.0, 300.0, 1_000.0, 10_000.0)]
+    if climbing != sorted(climbing) or len(set(climbing)) != len(climbing):
+        raise AssertionError(
+            f"magic find stops paying as it is stacked: {climbing}")
+
+
+def _check_magic_find_only_ever_moves_the_mix_upward() -> None:
+    """More magic find gives more of the rarest and less of the commonest.
+
+    A CHECK ON THE DIRECTION, not on any figure, so it survives retuning
+    `MAGIC_FIND_REACH`. Getting the exponent's sign or its ends the wrong way
+    round would make magic find hand out junk, which nothing else here notices:
+    every rarity would still drop and every distribution would still sum to one.
+    """
+    weakest = af.RARITIES[0]
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        best = best_rarity_on_a_drop(tier)
+        if best == weakest:
+            continue
+
+        plain = rarity_distribution(tier, 0.0)
+        lucky = rarity_distribution(tier, 300.0)
+
+        if lucky[weakest] >= plain[weakest]:
+            raise AssertionError(
+                f"at difficulty tier {tier}, magic find left {weakest} at "
+                f"{lucky[weakest]:.4f} of drops against {plain[weakest]:.4f} "
+                "without it, so it is not moving the mix upward")
+
+        if lucky[best] <= plain[best]:
+            raise AssertionError(
+                f"at difficulty tier {tier}, magic find left {best} at "
+                f"{lucky[best]:.6f} of drops against {plain[best]:.6f} without "
+                "it, so it is not helping the rarest thing this tier can reach")
+
+
 def _check_a_deeper_tier_never_drops_more_of_the_weakest() -> None:
     """Everyday gets rarer as the difficulty tier rises, never commoner.
 
@@ -1524,6 +1728,9 @@ _check_difficulty_tier_one_is_the_sheet_untouched()
 _check_the_distribution_matches_the_weights()
 _check_the_enchanted_rarities_keep_their_share_at_every_tier()
 _check_a_deeper_tier_never_drops_more_of_the_weakest()
+_check_no_magic_find_can_wipe_out_a_rarity()
+_check_magic_find_never_passes_its_ceiling()
+_check_magic_find_only_ever_moves_the_mix_upward()
 _check_nothing_drops_above_the_tier_cap()
 _check_a_distribution_always_sums_to_one()
 _check_every_enemy_rarity_has_a_drop_rate()

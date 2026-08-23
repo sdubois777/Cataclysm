@@ -321,35 +321,52 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// MAGIC FIND MULTIPLIES EACH STEP, which is Path of Exile's stated
-	// behaviour. Printed by loot.rarity_distribution(8, 100.0).
-	FDrop::RarityDistribution(Rarities, 8, 100.0f, Shares);
-	TestTrue(*FString::Printf(
-		TEXT("+100%% magic find doubles the Cataclysmic share (%.9f)"), Shares[7]),
-		FMath::Abs(Shares[7] - 0.0000783361f) < 0.0000783361f * 1e-3f);
-	// AND AT DIFFICULTY TIER 8 IT REMOVES EVERYDAY ALTOGETHER, which is new with
-	// issue #886 and is worth stating rather than leaving as a number. Magic
-	// find multiplies each step and a step saturates at 1. Once the ordinary
-	// segment has flattened, Quality's step is 640 of the 1152 weight at or
-	// below it, so +80% magic find takes it to certainty and the cascade can
-	// never fall through to the floor. Before #886 that needed +250% at every
-	// tier, because the segment did not flatten.
+	// MAGIC FIND MULTIPLIES EACH RARITY'S WEIGHT, and the rarer the rarity the
+	// more of the multiplier it gets. Issue #890. It used to multiply each STEP
+	// of the cascade, which let a step reach 1 and wipe out every rarity below
+	// it: a Boss dropped Masterful 97.6% of the time at difficulty tier 8 and
+	// Quality 100% of the time at tier 1.
 	//
-	// THIS IS THE GENRE'S BEHAVIOUR ARRIVED AT SIDEWAYS. Diablo IV stops showing
-	// the player Normal, Magic and Rare items in its deepest difficulties. Here
-	// nothing was added to do that: a deep, well geared character stops seeing
-	// the weakest rarity because the existing saturation rule meets a flatter
-	// segment.
-	TestEqual(TEXT("and removes Everyday from tier 8 altogether"),
-		Shares[0], 0.0f);
+	// Printed by loot.rarity_distribution(8, 100.0).
+	const float ShareAtTier8WithMagicFind[] = {
+		0.0884339540f, 0.1546674976f, 0.2705073532f, 0.4731066918f,
+		0.0096260787f, 0.0026937011f, 0.0007537883f, 0.0002109354f,
+	};
 
-	// NOT AT A LOW TIER, THOUGH, which is what makes it a reward for depth
-	// rather than a flat rule. The same +100% leaves the floor alone at tier 1,
-	// where Quality's step is far from saturating.
-	FDrop::RarityDistribution(Rarities, 1, 100.0f, Shares);
-	TestTrue(*FString::Printf(
-		TEXT("the same magic find leaves Everyday dropping at tier 1 (%.4f)"),
-		Shares[0]), Shares[0] > 0.0f);
+	FDrop::RarityDistribution(Rarities, 8, 100.0f, Shares);
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("%s is %.8f of drops at tier 8 with +100%% magic find (%.8f)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(),
+			ShareAtTier8WithMagicFind[Index], Shares[Index]),
+			FMath::Abs(Shares[Index] - ShareAtTier8WithMagicFind[Index])
+				< ShareAtTier8WithMagicFind[Index] * 1e-4f);
+	}
+
+	// THE ORDERING IS THE DECISION AND THE ARRAY IS ONLY ITS OUTPUT. Stated
+	// separately so a reader can see which way magic find is meant to push:
+	// the floor loses share, everything above it gains, and each rarity gains
+	// more than the one below it. Getting the exponent's ends the wrong way
+	// round would hand out junk and still pass every other check here.
+	TArray<float> Plain;
+	FDrop::RarityDistribution(Rarities, 8, 0.0f, Plain);
+
+	float PreviousGain = 0.0f;
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		const float Gain = Shares[Index] / Plain[Index];
+		TestTrue(*FString::Printf(
+			TEXT("%s gains %.3fx from magic find, at least as much as the "
+				 "rarity below it (%.3fx)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(), Gain,
+			PreviousGain),
+			Gain >= PreviousGain);
+		PreviousGain = Gain;
+	}
+	TestTrue(TEXT("the weakest rarity loses share to magic find"),
+		Shares[0] < Plain[0]);
+	TestTrue(TEXT("and the rarest gains"), Shares[7] > Plain[7]);
 
 	return true;
 }
@@ -412,17 +429,38 @@ bool FCataclysmDropRollDrawsFromItTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// A CATACLYSMIC DROP CANNOT BE ROLLED FOR IN A TEST ANY MORE, at one in
-	// 25,531. It is forced with a magic find no character could have, which
-	// saturates the top rung to certainty and is the real code path rather than
-	// a special case.
-	FRandomStream Lucky(/*InSeed=*/1);
-	TestTrue(TEXT("a saturating magic find always drops Cataclysmic at tier 8"),
-		FDrop::RollRarity(Rarities, 8, 5000000.0f, Lucky)
-			== ECataclysmRarity::Cataclysmic);
-	TestTrue(TEXT("and the step chance it saturates to is exactly 1"),
+	// MAGIC FIND CAN NO LONGER FORCE A RARITY, AND THAT IS ISSUE #890's FIX.
+	// This used to assert the opposite: that a magic find no character could
+	// have saturated the top rung to a step chance of exactly 1 and always
+	// dropped Cataclysmic. That saturation is what made a Boss drop one rarity
+	// of item, so it is gone deliberately.
+	TestTrue(TEXT("no magic find saturates a rung to certainty any more"),
 		FDrop::RarityStepChance(Rarities, ECataclysmRarity::Cataclysmic, 8,
-								5000000.0f) == 1.0f);
+								5000000.0f) < 1.0f);
+
+	// AND IT CANNOT REMOVE A RARITY EITHER, which is the property the whole
+	// change exists for. Checked at a magic find nobody could carry, because a
+	// shape that removes a rarity does it at some finite value and this has to
+	// notice wherever that value is.
+	FDrop::RarityDistribution(Rarities, 8, 5000000.0f, Shares);
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("%s still drops at tier 8 with absurd magic find (%.9f)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(), Shares[Index]),
+			Shares[Index] > 0.0f);
+	}
+
+	// AND IT SETTLES RATHER THAN CLIMBING WITHOUT LIMIT. Putting magic find on
+	// the weights stops it wiping out a rarity; on its own it then ran away
+	// instead, because the multiplier is raised to MagicFindReach. The
+	// diminishing returns are what bound it.
+	TestTrue(*FString::Printf(
+		TEXT("even unlimited magic find leaves a Cataclysmic drop rare "
+			 "(one in %.0f)"), 1.0f / Shares[7]),
+		1.0f / Shares[7] > 300.0f);
+	TestTrue(TEXT("and no magic find is ever worth more than its ceiling"),
+		FDrop::EffectiveMagicFind(5000000.0f) < FDrop::MagicFindCeiling);
 
 	return true;
 }

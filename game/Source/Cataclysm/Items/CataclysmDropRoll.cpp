@@ -120,13 +120,14 @@ namespace
 	 * treat as "there is nothing to choose between" rather than dividing by it.
 	 */
 	float WeightAtOrBelow(const UDataTable* GearRarityTable,
-						  ECataclysmRarity Rarity, int32 DifficultyTier)
+						  ECataclysmRarity Rarity, int32 DifficultyTier,
+						  float MagicFind)
 	{
 		float Total = 0.0f;
 		for (int32 Rung = 0; Rung <= LadderIndex(Rarity); ++Rung)
 		{
 			Total += UCataclysmDropRoll::DropWeightAt(
-				GearRarityTable, RarityAt(Rung), DifficultyTier);
+				GearRarityTable, RarityAt(Rung), DifficultyTier, MagicFind);
 		}
 		return Total;
 	}
@@ -285,9 +286,36 @@ float UCataclysmDropRoll::OrdinaryFallAt(int32 DifficultyTier)
 					 static_cast<float>(Tier - 1) / Span);
 }
 
+float UCataclysmDropRoll::EffectiveMagicFind(float MagicFind)
+{
+	const float Carried = FMath::Max(0.0f, MagicFind);
+	if (Carried <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return Carried * MagicFindCeiling / (Carried + MagicFindCeiling);
+}
+
+float UCataclysmDropRoll::MagicFindMultiplier(ECataclysmRarity Rarity,
+											  float MagicFind)
+{
+	const float Effective = EffectiveMagicFind(MagicFind);
+	if (Effective <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	const float Rungs = static_cast<float>(RarityCount - 1);
+	const float Share =
+		static_cast<float>(LadderIndex(Rarity)) / Rungs * MagicFindReach;
+	return FMath::Pow(1.0f + Effective / 100.0f, Share);
+}
+
 float UCataclysmDropRoll::DropWeightAt(const UDataTable* GearRarityTable,
 									   ECataclysmRarity Rarity,
-									   int32 DifficultyTier)
+									   int32 DifficultyTier,
+									   float MagicFind)
 {
 	const FCataclysmGearRarityRow* Row = RarityRow(GearRarityTable, Rarity);
 	if (!Row)
@@ -297,6 +325,7 @@ float UCataclysmDropRoll::DropWeightAt(const UDataTable* GearRarityTable,
 
 	const int32 Rung = LadderIndex(Rarity);
 	const float Change = OrdinaryFallAt(DifficultyTier) / OrdinaryFallAtTierOne;
+	const float Lucky = MagicFindMultiplier(Rarity, MagicFind);
 
 	if (Rung < OrdinaryRarities)
 	{
@@ -304,20 +333,24 @@ float UCataclysmDropRoll::DropWeightAt(const UDataTable* GearRarityTable,
 		// OrdinaryRarities - 1, so its exponent is zero and everything below it
 		// is multiplied by the change once per rung of distance.
 		const float Below = static_cast<float>(OrdinaryRarities - 1 - Rung);
-		return Row->DropWeight * FMath::Pow(Change, Below);
+		return Row->DropWeight * Lucky * FMath::Pow(Change, Below);
 	}
 
 	// THE ENCHANTED FOUR FOLLOW THE ORDINARY SEGMENT'S TOTAL, which is what
 	// keeps their share of the ladder fixed at every difficulty tier. At tier 1
 	// the two totals are equal and this is a multiplication by one, so the
 	// table's own figures come straight through.
+	//
+	// THAT TOTAL IS TAKEN WITHOUT MAGIC FIND ON PURPOSE. It exists to undo the
+	// per-tier flattening, which magic find has nothing to do with; folding
+	// magic find in here as well would apply it to these rungs twice.
 	const float AtTierOne = OrdinaryWeightTotal(GearRarityTable, 1);
 	if (AtTierOne <= 0.0f)
 	{
 		return 0.0f;
 	}
 
-	return Row->DropWeight
+	return Row->DropWeight * Lucky
 		* OrdinaryWeightTotal(GearRarityTable, DifficultyTier) / AtTierOne;
 }
 
@@ -333,7 +366,7 @@ float UCataclysmDropRoll::RarityStepChance(const UDataTable* GearRarityTable,
 	}
 
 	const float AtOrBelow =
-		WeightAtOrBelow(GearRarityTable, Rarity, DifficultyTier);
+		WeightAtOrBelow(GearRarityTable, Rarity, DifficultyTier, MagicFind);
 	if (AtOrBelow <= 0.0f)
 	{
 		// Every rung up to here weighs nothing, so there is no share to take.
@@ -347,9 +380,14 @@ float UCataclysmDropRoll::RarityStepChance(const UDataTable* GearRarityTable,
 		return 0.0f;
 	}
 
-	const float Share =
-		DropWeightAt(GearRarityTable, Rarity, DifficultyTier) / AtOrBelow;
-	return FMath::Min(1.0f, Share * (1.0f + FMath::Max(0.0f, MagicFind) / 100.0f));
+	// MAGIC FIND IS INSIDE THE WEIGHTS AND IS NOT APPLIED AGAIN HERE. Issue
+	// #890, and the absence of a multiplier on this line is the whole of the
+	// fix rather than an omission. Multiplying this chance is what let a rung
+	// reach 1 and wipe out every rarity below it; a weight cannot, because a
+	// rung's share of the weight at or below it is always under one.
+	return FMath::Min(1.0f,
+		DropWeightAt(GearRarityTable, Rarity, DifficultyTier, MagicFind)
+			/ AtOrBelow);
 }
 
 // ---------------------------------------------------------------------------

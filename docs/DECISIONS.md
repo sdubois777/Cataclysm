@@ -20,6 +20,123 @@ applied or still pending.
 
 ---
 
+## 2026-08-23 — Magic find multiplies a rarity's weight, not its step of the cascade
+
+**Affects:** `sim/cataclysm_sim/loot.py` and
+`game/Source/Cataclysm/Items/CataclysmDropRoll.cpp`. **Applied there.** No data
+file changed. Issue #890. It supersedes the "one thing followed that nobody asked
+for" section of the entry below, which recorded the fault as a feature.
+
+### What was wrong
+
+**A Boss kill dropped one rarity of item.** At difficulty tier 8 it dropped
+Masterful 97.6% of the time and nothing at all below Masterful. At tier 1 it
+dropped Quality 100% of the time — every single item identical.
+
+| Tier | Enemy killed | Everyday | Quality | Superb | Masterful | Legendary |
+| :-- | :-- | --: | --: | --: | --: | --: |
+| 1 | Boss | 0% | 100.0% | — | — | — |
+| 8 | Boss | 0% | 0% | 0% | 97.6% | 1.95% |
+| 8 | Cataclysm Boss | 0% | 0% | 0% | 96.4% | 2.92% |
+
+That is the complaint issue #886 was filed about — that the loot mix is
+uninteresting — in a worse form, at the enemies where loot matters most.
+
+**Why.** A rarer enemy adds magic find to its own drops, Boss +300% and Cataclysm
+Boss +500%. Magic find multiplied **each rung of the rarity cascade**, and a
+rung's chance stops at 1. Once a rung saturated, every rarity below it became
+impossible and that rung took everything reaching it. That is an artefact of
+multiplying a conditional stop-chance and clamping it, not a decision anyone made.
+
+**Part of it was pre-existing and part came from the entry below**, which flattened
+the ordinary segment earlier the same day. Flattening made each rung a larger
+share of the weight below it, so a rung saturated at much less magic find:
+
+| Tier | Enemy | Before that change | After it |
+| :-- | :-- | :-- | :-- |
+| 1 | Boss | 100% Quality | 100% Quality |
+| 8 | Boss | 48% Quality, 34% Superb, 15% Masterful | 97.6% Masterful |
+
+So a Boss never dropping Everyday was already true; high-tier boss drops
+collapsing from three rarities to one was new. Both halves were measured **with no
+magic find**, which is why it was not seen at the time.
+
+### What the genre does
+
+**Diablo II shipped this exact fault and fixed it.** Before patch 1.11 it had no
+diminishing returns on magic find and it was possible to get all-unique or all-set
+drops. 1.11 introduced `MF * X / (MF + X)`, with X = 250 for uniques, 500 for sets
+and 600 for rares, and magic items left linear.
+
+- <https://diablo2.diablowiki.net/Magic_find_diminishing_returns>
+- <https://d2mods.info/forum/kb/viewarticle?a=320>
+
+**Path of Exile never lets rarity eliminate anything.** High increased item rarity
+does not stop white items dropping; even at extreme values they keep coming.
+Rarity raises the chance of the better outcomes rather than removing the worse.
+
+- <https://pathofexile.fandom.com/wiki/Rarity>
+- <https://pathofexile.fandom.com/wiki/Drop_rate>
+
+### The decision, and it takes both of them
+
+**Magic find multiplies each rarity's weight instead of each step of the cascade,
+and the rarer the rarity the more of the multiplier it receives.** Everyday
+receives none of it, so the floor can never be scaled away; Cataclysmic receives
+the multiplier raised to `MAGIC_FIND_REACH`, which is 4. Every weight stays above
+zero, so a rung's share of the weight at or below it is always under one and **no
+rarity can be eliminated at any magic find at all**. That is a property of the
+arithmetic rather than of the numbers in it.
+
+**Copying Diablo II alone was measured and rejected.** It fixes the collapse and
+makes a Boss *worse* at dropping the rarest items than it was: Cataclysmic falls
+from 0.016% to 0.009%. Cutting the multiplier cuts it for the rungs you want as
+well as the ones you do not.
+
+**But the weights alone run away.** Raising a multiplier to the fourth power meant
++400% magic find made a Cataclysmic drop 77 times likelier, where the 2026-08-18
+decision expected about 5. The magic find affix is 10 a utility slot, so a
+character who stacks it and fights a Boss passes +400% without trying.
+
+**So magic find passes through diminishing returns first**, `mf * 400 / (mf + 400)`
+— Diablo II's shape with a larger ceiling. **400 rather than Diablo II's 250 was
+chosen by the project owner on 2026-08-23**, from measured candidates, to keep
+magic find a strong choice for a character built around it.
+
+### What it does
+
+| Tier 8, enemy killed | Everyday | Quality | Superb | Masterful | Legendary | Cataclysmic |
+| :-- | --: | --: | --: | --: | --: | --: |
+| nothing (no magic find) | 17.2% | 21.5% | 26.9% | 33.7% | 0.49% | 1 in 25,531 |
+| Herald, +150% | 7.3% | 13.9% | 26.6% | 50.6% | 1.12% | 1 in 3,125 |
+| Boss, +300% | 5.2% | 11.4% | 25.3% | 55.9% | 1.44% | 1 in 1,569 |
+| Cataclysm Boss, +500% | 4.1% | 9.9% | 24.2% | 59.1% | 1.68% | 1 in 1,000 |
+
+And the ceiling holds: at magic find no character could carry, a Cataclysmic drop
+settles near one in 333 and Everyday is still 2.1% of drops.
+
+**Every figure with no magic find is unchanged**, so the decisions of 2026-08-18
+and the entry below both survive untouched.
+
+### What was deliberately not changed
+
+**Crafting materials keep the older mechanism**, and a Cataclysm Boss still drops
+no Common materials. Their ladder is five rungs falling four times a step, so the
+exponent chosen here very nearly cancels their whole weight spread: a Boss would
+drop an even fifth of each of the five tiers. Measured, not assumed. That is a
+much larger change to the crafting economy than anyone asked for, so it is issue
+#891 with its own numbers rather than being folded in here.
+
+**The affix tier ladder is untouched.** It has its own cascade and its own cap and
+magic find does not reach it.
+
+### What nobody has confirmed
+
+**None of this has been played.** Both constants are one line in each of two
+files. The reach was chosen from measured candidates and the ceiling from three.
+
+---
+
 ## 2026-08-23 — Gear rarity moves with the difficulty tier: the common four flatten, the rare four are pinned
 
 **Affects:** `sim/cataclysm_sim/loot.py` and
@@ -159,27 +276,26 @@ which is where `DROP_RARITIES_ABOVE_DIFFICULTY` and `RaritiesAboveDifficulty`
 already live, and `tools/tests/test_unreal_drop_figures_match_the_model.py` fails
 when the copies disagree.
 
-### One thing followed that nobody asked for, and it is worth keeping
+### One thing followed that nobody asked for, and it turned out to be a fault
 
-**Magic find now removes the weakest rarity entirely, and does it sooner the
-deeper a player is.** Magic find multiplies each cascade step and a step
-saturates at 1. Once the ordinary segment has flattened, Quality's step is a much
-larger share of the weight at or below it, so a smaller magic find takes it to
-certainty and the cascade can never fall through to Everyday.
+**SUPERSEDED THE SAME DAY. This section originally recorded, approvingly, that
+magic find now removed the weakest rarity entirely and did so sooner the deeper a
+player was.** That reading was wrong and the entry dated 2026-08-23 below,
+"Magic find multiplies a rarity's weight, not its step of the cascade", replaces
+it. The wording is kept rather than deleted because the mistake is the useful
+part.
 
-| Difficulty tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
-| Magic find at which Everyday stops dropping | +250% | +212% | +181% | +153% | +130% | +111% | +94% | +80% |
+Magic find multiplied each cascade step and a step stops at 1. Flattening the
+ordinary segment made each step a larger share of the weight below it, so a
+smaller magic find took a step to certainty and nothing could fall through to
+Everyday. That was recorded here as Diablo IV's behaviour arrived at sideways.
 
-Before this change it was +250% at every tier, because the segment did not
-flatten. So a deep, well geared character stops seeing the weakest rarity and a
-shallow one does not.
-
-**This is what Diablo IV does, arrived at sideways.** It stops showing the player
-Normal, Magic and Rare items in its deepest difficulties. Nothing was added here
-to do that: the existing saturation rule met a flatter segment. It is recorded
-rather than removed because it is the same answer the genre reached, but it was
-not part of what was asked for and it has not been played.
+**What it actually was: the same arithmetic that made a Boss drop one rarity of
+item.** A Boss carries +300% magic find, so at difficulty tier 8 it dropped
+Masterful 97.6% of the time and nothing below Masterful at all, and at tier 1 it
+dropped Quality 100% of the time. That is the complaint this very issue was filed
+about, in a worse form, and it was missed because every figure in this entry was
+measured with no magic find. Issue #890.
 
 ### What is deliberately not built
 
