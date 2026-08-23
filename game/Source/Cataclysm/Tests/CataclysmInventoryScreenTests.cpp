@@ -678,4 +678,46 @@ bool FCataclysmInventoryHeaderTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryHeaderSaysWhatIsHeld,
+	"Cataclysm.InventoryScreen.TheHeaderSaysWhatIsOnTheCursor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInventoryHeaderSaysWhatIsHeld::RunTest(const FString& Parameters)
+{
+	using FScreen = UCataclysmInventoryScreen;
+
+	// WHY THE HEADER SAYS IT AT ALL. A held item does not leave its slot -- see
+	// UCataclysmInventoryComponent::HeldSlot for why that is the design -- so the
+	// grid looks identical whether something is held or not. Without this line a
+	// player who pressed once would have no way to tell they were holding
+	// anything. Issue #853.
+	TestEqual(TEXT("holding something is said after the count"),
+		FScreen::HeaderTextFor(12, 48, TEXT("Quality Helm")),
+		FString(TEXT("Carried    12 / 48        holding Quality Helm")));
+
+	// NOTHING SAID WHEN NOTHING IS HELD, which is every moment the screen is open
+	// and not mid-move. A line reading "holding nothing" would be there almost
+	// always and would tell the player what they already know.
+	TestEqual(TEXT("nothing is added when nothing is held"),
+		FScreen::HeaderTextFor(12, 48, FString()),
+		FString(TEXT("Carried    12 / 48")));
+
+	// AND THE OLD CALL STILL MEANS WHAT IT MEANT. Every caller that does not know
+	// about the cursor keeps working, which is what the defaulted argument is
+	// for.
+	TestEqual(TEXT("the count on its own is unchanged"),
+		FScreen::HeaderTextFor(12, 48),
+		FString(TEXT("Carried    12 / 48")));
+
+	// A NAME THE TABLES COULD NOT SUPPLY IS AN EMPTY NAME, and LabelFor returns
+	// one for an item whose base is missing. Saying "holding" with nothing after
+	// it would read as a fault, so an empty name says nothing at all -- which the
+	// second check above already covers, and this states why it matters.
+	TestFalse(TEXT("an unnamed held item does not leave a dangling word"),
+		FScreen::HeaderTextFor(1, 48, FString()).Contains(TEXT("holding")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -241,6 +241,51 @@ public:
 	const TArray<FCataclysmCarriedSlot>& GetSlots() const { return Slots; }
 
 	/**
+	 * Exchange what two carried slots hold. Issue #853.
+	 *
+	 * NOTHING ENTERS OR LEAVES THE BAG, so this cannot destroy an item however
+	 * it is called. Both entries are copies in a fixed-length array and the
+	 * exchange is total; there is no state where one slot holds both.
+	 *
+	 * SWAPPING A SLOT WITH ITSELF IS ALLOWED AND CHANGES NOTHING, because it
+	 * is what putting a held item back where it came from does, and refusing
+	 * it would make the caller special-case the commonest gesture.
+	 *
+	 * @return false when either index is outside the bag, having changed
+	 *         nothing
+	 */
+	bool SwapSlots(int32 First, int32 Second);
+
+	/**
+	 * Which carried slot is on the cursor, or INDEX_NONE for none.
+	 *
+	 * THE ITEM DOES NOT LEAVE ITS SLOT WHILE IT IS HELD, and that is the whole
+	 * design. A held item is drawn as though it were on the cursor, but it is
+	 * still one of the 48 and is still what FCataclysmSaveGather writes out, so
+	 * a save taken mid-drag loses nothing and there is no third place for an
+	 * item to be. UCataclysmWearing's rule that an item is never destroyed
+	 * holds here for free rather than needing to be extended to cover a
+	 * cursor.
+	 *
+	 * NOT SaveGame, and that is deliberate. What is held is where a cursor is
+	 * pointing rather than anything about the character, and a save that
+	 * restored a half-finished drag would be restoring the mouse.
+	 */
+	int32 HeldSlot() const { return Held; }
+
+	/** Whether anything is on the cursor. */
+	bool IsHolding() const { return Held != INDEX_NONE; }
+
+	/**
+	 * Put a carried slot on the cursor, or take it off the cursor with
+	 * INDEX_NONE.
+	 *
+	 * @return false when the index is neither a slot in the bag nor
+	 *         INDEX_NONE, having changed nothing
+	 */
+	bool HoldSlot(int32 Slot);
+
+	/**
 	 * How many times the contents have changed, for a screen that redraws
 	 * every frame and should not redo work every frame.
 	 *
@@ -274,6 +319,12 @@ private:
 	 * this one describes the session rather than the character.
 	 */
 	int32 Changes = 0;
+
+	/**
+	 * The carried slot on the cursor, or INDEX_NONE. See HeldSlot above for
+	 * why this is not persisted and why the item stays in its slot.
+	 */
+	int32 Held = INDEX_NONE;
 
 	UPROPERTY()
 	TArray<FCataclysmCarriedSlot> Slots;

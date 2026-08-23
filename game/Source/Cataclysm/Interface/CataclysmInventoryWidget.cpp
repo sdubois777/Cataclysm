@@ -361,10 +361,6 @@ void UCataclysmInventoryWidget::Refresh(
 		return;
 	}
 
-	const int32 Used = Inventory ? Inventory->NumItems() : 0;
-	Header->SetText(FText::FromString(FScreen::HeaderTextFor(
-		Used, UCataclysmInventoryComponent::SlotCount)));
-
 	// THE FOUR TABLES ARE LOADED ONCE FOR THE WHOLE GRID. A cell fetching its
 	// own would repeat four lookups 48 times a frame for something that cannot
 	// change while the screen is open.
@@ -372,6 +368,19 @@ void UCataclysmInventoryWidget::Refresh(
 	const UDataTable* Rarities = UCataclysmDropRoll::LoadGearRarityTable();
 	const UDataTable* Materials = UCataclysmDropRoll::LoadCraftingMaterialTable();
 	const UDataTable* Tiers = UCataclysmDropRoll::LoadMaterialTierTable();
+
+	// THE HEADER IS SET AFTER THE TABLES RATHER THAN BEFORE, because naming
+	// what is on the cursor needs them. Issue #853.
+	const int32 Used = Inventory ? Inventory->NumItems() : 0;
+	FString HeldName;
+	if (Inventory && Inventory->IsHolding()
+		&& Inventory->GetSlots().IsValidIndex(Inventory->HeldSlot()))
+	{
+		HeldName = FScreen::LabelFor(
+			Inventory->GetSlots()[Inventory->HeldSlot()], Bases, Materials);
+	}
+	Header->SetText(FText::FromString(FScreen::HeaderTextFor(
+		Used, UCataclysmInventoryComponent::SlotCount, HeldName)));
 
 	// THE AFFIX TABLE IS ONLY THE TOOL TIP'S BUSINESS. A cell's label is the
 	// base's own name and its colour is its rarity, neither of which needs to

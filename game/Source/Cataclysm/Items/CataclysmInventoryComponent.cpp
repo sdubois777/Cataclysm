@@ -174,6 +174,44 @@ int32 UCataclysmInventoryComponent::AddMaterial(FName Material, int32 Quantity)
 	return Slot;
 }
 
+bool UCataclysmInventoryComponent::SwapSlots(int32 First, int32 Second)
+{
+	if (!Slots.IsValidIndex(First) || !Slots.IsValidIndex(Second))
+	{
+		return false;
+	}
+	if (First == Second)
+	{
+		// Putting something back where it came from. Nothing moved, so nothing
+		// is recorded as having changed either.
+		return true;
+	}
+
+	Slots.Swap(First, Second);
+
+	// COUNTED AND RECORDED, because where an item sits is part of what the
+	// save holds. FCataclysmSaveGather writes the slots in order, so two
+	// pieces changing places changes the file even though the bag holds the
+	// same things.
+	++Changes;
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+										ECataclysmSaveTrigger::InventoryChanged);
+	return true;
+}
+
+bool UCataclysmInventoryComponent::HoldSlot(int32 Slot)
+{
+	if (Slot != INDEX_NONE && !Slots.IsValidIndex(Slot))
+	{
+		return false;
+	}
+
+	// NEITHER COUNTED NOR RECORDED. Nothing about the bag changed: the same
+	// items are in the same slots, and only the cursor moved.
+	Held = Slot;
+	return true;
+}
+
 bool UCataclysmInventoryComponent::RemoveItemAt(int32 Slot)
 {
 	if (!Slots.IsValidIndex(Slot) || SlotIsEmpty(Slots[Slot]))

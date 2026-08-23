@@ -602,4 +602,271 @@ bool FCataclysmWearingSwapsTheOnlyWeapon::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// Moving a carried slot with the cursor. Issue #853.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingPicksUpAndPutsDown,
+	"Cataclysm.Wearing.ACarriedSlotGoesOnTheCursorAndComesBackOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingPicksUpAndPutsDown::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	FCarriedAndWorn Character;
+	const int32 Where = Character.Inventory->AddItem(Of(HelmBase, 3));
+	const int32 Before = Character.Everything();
+
+	TestFalse(TEXT("nothing is held to begin with"),
+		Character.Inventory->IsHolding());
+
+	TestEqual(TEXT("picking it up succeeds"),
+		UCataclysmWearing::PickUpCarried(Character.Inventory, Where),
+		ECataclysmWearResult::PickedUp);
+	TestTrue(TEXT("something is held"), Character.Inventory->IsHolding());
+	TestEqual(TEXT("and it is the slot that was pressed"),
+		Character.Inventory->HeldSlot(), Where);
+
+	// THE ITEM DID NOT GO ANYWHERE, and that is the whole design. It is drawn as
+	// though it were on the cursor and it is still one of the 48, so a save taken
+	// now writes it out and there is no third place for it to be lost from.
+	TestEqual(TEXT("the character still has everything it had"),
+		Character.Everything(), Before);
+	const FCataclysmItem* Still = Character.Inventory->ItemAt(Where);
+	TestTrue(TEXT("the item is still in the slot it was picked up from"),
+		Still != nullptr && Still->Base == FName(HelmBase));
+
+	// PUTTING IT BACK WHERE IT CAME FROM IS HOW A PLAYER CANCELS.
+	TestEqual(TEXT("putting it back down where it came from succeeds"),
+		UCataclysmWearing::PutDownCarried(Character.Inventory, Where),
+		ECataclysmWearResult::PutDown);
+	TestFalse(TEXT("nothing is held afterwards"),
+		Character.Inventory->IsHolding());
+	TestEqual(TEXT("and nothing was lost"), Character.Everything(), Before);
+
+	// LETTING GO WITHOUT PUTTING IT DOWN, which is what closing the screen does.
+	UCataclysmWearing::PickUpCarried(Character.Inventory, Where);
+	UCataclysmWearing::ReleaseHeld(Character.Inventory);
+	TestFalse(TEXT("releasing clears the cursor"),
+		Character.Inventory->IsHolding());
+	TestEqual(TEXT("and it loses nothing, because nothing had moved"),
+		Character.Everything(), Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingExchangesTwoSlots,
+	"Cataclysm.Wearing.PuttingOneDownOnAnotherExchangesThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingExchangesTwoSlots::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	FCarriedAndWorn Character;
+	const int32 First = Character.Inventory->AddItem(Of(HelmBase));
+	const int32 Second = Character.Inventory->AddItem(Of(BootsBase));
+	const int32 Before = Character.Everything();
+
+	UCataclysmWearing::PickUpCarried(Character.Inventory, First);
+	TestEqual(TEXT("putting it on an occupied cell is an exchange"),
+		UCataclysmWearing::PutDownCarried(Character.Inventory, Second),
+		ECataclysmWearResult::Exchanged);
+
+	// AN EXCHANGE AND NOT A REFUSAL, which is what makes the grid rearrangeable
+	// at all, and neither piece went anywhere but into the other's cell.
+	const FCataclysmItem* NowFirst = Character.Inventory->ItemAt(First);
+	const FCataclysmItem* NowSecond = Character.Inventory->ItemAt(Second);
+	TestTrue(TEXT("the boots are where the helm was"),
+		NowFirst != nullptr && NowFirst->Base == FName(BootsBase));
+	TestTrue(TEXT("the helm is where the boots were"),
+		NowSecond != nullptr && NowSecond->Base == FName(HelmBase));
+	TestFalse(TEXT("nothing is held afterwards"),
+		Character.Inventory->IsHolding());
+	TestEqual(TEXT("and the character has exactly what it had"),
+		Character.Everything(), Before);
+
+	// AN EMPTY CELL IS A PLAIN PUT DOWN.
+	const int32 Empty = Character.Inventory->FirstFreeSlot();
+	UCataclysmWearing::PickUpCarried(Character.Inventory, First);
+	TestEqual(TEXT("putting it on an empty cell is not an exchange"),
+		UCataclysmWearing::PutDownCarried(Character.Inventory, Empty),
+		ECataclysmWearResult::PutDown);
+	TestEqual(TEXT("and still nothing was lost"), Character.Everything(), Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingCursorRefusals,
+	"Cataclysm.Wearing.TheCursorRefusesWhatItShould",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingCursorRefusals::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	FCarriedAndWorn Character;
+	const int32 Where = Character.Inventory->AddItem(Of(HelmBase));
+	const int32 Empty = Character.Inventory->FirstFreeSlot();
+
+	TestEqual(TEXT("putting down with nothing held is refused"),
+		UCataclysmWearing::PutDownCarried(Character.Inventory, Where),
+		ECataclysmWearResult::NothingHeld);
+
+	TestEqual(TEXT("picking up an empty cell is refused"),
+		UCataclysmWearing::PickUpCarried(Character.Inventory, Empty),
+		ECataclysmWearResult::NothingToPickUp);
+	TestFalse(TEXT("and nothing is held after that refusal"),
+		Character.Inventory->IsHolding());
+
+	TestEqual(TEXT("picking up a cell outside the bag is refused"),
+		UCataclysmWearing::PickUpCarried(Character.Inventory, 999),
+		ECataclysmWearResult::NothingToPickUp);
+
+	// ONE THING AT A TIME. A second pick up while holding would have to decide
+	// what happens to the first, and every answer is a rule the player has to
+	// learn. Refusing is the one answer that needs no explaining.
+	UCataclysmWearing::PickUpCarried(Character.Inventory, Where);
+	const int32 Other = Character.Inventory->AddItem(Of(BootsBase));
+	TestEqual(TEXT("picking up a second thing is refused"),
+		UCataclysmWearing::PickUpCarried(Character.Inventory, Other),
+		ECataclysmWearResult::AlreadyHolding);
+	TestEqual(TEXT("and the first thing is still the one held"),
+		Character.Inventory->HeldSlot(), Where);
+
+	TestEqual(TEXT("no inventory at all is refused"),
+		UCataclysmWearing::PickUpCarried(nullptr, 0),
+		ECataclysmWearResult::NothingToWorkWith);
+	TestEqual(TEXT("and so is putting down without one"),
+		UCataclysmWearing::PutDownCarried(nullptr, 0),
+		ECataclysmWearResult::NothingToWorkWith);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingPicksUpAWornPiece,
+	"Cataclysm.Wearing.AWornPieceComesOffOntoTheCursor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingPicksUpAWornPiece::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	FCarriedAndWorn Character;
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment,
+		Character.Inventory->AddItem(Of(HelmBase)), Went);
+	const int32 Before = Character.Everything();
+
+	TestEqual(TEXT("taking it off onto the cursor succeeds"),
+		UCataclysmWearing::PickUpWorn(Character.Inventory, Character.Equipment,
+									  Went),
+		ECataclysmWearResult::PickedUp);
+	TestTrue(TEXT("something is held"), Character.Inventory->IsHolding());
+
+	// IT IS IN THE BAG, in the slot the cursor is pointing at. A worn piece is
+	// not a carried slot, so it has to land in one before it can be held.
+	const FCataclysmItem* Held =
+		Character.Inventory->ItemAt(Character.Inventory->HeldSlot());
+	TestTrue(TEXT("the held slot holds the piece that came off"),
+		Held != nullptr && Held->Base == FName(HelmBase));
+	TestEqual(TEXT("and the character has exactly what it had"),
+		Character.Everything(), Before);
+
+	// EVERY REFUSAL TakeOffInto MAKES COMES BACK UNCHANGED, and nothing is left
+	// on the cursor after one.
+	FCarriedAndWorn Full;
+	ECataclysmGearSlot WentToo = ECataclysmGearSlot::Count;
+	UCataclysmWearing::WearFromCarried(Full.Inventory, Full.Equipment,
+		Full.Inventory->AddItem(Of(HelmBase)), WentToo);
+	FillTheBag(Full);
+	TestEqual(TEXT("a full bag refuses it"),
+		UCataclysmWearing::PickUpWorn(Full.Inventory, Full.Equipment, WentToo),
+		ECataclysmWearResult::NoRoomInTheBag);
+	TestFalse(TEXT("and nothing is held after that refusal"),
+		Full.Inventory->IsHolding());
+
+	FCarriedAndWorn Armed;
+	ECataclysmGearSlot WeaponSlot = ECataclysmGearSlot::Count;
+	UCataclysmWearing::WearFromCarried(Armed.Inventory, Armed.Equipment,
+		Armed.Inventory->AddItem(Of(OneHandedBase)), WeaponSlot);
+	TestEqual(TEXT("a character's only weapon refuses it"),
+		UCataclysmWearing::PickUpWorn(Armed.Inventory, Armed.Equipment,
+									  WeaponSlot),
+		ECataclysmWearResult::TheLastWeapon);
+	TestFalse(TEXT("and nothing is held after that refusal either"),
+		Armed.Inventory->IsHolding());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingCursorLosesNothing,
+	"Cataclysm.Wearing.NoItemIsLostHoweverOftenTheCursorMovesThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingCursorLosesNothing::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	// THE ONE RULE THIS MODULE STATES TWICE, applied to the cursor. Every path
+	// leaves every item either worn or carried, or changes nothing at all.
+	FCarriedAndWorn Character;
+	const TCHAR* Bases[] = { HelmBase, BootsBase, OneHandedBase,
+							 OtherOneHandedBase, TwoHandedBase };
+	for (const TCHAR* Base : Bases)
+	{
+		Character.Inventory->AddItem(Of(Base));
+	}
+
+	/** How many of each base the character holds anywhere. */
+	auto Census = [&Character]() -> TMap<FName, int32>
+	{
+		TMap<FName, int32> Counted;
+		for (const FCataclysmCarriedSlot& Slot : Character.Inventory->GetSlots())
+		{
+			if (!UCataclysmInventoryComponent::SlotIsEmpty(Slot.Item))
+			{
+				++Counted.FindOrAdd(Slot.Item.Base);
+			}
+		}
+		return Counted;
+	};
+
+	const TMap<FName, int32> Before = Census();
+	const int32 CountBefore = Character.Everything();
+
+	// A LONG SEQUENCE, INCLUDING THE REFUSALS. A rule that only holds for the
+	// gestures that succeed is not the rule this module states.
+	const int32 Slots = Character.Inventory->GetSlots().Num();
+	for (int32 Step = 0; Step < 200; ++Step)
+	{
+		const int32 Target = (Step * 7 + 3) % Slots;
+		if (Character.Inventory->IsHolding())
+		{
+			UCataclysmWearing::PutDownCarried(Character.Inventory, Target);
+		}
+		else
+		{
+			UCataclysmWearing::PickUpCarried(Character.Inventory, Target);
+		}
+	}
+	UCataclysmWearing::ReleaseHeld(Character.Inventory);
+
+	const TMap<FName, int32> After = Census();
+	TestEqual(TEXT("the character has the same number of things"),
+		Character.Everything(), CountBefore);
+	TestEqual(TEXT("and the same kinds of them"), After.Num(), Before.Num());
+
+	for (const TPair<FName, int32>& Each : Before)
+	{
+		const int32* Now = After.Find(Each.Key);
+		TestTrue(FString::Printf(TEXT("%s is still here"), *Each.Key.ToString()),
+			Now != nullptr && *Now == Each.Value);
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

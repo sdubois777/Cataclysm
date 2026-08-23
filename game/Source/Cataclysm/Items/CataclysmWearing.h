@@ -76,6 +76,27 @@ enum class ECataclysmWearResult : uint8
 
 	/** One of the two components was missing. */
 	NothingToWorkWith	UMETA(DisplayName = "Nothing to work with"),
+
+	// ADDED AT THE END RATHER THAN BESIDE WHAT THEY RESEMBLE, so every value
+	// above keeps the number it had. Issue #853.
+
+	/** It is on the cursor now, and still in its slot. */
+	PickedUp			UMETA(DisplayName = "Picked up"),
+
+	/** It went into the cell, which was empty. */
+	PutDown				UMETA(DisplayName = "Put down"),
+
+	/** It went into the cell and what was there took its place. */
+	Exchanged			UMETA(DisplayName = "Put down, and the two changed places"),
+
+	/** That cell is empty, so there is nothing there to pick up. */
+	NothingToPickUp		UMETA(DisplayName = "Nothing there to pick up"),
+
+	/** Asked to put something down with nothing on the cursor. */
+	NothingHeld			UMETA(DisplayName = "Nothing is being held"),
+
+	/** Asked to pick something up while already holding something. */
+	AlreadyHolding		UMETA(DisplayName = "Something is already held"),
 };
 
 /**
@@ -130,11 +151,64 @@ public:
 	 *
 	 * REFUSED WHEN THE BAG IS FULL, rather than taking the item off and leaving
 	 * it nowhere. There is no floor to drop it on from a screen.
+	 *
+	 * @param OutCarriedSlot  which carried slot the piece landed in.
+	 *                        Untouched unless the result is TakenOff.
 	 */
 	static ECataclysmWearResult TakeOffInto(
 		UCataclysmInventoryComponent* Inventory,
 		UCataclysmEquipmentComponent* Equipment,
+		ECataclysmGearSlot Slot,
+		int32* OutCarriedSlot = nullptr);
+
+	/**
+	 * Put a carried slot on the cursor. Issue #853.
+	 *
+	 * NOTHING MOVES. The item stays in its slot and only the cursor changes,
+	 * so this cannot fail part way and cannot lose anything. See
+	 * UCataclysmInventoryComponent::HeldSlot for why that is the design.
+	 *
+	 * A CRAFTING MATERIAL CAN BE PICKED UP TOO, unlike wearing, because moving
+	 * a stack to a tidier cell is the same gesture and refusing it would be a
+	 * rule the player has to learn for no reason.
+	 */
+	static ECataclysmWearResult PickUpCarried(
+		UCataclysmInventoryComponent* Inventory, int32 CarriedSlot);
+
+	/**
+	 * Put what is on the cursor into a carried slot, exchanging with whatever
+	 * is there. Issue #853.
+	 *
+	 * AN OCCUPIED CELL IS AN EXCHANGE AND NOT A REFUSAL, which is what every
+	 * game in the genre does and what makes the grid rearrangeable at all.
+	 * Nothing enters or leaves the bag, so nothing can be destroyed.
+	 *
+	 * PUTTING IT BACK WHERE IT CAME FROM IS ALLOWED and is how a player
+	 * cancels. It reports PutDown, because from the player's side that is what
+	 * happened.
+	 */
+	static ECataclysmWearResult PutDownCarried(
+		UCataclysmInventoryComponent* Inventory, int32 CarriedSlot);
+
+	/**
+	 * Take a worn piece off into the bag and put it on the cursor. Issue #853.
+	 *
+	 * THE SAME REFUSALS AS TakeOffInto, because it is TakeOffInto: a full bag
+	 * and a character's last weapon both stop it, and neither leaves the piece
+	 * anywhere but where it started.
+	 */
+	static ECataclysmWearResult PickUpWorn(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
 		ECataclysmGearSlot Slot);
+
+	/**
+	 * Take whatever is on the cursor off it, leaving it in its slot.
+	 *
+	 * WHAT THE INVENTORY SCREEN CLOSING DOES. Nothing moves and nothing can be
+	 * lost, because the item never left the bag to begin with.
+	 */
+	static void ReleaseHeld(UCataclysmInventoryComponent* Inventory);
 
 	/** What a result should say to somebody, in one line. */
 	static FString Explain(ECataclysmWearResult Result);

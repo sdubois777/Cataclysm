@@ -104,7 +104,8 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 ECataclysmWearResult UCataclysmWearing::TakeOffInto(
 	UCataclysmInventoryComponent* Inventory,
 	UCataclysmEquipmentComponent* Equipment,
-	ECataclysmGearSlot Slot)
+	ECataclysmGearSlot Slot,
+	int32* OutCarriedSlot)
 {
 	if (!Inventory || !Equipment)
 	{
@@ -166,8 +167,118 @@ ECataclysmWearResult UCataclysmWearing::TakeOffInto(
 		return ECataclysmWearResult::NothingWorn;
 	}
 
-	Inventory->AddItem(TakenOff);
+	const int32 LandedIn = Inventory->AddItem(TakenOff);
+	if (OutCarriedSlot)
+	{
+		*OutCarriedSlot = LandedIn;
+	}
 	return ECataclysmWearResult::TakenOff;
+}
+
+// ---------------------------------------------------------------------------
+// Moving a carried slot with the cursor. Issue #853.
+// ---------------------------------------------------------------------------
+
+ECataclysmWearResult UCataclysmWearing::PickUpCarried(
+	UCataclysmInventoryComponent* Inventory, int32 CarriedSlot)
+{
+	if (!Inventory)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	if (Inventory->IsHolding())
+	{
+		return ECataclysmWearResult::AlreadyHolding;
+	}
+	if (!Inventory->GetSlots().IsValidIndex(CarriedSlot)
+		|| UCataclysmInventoryComponent::SlotIsEmpty(
+			   Inventory->GetSlots()[CarriedSlot]))
+	{
+		return ECataclysmWearResult::NothingToPickUp;
+	}
+
+	Inventory->HoldSlot(CarriedSlot);
+	return ECataclysmWearResult::PickedUp;
+}
+
+ECataclysmWearResult UCataclysmWearing::PutDownCarried(
+	UCataclysmInventoryComponent* Inventory, int32 CarriedSlot)
+{
+	if (!Inventory)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	if (!Inventory->IsHolding())
+	{
+		return ECataclysmWearResult::NothingHeld;
+	}
+	if (!Inventory->GetSlots().IsValidIndex(CarriedSlot))
+	{
+		return ECataclysmWearResult::NothingToPickUp;
+	}
+
+	// READ BEFORE THE SWAP, because afterwards the target holds what was on
+	// the cursor and the two cases cannot be told apart.
+	const int32 From = Inventory->HeldSlot();
+	const bool bWasOccupied =
+		!UCataclysmInventoryComponent::SlotIsEmpty(
+			Inventory->GetSlots()[CarriedSlot])
+		&& CarriedSlot != From;
+
+	if (!Inventory->SwapSlots(From, CarriedSlot))
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	Inventory->HoldSlot(INDEX_NONE);
+
+	return bWasOccupied ? ECataclysmWearResult::Exchanged
+						: ECataclysmWearResult::PutDown;
+}
+
+ECataclysmWearResult UCataclysmWearing::PickUpWorn(
+	UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	ECataclysmGearSlot Slot)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	if (Inventory->IsHolding())
+	{
+		return ECataclysmWearResult::AlreadyHolding;
+	}
+
+	// TAKEN OFF FIRST AND HELD SECOND, because a worn piece is not in the bag
+	// and the cursor holds a carried slot. Every refusal TakeOffInto makes --
+	// a full bag, a character's last weapon -- comes back unchanged and
+	// nothing is held.
+	int32 LandedIn = INDEX_NONE;
+	const ECataclysmWearResult Result =
+		TakeOffInto(Inventory, Equipment, Slot, &LandedIn);
+	if (Result != ECataclysmWearResult::TakenOff)
+	{
+		return Result;
+	}
+
+	if (LandedIn == INDEX_NONE)
+	{
+		// IT CAME OFF AND IS IN THE BAG, so nothing is lost; only the cursor
+		// missed it. Reported as taken off rather than picked up, because that
+		// is what happened.
+		return ECataclysmWearResult::TakenOff;
+	}
+
+	Inventory->HoldSlot(LandedIn);
+	return ECataclysmWearResult::PickedUp;
+}
+
+void UCataclysmWearing::ReleaseHeld(UCataclysmInventoryComponent* Inventory)
+{
+	if (Inventory)
+	{
+		Inventory->HoldSlot(INDEX_NONE);
+	}
 }
 
 FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
@@ -193,6 +304,18 @@ FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 					"Wear a different weapon over it instead.");
 	case ECataclysmWearResult::NothingToWorkWith:
 		return TEXT("This character has no inventory or no equipment.");
+	case ECataclysmWearResult::PickedUp:
+		return TEXT("Picked up.");
+	case ECataclysmWearResult::PutDown:
+		return TEXT("Put down.");
+	case ECataclysmWearResult::Exchanged:
+		return TEXT("Put down, and the two changed places.");
+	case ECataclysmWearResult::NothingToPickUp:
+		return TEXT("There is nothing there to pick up.");
+	case ECataclysmWearResult::NothingHeld:
+		return TEXT("Nothing is being held.");
+	case ECataclysmWearResult::AlreadyHolding:
+		return TEXT("Something is already being held. Put it down first.");
 	}
 	return FString();
 }
