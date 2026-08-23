@@ -23,8 +23,22 @@ UCataclysmSkillTemplate::UCataclysmSkillTemplate()
 	Slot = ECataclysmAbilitySlot::None;
 }
 
-float UCataclysmSkillTemplate::GetSlotDamagePercent() const
+float UCataclysmSkillTemplate::GetDamagePercent() const
 {
+	// THE SKILL'S OWN FIGURE FIRST, AND THAT ORDER IS THE WHOLE POINT.
+	// A slot is a key: any skill may go in any slot, so a skill taking its
+	// damage from whichever key it was put on would be worth 250% of weapon
+	// damage on the right mouse button and 400% on R. Decided 2026-08-22;
+	// see docs/DECISIONS.md and issue #836.
+	if (DamagePercentOverride >= 0.0f)
+	{
+		return DamagePercentOverride;
+	}
+
+	// THE SLOT'S FIGURE WHEN THE SKILL STATES NONE, which every skill in
+	// the game does today. That is what makes this landable before the 112
+	// designed skills have numbers written: nothing behaves differently
+	// until one does.
 	const UDataTable* Table = UCataclysmSkillSlots::LoadGeneratedTable();
 	const FCataclysmSkillSlotNumbers Numbers =
 		UCataclysmSkillSlots::NumbersFor(Table, Slot);
@@ -200,7 +214,7 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		return 0.0f;
 	}
 
-	const float Percent = DamagePercent >= 0.0f ? DamagePercent : GetSlotDamagePercent();
+	const float Percent = DamagePercent >= 0.0f ? DamagePercent : GetDamagePercent();
 
 	// THIS SKILL'S OWN CRITICAL STRIKE CHANCE TRAVELS WITH EVERY BLOW IT DEALS.
 	// It is -1 for every skill in the game today, which means "take the
@@ -364,7 +378,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 	// tracks the caster.
 	const float PerTick = UCataclysmSkillEffects::ModifiedDamage(
 							AbilitySystem,
-							WeaponDamage * GetSlotDamagePercent() / 100.0f,
+							WeaponDamage * GetDamagePercent() / 100.0f,
 							SkillTags)
 						* Params.GroundPercent / 100.0f;
 

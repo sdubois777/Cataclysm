@@ -124,6 +124,37 @@ struct FCataclysmWeaponSkillRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
 	float CritChancePercent = -1.0f;
+
+	/**
+	 * What one use of this skill deals, as a percentage of weapon damage.
+	 * -1 takes the figure for whichever slot it is in.
+	 *
+	 * A SLOT IS A KEY AND A SKILL IS WORTH WHAT IT IS WORTH. The project
+	 * owner decided on 2026-08-22 that any skill may go in any slot. Damage,
+	 * cooldown and mana cost used to come only from the slot, so the same
+	 * skill would have been worth 250% of weapon damage on the right mouse
+	 * button and 400% on R -- its power following the key rather than the
+	 * skill. `docs/DECISIONS.md` has the reasoning.
+	 *
+	 * EVERY ROW IS -1 TODAY AND THAT IS DELIBERATE. The mechanism landed
+	 * before the numbers so that nothing changed until one is written; -1
+	 * falls back to the slot's figure, which is what the game did before.
+	 * Writing the 112 designed skills' numbers is the rest of issue #836.
+	 *
+	 * ZERO CANNOT MEAN "SAYS NOTHING", which is why the sentinel is -1 here
+	 * as it is for CritChancePercent above. A Support skill deals 0% of
+	 * weapon damage by design; the slot's own table says so.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
+	float DamagePercent = -1.0f;
+
+	/** Seconds before this skill may be used again. -1 takes the slot's. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
+	float Cooldown = -1.0f;
+
+	/** Mana one use costs at character level 100. -1 takes the slot's. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
+	float ManaCost = -1.0f;
 };
 
 /**

@@ -268,6 +268,15 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 			// Each hit carries the chance of the skill that dealt it instead.
 			// Issue #657.
 			Template->CritChancePercent = Skill.CritChancePercent;
+
+			// AND WHAT IT IS WORTH, WAITS AND COSTS. A slot is a key and a
+			// skill is worth what it is worth wherever it is put, decided
+			// 2026-08-22. Each is -1 on every row today, and -1 is what the
+			// ability already treats as "take the slot's figure", so this
+			// changes nothing until a number is written. Issue #836.
+			Template->DamagePercentOverride = Skill.DamagePercent;
+			Template->CooldownOverride = Skill.Cooldown;
+			Template->ManaCostOverride = Skill.ManaCost;
 		}
 		else if (UCataclysmUndesignedSkill* Placeholder =
 					Cast<UCataclysmUndesignedSkill>(Instance))

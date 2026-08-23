@@ -1193,9 +1193,13 @@ bool FCataclysmSkillRowCritChanceReachesTheAbilityTest::RunTest(const FString&)
 	Table->RowStruct = FCataclysmWeaponSkillRow::StaticStruct();
 
 	const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent\r\n"
-		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,20\r\n"
-		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1\r\n"));
+		// PRECISE CUT STATES ALL FOUR OF ITS FIGURES AND WILD SWING STATES
+		// NONE. That is the pair this test needs: one skill carrying its own
+		// damage, cooldown and mana cost through to the granted instance, and
+		// one leaving all three at -1 so its slot supplies them. Issue #836.
+		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost\r\n"
+		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,20,321,7.5,42\r\n"
+		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1,-1,-1,-1\r\n"));
 	if (!TestEqual(TEXT("the table built for this test imports"), Problems.Num(), 0))
 	{
 		for (const FString& Problem : Problems)
@@ -1219,6 +1223,7 @@ bool FCataclysmSkillRowCritChanceReachesTheAbilityTest::RunTest(const FString&)
 	// Read back off the granted instances, by the skill's name, so this cannot
 	// pass by looking at the table it came from.
 	TMap<FString, float> Stamped;
+	TMap<FString, const UCataclysmSkillTemplate*> Granted;
 	for (const FGameplayAbilitySpec& Spec : Fixture.AbilitySystem->GetActivatableAbilities())
 	{
 		if (const UCataclysmSkillTemplate* Template =
@@ -1226,6 +1231,7 @@ bool FCataclysmSkillRowCritChanceReachesTheAbilityTest::RunTest(const FString&)
 					const_cast<FGameplayAbilitySpec&>(Spec).GetPrimaryInstance()))
 		{
 			Stamped.Add(Template->SkillName, Template->CritChancePercent);
+			Granted.Add(Template->SkillName, Template);
 		}
 	}
 
@@ -1248,6 +1254,42 @@ bool FCataclysmSkillRowCritChanceReachesTheAbilityTest::RunTest(const FString&)
 	// is not written onto the character.
 	TestEqual(TEXT("and the one whose row states none still carries -1"),
 		*Silent, -1.0f);
+
+	// -- and the same chain for the three figures issue #836 added --------
+	//
+	// A SLOT IS A KEY, so a skill has to carry its own damage, cooldown and
+	// mana cost from the table to the instance a character holds. This is the
+	// step that would be dropped without noticing: the generator would still
+	// write the columns, the table would still hold them, and every skill
+	// would quietly go back to being worth whatever its key says.
+	const UCataclysmSkillTemplate* const* StatedSkill = Granted.Find(TEXT("Precise Cut"));
+	const UCataclysmSkillTemplate* const* SilentSkill = Granted.Find(TEXT("Wild Swing"));
+	if (!TestNotNull(TEXT("the granted skill whose row states figures"),
+					 StatedSkill ? *StatedSkill : nullptr)
+		|| !TestNotNull(TEXT("the granted skill whose row states none"),
+						SilentSkill ? *SilentSkill : nullptr))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the skill whose row states 321% damage carries it"),
+		(*StatedSkill)->DamagePercentOverride, 321.0f, 0.01f);
+	TestEqual(TEXT("and asks for that rather than its slot's figure"),
+		(*StatedSkill)->GetDamagePercent(), 321.0f, 0.01f);
+	TestEqual(TEXT("its own cooldown of 7.5 seconds reaches it"),
+		(*StatedSkill)->GetBaseCooldown(), 7.5f, 0.01f);
+	TestEqual(TEXT("and its own mana cost"),
+		(*StatedSkill)->ManaCostOverride, 42.0f, 0.01f);
+
+	// THE SILENT ONE STILL TAKES ITS SLOT'S, which is the state every skill
+	// in the game is in today and is what makes this landable before any
+	// number is written.
+	TestEqual(TEXT("the skill whose row states no damage carries -1"),
+		(*SilentSkill)->DamagePercentOverride, -1.0f, 0.01f);
+	TestTrue(TEXT("and asks its slot instead, which answers something"),
+		(*SilentSkill)->GetDamagePercent() > 0.0f);
+	TestTrue(TEXT("and takes its slot's cooldown"),
+		(*SilentSkill)->GetBaseCooldown() > 0.0f);
 
 	return true;
 }

@@ -113,6 +113,23 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
 	float ManaCostOverride = -1.0f;
 
+	/**
+	 * Percent of weapon damage one use deals. Negative takes the slot's.
+	 *
+	 * THE THIRD OF THE THREE, AND IT ARRIVED LAST FOR A REASON. The other
+	 * two above were built when a skill could only sit in the slot it was
+	 * designed for, so they were for the rare skill that differed. On
+	 * 2026-08-22 the project owner decided a slot is a key and any skill
+	 * may go in any slot, which makes all three the ordinary case rather
+	 * than the exception: a skill has to be worth what it is worth
+	 * wherever it is put. See `docs/DECISIONS.md` and issue #836.
+	 *
+	 * EVERY SKILL IN THE GAME IS STILL -1, so nothing behaves differently
+	 * yet. The mechanism landed before the numbers on purpose.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
+	float DamagePercentOverride = -1.0f;
+
 	/** Seconds this ability waits, before any cooldown reduction. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
 	float GetBaseCooldown() const;

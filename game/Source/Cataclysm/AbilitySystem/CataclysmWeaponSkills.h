@@ -66,6 +66,21 @@ struct CATACLYSM_API FCataclysmWeaponSkill
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
 	float CritChancePercent = -1.0f;
+
+	/**
+	 * What this skill is worth, waits and costs, or -1 to take its slot's.
+	 *
+	 * CARRIED UNCHANGED FROM THE TABLE, INCLUDING THE -1. The fallback is
+	 * applied where the ability is granted, so the slot's figure lives in one
+	 * place. See `FCataclysmWeaponSkillRow::DamagePercent`.
+	 */
+	float DamagePercent = -1.0f;
+
+	/** Seconds before it may be used again, or -1 to take its slot's. */
+	float Cooldown = -1.0f;
+
+	/** Mana one use costs at level 100, or -1 to take its slot's. */
+	float ManaCost = -1.0f;
 };
 
 /**

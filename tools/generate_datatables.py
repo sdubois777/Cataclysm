@@ -388,6 +388,9 @@ def weapon_skills(book) -> list[dict]:
         shape = clean(raw[6]) if len(raw) > 6 else ""
         params = clean(raw[7]) if len(raw) > 7 else ""
         crit = clean(raw[8]) if len(raw) > 8 else ""
+        damage_percent = clean(raw[9]) if len(raw) > 9 else ""
+        cooldown = clean(raw[10]) if len(raw) > 10 else ""
+        mana_cost = clean(raw[11]) if len(raw) > 11 else ""
         where = f"Weapon Skills row {index} ({damage} {weapon} {slot})"
 
         if shape and shape not in SHAPE_PARAMS:
@@ -411,8 +414,59 @@ def weapon_skills(book) -> list[dict]:
                     "Tags": tags_with_slot(clean(raw[5]), slot, where),
                     "Shape": shape,
                     "ShapeParams": params,
-                    "CritChancePercent": skill_crit_chance(crit, where)})
+                    "CritChancePercent": skill_crit_chance(crit, where),
+                    "DamagePercent": skill_number(
+                        damage_percent, "damage percentage", where),
+                    "Cooldown": skill_number(cooldown, "cooldown", where),
+                    "ManaCost": skill_number(mana_cost, "mana cost", where)})
     return unique(out, "Weapon Skills")
+
+
+#: What the DamagePercent, Cooldown and ManaCost columns hold for a skill that
+#: states none of its own, and takes its slot's figure instead.
+#:
+#: A SLOT IS A KEY AND A SKILL IS WORTH WHAT IT IS WORTH, decided by the project
+#: owner on 2026-08-22 and recorded in docs/DECISIONS.md. Any skill may go in any
+#: slot, so a skill taking its damage from whichever slot it happened to be put
+#: in would be worth 250% of weapon damage on one key and 400% on another.
+#:
+#: EVERY CELL IS BLANK TODAY AND THAT IS DELIBERATE. The mechanism lands before
+#: the numbers so that nothing changes until a number is written: a blank falls
+#: back to the slot's figure, which is what the game did before. Writing the 112
+#: designed skills' numbers is the rest of issue #836.
+#:
+#: NOT ZERO, for the same reason the critical strike sentinel is not. A Support
+#: skill deals 0% of weapon damage, a skill may have no cooldown, and a skill may
+#: be free, so zero has to mean zero in all three.
+UNSTATED_SKILL_NUMBER = -1.0
+
+
+def skill_number(cell: str, what: str, where: str) -> float:
+    """A per-skill damage, cooldown or mana cost, or -1 when the cell is blank.
+
+    Blank is the ordinary case and is not a fault: every one of the 398 rows is
+    blank today.
+    """
+    if not cell:
+        return UNSTATED_SKILL_NUMBER
+
+    try:
+        value = float(cell)
+    except ValueError:
+        raise DataError(
+            f"{where}: states a {what} of {cell!r}, which is not a number. "
+            "Leave the cell blank to take the slot's figure.") from None
+
+    # NEGATIVE IS REFUSED RATHER THAN PASSED THROUGH, because -1 is the sentinel
+    # meaning the row says nothing. A row meaning to state -1 of something would
+    # be read as stating nothing at all, and nothing would report it.
+    if value < 0.0:
+        raise DataError(
+            f"{where}: states a {what} of {value}. A negative figure is not "
+            "meaningful, and -1 already means the row says nothing. Leave the "
+            "cell blank instead.")
+
+    return value
 
 
 #: What the CritChancePercent column holds for a skill that states no critical

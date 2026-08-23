@@ -735,9 +735,15 @@ CATACLYSM_TEST(FCataclysmSkillRowCarriesItsChanceTest,
 
 	// Two rows differing in one cell: one states a chance, one states nothing.
 	const FString Csv = TEXT(
-		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent\r\n"
-		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,,,20\r\n"
-		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,,,-1\r\n");
+		// THE THREE FIGURES AT THE END ARE THE SKILL'S OWN DAMAGE, COOLDOWN
+		// AND MANA COST, added by issue #836 when a slot became a key. Each is
+		// -1 here, meaning the row says nothing, because this test is about the
+		// critical strike chance beside them. A column missing from this string
+		// is reported by CreateTableFromCSVString rather than ignored, which is
+		// what makes this notice a row struct that grew.
+		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost\r\n"
+		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,,,20,-1,-1,-1\r\n"
+		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,,,-1,-1,-1,-1\r\n");
 
 	const TArray<FString> Problems = Table->CreateTableFromCSVString(Csv);
 	if (!TestEqual(TEXT("the CSV imports with no problems"), Problems.Num(), 0))
