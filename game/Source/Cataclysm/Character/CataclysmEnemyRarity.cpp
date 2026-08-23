@@ -131,3 +131,62 @@ int32 UCataclysmEnemyRarity::RollRarityStep(const UDataTable* EnemyRarityTable,
 	// running total. The last spawnable rung is what that means.
 	return Steps.Last();
 }
+
+bool UCataclysmEnemyRarity::ScalingFromCommon(
+	const UDataTable* EnemyRarityTable, int32 Step,
+	float& OutHealth, float& OutDamage, float& OutArmour)
+{
+	// ONE BY DEFAULT, SO A FAILURE CHANGES NOTHING. A missing table has to leave
+	// the creature standing at its designed Common figures rather than at zero,
+	// which would be an enemy that dies to one hit and deals nothing.
+	OutHealth = 1.0f;
+	OutDamage = 1.0f;
+	OutArmour = 1.0f;
+
+	if (!EnemyRarityTable)
+	{
+		return false;
+	}
+
+	const FCataclysmEnemyRarityRow* Wanted = nullptr;
+	const FCataclysmEnemyRarityRow* Common = nullptr;
+
+	EnemyRarityTable->ForeachRow<FCataclysmEnemyRarityRow>(
+		TEXT("UCataclysmEnemyRarity::ScalingFromCommon"),
+		[&](const FName&, const FCataclysmEnemyRarityRow& Row)
+		{
+			if (Row.Step == Step)
+			{
+				Wanted = &Row;
+			}
+			// COMMON IS FOUND BY ITS STEP AND NOT BY ITS NAME. The name is a
+			// display string and could be translated or renamed; step 0 is what
+			// the table means by "the bottom rung".
+			if (Row.Step == 0)
+			{
+				Common = &Row;
+			}
+		});
+
+	if (!Wanted || !Common)
+	{
+		return false;
+	}
+
+	// A ZERO IN THE DENOMINATOR IS A BROKEN TABLE, not a rarity worth nothing.
+	// Armour is the one that can legitimately be zero for a creature, but that
+	// is the creature's own share on FCataclysmEnemyArchetypeRow, not this.
+	const auto Ratio = [](float Wanted, float Common, float& Out)
+	{
+		if (Common > 0.0f && Wanted > 0.0f)
+		{
+			Out = Wanted / Common;
+		}
+	};
+
+	Ratio(Wanted->HealthPerScore, Common->HealthPerScore, OutHealth);
+	Ratio(Wanted->DamagePerScore, Common->DamagePerScore, OutDamage);
+	Ratio(Wanted->ArmorPerScore, Common->ArmorPerScore, OutArmour);
+
+	return true;
+}

@@ -319,14 +319,30 @@ bool FCataclysmSaveCreatureKeepsItsDamage::RunTest(const FString&)
 		return false;
 	}
 
-	constexpr float FullHealth = 1000.0f;
+	constexpr float DesignedHealth = 1000.0f;
 	constexpr float WhatWasLeft = 137.5f;
 
 	ACataclysmEnemyCharacter* Boss =
-		SpawnCreature(World, FVector(400.0f, 300.0f, 90.0f), FullHealth, /*Rarity=*/4);
+		SpawnCreature(World, FVector(400.0f, 300.0f, 90.0f), DesignedHealth,
+					  /*Rarity=*/4);
 	if (!Boss || !WoundTo(Boss, WhatWasLeft))
 	{
 		AddError(TEXT("a wounded boss was needed and could not be made"));
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// READ OFF THE CREATURE RATHER THAN ASSUMED FROM WHAT IT WAS GIVEN, and
+	// since issue #848 those are two different numbers. A spawner passes the
+	// design model's COMMON figure and the creature's rarity multiplies it, so a
+	// Boss given 1000 stands at about 11,700. What this test is about is that a
+	// save and a restore give back what the creature ACTUALLY had, so comparing
+	// against the designed input would be testing the wrong thing -- and it
+	// would have to be updated again every time the rarity table is re-tuned.
+	const float FullHealth = MaxHealthOf(Boss);
+	if (!TestTrue(TEXT("a Boss is scaled above the figure it was designed from"),
+			FullHealth > DesignedHealth))
+	{
 		World->DestroyWorld(false);
 		return false;
 	}

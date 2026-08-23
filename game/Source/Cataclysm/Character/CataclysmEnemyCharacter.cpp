@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmEnemyDeath.h"
+#include "Character/CataclysmEnemyRarity.h"
 // For what a kill drops. The rules live in the item module; this file
 // only says when they run and where the result lands.
 #include "Items/CataclysmDropRoll.h"
@@ -821,6 +822,13 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	// below Common on the ladder, and clamping beats letting a bad value make
 	// IsBoss's comparison quietly meaningless.
 	RarityStep = FMath::Max(0, NewStep);
+
+	// RE-APPLIED, BECAUSE THE RARITY IS PART OF THE STAT BLOCK SINCE ISSUE #848.
+	// Every other setter here re-applies for the reason SetHealth states: a
+	// spawner sets these on the lines after SpawnActor, in whatever order suits
+	// it, and the order must not matter. This one did not, because rarity used
+	// to change nothing about the creature -- only what its corpse dropped.
+	ApplyStartingAttributes();
 }
 
 void ACataclysmEnemyCharacter::ApplyStartingAttributes()
@@ -829,6 +837,24 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	{
 		return;
 	}
+
+	// WHAT THE RARITY MULTIPLIES THESE BY. Issue #848: until it, an enemy's
+	// rarity changed how much its corpse dropped and nothing else, so a
+	// Legendary was exactly as easy to kill as a Common. The figures every
+	// spawner passes in are the model's COMMON figures -- `ImpHealth` names
+	// `stats_on_floor("Common", ...)` in its own comment -- so scaling from
+	// Common is what turns one into the other and leaves Common untouched.
+	//
+	// THE THREE CLIMB AT DIFFERENT RATES ON PURPOSE. Health multiplies by 1.85 a
+	// step and damage by only 1.4, so a Legendary takes 3.4 times as long to
+	// kill while hitting under twice as hard. A single multiplier for all three
+	// would make every rung above Common a damage race.
+	float HealthScale = 1.0f;
+	float DamageScale = 1.0f;
+	float ArmourScale = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(
+		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep,
+		HealthScale, DamageScale, ArmourScale);
 
 	// Writing to an attribute the ability system does not hold yet raises an
 	// engine ensure rather than failing quietly, so each is checked rather than
@@ -839,13 +865,15 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	if (StartingMaxHealth > 0.0f
 		&& AbilitySystemComponent->HasAttributeSetForAttribute(MaxHealth))
 	{
+		const float ScaledHealth = StartingMaxHealth * HealthScale;
+
 		// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental. The vital
 		// attribute set clamps health to the maximum in PreAttributeChange, so
 		// raising the current value before the maximum would clamp it straight
 		// back down to whatever the old maximum was.
-		AbilitySystemComponent->SetNumericAttributeBase(MaxHealth, StartingMaxHealth);
+		AbilitySystemComponent->SetNumericAttributeBase(MaxHealth, ScaledHealth);
 		AbilitySystemComponent->SetNumericAttributeBase(
-			UCataclysmVitalAttributeSet::GetHealthAttribute(), StartingMaxHealth);
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), ScaledHealth);
 	}
 
 	const FGameplayAttribute Damage =
@@ -853,7 +881,8 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	if (StartingAttackDamage > 0.0f
 		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
 	{
-		AbilitySystemComponent->SetNumericAttributeBase(Damage, StartingAttackDamage);
+		AbilitySystemComponent->SetNumericAttributeBase(
+			Damage, StartingAttackDamage * DamageScale);
 	}
 
 	// --- the rest of the designed stat block. Issue #372 ---
@@ -876,7 +905,12 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// resistance and zero evasion are all designed values -- the Imp's armour
 	// share really is 0.0 -- so treating zero as "not configured" would make an
 	// unarmoured creature impossible to express.
-	ApplyIfHeld(UCataclysmCombatAttributeSet::GetArmorAttribute(), StartingArmour);
+	// ARMOUR SCALES WITH RARITY AND THE THREE BELOW IT DO NOT, which is the
+	// split FCataclysmEnemyRarityRow states: rarity scales MAGNITUDE, and
+	// evasion, critical chance and critical multiplier say what KIND of creature
+	// this is. A Legendary Imp is a bigger Imp, not a different one.
+	ApplyIfHeld(UCataclysmCombatAttributeSet::GetArmorAttribute(),
+				StartingArmour * ArmourScale);
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetEvasionAttribute(), EvasionPercent);
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritChanceAttribute(),
 				CritChancePercent);

@@ -13,6 +13,8 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 
@@ -267,6 +269,195 @@ bool FCataclysmAnOrdinaryEnemyCarriesTheBaselineProfile::RunTest(const FString&)
 	// the state issue #486 describes and the one thing that has to stay typed.
 	TestEqual(TEXT("an enemy deals Demonic damage by default"),
 		Enemy->DamageType, FName(TEXT("Demonic")));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Rarity scales magnitude. Issue #848
+// ---------------------------------------------------------------------------
+
+/**
+ * A rarer enemy is harder to kill, and the three stats climb at different rates.
+ *
+ * WHAT WENT WRONG WITHOUT THIS. Reported from play on 2026-08-23: a Legendary
+ * enemy was exactly as easy to kill as a Common one. `game/Data/EnemyRarities.csv`
+ * had stated a health, damage and armour multiplier per rarity for as long as it
+ * has existed and **nothing read those three columns.** An enemy's rarity
+ * decided how much loot its corpse dropped and nothing else.
+ *
+ * THE RATIOS ARE READ FROM THE TABLE RATHER THAN WRITTEN HERE, so this test
+ * measures the wiring and not the tuning. A change to the balance figures moves
+ * both sides together, which is right: what must never break is that a rarer
+ * enemy is bigger, and that health climbs faster than damage.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmRarityScalesTheStatBlock,
+	"Cataclysm.Enemy.RarityScalesHealthDamageAndArmour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRarityScalesTheStatBlock::RunTest(const FString&)
+{
+	using namespace CataclysmEnemyAttributeTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	if (!TestNotNull(TEXT("the enemy rarity table loads"), Rarities))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Damage =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	const FGameplayAttribute Armour =
+		UCataclysmCombatAttributeSet::GetArmorAttribute();
+
+	// The same designed figures at every rarity, which is what every spawner
+	// passes: they are the model's Common figures.
+	constexpr float DesignedHealth = 100.0f;
+	constexpr float DesignedDamage = 10.0f;
+	constexpr float DesignedArmour = 200.0f;
+
+	const auto SpawnAt = [&](int32 Step) -> ACataclysmEnemyCharacter*
+	{
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+		if (Enemy)
+		{
+			Enemy->SetHealth(DesignedHealth);
+			Enemy->SetAttackDamage(DesignedDamage);
+			Enemy->SetArmour(DesignedArmour);
+			Enemy->SetRarityStep(Step);
+		}
+		return Enemy;
+	};
+
+	// -- Common is untouched, which is what keeps the existing tuning ---------
+	ACataclysmEnemyCharacter* Common = SpawnAt(0);
+	if (!TestNotNull(TEXT("a Common enemy"), Common))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Common enemy carries exactly its designed health"),
+		Held(Common, MaxHealth), DesignedHealth, 0.05f);
+	TestEqual(TEXT("and its designed damage"),
+		Held(Common, Damage), DesignedDamage, 0.05f);
+	TestEqual(TEXT("and its designed armour"),
+		Held(Common, Armour), DesignedArmour, 0.05f);
+
+	// -- a Legendary is scaled by what the table says ------------------------
+	float HealthScale = 1.0f;
+	float DamageScale = 1.0f;
+	float ArmourScale = 1.0f;
+	if (!TestTrue(TEXT("the table answers a scaling for Legendary"),
+			UCataclysmEnemyRarity::ScalingFromCommon(
+				Rarities, /*Step=*/2, HealthScale, DamageScale, ArmourScale)))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Legendary = SpawnAt(2);
+	if (!TestNotNull(TEXT("a Legendary enemy"), Legendary))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Legendary's health is the table's multiple of Common's"),
+		Held(Legendary, MaxHealth), DesignedHealth * HealthScale, 0.05f);
+	TestEqual(TEXT("and so is its damage"),
+		Held(Legendary, Damage), DesignedDamage * DamageScale, 0.05f);
+	TestEqual(TEXT("and its armour"),
+		Held(Legendary, Armour), DesignedArmour * ArmourScale, 0.05f);
+
+	// CURRENT HEALTH FOLLOWS THE MAXIMUM. A creature that spawned on a fraction
+	// of its health would die to the first hit whatever its rarity said.
+	TestEqual(TEXT("and it spawns on full health rather than on Common's"),
+		Held(Legendary, UCataclysmVitalAttributeSet::GetHealthAttribute()),
+		DesignedHealth * HealthScale, 0.05f);
+
+	// -- THE PART THAT MATTERS IN PLAY ---------------------------------------
+	// A rarer enemy has to be harder to kill, not merely different. Asserted
+	// against Common rather than against a number, so it holds through tuning.
+	TestTrue(FString::Printf(
+		TEXT("a Legendary has more health than a Common, %.1f against %.1f"),
+		Held(Legendary, MaxHealth), Held(Common, MaxHealth)),
+		Held(Legendary, MaxHealth) > Held(Common, MaxHealth) + 0.05f);
+
+	// HEALTH CLIMBS FASTER THAN DAMAGE, which is why the table has three columns
+	// rather than one multiplier. A single figure for all three would make every
+	// rung above Common a damage race rather than a longer fight.
+	TestTrue(FString::Printf(
+		TEXT("health scales faster than damage, %.3f against %.3f"),
+		HealthScale, DamageScale),
+		HealthScale > DamageScale + 0.001f);
+
+	return true;
+}
+
+/**
+ * The order the spawner sets things in does not matter.
+ *
+ * WHY THIS IS ITS OWN TEST. `SetHealth` records that a spawner sets these on the
+ * lines after SpawnActor in whatever order suits it, and that storing rather
+ * than writing is what makes the order irrelevant. Rarity joined that stat block
+ * in issue #848, and a rarity arriving AFTER the health -- which is the order
+ * every spawner in this project actually uses -- would otherwise scale nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmRarityAppliesWhicheverOrderItArrivesIn,
+	"Cataclysm.Enemy.RarityScalesWhicheverOrderTheSpawnerSetsItIn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRarityAppliesWhicheverOrderItArrivesIn::RunTest(const FString&)
+{
+	using namespace CataclysmEnemyAttributeTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+
+	ACataclysmEnemyCharacter* RarityLast =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* RarityFirst =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("two enemies"), RarityLast)
+		|| !TestNotNull(TEXT("two enemies"), RarityFirst))
+	{
+		return false;
+	}
+
+	// The order every spawner in this project uses.
+	RarityLast->SetHealth(100.0f);
+	RarityLast->SetRarityStep(3);
+
+	// And the reverse.
+	RarityFirst->SetRarityStep(3);
+	RarityFirst->SetHealth(100.0f);
+
+	TestEqual(TEXT("both come out with the same health"),
+		Held(RarityLast, MaxHealth), Held(RarityFirst, MaxHealth), 0.05f);
+	TestTrue(FString::Printf(
+		TEXT("and both are scaled above the designed 100, got %.1f"),
+		Held(RarityLast, MaxHealth)),
+		Held(RarityLast, MaxHealth) > 100.05f);
 
 	return true;
 }
