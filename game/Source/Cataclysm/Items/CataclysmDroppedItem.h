@@ -268,8 +268,12 @@ public:
 	 *
 	 * IT IS NOT THE SAME THING AS DIABLO'S RADIUS AND THE DIFFERENCE MATTERS.
 	 * There the radius is what a character sweeps up automatically by walking
-	 * over it; here nothing is automatic and this is how near a click has to
-	 * happen from. Nothing in this project picks anything up by walking over it.
+	 * over it; this one is how near a click has to happen from.
+	 *
+	 * SINCE ISSUE #851 A CRAFTING MATERIAL IS SWEPT UP, and this sentence used
+	 * to say nothing in this project was. Gear still is not: a piece of gear is
+	 * a decision and has to be walked to and looked at, and a material is not.
+	 * AutomaticMaterialRangeCm below is that radius.
 	 *
 	 * A CLICK FROM FURTHER AWAY IS NOT REFUSED. The character walks to the drop
 	 * and takes it on arrival, which is what every game in the genre does.
@@ -282,6 +286,30 @@ public:
 	static constexpr float PickupRangeCm = 300.0f;
 
 	/**
+	 * How near a character has to be for a crafting material to come to it
+	 * without being clicked. Issue #851.
+	 *
+	 * FIVE TIMES THE CLICK RANGE, decided by the project owner on 2026-08-23,
+	 * and written as a multiple rather than as 1500 so the two move together.
+	 * Tuning the click range and leaving this behind would be the kind of
+	 * silent drift a second copy of a number always produces.
+	 *
+	 * MATERIALS ONLY, AND THAT IS THE WHOLE RULE. The project owner asked for
+	 * automatic collection on 2026-08-23 and the issue is explicit about the
+	 * scope: a piece of gear is a decision and has to be walked to and looked
+	 * at, so collecting one without being asked would take that decision away.
+	 * A material is a quantity of an interchangeable thing and collecting it
+	 * costs the player nothing.
+	 *
+	 * FIFTEEN METRES IS NEARLY FOUR DUNGEON CELLS, which are 400 cm each, so
+	 * this reaches most of the way across a room. That is what an automatic
+	 * pickup is for -- Last Epoch and Diablo IV both collect materials and
+	 * currency by walking near them -- and it is a tuning value like the click
+	 * range above.
+	 */
+	static constexpr float AutomaticMaterialRangeCm = PickupRangeCm * 5.0f;
+
+	/**
 	 * Whether a character standing here can reach a drop lying there.
 	 *
 	 * MEASURED FLAT, IGNORING HEIGHT. A drop is spawned at the height of the
@@ -291,6 +319,23 @@ public:
 	 * on a step, quietly harder to pick up than the same drop on flat ground.
 	 */
 	static bool IsWithinPickupRange(const FVector& Character, const FVector& Drop);
+
+	/**
+	 * Whether a drop comes to the character on its own. Issue #851.
+	 *
+	 * TAKES WHETHER IT IS A MATERIAL RATHER THAN THE DROP ITSELF, so the rule
+	 * is a function over plain values and a test can watch it. Building an
+	 * ACataclysmDroppedItem needs a world; deciding this does not.
+	 *
+	 * MEASURED FLAT, IGNORING HEIGHT, for the same reason IsWithinPickupRange
+	 * is: a drop from a tall creature, or one that died on a step, must not be
+	 * quietly harder to collect than the same drop on flat ground.
+	 *
+	 * @param bIsMaterial  ACataclysmDroppedItem::IsMaterial for the drop
+	 * @return false for gear at any distance
+	 */
+	static bool ComesAutomatically(bool bIsMaterial, const FVector& Character,
+								   const FVector& Drop);
 
 	/**
 	 * Which of the drawn names the cursor is over, or INDEX_NONE for none.
