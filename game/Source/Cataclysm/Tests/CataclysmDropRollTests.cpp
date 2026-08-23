@@ -162,10 +162,15 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 	}
 
 	// Printed by loot.rarity_distribution(8, 0.0). Relative rather than
-	// absolute, because the shares run from 0.61 down to 0.0000392 and one
+	// absolute, because the shares run from 0.34 down to 0.0000392 and one
 	// tolerance cannot serve both ends.
+	//
+	// THE ORDINARY FOUR ARE NEARLY LEVEL HERE AND THEY USED TO BE 0.61 DOWN TO
+	// 0.039. Issue #886: the ordinary segment flattens as the difficulty tier
+	// rises, so a tier 8 player mostly finds Masterful and Superb. The enchanted
+	// four are unchanged, which is the half of that decision this array proves.
 	const float RarityShareAtTier8[] = {
-		0.6120010967f, 0.2448004387f, 0.0979201755f, 0.0391680702f,
+		0.1723819674f, 0.2154774593f, 0.2693468241f, 0.3366835302f,
 		0.0048960088f, 0.0009792018f, 0.0001958404f, 0.0000391681f,
 	};
 
@@ -192,10 +197,97 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 
 	// AND MASTERFUL STAYS COMMON, which is the point the whole weighting rests
 	// on: the design fits its affix values against a full set of it, and
-	// crafting promotes a piece upward from there.
-	TestTrue(*FString::Printf(TEXT("and a Masterful drop is one in 26 (%.1f)"),
+	// crafting promotes a piece upward from there. At difficulty tier 8 it is
+	// now the commonest thing that drops rather than one in 26, which is what
+	// issue #886 changed and why this figure moved.
+	TestTrue(*FString::Printf(TEXT("and a Masterful drop is one in 3 (%.1f)"),
 							  1.0f / Shares[3]),
-		FMath::Abs(1.0f / Shares[3] - 25.5f) < 0.5f);
+		FMath::Abs(1.0f / Shares[3] - 2.97f) < 0.05f);
+
+	// THE TWO SEGMENTS MOVED DIFFERENTLY, AND THAT IS THE DECISION. Stated as a
+	// comparison rather than left to the array above, because a reader looking
+	// at eight literals cannot see which of them were meant to move. Only the
+	// ordinary four did.
+	TestTrue(TEXT("Masterful is the commonest thing at difficulty tier 8"),
+		Shares[3] > Shares[0] && Shares[3] > Shares[1] && Shares[3] > Shares[2]);
+
+	// THE DIFFICULTY TIER MOVES THE ORDINARY SEGMENT AND NOTHING ELSE. Issue
+	// #886. Two properties rather than a second array of literals, because what
+	// was decided is the direction and the pinning, not eight more numbers.
+	//
+	// ONE: GOING DEEPER DROPS LESS OF THE WEAKEST THING. From tier 2 up; tier 1
+	// reaches two rungs and tier 2 three, so at the very bottom the cap moves
+	// the shares around rather than the weights.
+	float PreviousEveryday = 1.0f;
+	for (int32 Tier = 2; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		FDrop::RarityDistribution(Rarities, Tier, 0.0f, Shares);
+		TestTrue(*FString::Printf(
+			TEXT("Everyday is %.4f of drops at tier %d, no more than the "
+				 "%.4f at the tier above it"), Shares[0], Tier,
+			PreviousEveryday),
+			Shares[0] <= PreviousEveryday + 1e-6f);
+		PreviousEveryday = Shares[0];
+	}
+
+	// TWO: THE ENCHANTED FOUR KEEP THE SHARE THE TABLE'S OWN WEIGHTS GIVE THEM.
+	// Compared against the table rather than against a figure written here, and
+	// against the rungs THIS TIER CAN REACH rather than all eight: the cascade
+	// divides by what is reachable, so at tier 4 Legendary takes a share of five
+	// rungs and at tier 8 a share of eight. Those are not the same number, which
+	// is why this is not written as "the same at every tier".
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		FDrop::RarityDistribution(Rarities, Tier, 0.0f, Shares);
+		const int32 Cap = static_cast<int32>(FDrop::BestRarityOnADrop(Tier));
+
+		float Reachable = 0.0f;
+		for (int32 Rung = 0; Rung <= Cap; ++Rung)
+		{
+			if (const FCataclysmGearRarityRow* Row =
+					FDrop::RarityRow(Rarities, Ladder()[Rung]))
+			{
+				Reachable += Row->DropWeight;
+			}
+		}
+
+		for (int32 Rung = FDrop::OrdinaryRarities; Rung <= Cap; ++Rung)
+		{
+			const FCataclysmGearRarityRow* Row =
+				FDrop::RarityRow(Rarities, Ladder()[Rung]);
+			if (!Row || Reachable <= 0.0f)
+			{
+				continue;
+			}
+
+			const float Expected = Row->DropWeight / Reachable;
+			TestTrue(*FString::Printf(
+				TEXT("%s is %.8f of drops at tier %d, the %.8f its weight in "
+					 "GearRarity.csv gives it"),
+				*FDrop::RowNameFor(Ladder()[Rung]).ToString(), Shares[Rung],
+				Tier, Expected),
+				FMath::Abs(Shares[Rung] - Expected) < Expected * 1e-4f);
+		}
+	}
+
+	// THREE: DIFFICULTY TIER 1 IS THE TABLE UNTOUCHED. The curve starts at the
+	// figure GearRarity.csv already holds, so the file still describes a real
+	// tier rather than describing none of them.
+	for (int32 Rung = 0; Rung < 8; ++Rung)
+	{
+		const FCataclysmGearRarityRow* Row =
+			FDrop::RarityRow(Rarities, Ladder()[Rung]);
+		if (!Row)
+		{
+			continue;
+		}
+		TestTrue(*FString::Printf(
+			TEXT("%s weighs %.4f at tier 1, as the table says"),
+			*FDrop::RowNameFor(Ladder()[Rung]).ToString(), Row->DropWeight),
+			FMath::IsNearlyEqual(
+				FDrop::DropWeightAt(Rarities, Ladder()[Rung], 1),
+				Row->DropWeight, Row->DropWeight * 1e-5f));
+	}
 
 	// A LOW TIER REACHES ONLY TWO RUNGS. Printed by
 	// loot.rarity_distribution(1, 0.0).
@@ -235,8 +327,29 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 	TestTrue(*FString::Printf(
 		TEXT("+100%% magic find doubles the Cataclysmic share (%.9f)"), Shares[7]),
 		FMath::Abs(Shares[7] - 0.0000783361f) < 0.0000783361f * 1e-3f);
-	TestTrue(TEXT("and drops the Everyday share below a third"),
-		FMath::Abs(Shares[0] - 0.3099783392f) < 1e-4f);
+	// AND AT DIFFICULTY TIER 8 IT REMOVES EVERYDAY ALTOGETHER, which is new with
+	// issue #886 and is worth stating rather than leaving as a number. Magic
+	// find multiplies each step and a step saturates at 1. Once the ordinary
+	// segment has flattened, Quality's step is 640 of the 1152 weight at or
+	// below it, so +80% magic find takes it to certainty and the cascade can
+	// never fall through to the floor. Before #886 that needed +250% at every
+	// tier, because the segment did not flatten.
+	//
+	// THIS IS THE GENRE'S BEHAVIOUR ARRIVED AT SIDEWAYS. Diablo IV stops showing
+	// the player Normal, Magic and Rare items in its deepest difficulties. Here
+	// nothing was added to do that: a deep, well geared character stops seeing
+	// the weakest rarity because the existing saturation rule meets a flatter
+	// segment.
+	TestEqual(TEXT("and removes Everyday from tier 8 altogether"),
+		Shares[0], 0.0f);
+
+	// NOT AT A LOW TIER, THOUGH, which is what makes it a reward for depth
+	// rather than a flat rule. The same +100% leaves the floor alone at tier 1,
+	// where Quality's step is far from saturating.
+	FDrop::RarityDistribution(Rarities, 1, 100.0f, Shares);
+	TestTrue(*FString::Printf(
+		TEXT("the same magic find leaves Everyday dropping at tier 1 (%.4f)"),
+		Shares[0]), Shares[0] > 0.0f);
 
 	return true;
 }
@@ -308,7 +421,7 @@ bool FCataclysmDropRollDrawsFromItTest::RunTest(const FString& Parameters)
 		FDrop::RollRarity(Rarities, 8, 5000000.0f, Lucky)
 			== ECataclysmRarity::Cataclysmic);
 	TestTrue(TEXT("and the step chance it saturates to is exactly 1"),
-		FDrop::RarityStepChance(Rarities, ECataclysmRarity::Cataclysmic,
+		FDrop::RarityStepChance(Rarities, ECataclysmRarity::Cataclysmic, 8,
 								5000000.0f) == 1.0f);
 
 	return true;

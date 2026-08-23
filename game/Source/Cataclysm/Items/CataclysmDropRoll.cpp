@@ -112,19 +112,47 @@ namespace
 	/**
 	 * The weight of every rung from Everyday up to and including this one.
 	 *
+	 * AT A DIFFICULTY TIER, since issue #886, because the weights themselves
+	 * move with it. Reads through UCataclysmDropRoll::DropWeightAt rather than
+	 * the row's own DropWeight, which is the tier 1 figure.
+	 *
 	 * Returns 0 when nothing on the way up has a weight, which the caller has to
 	 * treat as "there is nothing to choose between" rather than dividing by it.
 	 */
 	float WeightAtOrBelow(const UDataTable* GearRarityTable,
-						  ECataclysmRarity Rarity)
+						  ECataclysmRarity Rarity, int32 DifficultyTier)
 	{
 		float Total = 0.0f;
 		for (int32 Rung = 0; Rung <= LadderIndex(Rarity); ++Rung)
 		{
+			Total += UCataclysmDropRoll::DropWeightAt(
+				GearRarityTable, RarityAt(Rung), DifficultyTier);
+		}
+		return Total;
+	}
+
+	/**
+	 * The ordinary segment's weights added up at a difficulty tier.
+	 *
+	 * THE ARITHMETIC IS WRITTEN OUT HERE RATHER THAN GOING THROUGH DropWeightAt,
+	 * and that is not duplication for its own sake: DropWeightAt asks this
+	 * function for the enchanted rungs, so calling it back would recurse.
+	 */
+	float OrdinaryWeightTotal(const UDataTable* GearRarityTable,
+							  int32 DifficultyTier)
+	{
+		const float Change = UCataclysmDropRoll::OrdinaryFallAt(DifficultyTier)
+			/ UCataclysmDropRoll::OrdinaryFallAtTierOne;
+
+		float Total = 0.0f;
+		for (int32 Rung = 0; Rung < UCataclysmDropRoll::OrdinaryRarities; ++Rung)
+		{
 			if (const FCataclysmGearRarityRow* Row =
 					UCataclysmDropRoll::RarityRow(GearRarityTable, RarityAt(Rung)))
 			{
-				Total += Row->DropWeight;
+				const float Below = static_cast<float>(
+					UCataclysmDropRoll::OrdinaryRarities - 1 - Rung);
+				Total += Row->DropWeight * FMath::Pow(Change, Below);
 			}
 		}
 		return Total;
@@ -247,8 +275,55 @@ float UCataclysmDropRoll::RollResidue(const UDataTable* GearRarityTable,
 											   FMath::TruncToInt(Highest)));
 }
 
+float UCataclysmDropRoll::OrdinaryFallAt(int32 DifficultyTier)
+{
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, DifficultyTiers);
+	const float Span = static_cast<float>(DifficultyTiers - 1);
+
+	return OrdinaryFallAtTierOne
+		* FMath::Pow(OrdinaryFallAtDeepest / OrdinaryFallAtTierOne,
+					 static_cast<float>(Tier - 1) / Span);
+}
+
+float UCataclysmDropRoll::DropWeightAt(const UDataTable* GearRarityTable,
+									   ECataclysmRarity Rarity,
+									   int32 DifficultyTier)
+{
+	const FCataclysmGearRarityRow* Row = RarityRow(GearRarityTable, Rarity);
+	if (!Row)
+	{
+		return 0.0f;
+	}
+
+	const int32 Rung = LadderIndex(Rarity);
+	const float Change = OrdinaryFallAt(DifficultyTier) / OrdinaryFallAtTierOne;
+
+	if (Rung < OrdinaryRarities)
+	{
+		// MASTERFUL IS THE ANCHOR AND DOES NOT MOVE. It sits at rung
+		// OrdinaryRarities - 1, so its exponent is zero and everything below it
+		// is multiplied by the change once per rung of distance.
+		const float Below = static_cast<float>(OrdinaryRarities - 1 - Rung);
+		return Row->DropWeight * FMath::Pow(Change, Below);
+	}
+
+	// THE ENCHANTED FOUR FOLLOW THE ORDINARY SEGMENT'S TOTAL, which is what
+	// keeps their share of the ladder fixed at every difficulty tier. At tier 1
+	// the two totals are equal and this is a multiplication by one, so the
+	// table's own figures come straight through.
+	const float AtTierOne = OrdinaryWeightTotal(GearRarityTable, 1);
+	if (AtTierOne <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return Row->DropWeight
+		* OrdinaryWeightTotal(GearRarityTable, DifficultyTier) / AtTierOne;
+}
+
 float UCataclysmDropRoll::RarityStepChance(const UDataTable* GearRarityTable,
 										   ECataclysmRarity Rarity,
+										   int32 DifficultyTier,
 										   float MagicFind)
 {
 	const FCataclysmGearRarityRow* Row = RarityRow(GearRarityTable, Rarity);
@@ -257,7 +332,8 @@ float UCataclysmDropRoll::RarityStepChance(const UDataTable* GearRarityTable,
 		return 0.0f;
 	}
 
-	const float AtOrBelow = WeightAtOrBelow(GearRarityTable, Rarity);
+	const float AtOrBelow =
+		WeightAtOrBelow(GearRarityTable, Rarity, DifficultyTier);
 	if (AtOrBelow <= 0.0f)
 	{
 		// Every rung up to here weighs nothing, so there is no share to take.
@@ -271,7 +347,8 @@ float UCataclysmDropRoll::RarityStepChance(const UDataTable* GearRarityTable,
 		return 0.0f;
 	}
 
-	const float Share = Row->DropWeight / AtOrBelow;
+	const float Share =
+		DropWeightAt(GearRarityTable, Rarity, DifficultyTier) / AtOrBelow;
 	return FMath::Min(1.0f, Share * (1.0f + FMath::Max(0.0f, MagicFind) / 100.0f));
 }
 
@@ -557,8 +634,8 @@ void UCataclysmDropRoll::RarityDistribution(const UDataTable* GearRarityTable,
 	float Left = 1.0f;
 	for (int32 Rung = Best; Rung >= 1; --Rung)
 	{
-		const float Chance =
-			RarityStepChance(GearRarityTable, RarityAt(Rung), MagicFind);
+		const float Chance = RarityStepChance(GearRarityTable, RarityAt(Rung),
+											  DifficultyTier, MagicFind);
 		OutShares[Rung] = Left * Chance;
 		Left *= 1.0f - Chance;
 	}
@@ -577,7 +654,7 @@ ECataclysmRarity UCataclysmDropRoll::RollRarity(const UDataTable* GearRarityTabl
 	for (int32 Rung = Best; Rung >= 1; --Rung)
 	{
 		if (Stream.FRand() < RarityStepChance(GearRarityTable, RarityAt(Rung),
-											  MagicFind))
+											  DifficultyTier, MagicFind))
 		{
 			return RarityAt(Rung);
 		}

@@ -68,13 +68,13 @@ def documented_levels() -> dict[int, int]:
     found: dict[int, int] = {}
     for line in body.splitlines():
         match = re.match(
-            r"\|\s*(\d+)\s*\|\s*T\d+\s*\|\s*\w+ gear, \+(\d+)", line.strip())
+            r"\|\s*(\d+)\s*\|\s*T\d+\s*\|\s*\w+\s*\|\s*\+(\d+)", line.strip())
         if match:
             found[int(match.group(1))] = int(match.group(2))
     assert found, (
         "no difficulty tier row in the design document states an upgrade "
-        "level. The table's third column should read like "
-        "'Everyday gear, +3 upgrade level'.")
+        "level. Since issue #870 the table has four columns and the last "
+        "one should read like '+3 upgrade level'.")
     return found
 
 

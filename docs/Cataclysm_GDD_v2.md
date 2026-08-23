@@ -788,7 +788,7 @@ So chasing Cataclysmic gear is what pushes a character toward the maximum Power 
 
   
 
-Gear and gem rarity equal the difficulty tier because there are eight of each, and because the best upgrade stone that can drop is capped by the current difficulty tier. Gear level is tier + 2 capped at +10, which clears every rarity gate in section VI and reaches exactly +10 at tier 8.
+Gear and gem rarity reach one rarity above the difficulty tier, because there are eight of each and because the best upgrade stone that can drop is capped by the current difficulty tier. Gear level is tier + 2 capped at +10, which clears every rarity gate in section VI and reaches exactly +10 at tier 8. The one-above is the same rule the affix tier gate uses, and section VII gives the reason and the tier-by-tier table. It caps what a drop *may* be; what a drop is *likely* to be also moves with the tier, and section VII covers that too.
 
   
 
@@ -2459,22 +2459,26 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 
 
-**The difficulty tier is the design's own gate, three times already.** Gear and gem rarity equal the difficulty tier. The best upgrade stone that can drop is capped by the current difficulty tier. A weapon rolls damage types up to the lower of its own limit and the tier it dropped on. This is the fourth use of the same shape, not a new mechanism.
+**The difficulty tier is the design's own gate, three times already.** Gear and gem rarity reach one rarity above the difficulty tier. The best upgrade stone that can drop is capped by the current difficulty tier. A weapon rolls damage types up to the lower of its own limit and the tier it dropped on. This is the fourth use of the same shape, not a new mechanism.
 
 
 
-| Difficulty tier | Highest affix tier a drop can roll | What else that tier brings |
-| :-: | :-: | :-- |
-| 1 | T2 | Everyday gear, +3 upgrade level |
-| 2 | T3 | Quality gear, +4 |
-| 3 | T4 | Superb gear, +5 |
-| 4 | T5 | Masterful gear, +6 |
-| 5 | T6 | Legendary gear, +7 |
-| 6 | T7 | Mythical gear, +8 |
-| 7 | T7 | Ascendant gear, +9 |
-| 8 | T7 | Cataclysmic gear, +10 |
+| Difficulty tier | Highest affix tier a drop can roll | Highest gear rarity a drop can roll | What else that tier brings |
+| :-: | :-: | :-: | :-- |
+| 1 | T2 | Quality | +3 upgrade level |
+| 2 | T3 | Superb | +4 |
+| 3 | T4 | Masterful | +5 |
+| 4 | T5 | Legendary | +6 |
+| 5 | T6 | Mythical | +7 |
+| 6 | T7 | Ascendant | +8 |
+| 7 | T7 | Cataclysmic | +9 |
+| 8 | T7 | Cataclysmic | +10 |
 
-*Gear rarity and upgrade level are the reference progression stated in section IV.*
+*Upgrade level is the reference progression stated in section IV.*
+
+**Gear rarity is one above the tier, and it used to say "equal".** Issue #870. The rule here is the same one-above the affix tier column uses, and for the same reason: with the cap sitting exactly on the tier, the best thing a dungeon can produce is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 share a ceiling, exactly as affix tiers 6, 7 and 8 all reach T7.
+
+**A cap is not a distribution.** This column says what a drop *may* roll, not what it is likely to be. What a drop is likely to be also moves with the difficulty tier, since issue #886: the four ordinary rarities flatten toward Masterful as a player goes deeper, while Legendary and above keep the same share at every tier. A tier 8 player mostly finds Masterful and Superb; a tier 1 player mostly finds Everyday.
 
 
 

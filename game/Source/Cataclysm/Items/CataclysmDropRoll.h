@@ -80,6 +80,40 @@ public:
 	 */
 	static constexpr int32 RaritiesAboveDifficulty = 1;
 
+	/**
+	 * How many rarities sit below the enchantment boundary. Everyday to
+	 * Masterful. Mirrors `ORDINARY_RARITIES` in `sim/cataclysm_sim/loot.py`.
+	 *
+	 * THE FOUR WITH NO UPGRADE-LEVEL GATE. The four above it carry enchantments
+	 * and are gated on upgrade level, which is a real boundary in the design
+	 * rather than another rung. The two segments move differently with the
+	 * difficulty tier; see DropWeightAt.
+	 */
+	static constexpr int32 OrdinaryRarities = 4;
+
+	/**
+	 * How fast the ordinary segment falls, at difficulty tier 1 and at tier 8.
+	 *
+	 * EACH ORDINARY RARITY IS THIS MANY TIMES COMMONER THAN THE ONE ABOVE IT.
+	 * At 2.5, which the Gear Rarity table holds, Everyday is 61% of drops and
+	 * Masterful 4%. Below 1 the segment inverts and Masterful is the commonest
+	 * thing that drops, which is what tier 8 does at 0.8: Everyday 17%,
+	 * Quality 22%, Superb 27%, Masterful 34%.
+	 *
+	 * WHY IT MOVES WITH THE TIER. Issue #886. The project owner played it and
+	 * reported that only Everyday and Quality items ever drop and that it is
+	 * uninteresting. Measured, difficulty tiers 4 to 8 produced the same
+	 * distribution to within a tenth of a per cent, because only the ceiling
+	 * moved with the tier and the weights did not.
+	 *
+	 * MIRRORS `ORDINARY_FALL_AT_TIER_ONE` AND `ORDINARY_FALL_AT_DEEPEST` in
+	 * `sim/cataclysm_sim/loot.py`, where the reasoning and the genre sources
+	 * are written out. `tools/tests/test_unreal_drop_figures_match_the_model.py`
+	 * fails when the two copies disagree.
+	 */
+	static constexpr float OrdinaryFallAtTierOne = 2.5f;
+	static constexpr float OrdinaryFallAtDeepest = 0.8f;
+
 	/** The same plus one, for which affix tiers a drop may reach. */
 	static constexpr int32 AffixTiersAboveDifficulty = 1;
 
@@ -173,6 +207,42 @@ public:
 							 ECataclysmRarity Rarity, FRandomStream& Stream);
 
 	/**
+	 * How fast the ordinary segment falls at a difficulty tier.
+	 *
+	 * GEOMETRIC BETWEEN THE TWO ENDS, not in equal steps, because the number is
+	 * a ratio. Mirrors `ordinary_fall_at` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float OrdinaryFallAt(int32 DifficultyTier);
+
+	/**
+	 * How heavily a rarity is weighted on a drop at this difficulty tier.
+	 *
+	 * THE TABLE HOLDS TIER 1 AND EVERY DEEPER TIER IS WORKED OUT FROM IT, so
+	 * `game/Data/GearRarity.csv` keeps one weight per rarity and no per-tier
+	 * table exists anywhere. Issue #886. Mirrors `drop_weight` in
+	 * `sim/cataclysm_sim/loot.py`.
+	 *
+	 * HOW THE TWO SEGMENTS MOVE, and they move differently on purpose:
+	 *
+	 *     ORDINARY, Everyday to Masterful. Masterful is the anchor and never
+	 *     moves. Each rarity below it is multiplied by the fall ratio's own
+	 *     change raised to how far below Masterful it sits, so the segment
+	 *     flattens toward Masterful as the tier rises.
+	 *
+	 *     ENCHANTED, Legendary to Cataclysmic. All four are scaled together by
+	 *     how much the ordinary segment shrank, which pins their share of the
+	 *     ladder. Legendary stays one in 204 and Cataclysmic one in 25,531 at
+	 *     every tier that reaches them, which is what the project owner chose
+	 *     on 2026-08-23.
+	 *
+	 * @return 0 when the table is missing or holds no row for the rarity
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float DropWeightAt(const UDataTable* GearRarityTable,
+							  ECataclysmRarity Rarity, int32 DifficultyTier);
+
+	/**
 	 * The chance the cascade stops at this rung, given that it reached it.
 	 *
 	 * THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT. That is what
@@ -180,6 +250,10 @@ public:
 	 * w[R]/S[R], where S[R] is the weight of rungs 1 to R, leaves S[R-1]/S[R] to
 	 * carry on. Multiplied down from the top, every rung ends with w[R]/S[N] --
 	 * its own share of the whole reachable ladder, which is what a weight means.
+	 *
+	 * THE WEIGHTS COME FROM DropWeightAt AND SO DEPEND ON THE DIFFICULTY TIER.
+	 * Issue #886. Before it they were read straight out of the table and every
+	 * tier had the same shape, which is what made tiers 4 to 8 identical.
 	 *
 	 * MAGIC FIND MULTIPLIES IT, which is Path of Exile's stated behaviour: +100%
 	 * increased item rarity gives twice as many of every rarity above the floor.
@@ -189,7 +263,8 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	static float RarityStepChance(const UDataTable* GearRarityTable,
-								  ECataclysmRarity Rarity, float MagicFind);
+								  ECataclysmRarity Rarity, int32 DifficultyTier,
+								  float MagicFind);
 
 	/**
 	 * What fraction of drops at this tier is each rarity, indexed by

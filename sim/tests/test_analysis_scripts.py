@@ -110,7 +110,8 @@ def penetration_run():
                                   "analyse_lethality_modes.py",
                                   "analyse_two_handed_multiplier.py",
                                   "analyse_weakening_ailments.py",
-                                  "analyse_margin_tolerance.py"])
+                                  "analyse_margin_tolerance.py",
+                                  "analyse_per_tier_rarity.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed

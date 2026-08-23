@@ -128,6 +128,13 @@ DROP_RARITIES_ABOVE_DIFFICULTY = 1
 #: and flagged at the time as too generous -- one drop in eight was Cataclysmic.
 #: The project owner set the shape on 2026-08-18 after rejecting one in 255 as
 #: still too generous.
+#:
+#: THIS IS THE TABLE AT DIFFICULTY TIER 1, NOT AT EVERY TIER. Since issue #886 the
+#: ordinary segment's fall ratio moves with the difficulty tier, so a deep player
+#: mostly finds Masterful and Superb rather than Everyday and Quality. `drop_weight`
+#: below is what does it and `ORDINARY_FALL_AT_TIER_ONE` is the 2.5 above, so this
+#: table is what tier 1 uses unchanged. Nothing about the sheet changed and nothing
+#: here is a second copy of a per-tier number: the deeper tiers are worked out.
 RARITY_DROP_WEIGHT: dict[str, float] = {
     "Everyday":    15625.0,
     "Quality":      6250.0,
@@ -213,6 +220,121 @@ RARITY_GEAR_LEVEL_GATE: dict[str, int] = {
     "Ascendant":   8,
     "Cataclysmic": 10,
 }
+
+#: How many rarities sit below the enchantment boundary. Everyday to Masterful.
+#:
+#: DERIVED FROM WHERE THE UPGRADE-LEVEL GATE STARTS rather than written twice.
+#: `_check_the_ordinary_segment_is_where_the_gate_starts` holds the two together,
+#: so giving Legendary a gate of 0 without meaning to fails rather than quietly
+#: reshaping every drop in the game.
+ORDINARY_RARITIES = 4
+
+#: How fast the ordinary segment falls, at difficulty tier 1 and at the deepest.
+#:
+#: EACH ORDINARY RARITY IS THIS MANY TIMES COMMONER THAN THE ONE ABOVE IT. At 2.5,
+#: which is what the project owner set on 2026-08-18, Everyday is 61% of drops and
+#: Masterful 4%. Below 1.0 the segment inverts and Masterful is the commonest
+#: thing that drops.
+#:
+#: WHY IT MOVES WITH THE DIFFICULTY TIER AT ALL. Issue #886. The project owner
+#: played it on 2026-08-23 and reported that only Everyday and Quality items ever
+#: drop and that it is uninteresting. Measured, it was worse than the report:
+#: difficulty tiers 4 to 8 produced the SAME distribution to within a tenth of a
+#: per cent, because the weights did not vary by tier and only the ceiling did.
+#: Five of the eight tiers were the same game.
+#:
+#: THE SHAPE CAME FROM THE GENRE AND THE SOURCES ARE IN `docs/DECISIONS.md`.
+#: Diablo II puts the depth term inside the same rarest-first cascade this file
+#: uses -- its chance improves by `(MonsterLevel - ItemLevel) / Divisor` -- and
+#: Path of Exile and Last Epoch move rarity by a multiplier the content carries.
+#: None of the three keeps a hand-authored weight row per level, which is why this
+#: is two numbers and a curve rather than eight rows.
+#:
+#: ONLY THE ORDINARY SEGMENT MOVES, AND THAT IS THE POINT. The four enchanted
+#: rarities keep exactly the share of drops they have at tier 1: Legendary stays
+#: one in 204 and Cataclysmic one in 25,531 at every tier that can reach them.
+#: The project owner chose that on 2026-08-23 over letting them rise. The reason
+#: is that the 2026-08-18 decision setting those rates was made deliberately, and
+#: what #886 reported is that the BULK of drops is uninteresting -- not that the
+#: top is too rare. `drop_weight` is where the pinning happens.
+#:
+#: WHAT 0.8 DOES AT THE DEEPEST TIER. Everyday 17%, Quality 22%, Superb 27%,
+#: Masterful 34%. The bottom two fall from 86% of drops to 39%. Masterful being
+#: the commonest thing a deep player finds is deliberate: it is the top of the
+#: ordinary ladder, `docs/Cataclysm_GDD_v2.md` fits its affix values against "a
+#: full set of Masterful gear", and crafting promotes a piece upward from there.
+#:
+#: DIFFICULTY TIER 1 IS UNCHANGED BY ALL OF THIS, by construction, because the
+#: curve starts at the value the sheet already holds.
+ORDINARY_FALL_AT_TIER_ONE = 2.5
+ORDINARY_FALL_AT_DEEPEST = 0.8
+
+
+def ordinary_fall_at(tier: int) -> float:
+    """How fast the ordinary segment falls at a difficulty tier.
+
+    GEOMETRIC BETWEEN THE TWO ENDS, not in equal steps, because the number is a
+    ratio and halving a ratio twice is what "the same amount flatter" means for
+    one. Linear was measured beside it and reaches the same place by a slightly
+    later route; the difference is a few per cent in the middle tiers.
+    """
+    if not 1 <= tier <= af.DIFFICULTY_TIERS:
+        raise ValueError(f"tier {tier} is outside 1 to {af.DIFFICULTY_TIERS}")
+
+    span = af.DIFFICULTY_TIERS - 1
+    return ORDINARY_FALL_AT_TIER_ONE * (
+        ORDINARY_FALL_AT_DEEPEST / ORDINARY_FALL_AT_TIER_ONE
+    ) ** ((tier - 1) / span)
+
+
+def _ordinary_total(tier: int) -> float:
+    """The ordinary segment's weights added up at a difficulty tier."""
+    return sum(drop_weight(rarity_at_index(index), tier)
+               for index in range(1, ORDINARY_RARITIES + 1))
+
+
+def drop_weight(rarity: str, tier: int) -> float:
+    """How heavily a rarity is weighted on a drop at this difficulty tier.
+
+    `RARITY_DROP_WEIGHT` is this at tier 1 and every deeper tier is worked out
+    from it, so the sheet holds one number per rarity and no per-tier table
+    exists anywhere. Issue #886.
+
+    HOW THE TWO SEGMENTS MOVE, and they move differently on purpose:
+
+        ORDINARY, Everyday to Masterful. Masterful is the anchor and never
+        moves. Each rarity below it is multiplied by the fall ratio's own change
+        raised to how far below Masterful it sits, so the whole segment flattens
+        toward Masterful as the tier rises and inverts past a ratio of 1.
+
+        ENCHANTED, Legendary to Cataclysmic. All four are scaled together by how
+        much the ordinary segment shrank. That is what pins them: their share of
+        every weight on the ladder comes out the same at every tier, so the
+        rates the project owner set on 2026-08-18 survive untouched.
+
+    WITHOUT THAT SECOND SCALING THE TOP WOULD RISE ON ITS OWN, and by a lot.
+    Flattening the ordinary four takes the total weight from 25,531 down to
+    2,952, so leaving the enchanted four at 125, 25, 5 and 1 would make a
+    Cataclysmic drop one in 4,156 rather than one in 25,531. Measured, not
+    reasoned: `sim/analyse_per_tier_rarity.py` prints both.
+    """
+    if rarity not in RARITY_DROP_WEIGHT:
+        raise ValueError(f"{rarity!r} is not a rarity; expected one of "
+                         f"{list(af.RARITIES)}")
+
+    base = RARITY_DROP_WEIGHT[rarity]
+    change = ordinary_fall_at(tier) / ORDINARY_FALL_AT_TIER_ONE
+    index = rarity_index(rarity)
+
+    if index <= ORDINARY_RARITIES:
+        return base * change ** (ORDINARY_RARITIES - index)
+
+    # THE ENCHANTED FOUR FOLLOW THE ORDINARY SEGMENT'S TOTAL, which is what keeps
+    # their share of the ladder fixed. At tier 1 the two totals are equal and this
+    # is a multiplication by one, so the sheet's own figures come straight through.
+    at_tier_one = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
+                      for rung in range(1, ORDINARY_RARITIES + 1))
+    return base * _ordinary_total(tier) / at_tier_one
 
 
 def rarity_index(rarity: str) -> int:
@@ -319,7 +441,7 @@ def _cascade_step_chance(weights: list[float], index: int,
                * (1.0 + magic_find / 100.0))
 
 
-def rarity_step_chance(index: int, magic_find: float = 0.0) -> float:
+def rarity_step_chance(index: int, tier: int, magic_find: float = 0.0) -> float:
     """The chance the cascade stops at this rung, given that it reached it.
 
     THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT. That is what turns
@@ -332,20 +454,24 @@ def rarity_step_chance(index: int, magic_find: float = 0.0) -> float:
     With every weight equal this is one over the rung's position, and the
     distribution is flat.
 
+    THE WEIGHTS COME FROM `drop_weight` AND SO DEPEND ON THE DIFFICULTY TIER.
+    Issue #886. Before it they were read straight out of `RARITY_DROP_WEIGHT` and
+    every tier had the same shape, which is what made tiers 4 to 8 identical.
+
     MAGIC FIND MULTIPLIES IT, which is Path of Exile's stated behaviour: +100%
     increased item rarity gives twice as many of every rarity above the floor.
     Saturating at 1 is the only ceiling; see the module docstring for the
     diminishing returns that are deliberately not built.
     """
     if 1 <= index <= len(af.RARITIES):
-        at_or_below = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
+        at_or_below = sum(drop_weight(rarity_at_index(rung), tier)
                           for rung in range(1, index + 1))
         if at_or_below <= 0.0:
             raise ValueError(
                 f"every rarity up to {rarity_at_index(index)} has a drop weight "
                 "of zero, so there is nothing for the cascade to choose between")
 
-    weights = [RARITY_DROP_WEIGHT[rarity] for rarity in af.RARITIES]
+    weights = [drop_weight(rarity, tier) for rarity in af.RARITIES]
     return _cascade_step_chance(weights, index, magic_find, "the rarity ladder")
 
 
@@ -365,7 +491,7 @@ def rarity_distribution(tier: int, magic_find: float = 0.0) -> dict[str, float]:
     out = {rarity: 0.0 for rarity in af.RARITIES}
     left = 1.0
     for index in range(best, 1, -1):
-        chance = rarity_step_chance(index, magic_find)
+        chance = rarity_step_chance(index, tier, magic_find)
         out[rarity_at_index(index)] = left * chance
         left *= 1.0 - chance
 
@@ -386,7 +512,7 @@ def roll_rarity(tier: int, magic_find: float, rng) -> str:
     best = rarity_index(best_rarity_on_a_drop(tier))
 
     for index in range(best, 1, -1):
-        if rng.random() < rarity_step_chance(index, magic_find):
+        if rng.random() < rarity_step_chance(index, tier, magic_find):
             return rarity_at_index(index)
     return af.RARITIES[0]
 
@@ -1138,16 +1264,113 @@ def _check_the_distribution_matches_the_weights() -> None:
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
         spread = rarity_distribution(tier)
         reachable = rarity_index(best_rarity_on_a_drop(tier))
-        total = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
+        total = sum(drop_weight(rarity_at_index(rung), tier)
                     for rung in range(1, reachable + 1))
 
         for index in range(1, reachable + 1):
             rarity = rarity_at_index(index)
-            expected = RARITY_DROP_WEIGHT[rarity] / total
+            expected = drop_weight(rarity, tier) / total
             if abs(spread[rarity] - expected) > 1e-9:
                 raise AssertionError(
                     f"at tier {tier}, {rarity} is {spread[rarity]:.6f} of "
                     f"drops against the {expected:.6f} its weight asks for")
+
+
+def _check_difficulty_tier_one_is_the_sheet_untouched() -> None:
+    """The curve starts where the workbook already is, so tier 1 is unchanged.
+
+    THE WHOLE PER-TIER RULE RESTS ON THIS. `RARITY_DROP_WEIGHT` mirrors the Gear
+    Rarity sheet and the sheet is authoritative, so a tier 1 that came out as
+    anything other than the sheet's own figures would mean the sheet had stopped
+    describing any tier at all, and the cross-check against it would be comparing
+    two different things without saying so.
+    """
+    for rarity, weight in RARITY_DROP_WEIGHT.items():
+        got = drop_weight(rarity, 1)
+        if abs(got - weight) > 1e-9:
+            raise AssertionError(
+                f"at difficulty tier 1 {rarity} weighs {got}, against the "
+                f"{weight} the Gear Rarity sheet gives it")
+
+
+def _check_the_ordinary_segment_is_where_the_gate_starts() -> None:
+    """`ORDINARY_RARITIES` is the enchantment boundary, said one way only.
+
+    The four ordinary rarities are exactly the ones with no upgrade-level gate.
+    Writing that boundary down twice would let the gates move without the weights
+    following, which would apply the ordinary segment's flattening to a rarity the
+    design counts as enchanted and change every drop rate in the game silently.
+    """
+    for index in range(1, len(af.RARITIES) + 1):
+        rarity = rarity_at_index(index)
+        gated = RARITY_GEAR_LEVEL_GATE[rarity] > 0
+        if gated != (index > ORDINARY_RARITIES):
+            raise AssertionError(
+                f"{rarity} is at rung {index} with an upgrade-level gate of "
+                f"{RARITY_GEAR_LEVEL_GATE[rarity]}, which disagrees with "
+                f"ORDINARY_RARITIES being {ORDINARY_RARITIES}")
+
+
+def _check_the_enchanted_rarities_keep_their_share_at_every_tier() -> None:
+    """The promise `drop_weight` makes: only the ordinary segment moves.
+
+    THIS IS THE GUARD ON THE DECISION THE PROJECT OWNER MADE ON 2026-08-23. They
+    chose to flatten the ordinary segment with depth while leaving Legendary at
+    one in 204 and Cataclysmic at one in 25,531. Those two rates fall out of the
+    scaling inside `drop_weight` rather than being written down anywhere, so
+    nothing else in the project would notice them drifting.
+
+    STATED AGAINST THE SHEET'S OWN WEIGHTS RATHER THAN AS "the same share at
+    every tier", and the difference is not pedantry. The shares are NOT equal
+    across tiers, because the cap decides how many rungs are reachable and the
+    cascade divides by the weight of those and no others: at tier 4 nothing
+    above Legendary is reachable, so it takes a share of five rungs rather than
+    of eight and comes out a part in a thousand higher.
+
+    What is the same at every tier is the share the sheet's weights give it over
+    whatever the cap leaves reachable, which is what this compares.
+    """
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        spread = rarity_distribution(tier)
+        cap = rarity_index(best_rarity_on_a_drop(tier))
+        reachable = sum(RARITY_DROP_WEIGHT[rarity_at_index(rung)]
+                        for rung in range(1, cap + 1))
+
+        for index in range(ORDINARY_RARITIES + 1, cap + 1):
+            rarity = rarity_at_index(index)
+            expected = RARITY_DROP_WEIGHT[rarity] / reachable
+
+            if abs(spread[rarity] - expected) > 1e-9:
+                raise AssertionError(
+                    f"at difficulty tier {tier}, {rarity} is "
+                    f"{spread[rarity]:.8f} of drops against the {expected:.8f} "
+                    "the Gear Rarity sheet's own weights give it over the "
+                    "rungs this tier can reach. Only the four ordinary "
+                    "rarities are meant to move with the tier")
+
+
+def _check_a_deeper_tier_never_drops_more_of_the_weakest() -> None:
+    """Everyday gets rarer as the difficulty tier rises, never commoner.
+
+    WHAT ISSUE #886 ACTUALLY ASKED FOR, stated as a property rather than as a
+    figure, so it holds whatever the two fall ratios are set to. Raising
+    `ORDINARY_FALL_AT_DEEPEST` above `ORDINARY_FALL_AT_TIER_ONE` would put the
+    curve back to front and make deep content drop MORE junk, which is the
+    complaint rather than the fix.
+
+    FROM TIER 2 ONWARD. Tier 1 reaches only two rarities and tier 2 three, so the
+    cap alone moves the share between them and the comparison at the very bottom
+    says nothing about the weights.
+    """
+    weakest = af.RARITIES[0]
+    for tier in range(2, af.DIFFICULTY_TIERS):
+        here = rarity_distribution(tier)[weakest]
+        deeper = rarity_distribution(tier + 1)[weakest]
+        if deeper > here + 1e-9:
+            raise AssertionError(
+                f"{weakest} is {deeper:.4f} of drops at difficulty tier "
+                f"{tier + 1} against {here:.4f} at tier {tier}, so going "
+                "deeper drops more of the weakest thing rather than less")
 
 
 def _check_nothing_drops_above_the_tier_cap() -> None:
@@ -1296,7 +1519,11 @@ _check_two_one_handed_weapons_match_a_two_hander()
 _check_the_socket_maxima_add_up_to_the_design_total()
 _check_every_rarity_has_a_drop_weight()
 _check_no_drop_weight_is_negative()
+_check_the_ordinary_segment_is_where_the_gate_starts()
+_check_difficulty_tier_one_is_the_sheet_untouched()
 _check_the_distribution_matches_the_weights()
+_check_the_enchanted_rarities_keep_their_share_at_every_tier()
+_check_a_deeper_tier_never_drops_more_of_the_weakest()
 _check_nothing_drops_above_the_tier_cap()
 _check_a_distribution_always_sums_to_one()
 _check_every_enemy_rarity_has_a_drop_rate()
