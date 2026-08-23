@@ -105,6 +105,34 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("retaliation"), Combat::GetRetaliationAttribute()},
 
 			// What a hit is worth.
+			//
+			// THE TWO WEAPON STATS ARE HERE AND NO CLASS LINE NAMES THEM, which
+			// is why they were absent until issue #845. game/Data/ClassStats.csv
+			// has no attack damage or attack speed column, so BaseFor answers
+			// zero for both, and that is the right base rather than a gap:
+			//
+			//   attack_damage  is entirely supplied by what is worn. A weapon's
+			//     damage is an `attack_damage` implicit on its base, so
+			//     GatherModifiers already hands it over as a flat modifier. Two
+			//     worn weapons therefore SUM without anything here summing them,
+			//     a two-handed weapon doubles because ImplicitValue doubles it,
+			//     and a Shield contributes nothing because it carries no such
+			//     implicit. The design's blend rule falls out of the pipeline.
+			//
+			//   attack_speed  cannot work that way. A weapon's swing rate is its
+			//     own column rather than an implicit, and rates AVERAGE rather
+			//     than summing, so a base has to be supplied. That is what the
+			//     BaseOverrides argument is for and it is the only stat using it.
+			//
+			// BEFORE THIS THEY REACHED NOTHING. Flat damage, increased damage and
+			// increased attack speed all roll on Gloves, Necklace, Relic, Ring and
+			// Weapon, so a player could wear five of each and none of them did
+			// anything at all. UCataclysmEquipmentComponent::GatherModifiers
+			// gathered them and this loop, being over the attribute map rather
+			// than over the modifiers, silently dropped them.
+			{TEXT("attack_damage"), Combat::GetAttackDamageAttribute()},
+			{TEXT("attack_speed"), Combat::GetAttackSpeedAttribute()},
+
 			{TEXT("crit_multiplier"), Combat::GetCritMultiplierAttribute()},
 			{TEXT("spell_damage"), Combat::GetSpellDamageAttribute()},
 			{TEXT("area_of_effect"), Combat::GetAreaOfEffectAttribute()},
@@ -141,7 +169,8 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	const UDataTable* ClassTable,
 	const FString& ClassName, int32 Level,
 	const TMap<FName, TArray<FCataclysmStatModifier>>* Modifiers,
-	ECataclysmPoolFill PoolFill)
+	ECataclysmPoolFill PoolFill,
+	const TMap<FName, float>* BaseOverrides)
 {
 	if (!AbilitySystem || !ClassTable)
 	{
@@ -165,8 +194,22 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		// name the stat, and to zero when neither does. Zero is the right answer
 		// there and not a failure: most classes leave most stats alone, and a
 		// Ritualist really does have no armour.
-		const float Base = UCataclysmClassStats::BaseFor(
+		float Base = UCataclysmClassStats::BaseFor(
 			ClassTable, ClassName, Pair.Key, Level);
+
+		// A SUPPLIED BASE REPLACES THE CLASS LINE RATHER THAN ADDING TO IT, for
+		// a stat no class line can state. Attack speed is the only one: a
+		// character's swing rate comes from the weapons it holds, and two
+		// weapons average their rates, which neither the class table nor the
+		// modifier pipeline can express. See the header for why attack damage
+		// deliberately does not use this.
+		if (BaseOverrides)
+		{
+			if (const float* Supplied = BaseOverrides->Find(FName(*Pair.Key)))
+			{
+				Base = *Supplied;
+			}
+		}
 
 		// THE THREE-BUCKET PIPELINE, NOT ADDITION. A gear affix can be flat or
 		// increased, and the design's whole damage model is

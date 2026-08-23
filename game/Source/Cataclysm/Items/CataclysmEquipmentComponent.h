@@ -289,6 +289,28 @@ public:
 	TArray<FCataclysmItem> WornWeapons() const;
 
 	/**
+	 * Stat bases that come from the worn weapons rather than from a class line.
+	 *
+	 * ONE ENTRY TODAY AND IT IS EXPECTED TO STAY ONE: `attack_speed`. A
+	 * character's swing rate is the average of its armed weapons' rates, and a
+	 * rate is neither an implicit nor an affix, so nothing in the modifier
+	 * pipeline can produce it. It is handed to
+	 * UCataclysmPlayerClassStats::ApplyTo as a base override.
+	 *
+	 * `attack_damage` IS DELIBERATELY ABSENT, and adding it would double the
+	 * character's damage. A weapon's damage IS an `attack_damage` implicit on
+	 * its base, so GatherModifiers already hands it over as a flat modifier.
+	 * That is also what makes two weapons sum and a Shield count for nothing
+	 * without anything here arranging it.
+	 *
+	 * NOTHING ARMED GIVES AN ATTACK SPEED OF ZERO rather than no entry at all,
+	 * so a character who somehow holds no weapon has its rate written down to
+	 * zero rather than keeping the last weapon's. Zero is read by the automatic
+	 * basic attack as never swinging.
+	 */
+	TMap<FName, float> StatBasesFromWeapons() const;
+
+	/**
 	 * Recompute every stat from the class line plus what is worn, and write it.
 	 *
 	 * THE POOLS ARE NOT REFILLED, and that is the difference between this and a

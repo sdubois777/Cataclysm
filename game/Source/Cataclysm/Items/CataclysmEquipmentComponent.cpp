@@ -463,6 +463,18 @@ TArray<FCataclysmItem> UCataclysmEquipmentComponent::WornWeapons() const
 	return Worn;
 }
 
+TMap<FName, float> UCataclysmEquipmentComponent::StatBasesFromWeapons() const
+{
+	// ALWAYS WRITTEN, EVEN WHEN IT IS ZERO. Leaving the entry out would leave
+	// the attack speed attribute holding whatever the last weapon set, so a
+	// character who ended up holding nothing would keep swinging.
+	return {
+		{ FName(UCataclysmItemModifiers::AttackSpeedStat),
+		  UCataclysmItemModifiers::BlendedAttackSpeed(
+			  WornWeapons(), UCataclysmItemModifiers::LoadBaseTable()) },
+	};
+}
+
 int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	UAbilitySystemComponent* AbilitySystem) const
 {
@@ -472,6 +484,7 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	}
 
 	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers = GatherModifiers();
+	const TMap<FName, float> Bases = StatBasesFromWeapons();
 
 	return UCataclysmPlayerClassStats::ApplyTo(
 		AbilitySystem,
@@ -482,5 +495,6 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 		// THE POOLS ARE LEFT WHERE THEY ARE. Filling them is right for a
 		// character arriving in the world and wrong here: a player who swapped a
 		// helmet during a fight would be healed to full by doing it.
-		ECataclysmPoolFill::LeaveAsTheyAre);
+		ECataclysmPoolFill::LeaveAsTheyAre,
+		&Bases);
 }

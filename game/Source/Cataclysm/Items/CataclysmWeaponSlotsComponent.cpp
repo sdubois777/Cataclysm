@@ -177,14 +177,22 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 			*EquippedWeaponType);
 	}
 
-	// THE NUMBER EVERY SKILL IS A PERCENTAGE OF, and until issue #173 nothing
-	// set it: UCataclysmCombatAttributeSet::AttackDamage was initialised to zero
-	// and never changed, so a Heavy Attack at 250% of it dealt nothing and the
-	// burn rider, being a share of the hit, applied nothing either.
+	// THE ATTACK DAMAGE ATTRIBUTE IS NOT WRITTEN HERE, AND USED TO BE. This
+	// component wrote it from the equipped weapon TYPE, which is how issue #840
+	// happened: a second worn weapon changed nothing and an upgrade level never
+	// applied. Issue #845 then found that a weapon's attack damage AFFIXES were
+	// being gathered and dropped, because two things would otherwise write the
+	// same attribute and the last one to run would win.
 	//
-	// Set before the abilities are granted, so a skill activated on the same
-	// frame as the equip already sees it.
-	ApplyWeaponDamage();
+	// UCataclysmPlayerClassStats::ApplyTo owns it now, and it is the only
+	// writer. A weapon's damage reaches it as an ordinary flat modifier from
+	// UCataclysmEquipmentComponent::GatherModifiers, alongside every affix on
+	// every other piece. This component's job is which SKILLS exist.
+	//
+	// THE BASE CRITICAL STRIKE CHANCE DID NOT MOVE WITH THEM, because it is a
+	// property of the skill in hand rather than of what is worn. See the
+	// function itself.
+	ApplyBaseCritChance();
 
 	if (AvailableSkills.IsEmpty())
 	{
@@ -338,62 +346,7 @@ int32 UCataclysmWeaponSlotsComponent::EquipStartingWeapon()
 	return Filled;
 }
 
-void UCataclysmWeaponSlotsComponent::SetWornWeapons(
-	const TArray<FCataclysmItem>& Weapons)
-{
-	WornWeapons = Weapons;
-
-	// APPLIED HERE RATHER THAN LEFT TO THE CALLER. What is worn decides what a
-	// swing is worth, so a caller that changed it and forgot to re-apply would
-	// leave the character hitting for what the last weapon was worth, and
-	// nothing would say so.
-	ApplyWeaponDamage();
-}
-
-float UCataclysmWeaponSlotsComponent::CurrentAttackDamage() const
-{
-	const UDataTable* Table = ItemBaseTable
-		? ItemBaseTable.Get()
-		: UCataclysmItemModifiers::LoadBaseTable();
-
-	// THE WORN WEAPONS ANSWER WHEN THERE ARE ANY. Summed, so a second weapon
-	// adds its damage rather than being ignored, and each is read at its own
-	// upgrade level. Both of those were faults in issue #840.
-	if (WornWeapons.Num() > 0)
-	{
-		return UCataclysmItemModifiers::BlendedWeaponDamage(WornWeapons, Table);
-	}
-
-	// NOTHING SUPPLIED FALLS BACK TO THE WEAPON TYPE, which is what every test
-	// that equips a bare weapon type relies on, and what the starting weapon
-	// path used before a real item was worn.
-	return EquippedWeaponType.IsEmpty()
-		? 0.0f
-		: UCataclysmItemModifiers::WeaponDamageForType(
-			Table, EquippedWeaponType, WeaponGearLevel);
-}
-
-float UCataclysmWeaponSlotsComponent::CurrentAttackSpeed() const
-{
-	const UDataTable* Table = ItemBaseTable
-		? ItemBaseTable.Get()
-		: UCataclysmItemModifiers::LoadBaseTable();
-
-	// AVERAGED, NOT SUMMED, which is what stops summing the damage being a
-	// strict advantage. A character holding two weapons hits harder per swing
-	// and does not also swing at the faster weapon's rate.
-	if (WornWeapons.Num() > 0)
-	{
-		return UCataclysmItemModifiers::BlendedAttackSpeed(WornWeapons, Table);
-	}
-
-	return EquippedWeaponType.IsEmpty()
-		? 0.0f
-		: UCataclysmItemModifiers::WeaponAttackSpeedForType(
-			Table, EquippedWeaponType);
-}
-
-void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
+void UCataclysmWeaponSlotsComponent::ApplyBaseCritChance()
 {
 	UCataclysmAbilitySystemComponent* AbilitySystem = GetAbilitySystem();
 	if (!AbilitySystem)
@@ -401,124 +354,32 @@ void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
 		return;
 	}
 
-	// AN ABILITY SYSTEM WITHOUT COMBAT ATTRIBUTES IS A LEGITIMATE ACTOR, and
-	// writing to an attribute it does not have raises an engine ensure --
-	// "Unable to get attribute set for attribute AttackDamage" -- rather than
-	// failing quietly. The player and every enemy carry the combat set; a bare
-	// ability system holder, which several tests build, does not.
-	const FGameplayAttribute Attribute =
-		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
-	if (!AbilitySystem->HasAttributeSetForAttribute(Attribute))
-	{
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("The ability system has no combat attribute set, so the %s's "
-				 "damage was not applied."),
-			EquippedWeaponType.IsEmpty() ? TEXT("weapon") : *EquippedWeaponType);
-		return;
-	}
-
-	if (!ItemBaseTable)
-	{
-		ItemBaseTable = UCataclysmItemModifiers::LoadBaseTable();
-	}
-
-	// SET, NOT ADDED, which is what makes swapping weapons safe. The character
-	// holds one weapon, so its damage replaces whatever the last one supplied
-	// rather than accumulating -- and an empty type sets zero, which is what
-	// holding nothing is worth.
-	const float Damage = CurrentAttackDamage();
-
-	AbilitySystem->SetNumericAttributeBase(Attribute, Damage);
-
-	if (Damage <= 0.0f && !EquippedWeaponType.IsEmpty())
-	{
-		// A weapon that supplies no damage makes every skill deal nothing, and
-		// the symptom is a game that runs normally and kills nothing.
-		UE_LOG(LogCataclysm, Warning,
-			TEXT("The %s supplies no attack damage, so every skill will deal "
-				 "zero. Check its attack_damage implicit in the Item Bases "
-				 "sheet of docs/All_Things_Cataclysm.xlsx."),
-			*EquippedWeaponType);
-	}
-	else if (EquippedWeaponType.IsEmpty())
-	{
-		// Every equip clears the previous weapon first, so this runs on the way
-		// through. Named separately because "The  supplies 0.0" reads as a bug.
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("Holding nothing, so there is no attack damage."));
-	}
-	else
-	{
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("The %s supplies %.1f attack damage at gear level %d."),
-			*EquippedWeaponType, Damage, WeaponGearLevel);
-	}
-
-	// AND THE RATE IT SWINGS AT, WHICH NOTHING WROTE UNTIL ISSUE #647. The
-	// attribute existed and was replicated, and was initialised to zero with the
-	// comment "supplied by the equipped weapon" -- describing an intention that
-	// was never built, in a form that reads as a statement of fact. Every weapon
-	// in ItemBases.csv states a rate and the row struct carries the column; the
-	// chain stopped here.
-	//
-	// TWO THINGS WERE WORTH NOTHING BECAUSE OF IT. Every increased attack speed
-	// affix multiplied zero -- the reference build in
-	// sim/cataclysm_sim/reference_build.py spends four suffix slots on exactly
-	// that, and records the same failure having already happened once on the
-	// simulation side, as issue #120. And the automatic basic attack had no rate
-	// to fire at, which is half of why it was never built.
-	//
-	// SET, NOT ADDED, for the same reason the damage above is: a character holds
-	// one weapon, so its rate replaces the last one's rather than accumulating,
-	// and holding nothing sets zero. Zero is read as "never swings" rather than
-	// as "swings infinitely fast".
-	const FGameplayAttribute SpeedAttribute =
-		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
-	if (AbilitySystem->HasAttributeSetForAttribute(SpeedAttribute))
-	{
-		const float AttackSpeed = CurrentAttackSpeed();
-
-		AbilitySystem->SetNumericAttributeBase(SpeedAttribute, AttackSpeed);
-
-		if (AttackSpeed <= 0.0f && !EquippedWeaponType.IsEmpty())
-		{
-			// A weapon with no rate never swings its basic attack, and the
-			// symptom is a character that fights normally with its six skills
-			// and silently earns no mana on hit.
-			UE_LOG(LogCataclysm, Warning,
-				TEXT("The %s states no attack speed, so its basic attack will "
-					 "never swing. Check its AttackSpeed column in the Item "
-					 "Bases sheet of docs/All_Things_Cataclysm.xlsx."),
-				*EquippedWeaponType);
-		}
-		else if (!EquippedWeaponType.IsEmpty())
-		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("The %s swings %.2f times a second."),
-				*EquippedWeaponType, AttackSpeed);
-		}
-	}
-
-	// AND THE BASE CRITICAL STRIKE CHANCE, WHICH IS THE SKILL'S AND NOT THE
-	// WEAPON'S. It is written here because this is the moment a weapon's six
-	// skills are granted, and the moment they are taken away again. The design
-	// is explicit about whose it is: its stat source table says "the skill being
-	// used" supplies critical strike chance, and the sentence after it says "A
-	// character has no critical strike chance in the abstract."
+	// THE BASE CRITICAL STRIKE CHANCE IS THE SKILL'S AND NOT THE WEAPON'S. It is
+	// written here because this is the moment a weapon's six skills are granted,
+	// and the moment they are taken away again. The design is explicit about
+	// whose it is: its stat source table says "the skill being used" supplies
+	// critical strike chance, and the sentence after it says "A character has no
+	// critical strike chance in the abstract."
 	//
 	// NOTHING WROTE IT UNTIL ISSUE #649, so it stood at the zero it was
 	// initialised to, with the comment "supplied by the skill in use" describing
-	// an intention nobody had built -- the same defect as the attack speed above,
-	// one attribute over. A player never critically struck, and the three
-	// critical strike affixes, the two gems, the Ferocity attribute and two whole
-	// passive tree branches all scaled a base of zero and were worth nothing.
+	// an intention nobody had built. A player never critically struck, and the
+	// three critical strike affixes, the two gems, the Ferocity attribute and two
+	// whole passive tree branches all scaled a base of zero and were worth
+	// nothing.
 	//
 	// ONE NUMBER FOR SIX SKILLS, which is correct only because every skill in the
 	// game takes the default. `game/Data/WeaponSkills.csv` has no column for a
 	// skill to state its own. Issue #657.
 	//
-	// SET, NOT ADDED, and zero when holding nothing, for the same reasons the
-	// damage and the rate above are. A character holding nothing swings nothing.
+	// THIS IS NOT A CHARACTER STAT AND DOES NOT BELONG WITH THE OTHERS. Attack
+	// damage and attack speed moved to UCataclysmPlayerClassStats::ApplyTo in
+	// issue #845, because they are properties of what is WORN and every affix
+	// naming them is a character-wide modifier. Critical strike chance is a
+	// property of the skill in hand, so it stays here with the skills.
+	//
+	// SET, NOT ADDED, and zero when holding nothing. A character holding nothing
+	// swings nothing.
 	const FGameplayAttribute CritAttribute =
 		UCataclysmCombatAttributeSet::GetCritChanceAttribute();
 	if (AbilitySystem->HasAttributeSetForAttribute(CritAttribute))
@@ -539,8 +400,14 @@ void UCataclysmWeaponSlotsComponent::UnequipWeapon()
 	AvailableSkills.Reset();
 	EquippedWeaponType.Reset();
 
-	// After clearing the type, so it sets zero. A character holding nothing has
-	// no weapon damage; leaving the last weapon's figure behind would mean an
-	// unarmed character kept hitting for whatever they last held.
-	ApplyWeaponDamage();
+	// AFTER CLEARING THE TYPE, so it writes zero. A character holding nothing has
+	// no critical strike chance, because it has no skill in hand to supply one.
+	ApplyBaseCritChance();
+
+	// NOTHING IS WRITTEN TO THE ATTACK DAMAGE ATTRIBUTE HERE, AND IT USED TO BE.
+	// Taking a weapon off has to leave the character hitting for nothing rather
+	// than for whatever they last held, and that is now the job of
+	// UCataclysmPlayerClassStats::ApplyTo, which recomputes every stat from what
+	// is worn. UCataclysmEquipmentComponent::RefreshAttributes runs it whenever
+	// equipment changes. Issue #845.
 }

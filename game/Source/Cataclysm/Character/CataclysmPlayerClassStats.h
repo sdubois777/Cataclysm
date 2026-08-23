@@ -129,6 +129,18 @@ public:
 	 * attribute behind it has nowhere to go, and inventing an attribute for it
 	 * here would hide the gap rather than report it.
 	 *
+	 * A BASE OVERRIDE IS FOR A STAT NO CLASS LINE CAN STATE. Issue #845 added
+	 * one user and it is expected to stay the only one: attack speed. A
+	 * character's swing rate comes from the weapons it holds, and two weapons
+	 * AVERAGE their rates rather than summing them, so neither the class table
+	 * nor the modifier pipeline can produce it. `UCataclysmEquipmentComponent::
+	 * StatBasesFromWeapons` is what builds the map.
+	 *
+	 * ATTACK DAMAGE DELIBERATELY DOES NOT USE IT, and supplying one would double
+	 * the character's damage. A weapon's damage is an `attack_damage` implicit
+	 * on its base, so it already arrives as a flat modifier and the base is
+	 * correctly zero.
+	 *
 	 * @return how many attributes were written, so a caller and a test can tell
 	 *         "applied nothing" from "applied everything"
 	 */
@@ -136,7 +148,8 @@ public:
 						 const UDataTable* ClassTable,
 						 const FString& ClassName, int32 Level,
 						 const TMap<FName, TArray<FCataclysmStatModifier>>* Modifiers = nullptr,
-						 ECataclysmPoolFill PoolFill = ECataclysmPoolFill::FillToMaximum);
+						 ECataclysmPoolFill PoolFill = ECataclysmPoolFill::FillToMaximum,
+						 const TMap<FName, float>* BaseOverrides = nullptr);
 
 	/**
 	 * The level a character starts at until levelling exists.

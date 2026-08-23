@@ -323,6 +323,8 @@ void UCataclysmItemModifiers::AccumulateInto(
 
 const TCHAR* UCataclysmItemModifiers::AttackDamageStat = TEXT("attack_damage");
 
+const TCHAR* UCataclysmItemModifiers::AttackSpeedStat = TEXT("attack_speed");
+
 const TCHAR* UCataclysmItemModifiers::BaseTableAssetPath =
 	TEXT("/Game/Data/DT_ItemBases.DT_ItemBases");
 

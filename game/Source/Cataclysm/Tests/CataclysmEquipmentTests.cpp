@@ -873,4 +873,354 @@ bool FCataclysmEquipmentRaisesItsChange::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Attack damage and attack speed. Issues #840 and #845
+// ---------------------------------------------------------------------------
+
+namespace CataclysmEquipmentTest
+{
+	/** The flat attack damage prefix. It rolls on Gloves, Necklace, Relic, Ring
+	 *  and Weapon, which is what makes it a character stat rather than a weapon
+	 *  one. Top value 22 in game/Data/Affixes.csv. */
+	const TCHAR* FlatDamageAffix = TEXT("Stat_Flat_damage");
+
+	/** The increased attack speed suffix, top value 15 per cent. */
+	const TCHAR* AttackSpeedAffix = TEXT("Stat_Increased_attack_speed");
+
+	/** An item of a named base carrying one perfectly rolled top-tier affix. */
+	FCataclysmItem WithAffix(const TCHAR* Base, const TCHAR* Affix,
+							 int32 GearLevel = 0)
+	{
+		FCataclysmItem Item = Plain(Base, GearLevel);
+
+		FCataclysmRolledAffix Rolled;
+		Rolled.Affix = FName(Affix);
+		Rolled.Tier = UCataclysmItemValues::MaxAffixTier;
+		Rolled.Roll = 1.0f;
+		Item.Affixes.Add(Rolled);
+
+		return Item;
+	}
+
+	/** Wears each item in turn, then answers one attribute. */
+	float AttributeWearing(UWorld* World, const TArray<FCataclysmItem>& Items,
+						   const FGameplayAttribute& Attribute)
+	{
+		FScopedCharacter Character(World);
+		for (const FCataclysmItem& Item : Items)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+			Character.Equipment->Equip(Item, Removed, AlsoRemoved, Went);
+		}
+		Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+		return Character.AbilitySystem->GetNumericAttribute(Attribute);
+	}
+}
+
+/**
+ * A worn weapon's damage reaches the character, and two weapons SUM.
+ *
+ * WHAT THIS REPLACES. Until issue #845 the attack damage attribute was written
+ * by UCataclysmWeaponSlotsComponent from the equipped weapon TYPE. That made a
+ * second worn weapon worth nothing and an upgrade level never apply (#840), and
+ * it meant two things wrote one attribute. There is one writer now,
+ * UCataclysmPlayerClassStats::ApplyTo, and a weapon's damage reaches it as an
+ * ordinary flat modifier like any other.
+ *
+ * THE FIGURES ARE QUOTED FROM THE DESIGN DOCUMENT. docs/Cataclysm_GDD_v2.md
+ * line 2627: "an Axe with an Axe at 92 and an Axe with a Sword at 86".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornWeaponsReachAttackDamage,
+	"Cataclysm.Equipment.WornWeaponsReachAttackDamageAndTwoOfThemSum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWornWeaponsReachAttackDamage::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCharacter Character(World);
+	const FGameplayAttribute Damage =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+
+	const auto AttackDamage = [&]
+	{
+		Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+		return Character.AbilitySystem->GetNumericAttribute(Damage);
+	};
+
+	// NOTHING WORN IS WORTH NOTHING, which is what makes the rest meaningful.
+	TestEqual(TEXT("a character wearing nothing has no attack damage"),
+		AttackDamage(), 0.0f, 0.05f);
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+
+	// The sheet states the +10 figure, so a fully upgraded Axe carries 46.
+	Character.Equipment->Equip(Plain(TEXT("Weapon_Axe"), 10),
+							   Removed, AlsoRemoved, Went);
+	TestEqual(TEXT("one worn Axe supplies the 46 the sheet states"),
+		AttackDamage(), 46.0f, 0.05f);
+
+	// A SECOND WEAPON ADDS ITS DAMAGE. This is the reported fault: the project
+	// owner equipped a second whip and nothing changed at all.
+	Character.Equipment->Equip(Plain(OneHandedBase, 10),
+							   Removed, AlsoRemoved, Went);
+	TestEqual(TEXT("an Axe with a Sword gives 86, the design document's figure"),
+		AttackDamage(), 86.0f, 0.05f);
+
+	// TAKING ONE OFF TAKES ITS DAMAGE WITH IT.
+	Character.Equipment->Unequip(ECataclysmGearSlot::Weapon2, Removed);
+	TestEqual(TEXT("taking the Sword off leaves the Axe's 46"),
+		AttackDamage(), 46.0f, 0.05f);
+
+	Character.Equipment->Unequip(ECataclysmGearSlot::Weapon1, Removed);
+	TestEqual(TEXT("and taking the last weapon off leaves nothing"),
+		AttackDamage(), 0.0f, 0.05f);
+
+	return true;
+}
+
+/**
+ * A weapon's upgrade level reaches its damage, and a two-hander doubles.
+ *
+ * WHAT WENT WRONG WITHOUT IT. Issue #840: the upgrade level came from a field on
+ * UCataclysmWeaponSlotsComponent that nothing outside the automation tests ever
+ * set, so a worn +5 weapon was computed as a +0 one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUpgradeLevelReachesAttackDamage,
+	"Cataclysm.Equipment.AWornWeaponsUpgradeLevelReachesAttackDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUpgradeLevelReachesAttackDamage::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayAttribute Damage =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+
+	const float Fresh =
+		AttributeWearing(World, {Plain(TEXT("Weapon_Whip"), 0)}, Damage);
+	const float Upgraded =
+		AttributeWearing(World, {Plain(TEXT("Weapon_Whip"), 10)}, Damage);
+
+	TestEqual(TEXT("a +10 Whip carries the 32 the sheet states"),
+		Upgraded, 32.0f, 0.05f);
+	if (TestTrue(TEXT("a +0 Whip is worth something"), Fresh > 0.0f))
+	{
+		// About 3.52 times, the upgrade curve stated on FCataclysmItem itself.
+		// Asserted as a ratio rather than a second literal, so re-tuning the
+		// curve does not break this -- only the upgrade level ceasing to apply,
+		// which is the fault.
+		TestEqual(TEXT("and a +10 Whip is about 3.52 times a +0 one"),
+			Upgraded / Fresh, 3.52f, 0.05f);
+	}
+
+	// A TWO-HANDED WEAPON IS WORTH DOUBLE ITS STATED FIGURE, and is one item
+	// rather than two, because it is stored in the first weapon slot alone.
+	TestEqual(TEXT("a +10 Greatsword's stated 78 doubles to 156"),
+		AttributeWearing(World, {Plain(TwoHandedBase, 10)}, Damage),
+		156.0f, 0.05f);
+
+	return true;
+}
+
+/**
+ * AN ATTACK DAMAGE AFFIX REACHES THE CHARACTER, WHEREVER IT SITS. Issue #845.
+ *
+ * THIS IS THE FAULT THAT ISSUE WAS ABOUT. Flat attack damage, increased attack
+ * damage and increased attack speed all roll on Gloves, Necklace, Relic, Ring
+ * and Weapon -- five slot families -- and none of them did anything at all.
+ * UCataclysmEquipmentComponent::GatherModifiers gathered them and
+ * UCataclysmPlayerClassStats::ApplyTo dropped them, because its loop is over the
+ * attribute map and `attack_damage` was not in it.
+ *
+ * A RING IS THE CASE THAT PROVES IT. A test using only a weapon would still pass
+ * if the affix were being read as part of the weapon rather than as a stat.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageAffixesReachTheCharacter,
+	"Cataclysm.Equipment.AnAttackDamageAffixReachesTheCharacterFromAnySlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDamageAffixesReachTheCharacter::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayAttribute Damage =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+
+	const FCataclysmItem Axe = Plain(TEXT("Weapon_Axe"), 10);
+	const float WeaponAlone = AttributeWearing(World, {Axe}, Damage);
+
+	// ON A RING, WHICH IS NOT A WEAPON AT ALL.
+	const float WithRing = AttributeWearing(
+		World, {Axe, WithAffix(RingBase, FlatDamageAffix, 10)}, Damage);
+	TestTrue(FString::Printf(
+		TEXT("a flat damage affix on a RING raises attack damage, %.2f to %.2f"),
+		WeaponAlone, WithRing),
+		WithRing > WeaponAlone + 0.05f);
+
+	// ON THE WEAPON ITSELF, which must also work and did not either.
+	const float WithWeaponAffix = AttributeWearing(
+		World, {WithAffix(TEXT("Weapon_Axe"), FlatDamageAffix, 10)}, Damage);
+	TestTrue(FString::Printf(
+		TEXT("a flat damage affix on the WEAPON raises it too, %.2f to %.2f"),
+		WeaponAlone, WithWeaponAffix),
+		WithWeaponAffix > WeaponAlone + 0.05f);
+
+	// THE SAME AFFIX IS WORTH DOUBLE ON A TWO-HANDED WEAPON, which is the rule
+	// that makes one two-hander and two one-handers come out equal in affix
+	// value. Each weapon's own damage is taken off first, so only the affix is
+	// being measured.
+	const float TwoHandedBare =
+		AttributeWearing(World, {Plain(TwoHandedBase, 10)}, Damage);
+	const float TwoHandedWithAffix = AttributeWearing(
+		World, {WithAffix(TwoHandedBase, FlatDamageAffix, 10)}, Damage);
+
+	const float OnOneHand = WithWeaponAffix - WeaponAlone;
+	const float OnTwoHand = TwoHandedWithAffix - TwoHandedBare;
+	if (TestTrue(TEXT("the affix is worth something on a one-handed weapon"),
+			OnOneHand > 0.05f))
+	{
+		TestEqual(TEXT("and exactly twice that on a two-handed one"),
+			OnTwoHand, OnOneHand * 2.0f, 0.05f);
+	}
+
+	return true;
+}
+
+/**
+ * A character's swing rate is the average of its weapons, and affixes raise it.
+ *
+ * TWO SEPARATE FAULTS, BOTH FROM ISSUE #845. A weapon's own attack speed
+ * implicit did nothing -- a Sword states `attack_speed increased 5` in
+ * game/Data/ItemBases.csv and never got it -- and neither did an increased
+ * attack speed affix on any piece of gear.
+ *
+ * THE RATE IS A SUPPLIED BASE, NOT A MODIFIER, and that is why it needs its own
+ * test. A rate is neither an implicit nor an affix, and two weapons AVERAGE
+ * their rates rather than summing them, so
+ * UCataclysmEquipmentComponent::StatBasesFromWeapons hands it to
+ * UCataclysmPlayerClassStats::ApplyTo separately from every other stat.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAttackSpeedReachesTheCharacter,
+	"Cataclysm.Equipment.AttackSpeedAveragesAcrossWeaponsAndAffixesRaiseIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAttackSpeedReachesTheCharacter::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayAttribute Speed =
+		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
+
+	// An Axe states 1.25 and carries no attack speed implicit of its own.
+	TestEqual(TEXT("one Axe swings at its own stated 1.25"),
+		AttributeWearing(World, {Plain(TEXT("Weapon_Axe"))}, Speed),
+		1.25f, 0.005f);
+
+	// A SWORD'S OWN IMPLICIT APPLIES, and it never did before. The Sword states
+	// 1.3 and carries `attack_speed increased 5`, so 1.3 x 1.05 = 1.365.
+	//
+	// AT +10, AND THE UPGRADE LEVEL IS NOT INCIDENTAL HERE. Every stated figure
+	// in the sheets is the +10 one, implicits included, so a +0 Sword's implicit
+	// is worth about 1.42 per cent rather than 5 and the rate comes out 1.318.
+	// That is correct behaviour and it is easy to read as a broken test.
+	TestEqual(TEXT("a Sword's own 5 per cent attack speed implicit applies"),
+		AttributeWearing(World, {Plain(OneHandedBase, 10)}, Speed),
+		1.365f, 0.005f);
+
+	// TWO WEAPONS AVERAGE THEIR RATES rather than summing them, which is what
+	// stops summing their damage being a strict advantage. The mean of 1.25 and
+	// 1.3 is 1.275, and the Sword's own 5 per cent then applies to the pair.
+	TestEqual(TEXT("an Axe with a Sword averages to 1.275, then the implicit"),
+		AttributeWearing(World,
+			{Plain(TEXT("Weapon_Axe"), 10), Plain(OneHandedBase, 10)}, Speed),
+		1.275f * 1.05f, 0.005f);
+
+	// A SHIELD IS NOT SWUNG, so it is left out of the average entirely. An
+	// average over everything worn would answer 1.225 here rather than 1.25.
+	TestEqual(TEXT("an Axe with a Shield still swings at the Axe's 1.25"),
+		AttributeWearing(World,
+			{Plain(TEXT("Weapon_Axe")), Plain(TEXT("Weapon_Shield"))}, Speed),
+		1.25f, 0.005f);
+
+	// AN AFFIX ON A PIECE THAT IS NOT A WEAPON RAISES IT, which is the half a
+	// test using only weapons would miss.
+	const float Bare =
+		AttributeWearing(World, {Plain(TEXT("Weapon_Axe"))}, Speed);
+	const float WithRing = AttributeWearing(World,
+		{Plain(TEXT("Weapon_Axe")), WithAffix(RingBase, AttackSpeedAffix, 10)},
+		Speed);
+	TestTrue(FString::Printf(
+		TEXT("an attack speed affix on a RING raises the rate, %.3f to %.3f"),
+		Bare, WithRing),
+		WithRing > Bare + 0.005f);
+
+	// NOTHING ARMED SWINGS AT NOTHING rather than keeping the last weapon's
+	// rate. Zero is read by the automatic basic attack as never swinging.
+	TestEqual(TEXT("a character wearing no weapon has no swing rate"),
+		AttributeWearing(World, {}, Speed), 0.0f, 0.005f);
+
+	// SWAPPING REPLACES RATHER THAN ACCUMULATING, which is issue #647's rule.
+	// It used to be checked in Cataclysm.BasicAttack against the weapon slots
+	// component, which no longer writes any attribute, so it is checked here
+	// instead. A Dagger states 1.5 and a Greatsword 1.25; a character who ended
+	// up with 2.75, or with the faster of the two, would be accumulating.
+	{
+		FScopedCharacter Character(World);
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+
+		const auto Rate = [&]
+		{
+			Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+			return Character.AbilitySystem->GetNumericAttribute(Speed);
+		};
+
+		Character.Equipment->Equip(Plain(OtherOneHandedBase),
+								   Removed, AlsoRemoved, Went);
+		TestEqual(TEXT("a Dagger swings at its stated 1.5"), Rate(), 1.5f, 0.005f);
+
+		// A two-handed weapon takes the Dagger off as it goes on.
+		Character.Equipment->Equip(Plain(TwoHandedBase),
+								   Removed, AlsoRemoved, Went);
+		TestEqual(TEXT("and a Greatsword over it swings at 1.25, not 2.75"),
+			Rate(), 1.25f, 0.005f);
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

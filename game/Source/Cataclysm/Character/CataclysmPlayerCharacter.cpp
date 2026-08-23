@@ -518,6 +518,15 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 		Equipment ? Equipment->GatherModifiers()
 				  : TMap<FName, TArray<FCataclysmStatModifier>>();
 
+	// THE SWING RATE COMES FROM THE WEAPONS AND NOT FROM THE CLASS LINE, which
+	// is why it is supplied separately. Issue #845. A rate is neither an
+	// implicit nor an affix and two weapons average theirs, so nothing in the
+	// modifier pipeline can produce it. Attack damage is deliberately not here:
+	// a weapon's damage IS an implicit, so it arrives with the modifiers above
+	// and supplying it again would double it.
+	const TMap<FName, float> Bases =
+		Equipment ? Equipment->StatBasesFromWeapons() : TMap<FName, float>();
+
 	UCataclysmPlayerClassStats::ApplyTo(
 		ASC, UCataclysmPlayerClassStats::LoadTable(),
 		UCataclysmPlayerClassStats::ChosenClass(),
@@ -526,7 +535,8 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 		// A CHARACTER STARTING. This runs from PossessedBy, which happens once,
 		// so filling the pools is right here and is exactly what it did before.
 		// OnEquipmentChanged is the path that must not fill them.
-		ECataclysmPoolFill::FillToMaximum);
+		ECataclysmPoolFill::FillToMaximum,
+		&Bases);
 }
 
 void ACataclysmPlayerCharacter::OnEquipmentChanged()
@@ -556,17 +566,15 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon()
 	}
 
 	// THE ITEMS AND THE TYPE ARE TWO DIFFERENT QUESTIONS, and until issue #840
-	// only the type was asked. The type decides which six skills exist. The
-	// items decide what a swing is worth: their damage is summed and their rate
-	// averaged, and each is read at its own upgrade level. Asking only the type
-	// made a second weapon worth nothing and a +5 weapon count as +0.
+	// only the type was asked. **The type decides which six skills exist. The
+	// items decide what a swing is worth**, and only the first of those is this
+	// function's business.
 	//
-	// SET BEFORE THE TYPE, so that the one EquipWeaponType performs already has
-	// the worn weapons to work from rather than applying the type's figure and
-	// then being corrected.
-	WeaponSlots->SetWornWeapons(
-		Equipment ? Equipment->WornWeapons() : TArray<FCataclysmItem>());
-
+	// NOTHING ABOUT DAMAGE HAPPENS HERE. Since issue #845 the attack damage and
+	// attack speed attributes are written in one place only,
+	// UCataclysmPlayerClassStats::ApplyTo, from the modifiers every worn item
+	// supplies. UCataclysmEquipmentComponent::RefreshAttributes runs it whenever
+	// equipment changes, which is the first half of OnEquipmentChanged above.
 	const FString WornWeapon =
 		Equipment ? Equipment->EquippedWeaponType() : FString();
 	if (!WornWeapon.IsEmpty())

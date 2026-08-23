@@ -330,6 +330,17 @@ public:
 	/** The stat name a weapon's own damage is carried under, in every sheet. */
 	static const TCHAR* AttackDamageStat;
 
+	/**
+	 * The stat name a swing rate is carried under, in every sheet.
+	 *
+	 * NOT WHERE A WEAPON'S OWN RATE LIVES, unlike the damage above. A base
+	 * states its rate in its own AttackSpeed column; this name is what an
+	 * INCREASE to that rate is carried under, whether it comes from an affix or
+	 * from a base's implicit. A Sword carries `attack_speed increased 5` as its
+	 * second implicit, for example.
+	 */
+	static const TCHAR* AttackSpeedStat;
+
 	/** Where the imported item base table lives. */
 	static const TCHAR* BaseTableAssetPath;
 

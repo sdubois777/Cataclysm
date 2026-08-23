@@ -177,58 +177,6 @@ bool FCataclysmWeaponStatesAnAttackSpeed::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEquippingSetsAttackSpeed,
-	"Cataclysm.BasicAttack.EquippingAWeaponGivesTheCharacterItsAttackSpeed",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmEquippingSetsAttackSpeed::RunTest(const FString&)
-{
-	// THE WHOLE OF ISSUE #647. Before it, this attribute was zero for every
-	// character in the game, however many attack speed affixes were stacked on
-	// it, because nothing ever wrote the weapon's figure onto the character.
-	UWorld* World = CataclysmBasicAttackTest::MakeWorld();
-	if (!TestNotNull(TEXT("a world to spawn in"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	CataclysmBasicAttackTest::FArmedActor Armed =
-		CataclysmBasicAttackTest::MakeArmedActor(World);
-	if (!TestNotNull(TEXT("an actor with an ability system"), Armed.Actor))
-	{
-		return false;
-	}
-
-	const auto AttackSpeed = [&]
-	{
-		return Armed.AbilitySystem->GetNumericAttribute(
-			UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
-	};
-
-	TestEqual(TEXT("a character holding nothing has no attack speed"),
-		AttackSpeed(), 0.0f);
-
-	Armed.Slots->EquipWeaponType(TEXT("Greataxe"));
-	TestTrue(FString::Printf(
-		TEXT("a Greataxe supplies 1.28, got %.3f"), AttackSpeed()),
-		FMath::IsNearlyEqual(AttackSpeed(), 1.28f, 0.005f));
-
-	// SWAPPING REPLACES RATHER THAN ACCUMULATING, the same rule the attack
-	// damage beside it follows. A Dagger after a Greataxe is 1.5, not 2.78.
-	Armed.Slots->EquipWeaponType(TEXT("Dagger"));
-	TestTrue(FString::Printf(
-		TEXT("swapping to a Dagger supplies 1.5, not 2.78, got %.3f"),
-		AttackSpeed()), FMath::IsNearlyEqual(AttackSpeed(), 1.5f, 0.005f));
-
-	Armed.Slots->UnequipWeapon();
-	TestEqual(TEXT("putting it down leaves no attack speed behind"),
-		AttackSpeed(), 0.0f);
-
-	Armed.Actor->Destroy();
-	return true;
-}
-
 // --------------------------------------------------------------------------
 // The rate the basic attack fires at
 // --------------------------------------------------------------------------
