@@ -404,11 +404,15 @@ bool FCataclysmWearingExplainsItself::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 /**
- * A CHARACTER MUST KEEP A WEAPON ON, AND THAT IS TEMPORARY. Issue #841 is the
- * note to lift it, once 2H Crossbow, Crossbow, Shield and Spear have Demonic
- * skills in game/Data/WeaponSkills.csv. Until then an unarmed character would
- * have an empty skill bar because rows are missing rather than because being
- * unarmed is meant to cost the player their skills.
+ * A CHARACTER MUST KEEP A WEAPON ON, AND ISSUE #841 IS WHERE THAT IS DECIDED.
+ * A character holding nothing has no weapon skills, because the six ability
+ * slots come from the worn weapon's type.
+ *
+ * THIS COMMENT USED TO CALL THE RULE TEMPORARY AND SAY IT WAS WAITING ON FOUR
+ * WEAPON TYPES to be given Demonic skills. That was wrong, and corrected on
+ * 2026-08-23: the design gives each damage type its own set of weapons, Demonic
+ * covers ten deliberately, and those four were never going to be among them. The
+ * rule stays or goes on its own merits.
  *
  * THE RULE IS ABOUT REMOVING, NOT ABOUT WEARING. Swapping one weapon for
  * another goes through WearFromCarried and must stay unaffected, which is what

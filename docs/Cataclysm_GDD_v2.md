@@ -2367,7 +2367,7 @@ decision to fund ten or more models rather than a side effect of a rarity tier.
 
   
 
-So an Extremely Rare material is one material drop in 341, and since three materials share that tier, a named one such as Purified Essence is one in 1,023. That figure is what the tier weight was chosen against: Purified Essence is the only thing that clears the Consumption Threshold, so it has to be something a player can count on eventually having. Which material within a tier is an equal chance.
+So an Extremely Rare material is one material drop in 341, and since five materials share that tier, a named one such as Purified Essence is one in 1,705. That figure is what the tier weight was chosen against: Purified Essence is the only thing that clears the Consumption Threshold, so it has to be something a player can count on eventually having. Which material within a tier is an equal chance.
 
   
 
@@ -3258,6 +3258,7 @@ Twenty-seven materials. Tier is the rarity band it drops in, not an item level.
 | Schematic Fragments | 1 (Common) | Dismantling items | Deterministic crafting |
 | Upgrade Stone +1 | 1 (Common) | | Raises an item to +1 |
 | Upgrade Stone +2 | 1 (Common) | | Raises an item to +2 |
+| Jeweler's Setting Agent | 1 (Common) | | Sockets a gem |
 | Tainted Shard | 2 (Uncommon) | | Removes one day of crafting time |
 | Upgrade Stone +3 | 2 (Uncommon) | | Raises an item to +3 |
 | Upgrade Stone +4 | 2 (Uncommon) | | Raises an item to +4 |
@@ -3269,17 +3270,16 @@ Twenty-seven materials. Tier is the rarity band it drops in, not an item level.
 | Prismatic Catalyst | 3 (Rare) | | Changes a weapon's damage type |
 | Upgrade Stone +5 | 3 (Rare) | | Raises an item to +5 |
 | Upgrade Stone +6 | 3 (Rare) | | Raises an item to +6 |
-| Purified Essence | 3 (Rare) | | Halves accumulated CR |
-| Jeweler's Setting Agent | 3 (Rare) | | Sockets a gem |
 | Crystal of Instability | 4 (Very Rare) | | Affix shifting |
 | Focusing Lens | 4 (Very Rare) | | Changes a socket's type |
 | Sovereign Ingot | 4 (Very Rare) | | Adds a specific damage type to a weapon |
 | Upgrade Stone +7 | 4 (Very Rare) | | Raises an item to +7 |
 | Upgrade Stone +8 | 4 (Very Rare) | | Raises an item to +8 |
-| Primal Spark | 4 (Very Rare) | | Forces a maximum stat roll |
 | Upgrade Stone +9 | 5 (Extremely Rare) | | Raises an item to +9 |
 | Upgrade Stone +10 | 5 (Extremely Rare) | | Raises an item to +10, the maximum |
 | Regret Essence | 5 (Extremely Rare) | | Changes an enchantment's negative effect |
+| Purified Essence | 5 (Extremely Rare) | | Halves accumulated CR |
+| Primal Spark | 5 (Extremely Rare) | | Forces a maximum stat roll |
 
   
 

@@ -117,14 +117,16 @@ ECataclysmWearResult UCataclysmWearing::TakeOffInto(
 	}
 
 	// -- refuse before anything moves --------------------------------------
-	// A CHARACTER MUST KEEP HOLD OF A WEAPON, AND ISSUE #841 IS THE NOTE TO
-	// STOP REQUIRING IT. UCataclysmWeaponSlotsComponent grants the six ability
-	// slots from the worn weapon's type, and four of the fourteen weapon types
-	// -- 2H Crossbow, Crossbow, Shield and Spear -- have no Demonic skills in
-	// game/Data/WeaponSkills.csv yet, with Demonic the default damage type. So
-	// an unarmed character today would have an empty skill bar because rows are
-	// missing, not because fighting bare handed is supposed to cost you your
-	// skills. Once those rows exist this refusal should go.
+	// A CHARACTER MUST KEEP HOLD OF A WEAPON, AND ISSUE #841 IS WHERE THAT IS
+	// DECIDED. UCataclysmWeaponSlotsComponent grants the six ability slots from
+	// the worn weapon's type, so a character holding nothing has no skills.
+	//
+	// THIS COMMENT USED TO SAY THE RULE WAS WAITING ON MISSING CONTENT, naming
+	// four weapon types that had no Demonic skills. That was wrong: the design
+	// gives each damage type its own set of weapons and Demonic's set is those
+	// ten, deliberately. The four were never going to arrive, so the reason
+	// described a plan that did not exist. See the header on ECataclysmWearResult
+	// for the whole of it.
 	//
 	// COUNTED RATHER THAN READ OFF THE SLOT. A two-handed weapon is stored in
 	// the first weapon slot alone and leaves the second empty, so it counts as
