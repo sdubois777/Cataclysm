@@ -20,6 +20,115 @@ applied or still pending.
 
 ---
 
+## 2026-08-23 — The inventory and gear screen: a 20 by 12 grid of 48-pixel cells
+
+**Affects:** a new document, `docs/Inventory_Screen_Design.md`.
+**Applied there.** Deliberately **not** applied to the Storage section of
+`docs/Cataclysm_GDD_v2.md`, for the reason under "What was left alone" below.
+
+### What was asked
+
+The project owner played on 2026-08-23 and reported that the whole inventory and
+gear screen was bad and should follow what Path of Exile and Last Epoch do. Issue
+#854. A separate report, issue #855, said every item takes exactly one cell and
+the cells are far too large.
+
+The owner answered the first question of #855 on the same day: build item
+footprints, a two-handed weapon 2 wide by 6 high, cells smaller, following Path
+of Exile rather than Last Epoch. That was made knowingly and is not revisited.
+
+### What the research found
+
+| | Path of Exile | Last Epoch | Diablo IV |
+| :-- | :-- | :-- | :-- |
+| Carried grid | 12 wide by 5 high, 60 cells | 8 by 12 storage opens from the same window | 11 wide by 3 high, 33 cells |
+| Footprints | Yes, 1 by 1 up to 8 cells | No | No, every item one cell |
+| Materials | Share the bag | A dedicated crafting material tab | Separate consumable, quest and aspect tabs |
+
+Sources:
+
+- Path of Exile inventory grid, 5 by 12: <https://www.pathofexile.com/forum/view-thread/103639> and <https://www.ludo.guide/guide/path-of-exile-2/getting-started/understanding-the-user-interface-ui/stash-inventory-management>
+- Diablo IV, 11 by 3 and one cell per item: <https://diablo.fandom.com/wiki/Inventory> and <https://www.vhpg.com/diablo-4-inventory/>
+- Last Epoch's separate crafting material tab: <https://www.ludo.guide/guide/last-epoch/items-equipment/stash-inventory-management>
+- Last Epoch's 8 by 12 storage: <https://lastepoch.fandom.com/wiki/Inventory>
+- The general case for and against variable footprints: <https://outof.games/news/6699-inventory-systems-in-games-lost-in-the-grid/>
+
+**Two things could not be confirmed and are taken on the owner's decision rather
+than on a source.** That Last Epoch's main bag is strictly one item per cell:
+repeated searches found the claim restated but no primary source, and the
+official wiki returned a payment-required error. And an authoritative table of
+Path of Exile's per-item footprints: `poewiki.net` was behind a bot check, so the
+figures used here — a ring 1 by 1, a dagger or wand 1 by 3, larger pieces up to
+8 cells — come from forum and guide sources rather than the wiki.
+
+### Why 240 cells and not 60
+
+**A bag size cannot be copied from any of the three, because all three let a
+player reach a stash whenever they like and this game does not.** The Storage
+section of `Cataclysm_GDD_v2.md` states that a player who fills up part way down
+a dungeon cannot leave, and a dungeon runs 100 to 150 floors at one day each.
+Path of Exile's 60 cells here would be a far harsher rule than it is there, and
+nobody chose it.
+
+The Storage section fixed the bag at 48 items and said the figure is tuned: it
+"is not under pressure over ten floors, and it is under real pressure over the
+100 to 150 a Cataclysm dungeon spans." Footprints change how carrying capacity is
+measured, not how much a player should carry, so the cell count was solved
+backwards from 48 items.
+
+The average footprint over all 55 item bases is 4.24 cells. 48 items is 203 cells
+packed perfectly, and about 239 at a realistic 85 per cent packing. **240 is that
+number, as 20 wide by 12 high.** Twelve rows because a two-handed weapon is six
+cells high and an exact-fit grid would make every weapon a puzzle.
+
+**The alternative was a much smaller grid**, and it was rejected with a number:
+72 cells, the smallest that holds a two-handed weapon at all, would carry about
+14 items and would cut a tuned capacity by seventy per cent as a side effect of a
+display change.
+
+### Cell size
+
+48 pixels at most, shrinking with the viewport, floor of 20. The screen allows
+112 today, which is what the play test called far too large. Path of Exile and
+Diablo IV both sit near 48 at 1920 by 1080.
+
+### The eight rings do not go on the body
+
+Path of Exile, Last Epoch and Diablo IV all have two ring slots and put one on
+each hand of the character figure. This game has eight. Eight is a list rather
+than a place on a body, so they sit in a 4 by 2 block below the figure and the
+other eleven slots keep the three-column arrangement around it.
+
+### Crafting materials still share the bag
+
+Unchanged, and it goes against two of the three games. Last Epoch and Diablo IV
+both hold materials elsewhere, which is the stronger convenience, and both let a
+player reach a stash at will so nothing is protected by the separation. Here the
+competition for space is the mechanic, and the Storage section already says the
+choice about what to leave behind "only exists if everything competes for the
+same" bag.
+
+**Worth watching in play:** a material at 1 by 1 costs one cell of 240 where a
+two-handed weapon costs twelve. Today a material and a greatsword each cost one
+slot of 48. So this change quietly makes materials much cheaper to carry, and
+whether that matters is a question for play rather than for argument.
+
+### What was left alone, and why
+
+**The Storage section of `Cataclysm_GDD_v2.md` still says "48 slots, four rows of
+twelve" and "one item takes one slot whatever it is".** That contradicts this
+decision and was still not changed.
+
+`tools/tests/test_carried_inventory_is_forty_eight_slots.py` reads that exact
+sentence out of the document and asserts that the engine's `SlotCount`, `Rows`
+and `Columns` constants agree with it, and that `Save_System_Design.md` states
+the same number. The sentence is locked to the C++ on purpose. Issue #854
+produces a design and no code, so changing the sentence now would break the guard
+without changing the game. The sentence, the save system document and the C++
+move together when issue #855 lands.
+
+---
+
 ## 2026-08-23 — A character wears a real starting weapon, and cannot take its last weapon off
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Item Slots subsection of section IV.
