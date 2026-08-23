@@ -14,6 +14,7 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmItem.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
@@ -863,6 +864,122 @@ bool FCataclysmMaterialBorderTest::RunTest(const FString& Parameters)
 	// missing border would look like a fault in the drawing rather than the data.
 	TestEqual(TEXT("tier 0 still gets the thinnest border"),
 		UCataclysmDropPickup::NameBorderThicknessForMaterialTier(0), 1);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A drop is rolled at the tier being played. Issue #868
+// ---------------------------------------------------------------------------
+
+/**
+ * THE GATE THAT NOTHING CHECKED. Until issue #868 every drop was rolled at a
+ * hard-coded difficulty tier 8, whatever tier was being played, because of a
+ * placeholder left behind when nothing in the engine knew the tier. That
+ * stopped being true and the placeholder stayed.
+ *
+ * THREE DESIGN RULES RUN THROUGH THAT ONE NUMBER. Gear rarity equals the
+ * difficulty tier, an affix rolls up to the tier plus one, and the best upgrade
+ * stone that can drop is the tier plus two. All three were reading 8, so a
+ * character on tier 1 could be handed Cataclysmic gear with T7 affixes.
+ *
+ * AND NO TEST NOTICED WHEN IT WAS PUT RIGHT. The whole suite passed both before
+ * and after the change, which is why this test exists: a behaviour nothing
+ * checks is a behaviour that can be undone by accident.
+ *
+ * THE CONSOLE VARIABLE IS PUT BACK, because it is global and a test that left it
+ * set would change every test that ran after it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropsUseTheTierBeingPlayed,
+	"Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
+{
+	IConsoleVariable* TierVariable = IConsoleManager::Get().FindConsoleVariable(
+		TEXT("Cataclysm.DifficultyTier"));
+	if (!TestNotNull(TEXT("the Cataclysm.DifficultyTier console variable"),
+			TierVariable))
+	{
+		return false;
+	}
+
+	const int32 Previous = TierVariable->GetInt();
+	ON_SCOPE_EXIT { TierVariable->Set(Previous, ECVF_SetByConsole); };
+
+	// THE BEST RARITY REACHED OVER SEVERAL KILLS, so the ceiling is actually met
+	// rather than merely allowed. A Cataclysm Boss drops twelve items a kill.
+	const auto BestRarityOverKills = [&](int32 Tier) -> int32
+	{
+		TierVariable->Set(Tier, ECVF_SetByConsole);
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return -1;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FRandomStream Stream(/*InSeed=*/20260823);
+		constexpr int32 CataclysmBossStep = 5;
+
+		for (int32 Kill = 0; Kill < 8; ++Kill)
+		{
+			UCataclysmDropSpawner::SpawnDropsFor(
+				World, CataclysmBossStep, /*MagicFind=*/0.0f,
+				UCataclysmDropRoll::BaselineLootQuantity,
+				FVector(Kill * 400.0f, 0.0f, 40.0f), Stream);
+		}
+
+		int32 Best = -1;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			const ACataclysmDroppedItem* Drop = *It;
+			if (!Drop || Drop->IsMaterial() || Drop->Item.Base.IsNone())
+			{
+				continue;
+			}
+
+			ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+			if (UCataclysmItemModifiers::RarityOfItem(Drop->Item, Rarity))
+			{
+				Best = FMath::Max(Best, static_cast<int32>(Rarity));
+			}
+		}
+		return Best;
+	};
+
+	const int32 AtTierOne = BestRarityOverKills(1);
+	const int32 AtTierEight = BestRarityOverKills(8);
+
+	if (!TestTrue(TEXT("gear dropped at tier 1"), AtTierOne >= 0)
+		|| !TestTrue(TEXT("gear dropped at tier 8"), AtTierEight >= 0))
+	{
+		return false;
+	}
+
+	// TIER 1 REACHES QUALITY AND NO FURTHER, which is the second of eight rungs.
+	// The gate is one ABOVE the tier, not level with it, and
+	// UCataclysmDropRoll::RaritiesAboveDifficulty says why: with the cap sitting
+	// exactly on the tier, the best thing a dungeon can produce is something the
+	// player can already make, so the only reason to run one is quantity. The
+	// affix tier gate uses the same one-above rule.
+	//
+	// STATED RATHER THAN READ BACK FROM BestRarityOnADrop, because a test that
+	// asks the code what it expects agrees with the code by construction and
+	// notices nothing. A change to the one-above rule should fail here.
+	TestEqual(*FString::Printf(
+		TEXT("a tier 1 kill drops nothing above Quality, best was %d"),
+		AtTierOne),
+		AtTierOne, static_cast<int32>(ECataclysmRarity::Quality));
+
+	// AND THE TIER ACTUALLY CHANGES WHAT DROPS, which is the half that fails if
+	// the tier stops being read at all. A comparison rather than a fixed rarity,
+	// so re-tuning the ladder does not break it.
+	TestTrue(*FString::Printf(
+		TEXT("a tier 8 kill drops better gear than a tier 1 kill, %d against %d"),
+		AtTierEight, AtTierOne),
+		AtTierEight > AtTierOne);
 
 	return true;
 }

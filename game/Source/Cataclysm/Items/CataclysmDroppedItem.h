@@ -147,17 +147,16 @@ class CATACLYSM_API UCataclysmDropSpawner : public UObject
 	GENERATED_BODY()
 
 public:
-	/**
-	 * The difficulty tier a drop is rolled at until something tracks one.
-	 *
-	 * NOTHING IN THE ENGINE KNOWS WHAT TIER IS BEING PLAYED. The dungeon
-	 * runtime is issue #41 and does not exist, so there is no dungeon to ask.
-	 * This is a placeholder, and it is the deepest tier on purpose: it is the
-	 * only value at which every rarity and every affix tier is reachable, so a
-	 * drop seen in the editor exercises the whole roll rather than a slice of
-	 * it. Replace it with the dungeon's own tier when there is one.
-	 */
-	static constexpr int32 UntrackedDifficultyTier = 8;
+	// A DROP IS ROLLED AT THE TIER BEING PLAYED, and until issue #868 it was
+	// rolled at a constant 8. The placeholder that held it lived here and said
+	// "nothing in the engine knows what tier is being played". That stopped
+	// being true: ACataclysmGameMode::DifficultyTierIn answers it and
+	// SpawnDropsFor asks it. It is deleted rather than left at a value nothing
+	// reads, because a constant named for a gap that has closed is the kind of
+	// thing a later change quietly starts using again.
+	//
+	// TO SEE THE WHOLE RANGE OF A ROLL, which is what the placeholder was
+	// really for, set `Cataclysm.DifficultyTier 8`.
 
 	/**
 	 * Where one of several drops from the same kill lands, relative to the
