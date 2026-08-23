@@ -124,11 +124,29 @@ public:
 								bool bTwoHanded);
 
 	/**
+	 * The lines describing what a weapon is, and nothing for anything else.
+	 *
+	 * How many hands it takes and which weapon type it is, its sub type, how
+	 * fast it swings, the damage types it carries and how many it could ever
+	 * carry. Issue #856.
+	 *
+	 * SEPARATE FROM LinesFor SO IT CAN BE ASKED DIRECTLY, because each of
+	 * these has a rule behind it worth a test of its own -- most of all that a
+	 * Shield states no swing rate, because a shield is not swung.
+	 *
+	 * @return empty for anything that is not a weapon, which is every base
+	 *         whose WeaponType column is blank
+	 */
+	static TArray<FString> WeaponLines(const FCataclysmItem& Item,
+									   const UDataTable* BaseTable);
+
+	/**
 	 * Every line describing what a carried slot holds, in reading order.
 	 *
 	 * An empty slot gives no lines. A crafting material gives its name, how many
 	 * are stacked and what it is for. An item gives its whole name, its upgrade
-	 * level, its implicits, its affixes, its sockets and its residue.
+	 * level, what it is if it is a weapon, its implicits, its affixes, its
+	 * sockets and its residue.
 	 */
 	static TArray<FString> LinesFor(const FCataclysmCarriedSlot& Slot,
 									const UDataTable* BaseTable,

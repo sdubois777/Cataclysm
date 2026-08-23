@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmItemTooltip.h"
@@ -94,6 +95,47 @@ namespace CataclysmTooltipTest
 			? UCataclysmItemTooltip::AffixLine(Item.Affixes[0], Item,
 											   Bases(), Affixes())
 			: FString();
+	}
+
+	// Three weapons chosen for what they differ in. An Axe is an ordinary
+	// one-hander. A Shield is the one weapon supplying no attack damage. A
+	// Greataxe is two-handed and its base states more damage types than are
+	// designed for it.
+	const TCHAR* AxeBase = TEXT("Weapon_Axe");
+	const TCHAR* ShieldBase = TEXT("Weapon_Shield");
+	const TCHAR* GreataxeBase = TEXT("Weapon_Greataxe");
+
+	/** A weapon of one base, carrying the damage types given. */
+	FCataclysmItem WeaponOf(const TCHAR* Base,
+							const TArray<FName>& DamageTypes = {})
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		Item.DamageTypes = DamageTypes;
+		return Item;
+	}
+
+	/** The base row behind one of the names above. */
+	const FCataclysmItemBaseRow* RowFor(const TCHAR* Base)
+	{
+		const UDataTable* Table = Bases();
+		return Table ? Table->FindRow<FCataclysmItemBaseRow>(
+						   FName(Base), TEXT("CataclysmTooltipTest"),
+						   /*bWarnIfMissing=*/false)
+					 : nullptr;
+	}
+
+	/** Whether any line is exactly this text. */
+	bool Says(const TArray<FString>& Lines, const FString& Text)
+	{
+		return Lines.Contains(Text);
+	}
+
+	/** Whether any line contains this text. */
+	bool Mentions(const TArray<FString>& Lines, const TCHAR* Text)
+	{
+		return Lines.ContainsByPredicate([Text](const FString& Line)
+			{ return Line.Contains(Text); });
 	}
 }
 
@@ -504,6 +546,196 @@ bool FCataclysmTooltipImplicitFollowsUpgrade::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a base with no second implicit produces no second line"),
 		UCataclysmItemTooltip::ImplicitLine(FString(), TEXT("flat"), 5.0f, 0,
 											false).IsEmpty());
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What a weapon says it is. Issue #856.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipWeaponSaysWhatItIs,
+	"Cataclysm.Tooltip.AWeaponStatesItsTypeSubTypeAndSwingRate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipWeaponSaysWhatItIs::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	const FCataclysmItemBaseRow* Axe = RowFor(AxeBase);
+	if (!TestNotNull(TEXT("the Axe base is in the table"), Axe))
+	{
+		return false;
+	}
+
+	const TArray<FString> Lines =
+		UCataclysmItemTooltip::WeaponLines(WeaponOf(AxeBase), Bases());
+
+	// HOW MANY HANDS, WHICH WEAPON, AND ITS SUB TYPE, on one line. The sub type
+	// is not trivia: a hit's sub type is the one every weapon swung agrees on and
+	// a mixed pair carries none.
+	TestTrue(FString::Printf(TEXT("it says what it is: %s"),
+			*FString::Join(Lines, TEXT(" | "))),
+		Says(Lines, FString::Printf(TEXT("One-handed %s, %s"),
+			*Axe->WeaponType, *Axe->SubType)));
+
+	// HOW FAST IT SWINGS, to two decimals. The designed rates are 1.20, 1.25 and
+	// 1.28, so one decimal place would make three different weapons read alike.
+	TestTrue(TEXT("it says how fast it swings"),
+		Says(Lines, FString::Printf(TEXT("%.2f attacks per second"),
+			Axe->AttackSpeed)));
+
+	// A TWO-HANDER SAYS SO, because that is what it costs to carry one.
+	const TArray<FString> Greataxe =
+		UCataclysmItemTooltip::WeaponLines(WeaponOf(GreataxeBase), Bases());
+	TestTrue(TEXT("a two-handed weapon says it is two-handed"),
+		Mentions(Greataxe, TEXT("Two-handed Greataxe")));
+
+	// AND NOTHING THAT IS NOT A WEAPON SAYS ANY OF IT.
+	const TArray<FString> Helm =
+		UCataclysmItemTooltip::WeaponLines(HelmWith(FlatHealthAffix), Bases());
+	TestEqual(TEXT("a helm produces no weapon lines at all"), Helm.Num(), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipShieldStatesNoSwingRate,
+	"Cataclysm.Tooltip.AShieldStatesNoSwingRateBecauseAShieldIsNotSwung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipShieldStatesNoSwingRate::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	const FCataclysmItemBaseRow* Shield = RowFor(ShieldBase);
+	if (!TestNotNull(TEXT("the Shield base is in the table"), Shield))
+	{
+		return false;
+	}
+
+	// THE TRAP THIS GUARDS. A Shield is a one-handed weapon and its base row
+	// carries an AttackSpeed like any other, so the obvious implementation prints
+	// it. But a Shield carries no attack damage implicit, so it contributes
+	// neither damage nor swing rate to a hit, and a tool tip saying it swings at
+	// 1.20 a second would be telling the player something untrue.
+	TestTrue(TEXT("the Shield's base really does carry a swing rate to be tempted by"),
+		Shield->AttackSpeed > 0.0f);
+	TestEqual(TEXT("and it really does supply no attack damage"),
+		UCataclysmItemModifiers::WeaponDamageForItem(WeaponOf(ShieldBase), Bases()),
+		0.0f);
+
+	const TArray<FString> Lines =
+		UCataclysmItemTooltip::WeaponLines(WeaponOf(ShieldBase), Bases());
+
+	TestFalse(FString::Printf(TEXT("a Shield states no swing rate: %s"),
+			*FString::Join(Lines, TEXT(" | "))),
+		Mentions(Lines, TEXT("attacks per second")));
+
+	// IT STILL SAYS WHAT IT IS, because a Shield is a one-handed weapon and the
+	// player still has to know it occupies a weapon slot.
+	TestTrue(TEXT("a Shield still says what it is"),
+		Mentions(Lines, TEXT("One-handed Shield")));
+
+	// AND AN ORDINARY WEAPON STILL DOES STATE ONE, so the check above is not
+	// passing because the line was dropped for every weapon.
+	const TArray<FString> Axe =
+		UCataclysmItemTooltip::WeaponLines(WeaponOf(AxeBase), Bases());
+	TestTrue(TEXT("an Axe does state a swing rate"),
+		Mentions(Axe, TEXT("attacks per second")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipWeaponDamageTypes,
+	"Cataclysm.Tooltip.AWeaponStatesTheDamageTypesItCarriesAndHowManyItCouldHold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipWeaponDamageTypes::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	const FCataclysmItemBaseRow* Greataxe = RowFor(GreataxeBase);
+	if (!TestNotNull(TEXT("the Greataxe base is in the table"), Greataxe))
+	{
+		return false;
+	}
+
+	// WHAT IT CARRIES, in the order it carries them. Both are designed for a
+	// Greataxe.
+	const TArray<FString> Carrying = UCataclysmItemTooltip::WeaponLines(
+		WeaponOf(GreataxeBase, { FName(TEXT("War")), FName(TEXT("Death")) }),
+		Bases());
+	TestTrue(FString::Printf(TEXT("it lists the damage types it carries: %s"),
+			*FString::Join(Carrying, TEXT(" | "))),
+		Says(Carrying, TEXT("War, Death")));
+
+	// A WEAPON CARRYING NONE LISTS NONE rather than an empty line. An item rolled
+	// before issue #857 has an empty list and a blank line reads as a fault.
+	const TArray<FString> Bare =
+		UCataclysmItemTooltip::WeaponLines(WeaponOf(GreataxeBase), Bases());
+	TestFalse(TEXT("no line is blank when it carries no damage types"),
+		Bare.ContainsByPredicate([](const FString& Line) { return Line.IsEmpty(); }));
+
+	// THE CEILING IS WHAT IT CAN REACH, NOT WHAT ITS BASE STATES. This is the
+	// whole point of the line. Every two-handed base states 8 and not one has 8
+	// damage types designed for it, so printing the base's own figure would tell
+	// a player a Greataxe can hold twice what it can. Issue #875 is whether the
+	// design intends that; either way the number shown has to be reachable.
+	const int32 Designed = UCataclysmDropRoll::DamageTypesAvailableTo(
+		UCataclysmWeaponSkills::LoadGeneratedTable(), Greataxe->WeaponType).Num();
+	TestTrue(TEXT("a Greataxe really does have fewer designed than its base states"),
+		Designed < Greataxe->MaxDamageTypes);
+
+	TestTrue(FString::Printf(TEXT("it states the ceiling it can reach: %s"),
+			*FString::Join(Bare, TEXT(" | "))),
+		Says(Bare, FString::Printf(TEXT("Holds up to %d damage types"), Designed)));
+	TestFalse(TEXT("and not the higher figure its base row states"),
+		Says(Bare, FString::Printf(TEXT("Holds up to %d damage types"),
+			Greataxe->MaxDamageTypes)));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipWholeWeapon,
+	"Cataclysm.Tooltip.AWholeWeaponsToolTipCarriesTheWeaponLines",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipWholeWeapon::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	// THROUGH LinesFor, not WeaponLines, because a function nothing calls helps
+	// nobody. This is what a player hovering over a carried Axe actually sees.
+	FCataclysmItem Item = WeaponOf(AxeBase, { FName(TEXT("War")) });
+	Item.GearLevel = 4;
+
+	const TArray<FString> Lines = UCataclysmItemTooltip::LinesFor(
+		Carrying(Item), Bases(), Affixes(), Materials());
+	const FString All = FString::Join(Lines, TEXT(" | "));
+
+	TestTrue(FString::Printf(TEXT("it says what it is: %s"), *All),
+		Mentions(Lines, TEXT("One-handed Axe, Slashing")));
+	TestTrue(TEXT("it says how fast it swings"),
+		Mentions(Lines, TEXT("attacks per second")));
+	TestTrue(TEXT("it says the damage type it carries"), Says(Lines, TEXT("War")));
+	TestTrue(TEXT("it says how many it could hold"),
+		Mentions(Lines, TEXT("Holds up to")));
+
+	// AND THE ORDER READS AS A DESCRIPTION. The name, then the upgrade level,
+	// then what the weapon is, and only then what carrying it grants. An implicit
+	// appearing above the weapon's own description would read as a stat block
+	// with the item's identity buried in it.
+	const int32 Upgrade = Lines.IndexOfByKey(TEXT("+4"));
+	const int32 What = Lines.IndexOfByPredicate([](const FString& Line)
+		{ return Line.Contains(TEXT("One-handed Axe")); });
+	const int32 Implicit = Lines.IndexOfByPredicate([](const FString& Line)
+		{ return Line.Contains(TEXT("attack damage")); });
+
+	TestTrue(FString::Printf(TEXT("the upgrade level comes before what it is: %s"), *All),
+		Upgrade != INDEX_NONE && What != INDEX_NONE && Upgrade < What);
+	TestTrue(FString::Printf(TEXT("what it is comes before what it grants: %s"), *All),
+		Implicit != INDEX_NONE && What < Implicit);
 
 	return true;
 }
