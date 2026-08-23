@@ -256,6 +256,33 @@ bool FCataclysmSandboxEnemiesAreArmouredTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// SPAWNED AT COMMON DELIBERATELY, AND THIS TEST WAS WRONG WITHOUT IT.
+	//
+	// The figures checked below are the model's COMMON figures -- the same ones
+	// `tools/tests/test_brute_matches_the_model.py` and its Warden counterpart
+	// compare the headers against. Left at -1 these three settings mean "roll
+	// one", and since issue #848 a rarer creature has proportionally more
+	// health: 11.7 times a Common's at Boss. So the health this test read
+	// depended on a die roll while the figure it compares against did not.
+	//
+	// AND THE ROLL IS NOT RANDOM PER RUN, WHICH IS WHY IT LOOKED FINE FOR SO
+	// LONG. `ACataclysmGameMode::RarityStepFor` seeds the stream with
+	// `Spawned->GetUniqueID()`, an object index, so what this test rolls depends
+	// on how many objects every test before it happened to create. Measured on
+	// 2026-08-23: the same binary passed under `--prefix Cataclysm.Sandbox` and
+	// failed inside the full suite, where an Abyssal Warden rolled Boss and
+	// arrived with 10,226 health against the 3,000 ceiling below. Adding tests
+	// anywhere earlier in the alphabet was enough to change the answer.
+	//
+	// PINNING RATHER THAN SCALING THE CEILING BY WHATEVER ROLLED, because a test
+	// whose expected value is computed from the same roll as the value under
+	// test checks almost nothing. Whether the sandbox should be able to put a
+	// Boss in front of an ungeared character is a real question, it is not this
+	// test's, and it is filed separately.
+	GameMode->BruteRarityStep = 0;
+	GameMode->AbyssalWardenRarityStep = 0;
+	GameMode->HellhoundRarityStep = 0;
+
 	const int32 Brutes = GameMode->SpawnBrutes();
 	const int32 Wardens = GameMode->SpawnAbyssalWardens();
 	const int32 Hellhounds = GameMode->SpawnHellhounds();
@@ -263,6 +290,26 @@ bool FCataclysmSandboxEnemiesAreArmouredTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The sandbox spawns a Brute"), Brutes > 0);
 	TestTrue(TEXT("and an Abyssal Warden"), Wardens > 0);
 	TestTrue(TEXT("and a Hellhound"), Hellhounds > 0);
+
+	// AND THEY REALLY ARE COMMON, or the pinning above stopped working and the
+	// ceiling below would be measuring a rolled creature again without saying
+	// so. Read back off the spawned actor rather than trusted.
+	for (const TPair<FString, AActor*>& Pinned :
+			TArray<TPair<FString, AActor*>>{
+				{TEXT("Brute"), Brutes > 0 ? GameMode->Brutes[0].Get() : nullptr},
+				{TEXT("Abyssal Warden"),
+				 Wardens > 0 ? GameMode->AbyssalWardens[0].Get() : nullptr},
+				{TEXT("Hellhound"),
+				 Hellhounds > 0 ? GameMode->Hellhounds[0].Get() : nullptr}})
+	{
+		if (const ACataclysmEnemyCharacter* Enemy =
+				Cast<ACataclysmEnemyCharacter>(Pinned.Value))
+		{
+			TestEqual(*FString::Printf(TEXT("the %s spawned Common"),
+									   *Pinned.Key),
+				Enemy->RarityStep, 0);
+		}
+	}
 
 	const FGameplayAttribute Armour =
 		UCataclysmCombatAttributeSet::GetArmorAttribute();
