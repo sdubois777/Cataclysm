@@ -555,6 +555,18 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon()
 		return;
 	}
 
+	// THE ITEMS AND THE TYPE ARE TWO DIFFERENT QUESTIONS, and until issue #840
+	// only the type was asked. The type decides which six skills exist. The
+	// items decide what a swing is worth: their damage is summed and their rate
+	// averaged, and each is read at its own upgrade level. Asking only the type
+	// made a second weapon worth nothing and a +5 weapon count as +0.
+	//
+	// SET BEFORE THE TYPE, so that the one EquipWeaponType performs already has
+	// the worn weapons to work from rather than applying the type's figure and
+	// then being corrected.
+	WeaponSlots->SetWornWeapons(
+		Equipment ? Equipment->WornWeapons() : TArray<FCataclysmItem>());
+
 	const FString WornWeapon =
 		Equipment ? Equipment->EquippedWeaponType() : FString();
 	if (!WornWeapon.IsEmpty())
@@ -603,10 +615,10 @@ void ACataclysmPlayerCharacter::GiveStartingWeapon()
 	// either weapon slot means there is nothing to do: either this already ran,
 	// or the character loaded a save holding something better, and replacing
 	// that would be worse than doing nothing.
-	for (const ECataclysmGearSlot WeaponSlot :
+	for (const ECataclysmGearSlot HeldWeaponSlot :
 		 UCataclysmGearSlots::WeaponSlots())
 	{
-		if (!Equipment->SlotIsEmpty(WeaponSlot))
+		if (!Equipment->SlotIsEmpty(HeldWeaponSlot))
 		{
 			return;
 		}
