@@ -2308,12 +2308,12 @@ decision to fund ten or more models rather than a side effect of a rarity tier.
 
 | Enemy rarity | Gear drops per kill | Material drops per kill | Magic find it adds |
 | :-- | --: | --: | --: |
-| Common | 0.16 | 0.32 | 0% |
-| Elite | 0.5 | 1.0 | 50% |
-| Legendary | 1.0 | 2.0 | 100% |
-| Herald | 2.0 | 4.0 | 150% |
-| Boss | 5.0 | 10.0 | 300% |
-| Cataclysm Boss | 12.0 | 24.0 | 500% |
+| Common | 0.16 | 0.16 | 0% |
+| Elite | 0.5 | 0.5 | 50% |
+| Legendary | 1.0 | 1.0 | 100% |
+| Herald | 2.0 | 2.0 | 150% |
+| Boss | 5.0 | 5.0 | 300% |
+| Cataclysm Boss | 12.0 | 12.0 | 500% |
 
   
 
@@ -2345,7 +2345,11 @@ decision to fund ten or more models rather than a side effect of a rarity tier.
 
   
 
-**Crafting materials drop on a separate roll**, with their own quantity in the table above. They do not compete with gear for the same drop, which is why the Scavenger node on the empire tree can raise material quantity without lowering the number of items that drop. A kill drops twice as many materials as gear, because a craft consumes a material and a full loadout takes several hundred crafts, while a piece of gear is kept.
+**Crafting materials drop on a separate roll**, with their own quantity in the table above. They do not compete with gear for the same drop, which is why the Scavenger node on the empire tree can raise material quantity without lowering the number of items that drop.
+
+  
+
+**A kill drops as many materials as gear, halved from twice as many on 2026-08-23.** The doubling was there because a craft consumes a material and a full loadout takes several hundred crafts, while a piece of gear is kept. That argument was not disproved: the rate was halved because a play test found the floor cluttered with materials, and this is the number that gave way. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
 
   
 
