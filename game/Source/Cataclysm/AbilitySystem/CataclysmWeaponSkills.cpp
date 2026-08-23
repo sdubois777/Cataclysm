@@ -158,6 +158,15 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 				// UCataclysmWeaponSlotsComponent. Issue #657.
 				Skill.CritChancePercent = Row.CritChancePercent;
 
+				// THE SAME, AND FOR THE SAME REASON. A -1 means the row says
+				// nothing and the slot's figure is used; turning it into that
+				// figure here would put the fallback in a second place. Applied
+				// once, where the ability is granted, in
+				// UCataclysmWeaponSlotsComponent. Issue #836.
+				Skill.DamagePercent = Row.DamagePercent;
+				Skill.Cooldown = Row.Cooldown;
+				Skill.ManaCost = Row.ManaCost;
+
 				// Named in the error so a bad cell says which of the 398 rows it
 				// is. The generator refuses one already, so this only fires for
 				// a table edited in the editor rather than generated.

@@ -176,7 +176,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 	// arguments before it are defaulted. Issue #657.
 	InFlight = ACataclysmProjectile::Fire(
 		Self, Origin, Destination, Params.RadiusCm, Params.SpeedCmPerSecond,
-		Params.Pierce, Params.bReturns, GetSlotDamagePercent(), SkillTags,
+		Params.Pierce, Params.bReturns, GetDamagePercent(), SkillTags,
 		Params.bBurns, /*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
 		CritChancePercent);
 
@@ -688,7 +688,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		Minions.RemoveAt(0);
 		if (IsValid(Oldest))
 		{
-			Oldest->Explode(Params.RadiusCm, GetSlotDamagePercent());
+			Oldest->Explode(Params.RadiusCm, GetDamagePercent());
 		}
 	}
 
@@ -934,7 +934,7 @@ int32 UCataclysmAuraSkill::Pulse()
 		GetWorld(), Self, Self->GetActorLocation(), Params.RadiusCm);
 
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
-	HitTargets(Inside, GetSlotDamagePercent() * Period);
+	HitTargets(Inside, GetDamagePercent() * Period);
 
 	++Pulses;
 	return Inside.Num();

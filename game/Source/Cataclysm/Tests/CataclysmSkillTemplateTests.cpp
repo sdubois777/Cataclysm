@@ -942,7 +942,7 @@ bool FCataclysmBlinkTest::RunTest(const FString&)
 
 	// AN ENEMY IN BOTH CIRCLES IS HIT ONCE, NOT TWICE. AddUnique is what makes
 	// that true, and without it a blink in place would double every hit.
-	const float Expected = WeaponDamage * Step->GetSlotDamagePercent() / 100.0f;
+	const float Expected = WeaponDamage * Step->GetDamagePercent() / 100.0f;
 	TestEqual(TEXT("And exactly once, not once per end"),
 		Before - AtStart.Health(), Expected);
 
@@ -2187,7 +2187,7 @@ bool FCataclysmProjectileHitsEachOnceTest::RunTest(const FString&)
 	// several frames at these speeds, so without remembering who it has already
 	// touched it would hit them on every one of them. The Special slot deals a
 	// fixed percent of weapon damage, so the exact figure proves the count.
-	const float OneHit = WeaponDamage * Hurl->GetSlotDamagePercent() / 100.0f;
+	const float OneHit = WeaponDamage * Hurl->GetDamagePercent() / 100.0f;
 	TestEqual(TEXT("The near enemy was hit exactly once"),
 		NearBefore - Near.Health(), OneHit);
 	TestEqual(TEXT("So was the far one, because it pierces"),
@@ -2281,7 +2281,7 @@ bool FCataclysmProjectileDetonatesTest::RunTest(const FString&)
 
 	FlyToCompletion(Projectile);
 
-	const float OneHit = WeaponDamage * Pyre->GetSlotDamagePercent() / 100.0f;
+	const float OneHit = WeaponDamage * Pyre->GetDamagePercent() / 100.0f;
 	TestEqual(TEXT("The one it stopped on took exactly one hit, not two"),
 		StruckBefore - Struck.Health(), OneHit);
 	TestEqual(TEXT("And so did the one standing beside them, from the blast"),
@@ -2325,7 +2325,7 @@ bool FCataclysmProjectileReturnsTest::RunTest(const FString&)
 
 	TestTrue(TEXT("It turned round"), Projectile->bReturning);
 
-	const float OneHit = WeaponDamage * Hurl->GetSlotDamagePercent() / 100.0f;
+	const float OneHit = WeaponDamage * Hurl->GetDamagePercent() / 100.0f;
 	TestEqual(TEXT("The enemy on the line was hit twice, once each way"),
 		Before - OnTheLine.Health(), OneHit * 2.0f);
 
@@ -2418,7 +2418,7 @@ bool FCataclysmProjectileHitsAreScaledTest::RunTest(const FString&)
 	const float Before = Target.Health();
 	FlyToCompletion(Hurl->InFlight);
 
-	const float Unbuffed = WeaponDamage * Hurl->GetSlotDamagePercent() / 100.0f;
+	const float Unbuffed = WeaponDamage * Hurl->GetDamagePercent() / 100.0f;
 	TestEqual(TEXT("The hit carried the 50% increase scoped to its element"),
 		Before - Target.Health(), Unbuffed * 1.5f);
 
@@ -2680,9 +2680,9 @@ bool FCataclysmSlotScopedModifierTest::RunTest(const FString&)
 	const float SpecialDealt = SpecialBefore - SpecialTarget.Health();
 
 	TestEqual(TEXT("The Heavy skill got the doubled damage"),
-		HeavyDealt, WeaponDamage * Heavy->GetSlotDamagePercent() / 100.0f * 2.0f);
+		HeavyDealt, WeaponDamage * Heavy->GetDamagePercent() / 100.0f * 2.0f);
 	TestEqual(TEXT("The Special skill got the plain damage"),
-		SpecialDealt, WeaponDamage * Special->GetSlotDamagePercent() / 100.0f);
+		SpecialDealt, WeaponDamage * Special->GetDamagePercent() / 100.0f);
 
 	return true;
 }
