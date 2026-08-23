@@ -126,7 +126,10 @@ bool FCataclysmDropLadderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and Masterful needs nothing"),
 		FDrop::GearLevelGateFor(Rarities, ECataclysmRarity::Masterful), 0);
 
-	// The tier cap, quoted from loot.best_rarity_on_a_drop for tiers 1 to 8.
+	// How far each tier reaches without a penalty, quoted from
+	// loot.highest_unpenalised_rarity for tiers 1 to 8. It is not a cap:
+	// every rarity drops at every tier, and above this a rarity is divided
+	// down rather than forbidden.
 	const ECataclysmRarity Expected[] = {
 		ECataclysmRarity::Quality,	   ECataclysmRarity::Superb,
 		ECataclysmRarity::Masterful,   ECataclysmRarity::Legendary,
@@ -137,7 +140,7 @@ bool FCataclysmDropLadderTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(*FString::Printf(TEXT("tier %d reaches %s"), Tier,
 			*FDrop::RowNameFor(Expected[Tier - 1]).ToString()),
-			FDrop::BestRarityOnADrop(Tier) == Expected[Tier - 1]);
+			FDrop::HighestUnpenalisedRarity(Tier) == Expected[Tier - 1]);
 	}
 
 	return true;
@@ -230,50 +233,63 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 		PreviousEveryday = Shares[0];
 	}
 
-	// TWO: THE ENCHANTED FOUR KEEP THE SHARE THE TABLE'S OWN WEIGHTS GIVE THEM.
-	// Compared against the table rather than against a figure written here, and
-	// against the rungs THIS TIER CAN REACH rather than all eight: the cascade
-	// divides by what is reachable, so at tier 4 Legendary takes a share of five
-	// rungs and at tier 8 a share of eight. Those are not the same number, which
-	// is why this is not written as "the same at every tier".
-	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	// TWO: THE ENCHANTED FOUR KEEP THE SHARE THE TABLE'S OWN WEIGHTS GIVE THEM,
+	// AT THE TIERS WHERE NOTHING IS PENALISED. That is 7 and 8. Below them the
+	// above-the-tier penalty divides these rungs down deliberately, so comparing
+	// them against the table there would be checking that the penalty had been
+	// skipped.
+	//
+	// TWO SEPARATE SCALINGS ACT ON THESE FOUR AND THEY MUST NOT BE CONFUSED: the
+	// pinning, which undoes the per-tier flattening and is meant to leave their
+	// share alone, and the penalty, which is meant to move it. If the pinning
+	// ever started reading penalised weights it would cancel the penalty, and
+	// every tier below 7 would quietly return to the table's own figures.
+	float WholeLadder = 0.0f;
+	for (int32 Rung = 0; Rung < FDrop::RarityCount; ++Rung)
+	{
+		if (const FCataclysmGearRarityRow* Row =
+				FDrop::RarityRow(Rarities, Ladder()[Rung]))
+		{
+			WholeLadder += Row->DropWeight;
+		}
+	}
+	TestTrue(TEXT("the gear rarity table weighs something"), WholeLadder > 0.0f);
+
+	for (int32 Tier = FDrop::DifficultyTiers - 1;
+		 Tier <= FDrop::DifficultyTiers; ++Tier)
 	{
 		FDrop::RarityDistribution(Rarities, Tier, 0.0f, Shares);
-		const int32 Cap = static_cast<int32>(FDrop::BestRarityOnADrop(Tier));
 
-		float Reachable = 0.0f;
-		for (int32 Rung = 0; Rung <= Cap; ++Rung)
-		{
-			if (const FCataclysmGearRarityRow* Row =
-					FDrop::RarityRow(Rarities, Ladder()[Rung]))
-			{
-				Reachable += Row->DropWeight;
-			}
-		}
-
-		for (int32 Rung = FDrop::OrdinaryRarities; Rung <= Cap; ++Rung)
+		for (int32 Rung = FDrop::OrdinaryRarities;
+			 Rung < FDrop::RarityCount; ++Rung)
 		{
 			const FCataclysmGearRarityRow* Row =
 				FDrop::RarityRow(Rarities, Ladder()[Rung]);
-			if (!Row || Reachable <= 0.0f)
+			if (!Row || WholeLadder <= 0.0f)
 			{
 				continue;
 			}
 
-			const float Expected = Row->DropWeight / Reachable;
+			const float Expected = Row->DropWeight / WholeLadder;
 			TestTrue(*FString::Printf(
-				TEXT("%s is %.8f of drops at tier %d, the %.8f its weight in "
-					 "GearRarity.csv gives it"),
+				TEXT("%s is %.8f of drops at tier %d, where nothing is "
+					 "penalised, the %.8f its weight in GearRarity.csv gives it"),
 				*FDrop::RowNameFor(Ladder()[Rung]).ToString(), Shares[Rung],
 				Tier, Expected),
 				FMath::Abs(Shares[Rung] - Expected) < Expected * 1e-4f);
 		}
 	}
 
-	// THREE: DIFFICULTY TIER 1 IS THE TABLE UNTOUCHED. The curve starts at the
-	// figure GearRarity.csv already holds, so the file still describes a real
-	// tier rather than describing none of them.
-	for (int32 Rung = 0; Rung < 8; ++Rung)
+	// THREE: DIFFICULTY TIER 1 IS THE TABLE UNTOUCHED, once the above-the-tier
+	// penalty is multiplied back out. The per-tier shape starts at the figure
+	// GearRarity.csv already holds, so the file still describes a real tier
+	// rather than describing none of them.
+	//
+	// MULTIPLYING THE PENALTY BACK OUT IS NOT A DODGE. Since the cap became a
+	// penalty, DropWeightAt also divides by how far a rarity sits above the
+	// tier, and at tier 1 that is real: Superb is two rungs up, so its finished
+	// weight is a quarter of the table's on purpose.
+	for (int32 Rung = 0; Rung < FDrop::RarityCount; ++Rung)
 	{
 		const FCataclysmGearRarityRow* Row =
 			FDrop::RarityRow(Rarities, Ladder()[Rung]);
@@ -281,25 +297,45 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 		{
 			continue;
 		}
+		const float Shaped = FDrop::DropWeightAt(Rarities, Ladder()[Rung], 1)
+			* FDrop::PenaltyAboveTheTier(Ladder()[Rung], 1);
 		TestTrue(*FString::Printf(
-			TEXT("%s weighs %.4f at tier 1, as the table says"),
+			TEXT("%s is shaped to %.4f at tier 1, as the table says"),
 			*FDrop::RowNameFor(Ladder()[Rung]).ToString(), Row->DropWeight),
-			FMath::IsNearlyEqual(
-				FDrop::DropWeightAt(Rarities, Ladder()[Rung], 1),
-				Row->DropWeight, Row->DropWeight * 1e-5f));
+			FMath::IsNearlyEqual(Shaped, Row->DropWeight,
+								 Row->DropWeight * 1e-5f));
 	}
 
-	// A LOW TIER REACHES ONLY TWO RUNGS. Printed by
-	// loot.rarity_distribution(1, 0.0).
+	// A LOW TIER REACHES EVERY RUNG, AND THIS USED TO ASSERT THE OPPOSITE.
+	// Until 2026-08-23 difficulty tier 1 was five sevenths Everyday, two
+	// sevenths Quality and exactly zero of everything else. The project owner
+	// played that and said it was too strict, so a rarity above the tier's own
+	// reach is divided by RarityPenaltyAboveTheTier per rung instead of
+	// forbidden. Superb is two rungs above tier 1 and arrives about one drop in
+	// 19; Cataclysmic is six rungs above and arrives about one in 1.5 million.
+	//
+	// Printed by loot.rarity_distribution(1, 0.0).
+	const float ShareAtTierOne[] = {
+		0.6679531444f, 0.2671812578f, 0.0534362516f, 0.0106872503f,
+		0.0006679531f, 0.0000667953f, 0.0000066795f, 0.0000006680f,
+	};
+
 	FDrop::RarityDistribution(Rarities, 1, 0.0f, Shares);
-	TestTrue(TEXT("tier 1 is five sevenths Everyday"),
-		FMath::Abs(Shares[0] - 0.7142857143f) < 1e-5f);
-	TestTrue(TEXT("and two sevenths Quality"),
-		FMath::Abs(Shares[1] - 0.2857142857f) < 1e-5f);
-	for (int32 Index = 2; Index < 8; ++Index)
+	for (int32 Index = 0; Index < 8; ++Index)
 	{
-		TestEqual(*FString::Printf(TEXT("and nothing above Quality (%s)"),
-			*FDrop::RowNameFor(Ladder()[Index]).ToString()), Shares[Index], 0.0f);
+		TestTrue(*FString::Printf(
+			TEXT("%s is %.10f of drops at tier 1 (%.10f)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(),
+			ShareAtTierOne[Index], Shares[Index]),
+			FMath::Abs(Shares[Index] - ShareAtTierOne[Index])
+				< ShareAtTierOne[Index] * 1e-3f);
+
+		// AND NONE OF THEM IS ZERO, which is the whole of the change and is
+		// stated separately because a reader looking at eight literals cannot
+		// see which of them used to be forbidden.
+		TestTrue(*FString::Printf(TEXT("%s can drop at tier 1 at all"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString()),
+			Shares[Index] > 0.0f);
 	}
 
 	// EVERY DISTRIBUTION SUMS TO ONE, at every tier and with magic find on. It
@@ -414,20 +450,27 @@ bool FCataclysmDropRollDrawsFromItTest::RunTest(const FString& Parameters)
 			FMath::Abs(Seen - Shares[Index]) < Shares[Index] * 0.1f);
 	}
 
-	// NOTHING ABOVE THE TIER CAP, EVER. Checked as a count rather than a share,
-	// because one drop over the cap is a defect and not noise.
+	// A LOW TIER CAN ROLL FAR ABOVE ITSELF, AND THIS USED TO ASSERT THE
+	// OPPOSITE. Until 2026-08-23 nothing above the tier plus one could drop at
+	// all, and this counted any drop over that as a defect. The project owner
+	// played it and said it was too strict; a rarity far above the tier is now
+	// divided down rather than forbidden.
+	//
+	// ROLLED RATHER THAN READ OFF THE DISTRIBUTION, because RollRarity walks
+	// the cascade itself: a cascade still stopping at the old cap would pass
+	// every arithmetic check above and fail here. With a large magic find, so
+	// the draw does not need the millions of rolls the plain odds would.
 	FRandomStream Low(/*InSeed=*/7);
-	for (int32 Draw = 0; Draw < 5000; ++Draw)
+	bool RolledAboveTheReach = false;
+	for (int32 Draw = 0; Draw < 20000 && !RolledAboveTheReach; ++Draw)
 	{
-		const ECataclysmRarity Rolled = FDrop::RollRarity(Rarities, 2, 0.0f, Low);
-		if (static_cast<int32>(Rolled) > static_cast<int32>(ECataclysmRarity::Superb))
-		{
-			AddError(FString::Printf(
-				TEXT("a tier 2 drop rolled %s, above the Superb cap"),
-				*FDrop::RowNameFor(Rolled).ToString()));
-			break;
-		}
+		const ECataclysmRarity Rolled =
+			FDrop::RollRarity(Rarities, 2, 100000.0f, Low);
+		RolledAboveTheReach = static_cast<int32>(Rolled)
+			> static_cast<int32>(FDrop::HighestUnpenalisedRarity(2));
 	}
+	TestTrue(TEXT("a tier 2 drop can roll above Superb"),
+		RolledAboveTheReach);
 
 	// MAGIC FIND CAN NO LONGER FORCE A RARITY, AND THAT IS ISSUE #890's FIX.
 	// This used to assert the opposite: that a magic find no character could

@@ -28,54 +28,86 @@ from cataclysm_sim import loot
 
 
 # --------------------------------------------------------------------------
-# The cap
+# How far the tier reaches without a penalty
+#
+# THERE IS NO CAP ANY MORE. These tests used to hold one: a rarity above the
+# tier plus one carried a share of exactly zero. The project owner played that
+# on 2026-08-23 and said it was too strict -- at difficulty tier 1 only Everyday
+# and Quality could drop at all. Every rarity now drops at every tier, and the
+# same figure decides where a penalty starts instead.
 # --------------------------------------------------------------------------
 
-def test_the_cap_is_one_rarity_above_the_difficulty_tier():
-    assert loot.best_rarity_on_a_drop(1) == "Quality"
-    assert loot.best_rarity_on_a_drop(4) == "Legendary"
-    assert loot.best_rarity_on_a_drop(6) == "Ascendant"
+def test_the_tier_reaches_one_rarity_above_itself_without_penalty():
+    assert loot.highest_unpenalised_rarity(1) == "Quality"
+    assert loot.highest_unpenalised_rarity(4) == "Legendary"
+    assert loot.highest_unpenalised_rarity(6) == "Ascendant"
 
 
-def test_the_cap_stops_at_cataclysmic_for_the_last_two_tiers():
+def test_the_reach_stops_at_cataclysmic_for_the_last_two_tiers():
     """Eight rarities and eight tiers, so the one-above spends the difference
     at the top -- the same way affix tiers 6, 7 and 8 all reach T7."""
-    assert loot.best_rarity_on_a_drop(7) == "Cataclysmic"
-    assert loot.best_rarity_on_a_drop(8) == "Cataclysmic"
+    assert loot.highest_unpenalised_rarity(7) == "Cataclysmic"
+    assert loot.highest_unpenalised_rarity(8) == "Cataclysmic"
 
 
 def test_a_tier_outside_the_eight_is_refused():
     with pytest.raises(ValueError, match="outside 1 to 8"):
-        loot.best_rarity_on_a_drop(0)
+        loot.highest_unpenalised_rarity(0)
     with pytest.raises(ValueError, match="outside 1 to 8"):
-        loot.best_rarity_on_a_drop(9)
+        loot.highest_unpenalised_rarity(9)
 
 
-def test_nothing_above_the_cap_can_drop_at_any_magic_find():
-    """A magic find nothing could ever reach still cannot lift the ceiling.
+def test_the_penalty_is_one_at_or_below_the_reach_and_doubles_above_it():
+    """Nothing at or under the tier's own reach pays anything, and each rung
+    above it costs the same again."""
+    assert loot.penalty_above_the_tier("Everyday", 1) == 1.0
+    assert loot.penalty_above_the_tier("Quality", 1) == 1.0
 
-    This is the assertion that would fail if magic find were ever applied to
-    which rarities are reachable rather than to the roll among them.
+    assert loot.penalty_above_the_tier("Superb", 1) == pytest.approx(
+        loot.RARITY_PENALTY_ABOVE_THE_TIER)
+    assert loot.penalty_above_the_tier("Masterful", 1) == pytest.approx(
+        loot.RARITY_PENALTY_ABOVE_THE_TIER ** 2)
+
+    # AND THE TWO DEEPEST TIERS PAY NOTHING AT ALL, which is what keeps every
+    # figure the 2026-08-18 decision set intact.
+    for tier in (7, 8):
+        for rarity in af.RARITIES:
+            assert loot.penalty_above_the_tier(rarity, tier) == 1.0
+
+
+def test_every_rarity_drops_at_every_tier_however_much_magic_find():
+    """What the project owner asked for on 2026-08-23, checked directly.
+
+    This is the exact opposite of what stood here before, which held that a
+    rarity above the tier's cap carried a share of exactly zero. Nothing is
+    forbidden now: the penalty divides and magic find multiplies, and neither
+    can reach zero.
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        spread = loot.rarity_distribution(tier, magic_find=100_000.0)
-        above = loot.rarity_index(loot.best_rarity_on_a_drop(tier)) + 1
-        for index in range(above, len(af.RARITIES) + 1):
-            rarity = loot.rarity_at_index(index)
-            assert spread[rarity] == 0.0, (
-                f"tier {tier} dropped {rarity}, above its cap of "
-                f"{loot.best_rarity_on_a_drop(tier)}")
+        for magic_find in (0.0, 300.0, 100_000.0):
+            spread = loot.rarity_distribution(tier, magic_find)
+            for rarity in af.RARITIES:
+                assert spread[rarity] > 0.0, (
+                    f"{rarity} never drops at difficulty tier {tier} with "
+                    f"{magic_find}% magic find")
 
 
 # --------------------------------------------------------------------------
 # The distribution
 # --------------------------------------------------------------------------
 
-def test_a_distribution_covers_every_rarity_including_unreachable_ones():
-    """A caller asking about a rarity out of reach gets zero, not a KeyError."""
+def test_a_distribution_covers_every_rarity_and_none_of_them_is_zero():
+    """It used to assert the opposite for anything above the tier's cap.
+
+    A caller still gets every rarity as a key. What changed on 2026-08-23 is
+    that none of them is zero any more, at any difficulty tier.
+    """
     spread = loot.rarity_distribution(1)
     assert set(spread) == set(af.RARITIES)
-    assert spread["Cataclysmic"] == 0.0
+    assert spread["Cataclysmic"] > 0.0
+    assert 1 / spread["Cataclysmic"] > 100_000, (
+        "a Cataclysmic at difficulty tier 1 should be a remote chance rather "
+        f"than a real one: one drop in {1 / spread['Cataclysmic']:.0f}")
 
 
 def test_the_weights_fall_in_two_segments_split_at_the_enchantment_boundary():
@@ -165,9 +197,17 @@ def test_difficulty_tier_one_is_the_gear_rarity_sheet_untouched():
     describing any tier at all, and the cross-check against it in
     `tools/tests/test_loot_sheet_matches_the_model.py` would be comparing two
     different things without saying so.
+
+    THE PENALTY IS MULTIPLIED BACK OUT BEFORE COMPARING, and that is not a
+    dodge. Since the cap became a penalty on 2026-08-23, `drop_weight` also
+    divides by how far a rarity sits above the tier, and at difficulty tier 1
+    that is real: Superb is two rungs up, so its finished weight is a quarter
+    of the sheet's on purpose. The claim here is about the per-tier shape.
     """
     for rarity, weight in loot.RARITY_DROP_WEIGHT.items():
-        assert loot.drop_weight(rarity, 1) == pytest.approx(weight, rel=1e-12)
+        shaped = (loot.drop_weight(rarity, 1)
+                  * loot.penalty_above_the_tier(rarity, 1))
+        assert shaped == pytest.approx(weight, rel=1e-12)
 
 
 def test_going_deeper_drops_less_of_the_weakest_rarity():
@@ -210,31 +250,30 @@ def test_the_enchanted_rarities_do_not_get_commoner_with_the_tier():
     fall out of the scaling inside `drop_weight` rather than being written down
     anywhere, so nothing else would notice them drifting.
 
-    STATED AGAINST THE GEAR RARITY SHEET'S OWN WEIGHTS, not as "the same number
-    at every tier", and the difference matters. The shares are not equal across
-    tiers, because the cap decides how many rungs are reachable and the cascade
-    divides by the weight of those and no others: at tier 4 nothing above
-    Legendary is reachable, so it takes a share of five rungs rather than eight.
-    Writing the first version of this test as equality caught exactly that, at
-    one part in a thousand.
+    CHECKED AT THE TIERS WHERE NOTHING IS PENALISED, which is 7 and 8. Below
+    them the above-the-tier penalty divides these rungs down deliberately, so
+    comparing them to the sheet there would be checking that the penalty had
+    been skipped.
 
-    What IS the same at every tier is the enchanted block's share of the sheet's
-    weights over whatever the cap leaves reachable. That is the promise.
+    TWO SEPARATE SCALINGS ACT ON THESE FOUR AND THEY MUST NOT BE CONFUSED: the
+    pinning, which undoes the per-tier flattening and is meant to leave their
+    share alone, and the penalty, which is meant to move it. If the pinning
+    ever started reading penalised weights it would cancel the penalty, and
+    every tier below 7 would quietly return to the sheet's figures.
     """
     weight = loot.RARITY_DROP_WEIGHT
+    whole_ladder = sum(weight.values())
 
-    for tier in range(4, af.DIFFICULTY_TIERS + 1):
+    for tier in (af.DIFFICULTY_TIERS - 1, af.DIFFICULTY_TIERS):
         spread = loot.rarity_distribution(tier)
-        cap = loot.rarity_index(loot.best_rarity_on_a_drop(tier))
-        reachable = sum(weight[loot.rarity_at_index(rung)]
-                        for rung in range(1, cap + 1))
 
-        for rung in range(loot.ORDINARY_RARITIES + 1, cap + 1):
+        for rung in range(loot.ORDINARY_RARITIES + 1, len(af.RARITIES) + 1):
             rarity = loot.rarity_at_index(rung)
             assert spread[rarity] == pytest.approx(
-                weight[rarity] / reachable, rel=1e-9), (
-                f"{rarity} at difficulty tier {tier} has drifted off the share "
-                "the Gear Rarity sheet's weights give it")
+                weight[rarity] / whole_ladder, rel=1e-9), (
+                f"{rarity} at difficulty tier {tier}, where nothing is "
+                "penalised, has drifted off the share the Gear Rarity "
+                "sheet's weights give it")
 
     # AND THE HEADLINE FIGURE THE 2026-08-18 DECISION WAS ARGUED ON SURVIVES.
     deepest = loot.rarity_distribution(af.DIFFICULTY_TIERS)
@@ -286,15 +325,12 @@ def test_no_amount_of_magic_find_stops_a_rarity_dropping():
     can be removed at any magic find at all.
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        reachable = loot.rarity_index(loot.best_rarity_on_a_drop(tier))
-
         for magic_find in (0.0, 80.0, 300.0, 500.0, 10_000.0, 1e9):
             spread = loot.rarity_distribution(tier, magic_find)
-            for rung in range(1, reachable + 1):
-                rarity = loot.rarity_at_index(rung)
+            for rarity in af.RARITIES:
                 assert spread[rarity] > 0.0, (
                     f"{rarity} never drops at difficulty tier {tier} with "
-                    f"{magic_find}% magic find, though the tier can reach it")
+                    f"{magic_find}% magic find")
 
 
 def test_a_boss_kill_drops_a_spread_of_rarities_rather_than_one():
@@ -313,10 +349,9 @@ def test_a_boss_kill_drops_a_spread_of_rarities_rather_than_one():
                 f"a {enemy} kill at difficulty tier {tier} drops one rarity "
                 f"{max(reachable) * 100:.1f}% of the time, which is the fault "
                 "#890 was about")
-            assert len(reachable) == loot.rarity_index(
-                loot.best_rarity_on_a_drop(tier)), (
+            assert len(reachable) == len(af.RARITIES), (
                 f"a {enemy} kill at difficulty tier {tier} cannot drop every "
-                "rarity the tier reaches")
+                "rarity")
 
 
 def test_magic_find_cannot_run_away_however_much_is_carried():
@@ -422,13 +457,29 @@ def test_rolling_agrees_with_the_exact_distribution():
             f"{expected[rarity]:.1%}")
 
 
-def test_rolling_never_returns_a_rarity_above_the_tier_cap():
+def test_rolling_can_return_a_rarity_far_above_the_tier():
+    """It used to assert the opposite, and that was the cap.
+
+    The exact distribution says every rarity has a share above zero at every
+    difficulty tier. This is the half of that claim about what actually comes
+    out of `roll_rarity`, which walks the cascade rather than reading the
+    distribution -- so a cascade that still stopped at the old cap would pass
+    every arithmetic check and fail here.
+
+    WITH A LARGE MAGIC FIND AND MANY ROLLS, because at difficulty tier 1 a
+    Cataclysmic is one drop in 1.5 million without help and rolling for one
+    would take all day.
+    """
     rng = random.Random(7)
     for tier in (1, 3, 5):
-        cap = loot.rarity_index(loot.best_rarity_on_a_drop(tier))
-        for _ in range(2_000):
-            rolled = loot.roll_rarity(tier, magic_find=5_000.0, rng=rng)
-            assert loot.rarity_index(rolled) <= cap
+        reach = loot.rarity_index(loot.highest_unpenalised_rarity(tier))
+        above = {loot.roll_rarity(tier, magic_find=100_000.0, rng=rng)
+                 for _ in range(20_000)}
+
+        assert any(loot.rarity_index(r) > reach for r in above), (
+            f"20,000 rolls at difficulty tier {tier} never produced a rarity "
+            f"above {loot.highest_unpenalised_rarity(tier)}, so the cascade "
+            "is still stopping at the old cap")
 
 
 def test_the_same_seed_gives_the_same_drops():

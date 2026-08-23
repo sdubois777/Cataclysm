@@ -958,20 +958,26 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// TIER 1 REACHES QUALITY AND NO FURTHER, which is the second of eight rungs.
-	// The gate is one ABOVE the tier, not level with it, and
-	// UCataclysmDropRoll::RaritiesAboveDifficulty says why: with the cap sitting
-	// exactly on the tier, the best thing a dungeon can produce is something the
-	// player can already make, so the only reason to run one is quantity. The
-	// affix tier gate uses the same one-above rule.
+	// TIER 1 IS OVERWHELMINGLY QUALITY OR WORSE, AND NO LONGER ONLY THAT.
+	// Until 2026-08-23 the tier was a hard cap and this asserted equality with
+	// Quality exactly. The project owner played that and said it was too
+	// strict, so every rarity now drops at every difficulty tier and being far
+	// above the tier divides a rarity down instead of forbidding it. See
+	// UCataclysmDropRoll::RarityPenaltyAboveTheTier.
 	//
-	// STATED RATHER THAN READ BACK FROM BestRarityOnADrop, because a test that
-	// asks the code what it expects agrees with the code by construction and
-	// notices nothing. A change to the one-above rule should fail here.
-	TestEqual(*FString::Printf(
-		TEXT("a tier 1 kill drops nothing above Quality, best was %d"),
+	// SO THIS IS AN UPPER BOUND OVER A SMALL SAMPLE RATHER THAN AN EQUALITY.
+	// A handful of tier 1 kills reaching Superb is possible at about one drop
+	// in 19 and would make an equality check fail at random; reaching Legendary
+	// is one in 1,497 and anything above that is far rarer still. Masterful is
+	// the bound because it leaves real room before the figures that matter.
+	//
+	// STATED RATHER THAN READ BACK FROM HighestUnpenalisedRarity, because a
+	// test that asks the code what it expects agrees with the code by
+	// construction and notices nothing.
+	TestTrue(*FString::Printf(
+		TEXT("a tier 1 kill drops nothing above Masterful, best was %d"),
 		AtTierOne),
-		AtTierOne, static_cast<int32>(ECataclysmRarity::Quality));
+		AtTierOne <= static_cast<int32>(ECataclysmRarity::Masterful));
 
 	// AND THE TIER ACTUALLY CHANGES WHAT DROPS, which is the half that fails if
 	// the tier stops being read at all. A comparison rather than a fixed rarity,

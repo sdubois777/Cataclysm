@@ -20,6 +20,87 @@ applied or still pending.
 
 ---
 
+## 2026-08-23 — Every gear rarity drops at every difficulty tier; the cap becomes a penalty
+
+**Affects:** `sim/cataclysm_sim/loot.py`,
+`game/Source/Cataclysm/Items/CataclysmDropRoll.cpp` and section VII of
+`docs/Cataclysm_GDD_v2.md`. **Applied there.** No data file changed. It replaces
+the decision of the same day, "Gear rarity caps one above the difficulty tier",
+which is left below because the reasoning it records is still why the *reach* is
+one above rather than level. Issues #886 and #870.
+
+### What was asked
+
+The project owner played the capped version and said: at difficulty tier 1 only
+the first two rarities drop, which is a bit strict. **Every rarity should have
+some chance of dropping at every tier.**
+
+### Why the cap could not simply be deleted
+
+Measured first. The four enchanted rarities are pinned to a fixed share of the
+ladder, so with the cap gone and nothing in its place a tier 1 character would
+have had **exactly** the same odds as a tier 8 one — Legendary one in 204 and
+Cataclysmic one in 25,531 at both. All progression at the top of the ladder
+would have disappeared. The cap was doing that work.
+
+### The decision
+
+**A rarity above the tier's own reach is divided by 2 once for each further
+rung.** Nothing is forbidden. The reach is unchanged at one rarity above the
+tier, so tiers 7 and 8 pay nothing at all and every figure set on 2026-08-18
+survives untouched.
+
+| Tier | Everyday | Quality | Superb | Masterful | Legendary | Cataclysmic |
+| :-- | --: | --: | --: | --: | --: | --: |
+| 1 | 66.8% | 26.7% | 5.34% | 1.07% | 1 in 1,497 | 1 in 1,497,111 |
+| 4 | 42.3% | 27.5% | 18.0% | 11.7% | 1 in 204 | 1 in 204,111 |
+| 8 | 17.2% | 21.5% | 26.9% | 33.7% | 1 in 204 | 1 in 25,531 |
+
+**The project owner chose the divisor of 2 on 2026-08-23** from measured
+candidates running 1.5 to 5. Going from tier 1 to tier 8 is worth fifty-nine
+times at the top of the ladder.
+
+### What the genre does
+
+**Diablo II has no hard gate on item quality either.** Its chance improves by
+`(MonsterLevel - ItemLevel) / Divisor`, so a shallow monster can produce a
+high-level unique at a much reduced chance rather than never. That is the same
+shape: possible everywhere, and much rarer where it does not belong. The sources
+are in the entry for gear rarity moving with the difficulty tier, further down.
+
+### And through what a player actually kills
+
+Measured with the enemy bonuses applied, because a distribution measured at zero
+magic find is not what anybody sees. One Cataclysmic drop in:
+
+| Enemy killed | Tier 1 | Tier 4 | Tier 8 |
+| :-- | --: | --: | --: |
+| an ordinary creature | 1,497,111 | 204,111 | 25,531 |
+| a Boss | 37,928 | 8,192 | 1,569 |
+| a Cataclysm Boss | 20,614 | 4,926 | 1,003 |
+
+**One wrinkle, recorded rather than tuned away.** With magic find applied, a Boss
+at difficulty tier 7 drops a Cataclysmic slightly more often than at tier 8 — one
+in 1,424 against one in 1,569, about ten per cent. Neither tier pays a penalty,
+so this is the ordinary segment's flattening meeting magic find: at tier 8 the
+segment is flatter, Masterful is heavier, and the enchanted block is squeezed a
+little harder. Without magic find the ladder is monotone. It has not been played
+and it is small.
+
+### What the affix tier gate does
+
+**Nothing. It is still a hard cap.** The project owner chose on 2026-08-23 to
+leave it, so that the effect of this change can be seen on its own first. A drop
+still rolls affixes up to the difficulty tier plus one, capped at T7.
+
+### What nobody has confirmed
+
+**None of this has been played.** The divisor is one line in
+`sim/cataclysm_sim/loot.py` and one in
+`game/Source/Cataclysm/Items/CataclysmDropRoll.h`.
+
+---
+
 ## 2026-08-23 — Magic find multiplies a rarity's weight, not its step of the cascade
 
 **Affects:** `sim/cataclysm_sim/loot.py` and
@@ -308,6 +389,15 @@ files. Nothing about it has been played.
 ---
 
 ## 2026-08-23 — Gear rarity caps one above the difficulty tier, and the document was stale
+
+**PARTLY SUPERSEDED THE SAME DAY, and the half that survives is the reasoning.**
+There is no cap on gear rarity any more; every rarity drops at every difficulty
+tier. See "Every gear rarity drops at every difficulty tier; the cap becomes a
+penalty" above. What this entry settled and what still stands is that the figure
+sits one rarity **above** the tier rather than level with it, and why — that
+figure is now where a penalty starts rather than where drops stop. The
+comparison it records between the code and the design document, and the
+cross-check test it produced, both still apply.
 
 **Affects:** section VII of `docs/Cataclysm_GDD_v2.md`, its difficulty tier table
 and the sentence in section IV. **Applied there.** No code changed: the engine and
