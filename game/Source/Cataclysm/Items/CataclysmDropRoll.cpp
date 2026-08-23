@@ -975,11 +975,103 @@ FName UCataclysmDropRoll::RollBase(const UDataTable* BaseTable,
 	return Bases[Stream.RandRange(0, Bases.Num() - 1)];
 }
 
+// ---------------------------------------------------------------------------
+// What damage types a dropped weapon carries
+// ---------------------------------------------------------------------------
+
+TArray<FName> UCataclysmDropRoll::DamageTypesAvailableTo(
+	const UDataTable* WeaponSkillTable, const FString& WeaponType)
+{
+	TArray<FName> Available;
+	if (!WeaponSkillTable || WeaponType.IsEmpty())
+	{
+		return Available;
+	}
+
+	// ROWS NAMING UCataclysmWeaponSkills::WeaponIndependent ARE NOT COUNTED.
+	// Those are the auras, whose WeaponType is "All" because they apply
+	// whatever is held. Counting them would make every damage type available
+	// to every weapon and erase the table this function exists to read.
+	TSet<FString> Present;
+	for (const TPair<FName, uint8*>& Each : WeaponSkillTable->GetRowMap())
+	{
+		const FCataclysmWeaponSkillRow* Row =
+			reinterpret_cast<const FCataclysmWeaponSkillRow*>(Each.Value);
+		if (Row && Row->WeaponType == WeaponType)
+		{
+			Present.Add(Row->DamageType);
+		}
+	}
+
+	for (const FName& Candidate : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		if (Present.Contains(Candidate.ToString()))
+		{
+			Available.Add(Candidate);
+		}
+	}
+	return Available;
+}
+
+int32 UCataclysmDropRoll::MaxDamageTypesFor(const FCataclysmItemBaseRow& BaseRow,
+											int32 DifficultyTier,
+											int32 AvailableCount)
+{
+	return FMath::Max(0, FMath::Min3(BaseRow.MaxDamageTypes, DifficultyTier,
+									 AvailableCount));
+}
+
+TArray<FName> UCataclysmDropRoll::RollDamageTypes(
+	const UDataTable* WeaponSkillTable, const FCataclysmItemBaseRow& BaseRow,
+	int32 DifficultyTier, FRandomStream& Stream)
+{
+	TArray<FName> Rolled;
+	if (BaseRow.MaxDamageTypes <= 0)
+	{
+		// Everything that is not a weapon. game/Data/ItemBases.csv gives every
+		// non-weapon base a MaxDamageTypes of 0, so this is the ordinary path
+		// for ten of the eleven slots rather than a failure.
+		return Rolled;
+	}
+
+	TArray<FName> Pool = DamageTypesAvailableTo(WeaponSkillTable,
+												BaseRow.WeaponType);
+	const int32 Most = MaxDamageTypesFor(BaseRow, DifficultyTier, Pool.Num());
+	if (Most <= 0)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("A '%s' can hold at most %d damage types and %d are designed "
+				 "for it, so a drop at tier %d carries none."),
+			*BaseRow.WeaponType, BaseRow.MaxDamageTypes, Pool.Num(),
+			DifficultyTier);
+		return Rolled;
+	}
+
+	// FROM ONE, NOT FROM ZERO. The design says a weapon rolls "from one damage
+	// type up to" its cap, so a weapon carrying none is not a drop that can
+	// happen.
+	const int32 Count = Stream.RandRange(1, Most);
+
+	// WHICH TYPES IS UNIFORM, AND THE DESIGN SAYS IT SHOULD NOT BE. Section IV
+	// says loot is biased toward the Cataclysm being fought. Nothing in this
+	// module knows which Cataclysm that is and no other part of a drop is
+	// biased either, so uniform is the honest stand-in rather than a bias
+	// invented here.
+	for (int32 Taken = 0; Taken < Count; ++Taken)
+	{
+		const int32 Index = Stream.RandRange(0, Pool.Num() - 1);
+		Rolled.Add(Pool[Index]);
+		Pool.RemoveAt(Index);
+	}
+	return Rolled;
+}
+
 bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 								  const UDataTable* AffixTable,
 								  const UDataTable* GearRarityTable,
 								  const UDataTable* SocketTable,
 								  const UDataTable* AffixTierTable,
+								  const UDataTable* WeaponSkillTable,
 								  const FString& Slot, int32 DifficultyTier,
 								  float MagicFind, FRandomStream& Stream,
 								  FCataclysmItem& OutItem)
@@ -1047,6 +1139,14 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 			OutItem.Affixes.Add(MoveTemp(Rolled));
 		}
 	}
+
+	// LAST, AFTER THE AFFIXES, AND THE ORDER IS DELIBERATE. Every draw moves
+	// the stream on, so rolling this earlier would shift every affix draw that
+	// follows it and change what an existing seed produces. Adding it at the
+	// end leaves every seeded expectation in the tests describing the same
+	// item it described before.
+	OutItem.DamageTypes = RollDamageTypes(WeaponSkillTable, *BaseRow,
+										  DifficultyTier, Stream);
 
 	return true;
 }

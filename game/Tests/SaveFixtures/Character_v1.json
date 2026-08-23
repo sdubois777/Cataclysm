@@ -15,6 +15,7 @@
 			"Item": {
 				"Base": "Circlet",
 				"GearLevel": 7,
+				"DamageTypes": [],
 				"Affixes": [
 					{
 						"Affix": "PrefixLifeFlat",
@@ -42,6 +43,7 @@
 			"Item": {
 				"Base": "None",
 				"GearLevel": 0,
+				"DamageTypes": [],
 				"Affixes": [],
 				"EnchantmentCount": 0,
 				"Sockets": 0,
