@@ -140,7 +140,7 @@ def test_the_pinned_headline_odds_match_the_model(loot) -> None:
     text = UNREAL_TEST.read_text(encoding="utf-8")
 
     shares = loot.rarity_distribution(TIER, 0.0)
-    for rarity, stated in (("Cataclysmic", "25,531"), ("Masterful", "26")):
+    for rarity, stated in (("Cataclysmic", "25,531"), ("Masterful", "3")):
         one_in = 1.0 / shares[rarity]
         assert f"one in {stated}" in text, (
             f"{UNREAL_TEST.name} no longer says a {rarity} drop is one in "

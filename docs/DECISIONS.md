@@ -20,6 +20,223 @@ applied or still pending.
 
 ---
 
+## 2026-08-23 — Gear rarity moves with the difficulty tier: the common four flatten, the rare four are pinned
+
+**Affects:** `sim/cataclysm_sim/loot.py` and
+`game/Source/Cataclysm/Items/CataclysmDropRoll.cpp`. **Applied there.** The Gear
+Rarity sheet of `docs/All_Things_Cataclysm.xlsx` and `game/Data/GearRarity.csv`
+are **unchanged** — see "Where the numbers live" below. Section VII of
+`docs/Cataclysm_GDD_v2.md` gains a paragraph saying a cap is not a distribution.
+Issue #886.
+
+### What was reported
+
+The project owner played on 2026-08-23 and said the only thing that ever drops is
+Quality and Everyday items, and that from a player's perspective it is
+uninteresting. Higher rarities should not rain down and should not be impossible.
+Each difficulty tier should have its own rarity scaling.
+
+**Measured, it was worse than the report.** The two weakest rarities as a share of
+all drops, straight from the model with no magic find:
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Bottom two | 100.0% | 89.7% | 86.2% | 85.8% | 85.7% | 85.7% | 85.7% | 85.7% |
+
+**Difficulty tiers 4 through 8 were the same game**, differing only by adding
+rarities too rare to see. Five of the eight tiers gave a player the same loot.
+
+### What the genre does
+
+**Diablo II is the only one of the four that publishes an exact formula, and it is
+the same shape this project already uses.** Quality is a cascade tested rarest
+first — Unique, Set, Rare, Magic, Hi Quality, Normal — with each rung's base
+chance `1 / value` from `ItemRatio.txt`, and the depth term sits inside the
+cascade: `chance = base − (MonsterLevel − ItemLevel) / Divisor`. A `Min` column
+floors each chance and magic find multiplies with diminishing returns.
+
+- <https://d2mods.info/forum/kb/viewarticle?a=320>
+- <https://diablo2.diablowiki.net/Item_Generation_Tutorial>
+
+**Diablo IV raises the floor rather than the ceiling.** Higher Torment tiers raise
+Legendary and Ancestral chances, and Ancestral items and Mythic Uniques cannot
+drop below Torment 1 at all. Its answer to low rarities cluttering the endgame is
+not a reweighting: from Torment 1 the Normal, Magic and Rare items that drop are
+auto-salvaged into materials, so the player only sees Legendary and above.
+
+- <https://www.wowhead.com/diablo-4/news/normal-magic-rare-items-auto-salvaged-in-torment-difficulty-diablo-4-vessel-of-347618>
+- <https://www.icy-veins.com/d4/news/non-legendary-items-will-be-auto-salvaged-in-higher-difficulties-in-vessel-of-hatred/>
+- <https://www.icy-veins.com/d4/guides/gear-systems-and-itemization-overview/>
+
+**Two sources disagreed and the disagreement is recorded rather than resolved
+away.** The Fextralife wiki says Common, Magic and Rare items can still be
+obtained in Torment. Both are true: they still drop, and they are salvaged before
+the player sees them. The auto-salvage is also reported as unreliable in practice.
+
+**Last Epoch does not move rarity with area level at all.** Rarity comes from an
+"increased item rarity" statistic that the content carries — corruption and
+monster modifiers — and the reporting is explicit that character level and area
+level do not change unique odds.
+
+- <https://maxroll.gg/last-epoch/resources/unique-and-set-item-farming>
+- <https://www.gameleap.com/articles/last-epoch-all-item-rarities-list-how-to-farm-them>
+
+**Path of Exile does not either.** Area level sets item level, which decides which
+modifier tiers are reachable, not the split between Normal, Magic and Rare. That
+split moves through "increased item rarity", where +100% gives twice as many
+magic, rare and unique items.
+
+- <https://pathofexile.fandom.com/wiki/Rarity>
+- <https://pathofexile.fandom.com/wiki/Drop_rate>
+
+`poewiki.net` was behind a bot check, as it was for the inventory research on
+2026-08-23, so those two are the Fandom mirror.
+
+**What the research settles.** A formula, not a hand-authored weight row per
+level: none of the four keeps one, three move rarity by a multiplier and one by a
+depth term inside the cascade. And the floor moves further than the ceiling.
+
+**What it does not settle: how far.** All four are free-to-play games tuned around
+retention and none has this project's crafting-led ladder, where the design says a
+drop is raw material and crafting is the route to the top. The endpoint is a
+judgement, and it is the project owner's below.
+
+### The decision
+
+**Keep the two-segment shape set on 2026-08-18 and let one number in it move with
+the difficulty tier: the ordinary segment's fall ratio.** Masterful is the anchor
+and never moves; the three rarities below it are worked out from the ratio.
+
+| | |
+| :-- | :-- |
+| the ratio at difficulty tier 1 | 2.5, which is what the sheet already holds |
+| the ratio at difficulty tier 8 | 0.8 |
+| how it moves between them | geometrically |
+
+**The project owner chose both ends on 2026-08-23**, from a measured table of
+endpoints running 2.5 down to 0.6. What it does:
+
+| Tier | Everyday | Quality | Superb | Masterful | Legendary | Cataclysmic |
+| :-- | --: | --: | --: | --: | --: | --: |
+| 1 | 71.4% | 28.6% | — | — | — | — |
+| 4 | 42.3% | 27.6% | 18.0% | 11.7% | 1 in 204 | — |
+| 8 | 17.2% | 21.5% | 26.9% | 33.7% | 1 in 204 | 1 in 25,531 |
+
+The two weakest fall from 85.7% of drops at tier 8 to 38.8%. **Masterful becomes
+the commonest thing a deep player finds**, which is deliberate: it is the top of
+the ordinary ladder, `Cataclysm_GDD_v2.md` fits its affix values against "a full
+set of Masterful gear", and crafting promotes a piece upward from there.
+
+### The four rare rarities are pinned, and that was the real question
+
+As the ordinary segment flattens its total weight falls, from 25,531 to 2,952. Left
+alone, the enchanted four would rise with it and a Cataclysmic drop would go from
+one in 25,531 to one in 4,156. **The project owner chose to pin them instead**, so
+all four are scaled by however much the ordinary segment shrank and keep exactly
+the share the sheet's weights give them at every tier.
+
+**Why pin.** The 2026-08-18 decision setting those rates was made deliberately,
+and its reasoning — a drop is raw material, crafting is the route to the top of the
+ladder — is not what this report disputes. What was reported is that the *bulk* of
+drops is uninteresting, not that the top is too rare. Moving the top as a side
+effect of fixing the bulk would decide something nobody asked to decide.
+
+**The floated version was measured and is on the issue** if it is ever wanted: one
+in 4,156 is close to what the project owner first described on 2026-08-18, "1 in
+5000, maybe even more", before settling on the current figure.
+
+### Where the numbers live
+
+**A formula, and the workbook did not change.** The Gear Rarity sheet's Drop
+Weight column is the table at difficulty tier 1, and every deeper tier is worked
+out from it by `drop_weight` in `sim/cataclysm_sim/loot.py` and
+`UCataclysmDropRoll::DropWeightAt` in the engine. So there is no per-tier table
+anywhere, the sheet stays authoritative and stays one number per rarity, and
+`game/Data/GearRarity.csv` and its DataTable asset are untouched.
+
+The two ratio endpoints live beside the existing tier-cap rule in both copies,
+which is where `DROP_RARITIES_ABOVE_DIFFICULTY` and `RaritiesAboveDifficulty`
+already live, and `tools/tests/test_unreal_drop_figures_match_the_model.py` fails
+when the copies disagree.
+
+### One thing followed that nobody asked for, and it is worth keeping
+
+**Magic find now removes the weakest rarity entirely, and does it sooner the
+deeper a player is.** Magic find multiplies each cascade step and a step
+saturates at 1. Once the ordinary segment has flattened, Quality's step is a much
+larger share of the weight at or below it, so a smaller magic find takes it to
+certainty and the cascade can never fall through to Everyday.
+
+| Difficulty tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Magic find at which Everyday stops dropping | +250% | +212% | +181% | +153% | +130% | +111% | +94% | +80% |
+
+Before this change it was +250% at every tier, because the segment did not
+flatten. So a deep, well geared character stops seeing the weakest rarity and a
+shallow one does not.
+
+**This is what Diablo IV does, arrived at sideways.** It stops showing the player
+Normal, Magic and Rare items in its deepest difficulties. Nothing was added here
+to do that: the existing saturation rule met a flatter segment. It is recorded
+rather than removed because it is the same answer the genre reached, but it was
+not part of what was asked for and it has not been played.
+
+### What is deliberately not built
+
+**Magic find is otherwise untouched.** It still multiplies each cascade step and
+is not the subject here; this is the base distribution before it.
+
+**The endpoint is a first value and is expected to move.** It is one line in two
+files. Nothing about it has been played.
+
+---
+
+## 2026-08-23 — Gear rarity caps one above the difficulty tier, and the document was stale
+
+**Affects:** section VII of `docs/Cataclysm_GDD_v2.md`, its difficulty tier table
+and the sentence in section IV. **Applied there.** No code changed: the engine and
+the simulation already did this. Issue #870.
+
+### What disagreed
+
+The code let a drop roll one rarity above the difficulty tier. The document said
+rarity was level with the tier, twice in the same words — "Gear and gem rarity
+equal the difficulty tier" — and its tier table agreed with the document. They
+were one rung apart at every tier from 1 to 7 and agreed only at tier 8, which is
+why it was invisible until drops began respecting the tier at all.
+
+### The decision
+
+**The code is right and the document was stale.** Chosen by the project owner on
+2026-08-23. The reason written in the code is a design argument rather than an
+implementation convenience: with the cap sitting exactly on the tier, the best
+thing a dungeon can produce is something the player can already make, so the only
+reason to run one is quantity. The same one-above rule is already stated for affix
+tiers, and the document's own affix column already shows it.
+
+The two sentences and the table column are changed. The table gains a column of its
+own for gear rarity, because it was previously carried inside the prose of the
+"what else that tier brings" column where it could not be compared against
+anything.
+
+### What decided it
+
+**The other reading makes the lowest tier worse.** Measured while researching
+#886: capping at the tier exactly leaves difficulty tier 1 with one reachable
+rarity, so every drop would be Everyday, and no weighting can change that. The
+project owner's report in #886 is that low-tier loot is uninteresting, so the
+alternative moved the design away from what was asked for.
+
+### What is still missing
+
+**Nothing compares this table to the code.** `tools/tests/` has cross-checks of
+exactly this shape for the crafting materials, the enemy drop rates and the affix
+tier gate. A test reading the gear rarity column out of the document and comparing
+it against `BestRarityOnADrop` would have caught this and would stop it recurring.
+It is not built here and #870 records it.
+
+---
+
 ## 2026-08-23 — A rarer enemy is a fifth bigger each step, not half as big again
 
 **Affects:** `BODY_SCALE_PER_STEP` in `sim/cataclysm_sim/enemy_stats.py`, which

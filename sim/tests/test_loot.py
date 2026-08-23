@@ -128,19 +128,188 @@ def test_the_distribution_follows_the_weights_rather_than_the_ladder():
     have to be rewritten every time the shipped weights are tuned.
     """
     flat = dict.fromkeys(loot.RARITY_DROP_WEIGHT, 1.0)
-    flat["Superb"] = 3.0
+    tripled = dict(flat, Superb=3.0)
 
     original = loot.RARITY_DROP_WEIGHT
     try:
         loot.RARITY_DROP_WEIGHT = flat
-        spread = loot.rarity_distribution(8)
+        even = loot.rarity_distribution(8)
+        loot.RARITY_DROP_WEIGHT = tripled
+        heavier = loot.rarity_distribution(8)
     finally:
         loot.RARITY_DROP_WEIGHT = original
 
-    # Seven rarities at weight 1 and one at 3 is ten shares.
-    assert spread["Superb"] == pytest.approx(3 / 10, abs=1e-9)
-    assert spread["Everyday"] == pytest.approx(1 / 10, abs=1e-9)
-    assert sum(spread.values()) == pytest.approx(1.0, abs=1e-9)
+    # COMPARED AS A RATIO BETWEEN TWO RARITIES IN THE SAME SEGMENT, where this
+    # used to compare a share against 3/10 directly. Issue #886 gave the
+    # ordinary segment a per-tier multiplier that differs by rung, so a share on
+    # its own no longer follows from the table alone. Superb and Masterful both
+    # carry that multiplier, it cancels in their ratio, and tripling Superb's
+    # weight therefore has to triple their ratio exactly.
+    before = even["Superb"] / even["Masterful"]
+    after = heavier["Superb"] / heavier["Masterful"]
+    assert after / before == pytest.approx(3.0, rel=1e-9)
+
+    assert sum(even.values()) == pytest.approx(1.0, abs=1e-9)
+    assert sum(heavier.values()) == pytest.approx(1.0, abs=1e-9)
+
+
+# --------------------------------------------------------------------------
+# The distribution moves with the difficulty tier. Issue #886.
+# --------------------------------------------------------------------------
+
+def test_difficulty_tier_one_is_the_gear_rarity_sheet_untouched():
+    """The per-tier curve starts where the workbook already is.
+
+    The Gear Rarity sheet is authoritative and `RARITY_DROP_WEIGHT` mirrors it.
+    A tier 1 that came out as anything else would mean the sheet had stopped
+    describing any tier at all, and the cross-check against it in
+    `tools/tests/test_loot_sheet_matches_the_model.py` would be comparing two
+    different things without saying so.
+    """
+    for rarity, weight in loot.RARITY_DROP_WEIGHT.items():
+        assert loot.drop_weight(rarity, 1) == pytest.approx(weight, rel=1e-12)
+
+
+def test_going_deeper_drops_less_of_the_weakest_rarity():
+    """What the project owner reported: only Everyday and Quality ever dropped.
+
+    From difficulty tier 2 upward. Tier 1 reaches two rarities and tier 2 three,
+    so at the very bottom it is the cap moving the shares rather than the
+    weights.
+    """
+    everyday = [loot.rarity_distribution(tier)["Everyday"]
+                for tier in range(2, af.DIFFICULTY_TIERS + 1)]
+
+    assert everyday == sorted(everyday, reverse=True)
+    assert everyday[0] > everyday[-1] * 2, (
+        "Everyday should fall a long way between tier 2 and tier 8 rather than "
+        f"inch down: {everyday[0]:.3f} to {everyday[-1]:.3f}")
+
+
+def test_the_deepest_tier_mostly_drops_masterful():
+    """The endpoint the project owner chose on 2026-08-23, a fall ratio of 0.8.
+
+    Masterful is the top of the ordinary ladder and `docs/Cataclysm_GDD_v2.md`
+    fits its affix values against a full set of it, so a deep player finding
+    mostly Masterful is the design's own statement rather than a generosity.
+    """
+    spread = loot.rarity_distribution(af.DIFFICULTY_TIERS)
+
+    assert (spread["Masterful"] > spread["Superb"] > spread["Quality"]
+            > spread["Everyday"])
+    assert spread["Everyday"] + spread["Quality"] < 0.40, (
+        "the two weakest rarities were 86% of drops before #886 and should now "
+        f"be under 40%: {(spread['Everyday'] + spread['Quality']) * 100:.1f}%")
+
+
+def test_the_enchanted_rarities_do_not_get_commoner_with_the_tier():
+    """The half of the 2026-08-23 decision that says what must NOT move.
+
+    The project owner chose to flatten the ordinary segment while leaving
+    Legendary at one in 204 and Cataclysmic at one in 25,531. Those two rates
+    fall out of the scaling inside `drop_weight` rather than being written down
+    anywhere, so nothing else would notice them drifting.
+
+    STATED AGAINST THE GEAR RARITY SHEET'S OWN WEIGHTS, not as "the same number
+    at every tier", and the difference matters. The shares are not equal across
+    tiers, because the cap decides how many rungs are reachable and the cascade
+    divides by the weight of those and no others: at tier 4 nothing above
+    Legendary is reachable, so it takes a share of five rungs rather than eight.
+    Writing the first version of this test as equality caught exactly that, at
+    one part in a thousand.
+
+    What IS the same at every tier is the enchanted block's share of the sheet's
+    weights over whatever the cap leaves reachable. That is the promise.
+    """
+    weight = loot.RARITY_DROP_WEIGHT
+
+    for tier in range(4, af.DIFFICULTY_TIERS + 1):
+        spread = loot.rarity_distribution(tier)
+        cap = loot.rarity_index(loot.best_rarity_on_a_drop(tier))
+        reachable = sum(weight[loot.rarity_at_index(rung)]
+                        for rung in range(1, cap + 1))
+
+        for rung in range(loot.ORDINARY_RARITIES + 1, cap + 1):
+            rarity = loot.rarity_at_index(rung)
+            assert spread[rarity] == pytest.approx(
+                weight[rarity] / reachable, rel=1e-9), (
+                f"{rarity} at difficulty tier {tier} has drifted off the share "
+                "the Gear Rarity sheet's weights give it")
+
+    # AND THE HEADLINE FIGURE THE 2026-08-18 DECISION WAS ARGUED ON SURVIVES.
+    deepest = loot.rarity_distribution(af.DIFFICULTY_TIERS)
+    assert 1 / deepest["Legendary"] == pytest.approx(204, rel=0.01)
+    assert 1 / deepest["Cataclysmic"] == pytest.approx(25531, rel=0.001)
+
+
+def test_the_ordinary_fall_ratio_runs_from_the_sheet_to_the_endpoint():
+    """The curve's two ends are the two constants, and it falls between them.
+
+    A CHECK ON THE CURVE RATHER THAN ON THE SHARES, so it keeps working when the
+    endpoint is retuned. Both constants are a one-line change and the project
+    owner is expected to move the second one after playing it.
+    """
+    ratios = [loot.ordinary_fall_at(tier)
+              for tier in range(1, af.DIFFICULTY_TIERS + 1)]
+
+    assert ratios[0] == pytest.approx(loot.ORDINARY_FALL_AT_TIER_ONE)
+    assert ratios[-1] == pytest.approx(loot.ORDINARY_FALL_AT_DEEPEST)
+    assert ratios == sorted(ratios, reverse=True)
+
+
+def test_a_difficulty_tier_off_the_ladder_is_refused():
+    """There are eight difficulty tiers, and a ninth is a caller error rather
+    than a curve to extrapolate."""
+    with pytest.raises(ValueError, match="outside 1 to"):
+        loot.ordinary_fall_at(0)
+    with pytest.raises(ValueError, match="outside 1 to"):
+        loot.ordinary_fall_at(af.DIFFICULTY_TIERS + 1)
+
+
+def test_an_unknown_rarity_has_no_drop_weight():
+    with pytest.raises(ValueError, match="is not a rarity"):
+        loot.drop_weight("Splendid", 4)
+
+
+def test_magic_find_stops_the_weakest_rarity_dropping_sooner_at_depth():
+    """A consequence of #886 that nobody asked for and that is worth keeping.
+
+    Magic find multiplies each cascade step and a step saturates at 1. Once the
+    ordinary segment has flattened, Quality's step is a much larger share of the
+    weight at or below it, so a smaller magic find takes it to certainty and the
+    cascade can never fall through to Everyday at all.
+
+    Measured, the magic find at which Everyday stops dropping runs from about
+    +250% at difficulty tier 1 down to about +80% at tier 8. Before #886 it was
+    +250% at every tier, because the segment did not flatten. So a deep, well
+    geared character stops seeing the weakest rarity and a shallow one does not.
+
+    THIS IS WHAT DIABLO IV DOES, ARRIVED AT SIDEWAYS. It stops showing the player
+    Normal, Magic and Rare items in its deepest difficulties. Nothing was added
+    here to do that; the existing saturation rule met a flatter segment.
+    """
+    def stops_at(tier: int) -> float:
+        low, high = 0.0, 1000.0
+        for _ in range(60):
+            middle = (low + high) / 2
+            if loot.rarity_distribution(tier, middle)["Everyday"] > 0.0:
+                low = middle
+            else:
+                high = middle
+        return high
+
+    thresholds = [stops_at(tier) for tier in range(1, af.DIFFICULTY_TIERS + 1)]
+
+    assert thresholds == sorted(thresholds, reverse=True), (
+        "the magic find that removes Everyday should get easier to reach as "
+        f"the tier rises, not harder: {[round(t) for t in thresholds]}")
+    assert thresholds[-1] < thresholds[0] / 2, (
+        "and it should be far easier at the deepest tier than at the first: "
+        f"{thresholds[0]:.0f}% against {thresholds[-1]:.0f}%")
+
+    # AND IT REALLY IS ZERO PAST IT, rather than merely small.
+    assert loot.rarity_distribution(
+        af.DIFFICULTY_TIERS, thresholds[-1] + 1.0)["Everyday"] == 0.0
 
 
 def test_a_distribution_sums_to_one_at_every_tier_and_magic_find():
@@ -180,7 +349,7 @@ def test_negative_magic_find_is_refused():
     """It is an added percentage with a baseline of zero, so below zero is a
     caller passing something else -- a multiplier, or loot quantity."""
     with pytest.raises(ValueError, match="cannot be negative"):
-        loot.rarity_step_chance(4, magic_find=-1.0)
+        loot.rarity_step_chance(4, tier=8, magic_find=-1.0)
 
 
 # --------------------------------------------------------------------------
