@@ -616,4 +616,198 @@ bool FCataclysmWeaponDamageByTypeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// What the weapons actually worn are worth. Issue #840
+// ---------------------------------------------------------------------------
+
+/**
+ * Two weapons SUM their damage, and each is read at its own upgrade level.
+ *
+ * THE FIGURES BELOW ARE QUOTED FROM THE DESIGN DOCUMENT, not recomputed here.
+ * The Dual Wielding section of `docs/Cataclysm_GDD_v2.md` states: "an Axe with
+ * an Axe at 92 and an Axe with a Sword at 86". Recomputing them from the same
+ * reasoning the code uses would test nothing.
+ *
+ * WHAT WENT WRONG WITHOUT THIS. Issue #840, reported from play: equipping a
+ * second whip changed nothing at all, because the game asked what one weapon
+ * TYPE was worth and took the first occupied weapon slot's answer.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoWeaponsSumTheirDamage,
+	"Cataclysm.Items.TwoWornWeaponsSumTheirDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoWeaponsSumTheirDamage::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	if (!Bases)
+	{
+		AddError(TEXT("could not load ItemBases.csv"));
+		return false;
+	}
+
+	// The stated figure in the sheet is the +10 one, so a fully upgraded weapon
+	// is worth exactly what the design document quotes.
+	const auto At10 = [](const TCHAR* Base)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		Item.GearLevel = 10;
+		return Item;
+	};
+
+	const FCataclysmItem Axe = At10(TEXT("Weapon_Axe"));
+	const FCataclysmItem Sword = At10(TEXT("Weapon_Sword"));
+
+	TestEqual(TEXT("an Axe alone carries the 46 the sheet states"),
+		UCataclysmItemModifiers::WeaponDamageForItem(Axe, Bases), 46.0f, 0.01f);
+	TestEqual(TEXT("a Sword alone carries 40"),
+		UCataclysmItemModifiers::WeaponDamageForItem(Sword, Bases), 40.0f, 0.01f);
+
+	// THE TWO FIGURES THE DESIGN DOCUMENT STATES.
+	TestEqual(TEXT("an Axe with a Sword gives 86, as the design document says"),
+		UCataclysmItemModifiers::BlendedWeaponDamage({Axe, Sword}, Bases),
+		86.0f, 0.01f);
+	TestEqual(TEXT("an Axe with an Axe gives 92, as the design document says"),
+		UCataclysmItemModifiers::BlendedWeaponDamage({Axe, Axe}, Bases),
+		92.0f, 0.01f);
+
+	// A TWO-HANDED WEAPON IS WORTH DOUBLE ITS STATED FIGURE, and is one entry
+	// rather than two, because it is stored in the first weapon slot alone.
+	const FCataclysmItem Greatsword = At10(TEXT("Weapon_Greatsword"));
+	TestEqual(TEXT("a Greatsword's stated 78 doubles to 156"),
+		UCataclysmItemModifiers::BlendedWeaponDamage({Greatsword}, Bases),
+		156.0f, 0.01f);
+
+	// HOLDING NOTHING IS WORTH NOTHING, rather than being an error.
+	TestEqual(TEXT("no weapons at all are worth nothing"),
+		UCataclysmItemModifiers::BlendedWeaponDamage({}, Bases), 0.0f, 0.01f);
+
+	return true;
+}
+
+/**
+ * A worn weapon's upgrade level reaches its damage.
+ *
+ * WHAT WENT WRONG WITHOUT THIS. Issue #840: the component held a
+ * `WeaponGearLevel` that nothing outside the automation tests ever set, so every
+ * worn weapon was computed as a +0 one however upgraded it really was.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUpgradeLevelReachesWeaponDamage,
+	"Cataclysm.Items.AWornWeaponsUpgradeLevelReachesItsDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUpgradeLevelReachesWeaponDamage::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	if (!Bases)
+	{
+		AddError(TEXT("could not load ItemBases.csv"));
+		return false;
+	}
+
+	FCataclysmItem Fresh;
+	Fresh.Base = FName(TEXT("Weapon_Whip"));
+	Fresh.GearLevel = 0;
+
+	FCataclysmItem Upgraded = Fresh;
+	Upgraded.GearLevel = 10;
+
+	const float AtZero = UCataclysmItemModifiers::WeaponDamageForItem(Fresh, Bases);
+	const float AtTen = UCataclysmItemModifiers::WeaponDamageForItem(Upgraded, Bases);
+
+	// The sheet states the +10 figure, and a Whip's is 32.
+	TestEqual(TEXT("a +10 Whip carries the 32 the sheet states"),
+		AtTen, 32.0f, 0.01f);
+
+	// ABOUT 3.52 TIMES, which is the upgrade curve stated on FCataclysmItem
+	// itself. Asserted as a ratio rather than as a second literal, so this test
+	// does not have to change when the curve is re-tuned -- only when the
+	// upgrade level stops reaching the damage at all, which is the fault.
+	if (TestTrue(TEXT("a +0 Whip is worth something"), AtZero > 0.0f))
+	{
+		TestEqual(TEXT("and a +10 Whip is about 3.52 times a +0 one"),
+			AtTen / AtZero, 3.52f, 0.05f);
+	}
+
+	// THE TWO WEAPONS IN A PAIR ARE READ SEPARATELY, so a player holding one
+	// upgraded weapon and one fresh one gets the sum of those two and not twice
+	// either of them.
+	TestEqual(TEXT("a +10 Whip with a +0 Whip is the sum of the two"),
+		UCataclysmItemModifiers::BlendedWeaponDamage({Upgraded, Fresh}, Bases),
+		AtTen + AtZero, 0.01f);
+
+	return true;
+}
+
+/**
+ * Attack speed AVERAGES, and a weapon that arms nothing is left out of it.
+ *
+ * AVERAGING IS WHAT STOPS SUMMED DAMAGE BEING A STRICT ADVANTAGE. A character
+ * holding two weapons hits harder per swing and does not also swing at the
+ * faster weapon's rate. `attack_speed_of` in `sim/cataclysm_sim/affixes.py`
+ * records that Path of Exile and Last Epoch both resolve it this way.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAttackSpeedAverages,
+	"Cataclysm.Items.TwoWornWeaponsAverageTheirAttackSpeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAttackSpeedAverages::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	if (!Bases)
+	{
+		AddError(TEXT("could not load ItemBases.csv"));
+		return false;
+	}
+
+	const auto Of = [](const TCHAR* Base)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		return Item;
+	};
+
+	const FCataclysmItem Axe = Of(TEXT("Weapon_Axe"));       // states 1.25
+	const FCataclysmItem Sword = Of(TEXT("Weapon_Sword"));   // states 1.3
+	const FCataclysmItem Shield = Of(TEXT("Weapon_Shield")); // states 1.2, arms nothing
+
+	TestEqual(TEXT("one Axe swings at its own stated 1.25"),
+		UCataclysmItemModifiers::BlendedAttackSpeed({Axe}, Bases), 1.25f, 0.001f);
+
+	// THE MEAN OF THE TWO, NOT THE SUM AND NOT THE FASTER ONE.
+	TestEqual(TEXT("an Axe with a Sword swings at 1.275, the mean of 1.25 and 1.3"),
+		UCataclysmItemModifiers::BlendedAttackSpeed({Axe, Sword}, Bases),
+		1.275f, 0.001f);
+
+	// A SHIELD IS NOT SWUNG, so it neither adds damage nor drags the rate down.
+	// This is the half a test checking only two real weapons would miss: an
+	// average taken over everything worn would answer 1.25 here.
+	TestFalse(TEXT("a Shield arms nothing"),
+		UCataclysmItemModifiers::WeaponIsArmed(Shield, Bases));
+	TestTrue(TEXT("a Sword does arm"),
+		UCataclysmItemModifiers::WeaponIsArmed(Sword, Bases));
+
+	TestEqual(TEXT("a Sword with a Shield still swings at the Sword's 1.3"),
+		UCataclysmItemModifiers::BlendedAttackSpeed({Sword, Shield}, Bases),
+		1.3f, 0.001f);
+	TestEqual(TEXT("and is worth the Sword's damage alone"),
+		UCataclysmItemModifiers::BlendedWeaponDamage({Sword, Shield}, Bases),
+		UCataclysmItemModifiers::WeaponDamageForItem(Sword, Bases), 0.01f);
+
+	// NOTHING ARMED ANSWERS ZERO rather than dividing by zero. The automatic
+	// basic attack reads zero as never swinging.
+	TestEqual(TEXT("a Shield on its own has no rate at all"),
+		UCataclysmItemModifiers::BlendedAttackSpeed({Shield}, Bases), 0.0f, 0.001f);
+	TestEqual(TEXT("and no weapons at all have none either"),
+		UCataclysmItemModifiers::BlendedAttackSpeed({}, Bases), 0.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

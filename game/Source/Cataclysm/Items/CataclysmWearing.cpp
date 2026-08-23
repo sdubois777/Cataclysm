@@ -136,10 +136,10 @@ ECataclysmWearResult UCataclysmWearing::TakeOffInto(
 	if (UCataclysmGearSlots::IsWeaponSlot(Slot))
 	{
 		int32 WeaponsWorn = 0;
-		for (const ECataclysmGearSlot WeaponSlot :
+		for (const ECataclysmGearSlot HeldWeaponSlot :
 			 UCataclysmGearSlots::WeaponSlots())
 		{
-			if (!Equipment->SlotIsEmpty(WeaponSlot))
+			if (!Equipment->SlotIsEmpty(HeldWeaponSlot))
 			{
 				++WeaponsWorn;
 			}

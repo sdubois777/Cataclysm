@@ -381,4 +381,85 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
 	static float WeaponAttackSpeedForType(const UDataTable* BaseTable,
 										  const FString& WeaponType);
+
+	// -- what the weapons actually worn are worth. Issue #840 --------------
+	//
+	// PREFER THESE OVER THE TWO BY TYPE ABOVE. Those take a weapon TYPE because
+	// that is all the game could ask with when they were written, and their own
+	// header says every function taking an FCataclysmItem should be preferred
+	// once rolled items exist. They exist, since issues #828 and #830, and a
+	// type cannot answer at what upgrade level the weapon is held, nor which of
+	// two worn weapons is meant.
+
+	/**
+	 * What one worn weapon supplies as attack damage, at its own upgrade level.
+	 *
+	 * THE UPGRADE LEVEL COMES FROM THE ITEM, which is the whole difference from
+	 * WeaponDamageForType. That function is given a level by its caller, and
+	 * UCataclysmWeaponSlotsComponent passed 0 every time because nothing ever
+	 * set it, so a worn +5 whip was computed as a +0 whip. Issue #840.
+	 *
+	 * IMPLICITS ONLY, NOT AFFIXES, matching `weapon_base_damage` in
+	 * `sim/cataclysm_sim/player_damage.py`, which is the model these numbers
+	 * were tuned against. A weapon's attack damage AFFIXES are a separate
+	 * question and are not answered here or anywhere else yet.
+	 *
+	 * @return 0 when the table is missing, the base is not in it, or the base
+	 *         carries no attack damage implicit. A Shield returns 0.
+	 */
+	static float WeaponDamageForItem(const FCataclysmItem& Item,
+									 const UDataTable* BaseTable);
+
+	/**
+	 * Whether a worn weapon supplies any attack damage at all.
+	 *
+	 * A SHIELD DOES NOT, and it is the only weapon today that does not. The rule
+	 * reads the base's own implicits rather than naming the Shield, so another
+	 * weapon of the same kind needs no change here. `armed_weapons_in` in
+	 * `sim/cataclysm_sim/player_damage.py` says the same thing the same way:
+	 * a weapon granting no damage contributes nothing to the basic attack,
+	 * neither damage nor swing rate.
+	 */
+	static bool WeaponIsArmed(const FCataclysmItem& Item,
+							  const UDataTable* BaseTable);
+
+	/**
+	 * The attack damage a character's worn weapons supply between them. SUMMED.
+	 *
+	 * THE DESIGN SAYS SUM, and this is the code that makes it true. From the
+	 * Dual Wielding section of `docs/Cataclysm_GDD_v2.md`: "this game blends two
+	 * weapons into one swing, summing their base damage and averaging their
+	 * attack speed, so there is no first weapon for the swing to belong to."
+	 * Before issue #840 the game answered with one weapon's damage, taken from
+	 * whichever weapon slot happened to be occupied first, so a second weapon
+	 * changed nothing at all.
+	 *
+	 * Weapons supplying no damage are skipped, so a weapon with a Shield is
+	 * worth the weapon.
+	 */
+	static float BlendedWeaponDamage(const TArray<FCataclysmItem>& Weapons,
+									 const UDataTable* BaseTable);
+
+	/**
+	 * The rate a character's worn weapons swing at. AVERAGED.
+	 *
+	 * AVERAGED RATHER THAN SUMMED, AND THAT ASYMMETRY IS THE POINT. It is what
+	 * stops summing damage being a strict advantage: a character holding two
+	 * weapons deals more per swing than either alone but does not also swing at
+	 * the faster weapon's rate. `attack_speed_of` in
+	 * `sim/cataclysm_sim/affixes.py` records that both Path of Exile and Last
+	 * Epoch resolve it the same way, Path of Exile by alternating hands.
+	 *
+	 * AVERAGED OVER THE WEAPONS THAT ARM, so a weapon held with a Shield swings
+	 * at its own rate rather than at the mean of itself and a shield that is
+	 * never swung.
+	 *
+	 * NOT MULTIPLIED BY ANYTHING. The two-handed multiplier applies to a
+	 * weapon's implicits and affixes, and a rate is neither.
+	 *
+	 * @return 0 when nothing armed is worn, which the automatic basic attack
+	 *         reads as never swinging rather than as swinging infinitely fast.
+	 */
+	static float BlendedAttackSpeed(const TArray<FCataclysmItem>& Weapons,
+									const UDataTable* BaseTable);
 };

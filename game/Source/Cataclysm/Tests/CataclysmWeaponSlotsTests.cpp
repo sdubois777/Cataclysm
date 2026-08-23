@@ -1346,4 +1346,105 @@ bool FCataclysmStartingWeaponItemMatchesType::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * The WORN WEAPONS decide the damage, not the weapon type. Issue #840.
+ *
+ * The test above this one and the pure functions in `Cataclysm.Items` cover the
+ * arithmetic. This covers the wiring: that supplying worn weapons actually
+ * reaches the character's attack damage and attack speed attributes, and that
+ * supplying none leaves the old weapon-type answer in place.
+ *
+ * WHY BOTH HALVES MATTER. The old path is still what the fallback in
+ * ACataclysmPlayerCharacter uses when no weapon is worn, and what every test
+ * that equips a bare weapon type relies on. Breaking it would break those
+ * silently, since they would simply read a different number.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornWeaponsDecideTheDamage,
+	"Cataclysm.WeaponSlots.TheWornWeaponsDecideTheDamageRatherThanTheType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWornWeaponsDecideTheDamage::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->AddAttributeSetSubobject(
+		NewObject<UCataclysmCombatAttributeSet>(Actor));
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	UCataclysmWeaponSlotsComponent* Slots =
+		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+	Slots->RegisterComponent();
+	Slots->SetDamageType(TEXT("Demonic"));
+
+	const auto AttackDamage = [&]
+	{
+		return AbilitySystem->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+	};
+	const auto AttackSpeed = [&]
+	{
+		return AbilitySystem->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
+	};
+
+	const auto At10 = [](const TCHAR* Base)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		Item.GearLevel = 10;
+		return Item;
+	};
+
+	// -- with no worn weapons supplied, the weapon type still answers --------
+	Slots->SetWeaponGearLevel(10);
+	Slots->EquipWeaponType(TEXT("Axe"));
+	TestEqual(TEXT("with no worn weapons supplied an Axe still supplies its 46"),
+		AttackDamage(), 46.0f, 0.05f);
+
+	// -- one worn weapon ----------------------------------------------------
+	Slots->SetWornWeapons({At10(TEXT("Weapon_Axe"))});
+	TestEqual(TEXT("one worn Axe supplies the same 46"),
+		AttackDamage(), 46.0f, 0.05f);
+
+	// -- two worn weapons sum, which is the reported fault -------------------
+	// A SECOND WEAPON USED TO CHANGE NOTHING. That is what the project owner
+	// reported: a second whip made no difference at all.
+	Slots->SetWornWeapons({At10(TEXT("Weapon_Axe")), At10(TEXT("Weapon_Sword"))});
+	TestEqual(TEXT("an Axe with a Sword supplies 86, the design document's figure"),
+		AttackDamage(), 86.0f, 0.05f);
+	TestEqual(TEXT("and swings at 1.275, the mean of 1.25 and 1.3"),
+		AttackSpeed(), 1.275f, 0.001f);
+
+	// -- the upgrade level of the worn weapon reaches the damage -------------
+	// SUPPLIED AT +0 WHILE WeaponGearLevel IS STILL 10, so a component that
+	// ignored the item and used its own field would answer 46 here.
+	FCataclysmItem Fresh;
+	Fresh.Base = FName(TEXT("Weapon_Axe"));
+	Fresh.GearLevel = 0;
+	Slots->SetWornWeapons({Fresh});
+
+	const float FreshDamage = AttackDamage();
+	TestTrue(FString::Printf(
+		TEXT("a +0 Axe is worth less than a +10 one, got %.2f"), FreshDamage),
+		FreshDamage > 0.0f && FreshDamage < 46.0f);
+
+	// -- putting the weapons back to none returns to the type ---------------
+	Slots->SetWornWeapons({});
+	TestEqual(TEXT("supplying no worn weapons goes back to the weapon type"),
+		AttackDamage(), 46.0f, 0.05f);
+
+	Actor->Destroy();
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

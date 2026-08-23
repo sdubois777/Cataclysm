@@ -338,6 +338,61 @@ int32 UCataclysmWeaponSlotsComponent::EquipStartingWeapon()
 	return Filled;
 }
 
+void UCataclysmWeaponSlotsComponent::SetWornWeapons(
+	const TArray<FCataclysmItem>& Weapons)
+{
+	WornWeapons = Weapons;
+
+	// APPLIED HERE RATHER THAN LEFT TO THE CALLER. What is worn decides what a
+	// swing is worth, so a caller that changed it and forgot to re-apply would
+	// leave the character hitting for what the last weapon was worth, and
+	// nothing would say so.
+	ApplyWeaponDamage();
+}
+
+float UCataclysmWeaponSlotsComponent::CurrentAttackDamage() const
+{
+	const UDataTable* Table = ItemBaseTable
+		? ItemBaseTable.Get()
+		: UCataclysmItemModifiers::LoadBaseTable();
+
+	// THE WORN WEAPONS ANSWER WHEN THERE ARE ANY. Summed, so a second weapon
+	// adds its damage rather than being ignored, and each is read at its own
+	// upgrade level. Both of those were faults in issue #840.
+	if (WornWeapons.Num() > 0)
+	{
+		return UCataclysmItemModifiers::BlendedWeaponDamage(WornWeapons, Table);
+	}
+
+	// NOTHING SUPPLIED FALLS BACK TO THE WEAPON TYPE, which is what every test
+	// that equips a bare weapon type relies on, and what the starting weapon
+	// path used before a real item was worn.
+	return EquippedWeaponType.IsEmpty()
+		? 0.0f
+		: UCataclysmItemModifiers::WeaponDamageForType(
+			Table, EquippedWeaponType, WeaponGearLevel);
+}
+
+float UCataclysmWeaponSlotsComponent::CurrentAttackSpeed() const
+{
+	const UDataTable* Table = ItemBaseTable
+		? ItemBaseTable.Get()
+		: UCataclysmItemModifiers::LoadBaseTable();
+
+	// AVERAGED, NOT SUMMED, which is what stops summing the damage being a
+	// strict advantage. A character holding two weapons hits harder per swing
+	// and does not also swing at the faster weapon's rate.
+	if (WornWeapons.Num() > 0)
+	{
+		return UCataclysmItemModifiers::BlendedAttackSpeed(WornWeapons, Table);
+	}
+
+	return EquippedWeaponType.IsEmpty()
+		? 0.0f
+		: UCataclysmItemModifiers::WeaponAttackSpeedForType(
+			Table, EquippedWeaponType);
+}
+
 void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
 {
 	UCataclysmAbilitySystemComponent* AbilitySystem = GetAbilitySystem();
@@ -371,10 +426,7 @@ void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
 	// holds one weapon, so its damage replaces whatever the last one supplied
 	// rather than accumulating -- and an empty type sets zero, which is what
 	// holding nothing is worth.
-	const float Damage = EquippedWeaponType.IsEmpty()
-		? 0.0f
-		: UCataclysmItemModifiers::WeaponDamageForType(
-			ItemBaseTable, EquippedWeaponType, WeaponGearLevel);
+	const float Damage = CurrentAttackDamage();
 
 	AbilitySystem->SetNumericAttributeBase(Attribute, Damage);
 
@@ -424,10 +476,7 @@ void UCataclysmWeaponSlotsComponent::ApplyWeaponDamage()
 		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
 	if (AbilitySystem->HasAttributeSetForAttribute(SpeedAttribute))
 	{
-		const float AttackSpeed = EquippedWeaponType.IsEmpty()
-			? 0.0f
-			: UCataclysmItemModifiers::WeaponAttackSpeedForType(
-				ItemBaseTable, EquippedWeaponType);
+		const float AttackSpeed = CurrentAttackSpeed();
 
 		AbilitySystem->SetNumericAttributeBase(SpeedAttribute, AttackSpeed);
 

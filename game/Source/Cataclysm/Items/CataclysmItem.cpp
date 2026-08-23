@@ -419,3 +419,123 @@ float UCataclysmItemModifiers::WeaponAttackSpeedForType(
 
 	return Found;
 }
+
+// ---------------------------------------------------------------------------
+// What the weapons actually worn are worth. Issue #840
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	/**
+	 * The base row a worn item is made from, or null.
+	 *
+	 * FOUND BY ROW NAME RATHER THAN SEARCHED FOR. The two functions above walk
+	 * every row because a weapon TYPE is not a row name and several rows can
+	 * carry the same type. An item names its row, so there is nothing to search.
+	 */
+	const FCataclysmItemBaseRow* BaseRowOf(const FCataclysmItem& Item,
+										   const UDataTable* BaseTable)
+	{
+		if (!BaseTable || Item.Base.IsNone())
+		{
+			return nullptr;
+		}
+		return BaseTable->FindRow<FCataclysmItemBaseRow>(
+			Item.Base, TEXT("UCataclysmItemModifiers weapon blend"),
+			/*bWarnIfMissing=*/false);
+	}
+
+	/** The attack damage implicit on a base row, before upgrade or doubling. */
+	float StatedAttackDamage(const FCataclysmItemBaseRow& Row)
+	{
+		// BOTH IMPLICIT SLOTS, for the reason WeaponDamageForType gives above:
+		// nothing in the sheet promises which slot carries the damage.
+		const FString Stats[] = { Row.Implicit1Stat, Row.Implicit2Stat };
+		const float Values[] = { Row.Implicit1Value, Row.Implicit2Value };
+
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			if (Stats[Index].Equals(UCataclysmItemModifiers::AttackDamageStat,
+								    ESearchCase::IgnoreCase))
+			{
+				return Values[Index];
+			}
+		}
+		return 0.0f;
+	}
+}
+
+float UCataclysmItemModifiers::WeaponDamageForItem(
+	const FCataclysmItem& Item, const UDataTable* BaseTable)
+{
+	const FCataclysmItemBaseRow* Row = BaseRowOf(Item, BaseTable);
+	if (!Row)
+	{
+		return 0.0f;
+	}
+
+	const float Stated = StatedAttackDamage(*Row);
+	if (Stated <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THE ITEM'S OWN UPGRADE LEVEL, which is the entire point of this function
+	// existing beside WeaponDamageForType. The stated figure is the +10 one and
+	// a two-hander doubles it; leaving either out is a silent halving.
+	return UCataclysmItemValues::ImplicitValue(
+		Stated, Item.GearLevel, /*bTwoHanded=*/Row->Hands == 2);
+}
+
+bool UCataclysmItemModifiers::WeaponIsArmed(
+	const FCataclysmItem& Item, const UDataTable* BaseTable)
+{
+	const FCataclysmItemBaseRow* Row = BaseRowOf(Item, BaseTable);
+
+	// ASKED OF THE STATED FIGURE AND NOT OF THE UPGRADED ONE, so the answer
+	// does not depend on how good the weapon is. A +0 Shield and a +10 Shield
+	// both arm nothing, and a +0 Whip arms.
+	return Row != nullptr && StatedAttackDamage(*Row) > 0.0f;
+}
+
+float UCataclysmItemModifiers::BlendedWeaponDamage(
+	const TArray<FCataclysmItem>& Weapons, const UDataTable* BaseTable)
+{
+	float Total = 0.0f;
+	for (const FCataclysmItem& Weapon : Weapons)
+	{
+		// SUMMED. Adding a weapon adds its damage; it does not replace the
+		// other weapon's. Weapons supplying nothing add nothing, so a Shield
+		// costs the pair no damage rather than halving it.
+		Total += WeaponDamageForItem(Weapon, BaseTable);
+	}
+	return Total;
+}
+
+float UCataclysmItemModifiers::BlendedAttackSpeed(
+	const TArray<FCataclysmItem>& Weapons, const UDataTable* BaseTable)
+{
+	float Total = 0.0f;
+	int32 Armed = 0;
+
+	for (const FCataclysmItem& Weapon : Weapons)
+	{
+		if (!WeaponIsArmed(Weapon, BaseTable))
+		{
+			continue;
+		}
+		if (const FCataclysmItemBaseRow* Row = BaseRowOf(Weapon, BaseTable))
+		{
+			Total += Row->AttackSpeed;
+			++Armed;
+		}
+	}
+
+	// AVERAGED OVER WHAT ARMS, NOT OVER WHAT IS WORN. A weapon held with a
+	// Shield swings at its own rate; dividing by two would have the shield drag
+	// the rate toward a number it never contributed to.
+	//
+	// NOTHING ARMED ANSWERS ZERO rather than dividing by zero, and zero is read
+	// by the automatic basic attack as never swinging.
+	return Armed > 0 ? Total / static_cast<float>(Armed) : 0.0f;
+}

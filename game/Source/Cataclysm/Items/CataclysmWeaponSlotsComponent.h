@@ -6,6 +6,7 @@
 #include "Components/ActorComponent.h"
 #include "AbilitySystem/CataclysmAbilitySet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Items/CataclysmItem.h"
 #include "CataclysmWeaponSlotsComponent.generated.h"
 
 class UCataclysmAbilitySystemComponent;
@@ -175,6 +176,26 @@ public:
 	/** How upgraded the equipped weapon is. For tests; see the field below. */
 	void SetWeaponGearLevel(int32 Level) { WeaponGearLevel = Level; }
 
+	/**
+	 * The weapons the character is actually wearing, which decide its damage.
+	 *
+	 * WHAT THIS REPLACES. Without it, damage came from the equipped weapon TYPE
+	 * and the WeaponGearLevel below, so two worn weapons were worth one weapon
+	 * and a worn +5 weapon was computed as a +0 one. Both were issue #840.
+	 *
+	 * SETTING IT APPLIES IT IMMEDIATELY, so a caller that changes what is worn
+	 * does not also have to remember to re-equip. Passing an empty array puts
+	 * the component back on the weapon type, which is what every test that only
+	 * calls EquipWeaponType relies on.
+	 */
+	void SetWornWeapons(const TArray<FCataclysmItem>& Weapons);
+
+	/** What the worn weapons supply between them, or the type's figure. */
+	float CurrentAttackDamage() const;
+
+	/** The rate the worn weapons swing at, or the type's figure. */
+	float CurrentAttackSpeed() const;
+
 protected:
 	/**
 	 * The weapon skill matrix. Loaded from the generated CSV on first use when
@@ -234,11 +255,15 @@ protected:
 	TSubclassOf<UCataclysmGameplayAbility> UndesignedSkillClass;
 
 	/**
-	 * How upgraded the equipped weapon is, from 0 to 10.
+	 * How upgraded the weapon NAMED BY TYPE is, from 0 to 10.
 	 *
-	 * TEMPORARY, for the same reason DamageType is: a real weapon is a dropped
-	 * item that carries its own upgrade level, and dropped items do not exist.
-	 * Zero, because an unupgraded weapon is what a character starts with.
+	 * ONLY USED WHEN NO WORN WEAPON HAS BEEN SUPPLIED. A worn weapon carries its
+	 * own upgrade level and WornWeapons below is read instead. This is what the
+	 * fallback path uses, and what the tests that equip a bare weapon type use.
+	 *
+	 * IT USED TO BE THE ONLY ANSWER AND IT WAS ALWAYS ZERO. Nothing outside the
+	 * automation tests ever set it, so every worn weapon was computed as a +0
+	 * one however upgraded it really was. That was issue #840.
 	 *
 	 * IT CHANGES THE DAMAGE A LOT. The sheets state the +10 figures, so a
 	 * Greataxe supplies about 41 at level 0 and 144 at level 10.
@@ -246,6 +271,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Weapon",
 			  meta = (ClampMin = "0", ClampMax = "10"))
 	int32 WeaponGearLevel = 0;
+
+	/**
+	 * The weapons the character is wearing, or empty when none was supplied.
+	 *
+	 * NOT THE SAME QUESTION AS EquippedWeaponType. That names one type and
+	 * decides which six skills exist. This holds the actual items and decides
+	 * what a swing is worth: their damage is SUMMED and their rate AVERAGED, as
+	 * the Dual Wielding section of docs/Cataclysm_GDD_v2.md requires.
+	 *
+	 * EMPTY IS A REAL STATE AND NOT AN ERROR. It means nobody supplied worn
+	 * weapons, so the weapon type and WeaponGearLevel above answer instead.
+	 */
+	UPROPERTY(Transient)
+	TArray<FCataclysmItem> WornWeapons;
 
 	/** The item base table, for the equipped weapon's own damage. */
 	UPROPERTY(Transient)

@@ -270,6 +270,25 @@ public:
 	FString EquippedWeaponType() const;
 
 	/**
+	 * The weapons actually worn, in slot order. Empty slots are left out.
+	 *
+	 * WHAT EquippedWeaponType ABOVE CANNOT ANSWER. That one names a single
+	 * weapon type, which is enough to pick the ability slots and is not enough
+	 * for anything about damage: it cannot say at what upgrade level the weapon
+	 * is held, and with two weapons worn it names only one of them. Issue #840
+	 * was two faults of exactly that shape -- a second weapon adding nothing,
+	 * and an upgrade level never applying.
+	 *
+	 * ONE ENTRY FOR A TWO-HANDED WEAPON, because a two-handed weapon is stored
+	 * in the first weapon slot alone and the second is left empty and blocked.
+	 * That is deliberate, so its affixes are not counted twice, and there is a
+	 * test that fails if somebody stores it in both.
+	 *
+	 * @return between zero and two items.
+	 */
+	TArray<FCataclysmItem> WornWeapons() const;
+
+	/**
 	 * Recompute every stat from the class line plus what is worn, and write it.
 	 *
 	 * THE POOLS ARE NOT REFILLED, and that is the difference between this and a

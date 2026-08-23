@@ -444,6 +444,25 @@ FString UCataclysmEquipmentComponent::EquippedWeaponType() const
 	return FString();
 }
 
+TArray<FCataclysmItem> UCataclysmEquipmentComponent::WornWeapons() const
+{
+	TArray<FCataclysmItem> Worn;
+
+	// NO TABLE IS CONSULTED HERE. Whether a weapon arms, what it is worth and
+	// how fast it swings are all questions about the base, and they belong to
+	// UCataclysmItemModifiers. This answers only what is in the two slots, so a
+	// missing item bases table cannot make a worn weapon disappear.
+	for (const ECataclysmGearSlot HeldWeaponSlot : UCataclysmGearSlots::WeaponSlots())
+	{
+		if (const FCataclysmItem* Item = EquippedAt(HeldWeaponSlot))
+		{
+			Worn.Add(*Item);
+		}
+	}
+
+	return Worn;
+}
+
 int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	UAbilitySystemComponent* AbilitySystem) const
 {
