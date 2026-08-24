@@ -430,6 +430,51 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Outcome.DealtToHealth + Outcome.AbsorbedByShield
 							+ Outcome.AbsorbedByMana);
 				}
+
+				// AND THE DEFENDER DEALS ITS RETALIATION BACK. Issue #895: the
+				// `Retaliation` attribute existed, was clamped, was replicated,
+				// was given to the Masochist by its class line at 158, and no
+				// code in the project read it.
+				//
+				// A FLAT AMOUNT, NOT A SHARE OF THE HIT. The class stat table
+				// writes it as a bare 158 while writing damage reduction as "8%"
+				// and life leech as "3%", so the table already says which of the
+				// two it is. Diablo IV's Thorns is flat in the same way.
+				//
+				// ONLY WHEN SOMETHING GOT THROUGH, so a hit that was evaded, or
+				// that armour and resistance stopped completely, provokes
+				// nothing. That is the branch this sits in.
+				//
+				// NOT ON A DAMAGE OVER TIME TICK. Path of Exile, Diablo IV and
+				// Last Epoch all agree that reflection answers a hit rather than
+				// a tick, and a burn ticking once a second against a retaliating
+				// target would otherwise be a second, silent source of damage.
+				//
+				// NOT ITSELF A HIT, which is what stops two retaliating
+				// characters reflecting at one another without end.
+				// ReduceHealthDirectly writes to the Health attribute rather
+				// than to the Damage meta attribute, so none of the mitigation
+				// order runs and nothing here is reached a second time.
+				//
+				// AND A MINION'S BLOW PROVOKES NONE. It is credited to its
+				// summoner, so without the check a Ritualist standing at range
+				// would take this every time one of its imps struck.
+				if (!Hit.bIsDamageOverTime
+					&& !AssetTags.HasTag(
+						UCataclysmDamageCalculation::NoRetaliationTag()))
+				{
+					if (const UCataclysmCombatAttributeSet* Defence =
+							GetOwningAbilitySystemComponent()
+								? GetOwningAbilitySystemComponent()
+									  ->GetSet<UCataclysmCombatAttributeSet>()
+								: nullptr)
+					{
+						UCataclysmSkillEffects::ReduceHealthDirectly(
+							GetOwningActor(),
+							Data.EffectSpec.GetContext().GetEffectCauser(),
+							Defence->GetRetaliation());
+					}
+				}
 			}
 
 			if (Outcome.AbsorbedByShield > 0.0f)

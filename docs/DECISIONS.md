@@ -20,6 +20,69 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — What retaliation does
+
+**Affects:** a new Retaliation section in section V of
+`docs/Cataclysm_GDD_v2.md`, and
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`.
+**Applied in both.** No data file changed. Issue #895.
+
+### What was asked
+
+The design listed Retaliation among the Defence stats and gave the Masochist 158
+of it at level 100, and **never said what it does**. No code read the attribute
+either, so the affix granting it was worth nothing and there was nothing to
+compare against.
+
+### The research
+
+| Game | What is sent back | What triggers it | Is it itself a hit? |
+| :-- | :-- | :-- | :-- |
+| Path of Exile | a share of the damage taken after mitigation | melee attacks | it hits, but cannot critically strike, cannot cause ailments and does not trigger on-hit effects |
+| Diablo IV | a flat Thorns value | any direct attack, melee or ranged, never damage over time | no |
+| Last Epoch | flat and percentage versions both exist | direct hits | no: it reduces health directly, bypassing the damage calculation |
+
+They agree on three things: it answers a hit rather than a damage over time
+tick, it is computed from what actually got through, and what comes back is not
+a full hit of its own.
+
+They differ on two: flat against a share of the hit, and melee-only against any
+direct attack.
+
+Sources:
+[Damage reflection, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Damage_reflection);
+[Thorns, Diablo 4 Wiki](https://diablo4.wiki.fextralife.com/Thorns);
+[Reflect damage, Last Epoch forums](https://forum.lastepoch.com/t/need-informations-about-reflected-damages/56032).
+
+### The decision
+
+**A flat amount, on any direct hit that got through, and what comes back is not
+a hit.** The project owner chose "any direct hit" on 2026-08-24.
+
+**Flat rather than a share**, because the class stat table already says so: it
+writes retaliation as a bare 158 while writing damage reduction as "8%" and life
+leech as "3%". A share would also have made 158 mean 158% of every hit, which is
+outside anything else in that table.
+
+**Any direct hit rather than melee only**, because this game has a lot of ranged
+creatures and the Masochist is the one class built around retaliation. Melee-only
+would make its class stat worth nothing against half the roster.
+
+**Not itself a hit**, which is Last Epoch's rule and is what makes two
+retaliating characters possible at all. Without it they reflect at one another
+without end. It is implemented by writing to the Health attribute rather than to
+the Damage meta attribute, so the mitigation order never runs.
+
+### What it does not decide
+
+**Whether retaliation should scale with anything.** Nothing raises it today
+beyond the flat affix and the Masochist's class line. Whether an attribute or a
+passive node should is left open.
+
+Nobody has played it.
+
+---
+
 ## 2026-08-24 — Every source of cooldown reduction adds into one figure
 
 **Affects:** the Affixes and Item Bases sheets of

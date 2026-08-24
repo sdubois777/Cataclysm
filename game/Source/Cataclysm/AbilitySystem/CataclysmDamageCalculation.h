@@ -402,6 +402,9 @@ public:
 	/** `Keyword.NoLeech`. See NoLeechTag. */
 	static const TCHAR* NoLeechTagName;
 
+	/** `Keyword.NoRetaliation`. See NoRetaliationTag. */
+	static const TCHAR* NoRetaliationTagName;
+
 	/**
 	 * The key a hit's own critical strike chance is carried under.
 	 *
@@ -469,6 +472,18 @@ public:
 	 * in the summoner's name and the leech is read off the attacker.
 	 */
 	static FGameplayTag NoLeechTag();
+
+	/**
+	 * A blow that provokes no retaliation from what it strikes.
+	 *
+	 * THE FIFTH EXCLUSION A SUMMONED MINION CARRIES, and the only one of the
+	 * five that protects the summoner rather than the target. Retaliation is
+	 * dealt back to whoever the hit was credited to, and a minion's blow is
+	 * credited to its summoner, so without this a caster standing well away
+	 * from the fight would take damage every time one of its imps struck a
+	 * retaliating enemy.
+	 */
+	static FGameplayTag NoRetaliationTag();
 
 	/** `Data.SkillCritChance`, or an invalid tag if the vocabulary lost it. */
 	static FGameplayTag SkillCritChanceDataTag();

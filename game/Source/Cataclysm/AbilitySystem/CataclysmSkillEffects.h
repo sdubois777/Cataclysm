@@ -120,6 +120,22 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCannotLeech = false;
 
 	/**
+	 * This blow provokes no retaliation from what it strikes.
+	 *
+	 * FOR A SUMMONED MINION, and the only one of its five exclusions that
+	 * protects the summoner rather than the target. Retaliation is dealt back to
+	 * whoever the hit was credited to, and a minion's blow is credited to its
+	 * summoner, so without this a Ritualist standing at range would take damage
+	 * every time one of its imps struck a retaliating enemy.
+	 *
+	 * BLOCKED BY THE DESIGN'S GENERAL RULE, the same one that blocks the weapon
+	 * sub-type: "A minion reaches its summoner through exactly three channels,
+	 * and nothing else crosses." Issue #895.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCannotBeRetaliatedAgainst = false;
+
+	/**
 	 * The base critical strike chance of the skill dealing this blow, or -1 to
 	 * take whatever the attacker's own attribute holds.
 	 *
@@ -312,6 +328,29 @@ public:
 	 *
 	 * @return whether damage was sent
 	 */
+	/**
+	 * Take health off an actor without any of it being a hit.
+	 *
+	 * NOT A HIT, AND THAT IS THE WHOLE POINT. It is written straight to the
+	 * Health attribute rather than to the Damage meta attribute, so
+	 * UCataclysmDamageCalculation::Resolve never sees it: no evasion roll, no
+	 * block, no armour, no resistance, no critical strike, no ailment, and no
+	 * retaliation of its own. What it does still do is clamp at zero and report
+	 * a death, because the vital attribute set handles the Health attribute
+	 * changing as well as the Damage one.
+	 *
+	 * RETALIATION IS THE ONLY CALLER AND THE SHAPE COMES FROM THE GENRE. Last
+	 * Epoch's reflected damage "does not Hit and instead directly reduces Health
+	 * and Ward without going through damage calculations", and Path of Exile's
+	 * reflected damage cannot critically strike, cannot cause ailments and does
+	 * not trigger on-hit effects. Without this, two characters who both retaliate
+	 * would reflect at one another without end.
+	 *
+	 * @return whether any health was taken
+	 */
+	static bool ReduceHealthDirectly(AActor* Instigator, AActor* Target,
+									 float Amount);
+
 	static bool ApplyDirectDamage(AActor* Instigator, AActor* Target, float Damage,
 								  const FCataclysmHitDelivery& Delivery =
 									  FCataclysmHitDelivery());
