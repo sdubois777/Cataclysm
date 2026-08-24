@@ -604,19 +604,65 @@ def enemy_modifiers(book) -> list[dict]:
     return unique(out, "Enemy Modifiers")
 
 
+#: The numeric columns of the Buffs, Debuffs and DoTs sheets, in sheet order,
+#: paired with the field each becomes. Read positionally because those three
+#: sheets have NO HEADING ROW, which is a documented property of them rather
+#: than an oversight: `docs/README.md` says so, `test_docs_readme_sheet_table_
+#: is_true.py` names all three in its HEADERLESS set, and giving them one would
+#: change every row count in that table.
+#:
+#: SO THE ORDER OF THIS TUPLE IS THE SCHEMA. Inserting an entry anywhere but the
+#: end silently re-reads every column after it, and nothing would report an
+#: error -- a duration would arrive as a strength and both would be wrong.
+#: Append only, and say what a new column means in `docs/README.md` at the same
+#: time, because the sheet itself cannot say.
+STATUS_EFFECT_NUMBERS: tuple[tuple[int, str], ...] = (
+    (1, "DurationSeconds"),         # column B
+    (2, "PercentOfHit"),            # column C
+    (3, "Strength"),                # column D
+    (4, "StrengthCap"),             # column E
+    (5, "DurationCap"),             # column F
+    (6, "PercentOfCurrentHealth"),  # column G
+)
+
+
 def status_effects(book) -> list[dict]:
-    """Buffs, Debuffs and DoTs: "Name: Description", then two optional numbers.
+    """Buffs, Debuffs and DoTs: "Name: Description", then six optional numbers.
 
     The first row is data, not a header. Reading it as a header would silently
     drop one effect from each of the three sheets.
 
-    COLUMNS B AND C ARE HOW LONG AN EFFECT LASTS AND WHAT IT IS WORTH, and both
-    are optional because almost every row states neither. They were added for
-    Burn, which every one of the sixteen designed Demonic skills applies and
-    which stated no duration and no damage anywhere in the design -- so a skill
-    reading "sets each one alight" applied an effect with no numbers in it.
-    A row that leaves them empty reads as zero and applies nothing, which is
-    the honest answer for an effect nobody has designed yet.
+    EVERY NUMBER IS OPTIONAL because most rows state none. An empty cell reads
+    as zero, and an effect worth zero applies nothing -- which is the honest
+    answer for an effect nobody has designed yet, and is what
+    `UCataclysmSkillEffects::BurnNumbers` checks for before applying anything.
+
+    COLUMNS B AND C ARE HOW LONG AN EFFECT LASTS AND WHAT ONE TICK OF IT DEALS.
+    They were added for Burn, which every one of the sixteen designed Demonic
+    skills applies and which stated no duration and no damage anywhere in the
+    design -- so a skill reading "sets each one alight" applied an effect with
+    no numbers in it. C is PER TICK and not a total; `docs/DECISIONS.md` carries
+    that decision, made on 2026-08-24.
+
+    COLUMNS D TO G WERE ADDED FOR ISSUE #904, because ten of the eleven ailments
+    a gear affix can apply stated a duration of zero and zero damage, and four
+    of them could not be written down at all with only B and C:
+
+    * `Strength` is the effect's own magnitude in whatever unit it names --
+      Cripple's 30% slow, Weaken's 20% damage reduction, Shred's 10 resistance,
+      Necrosis's 25% healing reduction.
+    * `StrengthCap` is where that magnitude stops and rolls into duration
+      instead, which is the design's rule for every effect that has one. Empty
+      means no NUMERIC cap: Shred's cap is the target's own resistance reaching
+      zero, which is a property of the target and not a number of this effect's.
+    * `DurationCap` is where the duration stops. Only Stun has one, and Stun is
+      the one effect whose scaling stops dead rather than rolling over, because
+      its magnitude IS its duration and there is nothing to roll into.
+    * `PercentOfCurrentHealth` is for an effect measured against the target
+      rather than against the hit. Only Void Splinter uses it, at 1% a second.
+      A SEPARATE COLUMN RATHER THAN A STRING SAYING WHICH BASIS C USES, because
+      a misspelled basis would silently read as "the hit" and a number cannot be
+      misspelled.
     """
     out = []
     for sheet, kind in (("Buffs", "Buff"), ("Debuffs", "Debuff"), ("DoTs", "DoT")):
@@ -629,14 +675,13 @@ def status_effects(book) -> list[dict]:
             name, description = split_named(text)
             if not name:
                 name = text[:40]
-            duration = raw[1] if len(raw) > 1 else None
-            share = raw[2] if len(raw) > 2 else None
-            out.append({"Name": row_name(kind, name), "EffectKind": kind,
-                        "EffectName": name, "Description": description,
-                        "DurationSeconds": number(duration, "DurationSeconds", index)
-                            if duration is not None else 0.0,
-                        "PercentOfHit": number(share, "PercentOfHit", index)
-                            if share is not None else 0.0})
+            row = {"Name": row_name(kind, name), "EffectKind": kind,
+                   "EffectName": name, "Description": description}
+            for column, field in STATUS_EFFECT_NUMBERS:
+                cell = raw[column] if len(raw) > column else None
+                row[field] = (number(cell, field, index)
+                              if cell is not None else 0.0)
+            out.append(row)
     return unique(out, "Status Effects")
 
 
