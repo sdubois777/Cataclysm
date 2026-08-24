@@ -212,6 +212,13 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// Everything else the class table names.
 			{TEXT("movement_speed"), Combat::GetMovementSpeedAttribute()},
 			{TEXT("loot_quantity"), Combat::GetLootQuantityAttribute()},
+
+			// MAGIC FIND JOINED LOOT QUANTITY IN ISSUE #896. No class line
+			// names it -- the design gives it a baseline of zero, since it is
+			// "an added percentage rather than a percentage of something" --
+			// so gear is its only source, and without an entry here the two
+			// affixes granting it were dropped before they reached anything.
+			{TEXT("magic_find"), Combat::GetMagicFindAttribute()},
 		};
 	}();
 

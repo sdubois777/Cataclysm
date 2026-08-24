@@ -203,6 +203,45 @@ public:
 							   const FVector& At, FRandomStream& Stream);
 
 	/**
+	 * The magic find and loot quantity the player in this world is carrying.
+	 *
+	 * UNTIL ISSUE #896 NOTHING ASKED. Every kill passed 0% magic find and the
+	 * 100% loot quantity baseline, with a comment saying that nothing computed
+	 * a character's stats at the moment of a kill. That had stopped being true:
+	 * UCataclysmEquipmentComponent::RefreshAttributes writes them on every
+	 * equipment change, so three affixes were granting numbers no roll read.
+	 *
+	 * THE BASELINES ARE ANSWERED WHEN THERE IS NOBODY TO ASK, and that is the
+	 * right answer rather than a failure. A world with no player is every
+	 * automation test that kills a creature directly, and the baselines are
+	 * what those kills used before this existed, so none of them changes.
+	 *
+	 * THE FIRST PLAYER CONTROLLER'S PAWN, WHICH IS THE ONLY PLAYER THERE IS.
+	 * Co-operative play is issue #56 and will have to decide whose magic find
+	 * applies to a shared kill; there is one answer to that question today.
+	 *
+	 * @param OutMagicFind     added percentage, 0 for a character with none
+	 * @param OutLootQuantity  percentage of normal, 100 for one with none
+	 */
+	static void PlayerLootStats(const UWorld* World, float& OutMagicFind,
+								float& OutLootQuantity);
+
+	/**
+	 * The magic find and loot quantity a particular character is carrying.
+	 *
+	 * SPLIT FROM PlayerLootStats BECAUSE READING AND FINDING ARE TWO JOBS. When
+	 * they were one function a failure could not say which half was wrong, and
+	 * the first version of the test for it hit exactly that: it read back the
+	 * baselines and there was no way to tell whether the character had not been
+	 * found or its attributes had not been read.
+	 *
+	 * @param OutMagicFind     added percentage, 0 for a character with none
+	 * @param OutLootQuantity  percentage of normal, 100 for one with none
+	 */
+	static void LootStatsOf(const AActor* Character, float& OutMagicFind,
+							float& OutLootQuantity);
+
+	/**
 	 * Roll the crafting materials a kill drops and put them on the floor.
 	 *
 	 * CALLED BY SpawnDropsFor RATHER THAN BY A KILL. Materials come at twice the

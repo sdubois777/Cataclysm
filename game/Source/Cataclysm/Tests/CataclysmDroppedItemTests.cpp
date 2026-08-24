@@ -5,7 +5,12 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "CataclysmTestWorld.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "GameFramework/PlayerController.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -1102,6 +1107,256 @@ bool FCataclysmDroppedStonesRespectTheTier::RunTest(const FString& Parameters)
 		TEXT("a tier 8 kill drops a better stone than a tier 1 kill, +%d "
 			 "against +%d"), AtTierEight, AtTierOne),
 		AtTierEight > AtTierOne);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What the player is carrying when the kill happens. Issue #896.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmLootStatsTest
+{
+	/** A possessed player character in this world, or null if any part failed. */
+	ACataclysmPlayerCharacter* SpawnPossessedPlayer(UWorld* World)
+	{
+		// A PLAYER STATE ATTACHED BY HAND, because a test world has no game mode
+		// and a game mode is what normally creates one. APawn::PossessedBy
+		// copies it onto the pawn only when the controller has one.
+		ACataclysmPlayerState* PlayerState =
+			World->SpawnActor<ACataclysmPlayerState>();
+
+		// A PLAYER CONTROLLER AND NOT A BARE AController, WHICH IS ABSTRACT and
+		// fails to spawn with "class Controller is abstract" in the log.
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+
+		if (!PlayerState || !Controller || !Character)
+		{
+			return nullptr;
+		}
+
+		Controller->SetPlayerState(PlayerState);
+
+		// AController::Possess AND NOT APawn::PossessedBy, and the difference is
+		// what a kill needs. PossessedBy is the pawn's half: it tells the pawn
+		// which controller has it and copies the player state across. It does
+		// not tell the CONTROLLER which pawn it has, so GetFirstPlayerController
+		// finds the controller and GetPawn answers null, which is how a kill
+		// looks a player up. Possess runs both halves.
+		//
+		// THE FIRST VERSION OF THIS HELPER USED PossessedBy and the world-level
+		// half of the test below read the baselines back while the reading half
+		// passed, which is what splitting LootStatsOf from PlayerLootStats made
+		// visible.
+		Controller->Possess(Character);
+		return Character;
+	}
+
+	/** How many dropped items are lying in this world. */
+	int32 ItemsOnTheFloor(UWorld* World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			++Count;
+		}
+		return Count;
+	}
+}
+
+/**
+ * PlayerLootStats answers what the player is carrying, or the baselines. #896.
+ *
+ * EVERY KILL PASSED CONSTANTS UNTIL THIS ISSUE. The comment where the drop was
+ * rolled said nothing computed a character's stats at the moment of a kill, and
+ * that had stopped being true, so the flat magic find affix, the increased loot
+ * quantity affix and the hybrid pairing them granted numbers no roll ever read.
+ *
+ * THE BASELINES ARE A REAL ANSWER AND NOT A FAILURE, which is why they are
+ * asserted first. Every automation test in this file that kills a creature
+ * directly runs in a world with no player, so all of them have to keep getting
+ * the figures they got before this existed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayerLootStatsTest,
+	"Cataclysm.Drop.AKillReadsThePlayersMagicFindAndLootQuantity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerLootStatsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmLootStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// SET TO SOMETHING WRONG FIRST, so a function that writes neither of them
+	// would fail rather than leaving the values a caller happened to start with.
+	float MagicFind = -1.0f;
+	float LootQuantity = -1.0f;
+
+	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+	TestEqual(TEXT("a world with no player has no added magic find"),
+		MagicFind, 0.0f, 0.001f);
+	TestEqual(TEXT("and the loot quantity baseline"),
+		LootQuantity, UCataclysmDropRoll::BaselineLootQuantity, 0.001f);
+
+	MagicFind = -1.0f;
+	LootQuantity = -1.0f;
+	UCataclysmDropSpawner::PlayerLootStats(nullptr, MagicFind, LootQuantity);
+	TestEqual(TEXT("and so does no world at all"), MagicFind, 0.0f, 0.001f);
+	TestEqual(TEXT("for both figures"),
+		LootQuantity, UCataclysmDropRoll::BaselineLootQuantity, 0.001f);
+
+	ACataclysmPlayerCharacter* Player = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Player))
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* AbilitySystem = Player->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("possession wired the ability system up"),
+					 AbilitySystem))
+	{
+		return false;
+	}
+
+	// WHAT THE CHARACTER CARRIES IS WHAT COMES BACK. Written straight onto the
+	// attributes rather than through gear, because what is being tested here is
+	// the reading; that gear reaches these two attributes at all is
+	// Cataclysm.Equipment.EveryStatAnAffixGrantsHasAnAttributeBehindIt.
+	//
+	// FIGURES THAT ARE NOT THE BASELINES, AND THAT IS THE POINT. The Default
+	// class line gives loot quantity exactly 100 and no magic find, which are
+	// the two baselines, so a function that found nobody at all would answer 0
+	// and 100 and satisfy any check against a character wearing nothing. The
+	// first version of this test did exactly that and passed while the lookup
+	// was broken.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMagicFindAttribute(), 250.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetLootQuantityAttribute(), 400.0f);
+
+	// THE WRITE LANDED, ASSERTED BEFORE ANYTHING IS READ THROUGH THE LOOKUP.
+	// Without this, a failure below could be the write not taking rather than
+	// the reading being wrong, and the two need different repairs.
+	TestEqual(TEXT("the magic find written onto the character is there"),
+		AbilitySystem->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::GetMagicFindAttribute()),
+		250.0f, 0.001f);
+
+	// THE READING, GIVEN THE CHARACTER OUTRIGHT.
+	UCataclysmDropSpawner::LootStatsOf(Player, MagicFind, LootQuantity);
+	TestEqual(TEXT("reading the character gives its magic find"),
+		MagicFind, 250.0f, 0.001f);
+	TestEqual(TEXT("and its loot quantity"), LootQuantity, 400.0f, 0.001f);
+
+	// AND THE FINDING, WHICH IS THE OTHER HALF. A kill has no character handed
+	// to it and has to go looking, so this is what a kill actually does.
+	TestNotNull(TEXT("the spawned controller is the world's first player "
+					 "controller, which is how a kill finds the player"),
+		World->GetFirstPlayerController());
+
+	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+	TestEqual(TEXT("finding the player gives its magic find"),
+		MagicFind, 250.0f, 0.001f);
+	TestEqual(TEXT("and its loot quantity"), LootQuantity, 400.0f, 0.001f);
+
+	return true;
+}
+
+/**
+ * A KILL DROPS MORE FOR A PLAYER CARRYING LOOT QUANTITY. Issue #896.
+ *
+ * THE TEST ABOVE PROVES THE READING AND SAYS NOTHING ABOUT WHETHER A KILL DOES
+ * IT. This one kills creatures and counts the floor, which is the claim a player
+ * cares about. It is the same separation Cataclysm.Drop.
+ * KillingAnEnemyIsWhatPutsLootOnTheFloor exists for.
+ *
+ * SIX BOSSES AT EACH SETTING, AND THE MARGIN IS WHAT MAKES IT SAFE. A Boss
+ * averages five gear drops, the count is a Poisson draw, and loot quantity
+ * multiplies the mean. Six kills average 30 items at the 100% baseline and 120
+ * at 400%, so the two distributions do not overlap in any run this project will
+ * ever see. Asserting a ratio instead would flap.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLootQuantityChangesWhatAKillDrops,
+	"Cataclysm.Drop.LootQuantityOnThePlayerChangesWhatAKillDrops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLootQuantityChangesWhatAKillDrops::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmLootStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPossessedPlayer(World);
+	UAbilitySystemComponent* AbilitySystem =
+		Player ? Player->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a possessed player character"), Player)
+		|| !TestNotNull(TEXT("its ability system"), AbilitySystem))
+	{
+		return false;
+	}
+
+	// A BOSS, BECAUSE ITS DROP RATE IS A WHOLE NUMBER rather than a fraction
+	// that has to land one way. The same choice the neighbouring kill test makes.
+	constexpr int32 BossStep = 4;
+	constexpr int32 Kills = 6;
+
+	const auto KillSixBosses = [&](float LootQuantity)
+	{
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetLootQuantityAttribute(),
+			LootQuantity);
+
+		const int32 Before = ItemsOnTheFloor(World);
+		for (int32 Index = 0; Index < Kills; ++Index)
+		{
+			ACataclysmEnemyCharacter* Victim =
+				World->SpawnActor<ACataclysmEnemyCharacter>(
+					FVector(300.0f * static_cast<float>(Index + 1), 0.0f, 0.0f),
+					FRotator::ZeroRotator);
+			if (!Victim)
+			{
+				continue;
+			}
+			Victim->SetRarityStep(BossStep);
+			Victim->HandleDeath();
+		}
+		return ItemsOnTheFloor(World) - Before;
+	};
+
+	const int32 AtBaseline =
+		KillSixBosses(UCataclysmDropRoll::BaselineLootQuantity);
+	const int32 AtFourTimes = KillSixBosses(400.0f);
+
+	// THE BASELINE RUN HAS TO HAVE DROPPED SOMETHING, or the comparison below
+	// would be satisfied by a kill path that dropped nothing at all.
+	TestTrue(FString::Printf(
+		TEXT("six Bosses at the baseline dropped something (%d)"), AtBaseline),
+		AtBaseline > 0);
+
+	// TWICE AS MANY, NOT MERELY MORE. Six Boss kills average 30 items at the
+	// baseline and 120 at 400%, so a margin of two is far inside what the
+	// feature produces and far outside what chance does. "More" is not enough:
+	// the first version of this test asserted it and passed while a kill was
+	// still using the baseline for both runs, because thirty Poisson draws
+	// out-number another thirty about half the time.
+	TestTrue(FString::Printf(
+		TEXT("and six at 400%% loot quantity dropped more than twice as many: "
+			 "%d against %d"), AtFourTimes, AtBaseline),
+		AtFourTimes > AtBaseline * 2);
 
 	return true;
 }

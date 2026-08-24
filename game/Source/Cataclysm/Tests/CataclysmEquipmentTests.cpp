@@ -1237,13 +1237,14 @@ bool FCataclysmAttackSpeedReachesTheCharacter::RunTest(const FString& Parameters
  * game/Data/Affixes.csv changed something a player could feel.
  *
  * ISSUE #894 RAISED THAT TO FORTY, by giving twelve stat names an attribute to
- * be written to. Of the seventy-four rows that grant a stat, forty-nine now have
- * an attribute behind every stat they grant and twenty-five have none. Nine of
- * the forty-nine then reach an attribute nothing reads (#895), or one that only
- * clamps a pool nothing fills or spends, which is the class resource and is
- * issue #192.
+ * be written to, and ISSUE #896 RAISED IT TO FORTY-THREE by giving magic find a
+ * thirteenth and making a kill read what the player is carrying. Of the
+ * seventy-four rows that grant a stat, fifty-one now have an attribute behind
+ * every stat they grant and twenty-three have none. Eight of the fifty-one then
+ * reach an attribute nothing reads (#895), or one that only clamps a pool
+ * nothing fills or spends, which is the class resource and is issue #192.
  *
- * The rest are broken in five ways, filed as #895, #896, #897, #898 and #899.
+ * The rest are broken in four ways, filed as #895, #897, #898 and #899.
  *
  * Cataclysm.Items.EveryAffixInTheDataGrantsSomething already asserts that every
  * affix produces a MODIFIER, and every one of them does. The chain has two more
@@ -1292,10 +1293,6 @@ namespace CataclysmEquipmentTest
 			TEXT("damage_vs_death"), TEXT("damage_vs_pestilence"),
 			TEXT("damage_vs_famine"), TEXT("damage_vs_celestial"),
 			TEXT("damage_vs_chaos"), TEXT("damage_vs_void"),
-
-			// #896. The drop roll takes magic find and uses it properly; the
-			// kill passes a constant zero instead of asking the character.
-			TEXT("magic_find"),
 
 			// #897. No primary attribute is written or read anywhere in the
 			// game, so these eight have nowhere to go and nothing to do.
