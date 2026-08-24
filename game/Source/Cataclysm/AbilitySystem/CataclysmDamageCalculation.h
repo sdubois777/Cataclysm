@@ -399,6 +399,9 @@ public:
 	 */
 	static const TCHAR* NoWeaponSubTypeTagName;
 
+	/** `Keyword.NoLeech`. See NoLeechTag. */
+	static const TCHAR* NoLeechTagName;
+
 	/**
 	 * The key a hit's own critical strike chance is carried under.
 	 *
@@ -454,6 +457,18 @@ public:
 
 	/** `Keyword.NoWeaponSubType`, or an invalid tag if the vocabulary lost it. */
 	static FGameplayTag NoWeaponSubTypeTag();
+
+	/**
+	 * A blow that gives its attacker no leech, whatever the attacker has.
+	 *
+	 * THE FOURTH EXCLUSION A SUMMONED MINION CARRIES, alongside no critical
+	 * strike, no penetration and no weapon sub-type, and blocked by the same
+	 * design sentence: a minion reaches its summoner through exactly three
+	 * channels, and leech is named among what does not cross. Without it a
+	 * minion's blow would leech for its summoner, because the blow is dealt
+	 * in the summoner's name and the leech is read off the attacker.
+	 */
+	static FGameplayTag NoLeechTag();
 
 	/** `Data.SkillCritChance`, or an invalid tag if the vocabulary lost it. */
 	static FGameplayTag SkillCritChanceDataTag();

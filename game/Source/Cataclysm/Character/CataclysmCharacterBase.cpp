@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
@@ -52,6 +53,15 @@ void ACataclysmCharacterBase::RegenerationStep()
 {
 	UCataclysmRegeneration::ApplyStep(this, UCataclysmRegeneration::StepSeconds,
 									  SecondsSinceLastDamage());
+
+	// LEECH ARRIVES ON THE SAME TIMER, AND IS NOT REGENERATION. Issue #895. The
+	// design pays a hit's leech out across the next three seconds rather than at
+	// once, and this is the only per-character step that already runs often
+	// enough to do it smoothly. It is a separate call rather than another job
+	// inside ApplyStep because the two obey different rules: an energy shield
+	// waits three seconds after damage before it regenerates, and leech must not
+	// wait, or it would stop exactly when it is meant to work.
+	UCataclysmLeech::PayOutStep(this, UCataclysmRegeneration::StepSeconds);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

@@ -7,39 +7,30 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Actor.h"
 
-namespace
+void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
+								   const FGameplayAttribute& Pool,
+								   const FGameplayAttribute& Maximum,
+								   float Gain)
 {
-	/**
-	 * Adds to one pool, stopping at its maximum.
-	 *
-	 * ASKED AND ANSWERED IN ONE PLACE because all three pools behave the same
-	 * way and writing it three times is how the third one ends up subtly
-	 * different from the first two.
-	 */
-	void TopUp(UAbilitySystemComponent& AbilitySystem,
-			   const FGameplayAttribute& Pool,
-			   const FGameplayAttribute& Maximum, float Gain)
+	if (Gain <= 0.0f)
 	{
-		if (Gain <= 0.0f)
-		{
-			return;
-		}
-
-		const float Current = AbilitySystem.GetNumericAttribute(Pool);
-		const float Ceiling = AbilitySystem.GetNumericAttribute(Maximum);
-
-		// A POOL WITH NO MAXIMUM IS NOT A POOL. A class with no energy shield is
-		// a design position rather than an error state, and its shield maximum
-		// is zero; adding to it would be adding to something that does not
-		// exist, and the clamp would throw the value away anyway.
-		if (Ceiling <= 0.0f || Current >= Ceiling)
-		{
-			return;
-		}
-
-		AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive,
-										  FMath::Min(Gain, Ceiling - Current));
+		return;
 	}
+
+	const float Current = AbilitySystem.GetNumericAttribute(Pool);
+	const float Ceiling = AbilitySystem.GetNumericAttribute(Maximum);
+
+	// A POOL WITH NO MAXIMUM IS NOT A POOL. A class with no energy shield is a
+	// design position rather than an error state, and its shield maximum is
+	// zero; adding to it would be adding to something that does not exist, and
+	// the clamp would throw the value away anyway.
+	if (Ceiling <= 0.0f || Current >= Ceiling)
+	{
+		return;
+	}
+
+	AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive,
+									  FMath::Min(Gain, Ceiling - Current));
 }
 
 float UCataclysmRegeneration::GainPerStep(float RatePerSecond,

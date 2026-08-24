@@ -190,6 +190,13 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// class line, because its baseline is 100.
 		{TEXT("magic_find"), TEXT("gear alone")},
 
+		// Issue #895. Only the Ravager states a life leech, and no class states
+		// a mana or energy shield leech at all, so gear is the only source of
+		// those two. A character with none of it leeches nothing, which is the
+		// ordinary case rather than a gap.
+		{TEXT("mana_leech"), TEXT("gear alone")},
+		{TEXT("energy_shield_leech"), TEXT("gear alone")},
+
 		// Issue #894. Gear is the only source of these twelve. Their base is
 		// zero on every class, which is a class declining to care about them,
 		// and an increased affix on one therefore grants nothing until a flat

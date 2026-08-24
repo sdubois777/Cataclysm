@@ -4,9 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "AttributeSet.h"
 #include "CataclysmRegeneration.generated.h"
 
 class AActor;
+class UAbilitySystemComponent;
 
 /**
  * Health, mana and energy shield coming back over time.
@@ -106,4 +108,20 @@ public:
 	 */
 	static void ApplyStep(AActor* Character, float SecondsInStep,
 						  float SecondsSinceLastDamage);
+
+	/**
+	 * Adds to one pool, stopping at its maximum.
+	 *
+	 * ASKED AND ANSWERED IN ONE PLACE because all three pools behave the same
+	 * way and writing it three times is how the third one ends up subtly
+	 * different from the first two.
+	 *
+	 * PUBLIC SINCE ISSUE #895, so leech can pay into a pool through the same
+	 * function rather than through a second copy of it. A private copy in a
+	 * second file compiles under the Unreal unity build and collides the moment
+	 * both files are clean, which has cost this project a broken build once.
+	 */
+	static void TopUp(UAbilitySystemComponent& AbilitySystem,
+					  const FGameplayAttribute& Pool,
+					  const FGameplayAttribute& Maximum, float Gain);
 };

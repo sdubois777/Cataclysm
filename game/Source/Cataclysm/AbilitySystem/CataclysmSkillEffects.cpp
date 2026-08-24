@@ -339,6 +339,15 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		}
 	}
 
+	if (Delivery.bCannotLeech)
+	{
+		const FGameplayTag NoLeech = UCataclysmDamageCalculation::NoLeechTag();
+		if (NoLeech.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoLeech);
+		}
+	}
+
 	// THE SKILL'S OWN CRITICAL STRIKE CHANCE, AS A NUMBER RATHER THAN A TAG.
 	// Everything above is a yes-or-no property and rides as a tag. This is a
 	// figure, so it rides as a set-by-caller magnitude, which is Unreal's own way
