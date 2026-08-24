@@ -20,6 +20,76 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — Every source of cooldown reduction adds into one figure
+
+**Affects:** the Affixes and Item Bases sheets of
+`docs/All_Things_Cataclysm.xlsx`, and through them `game/Data/Affixes.csv` and
+`game/Data/ItemBases.csv`. **Applied there.** No design document text changed;
+this makes the data agree with what section V already says. Issue #895.
+
+### What was wrong
+
+**Cooldown reduction was zero for every character whatever they wore.** Two
+things in the game grant it and both were recorded as `increased`, which
+multiplies a base. Nothing anywhere grants a base, so both produced zero.
+
+| Source | Was | Now |
+| :-- | :-: | :-: |
+| The `Increased cooldown reduction` affix | increased | **flat** |
+| The Reliquary relic's implicit | increased | **flat** |
+
+It was found while making the affix do something at all: the arithmetic that
+divides a cooldown, `UCataclysmCombatAttributeSet::FinalCooldown`, was written,
+documented and tested, and no code in the project called it.
+
+### Why flat is right
+
+**The stat holds the accumulated increases, and the design says so.** Section V:
+`Final Cooldown = Base Cooldown / ((1 + Sum of Increases) x Product of More
+Multipliers)`, and "the character's accumulated increases apply on top of it". A
+source therefore contributes percentage points INTO that sum. In this project's
+data model, contributing an amount to a stat is a `flat` modifier; `increased`
+means multiplying whatever the stat already holds.
+
+**It is not one of the four stats that start at 100.** The design names exactly
+four — area of effect and the three damage over time stats — and says their
+baseline is 100 "because they are percentages of whatever the skill or the
+effect itself does". Cooldown reduction is not among them and does not work that
+way.
+
+**It matches the game this design already copied.** Path of Exile computes
+`New Cooldown = Base / (1 + total increased cooldown recovery rate)` and its
+sources ADD into one bucket before the single division: 30% and 20% become 50%.
+That is the same formula section V states.
+
+### What was considered and rejected
+
+**Diablo IV's model**, where each source removes a share of what is left rather
+than adding. It stacks inversely multiplicative and needs a hard 75% cap, because
+without one it approaches immunity. Section V already says the opposite — "No cap
+is needed, and no point is ever wasted" — which is a property of the dividing
+formula and not of Diablo IV's. Adopting it would have meant rewriting the design
+as well as the data.
+
+**Last Epoch** sits between the two: nodes inside one skill's tree add together
+and gear multiplies against that total. This design already has a separate bucket
+for multiplicative sources, reserved for gems, passive nodes and enchantments, so
+that shape is available without changing how an ordinary source behaves.
+
+Sources: [Cooldown, Path of Exile Wiki](https://www.poewiki.net/wiki/Cooldown);
+[Cooldown Reduction, Maxroll](https://maxroll.gg/d4/resources/cooldown-reduction);
+[Cooldown recovery in skill trees, Last Epoch forums](https://forum.lastepoch.com/t/cooldown-recovery-in-skill-trees-unclear-inconsistent/58000).
+
+### What it changes for a player
+
+**The wording does not change.** A Reliquary still reads "10% increased cooldown
+reduction" and the affix still reads as it did. What changes is that both now do
+something: a character wearing the relic and a top-tier affix has 22% cooldown
+reduction, which turns a 4 second skill into one waiting 3.28 seconds.
+
+Nobody has played it.
+
+
 ## 2026-08-24 — A damage over time effect's stated number is per tick, not a total
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` section on Applying Damage Over Time and

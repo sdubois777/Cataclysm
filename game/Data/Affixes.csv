@@ -31,7 +31,7 @@ Stat_Increased_area_of_effect,Increased area of effect,Stat,suffix,area_of_effec
 Stat_Increased_damage_over_time_frequency,Increased damage over time frequency,Stat,suffix,dot_frequency,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Quickening
 Stat_Flat_penetration,Flat penetration,Stat,suffix,penetration,flat,4.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Piercing
 Stat_Increased_movement_speed,Increased movement speed,Stat,suffix,movement_speed,increased,8.0,0,,,,,"Belt, Boots, Ring",Swiftness
-Stat_Increased_cooldown_reduction,Increased cooldown reduction,Stat,suffix,cooldown_reduction,increased,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Haste
+Stat_Increased_cooldown_reduction,Increased cooldown reduction,Stat,suffix,cooldown_reduction,flat,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Haste
 Stat_Flat_magic_find,Flat magic find,Stat,suffix,magic_find,flat,10.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Fortune
 Stat_Increased_loot_quantity,Increased loot quantity,Stat,suffix,loot_quantity,increased,8.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Plenty
 Resistance_Single_resistance,Single resistance,Resistance,suffix,,flat,20.0,1,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Warding

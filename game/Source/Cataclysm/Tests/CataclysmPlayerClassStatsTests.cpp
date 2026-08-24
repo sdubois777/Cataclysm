@@ -197,6 +197,12 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("mana_leech"), TEXT("gear alone")},
 		{TEXT("energy_shield_leech"), TEXT("gear alone")},
 
+		// Issue #895. No class line states a cooldown reduction, so gear and
+		// the Efficacy attribute are its only sources. A base of zero is right:
+		// the design's formula divides by one plus the increases, so no
+		// increases leaves every cooldown at its stated length.
+		{TEXT("cooldown_reduction"), TEXT("gear and the Efficacy attribute")},
+
 		// Issue #894. Gear is the only source of these twelve. Their base is
 		// zero on every class, which is a class declining to care about them,
 		// and an increased affix on one therefore grants nothing until a flat

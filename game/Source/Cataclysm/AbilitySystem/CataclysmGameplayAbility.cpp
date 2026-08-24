@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -276,14 +277,34 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 	return true;
 }
 
+float UCataclysmGameplayAbility::CooldownAfterReduction(
+	const UAbilitySystemComponent* AbilitySystem, float BaseCooldown)
+{
+	const FGameplayAttribute Reduction =
+		UCataclysmCombatAttributeSet::GetCooldownReductionAttribute();
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Reduction))
+	{
+		return BaseCooldown;
+	}
+
+	// A PERCENTAGE BECOMES A FRACTION HERE. The attribute holds 12 for a 12%
+	// affix and FinalCooldown wants 0.12, and this is the only place the two
+	// meet.
+	//
+	// NO "MORE" MULTIPLIER YET. Gems, passive nodes and enchantments are the
+	// only sources the design allows one from and none of them reaches an
+	// ability today, so 1.0 is the honest answer rather than a placeholder.
+	return UCataclysmCombatAttributeSet::FinalCooldown(
+		BaseCooldown, AbilitySystem->GetNumericAttribute(Reduction) / 100.0f);
+}
+
 void UCataclysmGameplayAbility::ApplyCooldown(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo) const
 {
-	const float Seconds = GetBaseCooldown();
 	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
-	if (Seconds <= 0.0f || !Tag.IsValid())
+	if (GetBaseCooldown() <= 0.0f || !Tag.IsValid())
 	{
 		return;
 	}
@@ -291,6 +312,17 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	UAbilitySystemComponent* AbilitySystem =
 		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// THE CHARACTER'S COOLDOWN REDUCTION, AND UNTIL ISSUE #895 THIS WAS THE BASE
+	// LENGTH. UCataclysmCombatAttributeSet::FinalCooldown was written,
+	// documented and tested, and nothing called it, so every cooldown in the
+	// game waited its full time however much reduction the player was wearing.
+	const float Seconds =
+		CooldownAfterReduction(AbilitySystem, GetBaseCooldown());
+	if (Seconds <= 0.0f)
 	{
 		return;
 	}

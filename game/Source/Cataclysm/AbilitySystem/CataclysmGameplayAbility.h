@@ -134,6 +134,30 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
 	float GetBaseCooldown() const;
 
+	/**
+	 * Seconds a cooldown of this length waits for this character.
+	 *
+	 * IT DIVIDES RATHER THAN SUBTRACTING, which the design states and which is
+	 * what keeps it from breaking: "Subtracting 1% per point would reach zero
+	 * cooldowns at 100 points of Efficacy. Dividing, all 100 points halve every
+	 * cooldown, gear pushes further with each point worth progressively less,
+	 * and zero is unreachable. No cap is needed, and no point is ever wasted."
+	 *
+	 * THE ARITHMETIC ALREADY EXISTED AND NOTHING CALLED IT.
+	 * UCataclysmCombatAttributeSet::FinalCooldown was written, documented and
+	 * tested, and every cooldown in the game was applied at its base length, so
+	 * `Stat_Increased_cooldown_reduction` was worth nothing. Issue #895.
+	 *
+	 * A PERCENTAGE HERE AND A FRACTION THERE. The `CooldownReduction` attribute
+	 * holds a percentage, because that is what an affix grants, and FinalCooldown
+	 * takes a fraction. This is where the two meet, and it is the only place
+	 * that conversion happens.
+	 *
+	 * @param AbilitySystem  whose cooldown it is, or null for the base length
+	 */
+	static float CooldownAfterReduction(
+		const UAbilitySystemComponent* AbilitySystem, float BaseCooldown);
+
 	/** Mana one use costs for the character holding it, at their level. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
 	float GetManaCost() const;
