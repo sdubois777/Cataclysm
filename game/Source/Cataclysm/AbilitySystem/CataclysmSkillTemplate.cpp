@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -111,7 +113,7 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		UCataclysmCastEffect::PlayFor(
 			Self, AimDirection(),
 			UCataclysmCastEffect::DamageTypeFor(Self, ElementTag()),
-			Params.RadiusCm);
+			ScaledRadiusCm());
 	}
 
 	return true;
@@ -320,6 +322,50 @@ void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) con
 	UCataclysmSkillEffects::ApplyKnockback(Self, Target, Params.KnockbackCm);
 }
 
+float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
+{
+	// A HUNDRED MEANS UNCHANGED, which is what the design gives area of effect
+	// and the three damage over time stats: "They are percentages of whatever
+	// the skill or the effect itself does, so their baseline is 100% rather than
+	// zero." AsMultiplier is the same reading those three use.
+	return UCataclysmSkillEffects::AsMultiplier(
+		GetAbilitySystemComponentFromActorInfo(),
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute());
+}
+
+float UCataclysmSkillTemplate::ScaledRadiusCm() const
+{
+	// ANYTHING CARRYING AN AREA TAG, which is the project owner's rule of
+	// 2026-08-24. `Type.AOE` is the parent of PointBlank, Aura and Persistent,
+	// and a tag query against a parent matches every child, so this one check
+	// covers all three.
+	//
+	// NOT UCataclysmSkillEffects::IsAreaDamage, WHICH ANSWERS A DIFFERENT
+	// QUESTION. That one names PointBlank and Aura as "the two tags that make a
+	// skill's hit area damage", and it leaves Persistent out on purpose: a
+	// charge that leaves a fire trail can itself be evaded, so its BLOW is not
+	// area damage even though the trail is. Whether a blow can be evaded and
+	// whether a skill's size follows the character's area of effect are not the
+	// same question, and scoping this by the narrower one left 26 of the 63
+	// skills carrying an area tag out.
+	//
+	// A RADIUS THAT IS NOT AN AREA AT ALL IS STILL LEFT ALONE. A plain Strike's
+	// radius is how far it reaches and a plain Projectile's is how wide the bolt
+	// is; neither is an area of effect, and growing them is not what the affix
+	// says it does.
+	if (!SkillTags.HasTag(UCataclysmDamageCalculation::AreaDamageTag()))
+	{
+		return Params.RadiusCm;
+	}
+
+	return Params.RadiusCm * AreaOfEffectMultiplier();
+}
+
+float UCataclysmSkillTemplate::ScaledGroundRadiusCm() const
+{
+	return Params.GroundRadiusCm * AreaOfEffectMultiplier();
+}
+
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Location)
 {
 	// A patch is a path whose two ends are the same point.
@@ -382,7 +428,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 							SkillTags)
 						* Params.GroundPercent / 100.0f;
 
-	return ACataclysmGroundZone::SpawnAlong(Self, Start, End, Params.GroundRadiusCm,
+	return ACataclysmGroundZone::SpawnAlong(Self, Start, End, ScaledGroundRadiusCm(),
 											Params.GroundDuration, PerTick);
 }
 
