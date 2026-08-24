@@ -203,6 +203,19 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// increases leaves every cooldown at its stated length.
 		{TEXT("cooldown_reduction"), TEXT("gear and the Efficacy attribute")},
 
+		// Issue #895. No class line names any of the eight, so gear is their
+		// only source. Each applies only when the target is that damage type,
+		// so a base of zero is right: a character with none of it deals its
+		// ordinary damage to everything.
+		{TEXT("damage_vs_war"), TEXT("gear alone")},
+		{TEXT("damage_vs_demonic"), TEXT("gear alone")},
+		{TEXT("damage_vs_death"), TEXT("gear alone")},
+		{TEXT("damage_vs_pestilence"), TEXT("gear alone")},
+		{TEXT("damage_vs_famine"), TEXT("gear alone")},
+		{TEXT("damage_vs_celestial"), TEXT("gear alone")},
+		{TEXT("damage_vs_chaos"), TEXT("gear alone")},
+		{TEXT("damage_vs_void"), TEXT("gear alone")},
+
 		// Issue #894. Gear is the only source of these twelve. Their base is
 		// zero on every class, which is a class declining to care about them,
 		// and an increased affix on one therefore grants nothing until a flat

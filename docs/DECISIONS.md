@@ -20,6 +20,79 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — Spell damage is added to a spell, and the eight conditional damage affixes add rather than multiply
+
+**Affects:** the Affixes sheet of `docs/All_Things_Cataclysm.xlsx` and through it
+`game/Data/Affixes.csv`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`; and
+`tools/tests/test_damage_against_a_target_type.py`. **Applied in all three.**
+Issue #895.
+
+### Spell damage: what it is added to
+
+The design listed Spell Damage among the Offence stats, gave the Ritualist 158 of
+it at level 100, and gave a Wand "18% increased spell damage" and a Staff 32%. It
+never said what a spell's damage is made of, and no code read the attribute.
+
+**A spell keeps the weapon's damage as its base and spell damage is added on
+top.** The project owner chose this on 2026-08-24 over the Path of Exile shape,
+where a spell ignores the weapon entirely and uses spell damage as its base.
+
+The reason is the Wand and the Staff themselves. Both carry flat weapon damage AND
+increased spell damage in the same implicit, so under the replacing shape a
+caster's own weapon damage would be useless to it while its increased spell
+damage stayed useful, which reads as a mistake in the item rather than a choice.
+
+**The scope is settled by the data and was not a decision.** Path of Exile scopes
+spell damage by a tag on the skill, and this project already has one:
+`Type.Spell` sits on exactly nine rows of `game/Data/WeaponSkills.csv`, the five
+Wand skills and the four Staff skills. Those are the two Magic weapon types, and
+the same two weapons whose implicits grant increased spell damage.
+
+Source: [Damage Scaling, Path of Exile 2](https://maxroll.gg/poe2/getting-started/damage-scaling).
+
+### The eight conditional damage affixes: the same correction cooldown reduction needed
+
+**All eight were worth nothing.** `Increased damage against War enemies` and its
+seven siblings were recorded as `increased`, which multiplies whatever the stat
+already holds. The stat each names, `damage_vs_<type>`, IS the bucket of
+conditional increases: no class line names one and no item base grants one, so
+every one of the eight multiplied zero.
+
+**They are `flat` contributions into that bucket now**, which is what the design
+meant all along: "They add into the same bracket as Increased Damage... a
+conditional increase joins the increases bracket rather than becoming a third
+multiplier."
+
+This is the same shape and the same answer as the cooldown reduction entry below,
+decided the same day. Two senses of one word point opposite ways: in the DESIGN
+"increased" means a percentage rather than a flat number of damage, and in the
+DATA MODEL `Value Kind` says how a modifier combines with the stat it names.
+
+**A guard was holding the wrong one.**
+`test_they_are_increases_and_never_flat` in
+`tools/tests/test_damage_against_a_target_type.py` asserted the column reads
+`increased`, which is exactly the state in which the decision that same file's
+header records could not be true. It now checks that they add, and carries both
+senses of the word so the next reader is not caught the same way.
+
+### Making them add needed the character to remember its bracket
+
+By the time a hit lands, `AttackDamage` is `(base + flat) x (1 + increases)` with
+the increases applied and no longer visible, so a conditional increase had no
+bracket to join. `UCataclysmAbilitySystemComponent` now remembers the sum of
+increases behind that figure, written when
+`UCataclysmPlayerClassStats::ApplyTo` writes the stat, and a hit divides by it,
+adds the conditional increase, and multiplies once.
+
+**The difference is large.** A character at +125% increased damage striking a
+matching enemy with a top-tier +400% affix deals 6.25 times its base if the two
+add and 11.25 times if they multiply.
+
+Nobody has played any of it.
+
+---
+
 ## 2026-08-24 — What retaliation does
 
 **Affects:** a new Retaliation section in section V of

@@ -199,11 +199,35 @@ class TestTheDecisionsThatWereMade:
                     "prefixes so they compete with the generic Increased "
                     "damage affix for one slot on one piece.")
 
-    def test_they_are_increases_and_never_flat(self, affix_rows, damage_types):
+    def test_they_add_into_the_increases_bracket(self, affix_rows, damage_types):
+        """They add rather than multiplying, which is the decision above.
+
+        THE COLUMN READS `flat` AND THAT IS WHAT ADDING LOOKS LIKE HERE. Two
+        senses of the word point opposite ways and this is where they meet.
+
+        In the design, "increased damage against Demonic enemies" is a
+        percentage rather than a flat number of damage. That is the decision and
+        it has not changed.
+
+        In the data model, `Value Kind` says how a modifier combines with the
+        STAT IT NAMES, and the stat named here is `damage_vs_<type>` -- which IS
+        the bucket of conditional increases. Contributing percentage points to a
+        bucket is a `flat` modifier. `increased` would multiply whatever the
+        bucket already holds, and nothing else puts anything in it, so until
+        2026-08-24 all eight multiplied zero and were worth nothing at all.
+
+        THIS TEST ASSERTED `increased` UNTIL THEN, so it was holding the one
+        state in which the decision it guards could not be true. The same
+        correction was made to cooldown reduction the same day, for the same
+        reason; `docs/DECISIONS.md` carries both.
+        """
         wanted = set(expected_names(damage_types))
         for row in affix_rows:
             if text(row["AffixName"]) in wanted:
-                assert text(row["ValueKind"]) == "increased", row["AffixName"]
+                assert text(row["ValueKind"]) == "flat", (
+                    f"{row['AffixName']} is `{row['ValueKind']}`. The stat it "
+                    "names holds the conditional increases themselves, so a "
+                    "source adds into it. See this test's docstring.")
 
     def test_they_roll_where_the_generic_damage_affix_rolls(
             self, model, damage_types):
