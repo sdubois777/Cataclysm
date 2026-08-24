@@ -305,9 +305,15 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		Summoner, Target, DamagePercentOfSummoner, FGameplayTagContainer(),
 		MinionDelivery(/*bIsArea=*/false));
 
+	// AND THE BURN TAKES NONE OF THE SUMMONER'S DAMAGE OVER TIME STATS, for the
+	// same reason its blow takes no critical strike, no penetration, no weapon
+	// sub-type and no leech: it is applied with the summoner as the instigator,
+	// and the design names damage over time among what a minion does not take
+	// from its summoner. Issue #895.
 	if (bBurnsWhatItHits && Dealt > 0.0f)
 	{
-		UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt);
+		UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt,
+										  /*bScalesWithInstigator=*/false);
 	}
 
 	++AttacksMade;
@@ -329,7 +335,9 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 				MinionDelivery(/*bIsArea=*/true));
 			if (bBurnsWhatItHits && Dealt > 0.0f)
 			{
-				UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt);
+				UCataclysmSkillEffects::ApplyBurn(
+					Summoner, Target, Dealt,
+					/*bScalesWithInstigator=*/false);
 			}
 		}
 	}

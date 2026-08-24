@@ -408,11 +408,75 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BurnNumbers()
 	return Numbers;
 }
 
-bool UCataclysmSkillEffects::ApplyDamageOverTime(
-	AActor* Instigator, AActor* Target, float TotalDamage,
-	float DurationSeconds, const FGameplayTag& EffectTag)
+float UCataclysmSkillEffects::AsMultiplier(const UAbilitySystemComponent* Source,
+										  const FGameplayAttribute& Stat)
 {
-	if (TotalDamage <= 0.0f || DurationSeconds <= 0.0f)
+	// A BASELINE OF 100 MEANS UNCHANGED, which is what the design gives area of
+	// effect and all three damage over time stats: "They are percentages of
+	// whatever the skill or the effect itself does, so their baseline is 100%
+	// rather than zero."
+	//
+	// AND A CHARACTER WITH NO SUCH ATTRIBUTE IS UNCHANGED TOO. Every enemy in
+	// the game holds the combat attribute set, so this is the path an ability
+	// system this project did not make would take.
+	if (!Source || !Source->HasAttributeSetForAttribute(Stat))
+	{
+		return 1.0f;
+	}
+
+	// CLAMPED AT ZERO RATHER THAN ALLOWED NEGATIVE. Nothing in the design states
+	// a negative one, and a negative duration or interval is not a smaller
+	// effect, it is an effect that cannot be applied at all.
+	return FMath::Max(0.0f, Source->GetNumericAttribute(Stat) / 100.0f);
+}
+
+FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
+	const UAbilitySystemComponent* Source, float DamagePerTick,
+	float DurationSeconds)
+{
+	FCataclysmDamageOverTimeNumbers Numbers;
+	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
+	{
+		return Numbers;
+	}
+
+	const float FrequencyScale = AsMultiplier(
+		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute());
+
+	// A FREQUENCY OF ZERO WOULD BE A DIVISION BY ZERO, and is refused rather
+	// than clamped to something invented. Nothing in the game can produce one:
+	// the class line gives 100 and every source is an increase.
+	if (FrequencyScale <= 0.0f)
+	{
+		return Numbers;
+	}
+
+	Numbers.DamagePerTick = DamagePerTick * AsMultiplier(
+		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute());
+	Numbers.DurationSeconds = DurationSeconds * AsMultiplier(
+		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute());
+
+	// FREQUENCY DIVIDES THE GAP BETWEEN TICKS. More of it is a shorter gap and
+	// so more ticks in the same time, which is what "More ticks in the same
+	// time | Rises" means in the design's own table.
+	Numbers.SecondsPerTick = BaseSecondsPerTick / FrequencyScale;
+
+	Numbers.Ticks = Numbers.SecondsPerTick > 0.0f
+		? Numbers.DurationSeconds / Numbers.SecondsPerTick
+		: 0.0f;
+	Numbers.TotalDamage = Numbers.DamagePerTick * Numbers.Ticks;
+
+	Numbers.bUsable = Numbers.DamagePerTick > 0.0f
+		&& Numbers.DurationSeconds > 0.0f && Numbers.SecondsPerTick > 0.0f;
+	return Numbers;
+}
+
+bool UCataclysmSkillEffects::ApplyDamageOverTime(
+	AActor* Instigator, AActor* Target, float DamagePerTick,
+	float DurationSeconds, const FGameplayTag& EffectTag,
+	bool bScalesWithInstigator)
+{
+	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
 	{
 		return false;
 	}
@@ -424,18 +488,28 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		return false;
 	}
 
-	// One tick a second. The design has a DotFrequency stat that is meant to
-	// change this, and it is not wired in yet; a fixed second keeps the total
-	// damage the same however that lands.
-	constexpr float SecondsPerTick = 1.0f;
-	const float Ticks = FMath::Max(1.0f, DurationSeconds / SecondsPerTick);
-	const float DamagePerTick = TotalDamage / Ticks;
+	// THE ATTACKER'S THREE STATS, AND UNTIL ISSUE #895 NONE OF THEM WAS READ.
+	// All three attributes existed, were clamped and were replicated, and the
+	// comment that used to stand here said the frequency stat "is not wired in
+	// yet". The three affixes granting them were worth nothing.
+	//
+	// NULL FOR A BLOW DEALT IN SOMEONE ELSE'S NAME, which is how a minion's burn
+	// declines the summoner's three stats without this function needing to know
+	// what a minion is.
+	const FCataclysmDamageOverTimeNumbers Numbers = DamageOverTimeNumbers(
+		bScalesWithInstigator ? Source : nullptr, DamagePerTick,
+		DurationSeconds);
+	if (!Numbers.bUsable)
+	{
+		return false;
+	}
 
 	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
 		GetTransientPackage(), FName(TEXT("CataclysmDamageOverTime")));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(DurationSeconds));
-	Effect->Period = FScalableFloat(SecondsPerTick);
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(Numbers.DurationSeconds));
+	Effect->Period = FScalableFloat(Numbers.SecondsPerTick);
 
 	// False, so the first tick lands a second in rather than at once. Applying
 	// on the instant would mean a skill that reapplies burn faster than once a
@@ -447,7 +521,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
 	Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
 	Modifier.ModifierOp = EGameplayModOp::Additive;
-	Modifier.ModifierMagnitude = FScalableFloat(DamagePerTick);
+	Modifier.ModifierMagnitude = FScalableFloat(Numbers.DamagePerTick);
 
 	MakeSingleStackTagged(Effect, EffectTag);
 
@@ -479,7 +553,8 @@ FGameplayTag UCataclysmSkillEffects::BurnTag()
 }
 
 bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
-									   float HitDamage)
+									   float HitDamage,
+									   bool bScalesWithInstigator)
 {
 	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
 	if (!Burn.bUsable || HitDamage <= 0.0f)
@@ -487,9 +562,19 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
+	// THE STATED PERCENTAGE IS WHAT ONE TICK DEALS, AND IT WAS READ AS A TOTAL
+	// UNTIL ISSUE #895. game/Data/StatusEffects.csv gives Burn 4 seconds and 20,
+	// and this passed that 20% of the hit as the whole amount to be spread over
+	// the four seconds, so a burn on a 100 damage hit dealt 20 in total.
+	//
+	// THE DESIGN SAYS A DAMAGE OVER TIME EFFECT DEALS A FIXED AMOUNT PER TICK
+	// and the project owner confirmed the reading on 2026-08-24, so the same
+	// burn now deals 20 a second for four seconds, which is 80. Four times what
+	// it was, and every Demonic skill applies burn.
 	return ApplyDamageOverTime(Instigator, Target,
 							   HitDamage * Burn.PercentOfHit / 100.0f,
-							   Burn.DurationSeconds, BurnTag());
+							   Burn.DurationSeconds, BurnTag(),
+							   bScalesWithInstigator);
 }
 
 FGameplayTag UCataclysmSkillEffects::StunnedTag()

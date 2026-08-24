@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AttributeSet.h"
 #include "GameplayTagContainer.h"
 #include "CataclysmSkillEffects.generated.h"
 
@@ -192,6 +193,51 @@ struct CATACLYSM_API FCataclysmStatusEffectNumbers
 };
 
 /**
+ * What one damage over time effect will actually do, after the attacker's
+ * three stats.
+ *
+ * SEPARATE FROM APPLYING IT so the arithmetic can be checked with plain numbers.
+ * The alternative is watching a gameplay effect tick in a test world, which
+ * measures the engine's timer as much as it measures this, and which cannot
+ * show that all three stats multiply without running for several seconds.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmDamageOverTimeNumbers
+{
+	GENERATED_BODY()
+
+	/** What one tick deals, after the attacker's damage over time stat. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Effects")
+	float DamagePerTick = 0.0f;
+
+	/** The gap between ticks, after the attacker's frequency stat. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Effects")
+	float SecondsPerTick = 0.0f;
+
+	/** How long it runs, after the attacker's duration stat. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Effects")
+	float DurationSeconds = 0.0f;
+
+	/** How many ticks that comes to. Not a whole number; see TotalDamage. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Effects")
+	float Ticks = 0.0f;
+
+	/**
+	 * What it deals altogether.
+	 *
+	 * COMPUTED FROM THE OTHER THREE RATHER THAN STATED, which is the point of
+	 * the design's rule: the total is what the three stats produce between them
+	 * and is not itself a number anything states.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Effects")
+	float TotalDamage = 0.0f;
+
+	/** False when nothing would be applied at all. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Effects")
+	bool bUsable = false;
+};
+
+/**
  * Dealing damage and applying effects, shared by every skill template.
  *
  * NOTHING COULD DO THIS BEFORE EITHER. UCataclysmDamageCalculation::Resolve was
@@ -282,7 +328,46 @@ public:
 	 * @param HitDamage  the damage of the hit that caused it, before mitigation
 	 * @return whether a burn was applied
 	 */
-	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage);
+	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage,
+						  bool bScalesWithInstigator = true);
+
+	/**
+	 * A percentage-of-normal stat read as a plain multiplier.
+	 *
+	 * ONE HUNDRED MEANS UNCHANGED for area of effect and all three damage
+	 * over time stats, which is what the design gives them: "They are
+	 * percentages of whatever the skill or the effect itself does, so their
+	 * baseline is 100% rather than zero." So 148 reads as 1.48, and a
+	 * character with no such attribute gets 1.0 rather than 0.
+	 *
+	 * A NULL SOURCE ANSWERS 1.0, which is how a blow dealt in someone
+	 * else's name declines the scaling without every caller writing a
+	 * branch of its own.
+	 */
+	static float AsMultiplier(const UAbilitySystemComponent* Source,
+							  const FGameplayAttribute& Stat);
+
+	/** One tick a second before the attacker's frequency stat is applied. */
+	static constexpr float BaseSecondsPerTick = 1.0f;
+
+	/**
+	 * What a damage over time effect will do, given who is applying it.
+	 *
+	 * ALL THREE STATS MULTIPLY, which the design states and which is the whole
+	 * reason there are three of them rather than one: "A character with 48% more
+	 * of each does not deal 148% of the base total; it deals 1.48 x 1.48 x 1.48,
+	 * which is 324%."
+	 *
+	 * FREQUENCY DIVIDES THE INTERVAL rather than multiplying it, because it is a
+	 * rate. The design gives cooldown reduction that form and says damage over
+	 * time frequency shares it.
+	 *
+	 * @param Source  the attacker, or null for a blow dealt in someone else's
+	 *                name, which takes none of these three
+	 */
+	static FCataclysmDamageOverTimeNumbers DamageOverTimeNumbers(
+		const UAbilitySystemComponent* Source, float DamagePerTick,
+		float DurationSeconds);
 
 	/** Burn's duration and damage share, or bUsable false if it has none. */
 	static FCataclysmStatusEffectNumbers BurnNumbers();
@@ -329,14 +414,45 @@ public:
 	static FName DamageTypeOf(const AActor* Attacker);
 
 	/**
-	 * Apply damage over a duration, in even ticks one second apart.
+	 * Apply damage over a duration, scaled by the attacker's three stats.
 	 *
-	 * @param TotalDamage  spread across the whole duration
+	 * A FIXED AMOUNT PER TICK, NOT A TOTAL HANDED OUT IN INSTALMENTS, and until
+	 * issue #895 it was the other way round. The design says so outright: "A
+	 * damage over time effect deals a fixed amount per tick. It is not a total
+	 * handed out in instalments. A bleed that deals 20 damage per tick, ticks
+	 * once per second and lasts 5 seconds deals 100 damage in total, and every
+	 * one of those three numbers can be raised on its own." It calls that a
+	 * deliberate departure from Path of Exile and Last Epoch, both of which
+	 * spread a total.
+	 *
+	 * THAT DIFFERENCE IS THE WHOLE REASON THERE ARE THREE STATS. Spreading a
+	 * total means raising the tick rate delivers the same damage sooner and adds
+	 * nothing, so `Stat_Increased_damage_over_time_frequency` could not have been
+	 * worth anything. The project owner chose the per-tick reading on 2026-08-24.
+	 *
+	 * ALL THREE MULTIPLY. "A character with 48% more of each does not deal 148%
+	 * of the base total; it deals 1.48 x 1.48 x 1.48, which is 324%."
+	 *
+	 *   Damage over Time            each tick hits harder
+	 *   Damage over Time Frequency  more ticks in the same time
+	 *   Damage over Time Duration   the effect runs for longer
+	 *
+	 * FREQUENCY DIVIDES THE INTERVAL RATHER THAN MULTIPLYING IT, because it is a
+	 * rate, which is the same form the design gives cooldown reduction: "Damage
+	 * over time frequency uses the same form, because it is also a rate."
+	 *
+	 * @param DamagePerTick  what ONE tick deals before the attacker's stats
+	 * @param DurationSeconds  before the attacker's duration stat
 	 * @param EffectTag    granted for the duration, and what makes it one stack
+	 * @param bScalesWithInstigator  false for a blow dealt in someone else's
+	 *                     name. A minion's burn is applied with its summoner as
+	 *                     the instigator, and the design names damage over time
+	 *                     among what a minion does not take from its summoner.
 	 */
 	static bool ApplyDamageOverTime(AActor* Instigator, AActor* Target,
-									float TotalDamage, float DurationSeconds,
-									const FGameplayTag& EffectTag);
+									float DamagePerTick, float DurationSeconds,
+									const FGameplayTag& EffectTag,
+									bool bScalesWithInstigator = true);
 
 	/**
 	 * Grant a tag for a duration and nothing else.
