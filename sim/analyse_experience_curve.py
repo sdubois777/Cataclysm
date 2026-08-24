@@ -310,6 +310,20 @@ POE_RATE = rate_matching_path_of_exile()
 #: one character level is worth in Power Score.
 LEVEL_WEIGHT = 6.3270
 
+# ---------------------------------------------------------------------------
+# THE DECISION. Chosen by the project owner on 2026-08-24 from the measurements
+# below, and recorded in `docs/DECISIONS.md`. These two numbers are the curve.
+#
+# The rate is `POE_RATE` rounded from 8.1876% to 8.2%, which moves the Path of
+# Exile checkpoints by about a twentieth of a percentage point -- the share of
+# the climb spent by level 90 goes from 45.50% to 45.45% -- and leaves the level
+# at the end of every tier's campaign unchanged. The cost of level 2
+# is likewise rounded to a number a person can hold, from 230,366 to 230,000.
+# The script asserts both of those claims rather than stating them.
+
+DECIDED_RATE = 0.082
+DECIDED_LEVEL_2_COST = 230_000.0
+
 #: The size of the whole climb, in dungeons. Derived, not chosen.
 CLIMB_DUNGEONS = whole_climb_dungeons()
 
@@ -507,6 +521,42 @@ def main() -> None:
         needed = total_experience(POE_RATE, scale) / (sum(scaled.values()) / len(TIERS))
         print(f"  {count:>4} ({count / population:>4.0%} of the floor) | {needed:>27,.0f} | "
               f"{hours(needed, whole_floors):,.0f}")
+    print()
+    print()
+
+    _print_the_decided_curve()
+
+
+def _print_the_decided_curve() -> None:
+    """The curve as chosen, and the check that eight campaigns really pay for it."""
+    rate, scale = DECIDED_RATE, DECIDED_LEVEL_2_COST
+    climb = total_experience(rate, scale)
+    earned = CAMPAIGN_DUNGEONS * sum(PER_DUNGEON.values())
+
+    print("THE CURVE AS DECIDED")
+    print()
+    print(f"  A level costs the last level's cost times {1 + rate:g}. Level 2 costs "
+          f"{scale:,.0f}.")
+    print()
+    print(f"    cost of level L = {scale:,.0f} x {1 + rate:g} ^ (L - 2),  for L from 2 to "
+          f"{MAX_LEVEL}")
+    print()
+    print("  Level | Costs             | Cumulative")
+    print("  " + "-" * 52)
+    for level in (2, 10, 25, 50, 75, 90, 99, MAX_LEVEL):
+        print(f"  {level:>5} | {level_cost(level, rate, scale):>17,.0f} | "
+              f"{total_experience(rate, scale, level):>18,.0f}")
+    print()
+    print(f"  The whole climb costs {climb:,.0f}. Eight campaigns of "
+          f"{CAMPAIGN_DUNGEONS} dungeons pay")
+    print(f"  {earned:,.0f}, which is {earned / climb:.3f} times it, so level "
+          f"{MAX_LEVEL} arrives at the end of")
+    print(f"  difficulty tier 8. Reaching level 2 takes "
+          f"{first_level_in_floors(rate, scale, POPULATION, WEIGHTS, WHOLE_FLOORS):.1f} floors "
+          "of a tier 1 dungeon.")
+    print()
+    print("  Level at the end of each tier's campaign: "
+          + "  ".join(str(level) for level in levels_at_tier_ends(rate, PER_DUNGEON)))
     print()
 
 

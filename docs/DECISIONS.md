@@ -20,6 +20,171 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — The experience curve: a level costs 8.2% more than the one below it, and the whole climb is eight campaigns
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` section XII, which gained a new
+"The Experience Curve" heading. **Applied.** The measurements are in
+`sim/analyse_experience_curve.py` and the checks in
+`sim/tests/test_analysis_scripts.py`. Issue #50.
+
+### What was asked
+
+Section XII said only that the maximum level is 100 and that experience comes
+from killing dungeon enemies and defeating bosses. There was no curve anywhere
+in the design, and levelling could not be built without one.
+
+Two things were settled before this entry. The project owner chose the rule —
+"why don't we just make it so enemy score = exp gained" — which needs nothing
+new built, because `enemy_scores` in `sim/cataclysm_sim/scoring.py` already
+computes a score per rarity from the difficulty tier, the dungeon type and
+sub-type, the floor's depth and the floor's modifiers. They also proposed the
+shape: each level costing a constant factor more than the one below it. Their
+first proposal for that factor was a doubling, which is 2^99 in total and no
+scale rescues it.
+
+What was open was the size of the factor and the size of the whole climb.
+
+### The two figures the earlier working was wrong about
+
+**A dungeon at difficulty tier 1 is worth about half what was previously
+believed.** The earlier estimate valued every floor at the rate the *last* floor
+pays. Enemy Score carries a `currentFloor / totalFloors` term, so a floor near
+the entrance pays far less than the floor above the boss. A 50-floor Basic
+dungeon fully cleared is worth 2,649,059 at tier 1, not 5,407,121. The error is
+2.04x at tier 1 and only 1.14x at tier 8, which is why it did not show up in the
+deep numbers that were being checked.
+
+**The gap between the difficulty tiers is 27.9 times over a whole dungeon**, not
+the 15.5 times measured on the last floor alone. Both figures are true and they
+measure different things.
+
+### The size is derived, not chosen
+
+The project owner asked whether reaching level 100 should cost closer to 200
+dungeons if the character is to reach it during difficulty tier 8. It should,
+and the number follows from two facts already in the project rather than from a
+judgement:
+
+- `docs/Cataclysm_GDD_v2.md`: **"A run is played at a fixed tier."** A player
+  does not drift up the difficulty tiers inside a run. They finish a campaign
+  and start the next one higher, so passing through all eight tiers is eight
+  campaigns.
+- A campaign is about **26 dungeons**, from the `floors` column of the balance
+  sweep baseline in issue #914: 1,053 to 1,345 floors for the three policies
+  that resolve rather than stalemate, over an average dungeon of 50 floors.
+
+Eight campaigns of 26 dungeons is **208 dungeons**. At the project owner's two
+minutes a floor with an endgame build, that is **347 hours**, and the sweep's
+spread of 21 to 34 dungeons a campaign puts it between 280 and 453.
+
+**That is longer than every shipped game the research covers** — Last Epoch 60
+to 70 hours to maximum level, Diablo IV about 150, Path of Exile 150 to 300 and
+it treats level 100 as aspirational. It is what wanting level 100 to arrive
+during tier 8 costs, and it was accepted knowingly.
+
+An earlier recommendation of 50 dungeons was made and is superseded. It came
+from a model where the player's difficulty tier rises smoothly with their level,
+which the fixed-tier rule rules out.
+
+### The rate, and why it is not an invented number
+
+**Path of Exile publishes its whole experience table.** Fitting one number from
+it — the share of the climb spent between levels 90 and 100, which is 45.50% —
+fixes the rate at 8.1876%. The other two checkpoints then agree without being
+fitted, and that agreement is the reason to trust the figure:
+
+| Checkpoint | This curve | Path of Exile | Fitted? |
+| :-- | --: | --: | :-: |
+| Share of the climb by level 50 | 1.91% | 1.28% | no |
+| Share of the climb by level 90 | 45.50% | 45.50% | yes |
+| The last level alone | 7.57% | 7.47% | no |
+
+Rounded to **8.2%** for the design document, which moves the level 90 checkpoint
+from 45.50% to 45.45% and leaves the level reached at the end of every tier's
+campaign unchanged. The cost of level 2 is rounded the same way, from 230,366 to
+**230,000**. Both roundings are asserted in the tests rather than described, so
+a later edit to either has to face them.
+
+### The trade-off this settles, which has no comfortable end
+
+With the size derived, the rate stops deciding how long the climb is and starts
+deciding **what level the character is when each tier's campaign ends**. No rate
+gives both a quick first level and a level that keeps pace with the difficulty
+tier:
+
+| Rate | Level at the end of each tier's campaign | Level 2 costs, in floors of tier 1 |
+| --: | :-- | --: |
+| 3.0% | 6, 19, 35, 51, 65, 78, 89, 100 | 220 |
+| 5.0% | 17, 38, 54, 66, 77, 85, 93, 100 | 52 |
+| **8.2%** | **42, 59, 70, 79, 85, 91, 95, 100** | **4.3** |
+| 15.0% | 67, 77, 83, 88, 91, 94, 97, 100 | 0.0 |
+
+`player_power.reference_character` expects 12.5, 25, 37.5, 50, 62.5, 75, 87.5,
+100 — level rising evenly to 100 at the end of tier 8. Nothing hits that with a
+playable opening.
+
+**This is not a curve-shaping problem that a cleverer shape solves.** A decaying
+rate was measured against the same target, in the form Path of Exile's real
+table has, and it does not solve it either. The cause is structural: experience
+per dungeon rises 27.9 times across the difficulty tiers while the dungeon
+budget per tier is flat at one campaign each. The genre's own fix is to make a
+monster's experience depend on the player's level, which this design does not
+have and which the "enemy score = experience" rule deliberately excludes.
+
+The project owner chose the quick opening.
+
+### What the choice costs, measured rather than asserted
+
+The character out-levels the early difficulty tiers. It reaches level 42 by the
+end of the tier 1 campaign, and at Level Weight 6.327 that is 266 Power Score
+from level alone, against the 385 a tier 1 player is expected to reach.
+
+**The lead shrinks every tier**, because level stops at 100 while the tier being
+entered keeps rising, so the effect is confined to the opening:
+
+| Entering tier | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: |
+| at character level | 42 | 59 | 70 | 79 | 85 | 91 | 95 |
+| share of the tier's starting power carried in from level alone | 69% | 42% | 29% | 22% | 17% | 14% | 12% |
+
+Every ARPG in the genre has this shape. Two things follow and neither is done:
+
+1. **`player_power.reference_character`'s rule that level rises evenly to 100 is
+   no longer true.** It is used to check the Power Score formula against the tier
+   anchors, so it has to be replaced with what levelling actually produces
+   rather than left disagreeing.
+2. **If the easier opening is unwanted, the thing to change is Level Weight in
+   the Power Score formula, not the experience curve.** That was offered as an
+   option and not taken.
+
+### What this rests on that has not been measured
+
+**Every dungeon count assumes the player kills every creature on every floor.**
+Nobody has played a full dungeon, so what share a real player clears is unknown.
+A half-cleared floor doubles the hours and level 100 arrives after tier 8 rather
+than during it. Issue #925 tracks the measurement.
+
+The creature count itself is the midpoint of a wide measured range — 108 to 420
+for Halls, 84 to 510 for Caverns, 73 to 350 for Arena, recorded under
+2026-08-22 — and every dungeon count scales inversely with it.
+
+### Sources
+
+- [Path of Exile experience table](http://www.vhpg.com/poe-experience-table/) —
+  the published per-level table the rate is fitted to. Total to level 100 is
+  4,250,334,444; level 50 is 1.28% of the climb, level 90 is 45.50%.
+- [Path of Exile Wiki, Experience](https://pathofexile.fandom.com/wiki/Experience) —
+  the level-difference damping formula, which this design does not need because
+  it has no monster levels and Overwhelm plays the same role.
+- [Diablo IV experience curve](https://www.icy-veins.com/d4/news/diablo-4-experience-curve-xp-bonuses-and-monster-level-effects/)
+- [Diablo IV, 150 hours to level 100](https://gamerant.com/diablo-4-max-level-cap-how-long/) —
+  stated by its own associate director.
+- [Last Epoch experience guide](https://maxroll.gg/last-epoch/resources/experience-guide) —
+  60 to 70 hours to maximum level.
+- [Path of Exile, 1% of a level per map at 95](https://www.pathofexile.com/forum/view-thread/1641837)
+
+---
+
 ## 2026-08-24 — An ailment's damage is a flat amount, and each ailment is best in a different situation
 
 **Affects:** the DoTs sheet of `docs/All_Things_Cataclysm.xlsx` and through it

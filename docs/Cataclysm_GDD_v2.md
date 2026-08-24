@@ -5670,6 +5670,58 @@ The max level is 100. Players earn experience by killing dungeon enemies and def
 
   
 
+## **The Experience Curve**
+
+**An enemy's Enemy Score IS the experience it grants.** Nothing separate is stored or tuned. Section X already builds Enemy Score from the difficulty tier, the dungeon type and sub-type, how deep the floor is, the enemy's rarity and the floor's modifiers, so all of those already move what a kill is worth. On the last floor of a 50-floor Basic dungeon, one creature averaged over the rarities that actually spawn there is worth 420 at difficulty tier 1 and 6,517 at tier 8.
+
+**A level costs 8.2% more than the level below it. Level 2 costs 230,000.**
+
+  
+
+    cost of level L = 230,000 × 1.082 ^ (L − 2),    for L from 2 to 100
+
+  
+
+| Level | Costs | Cumulative |
+| :-: | --: | --: |
+| 2 | 230,000 | 230,000 |
+| 10 | 432,062 | 2,896,231 |
+| 25 | 1,409,142 | 15,788,926 |
+| 50 | 10,107,328 | 130,562,546 |
+| 75 | 72,496,639 | 953,797,113 |
+| 90 | 236,443,176 | 3,117,091,660 |
+| 100 | 519,995,268 | 6,858,596,097 |
+
+  
+
+**The whole climb is eight campaigns, one at each difficulty tier.** A run is played at a fixed tier, so a player does not move up the tiers inside a run; they finish a campaign and start the next one higher. A campaign is about 26 dungeons and a dungeon averages 50 floors, so reaching level 100 is about **208 dungeons and 347 hours** at 2 minutes a floor with an endgame build. That is the figure for a player who clears every floor; a player who runs for the stairs takes longer.
+
+  
+
+**The rate is Path of Exile's, not an invented one.** That game publishes its whole experience table, and the share of the climb to level 100 spent between levels 90 and 100 — which is 45.50% — is what fixes the rate at 8.2%. The other two checkpoints then agree without being fitted: 1.90% of the climb is spent by level 50 against their 1.28%, and the last level alone is 7.58% against their 7.47%.
+
+  
+
+**The character out-levels the early difficulty tiers, and this is deliberate.** It reaches level 42 by the end of the tier 1 campaign, where the design's own reference progression expects 12.5. The lead shrinks every tier, because level stops at 100 while the tier being entered keeps rising, so the effect is confined to the opening. Every ARPG in the genre has this shape. The alternative, a rate flat enough to keep level in step with the tier, costs over four whole dungeons for level 2.
+
+  
+
+| End of tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Character level | 42 | 59 | 70 | 79 | 85 | 91 | 95 | 100 |
+
+  
+
+| Entering tier | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: |
+| at character level | 42 | 59 | 70 | 79 | 85 | 91 | 95 |
+| share of the tier's starting power carried in from level alone | 69% | 42% | 29% | 22% | 17% | 14% | 12% |
+
+  
+
+`sim/analyse_experience_curve.py` computes every figure above from the Enemy Score model, the dungeon floor ranges and the enemy rarity spawn weights. `docs/DECISIONS.md` carries the reasoning and the two shapes that were measured and rejected.
+
+  
 ## **Power Score Ranges by Tier**
 
 | Tier | Expected Power Score Range |

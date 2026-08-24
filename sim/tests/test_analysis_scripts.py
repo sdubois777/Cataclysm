@@ -1456,3 +1456,65 @@ def test_level_100_lands_exactly_at_the_end_of_the_last_campaign(experience_run)
         "the character now reaches the maximum level before the last campaign, "
         "so the climb is shorter than the eight tiers it was sized for")
     assert levels == sorted(levels), "the level must not go down as tiers pass"
+
+
+def test_the_decided_rate_is_the_fitted_one_rounded(experience_run):
+    """THE DECISION, checked against the measurement it was rounded from.
+
+    The project owner chose 8.2% on 2026-08-24. That is `POE_RATE` rounded, and
+    rounding is only safe if it changes nothing that mattered: the Path of Exile
+    checkpoints and the level at the end of every tier's campaign. Both are
+    asserted, so a future edit to either number has to face them.
+    """
+    _, ns = experience_run
+    rate, fitted = ns["DECIDED_RATE"], ns["POE_RATE"]
+    assert abs(rate - fitted) < 0.0005, (
+        f"the decided rate {rate:.4%} is no longer the fitted {fitted:.4%} "
+        f"rounded, so it is a number somebody picked")
+
+    for top, published in ((50, ns["POE_SHARE_BY_50"]), (90, ns["POE_SHARE_BY_90"])):
+        decided = ns["total_experience"](rate, 1.0, top) / ns["total_experience"](rate, 1.0)
+        exact = ns["total_experience"](fitted, 1.0, top) / ns["total_experience"](fitted, 1.0)
+        # A tenth of a percentage point. The rounding to 8.2% costs 0.052 of
+        # one, so this permits that and catches a real change of rate.
+        assert abs(decided - exact) < 0.001, (
+            f"rounding the rate moved the share of the climb spent by level "
+            f"{top} from {exact:.2%} to {decided:.2%}, against Path of Exile's "
+            f"{published:.2%}")
+
+    assert (ns["levels_at_tier_ends"](rate, ns["PER_DUNGEON"])
+            == ns["levels_at_tier_ends"](fitted, ns["PER_DUNGEON"])), (
+        "rounding the rate moved the level the character reaches at the end of "
+        "at least one tier's campaign, which is the thing the rate was chosen "
+        "to control")
+
+
+def test_eight_campaigns_pay_for_the_decided_climb(experience_run):
+    """The two decided numbers have to agree with the derived size, and they are
+    rounded independently, so nothing guarantees it. If they drift apart the
+    character stops reaching level 100 when tier 8 ends, which is the whole
+    thing the size was derived to achieve."""
+    printed, ns = experience_run
+    climb = ns["total_experience"](ns["DECIDED_RATE"], ns["DECIDED_LEVEL_2_COST"])
+    earned = ns["CAMPAIGN_DUNGEONS"] * sum(ns["PER_DUNGEON"].values())
+
+    assert 0.99 < earned / climb < 1.02, (
+        f"eight campaigns now pay {earned / climb:.3f} times the decided climb. "
+        f"Below 1 the character never reaches level 100; well above it, level "
+        f"100 arrives before tier 8 and the climb is shorter than it was sized for.")
+    assert f"which is {earned / climb:.3f} times it" in printed
+    assert (ns["levels_at_tier_ends"](ns["DECIDED_RATE"],
+                                      ns["PER_DUNGEON"])[-1] == ns["MAX_LEVEL"])
+
+
+def test_the_decided_curve_is_printed_as_a_formula_and_a_table(experience_run):
+    """Whoever implements this reads the printed section, not the source. The
+    formula and the cost of the first and last level have to be in it."""
+    printed, ns = experience_run
+    rate, scale = ns["DECIDED_RATE"], ns["DECIDED_LEVEL_2_COST"]
+    assert f"cost of level L = {scale:,.0f} x {1 + rate:g} ^ (L - 2)" in printed
+    assert f"{ns['level_cost'](ns['MAX_LEVEL'], rate, scale):,.0f}" in printed
+
+    opening = ns["first_level_in_floors"](rate, scale, ns["POPULATION"],
+                                          ns["WEIGHTS"], ns["WHOLE_FLOORS"])
+    assert f"level 2 takes {opening:.1f} floors" in printed
