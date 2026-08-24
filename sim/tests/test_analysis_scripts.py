@@ -1348,13 +1348,27 @@ def test_it_says_what_the_recommendation_breaks_elsewhere(experience_run):
     assert "player_power.reference_character's rule" in printed
     assert "Level Weight" in printed
 
-    level = ns["levels_at_tier_ends"](ns["POE_RATE"], ns["PER_DUNGEON"])[0]
-    from_level = 6.3270 * level
+    levels = ns["levels_at_tier_ends"](ns["POE_RATE"], ns["PER_DUNGEON"])
+    from_level = ns["LEVEL_WEIGHT"] * levels[0]
     share = from_level / sc.PLAYER_MAX_SCORES[1]
     assert f"level alone would be {share:.0%} of it" in printed
     assert share > 0.5, (
         f"level is now only {share:.0%} of the tier 1 power ceiling, so the "
         f"warning that the early tiers get easier no longer holds")
+
+    # AND THE PART THAT MAKES IT LIVEABLE, which is worth as much as the
+    # warning: the lead shrinks every tier, because level stops at 100 while
+    # the tier being entered keeps rising. If it ever stopped shrinking, the
+    # early-tier problem would be an every-tier problem.
+    shares = [ns["LEVEL_WEIGHT"] * levels[tier - 2] / sc.PLAYER_MAX_SCORES[tier - 1]
+              for tier in range(2, 9)]
+    assert shares == sorted(shares, reverse=True), (
+        f"the share of a tier's starting power that the character carries in "
+        f"from levels alone no longer falls at every tier: {shares}")
+    assert shares[-1] < 0.2, (
+        f"entering difficulty tier 8 the character now carries {shares[-1]:.0%} "
+        f"of the tier's starting power from levels alone, so out-levelling is "
+        f"no longer confined to the early tiers")
 
 
 def test_the_reference_progression_comes_from_player_power(experience_run):

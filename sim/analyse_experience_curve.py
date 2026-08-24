@@ -306,6 +306,10 @@ PER_DUNGEON = {tier: dungeon_experience(tier, WHOLE_FLOORS, POPULATION, WEIGHTS)
 #: The rate that reproduces Path of Exile's distribution. The recommendation.
 POE_RATE = rate_matching_path_of_exile()
 
+#: Level Weight from the Power Score formula, `docs/Cataclysm_GDD_v2.md`. What
+#: one character level is worth in Power Score.
+LEVEL_WEIGHT = 6.3270
+
 #: The size of the whole climb, in dungeons. Derived, not chosen.
 CLIMB_DUNGEONS = whole_climb_dungeons()
 
@@ -447,7 +451,7 @@ def main() -> None:
     # -- What this forces elsewhere ----------------------------------------
 
     levels = levels_at_tier_ends(POE_RATE, per_dungeon)
-    level_weight = 6.3270  # docs/Cataclysm_GDD_v2.md, Power Score weights
+    level_weight = LEVEL_WEIGHT
     from_level = level_weight * levels[0]
     tier_1_ceiling = scoring.PLAYER_MAX_SCORES[1]
     print("WHAT THE RECOMMENDATION FORCES ELSEWHERE, AND IT IS NOT NOTHING")
@@ -470,6 +474,20 @@ def main() -> None:
           f"{from_level / tier_1_ceiling:.0%} of it. The early tiers")
     print("     get easier. If that is unwanted, the thing to change is Level Weight, not")
     print("     the experience curve.")
+    print()
+    print("  HOW BADLY, TIER BY TIER. The character is furthest ahead at the start and the")
+    print("  lead shrinks every tier, because level is capped at 100 while the tier the")
+    print("  player is entering keeps rising. This is the shape every ARPG in the genre has,")
+    print("  and it says the problem is confined to the first tier or two:")
+    print()
+    print("  Entering tier | at level | Power Score from level | The tier starts at | Share")
+    print("  " + "-" * 80)
+    for tier in range(2, 9):
+        level = levels[tier - 2]
+        carried = level_weight * level
+        starts_at = scoring.PLAYER_MAX_SCORES[tier - 1]
+        print(f"  {tier:>13} | {level:>8} | {carried:>22.0f} | {starts_at:>18g} | "
+              f"{carried / starts_at:>5.0%}")
     print()
     print()
 
