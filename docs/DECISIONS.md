@@ -20,6 +20,65 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — A damage over time effect's stated number is per tick, not a total
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` section on Applying Damage Over Time and
+Other Effects, and `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`.
+**Applied in both.** No data file changed. Issue #895.
+
+### What was asked
+
+While making the three damage over time affixes do something, the engine and the
+design turned out to disagree about what a stated number means, and the design
+did not say which reading was right.
+
+`game/Data/StatusEffects.csv` gives Burn a duration of 4 seconds and a figure of
+20. `UCataclysmSkillEffects::ApplyBurn` treated that 20 as the total across the
+four seconds, so a burn on a 100 damage hit dealt 20 damage, arriving as 5 a
+second.
+
+The design states the opposite rule about what a damage over time effect is: "A
+damage over time effect deals a fixed amount per tick. It is not a total handed
+out in instalments." It calls that a deliberate departure from Path of Exile and
+Last Epoch, both of which spread a total across a duration.
+
+The DoTs sheet of `docs/All_Things_Cataclysm.xlsx` has no column headings, so
+nothing in the data said which reading the 20 was.
+
+### The decision
+
+**The stated number is what one tick deals.** The project owner chose it on
+2026-08-24.
+
+### Why
+
+**The other reading makes one of the three stats worthless.** If a stated number
+is a total, raising the tick rate divides the same total into more, smaller
+ticks, so Damage over Time Frequency changes nothing at all. The design's own
+reason for having three separate stats is that all three multiply: "A character
+with 48% more of each does not deal 148% of the base total; it deals 1.48 x 1.48
+x 1.48, which is 324%." That is only true under the per-tick reading.
+
+**It is the reading the design already describes.** The rule was written down;
+only its application to a stated number was missing.
+
+### What it costs
+
+**Four times the burn damage in the game.** A burn on a 100 damage hit goes from
+20 in total to 80. Every Demonic skill applies burn directly, and the Of Embers
+gem, the chance to burn affix and two enemy modifiers all apply it as well.
+
+Nobody has played it. The alternative considered and rejected was to adopt the
+per-tick reading and lower Burn's stated figure in the same change so the total
+stayed near 20; that was rejected because the number should be tuned against
+real play rather than chosen to preserve a figure that came from a misreading.
+
+### What it does not decide
+
+Nine of the eleven ailments state a duration of zero and zero damage, so this
+reading applies to Burn alone until #904 fills the rest in.
+
+
 ## 2026-08-23 — Every gear rarity drops at every difficulty tier; the cap becomes a penalty
 
 **Affects:** `sim/cataclysm_sim/loot.py`,

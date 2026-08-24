@@ -1458,6 +1458,10 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
+**The number an effect states in the DoTs sheet is what ONE TICK deals, not a total.** Burn is written as 4 seconds and 20% of the hit, and that means 20% of the hit every second for four seconds, which is 80% of the hit altogether. Reading it as a total was what the engine did until 2026-08-24, and under that reading raising the tick rate delivered the same damage sooner and added nothing, so Damage over Time Frequency could not be worth anything. The sheet has no column headings, which is why this had to be stated rather than inferred; `docs/DECISIONS.md` carries the reasoning.
+
+  
+
 | Metric | The stat that raises it | What raising it does | Total damage |
 | :-- | :-- | :-- | :-- |
 | Damage per tick | Damage over Time | Each tick hits harder | Rises |
