@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "CataclysmAbilitySystemComponent.generated.h"
 
@@ -167,6 +168,36 @@ public:
 		return StatModifiers;
 	}
 
+	/**
+	 * Leech this character has been promised and not yet been paid. Issue #895.
+	 *
+	 * A LIST RATHER THAN A RUNNING TOTAL, because the design gives every hit its
+	 * own 3-second payout and says they run alongside one another: "A character
+	 * hitting continuously therefore reaches a steady state of roughly three
+	 * hits' worth of leech in flight." One total could not express three
+	 * payments with three different deadlines.
+	 *
+	 * IT EMPTIES ITSELF. UCataclysmLeech::PayOutStep drops a payment as soon as
+	 * its balance or its time is gone, so a character that stops fighting stops
+	 * carrying anything within three seconds.
+	 */
+	const TArray<FCataclysmLeechPayment>& GetLeechPayments() const
+	{
+		return LeechPayments;
+	}
+
+	/** Promise this character one hit's worth of leech. */
+	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
+	{
+		LeechPayments.Add(Payment);
+	}
+
+	/** Replace the list with what is still owed after a step. */
+	void SetLeechPayments(TArray<FCataclysmLeechPayment>&& Payments)
+	{
+		LeechPayments = MoveTemp(Payments);
+	}
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
@@ -183,6 +214,16 @@ protected:
 	 * changes the other in the same statement.
 	 */
 	TArray<FCataclysmStatModifier> StatModifiers;
+
+	/**
+	 * Leech promised and not yet paid, one entry per hit. Issue #895.
+	 *
+	 * NOT REPLICATED. What a remote client needs is the health, mana and
+	 * energy shield the payout produces, and all three of those are
+	 * replicated attributes already. The schedule behind them is server
+	 * bookkeeping.
+	 */
+	TArray<FCataclysmLeechPayment> LeechPayments;
 	TArray<int32> StatModifierHandles;
 
 	/** Never reused, so a stale handle cannot remove somebody else's modifier. */

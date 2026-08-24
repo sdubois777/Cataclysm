@@ -96,6 +96,18 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("energy_shield_regen"), Vital::GetEnergyShieldRegenAttribute()},
 			{TEXT("life_leech"), Vital::GetLifeLeechAttribute()},
 
+			// THE OTHER TWO LEECHES JOINED IT IN ISSUE #895. Life leech had an
+			// entry here and the other two did not, so two of the three affixes
+			// were dropped before they reached an attribute. All three then
+			// reached one nothing read, which is what that issue was about.
+			//
+			// NO CLASS LINE NAMES EITHER. game/Data/ClassStats.csv gives the
+			// Ravager 3% life leech and no class any mana or energy shield
+			// leech, so gear is the only source of those two.
+			{TEXT("mana_leech"), Vital::GetManaLeechAttribute()},
+			{TEXT("energy_shield_leech"),
+			 Vital::GetEnergyShieldLeechAttribute()},
+
 			// The class's own resource. Its maximum only -- see the header.
 			{TEXT("class_resource"), Resource::GetMaxClassResourceAttribute()},
 

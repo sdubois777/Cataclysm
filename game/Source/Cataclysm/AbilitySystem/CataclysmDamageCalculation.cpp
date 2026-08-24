@@ -85,6 +85,8 @@ const TCHAR* UCataclysmDamageCalculation::NoPenetrationTagName =
 	TEXT("Keyword.NoPenetration");
 const TCHAR* UCataclysmDamageCalculation::NoWeaponSubTypeTagName =
 	TEXT("Keyword.NoWeaponSubType");
+const TCHAR* UCataclysmDamageCalculation::NoLeechTagName =
+	TEXT("Keyword.NoLeech");
 const TCHAR* UCataclysmDamageCalculation::SkillCritChanceDataTagName =
 	TEXT("Data.SkillCritChance");
 const TCHAR* UCataclysmDamageCalculation::ElementIsForColourOnlyTagName =
@@ -130,6 +132,11 @@ FGameplayTag UCataclysmDamageCalculation::NoPenetrationTag()
 FGameplayTag UCataclysmDamageCalculation::NoWeaponSubTypeTag()
 {
 	return TagNamed(NoWeaponSubTypeTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::NoLeechTag()
+{
+	return TagNamed(NoLeechTagName);
 }
 
 FGameplayTag UCataclysmDamageCalculation::ElementIsForColourOnlyTag()

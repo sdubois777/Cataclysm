@@ -103,6 +103,22 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCarriesNoWeaponSubType = false;
 
 	/**
+	 * This blow gives its attacker no leech.
+	 *
+	 * FOR A SUMMONED MINION, the fourth exclusion built for the same reason as
+	 * the three above. Leech is read off the attacker when a hit lands, and a
+	 * minion's damage is dealt in its summoner's name, so without this a
+	 * Ravager's imps would heal the Ravager with every blow they struck.
+	 *
+	 * THE DESIGN NAMES LEECH OUTRIGHT among what does not cross: "A minion does
+	 * not take the summoner's weapon damage, flat added damage, attack speed,
+	 * critical strike chance or multiplier, penetration, armour, evasion,
+	 * block, resistances, energy shield, leech, movement speed..." Issue #895.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCannotLeech = false;
+
+	/**
 	 * The base critical strike chance of the skill dealing this blow, or -1 to
 	 * take whatever the attacker's own attribute holds.
 	 *

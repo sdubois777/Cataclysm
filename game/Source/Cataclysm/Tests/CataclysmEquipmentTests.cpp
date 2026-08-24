@@ -1236,12 +1236,15 @@ bool FCataclysmAttackSpeedReachesTheCharacter::RunTest(const FString& Parameters
  * were working. They were right: twenty-five of the eighty-five rows of
  * game/Data/Affixes.csv changed something a player could feel.
  *
- * ISSUE #894 RAISED THAT TO FORTY, by giving twelve stat names an attribute to
- * be written to, and ISSUE #896 RAISED IT TO FORTY-THREE by giving magic find a
- * thirteenth and making a kill read what the player is carrying. Of the
- * seventy-four rows that grant a stat, fifty-one now have an attribute behind
- * every stat they grant and twenty-three have none. Eight of the fifty-one then
- * reach an attribute nothing reads (#895), or one that only clamps a pool
+ * THREE ISSUES HAVE RAISED THAT TO FORTY-SIX. #894 gave twelve stat names an
+ * attribute to be written to. #896 gave magic find a thirteenth and made a kill
+ * read what the player is carrying. #895's first part built leech, which gives
+ * an attacker back a share of what its hit took, and brought the last two of the
+ * three leech stat names with it.
+ *
+ * Of the seventy-four rows that grant a stat, fifty-three now have an attribute
+ * behind every stat they grant and twenty-one have none. Seven of the fifty-three
+ * then reach an attribute nothing reads (#895), or one that only clamps a pool
  * nothing fills or spends, which is the class resource and is issue #192.
  *
  * The rest are broken in four ways, filed as #895, #897, #898 and #899.
@@ -1286,9 +1289,12 @@ namespace CataclysmEquipmentTest
 			// them already existed, which is what made that issue the cheap one.
 			//
 			// #895. The attribute exists and NOTHING READS IT, so a map entry
-			// on its own would leave these eleven doing just as little.
+			// alone would leave these nine doing just as little.
+			//
+			// MANA LEECH AND ENERGY SHIELD LEECH LEFT THIS LIST when leech was
+			// built, and life leech left the one in #895 at the same time: all
+			// three now give an attacker back a share of what its hit took.
 			TEXT("cooldown_reduction"),
-			TEXT("mana_leech"), TEXT("energy_shield_leech"),
 			TEXT("damage_vs_war"), TEXT("damage_vs_demonic"),
 			TEXT("damage_vs_death"), TEXT("damage_vs_pestilence"),
 			TEXT("damage_vs_famine"), TEXT("damage_vs_celestial"),

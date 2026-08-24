@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -400,6 +401,34 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							: nullptr)
 				{
 					Hurt->NoteDamageTaken();
+				}
+
+				// AND THE ATTACKER LEECHES FROM WHAT GOT THROUGH. Issue #895:
+				// the three leech attributes existed and no code anywhere read
+				// one, so all three affixes granting them were worth nothing.
+				//
+				// ALL THREE FIGURES, NOT ONLY THE HEALTH. The design says leech
+				// is "a percentage of the damage actually dealt... the damage
+				// the target really took", and damage a shield or mana absorbed
+				// is damage the target took.
+				//
+				// ALREADY CAPPED AT WHAT THE TARGET HAD, so the design's rule
+				// that "overkill does not count" needs nothing here: Resolve
+				// writes DealtToHealth as the smaller of the damage and the
+				// target's remaining health.
+				//
+				// A MINION'S BLOW LEECHES NOTHING, which is the fourth of the
+				// four exclusions its blow carries and is checked here rather
+				// than inside the leech code, exactly as the critical strike
+				// and the two penetrations are.
+				if (!AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))
+				{
+					UCataclysmLeech::NoteHit(
+						const_cast<UAbilitySystemComponent*>(
+							Data.EffectSpec.GetContext()
+								.GetInstigatorAbilitySystemComponent()),
+						Outcome.DealtToHealth + Outcome.AbsorbedByShield
+							+ Outcome.AbsorbedByMana);
 				}
 			}
 
