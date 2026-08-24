@@ -400,6 +400,17 @@ public:
 	 */
 	static const TCHAR* AttackSpeedStat;
 
+	/**
+	 * `crit_chance`, the third stat whose base comes from what is held.
+	 *
+	 * IT BEHAVES LIKE ATTACK SPEED AND NOT LIKE ATTACK DAMAGE. The design
+	 * gives critical strike chance to the skill being used rather than to
+	 * the character, so like a swing rate it is a base that no class line
+	 * can state and no implicit supplies, and it arrives through
+	 * UCataclysmPlayerClassStats::ApplyTo's BaseOverrides argument.
+	 */
+	static const TCHAR* CritChanceStat;
+
 	/** Where the imported item base table lives. */
 	static const TCHAR* BaseTableAssetPath;
 

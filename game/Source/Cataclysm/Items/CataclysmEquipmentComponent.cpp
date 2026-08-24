@@ -7,6 +7,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/DataTable.h"
 
 // ---------------------------------------------------------------------------
@@ -465,13 +466,34 @@ TArray<FCataclysmItem> UCataclysmEquipmentComponent::WornWeapons() const
 
 TMap<FName, float> UCataclysmEquipmentComponent::StatBasesFromWeapons() const
 {
-	// ALWAYS WRITTEN, EVEN WHEN IT IS ZERO. Leaving the entry out would leave
-	// the attack speed attribute holding whatever the last weapon set, so a
-	// character who ended up holding nothing would keep swinging.
+	// ALWAYS WRITTEN, EVEN WHEN IT IS ZERO. Leaving either entry out would
+	// leave its attribute holding whatever the last weapon set, so a character
+	// who ended up holding nothing would keep swinging and keep critically
+	// striking.
+	//
+	// CRITICAL STRIKE CHANCE JOINED THESE IN ISSUE #894. The design gives it to
+	// the skill being used rather than to the character -- "A character has no
+	// critical strike chance in the abstract" -- and every skill in the game
+	// takes the default, so what a character holds is the only question, and
+	// this component is what knows the answer. Before that,
+	// UCataclysmWeaponSlotsComponent::ApplyBaseCritChance SET the attribute, so
+	// the four affixes naming critical strike chance could not have scaled it
+	// even if the map had let them through.
+	//
+	// THE SKILL'S DEFAULT AND NOT THE WEAPON'S, which is why the constant
+	// belongs to the weapon slots component: it is the figure every one of the
+	// six granted skills uses because no skill row can state its own. Issue
+	// #657.
+	const bool bHoldsAWeapon = WornWeapons().Num() > 0;
+
 	return {
 		{ FName(UCataclysmItemModifiers::AttackSpeedStat),
 		  UCataclysmItemModifiers::BlendedAttackSpeed(
 			  WornWeapons(), UCataclysmItemModifiers::LoadBaseTable()) },
+		{ FName(UCataclysmItemModifiers::CritChanceStat),
+		  bHoldsAWeapon
+			  ? UCataclysmWeaponSlotsComponent::DefaultSkillCritChancePercent
+			  : 0.0f },
 	};
 }
 

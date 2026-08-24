@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -62,9 +63,18 @@ namespace CataclysmPlayerClassStatsTest
 			UCataclysmClassResourceAttributeSet* NewResource =
 				NewObject<UCataclysmClassResourceAttributeSet>(Actor);
 
+			// THE RESISTANCE SET JOINED THE OTHER THREE IN ISSUE #894, when the
+			// eight per-type resistances gained a StatToAttribute entry. ApplyTo
+			// skips any attribute whose set the component does not hold, so
+			// without this the "every mapped stat was written" check below would
+			// be eight short and would fail.
+			UCataclysmResistanceAttributeSet* NewResistance =
+				NewObject<UCataclysmResistanceAttributeSet>(Actor);
+
 			AbilitySystem->AddAttributeSetSubobject(NewVitals);
 			AbilitySystem->AddAttributeSetSubobject(NewCombat);
 			AbilitySystem->AddAttributeSetSubobject(NewResource);
+			AbilitySystem->AddAttributeSetSubobject(NewResistance);
 
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 		}
@@ -143,35 +153,65 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 			Map.Contains(Stat));
 	}
 
-	// AND NOTHING IN THE MAP IS ABSENT FROM THE TABLE, which would be a stat
-	// being written from a line that does not exist.
+	// AND EVERY MAPPED STAT HAS A SOURCE, which for most of them is a class
+	// line. A stat written from a line that does not exist, with nothing else
+	// supplying it either, is a stat whose base is always zero.
 	//
-	// EXCEPT THE TWO THAT COME FROM THE WEAPONS. Issue #845 put attack damage
-	// and attack speed in the map deliberately, and no class line names either:
-	// they are supplied entirely by what the character is holding. A weapon's
-	// damage arrives as an ordinary flat modifier from
-	// UCataclysmEquipmentComponent::GatherModifiers, and its swing rate arrives
-	// as a base override from StatBasesFromWeapons.
+	// EACH EXEMPTION STATES WHERE ITS VALUE COMES FROM INSTEAD, and that is the
+	// point of holding them in a map rather than a set. A stat added to
+	// StatToAttribute with no class line and no entry here still fails, which is
+	// the case this guard exists for.
 	//
-	// NAMED HERE RATHER THAN THE CHECK BEING WEAKENED. A third stat added to the
-	// map with no class line and no weapon behind it still fails, which is the
-	// case this guard exists for. If a class ever does state one of these two,
-	// delete it from this list rather than leaving the exemption standing.
-	const TSet<FString> SuppliedByTheWeapons = {
-		TEXT("attack_damage"), TEXT("attack_speed"),
+	// A CLASS WITH NO BASE FOR A STAT IS THE DESIGN AND NOT A GAP.
+	// docs/Cataclysm_GDD_v2.md: "A class does not need a base above zero for
+	// every stat. It needs one for every stat it wants its attributes to
+	// scale... that is the system working rather than failing -- it is how a
+	// class declines to care about a stat." So the honest question is not
+	// whether a class line exists, it is whether SOMETHING supplies the stat.
+	const TMap<FString, FString> SuppliedFromElsewhere = {
+		// Issue #845. A weapon's damage is an implicit on its base, so it
+		// arrives as an ordinary flat modifier from GatherModifiers.
+		{TEXT("attack_damage"), TEXT("the worn weapons, as a flat modifier")},
+
+		// Issue #845. A swing rate is a column rather than an implicit, and two
+		// weapons average theirs, so a base has to be supplied.
+		{TEXT("attack_speed"),
+		 TEXT("the worn weapons, as a base override from StatBasesFromWeapons")},
+
+		// Issue #894. The design gives critical strike chance to the skill being
+		// used rather than to the character, so like a swing rate it is a base
+		// no class line can state.
+		{TEXT("crit_chance"),
+		 TEXT("the skill in hand, as a base override from StatBasesFromWeapons")},
+
+		// Issue #894. Gear is the only source of these twelve. Their base is
+		// zero on every class, which is a class declining to care about them,
+		// and an increased affix on one therefore grants nothing until a flat
+		// one is also worn.
+		{TEXT("evasion"), TEXT("gear alone")},
+		{TEXT("block_chance"), TEXT("gear alone")},
+		{TEXT("penetration"), TEXT("gear alone")},
+		{TEXT("resistance_war"), TEXT("gear alone")},
+		{TEXT("resistance_demonic"), TEXT("gear alone")},
+		{TEXT("resistance_death"), TEXT("gear alone")},
+		{TEXT("resistance_pestilence"), TEXT("gear alone")},
+		{TEXT("resistance_famine"), TEXT("gear alone")},
+		{TEXT("resistance_celestial"), TEXT("gear alone")},
+		{TEXT("resistance_chaos"), TEXT("gear alone")},
+		{TEXT("resistance_void"), TEXT("gear alone")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)
 	{
-		if (SuppliedByTheWeapons.Contains(Pair.Key))
+		if (const FString* Source = SuppliedFromElsewhere.Find(Pair.Key))
 		{
 			// The exemption is only honest if the stat really is absent from the
 			// table. One that quietly gained a class line would sit here
 			// unchecked, so say so rather than skipping in silence.
 			TestFalse(FString::Printf(
-				TEXT("'%s' is supplied by the weapons, so no class line should "
-					 "name it. One does now, so remove it from the exemption "
-					 "list in this test."), *Pair.Key),
+				TEXT("'%s' is supplied by %s, so no class line should name it. "
+					 "One does now, so remove it from the exemption list in "
+					 "this test."), *Pair.Key, **Source),
 				NamedByTheDesign.Contains(Pair.Key));
 			continue;
 		}

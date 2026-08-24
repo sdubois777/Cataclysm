@@ -249,17 +249,6 @@ private:
 	// UCataclysmEquipmentComponent::GatherModifiers. What is left here is which
 	// SKILLS a weapon grants.
 
-	/**
-	 * Puts the base critical strike chance of the granted skills on the
-	 * character, or zero when nothing is held.
-	 *
-	 * IT DID NOT MOVE TO THE CHARACTER STATS WITH THE OTHER TWO, and that is a
-	 * design point rather than an oversight. Attack damage and attack speed are
-	 * properties of what is WORN. Critical strike chance belongs to the skill in
-	 * hand: the design's stat source table says so, and adds that a character
-	 * has no critical strike chance in the abstract.
-	 */
-	void ApplyBaseCritChance();
 
 	UPROPERTY() FString EquippedWeaponType;
 	UPROPERTY() TArray<FCataclysmWeaponSkill> AvailableSkills;

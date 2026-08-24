@@ -189,10 +189,13 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 	// UCataclysmEquipmentComponent::GatherModifiers, alongside every affix on
 	// every other piece. This component's job is which SKILLS exist.
 	//
-	// THE BASE CRITICAL STRIKE CHANCE DID NOT MOVE WITH THEM, because it is a
-	// property of the skill in hand rather than of what is worn. See the
-	// function itself.
-	ApplyBaseCritChance();
+	// THE BASE CRITICAL STRIKE CHANCE HAS NOW MOVED WITH THEM TOO. Issue #894.
+	// It is still the skill's rather than the character's, which is what the
+	// design says, but the four affixes naming it could not scale a value this
+	// component SET on every equip. It arrives as a base override from
+	// UCataclysmEquipmentComponent::StatBasesFromWeapons instead, alongside the
+	// swing rate, and UCataclysmPlayerClassStats::ApplyTo is the only writer of
+	// all three.
 
 	if (AvailableSkills.IsEmpty())
 	{
@@ -346,50 +349,6 @@ int32 UCataclysmWeaponSlotsComponent::EquipStartingWeapon()
 	return Filled;
 }
 
-void UCataclysmWeaponSlotsComponent::ApplyBaseCritChance()
-{
-	UCataclysmAbilitySystemComponent* AbilitySystem = GetAbilitySystem();
-	if (!AbilitySystem)
-	{
-		return;
-	}
-
-	// THE BASE CRITICAL STRIKE CHANCE IS THE SKILL'S AND NOT THE WEAPON'S. It is
-	// written here because this is the moment a weapon's six skills are granted,
-	// and the moment they are taken away again. The design is explicit about
-	// whose it is: its stat source table says "the skill being used" supplies
-	// critical strike chance, and the sentence after it says "A character has no
-	// critical strike chance in the abstract."
-	//
-	// NOTHING WROTE IT UNTIL ISSUE #649, so it stood at the zero it was
-	// initialised to, with the comment "supplied by the skill in use" describing
-	// an intention nobody had built. A player never critically struck, and the
-	// three critical strike affixes, the two gems, the Ferocity attribute and two
-	// whole passive tree branches all scaled a base of zero and were worth
-	// nothing.
-	//
-	// ONE NUMBER FOR SIX SKILLS, which is correct only because every skill in the
-	// game takes the default. `game/Data/WeaponSkills.csv` has no column for a
-	// skill to state its own. Issue #657.
-	//
-	// THIS IS NOT A CHARACTER STAT AND DOES NOT BELONG WITH THE OTHERS. Attack
-	// damage and attack speed moved to UCataclysmPlayerClassStats::ApplyTo in
-	// issue #845, because they are properties of what is WORN and every affix
-	// naming them is a character-wide modifier. Critical strike chance is a
-	// property of the skill in hand, so it stays here with the skills.
-	//
-	// SET, NOT ADDED, and zero when holding nothing. A character holding nothing
-	// swings nothing.
-	const FGameplayAttribute CritAttribute =
-		UCataclysmCombatAttributeSet::GetCritChanceAttribute();
-	if (AbilitySystem->HasAttributeSetForAttribute(CritAttribute))
-	{
-		AbilitySystem->SetNumericAttributeBase(
-			CritAttribute,
-			EquippedWeaponType.IsEmpty() ? 0.0f : DefaultSkillCritChancePercent);
-	}
-}
-
 void UCataclysmWeaponSlotsComponent::UnequipWeapon()
 {
 	if (UCataclysmAbilitySystemComponent* AbilitySystem = GetAbilitySystem())
@@ -400,14 +359,12 @@ void UCataclysmWeaponSlotsComponent::UnequipWeapon()
 	AvailableSkills.Reset();
 	EquippedWeaponType.Reset();
 
-	// AFTER CLEARING THE TYPE, so it writes zero. A character holding nothing has
-	// no critical strike chance, because it has no skill in hand to supply one.
-	ApplyBaseCritChance();
-
-	// NOTHING IS WRITTEN TO THE ATTACK DAMAGE ATTRIBUTE HERE, AND IT USED TO BE.
-	// Taking a weapon off has to leave the character hitting for nothing rather
-	// than for whatever they last held, and that is now the job of
-	// UCataclysmPlayerClassStats::ApplyTo, which recomputes every stat from what
-	// is worn. UCataclysmEquipmentComponent::RefreshAttributes runs it whenever
-	// equipment changes. Issue #845.
+	// NO ATTRIBUTE IS WRITTEN HERE, AND THREE USED TO BE. Taking a weapon off
+	// has to leave the character hitting for nothing, swinging at nothing and
+	// critically striking never, rather than keeping whatever they last held.
+	// All three are now the job of UCataclysmPlayerClassStats::ApplyTo, which
+	// recomputes every stat from what is worn, and
+	// UCataclysmEquipmentComponent::RefreshAttributes runs it whenever
+	// equipment changes. Attack damage and attack speed moved in issue #845 and
+	// critical strike chance in issue #894.
 }
