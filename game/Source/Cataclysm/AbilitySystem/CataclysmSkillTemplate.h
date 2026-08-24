@@ -59,6 +59,47 @@ public:
 	FGameplayTagContainer SkillTags;
 
 	/**
+	 * This skill's radius after the caster's area of effect. Issue #895.
+	 *
+	 * NOTHING READ THE AreaOfEffect ATTRIBUTE AT ALL until that issue. It
+	 * existed, was clamped, was replicated, was given 100 by the shared Default
+	 * class line, and every skill in the game used the radius its data stated.
+	 *
+	 * ANYTHING CARRYING AN AREA TAG, which is the project owner's rule of
+	 * 2026-08-24. `Type.AOE` is the parent of `Type.AOE.PointBlank`,
+	 * `Type.AOE.Aura` and `Type.AOE.Persistent`, and a tag query against a
+	 * parent matches every child, so one check covers all three: 63 of the skill
+	 * rows carry one.
+	 *
+	 * A RADIUS ON A SKILL WITH NO AREA TAG IS LEFT ALONE. It is a reach or a
+	 * projectile's body, and enlarging those would make a sword swing longer and
+	 * a bolt fatter, which is not what "increased area of effect" means to a
+	 * player.
+	 *
+	 * ADDITIVE RATHER THAN MULTIPLICATIVE, and the design says why: "Area of
+	 * effect at +2% per point stays additive, because a larger radius has no
+	 * runaway." Its baseline is 100, meaning unchanged.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	float ScaledRadiusCm() const;
+
+	/**
+	 * The radius of the ground this skill leaves, after area of effect.
+	 *
+	 * ALWAYS SCALED, unlike the radius above, because a zone's damage IS area
+	 * damage whatever the skill that left it was. The design: "A zone's own
+	 * damage is area damage, decided where the zone deals it."
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	float ScaledGroundRadiusCm() const;
+
+	/**
+	 * The caster's area of effect as a plain multiplier, or 1.0 for a caster
+	 * with none.
+	 */
+	float AreaOfEffectMultiplier() const;
+
+	/**
 	 * This skill's own base critical strike chance, or -1 to take the default.
 	 *
 	 * ON THE GRANTED INSTANCE AND NOT ON THE CLASS, for the same reason

@@ -82,7 +82,7 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// facing. A top-down game gives the player no other way to point a cone.
 	const TArray<AActor*> Targets = UCataclysmTargeting::FindEnemiesInCone(
 		GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
-		Params.RadiusCm, Params.AngleDegrees, Params.MaxTargets);
+		ScaledRadiusCm(), Params.AngleDegrees, Params.MaxTargets);
 
 	// The knockback goes with it. It used to be applied here, for Strikes only;
 	// issue #626 moved it into HitTargets so that every shape can shove, which
@@ -108,7 +108,7 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	UCataclysmStrikeEffect::PlayAt(Self, Self->GetActorLocation(), AimDirection(),
 								   UCataclysmStrikeEffect::DamageTypeFor(
 									   Self, ElementTag()),
-								   Params.RadiusCm);
+								   ScaledRadiusCm());
 
 	++SwingsMade;
 	return Targets.Num();
@@ -175,7 +175,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 	// read it off the character on arrival. Named explicitly because the two
 	// arguments before it are defaulted. Issue #657.
 	InFlight = ACataclysmProjectile::Fire(
-		Self, Origin, Destination, Params.RadiusCm, Params.SpeedCmPerSecond,
+		Self, Origin, Destination, ScaledRadiusCm(), Params.SpeedCmPerSecond,
 		Params.Pierce, Params.bReturns, GetDamagePercent(), SkillTags,
 		Params.bBurns, /*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
 		CritChancePercent);
@@ -257,13 +257,13 @@ int32 UCataclysmProjectileSkill::Land()
 	{
 		// Pierce is how many it passes THROUGH, so it hits one more than that.
 		Targets = UCataclysmTargeting::FindEnemiesInLine(
-			GetWorld(), Self, Origin, Destination, Params.RadiusCm,
+			GetWorld(), Self, Origin, Destination, ScaledRadiusCm(),
 			Params.Pierce + 1);
 	}
 	else
 	{
 		Targets = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Self, Destination, Params.RadiusCm, Params.MaxTargets);
+			GetWorld(), Self, Destination, ScaledRadiusCm(), Params.MaxTargets);
 	}
 
 	HitTargets(Targets);
@@ -328,11 +328,11 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	// not continuously. An enemy that dies or stops burning during the ten
 	// seconds does not lower it, and one that catches fire does not raise it.
 	BurningEnemiesAtCast = 0;
-	if (Params.RadiusCm > 0.0f)
+	if (ScaledRadiusCm() > 0.0f)
 	{
 		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
 		for (AActor* Nearby : UCataclysmTargeting::FindEnemiesInSphere(
-				GetWorld(), Self, Self->GetActorLocation(), Params.RadiusCm))
+				GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm()))
 		{
 			if (UCataclysmSkillEffects::HasTag(Nearby, Burn))
 			{
@@ -491,7 +491,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 	case ECataclysmMovementMode::Charge:
 		// "Barrelling through any enemies in your path": everything on the line.
 		Targets = UCataclysmTargeting::FindEnemiesInLine(
-			GetWorld(), Self, Start, End, Params.RadiusCm, Params.MaxTargets);
+			GetWorld(), Self, Start, End, ScaledRadiusCm(), Params.MaxTargets);
 		break;
 
 	case ECataclysmMovementMode::Blink:
@@ -500,9 +500,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 		// standing between the two circles is hit by neither and one standing in
 		// both must still only be hit once.
 		Targets = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Self, Start, Params.RadiusCm);
+			GetWorld(), Self, Start, ScaledRadiusCm());
 		for (AActor* Far : UCataclysmTargeting::FindEnemiesInSphere(
-				GetWorld(), Self, End, Params.RadiusCm))
+				GetWorld(), Self, End, ScaledRadiusCm()))
 		{
 			Targets.AddUnique(Far);
 		}
@@ -513,7 +513,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 		// "Slam down, dealing damage in a 5 meter radius on impact": where it
 		// lands only. Nothing under the arc is touched.
 		Targets = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Self, End, Params.RadiusCm, Params.MaxTargets);
+			GetWorld(), Self, End, ScaledRadiusCm(), Params.MaxTargets);
 		break;
 	}
 
@@ -688,6 +688,17 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		Minions.RemoveAt(0);
 		if (IsValid(Oldest))
 		{
+			// A MINION'S EXPLOSION TAKES NONE OF THE SUMMONER'S AREA OF EFFECT, so
+			// this reads the stated radius rather than the scaled one. The
+			// design names area of effect among what a minion does not take
+			// from its summoner, and the only way in is a stat that says
+			// "minion".
+			//
+			// THAT STAT DOES NOT EXIST YET. The project owner asked for one on
+			// 2026-08-24 and it is #910, waiting on #340 alongside the four
+			// minion affixes: no minion stat has an attribute, and nothing
+			// reads MinionScaling.csv. So this is a recorded gap rather than
+			// an oversight, and the line below is deliberate. Issue #895.
 			Oldest->Explode(Params.RadiusCm, GetDamagePercent());
 		}
 	}
@@ -799,10 +810,10 @@ void UCataclysmSummonSkill::Collapse()
 
 	// "When the rift closes it collapses, dealing 400% weapon damage in its
 	// radius and destroying the imps it spawned."
-	if (Self && Params.FinalHitPercent > 0.0f && Params.RadiusCm > 0.0f)
+	if (Self && Params.FinalHitPercent > 0.0f && ScaledRadiusCm() > 0.0f)
 	{
 		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Self, RiftLocation, Params.RadiusCm);
+			GetWorld(), Self, RiftLocation, ScaledRadiusCm());
 		HitTargets(Caught, Params.FinalHitPercent);
 	}
 
@@ -931,7 +942,7 @@ int32 UCataclysmAuraSkill::Pulse()
 	// of weapon damage PER SECOND, which the Skill Slots sheet says explicitly,
 	// so a pulse is worth that much of a second.
 	const TArray<AActor*> Inside = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Self, Self->GetActorLocation(), Params.RadiusCm);
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
 
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
 	HitTargets(Inside, GetDamagePercent() * Period);

@@ -2901,4 +2901,162 @@ bool FCataclysmRefusedSkillDrawsNoBurstTest::RunTest(const FString&)
 	return true;
 }
 
+
+// --------------------------------------------------------------------------
+// Area of effect, which nothing read until issue #895
+// --------------------------------------------------------------------------
+
+/**
+ * A CASTER'S AREA OF EFFECT WIDENS THE SKILLS IT SHOULD AND NO OTHERS. #895.
+ *
+ * WHAT WAS WRONG. The `AreaOfEffect` attribute existed, was clamped, was
+ * replicated, and was given 100 by the shared Default line of
+ * game/Data/ClassStats.csv, and no code in the project read it. Every skill in
+ * the game used the radius its data stated, so `Stat_Increased_area_of_effect`
+ * was worth nothing.
+ *
+ * WHAT DECIDES WHETHER A RADIUS IS AN AREA AT ALL. The design settles it by the
+ * tags rather than by the shape: `Type.AOE.PointBlank` and `Type.AOE.Aura` are
+ * "the two tags that make a skill's hit area damage". A Strike's radius is how
+ * far it reaches and a Projectile's is how wide the bolt is, and widening those
+ * is not what the affix says it does.
+ *
+ * A HUNDRED MEANS UNCHANGED. The design gives area of effect and the three
+ * damage over time stats a baseline of 100 rather than zero, "because they are
+ * percentages of whatever the skill or the effect itself does".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAreaOfEffectWidensAnAreaTest,
+	"Cataclysm.Skills.AreaOfEffectWidensAnAreaSkillAndNotAReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAreaOfEffectWidensAnAreaTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THREE SKILLS: two carrying an area tag and one carrying none. All three
+	// state the same radius so the answers below are comparable.
+	//
+	// A PERSISTENT ONE IS HERE ON PURPOSE. It is the tag that would be missed by
+	// scoping this on whether the skill's BLOW is area damage, which
+	// UCataclysmSkillEffects::IsAreaDamage answers and which deliberately leaves
+	// Persistent out. 26 of the 63 skill rows carrying an area tag carry that
+	// one.
+	UCataclysmStrikeSkill* Burst = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Burst"), TEXT("Type.AOE.PointBlank"));
+	UCataclysmStrikeSkill* Trail = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Movement, TEXT("Radius=4; Angle=360"),
+		TEXT("Trail"), TEXT("Type.AOE.Persistent"));
+	UCataclysmStrikeSkill* Reach = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=90"),
+		TEXT("Reach"), TEXT("Type.Strike, Type.Melee"));
+
+	if (!Burst || !Trail || !Reach)
+	{
+		AddError(TEXT("Could not grant the three skills."));
+		return false;
+	}
+
+	const float Stated = Burst->Params.RadiusCm;
+	if (!TestTrue(TEXT("the skills state a radius at all"), Stated > 0.0f))
+	{
+		return false;
+	}
+
+	// A CHARACTER SITTING ON THE BASELINE CHANGES NOTHING, asserted first so the
+	// figures below are evidence of the stat rather than of the reading.
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(), 100.0f);
+
+	TestEqual(TEXT("at the 100 baseline an area skill uses its stated radius"),
+		Burst->ScaledRadiusCm(), Stated, 0.01f);
+	TestEqual(TEXT("and so does one that leaves a persistent area"),
+		Trail->ScaledRadiusCm(), Stated, 0.01f);
+	TestEqual(TEXT("and so does a skill whose radius is only a reach"),
+		Reach->ScaledRadiusCm(), Stated, 0.01f);
+
+	// AND FIFTY PER CENT MORE WIDENS THE AREA SKILL BY HALF.
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(), 150.0f);
+
+	TestEqual(TEXT("150 widens an area skill by half"),
+		Burst->ScaledRadiusCm(), Stated * 1.5f, 0.01f);
+
+	// EVERY AREA TAG AND NOT ONLY THE TWO THAT MAKE A HIT EVADABLE. This is the
+	// case the first version of this got wrong.
+	TestEqual(TEXT("and widens one that leaves a persistent area just the same"),
+		Trail->ScaledRadiusCm(), Stated * 1.5f, 0.01f);
+
+	// AND LEAVES THE REACH ALONE, which is the half that stops this affix
+	// lengthening a sword swing.
+	TestEqual(TEXT("and leaves a skill that is not an area exactly as it was"),
+		Reach->ScaledRadiusCm(), Stated, 0.01f);
+
+	return true;
+}
+
+/**
+ * BURNING GROUND WIDENS WHATEVER LEFT IT. Issue #895.
+ *
+ * ALWAYS, UNLIKE A SKILL'S OWN RADIUS. The design: "A zone's own damage is area
+ * damage, decided where the zone deals it." So the ground a Strike leaves is an
+ * area even though the Strike itself is one sword blow that evasion applies to.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAreaOfEffectWidensGroundTest,
+	"Cataclysm.Skills.AreaOfEffectWidensTheGroundASkillLeavesWhateverTheSkillIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAreaOfEffectWidensGroundTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// A SKILL THAT IS NOT AN AREA AND LEAVES GROUND THAT IS. The tags say it is
+	// one sword blow; the patch it leaves burning is area damage regardless.
+	UCataclysmStrikeSkill* Slash = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4; Angle=90; GroundRadius=6; GroundDuration=5; GroundPercent=20"),
+		TEXT("Slash"), TEXT("Type.Strike, Type.Melee"));
+
+	if (!Slash)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	const float StatedGround = Slash->Params.GroundRadiusCm;
+	const float StatedRadius = Slash->Params.RadiusCm;
+	if (!TestTrue(TEXT("the skill states a ground radius"), StatedGround > 0.0f))
+	{
+		return false;
+	}
+
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(), 100.0f);
+	TestEqual(TEXT("at the 100 baseline the ground is the size it states"),
+		Slash->ScaledGroundRadiusCm(), StatedGround, 0.01f);
+
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(), 150.0f);
+
+	TestEqual(TEXT("150 widens the ground by half even for a skill that is not an area"),
+		Slash->ScaledGroundRadiusCm(), StatedGround * 1.5f, 0.01f);
+
+	// AND THE SWORD BLOW ITSELF IS STILL THE SIZE IT WAS, which is what makes
+	// the two rules different rather than one rule applied twice.
+	TestEqual(TEXT("while the blow itself keeps its stated reach"),
+		Slash->ScaledRadiusCm(), StatedRadius, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
