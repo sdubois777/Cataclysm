@@ -1,9 +1,11 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -14,6 +16,9 @@
 
 const TCHAR* UCataclysmPlayerClassStats::ClassStatsAssetPath =
 	TEXT("/Game/Data/DT_ClassStats.DT_ClassStats");
+
+const TCHAR* UCataclysmPlayerClassStats::AttributesAssetPath =
+	TEXT("/Game/Data/DT_Attributes.DT_Attributes");
 
 const FString UCataclysmPlayerClassStats::StartingClassName = TEXT("Ravager");
 
@@ -83,6 +88,9 @@ namespace
 	 * be free to take it back and the next possession would pay the load again.
 	 */
 	TWeakObjectPtr<const UDataTable> CachedClassStats;
+
+	/** The same, for the table saying what one attribute point is worth. */
+	TWeakObjectPtr<const UDataTable> CachedAttributes;
 }
 
 const UDataTable* UCataclysmPlayerClassStats::LoadTable()
@@ -101,6 +109,42 @@ const UDataTable* UCataclysmPlayerClassStats::LoadTable()
 	return Table;
 }
 
+void UCataclysmPlayerClassStats::MergeAttributeBases(
+	const FCataclysmAttributePoints& Points, TMap<FName, float>& Bases)
+{
+	for (const FString& Name : FCataclysmAttributePoints::Names())
+	{
+		Bases.Add(FName(*Name), static_cast<float>(Points.PointsIn(Name)));
+	}
+}
+
+const UDataTable* UCataclysmPlayerClassStats::LoadAttributeTable()
+{
+	if (CachedAttributes.IsValid())
+	{
+		return CachedAttributes.Get();
+	}
+
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, AttributesAssetPath);
+	if (!Table)
+	{
+		// LOUD, BECAUSE THE SYMPTOM IS SILENT. Without this table every one of
+		// the eight attributes still resolves and still gets written, and every
+		// stat they scale simply comes out at its base -- a character that
+		// spent a hundred points and shows nothing for them. Issue #897 is what
+		// that looked like when the wiring was missing instead of the asset.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("%s could not be loaded, so attribute points will contribute "
+				 "nothing to any stat. It is generated from the Attributes "
+				 "sheet into game/Data/Attributes.csv."), AttributesAssetPath);
+		return nullptr;
+	}
+
+	const_cast<UDataTable*>(Table)->AddToRoot();
+	CachedAttributes = Table;
+	return Table;
+}
+
 const TMap<FString, FGameplayAttribute>&
 UCataclysmPlayerClassStats::StatToAttribute()
 {
@@ -114,8 +158,28 @@ UCataclysmPlayerClassStats::StatToAttribute()
 		using Combat = UCataclysmCombatAttributeSet;
 		using Resource = UCataclysmClassResourceAttributeSet;
 		using Resistance = UCataclysmResistanceAttributeSet;
+		using Primary = UCataclysmPrimaryAttributeSet;
 
 		return TMap<FString, FGameplayAttribute>{
+			// THE EIGHT PRIMARY ATTRIBUTES, ADDED FOR ISSUES #50 AND #897.
+			// The attribute set existed and every player carried it, the table
+			// saying what a point is worth existed, and the arithmetic existed
+			// -- and nothing wrote any of the eight, so the eight affixes that
+			// increase them printed a number on a tool tip and changed nothing.
+			//
+			// THEY ARE RESOLVED BEFORE EVERY OTHER STAT, and ApplyTo does that
+			// deliberately rather than relying on this map's order, which is a
+			// hash order and says nothing. An attribute has to be finished
+			// before the sixteen stats it scales can be started.
+			{TEXT("agility"), Primary::GetAgilityAttribute()},
+			{TEXT("ferocity"), Primary::GetFerocityAttribute()},
+			{TEXT("constitution"), Primary::GetConstitutionAttribute()},
+			{TEXT("vitality"), Primary::GetVitalityAttribute()},
+			{TEXT("mind"), Primary::GetMindAttribute()},
+			{TEXT("spirit"), Primary::GetSpiritAttribute()},
+			{TEXT("efficacy"), Primary::GetEfficacyAttribute()},
+			{TEXT("luck"), Primary::GetLuckAttribute()},
+
 			// The pools and what refills them.
 			{TEXT("max_health"), Vital::GetMaxHealthAttribute()},
 			{TEXT("max_mana"), Vital::GetMaxManaAttribute()},
@@ -328,36 +392,56 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 
 	int32 Written = 0;
 
-	for (const TPair<FString, FGameplayAttribute>& Pair : StatToAttribute())
+	// RESOLVING ONE STAT, USED BY BOTH PASSES BELOW. `Extra` is a modifier the
+	// caller wants applied on top of whatever `Modifiers` holds for the stat,
+	// and is only ever what the character's attributes contribute.
+	const auto Resolve = [&](const FString& Stat,
+							 const FCataclysmStatModifier* Extra,
+							 FCataclysmStatBreakdown& OutBreakdown) -> float
 	{
-		// THE CHECK IS NOT OPTIONAL. Writing to an attribute whose set the
-		// component does not hold raises an engine ensure rather than failing
-		// quietly. The player's component holds all three of these sets, but a
-		// test may build one that does not.
-		if (!AbilitySystem->HasAttributeSetForAttribute(Pair.Value))
-		{
-			continue;
-		}
-
 		// BaseFor falls back to the shared Default line when the class does not
 		// name the stat, and to zero when neither does. Zero is the right answer
 		// there and not a failure: most classes leave most stats alone, and a
 		// Ritualist really does have no armour.
 		float Base = UCataclysmClassStats::BaseFor(
-			ClassTable, ClassName, Pair.Key, Level);
+			ClassTable, ClassName, Stat, Level);
 
 		// A SUPPLIED BASE REPLACES THE CLASS LINE RATHER THAN ADDING TO IT, for
-		// a stat no class line can state. Attack speed is the only one: a
+		// a stat no class line can state. Attack speed was the first: a
 		// character's swing rate comes from the weapons it holds, and two
 		// weapons average their rates, which neither the class table nor the
-		// modifier pipeline can express. See the header for why attack damage
-		// deliberately does not use this.
+		// modifier pipeline can express. The eight primary attributes are the
+		// others, and for the same reason -- a class line cannot state how many
+		// points a particular character has spent. See the header for why attack
+		// damage deliberately does not use this.
 		if (BaseOverrides)
 		{
-			if (const float* Supplied = BaseOverrides->Find(FName(*Pair.Key)))
+			if (const float* Supplied = BaseOverrides->Find(FName(*Stat)))
 			{
 				Base = *Supplied;
 			}
+		}
+
+		OutBreakdown = FCataclysmStatBreakdown();
+		OutBreakdown.Base = Base;
+		OutBreakdown.Final = Base;
+
+		TArray<FCataclysmStatModifier> ForStat;
+		if (Modifiers)
+		{
+			if (const TArray<FCataclysmStatModifier>* Found =
+					Modifiers->Find(FName(*Stat)))
+			{
+				ForStat = *Found;
+			}
+		}
+		if (Extra)
+		{
+			ForStat.Add(*Extra);
+		}
+		if (ForStat.IsEmpty())
+		{
+			return Base;
 		}
 
 		// THE THREE-BUCKET PIPELINE, NOT ADDITION. A gear affix can be flat or
@@ -370,21 +454,73 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		// something -- "increased damage against Demons" -- must not apply.
 		// UCataclysmStatPipeline::ModifierApplies is what enforces that; only
 		// globally scoped modifiers survive an empty container.
-		float Value = Base;
-		FCataclysmStatBreakdown Breakdown;
-		Breakdown.Base = Base;
-		Breakdown.Final = Base;
+		OutBreakdown = UCataclysmStatPipeline::Evaluate(
+			Base, ForStat, FGameplayTagContainer());
+		return OutBreakdown.Final;
+	};
 
-		if (Modifiers)
+	// PASS ONE: THE EIGHT PRIMARY ATTRIBUTES, BEFORE ANYTHING THEY SCALE.
+	//
+	// THE ORDER IS THE WHOLE REASON THIS IS TWO PASSES. Every one of the eight
+	// scales other stats through game/Data/Attributes.csv, so an attribute
+	// resolved after the stat it scales contributes nothing at all -- and
+	// nothing would report an error, because the stat would simply come out at
+	// its base. StatToAttribute is a TMap and its order is a hash order, so
+	// relying on it would make the answer depend on where a name happens to
+	// land. Issues #50 and #897.
+	//
+	// GEAR REACHES THEM HERE, and that is what makes the eight attribute
+	// affixes work: `docs/Cataclysm_GDD_v2.md` says "Gear does not grant
+	// attribute points. It increases the attribute the character already has",
+	// so the spent points arrive as the base through BaseOverrides and the
+	// affixes arrive as increases through Modifiers, exactly like any other stat.
+	FCataclysmAttributeValues Attributes;
+	const TArray<FString> AttributeNames = FCataclysmAttributePoints::Names();
+	for (const FString& Name : AttributeNames)
+	{
+		const FGameplayAttribute* Attribute = StatToAttribute().Find(Name);
+		if (!Attribute || !AbilitySystem->HasAttributeSetForAttribute(*Attribute))
 		{
-			if (const TArray<FCataclysmStatModifier>* ForStat =
-					Modifiers->Find(FName(*Pair.Key)))
-			{
-				Breakdown = UCataclysmStatPipeline::Evaluate(
-					Base, *ForStat, FGameplayTagContainer());
-				Value = Breakdown.Final;
-			}
+			continue;
 		}
+
+		FCataclysmStatBreakdown Breakdown;
+		const float Value = Resolve(Name, nullptr, Breakdown);
+		Attributes.SetIn(Name, Value);
+		AbilitySystem->SetNumericAttributeBase(*Attribute, Value);
+		++Written;
+	}
+
+	// PASS TWO: EVERY OTHER STAT, WITH WHAT THE ATTRIBUTES CONTRIBUTE.
+	const UDataTable* AttributeTable = LoadAttributeTable();
+
+	for (const TPair<FString, FGameplayAttribute>& Pair : StatToAttribute())
+	{
+		if (AttributeNames.Contains(Pair.Key))
+		{
+			continue;   // already written by pass one
+		}
+
+		// THE CHECK IS NOT OPTIONAL. Writing to an attribute whose set the
+		// component does not hold raises an engine ensure rather than failing
+		// quietly. The player's component holds all five of these sets, but a
+		// test may build one that does not.
+		if (!AbilitySystem->HasAttributeSetForAttribute(Pair.Value))
+		{
+			continue;
+		}
+
+		// WHAT THE CHARACTER'S ATTRIBUTES ARE WORTH TO THIS STAT, in the
+		// increased bucket alongside every gear increase. Returns false when no
+		// attribute touches the stat at all, which is most of them.
+		FCataclysmStatModifier FromAttributes;
+		const bool bAttributesApply =
+			UCataclysmClassStats::AttributeModifierForValues(
+				AttributeTable, Attributes, Pair.Key, FromAttributes);
+
+		FCataclysmStatBreakdown Breakdown;
+		const float Value = Resolve(
+			Pair.Key, bAttributesApply ? &FromAttributes : nullptr, Breakdown);
 
 		// THE ATTACK DAMAGE BRACKET IS REMEMBERED, and only that one. Issue
 		// #895. A finished attribute has its increases already applied and no

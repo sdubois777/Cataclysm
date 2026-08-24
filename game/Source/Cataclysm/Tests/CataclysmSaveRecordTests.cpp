@@ -109,7 +109,13 @@ namespace CataclysmSaveRecordTest
 	{
 		return {
 			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v1.json") },
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v1.json") },
+			// CHARACTER IS AT v2 SINCE 2026-08-24, when the attribute
+			// allocation became a field on it. Character_v1.json is still
+			// committed and still read, by the migration test further down.
+			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
+			// file here would leave the completeness check below comparing a
+			// record against a fixture that no longer describes it. Issue #50.
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v2.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v1.json") },
 		};
 	}
@@ -520,7 +526,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v1.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v2.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -533,12 +539,12 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v1.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v2.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 1"), Read->SchemaVersion, 1);
+	TestEqual(TEXT("it says it is version 2"), Read->SchemaVersion, 2);
 	TestEqual(TEXT("the name in the file"), Read->CharacterName, FString(TEXT("Vesper")));
 	TestEqual(TEXT("the identifier in the file"),
 		Read->CharacterId.ToString(EGuidFormats::Digits),
@@ -576,6 +582,73 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 		Read->PrivateStash.Num(), 0);
 	TestEqual(TEXT("and no private empire upgrade points"),
 		Read->PrivateEmpireUpgradePoints, 0);
+
+	// THE ATTRIBUTE ALLOCATION, which the v2 fixture is the reason for. Issue
+	// #50. Read field by field rather than only as a total, because a reader
+	// that put every count in the wrong attribute would still total 42.
+	const FCataclysmAttributePoints& Points = Read->SpentAttributePoints;
+	TestEqual(TEXT("the ferocity in the file"), Points.Ferocity, 10);
+	TestEqual(TEXT("the constitution in the file"), Points.Constitution, 12);
+	TestEqual(TEXT("the vitality in the file"), Points.Vitality, 20);
+	TestEqual(TEXT("and nothing in agility"), Points.Agility, 0);
+
+	// AND THE TOTAL IS THE CHARACTER'S LEVEL, which is not a coincidence in the
+	// fixture: the design gives one attribute point per level, so a fully spent
+	// level 42 character has spent exactly 42. A fixture that broke that rule
+	// would be describing a character the game cannot produce.
+	TestEqual(TEXT("a fully spent character has one point for every level"),
+		Points.Total(), Read->Level);
+
+	return true;
+}
+
+/**
+ * A character file written before attribute allocation existed still loads.
+ *
+ * THIS IS WHAT Character_v1.json IS FOR NOW. It was the current fixture until
+ * 2026-08-24 and is kept because a migration step with no file to run against is
+ * a migration step nobody has ever executed. Issue #50.
+ *
+ * WHAT IT PROVES IS THAT NOTHING WAS LOST. The file has no attribute allocation
+ * at all, so the character must arrive with none spent -- not with a garbage
+ * count, and not refused for having a field missing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveCharacterV1Migrates,
+	"Cataclysm.SaveRecords.ACharacterFileFromBeforeAttributesStillLoads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveCharacterV1Migrates::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v1.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
+
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("Character_v1.json would not load: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	TestEqual(TEXT("it arrives at the current version"),
+		Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
+	TestEqual(TEXT("a character from before allocation has spent nothing"),
+		Read->SpentAttributePoints.Total(), 0);
+
+	// AND EVERYTHING ELSE SURVIVED THE MIGRATION. A step that dropped a field
+	// while adding one would otherwise pass the two checks above.
+	TestEqual(TEXT("the name still reads"), Read->CharacterName, FString(TEXT("Vesper")));
+	TestEqual(TEXT("the level still reads"), Read->Level, 42);
+	TestEqual(TEXT("the carried slots still read"), Read->CarriedSlots.Num(), 2);
 
 	return true;
 }

@@ -8,6 +8,8 @@
 #include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Player/CataclysmPlayerState.h"
+#include "GameFramework/Pawn.h"
 #include "Engine/DataTable.h"
 
 // ---------------------------------------------------------------------------
@@ -506,7 +508,28 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	}
 
 	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers = GatherModifiers();
-	const TMap<FName, float> Bases = StatBasesFromWeapons();
+	TMap<FName, float> Bases = StatBasesFromWeapons();
+
+	// AND THE EIGHT ATTRIBUTES, FOR THE SAME REASON THE OTHER CALLER DOES IT.
+	// Leaving them out here would have made swapping a helmet reset every
+	// attribute to zero, because a base override that is absent falls back to
+	// the class line and no class line names an attribute. Issue #50.
+	//
+	// FOUND THROUGH THE OWNING ACTOR rather than passed in, because this
+	// component is asked to refresh from several places and a parameter would
+	// have to be threaded through all of them.
+	if (const AActor* Owner = GetOwner())
+	{
+		if (const APawn* Pawn = Cast<APawn>(Owner))
+		{
+			if (const ACataclysmPlayerState* State =
+					Pawn->GetPlayerState<ACataclysmPlayerState>())
+			{
+				UCataclysmPlayerClassStats::MergeAttributeBases(
+					State->GetSpentAttributePoints(), Bases);
+			}
+		}
+	}
 
 	return UCataclysmPlayerClassStats::ApplyTo(
 		AbilitySystem,

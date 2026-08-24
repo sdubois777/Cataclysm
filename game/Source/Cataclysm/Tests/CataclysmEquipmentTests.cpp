@@ -1294,11 +1294,12 @@ namespace CataclysmEquipmentTest
 			// it, and the eight damage-against-a-type names went when a hit
 			// started reading the target's own damage type.
 			//
-			// #897. No primary attribute is written or read anywhere in the
-			// game, so these eight have nowhere to go and nothing to do.
-			TEXT("agility"), TEXT("ferocity"), TEXT("constitution"),
-			TEXT("vitality"), TEXT("mind"), TEXT("spirit"),
-			TEXT("efficacy"), TEXT("luck"),
+			// #897 EMPTIED ITS SHARE OF THIS LIST TOO. The eight primary
+			// attributes -- agility, ferocity, constitution, vitality, mind,
+			// spirit, efficacy and luck -- went when a character could first
+			// spend an attribute point, because until then an increase to an
+			// attribute had nothing to increase. Issue #50 is what supplied the
+			// points and this file's AttributesWearing spends one in each.
 
 			// #898. No gameplay attribute for any minion stat exists at all,
 			// so unlike everything above there is nothing to map these to.
@@ -1430,8 +1431,27 @@ namespace CataclysmEquipmentTest
 
 		const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
 			Character.Equipment->GatherModifiers();
-		const TMap<FName, float> Bases =
+		TMap<FName, float> Bases =
 			Character.Equipment->StatBasesFromWeapons();
+
+		// ONE POINT IN EVERY ATTRIBUTE, AND THIS TEST DOES NOT MEAN ANYTHING
+		// WITHOUT IT. The eight affixes granting a primary attribute are
+		// percentage increases -- `docs/Cataclysm_GDD_v2.md` says "Gear does not
+		// grant attribute points. It increases the attribute the character
+		// already has" -- so against a character who has spent nothing they
+		// multiply zero, change nothing, and this test would call eight working
+		// affixes broken.
+		//
+		// IT IS THE SAME PROBLEM THE COMPANION FLAT AFFIXES ABOVE SOLVE, needing
+		// a different answer: an increase needs a base, and for every other stat
+		// a base can be worn, while for these eight it can only be spent. A real
+		// character has one point for every level. Issues #50 and #897.
+		FCataclysmAttributePoints Points;
+		for (const FString& Name : FCataclysmAttributePoints::Names())
+		{
+			Points.AddTo(Name, 1);
+		}
+		UCataclysmPlayerClassStats::MergeAttributeBases(Points, Bases);
 
 		UCataclysmPlayerClassStats::ApplyTo(
 			Character.AbilitySystem, UCataclysmPlayerClassStats::LoadTable(),

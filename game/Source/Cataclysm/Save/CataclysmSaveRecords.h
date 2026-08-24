@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmLethality.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -305,10 +306,17 @@ class CATACLYSM_API UCataclysmCharacterSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 1;
+
+	/**
+	 * 2 SINCE 2026-08-24, AND IT WAS 1. `SpentAttributePoints` below arrived
+	 * when attribute allocation became something the running game produces, so
+	 * a character written before that has no such field at all. Issue #50.
+	 */
+	static constexpr int32 SchemaVersionNow = 2;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
+	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
 
 	/** What names this character's own slot. Generated, never the player's
 	 *  chosen name, so renaming is free and two characters may share a name. */
@@ -342,6 +350,23 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 Experience = 0;
+
+	/**
+	 * How the character's attribute points are spread across the eight.
+	 *
+	 * A CHARACTER HAS ONE POINT FOR EVERY LEVEL, so the total here can never
+	 * exceed `Level` above. `ACataclysmPlayerState::SpendAttributePoints` is
+	 * what enforces that; nothing revalidates it on load, which is the same
+	 * trust every other field here is given.
+	 *
+	 * WHAT IS SAVED IS THE POINTS AND NOT WHAT THEY ARE WORTH. The eight gear
+	 * affixes that increase an attribute are already saved as part of the gear
+	 * that carries them, and `game/Data/Attributes.csv` says what a point does,
+	 * so storing the resolved value would be storing the same thing twice and
+	 * inviting the two to disagree. Issue #50.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmAttributePoints SpentAttributePoints;
 
 	/** Cataclysmic Residue the character is carrying. A cost, never a benefit. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")

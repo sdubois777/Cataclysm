@@ -11,6 +11,7 @@
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Player/CataclysmPlayerState.h"
 
 void FCataclysmSaveGather::VitalsOf(const AActor& Actor, float& OutHealth,
 									float& OutMana, float& OutEnergyShield)
@@ -213,10 +214,23 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 
 	CarriedSlotsFrom(*Inventory, Record.CarriedSlots);
 
+	// THE ATTRIBUTE ALLOCATION, SINCE 2026-08-24, and it is the second field
+	// here with a runtime source. Issue #50.
+	//
+	// WRITTEN ONLY WHEN THERE IS A PLAYER STATE TO READ IT FROM, on exactly the
+	// reasoning the comment below gives. A character with no player state has no
+	// allocation, and zeroing the field would throw away one that was loaded off
+	// disk a moment earlier.
+	if (const ACataclysmPlayerState* State =
+			Character.GetPlayerState<ACataclysmPlayerState>())
+	{
+		Record.SpentAttributePoints = State->GetSpentAttributePoints();
+	}
+
 	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. Level, experience,
-	// attribute allocation, the passive tree, the 18 equipped slots, the residue
-	// and a Solo Self-Found character's private stash have no runtime source at
-	// all -- issues #50, #38 and #42 -- so writing a zero over each would turn a
+	// the passive tree, the 18 equipped slots, the residue and a Solo
+	// Self-Found character's private stash have no runtime source at all --
+	// issues #50, #38 and #42 -- so writing a zero over each would turn a
 	// record loaded from disk into an empty one every time it was refreshed.
 	return true;
 }

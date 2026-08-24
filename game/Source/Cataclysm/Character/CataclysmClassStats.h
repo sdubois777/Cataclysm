@@ -19,20 +19,79 @@ struct CATACLYSM_API FCataclysmAttributePoints
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Agility = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Ferocity = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Constitution = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Vitality = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Mind = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Spirit = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Efficacy = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") int32 Luck = 0;
+	// SaveGame ON ALL EIGHT, because this struct is a field of
+	// UCataclysmCharacterSave and the save writer walks only properties carrying
+	// that marker. Without it the record serialises an empty object, the fixture
+	// and the record disagree, and a character's allocation is silently lost on
+	// every save. Issue #50.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Agility = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Ferocity = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Constitution = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Vitality = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Mind = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Spirit = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Efficacy = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Attributes") int32 Luck = 0;
 
 	/** How many points are spent in total. A character has one per level. */
 	int32 Total() const;
 
 	/** Points in an attribute by name, matching game/Data/Attributes.csv. */
 	int32 PointsIn(const FString& Attribute) const;
+
+	/**
+	 * Every attribute name, spelled as game/Data/Attributes.csv spells them.
+	 *
+	 * ONE LIST RATHER THAN EIGHT PLACES REPEATING IT. The stat-to-attribute map,
+	 * the console commands, the save record and the tests all need the same
+	 * eight names, and a ninth attribute should mean editing one list.
+	 */
+	static TArray<FString> Names();
+
+	/**
+	 * Add to one attribute by name. Returns false when the name is not one of
+	 * the eight, so a caller can tell a mistyped name from a refused spend.
+	 */
+	bool AddTo(const FString& Attribute, int32 Count);
+};
+
+/**
+ * The same eight attributes AFTER everything that scales them.
+ *
+ * WHY THIS IS NOT `FCataclysmAttributePoints`. A point is a whole number a
+ * character spent. An attribute is what that count is worth once gear has
+ * increased it, and `docs/Cataclysm_GDD_v2.md` is explicit that the two are
+ * different things: "Gear does not grant attribute points. It increases the
+ * attribute the character already has." Eight `int32` cannot carry 60 Vitality
+ * increased by 20%, which is 72.
+ *
+ * SO THE POINTS ARE A BASE AND THIS IS THE RESULT. The eight run through the
+ * ordinary three-bucket pipeline like any other stat, and it is this -- not the
+ * point count -- that drives the percentages in `game/Data/Attributes.csv`.
+ * Issues #50 and #897.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmAttributeValues
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Agility = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Ferocity = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Constitution = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Vitality = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Mind = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Spirit = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Efficacy = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Attributes") float Luck = 0.0f;
+
+	/** One attribute by name, matching game/Data/Attributes.csv. */
+	float ValueIn(const FString& Attribute) const;
+
+	/** Set one attribute by name. False when the name is not one of the eight. */
+	bool SetIn(const FString& Attribute, float Value);
+
+	/** The spent points, before anything has scaled them. */
+	static FCataclysmAttributeValues FromPoints(const FCataclysmAttributePoints& Points);
 };
 
 /**
@@ -95,6 +154,24 @@ public:
 									 const FCataclysmAttributePoints& Points,
 									 const FString& Stat,
 									 FCataclysmStatModifier& OutModifier);
+
+	/**
+	 * The same thing from RESOLVED attribute values rather than spent points.
+	 *
+	 * This is what the game uses. `AttributeModifierFor` above takes the raw
+	 * point counts and is the honest signature for "before anything scales
+	 * them", which is what the reference build test wants; it forwards to this.
+	 * The two are separate names rather than an overload because Unreal's header
+	 * tool cannot generate reflection for two functions sharing one name.
+	 *
+	 * Returns false when no attribute touches the stat, so a caller can tell
+	 * "nothing applies" from "nothing spent".
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Class")
+	static bool AttributeModifierForValues(const UDataTable* AttributeTable,
+										   const FCataclysmAttributeValues& Values,
+										   const FString& Stat,
+										   FCataclysmStatModifier& OutModifier);
 
 	/** Every stat any class or the default line names. */
 	static TArray<FString> StatsNamedByClasses(const UDataTable* ClassTable);

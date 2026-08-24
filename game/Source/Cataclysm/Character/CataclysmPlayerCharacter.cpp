@@ -524,8 +524,19 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 	// modifier pipeline can produce it. Attack damage is deliberately not here:
 	// a weapon's damage IS an implicit, so it arrives with the modifiers above
 	// and supplying it again would double it.
-	const TMap<FName, float> Bases =
+	TMap<FName, float> Bases =
 		Equipment ? Equipment->StatBasesFromWeapons() : TMap<FName, float>();
+
+	// AND THE EIGHT ATTRIBUTES THE CHARACTER HAS SPENT POINTS ON. Issue #50.
+	// They are a base for the same reason the swing rate is: no class line can
+	// state how many points a particular character has spent. The eight gear
+	// affixes that increase an attribute arrive with the modifiers above and
+	// multiply this, which is what the design says they do.
+	if (const ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>())
+	{
+		UCataclysmPlayerClassStats::MergeAttributeBases(
+			State->GetSpentAttributePoints(), Bases);
+	}
 
 	UCataclysmPlayerClassStats::ApplyTo(
 		ASC, UCataclysmPlayerClassStats::LoadTable(),
@@ -946,4 +957,175 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
 					Character->GetEquipment()->EquippedWeaponType().IsEmpty()
 						? TEXT("none")
 						: *Character->GetEquipment()->EquippedWeaponType());
+		}));
+
+// ---------------------------------------------------------------------------
+// Attribute points
+//
+// A STAND-IN, IN THE SAME SHAPE AS Cataclysm.PlayerClass AND PlayerLevel. There
+// is no character sheet to spend points on and no levelling to earn them from;
+// issue #50 is where both arrive. Until then a character has one point for every
+// level and these are how they are spent, so the eight attributes and the eight
+// gear affixes that increase them can be exercised at all.
+//
+// THEY RE-APPLY THE STAT LINE THEMSELVES rather than asking the player to press
+// Play again, which is what changing PlayerClass or PlayerLevel needs. Spending
+// a point is meant to be something a person does repeatedly while looking at the
+// result.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmAttributeConsole
+{
+	/** The player's own state, complaining in the log when there is none. */
+	ACataclysmPlayerState* State(UWorld* World, FOutputDevice& Ar)
+	{
+		using namespace CataclysmEquipConsole;
+
+		ACataclysmPlayerCharacter* Character = Player(World, Ar);
+		ACataclysmPlayerState* Found =
+			Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+		if (Character && !Found)
+		{
+			Ar.Log(TEXT("The player character has no Cataclysm player state, so "
+						"it has nowhere to keep attribute points."));
+		}
+		return Found;
+	}
+}
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmSpendAttributePoint(
+	TEXT("Cataclysm.SpendAttributePoint"),
+	TEXT("Spend attribute points: Cataclysm.SpendAttributePoint <attribute> "
+		 "[count]. A character has one point for every level. Refused whole "
+		 "when it would spend more than are left."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			if (Args.Num() < 1)
+			{
+				Ar.Logf(TEXT("Name an attribute: %s. A count may follow it."),
+						*FString::Join(FCataclysmAttributePoints::Names(),
+									   TEXT(", ")));
+				return;
+			}
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			// ONE POINT WHEN NO COUNT IS GIVEN, which is what spending a point
+			// means. FCString::Atoi answers zero for anything that is not a
+			// number, and zero is refused below with a message that says so.
+			const int32 Count = Args.Num() >= 2 ? FCString::Atoi(*Args[1]) : 1;
+
+			FString Reason;
+			if (!PlayerState->SpendAttributePoints(Args[0], Count, Reason))
+			{
+				Ar.Logf(TEXT("Refused: %s"), *Reason);
+				return;
+			}
+
+			// THE STAT LINE IS REBUILT, NOT NUDGED. An attribute scales sixteen
+			// stats through game/Data/Attributes.csv and several of those have
+			// gear increases of their own, so the only correct answer is to run
+			// the whole pipeline again.
+			using namespace CataclysmEquipConsole;
+			if (ACataclysmPlayerCharacter* Character = Player(World, Ar))
+			{
+				if (Character->GetEquipment())
+				{
+					// RefreshAttributes AND NOT OnEquipmentChanged, although the
+					// latter would work. Nothing about what is worn changed, and
+					// a call named for equipment would say it did. It also
+					// leaves the pools where they are, so spending a point into
+					// Vitality raises maximum health without healing anybody.
+					Character->GetEquipment()->RefreshAttributes(
+						Character->GetAbilitySystemComponent());
+				}
+			}
+
+			Ar.Logf(TEXT("Spent %d into %s. %d of %d points now unspent."),
+					Count, *Args[0], PlayerState->AttributePointsUnspent(),
+					PlayerState->AttributePointsAvailable());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmResetAttributePoints(
+	TEXT("Cataclysm.ResetAttributePoints"),
+	TEXT("Take back every spent attribute point."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			PlayerState->ResetAttributePoints();
+
+			using namespace CataclysmEquipConsole;
+			if (ACataclysmPlayerCharacter* Character = Player(World, Ar))
+			{
+				if (Character->GetEquipment())
+				{
+					// RefreshAttributes AND NOT OnEquipmentChanged, although the
+					// latter would work. Nothing about what is worn changed, and
+					// a call named for equipment would say it did. It also
+					// leaves the pools where they are, so spending a point into
+					// Vitality raises maximum health without healing anybody.
+					Character->GetEquipment()->RefreshAttributes(
+						Character->GetAbilitySystemComponent());
+				}
+			}
+
+			Ar.Logf(TEXT("Returned every point. %d unspent."),
+					PlayerState->AttributePointsUnspent());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowAttributes(
+	TEXT("Cataclysm.ShowAttributes"),
+	TEXT("List the eight attributes: points spent, and what each is worth after "
+		 "the gear affixes that increase it."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!PlayerState || !Character)
+			{
+				return;
+			}
+
+			const UAbilitySystemComponent* ASC = Character->GetAbilitySystemComponent();
+			const FCataclysmAttributePoints& Spent =
+				PlayerState->GetSpentAttributePoints();
+
+			Ar.Logf(TEXT("%d of %d attribute points spent."),
+					Spent.Total(), PlayerState->AttributePointsAvailable());
+			Ar.Log(TEXT("  attribute       spent   after gear"));
+
+			for (const FString& Name : FCataclysmAttributePoints::Names())
+			{
+				// SPENT AND RESOLVED SIDE BY SIDE, because the difference
+				// between them IS what the eight attribute affixes do. Equal
+				// numbers mean no gear is increasing that attribute.
+				const FGameplayAttribute* Attribute =
+					UCataclysmPlayerClassStats::StatToAttribute().Find(Name);
+				const float Resolved =
+					(ASC && Attribute && ASC->HasAttributeSetForAttribute(*Attribute))
+						? ASC->GetNumericAttribute(*Attribute)
+						: 0.0f;
+
+				Ar.Logf(TEXT("  %-14s %5d   %10.2f"),
+						*Name, Spent.PointsIn(Name), Resolved);
+			}
 		}));
