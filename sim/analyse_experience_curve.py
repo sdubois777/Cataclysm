@@ -23,22 +23,21 @@ WHAT THIS FOUND, in one line each. The working is in the output.
     not the 15.5 times measured on the last floor alone. The shallow floors are
     where the two tiers differ most.
 
+    HOW MANY DUNGEONS THE CLIMB SHOULD COST IS NOT A FREE CHOICE. A run is
+    played at a fixed difficulty tier, there are eight tiers, and a campaign is
+    about 26 dungeons, so passing through every tier is about 208 dungeons.
+    Wanting level 100 to arrive during tier 8 fixes the size at that.
+
+    THE RATE THEN DECIDES WHAT LEVEL THE CHARACTER IS WHEN EACH TIER ENDS, and
+    no rate gives both a quick first level and a level that keeps pace with the
+    difficulty tier. That is not a curve-shaping problem that a cleverer shape
+    solves; a decaying rate was tried and does not solve it either. It follows
+    from experience per dungeon rising 27.9 times across the tiers while the
+    dungeon budget per tier is flat at one campaign each.
+
     The rate and the scale are TWO choices, and "level 2 costs 100" collapses
     them into one. That is the whole reason the earlier band of 15% to 17%
     looked so delicate that two percentage points moved the answer ten times.
-    Separate them and the rate stops being a scale knob.
-
-    A rate of 8.19% reproduces Path of Exile's own published distribution of
-    the climb across the levels. One number was fitted, the share spent between
-    levels 90 and 100; the other two checkpoints then agree to within a
-    percentage point without being fitted. 15% does not, and neither does the
-    rate that keeps the pace even across the difficulty tiers, which is 3.70%
-    and makes reaching level 2 take 35 floors.
-
-    One dungeon is 1.7 to 4.2 hours of play at the design's own two to five
-    minutes a floor, so twenty dungeons is already 33 to 83 hours -- about what
-    Last Epoch costs to reach its maximum level. Fifty dungeons is 83 to 208
-    hours, which brackets the 150 Diablo IV states, and is 1.9 campaigns.
 
 THE THREE INPUTS THAT ARE NOT CALCULATED, and where each comes from:
 
@@ -49,10 +48,16 @@ THE THREE INPUTS THAT ARE NOT CALCULATED, and where each comes from:
     those three midpoints is used here. THE ANSWER IN DUNGEONS SCALES INVERSELY
     WITH THIS NUMBER, so it is printed as a sensitivity rather than buried.
 
-    Minutes on a floor. `docs/Cataclysm_GDD_v2.md`: "A floor should take an
-    efficient player between two and five minutes, including finding the
-    stairs." That sentence is the project owner's own, from a comment on issue
-    #34. It is what makes an answer in hours possible at all.
+    Minutes on a floor. Two minutes on average, with an endgame build. The
+    project owner's figure, given on 2026-08-24. `docs/Cataclysm_GDD_v2.md` says
+    two to five minutes including finding the stairs; two is the average being
+    designed for, so every hours figure here is the SHORT end and a slower
+    player pays more.
+
+    Dungeons in a campaign. 26, from the `floors` column of the balance sweep
+    baseline recorded in issue #914: 1,053 to 1,345 floors for the three
+    policies that resolve rather than stalemate, over an average dungeon of 50
+    floors. The range is 21 to 34 dungeons.
 
     Rarity spawn weights. The SpawnWeight column of `game/Data/EnemyRarities.csv`
     -- Common 0.6, Elite 0.2, Legendary 0.15, Herald 0.04, Boss 0.01, Cataclysm
@@ -62,8 +67,8 @@ THE ASSUMPTION THAT MATTERS MOST, stated plainly because it is not measurable
 yet: this assumes the player kills every creature on every floor. A player who
 runs for the stairs earns less and the climb takes proportionally longer. There
 is no measurement of what share of a floor a real player clears, because nobody
-has played a full dungeon. Treat every dungeon count here as the FULL-CLEAR
-figure, which is the optimistic end.
+has played a full dungeon. Issue #925. Treat every dungeon count here as the
+FULL-CLEAR figure, which is the optimistic end.
 
 Run: python analyse_experience_curve.py
 """
@@ -71,7 +76,6 @@ Run: python analyse_experience_curve.py
 from __future__ import annotations
 
 import csv
-import math
 import pathlib
 
 from cataclysm_sim import scoring
@@ -85,8 +89,14 @@ from cataclysm_sim.player_power import MAX_LEVEL
 #: 2026-08-22, "0.24 creatures per walkable cell".
 LAYOUT_CREATURE_RANGES = {"Halls": (108, 420), "Caverns": (84, 510), "Arena": (73, 350)}
 
-#: `docs/Cataclysm_GDD_v2.md`, "What a Floor Is".
-MINUTES_PER_FLOOR = (2.0, 5.0)
+#: The project owner's figure, 2026-08-24: two minutes on average with an
+#: endgame build. `docs/Cataclysm_GDD_v2.md` states two to five including
+#: finding the stairs, so this is the short end and a slower player pays more.
+MINUTES_PER_FLOOR = 2.0
+
+#: Dungeons in one campaign. Issue #914's balance sweep baseline, `floors`
+#: column, for the policies that resolve, divided by an average dungeon.
+CAMPAIGN_DUNGEONS = 26
 
 TIERS = range(1, 9)
 
@@ -168,12 +178,9 @@ def dungeon_experience_flat(tier: int, total_floors: int, population: float,
 # The curve. It has TWO free numbers, not one.
 #
 #   rate   how much more each level costs than the one below it. This is the
-#          SHAPE: where in the climb the time goes.
+#          SHAPE: where in the climb the time goes, and what level the character
+#          is when each difficulty tier ends.
 #   scale  what level 2 costs. This is the SIZE: what the whole climb costs.
-#
-# Fixing "level 2 costs 100" and then choosing the rate ties the two together,
-# which is why the earlier band of 15% to 17% looked so delicate. Two percentage
-# points moved the total by ten times because the scale was pinned.
 
 
 def level_cost(level: int, rate: float, scale: float) -> float:
@@ -187,60 +194,6 @@ def total_experience(rate: float, scale: float, top_level: int = MAX_LEVEL) -> f
     if rate == 0.0:
         return scale * steps
     return scale * ((1.0 + rate) ** steps - 1.0) / rate
-
-
-# ---------------------------------------------------------------------------
-# A climb that moves up the difficulty tiers.
-
-
-def tier_for_level(level: int) -> int:
-    """The difficulty tier a character of this level is expected to be running.
-
-    THIS IS NOT INVENTED HERE. `player_power.reference_character` says what a
-    player looks like at the end of each difficulty tier, and its rule for level
-    is "level rises evenly to 100 at the end of tier 8" -- level 12.5 at the end
-    of tier 1, 25 at the end of tier 2, and so on. This is that rule read
-    backwards.
-
-    `docs/Cataclysm_GDD_v2.md` says "There is no hard gate on difficulty. A
-    player may enter any dungeon at any time", so nothing FORCES it. It is what a
-    player who keeps pace does, and the design already commits to it elsewhere.
-    """
-    return max(1, min(8, math.ceil(level * 8 / MAX_LEVEL)))
-
-
-def dungeons_by_tier(rate: float, scale: float,
-                     per_dungeon: dict[int, float]) -> dict[int, float]:
-    """Dungeons spent inside each difficulty tier's band of levels."""
-    out = {tier: 0.0 for tier in TIERS}
-    for level in range(2, MAX_LEVEL + 1):
-        tier = tier_for_level(level)
-        out[tier] += level_cost(level, rate, scale) / per_dungeon[tier]
-    return out
-
-
-def dungeons_at_fixed_tier(rate: float, scale: float,
-                           per_dungeon: dict[int, float], tier: int) -> float:
-    """The whole climb run at one difficulty tier and never moving off it."""
-    return total_experience(rate, scale) / per_dungeon[tier]
-
-
-def rate_for_even_pace(per_dungeon: dict[int, float]) -> float:
-    """The rate at which every difficulty tier costs the same number of dungeons.
-
-    Bisection on the last tier's band against the first tier's. Raising the rate
-    loads more of the climb onto the high levels, which are the ones run at the
-    high tiers, so the ratio rises with the rate and bisection is sound.
-    """
-    low, high = 0.0, 1.0
-    for _ in range(200):
-        middle = (low + high) / 2
-        spent = dungeons_by_tier(middle, 1.0, per_dungeon)
-        if spent[8] < spent[1]:
-            low = middle
-        else:
-            high = middle
-    return (low + high) / 2
 
 
 def rate_matching_path_of_exile() -> float:
@@ -266,32 +219,73 @@ def rate_matching_path_of_exile() -> float:
     return (low + high) / 2
 
 
-def scale_for_climbing_dungeons(rate: float, per_dungeon: dict[int, float],
-                                target: float) -> float:
-    """The cost of level 2 that makes a tier-climbing player run `target` dungeons."""
-    return target / sum(dungeons_by_tier(rate, 1.0, per_dungeon).values())
+# ---------------------------------------------------------------------------
+# The climb, played the way the design says a game is played.
+#
+# `docs/Cataclysm_GDD_v2.md`: "A run is played at a fixed tier." So a player does
+# not drift up the difficulty tiers inside a run; they finish a campaign and
+# start the next one higher. Eight tiers is therefore eight campaigns, and the
+# size of the whole climb is not a free choice once the owner says level 100
+# should arrive during tier 8.
+
+
+def whole_climb_dungeons(campaign_dungeons: int = CAMPAIGN_DUNGEONS) -> int:
+    """Dungeons in one campaign at each of the eight difficulty tiers."""
+    return campaign_dungeons * len(TIERS)
+
+
+def scale_for_level_100_at_the_end(rate: float, per_dungeon: dict[int, float],
+                                   campaign_dungeons: int = CAMPAIGN_DUNGEONS) -> float:
+    """The cost of level 2 that puts level 100 exactly at the end of tier 8."""
+    available = campaign_dungeons * sum(per_dungeon.values())
+    return available / total_experience(rate, 1.0)
+
+
+def levels_at_tier_ends(rate: float, per_dungeon: dict[int, float],
+                        campaign_dungeons: int = CAMPAIGN_DUNGEONS) -> list[int]:
+    """What level the character is when each difficulty tier's campaign ends.
+
+    This is the number the rate actually decides, and the one to compare against
+    `player_power.reference_character`, which says a character is level 12.5 at
+    the end of tier 1, 25 at the end of tier 2, and so on to 100.
+    """
+    scale = scale_for_level_100_at_the_end(rate, per_dungeon, campaign_dungeons)
+    cumulative = [0.0] + [total_experience(rate, scale, level)
+                          for level in range(1, MAX_LEVEL + 1)]
+    earned, out = 0.0, []
+    for tier in TIERS:
+        earned += campaign_dungeons * per_dungeon[tier]
+        out.append(max(level for level in range(1, MAX_LEVEL + 1)
+                       if cumulative[level] <= earned or level == 1))
+    return out
+
+
+def reference_levels_at_tier_ends() -> list[float]:
+    """The design's own expectation, unrounded, from `player_power`.
+
+    `reference_character` rounds to an integer level; the rule it documents is
+    that level rises evenly to 100 at the end of tier 8, so the boundaries are
+    at half levels. Four of the eight fall on one.
+    """
+    return [MAX_LEVEL * tier / 8 for tier in TIERS]
 
 
 def first_level_in_floors(rate: float, scale: float, population: float,
                           weights: dict[str, float], floors: int) -> float:
     """Floors of a tier 1 dungeon needed for level 2. The cheapest sanity check.
 
-    A curve flat enough to keep the pace even across the difficulty tiers makes
-    the first level cost most of a dungeon, which no ARPG does. This is what
-    catches that.
+    A curve flat enough to keep the character's level in step with the difficulty
+    tier makes the first level cost most of a dungeon, which no ARPG does. This
+    is what catches that.
     """
     average = sum(creature_experience(1, f, floors, weights)
                   for f in range(1, floors + 1)) / floors
     return level_cost(2, rate, scale) / (average * population)
 
 
-# ---------------------------------------------------------------------------
-
-
-def hours(dungeon_count: float, floors: int) -> tuple[float, float]:
-    """A dungeon count in hours of play, at the design's two to five a floor."""
-    low, high = MINUTES_PER_FLOOR
-    return (dungeon_count * floors * low / 60, dungeon_count * floors * high / 60)
+def hours(dungeon_count: float, floors: int) -> float:
+    """A dungeon count in hours of play, at the owner's two minutes a floor."""
+    return dungeon_count * floors * MINUTES_PER_FLOOR / 60
 
 
 # ---------------------------------------------------------------------------
@@ -309,16 +303,17 @@ WHOLE_FLOORS = round(FLOORS)
 PER_DUNGEON = {tier: dungeon_experience(tier, WHOLE_FLOORS, POPULATION, WEIGHTS)
                for tier in TIERS}
 
-#: The rate at which every difficulty tier costs the same number of dungeons.
-EVEN_RATE = rate_for_even_pace(PER_DUNGEON)
-
 #: The rate that reproduces Path of Exile's distribution. The recommendation.
 POE_RATE = rate_matching_path_of_exile()
+
+#: The size of the whole climb, in dungeons. Derived, not chosen.
+CLIMB_DUNGEONS = whole_climb_dungeons()
 
 
 def main() -> None:
     weights, population = WEIGHTS, POPULATION
     floors, whole_floors = FLOORS, WHOLE_FLOORS
+    per_dungeon = PER_DUNGEON
 
     # -- What a creature and a dungeon are worth ----------------------------
 
@@ -330,12 +325,10 @@ def main() -> None:
           + ", ".join(f"{k} {lo}-{hi}" for k, (lo, hi) in LAYOUT_CREATURE_RANGES.items()) + ")")
     print(f"  Floors in an average dungeon: {floors:.1f}, over "
           f"{len(TuningConfig().DUNGEON_SPECS)} floor ranges in config.DUNGEON_SPECS")
-    one_low, one_high = hours(1, whole_floors)
-    print(f"  One dungeon of {whole_floors} floors is {one_low:.1f} to {one_high:.1f} hours of "
-          f"play, at {MINUTES_PER_FLOOR[0]:g} to {MINUTES_PER_FLOOR[1]:g} minutes a floor")
+    print(f"  One dungeon of {whole_floors} floors is {hours(1, whole_floors):.1f} hours of "
+          f"play, at {MINUTES_PER_FLOOR:g} minutes a floor with an endgame build")
     print()
 
-    per_dungeon = PER_DUNGEON
     print("  Tier | Creature, last floor | Creature, dungeon average | "
           "One dungeon | Last floor's rate everywhere")
     print("  " + "-" * 111)
@@ -343,10 +336,9 @@ def main() -> None:
         last = creature_experience(tier, whole_floors, whole_floors, weights)
         mean = sum(creature_experience(tier, f, whole_floors, weights)
                    for f in range(1, whole_floors + 1)) / whole_floors
-        value = dungeon_experience(tier, whole_floors, population, weights)
         flat = dungeon_experience_flat(tier, whole_floors, population, weights)
-        print(f"  {tier:>4} | {last:>20,.0f} | {mean:>25,.0f} | {value:>15,.0f} | "
-              f"{flat:>16,.0f} ({flat / value:.2f}x too high)")
+        print(f"  {tier:>4} | {last:>20,.0f} | {mean:>25,.0f} | {per_dungeon[tier]:>15,.0f} | "
+              f"{flat:>16,.0f} ({flat / per_dungeon[tier]:.2f}x too high)")
     print()
     last_ratio = (creature_experience(8, whole_floors, whole_floors, weights)
                   / creature_experience(1, whole_floors, whole_floors, weights))
@@ -357,144 +349,127 @@ def main() -> None:
     print()
     print()
 
-    # -- The constant-rate proposal with the scale pinned -------------------
+    # -- The size, which is derived rather than chosen ----------------------
 
-    print("THE CONSTANT-RATE PROPOSAL, WITH LEVEL 2 PINNED AT 100")
+    print("THE SIZE OF THE CLIMB IS NOT A FREE CHOICE")
     print()
-    print("  The shape is already agreed. Pinning level 2 at 100 is what makes the rate "
-          "look delicate:")
-    print("  it chooses the size and the shape with one number.")
+    print("  docs/Cataclysm_GDD_v2.md: \"A run is played at a fixed tier.\" A player does not")
+    print("  drift up the difficulty tiers inside a run. They finish a campaign and start the")
+    print("  next one higher, so passing through all eight tiers is eight campaigns.")
     print()
-    print("  Rate | Total experience | Tier 1 dungeons | Tier 4 | Tier 8 | "
-          "Moving up the tiers | Hours at tier 1")
-    print("  " + "-" * 110)
-    for rate in (0.10, 0.12, 0.14, 0.15, 0.16, 0.17, 0.18, 0.20, 0.25):
-        total = total_experience(rate, 100.0)
-        at1 = dungeons_at_fixed_tier(rate, 100.0, per_dungeon, 1)
-        at4 = dungeons_at_fixed_tier(rate, 100.0, per_dungeon, 4)
-        at8 = dungeons_at_fixed_tier(rate, 100.0, per_dungeon, 8)
-        moving = sum(dungeons_by_tier(rate, 100.0, per_dungeon).values())
-        low_hours, high_hours = hours(at1, whole_floors)
-        print(f"  {rate * 100:>3.0f}% | {total:>16.3g} | {at1:>15,.0f} | {at4:>6,.0f} | "
-              f"{at8:>6,.0f} | {moving:>19,.1f} | {low_hours:>7,.0f} to {high_hours:,.0f}")
+    print(f"    {len(TIERS)} difficulty tiers x {CAMPAIGN_DUNGEONS} dungeons a campaign "
+          f"= {CLIMB_DUNGEONS} dungeons")
+    print(f"    {CLIMB_DUNGEONS} dungeons x {whole_floors} floors x "
+          f"{MINUTES_PER_FLOOR:g} minutes = {hours(CLIMB_DUNGEONS, whole_floors):,.0f} hours")
     print()
-    doubling = total_experience(1.0, 100.0)
-    print(f"  The doubling first proposed is 100% a level. Its total is {doubling:.2g}, or "
-          f"{doubling / per_dungeon[1]:.1g} tier 1")
-    print("  dungeons. No scale rescues that, which is settled and is not revisited here.")
+    print("  The campaign length comes from the balance sweep baseline in issue #914, whose")
+    print("  three resolving policies clear 1,053 to 1,345 floors: 21 to 34 dungeons. At the")
+    print(f"  low end the whole climb is {hours(21 * 8, whole_floors):,.0f} hours and at the "
+          f"high end {hours(34 * 8, whole_floors):,.0f}.")
     print()
-    at_15 = dungeons_at_fixed_tier(0.15, 100.0, per_dungeon, 1)
-    moving_15 = sum(dungeons_by_tier(0.15, 100.0, per_dungeon).values())
-    print("  READ THE LAST TWO COLUMNS TOGETHER. At 15%, a player who never leaves tier 1 "
-          f"runs {at_15:,.0f}")
-    print(f"  dungeons and one who moves up the tiers as the design expects runs "
-          f"{moving_15:,.1f}. That is not")
-    print("  one pace with a spread. It is two different games.")
+    print("  For comparison: Last Epoch 60 to 70 hours to maximum level, Diablo IV about 150,")
+    print("  Path of Exile 150 to 300 and it treats level 100 as aspirational. This is longer")
+    print("  than all three, and it is what wanting level 100 to arrive during tier 8 costs.")
     print()
     print()
 
-    # -- The rate that holds the pace even ---------------------------------
+    # -- What the rate decides ---------------------------------------------
 
-    even = EVEN_RATE
-    print("THE RATE THAT HOLDS THE PACE EVEN ACROSS THE DIFFICULTY TIERS")
+    print("WHAT THE RATE DECIDES: THE LEVEL AT THE END OF EACH TIER")
     print()
-    print("  A dungeon pays more at every tier up. If a level's cost grows faster than "
-          "that, the")
-    print("  climb collapses onto the top tiers; slower, and it all happens at tier 1. One "
-          "rate makes")
-    print("  every tier cost the same number of dungeons:")
+    print("  With the size fixed, the rate no longer sets how long the climb is. It sets how")
+    print("  the climb is spread, and the thing that shows is what level the character is when")
+    print("  each tier's campaign ends. player_power.reference_character says this should be:")
     print()
-    print(f"    {even * 100:.2f}% a level.")
+    print("    " + "  ".join(f"{level:g}" for level in reference_levels_at_tier_ends()))
     print()
-    print("  Rate  | Share of the climb spent in tier 1 | in tier 4 | in tier 8 | "
-          "Dearest tier over cheapest")
-    print("  " + "-" * 104)
-    for rate in sorted({0.02, 0.03, round(even, 6), 0.05, 0.08, 0.10, 0.15}):
-        spent = dungeons_by_tier(rate, 1.0, per_dungeon)
-        whole = sum(spent.values())
-        spread = max(spent.values()) / min(spent.values())
-        mark = "*" if abs(rate - even) < 5e-7 else " "
-        print(f"  {rate * 100:>5.2f}%{mark}| {spent[1] / whole:>34.1%} | "
-              f"{spent[4] / whole:>9.1%} | {spent[8] / whole:>9.1%} | {spread:>25,.0f}x")
+    print("  Rate   | Level at the end of each tier's campaign, 1 to 8 | Level 2 costs, "
+          "in floors of tier 1")
+    print("  " + "-" * 106)
+    for rate in (0.02, 0.03, 0.04, 0.05, 0.06, round(POE_RATE, 6), 0.10, 0.15):
+        levels = levels_at_tier_ends(rate, per_dungeon)
+        scale = scale_for_level_100_at_the_end(rate, per_dungeon)
+        opening = first_level_in_floors(rate, scale, population, weights, whole_floors)
+        mark = "*" if abs(rate - POE_RATE) < 5e-7 else " "
+        print(f"  {rate * 100:>5.2f}%{mark}| " + "  ".join(f"{level:>3}" for level in levels)
+              + f"   | {opening:>26.1f}")
     print()
-    print("  * is the even rate. Above it the last tier dominates, below it the first "
-          "tier does.")
+    print("  * is the recommendation, and the reason is the right-hand column. NO RATE GIVES")
+    print("  BOTH a quick first level and a level that keeps pace with the difficulty tier.")
+    print("  A decaying rate was tried and does not solve it either. It follows from")
+    print(f"  experience per dungeon rising {per_dungeon[8] / per_dungeon[1]:.1f} times across "
+          "the tiers while the dungeon")
+    print("  budget per tier is flat at one campaign each.")
     print()
-    even_scale = scale_for_climbing_dungeons(even, per_dungeon, 50)
-    print(f"  AN EVEN PACE IS NOT FREE, AND THIS IS WHY IT IS NOT THE RECOMMENDATION. A rate "
-          f"of {even * 100:.2f}%")
-    print("  is nearly flat, so the first level costs almost as much as the last. Sized so a")
-    print("  tier-climbing player runs 50 dungeons, reaching level 2 takes "
-          f"{first_level_in_floors(even, even_scale, population, weights, whole_floors):.0f} "
-          "floors of a tier 1")
-    print("  dungeon. No ARPG opens that way.")
+    print("  THE COST OF CHOOSING THE QUICK OPENING is that the character out-levels the early")
+    print("  tiers. Every ARPG in the genre does this. What it breaks here is named below.")
     print()
     print()
 
-    # -- The rate Path of Exile's own table implies -------------------------
+    # -- The recommended rate, and why -------------------------------------
 
-    poe = POE_RATE
-    print("THE RATE THAT REPRODUCES PATH OF EXILE'S OWN DISTRIBUTION")
+    print("WHY THAT RATE, RATHER THAN ANOTHER ONE WITH A QUICK OPENING")
     print()
-    print("  Path of Exile publishes its whole experience table. Fitting one number from it "
-          "-- the")
-    print("  share of the climb spent between levels 90 and 100 -- fixes the rate, and the "
-          "other")
-    print("  two checkpoints then agree without being fitted:")
+    print("  Path of Exile publishes its whole experience table. Fitting one number from it")
+    print("  -- the share of the climb spent between levels 90 and 100 -- fixes the rate, and")
+    print("  the other two checkpoints then agree without being fitted:")
     print()
-    print(f"    {poe * 100:.2f}% a level.")
+    print(f"    {POE_RATE * 100:.2f}% a level.")
     print()
     print("  Checkpoint                        | This curve | Path of Exile | Fitted?")
     print("  " + "-" * 74)
     for label, mine, theirs, fitted in (
         ("Share of the climb by level 50",
-         total_experience(poe, 1.0, 50) / total_experience(poe, 1.0), POE_SHARE_BY_50, "no"),
+         total_experience(POE_RATE, 1.0, 50) / total_experience(POE_RATE, 1.0),
+         POE_SHARE_BY_50, "no"),
         ("Share of the climb by level 90",
-         total_experience(poe, 1.0, 90) / total_experience(poe, 1.0), POE_SHARE_BY_90, "yes"),
+         total_experience(POE_RATE, 1.0, 90) / total_experience(POE_RATE, 1.0),
+         POE_SHARE_BY_90, "yes"),
         ("The last level alone",
-         level_cost(MAX_LEVEL, poe, 1.0) / total_experience(poe, 1.0),
+         level_cost(MAX_LEVEL, POE_RATE, 1.0) / total_experience(POE_RATE, 1.0),
          POE_SHARE_LAST_LEVEL, "no"),
     ):
         print(f"  {label:<33} | {mine:>10.2%} | {theirs:>13.2%} | {fitted:>7}")
     print()
-    spent = dungeons_by_tier(poe, 1.0, per_dungeon)
-    whole = sum(spent.values())
-    print(f"  It spends {spent[1] / whole:.1%} of the climb in difficulty tier 1 and "
-          f"{spent[8] / whole:.1%} in tier 8, which is the")
-    print("  same top-heavy shape Path of Exile has and the opposite of an even pace. That "
-          "is the")
-    print("  trade being made: a fast opening in exchange for a long last ten levels.")
+
+    scale = scale_for_level_100_at_the_end(POE_RATE, per_dungeon)
+    print("  Sized so level 100 arrives at the end of tier 8, that curve is:")
+    print()
+    print(f"    level 2 costs   {scale:>15,.0f}   "
+          f"({first_level_in_floors(POE_RATE, scale, population, weights, whole_floors):.1f} "
+          "floors of a tier 1 dungeon)")
+    print(f"    level 50 costs  {level_cost(50, POE_RATE, scale):>15,.0f}")
+    print(f"    level 100 costs {level_cost(MAX_LEVEL, POE_RATE, scale):>15,.0f}")
+    print(f"    the whole climb {total_experience(POE_RATE, scale):>15,.0f}")
     print()
     print()
 
-    # -- Working backwards from a chosen size ------------------------------
+    # -- What this forces elsewhere ----------------------------------------
 
-    print("WORKING BACKWARDS: PICK THE SIZE, THE COST OF LEVEL 2 FOLLOWS")
+    levels = levels_at_tier_ends(POE_RATE, per_dungeon)
+    level_weight = 6.3270  # docs/Cataclysm_GDD_v2.md, Power Score weights
+    from_level = level_weight * levels[0]
+    tier_1_ceiling = scoring.PLAYER_MAX_SCORES[1]
+    print("WHAT THE RECOMMENDATION FORCES ELSEWHERE, AND IT IS NOT NOTHING")
     print()
-    print(f"  Shape held at {poe * 100:.2f}%. Choose how many dungeons the whole climb should "
-          "cost a player who")
-    print("  moves up the difficulty tiers as the design expects them to. A campaign is about")
-    print("  27 dungeons, so the right-hand column is how many campaigns a character spans.")
+    print(f"  The character is level {levels[0]} when the tier 1 campaign ends, against the "
+          f"{reference_levels_at_tier_ends()[0]:g}")
+    print("  player_power.reference_character expects. Two things follow and both need a")
+    print("  decision that this script cannot make:")
     print()
-    print("  Dungeons | Hours         | Level 2 costs | Level 2 in floors | Level 100 costs "
-          "| Never leaves tier 1 | Campaigns")
-    print("  " + "-" * 122)
-    for target in (20, 30, 40, 50, 60, 75, 100, 150):
-        scale = scale_for_climbing_dungeons(poe, per_dungeon, target)
-        low_hours, high_hours = hours(target, whole_floors)
-        opening = first_level_in_floors(poe, scale, population, weights, whole_floors)
-        stuck = total_experience(poe, scale) / per_dungeon[1]
-        print(f"  {target:>8} | {low_hours:>4,.0f} to {high_hours:<7,.0f} | {scale:>13,.0f} | "
-              f"{opening:>17.1f} | {level_cost(MAX_LEVEL, poe, scale):>16,.0f} | "
-              f"{stuck:>19,.0f} | {target / 27:>9.1f}")
+    print("  1. player_power.reference_character's rule, \"level rises evenly to 100 at the end")
+    print("     of tier 8\", stops being true. It is used to check the Power Score formula")
+    print("     against the tier anchors, so it has to be replaced with what levelling")
+    print("     actually produces rather than left disagreeing.")
     print()
-    print("  Time to maximum level in the genre, for reading the hours column: Last Epoch 60")
-    print("  to 70 hours, Diablo IV about 150, Path of Exile 150 to 300 and it treats level")
-    print("  100 as aspirational rather than expected.")
-    print()
-    print("  The 'never leaves tier 1' column is the player who refuses to raise difficulty.")
-    print("  It is meant to be unreachable. Every ARPG in the genre works this way: maximum")
-    print("  level is not obtainable on the lowest difficulty in any sane time.")
+    print(f"  2. Level Weight is {level_weight} in the Power Score formula, so level "
+          f"{levels[0]} is worth")
+    print(f"     {from_level:.0f} Power Score on its own. The maximum a player is expected to "
+          f"reach by the")
+    print(f"     end of tier 1 is {tier_1_ceiling:g}, so level alone would be "
+          f"{from_level / tier_1_ceiling:.0%} of it. The early tiers")
+    print("     get easier. If that is unwanted, the thing to change is Level Weight, not")
+    print("     the experience curve.")
     print()
     print()
 
@@ -502,22 +477,18 @@ def main() -> None:
 
     print("HOW MUCH THE UNMEASURED INPUTS MOVE THE ANSWER")
     print()
-    print("  Every dungeon count above scales inversely with how many creatures a floor "
-          "holds and")
-    print("  with what share of them a player actually kills, and neither has been "
-          "measured in play.")
-    print(f"  At {poe * 100:.2f}%, with the size set so a tier-climbing player runs "
-          "50 dungeons:")
+    print("  The climb assumes the player kills every creature on every floor, and nobody has")
+    print("  played a full dungeon to find out what share they really clear. Issue #925. A")
+    print("  half-cleared floor doubles the hours. Level 100 would then arrive during tier 8")
+    print("  only for a player who does clear everything; everyone else reaches it later.")
     print()
-    scale = scale_for_climbing_dungeons(poe, per_dungeon, 50)
-    print("  Creatures killed a floor | Dungeons to level 100 | Hours")
-    print("  " + "-" * 62)
+    print("  Creatures killed a floor | Dungeons for the same climb | Hours")
+    print("  " + "-" * 66)
     for count in (65, 129, round(population), 400):
         scaled = {t: dungeon_experience(t, whole_floors, count, weights) for t in TIERS}
-        run = sum(dungeons_by_tier(poe, scale, scaled).values())
-        low_hours, high_hours = hours(run, whole_floors)
-        print(f"  {count:>4} ({count / population:>4.0%} of the floor) | {run:>21,.0f} | "
-              f"{low_hours:,.0f} to {high_hours:,.0f}")
+        needed = total_experience(POE_RATE, scale) / (sum(scaled.values()) / len(TIERS))
+        print(f"  {count:>4} ({count / population:>4.0%} of the floor) | {needed:>27,.0f} | "
+              f"{hours(needed, whole_floors):,.0f}")
     print()
 
 

@@ -1263,11 +1263,155 @@ def test_the_module_docstring_quotes_the_ratios_it_computes(experience_run):
     assert f"not the {last:.1f} times measured on the last floor" in doc
 
 
+def test_the_size_of_the_climb_is_derived_and_not_chosen(experience_run):
+    """THE ANSWER TO THE QUESTION THE SCRIPT WAS ASKED.
+
+    How many dungeons reaching level 100 costs stopped being a matter of taste
+    once two facts were put together: `docs/Cataclysm_GDD_v2.md` says "A run is
+    played at a fixed tier", and the balance sweep says a campaign is about 26
+    dungeons. Eight tiers is eight campaigns. If either input moves, the size
+    moves with it, and this is where that gets noticed.
+    """
+    printed, ns = experience_run
+    assert ns["CLIMB_DUNGEONS"] == ns["CAMPAIGN_DUNGEONS"] * len(ns["TIERS"])
+    assert f"{len(ns['TIERS'])} difficulty tiers x {ns['CAMPAIGN_DUNGEONS']} dungeons "\
+           f"a campaign = {ns['CLIMB_DUNGEONS']} dungeons" in printed
+
+    played = ns["hours"](ns["CLIMB_DUNGEONS"], ns["WHOLE_FLOORS"])
+    assert f"= {played:,.0f} hours" in printed
+    assert played > 300, (
+        f"the whole climb is now {played:,.0f} hours, which is inside the range "
+        f"shipped games in the genre report. It was longer than all three, and "
+        f"the script says so in a sentence that would now be wrong.")
+
+
+def test_the_design_source_for_a_run_being_fixed_to_one_tier_is_quoted(
+        experience_run):
+    """The size rests entirely on this sentence, so it is quoted rather than
+    paraphrased, and it has to still be in the design document."""
+    printed, _ = experience_run
+    claim = "A run is played at a fixed tier."
+    assert claim in printed
+
+    design = (SIM_ROOT.parent / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+    assert claim in design, (
+        "docs/Cataclysm_GDD_v2.md no longer says a run is played at a fixed "
+        "tier. That sentence is the whole reason the climb is eight campaigns "
+        "rather than a number somebody picked.")
+
+
+def test_no_rate_gives_both_a_quick_opening_and_a_level_that_tracks_the_tier(
+        experience_run):
+    """THE FINDING, asserted as the trade-off it is rather than as one number.
+
+    A rate flat enough to keep the character's level in step with the difficulty
+    tier makes the first level cost tens of floors. A rate steep enough to open
+    quickly leaves the character far ahead of the tier. Both ends are checked,
+    because the recommendation is only justified if the middle really is empty.
+    """
+    _, ns = experience_run
+    per_dungeon, population, weights = ns["PER_DUNGEON"], ns["POPULATION"], ns["WEIGHTS"]
+    floors = ns["WHOLE_FLOORS"]
+    expected_first = ns["reference_levels_at_tier_ends"]()[0]
+
+    def opening_and_first_tier(rate):
+        scale = ns["scale_for_level_100_at_the_end"](rate, per_dungeon)
+        return (ns["first_level_in_floors"](rate, scale, population, weights, floors),
+                ns["levels_at_tier_ends"](rate, per_dungeon)[0])
+
+    # Flat enough to track the tier: the opening is measured in tens of floors.
+    slow_opening, slow_level = opening_and_first_tier(0.03)
+    assert slow_level <= expected_first
+    assert slow_opening > 20, (
+        f"a rate slow enough to leave the character at level {slow_level} after "
+        f"the first campaign now reaches level 2 in {slow_opening:.1f} floors. "
+        f"If that is genuinely quick, the trade-off this script reports has "
+        f"gone away and the recommendation should be revisited.")
+
+    # The recommendation: quick opening, character ahead of the tier.
+    quick_opening, quick_level = opening_and_first_tier(ns["POE_RATE"])
+    assert quick_opening < 6, (
+        f"the recommended rate now reaches level 2 in {quick_opening:.1f} "
+        f"floors. A quick opening is the only reason it was preferred.")
+    assert quick_level > expected_first * 2, (
+        "the recommended rate no longer leaves the character well ahead of the "
+        "difficulty tier, so the consequence the script warns about is stale")
+
+
+def test_it_says_what_the_recommendation_breaks_elsewhere(experience_run):
+    """A recommendation that silently invalidates `reference_character` and
+    makes the early tiers easy is not a finished answer. Both are named, and
+    the Power Score arithmetic behind the second is recomputed here."""
+    printed, ns = experience_run
+    from cataclysm_sim import scoring as sc
+
+    assert "player_power.reference_character's rule" in printed
+    assert "Level Weight" in printed
+
+    level = ns["levels_at_tier_ends"](ns["POE_RATE"], ns["PER_DUNGEON"])[0]
+    from_level = 6.3270 * level
+    share = from_level / sc.PLAYER_MAX_SCORES[1]
+    assert f"level alone would be {share:.0%} of it" in printed
+    assert share > 0.5, (
+        f"level is now only {share:.0%} of the tier 1 power ceiling, so the "
+        f"warning that the early tiers get easier no longer holds")
+
+
+def test_the_reference_progression_comes_from_player_power(experience_run):
+    """`reference_levels_at_tier_ends` claims to be the rule
+    `player_power.reference_character` documents. The comparison is against the
+    UNROUNDED rule, because four of the eight boundaries fall on a half level:
+    level 37.5 is the top of tier 3 and `reference_character` reports 38."""
+    from cataclysm_sim import player_power
+
+    _, ns = experience_run
+
+    stated = ns["reference_levels_at_tier_ends"]()
+    assert stated[-1] == ns["MAX_LEVEL"], "the last tier must end at the maximum level"
+    for tier, boundary in zip(ns["TIERS"], stated, strict=True):
+        rounded = player_power.reference_character(tier).level
+        assert abs(rounded - boundary) <= 0.5, (
+            f"player_power says a character is level {rounded} at the end of "
+            f"difficulty tier {tier}. The rule it documents, level rising "
+            f"evenly to 100 at the end of tier 8, puts that at {boundary}. The "
+            f"two have drifted apart by more than integer rounding.")
+
+
+def test_it_says_the_full_clear_assumption_out_loud(experience_run):
+    """Every dungeon count assumes the player kills the whole floor, and nobody
+    has played a dungeon to find out. An unstated assumption here reads as a
+    measurement."""
+    printed, ns = experience_run
+    doc = unwrapped(ns["__doc__"])
+    assert "FULL-CLEAR" in doc
+    assert "Issue #925" in doc, (
+        "the docstring no longer names the issue tracking the unmeasured clear "
+        "share, so a reader takes the dungeon counts as measured")
+    assert "HOW MUCH THE UNMEASURED INPUTS MOVE THE ANSWER" in printed
+    assert "50% of the floor" in printed, (
+        "the sensitivity table no longer shows a half-cleared floor, which is "
+        "the case that doubles every hours figure the script prints")
+
+
+def test_it_reports_hours_at_the_owners_two_minutes_a_floor(experience_run):
+    """The project owner asked for dungeons rather than floors, and the genre
+    research is all in hours. Both have to be present or the numbers cannot be
+    compared with anything shipped. Two minutes is their figure for an endgame
+    build, and it is the SHORT end of what the design document states, so the
+    script must not present it as a range."""
+    printed, ns = experience_run
+    assert ns["MINUTES_PER_FLOOR"] == 2.0
+    assert f"is {ns['hours'](1, ns['WHOLE_FLOORS']):.1f} hours of play" in printed
+    assert "with an endgame build" in printed
+    for shipped in ("Last Epoch 60", "Diablo IV about 150", "Path of Exile 150 to 300"):
+        assert shipped in printed, shipped
+
+
 def test_the_recommended_rate_is_fitted_to_path_of_exile_and_not_chosen(
         experience_run):
-    """THE FINDING. One checkpoint of Path of Exile's published table is fitted
-    and the other two then agree without being fitted. That is what makes the
-    rate evidence rather than taste, so it is asserted rather than described."""
+    """One checkpoint of Path of Exile's published table is fitted and the other
+    two then agree without being fitted. That is what makes the rate evidence
+    rather than taste, so it is asserted rather than described."""
     _, ns = experience_run
     rate = ns["POE_RATE"]
     whole = ns["total_experience"](rate, 1.0)
@@ -1286,85 +1430,15 @@ def test_the_recommended_rate_is_fitted_to_path_of_exile_and_not_chosen(
         f"Exile's {ns['POE_SHARE_LAST_LEVEL']:.2%}")
 
 
-def test_the_even_pace_rate_is_rejected_for_a_stated_reason(experience_run):
-    """The alternative shape is measured, not waved away. It genuinely does
-    hold the pace even, and it genuinely does make the first level absurd, and
-    the script has to show both or the recommendation is unargued."""
+def test_level_100_lands_exactly_at_the_end_of_the_last_campaign(experience_run):
+    """The size is chosen to put level 100 at the end of tier 8, so the model
+    that spends the experience has to agree with the model that sized it. These
+    are two different code paths and a sign error in either would not show up
+    anywhere else."""
     _, ns = experience_run
-    even, per_dungeon = ns["EVEN_RATE"], ns["PER_DUNGEON"]
-
-    spent = ns["dungeons_by_tier"](even, 1.0, per_dungeon)
-    assert abs(spent[1] - spent[8]) < spent[1] * 0.01, (
-        "the even rate no longer makes tier 1 and tier 8 cost the same number "
-        "of dungeons, which is its definition")
-
-    scale = ns["scale_for_climbing_dungeons"](even, per_dungeon, 50)
-    opening = ns["first_level_in_floors"](even, scale, ns["POPULATION"],
-                                          ns["WEIGHTS"], ns["WHOLE_FLOORS"])
-    assert opening > 20, (
-        f"reaching level 2 at the even rate now takes {opening:.0f} floors. The "
-        f"script rejects that rate BECAUSE it takes tens of floors; if it no "
-        f"longer does, the recommendation should be revisited.")
-
-    recommended = ns["scale_for_climbing_dungeons"](ns["POE_RATE"], per_dungeon, 50)
-    assert ns["first_level_in_floors"](ns["POE_RATE"], recommended, ns["POPULATION"],
-                                       ns["WEIGHTS"], ns["WHOLE_FLOORS"]) < 5, (
-        "the recommended rate no longer opens with a quick first level, which "
-        "is the whole reason it beat the even rate")
-
-
-def test_the_level_to_tier_map_matches_the_reference_character(experience_run):
-    """`tier_for_level` claims to be `player_power.reference_character` read
-    backwards. If it drifts from it, every 'moving up the tiers' figure is
-    measuring a progression the rest of the project does not believe in.
-
-    The comparison is against the UNROUNDED rule, `100 * tier / 8`, because four
-    of the eight boundaries fall on a half level. `reference_character` rounds
-    them to an integer and `tier_for_level` cannot, so demanding they agree on
-    the rounded value fails at tier 3 for a reason that says nothing about
-    either: level 37.5 is the top of tier 3 and level 38 really is in tier 4.
-    """
-    import math
-
-    from cataclysm_sim import player_power
-
-    _, ns = experience_run
-    for tier in range(1, 9):
-        boundary = ns["MAX_LEVEL"] * tier / 8
-        last_whole_level = math.floor(boundary)
-        assert ns["tier_for_level"](last_whole_level) == tier, (
-            f"level {last_whole_level} is the last whole level inside "
-            f"difficulty tier {tier}, but tier_for_level says tier "
-            f"{ns['tier_for_level'](last_whole_level)}")
-        assert ns["tier_for_level"](last_whole_level + 1) == min(8, tier + 1)
-
-        stated = player_power.reference_character(tier).level
-        assert abs(stated - boundary) <= 0.5, (
-            f"player_power says a character is level {stated} at the end of "
-            f"difficulty tier {tier}. The rule it documents, level rising "
-            f"evenly to 100 at the end of tier 8, puts that at {boundary}. The "
-            f"two have drifted apart by more than integer rounding.")
-
-
-def test_it_says_the_full_clear_assumption_out_loud(experience_run):
-    """Every dungeon count assumes the player kills the whole floor, and nobody
-    has played a dungeon to find out. An unstated assumption here reads as a
-    measurement."""
-    printed, ns = experience_run
-    doc = unwrapped(ns["__doc__"])
-    assert "FULL-CLEAR" in doc
-    assert "HOW MUCH THE UNMEASURED INPUTS MOVE THE ANSWER" in printed
-    assert "50% of the floor" in printed, (
-        "the sensitivity table no longer shows a half-cleared floor, which is "
-        "the case that doubles every hours figure the script prints")
-
-
-def test_it_reports_hours_as_well_as_dungeons(experience_run):
-    """The project owner asked for dungeons rather than floors, and the genre
-    research is all in hours. Both have to be present or the numbers cannot be
-    compared with anything shipped."""
-    printed, ns = experience_run
-    low, high = ns["hours"](1, ns["WHOLE_FLOORS"])
-    assert f"is {low:.1f} to {high:.1f} hours of play" in printed
-    for shipped in ("Last Epoch 60", "Diablo IV about 150", "Path of Exile 150 to 300"):
-        assert shipped in printed, shipped
+    levels = ns["levels_at_tier_ends"](ns["POE_RATE"], ns["PER_DUNGEON"])
+    assert levels[-1] == ns["MAX_LEVEL"]
+    assert levels[-2] < ns["MAX_LEVEL"], (
+        "the character now reaches the maximum level before the last campaign, "
+        "so the climb is shorter than the eight tiers it was sized for")
+    assert levels == sorted(levels), "the level must not go down as tiers pass"
