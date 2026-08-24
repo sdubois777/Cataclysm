@@ -20,6 +20,123 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — Screens are a C++ base class with the layout in a Widget Blueprint
+
+**Affects:** every screen built from now on, and eventually the eight widgets
+already in `game/Source/Cataclysm/Interface/`. **Decided, not yet applied** — the
+first screens built this way are character creation and the passive trees, both
+part of issue #50.
+
+### The question
+
+Every widget this project has was built entirely in C++: the inventory screen,
+the gear panel, the skill bar, the creature panel, the item tooltip, the combat
+overlay and the heads-up display. None of them ships a content asset, and each
+builds its own widget tree in `RebuildWidget`.
+
+Asked why the next two screens would be built that way, the project owner said:
+"I'm not sure why we would be building the screens in c++? doesn't unreal provide
+UI tools for that?"
+
+It does. The Widget Blueprint designer is Unreal's normal answer, and nothing in
+this project had written down why it was not being used for screens
+specifically — only the general rule below, which was reasoned about behaviour
+rather than about layout.
+
+### Why it was C++ in the first place, and that reasoning is sound
+
+The 2026-08-04 entry, "Enemy behaviour in C++ rather than a behaviour tree", put
+it generally:
+
+> A Behaviour Tree and its Blackboard are binary `.uasset` files. Every other
+> rule in this project is text that a pull request shows a diff of, and every
+> other behaviour is covered by an automation test that runs headless with no
+> editor.
+
+That is why skills are C++ rather than Blueprints, why enemy decision-making is
+C++ rather than a Behaviour Tree, and why the heads-up display draws on the
+canvas. It is consistent and it is not an oversight. Issue #140 records the
+editor rewriting `.uasset` files merely from opening them, which makes the
+reviewability problem worse than "binary".
+
+**The project already recorded the cost, twice.** Issue #650 is open to port the
+combat overlay off the canvas "when the designed interface is built", and the
+2026-08-19 entry on the heads-up display says the canvas approach "is expected to
+be replaced".
+
+### What is wrong with it for a screen, specifically
+
+**Building a widget tree in C++ means recompiling to move a box.** That is a
+tolerable cost for a skill bar with four slots. It is a bad one for the two
+screens now due:
+
+- **A passive tree** is a large node graph with panning and zooming. Laying it
+  out by writing code, compiling and looking, over and over, is slow enough to
+  change how much iteration actually happens.
+- **Character creation** is almost entirely visual layout and a preview of the
+  character.
+
+Both exist to be looked at and judged by the project owner, who said the same day
+that a system they cannot test in game is not useful. Iteration speed is the
+whole point of building them.
+
+### The decision
+
+**A C++ base class holds the logic and names its widgets with
+`UPROPERTY(meta = (BindWidget))`. A Widget Blueprint derives from that class and
+does the layout in the designer.**
+
+| What | Where it lives | Reviewable in a diff | Coverable by a headless test |
+| :-- | :-- | :-: | :-: |
+| Logic, state, what a click does | the C++ base class | yes | yes |
+| Layout, colours, spacing, fonts | the Widget Blueprint | no | no |
+
+**`BindWidget` is what makes this safe rather than a split with a gap in it.**
+The Blueprint compiler refuses to compile a widget whose base class declares a
+`BindWidget` property that the tree does not contain, with a matching name and
+type. So the join between the two halves is checked by the engine rather than
+trusted. Use `BindWidgetOptional` only where a missing widget is genuinely
+allowed, and say why at the property.
+
+**This is a departure from the general rule above and it is deliberate.** The
+rule's purpose is that behaviour is reviewable and testable. Under this split all
+the behaviour still is. What moves into a binary asset is layout, which no
+automation test was ever going to assert on and which no reviewer was reading a
+diff of either.
+
+### Where the assets go and what they are called
+
+`game/Content/Interface/`, matching the C++ folder name, with the `WBP_` prefix
+Epic documents. There is deliberately no `Content/Cataclysm/` wrapper; the
+2026-08-13 entry on asset conventions gives the reason. `.uasset` is already
+tracked by Git Large File Storage, so a Widget Blueprint costs the repository
+what every other content asset costs.
+
+### What this does not change
+
+**The eight existing widgets stay as they are for now.** Rewriting a working
+inventory screen to prove a pattern is work with no result the owner can see. They
+move when they are next touched for another reason, or when the designed
+interface arrives and issue #650's port happens anyway.
+
+**The heads-up display stays on the canvas.** It is a different question — it has
+no widget at all — and issue #650 already owns it.
+
+### The cost, stated plainly
+
+**A layout change will not be reviewable in a pull request.** A `.uasset` shows as
+a binary blob. That is a real loss and it is the price of the designer. Two things
+soften it and neither removes it: the logic that a layout could break is still in
+text, and `BindWidget` fails the compile rather than failing silently at run time.
+
+**A Widget Blueprint cannot be exercised by the automation tests.** They run with
+`-nullrhi` and no editor. A C++ base class can be constructed and asserted on in a
+test; the Blueprint that derives from it cannot. So a screen's logic keeps its
+coverage and its appearance keeps none, which is the same position every other
+piece of art in the project is in.
+
+---
+
 ## 2026-08-24 — A kill grants its Enemy Score, a dungeon gets a length, and the first floors of a tier 1 dungeon pay nothing
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h` and `.cpp`,
