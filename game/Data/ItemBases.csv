@@ -38,7 +38,7 @@ Necklace_Torc,Torc,Necklace,0,,,0,0.0,,,1,1,max_health,flat,95.0,,,0.0
 Necklace_Locket,Locket,Necklace,0,,,0,0.0,,,1,1,max_energy_shield,flat,55.0,,,0.0
 Relic_Idol,Idol,Relic,0,,,0,0.0,,,1,2,crit_multiplier,flat,28.0,,,0.0
 Relic_Fetish,Fetish,Relic,0,,,0,0.0,,,1,2,area_of_effect,increased,10.0,,,0.0
-Relic_Reliquary,Reliquary,Relic,0,,,0,0.0,,,1,2,cooldown_reduction,increased,10.0,,,0.0
+Relic_Reliquary,Reliquary,Relic,0,,,0,0.0,,,1,2,cooldown_reduction,flat,10.0,,,0.0
 Relic_Effigy,Effigy,Relic,0,,,0,0.0,,,1,2,dot_frequency,increased,10.0,,,0.0
 Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8; Angle=90; MaxTargets=1,1,3,attack_damage,flat,40.0,attack_speed,increased,5.0
 Weapon_Dagger,Dagger,Weapon,1,Piercing,Dagger,4,1.5,Strike,Radius=1.5; Angle=60; MaxTargets=1,1,3,attack_damage,flat,26.0,crit_chance,flat,8.0

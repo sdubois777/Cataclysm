@@ -1289,12 +1289,12 @@ namespace CataclysmEquipmentTest
 			// them already existed, which is what made that issue the cheap one.
 			//
 			// #895. The attribute exists and NOTHING READS IT, so a map entry
-			// alone would leave these nine doing just as little.
+			// alone would leave these eight doing just as little.
 			//
-			// MANA LEECH AND ENERGY SHIELD LEECH LEFT THIS LIST when leech was
-			// built, and life leech left the one in #895 at the same time: all
-			// three now give an attacker back a share of what its hit took.
-			TEXT("cooldown_reduction"),
+			// THREE NAMES HAVE LEFT THIS LIST as the parts of #895 have landed.
+			// Mana leech and energy shield leech went when leech was built, and
+			// cooldown reduction went when UCataclysmGameplayAbility::
+			// ApplyCooldown started dividing by it.
 			TEXT("damage_vs_war"), TEXT("damage_vs_demonic"),
 			TEXT("damage_vs_death"), TEXT("damage_vs_pestilence"),
 			TEXT("damage_vs_famine"), TEXT("damage_vs_celestial"),

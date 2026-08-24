@@ -1129,8 +1129,17 @@ INCREASED_MOVEMENT_SPEED = StatAffix("Increased movement speed",
 
 #: By convention. Cooldown reduction divides rather than subtracting, so no
 #: quantity of it reaches zero and it needs no cap.
+#:
+#: FLAT AND NOT INCREASED, THOUGH IT READS AS "INCREASED". The stat holds the
+#: character's ACCUMULATED INCREASES -- the design's formula is
+#: ``base / ((1 + sum of increases) x more)`` -- so a source contributes
+#: percentage points INTO that sum rather than multiplying it. Recorded as
+#: ``increased`` until 2026-08-24, which meant it multiplied a base of zero and
+#: cooldown reduction was zero for every character whatever they wore. Path of
+#: Exile, whose formula this design copied, adds every source into one bucket
+#: before the single division. See ``docs/DECISIONS.md``.
 INCREASED_COOLDOWN_REDUCTION = StatAffix("Increased cooldown reduction",
-                                         "cooldown_reduction", "increased",
+                                         "cooldown_reduction", "flat",
                                          12.0, UTILITY_SLOTS, SUFFIX)
 
 #: By convention. Both affect what drops rather than what a character can do, so
@@ -1891,8 +1900,10 @@ ITEM_BASES: tuple[ItemBase, ...] = (
     # -- Relic -----------------------------------------------------------
     ItemBase("Idol", "Relic", (Implicit("crit_multiplier", "flat", 28.0),)),
     ItemBase("Fetish", "Relic", (Implicit("area_of_effect", "increased", 10.0),)),
+    # Flat and not increased, for the reason INCREASED_COOLDOWN_REDUCTION
+    # gives: the stat IS the accumulated increases, so a source adds to it.
     ItemBase("Reliquary", "Relic",
-             (Implicit("cooldown_reduction", "increased", 10.0),)),
+             (Implicit("cooldown_reduction", "flat", 10.0),)),
     ItemBase("Effigy", "Relic", (Implicit("dot_frequency", "increased", 10.0),)),
     # -- Weapon, one-handed ----------------------------------------------
     _weapon("Sword", "Sword", 1, "Slashing", 1.30,

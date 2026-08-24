@@ -223,6 +223,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 
 			// Everything else the class table names.
 			{TEXT("movement_speed"), Combat::GetMovementSpeedAttribute()},
+
+			// COOLDOWN REDUCTION JOINED THEM IN ISSUE #895. No class line names
+			// it, so gear and the Efficacy attribute are its only sources, and
+			// without an entry here the affix granting it was dropped before it
+			// reached the attribute UCataclysmGameplayAbility::ApplyCooldown
+			// now reads.
+			{TEXT("cooldown_reduction"),
+			 Combat::GetCooldownReductionAttribute()},
 			{TEXT("loot_quantity"), Combat::GetLootQuantityAttribute()},
 
 			// MAGIC FIND JOINED LOOT QUANTITY IN ISSUE #896. No class line
