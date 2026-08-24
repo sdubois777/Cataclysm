@@ -5,6 +5,14 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Dungeon/CataclysmEnemyScore.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "GameFramework/PlayerController.h"
+#include "Tests/CataclysmTestWorld.h"
+#include "Engine/World.h"
+#include "Misc/ScopeExit.h"
 
 /**
  * Tests for Enemy Score, the port of `enemy_scores` in
@@ -437,6 +445,302 @@ bool FCataclysmEnemyScoreTierAnchorsAreTheDesigns::RunTest(const FString&)
 			UCataclysmEnemyScore::TierWidth(Tier)
 				> UCataclysmEnemyScore::TierWidth(Tier - 1));
 	}
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Where a fight is happening, and what a kill is worth there
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyScoreFloorInHasSaneDefaults,
+	"Cataclysm.EnemyScore.AWorldWithNoGameModeStillGivesARealFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemyScoreFloorInHasSaneDefaults::RunTest(const FString&)
+{
+	// AN AUTOMATION TEST THAT KILLS A CREATURE IN A BARE WORLD MUST STILL GET A
+	// SCORE. Fifteen existing tests do exactly that, and if this answered with
+	// nothing they would silently start awarding no experience.
+	const FCataclysmScoredFloor Nowhere = UCataclysmEnemyScore::FloorIn(nullptr);
+
+	TestEqual(TEXT("difficulty tier 1"), Nowhere.DifficultyTier, 1);
+	TestEqual(TEXT("one floor"), Nowhere.TotalFloors, 1);
+	TestEqual(TEXT("standing on it"), Nowhere.FloorNumber, 1);
+	TestTrue(TEXT("a Basic dungeon"),
+		Nowhere.Type == ECataclysmDungeonType::Basic);
+	TestTrue(TEXT("with no sub-type"),
+		Nowhere.SubType == ECataclysmDungeonSubType::None);
+	TestEqual(TEXT("and no modifiers, because none exist"),
+		Nowhere.ModifierScore, 0.0f);
+
+	// AND THAT FLOOR IS WORTH SOMETHING. One floor of one makes the floor ratio
+	// 1, so a creature there scores as though it stood on a dungeon's last
+	// floor, which is what a training target ought to be worth.
+	TestTrue(TEXT("a Common on it is worth more than nothing"),
+		UCataclysmEnemyScore::ScoreFor(Nowhere, 0) > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyScoreReadsTheDungeon,
+	"Cataclysm.EnemyScore.TheDungeonGameModeDecidesWhereTheFightIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemyScoreReadsTheDungeon::RunTest(const FString&)
+{
+	// THE JOIN BETWEEN THE MODEL AND THE GAME, which is the part a pure
+	// arithmetic test cannot reach. A dungeon that reported the wrong depth
+	// would give every creature in it the wrong score, and every other test in
+	// this file would still pass.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("dungeon game mode"), Mode))
+	{
+		return false;
+	}
+
+	Mode->TotalFloors = 40;
+	Mode->FloorNumber = 12;
+	Mode->DungeonType = ECataclysmDungeonType::FallenCity;
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Elite;
+
+	TestEqual(TEXT("the dungeon reports its length"), Mode->RunTotalFloors(), 40);
+	TestEqual(TEXT("and which floor is being walked"), Mode->RunFloorNumber(), 12);
+	TestTrue(TEXT("and its kind"),
+		Mode->RunDungeonType() == ECataclysmDungeonType::FallenCity);
+	TestTrue(TEXT("and its sub-type"),
+		Mode->RunDungeonSubType() == ECataclysmDungeonSubType::Elite);
+
+	// THE LENGTH IS NEVER REPORTED BELOW THE FLOOR BEING WALKED. The stairs
+	// descend for ever -- there is no bottom until issue #41 -- so a player can
+	// stand on floor 90 of a dungeon set to 40. A floor ratio above one is
+	// outside anything the model was fitted for.
+	Mode->FloorNumber = 90;
+	TestEqual(TEXT("walking past the end stretches the dungeon to reach"),
+		Mode->RunTotalFloors(), 90);
+	TestEqual(TEXT("so the deepest floor is the last floor"),
+		Mode->ChooseTotalFloors(), Mode->ChooseFloorNumber());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyScoreKillingGrantsExperience,
+	"Cataclysm.EnemyScore.KillingACreatureGrantsItsScoreAsExperience",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemyScoreKillingGrantsExperience::RunTest(const FString&)
+{
+	// WHAT ISSUE #926 WAS ABOUT. The design says an enemy's Enemy Score IS the
+	// experience it grants; this is the only test that checks a kill actually
+	// hands one over.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	if (!TestNotNull(TEXT("player state"), State))
+	{
+		return false;
+	}
+
+	// SPENT THROUGH THE PLAYER STATE RATHER THAN BY KILLING A REAL CREATURE.
+	// Standing a creature up, giving it a controller and a player to reach, and
+	// killing it needs a possessed pawn, which a test world has no way to make.
+	// What is checked here is that the number handed over is the creature's
+	// score and that the character's level moves because of it.
+	const FCataclysmScoredFloor Floor = UCataclysmEnemyScore::FloorIn(World);
+	const int32 CommonWorth = UCataclysmEnemyScore::ScoreFor(Floor, 0);
+	const int32 BossWorth = UCataclysmEnemyScore::ScoreFor(Floor, 4);
+
+	TestTrue(TEXT("a Common is worth something"), CommonWorth > 0);
+	TestTrue(TEXT("and a Boss is worth more"), BossWorth > CommonWorth);
+
+	const int64 Before = State->GetExperienceIntoLevel();
+	State->GrantExperience(CommonWorth);
+	TestEqual(TEXT("killing a Common banks its score"),
+		State->GetExperienceIntoLevel() - Before, static_cast<int64>(CommonWorth));
+
+	State->GrantExperience(BossWorth);
+	TestEqual(TEXT("and killing a Boss banks its own"),
+		State->GetExperienceIntoLevel() - Before,
+		static_cast<int64>(CommonWorth) + static_cast<int64>(BossWorth));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyScoreAWholeDungeonPaysALevel,
+	"Cataclysm.EnemyScore.ClearingADungeonMovesTheCharactersLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemyScoreAWholeDungeonPaysALevel::RunTest(const FString&)
+{
+	// THE TWO HALVES MEETING. `Cataclysm.Experience` checks the curve as
+	// arithmetic and the tests above check what a creature is worth. Neither
+	// notices if the two are on different scales -- a creature worth a thousand
+	// times too little would pass both. This walks a whole dungeon's worth of
+	// kills and checks the character gains roughly what the balance work said it
+	// should.
+	//
+	// THE FIGURE IT IS CHECKED AGAINST comes from sim/analyse_experience_curve.py
+	// and docs/DECISIONS.md: a 50-floor Basic dungeon at difficulty tier 1,
+	// fully cleared, is worth 2,649,059, and level 2 costs 230,000. So one
+	// dungeon at the shallowest tier is worth about eleven levels at the start
+	// of the climb. Anything within a factor of two of that is the two halves
+	// agreeing; a factor of a thousand is not.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	if (!TestNotNull(TEXT("player state"), State))
+	{
+		return false;
+	}
+	State->SetLevelAndExperience(1, 0);
+
+	// 258 creatures a floor is the density measured over 1,000 seeds per layout
+	// and recorded in docs/DECISIONS.md under 2026-08-22.
+	const int32 CreaturesPerFloor = 258;
+	const int32 TotalFloors = 50;
+
+	int64 Whole = 0;
+	for (int32 Which = 1; Which <= TotalFloors; ++Which)
+	{
+		FCataclysmScoredFloor Floor;
+		Floor.DifficultyTier = 1;
+		Floor.TotalFloors = TotalFloors;
+		Floor.FloorNumber = Which;
+
+		// Weighted by what actually spawns, from the SpawnWeight column of
+		// game/Data/EnemyRarities.csv: Common 0.6, Elite 0.2, Legendary 0.15,
+		// Herald 0.04, Boss 0.01.
+		const double Weights[] = { 0.6, 0.2, 0.15, 0.04, 0.01, 0.0 };
+		double PerCreature = 0.0;
+		for (int32 Step = 0; Step < UCataclysmEnemyScore::RarityStepCount; ++Step)
+		{
+			PerCreature += Weights[Step]
+				* static_cast<double>(UCataclysmEnemyScore::ScoreFor(Floor, Step));
+		}
+		Whole += static_cast<int64>(PerCreature * CreaturesPerFloor);
+	}
+
+	// The measured figure is 2,649,059. This is built from integer scores rather
+	// than the model's floats, so it will not land on it exactly.
+	TestTrue(FString::Printf(
+			TEXT("a fully cleared tier 1 dungeon is worth %lld, and the balance "
+				 "work measured 2,649,059"), Whole),
+		Whole > 2400000 && Whole < 2900000);
+
+	const int32 Gained = State->GrantExperience(Whole);
+	TestTrue(FString::Printf(
+			TEXT("clearing it takes a fresh character to level %d, and the "
+				 "curve says about 11"), State->GetCharacterLevel()),
+		Gained >= 8 && Gained <= 14);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyScoreAKillIsWhatGrantsIt,
+	"Cataclysm.EnemyScore.KillingAnEnemyIsWhatGrantsTheExperience",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemyScoreAKillIsWhatGrantsIt::RunTest(const FString&)
+{
+	// THE TEST ABOVE PROVES THE ARITHMETIC AND SAYS NOTHING ABOUT WHETHER A KILL
+	// DOES IT. Without this one the whole award could be deleted from
+	// `ACataclysmEnemyCharacter::HandleDeath` and every other test in this file
+	// would still pass. It is the same separation
+	// `Cataclysm.Drop.KillingAnEnemyIsWhatPutsLootOnTheFloor` exists for, and
+	// this file follows it because the drop roll and the experience award happen
+	// on the same death for the same reason.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+
+	// A PLAYER CONTROLLER AND NOT A BARE AController, WHICH IS ABSTRACT.
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("player state"), PlayerState)
+		|| !TestNotNull(TEXT("player controller"), Controller)
+		|| !TestNotNull(TEXT("player character"), Player))
+	{
+		return false;
+	}
+
+	// AController::Possess AND NOT APawn::PossessedBy. Possess runs both halves:
+	// the pawn learns its controller and the controller learns its pawn. A kill
+	// finds the player through `GetFirstPlayerController`, and the award reads
+	// the player state off that controller, so only the controller's half
+	// matters here -- but possessing properly is what the neighbouring drop
+	// tests do and copying half of it is how those went wrong once already.
+	Controller->SetPlayerState(PlayerState);
+	Controller->Possess(Player);
+
+	PlayerState->SetLevelAndExperience(1, 0);
+	const int64 Before = PlayerState->GetExperienceIntoLevel();
+
+	// A BOSS, so the amount is large enough that nothing else could account for
+	// it, and so this does not depend on where the sandbox's single floor sits.
+	constexpr int32 BossStep = 4;
+	const int32 Worth = UCataclysmEnemyScore::ScoreFor(
+		UCataclysmEnemyScore::FloorIn(World), BossStep);
+	TestTrue(TEXT("a Boss is worth something to begin with"), Worth > 0);
+
+	ACataclysmEnemyCharacter* Victim =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature to kill"), Victim))
+	{
+		return false;
+	}
+	Victim->SetRarityStep(BossStep);
+	Victim->HandleDeath();
+
+	TestEqual(TEXT("killing it granted exactly its Enemy Score"),
+		PlayerState->GetExperienceIntoLevel() - Before,
+		static_cast<int64>(Worth));
+
+	// AND A RARER CREATURE GRANTS MORE, which is what stops the award reading a
+	// fixed number or the wrong creature's rarity.
+	const int64 AfterBoss = PlayerState->GetExperienceIntoLevel();
+	ACataclysmEnemyCharacter* Lesser =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(600.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a second creature"), Lesser))
+	{
+		return false;
+	}
+	Lesser->SetRarityStep(0);
+	Lesser->HandleDeath();
+
+	const int64 FromCommon = PlayerState->GetExperienceIntoLevel() - AfterBoss;
+	TestTrue(FString::Printf(
+			TEXT("a Common granted %lld, less than the Boss's %d"),
+			FromCommon, Worth),
+		FromCommon > 0 && FromCommon < Worth);
 
 	return true;
 }

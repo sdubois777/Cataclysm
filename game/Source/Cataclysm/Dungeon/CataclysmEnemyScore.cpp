@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Dungeon/CataclysmEnemyScore.h"
+#include "Player/CataclysmGameMode.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
 
 namespace
 {
@@ -187,4 +190,37 @@ TArray<int32> UCataclysmEnemyScore::ScoresFor(const FCataclysmScoredFloor& Floor
 		Out.Add(ScoreFor(Floor, Step));
 	}
 	return Out;
+}
+
+FCataclysmScoredFloor UCataclysmEnemyScore::FloorIn(const UObject* WorldContext)
+{
+	FCataclysmScoredFloor Floor;
+
+	// THE DEFAULTS ARE THE ANSWER WHEN THERE IS NO GAME MODE, and they are a
+	// real floor rather than a refusal: difficulty tier 1, one floor of one, a
+	// Basic dungeon with no sub-type. An automation test that kills a creature
+	// in a bare world still gets a score out of this.
+	const UWorld* World = GEngine
+		? GEngine->GetWorldFromContextObject(WorldContext,
+											 EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	if (!World)
+	{
+		return Floor;
+	}
+
+	Floor.DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
+
+	if (const ACataclysmGameMode* Mode = World->GetAuthGameMode<ACataclysmGameMode>())
+	{
+		Floor.FloorNumber = Mode->RunFloorNumber();
+		Floor.TotalFloors = Mode->RunTotalFloors();
+		Floor.Type = Mode->RunDungeonType();
+		Floor.SubType = Mode->RunDungeonSubType();
+	}
+
+	// THE MODIFIER SCORE IS LEFT AT ZERO because dungeon modifiers do not exist.
+	// It is a flat addend in the model rather than a multiplier, so zero is
+	// exactly "no modifiers" and not an approximation. Issue #41.
+	return Floor;
 }

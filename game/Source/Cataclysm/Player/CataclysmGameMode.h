@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "Dungeon/CataclysmEnemyScore.h"
 #include "CataclysmGameMode.generated.h"
 
 /**
@@ -203,6 +204,39 @@ public:
 
 	/** Which floor of it, counted from 1. See `RunFloorName`. */
 	virtual int32 RunFloorNumber() const { return 1; }
+
+	/**
+	 * How many floors the whole dungeon has.
+	 *
+	 * NEEDED BY ENEMY SCORE AND BY NOTHING ELSE YET. That model's baseline is
+	 * driven by `RunFloorNumber() / RunTotalFloors()`, so without a total there
+	 * is no floor ratio and a creature has no score at all. Issue #926.
+	 *
+	 * ONE IN THE SANDBOX, which is the honest answer rather than a fudge: the
+	 * sandbox is a single place, and a fight in it happens on the only floor
+	 * there is. That makes the ratio 1, so a sandbox creature scores as though
+	 * it stood on a dungeon's last floor.
+	 */
+	virtual int32 RunTotalFloors() const { return 1; }
+
+	/**
+	 * Which kind of dungeon the fight is in, and what that dungeon does
+	 * differently.
+	 *
+	 * BASIC AND NO SUB-TYPE IN THE SANDBOX. Both carry a weight of zero in the
+	 * Enemy Score model, so this is genuinely "nothing added" rather than an
+	 * approximation standing in for something unknown.
+	 */
+	virtual ECataclysmDungeonType RunDungeonType() const
+	{
+		return ECataclysmDungeonType::Basic;
+	}
+
+	/** See `RunDungeonType`. */
+	virtual ECataclysmDungeonSubType RunDungeonSubType() const
+	{
+		return ECataclysmDungeonSubType::None;
+	}
 
 	/**
 	 * The rung a creature spawns at, given what its sandbox setting holds.

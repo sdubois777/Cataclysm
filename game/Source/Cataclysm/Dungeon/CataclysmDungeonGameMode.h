@@ -73,6 +73,46 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon", meta = (ClampMin = "1"))
 	int32 FloorNumber = 1;
 
+	/**
+	 * How many floors the whole dungeon has.
+	 *
+	 * A STAND-IN, THE SAME WAY `Cataclysm.PlayerLevel` WAS ONE BEFORE LEVELLING
+	 * EXISTED. There is no dungeon object to take a length from -- that is issue
+	 * #41 -- and until there is, this is a setting and a console variable. It
+	 * does NOT stop the stairs: `GoDownOneFloor` still descends past it, because
+	 * a bottom to the dungeon is part of #41 rather than of this number.
+	 *
+	 * WHAT IT IS FOR TODAY, AND IT IS ONE THING: Enemy Score. That model's
+	 * baseline is driven by `FloorNumber / TotalFloors`, so without a total
+	 * there is no floor ratio and a creature has no score at all -- and since
+	 * 2026-08-24 a creature's score IS the experience it grants. Issue #926.
+	 *
+	 * TEN, WHICH IS INSIDE THE DESIGN'S SMALLEST BASIC DUNGEON of 8 to 15
+	 * floors, and chosen over the 50-floor average for a reason worth keeping: at
+	 * difficulty tier 1 the depth term is large and negative near an entrance, so
+	 * in a 50-floor dungeon the first three floors score a Common enemy below
+	 * zero and pay no experience at all. In a 10-floor dungeon every floor pays
+	 * something, so somebody pressing Play and killing the first creature they
+	 * see is not told that it was worth nothing.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon", meta = (ClampMin = "1"))
+	int32 TotalFloors = 10;
+
+	/**
+	 * Which kind of dungeon this is, and what it does differently.
+	 *
+	 * READ ONLY BY ENEMY SCORE SO FAR. Neither changes how a floor is built or
+	 * what stands on it; a Horde dungeon being one big arena is issue #41's
+	 * side of the join. Both are here because the score model takes them and
+	 * Basic with no sub-type is the only combination that adds nothing.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
+	ECataclysmDungeonType DungeonType = ECataclysmDungeonType::Basic;
+
+	/** See `DungeonType`. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
+	ECataclysmDungeonSubType DungeonSubType = ECataclysmDungeonSubType::None;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
@@ -137,6 +177,20 @@ public:
 	/** The floor number that will actually be used, console variable included. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
 	int32 ChooseFloorNumber() const;
+
+	/**
+	 * The dungeon's length that will actually be used, console variable included.
+	 *
+	 * NEVER BELOW THE FLOOR BEING WALKED. The stairs descend for ever -- there
+	 * is no bottom until issue #41 -- so a player can walk to floor 40 of a
+	 * dungeon set to 10. Reporting a total below the current floor would give
+	 * Enemy Score a floor ratio above one, which is outside anything the model
+	 * was fitted for and would make every creature down there worth more than a
+	 * Cataclysm Boss. Answering with the deeper of the two treats a player who
+	 * has walked past the end as being on the last floor.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	int32 ChooseTotalFloors() const;
 
 	/** The layout family that will actually be used, console variable included. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
@@ -322,6 +376,29 @@ public:
 
 	/** Which floor of it. See `RunFloorName`. */
 	virtual int32 RunFloorNumber() const override { return FloorNumber; }
+
+	/**
+	 * How long the dungeon is, and what kind it is. Read by Enemy Score.
+	 *
+	 * `ChooseTotalFloors` RATHER THAN `TotalFloors`, unlike `RunFloorNumber`
+	 * above, and the asymmetry is deliberate. `RunFloorNumber` can return the
+	 * raw setting because `GoToFloor` writes the walked floor back into it, so
+	 * the setting is always current. Nothing writes the LENGTH back, and the
+	 * stairs descend past it, so the raw setting can fall below the floor being
+	 * walked. The two are read together to make a floor ratio, and a ratio above
+	 * one is outside anything the Enemy Score model was fitted for.
+	 */
+	virtual int32 RunTotalFloors() const override { return ChooseTotalFloors(); }
+
+	virtual ECataclysmDungeonType RunDungeonType() const override
+	{
+		return DungeonType;
+	}
+
+	virtual ECataclysmDungeonSubType RunDungeonSubType() const override
+	{
+		return DungeonSubType;
+	}
 
 protected:
 

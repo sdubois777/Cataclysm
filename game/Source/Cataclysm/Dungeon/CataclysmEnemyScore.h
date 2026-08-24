@@ -202,4 +202,16 @@ public:
 
 	/** Every rarity's score on one floor, indexed by rarity step 0 to 5. */
 	static TArray<int32> ScoresFor(const FCataclysmScoredFloor& Floor);
+
+	/**
+	 * Where a fight is happening, read out of the world's game mode.
+	 *
+	 * SHAPED LIKE `ACataclysmGameMode::DifficultyTierIn`, and it answers with
+	 * the defaults above when there is no world or no Cataclysm game mode. That
+	 * matters: an automation test that kills a creature in a bare world still
+	 * gets a real score rather than nothing.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Score",
+			  meta = (WorldContext = "WorldContext"))
+	static FCataclysmScoredFloor FloorIn(const UObject* WorldContext);
 };

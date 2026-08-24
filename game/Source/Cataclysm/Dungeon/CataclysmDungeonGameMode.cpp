@@ -65,6 +65,29 @@ namespace
 		ECVF_Default);
 
 	/**
+	 * How many floors the whole dungeon has. 0 uses the setting.
+	 *
+	 * ZERO MEANS "USE THE SETTING", like the seed and floor controls above and
+	 * unlike the layout and density controls below, because a dungeon of no
+	 * floors is not a real answer -- it is one that would divide by zero in the
+	 * Enemy Score model.
+	 *
+	 * WHAT IT IS FOR. Enemy Score, and therefore the experience a kill grants,
+	 * is driven by how deep into a dungeon a floor is. Being able to type
+	 * another length and press Play again is how "what is this creature worth"
+	 * gets looked at rather than argued about. Issue #926.
+	 */
+	static int32 GCataclysmDungeonFloorCountOverride = 0;
+	static FAutoConsoleVariableRef CVarCataclysmDungeonFloorCount(
+		TEXT("Cataclysm.DungeonFloorCount"),
+		GCataclysmDungeonFloorCountOverride,
+		TEXT("How many floors the whole dungeon has, which decides how deep a "
+			 "floor is and so what a creature standing on it is worth. 0 uses "
+			 "the game mode's own setting. Never reported below the floor being "
+			 "walked, because the stairs go down for ever."),
+		ECVF_Default);
+
+	/**
 	 * Which layout family carves it. -1 uses the setting.
 	 *
 	 * MINUS ONE RATHER THAN ZERO MEANS "USE THE SETTING" HERE, unlike the two
@@ -244,6 +267,22 @@ int32 ACataclysmDungeonGameMode::ChooseFloorNumber() const
 {
 	return FMath::Max(1, (GCataclysmDungeonFloorOverride > 0)
 		? GCataclysmDungeonFloorOverride : FloorNumber);
+}
+
+int32 ACataclysmDungeonGameMode::ChooseTotalFloors() const
+{
+	const int32 Asked = FMath::Max(1, (GCataclysmDungeonFloorCountOverride > 0)
+		? GCataclysmDungeonFloorCountOverride : TotalFloors);
+
+	// NEVER BELOW THE FLOOR BEING WALKED. The stairs descend for ever -- there
+	// is no bottom to a dungeon until issue #41 -- so a player can stand on
+	// floor 40 of a dungeon whose length says 10. Enemy Score divides the two to
+	// get a floor ratio, and a ratio above one is outside anything the model was
+	// fitted for: at tier 8 it would make an ordinary creature on floor 40 worth
+	// more than a Cataclysm Boss on the last floor. Answering with the deeper of
+	// the two treats a player who has walked past the end as being at the end,
+	// which is the honest reading of a length nothing enforces.
+	return FMath::Max(Asked, ChooseFloorNumber());
 }
 
 ECataclysmFloorLayout ACataclysmDungeonGameMode::ChooseLayout() const
