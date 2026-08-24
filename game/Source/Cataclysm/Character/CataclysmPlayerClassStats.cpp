@@ -3,6 +3,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmClassStats.h"
@@ -83,6 +84,7 @@ UCataclysmPlayerClassStats::StatToAttribute()
 		using Vital = UCataclysmVitalAttributeSet;
 		using Combat = UCataclysmCombatAttributeSet;
 		using Resource = UCataclysmClassResourceAttributeSet;
+		using Resistance = UCataclysmResistanceAttributeSet;
 
 		return TMap<FString, FGameplayAttribute>{
 			// The pools and what refills them.
@@ -99,10 +101,57 @@ UCataclysmPlayerClassStats::StatToAttribute()
 
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
+
+			// EVASION AND BLOCK, WHICH NO CLASS LINE NAMES AND GEAR SUPPLIES
+			// ENTIRELY. UCataclysmDamageCalculation rolls both -- evasion at
+			// line 278 and a block at line 323 -- and until issue #894 neither
+			// attribute could ever hold anything but the zero it starts at,
+			// because the four affixes granting them were dropped here.
+			//
+			// A ZERO BASE IS THE DESIGN AND NOT A GAP. The design document says
+			// a class "does not need a base above zero for every stat" and that
+			// a class with no base evasion is "how a class declines to care
+			// about a stat". An INCREASED evasion affix on a character with no
+			// flat evasion therefore still grants nothing, which is the
+			// pipeline working rather than this entry failing.
+			{TEXT("evasion"), Combat::GetEvasionAttribute()},
+			{TEXT("block_chance"), Combat::GetBlockChanceAttribute()},
 			{TEXT("damage_reduction"), Combat::GetDamageReductionAttribute()},
 			{TEXT("crowd_control_resistance"),
 			 Combat::GetCrowdControlResistanceAttribute()},
 			{TEXT("retaliation"), Combat::GetRetaliationAttribute()},
+
+			// THE EIGHT RESISTANCES, AND GEAR IS THE ONLY SOURCE OF ANY OF
+			// THEM. The three resistance families in game/Data/Affixes.csv are
+			// the only thing in the game that grants resistance and no class
+			// line names one, so before issue #894 every hit a player took was
+			// resolved against a resistance of zero however much resistance
+			// gear they were wearing.
+			//
+			// THE KEYS MATCH UCataclysmItemModifiers::ResistanceStatFor, which
+			// builds "resistance_<type>" in lower case out of the damage type
+			// name. A key that stopped matching would go back to dropping the
+			// affix in silence, which is what
+			// Cataclysm.Equipment.EveryStatAnAffixGrantsHasAnAttributeBehindIt
+			// fails on.
+			//
+			// A PLAYER CARRIES THE PER-TYPE SET AND AN ENEMY CARRIES ONE
+			// FIGURE. UCataclysmDamageCalculation reads both and adds them, so
+			// writing these eight changes nothing about an enemy, which holds
+			// UCataclysmAllResistanceAttributeSet instead and is skipped by the
+			// HasAttributeSetForAttribute check below.
+			{TEXT("resistance_war"), Resistance::GetWarResistanceAttribute()},
+			{TEXT("resistance_demonic"),
+			 Resistance::GetDemonicResistanceAttribute()},
+			{TEXT("resistance_death"), Resistance::GetDeathResistanceAttribute()},
+			{TEXT("resistance_pestilence"),
+			 Resistance::GetPestilenceResistanceAttribute()},
+			{TEXT("resistance_famine"),
+			 Resistance::GetFamineResistanceAttribute()},
+			{TEXT("resistance_celestial"),
+			 Resistance::GetCelestialResistanceAttribute()},
+			{TEXT("resistance_chaos"), Resistance::GetChaosResistanceAttribute()},
+			{TEXT("resistance_void"), Resistance::GetVoidResistanceAttribute()},
 
 			// What a hit is worth.
 			//
@@ -133,7 +182,27 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("attack_damage"), Combat::GetAttackDamageAttribute()},
 			{TEXT("attack_speed"), Combat::GetAttackSpeedAttribute()},
 
+			// CRITICAL STRIKE CHANCE IS THE SKILL'S BASE SCALED BY GEAR, which
+			// is what the design says in as many words: "Critical strike chance
+			// belongs to the skill, not the character. Each skill carries its
+			// own base chance, and the character's gear and attributes scale
+			// it." So the base arrives through BaseOverrides exactly as attack
+			// speed does, from UCataclysmEquipmentComponent::
+			// StatBasesFromWeapons, and the four affixes that name it are
+			// ordinary modifiers on top.
+			//
+			// UNTIL ISSUE #894 UCataclysmWeaponSlotsComponent WROTE IT INSTEAD,
+			// with SetNumericAttributeBase, so a gear affix could not have
+			// scaled it even had it arrived: the write replaced the whole value
+			// every time a weapon was equipped. That write is gone and this is
+			// the only writer, which is the same resolution issue #845 reached
+			// for attack damage when two places were writing one attribute.
+			{TEXT("crit_chance"), Combat::GetCritChanceAttribute()},
 			{TEXT("crit_multiplier"), Combat::GetCritMultiplierAttribute()},
+
+			// Penetration cuts into a defender's resistance, and is read at
+			// CataclysmVitalAttributeSet.cpp where the hit is resolved.
+			{TEXT("penetration"), Combat::GetPenetrationAttribute()},
 			{TEXT("spell_damage"), Combat::GetSpellDamageAttribute()},
 			{TEXT("area_of_effect"), Combat::GetAreaOfEffectAttribute()},
 			{TEXT("dot_damage"), Combat::GetDotDamageAttribute()},

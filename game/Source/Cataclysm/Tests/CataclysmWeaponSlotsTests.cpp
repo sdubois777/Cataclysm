@@ -998,85 +998,17 @@ bool FCataclysmWeaponSubTypeTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponSlotsWriteTheBaseCritChance,
-	"Cataclysm.WeaponSlots.GrantedSkillsBringTheirBaseCriticalStrikeChance",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmWeaponSlotsWriteTheBaseCritChance::RunTest(const FString&)
-{
-	// NOTHING WROTE THIS UNTIL ISSUE #649, so a player's critical strike chance
-	// stood at the zero the attribute set initialises it to, with the comment
-	// "supplied by the skill in use" describing an intention nobody had built.
-	// The player never critically struck, and everything that scales the stat --
-	// the Ferocity attribute, three affixes, two gems, eight item base implicits
-	// and two whole passive tree branches -- multiplied zero.
-	//
-	// IT IS THE SKILL'S NUMBER AND NOT THE WEAPON'S. The design's stat source
-	// table says "the skill being used" supplies critical strike chance, and the
-	// sentence after it is explicit: "A character has no critical strike chance
-	// in the abstract." It is written here because this is the moment a weapon's
-	// skills are granted, and the moment they are taken away again.
-	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
-									   /*bInformEngineOfWorld=*/false);
-	if (!World)
-	{
-		AddError(TEXT("Could not create a world."));
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-
-	AActor* Actor = World->SpawnActor<AActor>();
-	if (!TestNotNull(TEXT("an actor"), Actor))
-	{
-		return false;
-	}
-
-	UCataclysmAbilitySystemComponent* AbilitySystem =
-		NewObject<UCataclysmAbilitySystemComponent>(Actor);
-	AbilitySystem->RegisterComponent();
-
-	// A raw pointer on purpose: AddAttributeSetSubobject is a template and a
-	// TObjectPtr would deduce the wrapper rather than the set.
-	UCataclysmCombatAttributeSet* Combat =
-		NewObject<UCataclysmCombatAttributeSet>(Actor);
-	AbilitySystem->AddAttributeSetSubobject(Combat);
-	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
-
-	UCataclysmWeaponSlotsComponent* Slots =
-		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
-	Slots->RegisterComponent();
-	Slots->SetDamageType(CataclysmWeaponSlotsTest::DesignedDamageType);
-
-	TestEqual(TEXT("a character holding nothing has no critical strike chance"),
-		Combat->GetCritChance(), 0.0f, 0.001f);
-
-	Slots->EquipWeaponType(TEXT("Sword"));
-	TestEqual(TEXT("a weapon's skills bring the 5% base with them"),
-		Combat->GetCritChance(),
-		UCataclysmWeaponSlotsComponent::DefaultSkillCritChancePercent, 0.001f);
-
-	// 5 RATHER THAN WHATEVER THE CONSTANT SAYS. Comparing the attribute with the
-	// constant alone would pass if both were zero, which is the exact state this
-	// test exists to catch.
-	TestEqual(TEXT("and that base is five percent"),
-		UCataclysmWeaponSlotsComponent::DefaultSkillCritChancePercent, 5.0f,
-		0.001f);
-
-	// SWAPPING KEEPS IT, because the new weapon grants its own skills and they
-	// take the same default.
-	Slots->EquipWeaponType(TEXT("Dagger"));
-	TestEqual(TEXT("swapping weapon keeps it"), Combat->GetCritChance(), 5.0f,
-		0.001f);
-
-	// AND PUTTING THE WEAPON DOWN TAKES IT AWAY, for the same reason the weapon's
-	// damage and its rate go: a character holding nothing swings nothing, so
-	// there is no skill in use to supply a chance.
-	Slots->UnequipWeapon();
-	TestEqual(TEXT("and putting it down takes it away again"),
-		Combat->GetCritChance(), 0.0f, 0.001f);
-
-	return true;
-}
+// THE TEST FOR THE BASE CRITICAL STRIKE CHANCE HAS MOVED. Issue #894 took the
+// write away from this component: UCataclysmWeaponSlotsComponent::
+// ApplyBaseCritChance SET the attribute on every equip, so a gear affix naming
+// critical strike chance could not survive the next weapon change. The base now
+// arrives from UCataclysmEquipmentComponent::StatBasesFromWeapons and
+// UCataclysmPlayerClassStats::ApplyTo writes it, exactly as the swing rate does.
+//
+// What it asserted is still asserted, in
+// Cataclysm.Equipment.ACriticalStrikeChanceAffixScalesTheSkillsBase: a character
+// holding a weapon has the skill's five per cent, one holding nothing has none,
+// and an affix scales it rather than replacing it.
 
 /**
  * A row's own critical strike chance is stamped onto the granted skill. #657.

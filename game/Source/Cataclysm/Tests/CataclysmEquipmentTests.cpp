@@ -17,6 +17,7 @@
 #include "Engine/World.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -1232,13 +1233,17 @@ bool FCataclysmAttackSpeedReachesTheCharacter::RunTest(const FString& Parameters
  * WHAT THESE TWO TESTS ADD, AND WHERE THE EXISTING GUARD STOPS.
  *
  * On 2026-08-23 the project owner said they did not believe the gear affixes
- * were working. They were right. Of the eighty-five rows of
- * game/Data/Affixes.csv, TWENTY-FIVE change something a player can feel.
- * Thirty-four have an attribute behind every stat they grant; nine of those
- * thirty-four then reach an attribute nothing reads (#895), or one that only
+ * were working. They were right: twenty-five of the eighty-five rows of
+ * game/Data/Affixes.csv changed something a player could feel.
+ *
+ * ISSUE #894 RAISED THAT TO FORTY, by giving twelve stat names an attribute to
+ * be written to. Of the seventy-four rows that grant a stat, forty-nine now have
+ * an attribute behind every stat they grant and twenty-five have none. Nine of
+ * the forty-nine then reach an attribute nothing reads (#895), or one that only
  * clamps a pool nothing fills or spends, which is the class resource and is
- * issue #192. The rest are broken in six ways, filed as #894, #895, #896,
- * #897, #898 and #899.
+ * issue #192.
+ *
+ * The rest are broken in five ways, filed as #895, #896, #897, #898 and #899.
  *
  * Cataclysm.Items.EveryAffixInTheDataGrantsSomething already asserts that every
  * affix produces a MODIFIER, and every one of them does. The chain has two more
@@ -1274,15 +1279,11 @@ namespace CataclysmEquipmentTest
 	const TSet<FString>& StatsNoAttributeIsWrittenFrom()
 	{
 		static const TSet<FString> Stats = {
-			// #894. The attribute exists and arithmetic already reads it, so a
-			// StatToAttribute entry is the whole fix for these twelve.
-			TEXT("evasion"), TEXT("block_chance"), TEXT("crit_chance"),
-			TEXT("penetration"),
-			TEXT("resistance_war"), TEXT("resistance_demonic"),
-			TEXT("resistance_death"), TEXT("resistance_pestilence"),
-			TEXT("resistance_famine"), TEXT("resistance_celestial"),
-			TEXT("resistance_chaos"), TEXT("resistance_void"),
-
+			// #894 DELETED TWELVE NAMES FROM HERE -- evasion, block chance,
+			// critical strike chance, penetration and the eight resistances --
+			// by giving each a StatToAttribute entry. The arithmetic that reads
+			// them already existed, which is what made that issue the cheap one.
+			//
 			// #895. The attribute exists and NOTHING READS IT, so a map entry
 			// on its own would leave these eleven doing just as little.
 			TEXT("cooldown_reduction"),
@@ -1735,6 +1736,229 @@ bool FCataclysmEveryAffixReachesTheCharacter::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("most of the affix pool was worn, %d of it"),
 							 Reached + ReachedNothing),
 		Reached + ReachedNothing >= 60);
+
+	return true;
+}
+
+
+/**
+ * A CRITICAL STRIKE CHANCE AFFIX SCALES THE SKILL'S BASE. Issue #894.
+ *
+ * THE DESIGN DECIDES WHOSE NUMBER THIS IS, and it is not the character's:
+ * "Critical strike chance belongs to the skill, not the character. Each skill
+ * carries its own base chance, and the character's gear and attributes scale
+ * it." So the base has to arrive from what is held and the affixes have to
+ * multiply it, and before this issue neither happened.
+ *
+ * TWO WRITERS WERE THE FAULT, NOT ONE MISSING ONE.
+ * UCataclysmWeaponSlotsComponent::ApplyBaseCritChance SET the attribute on every
+ * equip, so even after `crit_chance` gained a StatToAttribute entry an affix
+ * could not have survived the next weapon change. That function is gone and
+ * UCataclysmPlayerClassStats::ApplyTo is the only writer, which is the same
+ * resolution issue #845 reached for attack damage.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCritChanceAffixesScaleTheSkillBase,
+	"Cataclysm.Equipment.ACriticalStrikeChanceAffixScalesTheSkillsBase",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCritChanceAffixesScaleTheSkillBase::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
+	if (!Affixes)
+	{
+		AddError(TEXT("The affix table could not be loaded."));
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayAttribute Crit =
+		UCataclysmCombatAttributeSet::GetCritChanceAttribute();
+	const float Base =
+		UCataclysmWeaponSlotsComponent::DefaultSkillCritChancePercent;
+
+	// FIVE RATHER THAN WHATEVER THE CONSTANT SAYS. Comparing the attribute
+	// against the constant alone would pass if both were zero, which is the
+	// state this whole test exists to catch.
+	TestEqual(TEXT("the skill default is five percent"), Base, 5.0f, 0.001f);
+
+	const FCataclysmItem Sword = Plain(OneHandedBase,
+									   UCataclysmItemValues::MaxGearLevel);
+
+	TestEqual(TEXT("a character holding a weapon has the skill's base chance"),
+		AttributeWearing(World, {Sword}, Crit), Base, 0.001f);
+
+	// A CHARACTER HOLDING NOTHING HAS NONE, which is the design's "a character
+	// has no critical strike chance in the abstract". Taking the last weapon off
+	// is refused in play (issue #841), so this is a state a player cannot reach,
+	// but the attribute must not keep what the last weapon gave it.
+	TestEqual(TEXT("and a character holding nothing has none"),
+		AttributeWearing(World, {}, Crit), 0.0f, 0.001f);
+
+	// A FLAT AFFIX ADDS TO THE BASE.
+	const FName FlatAffix = FName(TEXT("Stat_Flat_critical_strike_chance"));
+	const float WithFlat = AttributeWearing(
+		World, {Sword, Carrying(RingBase, FlatAffix, /*Breadth=*/0)}, Crit);
+	TestTrue(FString::Printf(
+		TEXT("a flat critical strike chance affix raises it, %.3f to %.3f"),
+		Base, WithFlat),
+		WithFlat > Base + 0.001f);
+
+	// AN INCREASED AFFIX MULTIPLIES IT, AND THAT IS THE WHOLE POINT. Adding
+	// would give the same answer as the flat affix and would say nothing about
+	// whether the three-bucket pipeline is being used.
+	//
+	// THE EXPECTED FIGURE IS READ OFF THE AFFIX ROW rather than written here, so
+	// re-tuning the affix does not break this test -- only the increase ceasing
+	// to apply, which is the fault.
+	const FName IncreasedAffix =
+		FName(TEXT("Stat_Increased_critical_strike_chance"));
+	const FCataclysmAffixRow* Row = Affixes->FindRow<FCataclysmAffixRow>(
+		IncreasedAffix, TEXT("test"), /*bWarnIfMissing=*/false);
+	if (!TestNotNull(TEXT("the increased critical strike chance affix exists"),
+					 Row))
+	{
+		return false;
+	}
+
+	const float Increase = UCataclysmItemValues::AffixValue(
+		Row->TopValue, UCataclysmItemValues::MaxAffixTier, /*Roll=*/1.0f,
+		UCataclysmItemValues::MaxGearLevel, /*bTwoHanded=*/false);
+
+	const float WithIncreased = AttributeWearing(
+		World, {Sword, Carrying(RingBase, IncreasedAffix, /*Breadth=*/0)}, Crit);
+
+	TestTrue(TEXT("the increased affix is worth something at all"),
+		Increase > 0.0f);
+	TestEqual(TEXT("an increased affix multiplies the base, not adds to it"),
+		WithIncreased, Base * (1.0f + Increase / 100.0f), 0.01f);
+
+	return true;
+}
+
+/**
+ * EVASION, BLOCK, PENETRATION AND RESISTANCE REACH THE CHARACTER. Issue #894.
+ *
+ * ALL RESISTANCE GEAR DID NOTHING AT ALL. The three resistance families in
+ * game/Data/Affixes.csv are the only source of resistance in the game and no
+ * class line names one, so every hit a player took was resolved against a
+ * resistance of zero however much resistance gear they wore.
+ *
+ * THE ARITHMETIC WAS ALREADY THERE FOR ALL FOUR, which is what separated this
+ * issue from #895. UCataclysmDamageCalculation rolls evasion at line 278, rolls
+ * a block at line 323 and subtracts resistance at line 58, and
+ * UCataclysmVitalAttributeSet reads penetration where the hit resolves. Only the
+ * StatToAttribute entry was missing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefensiveAffixesReachTheCharacter,
+	"Cataclysm.Equipment.EvasionBlockPenetrationAndResistanceAffixesReachTheCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDefensiveAffixesReachTheCharacter::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FCase
+	{
+		const TCHAR* Affix;
+		FGameplayAttribute Attribute;
+		const TCHAR* Named;
+	};
+
+	const FCase Cases[] = {
+		{TEXT("Stat_Flat_evasion"),
+		 UCataclysmCombatAttributeSet::GetEvasionAttribute(), TEXT("evasion")},
+		{TEXT("Stat_Flat_block_chance"),
+		 UCataclysmCombatAttributeSet::GetBlockChanceAttribute(),
+		 TEXT("block chance")},
+		{TEXT("Stat_Flat_penetration"),
+		 UCataclysmCombatAttributeSet::GetPenetrationAttribute(),
+		 TEXT("penetration")},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		// NO CLASS LINE NAMES ANY OF THE THREE, so a bare character has zero and
+		// anything above zero came from the affix. Asserting the bare figure as
+		// well is what stops this passing on a character that already had some.
+		TestEqual(FString::Printf(
+			TEXT("a character wearing nothing has no %s"), Case.Named),
+			AttributeWearing(World, {}, Case.Attribute), 0.0f, 0.001f);
+
+		const float Worn = AttributeWearing(
+			World, {Carrying(HeadBase, FName(Case.Affix), /*Breadth=*/0)},
+			Case.Attribute);
+
+		TestTrue(FString::Printf(
+			TEXT("wearing %s grants %s, which came out at %.3f"),
+			Case.Affix, Case.Named, Worn),
+			Worn > 0.001f);
+	}
+
+	// A SINGLE RESISTANCE AFFIX COVERS ONE DAMAGE TYPE AND NOT THE OTHER SEVEN.
+	// Carrying fills the item's damage type list from the front of
+	// DamageTypeNames, so a breadth of one is War.
+	const FCataclysmItem OneResistance = Carrying(
+		HeadBase, FName(TEXT("Resistance_Single_resistance")), /*Breadth=*/1);
+
+	const float War = AttributeWearing(World, {OneResistance},
+		UCataclysmResistanceAttributeSet::GetWarResistanceAttribute());
+	const float Demonic = AttributeWearing(World, {OneResistance},
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute());
+
+	TestTrue(FString::Printf(
+		TEXT("a single resistance affix naming War grants War resistance, %.3f"),
+		War), War > 0.001f);
+	TestEqual(TEXT("and grants no resistance to a type it does not name"),
+		Demonic, 0.0f, 0.001f);
+
+	// AND THE ALL-RESISTANCES FAMILY REACHES EVERY ONE OF THE EIGHT. A loop over
+	// the damage type names rather than eight lines, so a ninth damage type
+	// would be checked without anybody editing this.
+	const FCataclysmItem AllResistances = Carrying(
+		HeadBase, FName(TEXT("Resistance_All_resistances")),
+		UCataclysmItemModifiers::DamageTypeNames().Num());
+
+	const TMap<FName, FGameplayAttribute> ResistanceOf = {
+		{TEXT("War"), UCataclysmResistanceAttributeSet::GetWarResistanceAttribute()},
+		{TEXT("Demonic"), UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute()},
+		{TEXT("Death"), UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute()},
+		{TEXT("Pestilence"), UCataclysmResistanceAttributeSet::GetPestilenceResistanceAttribute()},
+		{TEXT("Famine"), UCataclysmResistanceAttributeSet::GetFamineResistanceAttribute()},
+		{TEXT("Celestial"), UCataclysmResistanceAttributeSet::GetCelestialResistanceAttribute()},
+		{TEXT("Chaos"), UCataclysmResistanceAttributeSet::GetChaosResistanceAttribute()},
+		{TEXT("Void"), UCataclysmResistanceAttributeSet::GetVoidResistanceAttribute()},
+	};
+
+	for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FGameplayAttribute* Attribute = ResistanceOf.Find(Type);
+		if (!TestNotNull(*FString::Printf(
+				TEXT("%s is a damage type this test knows an attribute for"),
+				*Type.ToString()), Attribute))
+		{
+			continue;
+		}
+
+		TestTrue(FString::Printf(
+			TEXT("the all-resistances affix grants %s resistance"),
+			*Type.ToString()),
+			AttributeWearing(World, {AllResistances}, *Attribute) > 0.001f);
+	}
 
 	return true;
 }
