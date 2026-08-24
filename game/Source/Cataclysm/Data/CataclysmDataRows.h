@@ -222,23 +222,86 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	/**
 	 * Seconds the effect lasts. Zero means the design has not stated one.
 	 *
-	 * Only Burn carries a value today. It was added because every one of the
-	 * sixteen designed Demonic skills applies burn and the design stated neither
-	 * how long it lasts nor what it deals, so "sets each one alight" applied an
-	 * effect made of nothing.
+	 * It was added because every one of the sixteen designed Demonic skills
+	 * applies burn and the design stated neither how long it lasts nor what it
+	 * deals, so "sets each one alight" applied an effect made of nothing.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
 	float DurationSeconds = 0.0f;
 
 	/**
-	 * What the whole effect is worth, as a percent of the hit that applied it.
+	 * What ONE TICK deals, as a percent of the hit that applied it.
 	 *
-	 * Spread evenly across DurationSeconds. Zero means the design has not stated
-	 * one, and an effect worth zero applies nothing rather than applying
-	 * silently for no damage.
+	 * NOT A TOTAL SPREAD ACROSS THE DURATION, which is what this said and what
+	 * the engine did until 2026-08-24. Under that reading raising the tick rate
+	 * divided the same total into more, smaller ticks, so Damage over Time
+	 * Frequency could not be worth anything -- and the design's stated reason
+	 * for having three separate damage over time stats is that all three
+	 * multiply. `docs/DECISIONS.md` carries the decision.
+	 *
+	 * The base tick is one second, so Burn's 4 seconds and 20 is 20% of the hit
+	 * every second for four seconds, which is 80% of the hit altogether.
+	 *
+	 * Zero means the design has not stated one, and an effect worth zero
+	 * applies nothing rather than applying silently for no damage.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
 	float PercentOfHit = 0.0f;
+
+	/**
+	 * The effect's own magnitude, in whatever unit its description names.
+	 *
+	 * Cripple's 30% slow, Weaken's 20% damage reduction, Shred's 10 resistance,
+	 * Necrosis's 25% healing reduction. Zero means the effect has no strength
+	 * axis at all, which is true of every damage over time effect and of
+	 * Madness and Stun.
+	 *
+	 * Added for issue #904, along with the three fields below. Before it, four
+	 * player-applied debuffs stated their strength only in prose in Description
+	 * and everything reading the table saw zero.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	float Strength = 0.0f;
+
+	/**
+	 * Where Strength stops rising and the magnitude extends the duration
+	 * instead. Cripple and Weaken cap at 80, Necrosis at 100.
+	 *
+	 * ZERO MEANS NO NUMERIC CAP, NOT A CAP OF ZERO. Shred is the reason the
+	 * distinction matters: its cap is the target's own resistance reaching zero,
+	 * which is a property of whatever it is applied to rather than a number
+	 * belonging to the effect, so it cannot be written here at all.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	float StrengthCap = 0.0f;
+
+	/**
+	 * Where DurationSeconds stops rising. Zero means no cap.
+	 *
+	 * Only Stun has one, at 3 seconds, and Stun is the one effect whose scaling
+	 * stops dead rather than rolling over into something else: its magnitude IS
+	 * its duration, so there is nothing left to roll into. The design gives the
+	 * reason -- a stun as long as the 5 second immunity window would hold a
+	 * target for ever.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	float DurationCap = 0.0f;
+
+	/**
+	 * What one tick deals as a percent of the target's CURRENT health, for an
+	 * effect measured against what it is applied to rather than against the hit.
+	 *
+	 * Only Void Splinter uses it, at 1% a second over 4 seconds. Because it is
+	 * a share of current rather than maximum health it falls as the target does
+	 * and can never finish anything off on its own.
+	 *
+	 * A SEPARATE FIELD RATHER THAN A STRING SAYING WHICH BASIS PercentOfHit
+	 * USES. A misspelled basis would silently read as "the hit" and apply the
+	 * wrong arithmetic with nothing reporting an error; a number cannot be
+	 * misspelled. An effect states one or the other, never both.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	float PercentOfCurrentHealth = 0.0f;
 };
 
 /**

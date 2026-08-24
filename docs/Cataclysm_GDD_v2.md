@@ -1496,6 +1496,14 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
+**Every number in this section is a column of the DoTs or Debuffs sheet, and there are six of them.** Until 2026-08-24 there were two, a duration and a percent of the hit, and that was not enough to write these effects down: Cripple's 30% slow, Weaken's 20% damage reduction, Shred's 10 resistance, Necrosis's 25% healing reduction and Void Splinter's 1% of current health had nowhere to go, and neither did any of the caps. So seven of the eleven effects stated their real numbers in prose in a Description column and nothing reading the table could see them. Four columns were added — a strength, a cap on that strength, a cap on the duration, and a percent of the target's current health for an effect measured against the target rather than against the hit.
+
+  
+
+**Those three sheets deliberately have no heading row**, so `docs/README.md` is the only place that says what each column holds and it has to be kept current when one is added. `tools/tests/test_status_effect_numbers_match_their_prose.py` checks that a number in a column still agrees with the sentence that states it, in both directions, so the prose and the data cannot drift apart the way they did before.
+
+  
+
 | Metric | The stat that raises it | What raising it does | Total damage |
 | :-- | :-- | :-- | :-- |
 | Damage per tick | Damage over Time | Each tick hits harder | Rises |

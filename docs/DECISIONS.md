@@ -20,6 +20,86 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — A status effect's strength and its caps become columns, and the sheets stay heading-less
+
+**Affects:** the DoTs and Debuffs sheets of `docs/All_Things_Cataclysm.xlsx` and
+through them `game/Data/StatusEffects.csv`; `tools/generate_datatables.py`;
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`; `docs/README.md`; and
+`docs/Cataclysm_GDD_v2.md`. **Applied in all five.** Issue #904.
+
+### What was asked
+
+Ten of the eleven ailments a gear affix can apply stated a duration of zero
+seconds and zero damage. Seven of those ten stated real numbers in prose in a
+Description column, where nothing reading the table could see them, and four
+could not be written down at all: `DurationSeconds` and `PercentOfHit` were the
+only numeric columns, so Cripple's 30% slow, Weaken's 20% damage reduction,
+Shred's 10 resistance, Necrosis's 25% healing reduction and Void Splinter's 1%
+of current health per second each had nowhere to go, and neither did any cap.
+
+### The decision
+
+**Four columns were added: `Strength`, `StrengthCap`, `DurationCap` and
+`PercentOfCurrentHealth`.** They are exactly what the design's own magnitude
+rules already needed and no more. That rule reads "the strength up to that cap,
+then the duration instead", which is three of the four; the fourth is for an
+effect measured against the target rather than against the hit.
+
+**No `MagnitudeScales` column, because the rule is derivable.** The design's
+table lists three cases — magnitude scales the damage, or the strength then the
+duration, or the duration. All three follow from which cells are filled in:
+magnitude scales the damage where there is damage, and the strength where there
+is a strength, and extends the duration once both are capped or absent. Necrosis
+is the row that proves the derivation rather than breaking it, because the design
+says its magnitude scales both its damage and its healing reduction, which is
+what "both, where both exist" gives.
+
+**`PercentOfCurrentHealth` is a separate column rather than a string naming which
+basis `PercentOfHit` uses.** A misspelled basis would silently read as "the hit"
+and apply the wrong arithmetic with nothing reporting an error. A number cannot
+be misspelled. Only Void Splinter uses it.
+
+**An empty `StrengthCap` means no numeric cap, not a cap of zero.** Shred is why:
+its magnitude rises "until that resistance reaches zero", which is a property of
+whatever it is applied to and not a number belonging to the effect.
+
+**The three sheets keep having no heading row.** That is a documented property
+they already had, `docs/README.md` states it, and
+`tools/tests/test_docs_readme_sheet_table_is_true.py` names all three in a
+`HEADERLESS` set whose whole purpose is that issue #334's own row counts were one
+short on each of them. Adding a heading row would change that set, the row counts
+in the README table and the generator's contract, to buy nothing this decision
+needs.
+
+### Why
+
+**Reading the columns positionally out of a sheet with no headings is fragile,
+and the answer is to write the schema down rather than to change the sheet.**
+`docs/README.md` gained a section listing all six columns and what each holds,
+because with no heading row it is the only place that can say. The order of the
+generator's tuple is the schema, and a new column may only be appended.
+
+**Moving a number out of a sentence creates a second place for it to live**, so
+the two can now disagree — the same fault in a new shape. Before, the column said
+zero and the sentence said 30%; after, the column could say 30 while somebody
+edits the sentence to 40%. `tools/tests/test_status_effect_numbers_match_their_prose.py`
+carries the exact phrase the workbook uses for each number and asserts both that
+the phrase is still there and that the column matches the number in it, so
+changing either one alone fails. Five of its guards were proved to fire by
+breaking the condition each one names.
+
+### What it does not settle
+
+**Six damage figures are still open and are the project owner's to decide.**
+Bleed, Poison and Disease have no numbers anywhere; Necrosis's damage was never
+stated; and on 2026-08-24 the owner asked to reconsider whether burn and poison
+should be a percent of the hit at all. Issue #904 carries the measurements taken
+for that conversation, including the finding that a flat base and a percent of
+the hit cannot both be balanced across the eight difficulty tiers because they
+cross exactly once.
+
+---
+
 ## 2026-08-24 — Spell damage is added to a spell, and the eight conditional damage affixes add rather than multiply
 
 **Affects:** the Affixes sheet of `docs/All_Things_Cataclysm.xlsx` and through it
