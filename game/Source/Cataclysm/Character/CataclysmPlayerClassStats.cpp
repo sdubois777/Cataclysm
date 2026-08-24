@@ -15,6 +15,8 @@
 const TCHAR* UCataclysmPlayerClassStats::ClassStatsAssetPath =
 	TEXT("/Game/Data/DT_ClassStats.DT_ClassStats");
 
+const FString UCataclysmPlayerClassStats::StartingClassName = TEXT("Ravager");
+
 namespace
 {
 	/**
@@ -23,16 +25,41 @@ namespace
 	 * A STRING RATHER THAN AN INDEX, because the row names in
 	 * game/Data/ClassStats.csv are what UCataclysmClassStats::BaseFor takes and
 	 * an index would be a second ordering that could disagree with the table.
-	 * `Default` is the shared line every class inherits from, and it is a
-	 * legitimate answer rather than a placeholder: there is no class selection
-	 * screen, so a character that has chosen nothing sits on it.
+	 *
+	 * IT WAS `Default` UNTIL 2026-08-24 AND THAT MADE THE GAME UNPLAYABLE.
+	 * `Default` is the shared line every class inherits from, and it carries no
+	 * defensive layer at all -- no armour, no resistance, no block, no flat
+	 * damage reduction and no leech. There is no class selection screen, so
+	 * every character anybody has ever pressed Play on sat on it.
+	 *
+	 * Measured for issue #806: against the pack of ten Imps the sandbox places,
+	 * at the level below, a character on the shared line dies with four Imps
+	 * still standing even while using every skill on cooldown. All three real
+	 * classes survive the same fight. That is the whole of the difference
+	 * between the game being playable and not.
+	 *
+	 * THE RAVAGER RATHER THAN ONE OF THE OTHER TWO, because a character starts
+	 * holding a two-handed Greataxe and the design calls the Ravager "a
+	 * frontline aggressor... the most armor of the three, flat damage
+	 * reduction, enough leech to hold a line". The starting weapon and the
+	 * starting class should not disagree about what the character is.
+	 *
+	 * `tools/tests/test_the_starting_character_survives_a_pack.py` measures the
+	 * fight and fails if this name is changed to a line that cannot win it.
 	 */
+	// StartingClassName IS DEFINED ABOVE THIS BLOCK ON PURPOSE. Non-local
+	// statics in one translation unit are initialised in definition order, so
+	// naming it here rather than repeating the string cannot read an empty
+	// FString, and the console variable's default and ChosenClass's fallback
+	// cannot drift apart.
 	TAutoConsoleVariable<FString> CVarPlayerClass(
 		TEXT("Cataclysm.PlayerClass"),
-		TEXT("Default"),
+		UCataclysmPlayerClassStats::StartingClassName,
 		TEXT("Which row of game/Data/ClassStats.csv the player starts on: "
-			 "Default, Ravager, Ritualist or Masochist. Read when the pawn is "
-			 "possessed, so press Play again after changing it."),
+			 "Default, Ravager, Ritualist or Masochist. Default is the shared "
+			 "line every class inherits and has no defences of its own. Read "
+			 "when the pawn is possessed, so press Play again after changing "
+			 "it."),
 		ECVF_Default);
 
 	/**
@@ -266,7 +293,15 @@ UCataclysmPlayerClassStats::StatToAttribute()
 FString UCataclysmPlayerClassStats::ChosenClass()
 {
 	const FString Asked = CVarPlayerClass.GetValueOnGameThread();
-	return Asked.IsEmpty() ? UCataclysmClassStats::DefaultClassName : Asked;
+
+	// FALLING BACK TO StartingClassName AND NOT TO DefaultClassName. Someone
+	// typing `Cataclysm.PlayerClass ""` should get the class a character starts
+	// on, not the shared line every class inherits stats from -- that line has
+	// no armour, no resistance, no block, no flat damage reduction and no leech,
+	// and a character sitting on it loses the fight the sandbox puts in front of
+	// them. Issue #806. Naming `Default` outright still works and is still a
+	// legitimate thing to ask for.
+	return Asked.IsEmpty() ? StartingClassName : Asked;
 }
 
 int32 UCataclysmPlayerClassStats::ChosenLevel()

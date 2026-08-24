@@ -156,16 +156,23 @@ public:
 	 *
 	 * WHY IT IS NOT 1. Nothing in this project grants experience or raises a
 	 * level -- there is no levelling system at all, so a level-1 character can
-	 * never become anything else, and at level 1 the Default line is the same
-	 * 100 health that could not finish a floor. The stand-in has to be high
-	 * enough to play at.
+	 * never become anything else. At level 1 every class in the table loses the
+	 * fight the sandbox puts in front of them, measured for issue #806, so the
+	 * stand-in has to be high enough to play at.
 	 *
-	 * WHY TWENTY. The Default line is 100 health plus 15 a level, so level 20 is
-	 * 385. `sim/cataclysm_sim/enemy_stats.py` states the target the enemy damage
-	 * constants were solved for: "an average Common enemy is a threat in a pack
-	 * rather than alone", fitted so a Common enemy needs about 25 hits and the
-	 * Gatekeeper about 2. Against 385 health a Brute needs 11 hits and an Imp
-	 * 43. That is the first level at which the designed shape appears at all.
+	 * WHY TWENTY. `sim/cataclysm_sim/enemy_stats.py` states the target the enemy
+	 * damage constants were solved for: "an average Common enemy is a threat in
+	 * a pack rather than alone", fitted so a Common enemy needs about 25 hits
+	 * and the Gatekeeper about 2. Twenty is the first level at which the
+	 * designed shape appears at all.
+	 *
+	 * THE FIGURES HERE WERE WRITTEN FOR THE SHARED `Default` LINE, which a
+	 * character no longer starts on -- StartingClassName below is the Ravager
+	 * since 2026-08-24. They are kept because the level was chosen against them:
+	 * the shared line is 100 health plus 15 a level, so level 20 was 385, and a
+	 * Brute needed 11 hits and an Imp 43 against that. A Ravager at the same
+	 * level has 510 and some armour, so it is strictly further inside the shape
+	 * the level was picked for.
 	 *
 	 * IT IS A PLACEHOLDER AND NOT A DESIGN NUMBER. `Cataclysm.PlayerLevel`
 	 * changes it without a rebuild, the same way `Cataclysm.DungeonEnemyScale`
@@ -173,4 +180,20 @@ public:
 	 * answer.
 	 */
 	static constexpr int32 DefaultLevel = 20;
+
+	/**
+	 * Which class stat line a character sits on having chosen nothing.
+	 *
+	 * NOT `UCataclysmClassStats::DefaultClassName`, AND THE DIFFERENCE IS THE
+	 * POINT. That one is the shared line every class inherits a stat from when
+	 * it does not state its own, and it carries no defensive layer at all. This
+	 * one is the class a player actually plays as until there is a selection
+	 * screen. They were the same string until 2026-08-24, which meant every
+	 * character ever played had no armour, no resistance, no block, no flat
+	 * damage reduction and no leech. Issue #806.
+	 *
+	 * Read by the `Cataclysm.PlayerClass` console variable as its default, and
+	 * by ChosenClass when that variable is set to nothing at all.
+	 */
+	static const FString StartingClassName;
 };
