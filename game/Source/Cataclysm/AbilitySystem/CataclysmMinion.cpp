@@ -61,11 +61,18 @@ namespace
 		Delivery.bCannotPenetrate = true;
 		Delivery.bCarriesNoWeaponSubType = true;
 
-		// AND NO LEECH, the fourth of the four. Leech is read off the attacker
+		// AND NO LEECH, the fourth of the five. Leech is read off the attacker
 		// when a hit lands and a minion's blow is dealt in its summoner's name,
 		// so without this a Ravager's imps would heal the Ravager with every
 		// blow. The design names leech among what does not cross. Issue #895.
 		Delivery.bCannotLeech = true;
+
+		// AND IT PROVOKES NO RETALIATION, which is the fifth and the only one
+		// that protects the SUMMONER rather than the target. Retaliation is
+		// dealt back to whoever the hit was credited to, so without this a
+		// Ritualist standing at range would take damage every time one of its
+		// imps struck a retaliating enemy. Issue #895.
+		Delivery.bCannotBeRetaliatedAgainst = true;
 		return Delivery;
 	}
 

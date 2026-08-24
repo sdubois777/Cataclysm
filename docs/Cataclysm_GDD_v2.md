@@ -965,6 +965,40 @@ There are three leech stats, and all three work the same way. Life leech fills h
 
   
 
+### **Retaliation**
+
+Retaliation deals damage back to whatever lands a hit on the character. Only the Masochist starts with any; the other two classes are at zero, and gear is every other character's only source.
+
+
+
+**It is a flat amount, not a share of the hit.** The class stat line writes it as a bare 158 while writing damage reduction as "8%" and life leech as "3%", so the table already says which of the two it is. A blow of any size sends back the same number.
+
+
+
+**It answers a hit, not a tick.** A direct attack provokes it, melee or ranged alike, and a damage over time effect does not. A burn ticking once a second against a retaliating target would otherwise be a second and silent source of damage.
+
+
+
+**Only a hit that got through provokes it.** A hit that was evaded, or that armour and resistance stopped completely, sends nothing back. What the target's energy shield or mana absorbed still counts, because the target still took it.
+
+
+
+**What comes back is not itself a hit.** It cannot critically strike, cannot apply an ailment, is not reduced by the attacker's armour or resistance, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.
+
+
+
+**A minion's blow provokes none.** A minion's damage is credited to its summoner, so retaliation would otherwise be dealt to a summoner standing well away from the fight. That is the same rule that stops a minion taking its summoner's critical strikes, penetration, weapon sub-type and leech.
+
+
+
+**It is uncapped, and that is safe because it deals damage rather than preventing any.** No quantity of it makes anything immune to anything.
+
+
+
+**Where this shape comes from.** All three games in the genre agree on the parts that matter. Path of Exile computes reflected damage from what the target actually took after mitigation, and its reflected damage cannot critically strike, cannot cause ailments and does not trigger on-hit effects. Diablo IV's Thorns is a flat value that fires on any direct attack, melee or ranged, and never on damage over time. Last Epoch's reflected damage does not hit at all: it reduces health directly, bypassing the damage calculation. The flat amount is Diablo IV's, the exclusion from damage over time is shared by all three, and the "does not hit" rule is Last Epoch's. `docs/DECISIONS.md` records the sources.
+
+
+
 ### **Increases Are Scoped by Tag**
 
 Every skill carries gameplay tags, which is how the game knows which enchantments and effects apply to it. The character holds all of its own increases, and an increase reaches a skill when the tags match.

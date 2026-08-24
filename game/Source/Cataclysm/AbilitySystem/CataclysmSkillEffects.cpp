@@ -169,6 +169,43 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	return ApplyDirectDamage(Instigator, Target, Damage, Arrived) ? Damage : 0.0f;
 }
 
+bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
+												 AActor* Target, float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Struck = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Struck
+		|| !Struck->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		return false;
+	}
+
+	// THE HEALTH ATTRIBUTE AND NOT THE DAMAGE META ATTRIBUTE. That is what keeps
+	// this from being a hit: the vital attribute set only runs the mitigation
+	// order when the Damage attribute changes, and handles the Health attribute
+	// changing with a clamp and a death check.
+	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+		GetTransientPackage(), FName(TEXT("CataclysmHealthLoss")));
+	Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(-Amount);
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+	Struck->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+	return true;
+}
+
 bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Target,
 											   float Damage,
 											   const FCataclysmHitDelivery& Delivery)
@@ -345,6 +382,16 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		if (NoLeech.IsValid())
 		{
 			Spec.AddDynamicAssetTag(NoLeech);
+		}
+	}
+
+	if (Delivery.bCannotBeRetaliatedAgainst)
+	{
+		const FGameplayTag NoRetaliation =
+			UCataclysmDamageCalculation::NoRetaliationTag();
+		if (NoRetaliation.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoRetaliation);
 		}
 	}
 
