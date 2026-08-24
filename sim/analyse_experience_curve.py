@@ -76,6 +76,7 @@ Run: python analyse_experience_curve.py
 from __future__ import annotations
 
 import csv
+import math
 import pathlib
 
 from cataclysm_sim import scoring
@@ -324,6 +325,31 @@ LEVEL_WEIGHT = 6.3270
 DECIDED_RATE = 0.082
 DECIDED_LEVEL_2_COST = 230_000.0
 
+
+def whole_level_cost(level: int) -> int:
+    """The cost of one level as the GAME charges it: a whole number.
+
+    Rounded the way `scoring._js_round` rounds, floor(x + 0.5), so the two
+    models agree about a half. The C++ port has to produce these exact integers,
+    because a save record stores a character's progress into its current level
+    and a curve that disagreed by one would move it.
+    """
+    if not 2 <= level <= MAX_LEVEL:
+        return 0
+    return math.floor(level_cost(level, DECIDED_RATE, DECIDED_LEVEL_2_COST) + 0.5)
+
+
+def whole_total_to_reach(level: int) -> int:
+    """Every whole level cost from 2 to `level`, summed.
+
+    NOT THE SAME AS ROUNDING `total_experience`, and the difference is the point.
+    A player pays each level's rounded cost, so the climb is the sum of the
+    roundings and not the rounding of the sum. They part company by 5 over the
+    whole climb, which is nothing as a quantity and everything to a test
+    comparing two integers.
+    """
+    return sum(whole_level_cost(step) for step in range(2, level + 1))
+
 #: The size of the whole climb, in dungeons. Derived, not chosen.
 CLIMB_DUNGEONS = whole_climb_dungeons()
 
@@ -530,7 +556,7 @@ def main() -> None:
 def _print_the_decided_curve() -> None:
     """The curve as chosen, and the check that eight campaigns really pay for it."""
     rate, scale = DECIDED_RATE, DECIDED_LEVEL_2_COST
-    climb = total_experience(rate, scale)
+    climb = whole_total_to_reach(MAX_LEVEL)
     earned = CAMPAIGN_DUNGEONS * sum(PER_DUNGEON.values())
 
     print("THE CURVE AS DECIDED")
@@ -544,8 +570,8 @@ def _print_the_decided_curve() -> None:
     print("  Level | Costs             | Cumulative")
     print("  " + "-" * 52)
     for level in (2, 10, 25, 50, 75, 90, 99, MAX_LEVEL):
-        print(f"  {level:>5} | {level_cost(level, rate, scale):>17,.0f} | "
-              f"{total_experience(rate, scale, level):>18,.0f}")
+        print(f"  {level:>5} | {whole_level_cost(level):>17,} | "
+              f"{whole_total_to_reach(level):>18,}")
     print()
     print(f"  The whole climb costs {climb:,.0f}. Eight campaigns of "
           f"{CAMPAIGN_DUNGEONS} dungeons pay")

@@ -102,13 +102,15 @@ def test_the_stated_formula_is_the_decided_one(model, section):
 def test_every_row_of_the_stated_cost_table_is_recomputed(model, section):
     """Eight rows of level, cost and cumulative cost, each checked against the
     curve rather than against the row above it."""
-    level_cost, total = model["level_cost"], model["total_experience"]
-    rate, scale = model["DECIDED_RATE"], model["DECIDED_LEVEL_2_COST"]
+    # THE WHOLE-NUMBER CURVE, NOT THE FLOAT ONE. A player pays each level's
+    # rounded cost, so the cumulative column is the sum of the roundings and not
+    # the rounding of the sum. The two part company by 5 over the whole climb,
+    # which is nothing as a quantity and everything to this comparison.
+    cost, total = model["whole_level_cost"], model["whole_total_to_reach"]
 
     checked = 0
     for level in (2, 10, 25, 50, 75, 90, 100):
-        row = (f"| {level} | {level_cost(level, rate, scale):,.0f} | "
-               f"{total(rate, scale, level):,.0f} |")
+        row = f"| {level} | {cost(level):,} | {total(level):,} |"
         assert row in section, (
             f"the cost table row for level {level} should read {row!r} and does "
             f"not. The curve moved, or the document did.")

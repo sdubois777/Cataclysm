@@ -87,7 +87,78 @@ public:
 	/** Return every spent point, so they can be spent again. */
 	void ResetAttributePoints();
 
+	// ----------------------------------------------------------------------
+	// Level and experience
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The character's level, 1 to 100.
+	 *
+	 * WHY IT IS HERE AND NOT ON THE PAWN, which is the reason the ability system
+	 * and the spent attribute points are here: a pawn is destroyed on death and
+	 * the player state is not, and a level lost on every death would be worse
+	 * than no levelling at all.
+	 *
+	 * FALLS BACK TO `Cataclysm.PlayerLevel` UNTIL A LEVEL HAS BEEN DECIDED,
+	 * which is what `LevelNotYetDecided` below means. That console variable was
+	 * the only level this project had, three call sites read it, and every
+	 * automation test wanting a level 40 character sets it. Keeping it as the
+	 * STARTING level means levelling arrives without moving any of that, and a
+	 * character that has neither gained a level nor loaded a save behaves
+	 * exactly as it did before.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Experience")
+	int32 GetCharacterLevel() const;
+
+	/**
+	 * Experience earned toward the next level.
+	 *
+	 * PROGRESS INTO THE CURRENT LEVEL, NOT A RUNNING TOTAL, matching
+	 * `FCataclysmCharacterRecord::Experience` and for the reason
+	 * `UCataclysmExperience::Grant` gives: a running total would make the level
+	 * derivable and therefore a second copy of the same fact, and retuning the
+	 * curve would then silently move every existing character.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Experience")
+	int64 GetExperienceIntoLevel() const { return ExperienceIntoLevel; }
+
+	/**
+	 * Add experience, raising the level as far as it pays for.
+	 *
+	 * @return how many levels were gained, which is what a caller awarding a
+	 *         point per level needs and cannot recover afterwards.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Experience")
+	int32 GrantExperience(int64 Amount);
+
+	/**
+	 * Put a saved level and progress back onto the character.
+	 *
+	 * CLAMPED RATHER THAN REFUSED, because this is reached from a save record
+	 * and a save record holds whatever was last written to it. Refusing would
+	 * leave the character at whatever level it happened to have, which is a
+	 * worse answer than the nearest legal one.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Experience")
+	void SetLevelAndExperience(int32 NewLevel, int64 NewExperience);
+
 protected:
+	/**
+	 * What `CharacterLevel` holds before anything has decided one.
+	 *
+	 * ZERO IS NOT A LEVEL, so it cannot be mistaken for one. A character that
+	 * has neither gained a level nor loaded a save reads its level from
+	 * `Cataclysm.PlayerLevel` instead, which is what every existing automation
+	 * test and every existing call site expects.
+	 */
+	static constexpr int32 LevelNotYetDecided = 0;
+
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Experience")
+	int32 CharacterLevel = LevelNotYetDecided;
+
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Experience")
+	int64 ExperienceIntoLevel = 0;
+
 	/**
 	 * REPLICATED, because a client draws its own character sheet from this and
 	 * the server is what decides whether a spend was legal.
