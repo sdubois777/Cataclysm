@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmClassStats.h"
@@ -71,10 +72,18 @@ namespace CataclysmPlayerClassStatsTest
 			UCataclysmResistanceAttributeSet* NewResistance =
 				NewObject<UCataclysmResistanceAttributeSet>(Actor);
 
+			// AND THE PRIMARY SET JOINED THEM IN ISSUES #50 AND #897, for
+			// exactly the reason above: the eight attributes gained a
+			// StatToAttribute entry when a character could first spend a point
+			// on one, so without this the same check would be eight short.
+			UCataclysmPrimaryAttributeSet* NewPrimary =
+				NewObject<UCataclysmPrimaryAttributeSet>(Actor);
+
 			AbilitySystem->AddAttributeSetSubobject(NewVitals);
 			AbilitySystem->AddAttributeSetSubobject(NewCombat);
 			AbilitySystem->AddAttributeSetSubobject(NewResource);
 			AbilitySystem->AddAttributeSetSubobject(NewResistance);
+			AbilitySystem->AddAttributeSetSubobject(NewPrimary);
 
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 		}
@@ -231,6 +240,19 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("resistance_celestial"), TEXT("gear alone")},
 		{TEXT("resistance_chaos"), TEXT("gear alone")},
 		{TEXT("resistance_void"), TEXT("gear alone")},
+
+		// Issues #50 and #897. The eight primary attributes are the points a
+		// particular character spent, which no class line can state: every
+		// class starts every attribute at nothing and the character decides.
+		// docs/Cataclysm_GDD_v2.md: "Players gain 1 attribute point per level."
+		{TEXT("agility"), TEXT("the points the character has spent")},
+		{TEXT("ferocity"), TEXT("the points the character has spent")},
+		{TEXT("constitution"), TEXT("the points the character has spent")},
+		{TEXT("vitality"), TEXT("the points the character has spent")},
+		{TEXT("mind"), TEXT("the points the character has spent")},
+		{TEXT("spirit"), TEXT("the points the character has spent")},
+		{TEXT("efficacy"), TEXT("the points the character has spent")},
+		{TEXT("luck"), TEXT("the points the character has spent")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

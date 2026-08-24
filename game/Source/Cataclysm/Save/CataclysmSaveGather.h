@@ -27,10 +27,14 @@ class UWorld;
  * changes every patch, and persisting it would cost a migration every patch for
  * state nobody wants preserved.
  *
- * MOST OF THE CHARACTER RECORD STILL HAS NO SOURCE. Level, experience,
- * attributes, the passive tree and the 18 equipped slots do not exist in the
- * running game, so `CharacterFrom` fills the carried inventory and leaves the
- * rest alone. Issues #50, #38 and #42 are what bring them.
+ * MOST OF THE CHARACTER RECORD STILL HAS NO SOURCE. Level, experience, the
+ * passive tree and the 18 equipped slots do not exist in the running game, so
+ * `CharacterFrom` fills the carried inventory and the attribute allocation and
+ * leaves the rest alone. Issues #50, #38 and #42 are what bring them.
+ *
+ * THE ATTRIBUTE ALLOCATION JOINED THE CARRIED INVENTORY ON 2026-08-24, when a
+ * character could first spend a point. Issue #50 is still what brings levelling
+ * and the passive tree; only the allocation part of it has landed.
  */
 class CATACLYSM_API FCataclysmSaveGather
 {

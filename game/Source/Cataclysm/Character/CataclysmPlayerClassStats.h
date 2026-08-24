@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "Character/CataclysmClassStats.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmPlayerClassStats.generated.h"
 
@@ -76,8 +77,37 @@ public:
 	/** The class stat table, generated from the design workbook. */
 	static const TCHAR* ClassStatsAssetPath;
 
+	/** What one point of each attribute is worth. Same workbook. */
+	static const TCHAR* AttributesAssetPath;
+
 	/** Null when the table asset is missing. Loaded once and kept. */
 	static const UDataTable* LoadTable();
+
+	/**
+	 * The same, for the attribute table.
+	 *
+	 * SEPARATE FROM LoadTable BECAUSE THE TWO ARE DIFFERENT QUESTIONS. The class
+	 * table says where a stat starts; this one says what a spent attribute point
+	 * does to it. `ApplyTo` needs both and a character can have the first
+	 * without the second, which is what the game did until issues #50 and #897.
+	 */
+	static const UDataTable* LoadAttributeTable();
+
+	/**
+	 * Put a character's spent attribute points into a base-override map.
+	 *
+	 * WHY THE POINTS ARE A BASE AND NOT A MODIFIER. `docs/Cataclysm_GDD_v2.md`
+	 * says "Gear does not grant attribute points. It increases the attribute the
+	 * character already has", so the count a character spent is where the
+	 * attribute starts and the eight affixes are increases on top of it. No
+	 * class line can state how many points a particular character has spent,
+	 * which is exactly what a base override is for.
+	 *
+	 * BOTH CALLERS OF ApplyTo USE THIS, so the two cannot disagree about it.
+	 * Issues #50 and #897.
+	 */
+	static void MergeAttributeBases(const FCataclysmAttributePoints& Points,
+									TMap<FName, float>& Bases);
 
 	/**
 	 * Which gameplay attribute each character-sheet stat name drives.

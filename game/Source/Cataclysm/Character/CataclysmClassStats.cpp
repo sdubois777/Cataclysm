@@ -32,6 +32,79 @@ int32 FCataclysmAttributePoints::PointsIn(const FString& Attribute) const
 	return 0;
 }
 
+TArray<FString> FCataclysmAttributePoints::Names()
+{
+	// DECLARATION ORDER, AND SPELLED AS game/Data/Attributes.csv SPELLS THEM.
+	// Everything that has to name all eight -- the stat-to-attribute map, the
+	// console commands, the save record, the tests -- asks here, so a ninth
+	// attribute is one edit rather than a hunt.
+	return {TEXT("agility"), TEXT("ferocity"), TEXT("constitution"),
+			TEXT("vitality"), TEXT("mind"), TEXT("spirit"),
+			TEXT("efficacy"), TEXT("luck")};
+}
+
+bool FCataclysmAttributePoints::AddTo(const FString& Attribute, int32 Count)
+{
+	if (Attribute.Equals(TEXT("agility"), ESearchCase::IgnoreCase))      { Agility += Count;      return true; }
+	if (Attribute.Equals(TEXT("ferocity"), ESearchCase::IgnoreCase))     { Ferocity += Count;     return true; }
+	if (Attribute.Equals(TEXT("constitution"), ESearchCase::IgnoreCase)) { Constitution += Count; return true; }
+	if (Attribute.Equals(TEXT("vitality"), ESearchCase::IgnoreCase))     { Vitality += Count;     return true; }
+	if (Attribute.Equals(TEXT("mind"), ESearchCase::IgnoreCase))         { Mind += Count;         return true; }
+	if (Attribute.Equals(TEXT("spirit"), ESearchCase::IgnoreCase))       { Spirit += Count;       return true; }
+	if (Attribute.Equals(TEXT("efficacy"), ESearchCase::IgnoreCase))     { Efficacy += Count;     return true; }
+	if (Attribute.Equals(TEXT("luck"), ESearchCase::IgnoreCase))         { Luck += Count;         return true; }
+
+	// NO WARNING HERE, unlike PointsIn above. A mistyped name arriving from the
+	// console is a person's slip and the caller says so in its own words; a
+	// mistyped name arriving from the data table is a fault in the project.
+	return false;
+}
+
+float FCataclysmAttributeValues::ValueIn(const FString& Attribute) const
+{
+	if (Attribute.Equals(TEXT("agility"), ESearchCase::IgnoreCase))      return Agility;
+	if (Attribute.Equals(TEXT("ferocity"), ESearchCase::IgnoreCase))     return Ferocity;
+	if (Attribute.Equals(TEXT("constitution"), ESearchCase::IgnoreCase)) return Constitution;
+	if (Attribute.Equals(TEXT("vitality"), ESearchCase::IgnoreCase))     return Vitality;
+	if (Attribute.Equals(TEXT("mind"), ESearchCase::IgnoreCase))         return Mind;
+	if (Attribute.Equals(TEXT("spirit"), ESearchCase::IgnoreCase))       return Spirit;
+	if (Attribute.Equals(TEXT("efficacy"), ESearchCase::IgnoreCase))     return Efficacy;
+	if (Attribute.Equals(TEXT("luck"), ESearchCase::IgnoreCase))         return Luck;
+
+	UE_LOG(LogCataclysm, Warning,
+		   TEXT("Attributes table names %s, which is not one of the eight"),
+		   *Attribute);
+	return 0.0f;
+}
+
+bool FCataclysmAttributeValues::SetIn(const FString& Attribute, float Value)
+{
+	if (Attribute.Equals(TEXT("agility"), ESearchCase::IgnoreCase))      { Agility = Value;      return true; }
+	if (Attribute.Equals(TEXT("ferocity"), ESearchCase::IgnoreCase))     { Ferocity = Value;     return true; }
+	if (Attribute.Equals(TEXT("constitution"), ESearchCase::IgnoreCase)) { Constitution = Value; return true; }
+	if (Attribute.Equals(TEXT("vitality"), ESearchCase::IgnoreCase))     { Vitality = Value;     return true; }
+	if (Attribute.Equals(TEXT("mind"), ESearchCase::IgnoreCase))         { Mind = Value;         return true; }
+	if (Attribute.Equals(TEXT("spirit"), ESearchCase::IgnoreCase))       { Spirit = Value;       return true; }
+	if (Attribute.Equals(TEXT("efficacy"), ESearchCase::IgnoreCase))     { Efficacy = Value;     return true; }
+	if (Attribute.Equals(TEXT("luck"), ESearchCase::IgnoreCase))         { Luck = Value;         return true; }
+	return false;
+}
+
+FCataclysmAttributeValues FCataclysmAttributeValues::FromPoints(
+	const FCataclysmAttributePoints& Points)
+{
+	FCataclysmAttributeValues Values;
+	Values.Agility      = static_cast<float>(Points.Agility);
+	Values.Ferocity     = static_cast<float>(Points.Ferocity);
+	Values.Constitution = static_cast<float>(Points.Constitution);
+	Values.Vitality     = static_cast<float>(Points.Vitality);
+	Values.Mind         = static_cast<float>(Points.Mind);
+	Values.Spirit       = static_cast<float>(Points.Spirit);
+	Values.Efficacy     = static_cast<float>(Points.Efficacy);
+	Values.Luck         = static_cast<float>(Points.Luck);
+	return Values;
+}
+
 namespace
 {
 	/** The class stat row for a class and stat, or null. */
@@ -92,6 +165,20 @@ bool UCataclysmClassStats::AttributeModifierFor(
 	const FString& Stat,
 	FCataclysmStatModifier& OutModifier)
 {
+	// SPENT POINTS ARE RESOLVED VALUES WITH NOTHING SCALING THEM, so this is
+	// the same question asked of a character wearing no gear. The reference
+	// build test asks it that way deliberately; the game asks the other one.
+	return AttributeModifierForValues(
+		AttributeTable, FCataclysmAttributeValues::FromPoints(Points),
+		Stat, OutModifier);
+}
+
+bool UCataclysmClassStats::AttributeModifierForValues(
+	const UDataTable* AttributeTable,
+	const FCataclysmAttributeValues& Values,
+	const FString& Stat,
+	FCataclysmStatModifier& OutModifier)
+{
 	if (!AttributeTable)
 	{
 		return false;
@@ -108,8 +195,7 @@ bool UCataclysmClassStats::AttributeModifierFor(
 			continue;
 		}
 		bAnyApplies = true;
-		Percent += Row->PercentPerPoint
-				 * static_cast<float>(Points.PointsIn(Row->Attribute));
+		Percent += Row->PercentPerPoint * Values.ValueIn(Row->Attribute);
 	}
 
 	if (!bAnyApplies)

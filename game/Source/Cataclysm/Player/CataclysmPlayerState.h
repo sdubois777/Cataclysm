@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
+#include "Character/CataclysmClassStats.h"
 #include "CataclysmPlayerState.generated.h"
 
 class UCataclysmAbilitySystemComponent;
@@ -43,6 +44,9 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	//~ End IAbilitySystemInterface
 
+	virtual void GetLifetimeReplicatedProps(
+		TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	UCataclysmAbilitySystemComponent* GetCataclysmAbilitySystemComponent() const { return AbilitySystemComponent; }
 
 	const UCataclysmVitalAttributeSet* GetVitalAttributes() const { return VitalAttributes; }
@@ -51,7 +55,46 @@ public:
 	const UCataclysmResistanceAttributeSet* GetResistanceAttributes() const { return ResistanceAttributes; }
 	const UCataclysmClassResourceAttributeSet* GetClassResourceAttributes() const { return ClassResourceAttributes; }
 
+	/**
+	 * The attribute points this character has spent.
+	 *
+	 * HERE FOR THE SAME REASON THE ATTRIBUTE SETS ARE. A pawn is destroyed on
+	 * death and the player state is not, and an allocation a player lost every
+	 * time they died would be worse than no allocation at all.
+	 *
+	 * ONE PER LEVEL IS THE WHOLE SUPPLY TODAY. `docs/Cataclysm_GDD_v2.md` says
+	 * "Players gain 1 attribute point per level" and names the Maw as a second
+	 * source; the Maw does not exist, so AttributePointsAvailable below is the
+	 * character's level and nothing else. Issue #50.
+	 */
+	const FCataclysmAttributePoints& GetSpentAttributePoints() const { return SpentAttributePoints; }
+
+	/** How many a character may spend altogether. Its level, until the Maw exists. */
+	int32 AttributePointsAvailable() const;
+
+	/** How many of those are not spent yet. */
+	int32 AttributePointsUnspent() const;
+
+	/**
+	 * Spend into one attribute, named as `game/Data/Attributes.csv` names it.
+	 *
+	 * REFUSED RATHER THAN CLAMPED when the character does not have that many,
+	 * and `OutReason` says which refusal it was. Clamping would let "spend 40"
+	 * quietly become "spend 3" and still read as success.
+	 */
+	bool SpendAttributePoints(const FString& Attribute, int32 Count, FString& OutReason);
+
+	/** Return every spent point, so they can be spent again. */
+	void ResetAttributePoints();
+
 protected:
+	/**
+	 * REPLICATED, because a client draws its own character sheet from this and
+	 * the server is what decides whether a spend was legal.
+	 */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Attributes")
+	FCataclysmAttributePoints SpentAttributePoints;
+
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;
 
