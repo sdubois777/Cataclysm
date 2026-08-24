@@ -1,12 +1,14 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmPlayerClassStats.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmClassStats.h"
+#include "Items/CataclysmItem.h"
 #include "Engine/DataTable.h"
 #include "HAL/IConsoleManager.h"
 
@@ -216,6 +218,22 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// CataclysmVitalAttributeSet.cpp where the hit is resolved.
 			{TEXT("penetration"), Combat::GetPenetrationAttribute()},
 			{TEXT("spell_damage"), Combat::GetSpellDamageAttribute()},
+
+			// THE EIGHT CONDITIONAL DAMAGE STATS, one per damage type. Issue
+			// #895. Each applies only when the target IS that type: "They read
+			// the target, not the weapon. An enemy has a damage type of its
+			// own, which is its Cataclysm's." No class line names any of the
+			// eight, so gear is their only source.
+			{TEXT("damage_vs_war"), Combat::GetDamageVsWarAttribute()},
+			{TEXT("damage_vs_demonic"), Combat::GetDamageVsDemonicAttribute()},
+			{TEXT("damage_vs_death"), Combat::GetDamageVsDeathAttribute()},
+			{TEXT("damage_vs_pestilence"),
+			 Combat::GetDamageVsPestilenceAttribute()},
+			{TEXT("damage_vs_famine"), Combat::GetDamageVsFamineAttribute()},
+			{TEXT("damage_vs_celestial"),
+			 Combat::GetDamageVsCelestialAttribute()},
+			{TEXT("damage_vs_chaos"), Combat::GetDamageVsChaosAttribute()},
+			{TEXT("damage_vs_void"), Combat::GetDamageVsVoidAttribute()},
 			{TEXT("area_of_effect"), Combat::GetAreaOfEffectAttribute()},
 			{TEXT("dot_damage"), Combat::GetDotDamageAttribute()},
 			{TEXT("dot_frequency"), Combat::GetDotFrequencyAttribute()},
@@ -318,13 +336,32 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		// UCataclysmStatPipeline::ModifierApplies is what enforces that; only
 		// globally scoped modifiers survive an empty container.
 		float Value = Base;
+		FCataclysmStatBreakdown Breakdown;
+		Breakdown.Base = Base;
+		Breakdown.Final = Base;
+
 		if (Modifiers)
 		{
 			if (const TArray<FCataclysmStatModifier>* ForStat =
 					Modifiers->Find(FName(*Pair.Key)))
 			{
-				Value = UCataclysmStatPipeline::Evaluate(
-					Base, *ForStat, FGameplayTagContainer()).Final;
+				Breakdown = UCataclysmStatPipeline::Evaluate(
+					Base, *ForStat, FGameplayTagContainer());
+				Value = Breakdown.Final;
+			}
+		}
+
+		// THE ATTACK DAMAGE BRACKET IS REMEMBERED, and only that one. Issue
+		// #895. A finished attribute has its increases already applied and no
+		// longer visible, and the eight conditional damage stats have to join
+		// that same bracket rather than becoming a second multiplier. A hit
+		// cannot reopen a bracket it cannot see.
+		if (Pair.Key == FString(UCataclysmItemModifiers::AttackDamageStat))
+		{
+			if (UCataclysmAbilitySystemComponent* Cataclysm =
+					Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+			{
+				Cataclysm->SetAttackDamageIncreases(Breakdown.SumOfIncreases);
 			}
 		}
 

@@ -85,6 +85,80 @@ float UCataclysmSkillEffects::WeaponDamageOf(const UAbilitySystemComponent* Abil
 		UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
 }
 
+bool UCataclysmSkillEffects::IsSpell(const FGameplayTagContainer& SkillTags)
+{
+	const FGameplayTag Spell = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(SpellTagName), /*ErrorIfNotFound=*/false);
+	return Spell.IsValid() && SkillTags.HasTag(Spell);
+}
+
+float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source)
+{
+	const FGameplayAttribute Spell =
+		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
+	if (!Source || !Source->HasAttributeSetForAttribute(Spell))
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, Source->GetNumericAttribute(Spell));
+}
+
+float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
+	const UAbilitySystemComponent* Source)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+
+	// AN ABILITY SYSTEM THIS PROJECT DID NOT MAKE REMEMBERS NOTHING, and zero is
+	// the right answer for it: with no increases the bracket below is one and
+	// the arithmetic is what it was before this existed.
+	return Cataclysm ? FMath::Max(0.0f, Cataclysm->GetAttackDamageIncreases())
+					 : 0.0f;
+}
+
+float UCataclysmSkillEffects::DamageAgainstTypeOf(
+	const UAbilitySystemComponent* Source, const AActor* Target)
+{
+	// ONLY AN ENEMY CARRIES A DAMAGE TYPE, so a hit on anything else finds no
+	// type to match and the affix correctly does nothing. That is the design's
+	// own rule: "They read the target, not the weapon."
+	const FName Type = DamageTypeOf(Target);
+	if (Type.IsNone() || !Source)
+	{
+		return 0.0f;
+	}
+
+	// BUILT ONCE ON FIRST USE RATHER THAN AS A FILE-SCOPE STATIC, for the reason
+	// UCataclysmPlayerClassStats::StatToAttribute gives: an FGameplayAttribute
+	// wraps an FProperty found by reflection, and that data is not ready during
+	// static initialisation.
+	static const TMap<FName, FGameplayAttribute> Against = []
+	{
+		using Combat = UCataclysmCombatAttributeSet;
+		return TMap<FName, FGameplayAttribute>{
+			{TEXT("War"), Combat::GetDamageVsWarAttribute()},
+			{TEXT("Demonic"), Combat::GetDamageVsDemonicAttribute()},
+			{TEXT("Death"), Combat::GetDamageVsDeathAttribute()},
+			{TEXT("Pestilence"), Combat::GetDamageVsPestilenceAttribute()},
+			{TEXT("Famine"), Combat::GetDamageVsFamineAttribute()},
+			{TEXT("Celestial"), Combat::GetDamageVsCelestialAttribute()},
+			{TEXT("Chaos"), Combat::GetDamageVsChaosAttribute()},
+			{TEXT("Void"), Combat::GetDamageVsVoidAttribute()},
+		};
+	}();
+
+	const FGameplayAttribute* Attribute = Against.Find(Type);
+	if (!Attribute || !Source->HasAttributeSetForAttribute(*Attribute))
+	{
+		return 0.0f;
+	}
+
+	// A FRACTION, because it joins the increases bucket, which is a sum of
+	// fractions. The attribute holds a percentage because that is what an affix
+	// grants.
+	return FMath::Max(0.0f, Source->GetNumericAttribute(*Attribute)) / 100.0f;
+}
+
 float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Source,
 											 float BaseDamage,
 											 const FGameplayTagContainer& SkillTags)
@@ -131,8 +205,43 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
+	// THE THREE-BUCKET PIPELINE, REOPENED. Issue #895.
+	//
+	// `AttackDamage` is already `(base + flat) x (1 + increases)`, and two
+	// things have to join those buckets rather than sitting outside them:
+	//
+	//   FLAT SPELL DAMAGE joins the flat bucket, for a skill carrying the
+	//   `Type.Spell` tag. The project owner chose on 2026-08-24 that a spell
+	//   keeps the weapon's damage as its base and spell damage is added on top,
+	//   rather than replacing it as Path of Exile does. That keeps a Wand's own
+	//   38 flat damage worth something to the caster holding it.
+	//
+	//   INCREASED DAMAGE AGAINST THE TARGET'S TYPE joins the increases bucket.
+	//   The design: "a conditional increase joins the increases bracket rather
+	//   than becoming a third multiplier. That is what Diablo 4 and Last Epoch
+	//   both do." The difference is large -- a character at +125% increased
+	//   damage with a top-tier +400% conditional affix deals 6.25 times its base
+	//   if the two add and 11.25 times if they multiply.
+	//
+	// SO THE BRACKET IS UNDONE AND REDONE. Dividing by (1 + increases) recovers
+	// what the flat bucket held, the spell damage is added to it, and the whole
+	// thing is multiplied by (1 + increases + conditional) once.
+	//
+	// A CHARACTER WITH NEITHER GETS EXACTLY WHAT IT GOT BEFORE. With no
+	// increases and no conditional bonus both figures are zero, the division and
+	// the multiplication are both by one, and this is the line it replaces.
+	const float Increases = IncreasesBehindAttackDamage(Source);
+	const float Conditional = DamageAgainstTypeOf(Source, Target);
+
+	const float BeforeIncreases =
+		WeaponDamageOf(Source) / FMath::Max(1.0f + Increases, UE_KINDA_SMALL_NUMBER);
+	const float Flat = IsSpell(SkillTags) ? SpellDamageOf(Source) : 0.0f;
+
 	const float Damage = ModifiedDamage(
-		Source, WeaponDamageOf(Source) * DamagePercent / 100.0f, SkillTags);
+		Source,
+		(BeforeIncreases * DamagePercent / 100.0f + Flat)
+			* (1.0f + Increases + Conditional),
+		SkillTags);
 	if (Damage <= 0.0f)
 	{
 		// A character with no weapon damage. Expected before a weapon is
@@ -247,6 +356,8 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 
 const TCHAR* UCataclysmSkillEffects::PointBlankAreaTagName =
 	TEXT("Type.AOE.PointBlank");
+const TCHAR* UCataclysmSkillEffects::SpellTagName = TEXT("Type.Spell");
+
 const TCHAR* UCataclysmSkillEffects::AuraAreaTagName = TEXT("Type.AOE.Aura");
 
 bool UCataclysmSkillEffects::IsAreaDamage(const FGameplayTagContainer& SkillTags)

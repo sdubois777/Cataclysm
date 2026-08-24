@@ -440,6 +440,53 @@ public:
 	 */
 	static bool IsAreaDamage(const FGameplayTagContainer& SkillTags);
 
+	/**
+	 * Whether this skill is a spell, which decides whether spell damage applies.
+	 *
+	 * BY THE TAG ON THE SKILL, which is how Path of Exile scopes the same stat:
+	 * a skill counts as a spell if it carries the Spell tag, and spell damage
+	 * modifiers apply to those and to nothing else. In this project the tag is
+	 * `Type.Spell` and it sits on the nine Wand and Staff skills -- the two
+	 * Magic weapon types, which are also the two weapons whose implicits grant
+	 * increased spell damage.
+	 */
+	static bool IsSpell(const FGameplayTagContainer& SkillTags);
+
+	/** `Type.Spell`. See IsSpell. */
+	static const TCHAR* SpellTagName;
+
+	/**
+	 * The attacker's increased damage against this target's own damage type.
+	 *
+	 * A FRACTION, and zero when the target has no type of its own or the
+	 * attacker has nothing against it. Only an enemy carries a damage type: see
+	 * DamageTypeOf.
+	 */
+	static float DamageAgainstTypeOf(const UAbilitySystemComponent* Source,
+									 const AActor* Target);
+
+	/**
+	 * This character's flat spell damage, or zero when it has none.
+	 *
+	 * ADDED TO A SPELL'S BASE RATHER THAN REPLACING IT. The project owner chose
+	 * on 2026-08-24 that a spell keeps the weapon's damage and this is added on
+	 * top, rather than the Path of Exile shape where a spell ignores the weapon
+	 * entirely. That keeps a Wand's own 38 flat damage worth something to the
+	 * caster holding it.
+	 */
+	static float SpellDamageOf(const UAbilitySystemComponent* Source);
+
+	/**
+	 * The sum of increases already applied to this character's attack damage.
+	 *
+	 * A hit needs it to reopen the increases bracket, so that a conditional
+	 * increase can join it rather than becoming a second multiplier. Zero for an
+	 * ability system this project did not make, which leaves the arithmetic
+	 * exactly as it was before that mattered.
+	 */
+	static float IncreasesBehindAttackDamage(
+		const UAbilitySystemComponent* Source);
+
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;
 	static const TCHAR* AuraAreaTagName;

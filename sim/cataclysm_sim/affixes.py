@@ -1267,9 +1267,18 @@ DAMAGE_VS_TOP_VALUE = 400.0
 #: SAME SLOTS AS THE GENERIC DAMAGE AFFIX, and same position, so the two compete
 #: for one prefix slot on one piece. That competition IS the choice; putting them
 #: in different positions would let a player take both and remove it.
+#: FLAT AND NOT INCREASED, THOUGH EACH READS AS "INCREASED DAMAGE AGAINST".
+#: The stat holds the character's accumulated CONDITIONAL increases, which the
+#: design states: "They add into the same bracket as Increased Damage... a
+#: conditional increase joins the increases bracket rather than becoming a third
+#: multiplier." A source therefore contributes percentage points INTO that
+#: bracket. Recorded as increased until 2026-08-24, which meant each
+#: multiplied a base of zero -- no class line names any of the eight and no item
+#: base grants one -- so all eight were worth nothing. The same shape and the
+#: same correction as cooldown reduction; see docs/DECISIONS.md.
 DAMAGE_VS_AFFIXES: tuple[StatAffix, ...] = tuple(
     StatAffix(f"Increased damage against {damage_type} enemies",
-              f"damage_vs_{damage_type.lower()}", "increased",
+              f"damage_vs_{damage_type.lower()}", "flat",
               DAMAGE_VS_TOP_VALUE, OFFENSIVE_SLOTS, PREFIX)
     for damage_type in DAMAGE_TYPES
 )

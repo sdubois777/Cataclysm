@@ -186,6 +186,36 @@ public:
 		return LeechPayments;
 	}
 
+	/**
+	 * The sum of increases that produced this character's attack damage.
+	 *
+	 * WHY A FINISHED ATTRIBUTE IS NOT ENOUGH. `AttackDamage` is
+	 * `(base + flat) x (1 + increases)` with the increases already applied and
+	 * no longer visible. A CONDITIONAL increase -- increased damage against
+	 * Demonic enemies -- has to join that same bracket rather than becoming a
+	 * second multiplier, and the design says so outright: "a conditional
+	 * increase joins the increases bracket rather than becoming a third
+	 * multiplier. That is what Diablo 4 and Last Epoch both do." Knowing the
+	 * bracket is what lets a hit reopen it.
+	 *
+	 * THE DIFFERENCE IS LARGE. A character at +125% increased damage striking a
+	 * matching enemy with a top-tier +400% affix deals 6.25 times its base if the
+	 * two add and 11.25 times if they multiply.
+	 *
+	 * A FRACTION, NOT A PERCENTAGE. 1.25 for +125%, which is what
+	 * UCataclysmStatPipeline reports.
+	 */
+	float GetAttackDamageIncreases() const
+	{
+		return AttackDamageIncreases;
+	}
+
+	/** Written by UCataclysmPlayerClassStats::ApplyTo when it writes the stat. */
+	void SetAttackDamageIncreases(float Increases)
+	{
+		AttackDamageIncreases = Increases;
+	}
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -224,6 +254,15 @@ protected:
 	 * bookkeeping.
 	 */
 	TArray<FCataclysmLeechPayment> LeechPayments;
+
+	/**
+	 * The sum of increases behind the current attack damage. Issue #895.
+	 *
+	 * NOT REPLICATED, for the reason the leech list is not: what a remote
+	 * client needs is the damage numbers the arithmetic produces, and a hit
+	 * is resolved on the authority.
+	 */
+	float AttackDamageIncreases = 0.0f;
 	TArray<int32> StatModifierHandles;
 
 	/** Never reused, so a stale handle cannot remove somebody else's modifier. */
