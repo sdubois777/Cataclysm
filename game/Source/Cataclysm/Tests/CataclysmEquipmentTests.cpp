@@ -58,6 +58,7 @@ namespace CataclysmEquipmentTest
 	const TCHAR* HeadBase = TEXT("Head_Helm");
 	const TCHAR* RingBase = TEXT("Ring_Band");
 	const TCHAR* BootsBase = TEXT("Boots_Sabatons");
+	const TCHAR* BeltBase = TEXT("Belt_Girdle");
 	const TCHAR* OneHandedBase = TEXT("Weapon_Sword");
 	const TCHAR* OtherOneHandedBase = TEXT("Weapon_Dagger");
 	const TCHAR* TwoHandedBase = TEXT("Weapon_Greatsword");
@@ -236,8 +237,8 @@ bool FCataclysmGearSlotBaseNamesAreReal::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	for (const TCHAR* Base : {HeadBase, RingBase, BootsBase, OneHandedBase,
-							  OtherOneHandedBase, TwoHandedBase})
+	for (const TCHAR* Base : {HeadBase, RingBase, BootsBase, BeltBase,
+							  OneHandedBase, OtherOneHandedBase, TwoHandedBase})
 	{
 		if (!BaseTable->FindRow<FCataclysmItemBaseRow>(
 				FName(Base), TEXT("test"), /*bWarnIfMissing=*/false))
@@ -1219,6 +1220,521 @@ bool FCataclysmAttackSpeedReachesTheCharacter::RunTest(const FString& Parameters
 		TestEqual(TEXT("and a Greatsword over it swings at 1.25, not 2.75"),
 			Rate(), 1.25f, 0.005f);
 	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Whether every affix in the data reaches the character at all
+// ---------------------------------------------------------------------------
+
+/**
+ * WHAT THESE TWO TESTS ADD, AND WHERE THE EXISTING GUARD STOPS.
+ *
+ * On 2026-08-23 the project owner said they did not believe the gear affixes
+ * were working. They were right. Of the eighty-five rows of
+ * game/Data/Affixes.csv, TWENTY-FIVE change something a player can feel.
+ * Thirty-four have an attribute behind every stat they grant; nine of those
+ * thirty-four then reach an attribute nothing reads (#895), or one that only
+ * clamps a pool nothing fills or spends, which is the class resource and is
+ * issue #192. The rest are broken in six ways, filed as #894, #895, #896,
+ * #897, #898 and #899.
+ *
+ * Cataclysm.Items.EveryAffixInTheDataGrantsSomething already asserts that every
+ * affix produces a MODIFIER, and every one of them does. The chain has two more
+ * links after that and it had nothing guarding either:
+ *
+ *   **The modifier has to reach a gameplay attribute.**
+ *   UCataclysmPlayerClassStats::ApplyTo loops over StatToAttribute rather than
+ *   over the modifiers it is handed, so a modifier naming a stat that map does
+ *   not hold is dropped without a warning. That is what issue #845 was, for two
+ *   stat names; thirty-five more are still in that state.
+ *
+ *   **Some arithmetic has to read the attribute.** An attribute can be written
+ *   correctly and read by nothing, which is what issue #481 was on the enemy
+ *   side, where damage needed to kill understated by up to 56%.
+ *
+ * THESE TESTS COVER THE FIRST OF THOSE TWO AND NOT THE SECOND, and that is
+ * stated here rather than left to be assumed. A test that some arithmetic
+ * somewhere reads an attribute is not something the automation framework can
+ * express, so #895 has to be checked by reading the source. That is exactly why
+ * #481 survived as long as it did.
+ */
+namespace CataclysmEquipmentTest
+{
+	/**
+	 * The stat names an affix grants that ApplyTo writes no attribute from.
+	 *
+	 * EVERY ENTRY IS A KNOWN FAULT WITH AN ISSUE, not a stat that is meant to
+	 * be absent. The list is exact in both directions: a stat missing an
+	 * attribute that is not named here fails the test, and a stat named here
+	 * that now has one fails it too, so the list has to be shortened as the
+	 * work lands rather than left standing.
+	 */
+	const TSet<FString>& StatsNoAttributeIsWrittenFrom()
+	{
+		static const TSet<FString> Stats = {
+			// #894. The attribute exists and arithmetic already reads it, so a
+			// StatToAttribute entry is the whole fix for these twelve.
+			TEXT("evasion"), TEXT("block_chance"), TEXT("crit_chance"),
+			TEXT("penetration"),
+			TEXT("resistance_war"), TEXT("resistance_demonic"),
+			TEXT("resistance_death"), TEXT("resistance_pestilence"),
+			TEXT("resistance_famine"), TEXT("resistance_celestial"),
+			TEXT("resistance_chaos"), TEXT("resistance_void"),
+
+			// #895. The attribute exists and NOTHING READS IT, so a map entry
+			// on its own would leave these eleven doing just as little.
+			TEXT("cooldown_reduction"),
+			TEXT("mana_leech"), TEXT("energy_shield_leech"),
+			TEXT("damage_vs_war"), TEXT("damage_vs_demonic"),
+			TEXT("damage_vs_death"), TEXT("damage_vs_pestilence"),
+			TEXT("damage_vs_famine"), TEXT("damage_vs_celestial"),
+			TEXT("damage_vs_chaos"), TEXT("damage_vs_void"),
+
+			// #896. The drop roll takes magic find and uses it properly; the
+			// kill passes a constant zero instead of asking the character.
+			TEXT("magic_find"),
+
+			// #897. No primary attribute is written or read anywhere in the
+			// game, so these eight have nowhere to go and nothing to do.
+			TEXT("agility"), TEXT("ferocity"), TEXT("constitution"),
+			TEXT("vitality"), TEXT("mind"), TEXT("spirit"),
+			TEXT("efficacy"), TEXT("luck"),
+
+			// #898. No gameplay attribute for any minion stat exists at all,
+			// so unlike everything above there is nothing to map these to.
+			TEXT("minion_damage"), TEXT("minion_health"),
+			TEXT("minion_attack_speed"),
+		};
+		return Stats;
+	}
+
+	/** An item of a base, carrying one perfectly rolled top-tier affix. */
+	FCataclysmItem Carrying(const TCHAR* Base, const FName& AffixKey,
+							int32 Breadth)
+	{
+		FCataclysmItem Item = Plain(Base, UCataclysmItemValues::MaxGearLevel);
+
+		FCataclysmRolledAffix Rolled;
+		Rolled.Affix = AffixKey;
+		Rolled.Tier = UCataclysmItemValues::MaxAffixTier;
+		Rolled.Roll = 1.0f;
+
+		// A resistance family states how many damage types it covers and the
+		// item states which, so it has to be handed as many as it expects or
+		// AccumulateInto refuses the affix outright and grants nothing -- which
+		// would look exactly like the fault being tested for.
+		const TArray<FName>& AllTypes = UCataclysmItemModifiers::DamageTypeNames();
+		for (int32 Index = 0; Index < Breadth && Index < AllTypes.Num(); ++Index)
+		{
+			Rolled.DamageTypes.Add(AllTypes[Index]);
+		}
+
+		Item.Affixes.Add(Rolled);
+		return Item;
+	}
+
+	/** The stat names an affix adds, over what the bare base grants by itself. */
+	TSet<FString> StatsGrantedBy(const TCHAR* Base, const FName& AffixKey,
+								 int32 Breadth, const UDataTable* Bases,
+								 const UDataTable* Affixes)
+	{
+		TMap<FName, int32> FromTheBase;
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Pair :
+				UCataclysmItemModifiers::ModifiersFor(
+					Plain(Base, UCataclysmItemValues::MaxGearLevel),
+					Bases, Affixes))
+		{
+			FromTheBase.Add(Pair.Key, Pair.Value.Num());
+		}
+
+		TSet<FString> Granted;
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Pair :
+				UCataclysmItemModifiers::ModifiersFor(
+					Carrying(Base, AffixKey, Breadth), Bases, Affixes))
+		{
+			// COUNTED RATHER THAN LOOKED FOR. A Head_Helm carries a flat armour
+			// implicit of 200 of its own, so an affix granting armour would be
+			// invisible to a check that only asked whether the stat is present.
+			if (Pair.Value.Num() > FromTheBase.FindRef(Pair.Key))
+			{
+				Granted.Add(Pair.Key.ToString());
+			}
+		}
+		return Granted;
+	}
+
+	/** For each stat, an affix granting it flat, so a base can be supplied. */
+	TMap<FString, FName> FlatAffixPerStat(const UDataTable* Affixes)
+	{
+		TMap<FString, FName> Found;
+		Affixes->ForeachRow<FCataclysmAffixRow>(
+			TEXT("FlatAffixPerStat"),
+			[&Found](const FName& Key, const FCataclysmAffixRow& Row)
+			{
+				if (Row.ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase)
+					&& !Row.Stat.IsEmpty() && !Found.Contains(Row.Stat))
+				{
+					Found.Add(Row.Stat, Key);
+				}
+			});
+		return Found;
+	}
+
+	/** Every attribute on every set a player carries. */
+	const TArray<FGameplayAttribute>& EveryPlayerAttribute()
+	{
+		// BUILT ON FIRST USE RATHER THAN AS A FILE-SCOPE STATIC, for the same
+		// reason UCataclysmPlayerClassStats::StatToAttribute is: an
+		// FGameplayAttribute wraps an FProperty found by reflection, and that
+		// reflection data is not ready during static initialisation.
+		static const TArray<FGameplayAttribute> All = []
+		{
+			TArray<FGameplayAttribute> Out;
+			Out.Append(UCataclysmVitalAttributeSet::GetAllAttributes());
+			Out.Append(UCataclysmPrimaryAttributeSet::GetAllAttributes());
+			Out.Append(UCataclysmCombatAttributeSet::GetAllAttributes());
+			Out.Append(UCataclysmResistanceAttributeSet::GetAllAttributes());
+			Out.Append(UCataclysmClassResourceAttributeSet::GetAllAttributes());
+			return Out;
+		}();
+		return All;
+	}
+
+	/**
+	 * What a character wearing these ends up with, every attribute at once.
+	 *
+	 * THIS IS WHAT UCataclysmEquipmentComponent::RefreshAttributes DOES, with
+	 * the class named outright instead of read from the Cataclysm.PlayerClass
+	 * console variable. Both gather the modifiers and the weapon bases from the
+	 * equipment component and hand them to ApplyTo.
+	 *
+	 * THE RITUALIST, AND THE CHOICE MATTERS. An increased modifier multiplies a
+	 * base, so on a base of zero it moves nothing however well the rest of the
+	 * chain works. The Ritualist is the only line of game/Data/ClassStats.csv
+	 * stating a spell damage, maximum energy shield and energy shield
+	 * regeneration base, and every other mapped stat is either stated by the
+	 * shared Default line, supplied by the worn weapon, or given a flat affix to
+	 * stand on by the caller below.
+	 */
+	TArray<float> AttributesWearing(UWorld* World,
+									const TArray<FCataclysmItem>& Items)
+	{
+		FScopedCharacter Character(World);
+		for (const FCataclysmItem& Item : Items)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+			Character.Equipment->Equip(Item, Removed, AlsoRemoved, Went);
+		}
+
+		const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+			Character.Equipment->GatherModifiers();
+		const TMap<FName, float> Bases =
+			Character.Equipment->StatBasesFromWeapons();
+
+		UCataclysmPlayerClassStats::ApplyTo(
+			Character.AbilitySystem, UCataclysmPlayerClassStats::LoadTable(),
+			TEXT("Ritualist"), UCataclysmPlayerClassStats::DefaultLevel,
+			&Modifiers, ECataclysmPoolFill::LeaveAsTheyAre, &Bases);
+
+		TArray<float> Values;
+		for (const FGameplayAttribute& Attribute : EveryPlayerAttribute())
+		{
+			Values.Add(Character.AbilitySystem->GetNumericAttribute(Attribute));
+		}
+		return Values;
+	}
+
+	/** The first attribute that differs and by how much, or empty if none does. */
+	FString FirstAttributeThatMoved(const TArray<float>& Before,
+									const TArray<float>& After)
+	{
+		const TArray<FGameplayAttribute>& All = EveryPlayerAttribute();
+		for (int32 Index = 0;
+			 Index < All.Num() && Index < Before.Num() && Index < After.Num();
+			 ++Index)
+		{
+			if (!FMath::IsNearlyEqual(Before[Index], After[Index], 0.0001f))
+			{
+				return FString::Printf(TEXT("%s went from %.4f to %.4f"),
+					*All[Index].GetName(), Before[Index], After[Index]);
+			}
+		}
+		return FString();
+	}
+}
+
+/**
+ * EVERY STAT AN AFFIX GRANTS HAS AN ATTRIBUTE BEHIND IT. Issues #894 to #898.
+ *
+ * THIS IS THE GUARD THAT WOULD HAVE CAUGHT #845 AND CATCHES WHAT IS LEFT OF IT.
+ * It reads the stat names out of the affix data through the real accumulation
+ * code rather than listing them here, so an affix the design adds is checked the
+ * day it arrives.
+ *
+ * IT CATCHES A HALF-DEAD HYBRID, which the end-to-end test below cannot. Six
+ * hybrid affixes grant one stat that lands and one that does not, so the
+ * character does change and only half of what the tool tip promised arrives.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryAffixStatHasAnAttribute,
+	"Cataclysm.Equipment.EveryStatAnAffixGrantsHasAnAttributeBehindIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEveryAffixStatHasAnAttribute::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
+	if (!Bases || !Affixes)
+	{
+		AddError(TEXT("The item base or affix table could not be loaded."));
+		return false;
+	}
+
+	const TMap<FString, FGameplayAttribute>& Map =
+		UCataclysmPlayerClassStats::StatToAttribute();
+
+	TSet<FString> Missing;
+	int32 Checked = 0;
+	int32 WholeAffixReaches = 0;
+
+	Affixes->ForeachRow<FCataclysmAffixRow>(
+		TEXT("EveryStatAnAffixGrantsHasAnAttributeBehindIt"),
+		[&](const FName& Key, const FCataclysmAffixRow& Row)
+		{
+			// AN AILMENT AFFIX GRANTS NO STAT AND THAT IS CORRECT. Whether
+			// anything ever applies the ailment is issue #899 and a different
+			// question from this one.
+			if (Row.AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase))
+			{
+				return;
+			}
+
+			++Checked;
+			bool bWholeAffixReaches = true;
+
+			for (const FString& Stat :
+					StatsGrantedBy(HeadBase, Key, Row.Breadth, Bases, Affixes))
+			{
+				if (Map.Contains(Stat))
+				{
+					continue;
+				}
+
+				bWholeAffixReaches = false;
+				Missing.Add(Stat);
+
+				if (!StatsNoAttributeIsWrittenFrom().Contains(Stat))
+				{
+					AddError(FString::Printf(
+						TEXT("The affix %s grants '%s', and "
+							 "UCataclysmPlayerClassStats::StatToAttribute has no "
+							 "entry for it, so ApplyTo never writes it and the "
+							 "affix does nothing at all. Give the stat an "
+							 "attribute, or add it to "
+							 "StatsNoAttributeIsWrittenFrom naming the issue it "
+							 "is filed under."),
+						*Key.ToString(), *Stat));
+				}
+			}
+
+			if (bWholeAffixReaches)
+			{
+				++WholeAffixReaches;
+			}
+		});
+
+	AddInfo(FString::Printf(
+		TEXT("%d of %d affixes that grant a stat have an attribute behind every "
+			 "stat they grant. %d stat names have none."),
+		WholeAffixReaches, Checked, Missing.Num()));
+
+	// Without this the loop above passes on an empty table, which is what a
+	// stale or unbuilt asset actually looks like.
+	TestTrue(FString::Printf(TEXT("most of the affix pool was checked, %d of it"),
+							 Checked),
+		Checked >= 60);
+
+	// AND THE LIST HAS TO SHRINK AS THE WORK LANDS. A stat named there that now
+	// reaches an attribute is an exemption left behind, and leaving one standing
+	// would let the same stat break again with nothing noticing.
+	for (const FString& Stat : StatsNoAttributeIsWrittenFrom())
+	{
+		if (!Missing.Contains(Stat))
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' is listed in StatsNoAttributeIsWrittenFrom as having "
+					 "no attribute behind it, and it now has one, or no affix "
+					 "grants it any more. Delete it from that list."), *Stat));
+		}
+	}
+
+	return true;
+}
+
+/**
+ * EVERY AFFIX THAT CAN REACH A WORN CHARACTER DOES. Issues #894 to #898.
+ *
+ * THE END-TO-END MEASURE, and the one the check above cannot be. It equips a
+ * real item on a real character with all five attribute sets, gathers the
+ * modifiers through UCataclysmEquipmentComponent and writes them through
+ * UCataclysmPlayerClassStats::ApplyTo, which is the path a player takes, then
+ * compares every attribute before and after.
+ *
+ * MEASURED ON A CHARACTER THAT HAS SOMETHING, NOT ON A BARE ONE. An increased
+ * modifier multiplies a base, so measuring one on a character whose base is zero
+ * answers a question about the class table rather than about the affix. A weapon
+ * is worn for the two stats a weapon supplies, and where the data has a flat
+ * affix for a stat the affix touches, one is worn on another slot in BOTH
+ * measurements. Pull request #892 exists because a distribution was measured
+ * without what a player actually carries.
+ *
+ * IT ASSERTS IN BOTH DIRECTIONS. An affix every one of whose stats is listed in
+ * StatsNoAttributeIsWrittenFrom must move nothing at all; if it moves something,
+ * that list is stale and says so.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryAffixReachesTheCharacter,
+	"Cataclysm.Equipment.EveryAffixInTheDataReachesTheCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEveryAffixReachesTheCharacter::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
+	if (!Bases || !Affixes)
+	{
+		AddError(TEXT("The item base or affix table could not be loaded."));
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const TMap<FString, FGameplayAttribute>& Map =
+		UCataclysmPlayerClassStats::StatToAttribute();
+	const TMap<FString, FName> FlatFor = FlatAffixPerStat(Affixes);
+
+	// Two is enough: a hybrid is the widest affix that reaches the map and it
+	// grants two stats. A resistance family grants eight and none of them
+	// reaches the map, so it needs none of these.
+	const TCHAR* CompanionBases[] = { BootsBase, BeltBase };
+
+	// GATHERED FIRST, because the body below spawns and destroys actors and
+	// that is not something to do while a data table is being iterated.
+	struct FAffixUnderTest
+	{
+		FName Key;
+		int32 Breadth = 0;
+		bool bIsAilment = false;
+	};
+
+	TArray<FAffixUnderTest> Pool;
+	Affixes->ForeachRow<FCataclysmAffixRow>(
+		TEXT("EveryAffixInTheDataReachesTheCharacter"),
+		[&Pool](const FName& Key, const FCataclysmAffixRow& Row)
+		{
+			FAffixUnderTest Entry;
+			Entry.Key = Key;
+			Entry.Breadth = Row.Breadth;
+			Entry.bIsAilment =
+				Row.AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase);
+			Pool.Add(Entry);
+		});
+
+	int32 Reached = 0;
+	int32 ReachedNothing = 0;
+	TArray<FString> Dead;
+
+	for (const FAffixUnderTest& Entry : Pool)
+	{
+		if (Entry.bIsAilment)
+		{
+			continue;
+		}
+
+		const TSet<FString> Granted =
+			StatsGrantedBy(HeadBase, Entry.Key, Entry.Breadth, Bases, Affixes);
+
+		TArray<FCataclysmItem> Worn;
+		Worn.Add(Plain(OneHandedBase, UCataclysmItemValues::MaxGearLevel));
+
+		int32 NextCompanion = 0;
+		bool bAnyStatReachesAnAttribute = false;
+		for (const FString& Stat : Granted)
+		{
+			if (!Map.Contains(Stat))
+			{
+				continue;
+			}
+			bAnyStatReachesAnAttribute = true;
+
+			if (NextCompanion >= UE_ARRAY_COUNT(CompanionBases))
+			{
+				continue;
+			}
+			if (const FName* FlatAffix = FlatFor.Find(Stat))
+			{
+				Worn.Add(Carrying(CompanionBases[NextCompanion], *FlatAffix,
+								  /*Breadth=*/0));
+				++NextCompanion;
+			}
+		}
+
+		TArray<FCataclysmItem> Without = Worn;
+		Without.Add(Plain(HeadBase, UCataclysmItemValues::MaxGearLevel));
+
+		TArray<FCataclysmItem> With = Worn;
+		With.Add(Carrying(HeadBase, Entry.Key, Entry.Breadth));
+
+		// THE HEAD SLOT AND NOT A RING, because there are eight ring slots and a
+		// second ring would go beside the first rather than replacing it, so
+		// both measurements would be of a character wearing both.
+		const FString Difference = FirstAttributeThatMoved(
+			AttributesWearing(World, Without), AttributesWearing(World, With));
+
+		if (bAnyStatReachesAnAttribute)
+		{
+			++Reached;
+			TestTrue(FString::Printf(
+				TEXT("wearing %s changes an attribute on the character: %s"),
+				*Entry.Key.ToString(),
+				Difference.IsEmpty() ? TEXT("it changed nothing") : *Difference),
+				!Difference.IsEmpty());
+		}
+		else
+		{
+			++ReachedNothing;
+			Dead.Add(Entry.Key.ToString());
+			TestTrue(FString::Printf(
+				TEXT("%s grants only stats listed in "
+					 "StatsNoAttributeIsWrittenFrom, so wearing it changes "
+					 "nothing. It changed %s, so that list is stale."),
+				*Entry.Key.ToString(), *Difference),
+				Difference.IsEmpty());
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d affixes reach an attribute on a worn character. %d reach none "
+			 "at all: %s. Reaching an attribute is not the same as doing "
+			 "something -- see #895 for the ones nothing reads."),
+		Reached, ReachedNothing, *FString::Join(Dead, TEXT(", "))));
+
+	// Without this the loop above passes having worn nothing, which is what a
+	// stale or unbuilt asset actually looks like.
+	TestTrue(FString::Printf(TEXT("most of the affix pool was worn, %d of it"),
+							 Reached + ReachedNothing),
+		Reached + ReachedNothing >= 60);
 
 	return true;
 }
