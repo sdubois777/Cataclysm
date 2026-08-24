@@ -192,18 +192,31 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// reproducible in a way a player could exploit. A shared stream would make
 	// every kill in a frame the same.
 	//
-	// NO PLAYER MAGIC FIND OR LOOT QUANTITY IS READ YET. Both are character
-	// stats, nothing computes a character's stats at the moment of a kill, and
-	// passing the baselines is honest about that: 0% added magic find and 100%
-	// loot quantity is a character with no bonuses, which is what the design
-	// says those baselines mean.
+	// THE PLAYER'S MAGIC FIND AND LOOT QUANTITY ARE READ HERE, AND UNTIL ISSUE
+	// #896 THIS PASSED CONSTANTS. The comment that stood here said nothing
+	// computed a character's stats at the moment of a kill. That had stopped
+	// being true: UCataclysmEquipmentComponent::RefreshAttributes writes them
+	// on every equipment change and ACataclysmPlayerCharacter::
+	// ApplyChosenClassStats writes them on possession, so three affixes were
+	// granting numbers no roll ever read.
+	//
+	// A WORLD WITH NO PLAYER STILL GETS THE BASELINES, which is what
+	// PlayerLootStats answers, so every automation test that kills a creature
+	// directly is unchanged by this.
+	//
+	// THE ENEMY'S OWN MAGIC FIND IS ADDED ON TOP INSIDE SpawnDropsFor rather
+	// than here. A rarer creature carries up to +500% of its own, and it is
+	// added to the player's rather than multiplied by it.
 	if (UWorld* World = GetWorld())
 	{
+		float MagicFind = 0.0f;
+		float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+		UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+
 		FRandomStream Stream(GetUniqueID()
 			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
 		UCataclysmDropSpawner::SpawnDropsFor(
-			World, RarityStep, /*MagicFind=*/0.0f,
-			UCataclysmDropRoll::BaselineLootQuantity, GetActorLocation(),
+			World, RarityStep, MagicFind, LootQuantity, GetActorLocation(),
 			Stream);
 	}
 

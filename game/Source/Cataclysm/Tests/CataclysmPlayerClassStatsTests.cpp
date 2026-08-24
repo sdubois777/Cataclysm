@@ -184,6 +184,12 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("crit_chance"),
 		 TEXT("the skill in hand, as a base override from StatBasesFromWeapons")},
 
+		// Issue #896. Magic find's baseline is zero because the design makes it
+		// "an added percentage rather than a percentage of something", so gear
+		// is its only source. Loot quantity is the opposite and IS named by a
+		// class line, because its baseline is 100.
+		{TEXT("magic_find"), TEXT("gear alone")},
+
 		// Issue #894. Gear is the only source of these twelve. Their base is
 		// zero on every class, which is a class declining to care about them,
 		// and an increased affix on one therefore grants nothing until a flat

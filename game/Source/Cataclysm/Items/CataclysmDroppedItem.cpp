@@ -7,7 +7,11 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Components/SceneComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystemComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
 
@@ -312,6 +316,51 @@ FName UCataclysmDropSpawner::EnemyRarityForStep(const UDataTable* EnemyDropTable
 			}
 		});
 	return Found;
+}
+
+void UCataclysmDropSpawner::PlayerLootStats(const UWorld* World,
+										   float& OutMagicFind,
+										   float& OutLootQuantity)
+{
+	const APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	LootStatsOf(Controller ? Controller->GetPawn() : nullptr,
+				OutMagicFind, OutLootQuantity);
+}
+
+void UCataclysmDropSpawner::LootStatsOf(const AActor* Character,
+										float& OutMagicFind,
+										float& OutLootQuantity)
+{
+	// THE BASELINES FIRST, so every early return below leaves the caller with
+	// the figures a character carrying nothing would have given it.
+	OutMagicFind = 0.0f;
+	OutLootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Character);
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// EACH ATTRIBUTE IS CHECKED FOR SEPARATELY. They live in one set today, so
+	// either both are present or neither is, but reading an attribute whose
+	// set the component does not hold raises an engine ensure, and that is not
+	// a thing to risk on the assumption that they stay together.
+	const FGameplayAttribute MagicFind =
+		UCataclysmCombatAttributeSet::GetMagicFindAttribute();
+	if (AbilitySystem->HasAttributeSetForAttribute(MagicFind))
+	{
+		OutMagicFind = AbilitySystem->GetNumericAttribute(MagicFind);
+	}
+
+	const FGameplayAttribute LootQuantity =
+		UCataclysmCombatAttributeSet::GetLootQuantityAttribute();
+	if (AbilitySystem->HasAttributeSetForAttribute(LootQuantity))
+	{
+		OutLootQuantity = AbilitySystem->GetNumericAttribute(LootQuantity);
+	}
 }
 
 int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
