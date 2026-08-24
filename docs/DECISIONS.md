@@ -20,6 +20,95 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — A kill grants its Enemy Score, a dungeon gets a length, and the first floors of a tier 1 dungeon pay nothing
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h` and `.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`,
+`game/Source/Cataclysm/Player/CataclysmGameMode.h`,
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`. **Applied.**
+Issue #926.
+
+`docs/Cataclysm_GDD_v2.md` needs no change: section X already states the Enemy
+Score formula and every table in it, and section XII already says an enemy's
+Enemy Score is the experience it grants. This entry records three things the
+implementation had to decide that the document does not cover.
+
+### A dungeon has a length, and it is a stand-in
+
+The Enemy Score model's baseline is driven by `currentFloor / totalFloors`, so
+**without a total there is no floor ratio and a creature has no score at all.**
+The game had no dungeon length: `ACataclysmDungeonGameMode` says so in its own
+class comment, "There is no bottom to the dungeon, so the stairs go down for
+ever".
+
+So `ACataclysmDungeonGameMode` gained a `TotalFloors` setting and a
+`Cataclysm.DungeonFloorCount` console variable, in the same shape
+`Cataclysm.PlayerLevel` had before levelling existed. **It does not stop the
+stairs.** A bottom to the dungeon is part of issue #41, and adding one here would
+have been a second, quieter design decision folded into a port.
+
+**`ChooseTotalFloors` never reports a length below the floor being walked.**
+Because the stairs descend past it, a player can stand on floor 90 of a dungeon
+set to 10. The floor ratio would then be 9, which is outside anything the model
+was fitted for: at difficulty tier 8 it would make an ordinary creature on floor
+90 worth more than a Cataclysm Boss on a last floor. Answering with the deeper of
+the two treats a player who has walked past the end as being at the end.
+
+### The default length is 10 floors, not the 50-floor average
+
+The balance work of 2026-08-24 used an average dungeon of 50 floors, so 50 was
+the obvious default and it is the wrong one.
+
+**At difficulty tier 1 the depth term is large and negative near an entrance.**
+In a 50-floor dungeon that carries a Common enemy below zero on the first three
+floors. Since a creature's score is its experience, and
+`ACataclysmPlayerState::GrantExperience` ignores an amount of zero or less, the
+first creature somebody kills after pressing Play would be worth nothing.
+
+Ten floors is inside the design's smallest Basic dungeon, 8 to 15, and every
+floor of it pays something. Measured, a tier 1 Common:
+
+| Dungeon length | Floor 1 is worth | Last floor is worth | Floors paying nothing |
+| --: | --: | --: | --: |
+| 5 | 68 | 356 | 0 |
+| **10** | **31** | **363** | **0** |
+| 20 | 7 | 374 | 0 |
+| 50 | −21 | 407 | 3 |
+
+### A creature near a tier 1 entrance is worth nothing, and that stays
+
+This is the model behaving rather than a fault, and it is recorded so that nobody
+corrects it. Measured over a 50-floor Basic dungeon: three floors of fifty pay a
+Common nothing, one pays an Elite nothing, and **no floor at any difficulty tier
+above 1 pays nothing to anything.** An automation test asserts both the count and
+that it stays confined to tier 1, so if it ever spread the early game would not
+quietly acquire a dead stretch.
+
+**Nothing in the kill path checks for it.** `GrantExperience` already ignores an
+amount of zero or less, and checking twice would invite the two to disagree.
+
+### Where the award happens, and why not inside the drop roll
+
+`ACataclysmEnemyCharacter::HandleDeath` already reaches the player to read magic
+find and loot quantity for the drop roll, so the award sits beside it and needs
+no new path. It is deliberately NOT folded into `UCataclysmDropSpawner`: a drop
+is rolled and a score is computed, and putting one inside the other would make
+the loot code the place experience comes from, which is where nobody would look
+for it.
+
+### What still has no source
+
+**The modifier score is always zero.** It is a real term of the model and dungeon
+modifiers do not exist. It is a flat addend rather than a multiplier, so zero is
+exactly "no modifiers" and not an approximation. Issue #41.
+
+**A dungeon's kind and sub-type are settings nothing sets.** They default to Basic
+and no sub-type, which are the only pair that add nothing, and neither changes
+how a floor is built or what stands on it. A Horde dungeon being one big arena is
+also issue #41.
+
+---
+
 ## 2026-08-24 — A character stores progress into its current level, and the console variable becomes the starting level
 
 **Affects:** `game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp`,

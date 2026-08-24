@@ -17,8 +17,11 @@
 #include "Character/CataclysmEnemyRarity.h"
 // For what a kill drops. The rules live in the item module; this file
 // only says when they run and where the result lands.
+#include "Dungeon/CataclysmEnemyScore.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Player/CataclysmPlayerState.h"
+#include "GameFramework/PlayerController.h"
 #include "Animation/AnimSequence.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -218,6 +221,37 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		UCataclysmDropSpawner::SpawnDropsFor(
 			World, RarityStep, MagicFind, LootQuantity, GetActorLocation(),
 			Stream);
+
+		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.
+		// `docs/Cataclysm_GDD_v2.md` section XII: "An enemy's Enemy Score IS the
+		// experience it grants." Nothing separate is stored or tuned, so the
+		// difficulty tier, the dungeon's kind, how deep this floor is and this
+		// creature's rarity all already move it.
+		//
+		// HERE RATHER THAN INSIDE THE DROP ROLL, although both happen on the
+		// same death and both read the player. A drop is rolled and a score is
+		// computed; folding one into the other would make the loot code the
+		// place experience comes from, which is where nobody would look for it.
+		//
+		// A SCORE OF ZERO OR LESS GRANTS NOTHING, and that is a real case rather
+		// than defensive coding. The depth term is large and negative near a
+		// dungeon entrance, so at difficulty tier 1 the first floors score a
+		// Common enemy below zero: measured, three floors of fifty. Nothing here
+		// checks for it, because `GrantExperience` already ignores an amount of
+		// zero or less and doing it twice would invite the two to disagree.
+		// NAMED `Watching` AND NOT `Controller`, because this creature is an
+		// APawn and APawn already has a member of that name -- its own AI
+		// controller. Shadowing it compiles nowhere and reads as though the
+		// creature were awarding experience to itself.
+		if (APlayerController* Watching = World->GetFirstPlayerController())
+		{
+			if (ACataclysmPlayerState* State =
+					Watching->GetPlayerState<ACataclysmPlayerState>())
+			{
+				State->GrantExperience(UCataclysmEnemyScore::ScoreFor(
+					UCataclysmEnemyScore::FloorIn(World), RarityStep));
+			}
+		}
 	}
 
 	// WHAT DYING LOOKS LIKE, AND HOW LONG THE BODY IS KEPT FOR IT. Before
