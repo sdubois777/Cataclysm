@@ -1492,7 +1492,15 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
-**The number an effect states in the DoTs sheet is what ONE TICK deals, not a total.** Burn is written as 4 seconds and 20% of the hit, and that means 20% of the hit every second for four seconds, which is 80% of the hit altogether. Reading it as a total was what the engine did until 2026-08-24, and under that reading raising the tick rate delivered the same damage sooner and added nothing, so Damage over Time Frequency could not be worth anything. The sheet has no column headings, which is why this had to be stated rather than inferred; `docs/DECISIONS.md` carries the reasoning.
+**The number an effect states in the DoTs sheet is what ONE TICK deals, not a total.** Burn is written as 4 seconds and 25 damage, and that means 25 damage every second for four seconds, which is 100 altogether before the attacker's three damage over time stats. Reading it as a total was what the engine did until 2026-08-24, and under that reading raising the tick rate delivered the same damage sooner and added nothing, so Damage over Time Frequency could not be worth anything. The sheet has no column headings, which is why this had to be stated rather than inferred; `docs/DECISIONS.md` carries the reasoning.
+
+  
+
+**An ailment's damage is a flat amount, not a share of the hit.** Bleed, Poison, Disease, Burn and Necrosis all state a plain number of damage per tick. Only two things raise it: the three damage over time stats, and the magnitude an ailment gains from chance above 100%. A share of the hit would multiply twice, because the hit itself grows about fifteenfold from difficulty tier 1 to tier 8 and those stats multiply on top of that — measured, a share-of-the-hit burn reaches thirteen times a Common enemy's health from one application at twelve affix slots at tier 8, while the flat amount stays between 70% and 107% of it at every tier. The project owner chose the flat amount on 2026-08-24. `docs/DECISIONS.md` carries the measurements and the reasoning.
+
+  
+
+**Void Splinter is the one exception, and it is deliberate.** It states a share of the target's current health rather than a flat amount, which makes it the ailment that scales with how much health the target has rather than with anything the attacker did. That is what it is for.
 
   
 
@@ -1567,17 +1575,40 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
 | Effect | What it does | Magnitude scales |
 | :-- | :-- | :-- |
-| Bleed | Damage over time | The damage |
-| Poison | Damage over time | The damage |
-| Disease | Damage over time | The damage |
-| Burn | Damage over time | The damage |
+| Bleed | 20 damage a second for 5 seconds, ticking only while the target moves and stopping after 4 seconds of movement | The damage |
+| Poison | 20 damage a second for 8 seconds | The damage |
+| Disease | 12 damage a second for 6 seconds, and on the target's death it spreads its remaining duration to nearby enemies | The damage |
+| Burn | 25 damage a second for 4 seconds | The damage |
 | Void Splinter | 1% of current health per second over 4 seconds | The damage |
-| Necrosis | Reduces the target's healing by 25% and deals damage over time, for 5 seconds | The damage and the healing reduction, to a cap of 100%, then the duration |
+| Necrosis | 10 damage a second for 10 seconds, and denies the target all healing for that time, dealing the denied amount as damage over the following 5 seconds | The damage. The healing denial is already total, so magnitude extends the duration rather than raising it |
 | Madness | The enemy attacks anything nearby, friend or foe, for 3 seconds | The duration |
 | Cripple | Reduces the enemy's movement and attack speed by 30% for 4 seconds | The reduction, to a cap of 80%, then the duration |
 | Shred | Reduces the enemy's resistance by 10 for 6 seconds | The reduction, until that resistance reaches zero, then the duration |
 | Weaken | Reduces the enemy's damage by 20% for 5 seconds | The reduction, to a cap of 80%, then the duration |
 | Stun | The target cannot act for 0.75 seconds | The duration, to a cap of 3 seconds, and then nothing |
+
+  
+
+**No ailment is meant to be the best one. Each is meant to be the best in a different situation.** That is a requirement rather than an observation, stated by the project owner on 2026-08-24: in every game in the genre the damage over time effects end up interchangeable and one of them is simply strongest. So each of the six is separated by a condition rather than by a number, and which one a build wants depends on what it is fighting.
+
+  
+
+| Effect | The situation it is for | Why |
+| :-- | :-- | :-- |
+| Burn | A target dying quickly | Shortest at 4 seconds and the highest rate, so the most of it lands before the target dies |
+| Poison | A long fight | Longest at 8 seconds and a lower rate, so it only pays out in full against something that survives |
+| Bleed | A target that has to chase or flee | Ticks only while the target moves, so it is worth nothing against one holding still |
+| Disease | A pack | Spreads its remaining duration on the target's death, so its value rises with how many enemies stand together |
+| Void Splinter | A large health pool | A share of the target's health rather than a flat amount, so it is the only one indifferent to how big the target is |
+| Necrosis | A target that heals | Denies healing and turns it into damage, so it is worth nothing against something that never heals |
+
+  
+
+**A worked example of why this is not just flavour.** At difficulty tier 8 a Common enemy has about 3,238 effective health and a geared character deals about 2,363 damage a second, so that enemy lives about 1.4 seconds. Burn delivers 35 of its 100 in that time and poison delivers 28 of its 160. Against a Boss with about 40,048 effective health, which survives about 17 seconds, both deliver in full and poison's 160 beats burn's 100 outright — while bleed delivers nothing at all if the boss holds still. The ordering reverses between the two fights, which is the property being designed for.
+
+  
+
+**Three of the six conditions are not built yet.** Bleed's movement gate, disease's spread on death and Necrosis's healing denial are all stated here and in the DoTs sheet and nothing implements them; they are issues #918, #919 and #920. Void Splinter is not implemented either, and issue #915 records that the damage over time stats multiply its percentage in a way that needs a decision first.
 
   
 
@@ -1617,7 +1648,11 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-**Necrosis no longer stacks.** Its earlier description had it stacking and reducing healing by 10% per stack, which the single-stack rule above rules out. It now carries the whole reduction in one application and scales with magnitude like everything else.
+**Necrosis no longer stacks.** Its earlier description had it stacking and reducing healing by 10% per stack, which the single-stack rule above rules out. It carries its whole effect in one application.
+
+  
+
+**And Necrosis no longer reduces healing by a percentage at all.** On 2026-08-24 the project owner replaced the 25% reduction, which magnitude could raise towards 100%, with total denial: the target receives no healing for the 10 seconds, and the denied amount is dealt as damage over the following 5 seconds. Because the denial is total from the first application there is nothing for magnitude to raise, so magnitude extends the duration instead, which is the same rule every other capped effect follows. The conversion is at one times the healing rather than double, so a build that leeches loses its recovery rather than being actively killed by it — a leech build cannot switch leech off, so double would leave it worse off than having no leech at all.
 
   
 

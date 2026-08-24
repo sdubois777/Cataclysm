@@ -623,11 +623,12 @@ STATUS_EFFECT_NUMBERS: tuple[tuple[int, str], ...] = (
     (4, "StrengthCap"),             # column E
     (5, "DurationCap"),             # column F
     (6, "PercentOfCurrentHealth"),  # column G
+    (7, "FlatDamagePerTick"),       # column H
 )
 
 
 def status_effects(book) -> list[dict]:
-    """Buffs, Debuffs and DoTs: "Name: Description", then six optional numbers.
+    """Buffs, Debuffs and DoTs: "Name: Description", then seven optional numbers.
 
     The first row is data, not a header. Reading it as a header would silently
     drop one effect from each of the three sheets.
@@ -637,20 +638,42 @@ def status_effects(book) -> list[dict]:
     answer for an effect nobody has designed yet, and is what
     `UCataclysmSkillEffects::BurnNumbers` checks for before applying anything.
 
-    COLUMNS B AND C ARE HOW LONG AN EFFECT LASTS AND WHAT ONE TICK OF IT DEALS.
-    They were added for Burn, which every one of the sixteen designed Demonic
-    skills applies and which stated no duration and no damage anywhere in the
-    design -- so a skill reading "sets each one alight" applied an effect with
-    no numbers in it. C is PER TICK and not a total; `docs/DECISIONS.md` carries
-    that decision, made on 2026-08-24.
+    COLUMN B IS HOW LONG AN EFFECT LASTS. It was added for Burn, which every one
+    of the sixteen designed Demonic skills applies and which stated no duration
+    and no damage anywhere in the design -- so a skill reading "sets each one
+    alight" applied an effect with no numbers in it.
 
-    COLUMNS D TO G WERE ADDED FOR ISSUE #904, because ten of the eleven ailments
-    a gear affix can apply stated a duration of zero and zero damage, and four
-    of them could not be written down at all with only B and C:
+    THREE COLUMNS ARE ALTERNATIVE WAYS OF SAYING WHAT ONE TICK DEALS, and an
+    effect states exactly one of them. All three are per tick and not a total;
+    `docs/DECISIONS.md` carries that decision, made on 2026-08-24.
+
+    * `FlatDamagePerTick`, column H, is a plain amount. Bleed, Poison, Disease,
+      Burn and Necrosis use it. The project owner chose it over a percent of the
+      hit on 2026-08-24, because a percent of the hit multiplies twice -- the hit
+      already grows with the difficulty tier and the three damage over time stats
+      multiply on top of it -- while a flat amount grows only with those stats
+      and so stays level across the eight tiers.
+    * `PercentOfHit`, column C, is a percent of the hit that applied the effect.
+      NOTHING USES IT AS OF 2026-08-24. It was Burn's base until the decision
+      above. Kept rather than removed because a skill stating its own effect is
+      the obvious future caller and removing it would churn the struct and two
+      C++ tests for no gain.
+    * `PercentOfCurrentHealth`, column G, is for an effect measured against the
+      target. Only Void Splinter uses it, at 1% a second. It cannot go through
+      the ordinary damage over time path, because current health falls between
+      ticks and so the per-tick amount is not fixed. Issue #915.
+
+    SEPARATE COLUMNS RATHER THAN ONE COLUMN AND A STRING NAMING ITS BASIS,
+    because a misspelled basis would silently read as one of the others and a
+    number cannot be misspelled.
+
+    COLUMNS D TO F ARE AN EFFECT'S STRENGTH AND ITS CAPS. They were added for
+    issue #904, because four of the eleven ailments could not be written down at
+    all without them:
 
     * `Strength` is the effect's own magnitude in whatever unit it names --
       Cripple's 30% slow, Weaken's 20% damage reduction, Shred's 10 resistance,
-      Necrosis's 25% healing reduction.
+      Necrosis's total denial of healing.
     * `StrengthCap` is where that magnitude stops and rolls into duration
       instead, which is the design's rule for every effect that has one. Empty
       means no NUMERIC cap: Shred's cap is the target's own resistance reaching
@@ -658,11 +681,6 @@ def status_effects(book) -> list[dict]:
     * `DurationCap` is where the duration stops. Only Stun has one, and Stun is
       the one effect whose scaling stops dead rather than rolling over, because
       its magnitude IS its duration and there is nothing to roll into.
-    * `PercentOfCurrentHealth` is for an effect measured against the target
-      rather than against the hit. Only Void Splinter uses it, at 1% a second.
-      A SEPARATE COLUMN RATHER THAN A STRING SAYING WHICH BASIS C USES, because
-      a misspelled basis would silently read as "the hit" and a number cannot be
-      misspelled.
     """
     out = []
     for sheet, kind in (("Buffs", "Buff"), ("Debuffs", "Debuff"), ("DoTs", "DoT")):

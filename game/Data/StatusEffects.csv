@@ -1,53 +1,53 @@
-Name,EffectKind,EffectName,Description,DurationSeconds,PercentOfHit,Strength,StrengthCap,DurationCap,PercentOfCurrentHealth
-Buff_Mana_Surge,Buff,Mana Surge,Increases spell damage by 1% for 5 seconds for every 100 maximum mana.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Warhound,Buff,Warhound,A temporary minion that taunts enemies and deals damage.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Tactical_Advantage,Buff,Tactical Advantage,Increases movement speed and damage by 35% after using a movement ability.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Plague,Buff,Plague,"At 10 stacks, spreads all DoTs to nearby enemies.",0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Demonic_Rage,Buff,Demonic Rage,"When your health falls below 25%, you become immune to crowd control and deal 100% more damage for 10 seconds.",0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Sanctified_Power,Buff,Sanctified Power,"A stack gained every 10 seconds. When an attack is blocked, all of your skills are instantly refreshed.",0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Temporal_Flux,Buff,Temporal Flux,"A stack gained every 30 seconds. When a skill is used, it is cast a random number of times.",0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Void,Buff,Void,"At 10 stacks, your next ability costs no mana and deals 100% more damage.",0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Death,Buff,Death,"Every 10 seconds, when a skill is used, it has a 25% chance to instantly kill an enemy below 50% health.",0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Spellslinger,Buff,Spellslinger,Each stack reduces the mana cost of your abilities by 10%.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Dervish,Buff,Dervish,Increases your attack speed for melee attacks by 10% per stack.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Famished,Buff,Famished,Increases all of your leech by 5%.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Warzone_Control_Points,Buff,Warzone Control Points,Holding these provides strategic advantages.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Divine_Aegis,Buff,Divine Aegis,"Gain a divine shield when below 50% HP, reducing all damage taken by 75%.",0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Commander,Buff,Commander,All nearby allies gain 20% increased movement speed and attack speed.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Chaotic_Barrier,Buff,Chaotic Barrier,Temporarily grants a random buff when attacked.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_The_Ascended,Buff,The Ascended,A powerful buff granted to all nearby enemies when this enemy is killed.,0.0,0.0,0.0,0.0,0.0,0.0
-Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feast"" every time it is hit, and for every stack, its attack speed is increased.",0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Temporal_Debt,Debuff,Temporal Debt,A stacking debuff that freezes all your cooldowns for 5 seconds when it reaches 10 stacks.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Withered_Touch,Debuff,Withered Touch,An effect that reduces player damage output and mana/energy shield for a short duration.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Haunting,Debuff,Haunting,A debuff applied by a spectral copy of an enemy that reduces all of a player's resistances.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Wither,Debuff,Wither,"A debuff that, at 10 stacks, reduces the player's movement and attack speed.",0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Infernal_Brand,Debuff,Infernal Brand,"A stacking debuff that explodes at 5 stacks, dealing a large amount of fire damage to the player.",0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Abyssal_Aura,Debuff,Abyssal Aura,A debuff that reduces the player's Demonic and War resistances by 25%.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Starforged,Debuff,Starforged,A stacking debuff that reduces the player's damage and increases the damage they take.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Nullifying,Debuff,Nullifying,"A debuff that removes a single, random buff from the player.",0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Echoing,Debuff,Echoing,A stacking debuff that reduces the player's damage and movement speed.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Reality_Bender,Debuff,Reality Bender,An effect that inflicts a random debuff on the player.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_The_Deceiver,Debuff,The Deceiver,A debuff applied to the player when an illusion is hit.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Manic,Debuff,Manic,An aura of chaos that causes all nearby enemies to deal more damage but also take more damage.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Toxic_Trail,Debuff,Toxic Trail,Enemies leave behind a poison cloud that applies a poison debuff.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Battle_Cry,Debuff,Battle Cry,A terrifying shout that reduces the player's resistances or armor for 5 seconds.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Contagion,Debuff,Contagion,A debuff that mirrors DoTs and debuffs back onto the player.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Starving_Aura,Debuff,Starving Aura,An aura that reduces healing and health regeneration effects by 50%.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Final_Curse,Debuff,Final Curse,"Upon death, this enemy curses the player for 5 seconds, causing them to take damage when using abilities.",0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Shared_Pain,Debuff,Shared Pain,A debuff that distributes damage taken across nearby allies.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Soul_Tether,Debuff,Soul Tether,A debuff that transfers a portion of damage taken to the player as health degeneration over time.,0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Touch_of_Nothing,Debuff,Touch of Nothing,"When a player gains a buff, a stack of this debuff is consumed to negate that buff completely.",0.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Madness,Debuff,Madness,"A player-applied debuff. The affected enemy attacks anything nearby, friend or foe, for 3 seconds. Magnitude extends the duration. Applied by the Of Madness gem and the chance to madden affix.",3.0,0.0,0.0,0.0,0.0,0.0
-Debuff_Cripple,Debuff,Cripple,"A player-applied debuff. Reduces the affected enemy's movement and attack speed by 30% for 4 seconds. Magnitude raises the reduction to a cap of 80%, then extends the duration instead. Applied by the Of Maiming gem and the chance to cripple affix.",4.0,0.0,30.0,80.0,0.0,0.0
-Debuff_Shred,Debuff,Shred,"A player-applied debuff. Reduces the affected enemy's resistance by 10 for 6 seconds. Magnitude raises the reduction until that resistance reaches zero, then extends the duration instead. Applied by the Of Shredding gem and the chance to shred affix.",6.0,0.0,10.0,0.0,0.0,0.0
-Debuff_Weaken,Debuff,Weaken,"A player-applied debuff. Reduces the affected enemy's damage by 20% for 5 seconds. Magnitude raises the reduction to a cap of 80%, then extends the duration instead. Distinct from Wither, which an enemy applies to the player and which reduces speed rather than damage. Applied by the Of Withering gem and the chance to weaken affix.",5.0,0.0,20.0,80.0,0.0,0.0
-Debuff_Stun,Debuff,Stun,"A hard stop. The target cannot act for the stun duration, which is stated by whatever applies it rather than being fixed here: designed skills run 0.75 to 1.5 seconds. A stun applied by a chance rather than by a skill lasts 0.75 seconds at 100% chance to stun and longer above it: chance past 100% multiplies the duration instead of being wasted, so 200% gives 1.5 seconds and 400% gives 3, which is the cap. Nothing reaches further, because a stun as long as the immunity window below would hold a target for ever. Three rules bound it. A hit must take at least 10% of the target maximum health to stun, unless the skill states stunning as its effect. A stunned target cannot be stunned again for 5 seconds. A boss cannot be stunned at all. Stun and Knockdown share one immunity window rather than one each.",0.75,0.0,0.0,0.0,3.0,0.0
-Debuff_Knockdown,Debuff,Knockdown,"A hard stop that puts the target on the floor. It stops the target acting for a stated number of seconds, which is the whole of what a stun does, so it carries all three parts of the anti-stun-lock rule in full. Two Ultimates apply it: Warlord Decree for 2 seconds and Cataclysm for 3, both longer than any stun. Knockdown and Stun share one immunity window rather than one each.",0.0,0.0,0.0,0.0,0.0,0.0
-DoT_Bleed,DoT,Bleed,Applied by the Primal Instinct enchantment and the Of Rending gem.,0.0,0.0,0.0,0.0,0.0,0.0
-DoT_Poison,DoT,Poison,Applied by the Toxic Trail enemy modifier and the Of The Viper gem.,0.0,0.0,0.0,0.0,0.0,0.0
-DoT_Disease,DoT,Disease,Applied by the Raw Sewage dungeon modifier and the Of Rot gem.,0.0,0.0,0.0,0.0,0.0,0.0
-DoT_Burn,DoT,Burn,A player-applied effect. Deals damage over time. One stack only. Magnitude scales the damage. Demonic skills apply it directly. Applied by the Of Embers gem and the chance to burn affix. The Infernal Brand and Hellfire Aura enemy modifiers apply it to the player.,4.0,20.0,0.0,0.0,0.0,0.0
-DoT_Necrosis,DoT,Necrosis,A player-applied effect. Reduces the affected enemy's healing by 25% and deals damage over time for 5 seconds. One stack only. Magnitude scales the damage and the healing reduction; once that reduction reaches 100% it extends the duration instead.,5.0,0.0,25.0,100.0,0.0,0.0
-DoT_Necrotic_Fog,DoT,Necrotic Fog,A dungeon modifier that deals damage over time.,0.0,0.0,0.0,0.0,0.0,0.0
-DoT_Void_Splinter,DoT,Void Splinter,Deals 1% of current HP per second over 4 seconds. Applied by the Of The Abyss gem.,4.0,0.0,0.0,0.0,0.0,1.0
-DoT_Void_Rift,DoT,Void Rift,Enemies create small void zones that deal heavy damage over time to the player.,0.0,0.0,0.0,0.0,0.0,0.0
+Name,EffectKind,EffectName,Description,DurationSeconds,PercentOfHit,Strength,StrengthCap,DurationCap,PercentOfCurrentHealth,FlatDamagePerTick
+Buff_Mana_Surge,Buff,Mana Surge,Increases spell damage by 1% for 5 seconds for every 100 maximum mana.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Warhound,Buff,Warhound,A temporary minion that taunts enemies and deals damage.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Tactical_Advantage,Buff,Tactical Advantage,Increases movement speed and damage by 35% after using a movement ability.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Plague,Buff,Plague,"At 10 stacks, spreads all DoTs to nearby enemies.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Demonic_Rage,Buff,Demonic Rage,"When your health falls below 25%, you become immune to crowd control and deal 100% more damage for 10 seconds.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Sanctified_Power,Buff,Sanctified Power,"A stack gained every 10 seconds. When an attack is blocked, all of your skills are instantly refreshed.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Temporal_Flux,Buff,Temporal Flux,"A stack gained every 30 seconds. When a skill is used, it is cast a random number of times.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Void,Buff,Void,"At 10 stacks, your next ability costs no mana and deals 100% more damage.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Death,Buff,Death,"Every 10 seconds, when a skill is used, it has a 25% chance to instantly kill an enemy below 50% health.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Spellslinger,Buff,Spellslinger,Each stack reduces the mana cost of your abilities by 10%.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Dervish,Buff,Dervish,Increases your attack speed for melee attacks by 10% per stack.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Famished,Buff,Famished,Increases all of your leech by 5%.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Warzone_Control_Points,Buff,Warzone Control Points,Holding these provides strategic advantages.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Divine_Aegis,Buff,Divine Aegis,"Gain a divine shield when below 50% HP, reducing all damage taken by 75%.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Commander,Buff,Commander,All nearby allies gain 20% increased movement speed and attack speed.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Chaotic_Barrier,Buff,Chaotic Barrier,Temporarily grants a random buff when attacked.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_The_Ascended,Buff,The Ascended,A powerful buff granted to all nearby enemies when this enemy is killed.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feast"" every time it is hit, and for every stack, its attack speed is increased.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Temporal_Debt,Debuff,Temporal Debt,A stacking debuff that freezes all your cooldowns for 5 seconds when it reaches 10 stacks.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Withered_Touch,Debuff,Withered Touch,An effect that reduces player damage output and mana/energy shield for a short duration.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Haunting,Debuff,Haunting,A debuff applied by a spectral copy of an enemy that reduces all of a player's resistances.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Wither,Debuff,Wither,"A debuff that, at 10 stacks, reduces the player's movement and attack speed.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Infernal_Brand,Debuff,Infernal Brand,"A stacking debuff that explodes at 5 stacks, dealing a large amount of fire damage to the player.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Abyssal_Aura,Debuff,Abyssal Aura,A debuff that reduces the player's Demonic and War resistances by 25%.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Starforged,Debuff,Starforged,A stacking debuff that reduces the player's damage and increases the damage they take.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Nullifying,Debuff,Nullifying,"A debuff that removes a single, random buff from the player.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Echoing,Debuff,Echoing,A stacking debuff that reduces the player's damage and movement speed.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Reality_Bender,Debuff,Reality Bender,An effect that inflicts a random debuff on the player.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_The_Deceiver,Debuff,The Deceiver,A debuff applied to the player when an illusion is hit.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Manic,Debuff,Manic,An aura of chaos that causes all nearby enemies to deal more damage but also take more damage.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Toxic_Trail,Debuff,Toxic Trail,Enemies leave behind a poison cloud that applies a poison debuff.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Battle_Cry,Debuff,Battle Cry,A terrifying shout that reduces the player's resistances or armor for 5 seconds.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Contagion,Debuff,Contagion,A debuff that mirrors DoTs and debuffs back onto the player.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Starving_Aura,Debuff,Starving Aura,An aura that reduces healing and health regeneration effects by 50%.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Final_Curse,Debuff,Final Curse,"Upon death, this enemy curses the player for 5 seconds, causing them to take damage when using abilities.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Shared_Pain,Debuff,Shared Pain,A debuff that distributes damage taken across nearby allies.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Soul_Tether,Debuff,Soul Tether,A debuff that transfers a portion of damage taken to the player as health degeneration over time.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Touch_of_Nothing,Debuff,Touch of Nothing,"When a player gains a buff, a stack of this debuff is consumed to negate that buff completely.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Madness,Debuff,Madness,"A player-applied debuff. The affected enemy attacks anything nearby, friend or foe, for 3 seconds. Magnitude extends the duration. Applied by the Of Madness gem and the chance to madden affix.",3.0,0.0,0.0,0.0,0.0,0.0,0.0
+Debuff_Cripple,Debuff,Cripple,"A player-applied debuff. Reduces the affected enemy's movement and attack speed by 30% for 4 seconds. Magnitude raises the reduction to a cap of 80%, then extends the duration instead. Applied by the Of Maiming gem and the chance to cripple affix.",4.0,0.0,30.0,80.0,0.0,0.0,0.0
+Debuff_Shred,Debuff,Shred,"A player-applied debuff. Reduces the affected enemy's resistance by 10 for 6 seconds. Magnitude raises the reduction until that resistance reaches zero, then extends the duration instead. Applied by the Of Shredding gem and the chance to shred affix.",6.0,0.0,10.0,0.0,0.0,0.0,0.0
+Debuff_Weaken,Debuff,Weaken,"A player-applied debuff. Reduces the affected enemy's damage by 20% for 5 seconds. Magnitude raises the reduction to a cap of 80%, then extends the duration instead. Distinct from Wither, which an enemy applies to the player and which reduces speed rather than damage. Applied by the Of Withering gem and the chance to weaken affix.",5.0,0.0,20.0,80.0,0.0,0.0,0.0
+Debuff_Stun,Debuff,Stun,"A hard stop. The target cannot act for the stun duration, which is stated by whatever applies it rather than being fixed here: designed skills run 0.75 to 1.5 seconds. A stun applied by a chance rather than by a skill lasts 0.75 seconds at 100% chance to stun and longer above it: chance past 100% multiplies the duration instead of being wasted, so 200% gives 1.5 seconds and 400% gives 3, which is the cap. Nothing reaches further, because a stun as long as the immunity window below would hold a target for ever. Three rules bound it. A hit must take at least 10% of the target maximum health to stun, unless the skill states stunning as its effect. A stunned target cannot be stunned again for 5 seconds. A boss cannot be stunned at all. Stun and Knockdown share one immunity window rather than one each.",0.75,0.0,0.0,0.0,3.0,0.0,0.0
+Debuff_Knockdown,Debuff,Knockdown,"A hard stop that puts the target on the floor. It stops the target acting for a stated number of seconds, which is the whole of what a stun does, so it carries all three parts of the anti-stun-lock rule in full. Two Ultimates apply it: Warlord Decree for 2 seconds and Cataclysm for 3, both longer than any stun. Knockdown and Stun share one immunity window rather than one each.",0.0,0.0,0.0,0.0,0.0,0.0,0.0
+DoT_Bleed,DoT,Bleed,"A player-applied effect. Deals a base of 20 damage a second for 5 seconds, and ticks only while the affected target is moving, stopping after 4 seconds of movement. That makes it the ailment for a target that has to chase or flee. One stack only. Magnitude scales the damage. War skills apply it directly. Applied by the Primal Instinct enchantment, the Of Rending gem and the chance to bleed affix.",5.0,0.0,0.0,0.0,0.0,0.0,20.0
+DoT_Poison,DoT,Poison,"A player-applied effect. Deals a base of 20 damage a second for 8 seconds, the longest of any ailment, so it only pays out in full against a target that survives that long and is the ailment for a boss. One stack only. Magnitude scales the damage. Applied by the Toxic Trail enemy modifier, the Of The Viper gem and the chance to poison affix.",8.0,0.0,0.0,0.0,0.0,0.0,20.0
+DoT_Disease,DoT,Disease,"A player-applied effect. Deals a base of 12 damage a second for 6 seconds, and when the affected target dies it spreads its remaining duration to nearby enemies. That makes it the ailment for a pack rather than for one target. One stack only. Magnitude scales the damage. Applied by the Raw Sewage dungeon modifier, the Of Rot gem and the chance to disease affix.",6.0,0.0,0.0,0.0,0.0,0.0,12.0
+DoT_Burn,DoT,Burn,"A player-applied effect. Deals a base of 25 damage a second for 4 seconds, the shortest and hardest-hitting of the ailments, so it is the one that still pays out against a target dying quickly. One stack only. Magnitude scales the damage. Demonic skills apply it directly. Applied by the Of Embers gem and the chance to burn affix. The Infernal Brand and Hellfire Aura enemy modifiers apply it to the player.",4.0,0.0,0.0,0.0,0.0,0.0,25.0
+DoT_Necrosis,DoT,Necrosis,"A player-applied effect. Deals a base of 10 damage a second for 10 seconds, and denies the affected target all healing for that time, dealing the denied amount as damage over the following 5 seconds. That makes it the ailment for a target that heals. One stack only. Magnitude scales the damage, and because the healing denial is already total at 100% it extends the duration instead of raising that.",10.0,0.0,100.0,100.0,0.0,0.0,10.0
+DoT_Necrotic_Fog,DoT,Necrotic Fog,A dungeon modifier that deals damage over time.,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+DoT_Void_Splinter,DoT,Void Splinter,"Deals 1% of current HP per second over 4 seconds, so it is the one ailment measured against how much health the target has rather than against the hit or a flat amount, which makes it the ailment for a large health pool. Applied by the Of The Abyss gem.",4.0,0.0,0.0,0.0,0.0,1.0,0.0
+DoT_Void_Rift,DoT,Void Rift,Enemies create small void zones that deal heavy damage over time to the player.,0.0,0.0,0.0,0.0,0.0,0.0,0.0

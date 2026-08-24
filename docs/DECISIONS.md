@@ -20,6 +20,141 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — An ailment's damage is a flat amount, and each ailment is best in a different situation
+
+**Affects:** the DoTs sheet of `docs/All_Things_Cataclysm.xlsx` and through it
+`game/Data/StatusEffects.csv`; `tools/generate_datatables.py`;
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`;
+`docs/Cataclysm_GDD_v2.md`; and `docs/README.md`. **Applied in all seven.**
+Issue #904.
+
+### What was asked
+
+Bleed, Poison and Disease had no numbers anywhere and Necrosis's damage had never
+been stated, so four of the six damage over time effects could not be applied at
+all. Burn was the only one with numbers: 4 seconds at 20% of the hit per second.
+
+Asked what the missing numbers should be, the project owner asked for something
+different instead: "I don't think they should all be based off the hit that
+applied them", proposing flat base damage — burn 25 a second for 4 seconds,
+poison 20 a second for 8 — and, separately, that the ailments should stop being
+interchangeable: "in every ARPG, dots are basically the same and there's always
+one that is the best. I wanted to ensure ours are different with different
+effects and some working better in certain situations than others."
+
+### The decision
+
+**Every ailment's damage is a flat amount per tick, except Void Splinter's.**
+
+| Effect | Duration | Damage a second | The situation it is for |
+|---|---:|---:|---|
+| Burn | 4 s | 25 flat | a target dying quickly |
+| Poison | 8 s | 20 flat | a long fight |
+| Bleed | 5 s | 20 flat, ticking only while the target moves, at most 4 seconds of movement | a target that has to chase or flee |
+| Disease | 6 s | 12 flat, spreading its remaining duration on the target's death | a pack |
+| Necrosis | 10 s | 10 flat, plus total denial of healing dealt back over 5 seconds | a target that heals |
+| Void Splinter | 4 s | 1% of current health | a large health pool |
+
+**Burn moved off the percent of the hit it had used since it was built.** That
+column, `PercentOfHit`, is now stated by nothing. It is kept rather than removed
+because a skill stating its own effect is the obvious future caller.
+
+**Necrosis's 25% healing reduction became total denial, and the conversion is at
+one times the healing rather than double.** The owner's first proposal was
+double. Measured against the reference geared character at difficulty tier 8 —
+11,023 maximum health, 25.4 health a second of regeneration, 2.98% life leech,
+2,363 damage a second — double costs 1.7% of health a second, and 3.9% for a
+build with 9% leech. Survivable, but the objection is not the size: the
+counterplay is "stop healing" and a leech build cannot stop, so at double it is
+worse off than a build with no leech at all. At one times it merely loses its
+recovery. The owner delegated this choice.
+
+### Why a flat amount
+
+**A percent of the hit multiplies twice and a flat amount multiplies once.**
+Enemy health grows 15.9 times from difficulty tier 1 to tier 8, one non-critical
+hit from the reference character grows 14.5 times, and the three damage over time
+stats grow on their own because affix tier and gear upgrade level both rise with
+the difficulty tier — 13.4 times at twelve affix slots. So the stats alone very
+nearly track enemy health, and:
+
+| Burn's base | Share of a Common enemy's health, tier 1 | Tier 4 | Tier 8 |
+|---|---:|---:|---:|
+| flat 25 a second, at 12 affix slots | 107% | 76% | 90% |
+| 20% of the hit a second, at 12 affix slots | 109% | 377% | **1,338%** |
+
+Thirteen times a Common enemy's health from one application is not a number
+anybody chose; it is what two multiplications produce. Issue #264 already carried
+the general form of this concern and this is its sharpest instance.
+
+**A first measurement said the opposite and was wrong.** Holding affix
+investment fixed at zero makes a flat amount look 15.9 times too weak by tier 8.
+That comparison is invalid, because a flat base is designed to need investment
+and the investment available grows with the tier. The corrected measurement is
+above.
+
+**Mixing the two bases in one pool does not work.** They cross exactly once, so
+one is dominant on each side and no constant fixes it. With burn and poison flat
+and bleed left on the hit, bleed is level with burn at tier 1 and 14.8 times burn
+at tier 8 for the same affix cost and the same 10% gem chance, and one moving
+bleed is 216% of a Boss's health. That is why bleed moved to a flat amount too,
+against the owner's initial preference for keeping it on the hit; its identity
+became the movement gate instead, which is a stronger separation than a different
+base.
+
+**What it costs.** Burn falls to 7% of its previous value at tier 8 and 20% at
+tier 4, and is unchanged at tier 1. All sixteen designed Demonic skills apply
+burn as part of their baseline rather than as a build choice, so they lose that
+damage unless the character invests in the damage over time stats. That is the
+intent — the owner's words were "dot builds will just need to build into it
+more" — but it is a real loss to every Demonic skill and it is recorded here so
+it is not rediscovered as a bug.
+
+### Why differentiate by condition rather than by number
+
+**Three sets of numbers were offered and all three were rejected**, because they
+differed only in duration and rate, which is exactly the interchangeability the
+owner was objecting to. Separating the six by condition instead means the
+ordering reverses between fights: at tier 8 a Common enemy lives about 1.4
+seconds and burn delivers 35 against poison's 28, while a Boss survives about 17
+seconds and poison delivers its full 160 against burn's 100 — and bleed delivers
+nothing at all if the boss holds still.
+
+**Five of the six conditions were already somewhere in the design** rather than
+invented: Void Splinter's share of current health and Necrosis's healing
+interaction were already stated, disease's spread on death was a rider on row 142
+of the Enchantments sheet, bleed's movement rule is Path of Exile's, and burn
+against poison is short-and-strong against long-and-slow, which decides clearing
+against boss damage on its own.
+
+### The genre research behind it
+
+All four comparison games state a rate and a duration rather than a lump sum.
+Path of Exile 2 gives bleeding 15% of the hit's physical damage a second over 5
+seconds and poison 20% a second over 2. Last Epoch uses flat bases — bleed 53
+over 3 seconds, poison 20 over 3, Time Rot 55 over 3 — which is the shape adopted
+here. Grim Dawn keeps its damage over time types separate and applies only the
+strongest of a type. Diablo IV states each one per skill as a percent of base
+damage over N seconds.
+
+**None of it transferred directly.** Path of Exile and Last Epoch both make
+poison weak per application because it stacks infinitely, and this design says an
+enemy carries at most one stack of any effect the player applies, so their
+numbers cannot be copied across. Sources are recorded in the comment of
+2026-08-24 on issue #904.
+
+### What it does not settle
+
+**Three of the six conditions are not built.** Bleed's movement gate is #918,
+disease's spread on death is #919, Necrosis's healing denial and conversion is
+#920. Void Splinter is not built either, and #915 records that the damage over
+time stats multiply its percentage in a way that needs deciding first. #917 asks
+whether a hit that dealt no damage should apply an ailment at all, which the flat
+base turned from arithmetic into a design question.
+
+---
+
 ## 2026-08-24 — A status effect's strength and its caps become columns, and the sheets stay heading-less
 
 **Affects:** the DoTs and Debuffs sheets of `docs/All_Things_Cataclysm.xlsx` and
@@ -90,13 +225,12 @@ breaking the condition each one names.
 
 ### What it does not settle
 
-**Six damage figures are still open and are the project owner's to decide.**
-Bleed, Poison and Disease have no numbers anywhere; Necrosis's damage was never
-stated; and on 2026-08-24 the owner asked to reconsider whether burn and poison
-should be a percent of the hit at all. Issue #904 carries the measurements taken
-for that conversation, including the finding that a flat base and a percent of
-the hit cannot both be balanced across the eight difficulty tiers because they
-cross exactly once.
+**Six damage figures were still open when this was written**, and the owner
+settled them later the same day. Bleed, Poison and Disease had no numbers
+anywhere, Necrosis's damage had never been stated, and the owner had asked to
+reconsider whether burn and poison should be a percent of the hit at all. The
+entry above, "An ailment's damage is a flat amount, and each ailment is best in a
+different situation", is the answer and supersedes this paragraph.
 
 ---
 

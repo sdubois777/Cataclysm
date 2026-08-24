@@ -30,6 +30,11 @@
  * three stats could not have been worth anything even once it was read. The
  * project owner chose the per-tick reading on 2026-08-24; docs/DECISIONS.md
  * carries the reasoning.
+ *
+ * THAT 20% OF THE HIT IS HISTORY AND NOT BURN'S CURRENT NUMBER. Later the same
+ * day the owner moved every ailment from a percent of the hit to a flat amount
+ * per tick, and Burn became 25 a second for four seconds. The per-tick rule
+ * above is unchanged and is what these tests check; only the base moved.
  */
 namespace CataclysmDamageOverTimeTest
 {
@@ -200,29 +205,35 @@ CATACLYSM_DOT_TEST(FCataclysmDotThreeStatsTest,
 }
 
 CATACLYSM_DOT_TEST(FCataclysmBurnIsPerTickTest,
-	"Cataclysm.DamageOverTime.BurnsStatedPercentageIsWhatOneTickDeals")
+	"Cataclysm.DamageOverTime.BurnsStatedAmountIsWhatOneTickDeals")
 {
 	using namespace CataclysmDamageOverTimeTest;
 
 	const FCataclysmStatusEffectNumbers Burn = UCataclysmSkillEffects::BurnNumbers();
-	if (!TestTrue(TEXT("Burn states a duration and a percentage"), Burn.bUsable))
+	if (!TestTrue(TEXT("Burn states a duration and an amount"), Burn.bUsable))
 	{
 		return false;
 	}
 
 	// READ OFF THE EFFECT TABLE RATHER THAN WRITTEN HERE, so re-tuning Burn does
 	// not break this test. Only the reading of the number is being checked.
-	const float PerTick = 100.0f * Burn.PercentOfHit / 100.0f;
+	//
+	// ASKED THROUGH DamagePerTickAgainst RATHER THAN OF ONE COLUMN, so it holds
+	// whichever base Burn states. It was a percent of the hit until 2026-08-24
+	// and is a flat amount since, and this computed `100 * PercentOfHit / 100`,
+	// which now reads zero and would fail on a working burn. The 100 stands for
+	// a 100 damage hit and is what makes the percent-of-hit reading legible.
+	const float PerTick = Burn.DamagePerTickAgainst(100.0f);
 	const FCataclysmDamageOverTimeNumbers Numbers =
 		UCataclysmSkillEffects::DamageOverTimeNumbers(
 			nullptr, PerTick, Burn.DurationSeconds);
 
-	TestEqual(TEXT("one tick of a burn on a 100 damage hit is the stated share"),
+	TestEqual(TEXT("one tick of a burn from a 100 damage hit is the stated amount"),
 		Numbers.DamagePerTick, PerTick, 0.001f);
 
-	// AND THE TOTAL IS THAT SHARE ONCE PER SECOND, so it is the duration times
+	// AND THE TOTAL IS THAT AMOUNT ONCE PER SECOND, so it is the duration times
 	// the per-tick figure rather than the per-tick figure by itself. With Burn
-	// at 4 seconds and 20% that is 80 rather than 20.
+	// at 4 seconds and 25 that is 100 rather than 25.
 	TestEqual(TEXT("and the total is one tick's worth for every second it runs"),
 		Numbers.TotalDamage, PerTick * Burn.DurationSeconds, 0.01f);
 

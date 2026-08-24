@@ -547,20 +547,32 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BurnNumbers()
 	}
 
 	Numbers.DurationSeconds = Row->DurationSeconds;
+	Numbers.FlatDamagePerTick = Row->FlatDamagePerTick;
 	Numbers.PercentOfHit = Row->PercentOfHit;
+	Numbers.PercentOfCurrentHealth = Row->PercentOfCurrentHealth;
 
 	// BOTH HALVES ARE NEEDED AND EITHER ONE MISSING IS THE SAME FAULT. Burn had
-	// neither until this change, and a burn lasting zero seconds or worth zero
+	// neither until issue #895, and a burn lasting zero seconds or worth zero
 	// damage is indistinguishable from a burn nobody wrote -- which is exactly
 	// how the missing cooldown in issue #155 stayed hidden.
-	Numbers.bUsable = Numbers.DurationSeconds > 0.0f && Numbers.PercentOfHit > 0.0f;
+	//
+	// EITHER BASE SATISFIES THE SECOND HALF. Burn states a flat amount since
+	// 2026-08-24 and stated a percent of the hit before that, and both are a
+	// per-tick amount this path can apply. A percent of the target's current
+	// health is deliberately NOT accepted: it is a different amount every tick,
+	// so it cannot be resolved to the one fixed figure this path needs.
+	const bool bStatesAnAmount = Numbers.FlatDamagePerTick > 0.0f
+		|| Numbers.PercentOfHit > 0.0f;
+	Numbers.bUsable = Numbers.DurationSeconds > 0.0f && bStatesAnAmount;
 	if (!Numbers.bUsable)
 	{
 		UE_LOG(LogCataclysm, Warning,
-			TEXT("Burn states a duration of %.1fs and %.0f%% of the hit. Both "
-				 "must be above zero or nothing is applied. They come from "
-				 "columns B and C of the DoTs sheet."),
-			Numbers.DurationSeconds, Numbers.PercentOfHit);
+			TEXT("Burn states a duration of %.1fs, a flat %.1f a tick and %.0f%% "
+				 "of the hit. The duration and one of the two amounts must be "
+				 "above zero or nothing is applied. They come from columns B, H "
+				 "and C of the DoTs sheet."),
+			Numbers.DurationSeconds, Numbers.FlatDamagePerTick,
+			Numbers.PercentOfHit);
 	}
 
 	return Numbers;
@@ -715,22 +727,33 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 									   bool bScalesWithInstigator)
 {
 	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
+
+	// THE ZERO-DAMAGE REFUSAL USED TO BE REDUNDANT AND IS NOW LOAD-BEARING.
+	// While Burn was a percent of the hit, a hit dealing nothing produced a burn
+	// worth nothing and ApplyDamageOverTime refused it anyway. Burn is a flat
+	// amount since 2026-08-24, so without this a fully mitigated hit would apply
+	// a burn at full strength. Keeping it preserves the behaviour the project
+	// already had; whether a hit that dealt nothing should apply an ailment at
+	// all is a design question and is issue #917.
 	if (!Burn.bUsable || HitDamage <= 0.0f)
 	{
 		return false;
 	}
 
-	// THE STATED PERCENTAGE IS WHAT ONE TICK DEALS, AND IT WAS READ AS A TOTAL
-	// UNTIL ISSUE #895. game/Data/StatusEffects.csv gives Burn 4 seconds and 20,
-	// and this passed that 20% of the hit as the whole amount to be spread over
-	// the four seconds, so a burn on a 100 damage hit dealt 20 in total.
+	// WHAT THE TABLE STATES IS WHAT ONE TICK DEALS, AND IT WAS READ AS A TOTAL
+	// UNTIL ISSUE #895. Under that reading raising the tick rate divided one
+	// total into more, smaller ticks, so Damage over Time Frequency could not be
+	// worth anything -- and the design's reason for having three separate stats
+	// is that all three multiply.
 	//
-	// THE DESIGN SAYS A DAMAGE OVER TIME EFFECT DEALS A FIXED AMOUNT PER TICK
-	// and the project owner confirmed the reading on 2026-08-24, so the same
-	// burn now deals 20 a second for four seconds, which is 80. Four times what
-	// it was, and every Demonic skill applies burn.
+	// THE AMOUNT IS FLAT RATHER THAN A SHARE OF THE HIT since 2026-08-24, which
+	// the project owner chose because a share of the hit multiplies twice: the
+	// hit grows about fifteenfold across the eight difficulty tiers and the
+	// three stats multiply on top. Burn is now 25 a second for four seconds,
+	// which is 100 before those stats. DamagePerTickAgainst still reads the
+	// percent-of-hit column, so a row stating one would work unchanged.
 	return ApplyDamageOverTime(Instigator, Target,
-							   HitDamage * Burn.PercentOfHit / 100.0f,
+							   Burn.DamagePerTickAgainst(HitDamage),
 							   Burn.DurationSeconds, BurnTag(),
 							   bScalesWithInstigator);
 }

@@ -199,13 +199,49 @@ struct CATACLYSM_API FCataclysmStatusEffectNumbers
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
 	float DurationSeconds = 0.0f;
 
-	/** The whole effect as a percent of the hit that applied it. */
+	/** What one tick deals as a plain amount. Five of the six effects use this. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
+	float FlatDamagePerTick = 0.0f;
+
+	/**
+	 * What one tick deals as a percent of the hit that applied it.
+	 *
+	 * Nothing states one as of 2026-08-24; it was Burn's base until the owner
+	 * moved the ailments to a flat amount. See FCataclysmStatusEffectRow.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
 	float PercentOfHit = 0.0f;
 
-	/** False when no row was found, or when the row states no numbers. */
+	/**
+	 * What one tick deals as a percent of the target's current health.
+	 *
+	 * CARRIED BUT NOT USABLE THROUGH THIS PATH, which computes one fixed amount
+	 * per tick up front. A share of current health is a different amount every
+	 * tick. Only Void Splinter states one, and nothing implements it; issue #915.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
+	float PercentOfCurrentHealth = 0.0f;
+
+	/**
+	 * False when no row was found, or when the row states nothing this path can
+	 * apply -- no duration, or no flat amount and no percent of the hit.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
 	bool bUsable = false;
+
+	/**
+	 * What one tick deals against a hit of this size, before the attacker's
+	 * three damage over time stats.
+	 *
+	 * THE TWO BASES ARE SUMMED RATHER THAN ONE BEING PICKED. Exactly one is ever
+	 * stated, which a test checks, so the sum is that one. Summing means a row
+	 * that somehow stated both would deal both rather than silently losing one,
+	 * which is the failure that is easier to notice.
+	 */
+	float DamagePerTickAgainst(float HitDamage) const
+	{
+		return FlatDamagePerTick + HitDamage * PercentOfHit / 100.0f;
+	}
 };
 
 /**
