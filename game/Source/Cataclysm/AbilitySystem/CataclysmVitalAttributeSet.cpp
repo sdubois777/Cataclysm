@@ -317,11 +317,33 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// from a weapon. That is the same answer every hit gave before this
 			// existed, so nothing about an enemy's hit changes.
 			//
-			// BLUNT IS NOT HERE, and that is a gap rather than an omission. Its
-			// effect is a 10% chance to stun for 0.75 seconds, and nothing in the
-			// project rolls a chance to stun on an ordinary hit --
-			// UCataclysmSkillEffects::ApplyStun applies one already decided. Issue
-			// #639 records what building it takes.
+			// BLUNT'S EFFECT IS NOT APPLIED WHERE THE OTHER THREE ARE, though the
+			// sub-type itself is read here with them. Slashing, magic and piercing
+			// each change what a blow does to a pool or to armour, so `Resolve`
+			// applies them along with the damage. Blunt's effect is a chance to
+			// stun, which is something that happens to the defender after the
+			// numbers land, so it is rolled further down this function once the
+			// hit is known to have reached health. Search `bIsBlunt`.
+			//
+			// THE TEST THAT SAYS SO IS
+			// `Cataclysm.DamageType.ABluntWeaponCanStunWhatItHits`, which swings a
+			// Fist until it lands a stun. A named test is worth more here than
+			// another sentence claiming the roll exists, given that the sentence
+			// this replaced claimed the opposite for months.
+			//
+			// THIS COMMENT USED TO SAY THAT ROLL DID NOT EXIST, which is issue
+			// #900. Issue #639 built it and the comment was never updated, so for
+			// a while the file stated in one place that nothing in the project
+			// could roll a stun on an ordinary hit and did exactly that in
+			// another. That is not a harmless staleness: a comment saying a
+			// capability is missing is read as a reason not to look for it, and
+			// issue #899 was written recommending that the mechanism be built
+			// when it was already there in this same function.
+			//
+			// NO LINE NUMBER OR DISTANCE IS QUOTED HERE ON PURPOSE. The first
+			// draft of this correction said "a hundred and nineteen lines below";
+			// leech and retaliation landed between the two points in the days
+			// after and it was already wrong.
 			// A BLOW CAN BE FORBIDDEN THE WHOLE SUB-TYPE, which is what a minion's
 			// is. The causer a sub-type is read off is the summoner, exactly as
 			// the attacker is, so without this a sword in the player's hand makes
