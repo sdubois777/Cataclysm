@@ -214,6 +214,12 @@ class TestTheDesignDocumentAgrees:
             # The One Affix Per Group section quotes that same hybrid ratio as
             # the reason a hybrid cannot sit beside its own half. Issue #128.
             "A hybrid grants each half at 70%",
+            # The Applying Damage Over Time section, added 2026-08-24 for issue
+            # #904. It is the low end of the band a flat ailment damage stays
+            # inside across the eight difficulty tiers, which is the measurement
+            # that chose a flat amount over a percent of the hit. Nothing to do
+            # with resistance.
+            "stays between 70% and 107% of it at every tier",
         ]
         for phrase in not_the_cap:
             assert phrase in text, (

@@ -62,8 +62,8 @@ or if a sheet is added or removed without this table changing.
 | Enemy Modifiers | 11 | Demonic / Death / War / Pestilence / Famine / Celestial / Chaos Modifiers |
 | Weapon Skills | 398 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance |
 | Buffs | 18 | one description per row, no heading row |
-| Debuffs | 26 | `Name: Description`, then six positional numbers, no heading row |
-| DoTs | 8 | `Name: Description`, then six positional numbers, no heading row |
+| Debuffs | 26 | `Name: Description`, then seven positional numbers, no heading row |
+| DoTs | 8 | `Name: Description`, then seven positional numbers, no heading row |
 | Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
 | Affixes | 85 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
@@ -98,7 +98,7 @@ which group it is in:
 The **Tags** sheet is the intended source for the Unreal `GameplayTag` table, and
 is the only sanctioned place to add a gameplay tag.
 
-## The six numeric columns on Buffs, Debuffs and DoTs
+## The numeric columns on Buffs, Debuffs and DoTs
 
 Those three sheets have no heading row, so **this table is the only place that
 says what their columns mean.** `tools/generate_datatables.py` reads them
@@ -114,27 +114,53 @@ optional and an empty cell reads as zero.
 | E | `StrengthCap` | where `Strength` stops rising and the magnitude extends the duration instead |
 | F | `DurationCap` | where `DurationSeconds` stops rising |
 | G | `PercentOfCurrentHealth` | what one tick deals as a percent of the target's current health |
+| H | `FlatDamagePerTick` | what one tick deals as a plain amount |
 
-Five things about them that are easy to get wrong:
+### Three of them are alternative ways of saying the same thing
 
-- **Column C is per tick and not a total.** The base tick is one second, so
-  Burn's 4 and 20 mean 20% of the hit every second for four seconds, which is
-  80% of the hit altogether. It was read as a total until 2026-08-24;
-  `DECISIONS.md` carries why the per-tick reading is the right one.
+`FlatDamagePerTick`, `PercentOfHit` and `PercentOfCurrentHealth` are three ways
+of stating what one tick deals, and **an effect states exactly one of them.**
+Which one is a design statement rather than a detail, because they scale
+differently:
+
+| Base | Grows with | Who uses it |
+|---|---|---|
+| `FlatDamagePerTick` | the attacker's three damage over time stats only | Bleed, Poison, Disease, Burn, Necrosis |
+| `PercentOfHit` | those stats **and** the hit, so it multiplies twice | nothing, as of 2026-08-24 |
+| `PercentOfCurrentHealth` | the target's health, not the attacker at all | Void Splinter |
+
+`PercentOfHit` was Burn's base until 2026-08-24, when the project owner moved the
+ailments to a flat amount. `DECISIONS.md` carries the measurement: a hit grows
+about fifteenfold across the eight difficulty tiers and the three damage over
+time stats multiply on top of it, so a percent-of-hit burn reaches thirteen times
+a Common enemy's health from one application at twelve affix slots at tier 8,
+while a flat amount stays between 70% and 107% of it at every tier. The column is
+kept because a skill stating its own effect is the obvious future caller.
+
+They are three columns rather than one column and a string naming its basis,
+because a misspelled basis would silently read as one of the others with nothing
+reporting an error, and a number cannot be misspelled.
+
+### Five more things that are easy to get wrong
+
+- **Every amount is per tick and not a total.** The base tick is one second, so
+  Burn's 4 and 25 mean 25 damage every second for four seconds, which is 100
+  altogether before the attacker's stats. It was read as a total until
+  2026-08-24; `DECISIONS.md` carries why the per-tick reading is the right one.
 - **An empty `StrengthCap` means no numeric cap, not a cap of zero.** Shred is
   why the distinction exists: its cap is the target's own resistance reaching
   zero, which belongs to whatever it is applied to rather than to the effect.
 - **Only Stun has a `DurationCap`**, at 3 seconds, because it is the one effect
   whose scaling stops dead instead of rolling over into something else.
-- **Column C and column G are alternatives, never both.** An effect is measured
-  against the hit or against the target. Void Splinter is the only one using G,
-  at 1% a second. They are separate columns rather than one column and a string
-  naming its basis, because a misspelled basis would silently read as "the hit"
-  with nothing reporting an error.
+- **A `PercentOfCurrentHealth` effect cannot go through the ordinary damage over
+  time path**, which resolves one fixed amount per tick up front. A share of
+  current health is a different amount every tick. That is part of why nothing
+  implements Void Splinter; issue #915 carries the rest.
 - **The order is the schema.** Inserting a column anywhere but the end silently
   re-reads every column after it, and a duration arriving as a strength would
-  produce no error. Append only, and add a row to the table above at the same
-  time.
+  produce no error. Append only — which is why the most-used base sits in column
+  H rather than beside the other two — and add a row to the table above at the
+  same time.
 
 ## Why these documents carry no version number
 

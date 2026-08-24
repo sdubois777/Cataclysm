@@ -230,20 +230,43 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	float DurationSeconds = 0.0f;
 
 	/**
+	 * What ONE TICK deals, as a plain amount.
+	 *
+	 * The base of five of the six damage over time effects: Bleed, Poison,
+	 * Disease, Burn and Necrosis. The base tick is one second, so Burn's 4
+	 * seconds and 25 is 25 damage every second for four seconds, which is 100
+	 * altogether before the attacker's three damage over time stats.
+	 *
+	 * A FLAT AMOUNT RATHER THAN A PERCENT OF THE HIT, chosen by the project
+	 * owner on 2026-08-24. A percent of the hit multiplies twice: the hit itself
+	 * grows about fifteenfold across the eight difficulty tiers, and the three
+	 * damage over time stats multiply on top of that, so a percent-of-hit burn
+	 * reaches thirteen times a Common enemy's health from one application at
+	 * twelve affix slots at tier 8. A flat amount grows only with those stats,
+	 * which very nearly track enemy health on their own, so it stays level.
+	 * `docs/DECISIONS.md` carries the measurements.
+	 *
+	 * Zero means the design has not stated one, and an effect worth zero
+	 * applies nothing rather than applying silently for no damage.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	float FlatDamagePerTick = 0.0f;
+
+	/**
 	 * What ONE TICK deals, as a percent of the hit that applied it.
+	 *
+	 * NOTHING STATES ONE AS OF 2026-08-24. This was Burn's base until the
+	 * decision recorded on FlatDamagePerTick above moved it to a flat amount.
+	 * It is kept rather than removed because a skill stating its own effect is
+	 * the obvious future caller, and because removing it would churn this
+	 * struct, the generator and two automation tests to no purpose.
 	 *
 	 * NOT A TOTAL SPREAD ACROSS THE DURATION, which is what this said and what
 	 * the engine did until 2026-08-24. Under that reading raising the tick rate
 	 * divided the same total into more, smaller ticks, so Damage over Time
 	 * Frequency could not be worth anything -- and the design's stated reason
 	 * for having three separate damage over time stats is that all three
-	 * multiply. `docs/DECISIONS.md` carries the decision.
-	 *
-	 * The base tick is one second, so Burn's 4 seconds and 20 is 20% of the hit
-	 * every second for four seconds, which is 80% of the hit altogether.
-	 *
-	 * Zero means the design has not stated one, and an effect worth zero
-	 * applies nothing rather than applying silently for no damage.
+	 * multiply. `docs/DECISIONS.md` carries that decision too.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
 	float PercentOfHit = 0.0f;
@@ -252,9 +275,9 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	 * The effect's own magnitude, in whatever unit its description names.
 	 *
 	 * Cripple's 30% slow, Weaken's 20% damage reduction, Shred's 10 resistance,
-	 * Necrosis's 25% healing reduction. Zero means the effect has no strength
-	 * axis at all, which is true of every damage over time effect and of
-	 * Madness and Stun.
+	 * Necrosis's 100% denial of healing. Zero means the effect has no strength
+	 * axis at all, which is true of five of the six damage over time effects and
+	 * of Madness and Stun.
 	 *
 	 * Added for issue #904, along with the three fields below. Before it, four
 	 * player-applied debuffs stated their strength only in prose in Description
@@ -265,7 +288,9 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 
 	/**
 	 * Where Strength stops rising and the magnitude extends the duration
-	 * instead. Cripple and Weaken cap at 80, Necrosis at 100.
+	 * instead. Cripple and Weaken cap at 80, Necrosis at 100 -- and Necrosis
+	 * starts at its cap, so its magnitude extends the duration from the first
+	 * point rather than ever raising the strength.
 	 *
 	 * ZERO MEANS NO NUMERIC CAP, NOT A CAP OF ZERO. Shred is the reason the
 	 * distinction matters: its cap is the target's own resistance reaching zero,
@@ -295,10 +320,19 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	 * a share of current rather than maximum health it falls as the target does
 	 * and can never finish anything off on its own.
 	 *
-	 * A SEPARATE FIELD RATHER THAN A STRING SAYING WHICH BASIS PercentOfHit
-	 * USES. A misspelled basis would silently read as "the hit" and apply the
+	 * IT CANNOT GO THROUGH THE ORDINARY DAMAGE OVER TIME PATH, which computes one
+	 * fixed amount per tick up front. A share of current health is a different
+	 * amount every tick because current health changes between them. That is
+	 * part of why nothing implements Void Splinter yet. Issue #915 also records
+	 * that the damage over time stats multiply this percentage, which at twelve
+	 * affix slots would remove about three quarters of a boss's health from one
+	 * application.
+	 *
+	 * A SEPARATE FIELD RATHER THAN A STRING NAMING WHICH BASIS APPLIES. A
+	 * misspelled basis would silently read as one of the other two and apply the
 	 * wrong arithmetic with nothing reporting an error; a number cannot be
-	 * misspelled. An effect states one or the other, never both.
+	 * misspelled. An effect states exactly one of FlatDamagePerTick,
+	 * PercentOfHit and this.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
 	float PercentOfCurrentHealth = 0.0f;

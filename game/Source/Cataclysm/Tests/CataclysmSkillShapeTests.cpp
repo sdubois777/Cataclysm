@@ -492,23 +492,33 @@ bool FCataclysmMinionTypeTableTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBurnHasNumbersTest,
-	"Cataclysm.SkillShape.BurnStatesBothADurationAndAShareOfTheHit",
+	"Cataclysm.SkillShape.BurnStatesBothADurationAndAnAmount",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBurnHasNumbersTest::RunTest(const FString&)
 {
-	// FIFTEEN OF THE SIXTEEN DESIGNED DEMONIC SKILLS APPLY BURN, and until this
-	// change the design stated neither how long it lasts nor what it deals. Both
+	// FIFTEEN OF THE SIXTEEN DESIGNED DEMONIC SKILLS APPLY BURN, and until issue
+	// #895 the design stated neither how long it lasts nor what it deals. Both
 	// halves are needed: a burn lasting no time and a burn worth no damage are
 	// both a burn that does nothing, and neither is distinguishable from one
 	// nobody wrote.
+	//
+	// RENAMED FROM "...AShareOfTheHit" on 2026-08-24, when the project owner
+	// moved the ailments from a percent of the hit to a flat amount per tick.
 	const FCataclysmStatusEffectNumbers Burn = UCataclysmSkillEffects::BurnNumbers();
 
 	TestTrue(TEXT("Burn is usable"), Burn.bUsable);
 	TestTrue(FString::Printf(TEXT("Burn lasts a positive time (%.1fs)"),
 		Burn.DurationSeconds), Burn.DurationSeconds > 0.0f);
-	TestTrue(FString::Printf(TEXT("Burn is worth a positive share (%.0f%%)"),
-		Burn.PercentOfHit), Burn.PercentOfHit > 0.0f);
+
+	// ASKED THROUGH DamagePerTickAgainst RATHER THAN OF ONE COLUMN. Burn stated a
+	// percent of the hit until 2026-08-24 and states a flat amount since, and
+	// either is a per-tick amount this path can apply. Asserting on PercentOfHit
+	// alone is what this did, and it would now fail on a working burn.
+	const float PerTick = Burn.DamagePerTickAgainst(100.0f);
+	TestTrue(FString::Printf(
+		TEXT("Burn is worth a positive amount per tick (%.1f on a 100 hit)"),
+		PerTick), PerTick > 0.0f);
 
 	return true;
 }
