@@ -518,6 +518,12 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	// FOUND THROUGH THE OWNING ACTOR rather than passed in, because this
 	// component is asked to refresh from several places and a parameter would
 	// have to be threaded through all of them.
+	// AND THE LEVEL COMES FROM THE SAME PLACE, for the same reason. This used to
+	// read `Cataclysm.PlayerLevel` directly, which cannot see a level the
+	// character has gained. Levelling up re-runs this, so it has to resolve at
+	// the level the character now is. `GetCharacterLevel` falls back to that
+	// console variable until a level is earned or loaded. Issue #50.
+	int32 Level = UCataclysmPlayerClassStats::ChosenLevel();
 	if (const AActor* Owner = GetOwner())
 	{
 		if (const APawn* Pawn = Cast<APawn>(Owner))
@@ -527,6 +533,7 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 			{
 				UCataclysmPlayerClassStats::MergeAttributeBases(
 					State->GetSpentAttributePoints(), Bases);
+				Level = State->GetCharacterLevel();
 			}
 		}
 	}
@@ -535,7 +542,7 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 		AbilitySystem,
 		UCataclysmPlayerClassStats::LoadTable(),
 		UCataclysmPlayerClassStats::ChosenClass(),
-		UCataclysmPlayerClassStats::ChosenLevel(),
+		Level,
 		&Modifiers,
 		// THE POOLS ARE LEFT WHERE THEY ARE. Filling them is right for a
 		// character arriving in the world and wrong here: a player who swapped a

@@ -225,12 +225,27 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 			Character.GetPlayerState<ACataclysmPlayerState>())
 	{
 		Record.SpentAttributePoints = State->GetSpentAttributePoints();
+
+		// AND THE LEVEL AND THE PROGRESS INTO IT, since 2026-08-24. Issue #50.
+		//
+		// BOTH OR NEITHER, WHICH IS WHY THEY ARE WRITTEN TOGETHER. The pair
+		// describes one thing -- how far the character has climbed -- and a
+		// record holding a level from one moment beside progress from another
+		// would put the character somewhere it has never been.
+		//
+		// THE LEVEL WRITTEN IS WHAT `GetCharacterLevel` ANSWERS, which for a
+		// character that has neither gained a level nor loaded a save is
+		// `Cataclysm.PlayerLevel`. That is deliberate: the console variable is
+		// the starting level, so a character stood up at level 40 to test
+		// something saves as level 40 rather than as level 1.
+		Record.Level = State->GetCharacterLevel();
+		Record.Experience = State->GetExperienceIntoLevel();
 	}
 
-	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. Level, experience,
-	// the passive tree, the 18 equipped slots, the residue and a Solo
-	// Self-Found character's private stash have no runtime source at all --
-	// issues #50, #38 and #42 -- so writing a zero over each would turn a
-	// record loaded from disk into an empty one every time it was refreshed.
+	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. The passive tree, the
+	// 18 equipped slots, the residue and a Solo Self-Found character's private
+	// stash have no runtime source at all -- issues #50, #38 and #42 -- so
+	// writing a zero over each would turn a record loaded from disk into an
+	// empty one every time it was refreshed.
 	return true;
 }

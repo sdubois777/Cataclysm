@@ -1495,7 +1495,7 @@ def test_eight_campaigns_pay_for_the_decided_climb(experience_run):
     character stops reaching level 100 when tier 8 ends, which is the whole
     thing the size was derived to achieve."""
     printed, ns = experience_run
-    climb = ns["total_experience"](ns["DECIDED_RATE"], ns["DECIDED_LEVEL_2_COST"])
+    climb = ns["whole_total_to_reach"](ns["MAX_LEVEL"])
     earned = ns["CAMPAIGN_DUNGEONS"] * sum(ns["PER_DUNGEON"].values())
 
     assert 0.99 < earned / climb < 1.02, (
@@ -1518,3 +1518,47 @@ def test_the_decided_curve_is_printed_as_a_formula_and_a_table(experience_run):
     opening = ns["first_level_in_floors"](rate, scale, ns["POPULATION"],
                                           ns["WEIGHTS"], ns["WHOLE_FLOORS"])
     assert f"level 2 takes {opening:.1f} floors" in printed
+
+
+def test_the_whole_number_curve_is_not_the_float_one_rounded(experience_run):
+    """WHY `whole_total_to_reach` EXISTS AT ALL, asserted so it cannot be quietly
+    replaced by rounding the closed-form sum.
+
+    A player pays each level's rounded cost, so the climb is the sum of 99
+    roundings. Rounding the geometric sum instead gives a different number. The
+    gap is 5 over 6.8 billion, which is nothing as a quantity and everything to
+    the C++ port, which has to reproduce these integers exactly because a save
+    record stores a character's progress into its current level.
+    """
+    import math
+
+    _, ns = experience_run
+    summed = ns["whole_total_to_reach"](ns["MAX_LEVEL"])
+    closed = math.floor(ns["total_experience"](ns["DECIDED_RATE"],
+                                               ns["DECIDED_LEVEL_2_COST"]) + 0.5)
+    assert summed != closed, (
+        "the sum of the rounded level costs now equals the rounded closed-form "
+        "sum. If that is genuinely true the two functions can be merged, but "
+        "check it holds at every level and not just at 100 before doing it.")
+    assert abs(summed - closed) < 100, (
+        f"the two now differ by {abs(summed - closed)}, which is far more than "
+        f"99 roundings of half a unit each can produce. One of them is wrong.")
+
+    # And the per-level cost really is floor(x + 0.5), the rounding
+    # `scoring._js_round` uses, rather than Python's round-half-to-even.
+    for level in (2, 37, 64, ns["MAX_LEVEL"]):
+        raw = ns["level_cost"](level, ns["DECIDED_RATE"], ns["DECIDED_LEVEL_2_COST"])
+        assert ns["whole_level_cost"](level) == math.floor(raw + 0.5)
+
+
+def test_the_whole_number_curve_refuses_a_level_outside_the_range(experience_run):
+    """Level 1 costs nothing to reach and there is nothing above 100. The C++
+    port has to agree, so the boundary is stated here rather than left to
+    whatever each side happens to do."""
+    _, ns = experience_run
+    assert ns["whole_level_cost"](1) == 0
+    assert ns["whole_level_cost"](0) == 0
+    assert ns["whole_level_cost"](-5) == 0
+    assert ns["whole_level_cost"](ns["MAX_LEVEL"] + 1) == 0
+    assert ns["whole_total_to_reach"](1) == 0
+    assert ns["whole_total_to_reach"](2) == ns["whole_level_cost"](2)

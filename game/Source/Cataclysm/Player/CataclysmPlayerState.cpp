@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "Character/CataclysmExperience.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Net/UnrealNetwork.h"
 
@@ -46,6 +47,59 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ACataclysmPlayerState, SpentAttributePoints);
+	DOREPLIFETIME(ACataclysmPlayerState, CharacterLevel);
+	DOREPLIFETIME(ACataclysmPlayerState, ExperienceIntoLevel);
+}
+
+int32 ACataclysmPlayerState::GetCharacterLevel() const
+{
+	// THE CONSOLE VARIABLE IS THE STARTING LEVEL, not a competing answer. Until
+	// a character gains a level or loads a save, `Cataclysm.PlayerLevel` decides
+	// what level it is, exactly as it did before levelling existed. That is what
+	// keeps every automation test that sets it working unchanged.
+	return CharacterLevel > LevelNotYetDecided
+		? CharacterLevel
+		: UCataclysmPlayerClassStats::ChosenLevel();
+}
+
+int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
+{
+	// GRANTING NOTHING CHANGES NOTHING, INCLUDING THE LEVEL, and that is worth
+	// a branch of its own rather than leaving it to the clamp below. A kill
+	// worth zero is a real case while Enemy Score has no port -- issue #926 --
+	// and without this the first such kill would settle the character's level
+	// at whatever `Cataclysm.PlayerLevel` happened to say at that instant, which
+	// is a lasting change made by an event that did nothing.
+	if (Amount <= 0)
+	{
+		return 0;
+	}
+
+	// SETTLED BEFORE IT IS RAISED. Until now the level has been whatever the
+	// console variable says, which can change under the character; the first
+	// real grant is the moment that stops being acceptable, because a level
+	// gained from a base that then moves is a level gained from nothing.
+	int32 Level = GetCharacterLevel();
+	const int32 Gained =
+		UCataclysmExperience::Grant(Amount, Level, ExperienceIntoLevel);
+	CharacterLevel = Level;
+	return Gained;
+}
+
+void ACataclysmPlayerState::SetLevelAndExperience(int32 NewLevel,
+												  int64 NewExperience)
+{
+	CharacterLevel = FMath::Clamp(NewLevel, UCataclysmExperience::FirstLevel,
+								  UCataclysmExperience::MaxLevel);
+
+	// PROGRESS IS CLAMPED TO WHAT THE NEXT LEVEL COSTS, not just to zero. A
+	// record holding more than the next level costs would describe a character
+	// that should already have levelled up, and leaving it there would mean the
+	// next grant of one point jumped a level. At the maximum level the next
+	// level costs nothing, so this correctly stores nothing.
+	const int64 Ceiling = UCataclysmExperience::CostOfLevel(CharacterLevel + 1);
+	const int64 Most = FMath::Max<int64>(0, Ceiling - 1);
+	ExperienceIntoLevel = FMath::Clamp<int64>(NewExperience, 0, Most);
 }
 
 int32 ACataclysmPlayerState::AttributePointsAvailable() const
@@ -54,7 +108,7 @@ int32 ACataclysmPlayerState::AttributePointsAvailable() const
 	// "1 attribute point per level" and the Maw, which "consumes items and
 	// enemies for Attribute points". The Maw does not exist, so a term for it
 	// here would be a number nobody chose. Issue #50.
-	return UCataclysmPlayerClassStats::ChosenLevel();
+	return GetCharacterLevel();
 }
 
 int32 ACataclysmPlayerState::AttributePointsUnspent() const

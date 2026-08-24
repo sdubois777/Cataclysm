@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Character/CataclysmExperience.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -532,16 +533,24 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 	// state how many points a particular character has spent. The eight gear
 	// affixes that increase an attribute arrive with the modifiers above and
 	// multiply this, which is what the design says they do.
+	// THE LEVEL COMES FROM THE PLAYER STATE AND NOT FROM Cataclysm.PlayerLevel
+	// ANY MORE. Reading the console variable here could not see a level the
+	// character had gained, and a character that levels up has to resolve its
+	// stat line at the level it now is. `GetCharacterLevel` still falls back to
+	// that console variable until a level has been earned or loaded, so setting
+	// it before pressing Play works exactly as it did. Issue #50.
+	int32 Level = UCataclysmPlayerClassStats::ChosenLevel();
 	if (const ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>())
 	{
 		UCataclysmPlayerClassStats::MergeAttributeBases(
 			State->GetSpentAttributePoints(), Bases);
+		Level = State->GetCharacterLevel();
 	}
 
 	UCataclysmPlayerClassStats::ApplyTo(
 		ASC, UCataclysmPlayerClassStats::LoadTable(),
 		UCataclysmPlayerClassStats::ChosenClass(),
-		UCataclysmPlayerClassStats::ChosenLevel(),
+		Level,
 		&Modifiers,
 		// A CHARACTER STARTING. This runs from PossessedBy, which happens once,
 		// so filling the pools is right here and is exactly what it did before.
@@ -1128,4 +1137,144 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowAttributes(
 				Ar.Logf(TEXT("  %-14s %5d   %10.2f"),
 						*Name, Spent.PointsIn(Name), Resolved);
 			}
+		}));
+
+// ---------------------------------------------------------------------------
+// Level and experience
+//
+// A STAND-IN FOR KILLING THINGS, and it says so because the shape is temporary.
+// The design says an enemy's Enemy Score IS the experience it grants, and Enemy
+// Score has no port in this project -- issue #926 -- so nothing in the game can
+// yet say what a kill is worth. Until it can, this is how the curve, the level
+// and everything that reads a level are exercised at all.
+//
+// THEY RE-APPLY THE STAT LINE THEMSELVES, the same way spending an attribute
+// point does. A level raises every per-level term in the class table, so a
+// level gained that did not change the character would look like a level that
+// did nothing.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantExperience(
+	TEXT("Cataclysm.GrantExperience"),
+	TEXT("Give the character experience: Cataclysm.GrantExperience <amount>. "
+		 "Levels are gained as far as it pays for and the remainder is kept "
+		 "toward the next one. A stand-in until killing things grants it."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+			using namespace CataclysmEquipConsole;
+
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Name an amount: Cataclysm.GrantExperience <amount>. "
+							"Level 2 costs 230000."));
+				return;
+			}
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			// Atoi64 AND NOT Atoi, because the later levels cost hundreds of
+			// millions and the whole climb is past six billion. A 32-bit read
+			// of "6858596102" is not that number.
+			const int64 Amount = FCString::Atoi64(*Args[0]);
+			if (Amount <= 0)
+			{
+				Ar.Logf(TEXT("%s is not an amount of experience to grant."),
+						*Args[0]);
+				return;
+			}
+
+			const int32 Before = PlayerState->GetCharacterLevel();
+			const int32 Gained = PlayerState->GrantExperience(Amount);
+
+			if (Gained > 0)
+			{
+				// THE STAT LINE IS REBUILT, NOT NUDGED, for the reason the
+				// attribute point commands give: a level moves every per-level
+				// term in game/Data/ClassStats.csv and several of those have
+				// gear increases of their own.
+				if (ACataclysmPlayerCharacter* Character = Player(World, Ar))
+				{
+					if (Character->GetEquipment())
+					{
+						Character->GetEquipment()->RefreshAttributes(
+							Character->GetAbilitySystemComponent());
+					}
+				}
+			}
+
+			const int32 Now = PlayerState->GetCharacterLevel();
+			const int64 Next = UCataclysmExperience::CostOfLevel(Now + 1);
+			if (Gained > 0)
+			{
+				Ar.Logf(TEXT("Level %d to %d. %lld of %lld toward level %d."),
+						Before, Now, PlayerState->GetExperienceIntoLevel(),
+						Next, Now + 1);
+			}
+			else if (UCataclysmExperience::IsMaxLevel(Now))
+			{
+				Ar.Logf(TEXT("Already at the maximum level, %d. Nothing to earn."),
+						Now);
+			}
+			else
+			{
+				Ar.Logf(TEXT("Still level %d. %lld of %lld toward level %d."),
+						Now, PlayerState->GetExperienceIntoLevel(), Next, Now + 1);
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowLevel(
+	TEXT("Cataclysm.ShowLevel"),
+	TEXT("What level the character is, how far into it, and what the next level "
+		 "and the whole climb cost."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			const int32 Level = PlayerState->GetCharacterLevel();
+			const int64 Into = PlayerState->GetExperienceIntoLevel();
+
+			Ar.Logf(TEXT("Level %d of %d."), Level,
+					UCataclysmExperience::MaxLevel);
+
+			if (UCataclysmExperience::IsMaxLevel(Level))
+			{
+				Ar.Log(TEXT("At the maximum level. No further experience is kept."));
+			}
+			else
+			{
+				const int64 Next = UCataclysmExperience::CostOfLevel(Level + 1);
+				Ar.Logf(TEXT("  %lld of %lld toward level %d, which is %.1f%% of it."),
+						Into, Next, Level + 1,
+						Next > 0 ? 100.0 * static_cast<double>(Into)
+								   / static_cast<double>(Next)
+								 : 0.0);
+			}
+
+			// EARNED AGAINST THE WHOLE CLIMB, because a level number on its own
+			// says nothing about how far through the game a character is. Level
+			// 50 is 1.9% of the climb to 100, and that is the design working
+			// rather than a fault.
+			const int64 Earned = UCataclysmExperience::TotalToReach(Level) + Into;
+			const int64 Whole =
+				UCataclysmExperience::TotalToReach(UCataclysmExperience::MaxLevel);
+			Ar.Logf(TEXT("  %lld earned of %lld for the whole climb, which is %.2f%%."),
+					Earned, Whole,
+					100.0 * static_cast<double>(Earned) / static_cast<double>(Whole));
+
+			Ar.Logf(TEXT("  %d attribute points, %d of them unspent."),
+					PlayerState->AttributePointsAvailable(),
+					PlayerState->AttributePointsUnspent());
 		}));

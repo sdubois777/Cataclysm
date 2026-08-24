@@ -20,6 +20,78 @@ applied or still pending.
 
 ---
 
+## 2026-08-24 — A character stores progress into its current level, and the console variable becomes the starting level
+
+**Affects:** `game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmExperience.h` and `.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveGather.cpp`. **Applied.** Issue #50.
+
+Two implementation choices with consequences that outlive the code, so they are
+recorded rather than left in comments alone.
+
+### What is stored: progress into the current level, not a running total
+
+`FCataclysmCharacterRecord` has held two fields since the save format was
+written, an int32 `Level` and an int64 `Experience` described as "Experience
+toward the next level". Nothing filled them. Filling them raised the question of
+which of the two readings that description means, and they are not equivalent.
+
+**A running total makes the level derivable, so storing both would store the same
+fact twice** and invite the two to disagree. That is the ordinary argument and it
+is not the deciding one.
+
+**The deciding one is what happens when the curve is retuned.** The curve was
+chosen on 2026-08-24 from a model with two inputs nobody has measured in play:
+how many creatures a floor holds, and what share of them a player actually kills.
+Issue #925 tracks the second. Both will move, and the curve will move with them.
+
+- Stored as a **running total**, a retune reassigns every character's level. A
+  player who was level 70 opens the game and is level 62.
+- Stored as **progress into the current level**, a retune changes what the NEXT
+  level costs and nothing else. The character keeps the levels it earned.
+
+The second is the only one that can be lived with while the numbers are still
+being tuned.
+
+**The cost, stated plainly:** a save record can hold progress larger than the
+next level costs, which describes a character that should already have levelled.
+`ACataclysmPlayerState::SetLevelAndExperience` clamps it to one short of the next
+level rather than trusting or refusing it, so the next point earned levels the
+character up. Refusing would leave the character wherever it happened to be,
+which is worse than the nearest legal answer.
+
+### `Cataclysm.PlayerLevel` becomes the starting level rather than being removed
+
+Before levelling existed, `Cataclysm.PlayerLevel` was the only level this project
+had. Three places read it: applying the class stat line on possession, refreshing
+attributes when equipment changes, and counting attribute points. Every
+automation test wanting a levelled character sets it.
+
+**Deleting it would have moved all of that at once**, and every test that sets it
+would have quietly started describing a level 1 character rather than failing.
+
+So `ACataclysmPlayerState::GetCharacterLevel` answers with the character's own
+level once it has one, and with the console variable until then. All three call
+sites now read the player state. A character that has neither gained a level nor
+loaded a save behaves exactly as it did.
+
+`ACataclysmPlayerState::LevelNotYetDecided` is zero, which is not a level and so
+cannot be mistaken for one.
+
+**What this makes true and is worth knowing:** a character stood up at level 40
+for testing now SAVES as level 40. The console variable is the starting level, so
+that is the honest answer, but it means a save file's level can come from a
+console variable rather than from play.
+
+### What is not decided here
+
+**Nothing awards experience yet.** The design says an enemy's Enemy Score is the
+experience it grants and Enemy Score has no port at all — issue #926. Until it
+does, `Cataclysm.GrantExperience` is how the curve is exercised, and it says so
+in its own help text.
+
+---
+
 ## 2026-08-24 — The experience curve: a level costs 8.2% more than the one below it, and the whole climb is eight campaigns
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` section XII, which gained a new
