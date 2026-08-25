@@ -107,7 +107,11 @@ BUCKETS = {"flat", "increased", "more"}
 #: health per point, in addition to any other cost." A `flat` row, because the
 #: stat it supplies is zero for every class and this node is its only source.
 #: Issue #970.
-AUTHORED_ROWS = 44
+#:
+#: AND BY ONE, for The Catalyst: "While at or below 5% health, your skills
+#: have a 5% chance per point not to go on cooldown." A `flat` row carrying
+#: the health threshold, because nothing else supplies the stat. Issue #973.
+AUTHORED_ROWS = 45
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -148,7 +152,11 @@ AUTHORED_ROWS = 44
 #: AND TO 39 FOR ONE MORE, Deeper Cuts, which adds a health cost to every
 #: skill the character uses. 39 of 293 altogether and 35 of the Masochist
 #: tree's own 74. Issue #970.
-AUTHORED_NODES = 39
+#:
+#: AND TO 40 FOR ONE MORE, The Catalyst, whose skills sometimes do not go on
+#: cooldown at all. 40 of 293 altogether and 36 of the Masochist tree's own
+#: 74. Issue #973.
+AUTHORED_NODES = 40
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

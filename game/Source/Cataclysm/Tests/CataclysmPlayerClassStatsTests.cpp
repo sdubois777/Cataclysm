@@ -284,6 +284,14 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// for those three.
 		{TEXT("added_health_cost"),
 		 TEXT("the Masochist's Deeper Cuts node, as a flat modifier")},
+
+		// Issue #973. The chance a skill does not go on cooldown. Zero for every
+		// class, and the Masochist's The Catalyst node is its only source. The
+		// attribute stays at zero even for a character holding that node, because
+		// its bonus carries a health condition; `ApplyCooldown` asks for the stat
+		// rather than reading it.
+		{TEXT("cooldown_skip_chance"),
+		 TEXT("the Masochist's The Catalyst node, as a flat modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

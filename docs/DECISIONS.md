@@ -20,6 +20,57 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A node that reads like a rule change can still be a stat, and that is worth trying first
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and
+`.cpp`, `CataclysmCombatAttributeSet.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet).
+**Applied.** Issues #973, #939.
+
+`Masochist_basic_ll_a2`, The Catalyst, reads "While at or below 5% health, your
+skills have a 5% chance per point not to go on cooldown." That sentence sounds
+like a rule change: skills behave differently, rather than a number being larger.
+
+**It is a stat, and treating it as one cost nothing.** "A 5% chance per point"
+is a percentage that adds up over points, which is exactly what the flat bucket
+is; "while at or below 5% health" is the health condition built in #961; and one
+check where a cooldown is applied reads the stat and rolls against it. No new
+mechanism at all.
+
+### Why this is worth writing down rather than just doing
+
+**Roughly forty Masochist nodes are not stat modifiers under the current
+scheme**, and the count of nodes that do anything is the measure this whole
+effort is judged on. If some of those forty are stats in disguise, they are far
+cheaper than they look, and the honest thing is to check each one against that
+question before reaching for new machinery.
+
+**The test is whether the node's effect is a NUMBER that a per-point value adds
+to.** The Catalyst passes: a chance is a number. `Masochist_basic_ll_b1` The
+Breaking Point does not — "converts all damage you take into Bleeding over 5
+seconds" changes what happens to a hit, and no number expresses that. It will
+need the mechanism this one avoided.
+
+### The chance has to be asked for, not read
+
+The gameplay attribute behind `cooldown_skip_chance` holds zero at all times,
+including for a character holding the node at eight points, because the bonus
+carries a health condition and a conditional bonus is never folded into an
+attribute. A reader using `GetNumericAttribute` would find nothing and the node
+would silently never fire — the same shape as #959 and #947.
+`UCataclysmAbilitySystemComponent::StatForSkill` is what asks.
+
+**The attribute still has to exist**, because
+`UCataclysmPlayerClassStats::ApplyTo` loops over the stat-to-attribute map and
+drops any stat missing from it before anything could ask for it.
+
+### The roll is pinnable, the way the critical strike roll is
+
+`Cataclysm.CooldownSkipRoll` pins it, matching `Cataclysm.CritRoll`. A test
+asserting that a skill did or did not go on cooldown would otherwise pass most of
+the time and fail the rest, which is worse than failing outright.
+
 ## 2026-08-25 — A skill's health cost and a character's are added, and they are measured against different things
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and

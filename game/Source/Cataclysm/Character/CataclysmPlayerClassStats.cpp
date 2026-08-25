@@ -367,6 +367,18 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// now reads.
 			{TEXT("cooldown_reduction"),
 			 Combat::GetCooldownReductionAttribute()},
+
+			// THE CHANCE A SKILL DOES NOT GO ON COOLDOWN AT ALL. Issue #973.
+			// The Masochist's The Catalyst node is its only source and it is
+			// zero for every class. The attribute it writes here stays at zero
+			// too, because that node's bonus carries a health condition and a
+			// conditional bonus is never folded into an attribute -- but the
+			// entry is still needed, because `ApplyTo` loops over this map and
+			// a stat missing from it is dropped before `StatForSkill` could
+			// ever be asked for it.
+			{TEXT("cooldown_skip_chance"),
+			 Combat::GetCooldownSkipChanceAttribute()},
+
 			{TEXT("loot_quantity"), Combat::GetLootQuantityAttribute()},
 
 			// MAGIC FIND JOINED LOOT QUANTITY IN ISSUE #896. No class line

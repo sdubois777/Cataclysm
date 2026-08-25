@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+// For asking what a stat is worth with the character's own state in hand,
+// rather than reading a gameplay attribute that is zero by design. Issue #973.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -10,6 +13,29 @@
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 #include "GameplayEffectTypes.h"
 #include "GameplayTagsManager.h"
+#include "HAL/IConsoleManager.h"
+
+/**
+ * Pins the roll that decides whether a skill skips its cooldown. Issue #973.
+ *
+ * THE SAME SHAPE AS `Cataclysm.CritRoll` AND FOR THE SAME REASON. A test that
+ * asserted a skill did or did not go on cooldown would otherwise pass most of
+ * the time and fail the rest, which is worse than failing outright.
+ *
+ * -1, the default, rolls normally. 0 always skips when the character has any
+ * chance at all, because every chance above zero beats it. 100 never skips,
+ * because the comparison is strictly less than.
+ *
+ * IT IS ALSO USEFUL AT THE KEYBOARD, for watching what a character with the
+ * Masochist's The Catalyst node feels like without waiting on the dice.
+ */
+static TAutoConsoleVariable<float> CVarCooldownSkipRoll(
+	TEXT("Cataclysm.CooldownSkipRoll"),
+	-1.0f,
+	TEXT("Pins the roll deciding whether a skill skips its cooldown, 0-100. "
+		 "-1 rolls normally. 0 always skips for a character with any chance; "
+		 "100 never skips."),
+	ECVF_Default);
 
 namespace CataclysmAbilitySlots
 {
@@ -298,6 +324,54 @@ float UCataclysmGameplayAbility::CooldownAfterReduction(
 		BaseCooldown, AbilitySystem->GetNumericAttribute(Reduction) / 100.0f);
 }
 
+bool UCataclysmGameplayAbility::CooldownIsSkipped(
+	const UAbilitySystemComponent* AbilitySystem) const
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		// An ability system this project did not make carries no stat line, so
+		// it has no chance to skip anything. An enemy's abilities come through
+		// here too.
+		return false;
+	}
+
+	// ASKED FOR, NOT READ. Issue #973. The only source of this stat is a passive
+	// node carrying a health condition, so the gameplay attribute holds zero at
+	// all times by design and reading it would find the node doing nothing.
+	// `StatForSkill` runs the pipeline again with the character's health in hand.
+	//
+	// AN EMPTY TAG CONTAINER, AND THAT IS HONEST RATHER THAN LAZY. A skill's
+	// tags live on `UCataclysmSkillTemplate::SkillTags`, which is a subclass of
+	// this one, and an enemy's C++ ability has none at all -- so this function
+	// has no tags it can truthfully supply. Empty means every unscoped modifier
+	// applies, which is every source this stat has. A node that scoped it to
+	// some skills would need the tags threaded here first, and would not work
+	// silently in the meantime: it would simply not apply.
+	const float Chance = Cataclysm->StatForSkill(
+		FName(TEXT("cooldown_skip_chance")), FGameplayTagContainer(),
+		/*Fallback=*/0.0f);
+	if (Chance <= 0.0f)
+	{
+		// NO ROLL AT ALL FOR A CHARACTER WITH NO CHANCE, which is every
+		// character in the game that has not spent a point on that node. This is
+		// on the path of every skill use, and a roll nobody can win is waste.
+		return false;
+	}
+
+	// PINNED BY A CONSOLE VARIABLE WHEN ONE IS SET, the same way the critical
+	// strike roll is and for the same reason: a test asserting that a skill did
+	// or did not go on cooldown would otherwise pass most of the time and fail
+	// the rest, which is worse than failing.
+	const float Pinned = CVarCooldownSkipRoll.GetValueOnAnyThread();
+	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+
+	// STRICTLY LESS THAN, so a roll of 100 never skips and a chance of 0 never
+	// does either. The critical strike roll reads the same way.
+	return Roll < Chance;
+}
+
 void UCataclysmGameplayAbility::ApplyCooldown(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -312,6 +386,17 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	UAbilitySystemComponent* AbilitySystem =
 		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// AND THE CHANCE THE SKILL DOES NOT GO ON COOLDOWN AT ALL. Issue #973. The
+	// Masochist's The Catalyst node: "While at or below 5% health, your skills
+	// have a 5% chance per point not to go on cooldown."
+	//
+	// BEFORE THE LENGTH IS WORKED OUT, because a cooldown that does not happen
+	// has no length. Everything below this line builds and applies the effect.
+	if (CooldownIsSkipped(AbilitySystem))
 	{
 		return;
 	}
