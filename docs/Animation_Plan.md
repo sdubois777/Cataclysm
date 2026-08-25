@@ -66,7 +66,7 @@ skill itself**.
 
 What makes those three feel different is the passive class tree and the class
 resource, which the design already treats as the engine of the build. The
-Masochist uses health instead of mana and its resource is Anguish. None of that
+Masochist uses health instead of mana and fills Fervour from health lost. None of that
 lives in the attack animation.
 
 **So the risk the condition names is about differentiating the eight damage types,

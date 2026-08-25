@@ -16,7 +16,7 @@ AN AUTOMATED TRANSCRIPTION WAS TRIED FIRST AND WAS WRONG. Deriving the sheet fro
 the descriptions with a parser produced 44 rows of which about fifteen were
 wrong: eight melee-only bonuses were written as global increases, a node about
 damage over time DURATION was mapped to damage over time DAMAGE, and a node about
-how much Anguish a character gains was mapped to a damage stat because the words
+how much Fervour a character gains was mapped to a damage stat because the words
 "damage over time" appear in it. So the rows were selected by reading instead,
 and this is what keeps them honest afterwards.
 

@@ -2,7 +2,7 @@
   "version": "1.0",
   "metadata": {
     "name": "Berserker Class Tree",
-    "description": "Fury-based melee class. 2H weapons branch left, dual wield branch right, crit and leech in center. Fury builds on crits, decays out of combat.",
+    "description": "Melee class built on critical strikes. 2H weapons branch left, dual wield branch right, crit and leech in center. It fills Fervour on critical strikes and makes it decay out of combat.",
     "createdAt": "2026-03-07T23:31:41.104Z",
     "updatedAt": "2026-03-09T22:50:38.835Z",
     "pointBudget": 230
@@ -22,8 +22,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Fury",
-        "description": "Unlocks the Fury resource. Gain 1 Fury per critical strike. Fury begins decaying at 10 Fury/s after 3 seconds out of combat. Base of 100 Fury.",
+        "name": "Fervour",
+        "description": "Your critical strikes generate Fervour. Gain 1 Fervour per critical strike. While you have this, your Fervour decays at 10 per second after 3 seconds out of combat.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 1
@@ -45,7 +45,7 @@
       "data": {
         "kind": "basic",
         "name": "Battle Lust",
-        "description": "+1 Fury gained per point on every critical melee strike.",
+        "description": "+1 Fervour gained per point on every critical melee strike.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -111,7 +111,7 @@
       "data": {
         "kind": "basic",
         "name": "Unbridled",
-        "description": "+10 maximum Fury per point. At 5 points: Every 20 points of maximum Fury you have also grants 1% damage reduction.",
+        "description": "+10 maximum Fervour per point. At 5 points: Every 20 points of maximum Fervour you have also grants 1% damage reduction.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -177,7 +177,7 @@
       "data": {
         "kind": "basic",
         "name": "Battle Cry",
-        "description": "Reduce your passive Fury loss by 0.2 per point.",
+        "description": "Reduce your passive Fervour loss by 0.2 per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -199,7 +199,7 @@
       "data": {
         "kind": "basic",
         "name": "Blood Price",
-        "description": "When your Fury reaches 0 for any reason, your next melee attack within 3 seconds deals bonus damage equal to 5% per point of your maximum Fury.",
+        "description": "When your Fervour reaches 0 for any reason, your next melee attack within 3 seconds deals bonus damage equal to 5% per point of your maximum Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -221,7 +221,7 @@
       "data": {
         "kind": "basic",
         "name": "Berserking",
-        "description": "When you reach maximum Fury your next melee attack consumes all Fury. For each point of Fury consumed that attack deals +10% bonus damage per point invested.",
+        "description": "When you reach maximum Fervour your next melee attack consumes all Fervour. For each point of Fervour consumed that attack deals +10% bonus damage per point invested.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -243,7 +243,7 @@
       "data": {
         "kind": "basic",
         "name": "War Cry",
-        "description": "+2% melee damage per point for 4 seconds after attacking at maximum Fury.",
+        "description": "+2% melee damage per point for 4 seconds after attacking at maximum Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -265,7 +265,7 @@
       "data": {
         "kind": "keystone",
         "name": "Thick Skin",
-        "description": "You gain 1% damage reduction for every 4% of your maximum Fury you currently hold, up to 25% at maximum Fury.",
+        "description": "You gain 1% damage reduction for every 4% of your maximum Fervour you currently hold, up to 25% at maximum Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -287,7 +287,7 @@
       "data": {
         "kind": "keystone",
         "name": "Bloodied",
-        "description": "While below 30% HP your Fury generation is tripled and Berserking triggers on every melee hit rather than only when Fury is full.",
+        "description": "While below 30% HP your Fervour generation is tripled and Berserking triggers on every melee hit rather than only when Fervour is full.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -309,7 +309,7 @@
       "data": {
         "kind": "basic",
         "name": "Wrath",
-        "description": "Two-handed weapons only. When you reach maximum Fury, enter a state of Wrath. While in Wrath your melee attacks deal +15% damage. Fury drains at 5 per second. Wrath ends when Fury reaches 0.",
+        "description": "Two-handed weapons only. When you reach maximum Fervour, enter a state of Wrath. While in Wrath your melee attacks deal +15% damage. Fervour drains at 5 per second. Wrath ends when Fervour reaches 0.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 1
@@ -353,7 +353,7 @@
       "data": {
         "kind": "basic",
         "name": "Skull Splitter",
-        "description": "Two-handed weapons only. +6% critical strike multiplier per point. While in Wrath, critical strikes drain an additional 3 Fury per hit in exchange for applying a 2-second armor reduction of 10% per point on the target. At 5 points: This armor reduction stacks up to 6 times instead of 4.",
+        "description": "Two-handed weapons only. +6% critical strike multiplier per point. While in Wrath, critical strikes drain an additional 3 Fervour per hit in exchange for applying a 2-second armor reduction of 10% per point on the target. At 5 points: This armor reduction stacks up to 6 times instead of 4.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -375,7 +375,7 @@
       "data": {
         "kind": "basic",
         "name": "Cleave",
-        "description": "Two-handed weapons only. Your melee attacks hit all enemies in a 180 degree arc in front of you. Arc width increases by 10 degrees per point. Each enemy hit beyond the first costs 5 Fury and generates 3 Fury per point if Fury was available to pay the cost.",
+        "description": "Two-handed weapons only. Your melee attacks hit all enemies in a 180 degree arc in front of you. Arc width increases by 10 degrees per point. Each enemy hit beyond the first costs 5 Fervour and generates 3 Fervour per point if Fervour was available to pay the cost.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -463,7 +463,7 @@
       "data": {
         "kind": "keystone",
         "name": "Overwhelming Force",
-        "description": "Two-handed weapons only. When you attack at maximum Fury, the force of the attack releases a shockwave that deals 30% of your attack damage per point to all enemies within 5 meters.",
+        "description": "Two-handed weapons only. When you attack at maximum Fervour, the force of the attack releases a shockwave that deals 30% of your attack damage per point to all enemies within 5 meters.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -507,7 +507,7 @@
       "data": {
         "kind": "basic",
         "name": "Juggernaut",
-        "description": "Two-handed weapons only. +3% movement speed per point. At 5 points: You cannot be staggered, stunned, or knocked back while above 50% Fury.",
+        "description": "Two-handed weapons only. +3% movement speed per point. At 5 points: You cannot be staggered, stunned, or knocked back while above 50% Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -529,7 +529,7 @@
       "data": {
         "kind": "basic",
         "name": "Titan's Grip",
-        "description": "Two-handed weapons only. While in Wrath, drain 4 additional Fury per second to increase all melee damage by +10% per point. This bonus is lost immediately if Wrath ends.",
+        "description": "Two-handed weapons only. While in Wrath, drain 4 additional Fervour per second to increase all melee damage by +10% per point. This bonus is lost immediately if Wrath ends.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -551,7 +551,7 @@
       "data": {
         "kind": "basic",
         "name": "Seismic Slam",
-        "description": "Two-handed weapons only. When you attack at maximum Fury, the shockwave from the attack travels along the ground dealing 30% per point of the hit's damage to all enemies in a line.",
+        "description": "Two-handed weapons only. When you attack at maximum Fervour, the shockwave from the attack travels along the ground dealing 30% per point of the hit's damage to all enemies in a line.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -573,7 +573,7 @@
       "data": {
         "kind": "basic",
         "name": "Executioner",
-        "description": "Two-handed weapons only. Melee attacks made at maximum Fury deal an additional +1% damage per point for every 1% of HP the target is missing.",
+        "description": "Two-handed weapons only. Melee attacks made at maximum Fervour deal an additional +1% damage per point for every 1% of HP the target is missing.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -617,7 +617,7 @@
       "data": {
         "kind": "basic",
         "name": "Killing Blow",
-        "description": "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fury, all enemies below 25% HP are instantly killed.",
+        "description": "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies below 25% HP are instantly killed.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -639,7 +639,7 @@
       "data": {
         "kind": "basic",
         "name": "Warmonger",
-        "description": "Two-handed weapons only. While in Wrath, each enemy within melee range drains 3 additional Fury per second. For each enemy draining Fury this way, your melee damage is increased by +8% per point.",
+        "description": "Two-handed weapons only. While in Wrath, each enemy within melee range drains 3 additional Fervour per second. For each enemy draining Fervour this way, your melee damage is increased by +8% per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -661,7 +661,7 @@
       "data": {
         "kind": "keystone",
         "name": "Colossus",
-        "description": "Two-handed weapons only. While in Wrath, using a movement skill triggers your Earthquake skill at your landing location at no cooldown cost. The damage and AOE radius of this Earthquake are scaled by your current Fury at the moment of landing — 100% potency at maximum Fury, scaling down to 25% potency at minimum Fury. All modifiers to your Earthquake skill apply normally.",
+        "description": "Two-handed weapons only. While in Wrath, using a movement skill triggers your Earthquake skill at your landing location at no cooldown cost. The damage and AOE radius of this Earthquake are scaled by your current Fervour at the moment of landing \u2014 100% potency at maximum Fervour, scaling down to 25% potency at minimum Fervour. All modifiers to your Earthquake skill apply normally.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -683,7 +683,7 @@
       "data": {
         "kind": "keystone",
         "name": "Berserker's Rage",
-        "description": "Two-handed weapons only. Effects that trigger at maximum Fury no longer drain your Fury when they fire.",
+        "description": "Two-handed weapons only. Effects that trigger at maximum Fervour no longer drain your Fervour when they fire.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -705,7 +705,7 @@
       "data": {
         "kind": "keystone",
         "name": "Apex Predator",
-        "description": "Two-handed weapons only. Killing an enemy with an attack made at maximum Fury instantly reduces all cooldowns by 50%",
+        "description": "Two-handed weapons only. Killing an enemy with an attack made at maximum Fervour instantly reduces all cooldowns by 50%",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Frenzy",
-        "description": "Dual wield only. When you reach maximum Fury, enter a state of Frenzy. While in Frenzy your attack speed is increased by 20% and all melee hits generate 2 additional Fury. Fury drains at 8 per second. Frenzy ends when Fury reaches 0.",
+        "description": "Dual wield only. When you reach maximum Fervour, enter a state of Frenzy. While in Frenzy your attack speed is increased by 20% and all melee hits generate 2 additional Fervour. Fervour drains at 8 per second. Frenzy ends when Fervour reaches 0.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 1
@@ -771,7 +771,7 @@
       "data": {
         "kind": "basic",
         "name": "Weaving",
-        "description": "Dual wield only. Alternating main hand and offhand attacks increases damage by 2% per point up to 6 stacks. While in Frenzy, each alternating strike costs 3 Fury but the damage bonus per stack is doubled.",
+        "description": "Dual wield only. Alternating main hand and offhand attacks increases damage by 2% per point up to 6 stacks. While in Frenzy, each alternating strike costs 3 Fervour but the damage bonus per stack is doubled.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -815,7 +815,7 @@
       "data": {
         "kind": "basic",
         "name": "Relentless",
-        "description": "Dual wield only. While in Frenzy, every melee hit that does not crit still generates +1 Fury per point. Reduces the effective drain rate of Frenzy by rewarding consistent aggression.",
+        "description": "Dual wield only. While in Frenzy, every melee hit that does not crit still generates +1 Fervour per point. Reduces the effective drain rate of Frenzy by rewarding consistent aggression.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -859,7 +859,7 @@
       "data": {
         "kind": "basic",
         "name": "Dancing Blades",
-        "description": "Dual wield only. While in Frenzy, each unique enemy you have hit in the last 3 seconds drains 2 additional Fury per second and grants +6% damage per point against that enemy. Tracking ends if Frenzy ends.",
+        "description": "Dual wield only. While in Frenzy, each unique enemy you have hit in the last 3 seconds drains 2 additional Fervour per second and grants +6% damage per point against that enemy. Tracking ends if Frenzy ends.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -903,7 +903,7 @@
       "data": {
         "kind": "basic",
         "name": "Rapid Fire",
-        "description": "Dual wield only. Each time you attack at maximum Fury your melee attack speed increases by 5% per point for 3 seconds, stacking up to 4 times.",
+        "description": "Dual wield only. Each time you attack at maximum Fervour your melee attack speed increases by 5% per point for 3 seconds, stacking up to 4 times.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -969,7 +969,7 @@
       "data": {
         "kind": "basic",
         "name": "Frenetic",
-        "description": "Dual wield only. While in Frenzy, for every 10 Fury drained by the Frenzy state, automatically trigger a bonus strike at 20% weapon damage per point. These strikes can proc leech and critical strikes independently.",
+        "description": "Dual wield only. While in Frenzy, for every 10 Fervour drained by the Frenzy state, automatically trigger a bonus strike at 20% weapon damage per point. These strikes can proc leech and critical strikes independently.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1013,7 +1013,7 @@
       "data": {
         "kind": "basic",
         "name": "Hair-Trigger",
-        "description": "Dual wield only. While in Frenzy, your critical strike chance is increased by 2% per point. This bonus is doubled while above 75% Fury.",
+        "description": "Dual wield only. While in Frenzy, your critical strike chance is increased by 2% per point. This bonus is doubled while above 75% Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1035,7 +1035,7 @@
       "data": {
         "kind": "basic",
         "name": "Unrelenting",
-        "description": "Dual wield only. Killing an enemy refunds 20% of your maximum Fury per point up to a maximum of 60%.",
+        "description": "Dual wield only. Killing an enemy refunds 20% of your maximum Fervour per point up to a maximum of 60%.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1057,7 +1057,7 @@
       "data": {
         "kind": "basic",
         "name": "Bloodlust",
-        "description": "Dual wield only. Killing an enemy increases your attack speed by 4% per point for 4 seconds, stacking up to 5 times. While in Frenzy kills also restore 5 Fury.",
+        "description": "Dual wield only. Killing an enemy increases your attack speed by 4% per point for 4 seconds, stacking up to 5 times. While in Frenzy kills also restore 5 Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "basic",
         "name": "Knife Dance",
-        "description": "Dual wield only. Each automatic strike triggered by Frenetic generates 2 Fury per point.",
+        "description": "Dual wield only. Each automatic strike triggered by Frenetic generates 2 Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1123,7 +1123,7 @@
       "data": {
         "kind": "keystone",
         "name": "Whirlwind",
-        "description": "Dual wield only. When you attack at maximum Fury the strike automatically becomes a spinning attack hitting all enemies within melee range. Each enemy hit generates 3 Fury. Enemies hit while you are at maximum Fury are knocked back and take 50% bonus damage.",
+        "description": "Dual wield only. When you attack at maximum Fervour the strike automatically becomes a spinning attack hitting all enemies within melee range. Each enemy hit generates 3 Fervour. Enemies hit while you are at maximum Fervour are knocked back and take 50% bonus damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1167,7 +1167,7 @@
       "data": {
         "kind": "keystone",
         "name": "Phantom Blades",
-        "description": "Dual wield only. Each melee strike creates a phantasmal echo that replays the attack 0.75 seconds later at 60% damage. Phantom strikes can trigger leech and critical strikes independently but do not generate Fury.",
+        "description": "Dual wield only. Each melee strike creates a phantasmal echo that replays the attack 0.75 seconds later at 60% damage. Phantom strikes can trigger leech and critical strikes independently but do not generate Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1189,7 +1189,7 @@
       "data": {
         "kind": "basic",
         "name": "Razor Mind",
-        "description": "+4% critical strike multiplier per point on melee attacks. Critical strikes also generate +2 Fury per point. At 5 points: Critical strikes made while above 75% Fury generate double Fury from this effect.",
+        "description": "+4% critical strike multiplier per point on melee attacks. Critical strikes also generate +2 Fervour per point. At 5 points: Critical strikes made while above 75% Fervour generate double Fervour from this effect.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1211,7 +1211,7 @@
       "data": {
         "kind": "basic",
         "name": "Precision",
-        "description": "+2% critical strike chance per point on melee attacks. While above 50% Fury, your critical strike chance is additionally increased by 1% per point.",
+        "description": "+2% critical strike chance per point on melee attacks. While above 50% Fervour, your critical strike chance is additionally increased by 1% per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1233,7 +1233,7 @@
       "data": {
         "kind": "basic",
         "name": "Glass Cannon",
-        "description": "+8% critical strike multiplier per point on melee attacks. At 4 points: Your critical melee strikes ignore 20% of enemy resistances. Each point of Fury above your normal maximum (from any source) increases your critical strike multiplier by an additional 0.5% per point invested here.",
+        "description": "+8% critical strike multiplier per point on melee attacks. At 4 points: Your critical melee strikes ignore 20% of enemy resistances. Each point of Fervour above your normal maximum (from any source) increases your critical strike multiplier by an additional 0.5% per point invested here.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1255,7 +1255,7 @@
       "data": {
         "kind": "basic",
         "name": "Deathmark",
-        "description": "Critical strikes apply a Deathmark for 5 seconds. Applying a Deathmark costs 10 Fury, reduced by 1 per point. Marked enemies take +3% increased damage per point from all sources. If you have no Fury the mark still applies but deals no bonus damage.",
+        "description": "Critical strikes apply a Deathmark for 5 seconds. Applying a Deathmark costs 10 Fervour, reduced by 1 per point. Marked enemies take +3% increased damage per point from all sources. If you have no Fervour the mark still applies but deals no bonus damage.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1277,7 +1277,7 @@
       "data": {
         "kind": "basic",
         "name": "Killing Rhythm",
-        "description": "+5% critical strike multiplier per point for each consecutive critical strike, up to 5 stacks. Missing a critical strike or your Fury reaching 0 resets the streak.",
+        "description": "+5% critical strike multiplier per point for each consecutive critical strike, up to 5 stacks. Missing a critical strike or your Fervour reaching 0 resets the streak.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1299,7 +1299,7 @@
       "data": {
         "kind": "keystone",
         "name": "Coup de Grace",
-        "description": "Your critical strikes deal bonus damage equal to 2% of the target's missing HP. This bonus is tripled on attacks made at maximum Fury.",
+        "description": "Your critical strikes deal bonus damage equal to 2% of the target's missing HP. This bonus is tripled on attacks made at maximum Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1343,7 +1343,7 @@
       "data": {
         "kind": "basic",
         "name": "Crimson Tide",
-        "description": "+0.5% life leech per point on melee attacks. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fury you spend or drain generates a heal equal to 0.5% per point of your maximum HP.",
+        "description": "+0.5% life leech per point on melee attacks. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fervour you spend or drain generates a heal equal to 0.5% per point of your maximum HP.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1365,7 +1365,7 @@
       "data": {
         "kind": "keystone",
         "name": "Iron Will",
-        "description": "Your maximum HP bonus from all sources also increases your maximum Fury by 1 point for every 2% maximum HP bonus you have.",
+        "description": "Your maximum HP bonus from all sources also increases your maximum Fervour by 1 point for every 2% maximum HP bonus you have.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1387,7 +1387,7 @@
       "data": {
         "kind": "basic",
         "name": "Vital Strike",
-        "description": "+1% life leech per point on critical melee strikes only. Critical strike leech is not subject to the normal leech cap. Excess leech beyond your HP cap is stored and added as bonus Fury generation on your next hit, up to 10 Fury per point.",
+        "description": "+1% life leech per point on critical melee strikes only. Critical strike leech is not subject to the normal leech cap. Excess leech beyond your HP cap is stored and added as bonus Fervour generation on your next hit, up to 10 Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1409,7 +1409,7 @@
       "data": {
         "kind": "keystone",
         "name": "Undying",
-        "description": "When you would be reduced to 0 HP, if you have at least 50 Fury, you are instead reduced to 1 HP. All of your Fury is instantly spent, restoring HP equal to 5% of your maximum HP per 10 Fury spent.",
+        "description": "When you would be reduced to 0 HP, if you have at least 50 Fervour, you are instead reduced to 1 HP. All of your Fervour is instantly spent, restoring HP equal to 5% of your maximum HP per 10 Fervour spent.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1431,7 +1431,7 @@
       "data": {
         "kind": "basic",
         "name": "Sanguine",
-        "description": "+1% life leech per point on melee attacks. Each time you leech HP your Fury generation on the next hit is increased by 1 per point, stacking up to 5 times. Stacks reset if you go 2 seconds without leeching. At 4 points: The stack cap is increased to 10.",
+        "description": "+1% life leech per point on melee attacks. Each time you leech HP your Fervour generation on the next hit is increased by 1 per point, stacking up to 5 times. Stacks reset if you go 2 seconds without leeching. At 4 points: The stack cap is increased to 10.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1453,7 +1453,7 @@
       "data": {
         "kind": "basic",
         "name": "Feast",
-        "description": "+0.3% life leech per point for every 10 Fury you currently have. When your Fury reaches 0 for any reason you instantly leech 1% per point of your maximum HP.",
+        "description": "+0.3% life leech per point for every 10 Fervour you currently have. When your Fervour reaches 0 for any reason you instantly leech 1% per point of your maximum HP.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1475,7 +1475,7 @@
       "data": {
         "kind": "keystone",
         "name": "Vampiric Fury",
-        "description": "Life leech now also restores Fury at a rate of 1 Fury per 2% of maximum HP leeched. Fury cannot be restored above maximum by this effect.",
+        "description": "Life leech now also restores Fervour at a rate of 1 Fervour per 2% of maximum HP leeched. Fervour cannot be restored above maximum by this effect.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1505,7 +1505,7 @@
           {
             "name": "Warlord",
             "identity": "2H",
-            "description": "Two-handed weapons only. While above 50% Fury, your melee attacks reduce the armor of all enemies within 5 meters by 15% for 3 seconds. This effect refreshes on each hit."
+            "description": "Two-handed weapons only. While above 50% Fervour, your melee attacks reduce the armor of all enemies within 5 meters by 15% for 3 seconds. This effect refreshes on each hit."
           },
           {
             "name": "Opportunist",
@@ -1515,7 +1515,7 @@
           {
             "name": "Vital Strikes",
             "identity": "Crit/Leech",
-            "description": "While above 50% Fury, all incoming damage is reduced by your current life leech percentage."
+            "description": "While above 50% Fervour, all incoming damage is reduced by your current life leech percentage."
           }
         ],
         "pointThreshold": 25,
@@ -1548,7 +1548,7 @@
           {
             "name": "Unstoppable",
             "identity": "2H",
-            "description": "Two-handed weapons only. While above 75% Fury you cannot be slowed, rooted, or knocked back."
+            "description": "Two-handed weapons only. While above 75% Fervour you cannot be slowed, rooted, or knocked back."
           },
           {
             "name": "Cut and Run",
@@ -1590,17 +1590,17 @@
         "options": [
           {
             "name": "Titan",
-            "identity": "2H × Leech",
-            "description": "Two-handed weapons only. Your maximum HP is increased by 1% for every 2 points of maximum Fury you have."
+            "identity": "2H \u00d7 Leech",
+            "description": "Two-handed weapons only. Your maximum HP is increased by 1% for every 2 points of maximum Fervour you have."
           },
           {
             "name": "Pure Carnage",
-            "identity": "DW × Crit",
+            "identity": "DW \u00d7 Crit",
             "description": "Dual wield only. While in Frenzy, critical strikes release a nova of force that deals 30% of the hit's damage to all enemies within melee range."
           },
           {
             "name": "Crimson Pact",
-            "identity": "Crit × Leech",
+            "identity": "Crit \u00d7 Leech",
             "description": "Your critical strike multiplier bonus is added to your life leech percentage. Your life leech percentage is added to your critical strike multiplier bonus."
           }
         ],
@@ -1634,7 +1634,7 @@
           {
             "name": "Ragnarok",
             "identity": "2H",
-            "description": "Two-handed weapons only. Your maximum Fury is doubled. While in Wrath, your attacks release shockwaves that deal 50% of the hit's damage to all enemies within 6 meters. Wrath no longer drains Fury passively."
+            "description": "Two-handed weapons only. Your maximum Fervour is doubled. While in Wrath, your attacks release shockwaves that deal 50% of the hit's damage to all enemies within 6 meters. Wrath no longer drains Fervour passively."
           },
           {
             "name": "Thousand Deaths",

@@ -20,6 +20,130 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — Every class shares one resource, called Fervour, and each class grants ways to fill and spend it
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, all four `docs/*_Class_Tree_Final.json`
+files, `game/Data/PassiveNodes.csv`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`.
+**Applied.** Issues #24, #50, #950.
+
+The design gave each of the 24 classes its own resource, four of which were
+designed: Resolve, Fury, Preparation and Anguish. The project owner raised the
+problem before any of it was built:
+
+> "every class having their own class resource is going to end up being confusing
+> later when you're specced into 3 or 4 classes."
+
+### It is worse than three or four, and that is measurable
+
+**A two-handed weapon can roll 8 damage types**, from the `MaxDamageTypes` column
+of `game/Data/ItemBases.csv`, and each damage type unlocks 3 classes. So one
+character with a two-handed weapon can reach **all 24 class trees**. A one-handed
+weapon rolls 4 and reaches 12. The design's own multiclassing section already
+said players "can invest in multiple class trees simultaneously".
+
+### The genre precedent is structural rather than a matter of taste
+
+**Every shipped game that gives each class its own resource also forbids
+multiclassing.** Diablo 3 and Diablo 4 give a class exactly one unique resource —
+Barbarian Fury, Necromancer Essence, Rogue Energy — and a character is one class,
+so two resources never coexist. Path of Exile does the opposite: its passive tree
+lets one character reach almost anything, and every character uses the same life,
+mana and energy shield. Path of Exile 2 added a further resource, Spirit, and
+gave it to everyone rather than to a class.
+
+Per-class resources and multiclassing are alternatives, not companions.
+
+### What was decided
+
+**One bar, called Fervour, with per-class generators and spenders.** The project
+owner's words: "This way all of the nodes in the current trees still work, but
+now if you're multiclassing you can spec into multiple ways to generate/spend
+that resource."
+
+The alternative considered and rejected was one bar with one rule for everyone,
+which would have deleted most of what makes a class feel different — the
+Berserker filling on critical strikes and the Masochist on damage taken is a
+large part of those two classes.
+
+**The code already worked this way.**
+`UCataclysmClassResourceAttributeSet` has always held a single current value and
+a single maximum; the pool is 100 for every class and 150 for the Ritualist. The
+24 resources existed only in the design prose, so this was a design decision
+rather than a rewrite. No game code changed.
+
+### Fervour does not decay, and a class may add a rule that does
+
+The four resources emptied in four different ways and one bar cannot do all four:
+Fury decayed at 10 per second out of combat, Resolve slowly, Preparation not at
+all, and Anguish fell only when the character healed.
+
+**The project owner chose the permissive base — it does not decay — and put the
+emptying rules on the classes.** Their reasoning: "it'll matter for other classes
+who might rely on reserving it for their stuff. Each class can also have its own
+rules that effect the pool, for instance something like, 'Fervour decays at a
+rate of 1/s'."
+
+So a class that empties fast is buying that with how fast it fills, and it says
+so on its own starting node:
+
+| Class | Generator | Fills Fervour from | Adds about emptying |
+| :-- | :-- | :-- | :-- |
+| Bulwark | Resolve | Taking hits, blocking, killing | Decays slowly out of combat |
+| Berserker | Fury | 1 per critical strike | Decays at 10 per second after 3 seconds out of combat |
+| Saboteur | Preparation | Placing traps and gadgets, and their damage or triggering | Nothing; keeps the default |
+| Masochist | Anguish | Health lost to damage, and health spent as a cost | Healing removes it at the same rate |
+
+### The four names are gone entirely, and that was a correction
+
+The first attempt kept each tree's starting node under its old name, so that
+"Fury" became the name of the Berserker's way of filling Fervour rather than a
+resource. **The project owner rejected that:**
+
+> "I feel like we need to rename all of the class resources to Fervour as well.
+> Otherwise the player is going to see x resource in the passive tree, but only y
+> is actually being generated, and it's unnecessary confusion."
+
+That is right, and it is the same objection that produced this decision in the
+first place. **Every tree's starting node is now called Fervour**, because they
+are four ways into one bar rather than four things. Nothing anywhere is called
+Resolve, Fury, Preparation or Anguish, including the design document's table,
+which lost its generator column.
+
+**Four other node names use those words and were left alone**, because they use
+them as ordinary English rather than as the name of a resource: "Vampiric Fury"
+in the Berserker tree, and "Steeled Resolve", "Resolve Under Fire" and "Resolve
+to Steel" in the Bulwark. A person's resolve is their determination, and fury is
+rage. Once no bar carries either word, those read as ordinary node names.
+
+**124 node descriptions were renamed** across the four trees: 52 in the
+Berserker, 26 in the Bulwark, 25 in the Masochist and 21 in the Saboteur. All 199
+occurrences of the four words were checked first and every one was the resource
+rather than ordinary English, which mattered most for "Resolve" and
+"Preparation".
+
+**A test now holds the absence.** `test_class_passive_trees.py` fails if the
+design document's tables name any of the four again. It checks a table cell
+rather than the bare word, because the document explains that the names are gone
+and a check for the bare word fails on the sentence that says so.
+
+**The stat identifier in the data was deliberately not renamed.** It is still
+`class_resource` in `game/Data/ClassStats.csv`, `game/Data/PassiveEffects.csv`
+and `UCataclysmPlayerClassStats::StatToAttribute`. That name is accurate and is
+never shown to a player, so renaming it across three files would have been churn
+for no gain.
+
+### The balance question this raises, and why it is left as it is
+
+A character carrying several generators fills the bar faster than one carrying a
+single generator. The point budget is what limits that: a character has 230
+points and one tree alone holds 440, so a character spread across four trees has
+roughly 57 points in each. That reaches the early generators and not the deep
+spenders. Filling easily while having little worth spending on is the same
+tradeoff the design already states for multiclassing.
+
+---
+
 ## 2026-08-25 — The Masochist's upper-right section becomes Blood Tithe, and the whole tree is redrawn to grow upward
 
 **Affects:** `docs/Masochist_Class_Tree_Final.json`,
