@@ -584,6 +584,54 @@ TArray<FString> UCataclysmPassiveTree::ReachableTrees(
 	return Out;
 }
 
+TMap<FName, TArray<const FCataclysmPassiveEffectRow*>>
+UCataclysmPassiveTree::EffectsByNode(const UDataTable* EffectTable)
+{
+	TMap<FName, TArray<const FCataclysmPassiveEffectRow*>> Out;
+	if (!EffectTable)
+	{
+		return Out;
+	}
+
+	for (const TPair<FName, uint8*>& Row : EffectTable->GetRowMap())
+	{
+		const FCataclysmPassiveEffectRow* Effect =
+			reinterpret_cast<const FCataclysmPassiveEffectRow*>(Row.Value);
+		if (Effect && !Effect->Node.IsEmpty())
+		{
+			Out.FindOrAdd(FName(*Effect->Node)).Add(Effect);
+		}
+	}
+
+	// SORTED BY STAT NAME, SO ONE NODE'S ROWS COME BACK IN THE SAME ORDER EVERY
+	// TIME. A DataTable keeps its rows in a TMap and that order is a hash order.
+	// Nothing here depends on the order -- the three buckets sum and multiply the
+	// same either way -- but a caller reading a node's first effect should not
+	// get a different answer depending on where a name happened to land.
+	for (TPair<FName, TArray<const FCataclysmPassiveEffectRow*>>& Pair : Out)
+	{
+		Pair.Value.Sort([](const FCataclysmPassiveEffectRow& Left,
+						   const FCataclysmPassiveEffectRow& Right)
+		{
+			return Left.Stat < Right.Stat;
+		});
+	}
+
+	return Out;
+}
+
+TArray<const FCataclysmPassiveEffectRow*> UCataclysmPassiveTree::EffectsFor(
+	const UDataTable* EffectTable, FName Node)
+{
+	const TMap<FName, TArray<const FCataclysmPassiveEffectRow*>> ByNode =
+		EffectsByNode(EffectTable);
+	if (const TArray<const FCataclysmPassiveEffectRow*>* Found = ByNode.Find(Node))
+	{
+		return *Found;
+	}
+	return {};
+}
+
 int32 UCataclysmPassiveTree::AccumulateInto(
 	TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
 	const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable,
@@ -598,6 +646,17 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 	// four trees and the answer is the same for every node of a tree, so asking
 	// per node would be the same question up to 230 times.
 	TMap<FString, bool> TreeIsOn;
+
+	// EVERY EFFECT ROW GROUPED BY THE NODE IT IS ABOUT, BUILT ONCE. Issue #953.
+	//
+	// A KEYED LOOKUP CANNOT DO THIS ANY MORE. Until #953 the DataTable's row name
+	// WAS the node name, so one FindRow answered the question. A node may now
+	// have several rows -- the Masochist's starting node grants three Fervour
+	// rates -- so the row names carry a `#1` suffix and the node is a column.
+	// The table is read in full once here rather than scanned once per spent
+	// node, which a character can have 230 of.
+	const TMap<FName, TArray<const FCataclysmPassiveEffectRow*>> EffectsForNode =
+		EffectsByNode(EffectTable);
 
 	int32 Added = 0;
 	for (const FCataclysmSpentNode& Spent : Allocation.Nodes)
@@ -630,45 +689,48 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			continue;
 		}
 
-		const FCataclysmPassiveEffectRow* Effect =
-			EffectTable->FindRow<FCataclysmPassiveEffectRow>(
-				Spent.Node, TEXT("UCataclysmPassiveTree::AccumulateInto"),
-				/*bWarnIfMissing=*/false);
-		if (!Effect)
+		const TArray<const FCataclysmPassiveEffectRow*>* Effects =
+			EffectsForNode.Find(Spent.Node);
+		if (!Effects)
 		{
-			// MOST NODES ARE HERE AND IT IS NOT A FAULT. 26 of the 293 have an
-			// authored effect; the rest are rule changes, resource generation
-			// and conditional bonuses that are not stat modifiers under any
-			// authoring scheme. Issue #939.
+			// MOST NODES ARE HERE AND IT IS NOT A FAULT. A minority of the 293
+			// have an authored effect; the rest are rule changes, resource
+			// generation and conditional bonuses that are not stat modifiers
+			// under any authoring scheme. Issue #939.
 			continue;
 		}
 
-		FCataclysmStatModifier Modifier;
-		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
-		Modifier.Value = Effect->ValuePerPoint * Spent.Points;
+		// ALL OF THEM, NOT THE FIRST. A node granting two stats grants both.
+		for (const FCataclysmPassiveEffectRow* Effect : *Effects)
+		{
+			FCataclysmStatModifier Modifier;
+			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+			Modifier.Value = Effect->ValuePerPoint * Spent.Points;
 
-		if (Effect->ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
-		{
-			Modifier.Bucket = ECataclysmStatBucket::More;
-		}
-		else if (Effect->ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase))
-		{
-			Modifier.Bucket = ECataclysmStatBucket::Flat;
-		}
-		else
-		{
-			Modifier.Bucket = ECataclysmStatBucket::Increased;
-		}
+			if (Effect->ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
+			{
+				Modifier.Bucket = ECataclysmStatBucket::More;
+			}
+			else if (Effect->ValueKind.Equals(TEXT("flat"),
+											  ESearchCase::IgnoreCase))
+			{
+				Modifier.Bucket = ECataclysmStatBucket::Flat;
+			}
+			else
+			{
+				Modifier.Bucket = ECataclysmStatBucket::Increased;
+			}
 
-		for (const FString& Tag : SplitTags(Effect->RequiredTags))
-		{
-			Modifier.RequiredTags.AddTag(
-				FGameplayTag::RequestGameplayTag(FName(*Tag),
-												 /*ErrorIfNotFound=*/false));
-		}
+			for (const FString& Tag : SplitTags(Effect->RequiredTags))
+			{
+				Modifier.RequiredTags.AddTag(
+					FGameplayTag::RequestGameplayTag(FName(*Tag),
+													 /*ErrorIfNotFound=*/false));
+			}
 
-		Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
-		++Added;
+			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
+			++Added;
+		}
 	}
 
 	return Added;

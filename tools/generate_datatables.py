@@ -2428,22 +2428,36 @@ def passive_effects(book) -> list[dict]:
     A ROW HERE IS OPTIONAL. A node with no row grants nothing, which is what
     every node did before this sheet existed, so an unauthored node is the
     ordinary case rather than an error.
+
+    A NODE MAY HAVE SEVERAL ROWS AND ALL OF THEM APPLY. Issue #953. It could have
+    exactly one until then, because the DataTable row name WAS the node name, and
+    that shape cannot express the nodes that grant two things: "+1% increased
+    Maximum Health and +0.5% increased Armor" is two stats in one sentence, and
+    the Masochist's starting node grants three Fervour rates at once. The node is
+    now a column of its own and the row name is the node with `#1`, `#2` and so
+    on after it, in the order the sheet lists them. Nothing reads the row name;
+    it exists because a DataTable needs a unique key.
+
+    A NUMBER SIGN IS THE SEPARATOR BECAUSE NO NODE NAME CAN CONTAIN ONE. Node
+    names are a tree name and an identifier from the tree authoring tool joined
+    by an underscore, so an underscore would let `A_1` mean either the first row
+    of node `A` or the only row of a node really called `A_1`.
     """
     rows = list(book["Passive Effects"].iter_rows(values_only=True))
     headers = _header_index(rows, "Passive Effects")
 
     out = []
-    seen: set[str] = set()
+    counts: dict[str, int] = {}
     for index, raw in enumerate(rows[1:], start=2):
         node = clean(_cell(raw, headers, "Node"))
         if not node:
             continue
 
-        if node in seen:
+        if "#" in node:
             raise DataError(
-                f"Passive Effects row {index}: {node} appears twice. A node has "
-                f"one effect; two rows would silently apply both.")
-        seen.add(node)
+                f"Passive Effects row {index}: the node name {node!r} contains "
+                f"a number sign, which this file uses to separate a node from "
+                f"the index of its effect. Rename the node.")
 
         stat = clean(_cell(raw, headers, "Stat"))
         if not stat:
@@ -2455,14 +2469,33 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: {node} has value kind {kind!r}, "
                 f"which is not flat, increased or more")
 
+        counts[node] = counts.get(node, 0) + 1
+
         out.append({
-            "Name": node,
+            "Name": f"{node}#{counts[node]}",
+            "Node": node,
             "Stat": stat,
             "ValueKind": kind,
             "ValuePerPoint": number(_cell(raw, headers, "Value Per Point"),
                                     "Value Per Point", index),
             "RequiredTags": clean(_cell(raw, headers, "Required Tags")),
         })
+
+    # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
+    # HELPING, and it is one a person editing a spreadsheet makes by copying a
+    # row and forgetting to change the stat. Two rows granting the same node two
+    # DIFFERENT stats is the whole point of the shape and is allowed.
+    pairs: dict[tuple[str, str], int] = {}
+    for row in out:
+        key = (row["Node"], row["Stat"])
+        pairs[key] = pairs.get(key, 0) + 1
+    twice = sorted(key for key, count in pairs.items() if count > 1)
+    if twice:
+        listed = ", ".join(f"{node} granting {stat}" for node, stat in twice)
+        raise DataError(
+            f"the Passive Effects sheet grants the same stat twice on one "
+            f"node: {listed}. Two rows for one node are for two different "
+            f"stats; the same stat twice is a duplicated row.")
 
     if not out:
         raise DataError("the Passive Effects sheet is empty")
@@ -2493,10 +2526,14 @@ def validate_passive_effects(tables: dict[str, list[dict]],
 
     problems = []
     for row in effects:
-        if row["Name"] not in node_names:
+        # THE `Node` COLUMN AND NOT THE ROW NAME. They were the same string
+        # until issue #953; the row name now carries a `#1` suffix so that one
+        # node can have several rows, and checking it against the node table
+        # would report every row as missing.
+        if row["Node"] not in node_names:
             problems.append(
-                f"PassiveEffects/{row['Name']}: no passive node has that row "
-                f"name, so the effect reaches nothing")
+                f"PassiveEffects/{row['Name']}: no passive node is called "
+                f"{row['Node']}, so the effect reaches nothing")
 
         if stats and row["Stat"] not in stats:
             problems.append(

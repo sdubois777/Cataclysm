@@ -1530,15 +1530,15 @@ struct FCataclysmEnemyRarityRow : public FTableRowBase
  * WHAT A NODE DOES IS NOT HERE, IT IS IN `FCataclysmPassiveEffectRow`.
  * `Description` is the sentence a player reads: "Damage taken from damage over
  * time effects is reduced by 1% per point." It carries no stat name and no
- * number, so the effect row keyed by the same name is what a machine reads. The
- * project owner chose that split on 2026-08-25; `docs/DECISIONS.md` has the
- * reasoning and the cost, which is that a node's words and its numbers can
- * drift. `tools/tests/test_passive_effects_match_the_node_text.py` is what stops
- * them.
+ * number, so the effect rows naming it are what a machine reads. The project
+ * owner chose that split on 2026-08-25; `docs/DECISIONS.md` has the reasoning
+ * and the cost, which is that a node's words and its numbers can drift.
+ * `tools/tests/test_passive_effects_match_the_node_text.py` is what stops them.
  *
- * ONLY 26 OF THE 293 NODES HAVE AN EFFECT ROW, and that is the honest measure of
- * how much of the passive tree does anything. The other 267 need machinery that
- * does not exist rather than more typing. Issue #939.
+ * A MINORITY OF THE 293 NODES HAVE AN EFFECT ROW, and that is the honest measure
+ * of how much of the passive tree does anything. The rest need machinery that
+ * does not exist rather than more typing. Issue #939, and
+ * `tools/tests/test_passive_effects_match_the_node_text.py` pins the count.
  */
 USTRUCT(BlueprintType)
 struct FCataclysmPassiveNodeRow : public FTableRowBase
@@ -1679,15 +1679,19 @@ struct FCataclysmPassiveEdgeRow : public FTableRowBase
 /**
  * What one passive node grants, as a stat modifier the pipeline understands.
  *
- * KEYED BY THE NODE'S ROW NAME in `game/Data/PassiveNodes.csv`, so a row here
- * and the node it is about share a key. The node carries the words a player
- * reads; this carries the numbers the game applies.
+ * WHICH NODE IT IS ABOUT IS THE `Node` FIELD, NOT THE ROW NAME. It was the row
+ * name until issue #953, which made a DataTable key do two jobs: identify the
+ * row, and say which node it belonged to. That is the same string only while a
+ * node grants exactly one stat, and several do not. The Masochist's starting
+ * node grants three Fervour rates at once, and two more nodes say
+ * "+1% increased Maximum Health and +0.5% increased Armor". The row name is now
+ * the node name with `#1`, `#2` and so on after it, and nothing reads it.
  *
  * A NODE WITH NO ROW GRANTS NOTHING, and that is the ordinary case rather than
- * an error. 26 of the 293 nodes have one. Most of the rest are not stat
- * modifiers at all -- they change a rule, generate a class resource, or apply
- * only in a condition the three buckets cannot express -- and issue #939
- * measures that gap exactly and lists what each group would need.
+ * an error. Most nodes are not stat modifiers at all -- they change a rule,
+ * generate a class resource, or apply only in a condition the three buckets
+ * cannot express -- and issue #939 measures that gap exactly and lists what each
+ * group would need.
  *
  * AUTHORED IN THE DESIGN WORKBOOK, which the project owner chose on 2026-08-25
  * over adding fields to the separate tree authoring tool's schema. The `Passive
@@ -1700,6 +1704,14 @@ USTRUCT(BlueprintType)
 struct FCataclysmPassiveEffectRow : public FTableRowBase
 {
 	GENERATED_BODY()
+
+	/**
+	 * The node this is about: a row name in `game/Data/PassiveNodes.csv`.
+	 *
+	 * SEVERAL ROWS MAY NAME THE SAME NODE and all of them apply. Issue #953.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	FString Node;
 
 	/** A stat name as `game/Data/ClassStats.csv` and `Attributes.csv` spell it. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
