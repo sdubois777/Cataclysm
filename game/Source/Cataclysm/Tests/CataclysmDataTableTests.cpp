@@ -202,10 +202,16 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// because the four capstones of each tree deliberately have none -- a
 	// capstone tier is reached by total points spent rather than along a path.
 	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          278)
-	// 26 of the 293 nodes have an authored effect, and the small share is the
+	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         26)
+	//
+	// IT WAS 26 UNTIL 2026-08-25, when the Masochist's upper-right section was
+	// replaced. Three rows went with the nodes holding them -- maximum mana,
+	// mana regeneration and area of effect -- and one arrived for maximum
+	// health. The rest of the new section is mechanics rather than modifiers, so
+	// it adds nothing here. See docs/DECISIONS.md.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         24)
 
 	#undef CHECK_TABLE
 

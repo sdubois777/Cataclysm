@@ -20,6 +20,135 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — The Masochist's upper-right section becomes Blood Tithe, and the whole tree is redrawn to grow upward
+
+**Affects:** `docs/Masochist_Class_Tree_Final.json`,
+`docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),
+`docs/Cataclysm_GDD_v2.md`, `game/Data/PassiveNodes.csv`,
+`game/Data/PassiveEdges.csv`, `game/Data/PassiveEffects.csv`. **Applied.**
+Issues #50, #939.
+
+The project owner asked for two things after looking at the tree: that it grow
+like a tree, and that the upper-right section be reconsidered because they did
+not like it.
+
+### The layout, measured against the other three trees
+
+| Tree | Size on the canvas | Nodes leading to exactly one other | Nodes drawn below the starting node |
+| :-- | :-- | --: | --: |
+| Berserker | 1621 by 1241 | 35 | 0 |
+| Bulwark | 2000 by 1680 | 33 | 0 |
+| Saboteur | 2040 by 1680 | 24 | 0 |
+| Masochist, before | 3600 by 1160 | 46 | 9 |
+| Masochist, after | 2100 by 1452 | 46 | 0 |
+
+Two separate faults, and only one of them was about the graph.
+
+**Nine nodes were drawn below the starting node**, so the tree had no visible
+base. A keystone, Communion of Pain, sat at (−320, 1240) against a start at
+(0, 1200). The other three trees have nothing below theirs. That is what "it
+doesn't look like there's a starting point" was.
+
+**The four limbs were drawn as 3-row grids** read left to right — the upper-right
+one was exactly a 3 by 6 rectangle. Their TOPOLOGY was already a fan: a stem
+that splits into three chains ending in three keystones. So nothing about the
+shape of the graph had to change. Three chains drawn as three parallel
+horizontal rows read as a table; the same three chains fanned upward read as a
+branch. **Only positions changed.** The count of nodes leading to exactly one
+other is 46 before and after, which is the proof that no dependency moved.
+
+The new positions come from an ordinary layered tree layout: graph distance from
+the root sets the height, and subtree size sets the width.
+
+### Why the upper-right section was wrong, and the finding that decided its replacement
+
+It was called Soul Scourge and it was the mana section. It held Wellspring
+(+2% maximum mana per point), Bleeding Thought (+2% mana regeneration) and
+Volatile Minds (spell damage scaling off missing mana).
+
+**The tree's own 25-point capstone already offers "Water to Blood": "You no
+longer have a mana pool. All maximum mana is converted into added maximum
+health, and every ability costs health instead of mana."** So a quarter of the
+tree invested in growing a resource that a choice available at 25 points spent
+deletes outright. Every mana node in it was dead for a character who took that
+option, and the option itself was supported by nothing.
+
+Two smaller faults. It was the spell section of a class whose vertical-slice
+weapon is the Fist. And three of its nodes — Deep Reserves, Sacrificial Focus and
+the Soul Scourge keystone — did the central column's job of generating Anguish.
+
+### What replaced it
+
+**Blood Tithe**: the branch that makes paying costs in health worth doing.
+Fourteen nodes holding 89 points, which is exactly what the section it replaced
+held, so the tree's 440 spendable points are unchanged. A shared stem of three
+nodes splitting into three chains, each ending in a keystone, which is the shape
+it already had.
+
+The stem is Blood Coin (Anguish from health spent), Deeper Cuts (your skills also
+cost 1% of maximum health per point) and Ready Blood (maximum health). **Deeper
+Cuts is what makes the section work whether or not the character took Water to
+Blood**: it adds a health cost of its own, so the section is stronger with that
+vow and not dead without it.
+
+The three chains, and the keystone each ends in:
+
+- **The debt.** Deferred Payment, Compound Interest, Rolling Debt, ending in
+  **The Reckoning** — health costs are never taken, they accumulate as a debt
+  that is cleared only by killing, and if the debt exceeds current health you die.
+- **The payment.** Blood Rush, Sanguine Momentum, Grand Tithe, ending in
+  **Exsanguinate** — every skill costs an extra 15% of current health and deals
+  40% more damage. That cost cannot kill on its own: 15% of *current* health
+  approaches zero without reaching it. The project owner pointed that out; it
+  would kill if it were a share of maximum health.
+- **The pool.** Staunch, Deep Reserves, ending in **Blood Tithe** — 30% more
+  Anguish from health spent, 50% less from health lost to damage.
+
+**Staunch is the node that engages the class's stated tension.** The design
+document says of the Masochist that "healing up and staying powerful are the same
+resource spent twice", because healing removes Anguish. Nothing in the tree
+engaged with that on purpose. Staunch reduces the Anguish that regeneration
+removes by 5% per point, so six points make it a choice rather than a rule
+removed.
+
+**The section-named keystone is the tree's own convention.** Flesh Craver,
+Flagellant and Low Life are each both a section name and a keystone within it.
+
+### Two things that were removed and are not replaced
+
+**Rupture Focus is gone, and the design document said why it existed.**
+`docs/Cataclysm_GDD_v2.md` spent a paragraph defending it as "a deliberate niche
+for a gear-driven build rather than an oversight" — it stunned nearby enemies
+when an energy shield broke, and it was the one thing the tree offered a
+Masochist who wore one. That paragraph now records that the node was removed and
+that nothing took its place, so an energy shield on this class is a straight loss
+of resource generation. **If that is not wanted, a replacement node is the fix,
+not restoring the branch it was in.**
+
+**Three authored effects went and one arrived**, so the count of nodes that
+actually grant something falls from 26 to 24. Maximum mana, mana regeneration and
+area of effect went with their nodes; maximum health arrived with Ready Blood.
+The rest of Blood Tithe is mechanics rather than modifiers — a cost taken late, a
+stack that expires, a debt to settle — and none of those can be written as a row
+in the `Passive Effects` sheet. That is the same finding issue #939 made about
+the other 267 nodes.
+
+### What was checked
+
+`tools/tests/test_class_passive_trees.py` enforces the rules a tree must satisfy
+and all 75 of its checks pass: 74 nodes, exactly 15 keystones, exactly 4 capstone
+tiers at 25/50/100/200, 440 spendable points, one connected web, capstones not
+wired into it, unique names, and a keystone requiring full investment in its
+parent.
+
+Two of its checks caught wording faults in nodes written for this change. **Grand
+Tithe said "4% more damage", and a conditional damage bonus joins the increases
+bracket rather than becoming a separate multiplier** — the 2026-08-24 entry on
+conditional damage says so. It now says "increased". Staunch was reworded for the
+same reason.
+
+---
+
 ## 2026-08-25 — A stat that applies only to some skills is worked out per skill, not once per character
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`,

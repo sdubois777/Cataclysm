@@ -63,7 +63,15 @@ BUCKETS = {"flat", "increased", "more"}
 #: honest measure of how much of the passive tree actually does anything. Issue
 #: #939 measures the gap and lists what each remaining group would need. A change
 #: to this number should be somebody's decision, not a side effect.
-AUTHORED = 26
+#:
+#: IT WENT DOWN FROM 26 ON 2026-08-25, AND THAT WAS THE DECISION. Replacing the
+#: Masochist's upper-right section removed three authored rows -- maximum mana,
+#: mana regeneration and area of effect -- because the nodes holding them are
+#: gone. One row arrived, for maximum health. The rest of the new section is
+#: mechanics rather than modifiers: a cost taken late, a stack that expires, a
+#: debt that has to be settled. None of those can be written as a row here, which
+#: is the same finding issue #939 made about the other 267 nodes.
+AUTHORED = 24
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
