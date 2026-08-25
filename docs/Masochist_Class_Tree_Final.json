@@ -2,7 +2,7 @@
   "version": "1.0",
   "metadata": {
     "name": "Masochist Class Tree",
-    "description": "Single continuous web. The Path of Suffering runs up the centre and carries the Anguish resource. Flesh Craver upper-left, Soul Scourge upper-right, Flagellant lower-left, Low Life lower-right. Keystones sit at the far end of each limb and need full investment in their parent. The four vow capstones are the 25/50/100/200 point tiers and stand apart from the web.",
+    "description": "Single continuous web. The Path of Suffering runs up the centre and carries the Anguish resource. Flesh Craver upper-left, Blood Tithe upper-right, Flagellant lower-left, Low Life lower-right. Keystones sit at the far end of each limb and need full investment in their parent. The four vow capstones are the 25/50/100/200 point tiers and stand apart from the web.",
     "createdAt": "2026-08-06T00:00:00.000Z",
     "updatedAt": "2026-08-06T00:00:00.000Z",
     "pointBudget": 230
@@ -17,7 +17,7 @@
       "id": "basic_spine_000",
       "position": {
         "x": 0,
-        "y": 1200
+        "y": 780
       },
       "type": "basic",
       "data": {
@@ -38,8 +38,8 @@
     {
       "id": "basic_spine_001",
       "position": {
-        "x": -160,
-        "y": 1040
+        "x": -450,
+        "y": 648
       },
       "type": "basic",
       "data": {
@@ -60,8 +60,8 @@
     {
       "id": "basic_spine_002",
       "position": {
-        "x": 160,
-        "y": 1040
+        "x": 675,
+        "y": 648
       },
       "type": "basic",
       "data": {
@@ -82,8 +82,8 @@
     {
       "id": "basic_spine_003",
       "position": {
-        "x": -160,
-        "y": 880
+        "x": -300,
+        "y": 516
       },
       "type": "basic",
       "data": {
@@ -104,8 +104,8 @@
     {
       "id": "basic_spine_004",
       "position": {
-        "x": -160,
-        "y": 720
+        "x": -300,
+        "y": 384
       },
       "type": "basic",
       "data": {
@@ -126,8 +126,8 @@
     {
       "id": "basic_spine_005",
       "position": {
-        "x": 160,
-        "y": 720
+        "x": 900,
+        "y": 516
       },
       "type": "basic",
       "data": {
@@ -148,8 +148,8 @@
     {
       "id": "basic_spine_006",
       "position": {
-        "x": -160,
-        "y": 560
+        "x": -375,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -170,8 +170,8 @@
     {
       "id": "basic_spine_007",
       "position": {
-        "x": 160,
-        "y": 560
+        "x": 900,
+        "y": 384
       },
       "type": "basic",
       "data": {
@@ -192,8 +192,8 @@
     {
       "id": "basic_spine_008",
       "position": {
-        "x": -160,
-        "y": 400
+        "x": -375,
+        "y": 120
       },
       "type": "basic",
       "data": {
@@ -214,8 +214,8 @@
     {
       "id": "basic_spine_009",
       "position": {
-        "x": 160,
-        "y": 400
+        "x": 900,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -236,8 +236,8 @@
     {
       "id": "basic_spine_010",
       "position": {
-        "x": -160,
-        "y": 240
+        "x": -150,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -258,8 +258,8 @@
     {
       "id": "keystone_spine_001",
       "position": {
-        "x": -320,
-        "y": 1240
+        "x": 150,
+        "y": 516
       },
       "type": "keystone",
       "data": {
@@ -280,8 +280,8 @@
     {
       "id": "keystone_spine_002",
       "position": {
-        "x": -320,
-        "y": 720
+        "x": 0,
+        "y": 252
       },
       "type": "keystone",
       "data": {
@@ -302,8 +302,8 @@
     {
       "id": "keystone_spine_003",
       "position": {
-        "x": -160,
-        "y": 80
+        "x": -150,
+        "y": -144
       },
       "type": "keystone",
       "data": {
@@ -324,8 +324,8 @@
     {
       "id": "basic_fc_stem0",
       "position": {
-        "x": -400,
-        "y": 400
+        "x": -450,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -346,8 +346,8 @@
     {
       "id": "basic_fc_stem1",
       "position": {
-        "x": -640,
-        "y": 400
+        "x": -450,
+        "y": -144
       },
       "type": "basic",
       "data": {
@@ -368,8 +368,8 @@
     {
       "id": "basic_fc_stem2",
       "position": {
-        "x": -880,
-        "y": 400
+        "x": -300,
+        "y": -276
       },
       "type": "basic",
       "data": {
@@ -390,8 +390,8 @@
     {
       "id": "basic_fc_a0",
       "position": {
-        "x": -640,
-        "y": 200
+        "x": -600,
+        "y": -276
       },
       "type": "basic",
       "data": {
@@ -412,8 +412,8 @@
     {
       "id": "basic_fc_a1",
       "position": {
-        "x": -880,
-        "y": 200
+        "x": -600,
+        "y": -408
       },
       "type": "basic",
       "data": {
@@ -434,8 +434,8 @@
     {
       "id": "basic_fc_a2",
       "position": {
-        "x": -1120,
-        "y": 200
+        "x": -600,
+        "y": -540
       },
       "type": "basic",
       "data": {
@@ -456,8 +456,8 @@
     {
       "id": "basic_fc_b0",
       "position": {
-        "x": -640,
-        "y": 600
+        "x": -450,
+        "y": -276
       },
       "type": "basic",
       "data": {
@@ -478,8 +478,8 @@
     {
       "id": "basic_fc_b1",
       "position": {
-        "x": -880,
-        "y": 600
+        "x": -450,
+        "y": -408
       },
       "type": "basic",
       "data": {
@@ -500,8 +500,8 @@
     {
       "id": "basic_fc_b2",
       "position": {
-        "x": -1120,
-        "y": 600
+        "x": -450,
+        "y": -540
       },
       "type": "basic",
       "data": {
@@ -522,8 +522,8 @@
     {
       "id": "basic_fc_c0",
       "position": {
-        "x": -1120,
-        "y": 400
+        "x": -300,
+        "y": -408
       },
       "type": "basic",
       "data": {
@@ -544,8 +544,8 @@
     {
       "id": "basic_fc_c1",
       "position": {
-        "x": -1360,
-        "y": 400
+        "x": -300,
+        "y": -540
       },
       "type": "basic",
       "data": {
@@ -566,8 +566,8 @@
     {
       "id": "keystone_fc_kA",
       "position": {
-        "x": -1360,
-        "y": 200
+        "x": -600,
+        "y": -672
       },
       "type": "keystone",
       "data": {
@@ -588,8 +588,8 @@
     {
       "id": "keystone_fc_kB",
       "position": {
-        "x": -1360,
-        "y": 600
+        "x": -450,
+        "y": -672
       },
       "type": "keystone",
       "data": {
@@ -610,8 +610,8 @@
     {
       "id": "keystone_fc_kC",
       "position": {
-        "x": -1600,
-        "y": 400
+        "x": -300,
+        "y": -672
       },
       "type": "keystone",
       "data": {
@@ -630,318 +630,10 @@
       "dragging": false
     },
     {
-      "id": "basic_ss_stem0",
-      "position": {
-        "x": 400,
-        "y": 400
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Void-Attuned",
-        "description": "+1% increased Chaos damage per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 8
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_stem1",
-      "position": {
-        "x": 640,
-        "y": 400
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Wellspring",
-        "description": "+2% increased Maximum Mana per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 6
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_stem2",
-      "position": {
-        "x": 880,
-        "y": 400
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Bleeding Thought",
-        "description": "+2% increased Mana Regeneration per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 6
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_a0",
-      "position": {
-        "x": 640,
-        "y": 200
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Volatile Minds",
-        "description": "+1% increased Spell Damage per point for every 5% of your maximum mana that is missing.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 12
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_a1",
-      "position": {
-        "x": 880,
-        "y": 200
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Arcane Martyrdom",
-        "description": "Your spells have a 3% chance per point to cast a second time. The second cast costs 1% of your current health per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 10
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_a2",
-      "position": {
-        "x": 1120,
-        "y": 200
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Unstable Conduit",
-        "description": "Casting a spell grants a stack of Unstable for 5 seconds, up to 5 stacks. Each stack gives +1% increased Spell Damage and +1% increased mana cost per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 8
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_b0",
-      "position": {
-        "x": 640,
-        "y": 600
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Mental Anguish",
-        "description": "Using a skill with a mana cost also costs 0.5% of your current health per point. This cannot kill you.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 8
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_b1",
-      "position": {
-        "x": 880,
-        "y": 600
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Sacrificial Focus",
-        "description": "+2% increased Anguish gained from health spent as an ability cost per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 8
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_b2",
-      "position": {
-        "x": 1120,
-        "y": 600
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Rupture Focus",
-        "description": "When your Energy Shield breaks, enemies within 6 metres are stunned for 0.1 seconds per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 8
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_c0",
-      "position": {
-        "x": 1120,
-        "y": 400
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Grim Study",
-        "description": "+2% increased Area of Effect per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 6
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "basic_ss_c1",
-      "position": {
-        "x": 1360,
-        "y": 400
-      },
-      "type": "basic",
-      "data": {
-        "kind": "basic",
-        "name": "Deep Reserves",
-        "description": "+2% increased maximum Anguish per point.",
-        "currentPoints": 0,
-        "color": "#94a3b8",
-        "maxPoints": 6
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "keystone_ss_kA",
-      "position": {
-        "x": 1360,
-        "y": 200
-      },
-      "type": "keystone",
-      "data": {
-        "kind": "keystone",
-        "name": "Exsanguinate",
-        "description": "Your spells deal 1% more damage for every 2 points of Anguish you currently hold, but your mana does not regenerate.",
-        "currentPoints": 0,
-        "color": "#cbd5e1",
-        "maxPoints": 1
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "keystone_ss_kB",
-      "position": {
-        "x": 1360,
-        "y": 600
-      },
-      "type": "keystone",
-      "data": {
-        "kind": "keystone",
-        "name": "Martyr's Wellspring",
-        "description": "Health spent as an ability cost is not taken immediately. It becomes a debuff on you that deals the same total damage over 4 seconds.",
-        "currentPoints": 0,
-        "color": "#cbd5e1",
-        "maxPoints": 1
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "keystone_ss_kC",
-      "position": {
-        "x": 1600,
-        "y": 400
-      },
-      "type": "keystone",
-      "data": {
-        "kind": "keystone",
-        "name": "Soul Scourge",
-        "description": "You gain 30% more Anguish from health spent as an ability cost, and 50% less Anguish from health lost to damage.",
-        "currentPoints": 0,
-        "color": "#cbd5e1",
-        "maxPoints": 1
-      },
-      "measured": {
-        "width": 16,
-        "height": 16
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
       "id": "basic_fl_stem0",
       "position": {
-        "x": -400,
-        "y": 1040
+        "x": -900,
+        "y": 516
       },
       "type": "basic",
       "data": {
@@ -962,8 +654,8 @@
     {
       "id": "basic_fl_stem1",
       "position": {
-        "x": -640,
-        "y": 1040
+        "x": -900,
+        "y": 384
       },
       "type": "basic",
       "data": {
@@ -984,8 +676,8 @@
     {
       "id": "basic_fl_stem2",
       "position": {
-        "x": -880,
-        "y": 1040
+        "x": -750,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -1006,8 +698,8 @@
     {
       "id": "basic_fl_a0",
       "position": {
-        "x": -640,
-        "y": 840
+        "x": -1050,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -1028,8 +720,8 @@
     {
       "id": "basic_fl_a1",
       "position": {
-        "x": -880,
-        "y": 840
+        "x": -1050,
+        "y": 120
       },
       "type": "basic",
       "data": {
@@ -1050,8 +742,8 @@
     {
       "id": "basic_fl_a2",
       "position": {
-        "x": -1120,
-        "y": 840
+        "x": -1050,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -1072,8 +764,8 @@
     {
       "id": "basic_fl_b0",
       "position": {
-        "x": -640,
-        "y": 1240
+        "x": -900,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -1094,8 +786,8 @@
     {
       "id": "basic_fl_b1",
       "position": {
-        "x": -880,
-        "y": 1240
+        "x": -900,
+        "y": 120
       },
       "type": "basic",
       "data": {
@@ -1116,8 +808,8 @@
     {
       "id": "basic_fl_b2",
       "position": {
-        "x": -1120,
-        "y": 1240
+        "x": -900,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -1138,8 +830,8 @@
     {
       "id": "basic_fl_c0",
       "position": {
-        "x": -1120,
-        "y": 1040
+        "x": -750,
+        "y": 120
       },
       "type": "basic",
       "data": {
@@ -1160,8 +852,8 @@
     {
       "id": "basic_fl_c1",
       "position": {
-        "x": -1360,
-        "y": 1040
+        "x": -750,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -1182,8 +874,8 @@
     {
       "id": "keystone_fl_kA",
       "position": {
-        "x": -1360,
-        "y": 840
+        "x": -1050,
+        "y": -144
       },
       "type": "keystone",
       "data": {
@@ -1204,8 +896,8 @@
     {
       "id": "keystone_fl_kB",
       "position": {
-        "x": -1360,
-        "y": 1240
+        "x": -900,
+        "y": -144
       },
       "type": "keystone",
       "data": {
@@ -1226,8 +918,8 @@
     {
       "id": "keystone_fl_kC",
       "position": {
-        "x": -1600,
-        "y": 1040
+        "x": -750,
+        "y": -144
       },
       "type": "keystone",
       "data": {
@@ -1248,8 +940,8 @@
     {
       "id": "basic_ll_stem0",
       "position": {
-        "x": 400,
-        "y": 1040
+        "x": 450,
+        "y": 516
       },
       "type": "basic",
       "data": {
@@ -1270,8 +962,8 @@
     {
       "id": "basic_ll_stem1",
       "position": {
-        "x": 640,
-        "y": 1040
+        "x": 450,
+        "y": 384
       },
       "type": "basic",
       "data": {
@@ -1292,8 +984,8 @@
     {
       "id": "basic_ll_stem2",
       "position": {
-        "x": 880,
-        "y": 1040
+        "x": 600,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -1314,8 +1006,8 @@
     {
       "id": "basic_ll_a0",
       "position": {
-        "x": 640,
-        "y": 840
+        "x": 300,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -1336,8 +1028,8 @@
     {
       "id": "basic_ll_a1",
       "position": {
-        "x": 880,
-        "y": 840
+        "x": 300,
+        "y": 120
       },
       "type": "basic",
       "data": {
@@ -1358,8 +1050,8 @@
     {
       "id": "basic_ll_a2",
       "position": {
-        "x": 1120,
-        "y": 840
+        "x": 300,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -1380,8 +1072,8 @@
     {
       "id": "basic_ll_b0",
       "position": {
-        "x": 640,
-        "y": 1240
+        "x": 450,
+        "y": 252
       },
       "type": "basic",
       "data": {
@@ -1402,8 +1094,8 @@
     {
       "id": "basic_ll_b1",
       "position": {
-        "x": 880,
-        "y": 1240
+        "x": 450,
+        "y": 120
       },
       "type": "basic",
       "data": {
@@ -1424,8 +1116,8 @@
     {
       "id": "basic_ll_b2",
       "position": {
-        "x": 1120,
-        "y": 1240
+        "x": 450,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -1446,8 +1138,8 @@
     {
       "id": "basic_ll_c0",
       "position": {
-        "x": 1120,
-        "y": 1040
+        "x": 600,
+        "y": 120
       },
       "type": "basic",
       "data": {
@@ -1468,8 +1160,8 @@
     {
       "id": "basic_ll_c1",
       "position": {
-        "x": 1360,
-        "y": 1040
+        "x": 600,
+        "y": -12
       },
       "type": "basic",
       "data": {
@@ -1490,8 +1182,8 @@
     {
       "id": "keystone_ll_kA",
       "position": {
-        "x": 1360,
-        "y": 840
+        "x": 300,
+        "y": -144
       },
       "type": "keystone",
       "data": {
@@ -1512,8 +1204,8 @@
     {
       "id": "keystone_ll_kB",
       "position": {
-        "x": 1360,
-        "y": 1240
+        "x": 450,
+        "y": -144
       },
       "type": "keystone",
       "data": {
@@ -1534,8 +1226,8 @@
     {
       "id": "keystone_ll_kC",
       "position": {
-        "x": 1600,
-        "y": 1040
+        "x": 600,
+        "y": -144
       },
       "type": "keystone",
       "data": {
@@ -1556,8 +1248,8 @@
     {
       "id": "capstone_25",
       "position": {
-        "x": -2000,
-        "y": 1200
+        "x": -1500,
+        "y": 780
       },
       "type": "capstone",
       "data": {
@@ -1595,8 +1287,8 @@
     {
       "id": "capstone_50",
       "position": {
-        "x": -2000,
-        "y": 960
+        "x": -1500,
+        "y": 540
       },
       "type": "capstone",
       "data": {
@@ -1634,8 +1326,8 @@
     {
       "id": "capstone_100",
       "position": {
-        "x": -2000,
-        "y": 720
+        "x": -1500,
+        "y": 300
       },
       "type": "capstone",
       "data": {
@@ -1673,8 +1365,8 @@
     {
       "id": "capstone_200",
       "position": {
-        "x": -2000,
-        "y": 480
+        "x": -1500,
+        "y": 60
       },
       "type": "capstone",
       "data": {
@@ -1705,6 +1397,314 @@
       "measured": {
         "width": 20,
         "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_stem0",
+      "position": {
+        "x": 900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Coin",
+        "description": "+2% increased Anguish gained from health spent as an ability cost per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_stem1",
+      "position": {
+        "x": 900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deeper Cuts",
+        "description": "Your skills also cost 1% of your maximum health per point, in addition to any other cost. This cost generates Anguish like any other.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_stem2",
+      "position": {
+        "x": 975,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Ready Blood",
+        "description": "+2% increased maximum Health per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_a0",
+      "position": {
+        "x": 750,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deferred Payment",
+        "description": "10% per point of the health a skill costs is not taken when the skill is used. It is taken 3 seconds later.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_a1",
+      "position": {
+        "x": 750,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Compound Interest",
+        "description": "+1% increased damage per point for every 5% of your maximum health you currently owe.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_a2",
+      "position": {
+        "x": 750,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Rolling Debt",
+        "description": "Paying a health cost while one is still owed extends the delay on what is owed by 0.5 seconds per point, to a maximum of 3 seconds.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_bt_kA",
+      "position": {
+        "x": 750,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "The Reckoning",
+        "description": "Health costs are never taken. They accumulate as a debt. You deal 1% more damage for every 2% of your maximum health that you owe, and the debt is cleared only by killing an enemy. If your debt ever exceeds your current health, you die.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_b0",
+      "position": {
+        "x": 900,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Rush",
+        "description": "+2% increased damage per point for 2 seconds after you pay a health cost.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_b1",
+      "position": {
+        "x": 900,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Sanguine Momentum",
+        "description": "Each health cost paid within 3 seconds of the last grants a stack, up to 5 stacks. Each stack gives +1% increased attack and cast speed per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_b2",
+      "position": {
+        "x": 900,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Grand Tithe",
+        "description": "A skill whose health cost is above 10% of your maximum health deals 4% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_bt_kB",
+      "position": {
+        "x": 900,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Exsanguinate",
+        "description": "Every skill costs an additional 15% of your current health, and every skill deals 40% more damage. A cost taken from current health cannot reduce it below 1.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_c0",
+      "position": {
+        "x": 1050,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Staunch",
+        "description": "The Anguish removed by your own health regeneration is reduced by 5% per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_c1",
+      "position": {
+        "x": 1050,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deep Reserves",
+        "description": "+2% increased maximum Anguish per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_bt_kC",
+      "position": {
+        "x": 1050,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Blood Tithe",
+        "description": "You gain 30% more Anguish from health spent as an ability cost, and 50% less Anguish from health lost to damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
       },
       "selected": false,
       "dragging": false
@@ -2061,174 +2061,6 @@
       "selected": false
     },
     {
-      "id": "e_28",
-      "source": "basic_spine_009",
-      "target": "basic_ss_stem0",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 2
-      },
-      "selected": false
-    },
-    {
-      "id": "e_29",
-      "source": "basic_ss_stem0",
-      "target": "basic_ss_stem1",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 2
-      },
-      "selected": false
-    },
-    {
-      "id": "e_30",
-      "source": "basic_ss_stem1",
-      "target": "basic_ss_stem2",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 4
-      },
-      "selected": false
-    },
-    {
-      "id": "e_31",
-      "source": "basic_ss_stem1",
-      "target": "basic_ss_a0",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 2
-      },
-      "selected": false
-    },
-    {
-      "id": "e_32",
-      "source": "basic_ss_a0",
-      "target": "basic_ss_a1",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 2
-      },
-      "selected": false
-    },
-    {
-      "id": "e_33",
-      "source": "basic_ss_a1",
-      "target": "basic_ss_a2",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 4
-      },
-      "selected": false
-    },
-    {
-      "id": "e_34",
-      "source": "basic_ss_stem1",
-      "target": "basic_ss_b0",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 2
-      },
-      "selected": false
-    },
-    {
-      "id": "e_35",
-      "source": "basic_ss_b0",
-      "target": "basic_ss_b1",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 2
-      },
-      "selected": false
-    },
-    {
-      "id": "e_36",
-      "source": "basic_ss_b1",
-      "target": "basic_ss_b2",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 4
-      },
-      "selected": false
-    },
-    {
-      "id": "e_37",
-      "source": "basic_ss_stem2",
-      "target": "basic_ss_c0",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 4
-      },
-      "selected": false
-    },
-    {
-      "id": "e_38",
-      "source": "basic_ss_c0",
-      "target": "basic_ss_c1",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 4
-      },
-      "selected": false
-    },
-    {
-      "id": "e_39",
-      "source": "basic_ss_a2",
-      "target": "keystone_ss_kA",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 8
-      },
-      "selected": false
-    },
-    {
-      "id": "e_40",
-      "source": "basic_ss_b2",
-      "target": "keystone_ss_kB",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 8
-      },
-      "selected": false
-    },
-    {
-      "id": "e_41",
-      "source": "basic_ss_c1",
-      "target": "keystone_ss_kC",
-      "sourceHandle": "n",
-      "targetHandle": "s",
-      "type": "dependency",
-      "data": {
-        "requiredPoints": 6
-      },
-      "selected": false
-    },
-    {
       "id": "e_42",
       "source": "basic_spine_001",
       "target": "basic_fl_stem0",
@@ -2556,6 +2388,174 @@
       "id": "e_69",
       "source": "basic_ll_c1",
       "target": "keystone_ll_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_70",
+      "source": "basic_spine_009",
+      "target": "basic_bt_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_71",
+      "source": "basic_bt_stem0",
+      "target": "basic_bt_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_72",
+      "source": "basic_bt_stem1",
+      "target": "basic_bt_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_73",
+      "source": "basic_bt_stem1",
+      "target": "basic_bt_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_74",
+      "source": "basic_bt_stem2",
+      "target": "basic_bt_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_75",
+      "source": "basic_bt_stem2",
+      "target": "basic_bt_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_76",
+      "source": "basic_bt_a0",
+      "target": "basic_bt_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_77",
+      "source": "basic_bt_a1",
+      "target": "basic_bt_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_78",
+      "source": "basic_bt_a2",
+      "target": "keystone_bt_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_79",
+      "source": "basic_bt_b0",
+      "target": "basic_bt_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_80",
+      "source": "basic_bt_b1",
+      "target": "basic_bt_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_81",
+      "source": "basic_bt_b2",
+      "target": "keystone_bt_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_82",
+      "source": "basic_bt_c0",
+      "target": "basic_bt_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_83",
+      "source": "basic_bt_c1",
+      "target": "keystone_bt_kC",
       "sourceHandle": "n",
       "targetHandle": "s",
       "type": "dependency",

@@ -131,19 +131,19 @@
       "asset": "DT_PassiveEdges",
       "csv": "PassiveEdges.csv",
       "rows": 278,
-      "csv_sha256": "c3e45f4be1b6f9c89d18c8ac885becf201af9061e458625bcdd17b0a861b9808"
+      "csv_sha256": "1ce0a4a256ce4bdd12c1155df6cfff98d13b671bcfb97635e342546c4ddb44f1"
     },
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 26,
-      "csv_sha256": "fc2578fe004e97c71ef16b4a0af9a7232fdb7b29859c2024f8dafb713759bd6d"
+      "rows": 24,
+      "csv_sha256": "c951ba1c0325569de58d7ec2f7fa5e295e34167303ab62cc42f7850eace1b42a"
     },
     {
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 293,
-      "csv_sha256": "9d1305ffadc42d2b0ea7191c152a004bc03c35351c26914fa14cd232e22b17c0"
+      "csv_sha256": "603b51c0c492fbd086814e419234e8e2d481056f454947e0f4ad7d312773aa72"
     },
     {
       "asset": "DT_SkillSlots",

@@ -120,8 +120,16 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: BOTH DROPPED BY ONE WHEN ISSUE #582 LANDED, because Thornwall's "by 5% more"
 #: became "by 5%" and so stopped containing the word at all. The Saboteur
 #: keystone kept its "more" and still counts in both.
-STRINGS_CONTAINING_THE_WORD = 28
-STRINGS_USING_IT_AS_A_MAGNITUDE = 19
+#:
+#: BOTH WENT UP BY ONE ON 2026-08-25, when the Masochist's upper-right section
+#: was replaced. Two of the strings that went used the word and both were
+#: magnitudes; three of the strings that arrived use it and all three are
+#: magnitudes. All six are keystones, which is where the wording belongs: the two
+#: basic nodes in the new section that reached for it were reworded instead, one
+#: of them because a conditional damage bonus joins the increases bracket rather
+#: than becoming a separate multiplier.
+STRINGS_CONTAINING_THE_WORD = 29
+STRINGS_USING_IT_AS_A_MAGNITUDE = 20
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.

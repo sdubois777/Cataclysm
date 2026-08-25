@@ -28,11 +28,18 @@ WHAT IS ASSERTED HERE.
       generated item data
     it says what the zero does cost, which is that nothing compounds
     the Stat Calculation rule it depends on is still there
-    the Masochist node that prompted the question is still in its tree
+    the tree and the document agree about the node that prompted the question
 
-WHAT IS NOT ASSERTED. Whether a Masochist energy shield build is any good. It is
-a niche that trades resource generation for a stun, the design document says so,
-and how good the trade is needs play rather than a test.
+THE NODE THAT PROMPTED IT IS GONE, SINCE 2026-08-25. The project owner replaced
+the whole branch Rupture Focus sat in, so a Masochist wearing an energy shield
+now gets nothing from the tree for it. The answer above is unaffected -- a zero
+is still a starting value and gear can still supply the stat -- and the last
+assertion now holds the tree and the document to the same story rather than
+requiring the node to exist. `docs/DECISIONS.md`, 2026-08-25, has the reasoning.
+
+WHAT IS NOT ASSERTED. Whether a Masochist energy shield build is any good. It
+buys resource generation away for nothing at all now, which is a real cost the
+document records, and whether that matters needs play rather than a test.
 """
 
 from __future__ import annotations
@@ -193,19 +200,44 @@ def test_the_rule_it_depends_on_is_still_in_the_document(document) -> None:
         "restates it. Issue #345.")
 
 
-def test_the_node_that_prompted_the_question_is_still_there() -> None:
-    """If Rupture Focus is ever removed, this whole answer is being held for a
-    node that no longer exists and somebody should notice."""
+def test_the_document_and_the_tree_agree_about_the_node_that_prompted_it(
+        document) -> None:
+    """The node this whole file was written about no longer exists.
+
+    WHAT THIS USED TO ASSERT, and why it changed. Until 2026-08-25 it required
+    Rupture Focus to still be in the Masochist tree, so that the design
+    document's account of why a Masochist would take an energy shield was not
+    being held for a node that had gone. It fired the day the node went, which
+    is what it was for.
+
+    The project owner replaced the whole branch it sat in, because that branch
+    grew a mana pool on a class whose 25-point capstone option deletes one. The
+    node went with it and nothing took its place. See `docs/DECISIONS.md`,
+    2026-08-25.
+
+    SO THE GUARD IS THE OTHER WAY ROUND NOW, and it is still worth having: the
+    tree and the document have to agree that the node is gone. Restoring the
+    node without restoring the document's account of it, or the reverse, is the
+    thing that would otherwise pass unnoticed.
+
+    EVERYTHING ELSE IN THIS FILE IS UNCHANGED. A zero in a class stat line is
+    still a starting value rather than a gate, gear can still supply the stat,
+    and the table still says so. Only the example is gone.
+    """
     if not MASOCHIST_TREE.is_file():
         pytest.skip("the Masochist class tree is not present")
     tree = MASOCHIST_TREE.read_text(encoding="utf-8")
-    assert "Rupture Focus" in tree, (
-        "docs/Masochist_Class_Tree_Final.json no longer has the Rupture Focus "
-        "node. It is the node issue #345 was raised about and the one the "
-        "design document now names as the reason a Masochist would take an "
-        "energy shield at all. If it was removed deliberately, that sentence "
-        "should go too.")
-    assert "Energy Shield breaks" in tree, (
-        "Rupture Focus no longer triggers on the energy shield breaking, so the "
-        "design document's account of why a Masochist would want one is stale. "
-        "Issue #345.")
+    text = unwrapped(document)
+
+    in_tree = "Rupture Focus" in tree
+    claimed_live = "its passive tree has one node that buys something specific" in text
+
+    assert not in_tree or claimed_live, (
+        "docs/Masochist_Class_Tree_Final.json has a Rupture Focus node again, "
+        "but docs/Cataclysm_GDD_v2.md still records it as removed. If the node "
+        "is back, the document's account of what a Masochist gets for wearing "
+        "an energy shield has to come back with it. Issue #345.")
+    assert in_tree or not claimed_live, (
+        "docs/Cataclysm_GDD_v2.md says the Masochist's passive tree has a node "
+        "that pays out for wearing an energy shield, and the tree has no "
+        "Rupture Focus node. One of the two is stale. Issue #345.")
