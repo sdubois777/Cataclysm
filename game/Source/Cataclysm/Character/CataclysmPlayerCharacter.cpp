@@ -597,7 +597,8 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	FillAbilitySlotsFromWornWeapon();
 }
 
-void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon()
+void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
+	ECataclysmWeaponExpected Expected)
 {
 	if (!WeaponSlots)
 	{
@@ -635,7 +636,13 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon()
 	// (issue #841). So reaching here means one of those failed -- most likely
 	// the item bases table could not be read, or StartingWeaponBase names a row
 	// that is not there.
-	if (Equipment)
+	// NOT AT POSSESSION, WHICH IS BEFORE THE WEAPON IS PUT ON. Measured on
+	// 2026-08-25 for issue #933: PossessedBy runs first, then
+	// InitAbilityActorInfo, and only then BeginPlay, which is where
+	// GiveStartingWeapon wears the axe. So this fired on every single start
+	// of the game, telling the reader to check a StartingWeaponBase that was
+	// perfectly correct and a table that had loaded.
+	if (Equipment && Expected == ECataclysmWeaponExpected::Yes)
 	{
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("No weapon is worn, so the ability slots were filled from the "
@@ -919,7 +926,12 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	// Cataclysm.PlayerStats.APlayerCharacterLeavesThePlaceholderBehind and
 	// Cataclysm.Death.APlayerStandsBackUpRatherThanBeingRemoved. The comment on
 	// ApplyChosenClassStats above says the same thing and names the same test.
-	FillAbilitySlotsFromWornWeapon();
+	// NOTHING IS WORN YET AND THAT IS NOT A FAULT. See
+	// ECataclysmWeaponExpected: possession happens before BeginPlay, which is
+	// where the starting weapon is put on. The slots are still filled, from
+	// the starting weapon TYPE, and OnEquipmentChanged fills them again from
+	// the real item a moment later. Issue #933.
+	FillAbilitySlotsFromWornWeapon(ECataclysmWeaponExpected::NotYet);
 }
 
 // ---------------------------------------------------------------------------

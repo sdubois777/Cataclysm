@@ -19,6 +19,31 @@ struct FOnAttributeChangeData;
  * The player pawn. Its ability system component lives on the player state, so
  * that it survives the death and respawn the design treats as routine.
  */
+
+/**
+ * Whether a character is expected to be wearing a weapon at this moment.
+ *
+ * BECAUSE ONE MOMENT IN A CHARACTER'S LIFE IS NOT LIKE THE OTHERS, and until
+ * issue #933 the difference was reported as a fault. `PossessedBy` runs BEFORE
+ * `BeginPlay` for the pawn a game mode spawns at level start -- measured on
+ * 2026-08-25, not assumed -- and `GiveStartingWeapon` runs from `BeginPlay`. So
+ * at possession no weapon is worn yet and that is the design working.
+ *
+ * A WEAPON IS EXPECTED EVERYWHERE ELSE, and there the complaint is the whole
+ * point. Issue #840 was a character wearing nothing and swinging a Greataxe
+ * anyway, which nothing on screen said and which made equipping a whip look
+ * like the character getting weaker for no reason.
+ */
+UENUM()
+enum class ECataclysmWeaponExpected : uint8
+{
+	/** Something is meant to be worn. Say so in the log when nothing is. */
+	Yes,
+
+	/** Possession, which happens before the starting weapon is put on. */
+	NotYet,
+};
+
 UCLASS()
 class CATACLYSM_API ACataclysmPlayerCharacter : public ACataclysmCharacterBase
 {
@@ -343,7 +368,8 @@ private:
 	 *
 	 * So possession fills the ability slots and nothing else.
 	 */
-	void FillAbilitySlotsFromWornWeapon();
+	void FillAbilitySlotsFromWornWeapon(
+		ECataclysmWeaponExpected Expected = ECataclysmWeaponExpected::Yes);
 
 	/** Passes the attribute's new value, in metres per second, to
 	 *  ApplyMovementSpeed. Bound in InitAbilityActorInfo. */
