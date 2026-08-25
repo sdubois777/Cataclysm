@@ -28,7 +28,8 @@ WHAT IS ASSERTED HERE.
       "multiplicative", and one in `increased` is on a node that does not
     every stat named is a stat some class line or attribute supplies
     every required tag is one the workbook declares
-    no node has two effects
+    no node grants the same stat twice, though it may grant two different ones
+    every row name is its node and the index of that node's effect
     the coverage is what it is measured to be, so it can only move deliberately
 
 WHAT THIS CANNOT CHECK, and it is worth being plain about: whether the stat
@@ -125,7 +126,7 @@ def declared_tags() -> set[str]:
 
 
 def test_every_effect_is_about_a_node_that_exists(effects, nodes):
-    missing = sorted({row["Name"] for row in effects} - set(nodes))
+    missing = sorted({row["Node"] for row in effects} - set(nodes))
     assert not missing, (
         f"{EFFECTS_CSV.name} grants something to {missing}, and "
         f"{NODES_CSV.name} has no such node. The effect reaches nothing, and "
@@ -133,15 +134,46 @@ def test_every_effect_is_about_a_node_that_exists(effects, nodes):
     )
 
 
-def test_no_node_has_two_effects(effects):
-    seen: dict[str, int] = {}
-    for row in effects:
-        seen[row["Name"]] = seen.get(row["Name"], 0) + 1
+def test_every_row_name_is_its_node_and_an_index(effects):
+    """The row name is the DataTable's key and nothing reads it.
 
-    twice = sorted(name for name, count in seen.items() if count > 1)
+    IT USED TO BE THE NODE NAME AND THAT IS WHY THIS EXISTS. Issue #953 gave a
+    node the right to several rows, which a key cannot express, so the node moved
+    into a column of its own and the row name became the node with `#1`, `#2` and
+    so on after it. A row whose name no longer agrees with its `Node` column
+    would still load and still apply, so nothing would report it; what it would
+    break is a person reading the file.
+    """
+    counts: dict[str, int] = {}
+    for row in effects:
+        counts[row["Node"]] = counts.get(row["Node"], 0) + 1
+        expected = f"{row['Node']}#{counts[row['Node']]}"
+        assert row["Name"] == expected, (
+            f"a row for {row['Node']} is named {row['Name']!r} and should be "
+            f"{expected!r}. Regenerate with python tools/generate_datatables.py."
+        )
+
+
+def test_no_node_grants_the_same_stat_twice(effects):
+    """Two rows for one node are for two different stats.
+
+    A NODE MAY HAVE SEVERAL ROWS SINCE ISSUE #953, because several nodes grant
+    two things at once: "+1% increased Maximum Health and +0.5% increased Armor",
+    and the Masochist's starting node, which grants three Fervour rates. What is
+    still a mistake is the SAME stat twice on one node, which is what copying a
+    spreadsheet row and forgetting to change the stat produces. Both would apply
+    and the node would be worth double what it says.
+    """
+    seen: dict[tuple[str, str], int] = {}
+    for row in effects:
+        key = (row["Node"], row["Stat"])
+        seen[key] = seen.get(key, 0) + 1
+
+    twice = sorted(key for key, count in seen.items() if count > 1)
     assert not twice, (
-        f"{twice} have more than one row in {EFFECTS_CSV.name}. A node grants "
-        "one effect; two rows would silently apply both."
+        f"{twice} appear more than once in {EFFECTS_CSV.name} as a node and "
+        "stat pair. Two rows on one node are for two different stats; the same "
+        "stat twice applies both and the node is worth double what it says."
     )
 
 
@@ -152,14 +184,14 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
     about the sheet being well formed; this is about it being true.
     """
     for row in effects:
-        node = nodes[row["Name"]]
+        node = nodes[row["Node"]]
         value = float(row["ValuePerPoint"])
 
         # "3" and not "3.0", because a description writes 3% and 1.5%. `%g`
         # drops a trailing zero and keeps a real fraction.
         printed = f"{value:g}%"
         assert printed in node["Description"], (
-            f"{row['Name']}: the workbook grants {printed} of "
+            f"{row['Node']}: the workbook grants {printed} of "
             f"{row['Stat']} per point, and the node says:\n"
             f"    {node['Description']}\n"
             "The two have to agree. Either the workbook is stale or the tree "
@@ -183,16 +215,16 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
             f"{row['Name']}: {kind!r} is not one of {sorted(BUCKETS)}"
         )
 
-        says_multiplicative = "multiplicative" in nodes[row["Name"]]["Description"].lower()
+        says_multiplicative = "multiplicative" in nodes[row["Node"]]["Description"].lower()
         if kind == "more":
             assert says_multiplicative, (
-                f"{row['Name']} is in the more bucket and its description does "
+                f"{row['Node']} is in the more bucket and its description does "
                 f"not say multiplicative:\n    "
-                f"{nodes[row['Name']]['Description']}"
+                f"{nodes[row['Node']]['Description']}"
             )
         else:
             assert not says_multiplicative, (
-                f"{row['Name']} says multiplicative and is in the {kind} "
+                f"{row['Node']} says multiplicative and is in the {kind} "
                 "bucket. A multiplicative value in the increased bucket is "
                 "added to a sum instead of multiplying, which is a different "
                 "number."

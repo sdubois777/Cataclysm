@@ -1330,6 +1330,94 @@ class TestMaterialTierCountsMatchTheMaterials:
         assert "could not be checked at all" in problems[0]
 
 
+class TestAPassiveNodeCanGrantSeveralStats:
+    """ISSUE #953. A node had exactly one effect row, because the DataTable's row
+    name WAS the node name.
+
+    THAT SHAPE CANNOT EXPRESS SEVERAL REAL NODES. "Pain Tolerance" in the
+    Masochist tree says "+1% increased Maximum Health and +0.5% increased Armor",
+    which is two stats, and the Masochist's starting node grants three Fervour
+    rates at once. The node moved into a column of its own and the row name
+    became the node with `#1`, `#2` and so on after it.
+
+    WHAT IS STILL REFUSED. The same node granting the same STAT twice, which is
+    what copying a spreadsheet row and forgetting to change the stat produces:
+    both would apply and the node would be worth double what its own description
+    says.
+    """
+
+    @staticmethod
+    def sheet(rows: list[list]) -> list[list]:
+        return [["Node", "Stat", "Value Kind", "Value Per Point",
+                 "Required Tags"]] + rows
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": self.sheet(rows)}))
+
+    def test_two_stats_on_one_node_both_survive(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Masochist_basic_fc_stem1", "max_health", "increased", 1, None],
+            ["Masochist_basic_fc_stem1", "armor", "increased", 0.5, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert [r["Stat"] for r in out] == ["max_health", "armor"]
+        assert all(r["Node"] == "Masochist_basic_fc_stem1" for r in out)
+
+    def test_the_row_names_are_the_node_and_an_index(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "max_health", "increased", 1, None],
+            ["A_node", "armor", "increased", 2, None],
+            ["B_node", "armor", "increased", 3, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert [r["Name"] for r in out] == ["A_node#1", "A_node#2", "B_node#1"]
+
+    def test_the_same_stat_twice_on_one_node_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3, None],
+            ["A_node", "armor", "increased", 4, None],
+        ])
+        with pytest.raises(gen.DataError, match="same stat twice"):
+            gen.passive_effects(rows)
+
+    def test_a_node_name_containing_the_separator_is_refused(self, tmp_path):
+        """Otherwise a row name would be ambiguous about where the node ends."""
+        rows = self.book(tmp_path, [["A#node", "armor", "increased", 3, None]])
+        with pytest.raises(gen.DataError, match="number sign"):
+            gen.passive_effects(rows)
+
+    def test_a_bad_value_kind_is_still_refused(self, tmp_path):
+        rows = self.book(tmp_path, [["A_node", "armor", "sideways", 3, None]])
+        with pytest.raises(gen.DataError, match="not flat, increased or more"):
+            gen.passive_effects(rows)
+
+    def test_the_validator_checks_the_node_column_and_not_the_row_name(self):
+        """The row name carries a `#1` and no node is called that, so a validator
+        still reading the row name would report every row as unreachable."""
+        tables = {
+            "PassiveEffects": [{"Name": "Real_node#1", "Node": "Real_node",
+                                "Stat": "armor", "RequiredTags": ""}],
+            "PassiveNodes": [{"Name": "Real_node"}],
+            "ClassStats": [{"Stat": "armor"}],
+        }
+        assert gen.validate_passive_effects(tables, set()) == []
+
+    def test_a_node_that_does_not_exist_is_still_reported(self):
+        tables = {
+            "PassiveEffects": [{"Name": "Ghost#1", "Node": "Ghost",
+                                "Stat": "armor", "RequiredTags": ""}],
+            "PassiveNodes": [{"Name": "Real_node"}],
+            "ClassStats": [{"Stat": "armor"}],
+        }
+        problems = gen.validate_passive_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert "no passive node is called Ghost" in problems[0]
+
+
 class TestAgainstTheRealWorkbook:
     def test_the_committed_csvs_are_current(self):
         if not gen.WORKBOOK.is_file():

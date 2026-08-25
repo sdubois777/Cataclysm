@@ -842,23 +842,35 @@ bool FCataclysmPassiveScreenSpendsThroughThePlayerStateTest::RunTest(const FStri
 
 namespace CataclysmPassiveEffectTest
 {
-	/** An effect table this test controls, keyed to the built node table. */
+	/**
+	 * An effect table this test controls, keyed to the built node table.
+	 *
+	 * THE ROW NAME IS NOT THE NODE. Since issue #953 the node is the `Node`
+	 * column and the row name is that node with `#1`, `#2` and so on after it,
+	 * because a node may have several rows and a DataTable key may not repeat.
+	 * `Ravager_side` below has two, which is what proves both apply.
+	 */
 	UDataTable* MakeEffectTable(FAutomationTestBase& Test)
 	{
 		UDataTable* Table = NewObject<UDataTable>();
 		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,Stat,ValueKind,ValuePerPoint,RequiredTags\r\n"
+			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags\r\n"
 			// A plain increase on a node that holds five points, so the
 			// multiplication by the points held is visible rather than assumed.
-			"Ravager_mid,armor,increased,3.0,\r\n"
+			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,\r\n"
 			// A more multiplier, which is the other bucket a passive may use.
-			"Ravager_side,damage_reduction,more,1.5,\r\n"
+			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,\r\n"
+			// AND A SECOND STAT ON THAT SAME NODE. Issue #953. The Masochist's
+			// starting node grants three Fervour rates at once and two other
+			// nodes grant a health increase and an armour increase together, so
+			// one row per node is a shape the design does not fit.
+			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,\r\n"
 			// A scoped one, to prove the tag column reaches the modifier.
-			"Ravager_root,area_of_effect,increased,10.0,Type.Trap\r\n"
+			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
-			"Bulwark_root,armor,increased,50.0,\r\n"));
+			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -954,6 +966,75 @@ bool FCataclysmPassiveEffectsBecomeModifiersTest::RunTest(const FString&)
 	}
 	TestFalse(TEXT("and it is scoped rather than global"),
 			  (*Area)[0].RequiredTags.IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNodeWithTwoEffectsTest,
+	"Cataclysm.Passives.ANodeGrantingTwoStatsGrantsBoth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveNodeWithTwoEffectsTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveEffectTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = MakeEffectTable(*this);
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+
+	// ISSUE #953. `Ravager_side` has two rows in the fixture table: 1.5 more
+	// damage reduction and 7% increased critical strike multiplier. Before this
+	// a node could have exactly one, because the DataTable's row name WAS the
+	// node name, and the second row could not be written down at all.
+	//
+	// THE FAILURE THIS CATCHES IS SILENT. A lookup that answered with the first
+	// row and stopped would grant half of what the node says and report nothing
+	// at all -- the character would simply be weaker than the tree promises.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_side")), 2);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+
+	const TArray<FCataclysmStatModifier>* Reduction =
+		Modifiers.Find(FName(TEXT("damage_reduction")));
+	const TArray<FCataclysmStatModifier>* Multiplier =
+		Modifiers.Find(FName(TEXT("crit_multiplier")));
+
+	if (!TestNotNull(TEXT("the node's first stat arrived"), Reduction)
+		|| !TestNotNull(TEXT("and so did its second"), Multiplier))
+	{
+		return false;
+	}
+
+	// EACH IN ITS OWN BUCKET AND EACH TIMES THE POINTS HELD, which is what says
+	// the second row went through the same path as the first rather than being
+	// copied from it.
+	TestEqual(TEXT("one and a half more damage reduction per point, twice"),
+			  (*Reduction)[0].Value, 3.0f);
+	TestEqual(TEXT("in the more bucket"),
+			  static_cast<int32>((*Reduction)[0].Bucket),
+			  static_cast<int32>(ECataclysmStatBucket::More));
+	TestEqual(TEXT("seven percent increased critical multiplier per point, twice"),
+			  (*Multiplier)[0].Value, 14.0f);
+	TestEqual(TEXT("in the increased bucket"),
+			  static_cast<int32>((*Multiplier)[0].Bucket),
+			  static_cast<int32>(ECataclysmStatBucket::Increased));
+
+	// AND THE COUNT SAYS TWO. A caller telling "nothing applied" from "nothing
+	// was spent" reads this number, and a node with two rows added two things.
+	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+	TestEqual(TEXT("one node, two modifiers"),
+			  UCataclysmPassiveTree::AccumulateInto(Totals, Allocation, NodeTable,
+													EffectTable, Demonic),
+			  2);
 
 	return true;
 }
@@ -1070,15 +1151,17 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 
 	// A MASOCHIST NODE WORTH 3% ARMOUR PER POINT, on the Demonic tree the
 	// character reaches by default.
+	//
+	// ASKED BY NODE AND NOT BY ROW NAME, which stopped being the same string on
+	// issue #953 when a node gained the right to several effect rows.
 	const FName Node(TEXT("Masochist_basic_fc_stem0"));
-	const FCataclysmPassiveEffectRow* Effect =
-		EffectTable->FindRow<FCataclysmPassiveEffectRow>(
-			Node, TEXT("test"), /*bWarnIfMissing=*/false);
-	if (!TestNotNull(TEXT("that node has an authored effect"), Effect))
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("that node has one authored effect"), Effects.Num(), 1))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is armour"), Effect->Stat, FString(TEXT("armor")));
+	TestEqual(TEXT("and it is armour"), Effects[0]->Stat, FString(TEXT("armor")));
 
 	const float Before = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetArmorAttribute());
@@ -1189,17 +1272,22 @@ bool FCataclysmPassiveScopedNodeGrantsNothingTest::RunTest(const FString&)
 	// READ OUT OF THE REAL TABLE RATHER THAN ASSUMED. Re-authoring the sheet is
 	// how this test would quietly stop measuring anything: drop the tag from the
 	// Saboteur row and the assertions below still pass while proving nothing.
-	const FCataclysmPassiveEffectRow* ScopedRow =
-		EffectTable->FindRow<FCataclysmPassiveEffectRow>(
-			Scoped, TEXT("test"), /*bWarnIfMissing=*/false);
-	const FCataclysmPassiveEffectRow* UnscopedRow =
-		EffectTable->FindRow<FCataclysmPassiveEffectRow>(
-			Unscoped, TEXT("test"), /*bWarnIfMissing=*/false);
-	if (!TestNotNull(TEXT("the scoped node has an authored effect"), ScopedRow)
-		|| !TestNotNull(TEXT("so does the unscoped one"), UnscopedRow))
+	//
+	// ASKED BY NODE AND NOT BY ROW NAME. They stopped being the same string on
+	// issue #953, when a node gained the right to several effect rows.
+	const TArray<const FCataclysmPassiveEffectRow*> ScopedRows =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Scoped);
+	const TArray<const FCataclysmPassiveEffectRow*> UnscopedRows =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Unscoped);
+	if (!TestEqual(TEXT("the scoped node has one authored effect"),
+				   ScopedRows.Num(), 1)
+		|| !TestEqual(TEXT("and so does the unscoped one"),
+					  UnscopedRows.Num(), 1))
 	{
 		return false;
 	}
+	const FCataclysmPassiveEffectRow* ScopedRow = ScopedRows[0];
+	const FCataclysmPassiveEffectRow* UnscopedRow = UnscopedRows[0];
 	TestEqual(TEXT("the scoped one is area of effect"), ScopedRow->Stat,
 			  FString(TEXT("area_of_effect")));
 	TestFalse(TEXT("and it really is scoped"), ScopedRow->RequiredTags.IsEmpty());

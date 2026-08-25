@@ -105,14 +105,21 @@ struct CATACLYSM_API FCataclysmPassiveAllocation
  *   a capstone opens at 25, 50, 100 or 200 points spent in ITS OWN TREE, by
  *     total rather than by any path, and is one choice of three
  *
- * WHAT A SPENT POINT IS WORTH IS IN `game/Data/PassiveEffects.csv`, FOR 26 OF
- * THE 293 NODES. `AccumulateInto` turns those into the same three buckets a worn
- * item's affixes produce. The other 267 say what they do only in a sentence
- * written for a player, and a character spending on one of them still receives
- * nothing: each needs machinery that does not exist -- class resource generation
- * rates, threshold clauses, timed conditional windows, and 76 keystones and
- * capstone options that are rule changes rather than modifiers. Issue #939 has
- * the group-by-group count.
+ * WHAT A SPENT POINT IS WORTH IS IN `game/Data/PassiveEffects.csv`, FOR A
+ * MINORITY OF THE 293 NODES. `AccumulateInto` turns those into the same three
+ * buckets a worn item's affixes produce. The rest say what they do only in a
+ * sentence written for a player, and a character spending on one of them still
+ * receives nothing: each needs machinery that does not exist -- threshold
+ * clauses, timed conditional windows, and 76 keystones and capstone options that
+ * are rule changes rather than modifiers. Issue #939 has the group-by-group
+ * count and `tools/tests/test_passive_effects_match_the_node_text.py` pins how
+ * many are authored today.
+ *
+ * A NODE MAY HAVE SEVERAL EFFECT ROWS AND ALL OF THEM APPLY, since issue #953.
+ * One row per node was the shape until then, because the effect table's row name
+ * was the node name, and it could not express a node granting two things at once
+ * -- "+1% increased Maximum Health and +0.5% increased Armor", or the Masochist
+ * starting node's three Fervour rates.
  *
  * AND A NODE THAT NAMES A REQUIRED TAG REACHES NOBODY, which is a separate gap
  * with a separate cause. `UCataclysmPlayerClassStats::ApplyTo` resolves every
@@ -294,6 +301,26 @@ public:
 	//~ What the spent points are worth.
 
 	/**
+	 * Every effect row in the table, grouped by the node it is about.
+	 *
+	 * WHY A LOOKUP BY ROW NAME NO LONGER ANSWERS THE QUESTION. Until issue #953
+	 * the effect table's row name WAS the node name, so one `FindRow` did it.
+	 * The row name is now the node with `#1`, `#2` and so on after it, because a
+	 * node may grant several stats, and which node a row belongs to lives in the
+	 * row's own `Node` field.
+	 *
+	 * BUILT ONCE AND HANDED BACK, so a caller walking a whole allocation reads
+	 * the table once rather than once per spent node.
+	 */
+	static TMap<FName, TArray<const struct FCataclysmPassiveEffectRow*>>
+		EffectsByNode(const UDataTable* EffectTable);
+
+	/** What one node grants, in the order the sheet lists it. Empty for a node
+	 *  nobody has authored, which is most of them. */
+	static TArray<const struct FCataclysmPassiveEffectRow*> EffectsFor(
+		const UDataTable* EffectTable, FName Node);
+
+	/**
 	 * Add what a character's spent passive points grant to its running totals.
 	 *
 	 * WHERE AN AFFIX JOINS, AND THE SAME SHAPE.
@@ -310,15 +337,18 @@ public:
 	 * TIMES THE POINTS IN THE NODE. Every authored value is per point, which is
 	 * what every description that has one says.
 	 *
-	 * MOST NODES ADD NOTHING BECAUSE MOST NODES HAVE NO ROW. 26 of the 293 do.
-	 * Issue #939 measures that gap and says what each of the remaining groups
-	 * would need. A node with no row is skipped silently, which is correct: it
-	 * is not a fault, it is a node whose numbers nobody has authored.
+	 * MOST NODES ADD NOTHING BECAUSE MOST NODES HAVE NO ROW. A minority of the
+	 * 293 do. Issue #939 measures that gap and says what each of the remaining
+	 * groups would need. A node with no row is skipped silently, which is
+	 * correct: it is not a fault, it is a node whose numbers nobody has authored.
+	 *
+	 * A NODE WITH SEVERAL ROWS ADDS ALL OF THEM. Issue #953.
 	 *
 	 * @param DamageTypes  what the character's equipped weapons carry. An empty
 	 *                     array reaches no tree at all, so nothing is added.
 	 * @return how many modifiers were added, so a caller can tell "nothing
-	 *         applied" from "nothing was spent"
+	 *         applied" from "nothing was spent". A node granting two stats
+	 *         counts twice, because it added two modifiers
 	 */
 	static int32 AccumulateInto(TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
 								const FCataclysmPassiveAllocation& Allocation,
