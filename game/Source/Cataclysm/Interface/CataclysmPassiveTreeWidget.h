@@ -39,10 +39,13 @@ class UTextBlock;
  * can construct this class but cannot give it a Blueprint, and every bound
  * pointer is therefore null in a test. Each is checked before it is touched.
  *
- * WHAT A SPENT POINT IS WORTH IS NOT SHOWN, BECAUSE IT DOES NOT EXIST. Each row
- * carries the node's own description, which is a sentence written for a player.
- * There is no number behind it anywhere in the design files, so nothing applies
- * it to the character. Issue #936.
+ * WHAT A SPENT POINT IS WORTH IS NOT SHOWN, THOUGH 26 NODES NOW HAVE A NUMBER.
+ * Each row carries the node's own description, which is the sentence a player
+ * reads; the screen does not say which nodes are backed by an authored effect
+ * and which are still words only. That is worth showing and is not built:
+ * 26 of the 293 nodes grant something, so a player spending on one of the other
+ * 267 gets nothing and the screen gives them no way to tell. Issues #936 and
+ * #939.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmPassiveTreeWidget : public UUserWidget

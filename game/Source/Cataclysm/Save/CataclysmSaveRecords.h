@@ -419,10 +419,13 @@ public:
 	 * every save with nothing reporting it. `FCataclysmAttributePoints` carries
 	 * the same warning for the same reason.
 	 *
-	 * WHAT IS SAVED IS WHERE THE POINTS WENT, NOT WHAT THEY GRANT. A node's
-	 * effect does not exist as data anywhere yet, issue #936, so there is
-	 * nothing resolved to store even if storing it were right -- and it would
-	 * not be, for the reason `SpentAttributePoints` gives.
+	 * WHAT IS SAVED IS WHERE THE POINTS WENT, NOT WHAT THEY GRANT. Since
+	 * 2026-08-25 a node can carry an authored effect, so there is now something
+	 * resolved that could be stored -- and storing it would still be wrong, for
+	 * the reason `SpentAttributePoints` gives above: `game/Data/PassiveEffects.csv`
+	 * already says what a point in a node is worth, so saving the resolved value
+	 * would store the same thing twice and invite the two to disagree.
+	 * `UCataclysmPassiveTree::AccumulateInto` works it out again on load.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FCataclysmPassiveAllocation PassiveAllocation;

@@ -267,9 +267,10 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 	if (DescriptionLabel)
 	{
 		// WHAT THE LAST NODE TOUCHED SAYS IT DOES. This is the only place a
-		// player reads a node's own words, and it is worth saying plainly that
-		// the character does not receive them: no node's effect exists as data.
-		// Issue #936.
+		// player reads a node's own words. It shows the words whether or not
+		// the node has an authored effect behind it, and 267 of the 293 do
+		// not -- so a player reading this cannot tell which sentences the
+		// character actually receives. Issues #936 and #939.
 		const FCataclysmPassiveNodeRow* Row =
 			UCataclysmPassiveTree::FindNode(NodeTable(), LastTouched);
 		DescriptionLabel->SetText(

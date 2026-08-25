@@ -1527,13 +1527,18 @@ struct FCataclysmEnemyRarityRow : public FTableRowBase
  * `capstone_25` is kept separately as `NodeId` for anyone comparing against the
  * source file.
  *
- * WHAT A NODE DOES IS NOT HERE, AND THAT IS THE GAP RATHER THAN AN OMISSION.
- * `Description` is a sentence written for a player to read: "Damage taken from
- * damage over time effects is reduced by 1% per point." There is no stat name
- * and no number anywhere in the source files, so nothing can apply a spent
- * point to a character. Issue #936 has the three routes for authoring it and a
- * recommendation. Everything else about a passive point -- earning it, spending
- * it, the rules that bound where it may go, and saving it -- does work.
+ * WHAT A NODE DOES IS NOT HERE, IT IS IN `FCataclysmPassiveEffectRow`.
+ * `Description` is the sentence a player reads: "Damage taken from damage over
+ * time effects is reduced by 1% per point." It carries no stat name and no
+ * number, so the effect row keyed by the same name is what a machine reads. The
+ * project owner chose that split on 2026-08-25; `docs/DECISIONS.md` has the
+ * reasoning and the cost, which is that a node's words and its numbers can
+ * drift. `tools/tests/test_passive_effects_match_the_node_text.py` is what stops
+ * them.
+ *
+ * ONLY 26 OF THE 293 NODES HAVE AN EFFECT ROW, and that is the honest measure of
+ * how much of the passive tree does anything. The other 267 need machinery that
+ * does not exist rather than more typing. Issue #939.
  */
 USTRUCT(BlueprintType)
 struct FCataclysmPassiveNodeRow : public FTableRowBase

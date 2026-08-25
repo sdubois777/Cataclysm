@@ -39,13 +39,18 @@
  * test that notices the budget no longer adds up -- and the budget is what every
  * tree's shape was chosen for.
  *
- * WHAT IS DELIBERATELY NOT COVERED. What a spent point is worth, because it does
- * not exist: a node's effect is a sentence written for a player and there is no
- * number behind it anywhere in the design files. Issue #936. And anything a
- * person can see: the automation command passes `-nullrhi`, so
- * `WBP_PassiveTree` cannot be loaded and no widget draws. The screen's logic is
- * reached by constructing `UCataclysmPassiveTreeWidget` with no Blueprint at
- * all, which is why every bound pointer in it is checked before it is used.
+ * WHAT A SPENT POINT IS WORTH IS COVERED FOR THE 26 NODES THAT HAVE A NUMBER,
+ * and for no others. `game/Data/PassiveEffects.csv` gives a stat, a bucket and a
+ * value per point for 26 of the 293 nodes; the remaining 267 say what they do in
+ * a sentence written for a player and carry no number anywhere a machine can
+ * read. Issues #936 and #939. Of the 26, the one that names a required tag
+ * reaches nobody -- see `ATagScopedNodeGrantsNothingYet` and issue #943.
+ *
+ * WHAT IS DELIBERATELY NOT COVERED. Anything a person can see: the automation
+ * command passes `-nullrhi`, so `WBP_PassiveTree` cannot be loaded and no widget
+ * draws. The screen's logic is reached by constructing
+ * `UCataclysmPassiveTreeWidget` with no Blueprint at all, which is why every
+ * bound pointer in it is checked before it is used.
  */
 
 namespace CataclysmPassiveTest
@@ -1099,6 +1104,147 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 				 TEXT("by about thirty per cent: %.1f against %.1f expected"),
 				 After, Before * 1.30f),
 			 FMath::IsNearlyEqual(After, Before * 1.30f, Before * 0.02f));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveScopedNodeGrantsNothingTest,
+	"Cataclysm.Passives.ATagScopedNodeGrantsNothingYet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * PINS A KNOWN GAP RATHER THAN A RULE. Issue #943.
+ *
+ * A passive effect row may name required tags, so a node's bonus reaches only
+ * some skills. A row that names any tag currently reaches NOTHING: not a
+ * smaller amount, nothing at all. `UCataclysmPlayerClassStats::ApplyTo`
+ * resolves every stat with an empty tag container on purpose -- a character
+ * sheet has no skill in hand -- and `UCataclysmStatPipeline::ModifierApplies`
+ * then drops every modifier carrying a required tag. `RefreshAttributes` hands
+ * the passive tree's modifiers to `ApplyTo` and there is no second path that
+ * picks a scoped one up later, because the only other place the pipeline sees
+ * real skill tags is `UCataclysmSkillEffects::ModifiedDamage`, and that reads a
+ * list only a skill's own buff ever writes to.
+ *
+ * WHY PIN IT INSTEAD OF FIXING IT. The character sheet holds one value per
+ * stat, and a stat worth one number against traps and another against
+ * everything else does not fit that shape. Path of Exile and Last Epoch both
+ * resolve offensive stats per skill instead of keeping one global figure.
+ * Adopting that here changes how every stat in the game is read, so issue #943
+ * puts it to the project owner rather than choosing it here.
+ *
+ * WHEN #943 LANDS THIS TEST FAILS, which is the point of it. Invert the two
+ * assertions at the end: the scoped node should then widen a trap's area and
+ * still leave everything else alone.
+ *
+ * THE UNSCOPED NODE IS THE CONTROL AND IT IS NOT DECORATION. Without it this
+ * test would pass just as happily if the Saboteur tree were unreachable, if the
+ * allocation never arrived, or if `RefreshAttributes` did nothing -- none of
+ * which is what it claims to be measuring.
+ */
+bool FCataclysmPassiveScopedNodeGrantsNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// WAR RATHER THAN THE DEFAULT DEMONIC, because both nodes below are in War
+	// trees: `docs/Cataclysm_GDD_v2.md` gives War the Bulwark, Berserker and
+	// Saboteur classes. A character carrying Demonic reaches neither, and the
+	// test would then measure a dormant tree instead of a dropped modifier.
+	State->SetCreationChoice(FName(TEXT("Greataxe")), FName(TEXT("War")));
+
+	// THE ONLY SCOPED ROW IN game/Data/PassiveEffects.csv, and the only one this
+	// gap can be shown with. It is worth 15% area of effect per point.
+	const FName Scoped(TEXT("Saboteur_basic_trap_deep_001"));
+	// AND AN UNSCOPED ONE IN THE OTHER WAR TREE, worth 3% armour per point.
+	const FName Unscoped(TEXT("Bulwark_basic_trunk_001"));
+
+	// READ OUT OF THE REAL TABLE RATHER THAN ASSUMED. Re-authoring the sheet is
+	// how this test would quietly stop measuring anything: drop the tag from the
+	// Saboteur row and the assertions below still pass while proving nothing.
+	const FCataclysmPassiveEffectRow* ScopedRow =
+		EffectTable->FindRow<FCataclysmPassiveEffectRow>(
+			Scoped, TEXT("test"), /*bWarnIfMissing=*/false);
+	const FCataclysmPassiveEffectRow* UnscopedRow =
+		EffectTable->FindRow<FCataclysmPassiveEffectRow>(
+			Unscoped, TEXT("test"), /*bWarnIfMissing=*/false);
+	if (!TestNotNull(TEXT("the scoped node has an authored effect"), ScopedRow)
+		|| !TestNotNull(TEXT("so does the unscoped one"), UnscopedRow))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the scoped one is area of effect"), ScopedRow->Stat,
+			  FString(TEXT("area_of_effect")));
+	TestFalse(TEXT("and it really is scoped"), ScopedRow->RequiredTags.IsEmpty());
+	TestEqual(TEXT("the unscoped one is armour"), UnscopedRow->Stat,
+			  FString(TEXT("armor")));
+	TestTrue(TEXT("and it really is unscoped"),
+			 UnscopedRow->RequiredTags.IsEmpty());
+
+	const float AreaBefore = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute());
+	const float ArmourBefore = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetArmorAttribute());
+
+	// BOTH NODES FILLED, IN ONE ALLOCATION AND ONE REFRESH, so the two results
+	// cannot differ because of anything but the tag.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Scoped, 6);
+	Allocation.Add(Unscoped, 8);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float AreaAfter = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute());
+	const float ArmourAfter = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetArmorAttribute());
+
+	// THE CONTROL. Eight points at 3% each is 24% more armour, so the tree is
+	// reachable, the points arrived, and the refresh ran.
+	TestTrue(*FString::Printf(TEXT("armour rose from %.1f to %.1f"),
+							  ArmourBefore, ArmourAfter),
+			 ArmourAfter > ArmourBefore);
+	TestTrue(*FString::Printf(
+				 TEXT("by about a quarter: %.1f against %.1f expected"),
+				 ArmourAfter, ArmourBefore * 1.24f),
+			 FMath::IsNearlyEqual(ArmourAfter, ArmourBefore * 1.24f,
+								  ArmourBefore * 0.02f));
+
+	// THE GAP. Six points at 15% each would be 90% more area of effect. The
+	// player receives none of it.
+	TestEqual(*FString::Printf(
+				  TEXT("area of effect did not move: %.1f against %.1f, though "
+					   "six points were spent on it. Issue #943"),
+				  AreaAfter, AreaBefore),
+			  AreaAfter, AreaBefore);
 
 	return true;
 }
