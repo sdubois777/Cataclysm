@@ -13,6 +13,10 @@ class UTextBlock;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCataclysmChoiceClicked,
 										   FName, Value);
 
+/** Which option the cursor moved on to. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCataclysmChoiceHovered,
+										   FName, Value);
+
 /**
  * One option in a list the player picks from: a weapon type, a damage type.
  *
@@ -46,6 +50,21 @@ public:
 	/** Clicked, carrying the value this button stands for. */
 	UPROPERTY(BlueprintAssignable, Category = "Cataclysm|Creation")
 	FCataclysmChoiceClicked OnChoiceClicked;
+
+	/**
+	 * The cursor moved on to it, carrying the same value.
+	 *
+	 * WHY A SCREEN WANTS THIS AND NOT ONLY THE CLICK. The passive tree draws 74
+	 * nodes and a node is far too small at a fitted zoom to hold its own
+	 * description. Reading what a node does has to be possible without spending
+	 * a point on it, and hovering is how every game in the genre answers that.
+	 *
+	 * A DISABLED BUTTON STILL REPORTS IT, unlike the click. A node that cannot
+	 * take a point is exactly the node a player most wants to read, because the
+	 * question they have is why not.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Cataclysm|Creation")
+	FCataclysmChoiceHovered OnChoiceHovered;
 
 	/**
 	 * What this button stands for and how it should look.
@@ -84,6 +103,8 @@ public:
 
 	//~ UUserWidget
 	virtual void NativeConstruct() override;
+	virtual void NativeOnMouseEnter(const FGeometry& Geometry,
+									const FPointerEvent& Event) override;
 	//~ End UUserWidget
 
 protected:

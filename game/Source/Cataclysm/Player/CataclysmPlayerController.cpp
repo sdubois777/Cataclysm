@@ -364,6 +364,22 @@ void ACataclysmPlayerController::ToggleCharacterCreation()
 	CharacterCreationScreen->AddToViewport();
 }
 
+void ACataclysmPlayerController::ZoomPassiveTree(float Notches)
+{
+	if (!PassiveTreeScreen)
+	{
+		return;
+	}
+
+	if (FMath::IsNearlyZero(Notches))
+	{
+		PassiveTreeScreen->FitToTree();
+		return;
+	}
+
+	PassiveTreeScreen->ZoomBy(Notches);
+}
+
 void ACataclysmPlayerController::Input_TogglePassiveTree()
 {
 	TogglePassiveTree();

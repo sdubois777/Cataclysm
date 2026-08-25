@@ -4,10 +4,15 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/Image.h"
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Data/CataclysmDataRows.h"
 #include "Interface/CataclysmChoiceButton.h"
+#include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/PlayerController.h"
@@ -86,6 +91,14 @@ bool UCataclysmPassiveTreeWidget::ShowTree(const FString& Tree)
 	// the player is no longer looking at.
 	LastRefusal.Reset();
 	LastTouched = NAME_None;
+
+	// A DIFFERENT TREE IS A DIFFERENT SET OF WIDGETS AND A DIFFERENT VIEW. The
+	// four trees are laid out on quite different parts of the authoring tool's
+	// canvas -- the Masochist tree runs from x -2000 to 1600 and the Berserker
+	// one from -909 to 712 -- so keeping the old focus would open the new tree
+	// looking at empty space.
+	BuildGraph();
+	FitToTree();
 
 	RefreshDisplay();
 	return true;
@@ -210,6 +223,10 @@ void UCataclysmPassiveTreeWidget::NativeConstruct()
 	}
 
 	RefreshDisplay();
+
+	// FITTED AFTER THE FIRST REFRESH, NOT BEFORE. `RefreshDisplay` is what
+	// builds the graph, and there is nothing to fit a view to until it has.
+	FitToTree();
 }
 
 void UCataclysmPassiveTreeWidget::RefreshDisplay()
@@ -220,7 +237,17 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 		TreeValues.Add(FName(*Tree));
 	}
 	FillPanel(TreeBox, TreeValues, /*bTrees=*/true);
-	FillPanel(NodeBox, ShownNodes(), /*bTrees=*/false);
+
+	// THE GRAPH IS BUILT ONLY WHEN THE TREE ON IT CHANGED. Making 74 buttons and
+	// 69 lines is work for a click; a refresh happens on every spend as well,
+	// and rebuilding then would also destroy the button whose own click is still
+	// being dispatched.
+	if (BuiltTree != ShownTree)
+	{
+		BuildGraph();
+		FitToTree();
+	}
+	PlaceGraph();
 
 	if (PointsLabel)
 	{
@@ -393,4 +420,340 @@ void UCataclysmPassiveTreeWidget::HandleTreeClicked(FName Tree)
 void UCataclysmPassiveTreeWidget::HandleNodeClicked(FName Node)
 {
 	SpendInto(Node);
+}
+
+void UCataclysmPassiveTreeWidget::HandleNodeHovered(FName Node)
+{
+	// ONLY THE DESCRIPTION MOVES. Hovering is not an act: it does not spend, it
+	// does not clear the refusal from the last thing that was tried, and it does
+	// not rebuild anything. Refreshing the whole screen on every mouse move
+	// across 74 nodes would also be a great deal of work for a cursor passing
+	// over one.
+	LastTouched = Node;
+
+	if (DescriptionLabel)
+	{
+		const FCataclysmPassiveNodeRow* Row =
+			UCataclysmPassiveTree::FindNode(NodeTable(), Node);
+		DescriptionLabel->SetText(
+			Row ? FText::FromString(Row->Description) : FText::GetEmpty());
+	}
+}
+
+FVector2D UCataclysmPassiveTreeWidget::CanvasSize() const
+{
+	// THE PANEL'S REAL SIZE ONCE SLATE HAS GIVEN IT ONE, and a stated guess
+	// before that. A widget has no geometry until it has been laid out at least
+	// once, and the first refresh happens in NativeConstruct, which is before
+	// that. Placing a whole tree against a size of zero would put every node on
+	// one point.
+	if (GraphCanvas)
+	{
+		const FVector2D Measured = GraphCanvas->GetCachedGeometry().GetLocalSize();
+		if (Measured.X > 1.0 && Measured.Y > 1.0)
+		{
+			return Measured;
+		}
+	}
+
+	// A COMMON WINDOW, so the first frame is roughly right rather than absurd.
+	// The next refresh, which any click causes, uses the real size.
+	return FVector2D(1600.0, 800.0);
+}
+
+void UCataclysmPassiveTreeWidget::FitToTree()
+{
+	const FCataclysmTreeExtent Extent =
+		UCataclysmPassiveTreeLayout::ExtentOf(NodeTable(), ShownTree);
+	if (!Extent.bAny)
+	{
+		return;
+	}
+
+	Focus = Extent.Centre();
+	Zoom = UCataclysmPassiveTreeLayout::ZoomToFit(Extent, CanvasSize());
+	PlaceGraph();
+}
+
+void UCataclysmPassiveTreeWidget::ZoomBy(float Notches)
+{
+	Zoom = UCataclysmPassiveTreeLayout::ZoomAfterNotches(Zoom, Notches);
+	PlaceGraph();
+}
+
+void UCataclysmPassiveTreeWidget::PanBy(FVector2D Pixels)
+{
+	// PIXELS OF THE PANEL, TURNED INTO UNITS OF THE TREE. Dragging by the same
+	// number of pixels has to move the view by less of the tree when zoomed in,
+	// or the tree would fly past at high zoom and crawl at low zoom.
+	const float Safe = UCataclysmPassiveTreeLayout::ClampZoom(Zoom);
+	Focus -= Pixels / Safe;
+	PlaceGraph();
+}
+
+void UCataclysmPassiveTreeWidget::DescribeNodeButton(
+	UCataclysmChoiceButton& Button, FName Node)
+{
+	const ACataclysmPlayerState* Player = State();
+	static const FCataclysmPassiveAllocation Nothing;
+	const FCataclysmPassiveAllocation& Allocation =
+		Player ? Player->GetPassiveAllocation() : Nothing;
+	const int32 Points = Player ? Player->PassivePointsAvailable() : 0;
+
+	const FCataclysmPassiveNodeRow* Row =
+		UCataclysmPassiveTree::FindNode(NodeTable(), Node);
+	if (!Row)
+	{
+		return;
+	}
+
+	// THE NAME AND THE COUNT, AND NOT THE REFUSAL. A node on the graph is about
+	// 150 pixels wide and the refusal is a sentence; the sentence goes under the
+	// tree instead, where there is room for it, when the node is clicked.
+	const FString Label = FString::Printf(TEXT("%s  %d/%d"), *Row->NodeName,
+										  Allocation.PointsIn(Node),
+										  Row->MaxPoints);
+
+	const bool bCanTake = UCataclysmPassiveTree::RefusalForSpending(
+		NodeTable(), EdgeTable(), Allocation, Node, Points).IsEmpty();
+
+	Button.SetChoice(Node, FText::FromString(Label),
+					 Allocation.PointsIn(Node) > 0, bCanTake);
+}
+
+void UCataclysmPassiveTreeWidget::BuildGraph()
+{
+	if (!GraphCanvas)
+	{
+		return;
+	}
+
+	UClass* ButtonClass = LoadedChoiceButtonClass();
+	if (!ButtonClass)
+	{
+		return;
+	}
+
+	GraphCanvas->ClearChildren();
+	NodeButtons.Reset();
+	NodeButtonNames.Reset();
+	EdgeImages.Reset();
+	EdgeEnds.Reset();
+	BuiltTree = ShownTree;
+	BuiltNodeScale =
+		UCataclysmPassiveTreeLayout::NodeScaleFor(NodeTable(), ShownTree);
+
+	if (ShownTree.IsEmpty())
+	{
+		return;
+	}
+
+	// THE EDGES FIRST, SO THE NODES SIT ON TOP OF THEM. A canvas panel draws its
+	// children in the order they were added, so a line added after a node would
+	// be drawn across the node's own words.
+	for (const TPair<FName, FName>& Edge :
+		 UCataclysmPassiveTree::EdgesIn(EdgeTable(), ShownTree))
+	{
+		UImage* Line = NewObject<UImage>(this);
+		if (!Line)
+		{
+			continue;
+		}
+
+		Line->SetColorAndOpacity(EdgeColour);
+
+		if (UCanvasPanelSlot* Placement =
+				Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(Line)))
+		{
+			// ANCHORED TO THE TOP LEFT AND ALIGNED TO THE MIDDLE OF ITS OWN LEFT
+			// EDGE, which is what lets a rectangle be turned into a line: it is
+			// placed at the near end and rotated about that end.
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(UCataclysmPassiveTreeLayout::EdgePivot());
+			Placement->SetAutoSize(false);
+		}
+
+		Line->SetRenderTransformPivot(UCataclysmPassiveTreeLayout::EdgePivot());
+		EdgeImages.Add(Line);
+		EdgeEnds.Add(Edge);
+	}
+
+	for (const FName& Node : UCataclysmPassiveTree::NodesIn(NodeTable(), ShownTree))
+	{
+		UCataclysmChoiceButton* Button =
+			CreateWidget<UCataclysmChoiceButton>(this, ButtonClass);
+		if (!Button)
+		{
+			continue;
+		}
+
+		Button->OnChoiceClicked.AddDynamic(
+			this, &UCataclysmPassiveTreeWidget::HandleNodeClicked);
+		Button->OnChoiceHovered.AddDynamic(
+			this, &UCataclysmPassiveTreeWidget::HandleNodeHovered);
+
+		// A NAME TOO LONG FOR ITS NODE IS CUT, NOT DRAWN OVER THE NEXT ONE.
+		// Without this, `Cataclysmic Resonance` in a node 99 pixels wide spills
+		// across its neighbours and several names become one illegible line.
+		// The whole name is still readable: it is in the description under the
+		// tree whenever the cursor is over the node.
+		//
+		// SET HERE AND NOT IN THE CHOICE BUTTON ITSELF, because the constraint
+		// comes from this screen. The character creator lays the same buttons
+		// out in a list with room to spare and would gain nothing from it.
+		Button->SetClipping(EWidgetClipping::ClipToBounds);
+
+		if (UCanvasPanelSlot* Placement =
+				Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(Button)))
+		{
+			// ALIGNED TO ITS OWN MIDDLE, so the position a node is given is the
+			// node's centre. Anchoring a node by its corner would slide it as
+			// the view zoomed even when it was the thing being zoomed towards.
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.5, 0.5));
+			Placement->SetAutoSize(false);
+		}
+
+		NodeButtons.Add(Button);
+		NodeButtonNames.Add(Node);
+	}
+}
+
+void UCataclysmPassiveTreeWidget::PlaceGraph()
+{
+	if (!GraphCanvas)
+	{
+		return;
+	}
+
+	const FVector2D Size = CanvasSize();
+	const UDataTable* Table = NodeTable();
+
+	// WHERE EACH NODE LANDS, WORKED OUT ONCE. Every edge needs the screen
+	// position of both its ends, and most nodes are an end of more than one
+	// edge, so asking per edge would repeat the same arithmetic.
+	TMap<FName, FVector2D> Placed;
+	Placed.Reserve(NodeButtonNames.Num());
+
+	for (int32 Index = 0; Index < NodeButtons.Num(); ++Index)
+	{
+		UCataclysmChoiceButton* Button = NodeButtons[Index];
+		const FName Node = NodeButtonNames[Index];
+		const FCataclysmPassiveNodeRow* Row =
+			UCataclysmPassiveTree::FindNode(Table, Node);
+		if (!Button || !Row)
+		{
+			continue;
+		}
+
+		const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(
+			FVector2D(Row->PositionX, Row->PositionY), Focus, Zoom, Size);
+		Placed.Add(Node, At);
+
+		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Button->Slot))
+		{
+			// THE NODE'S SIZE SCALES WITH THE VIEW, so zooming out really does
+			// show more of the tree rather than the same number of full-sized
+			// buttons in a smaller area.
+			Placement->SetPosition(At);
+			// THE TREE'S OWN SPACING DECIDES HOW BIG A NODE IS, and the view's
+			// scale decides how big that is on screen. Drawing every tree's
+			// nodes at one size would overlap in the Bulwark tree, whose
+			// closest pair sits 74 units apart, and waste most of the room in
+			// the other three.
+			Placement->SetSize(FVector2D(
+				UCataclysmPassiveTreeLayout::NodeWidthPx * BuiltNodeScale * Zoom,
+				UCataclysmPassiveTreeLayout::NodeHeightPx * BuiltNodeScale * Zoom));
+		}
+
+		DescribeNodeButton(*Button, Node);
+	}
+
+	for (int32 Index = 0; Index < EdgeImages.Num(); ++Index)
+	{
+		UImage* Line = EdgeImages[Index];
+		if (!Line || !EdgeEnds.IsValidIndex(Index))
+		{
+			continue;
+		}
+
+		const FVector2D* From = Placed.Find(EdgeEnds[Index].Key);
+		const FVector2D* To = Placed.Find(EdgeEnds[Index].Value);
+		if (!From || !To)
+		{
+			// AN EDGE WHOSE ENDS ARE NOT BOTH ON THE CANVAS IS HIDDEN RATHER
+			// THAN DRAWN FROM NOWHERE. The tables cannot produce one -- the
+			// generator refuses an edge naming a node that is not in the same
+			// tree -- but a line from the origin to a node would be a striking
+			// thing to draw if they ever did.
+			Line->SetVisibility(ESlateVisibility::Collapsed);
+			continue;
+		}
+
+		Line->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+		FVector2D At;
+		FVector2D Extent;
+		float Angle = 0.0f;
+		UCataclysmPassiveTreeLayout::EdgeGeometry(
+			*From, *To, UCataclysmPassiveTreeLayout::EdgeThicknessPx * Zoom,
+			At, Extent, Angle);
+
+		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Line->Slot))
+		{
+			Placement->SetPosition(At);
+			Placement->SetSize(Extent);
+		}
+		Line->SetRenderTransformAngle(Angle);
+	}
+}
+
+FReply UCataclysmPassiveTreeWidget::NativeOnMouseWheel(const FGeometry& Geometry,
+													   const FPointerEvent& Event)
+{
+	ZoomBy(Event.GetWheelDelta());
+	return FReply::Handled();
+}
+
+FReply UCataclysmPassiveTreeWidget::NativeOnMouseButtonDown(
+	const FGeometry& Geometry, const FPointerEvent& Event)
+{
+	// THE RIGHT BUTTON PANS, AND THE LEFT ONE DOES NOT. The left button spends a
+	// point, and a screen where dragging over a node both moved the view and
+	// spent a point would be unusable. Every node graph in the genre pans with
+	// the right button or with a held middle button for the same reason.
+	if (Event.GetEffectingButton() != EKeys::RightMouseButton)
+	{
+		return FReply::Unhandled();
+	}
+
+	bDragging = true;
+	DragFrom = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
+	return FReply::Handled().CaptureMouse(TakeWidget());
+}
+
+FReply UCataclysmPassiveTreeWidget::NativeOnMouseMove(const FGeometry& Geometry,
+													  const FPointerEvent& Event)
+{
+	if (!bDragging)
+	{
+		return FReply::Unhandled();
+	}
+
+	const FVector2D Now = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
+	PanBy(Now - DragFrom);
+	DragFrom = Now;
+	return FReply::Handled();
+}
+
+FReply UCataclysmPassiveTreeWidget::NativeOnMouseButtonUp(
+	const FGeometry& Geometry, const FPointerEvent& Event)
+{
+	if (!bDragging || Event.GetEffectingButton() != EKeys::RightMouseButton)
+	{
+		return FReply::Unhandled();
+	}
+
+	bDragging = false;
+	return FReply::Handled().ReleaseMouseCapture();
 }

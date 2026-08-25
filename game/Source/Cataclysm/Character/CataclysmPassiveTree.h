@@ -146,6 +146,20 @@ public:
 	 */
 	static TArray<FName> NodesIn(const UDataTable* NodeTable, const FString& Tree);
 
+	/**
+	 * Every dependency edge of one tree, as pairs of node row names.
+	 *
+	 * SORTED, LIKE `NodesIn`, so a screen drawing them puts them in the same
+	 * order every time. A DataTable keeps its rows in a TMap and that order is
+	 * an implementation detail.
+	 *
+	 * @return the source first and the target second, which is the direction
+	 *         the requirement runs in: the target is shut until the source
+	 *         holds enough points
+	 */
+	static TArray<TPair<FName, FName>> EdgesIn(const UDataTable* EdgeTable,
+											   const FString& Tree);
+
 	/** One node's row, or null. */
 	static const FCataclysmPassiveNodeRow* FindNode(const UDataTable* NodeTable,
 													FName Node);

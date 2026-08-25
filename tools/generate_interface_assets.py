@@ -271,11 +271,18 @@ def make_passive_tree():
     tree = add(blueprint, unreal.TextBlock, "TreeLabel", "Body")
     set_text(tree, "", size=18)
 
-    # SEVENTY-FOUR NODES DO NOT FIT ON A SCREEN, so the list scrolls. This is
-    # the piece the graph version in issue #937 replaces.
-    scroll = add(blueprint, unreal.ScrollBox, "NodeScroll", "Body")
-    fill_remaining_height(scroll)
-    add(blueprint, unreal.VerticalBox, "NodeBox", "NodeScroll")
+    # WHERE THE TREE IS DRAWN. A canvas panel, because every node goes at its
+    # own authored position rather than in a list: which limb a node is on and
+    # how far it is from the trunk are decisions made in the tree authoring tool
+    # and a list threw all of them away. Issue #937.
+    #
+    # THE PANEL IS EMPTY HERE AND FILLED AT RUN TIME.
+    # UCataclysmPassiveTreeWidget places one button per node and one line per
+    # edge on it, scaled and panned. No designer could place 74 of each by hand,
+    # and the arithmetic that does it is in UCataclysmPassiveTreeLayout.
+    canvas = add(blueprint, unreal.CanvasPanel, "GraphCanvas", "Body")
+    fill_remaining_height(canvas)
+    canvas.set_editor_property("clipping", unreal.WidgetClipping.CLIP_TO_BOUNDS)
 
     description = add(blueprint, unreal.TextBlock, "DescriptionLabel", "Body")
     set_text(description, "", size=16)

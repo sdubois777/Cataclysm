@@ -245,6 +245,29 @@ TArray<FName> UCataclysmPassiveTree::NodesIn(const UDataTable* NodeTable,
 	return Out;
 }
 
+TArray<TPair<FName, FName>> UCataclysmPassiveTree::EdgesIn(
+	const UDataTable* EdgeTable, const FString& Tree)
+{
+	TArray<TPair<FName, FName>> Out;
+	ForEachEdge(EdgeTable, [&](const FCataclysmPassiveEdgeRow& Edge)
+	{
+		if (Edge.Tree == Tree)
+		{
+			Out.Add({FName(*Edge.Source), FName(*Edge.Target)});
+		}
+	});
+
+	Out.Sort([](const TPair<FName, FName>& Left, const TPair<FName, FName>& Right)
+	{
+		if (Left.Key != Right.Key)
+		{
+			return Left.Key.LexicalLess(Right.Key);
+		}
+		return Left.Value.LexicalLess(Right.Value);
+	});
+	return Out;
+}
+
 const FCataclysmPassiveNodeRow* UCataclysmPassiveTree::FindNode(
 	const UDataTable* NodeTable, FName Node)
 {
