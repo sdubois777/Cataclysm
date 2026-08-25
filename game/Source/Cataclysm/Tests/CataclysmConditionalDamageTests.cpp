@@ -53,11 +53,20 @@ namespace CataclysmConditionalDamageTest
 			// and a TObjectPtr deduces the wrapper rather than the set.
 			UCataclysmCombatAttributeSet* NewCombat =
 				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			UCataclysmVitalAttributeSet* NewVitals =
+				NewObject<UCataclysmVitalAttributeSet>(Actor);
 			AbilitySystem->AddAttributeSetSubobject(NewCombat);
-			AbilitySystem->AddAttributeSetSubobject(
-				NewObject<UCataclysmVitalAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(NewVitals);
 
 			Combat = NewCombat;
+
+			// KEPT SINCE ISSUE #958, so a test can move the attacker's own
+			// health. A bonus that applies only below a health threshold is
+			// judged against this set by
+			// `UCataclysmAbilitySystemComponent::CurrentConditions`, so a test
+			// that cannot write to it cannot make such a bonus apply.
+			Vitals = NewVitals;
+
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
 			Combat->SetAttackDamage(1'000.0f);
@@ -75,6 +84,7 @@ namespace CataclysmConditionalDamageTest
 		TObjectPtr<AActor> Actor = nullptr;
 		TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystem = nullptr;
 		TObjectPtr<UCataclysmCombatAttributeSet> Combat = nullptr;
+		TObjectPtr<UCataclysmVitalAttributeSet> Vitals = nullptr;
 	};
 
 	/**
@@ -362,12 +372,210 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmConditionalDamageReadsTest,
 		UCataclysmSkillEffects::IncreasesBehindAttackDamage(nullptr),
 		0.0f, 0.001f);
 
+	// AND NEITHER DOES THE PER-SKILL FORM OF THE SAME QUESTION. Issue #958.
+	TestEqual(TEXT("nor does the per-skill form of it"),
+		UCataclysmSkillEffects::IncreasesForSkill(nullptr,
+												  FGameplayTagContainer()),
+		0.0f, 0.001f);
+
 	// AND A CHARACTER WITH NO SPELL DAMAGE ADDS NONE.
 	TestEqual(TEXT("a character with no spell damage adds none"),
-		UCataclysmSkillEffects::SpellDamageOf(Attacker.AbilitySystem),
+		UCataclysmSkillEffects::SpellDamageOf(Attacker.AbilitySystem,
+											  FGameplayTagContainer()),
 		0.0f, 0.001f);
 	TestEqual(TEXT("and nothing at all adds none either"),
-		UCataclysmSkillEffects::SpellDamageOf(nullptr), 0.0f, 0.001f);
+		UCataclysmSkillEffects::SpellDamageOf(nullptr, FGameplayTagContainer()),
+		0.0f, 0.001f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Increased damage that depends on the character's own state. Issue #958.
+//
+// THE NODE THESE TWO ARE ABOUT is the Masochist's Living on the Edge: "While at
+// or below 35% health, +2% increased damage per point", held at its full ten
+// points, so 20 percentage points of increase.
+//
+// "INCREASED DAMAGE" IS TWO STATS AND SO IT IS TWO TESTS. The project owner
+// settled on 2026-08-25 that the words mean every kind of damage the character
+// DEALS -- attack damage and spell damage -- and not damage over time, which the
+// design's own affix solve depends on being a direct-hit stat. The workbook
+// carries the node as two rows and each has to arrive by its own route: attack
+// damage through the increases bracket a hit reopens, spell damage as a flat
+// addition worked out per skill.
+//
+// WHY EACH HAS TO BE A REAL HIT RATHER THAN A PIPELINE CALL. Both figures were
+// read straight off a gameplay attribute, and an attribute by design carries no
+// bonus that depends on the character's state. Every test in
+// CataclysmStatPipelineTests.cpp would go on passing with those reads put back,
+// and a wounded Masochist would simply never get the damage.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** Twenty percentage points of increase, below 35% of maximum health. */
+	FCataclysmStatModifier LivingOnTheEdge()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 20.0f;
+		Modifier.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Modifier.ConditionValue = 35.0f;
+		return Modifier;
+	}
+
+	/** A gear implicit of this size, which is where a base damage comes from. */
+	FCataclysmStatModifier FlatFromGear(float Value)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::GearImplicit;
+		Modifier.Value = Value;
+		return Modifier;
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageBelowAThresholdTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageThatDependsOnHealthReachesARealHit")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE CHARACTER SHEET AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// IT. A weapon carrying 1000 flat attack damage, nothing that increases it
+	// all the time, and the node's 20 points which apply only when wounded. The
+	// attribute therefore holds a plain 1000 and the remembered bracket is
+	// nothing, which is exactly what ApplyTo writes for this character: it
+	// judges every condition as unknown and so refuses it.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(LivingOnTheEdge());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A HUNDRED HEALTH OUT OF A HUNDRED, so the share is the figure itself.
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	const float AtFullHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// WOUNDED, AND NOTHING ELSE CHANGED. Not a point spent, not a stat written,
+	// not the gameplay attribute touched. The health moved and that is all.
+	Attacker.Vitals->SetHealth(30.0f);
+
+	const float AtLowHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	if (!TestTrue(FString::Printf(TEXT("both hits landed (%.0f, %.0f)"),
+								  AtFullHealth, AtLowHealth),
+				  AtFullHealth > 0.0f && AtLowHealth > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("the wounded attacker deals 20%% more, and dealt %.3f times"),
+		AtLowHealth / AtFullHealth),
+		AtLowHealth / AtFullHealth, 1.20f, 0.01f);
+
+	// AND BACK AGAIN, which is what "resolved when the stat is used and never
+	// stored" means. A bonus folded into the attribute would stay after the
+	// character healed, and no test above would notice.
+	Attacker.Vitals->SetHealth(100.0f);
+	const float Healed = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(TEXT("and loses it again on healing past the threshold"),
+		Healed, AtFullHealth, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageBelowAThresholdTest,
+	"Cataclysm.ConditionalDamage.SpellDamageFollowsABonusThatDependsOnHealth")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// NO WEAPON DAMAGE AT ALL, so the whole hit is the spell damage and the
+	// ratio measures that stat and nothing else. The other half of the node is
+	// covered by the test above.
+	Attacker.Combat->SetAttackDamage(0.0f);
+	Attacker.Combat->SetSpellDamage(500.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(500.0f));
+	Inputs.Modifiers.Add(LivingOnTheEdge());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("spell_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	const float AtFullHealth = HealthLostTo(Attacker, Target, SpellTags());
+
+	Attacker.Vitals->SetHealth(30.0f);
+	const float AtLowHealth = HealthLostTo(Attacker, Target, SpellTags());
+
+	if (!TestTrue(FString::Printf(TEXT("both spells landed (%.0f, %.0f)"),
+								  AtFullHealth, AtLowHealth),
+				  AtFullHealth > 0.0f && AtLowHealth > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("the wounded caster deals 20%% more, and dealt %.3f times"),
+		AtLowHealth / AtFullHealth),
+		AtLowHealth / AtFullHealth, 1.20f, 0.01f);
+
+	// AND A SKILL THAT IS NOT A SPELL TAKES NONE OF IT, wounded or not, which is
+	// the rule the node must not break: spell damage is added to a spell and to
+	// nothing else.
+	TestEqual(TEXT("and a skill that is not a spell takes none of it"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer()), 0.0f, 0.01f);
 
 	return true;
 }

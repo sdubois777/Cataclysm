@@ -2549,6 +2549,35 @@ def passive_effects(book) -> list[dict]:
     return out
 
 
+def item_base_flat_stats(item_bases: list[dict] | None) -> set[str]:
+    """The stats an item base supplies as a flat implicit.
+
+    A BASE UNDER AN INCREASE, WHICH IS THE ONLY THING THIS IS FOR. See
+    `validate_passive_effects` below for the argument. `attack_damage` is the
+    stat that needs it: no class stat line names it, deliberately, because a
+    character's damage comes from the weapon in its hands.
+
+    HELD HERE RATHER THAN IN THE TEST THAT ALSO NEEDS IT, so that the rule is
+    stated once. `tools/tests/test_passive_effects_match_the_node_text.py`
+    imports this function.
+
+    EMPTY IS A LEGITIMATE ANSWER and not a failure: a caller that has no
+    ItemBases table gets a smaller set of known stats and so a stricter check,
+    which is the safe direction.
+    """
+    if not item_bases:
+        return set()
+
+    supplied: set[str] = set()
+    for row in item_bases:
+        for index in (1, 2):
+            stat = str(row.get(f"Implicit{index}Stat", "") or "").strip()
+            kind = str(row.get(f"Implicit{index}Kind", "") or "").strip().lower()
+            if stat and kind == "flat":
+                supplied.add(stat)
+    return supplied
+
+
 def validate_passive_effects(tables: dict[str, list[dict]],
                              known: set[str]) -> list[str]:
     """Every passive effect names a real node, a real stat and declared tags.
@@ -2569,6 +2598,22 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     both columns says nothing, and `test_class_sheets_match_the_model.py` holds
     that rule. Issue #954.
 
+    A `flat` IMPLICIT ON AN ITEM BASE SUPPLIES ONE TOO, for the same reason and
+    with the same argument. Issue #958. `attack_damage` is the case: no class
+    line names it and none should, because a character's damage comes from the
+    weapon in its hands. `UCataclysmPlayerClassStats` says so in as many words --
+    "A weapon's damage is an `attack_damage` implicit on its base, so it already
+    arrives as a flat modifier and the base is correctly zero" -- and a node
+    reading "+2% increased damage per point" has a real base under it the moment
+    a weapon is held.
+
+    A ROLLED AFFIX IS DELIBERATELY NOT COUNTED, and the difference is not
+    pedantic. An implicit is on EVERY item of that base type, so a Sword always
+    carries attack damage; an affix may never roll at all. A stat whose only
+    supplier is an optional affix really is zero for most characters, and an
+    increase on it really is worth nothing, which is exactly what this check is
+    for. Counting affixes would admit twelve more stats and blunt it.
+
     WHAT STILL CATCHES A TYPO IN A STAT NAME IS THE ENGINE SIDE.
     `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt` reads
     this file and fails when a name has no gameplay attribute behind it, which is
@@ -2586,7 +2631,8 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     stats = ({row["Stat"] for row in class_rows} if class_rows else set()) | \
             ({row["Stat"] for row in attribute_rows} if attribute_rows else set()) | \
             {row["Stat"] for row in effects
-             if str(row["ValueKind"]).lower() == "flat"}
+             if str(row["ValueKind"]).lower() == "flat"} | \
+            item_base_flat_stats(tables.get("ItemBases"))
 
     problems = []
     for row in effects:

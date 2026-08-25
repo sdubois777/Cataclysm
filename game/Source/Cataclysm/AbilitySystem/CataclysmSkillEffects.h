@@ -535,8 +535,17 @@ public:
 	 * top, rather than the Path of Exile shape where a spell ignores the weapon
 	 * entirely. That keeps a Wand's own 38 flat damage worth something to the
 	 * caster holding it.
+	 *
+	 * ASKED FOR WITH THE SKILL'S TAGS RATHER THAN READ OFF THE ATTRIBUTE, since
+	 * issue #958. The attribute holds the figure worked out with no skill in
+	 * hand and with nothing known about the character, so a modifier naming a
+	 * required tag and a modifier that depends on the character's state are both
+	 * missing from it. "While at or below 35% health, +2% increased damage per
+	 * point" is one of the second kind. The attribute is still the fallback, so
+	 * an ability system that recorded nothing answers exactly what it did before.
 	 */
-	static float SpellDamageOf(const UAbilitySystemComponent* Source);
+	static float SpellDamageOf(const UAbilitySystemComponent* Source,
+							   const FGameplayTagContainer& SkillTags);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.
@@ -545,9 +554,32 @@ public:
 	 * increase can join it rather than becoming a second multiplier. Zero for an
 	 * ability system this project did not make, which leaves the arithmetic
 	 * exactly as it was before that mattered.
+	 *
+	 * THIS IS THE BRACKET TO UNDO, NOT THE ONE TO REDO. It is what
+	 * `UCataclysmPlayerClassStats::ApplyTo` folded into the gameplay attribute,
+	 * and it worked that out with no skill in hand and nothing known about the
+	 * character. `IncreasesForSkill` below is the same sum worked out again for
+	 * the skill being used and the state the character is in, and a hit needs
+	 * both: one to take the attribute apart and the other to put it together.
 	 */
 	static float IncreasesBehindAttackDamage(
 		const UAbilitySystemComponent* Source);
+
+	/**
+	 * The sum of increases attack damage should be multiplied by right now.
+	 *
+	 * A FRACTION, like `IncreasesBehindAttackDamage`, and it differs from that
+	 * one by exactly the modifiers which could not be judged when the attribute
+	 * was written: those scoped to a skill's tags, and those that depend on the
+	 * character's state. With neither present the two are equal and the
+	 * arithmetic is unchanged. Issues #947 and #958.
+	 *
+	 * IT FALLS BACK TO `IncreasesBehindAttackDamage` when nothing was recorded
+	 * for attack damage, which is the ordinary case for an enemy and for a
+	 * player before its first stat refresh.
+	 */
+	static float IncreasesForSkill(const UAbilitySystemComponent* Source,
+								   const FGameplayTagContainer& SkillTags);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;

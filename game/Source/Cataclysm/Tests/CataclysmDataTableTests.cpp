@@ -222,7 +222,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 38, for Last Stand and Desperate Measures, the first two nodes whose
 	// bonus depends on where the character's health is. Issue #959.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         38)
+	//
+	// AND TO 40 FOR ONE NODE, Living on the Edge, which grants increased damage
+	// below a health threshold. Two rows rather than one because the project
+	// owner settled on 2026-08-25 that "increased damage" on a passive node
+	// means attack damage and spell damage together, and not damage over time.
+	// Issue #958.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         40)
 
 	#undef CHECK_TABLE
 

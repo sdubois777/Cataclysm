@@ -570,12 +570,21 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		// longer visible, and the eight conditional damage stats have to join
 		// that same bracket rather than becoming a second multiplier. A hit
 		// cannot reopen a bracket it cannot see.
+		//
+		// DIVIDED BY 100 BECAUSE THE TWO SIDES USE DIFFERENT UNITS, and passing
+		// the figure across unchanged was issue #963. `SumOfIncreases` is in
+		// percentage points -- 125 for +125% -- and every reader of
+		// `GetAttackDamageIncreases` treats the answer as a fraction. Without
+		// this the stored figure was a hundred times too large, and the eight
+		// increased-damage-against-a-type affixes were worth a few percent of
+		// what they say.
 		if (Pair.Key == FString(UCataclysmItemModifiers::AttackDamageStat))
 		{
 			if (UCataclysmAbilitySystemComponent* Cataclysm =
 					Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
 			{
-				Cataclysm->SetAttackDamageIncreases(Breakdown.SumOfIncreases);
+				Cataclysm->SetAttackDamageIncreases(
+					Breakdown.SumOfIncreases / 100.0f);
 			}
 		}
 

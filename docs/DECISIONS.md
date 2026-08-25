@@ -20,6 +20,113 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — "Increased damage" on a passive node means attack damage and spell damage, and not damage over time
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`,
+`CataclysmAbilitySystemComponent.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`tools/generate_datatables.py`.
+**Applied.** Issues #958, #947, #963, #939.
+
+Twelve passive nodes across the four trees say "increased damage" without saying
+which damage, and the character sheet has no stat by that name. It has
+`attack_damage`, `spell_damage`, `dot_damage` and eight `damage_vs_<type>`
+figures. Until this was settled every one of those nodes had to stay unauthored,
+because choosing a stat for them would have been inventing a design decision
+rather than recording one.
+
+### What was decided
+
+**It is an increase to every kind of damage the character DEALS, which is attack
+damage and spell damage. It does not include damage over time.** A node granting
+it is therefore two rows in the `Passive Effects` sheet, one per stat, both
+`increased` and both the same value.
+
+The project owner's first answer was "every kind of damage". The damage over time
+edge was put back to them with the conflicting sentence quoted, and they chose
+direct hits only.
+
+### Why damage over time is excluded, which is the part that was not obvious
+
+Path of Exile is where the broad reading comes from: a generic "increased Damage"
+modifier there does apply to damage over time as well as to hits, so reading the
+words that way is what a player arriving from that game expects. Flat damage does
+not carry over to damage over time in that game, and there is a separate "damage
+over time multiplier" stat besides, but the generic increase reaches both.
+
+Sources:
+[Damage over time, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Damage_over_time),
+[Damage, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Damage),
+[Damage over time multiplier, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Damage_over_time_multiplier).
+
+**This game's own numbers were already solved on the opposite assumption.**
+`Cataclysm_GDD_v2.md` sets the three damage over time affixes at 52% each, and
+the working is only valid if Increased Damage is a direct-hit stat:
+
+> Six affix slots spent on Increased Damage multiply a direct-hit build's damage
+> by 8.5 ... Two slots on each of the three damage over time affixes has to reach
+> the same 8.5, so each affix is the value that satisfies (1 + 2v)³ = 8.5. That
+> is v = 52.04%, rounded down to 52%.
+
+Letting increased damage reach damage over time would give a damage over time
+build both routes and make that solve wrong. It would also make the same two
+words mean two different things in two places, because the affix called
+"Increased damage" in `game/Data/Affixes.csv` grants `attack_damage` alone.
+
+**So the affix table decided it rather than the genre did.** That is worth saying
+plainly: the shape came from a constraint this game had already committed to, not
+from a shipped game's precedent, and the precedent pointed the other way.
+
+### What this decision does NOT cover
+
+**Five of the twelve nodes are about an enemy, not the character.** Reading all
+twelve, seven say the character deals increased damage and five say an enemy
+*takes* increased damage from all sources. The second kind is a debuff applied to
+a target and is a different mechanism; `docs/DECISIONS.md` already carries an
+entry on which side owns the bucket for an "increased damage taken" debuff. Those
+five belong to the Berserker, Bulwark and Saboteur trees and need their own
+decision when somebody works on those.
+
+**Only one node became reachable.** The other six character-side ones each wait
+on something else that does not exist yet: a timed window, counting the debuffs
+on the character, the health-debt mechanic, or a predicate about the skill's own
+cost. The one that works now is `Masochist_basic_ll_a0`, Living on the Edge:
+"While at or below 35% health, +2% increased damage per point."
+
+### What it needed in the game
+
+**Both stats were read straight off a gameplay attribute, so a bonus depending on
+the character's state was dropped before it reached anything.** A conditional
+bonus is deliberately never written onto an attribute, because
+`UCataclysmPlayerClassStats::ApplyTo` runs on a gear change and the value would
+be stale the moment health moved. Both are now asked for at the moment of the hit
+instead, which is the same shape #961 gave critical strike chance and movement
+speed. Issue #947.
+
+**A hit reopens the increases bracket, and the two brackets are not the same
+sum.** The attribute holds `(base + flat) x (1 + increases)`, and a hit divides
+by one plus the increases to recover the flat bucket and then multiplies by one
+plus the increases again with the conditional part added. The figure to divide by
+is what was folded IN, worked out with no skill in hand; the figure to multiply
+by is worked out again with the skill and the character's state. Using one figure
+for both is what would divide a conditional bonus straight back out.
+
+**And the figure being divided by was a hundred times too large.** Issue #963.
+The pipeline reports a sum of increases in percentage points and the field storing
+it is a fraction, and the one writer passed the first into the second. The error
+cancelled whenever nothing conditional was in the bracket, which is why it went
+unnoticed since #909; where it did not cancel, a top-tier +400% increased damage
+against a type was worth about +3% instead of +178%.
+
+**A stat supplied only by gear is a supplied stat.** The generator refused
+`attack_damage` on a passive node because no class stat line names it. None
+should: a character's damage comes from the weapon in its hands, which carries an
+`attack_damage` flat implicit. A flat implicit on an item base now counts as
+supplying a stat, alongside a class line, an attribute and a flat passive row. A
+rolled affix deliberately does not, because it may never roll, and an increase on
+a stat only an affix supplies really is worth nothing to most characters.
+
 ## 2026-08-25 — A passive bonus can depend on the character's state, and it is never written onto the stat
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and

@@ -92,7 +92,8 @@ bool UCataclysmSkillEffects::IsSpell(const FGameplayTagContainer& SkillTags)
 	return Spell.IsValid() && SkillTags.HasTag(Spell);
 }
 
-float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source)
+float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source,
+										   const FGameplayTagContainer& SkillTags)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -100,7 +101,23 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 	{
 		return 0.0f;
 	}
-	return FMath::Max(0.0f, Source->GetNumericAttribute(Spell));
+
+	const float FromAttribute = Source->GetNumericAttribute(Spell);
+
+	// ASKED FOR RATHER THAN READ, so a bonus the attribute could not carry
+	// reaches the spell. Issue #958. The attribute was worked out with no skill
+	// in hand and nothing known about the character, so a modifier requiring a
+	// tag and a modifier requiring a state were both left out of it.
+	// `StatForSkill` runs the same pipeline again with both in hand, and
+	// answers the attribute's own figure when nothing was recorded.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float Value = Cataclysm
+		? Cataclysm->StatForSkill(FName(TEXT("spell_damage")), SkillTags,
+								  FromAttribute)
+		: FromAttribute;
+
+	return FMath::Max(0.0f, Value);
 }
 
 float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
@@ -114,6 +131,23 @@ float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
 	// the arithmetic is what it was before this existed.
 	return Cataclysm ? FMath::Max(0.0f, Cataclysm->GetAttackDamageIncreases())
 					 : 0.0f;
+}
+
+float UCataclysmSkillEffects::IncreasesForSkill(
+	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	if (!Cataclysm)
+	{
+		return IncreasesBehindAttackDamage(Source);
+	}
+
+	// NEGATIVE IS CLAMPED AWAY FOR THE SAME REASON THE OTHER ONE CLAMPS IT.
+	// This multiplies the whole hit, and a sum of increases below -100% would
+	// turn a blow into healing rather than into a very small blow.
+	return FMath::Max(
+		0.0f, Cataclysm->AttackDamageIncreasesForSkill(SkillTags));
 }
 
 float UCataclysmSkillEffects::DamageAgainstTypeOf(
@@ -230,17 +264,33 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// A CHARACTER WITH NEITHER GETS EXACTLY WHAT IT GOT BEFORE. With no
 	// increases and no conditional bonus both figures are zero, the division and
 	// the multiplication are both by one, and this is the line it replaces.
-	const float Increases = IncreasesBehindAttackDamage(Source);
+	//
+	// THE TWO BRACKETS ARE NOT THE SAME SUM, since issue #958, and using one
+	// figure for both is what stopped a passive node saying "while at or below
+	// 35% health, +2% increased damage per point" from reaching anything.
+	//
+	//   `Folded` is what was put INTO the attribute, worked out with no skill in
+	//   hand and nothing known about the character, so it is what has to come
+	//   back out to recover the flat bucket.
+	//
+	//   `Applying` is what should be multiplied back IN: the same sum worked out
+	//   again for the skill being used and the state the character is in, so a
+	//   modifier scoped by tag or by health is counted this time.
+	//
+	// THEY ARE EQUAL FOR A CHARACTER CARRYING NEITHER KIND, which is every
+	// character before this issue, so nothing else changes.
+	const float Folded = IncreasesBehindAttackDamage(Source);
+	const float Applying = IncreasesForSkill(Source, SkillTags);
 	const float Conditional = DamageAgainstTypeOf(Source, Target);
 
 	const float BeforeIncreases =
-		WeaponDamageOf(Source) / FMath::Max(1.0f + Increases, UE_KINDA_SMALL_NUMBER);
-	const float Flat = IsSpell(SkillTags) ? SpellDamageOf(Source) : 0.0f;
+		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER);
+	const float Flat = IsSpell(SkillTags) ? SpellDamageOf(Source, SkillTags) : 0.0f;
 
 	const float Damage = ModifiedDamage(
 		Source,
 		(BeforeIncreases * DamagePercent / 100.0f + Flat)
-			* (1.0f + Increases + Conditional),
+			* (1.0f + Applying + Conditional),
 		SkillTags);
 	if (Damage <= 0.0f)
 	{

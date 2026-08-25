@@ -202,19 +202,53 @@ public:
 	 * matching enemy with a top-tier +400% affix deals 6.25 times its base if the
 	 * two add and 11.25 times if they multiply.
 	 *
-	 * A FRACTION, NOT A PERCENTAGE. 1.25 for +125%, which is what
-	 * UCataclysmStatPipeline reports.
+	 * A FRACTION, NOT A PERCENTAGE. 1.25 for +125%.
+	 *
+	 * AND THE PIPELINE DOES NOT REPORT IT THAT WAY, which is what issue #963
+	 * was: `FCataclysmStatBreakdown::SumOfIncreases` is in percentage points,
+	 * this field is a fraction, and the one writer passed the first straight
+	 * into the second. Every reader here treats it as a fraction, so the
+	 * conversion belongs at the writer and `SetAttackDamageIncreases` says so.
+	 * The error cancelled whenever the conditional part was zero, which is why
+	 * it went unnoticed: the damage is
+	 * `weapon x percent x (1 + I + C) / (1 + I)`, and with C at zero that
+	 * last factor is one for any I at all, right or wrong.
 	 */
 	float GetAttackDamageIncreases() const
 	{
 		return AttackDamageIncreases;
 	}
 
-	/** Written by UCataclysmPlayerClassStats::ApplyTo when it writes the stat. */
+	/**
+	 * Written by UCataclysmPlayerClassStats::ApplyTo when it writes the stat.
+	 *
+	 * A FRACTION. `Breakdown.SumOfIncreases` is in percentage points, so the
+	 * caller divides by 100. Issue #963.
+	 */
 	void SetAttackDamageIncreases(float Increases)
 	{
 		AttackDamageIncreases = Increases;
 	}
+
+	/**
+	 * The same sum, worked out again for one skill and this character's state.
+	 *
+	 * A FRACTION, like `GetAttackDamageIncreases`, and it differs from that one
+	 * by exactly the modifiers that could not be judged when the attribute was
+	 * written: those scoped to a skill's tags and those carrying a condition.
+	 * A hit needs both -- the stored one to take the attribute apart, this one
+	 * to put it back together -- because otherwise a bonus that depends on the
+	 * character's health would be divided straight back out again. Issue #958.
+	 *
+	 * ASKED FRESH EVERY TIME, for the reason `CurrentConditions` gives: the
+	 * answer is true at this instant and may be false at the next.
+	 *
+	 * IT ANSWERS THE STORED FIGURE when nothing was recorded for attack damage,
+	 * which is the ordinary case for an enemy and for a player before its first
+	 * stat refresh.
+	 */
+	float AttackDamageIncreasesForSkill(
+		const FGameplayTagContainer& SkillTags) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
