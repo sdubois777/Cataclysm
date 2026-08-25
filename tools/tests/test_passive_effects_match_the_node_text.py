@@ -92,7 +92,12 @@ BUCKETS = {"flat", "increased", "more"}
 #: settled on 2026-08-25 that "increased damage" on a passive node means every
 #: kind of damage the character DEALS -- attack damage and spell damage -- and
 #: not damage over time. So it is two rows rather than one. Issue #958.
-AUTHORED_ROWS = 40
+#:
+#: AND BY TWO MORE, again both on one node. Blood Rush reads "+2% increased
+#: damage per point for 2 seconds after you pay a health cost", so it is the same
+#: two stats, under the first condition that depends on WHEN something happened
+#: rather than on what is true now. Issue #962.
+AUTHORED_ROWS = 42
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -121,7 +126,11 @@ AUTHORED_ROWS = 40
 #: AND TO 36 FOR ONE NODE, Living on the Edge, which grants increased damage
 #: below a health threshold. It is 36 of 293 altogether and 32 of the Masochist
 #: tree's own 74. Issue #958.
-AUTHORED_NODES = 36
+#:
+#: AND TO 37 FOR ONE MORE, Blood Rush, which grants increased damage for a short
+#: window after a health cost is paid. 37 of 293 altogether and 33 of the
+#: Masochist tree's own 74. Issue #962.
+AUTHORED_NODES = 37
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -237,11 +246,22 @@ def test_no_node_grants_the_same_stat_twice(effects):
     )
 
 
-#: The states a bonus may depend on, and how the value is written in the
-#: description. `tools/generate_datatables.py` holds the same set of names and
-#: refuses one it does not know; this holds what the words have to say.
+#: The states a bonus may depend on: the words the node must contain, and how
+#: the condition's own value is written in that sentence.
+#:
+#: `tools/generate_datatables.py` holds the same set of names and refuses one it
+#: does not know; this holds what the words have to say.
+#:
+#: THE VALUE'S UNITS ARE PART OF THE ENTRY, since issue #962. A health threshold
+#: is written "20%" and a window is written "2 seconds", so one shared format
+#: would have looked for "2%" in a sentence about seconds and failed on a
+#: perfectly correct row.
+#:
+#: "second" WITHOUT THE PLURAL, so that "1 second" and "2 seconds" both match.
 CONDITION_WORDS = {
-    "health_at_or_below": "at or below",
+    "health_at_or_below": ("at or below", "{value:g}%"),
+    "seconds_after_health_cost": ("after you pay a health cost",
+                                  "{value:g} second"),
 }
 
 
@@ -268,8 +288,9 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
             "to CONDITIONS in tools/generate_datatables.py together."
         )
 
+        expected_words, value_form = CONDITION_WORDS[condition]
+
         words = nodes[row["Node"]]["Description"].lower()
-        expected_words = CONDITION_WORDS[condition]
         assert expected_words in words, (
             f"{row['Node']} carries the condition {condition!r} and its "
             f"description does not say {expected_words!r}:\n"
@@ -277,10 +298,11 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
         )
 
         value = float(row["ConditionValue"])
-        printed = f"{value:g}%"
-        assert printed in nodes[row["Node"]]["Description"], (
-            f"{row['Node']} applies at {printed} of maximum health and the node "
-            f"says:\n    {nodes[row['Node']]['Description']}\n"
+        printed = value_form.format(value=value)
+        assert printed.lower() in words, (
+            f"{row['Node']} carries {condition!r} with a value written "
+            f"{printed!r}, and the node says:\n"
+            f"    {nodes[row['Node']]['Description']}\n"
             "The two have to agree. Either the workbook is stale or the tree "
             "file changed."
         )

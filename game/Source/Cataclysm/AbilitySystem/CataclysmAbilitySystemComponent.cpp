@@ -344,18 +344,52 @@ UCataclysmAbilitySystemComponent::CurrentConditions() const
 	// is true at this instant and may be false at the next, which is why a
 	// conditional bonus cannot be folded into a gameplay attribute.
 	//
-	// NO VITAL ATTRIBUTE SET MEANS NOTHING IS KNOWN, and an unknown state
-	// refuses every condition. That is the ordinary answer for an ability system
-	// built without one, not a fault.
-	const UCataclysmVitalAttributeSet* Vitals =
-		GetSet<UCataclysmVitalAttributeSet>();
-	if (!Vitals)
+	// NO VITAL ATTRIBUTE SET MEANS THE HEALTH READING IS UNKNOWN, and an unknown
+	// reading refuses the conditions that depend on it. That is the ordinary
+	// answer for an ability system built without one, not a fault.
+	//
+	// EACH READING IS INDEPENDENT OF THE OTHERS, which is why this no longer
+	// returns early. Issue #962. A component with no vital attribute set can
+	// still have paid a health cost, and answering "nothing is known" for every
+	// condition because one of them cannot be read would shut a window that is
+	// genuinely open.
+	FCataclysmStatConditions State;
+
+	if (const UCataclysmVitalAttributeSet* Vitals =
+			GetSet<UCataclysmVitalAttributeSet>())
 	{
-		return FCataclysmStatConditions();
+		State = FCataclysmStatConditions::FromHealth(Vitals->GetHealth(),
+													 Vitals->GetMaxHealth());
 	}
 
-	return FCataclysmStatConditions::FromHealth(Vitals->GetHealth(),
-												Vitals->GetMaxHealth());
+	State.SecondsSinceHealthCost = SecondsSinceHealthCostPaid();
+
+	return State;
+}
+
+void UCataclysmAbilitySystemComponent::NoteHealthCostPaid()
+{
+	// NO WORLD MEANS NO CLOCK, so there is nothing to record and nothing that
+	// could read it back. Leaving the stamp at its "never" value is right: a
+	// window whose start cannot be timed must not be treated as open.
+	if (const UWorld* World = GetWorld())
+	{
+		LastHealthCostAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceHealthCostPaid() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastHealthCostAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	// CLAMPED AT ZERO RATHER THAN ALLOWED NEGATIVE. World time does not run
+	// backwards in play, but a test that sets it by hand can, and a negative
+	// answer would read as "never paid" and shut a window that had just opened.
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastHealthCostAtSeconds);
 }
 
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)

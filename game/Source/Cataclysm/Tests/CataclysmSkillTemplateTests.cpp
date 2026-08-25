@@ -987,6 +987,75 @@ bool FCataclysmHealthCostFillsFervourTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthCostOpensAWindowTest,
+	"Cataclysm.Skills.AHealthCostOpensTheWindowAPassiveNodeReads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHealthCostOpensAWindowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// WHY THIS IS HERE AND NOT IN CataclysmStatPipelineTests.cpp. That file
+	// checks the rule by handing the pipeline a number of seconds directly, and
+	// would go on passing with the `NoteHealthCostPaid` line inside
+	// `UCataclysmSkillTemplate::PayHealthCost` deleted -- at which point Blood
+	// Rush would never fire in a real cast and nothing would report it. This is
+	// the only test that goes through the real path. Issue #962, and the same
+	// argument the Fervour test above makes about the same function.
+	//
+	// A CASTER OF ITS OWN AND A SINGLE CAST. A skill commits a cooldown, so a
+	// second activation is refused and the test would measure the refusal.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	// NOTHING HAS HAPPENED YET, ASSERTED BEFORE THE CAST. Without this the check
+	// afterwards would pass just as well if the window were open from birth,
+	// which is the failure the "never paid one" reading exists to prevent.
+	TestEqual(TEXT("a character that has cast nothing has no window"),
+		Caster.AbilitySystem->SecondsSinceHealthCostPaid(), -1.0f, 0.001f);
+
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0; HealthCostPercent=8"), TEXT("Blood Pyre"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	const float HealthBefore = Caster.Health();
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	const float Paid = HealthBefore - Caster.Health();
+	if (!TestTrue(FString::Printf(TEXT("it charged health (%.1f)"), Paid),
+				  Paid > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WINDOW IS OPEN, AND IT OPENED NOW rather than at some earlier time.
+	TestEqual(TEXT("paying opens the window, at this instant"),
+		Caster.AbilitySystem->SecondsSinceHealthCostPaid(), 0.0f, 0.001f);
+
+	// AND IT AGES BY ITSELF AS TIME PASSES, with nothing else happening. Blood
+	// Rush states two seconds, so three is past any window the design uses.
+	World->TimeSeconds += 3.0f;
+	TestEqual(TEXT("and three seconds later it has been open that long"),
+		Caster.AbilitySystem->SecondsSinceHealthCostPaid(), 3.0f, 0.01f);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES IT, which is the join between
+	// this timestamp and the conditional bonus that reads it. Checking the
+	// timestamp alone would not prove `CurrentConditions` passes it on.
+	TestEqual(TEXT("and the state handed to the pipeline says the same"),
+		Caster.AbilitySystem->CurrentConditions().SecondsSinceHealthCost,
+		3.0f, 0.01f);
+
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // Movement
 // --------------------------------------------------------------------------

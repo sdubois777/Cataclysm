@@ -435,6 +435,23 @@ namespace CataclysmConditionalDamageTest
 		Modifier.Value = Value;
 		return Modifier;
 	}
+
+	/**
+	 * Blood Rush at its full eight points: "+2% increased damage per point for
+	 * 2 seconds after you pay a health cost", so 16 points for two seconds.
+	 * Issue #962.
+	 */
+	FCataclysmStatModifier BloodRush()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 16.0f;
+		Modifier.Condition =
+			ECataclysmStatCondition::WithinSecondsOfHealthCost;
+		Modifier.ConditionValue = 2.0f;
+		return Modifier;
+	}
 }
 
 CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageBelowAThresholdTest,
@@ -576,6 +593,90 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageBelowAThresholdTest,
 	// nothing else.
 	TestEqual(TEXT("and a skill that is not a spell takes none of it"),
 		HealthLostTo(Attacker, Target, FGameplayTagContainer()), 0.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageInAWindowTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageFollowsAWindowAfterAHealthCost")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S BLOOD RUSH NODE reaching a real hit. Issue #962.
+	//
+	// WHAT THIS PROVES THAT THE PIPELINE TEST DOES NOT. The pipeline test hands
+	// the arithmetic a number of seconds. This one moves the world's clock and
+	// lands three real hits, so it also covers the two joins between them:
+	// `CurrentConditions` reading the timestamp, and the attack damage bracket
+	// being worked out again at the moment of the hit rather than read off the
+	// gameplay attribute.
+	//
+	// IT SHOWS A BONUS GOING AWAY WITH NOTHING HAPPENING, which no earlier test
+	// could. A health threshold changes when the character is hit; a window
+	// shuts while the character stands still.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE CHARACTER SHEET AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// IT: a weapon's 1000 flat attack damage, nothing that increases it all the
+	// time, and the node's 16 points which apply only inside the window.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(BloodRush());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A CHARACTER THAT HAS PAID NOTHING, MEASURED FIRST. Without this the
+	// comparison below would pass just as well if the window were open from
+	// birth, which would make the node worth its bonus all the time.
+	const float NeverPaid =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"), NeverPaid),
+				  NeverPaid > 0.0f))
+	{
+		return false;
+	}
+
+	// PAYING A HEALTH COST, BY THE SAME CALL THE SKILL PATH MAKES. That the
+	// skill path really makes it is a separate test, in
+	// CataclysmSkillTemplateTests.cpp, because this one cannot cast twice.
+	Attacker.AbilitySystem->NoteHealthCostPaid();
+	const float InsideTheWindow =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(FString::Printf(
+		TEXT("inside the window the hit is 16%% larger, and was %.3f times"),
+		InsideTheWindow / NeverPaid),
+		InsideTheWindow / NeverPaid, 1.16f, 0.01f);
+
+	// AND THREE SECONDS LATER, WITH NOTHING ELSE CHANGED, it is back to what it
+	// was. Not a point unspent, not a stat rewritten, not a hit taken. The clock
+	// moved and that is all.
+	World->TimeSeconds += 3.0f;
+	const float AfterItShuts =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(TEXT("and once the window shuts it is back to what it was"),
+		AfterItShuts, NeverPaid, 0.01f);
 
 	return true;
 }

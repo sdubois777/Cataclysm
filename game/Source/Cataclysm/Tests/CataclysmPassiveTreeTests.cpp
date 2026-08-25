@@ -882,6 +882,11 @@ namespace CataclysmPassiveEffectTest
 			// AND ONE THAT DEPENDS ON THE CHARACTER'S HEALTH. Issue #959, and
 			// it proves the two condition columns reach the modifier.
 			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20\r\n"
+			// AND ONE THAT DEPENDS ON A WINDOW AFTER AN EVENT. Issue #962. It is
+			// a second row on the SAME node deliberately: a new node would change
+			// the rectangle the tree occupies and move an unrelated layout test's
+			// answer.
+			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
 			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0\r\n"));
 
@@ -1097,6 +1102,26 @@ bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
 			  static_cast<int32>(ECataclysmStatCondition::HealthAtOrBelowPercent));
 	TestEqual(TEXT("at the threshold the table states"),
 			  (*Chance)[0].ConditionValue, 20.0f);
+
+	// AND THE SECOND KIND OF CONDITION MAKES THE SAME TRIP. Issue #962. The same
+	// node carries `seconds_after_health_cost` with 2, which is the shape Blood
+	// Rush uses. A name this build does not recognise is left unconditional
+	// rather than refused, so without this the whole window would silently
+	// become a bonus that holds all the time.
+	const TArray<FCataclysmStatModifier>* Speed =
+		Modifiers.Find(FName(TEXT("attack_speed")));
+	if (TestNotNull(TEXT("the node also granted attack speed"), Speed)
+		&& TestEqual(TEXT("exactly one of it"), Speed->Num(), 1))
+	{
+		TestEqual(TEXT("two per point times eight points"), (*Speed)[0].Value,
+				  16.0f);
+		TestEqual(TEXT("and it carries the window condition"),
+				  static_cast<int32>((*Speed)[0].Condition),
+				  static_cast<int32>(
+					  ECataclysmStatCondition::WithinSecondsOfHealthCost));
+		TestEqual(TEXT("for the number of seconds the table states"),
+				  (*Speed)[0].ConditionValue, 2.0f);
+	}
 
 	// AND A ROW WITH NO CONDITION IS UNCONDITIONAL, which is every other row in
 	// the fixture and every row in the game before this issue. Without this the

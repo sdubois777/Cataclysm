@@ -84,6 +84,31 @@ namespace CataclysmStatTest
 		return FCataclysmStatConditions::FromHealth(Percent, 100.0f);
 	}
 
+	/** An increase that applies only inside a window after a health cost. #962 */
+	FCataclysmStatModifier IncreasedAfterHealthCost(float Value, float Seconds,
+													const TCHAR* RequiredTag = nullptr)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value, RequiredTag);
+		Modifier.Condition =
+			ECataclysmStatCondition::WithinSecondsOfHealthCost;
+		Modifier.ConditionValue = Seconds;
+		return Modifier;
+	}
+
+	/**
+	 * A character that paid a health cost this many seconds ago.
+	 *
+	 * A NEGATIVE ARGUMENT IS "NEVER PAID ONE", which is the state a character
+	 * that has not cast anything is in, and is deliberately spelt the same way
+	 * an unknown reading is.
+	 */
+	FCataclysmStatConditions SinceHealthCost(float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.SecondsSinceHealthCost = Seconds;
+		return State;
+	}
+
 	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
 	{
 		FGameplayTagContainer Container;
@@ -354,6 +379,86 @@ bool FCataclysmPipelineHealthConditionTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("two increases sum into one bracket, reaching 200"),
 		FPipeline::Evaluate(100.0f, Two, NoTags, AtHealth(10.0f)).Final,
 		200.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineHealthCostWindowTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanDependOnAWindowAfterAHealthCost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineHealthCostWindowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S BLOOD RUSH NODE, held at its full eight points: "+2%
+	// increased damage per point for 2 seconds after you pay a health cost", so
+	// +16% for two seconds. Issue #962.
+	//
+	// WHAT MAKES THIS PREDICATE DIFFERENT FROM THE HEALTH ONE ABOVE. That asks
+	// what is true now; this asks how long ago something happened. A character
+	// standing perfectly still, changing nothing, stops satisfying it.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		IncreasedAfterHealthCost(16.0f, 2.0f) };
+
+	TestEqual(TEXT("just after paying, the bonus applies"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SinceHealthCost(0.0f)).Final,
+		116.0f, 0.01f);
+	TestEqual(TEXT("and part way through the window"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SinceHealthCost(1.5f)).Final,
+		116.0f, 0.01f);
+
+	// THE WINDOW INCLUDES ITS LAST INSTANT, matching the "at or below" reading
+	// the health predicate uses. No player can time the difference, and two
+	// predicates disagreeing about their own boundaries would be worse than
+	// either answer.
+	TestEqual(TEXT("and at exactly its last instant"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SinceHealthCost(2.0f)).Final,
+		116.0f, 0.01f);
+
+	TestEqual(TEXT("a moment later it is gone"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SinceHealthCost(2.1f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and long afterwards"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SinceHealthCost(60.0f)).Final,
+		100.0f, 0.01f);
+
+	// A CHARACTER THAT HAS NEVER PAID ONE DOES NOT GET IT, and neither does a
+	// caller that knows nothing about the character. Both are spelt as a
+	// negative reading, deliberately: both answer no, so they do not have to be
+	// told apart. Without this a fresh character would start every fight already
+	// inside the window.
+	TestEqual(TEXT("a character that has never paid a health cost does not get it"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SinceHealthCost(-1.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("nor does the character sheet, which knows nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags).Final, 100.0f, 0.01f);
+
+	// THE TWO PREDICATES ARE INDEPENDENT, so a state that knows one and not the
+	// other answers each on its own merits. This is what stopped
+	// `CurrentConditions` returning early when a character had no vital
+	// attribute set: doing so shut a window that was genuinely open.
+	FCataclysmStatConditions PaidButHealthUnknown = SinceHealthCost(1.0f);
+	TestEqual(TEXT("a window is judged even when health is unknown"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, PaidButHealthUnknown).Final,
+		116.0f, 0.01f);
+
+	TArray<FCataclysmStatModifier> Health = { IncreasedBelowHealth(24.0f, 20.0f) };
+	TestEqual(TEXT("and a health threshold is still refused by that same state"),
+		FPipeline::Evaluate(100.0f, Health, NoTags, PaidButHealthUnknown).Final,
+		100.0f, 0.01f);
+
+	// AND A WINDOW OF NO LENGTH IS REFUSED WHEN THE DATA IS CHECKED, rather than
+	// silently granting nothing. `ValidateModifier` is what data import calls.
+	TestTrue(TEXT("a window of zero seconds is reported as illegal"),
+		!FPipeline::ValidateModifier(
+			IncreasedAfterHealthCost(16.0f, 0.0f)).IsEmpty());
+	TestTrue(TEXT("and so is a negative one"),
+		!FPipeline::ValidateModifier(
+			IncreasedAfterHealthCost(16.0f, -2.0f)).IsEmpty());
+	TestTrue(TEXT("a real window is not"),
+		FPipeline::ValidateModifier(
+			IncreasedAfterHealthCost(16.0f, 2.0f)).IsEmpty());
 
 	return true;
 }
