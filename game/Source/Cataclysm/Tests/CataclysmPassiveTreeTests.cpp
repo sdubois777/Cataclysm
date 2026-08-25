@@ -10,7 +10,12 @@
 // For the map from a stat name to the attribute it drives. Issue #954.
 #include "Character/CataclysmPlayerClassStats.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the three Fervour rate stat names and the function that reads one back
+// through the stat pipeline. Issue #978.
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Data/CataclysmDataRows.h"
 #include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
@@ -1436,6 +1441,195 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 				 TEXT("by about thirty per cent: %.1f against %.1f expected"),
 				 After, Before * 1.30f),
 			 FMath::IsNearlyEqual(After, Before * 1.30f, Before * 0.02f));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFervourTradeKeystoneTest,
+	"Cataclysm.Passives.AKeystoneMultipliesOneFervourSourceAndDividesTheOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Flesh Craver and Blood Tithe, the two keystones that trade one of the two ways
+ * Fervour is gained against the other. Issue #978.
+ *
+ * THE FIRST KEYSTONES IN THE PROJECT THAT GRANT ANYTHING. Every authored passive
+ * effect before these two was on a basic node.
+ * `UCataclysmPassiveTree::AccumulateInto` never looked at a node's kind, so
+ * nothing had to change for them to work -- but nothing had proved it either.
+ *
+ * AND THE FIRST `more` MULTIPLIERS OUTSIDE THE BULWARK TREE. The two words are
+ * what makes a keystone a keystone: `docs/DECISIONS.md` on 2026-08-14 records
+ * "more" and "less" as "the multipliers that apply separately instead of joining
+ * the additive bucket". An `increased` row would pass every other check in
+ * `tools/tests/test_passive_effects_match_the_node_text.py` and be the wrong
+ * arithmetic -- the difference only shows on a character that already has other
+ * modifiers on the same stat, which is exactly the character nobody tests on.
+ *
+ * THE END-TO-END PATH AND NOT THE FIXTURE, for the reason
+ * `ASpentPointChangesWhatARealCharactersArmourIsWorth` gives: a fixture proves
+ * the table is read, and this has to prove the real rows reach a real
+ * character's real Fervour rate.
+ *
+ * READ THROUGH `RateFor` AND NOT OFF THE ATTRIBUTE, because that is what the
+ * game does. `UCataclysmFervour::Move` asks `RateFor` on every hit, and
+ * `RateFor` runs the stat pipeline again rather than trusting the attribute.
+ */
+bool FCataclysmPassiveFervourTradeKeystoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// THE TREE'S STARTING NODE IS WHAT THERE IS TO MULTIPLY. It grants a flat 1
+	// to each of the three rates, and no class line names any of them, so a
+	// character without it has a rate of zero and a multiplier on zero is zero.
+	// Both keystones are worth nothing on their own and that is correct.
+	const FName Start(TEXT("Masochist_basic_spine_000"));
+	const FName FleshCraver(TEXT("Masochist_keystone_fc_kC"));
+	const FName BloodTithe(TEXT("Masochist_keystone_bt_kC"));
+
+	const FName FromDamage(UCataclysmFervour::FromDamageStat);
+	const FName FromCost(UCataclysmFervour::FromCostStat);
+
+	// WHAT THE TWO KEYSTONES ARE AUTHORED AS, checked before anything is spent.
+	// A row silently rewritten from `more` to `increased` would still make both
+	// rates move, so the assertions below would pass while the arithmetic was
+	// wrong on any character carrying another modifier on the same stat.
+	for (const FName& Node : {FleshCraver, BloodTithe})
+	{
+		const TArray<const FCataclysmPassiveEffectRow*> Effects =
+			UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+		if (!TestEqual(*FString::Printf(TEXT("%s grants two stats"),
+										*Node.ToString()),
+					   Effects.Num(), 2))
+		{
+			return false;
+		}
+		for (const FCataclysmPassiveEffectRow* Effect : Effects)
+		{
+			TestEqual(*FString::Printf(TEXT("%s grants %s multiplicatively"),
+									   *Node.ToString(), *Effect->Stat),
+					  Effect->ValueKind, FString(TEXT("more")));
+		}
+	}
+
+	// A helper that spends a fresh allocation and reads both rates back.
+	const auto RatesAfterSpending =
+		[&](const TArray<TPair<FName, int32>>& Nodes) -> TPair<float, float>
+	{
+		FCataclysmPassiveAllocation Allocation;
+		for (const TPair<FName, int32>& Node : Nodes)
+		{
+			Allocation.Add(Node.Key, Node.Value);
+		}
+		State->SetPassiveAllocation(Allocation, TArray<FName>());
+
+		// THE ONE REAL ENTRY POINT, the same one the armour test uses. Nothing
+		// calls the passive tree directly.
+		Equipment->RefreshAttributes(AbilitySystem);
+
+		return TPair<float, float>(
+			UCataclysmFervour::RateFor(AbilitySystem, FromDamage,
+									   FGameplayTagContainer()),
+			UCataclysmFervour::RateFor(AbilitySystem, FromCost,
+									   FGameplayTagContainer()));
+	};
+
+	// THE STARTING NODE ALONE, WHICH IS THE FIGURE THE KEYSTONES CHANGE. Without
+	// this the two assertions below could both hold on a character whose rates
+	// were already 1.3 and 0.5 for some other reason.
+	const TPair<float, float> Plain = RatesAfterSpending({{Start, 1}});
+	TestEqual(TEXT("the starting node alone gives a rate of one from damage"),
+			  Plain.Key, 1.0f, 0.001f);
+	TestEqual(TEXT("and a rate of one from a health cost"), Plain.Value, 1.0f,
+			  0.001f);
+
+	// FLESH CRAVER: "You gain 30% more Fervour from health lost to damage, and
+	// 50% less Fervour from health spent as an ability cost."
+	const TPair<float, float> Craver =
+		RatesAfterSpending({{Start, 1}, {FleshCraver, 1}});
+	TestEqual(TEXT("Flesh Craver multiplies the damage rate by 1.30"),
+			  Craver.Key, 1.30f, 0.001f);
+	TestEqual(TEXT("and halves the cost rate"), Craver.Value, 0.50f, 0.001f);
+
+	// AND IT MULTIPLIES RATHER THAN JOINING THE SUM, WHICH NEEDS A SECOND
+	// MODIFIER ON THE SAME STAT BEFORE THE TWO CAN DIFFER AT ALL.
+	//
+	// THIS IS THE ONLY ASSERTION HERE THAT CAN SEE THE BUCKET. Everything above
+	// gives the same figure whether the keystone lands in the `more` bucket or
+	// the `increased` one, because one modifier times 1.30 and one modifier plus
+	// 30% are the same number. `docs/DECISIONS.md` says exactly this about the
+	// failure being invisible on the character nobody tests on, so the test has
+	// to build the character it is visible on.
+	//
+	// Open Wounds is "+2% increased Fervour gained from health lost to damage
+	// per point" and holds eight points, so it is +16% in the increases bracket:
+	//
+	//     as a multiplier   1 x 1.16 x 1.30       = 1.508
+	//     as an increase    1 x (1 + 0.16 + 0.30) = 1.46
+	const FName OpenWounds(TEXT("Masochist_basic_spine_006"));
+	const TPair<float, float> Stacked =
+		RatesAfterSpending({{Start, 1}, {OpenWounds, 8}, {FleshCraver, 1}});
+	TestEqual(TEXT("the keystone multiplies the increases bracket rather than "
+				   "joining it"),
+			  Stacked.Key, 1.508f, 0.001f);
+
+	// BLOOD TITHE IS THE MIRROR OF IT, and asserting both is what shows the two
+	// rows on a node are not being applied to whichever stat comes first.
+	const TPair<float, float> Tithe =
+		RatesAfterSpending({{Start, 1}, {BloodTithe, 1}});
+	TestEqual(TEXT("Blood Tithe halves the damage rate"), Tithe.Key, 0.50f,
+			  0.001f);
+	TestEqual(TEXT("and multiplies the cost rate by 1.30"), Tithe.Value, 1.30f,
+			  0.001f);
+
+	// AND THE MULTIPLIER REACHES THE FERVOUR ACTUALLY GAINED, not only the rate
+	// the pipeline reports. `UCataclysmFervour::GainFromDamage` is what a hit
+	// calls; a rate that moved while the gain did not would be a node that reads
+	// as working and grants nothing.
+	//
+	// 100 OF 500 MAXIMUM HEALTH IS 20% OF THE CHARACTER, so at a rate of 1 that
+	// is 20 Fervour and at Blood Tithe's halved rate it is 10.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+		100.0f);
+
+	TestEqual(TEXT("under Blood Tithe a fifth of the character's health lost "
+				   "grants half of the twenty it would otherwise"),
+			  UCataclysmFervour::GainFromDamage(AbilitySystem, 100.0f,
+												FGameplayTagContainer()),
+			  10.0f, 0.001f);
 
 	return true;
 }

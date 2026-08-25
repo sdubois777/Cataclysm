@@ -24,8 +24,8 @@ WHAT IS ASSERTED HERE.
 
     every effect names a node that exists
     every effect's value appears, as a number, in that node's own description
-    an effect in the `more` bucket is on a node whose description says
-      "multiplicative", and one in `increased` is on a node that does not
+    an effect in the `more` bucket is on a node whose description says it
+      multiplies, in either of the two wordings the trees use
     every stat named is a stat some class line or attribute supplies
     every required tag is one the workbook declares
     no node grants the same stat twice, though it may grant two different ones
@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import csv
 import pathlib
+import re
 import sys
 
 import pytest
@@ -67,6 +68,30 @@ import generate_datatables as gen  # noqa: E402
 
 #: The three buckets of the damage pipeline. Anything else is a typo.
 BUCKETS = {"flat", "increased", "more"}
+
+#: A description saying its number multiplies rather than joining the sum.
+#:
+#: TWO WORDINGS FOR ONE THING, AND BOTH TREES ARE RIGHT. Issue #977. The Bulwark
+#: tree writes "+1.5% damage reduction per point (multiplicative)" on all ten of
+#: its multiplying nodes. The Masochist tree writes "You gain 30% more Fervour
+#: from health lost to damage, and 50% less Fervour from health spent as an
+#: ability cost" and never uses the word "multiplicative" anywhere. Neither tree
+#: uses the other's wording.
+#:
+#: `docs/DECISIONS.md` settles that they mean the same thing, twice. On
+#: 2026-08-14: the wording "more" and "less" is "the multipliers that apply
+#: separately instead of joining the additive bucket", and that entry names
+#: Masochist keystones among the twelve keystones already using it. On
+#: 2026-08-17 the project owner ruled that "multiplicative means more".
+#:
+#: THE SECOND PATTERN NEEDS A NUMBER AND A PERCENT SIGN IN FRONT OF THE WORD, or
+#: ordinary English matches: "3 or more enemies", "more than 10 meters" and "5 or
+#: more affixes" are not magnitudes. It is the same expression
+#: `tools/tests/test_class_passive_trees.py` uses for the same reason, kept
+#: separate rather than imported because that file pins counts against the tree
+#: JSON while this one reads the generated CSV.
+MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
+                        re.IGNORECASE)
 
 #: How many rows the effects file holds altogether.
 #:
@@ -116,7 +141,13 @@ BUCKETS = {"flat", "increased", "more"}
 #: damage per point for 5 seconds after you take damage of a Cataclysm type
 #: other than Demonic", so it is the same two damage stats under the second
 #: kind of timed window. Issue #975.
-AUTHORED_ROWS = 47
+#:
+#: AND BY FOUR, two on each of two keystones, and they are the first keystones
+#: in the project with an authored effect at all. Flesh Craver and Blood Tithe
+#: are mirror images: each grants "30% more" of one of the two ways Fervour is
+#: gained and "50% less" of the other. Four `more` rows, which is what those
+#: words mean. Issue #978.
+AUTHORED_ROWS = 51
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -164,7 +195,12 @@ AUTHORED_ROWS = 47
 #:
 #: AND TO 41 FOR ONE MORE, Cataclysmic Resonance. 41 of 293 altogether and 37
 #: of the Masochist tree's own 74. Issue #975.
-AUTHORED_NODES = 41
+#:
+#: AND TO 43 FOR TWO MORE, Flesh Craver and Blood Tithe, which trade one of the
+#: two ways Fervour is gained against the other. 43 of 293 altogether and 39 of
+#: the Masochist tree's own 74. They are the first keystones with an authored
+#: effect: every node here before them was a basic node. Issue #978.
+AUTHORED_NODES = 43
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -523,14 +559,25 @@ def test_a_node_that_takes_something_away_is_actually_tested(effects):
 
 
 def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
-    """A description that says "multiplicative" is the more bucket, and one
-    that does not is not.
+    """A description that says its number multiplies is the more bucket, and
+    one that does not is not.
 
     WHY IT MATTERS RATHER THAN BEING TIDY. The three buckets are
     `(base + flat) x (1 + increases) x more1 x more2`. Putting a value in the
     wrong one changes what it is worth by a large factor on an invested
     character, and by nothing at all on a fresh one -- so it would look right
     in exactly the situation somebody is most likely to check it in.
+
+    IT USED TO ASK FOR THE LITERAL WORD "multiplicative" AND THAT REFUSED HALF
+    THE TREES. Issue #977. See `MULTIPLIES` for the two wordings and for the
+    two entries in `docs/DECISIONS.md` that say they mean the same thing.
+
+    BOTH DIRECTIONS ARE STILL ASSERTED, and the second one will have to give
+    way eventually. A node granting two stats could say one of them multiplies
+    and the other does not -- "you deal 25% more damage and gain +2% increased
+    armour" -- and then the `increased` row would sit on a node this pattern
+    matches. No authored node does that today, measured over all 51 rows, so
+    the stronger form is kept until one does rather than weakened in advance.
     """
     for row in effects:
         kind = row["ValueKind"].strip().lower()
@@ -538,19 +585,20 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
             f"{row['Name']}: {kind!r} is not one of {sorted(BUCKETS)}"
         )
 
-        says_multiplicative = "multiplicative" in nodes[row["Node"]]["Description"].lower()
+        multiplies = MULTIPLIES.search(nodes[row["Node"]]["Description"])
         if kind == "more":
-            assert says_multiplicative, (
+            assert multiplies, (
                 f"{row['Node']} is in the more bucket and its description does "
-                f"not say multiplicative:\n    "
+                f"not say so. It has to say \"multiplicative\", or write the "
+                f"number as \"30% more\" or \"50% less\":\n    "
                 f"{nodes[row['Node']]['Description']}"
             )
         else:
-            assert not says_multiplicative, (
-                f"{row['Node']} says multiplicative and is in the {kind} "
-                "bucket. A multiplicative value in the increased bucket is "
-                "added to a sum instead of multiplying, which is a different "
-                "number."
+            assert not multiplies, (
+                f"{row['Node']} says {multiplies.group(0)!r}, which multiplies, "
+                f"and is in the {kind} bucket. A multiplicative value in the "
+                "increased bucket is added to a sum instead of multiplying, "
+                "which is a different number."
             )
 
 
