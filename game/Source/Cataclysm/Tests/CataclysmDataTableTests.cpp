@@ -202,6 +202,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// because the four capstones of each tree deliberately have none -- a
 	// capstone tier is reached by total points spent rather than along a path.
 	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          278)
+	// 26 of the 293 nodes have an authored effect, and the small share is the
+	// point rather than a shortfall to be fixed by typing: most nodes are not
+	// stat modifiers under any authoring scheme. Issue #939 measures the gap.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         26)
 
 	#undef CHECK_TABLE
 
@@ -385,6 +389,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_MaterialTiers"),         TEXT("MaterialTiers.csv") },
 		{ TEXT("DT_MinionScaling"),         TEXT("MinionScaling.csv") },
 		{ TEXT("DT_PassiveEdges"),          TEXT("PassiveEdges.csv") },
+		{ TEXT("DT_PassiveEffects"),        TEXT("PassiveEffects.csv") },
 		{ TEXT("DT_PassiveNodes"),          TEXT("PassiveNodes.csv") },
 		{ TEXT("DT_MinionTypes"),           TEXT("MinionTypes.csv") },
 		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },

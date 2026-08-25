@@ -1670,3 +1670,65 @@ struct FCataclysmPassiveEdgeRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
 	int32 RequiredPoints = 0;
 };
+
+/**
+ * What one passive node grants, as a stat modifier the pipeline understands.
+ *
+ * KEYED BY THE NODE'S ROW NAME in `game/Data/PassiveNodes.csv`, so a row here
+ * and the node it is about share a key. The node carries the words a player
+ * reads; this carries the numbers the game applies.
+ *
+ * A NODE WITH NO ROW GRANTS NOTHING, and that is the ordinary case rather than
+ * an error. 26 of the 293 nodes have one. Most of the rest are not stat
+ * modifiers at all -- they change a rule, generate a class resource, or apply
+ * only in a condition the three buckets cannot express -- and issue #939
+ * measures that gap exactly and lists what each group would need.
+ *
+ * AUTHORED IN THE DESIGN WORKBOOK, which the project owner chose on 2026-08-25
+ * over adding fields to the separate tree authoring tool's schema. The `Passive
+ * Effects` sheet of `docs/All_Things_Cataclysm.xlsx` is where a person edits
+ * them, and `tools/generate_datatables.py` refuses to write the file when a row
+ * names a node that does not exist, a stat nothing supplies, or an undeclared
+ * tag.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmPassiveEffectRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** A stat name as `game/Data/ClassStats.csv` and `Attributes.csv` spell it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	FString Stat;
+
+	/**
+	 * Which of the three buckets the value lands in: `flat`, `increased` or
+	 * `more`.
+	 *
+	 * READ OFF THE NODE'S OWN WORDING RATHER THAN CHOSEN. A percentage of a
+	 * stat is an increase; a description that says "(multiplicative)" is a more
+	 * multiplier, which the design permits on a passive node since issue #344.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	FString ValueKind;
+
+	/**
+	 * How much one point in this node is worth.
+	 *
+	 * PER POINT, NOT IN TOTAL. A node holding ten points grants ten times this,
+	 * which is what "per point" means in every description that has one.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	float ValuePerPoint = 0.0f;
+
+	/**
+	 * Tags a skill must carry for this to apply to it. Empty applies to
+	 * everything.
+	 *
+	 * ONE ROW USES IT TODAY: the Saboteur's Bigger Traps, whose description
+	 * scopes its area of effect "for traps", carries `Type.Trap`. Eight more
+	 * nodes are scoped to melee attacks and cannot be expressed yet, because
+	 * the tag vocabulary has no tag for melee. Issue #939.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	FString RequiredTags;
+};

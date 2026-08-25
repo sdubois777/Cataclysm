@@ -2410,6 +2410,106 @@ def passive_edges(_book=None) -> list[dict]:
         raise DataError("no class tree edges were read")
     return _no_duplicates(out, "Passive Edges")
 
+
+def passive_effects(book) -> list[dict]:
+    """What a passive node grants, one stat effect per row.
+
+    A NODE SAYS WHAT IT DOES IN ENGLISH AND THIS SAYS IT IN NUMBERS. The four
+    class tree files carry a sentence written for a player -- "+2% increased
+    Life Leech per point" -- and no stat name, no bucket and no machine-readable
+    value. This sheet is where those are authored, which the project owner chose
+    on 2026-08-25 over changing the separate tree authoring tool's schema.
+
+    IT COVERS A SMALL PART OF THE TREE AND THAT IS THE HONEST POSITION. Most
+    nodes are not stat modifiers at all: they change a rule, generate a class
+    resource, or apply only in a condition the three-bucket pipeline cannot
+    express. Issue #939 measures the gap and lists what the rest would need.
+
+    A ROW HERE IS OPTIONAL. A node with no row grants nothing, which is what
+    every node did before this sheet existed, so an unauthored node is the
+    ordinary case rather than an error.
+    """
+    rows = list(book["Passive Effects"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Passive Effects")
+
+    out = []
+    seen: set[str] = set()
+    for index, raw in enumerate(rows[1:], start=2):
+        node = clean(_cell(raw, headers, "Node"))
+        if not node:
+            continue
+
+        if node in seen:
+            raise DataError(
+                f"Passive Effects row {index}: {node} appears twice. A node has "
+                f"one effect; two rows would silently apply both.")
+        seen.add(node)
+
+        stat = clean(_cell(raw, headers, "Stat"))
+        if not stat:
+            raise DataError(f"Passive Effects row {index}: {node} names no stat")
+
+        kind = clean(_cell(raw, headers, "Value Kind")).lower()
+        if kind not in ("flat", "increased", "more"):
+            raise DataError(
+                f"Passive Effects row {index}: {node} has value kind {kind!r}, "
+                f"which is not flat, increased or more")
+
+        out.append({
+            "Name": node,
+            "Stat": stat,
+            "ValueKind": kind,
+            "ValuePerPoint": number(_cell(raw, headers, "Value Per Point"),
+                                    "Value Per Point", index),
+            "RequiredTags": clean(_cell(raw, headers, "Required Tags")),
+        })
+
+    if not out:
+        raise DataError("the Passive Effects sheet is empty")
+    return out
+
+
+def validate_passive_effects(tables: dict[str, list[dict]],
+                             known: set[str]) -> list[str]:
+    """Every passive effect names a real node, a real stat and declared tags.
+
+    ALL THREE FAIL SILENTLY WITHOUT THIS, and none of them errors at run time:
+
+      a node key that does not exist   the effect is never applied to anything
+      a stat nothing else supplies     the increase multiplies a base of zero
+      an undeclared tag                the modifier's required tag matches
+                                       nothing, so it applies to nothing
+    """
+    effects = tables.get("PassiveEffects")
+    nodes = tables.get("PassiveNodes")
+    class_rows = tables.get("ClassStats")
+    attribute_rows = tables.get("Attributes")
+    if not effects or not nodes:
+        return []
+
+    node_names = {row["Name"] for row in nodes}
+    stats = ({row["Stat"] for row in class_rows} if class_rows else set()) | \
+            ({row["Stat"] for row in attribute_rows} if attribute_rows else set())
+
+    problems = []
+    for row in effects:
+        if row["Name"] not in node_names:
+            problems.append(
+                f"PassiveEffects/{row['Name']}: no passive node has that row "
+                f"name, so the effect reaches nothing")
+
+        if stats and row["Stat"] not in stats:
+            problems.append(
+                f"PassiveEffects/{row['Name']}: {row['Stat']!r} is not a stat "
+                f"any class line or attribute names")
+
+        for tag in (t.strip() for t in row["RequiredTags"].split(",")):
+            if tag and tag not in known:
+                problems.append(
+                    f"PassiveEffects/{row['Name']}: undefined tag {tag}")
+
+    return problems
+
 TABLES = {
     "DungeonModifiers": dungeon_modifiers,
     "WeaponSkills": weapon_skills,
@@ -2431,6 +2531,7 @@ TABLES = {
     "MinionTypes": minion_types,
     "MinionScaling": minion_scaling,
     "Attributes": attributes,
+    "PassiveEffects": passive_effects,
     "SkillSlots": skill_slots,
     "ElementVisuals": element_visuals,
 }
@@ -3102,7 +3203,8 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)
                 + validate_hybrid_parts(tables)
-                + validate_element_visuals(tables, declared_tags(book)))
+                + validate_element_visuals(tables, declared_tags(book))
+                + validate_passive_effects(tables, known_tags(book)))
     if problems:
         print(f"FAIL: {len(problems)} validation problem(s):", file=sys.stderr)
         for line in problems[:40]:

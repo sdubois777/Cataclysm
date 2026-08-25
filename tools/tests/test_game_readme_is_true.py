@@ -352,6 +352,7 @@ NUMBER_WORDS = {
     17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
     21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
     24: "twenty-four", 25: "twenty-five", 26: "twenty-six",
+    27: "twenty-seven",
 }
 
 DATATABLE_GENERATOR = REPO_ROOT / "tools" / "generate_datatables.py"

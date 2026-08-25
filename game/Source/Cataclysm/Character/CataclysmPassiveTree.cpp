@@ -13,6 +13,8 @@ namespace
 {
 	const TCHAR* NodeAssetPath = TEXT("/Game/Data/DT_PassiveNodes.DT_PassiveNodes");
 	const TCHAR* EdgeAssetPath = TEXT("/Game/Data/DT_PassiveEdges.DT_PassiveEdges");
+	const TCHAR* EffectAssetPath =
+		TEXT("/Game/Data/DT_PassiveEffects.DT_PassiveEffects");
 
 	/**
 	 * Kept alive deliberately, the same way the class stat table is. Nothing
@@ -21,6 +23,7 @@ namespace
 	 */
 	TWeakObjectPtr<const UDataTable> CachedNodes;
 	TWeakObjectPtr<const UDataTable> CachedEdges;
+	TWeakObjectPtr<const UDataTable> CachedEffects;
 
 	const UDataTable* LoadAndKeep(const TCHAR* Path,
 								  TWeakObjectPtr<const UDataTable>& Cache)
@@ -56,6 +59,19 @@ namespace
 				Visit(Pair.Key, *Row);
 			}
 		}
+	}
+
+	/** A comma-separated tag list, trimmed, with empties dropped. */
+	TArray<FString> SplitTags(const FString& Text)
+	{
+		TArray<FString> Parts;
+		Text.ParseIntoArray(Parts, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Part : Parts)
+		{
+			Part.TrimStartAndEndInline();
+		}
+		Parts.RemoveAll([](const FString& Part) { return Part.IsEmpty(); });
+		return Parts;
 	}
 
 	/** Every row of the edge table, or nothing. */
@@ -163,6 +179,11 @@ const UDataTable* UCataclysmPassiveTree::LoadNodeTable()
 const UDataTable* UCataclysmPassiveTree::LoadEdgeTable()
 {
 	return LoadAndKeep(EdgeAssetPath, CachedEdges);
+}
+
+const UDataTable* UCataclysmPassiveTree::LoadEffectTable()
+{
+	return LoadAndKeep(EffectAssetPath, CachedEffects);
 }
 
 TArray<FString> UCataclysmPassiveTree::TreeNames(const UDataTable* NodeTable)
@@ -537,5 +558,104 @@ TArray<FString> UCataclysmPassiveTree::ReachableTrees(
 			Out.Add(Tree);
 		}
 	}
+	return Out;
+}
+
+int32 UCataclysmPassiveTree::AccumulateInto(
+	TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+	const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable,
+	const UDataTable* EffectTable, const TArray<FName>& DamageTypes)
+{
+	if (!NodeTable || !EffectTable)
+	{
+		return 0;
+	}
+
+	// WHICH TREES ARE DOING ANYTHING, ASKED ONCE. A character can have points in
+	// four trees and the answer is the same for every node of a tree, so asking
+	// per node would be the same question up to 230 times.
+	TMap<FString, bool> TreeIsOn;
+
+	int32 Added = 0;
+	for (const FCataclysmSpentNode& Spent : Allocation.Nodes)
+	{
+		if (Spent.Points <= 0)
+		{
+			continue;
+		}
+
+		const FCataclysmPassiveNodeRow* Node = FindNode(NodeTable, Spent.Node);
+		if (!Node)
+		{
+			// A NODE THE TABLE NO LONGER HAS. A saved allocation can name one
+			// after a tree is re-authored, and skipping it is the only safe
+			// answer: the points stay in the record and grant nothing.
+			continue;
+		}
+
+		bool* Known = TreeIsOn.Find(Node->Tree);
+		if (!Known)
+		{
+			Known = &TreeIsOn.Add(Node->Tree,
+								  TreeIsActive(Node->Tree, DamageTypes));
+		}
+		if (!*Known)
+		{
+			// THE PROJECT OWNER'S RULE OF 2026-08-25, doing its work. Points in
+			// a tree no equipped weapon reaches stay spent and grant nothing
+			// until a weapon carrying its damage type is worn again.
+			continue;
+		}
+
+		const FCataclysmPassiveEffectRow* Effect =
+			EffectTable->FindRow<FCataclysmPassiveEffectRow>(
+				Spent.Node, TEXT("UCataclysmPassiveTree::AccumulateInto"),
+				/*bWarnIfMissing=*/false);
+		if (!Effect)
+		{
+			// MOST NODES ARE HERE AND IT IS NOT A FAULT. 26 of the 293 have an
+			// authored effect; the rest are rule changes, resource generation
+			// and conditional bonuses that are not stat modifiers under any
+			// authoring scheme. Issue #939.
+			continue;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = Effect->ValuePerPoint * Spent.Points;
+
+		if (Effect->ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
+		{
+			Modifier.Bucket = ECataclysmStatBucket::More;
+		}
+		else if (Effect->ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase))
+		{
+			Modifier.Bucket = ECataclysmStatBucket::Flat;
+		}
+		else
+		{
+			Modifier.Bucket = ECataclysmStatBucket::Increased;
+		}
+
+		for (const FString& Tag : SplitTags(Effect->RequiredTags))
+		{
+			Modifier.RequiredTags.AddTag(
+				FGameplayTag::RequestGameplayTag(FName(*Tag),
+												 /*ErrorIfNotFound=*/false));
+		}
+
+		Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
+		++Added;
+	}
+
+	return Added;
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmPassiveTree::ModifiersFor(
+	const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable,
+	const UDataTable* EffectTable, const TArray<FName>& DamageTypes)
+{
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	AccumulateInto(Out, Allocation, NodeTable, EffectTable, DamageTypes);
 	return Out;
 }

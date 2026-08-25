@@ -111,6 +111,7 @@ TABLES = [
     ("DT_MaterialTiers", "MaterialTiers.csv", "CataclysmMaterialTierRow"),
     ("DT_MinionScaling", "MinionScaling.csv", "CataclysmMinionScalingRow"),
     ("DT_PassiveEdges", "PassiveEdges.csv", "CataclysmPassiveEdgeRow"),
+    ("DT_PassiveEffects", "PassiveEffects.csv", "CataclysmPassiveEffectRow"),
     ("DT_PassiveNodes", "PassiveNodes.csv", "CataclysmPassiveNodeRow"),
     ("DT_SkillSlots", "SkillSlots.csv", "CataclysmSkillSlotRow"),
     ("DT_StatusEffects", "StatusEffects.csv", "CataclysmStatusEffectRow"),

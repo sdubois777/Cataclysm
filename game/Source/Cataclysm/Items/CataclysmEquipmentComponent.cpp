@@ -8,6 +8,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Player/CataclysmPlayerState.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/DataTable.h"
@@ -507,7 +508,11 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 		return 0;
 	}
 
-	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers = GatherModifiers();
+	// NOT CONST ANY MORE, because the passive tree adds to it below. What
+	// the worn items grant and what the spent passive points grant are the
+	// same three buckets applied to the same character, so they belong in
+	// one map rather than in two that a caller has to merge.
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers = GatherModifiers();
 	TMap<FName, float> Bases = StatBasesFromWeapons();
 
 	// AND THE EIGHT ATTRIBUTES, FOR THE SAME REASON THE OTHER CALLER DOES IT.
@@ -534,6 +539,22 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 				UCataclysmPlayerClassStats::MergeAttributeBases(
 					State->GetSpentAttributePoints(), Bases);
 				Level = State->GetCharacterLevel();
+
+				// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
+				//
+				// HERE, WHERE THE WORN ITEMS' MODIFIERS ALREADY ARE, because a
+				// passive node is another authored source of the same three
+				// buckets. Adding it anywhere else would mean a second place
+				// that has to be re-run whenever anything changes.
+				//
+				// THE DAMAGE TYPE DECIDES WHICH TREES COUNT. Points in a tree no
+				// equipped weapon reaches stay spent and add nothing, which is
+				// the project owner's decision of 2026-08-25.
+				const TArray<FName> Carried = {State->GetChosenDamageType()};
+				UCataclysmPassiveTree::AccumulateInto(
+					Modifiers, State->GetPassiveAllocation(),
+					UCataclysmPassiveTree::LoadNodeTable(),
+					UCataclysmPassiveTree::LoadEffectTable(), Carried);
 			}
 		}
 	}

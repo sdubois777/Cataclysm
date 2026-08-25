@@ -5701,12 +5701,17 @@ Void dungeons accumulate void stacks on cities. When stacks reach a threshold, t
 
 The max level is 100. Players earn experience by killing dungeon enemies and defeating bosses. Per level: 1 passive skill point and 1 attribute point. Every 10 levels: 5 bonus passive points. Defeating a unique Cataclysm boss for the first time: 10 bonus passive points.
 
-**A character earns these points and spends them into a class tree, and receives
-nothing for them yet.** The awarding, the spending, the rules that bound where a
-point may go, and saving all of it work. What a node grants does not exist as
-data: every node in every class tree file says what it does in a sentence written
-for a player and carries no stat name and no number. Issue #936 has the three
-routes for authoring that and a recommendation.
+**A character earns these points, spends them into a class tree, and receives
+what 26 of the 293 nodes grant.** A node's numbers are authored in the
+`Passive Effects` sheet of `All_Things_Cataclysm.xlsx`, keyed by node, giving the
+stat, the bucket and the value per point.
+
+**The other 267 nodes grant nothing, and they are not waiting on typing.** Most
+are not stat modifiers under any authoring scheme: they generate a class
+resource, add a second effect at a threshold of points, apply only inside a timed
+condition, or change a rule outright. Issue #939 measures the gap group by group
+and gives the order in which each is worth building. The 60 keystones and the 16
+capstone options are the largest part and each is its own piece of behaviour.
 
 **Reaching the 230 passive point budget requires killing every unique Cataclysm
 boss once, and that is deliberate.** Levelling to 100 gives 150 — one a level plus
