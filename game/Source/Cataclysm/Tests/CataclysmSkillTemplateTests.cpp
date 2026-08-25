@@ -3001,6 +3001,101 @@ bool FCataclysmAreaOfEffectWidensAnAreaTest::RunTest(const FString&)
 }
 
 /**
+ * A SCOPED AREA OF EFFECT BONUS WIDENS THE SKILLS IT NAMES AND NO OTHERS.
+ * Issue #943.
+ *
+ * THIS IS THE REAL ENTRY POINT AND THAT IS THE WHOLE REASON IT EXISTS.
+ * `Cataclysm.Passives.ATagScopedNodeReachesOnlyTheSkillsItNames` proves
+ * `UCataclysmAbilitySystemComponent::StatForSkill` gives the right answer, and
+ * it would go on passing if `UCataclysmSkillTemplate::AreaOfEffectMultiplier`
+ * were put back to reading the plain gameplay attribute -- which is the half
+ * that makes a trap actually wider in the game. A system covered everywhere
+ * except where it is used has bitten this project before.
+ *
+ * NO PASSIVE TREE AND NO SABOTEUR HERE. The stat inputs are set directly, so
+ * this measures the reading rather than the authoring and keeps working however
+ * `game/Data/PassiveEffects.csv` is re-authored. The project owner put the
+ * Saboteur outside the vertical slice on 2026-08-25; issue #946 records that.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAreaOfEffectScopedByTagTest,
+	"Cataclysm.Skills.AScopedAreaOfEffectBonusWidensOnlyTheSkillsItNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAreaOfEffectScopedByTagTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// TWO AREA SKILLS STATING THE SAME RADIUS, differing only in the trap tag,
+	// so any difference below is the scoping and nothing else. Both carry an
+	// area tag, because a skill whose radius is only a reach is left alone by
+	// area of effect either way and would prove nothing here.
+	UCataclysmStrikeSkill* Trap = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"),
+		TEXT("Snare"), TEXT("Type.AOE.PointBlank, Type.Trap"));
+	UCataclysmStrikeSkill* NotATrap = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Burst"), TEXT("Type.AOE.PointBlank"));
+
+	if (!Trap || !NotATrap)
+	{
+		AddError(TEXT("Could not grant the two skills."));
+		return false;
+	}
+
+	const float Stated = Trap->Params.RadiusCm;
+	if (!TestTrue(TEXT("the skills state a radius at all"), Stated > 0.0f))
+	{
+		return false;
+	}
+
+	const FGameplayTag TrapTag = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("the trap tag is declared"), TrapTag.IsValid()))
+	{
+		return false;
+	}
+
+	// THE ATTRIBUTE STAYS AT THE BASELINE, and that is deliberate. It is what a
+	// character sheet shows, and a bonus scoped to traps must not appear there.
+	// Were the scoped modifier being folded into the attribute instead, the
+	// second assertion below would fail.
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(), 100.0f);
+
+	// NINETY PER CENT MORE AREA, FOR TRAPS ONLY. The same shape a passive node
+	// produces, set here directly rather than earned, so this does not depend on
+	// which nodes happen to be authored.
+	FCataclysmStatModifier ForTraps;
+	ForTraps.Bucket = ECataclysmStatBucket::Increased;
+	ForTraps.Source = ECataclysmModifierSource::PassiveKeystone;
+	ForTraps.Value = 90.0f;
+	ForTraps.RequiredTags.AddTag(TrapTag);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 100.0f;
+	Inputs.Modifiers.Add(ForTraps);
+
+	TMap<FName, FCataclysmStatInputs> All;
+	All.Add(FName(TEXT("area_of_effect")), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(All));
+
+	TestEqual(TEXT("the trap is widened by ninety per cent"),
+		Trap->ScaledRadiusCm(), Stated * 1.9f, 0.01f);
+
+	// WITHOUT THIS THE TEST WOULD PASS IF SCOPING WERE IGNORED ALTOGETHER, which
+	// would widen every area skill in the game rather than the traps.
+	TestEqual(TEXT("and an area skill that is not a trap is left exactly as it was"),
+		NotATrap->ScaledRadiusCm(), Stated, 0.01f);
+
+	return true;
+}
+
+/**
  * BURNING GROUND WIDENS WHATEVER LEFT IT. Issue #895.
  *
  * ALWAYS, UNLIKE A SKILL'S OWN RADIUS. The design: "A zone's own damage is area

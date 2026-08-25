@@ -422,6 +422,32 @@ public:
 	static float AsMultiplier(const UAbilitySystemComponent* Source,
 							  const FGameplayAttribute& Stat);
 
+	/**
+	 * The same reading, but for the skill in hand rather than the character.
+	 *
+	 * WHY IT IS A SECOND FUNCTION AND NOT THE ONLY ONE. `AsMultiplier` above
+	 * reads a finished gameplay attribute, which holds the value with no skill
+	 * in hand, so every modifier naming a required tag is missing from it. That
+	 * is the right answer for a character sheet and the wrong one for a skill:
+	 * "+15% area of effect for traps" must widen a trap and nothing else. Issue
+	 * #943.
+	 *
+	 * BOTH THE ATTRIBUTE AND THE NAME ARE NEEDED, and they are not the same
+	 * thing. The attribute says whether this ability system has the stat at all
+	 * and supplies the value to fall back on; the name is the key
+	 * `UCataclysmPlayerClassStats::ApplyTo` recorded the stat's inputs under.
+	 * `UCataclysmPlayerClassStats::StatToAttribute` is where the pairing is
+	 * stated.
+	 *
+	 * IT FALLS BACK TO EXACTLY WHAT `AsMultiplier` WOULD HAVE ANSWERED whenever
+	 * nothing was recorded -- an enemy, or a character before its first refresh
+	 * -- so no caller is worse off for using this one.
+	 */
+	static float AsMultiplierForSkill(const UAbilitySystemComponent* Source,
+									  const FGameplayAttribute& Stat,
+									  FName StatName,
+									  const FGameplayTagContainer& SkillTags);
+
 	/** One tick a second before the attacker's frequency stat is applied. */
 	static constexpr float BaseSecondsPerTick = 1.0f;
 
