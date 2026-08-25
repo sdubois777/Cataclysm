@@ -211,7 +211,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// mana regeneration and area of effect -- and one arrived for maximum
 	// health. The rest of the new section is mechanics rather than modifiers, so
 	// it adds nothing here. See docs/DECISIONS.md.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         24)
+	//
+	// AND UP TO 34 ON 2026-08-25, when Fervour was given a way of being
+	// generated. Ten rows on eight Masochist nodes: three on the tree's starting
+	// node, which grants all three rates at once, and one each on the seven
+	// nodes that increase or reduce one of them. Issue #954.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         34)
 
 	#undef CHECK_TABLE
 

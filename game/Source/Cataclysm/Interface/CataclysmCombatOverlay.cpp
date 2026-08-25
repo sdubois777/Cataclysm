@@ -2,7 +2,10 @@
 
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmHUD.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For asking whether this character can move Fervour at all. Issue #954.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -23,6 +26,7 @@ const TCHAR* UCataclysmCombatOverlay::BarBackingHex = TEXT("0A0F12");
 const TCHAR* UCataclysmCombatOverlay::HealthFillHex = TEXT("C0392B");
 const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
+const TCHAR* UCataclysmCombatOverlay::FervourFillHex = TEXT("C7398D");
 const TCHAR* UCataclysmCombatOverlay::ReachedHealthHex = TEXT("F5F0EA");
 const TCHAR* UCataclysmCombatOverlay::AbsorbedHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::NothingThroughHex = TEXT("8C9196");
@@ -467,6 +471,38 @@ bool UCataclysmCombatOverlay::ManaOf(const AActor* Actor, float& OutMana,
 
 	OutMana = Vitals->GetMana();
 	OutMaxMana = Vitals->GetMaxMana();
+	return true;
+}
+
+bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,
+										float& OutMaxFervour)
+{
+	// THROUGH THE INTERFACE, the same way `VitalsSetOf` above reaches the vital
+	// set, so this works for a player whose ability system lives on its player
+	// state without knowing that it does.
+	const UAbilitySystemComponent* AbilitySystem =
+		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor);
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem
+			? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>()
+			: nullptr;
+	if (!Resource)
+	{
+		return false;
+	}
+
+	// A GENERATOR AND NOT MERELY A POOL. Every class has a maximum of 100, so
+	// asking about the maximum would answer true for every character in the game
+	// and draw a bar that could only ever read zero. Asking whether anything can
+	// move it makes the bar's appearance mean "the generator node you spent on
+	// is working", which is what the project owner needs to see. Issue #954.
+	if (!UCataclysmFervour::HasAGenerator(AbilitySystem))
+	{
+		return false;
+	}
+
+	OutFervour = Resource->GetClassResource();
+	OutMaxFervour = Resource->GetMaxClassResource();
 	return true;
 }
 

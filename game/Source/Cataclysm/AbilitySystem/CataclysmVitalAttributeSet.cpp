@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For turning health lost to damage into Fervour. Issue #954.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -511,6 +513,26 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 									   0.0f, GetMaxHealth()));
 				NotifyIfHealthReachedZero();
 				NotifyHealthChanged();
+
+				// AND HEALTH LOST TO DAMAGE FILLS FERVOUR. Issue #954. The
+				// Masochist's starting node states the rule -- 1 Fervour per 1%
+				// of maximum health lost -- and a character that has not spent a
+				// point on a generator has a rate of zero, so this costs nothing
+				// for everybody else.
+				//
+				// WHAT REACHED HEALTH, NOT WHAT THE HIT WAS WORTH, and the
+				// difference is a design position rather than an accident.
+				// `docs/Cataclysm_GDD_v2.md` says an energy shield "absorbs the
+				// damage the class needs to convert", so a shield on a Masochist
+				// is a straight loss of resource generation. Putting the whole
+				// hit here instead would quietly delete that.
+				//
+				// THE HIT'S TAGS GO WITH IT, because the tree has a node about
+				// Fervour gained from damage OVER TIME specifically, and the tag
+				// on the effect is what tells the two apart.
+				UCataclysmFervour::GainFromDamage(
+					GetOwningAbilitySystemComponent(), Outcome.DealtToHealth,
+					AssetTags);
 			}
 
 			// A BLUNT WEAPON MAY STUN WHAT IT HITS. Issue #639, and the last

@@ -392,6 +392,29 @@ void ACataclysmHUD::DrawPlayerVitals()
 		DrawPlayerPool(Top, Shield, MaxShield,
 					   UCataclysmCombatOverlay::ShieldFillHex);
 	}
+
+	// AND FERVOUR ON TOP, ONLY FOR A CHARACTER THAT CAN MOVE IT. Issue #954.
+	// The design has listed it as a player resource bar since section XIII was
+	// written, and the project owner's standing rule of 2026-08-24 is that a
+	// system they cannot see in game is not finished.
+	//
+	// `FervourOf` REFUSES A CHARACTER WITH NO GENERATOR, which is why there is
+	// no maximum check here as there is on the two above. Every class has a pool
+	// of 100 and almost no character has a way to fill it, so a check on the
+	// maximum would draw a bar that could only ever read zero. As it stands the
+	// bar appearing is itself the confirmation that a generator node worked.
+	//
+	// ON TOP RATHER THAN BESIDE HEALTH, because health must not move when a bar
+	// above it appears: it is the one a player watches while being hit.
+	float Fervour = 0.0f;
+	float MaxFervour = 0.0f;
+	if (UCataclysmCombatOverlay::FervourOf(Pawn, Fervour, MaxFervour)
+		&& MaxFervour > 0.0f)
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawPlayerPool(Top, Fervour, MaxFervour,
+					   UCataclysmCombatOverlay::FervourFillHex);
+	}
 }
 
 void ACataclysmHUD::DrawOverheadBars()

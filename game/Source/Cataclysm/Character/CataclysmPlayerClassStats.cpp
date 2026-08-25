@@ -204,6 +204,24 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// The class's own resource. Its maximum only -- see the header.
 			{TEXT("class_resource"), Resource::GetMaxClassResourceAttribute()},
 
+			// THE THREE RATES THAT MOVE FERVOUR. Issue #954, and they are here
+			// for the reason every other entry is: a passive node granting a
+			// stat with no attribute behind it grants nothing and reports
+			// nothing. `ApplyTo` loops over THIS map, so a stat missing from it
+			// is dropped before it reaches a character.
+			//
+			// A BASE OF ZERO FOR EVERY CLASS, from `game/Data/ClassStats.csv`,
+			// and that is the design rather than a gap. A character gains no
+			// Fervour and loses none until it spends a point on a tree's
+			// generator node -- the Masochist's grants 1 to each of the three --
+			// which is what makes that node worth a point.
+			{TEXT("fervour_from_damage"),
+			 Resource::GetFervourFromDamageAttribute()},
+			{TEXT("fervour_from_cost"),
+			 Resource::GetFervourFromCostAttribute()},
+			{TEXT("fervour_lost_to_healing"),
+			 Resource::GetFervourLostToHealingAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 

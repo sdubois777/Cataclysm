@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "AttributeSet.h"
 #include "CataclysmRegeneration.generated.h"
@@ -120,8 +121,24 @@ public:
 	 * function rather than through a second copy of it. A private copy in a
 	 * second file compiles under the Unreal unity build and collides the moment
 	 * both files are clean, which has cost this project a broken build once.
+	 *
+	 * IT IS ALSO WHERE HEALING EMPTIES FERVOUR, since issue #954. Being the one
+	 * place all three pools are refilled through is exactly what makes it the
+	 * right place: the design says healing removes Fervour "at the same rate",
+	 * without naming a source, so regeneration and leech both have to count and
+	 * both arrive here.
+	 *
+	 * @param Gain     how much to add before the maximum is considered. A gain
+	 *                 that overflows the pool restores only what fits, and only
+	 *                 what fits removes Fervour
+	 * @param Healing  what this restoration carries, so a passive node can be
+	 *                 scoped to one source of it. `Keyword.Regeneration` for a
+	 *                 regeneration step, nothing for leech. Ignored for every
+	 *                 pool except health, which is the only one Fervour reads
 	 */
 	static void TopUp(UAbilitySystemComponent& AbilitySystem,
 					  const FGameplayAttribute& Pool,
-					  const FGameplayAttribute& Maximum, float Gain);
+					  const FGameplayAttribute& Maximum, float Gain,
+					  const FGameplayTagContainer& Healing =
+						  FGameplayTagContainer());
 };

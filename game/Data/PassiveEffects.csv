@@ -23,3 +23,13 @@ Masochist_basic_ll_stem1#1,Masochist_basic_ll_stem1,crit_multiplier,increased,3.
 Masochist_basic_ll_stem2#1,Masochist_basic_ll_stem2,retaliation,increased,2.0,
 Masochist_basic_ll_c1#1,Masochist_basic_ll_c1,class_resource,increased,2.0,
 Masochist_basic_bt_stem2#1,Masochist_basic_bt_stem2,max_health,increased,2.0,
+Masochist_basic_spine_000#1,Masochist_basic_spine_000,fervour_from_damage,flat,1.0,
+Masochist_basic_spine_000#2,Masochist_basic_spine_000,fervour_from_cost,flat,1.0,
+Masochist_basic_spine_000#3,Masochist_basic_spine_000,fervour_lost_to_healing,flat,1.0,
+Masochist_basic_spine_006#1,Masochist_basic_spine_006,fervour_from_damage,increased,2.0,
+Masochist_basic_spine_007#1,Masochist_basic_spine_007,fervour_from_cost,increased,2.0,
+Masochist_basic_fc_c0#1,Masochist_basic_fc_c0,fervour_from_damage,increased,2.0,
+Masochist_basic_fl_c0#1,Masochist_basic_fl_c0,fervour_from_damage,increased,2.0,Keyword.DoT
+Masochist_basic_ll_c0#1,Masochist_basic_ll_c0,fervour_from_cost,increased,2.0,
+Masochist_basic_bt_stem0#1,Masochist_basic_bt_stem0,fervour_from_cost,increased,2.0,
+Masochist_basic_bt_c0#1,Masochist_basic_bt_c0,fervour_lost_to_healing,increased,-5.0,Keyword.Regeneration

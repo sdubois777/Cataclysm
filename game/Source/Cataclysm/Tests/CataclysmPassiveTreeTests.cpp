@@ -7,6 +7,8 @@
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
+// For the map from a stat name to the attribute it drives. Issue #954.
+#include "Character/CataclysmPlayerClassStats.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "Data/CataclysmDataRows.h"
@@ -1036,6 +1038,58 @@ bool FCataclysmPassiveNodeWithTwoEffectsTest::RunTest(const FString&)
 													EffectTable, Demonic),
 			  2);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveStatsHaveAttributesTest,
+	"Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveStatsHaveAttributesTest::RunTest(const FString&)
+{
+	// A STAT WITH NO ATTRIBUTE BEHIND IT IS DROPPED IN SILENCE.
+	// `UCataclysmPlayerClassStats::ApplyTo` loops over `StatToAttribute` rather
+	// than over the modifiers, so a passive node granting a stat missing from
+	// that map applies nothing, reports nothing, and leaves the character
+	// exactly as if the node had never been bought. That is how `attack_speed`
+	// was worth nothing for some time -- issue #120 -- and it is the failure a
+	// misspelt stat name in the workbook produces.
+	//
+	// THE WHOLE FILE RATHER THAN THE THREE STATS THAT PROMPTED IT. The generator
+	// checks a stat name against the class stat lines, the attribute table, and
+	// since issue #954 against any flat row in the effects sheet itself, which a
+	// name misspelt the same way twice would pass. This is what does not.
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TMap<FString, FGameplayAttribute>& Attributes =
+		UCataclysmPlayerClassStats::StatToAttribute();
+
+	int32 Checked = 0;
+	for (const TPair<FName, uint8*>& Row : EffectTable->GetRowMap())
+	{
+		const auto* Effect =
+			reinterpret_cast<const FCataclysmPassiveEffectRow*>(Row.Value);
+		if (!Effect || Effect->Stat.IsEmpty())
+		{
+			continue;
+		}
+
+		++Checked;
+		TestTrue(*FString::Printf(
+					 TEXT("%s grants '%s', which has an attribute behind it"),
+					 *Row.Key.ToString(), *Effect->Stat),
+				 Attributes.Contains(Effect->Stat));
+	}
+
+	// Without this the loop above passes on an empty table, which is what a
+	// stale or unbuilt asset looks like.
+	TestTrue(TEXT("the effect table has rows at all"), Checked >= 24);
 	return true;
 }
 

@@ -4,7 +4,10 @@
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the Cataclysm.ShowFervour console command. Issue #954.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -1289,6 +1292,61 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowAttributes(
 
 				Ar.Logf(TEXT("  %-14s %5d   %10.2f"),
 						*Name, Spent.PointsIn(Name), Resolved);
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowFervour(
+	TEXT("Cataclysm.ShowFervour"),
+	TEXT("What is in the Fervour bar, and the three rates that move it: gained "
+		 "per 1% of maximum health lost to damage, gained per 1% spent as an "
+		 "ability cost, and removed per 1% restored by healing. All three are "
+		 "zero until a passive tree's generator node is bought."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			// WHY THE FIGURES AND NOT ONLY THE BAR. Issue #954. The bar answers
+			// "is it filling" and these answer "by how much, and why that much".
+			// A rate that is 1.16 rather than 1.00 is eight points in Open
+			// Wounds doing their work, and no bar can show that.
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			const UAbilitySystemComponent* ASC =
+				Character ? Character->GetAbilitySystemComponent() : nullptr;
+			if (!ASC || !ASC->GetSet<UCataclysmClassResourceAttributeSet>())
+			{
+				Ar.Log(TEXT("No character with a Fervour pool."));
+				return;
+			}
+
+			using Resource = UCataclysmClassResourceAttributeSet;
+
+			Ar.Logf(TEXT("Fervour %.1f / %.1f"),
+					ASC->GetNumericAttribute(Resource::GetClassResourceAttribute()),
+					ASC->GetNumericAttribute(Resource::GetMaxClassResourceAttribute()));
+
+			const TPair<const TCHAR*, FGameplayAttribute> Rates[] = {
+				{TEXT("gained per 1% of maximum health lost to damage"),
+				 Resource::GetFervourFromDamageAttribute()},
+				{TEXT("gained per 1% spent as an ability cost"),
+				 Resource::GetFervourFromCostAttribute()},
+				{TEXT("removed per 1% restored by healing"),
+				 Resource::GetFervourLostToHealingAttribute()},
+			};
+
+			for (const TPair<const TCHAR*, FGameplayAttribute>& Rate : Rates)
+			{
+				Ar.Logf(TEXT("  %6.2f  %s"),
+						ASC->GetNumericAttribute(Rate.Value), Rate.Key);
+			}
+
+			if (!UCataclysmFervour::HasAGenerator(ASC))
+			{
+				// SAID PLAINLY RATHER THAN LEFT TO BE INFERRED FROM THREE ZEROS.
+				// This is the ordinary state of every character in the game and
+				// reads as a broken feature otherwise.
+				Ar.Log(TEXT("  No generator. Fervour cannot move. Buy one with "
+							"Cataclysm.SpendPassivePoint Masochist_basic_spine_000"));
 			}
 		}));
 

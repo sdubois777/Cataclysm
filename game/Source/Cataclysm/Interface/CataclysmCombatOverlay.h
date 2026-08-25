@@ -178,6 +178,25 @@ public:
 	 */
 	static const TCHAR* ManaFillHex;
 
+	/**
+	 * Fervour, the one resource every class shares. Issue #954.
+	 *
+	 * A MAGENTA, AND THE CHOICE IS BY ELIMINATION RATHER THAN BY TASTE. The
+	 * design lists Fervour as a player resource bar and states no colour for it,
+	 * so what settles it is what is already spoken for:
+	 *
+	 *   the three bars it stacks with   health's dark red, mana's navy, the
+	 *                                   shield's sky blue
+	 *   reserved for the whole game     the telegraph's #FF3020, section XIII
+	 *   a floating number already       the critical strike's #FFA31F
+	 *   the eight damage type primaries  the nearest is Void's #7C30E9, which is
+	 *                                   markedly bluer
+	 *
+	 * Magenta is the largest part of the palette nothing else has taken, and it
+	 * is the reading that survives being put next to all three existing bars.
+	 */
+	static const TCHAR* FervourFillHex;
+
 	/** A figure that reached health. Warm near-white. */
 	static const TCHAR* ReachedHealthHex;
 
@@ -488,6 +507,20 @@ public:
 
 	/** The same for mana. False when the actor has no vital attribute set. */
 	static bool ManaOf(const AActor* Actor, float& OutMana, float& OutMaxMana);
+
+	/**
+	 * The same for Fervour, the one resource every class shares. Issue #954.
+	 *
+	 * FALSE FOR AN ACTOR THAT CANNOT MOVE IT, which is a stronger condition than
+	 * the other three use and is the point. Every class has a pool of 100, so a
+	 * check on the maximum would draw the bar for every character in the game
+	 * including the ones with no way of filling it, and a bar that can only ever
+	 * read zero says the opposite of what is true. This answers true only when
+	 * the character has spent a point on a generator, so the bar appearing IS
+	 * the confirmation that the node did something.
+	 */
+	static bool FervourOf(const AActor* Actor, float& OutFervour,
+						  float& OutMaxFervour);
 
 	/**
 	 * Hands a landed hit to the heads-up display so it can be drawn.

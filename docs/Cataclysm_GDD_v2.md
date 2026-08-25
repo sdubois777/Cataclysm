@@ -623,6 +623,10 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 
 **The pool is one number.** It is the `class_resource` stat in `game/Data/ClassStats.csv`: 100 for every class, and 150 for the Ritualist. Passive nodes that increase maximum Fervour increase that one pool.
 
+**A generator is a set of rates, and each rate is its own stat.** The Masochist's is three: Fervour gained per 1% of maximum health lost to damage, Fervour gained per 1% spent as an ability cost, and Fervour removed per 1% restored by healing. Three rather than one because the tree moves them separately — different nodes increase each of the first two, one node reduces the third, and two keystones trade the first two against each other. Every rate is zero for every class until a tree's starting node grants it, which is what makes that node worth a point.
+
+**A rate is per percent of maximum health rather than per point of it.** A character with 500 health and one with 5000 both gain 10 Fervour from losing a tenth of themselves. Per point, more health would mean a slower bar, which is the opposite of what the class is for. Only the Masochist's generator is built; `docs/DECISIONS.md`, 2026-08-25, records the shape and what the other three would need.
+
 The four generators designed so far, one per class, each granted by that class's starting node:
 
   

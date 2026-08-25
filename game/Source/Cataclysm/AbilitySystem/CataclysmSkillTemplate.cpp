@@ -5,6 +5,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For turning a health cost into Fervour. Issue #954.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -465,5 +467,21 @@ void UCataclysmSkillTemplate::PayHealthCost()
 		AbilitySystem->ApplyModToAttribute(
 			UCataclysmVitalAttributeSet::GetHealthAttribute(),
 			EGameplayModOp::Additive, -Cost);
+
+		// AND THE COST FILLS FERVOUR. Issue #954. The Masochist's starting node
+		// states two ways in and this is the second: "1 per 1% of maximum health
+		// spent as an ability cost". A character with no generator has a rate of
+		// zero and this costs it nothing.
+		//
+		// HERE RATHER THAN WHERE HEALTH CHANGES, because a cost and a wound are
+		// different things to this tree. Separate nodes increase each of the two
+		// rates, and two keystones trade one against the other, so a hook that
+		// only saw "health went down" could not tell them apart.
+		//
+		// A SHARE OF CURRENT HEALTH BUT MEASURED AGAINST MAXIMUM. The cost is
+		// what the skill charges and the design writes Fervour generation as a
+		// share of MAXIMUM health, so a character at low health pays less and
+		// generates proportionally less. Both readings are consistent.
+		UCataclysmFervour::GainFromHealthCost(AbilitySystem, Cost);
 	}
 }
