@@ -216,7 +216,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// generated. Ten rows on eight Masochist nodes: three on the tree's starting
 	// node, which grants all three rates at once, and one each on the seven
 	// nodes that increase or reduce one of them. Issue #954.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         34)
+	//
+	// AND TO 36 THE SAME DAY, for Pain Tolerance, which grants a maximum health
+	// increase and an armour increase in one sentence and needed no code at all.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         36)
 
 	#undef CHECK_TABLE
 

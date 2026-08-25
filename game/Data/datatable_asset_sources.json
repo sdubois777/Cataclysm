@@ -136,8 +136,8 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 34,
-      "csv_sha256": "2652d66fa38174b588c84c1bf4213c514cb1f617019f5da1183f17ff504746f2"
+      "rows": 36,
+      "csv_sha256": "46289d3af2088952f9fb89894612bcb08233031ecb6f5179a24b712d2b68e19b"
     },
     {
       "asset": "DT_PassiveNodes",

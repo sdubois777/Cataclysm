@@ -33,3 +33,5 @@ Masochist_basic_fl_c0#1,Masochist_basic_fl_c0,fervour_from_damage,increased,2.0,
 Masochist_basic_ll_c0#1,Masochist_basic_ll_c0,fervour_from_cost,increased,2.0,
 Masochist_basic_bt_stem0#1,Masochist_basic_bt_stem0,fervour_from_cost,increased,2.0,
 Masochist_basic_bt_c0#1,Masochist_basic_bt_c0,fervour_lost_to_healing,increased,-5.0,Keyword.Regeneration
+Masochist_basic_spine_001#1,Masochist_basic_spine_001,max_health,increased,1.0,
+Masochist_basic_spine_001#2,Masochist_basic_spine_001,armor,increased,0.5,

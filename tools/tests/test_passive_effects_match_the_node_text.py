@@ -69,7 +69,11 @@ BUCKETS = {"flat", "increased", "more"}
 #: generated: ten rows on eight Masochist nodes. Three of the ten are on the
 #: tree's starting node, which grants all three Fervour rates at once and could
 #: not be written down at all before #953. Issue #954.
-AUTHORED_ROWS = 34
+#:
+#: AND UP AGAIN BY TWO THE SAME DAY, for Pain Tolerance, which grants a maximum
+#: health increase and an armour increase in one sentence. That is the other node
+#: #953 was opened for and it needed no code at all.
+AUTHORED_ROWS = 36
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -90,7 +94,10 @@ AUTHORED_ROWS = 34
 #: work: the tree's starting node, five that increase one of the two ways Fervour
 #: is gained, one scoped to damage over time, and one that reduces how much
 #: health regeneration takes back out.
-AUTHORED_NODES = 32
+#:
+#: AND TO 33, for Pain Tolerance. 33 of 293 altogether, and 29 of the Masochist
+#: tree's own 74.
+AUTHORED_NODES = 33
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
