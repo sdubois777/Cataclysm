@@ -105,10 +105,20 @@ struct CATACLYSM_API FCataclysmPassiveAllocation
  *   a capstone opens at 25, 50, 100 or 200 points spent in ITS OWN TREE, by
  *     total rather than by any path, and is one choice of three
  *
- * WHAT A SPENT POINT IS WORTH IS NOT HERE AND DOES NOT EXIST. A node's effect is
- * a sentence written for a player to read and there is no number anywhere in the
- * source files. Issue #936. So a character can earn, spend and save points, and
- * receives nothing for them.
+ * WHAT A SPENT POINT IS WORTH IS IN `game/Data/PassiveEffects.csv`, FOR 26 OF
+ * THE 293 NODES. `AccumulateInto` turns those into the same three buckets a worn
+ * item's affixes produce. The other 267 say what they do only in a sentence
+ * written for a player, and a character spending on one of them still receives
+ * nothing: each needs machinery that does not exist -- class resource generation
+ * rates, threshold clauses, timed conditional windows, and 76 keystones and
+ * capstone options that are rule changes rather than modifiers. Issue #939 has
+ * the group-by-group count.
+ *
+ * AND A NODE THAT NAMES A REQUIRED TAG REACHES NOBODY, which is a separate gap
+ * with a separate cause. `UCataclysmPlayerClassStats::ApplyTo` resolves every
+ * stat with an empty tag container, so a scoped modifier is dropped before it
+ * reaches the character. Issue #943, pinned by
+ * `Cataclysm.Passives.ATagScopedNodeGrantsNothingYet`.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmPassiveTree : public UBlueprintFunctionLibrary
@@ -271,11 +281,10 @@ public:
 	 * make a weapon swap an unlimited free respec, and this design already sells
 	 * a class passive respec at the Trainer for a cost in days.
 	 *
-	 * THERE IS NOTHING TO SWITCH OFF YET, and that is why this is a question
-	 * rather than a mechanism. A node's effect does not exist as data at all,
-	 * issue #936, so no character receives anything from any tree, dormant or
-	 * not. This is the question a caller applying those effects will ask, and it
-	 * is here now so the rule is written down where the effects will be applied.
+	 * THERE IS SOMETHING TO SWITCH OFF SINCE 2026-08-25. `AccumulateInto` asks
+	 * this per tree and skips a dormant one, so the 26 nodes that carry an
+	 * authored effect stop granting it the moment no equipped weapon reaches
+	 * their tree. The points stay spent; only what they grant goes away.
 	 */
 	static bool TreeIsActive(const FString& Tree, const TArray<FName>& DamageTypes)
 	{
