@@ -20,6 +20,107 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A stat that applies only to some skills is worked out per skill, not once per character
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`,
+`CataclysmAbilitySystemComponent.h` and `.cpp`, `CataclysmSkillEffects.h` and
+`.cpp`, `CataclysmSkillTemplate.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp`. **Applied for area of
+effect only.** Issues #943, #947.
+
+A modifier may name required gameplay tags, so its bonus applies only to some
+skills — "+15% area of effect for traps". **A modifier that named any tag applied
+to nothing at all**, and one had already shipped: the Saboteur node "Bigger
+Traps" gave a player no area of effect for any points spent in it.
+
+### Why it was broken
+
+`UCataclysmPlayerClassStats::ApplyTo` works every stat out with an empty tag
+container. That is correct and it stays: a character sheet has no skill in hand,
+so a bonus that applies only to traps must not be shown as though it applied to
+everything.
+
+What went wrong was next. The stat's starting value and its modifier list were
+local variables that went out of scope, so a skill had nothing left to ask with.
+`UCataclysmStatPipeline`'s own header had said for months that "a character's
+area of effect has no single value — it is one number for an area skill and
+another for a single-target one", and nothing kept the inputs a skill would need
+to act on that.
+
+### The five routes put to the project owner, and the one chosen
+
+| | What it does | Fixes the 8 melee nodes | Fixes the shipped trap node |
+| :-- | :-- | :-: | :-: |
+| Work out offensive stats per skill | | yes | yes |
+| Apply scoped bonuses at hit time, damage only | | **no — 0 of 8** | no |
+| A separate stored value per condition | | yes | yes |
+| Drop the feature, remove the column | | no, permanently | no, permanently |
+| Leave it, documented and pinned | | no, for now | no, for now |
+
+**The project owner chose the first**, and said of the third that it is "the more
+complete" of the two, kept on the record in case the first turns out not to cover
+enough. Their words: "option A is likely the best, with option C being the more
+complete. Go with option A for now."
+
+**Why that one.** It is what shipped games in the genre do: Path of Exile and
+Last Epoch both work out offensive stats for the skill you have selected rather
+than keeping one global figure, and both express passives as "increased Melee
+Damage" applying to skills tagged as melee. The hit-time route fixes none of the
+eight nodes that raised the question, because they are critical strike chance,
+critical strike multiplier and life leech rather than plain damage, and that
+route scales damage only. A separate value per condition multiplies the stored
+values by the number of conditions, and the tag vocabulary already has 12
+skill-type tags and 8 condition tags.
+
+**The size was measured rather than estimated:** 22 places in 6 files read one of
+the 22 offensive stats, and 13 of the 22 are in `CataclysmSkillEffects.cpp`,
+which resolves a skill's hit and already receives that skill's tags.
+
+### How it works
+
+`ApplyTo` keeps what each stat was worked out from — its starting value and its
+whole modifier list — as `FCataclysmStatInputs` on the ability system component.
+`UCataclysmAbilitySystemComponent::StatForSkill` runs the same pipeline over them
+with a skill's own tags. Nothing was recorded for a stat means the caller's own
+attribute read is returned, which is the ordinary case for an enemy.
+
+**THE WHOLE MODIFIER LIST GOES THROUGH ONE PASS**, not the scoped part layered on
+a finished attribute, and getting that wrong would have been silent. Increases
+have to sum into one bracket: a base of 100 carrying an unscoped +50% and a
+scoped +50% is 200 through one pass and 225 through two. That is the same rule as
+the 2026-08-24 entry on conditional damage — "a conditional increase joins the
+increases bracket rather than becoming a third multiplier".
+
+### What is applied and what is not
+
+**Area of effect only**, being 1 of the 22 stats a skill uses. It was chosen
+because it is the stat the one authored scoped node uses. The other 21 still read
+a single number worked out with no skill in hand; issue #947 lists them, and each
+is the same small edit.
+
+**Life leech is the one with a real obstacle.** `UCataclysmLeech::NoteHit` takes
+an ability system and a damage figure and does not know which skill caused the
+hit, so the tags have to be threaded through before the three leech stats can be
+scoped.
+
+**Finishing that list is not what the Demonic classes need next**, which is the
+project owner's stated focus. Two things were measured while checking:
+
+- Of the four class trees authored in `docs/`, the Berserker, Bulwark and
+  Saboteur all belong to War. **Only the Masochist is Demonic**, and the Ravager
+  and the Ritualist have no tree file at all — while a character starts on the
+  Ravager class stat line by default.
+- **No Masochist node needs tag scoping.** All 74 were read. The ones mentioning
+  a scope need timed conditional windows or class resource generation, neither of
+  which exists.
+
+The Saboteur is outside the vertical slice as of 2026-08-25, and a "Gadget" affix
+group is expected before its trap nodes are finished. Issue #946 records that and
+says plainly that nobody should guess what a Gadget affix is.
+
+---
+
 ## 2026-08-25 — A passive node's numbers are authored in the design workbook, and most nodes are not numbers at all
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (a new `Passive Effects` sheet),
