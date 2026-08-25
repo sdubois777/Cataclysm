@@ -430,7 +430,7 @@ buys more.
 
 ### **Real-Time Action**
 
-Combat is real-time top-down action. Players must read and dodge telegraphed enemy attacks, manage their active resource (Fury, Resolve, Preparation, or equivalent based on class), and deploy their skill kit strategically. Positioning matters — some skills reward melee range, others reward distance, and AOE threats punish clustering.
+Combat is real-time top-down action. Players must read and dodge telegraphed enemy attacks, manage their Fervour, the resource every class shares, and deploy their skill kit strategically. Positioning matters — some skills reward melee range, others reward distance, and AOE threats punish clustering.
 
   
 
@@ -613,30 +613,54 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 
 ### **Class Resource Systems**
 
-Each class has a unique resource that the passive tree unlocks and develops. Resources are central to how the class plays — they are not optional stat bars, they are the engine of the build.
+**Every class shares one resource, called Fervour.** What differs by class is how it is filled and what it is spent on. Those are central to how a class plays — they are not optional stat bars, they are the engine of the build.
+
+**Why one bar rather than one per class.** A two-handed weapon can roll 8 damage types and each unlocks 3 classes, so one character can reach all 24 class trees. Twenty-four separately-generating bars is not readable. The pattern in shipped games is that per-class resources and multiclassing are alternatives rather than companions: Diablo 3 and Diablo 4 give each class exactly one unique resource and do not let a character be two classes, while Path of Exile lets one character reach almost any passive and gives every character the same resources. Decided 2026-08-25; `docs/DECISIONS.md` has the reasoning.
+
+**Each tree grants generators and spenders, and a character in several trees has several of each.** That is what multiclassing buys here. A character in the Berserker and Masochist trees fills one bar from critical strikes and from health lost, and can spend it on either tree's abilities.
+
+**Fervour does not decay.** A class may add a rule that changes that, and it says so on its own starting node rather than the resource carrying it. That is deliberate: a class whose bar empties fast is buying that with how fast it fills, and a class that wants to hold Fervour in reserve for its own abilities can.
+
+**The pool is one number.** It is the `class_resource` stat in `game/Data/ClassStats.csv`: 100 for every class, and 150 for the Ritualist. Passive nodes that increase maximum Fervour increase that one pool.
+
+The four generators designed so far, one per class, each granted by that class's starting node:
 
   
 
-| Class | Resource & Summary |
-| :-: | :-: |
-| Bulwark (War) | Resolve — builds through combat, enables damage reduction and retaliation bursts. Decays out of combat. |
-| Berserker (War) | Fury — builds on critical melee hits, decays out of combat. At max Fury, Berserking triggers devastating strikes. Wrath (2H) and Frenzy (DW) are sustained drain states. |
-| Saboteur (War) | Preparation — builds by placing and triggering traps and gadgets. Does not decay. Powers trap AOE, evasion, and gadget empowerment. |
-| Masochist (Demonic) | Anguish — builds from health you lose, through two generators the tree develops separately: 1 Anguish per 1% of maximum health lost to damage, and 1 per 1% of maximum health spent as an ability cost. Healing removes it at the same rate, so health regeneration is what decays it rather than a timer. Base pool 100. |
+| Class | How it fills Fervour | What it adds about emptying |
+| :-- | :-- | :-- |
+| Bulwark (War) | Taking hits, blocking, and killing enemies | Fervour decays slowly out of combat |
+| Berserker (War) | 1 per critical strike | Fervour decays at 10 per second after 3 seconds out of combat |
+| Saboteur (War) | Placing a trap or gadget, and one of them dealing damage or triggering | Nothing. Fervour keeps its default of not decaying |
+| Masochist (Demonic) | 1 per 1% of maximum health lost to damage, and 1 per 1% spent as an ability cost | Healing removes Fervour at the same rate, so health regeneration empties it |
 
   
 
-The Masochist resource is the only one a player controls the decay of. Resolve and Fury decay on a timer out of combat and Preparation does not decay at all; Anguish falls only when the character heals. That is deliberate. The Masochist has by far the largest health regeneration of the three Demonic classes, 37.6 per second against 2,526 maximum health, which is 1.49% per second, so a full pool of 100 drains in about 67 seconds standing still. Healing up and staying powerful are the same resource spent twice.
+**Nothing is called Resolve, Fury, Preparation or Anguish any more.** Those were the four resources this replaced. Every tree's starting node is now called Fervour, because they are four ways into one bar rather than four things. Keeping a name for the generator would put a word in front of the player that no bar bears, which is the confusion this change exists to remove.
 
   
 
-The node graph is `docs/Masochist_Class_Tree_Final.json`. The Ravager and Ritualist resources are not designed yet, and neither are the other 19 class trees; issue #24 covers them.
+**Two of the four buy their speed with an emptying rule, and one does not.** The Berserker fills fastest and empties fastest. The Saboteur fills only through setup and keeps what it has. That is the trade, and it is why the emptying rule sits on the generator rather than on Fervour itself.
+
+  
+
+**The Masochist is the only one whose emptying a player controls**, and that is deliberate. It has by far the largest health regeneration of the three Demonic classes, 37.6 per second against 2,526 maximum health, which is 1.49% per second, so a full pool of 100 empties in about 67 seconds standing still. Healing up and staying powerful are the same resource spent twice.
+
+  
+
+**A character carrying several generators fills faster than one carrying a single generator.** That is what multiclassing buys, and the point budget is what limits it: a character has 230 points and one tree alone holds 440, so a character spread across four trees has roughly 57 points in each. That reaches the early generators and not the deep spenders.
+
+  
+
+The node graph is `docs/Masochist_Class_Tree_Final.json`. The Ravager and Ritualist generators are not designed yet, and neither are the other 19 class trees; issue #24 covers them and issue #950 covers those two.
 
   
 
 ### **Multiclassing**
 
 Players with multiple damage types on their weapon can invest in multiple class trees simultaneously. All trees draw from the same shared point pool, so multiclassing means spreading investment thinner. The deep nodes and capstones in any single tree require focused investment to reach, creating genuine build tradeoffs.
+
+**And all trees draw from the same Fervour pool.** A character in several trees has several ways to fill it and several things to spend it on, which is what multiclassing buys beyond the passive nodes themselves. It is also why there is one bar rather than one per class: a two-handed weapon can roll 8 damage types and each unlocks 3 classes, so a character can reach all 24 trees, and 24 separately-generating bars is not readable.
 
 **Taking off the weapon that unlocked a tree does not refund the points spent in
 it.** The points stay spent and everything that tree grants stops applying, until
@@ -1120,7 +1144,7 @@ The Masochist keeps a normal mana pool. "Uses HP instead of mana" is delivered b
 
   
 
-**For the Masochist it also works against the class.** Anguish is generated by health lost, and a shield absorbs damage before health does, so every point of energy shield is a point of resource the class does not generate. That is the refusal stated above expressed as arithmetic rather than as flavour. A Masochist build that takes an energy shield is trading resource generation for whatever the shield buys, and its passive tree now offers nothing at all in exchange. Until 2026-08-25 it offered one node, **Rupture Focus**, which stunned nearby enemies when the shield broke. That node was removed with the rest of the Soul Scourge branch, which the project owner replaced because it grew a mana pool on a class whose first vow deletes one. Nothing was put in its place, so an energy shield on a Masochist is now a straight loss of resource generation with no compensating node.
+**For the Masochist it also works against the class.** It fills Fervour from health lost, and a shield absorbs damage before health does, so every point of energy shield is a point of resource the class does not generate. That is the refusal stated above expressed as arithmetic rather than as flavour. A Masochist build that takes an energy shield is trading resource generation for whatever the shield buys, and its passive tree now offers nothing at all in exchange. Until 2026-08-25 it offered one node, **Rupture Focus**, which stunned nearby enemies when the shield broke. That node was removed with the rest of the Soul Scourge branch, which the project owner replaced because it grew a mana pool on a class whose first vow deletes one. Nothing was put in its place, so an energy shield on a Masochist is now a straight loss of resource generation with no compensating node.
 
   
 
@@ -5831,7 +5855,7 @@ it, which is their own act and not an outcome of play.
 ## **HUD Elements**
 
   - Empire status bar — active dungeon count, next surge countdown, cities at risk
-  - Player resource bars — HP, Mana, class resource (Fury / Resolve / Preparation / etc.)
+  - Player resource bars — HP, Mana, Fervour
   - Active skill slots with cooldown indicators
   - Minimap with dungeon overlay
 

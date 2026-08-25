@@ -171,11 +171,11 @@ def test_it_says_what_the_zero_does_cost(stat_lines) -> None:
 def test_it_says_why_the_masochist_case_is_worse_than_the_general_one(
         stat_lines) -> None:
     """The class-specific half, and the one a reader would otherwise have to
-    derive from the Anguish resource design. A shield absorbs damage before
-    health does, and health lost is what generates the resource."""
+    derive from how the Masochist fills Fervour, which is from health lost. A
+    shield absorbs damage before health does."""
     assert "every point of energy shield is a point of resource the class does not generate" in stat_lines, (
         "the section does not say that an energy shield costs a Masochist its "
-        "resource generation. Anguish comes from health lost and a shield "
+        "resource generation. It fills Fervour from health lost and a shield "
         "absorbs damage before health does. Without this the trade looks free. "
         "Issue #345.")
     assert "Rupture Focus" in stat_lines, (
