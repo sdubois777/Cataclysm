@@ -482,6 +482,87 @@ CATACLYSM_TEST(FCataclysmCallerCanForbidACritTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmCritChanceFollowsAHealthConditionTest,
+	"Cataclysm.Crit.ACriticalStrikeChanceThatDependsOnHealthReachesARealHit")
+{
+	using namespace CataclysmCritTest;
+
+	// THE MASOCHIST'S LAST STAND NODE: "While at or below 20% health, +3%
+	// increased Critical Strike Chance per point", held at its full eight
+	// points. Issue #959.
+	//
+	// WHY IT HAS TO BE A REAL HIT. The chance is read off the attacker inside
+	// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, and until this
+	// issue it was read straight off the gameplay attribute -- which by design
+	// carries no bonus that depends on the character's state. Every test in
+	// CataclysmStatPipelineTests.cpp would go on passing with that read put
+	// back, and a wounded Masochist would simply never gain the chance.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	{
+		FScopedCombatant Attacker(World);
+		FScopedCombatant Defender(World);
+
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1'000.0f);
+		Attacker.SetCritical(/*Chance=*/0.0f, /*Multiplier=*/150.0f);
+
+		// A HUNDRED HEALTH OUT OF A HUNDRED ON THE ATTACKER, so the share is the
+		// figure itself. The defender keeps its own large pool.
+		Attacker.Vitals->SetMaxHealth(100.0f);
+		Attacker.Vitals->SetHealth(100.0f);
+
+		// THE STAT'S INPUTS AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+		// THEM. A base of nothing and 24 percentage points that apply only under
+		// a fifth of health, so the whole chance is the condition's doing and a
+		// hit that critically strikes proves the condition held.
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+
+		FCataclysmStatModifier Conditional;
+		Conditional.Bucket = ECataclysmStatBucket::Flat;
+		Conditional.Source = ECataclysmModifierSource::PassiveKeystone;
+		Conditional.Value = 100.0f;
+		Conditional.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Conditional.ConditionValue = 20.0f;
+		Inputs.Modifiers.Add(Conditional);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("crit_chance")), Inputs);
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+		// THE ROLL IS PINNED AT ZERO THROUGHOUT, so the only thing that decides
+		// whether a hit critically strikes is the chance: zero never beats a roll
+		// of zero and a hundred always does.
+		const FScopedCritRoll AlwaysCritsIfItCan(0.0f);
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+		const float AtFullHealth = Defender.TakeDamageReading();
+
+		// A WOUNDED ATTACKER, AND NOTHING ELSE CHANGED.
+		Attacker.Vitals->SetHealth(15.0f);
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+		const float AtLowHealth = Defender.TakeDamageReading();
+
+		if (!TestTrue(FString::Printf(TEXT("both hits landed (%.0f, %.0f)"),
+									  AtFullHealth, AtLowHealth),
+					  AtFullHealth > 0.0f && AtLowHealth > 0.0f))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// THE RATIO IS THE WHOLE ASSERTION. 1.5 is the multiplier, so it says the
+		// wounded hit critically struck and the healthy one did not. If both had,
+		// or neither had, the ratio would be 1.
+		TestEqual(TEXT("the wounded attacker critically strikes and the healthy "
+					   "one does not, so the hit is 1.5 times as large"),
+			AtLowHealth / AtFullHealth, 1.5f, 0.01f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // A skill's own base chance, which beats the character's. Issue #657.
 //

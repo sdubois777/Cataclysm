@@ -1748,4 +1748,23 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	FString RequiredTags;
+
+	/**
+	 * A state of the CHARACTER this only applies in, or empty for always.
+	 *
+	 * A DIFFERENT QUESTION FROM `RequiredTags` ABOVE, which asks about the skill
+	 * in hand. This asks about the character: "While at or below 20% health,
+	 * +3% increased Critical Strike Chance per point". A row may carry both and
+	 * both then have to hold. Issue #959.
+	 *
+	 * ONE VALUE TODAY: `health_at_or_below`, whose `ConditionValue` is a
+	 * percentage of maximum health. `tools/generate_datatables.py` refuses any
+	 * other, so a condition this build cannot judge cannot reach the game.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	FString Condition;
+
+	/** What the condition compares against. A percentage for the health one. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	float ConditionValue = 0.0f;
 };

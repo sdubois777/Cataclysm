@@ -68,6 +68,22 @@ namespace CataclysmStatTest
 					ECataclysmModifierSource::Gem, Value, RequiredTag);
 	}
 
+	/** An increase that applies only at or below a share of maximum health. */
+	FCataclysmStatModifier IncreasedBelowHealth(float Value, float Percent,
+												const TCHAR* RequiredTag = nullptr)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value, RequiredTag);
+		Modifier.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Modifier.ConditionValue = Percent;
+		return Modifier;
+	}
+
+	/** A character standing at this share of its maximum health. */
+	FCataclysmStatConditions AtHealth(float Percent)
+	{
+		return FCataclysmStatConditions::FromHealth(Percent, 100.0f);
+	}
+
 	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
 	{
 		FGameplayTagContainer Container;
@@ -265,6 +281,133 @@ bool FCataclysmPipelineAggregatorTest::RunTest(const FString& Parameters)
 		EGameplayModEvaluationChannel::Channel0, nullptr, nullptr, false);
 	TestTrue(TEXT("the engine sums MultiplyAdditive to 2.0x"),
 		FMath::IsNearlyEqual(Additive.Evaluate(EvaluateParameters), 200.0f, 0.01f));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A bonus that depends on the state of the character
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineHealthConditionTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanDependOnTheCharactersHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineHealthConditionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S LAST STAND NODE, held at its full eight points: "While at
+	// or below 20% health, +3% increased Critical Strike Chance per point", so
+	// +24% and only under a fifth of maximum health. Issue #959.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		IncreasedBelowHealth(24.0f, 20.0f) };
+
+	TestEqual(TEXT("a character at full health does not get it"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(100.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("nor one just above the threshold"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(20.1f)).Final,
+		100.0f, 0.01f);
+
+	// AT OR BELOW, NOT BELOW. Every node stating a threshold is written "at or
+	// below", so a character sitting exactly on the number gets the bonus. The
+	// difference matters at the instant a blow takes health to exactly that
+	// figure, which is the instant the node is about.
+	TestEqual(TEXT("a character exactly on the threshold gets it"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(20.0f)).Final,
+		124.0f, 0.01f);
+	TestEqual(TEXT("and one below it"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(5.0f)).Final,
+		124.0f, 0.01f);
+
+	// AN UNKNOWN STATE REFUSES, which is what the character sheet asks with.
+	// Folding a conditional bonus into a gameplay attribute would make it stale
+	// the moment health moved, so the sheet must not see it at all.
+	TestEqual(TEXT("a caller that knows nothing about the character does not get it"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags).Final, 100.0f, 0.01f);
+
+	// A CONDITION AND A REQUIRED TAG ARE TWO QUESTIONS AND BOTH MUST BE YES.
+	// One asks about the character and the other about the skill in hand, so a
+	// modifier carrying both is refused when either fails.
+	TArray<FCataclysmStatModifier> Both = {
+		IncreasedBelowHealth(24.0f, 20.0f, TEXT("Type.AOE")) };
+	const FGameplayTagContainer AreaSkill = Tags({ TEXT("Type.AOE") });
+
+	TestEqual(TEXT("low health and the right skill gets it"),
+		FPipeline::Evaluate(100.0f, Both, AreaSkill, AtHealth(10.0f)).Final,
+		124.0f, 0.01f);
+	TestEqual(TEXT("low health and the wrong skill does not"),
+		FPipeline::Evaluate(100.0f, Both, NoTags, AtHealth(10.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("the right skill at full health does not"),
+		FPipeline::Evaluate(100.0f, Both, AreaSkill, AtHealth(100.0f)).Final,
+		100.0f, 0.01f);
+
+	// AND IT JOINS THE SUM OF INCREASES RATHER THAN MULTIPLYING SEPARATELY,
+	// which is the design's own rule: "a conditional increase joins the
+	// increases bracket rather than becoming a third multiplier". A base of 100
+	// with an unconditional +50% and a conditional +50% is 200 through one
+	// bracket and 225 through two.
+	TArray<FCataclysmStatModifier> Two = {
+		Increased(50.0f), IncreasedBelowHealth(50.0f, 20.0f) };
+	TestEqual(TEXT("two increases sum into one bracket, reaching 200"),
+		FPipeline::Evaluate(100.0f, Two, NoTags, AtHealth(10.0f)).Final,
+		200.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineConditionEdgesTest,
+	"Cataclysm.StatPipeline.AnUnknownConditionRefusesAndABadThresholdIsReported",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineConditionEdgesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// A HEALTH PERCENTAGE IS BUILT FROM TWO NUMBERS AND EITHER CAN BE ABSENT.
+	// A maximum health of zero cannot happen on a live character -- the vital
+	// attribute set floors it at one -- but an attribute set that has not been
+	// written yet reports zero, and dividing by it would be worse than knowing
+	// nothing.
+	const FCataclysmStatConditions Unknown =
+		FCataclysmStatConditions::FromHealth(50.0f, 0.0f);
+	TestTrue(TEXT("no maximum health means nothing is known"),
+		Unknown.HealthPercent < 0.0f);
+
+	TestFalse(TEXT("and an unknown state refuses a health condition"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrBelowPercent, 50.0f, Unknown));
+
+	// NO CONDITION ALWAYS HOLDS, INCLUDING FOR AN UNKNOWN STATE. Every modifier
+	// in the game before issue #959 is this one, so this is the case that says
+	// nothing that existed already was changed.
+	TestTrue(TEXT("a modifier with no condition applies whatever is known"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::Always, 0.0f, Unknown));
+
+	// HEALTH ABOVE THE MAXIMUM IS HELD AT 100 rather than reported as more,
+	// because a share of maximum health above the maximum is not a state any
+	// condition should be judged against differently from full health.
+	const FCataclysmStatConditions Overfull =
+		FCataclysmStatConditions::FromHealth(500.0f, 100.0f);
+	TestEqual(TEXT("health above maximum reads as full"),
+		Overfull.HealthPercent, 100.0f, 0.01f);
+
+	// A THRESHOLD OUTSIDE 0 TO 100 IS REPORTED BY THE VALIDATOR, which is what
+	// data import reads. Evaluate cannot refuse anything at run time, so this is
+	// the only place a bad row can be caught in the engine.
+	FCataclysmStatModifier TooHigh = IncreasedBelowHealth(10.0f, 150.0f);
+	TestTrue(TEXT("a threshold above 100 is reported"),
+		FPipeline::ValidateModifier(TooHigh).Contains(TEXT("health threshold")));
+
+	FCataclysmStatModifier Negative = IncreasedBelowHealth(10.0f, -5.0f);
+	TestTrue(TEXT("and one below zero"),
+		FPipeline::ValidateModifier(Negative).Contains(TEXT("health threshold")));
+
+	FCataclysmStatModifier Fine = IncreasedBelowHealth(10.0f, 35.0f);
+	TestTrue(TEXT("and a legal one is not"),
+		FPipeline::ValidateModifier(Fine).IsEmpty());
 
 	return true;
 }

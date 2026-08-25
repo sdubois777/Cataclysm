@@ -38,9 +38,44 @@ bool UCataclysmStatPipeline::CanGrantMore(ECataclysmModifierSource Source)
 	}
 }
 
-bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modifier,
-											 const FGameplayTagContainer& SkillTags)
+bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
+										   float Value,
+										   const FCataclysmStatConditions& State)
 {
+	switch (Condition)
+	{
+	case ECataclysmStatCondition::Always:
+		return true;
+
+	case ECataclysmStatCondition::HealthAtOrBelowPercent:
+		// AN UNKNOWN STATE REFUSES. A caller with no character in hand -- the
+		// character sheet, or a test passing plain numbers -- must not be handed
+		// a bonus that depends on where the character's health is. Issue #959.
+		//
+		// AT OR BELOW, NOT BELOW. Every node that states a health threshold is
+		// written "While at or below 20% health", so a character sitting exactly
+		// on the number gets the bonus.
+		return State.HealthPercent >= 0.0f && State.HealthPercent <= Value;
+	}
+
+	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
+	// or imported modifier naming one is a modifier this build cannot judge, and
+	// granting it would be granting something unread.
+	return false;
+}
+
+bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modifier,
+											 const FGameplayTagContainer& SkillTags,
+											 const FCataclysmStatConditions& State)
+{
+	// THE CHARACTER'S STATE FIRST, because it is the cheaper question and
+	// because a modifier carrying both a condition and a required tag needs both.
+	// Issue #959.
+	if (!ConditionHolds(Modifier.Condition, Modifier.ConditionValue, State))
+	{
+		return false;
+	}
+
 	const FGameplayTag Global = GlobalScopeTag();
 
 	for (const FGameplayTag& Required : Modifier.RequiredTags)
@@ -82,13 +117,29 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 				Modifier.Value);
 		}
 	}
+
+	// A HEALTH THRESHOLD OUTSIDE 0 TO 100 IS A MODIFIER THAT NEVER APPLIES OR
+	// ALWAYS DOES, and either way it is not what was meant. Issue #959. Zero is
+	// legitimate and means "only at exactly no health", which is unreachable in
+	// play but is not a data error; 100 is legitimate and means "always", though
+	// `Always` says that more plainly.
+	if (Modifier.Condition == ECataclysmStatCondition::HealthAtOrBelowPercent
+		&& (Modifier.ConditionValue < 0.0f || Modifier.ConditionValue > 100.0f))
+	{
+		return FString::Printf(
+			TEXT("a health threshold of %.1f%%. A percentage of maximum health "
+				 "is between 0 and 100."),
+			Modifier.ConditionValue);
+	}
+
 	return FString();
 }
 
 FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 	float Base,
 	const TArray<FCataclysmStatModifier>& Modifiers,
-	const FGameplayTagContainer& SkillTags)
+	const FGameplayTagContainer& SkillTags,
+	const FCataclysmStatConditions& State)
 {
 	FCataclysmStatBreakdown Out;
 	Out.Base = Base;
@@ -96,7 +147,7 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
-		if (!ModifierApplies(Modifier, SkillTags))
+		if (!ModifierApplies(Modifier, SkillTags, State))
 		{
 			continue;
 		}
@@ -155,9 +206,10 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 FCataclysmStatBreakdown UCataclysmStatPipeline::Evaluate(
 	float Base,
 	const TArray<FCataclysmStatModifier>& Modifiers,
-	const FGameplayTagContainer& SkillTags)
+	const FGameplayTagContainer& SkillTags,
+	const FCataclysmStatConditions& State)
 {
-	FCataclysmStatBreakdown Out = Accumulate(Base, Modifiers, SkillTags);
+	FCataclysmStatBreakdown Out = Accumulate(Base, Modifiers, SkillTags, State);
 
 	Out.Final = (Out.Base + Out.Flat)
 			  * (1.0f + Out.SumOfIncreases / 100.0f)
@@ -169,9 +221,10 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Evaluate(
 FCataclysmStatBreakdown UCataclysmStatPipeline::EvaluateRate(
 	float Base,
 	const TArray<FCataclysmStatModifier>& Modifiers,
-	const FGameplayTagContainer& SkillTags)
+	const FGameplayTagContainer& SkillTags,
+	const FCataclysmStatConditions& State)
 {
-	FCataclysmStatBreakdown Out = Accumulate(Base, Modifiers, SkillTags);
+	FCataclysmStatBreakdown Out = Accumulate(Base, Modifiers, SkillTags, State);
 
 	// A rate divides by both buckets. Dividing is what stops any amount of
 	// cooldown reduction reaching zero, so the stat needs no cap.

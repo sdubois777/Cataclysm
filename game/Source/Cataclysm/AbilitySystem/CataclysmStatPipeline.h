@@ -68,6 +68,73 @@ enum class ECataclysmModifierSource : uint8
 };
 
 /**
+ * A state of the character a modifier can be made to depend on. Issue #959.
+ *
+ * NOT THE SAME QUESTION AS `RequiredTags`, which asks about the SKILL in hand:
+ * "increased area of effect, for traps". This asks about the CHARACTER: "while
+ * at or below 20% health". A modifier can carry both and both must hold.
+ *
+ * A CONDITION IS NOT A SECOND MULTIPLIER. `docs/DECISIONS.md` states the rule
+ * outright -- "a conditional increase joins the increases bracket rather than
+ * becoming a third multiplier. That is what Diablo 4 and Last Epoch both do" --
+ * so a condition decides only whether the modifier is in the sum at all.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmStatCondition : uint8
+{
+	/** No condition. Every modifier in the game before issue #959. */
+	Always					UMETA(DisplayName = "Always"),
+
+	/**
+	 * The character's health is at or below `ConditionValue` percent of its
+	 * maximum.
+	 *
+	 * AT OR BELOW, NOT BELOW, because every node that states one is written "at
+	 * or below": a character sitting exactly on 20% health gets the bonus.
+	 */
+	HealthAtOrBelowPercent	UMETA(DisplayName = "Health At Or Below Percent"),
+};
+
+/**
+ * What is true of the character at the moment a stat is being worked out.
+ *
+ * SEPARATE FROM THE SKILL'S TAGS BECAUSE IT CHANGES WITHOUT ANYTHING BEING
+ * APPLIED OR REMOVED. A character's health moves several times a second and no
+ * gear changed, so a conditional bonus cannot be folded into a gameplay
+ * attribute the way an unconditional one is: it would be stale the moment the
+ * next blow landed. `UCataclysmAbilitySystemComponent::StatForSkill` builds one
+ * of these from the character's own vitals and hands it to the pipeline, so no
+ * caller has to know that a stat has a condition on it.
+ *
+ * UNKNOWN IS THE DEFAULT AND IT REFUSES EVERY CONDITION. A caller with no
+ * character in hand -- the character sheet, a test passing plain numbers -- gets
+ * the unconditional answer, which is what it was getting before conditions
+ * existed. Answering "the condition holds" for an unknown state would give a
+ * character sheet the low-health bonus while the character stood at full health.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmStatConditions
+{
+	GENERATED_BODY()
+
+	/** Current health as a percentage of maximum, 0 to 100. Negative is unknown. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float HealthPercent = -1.0f;
+
+	/** A state built from a character's own numbers. Refuses nothing it knows. */
+	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
+	{
+		FCataclysmStatConditions State;
+		if (MaxHealth > 0.0f)
+		{
+			State.HealthPercent =
+				FMath::Clamp(Health / MaxHealth * 100.0f, 0.0f, 100.0f);
+		}
+		return State;
+	}
+};
+
+/**
  * One modifier the character carries, and what it applies to.
  *
  * The character holds its own increases; they are not properties of any one
@@ -112,6 +179,20 @@ struct CATACLYSM_API FCataclysmStatModifier
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	FGameplayTagContainer RequiredTags;
+
+	/**
+	 * A state of the CHARACTER this modifier depends on, or Always. Issue #959.
+	 *
+	 * BOTH THIS AND `RequiredTags` MUST HOLD. They ask about different things --
+	 * this about the character, that about the skill in hand -- so a modifier
+	 * carrying both applies only when both are satisfied.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
+
+	/** What the condition compares against. A percentage for the health one. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ConditionValue = 0.0f;
 };
 
 /**
@@ -262,10 +343,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static bool CanGrantMore(ECataclysmModifierSource Source);
 
-	/** Whether the skill in hand carries every tag this modifier requires. */
+	/**
+	 * Whether this modifier applies right now.
+	 *
+	 * TWO QUESTIONS AND BOTH MUST BE YES: the skill in hand carries every tag
+	 * the modifier requires, and the character is in the state it requires.
+	 *
+	 * @param State  what is true of the character. The default knows nothing, so
+	 *               a modifier with a condition is refused -- which is right for
+	 *               a caller with no character in hand, such as the character
+	 *               sheet or a test passing plain numbers. Issue #959.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static bool ModifierApplies(const FCataclysmStatModifier& Modifier,
-								const FGameplayTagContainer& SkillTags);
+								const FGameplayTagContainer& SkillTags,
+								const FCataclysmStatConditions& State =
+									FCataclysmStatConditions());
+
+	/** Whether the character is in the state this condition names. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static bool ConditionHolds(ECataclysmStatCondition Condition, float Value,
+							   const FCataclysmStatConditions& State);
 
 	/**
 	 * Why a modifier is illegal, or an empty string if it is fine.
@@ -283,11 +381,17 @@ public:
 	 * `Base` comes from whichever source the design names for that stat: the
 	 * class for most, the equipped weapon for attack speed, the skill itself
 	 * for critical strike chance.
+	 *
+	 * @param State  what is true of the character, for a modifier that carries a
+	 *               condition. The default knows nothing and refuses every
+	 *               condition, which is what every caller got before issue #959.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static FCataclysmStatBreakdown Evaluate(float Base,
 											const TArray<FCataclysmStatModifier>& Modifiers,
-											const FGameplayTagContainer& SkillTags);
+											const FGameplayTagContainer& SkillTags,
+											const FCataclysmStatConditions& State =
+												FCataclysmStatConditions());
 
 	/**
 	 * The same three buckets, for a stat that is a rate rather than a quantity.
@@ -303,7 +407,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static FCataclysmStatBreakdown EvaluateRate(float Base,
 												const TArray<FCataclysmStatModifier>& Modifiers,
-												const FGameplayTagContainer& SkillTags);
+												const FGameplayTagContainer& SkillTags,
+												const FCataclysmStatConditions& State =
+													FCataclysmStatConditions());
 
 	/** What a player is shown, as a percentage. Never reaches 100. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
@@ -313,5 +419,6 @@ private:
 	/** Shared by Evaluate and EvaluateRate; they differ only in the last step. */
 	static FCataclysmStatBreakdown Accumulate(float Base,
 											  const TArray<FCataclysmStatModifier>& Modifiers,
-											  const FGameplayTagContainer& SkillTags);
+											  const FGameplayTagContainer& SkillTags,
+											  const FCataclysmStatConditions& State);
 };

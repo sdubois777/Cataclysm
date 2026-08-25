@@ -2411,6 +2411,21 @@ def passive_edges(_book=None) -> list[dict]:
     return _no_duplicates(out, "Passive Edges")
 
 
+#: The states of the character a passive bonus may be made to depend on.
+#:
+#: HELD HERE AS WELL AS IN C++ ON PURPOSE, and the two have to agree.
+#: `UCataclysmPassiveTree::AccumulateInto` turns each of these names into an
+#: `ECataclysmStatCondition`, and a name it does not recognise is applied with no
+#: condition -- a bonus that holds all the time instead of some of the time,
+#: silently and in the player's favour. Refusing an unknown name when the file is
+#: written is the only place that can be caught. Issue #959.
+CONDITIONS = {
+    # `Condition Value` is a percentage of maximum health. "While at or below
+    # 20% health" is `health_at_or_below` with 20.
+    "health_at_or_below",
+}
+
+
 def passive_effects(book) -> list[dict]:
     """What a passive node grants, one stat effect per row.
 
@@ -2469,6 +2484,30 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: {node} has value kind {kind!r}, "
                 f"which is not flat, increased or more")
 
+        # A STATE OF THE CHARACTER THE BONUS ONLY APPLIES IN. Issue #959. Empty
+        # is "always", which is every row before that issue.
+        #
+        # REFUSED IF THE GAME CANNOT JUDGE IT. A condition the engine does not
+        # recognise is applied with no condition at all, which is a bonus that
+        # holds all the time instead of some of the time -- silently, and in the
+        # player's favour. Refusing here is the only place that can be caught.
+        condition = clean(_cell(raw, headers, "Condition")).lower()
+        if condition and condition not in CONDITIONS:
+            raise DataError(
+                f"Passive Effects row {index}: {node} names the condition "
+                f"{condition!r}, which the game cannot judge. Known: "
+                f"{', '.join(sorted(CONDITIONS))}.")
+
+        condition_value = 0.0
+        if condition:
+            condition_value = number(_cell(raw, headers, "Condition Value"),
+                                     "Condition Value", index)
+            if not 0.0 <= condition_value <= 100.0:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a condition value "
+                    f"of {condition_value}, and {condition!r} takes a percentage "
+                    f"between 0 and 100.")
+
         counts[node] = counts.get(node, 0) + 1
 
         out.append({
@@ -2479,23 +2518,31 @@ def passive_effects(book) -> list[dict]:
             "ValuePerPoint": number(_cell(raw, headers, "Value Per Point"),
                                     "Value Per Point", index),
             "RequiredTags": clean(_cell(raw, headers, "Required Tags")),
+            "Condition": condition,
+            "ConditionValue": condition_value,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
     # HELPING, and it is one a person editing a spreadsheet makes by copying a
     # row and forgetting to change the stat. Two rows granting the same node two
     # DIFFERENT stats is the whole point of the shape and is allowed.
-    pairs: dict[tuple[str, str], int] = {}
+    #
+    # UNLESS THE TWO ARE CONDITIONED DIFFERENTLY, which is a real shape: a node
+    # could give one amount always and more of it below a threshold. So the
+    # condition is part of what makes a row distinct.
+    pairs: dict[tuple[str, str, str, float], int] = {}
     for row in out:
-        key = (row["Node"], row["Stat"])
+        key = (row["Node"], row["Stat"], row["Condition"],
+               row["ConditionValue"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:
-        listed = ", ".join(f"{node} granting {stat}" for node, stat in twice)
+        listed = ", ".join(f"{node} granting {stat}" for node, stat, _, _ in twice)
         raise DataError(
             f"the Passive Effects sheet grants the same stat twice on one "
-            f"node: {listed}. Two rows for one node are for two different "
-            f"stats; the same stat twice is a duplicated row.")
+            f"node, under the same condition: {listed}. Two rows for one node "
+            f"are for two different stats, or for the same stat under different "
+            f"conditions; anything else is a duplicated row.")
 
     if not out:
         raise DataError("the Passive Effects sheet is empty")

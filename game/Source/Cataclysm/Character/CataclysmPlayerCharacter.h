@@ -106,6 +106,29 @@ public:
 	 */
 	void ApplyMovementSpeed(float MetresPerSecond);
 
+	/**
+	 * Works the speed out again and writes it, asking for any bonus that depends
+	 * on the character's state rather than reading the attribute.
+	 *
+	 * WHY THE ATTRIBUTE IS NOT ENOUGH SINCE ISSUE #959. The Masochist's Desperate
+	 * Measures node gives movement speed only "while at or below 50% health".
+	 * Such a bonus is deliberately never written onto the attribute -- it would
+	 * be stale the moment health moved -- so a speed read straight off the
+	 * attribute is the speed of a character with no condition on it.
+	 *
+	 * CALLED FROM TWO PLACES AND THEY ARE TWO DIFFERENT EVENTS. The attribute
+	 * changing is one: gear, a level, an attribute point. Health crossing the
+	 * threshold is the other, and nothing writes the attribute when that happens.
+	 * Both go through here, so the two cannot produce different speeds.
+	 */
+	void RefreshMovementSpeed();
+
+	/**
+	 * The character's health moved, so a bonus that depends on it may have come
+	 * on or gone off. Issue #959.
+	 */
+	virtual void HealthChanged() override;
+
 	/** Server: the pawn has been possessed and the player state is available. */
 	virtual void PossessedBy(AController* NewController) override;
 

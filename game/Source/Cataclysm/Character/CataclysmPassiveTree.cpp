@@ -3,6 +3,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmDataRows.h"
+#include "Cataclysm.h"
 #include "Engine/DataTable.h"
 
 const FString UCataclysmPassiveTree::BasicKind = TEXT("basic");
@@ -695,8 +696,8 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 		{
 			// MOST NODES ARE HERE AND IT IS NOT A FAULT. A minority of the 293
 			// have an authored effect; the rest are rule changes, resource
-			// generation and conditional bonuses that are not stat modifiers
-			// under any authoring scheme. Issue #939.
+			// generation and behaviour that is not a stat modifier under any
+			// authoring scheme. Issue #939.
 			continue;
 		}
 
@@ -726,6 +727,28 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 				Modifier.RequiredTags.AddTag(
 					FGameplayTag::RequestGameplayTag(FName(*Tag),
 													 /*ErrorIfNotFound=*/false));
+			}
+
+			// AND THE STATE OF THE CHARACTER IT DEPENDS ON, IF ANY. Issue #959.
+			// An empty column is `Always`, which is every row before that issue.
+			// An unrecognised one is left as `Always` here rather than guessed at,
+			// and `tools/generate_datatables.py` refuses to write one, so the only
+			// way to reach this line with a name is a hand-edited CSV.
+			if (Effect->Condition.Equals(TEXT("health_at_or_below"),
+										 ESearchCase::IgnoreCase))
+			{
+				Modifier.Condition =
+					ECataclysmStatCondition::HealthAtOrBelowPercent;
+				Modifier.ConditionValue = Effect->ConditionValue;
+			}
+			else if (!Effect->Condition.IsEmpty())
+			{
+				UE_LOG(LogCataclysm, Warning,
+					   TEXT("Passive node '%s' names the condition '%s', which "
+							"this build does not know. The bonus was applied with "
+							"no condition. Regenerate game/Data/PassiveEffects.csv "
+							"from the workbook."),
+					   *Effect->Node, *Effect->Condition);
 			}
 
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);

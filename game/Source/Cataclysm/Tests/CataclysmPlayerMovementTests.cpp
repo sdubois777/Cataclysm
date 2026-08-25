@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the health a bonus can be made to depend on. Issue #959.
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -193,6 +195,110 @@ bool FCataclysmPlayerFollowsTheMovementSpeedAttribute::RunTest(const FString&)
 	TestEqual(TEXT("a movement speed of zero leaves the last usable speed alone"),
 		Movement->MaxWalkSpeed,
 		RitualistMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsAHealthCondition,
+	"Cataclysm.Player.MovementSpeedFollowsABonusThatDependsOnHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerSpeedFollowsAHealthCondition::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE MASOCHIST'S DESPERATE MEASURES NODE: "While at or below 50% health,
+	// +1% increased Movement Speed per point", held at its full ten points.
+	// Issue #959.
+	//
+	// WHY THIS TEST EXISTS ALONGSIDE THE PIPELINE ONES. A conditional bonus is
+	// deliberately never written onto the gameplay attribute, so the delegate
+	// that normally re-tells the movement component a speed does not fire when
+	// health crosses the threshold. Something has to notice, and only this test
+	// goes through the thing that does. Every test in
+	// CataclysmStatPipelineTests.cpp would go on passing with that connection
+	// deleted, and the player would simply never speed up.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Speed =
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute();
+	AbilitySystem->SetNumericAttributeBase(Speed, RavagerMetresPerSecond);
+
+	// A HUNDRED HEALTH OUT OF A HUNDRED, so the share is the figure itself.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	// THE STAT'S INPUTS AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// THEM. Written directly rather than by spending a passive point, because
+	// this test is about whether the pawn notices a conditional bonus and not
+	// about how one gets onto the character.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+
+	FCataclysmStatModifier Conditional;
+	Conditional.Bucket = ECataclysmStatBucket::Increased;
+	Conditional.Source = ECataclysmModifierSource::PassiveKeystone;
+	Conditional.Value = 10.0f;
+	Conditional.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+	Conditional.ConditionValue = 50.0f;
+	Inputs.Modifiers.Add(Conditional);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	TestEqual(TEXT("at full health the bonus is not applied"),
+		Movement->MaxWalkSpeed, Plain);
+
+	// HEALTH CROSSES THE THRESHOLD AND NOTHING WRITES THE SPEED ATTRIBUTE.
+	// `HealthChanged` is the only thing that can notice, and this is what says
+	// the pawn is listening to it.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 40.0f);
+	Character->HealthChanged();
+
+	TestEqual(TEXT("below the threshold it speeds up by a tenth"),
+		Movement->MaxWalkSpeed, Plain * 1.1f, 0.01f);
+
+	// AND BACK OFF AGAIN WHEN THE CHARACTER HEALS. A bonus that came on and
+	// never went off would be a bonus a player keeps by taking one hit.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 90.0f);
+	Character->HealthChanged();
+
+	TestEqual(TEXT("and back to its plain speed when healed"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
 
 	return true;
 }

@@ -247,9 +247,24 @@ public:
 	 * given a character stat line, and a player's has none until the first
 	 * refresh. Pass the attribute's own value, so the answer is unchanged from
 	 * what it was before this existed.
+	 *
+	 * IT ALSO JUDGES A CONDITIONAL BONUS, since issue #959. A modifier that
+	 * applies only "while at or below 20% health" is tested against this
+	 * character's health at the moment of the call, which is why the answer can
+	 * differ between two calls with the same arguments and why such a bonus is
+	 * never written onto the gameplay attribute.
 	 */
 	float StatForSkill(FName Stat, const FGameplayTagContainer& SkillTags,
 					   float Fallback) const;
+
+	/**
+	 * What is true of this character right now, for a conditional bonus.
+	 *
+	 * PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than
+	 * building its own and getting a different answer. `StatForSkill` above uses
+	 * it and most callers should use that instead.
+	 */
+	FCataclysmStatConditions CurrentConditions() const;
 
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
