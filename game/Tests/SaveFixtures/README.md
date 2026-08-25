@@ -38,12 +38,19 @@ both to add a field the record had gained:
   maximum health is set by the encounter rather than by its class, and
   without it a restored creature was clamped down to its class default.
 
-`Character_v2.json` was edited once under it, on 2026-08-25, to add
-`StartingWeaponType` and `StartingDamageType`. A character now chooses a starting
-weapon type and a damage type when it is created, issue #50, and the record has
-to carry them. `Character_v1.json` was deliberately left alone: it describes
-version 1, which predates even the attribute allocation, and the completeness
-test does not walk it for that reason.
+`Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
+issue #50:
+
+- `StartingWeaponType` and `StartingDamageType`, because a character now
+  chooses a starting weapon type and a damage type when it is created.
+- `PassiveAllocation` and `DefeatedCataclysmBosses`, because a character can now
+  earn and spend passive points. The fixture holds one point in a basic node and
+  one in a capstone with its second option taken, so both halves of a spent node
+  are described rather than only the count.
+
+`Character_v1.json` was deliberately left alone both times: it describes version
+1, which predates even the attribute allocation, and the completeness test does
+not walk it for that reason.
 
 **Once the game can load a save, this exception is gone.** From then on a
 file here is a file a player might have, and changing one means changing what

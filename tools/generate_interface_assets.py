@@ -4,8 +4,10 @@
 
 WHAT IT MAKES, under `/Game/Interface`:
 
-    WBP_ChoiceButton        one option in a list: a weapon type, a damage type
+    WBP_ChoiceButton        one option in a list: a weapon type, a damage type,
+                            a passive node
     WBP_CharacterCreation   the character creator, issue #50
+    WBP_PassiveTree         the passive class tree, issue #50
 
 WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
 puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
@@ -47,6 +49,8 @@ CREATION_PARENT = "CataclysmCharacterCreationWidget"
 
 CHOICE_BUTTON_ASSET = "WBP_ChoiceButton"
 CREATION_ASSET = "WBP_CharacterCreation"
+PASSIVE_PARENT = "CataclysmPassiveTreeWidget"
+PASSIVE_ASSET = "WBP_PassiveTree"
 
 # --- the little colour there is ----------------------------------------------
 # THE SAME NEARLY-BLACK PANEL THE INVENTORY SCREEN USES, from
@@ -217,11 +221,83 @@ def make_character_creation():
     log("created {}/{}".format(INTERFACE_DIR, CREATION_ASSET))
 
 
+
+def fill_remaining_height(widget):
+    """Let a child of a vertical box take whatever height is left.
+
+    A VERTICAL BOX SIZES EACH CHILD TO ITS CONTENTS BY DEFAULT, so a scroll box
+    holding 74 rows would be 74 rows tall and run off the bottom of the screen
+    rather than scrolling. `Fill` is what makes it stop at the space available
+    and scroll inside it.
+    """
+    slot = widget.get_editor_property("slot")
+    slot.set_editor_property(
+        "size", unreal.SlateChildSize(value=1.0,
+                                      size_rule=unreal.SlateSizeRule.FILL))
+
+
+def make_passive_tree():
+    parent = parent_class(PASSIVE_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, PASSIVE_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, PASSIVE_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, PASSIVE_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(PASSIVE_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Passive tree", size=30)
+
+    points = add(blueprint, unreal.TextBlock, "PointsLabel", "Body")
+    set_text(points, "", size=18)
+
+    # THE FOUR TREES. A wrap box rather than a horizontal one, for the reason
+    # the creator's weapon list is one: the other twenty trees arrive in issue
+    # #24 and a horizontal box would squeeze them all onto one line.
+    add(blueprint, unreal.WrapBox, "TreeBox", "Body")
+
+    tree = add(blueprint, unreal.TextBlock, "TreeLabel", "Body")
+    set_text(tree, "", size=18)
+
+    # SEVENTY-FOUR NODES DO NOT FIT ON A SCREEN, so the list scrolls. This is
+    # the piece the graph version in issue #937 replaces.
+    scroll = add(blueprint, unreal.ScrollBox, "NodeScroll", "Body")
+    fill_remaining_height(scroll)
+    add(blueprint, unreal.VerticalBox, "NodeBox", "NodeScroll")
+
+    description = add(blueprint, unreal.TextBlock, "DescriptionLabel", "Body")
+    set_text(description, "", size=16)
+    description.set_editor_property("auto_wrap_text", True)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            PASSIVE_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, PASSIVE_ASSET))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
     make_choice_button()
     make_character_creation()
+    make_passive_tree()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     log("done")
 

@@ -5,6 +5,7 @@
 #include "Interface/CataclysmHUD.h"
 #include "Interface/CataclysmCharacterCreationWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
+#include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWearing.h"
@@ -125,6 +126,10 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::ToggleCharacterCreation,
 		ETriggerEvent::Started, this,
 		&ACataclysmPlayerController::Input_ToggleCharacterCreation);
+
+	Input->BindNativeAction(Config, Names::TogglePassiveTree,
+		ETriggerEvent::Started, this,
+		&ACataclysmPlayerController::Input_TogglePassiveTree);
 
 	TArray<uint32> BindHandles;
 	Input->BindAbilityActions(Config, this,
@@ -357,6 +362,58 @@ void ACataclysmPlayerController::ToggleCharacterCreation()
 					 .SetHideCursorDuringCapture(false));
 
 	CharacterCreationScreen->AddToViewport();
+}
+
+void ACataclysmPlayerController::Input_TogglePassiveTree()
+{
+	TogglePassiveTree();
+}
+
+void ACataclysmPlayerController::TogglePassiveTree()
+{
+	if (!PassiveTreeScreen)
+	{
+		UClass* ScreenClass = PassiveTreeScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no passive tree screen to open: %s could not "
+						"be loaded. Run  python tools/run_editor_python.py "
+						"tools/generate_interface_assets.py  to build it."),
+				   *PassiveTreeScreenClass.ToString());
+			return;
+		}
+
+		PassiveTreeScreen =
+			CreateWidget<UCataclysmPassiveTreeWidget>(this, ScreenClass);
+		if (!PassiveTreeScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The passive tree screen could not be created, so the "
+						"key that opens it does nothing."));
+			return;
+		}
+	}
+
+	if (PassiveTreeScreen->IsInViewport())
+	{
+		PassiveTreeScreen->RemoveFromParent();
+		SetInputMode(FInputModeGameOnly());
+		return;
+	}
+
+	// THE SAME INPUT MODE THE CHARACTER CREATOR NEEDS, and for the same reason:
+	// under the default Game Only mode a click goes to the game rather than to a
+	// widget, so every node on this screen would be inert.
+	SetInputMode(FInputModeGameAndUI()
+					 .SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock)
+					 .SetHideCursorDuringCapture(false));
+
+	// REFRESHED ON EVERY OPENING, not only when it is made. The character's
+	// level, its damage type and what it has spent can all have moved since the
+	// screen was last closed, and the widget is kept rather than rebuilt.
+	PassiveTreeScreen->RefreshDisplay();
+	PassiveTreeScreen->AddToViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const

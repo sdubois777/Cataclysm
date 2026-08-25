@@ -50,6 +50,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import pathlib
 import re
 import sys
@@ -2235,6 +2236,180 @@ def enemy_rarities(_book=None) -> list[dict]:
     return unique(out, "Enemy Rarities")
 
 
+
+# --------------------------------------------------------------------------
+# The class passive trees, from the node graphs in docs/
+#
+# A THIRD SOURCE, BESIDE THE WORKBOOK AND THE PYTHON MODEL. The four class trees
+# are authored in C:\Projects\PassiveTreeCreator, a separate tool, and exported
+# as JSON into docs/. Those files are the design; this turns them into something
+# the game can read, in the same way the workbook sheets are turned into the
+# other tables.
+#
+# WHY THE GAME CANNOT READ THE JSON DIRECTLY. `docs/` is not packaged and is not
+# a content directory, so nothing in a built game can open it. Every other piece
+# of design data reaches the engine as a DataTable and these do the same.
+#
+# WHAT IS DELIBERATELY NOT CARRIED ACROSS: the colour of a node, the viewport the
+# editor was last looking at, and the free-floating text labels the tool lets an
+# author place. All three are about the authoring tool's own canvas rather than
+# about the tree, and a screen that drew them would be drawing the editor.
+# --------------------------------------------------------------------------
+
+#: The four class trees that exist. The other twenty are issue #24.
+CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist")
+
+#: How many options a capstone offers, from the design document: "Player chooses
+#: one of three options per tier." Fixed at three, which is why the options are
+#: three pairs of columns rather than a second table.
+CAPSTONE_OPTIONS = 3
+
+
+def _tree_file(name: str) -> pathlib.Path:
+    return REPO_ROOT / "docs" / f"{name}_Class_Tree_Final.json"
+
+
+def _load_tree(name: str) -> dict:
+    path = _tree_file(name)
+    if not path.is_file():
+        raise DataError(f"{path.name} is not present")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise DataError(f"{path.name} is not valid JSON: {error}") from error
+
+
+def _capstone_threshold(node: dict, tree: str) -> int:
+    """How many points must be spent in the tree before this capstone opens.
+
+    THREE PLACES TO LOOK, AND ALL THREE ARE IN USE. The Masochist tree writes it
+    as `threshold`, the Saboteur tree as `pointThreshold`, and the Berserker and
+    Bulwark trees carry both. Every one of the four also states it in the
+    description text. Issue #935 asks for them to be made to agree; until then
+    anything reading these files has to try all three, and reading only one of
+    them would silently give a capstone a threshold of zero.
+    """
+    data = node["data"]
+    for field in ("threshold", "pointThreshold"):
+        value = data.get(field)
+        if isinstance(value, (int, float)):
+            return int(value)
+
+    matched = re.search(r"(\d+)\s+points", data.get("description", ""))
+    if not matched:
+        raise DataError(
+            f"{tree}: capstone {data.get('name')!r} states no point threshold, "
+            f"in a threshold field or in its description")
+    return int(matched.group(1))
+
+
+
+def _no_duplicates(rows: list[dict], table: str) -> list[dict]:
+    """Every row name is distinct, or say which one is not.
+
+    NOT `unique`, WHICH SUFFIXES A DUPLICATE AND SAYS NOTHING. That is the right
+    answer for a workbook sheet where two rows can legitimately share a display
+    name. These keys are built here out of a tree name and a node identifier, so
+    a duplicate means this file built the same key twice and the game would hold
+    one node where the design has two.
+    """
+    seen: set[str] = set()
+    for row in rows:
+        if row["Name"] in seen:
+            raise DataError(f"{table}: two rows are both called {row['Name']!r}")
+        seen.add(row["Name"])
+    return rows
+
+
+def passive_nodes(_book=None) -> list[dict]:
+    """One row per node, across all four class trees.
+
+    THE ROW KEY IS THE TREE AND THE NODE IDENTIFIER TOGETHER, because node
+    identifiers are only unique within a tree. Fourteen are shared by more than
+    one of the four -- `capstone_25` is in all of them -- so keying on the node
+    identifier alone would silently merge them and the game would hold one tree's
+    worth of capstones for four trees.
+    """
+    out = []
+    for tree in CLASS_TREES:
+        data = _load_tree(tree)
+        for node in data.get("nodes", []):
+            body = node.get("data", {})
+            kind = node.get("type", "")
+            if kind not in ("basic", "keystone", "capstone"):
+                raise DataError(f"{tree}: node {node.get('id')} has kind "
+                                f"{kind!r}, which is not one of the three")
+
+            position = node.get("position", {})
+            options = body.get("options", []) if kind == "capstone" else []
+
+            row = {
+                "Name": f"{tree}_{node['id']}",
+                "Tree": tree,
+                "NodeId": node["id"],
+                "Kind": kind,
+                "NodeName": clean(body.get("name", "")),
+                "Description": clean(body.get("description", "")),
+                "MaxPoints": int(body.get("maxPoints", 0)),
+                # ZERO FOR EVERYTHING THAT IS NOT A CAPSTONE, which is not a
+                # missing value: a basic node and a keystone open when their
+                # edges allow, not at a number of points spent in the tree.
+                "Threshold": (_capstone_threshold(node, tree)
+                              if kind == "capstone" else 0),
+                "PositionX": float(position.get("x", 0.0)),
+                "PositionY": float(position.get("y", 0.0)),
+            }
+
+            # THE SABOTEUR'S FOUR CAPSTONES HAVE NONE, and its own descriptions
+            # say to choose one of three. That is issue #935. Empty columns
+            # carry the gap into the game rather than hiding it, and the screen
+            # says a capstone with no options cannot be taken.
+            for index in range(CAPSTONE_OPTIONS):
+                option = options[index] if index < len(options) else {}
+                row[f"Option{index + 1}Name"] = clean(option.get("name", ""))
+                row[f"Option{index + 1}Description"] = clean(
+                    option.get("description", ""))
+
+            out.append(row)
+
+    if not out:
+        raise DataError("no class tree nodes were read")
+    return _no_duplicates(out, "Passive Nodes")
+
+
+def passive_edges(_book=None) -> list[dict]:
+    """One row per dependency edge, across all four class trees.
+
+    AN EDGE IS A REQUIREMENT AND NOT A LINE. `requiredPoints` on an edge from A
+    to B means B cannot be taken until A holds that many points. The positions
+    of the two nodes are in the node table; nothing here is about drawing.
+    """
+    out = []
+    for tree in CLASS_TREES:
+        data = _load_tree(tree)
+        node_ids = {node["id"] for node in data.get("nodes", [])}
+
+        for edge in data.get("edges", []):
+            source = edge.get("source")
+            target = edge.get("target")
+            if source not in node_ids or target not in node_ids:
+                raise DataError(
+                    f"{tree}: edge {edge.get('id')} joins {source} to {target} "
+                    f"and one of them is not a node in that tree")
+
+            out.append({
+                "Name": f"{tree}_{edge['id']}",
+                "Tree": tree,
+                "Source": f"{tree}_{source}",
+                "Target": f"{tree}_{target}",
+                "RequiredPoints": int(edge.get("data", {})
+                                      .get("requiredPoints", 0)),
+            })
+
+    if not out:
+        raise DataError("no class tree edges were read")
+    return _no_duplicates(out, "Passive Edges")
+
 TABLES = {
     "DungeonModifiers": dungeon_modifiers,
     "WeaponSkills": weapon_skills,
@@ -2266,6 +2441,14 @@ TABLES = {
 MODEL_TABLES = {
     "EnemyArchetypes": enemy_archetypes,
     "EnemyRarities": enemy_rarities,
+}
+
+#: Built from the class tree node graphs in `docs/`, which are exported from a
+#: separate authoring tool. A third source beside the workbook and the Python
+#: model; everything after this point treats all three alike.
+TREE_TABLES = {
+    "PassiveNodes": passive_nodes,
+    "PassiveEdges": passive_edges,
 }
 
 
@@ -2886,6 +3069,8 @@ def main(argv: list[str] | None = None) -> int:
         tables = {name: builder(book) for name, builder in TABLES.items()}
         tables.update({name: builder()
                        for name, builder in MODEL_TABLES.items()})
+        tables.update({name: builder()
+                       for name, builder in TREE_TABLES.items()})
     except DataError as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1

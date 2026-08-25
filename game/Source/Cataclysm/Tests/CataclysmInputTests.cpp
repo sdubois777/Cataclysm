@@ -280,7 +280,7 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Six native bindings, found by the names the controller uses.
+	// Seven native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
@@ -292,6 +292,8 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		// for: adding a native action without regenerating the input assets
 		// leaves a key that reaches nothing.
 		CataclysmInputActionNames::ToggleCharacterCreation,
+		// The passive class tree, issue #50. It joined on 2026-08-25.
+		CataclysmInputActionNames::TogglePassiveTree,
 	};
 
 	for (const FName& Name : NativeNames)

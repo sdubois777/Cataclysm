@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "Character/CataclysmCharacterCreation.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmClassStats.h"
 #include "CataclysmPlayerState.generated.h"
 
@@ -208,6 +209,101 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
 	void SetCreationChoice(FName WeaponType, FName DamageType);
 
+	// ----------------------------------------------------------------------
+	// Passive points and where they went
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Where this character's passive points are spent.
+	 *
+	 * HERE FOR THE REASON THE ATTRIBUTE POINTS ARE HERE. A pawn is destroyed on
+	 * death and the player state is not, and a tree a player lost every time
+	 * they died would be worse than no tree at all.
+	 */
+	const FCataclysmPassiveAllocation& GetPassiveAllocation() const { return PassiveAllocation; }
+
+	/**
+	 * How many passive points this character has earned altogether.
+	 *
+	 * ONE PER LEVEL, FIVE MORE EVERY TEN, AND TEN PER FIRST BOSS KILL, which is
+	 * `docs/Cataclysm_GDD_v2.md` section XII exactly.
+	 * `UCataclysmPassivePoints` does the arithmetic.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	int32 PassivePointsAvailable() const;
+
+	/** How many of those are not spent yet. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	int32 PassivePointsUnspent() const;
+
+	/** The unique Cataclysm bosses this character has defeated at least once. */
+	const TArray<FName>& GetDefeatedCataclysmBosses() const { return DefeatedCataclysmBosses; }
+
+	/**
+	 * Record that a unique Cataclysm boss has been defeated.
+	 *
+	 * THE FIRST TIME IS THE ONLY TIME THAT PAYS. The design says "Defeating a
+	 * unique Cataclysm boss for the FIRST time: 10 bonus passive points", so a
+	 * boss killed again grants nothing and this answers false.
+	 *
+	 * NOTHING CALLS IT YET. There is no unique Cataclysm boss in the game: the
+	 * rarity exists in `game/Data/EnemyRarities.csv` with a spawn weight of zero
+	 * and no named boss entity exists at all. `Cataclysm.DefeatCataclysmBoss` is
+	 * how the award is exercised until one does, which is the same arrangement
+	 * `Cataclysm.GrantExperience` had before a kill granted any.
+	 *
+	 * @return whether this was the first defeat, and so whether ten points were
+	 *         earned by it
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	bool RecordCataclysmBossDefeat(FName Boss);
+
+	/**
+	 * Put one passive point into a node.
+	 *
+	 * REFUSED RATHER THAN CLAMPED, with `OutReason` saying which refusal it was,
+	 * for the reason `SpendAttributePoints` refuses.
+	 *
+	 * A TREE THE CHARACTER CANNOT REACH IS REFUSED HERE rather than inside
+	 * `UCataclysmPassiveTree`, and the split is deliberate: that class is about
+	 * a tree's own rules and this one is about a particular character. Which
+	 * trees are reachable follows from the damage type the character carries.
+	 *
+	 * @param Node  a row name in `game/Data/PassiveNodes.csv`, which is the tree
+	 *              and the node together, such as `Masochist_basic_spine_005`
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	bool SpendPassivePoint(FName Node, FString& OutReason);
+
+	/** Take one of a capstone's three options. Permanent until a respec. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	bool ChoosePassiveOption(FName Node, int32 Option, FString& OutReason);
+
+	/**
+	 * Return every passive point, so they can be spent again.
+	 *
+	 * WHAT THE TRAINER SELLS, at a cost in days that nothing charges yet. The
+	 * design gives the whole tree back rather than one node, which is why this
+	 * takes no argument.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	void ResetPassivePoints();
+
+	/**
+	 * Put a saved allocation back, without checking it.
+	 *
+	 * NOT VALIDATED, for the reason `SetCreationChoice` is not: a save record
+	 * holds whatever was last written to it, and refusing it would load a
+	 * character with an empty tree, which is a different character.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	void SetPassiveAllocation(const FCataclysmPassiveAllocation& Allocation,
+							  const TArray<FName>& Bosses);
+
+	/** Which trees this character can spend in, from the damage type it carries. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	TArray<FString> ReachableTrees() const;
+
 protected:
 	/**
 	 * What `CharacterLevel` holds before anything has decided one.
@@ -239,6 +335,23 @@ protected:
 	 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Creation")
 	FCataclysmCreationChoice CreationChoice;
+
+	/**
+	 * REPLICATED, because the client draws the tree screen from it and the
+	 * server is what decides whether a spend was legal.
+	 */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Passives")
+	FCataclysmPassiveAllocation PassiveAllocation;
+
+	/**
+	 * Which unique Cataclysm bosses this character has already beaten.
+	 *
+	 * NAMES RATHER THAN A COUNT, and the difference is the whole rule. Ten
+	 * points are granted for the FIRST defeat of EACH boss, so a count could be
+	 * raised eight times by killing one boss eight times.
+	 */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Passives")
+	TArray<FName> DefeatedCataclysmBosses;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;

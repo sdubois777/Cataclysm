@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmLethality.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Save/CataclysmSavePartition.h"
@@ -293,15 +294,16 @@ public:
  * play. Losing the capital, dying in the Last Stand and being killed by the
  * corrupted double all cost the run and not the character.
  *
- * WHAT IS DELIBERATELY ABSENT: the passive class tree allocation, the 18
- * equipped slots, and a Solo Self-Found character's private empire tree
- * allocation. Each needs a shape that does not exist in the game yet, and
- * section 5 says adding a field later with a sensible default is not a version
- * bump, so waiting costs nothing and guessing costs a migration.
+ * WHAT IS DELIBERATELY ABSENT: the 18 equipped slots, and a Solo Self-Found
+ * character's private empire tree allocation. Both need a shape that does not
+ * exist in the game yet, and section 5 says adding a field later with a sensible
+ * default is not a version bump, so waiting costs nothing and guessing costs a
+ * migration.
  *
- * THE ATTRIBUTE ALLOCATION LEFT THAT LIST ON 2026-08-24, when a character could
- * first spend a point, and the two character creation choices left it on
- * 2026-08-25 for the same reason. Both are issue #50.
+ * THREE THINGS LEFT THAT LIST IN TWO DAYS, each on the day the running game
+ * first produced it: the attribute allocation on 2026-08-24, the two character
+ * creation choices on 2026-08-25, and the passive tree allocation the same day.
+ * All three are issue #50.
  */
 UCLASS(BlueprintType)
 class CATACLYSM_API UCataclysmCharacterSave : public UCataclysmSaveRecord
@@ -403,6 +405,43 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FName StartingDamageType;
+
+	/**
+	 * Where this character's passive points are spent.
+	 *
+	 * ONE ENTRY PER NODE THAT HOLDS SOMETHING, keyed by the node's row name in
+	 * `game/Data/PassiveNodes.csv` -- the tree and the node identifier together,
+	 * because a node identifier is unique only within its tree.
+	 *
+	 * EVERY FIELD OF IT CARRIES `SaveGame` and that is not optional: the save
+	 * writer walks only properties with that marker, so without it this
+	 * serialises as an empty object and a character's whole tree is lost on
+	 * every save with nothing reporting it. `FCataclysmAttributePoints` carries
+	 * the same warning for the same reason.
+	 *
+	 * WHAT IS SAVED IS WHERE THE POINTS WENT, NOT WHAT THEY GRANT. A node's
+	 * effect does not exist as data anywhere yet, issue #936, so there is
+	 * nothing resolved to store even if storing it were right -- and it would
+	 * not be, for the reason `SpentAttributePoints` gives.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmPassiveAllocation PassiveAllocation;
+
+	/**
+	 * The unique Cataclysm bosses this character has defeated at least once.
+	 *
+	 * TEN PASSIVE POINTS EACH, ONCE. `docs/Cataclysm_GDD_v2.md` section XII
+	 * says "Defeating a unique Cataclysm boss for the first time: 10 bonus
+	 * passive points", and eight bosses at ten points is the 80 that takes the
+	 * budget from 150 to 230.
+	 *
+	 * NAMES RATHER THAN A COUNT, because "first time" is a fact about which
+	 * boss. A count could be raised eight times by beating one boss eight times.
+	 *
+	 * NOTHING FILLS IT YET. No unique Cataclysm boss exists in the game.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FName> DefeatedCataclysmBosses;
 
 	/** Cataclysmic Residue the character is carrying. A cost, never a benefit. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")

@@ -20,6 +20,106 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — Passive points are computed from the level rather than accumulated, and the class trees reach the game as a generated table
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPassivePoints.h` and
+`.cpp`, `CataclysmPassiveTree.h` and `.cpp`,
+`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`,
+`tools/generate_datatables.py`, `game/README.md`. **Applied.** Issue #50.
+
+The design has said 230 passive points since the document was written, every
+class tree file carries `pointBudget: 230`, and until now nothing anywhere
+counted, stored or spent one. Three implementation choices came out of fixing
+that, and their consequences outlive the code.
+
+### How many points a character has is computed, not accumulated
+
+`docs/Cataclysm_GDD_v2.md` section XII gives three award rules: one point per
+level, five more every ten levels, and ten for the first defeat of each unique
+Cataclysm boss.
+
+The obvious shape is a running total that something adds to when a level is
+gained. **It was rejected, and for the same reason
+`ACataclysmPlayerState::AttributePointsAvailable` was written the same way.** A
+running total has two failure modes a computation does not have:
+
+- an award missed, because the thing that grants it did not run
+- an award applied twice, because a reload replayed it
+
+A function of the level cannot drift from the level. `UCataclysmPassivePoints::
+FromLevel` is that function, and the level is already stored.
+
+**The boss kills are the exception and they have to be stored**, because "first
+time" is a fact about history rather than about the character's present state.
+`UCataclysmCharacterSave::DefeatedCataclysmBosses` holds which bosses, **by name
+and not as a count**: a count could be raised eight times by beating one boss
+eight times, which would be the whole 80 points from one fight.
+
+**The cost, stated plainly:** nothing can grant a passive point outside these
+three rules. A quest reward, an item, or a one-off gift would each need a stored
+term of its own. That is the right trade while the three rules are all there is,
+and it is a change of shape rather than a tweak if a fourth source arrives.
+
+### The class trees reach the game as a generated DataTable
+
+The four class trees are authored in `C:\Projects\PassiveTreeCreator`, a separate
+tool, and exported into `docs/` as JSON. **The game cannot read those files**:
+`docs/` is not packaged and is not a content directory, so nothing in a built
+game can open one.
+
+So `tools/generate_datatables.py` turns all four into `game/Data/PassiveNodes.csv`
+and `game/Data/PassiveEdges.csv`, which become DataTable assets like every other
+piece of design data. That makes the tree files a **third source** for that
+generator, beside the design workbook and the simulation's enemy model.
+
+**A row name is the tree and the node identifier together** — `Masochist_
+capstone_25`. Node identifiers are unique only within a tree, and fourteen are
+shared by more than one of the four; `capstone_25` is in all of them. Keying on
+the identifier alone would silently merge them and the game would hold one tree's
+worth of capstones for four trees.
+
+**A copy needs a test, and this project's own history is why.** `CLAUDE.md`
+records that `sim/cataclysm_sim/scoring.py` drifted silently from its source
+twice. `tools/tests/test_passive_tables_match_the_tree_files.py` compares every
+node, every edge, every threshold and every capstone option against the source
+files.
+
+### A node with several ways in opens when any one of them is satisfied
+
+An edge from A to B carrying `requiredPoints: 6` means B is shut until A holds
+six. Most nodes have exactly one incoming edge, so the question does not arise —
+but **five nodes across the four trees have two**, and nothing in the design says
+which reading applies.
+
+**Any satisfied edge opens the node.** Two edges into one node are two routes to
+it rather than two requirements. The other reading would make those five need
+both parents, which nothing asks for, and which can make a node unreachable when
+one of the two routes is itself shut.
+
+### What is deliberately not decided, and it is the largest thing
+
+**What a spent point is worth.** A node says what it does in a sentence written
+for a player to read — "Damage taken from damage over time effects is reduced by
+1% per point" — and there is no stat name and no number anywhere in the source
+files. So a character can earn, spend and save passive points, and receives
+nothing for any of them.
+
+Issue #936 has the three routes for authoring the effects, a recommendation, and
+the reason it is the project owner's call: one of the three is a change to their
+own separate authoring tool.
+
+Two smaller things follow the same pattern and are recorded so they are not
+mistaken for oversights:
+
+- **The Saboteur tree's four capstones offer no options at all**, though each
+  says to choose one of three. Issue #935. A capstone with no options cannot be
+  taken and the screen says so, rather than offering a choice between nothing.
+- **The tree screen draws a list, not a graph.** Issue #937. Every position and
+  every edge is in the generated tables ready for it; the drawing is the work.
+
+---
+
 ## 2026-08-25 — Character creation chooses a weapon type and a damage type, the Shield is not one of them, and a tree keeps its points when the weapon comes off
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` sections IV, V and XII;

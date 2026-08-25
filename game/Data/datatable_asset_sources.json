@@ -128,6 +128,18 @@
       "csv_sha256": "9b493ced6e4579024b0b40500cedaa699377817ac0ca708e62c8d0860f9f74b0"
     },
     {
+      "asset": "DT_PassiveEdges",
+      "csv": "PassiveEdges.csv",
+      "rows": 278,
+      "csv_sha256": "c3e45f4be1b6f9c89d18c8ac885becf201af9061e458625bcdd17b0a861b9808"
+    },
+    {
+      "asset": "DT_PassiveNodes",
+      "csv": "PassiveNodes.csv",
+      "rows": 293,
+      "csv_sha256": "9d1305ffadc42d2b0ea7191c152a004bc03c35351c26914fa14cd232e22b17c0"
+    },
+    {
       "asset": "DT_SkillSlots",
       "csv": "SkillSlots.csv",
       "rows": 7,
