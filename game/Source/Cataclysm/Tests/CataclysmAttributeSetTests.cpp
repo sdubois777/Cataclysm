@@ -149,10 +149,23 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * `DEFAULT_STAT_LINE`, because no affix grants it, nothing scales it, and it
 	 * has no baseline of its own beyond the shared cap.
 	 *
-	 * So the sheet stays at 46 and the combat set grew by two, which is what this
-	 * count exists to keep honest.
+	 * THE THREE FERVOUR RATES are the fourth group, added under issue #954, and
+	 * they are off the sheet for the same reason the maximum critical strike
+	 * chance is: no affix grants one, nothing scales one, and none has a
+	 * baseline of its own. Every class starts all three at zero and a passive
+	 * tree's generator node is the only thing that supplies them, so they are
+	 * not a line every character has. `sim/cataclysm_sim/character.py` does not
+	 * model Fervour at all, and its `DEFAULT_STAT_LINE` is checked against
+	 * `ALL_STATS` there, so putting them on the sheet would need three entries
+	 * in a model that has nothing to do with them.
+	 *
+	 * So the sheet stays at 46. The combat set grew by two and the class
+	 * resource set by three, which is what this count exists to keep honest.
 	 */
 	constexpr int32 OffSheetCombatStats = 3;
+
+	/** The three Fervour rates. See the note above. */
+	constexpr int32 OffSheetResourceStats = 3;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -174,7 +187,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);
-	TestEqual(TEXT("Two class resource attributes"), Resource, 2);
+	// Five since the three Fervour rates were added for #954: the pool, its
+	// maximum, and the three rates that move it.
+	TestEqual(TEXT("Five class resource attributes"),
+		Resource, 2 + OffSheetResourceStats);
 
 	// The 46 sheet stats: 3 maxima + 6 recovery from vitals, 28 combat,
 	// 8 resistances, 1 class resource maximum. The six recovery stats are the
@@ -187,7 +203,8 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// `tools/tests/test_leech.py` compares the two, which is the check that
 	// really runs: continuous integration compiles no C++.
 	TestEqual(TEXT("Forty-six stats on the character sheet"),
-		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist + (Resource - 1), 46);
+		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist
+			+ (Resource - 1 - OffSheetResourceStats), 46);
 	return true;
 }
 

@@ -2512,6 +2512,21 @@ def validate_passive_effects(tables: dict[str, list[dict]],
       a stat nothing else supplies     the increase multiplies a base of zero
       an undeclared tag                the modifier's required tag matches
                                        nothing, so it applies to nothing
+
+    A `flat` ROW IN THIS SHEET SUPPLIES A STAT TOO, and that is why the middle
+    check is not simply "some class line names it". The complaint it exists for
+    is an INCREASE with no base to multiply. A flat row IS the base: the
+    Masochist's starting node grants 1 Fervour gained per 1% of maximum health
+    lost, and the three rates it supplies are zero for every class on purpose,
+    so no class stat line names them and none should -- a class stat row zero in
+    both columns says nothing, and `test_class_sheets_match_the_model.py` holds
+    that rule. Issue #954.
+
+    WHAT STILL CATCHES A TYPO IN A STAT NAME IS THE ENGINE SIDE.
+    `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt` reads
+    this file and fails when a name has no gameplay attribute behind it, which is
+    the failure that really matters: a stat with no attribute is dropped by
+    `UCataclysmPlayerClassStats::ApplyTo` in silence.
     """
     effects = tables.get("PassiveEffects")
     nodes = tables.get("PassiveNodes")
@@ -2522,7 +2537,9 @@ def validate_passive_effects(tables: dict[str, list[dict]],
 
     node_names = {row["Name"] for row in nodes}
     stats = ({row["Stat"] for row in class_rows} if class_rows else set()) | \
-            ({row["Stat"] for row in attribute_rows} if attribute_rows else set())
+            ({row["Stat"] for row in attribute_rows} if attribute_rows else set()) | \
+            {row["Stat"] for row in effects
+             if str(row["ValueKind"]).lower() == "flat"}
 
     problems = []
     for row in effects:
@@ -2538,7 +2555,8 @@ def validate_passive_effects(tables: dict[str, list[dict]],
         if stats and row["Stat"] not in stats:
             problems.append(
                 f"PassiveEffects/{row['Name']}: {row['Stat']!r} is not a stat "
-                f"any class line or attribute names")
+                f"any class line or attribute names, and no flat row in this "
+                f"sheet supplies it either")
 
         for tag in (t.strip() for t in row["RequiredTags"].split(",")):
             if tag and tag not in known:

@@ -58,6 +58,19 @@ WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 #: The three buckets of the damage pipeline. Anything else is a typo.
 BUCKETS = {"flat", "increased", "more"}
 
+#: How many rows the effects file holds altogether.
+#:
+#: TWO NUMBERS RATHER THAN ONE SINCE ISSUE #953, because a node may now have
+#: several rows. This is the row count and `AUTHORED_NODES` below is the count of
+#: nodes with at least one, which is the number that measures the tree. They were
+#: the same figure while a node could grant only one stat.
+#:
+#: IT WENT UP FROM 24 ON 2026-08-25, when Fervour was given a way of being
+#: generated: ten rows on eight Masochist nodes. Three of the ten are on the
+#: tree's starting node, which grants all three Fervour rates at once and could
+#: not be written down at all before #953. Issue #954.
+AUTHORED_ROWS = 34
+
 #: How many of the 293 nodes have an authored effect.
 #:
 #: PINNED RATHER THAN LEFT AS A FLOOR, and the reason is that this number is the
@@ -65,14 +78,19 @@ BUCKETS = {"flat", "increased", "more"}
 #: #939 measures the gap and lists what each remaining group would need. A change
 #: to this number should be somebody's decision, not a side effect.
 #:
-#: IT WENT DOWN FROM 26 ON 2026-08-25, AND THAT WAS THE DECISION. Replacing the
-#: Masochist's upper-right section removed three authored rows -- maximum mana,
-#: mana regeneration and area of effect -- because the nodes holding them are
-#: gone. One row arrived, for maximum health. The rest of the new section is
+#: IT WENT DOWN FROM 26 TO 24 ON 2026-08-25, AND THAT WAS THE DECISION. Replacing
+#: the Masochist's upper-right section removed three authored rows -- maximum
+#: mana, mana regeneration and area of effect -- because the nodes holding them
+#: are gone. One row arrived, for maximum health. The rest of the new section is
 #: mechanics rather than modifiers: a cost taken late, a stack that expires, a
 #: debt that has to be settled. None of those can be written as a row here, which
-#: is the same finding issue #939 made about the other 267 nodes.
-AUTHORED = 24
+#: is the same finding issue #939 made about the other nodes.
+#:
+#: THEN UP TO 32 THE SAME DAY, from the eight Masochist nodes issue #954 made
+#: work: the tree's starting node, five that increase one of the two ways Fervour
+#: is gained, one scoped to damage over time, and one that reduces how much
+#: health regeneration takes back out.
+AUTHORED_NODES = 32
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -99,8 +117,12 @@ def nodes() -> dict[str, dict]:
 
 @pytest.fixture(scope="module")
 def stats() -> set[str]:
+    # A FLAT ROW IN THE EFFECTS FILE SUPPLIES A STAT TOO. See
+    # `test_every_stat_is_one_the_game_supplies` below for why.
     return ({row["Stat"] for row in rows_of(CLASS_STATS_CSV)}
-            | {row["Stat"] for row in rows_of(ATTRIBUTES_CSV)})
+            | {row["Stat"] for row in rows_of(ATTRIBUTES_CSV)}
+            | {row["Stat"] for row in rows_of(EFFECTS_CSV)
+               if row["ValueKind"].strip().lower() == "flat"})
 
 
 @pytest.fixture(scope="module")
@@ -189,7 +211,12 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
 
         # "3" and not "3.0", because a description writes 3% and 1.5%. `%g`
         # drops a trailing zero and keeps a real fraction.
-        printed = f"{value:g}%"
+        #
+        # WITHOUT THE SIGN, because a description never writes one. A node that
+        # takes something away says "reduced by 5% per point" while the sheet
+        # writes -5: the pipeline sums increases, so a reduction is a negative
+        # increase. The sign is checked by the test below instead.
+        printed = f"{abs(value):g}%"
         assert printed in node["Description"], (
             f"{row['Node']}: the workbook grants {printed} of "
             f"{row['Stat']} per point, and the node says:\n"
@@ -197,6 +224,58 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
             "The two have to agree. Either the workbook is stale or the tree "
             "file changed."
         )
+
+
+#: Words a node uses when its own effect takes something away.
+TAKES_AWAY = ("reduce", "less", "fewer", "lower", "removed by")
+
+
+def test_a_negative_value_is_on_a_node_that_says_it_takes_something_away(
+        effects, nodes):
+    """The number is matched without its sign, so the sign needs its own check.
+
+    THE FAILURE THIS CATCHES. A row written -5 on a node that says "increased"
+    would pass the number check above and make the node worth the opposite of
+    what a player reads. Nothing at run time reports it: the arithmetic runs and
+    the character is simply worse.
+
+    ONLY ONE DIRECTION CAN BE CHECKED, and saying why matters more than the
+    check. A POSITIVE value on a node that says "reduced" is often correct,
+    because whether a bigger number is better belongs to the STAT rather than to
+    the words: `damage_reduction` is a node saying "damage taken is reduced by
+    1.5% per point" carrying a positive 1.5, and that is right. So a negative
+    value must be on a node whose words take something away, and nothing is
+    asserted the other way round.
+    """
+    for row in effects:
+        value = float(row["ValuePerPoint"])
+        if value >= 0:
+            continue
+
+        words = nodes[row["Node"]]["Description"].lower()
+        assert any(term in words for term in TAKES_AWAY), (
+            f"{row['Node']} grants {value:g} of {row['Stat']} per point, which "
+            f"takes something away, and its description does not say so:\n"
+            f"    {nodes[row['Node']]['Description']}\n"
+            f"A description that takes something away uses one of {TAKES_AWAY}."
+        )
+
+
+def test_a_node_that_takes_something_away_is_actually_tested(effects):
+    """The check above is worth nothing without a row that exercises it.
+
+    ONE ROW HAS A NEGATIVE VALUE TODAY: the Masochist's Staunch node, which
+    reduces the Fervour its own health regeneration removes by 5% per point.
+    Without a negative row the test above passes over every row without
+    asserting anything, which reads as a guard that holds.
+    """
+    negative = [row for row in effects if float(row["ValuePerPoint"]) < 0]
+    assert negative, (
+        "No passive effect has a negative value, so nothing exercises the check "
+        "that a reduction is on a node whose words reduce something. If the "
+        "last one was deliberately removed, delete that test with it rather "
+        "than leaving it passing over nothing."
+    )
 
 
 def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
@@ -238,11 +317,26 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
     the result is the same as not having the node. Issue #120 is the same
     mistake on attack speed, which was worth nothing for some time and which
     nothing reported.
+
+    A FLAT ROW IN THIS FILE COUNTS AS A SUPPLIER, since issue #954. The
+    complaint above is about an INCREASE with no base under it; a flat row is
+    the base. The three Fervour rates are the case: they are zero for every
+    class deliberately, so no class stat line names them and none should -- a
+    class stat row that is zero in both columns says nothing, and
+    `test_class_sheets_match_the_model.py` refuses one. What supplies them is
+    the Masochist's starting node, with a flat row here.
+
+    WHAT THIS CANNOT CATCH, AND WHAT DOES. A name misspelt the same way in both
+    a flat row and an increased row would pass here. The engine-side test
+    `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt` reads
+    the same file and fails when a stat has no gameplay attribute behind it,
+    which is where a misspelling really stops working.
     """
     for row in effects:
         assert row["Stat"] in stats, (
             f"{row['Name']} grants {row['Stat']!r}, which is not a stat any "
-            f"class stat line or attribute names. The nearest are: "
+            f"class stat line or attribute names, and no flat row here supplies "
+            f"it either. The nearest are: "
             f"{sorted(s for s in stats if s[:4] == row['Stat'][:4]) or sorted(stats)[:6]}"
         )
 
@@ -271,10 +365,18 @@ def test_the_coverage_is_what_it_was_measured_to_be(effects, nodes):
 
     Raise both numbers deliberately when more are authored.
     """
-    assert len(effects) == AUTHORED, (
-        f"{len(effects)} passive nodes have an authored effect and this test "
-        f"expects {AUTHORED}. If that is deliberate, raise AUTHORED here and "
+    assert len(effects) == AUTHORED_ROWS, (
+        f"{EFFECTS_CSV.name} holds {len(effects)} rows and this test expects "
+        f"{AUTHORED_ROWS}. If that is deliberate, raise AUTHORED_ROWS here and "
         "say what changed in the pull request."
+    )
+
+    with_an_effect = {row["Node"] for row in effects}
+    assert len(with_an_effect) == AUTHORED_NODES, (
+        f"{len(with_an_effect)} of the {len(nodes)} passive nodes have an "
+        f"authored effect and this test expects {AUTHORED_NODES}. This is the "
+        "number the whole feature is judged on, so raise AUTHORED_NODES "
+        "deliberately and say what changed in the pull request."
     )
     assert len(nodes) == TOTAL_NODES, (
         f"there are now {len(nodes)} passive nodes, not {TOTAL_NODES}. Raise "

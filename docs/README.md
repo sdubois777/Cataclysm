@@ -58,7 +58,7 @@ or if a sheet is added or removed without this table changing.
 | Gems | 27 | Column 1, Everyday / Quality / Superb / Masterful / Legendary / Mythical Gemstone |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3 |
 | Enchantments | 380 | Positives, Type, Weight / Negatives, Type, Weight |
-| **Tags** | **135** | **Tag Name, Description** |
+| **Tags** | **136** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic / Death / War / Pestilence / Famine / Celestial / Chaos Modifiers |
 | Weapon Skills | 398 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance |
 | Buffs | 18 | one description per row, no heading row |
@@ -78,7 +78,7 @@ or if a sheet is added or removed without this table changing.
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Note |
-| Passive Effects | 24 | Node, Stat, Value Kind, Value Per Point, Required Tags, Node Name |
+| Passive Effects | 34 | Node, Stat, Value Kind, Value Per Point, Required Tags, Node Name |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
 read a row count as a count of the things the sheet describes without checking

@@ -1400,7 +1400,8 @@ class TestAPassiveNodeCanGrantSeveralStats:
         still reading the row name would report every row as unreachable."""
         tables = {
             "PassiveEffects": [{"Name": "Real_node#1", "Node": "Real_node",
-                                "Stat": "armor", "RequiredTags": ""}],
+                                "Stat": "armor", "ValueKind": "increased",
+                                "RequiredTags": ""}],
             "PassiveNodes": [{"Name": "Real_node"}],
             "ClassStats": [{"Stat": "armor"}],
         }
@@ -1409,7 +1410,8 @@ class TestAPassiveNodeCanGrantSeveralStats:
     def test_a_node_that_does_not_exist_is_still_reported(self):
         tables = {
             "PassiveEffects": [{"Name": "Ghost#1", "Node": "Ghost",
-                                "Stat": "armor", "RequiredTags": ""}],
+                                "Stat": "armor", "ValueKind": "increased",
+                                "RequiredTags": ""}],
             "PassiveNodes": [{"Name": "Real_node"}],
             "ClassStats": [{"Stat": "armor"}],
         }

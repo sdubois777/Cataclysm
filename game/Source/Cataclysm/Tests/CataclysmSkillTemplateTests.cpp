@@ -6,6 +6,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
+// For the Fervour pool a health cost fills. Issue #954.
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -93,6 +95,14 @@ namespace CataclysmSkillTest
 				NewObject<UCataclysmCombatAttributeSet>(Actor);
 			AbilitySystem->AddAttributeSetSubobject(Combat);
 
+			// FERVOUR, SO A SKILL THAT COSTS HEALTH CAN BE SEEN TO FILL IT.
+			// Issue #954. Only the Blood Pyre test below reads it; the set costs
+			// the others nothing, and without it a caster has no Fervour pool at
+			// all and the whole health-cost path is unreachable from here.
+			UCataclysmClassResourceAttributeSet* Resource =
+				NewObject<UCataclysmClassResourceAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(Resource);
+
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
 			// Big enough that nothing in these tests dies part way through and
@@ -124,6 +134,11 @@ namespace CataclysmSkillTest
 
 		float Health() const { return Get(UCataclysmVitalAttributeSet::GetHealthAttribute()); }
 		float Mana() const { return Get(UCataclysmVitalAttributeSet::GetManaAttribute()); }
+		float Fervour() const
+		{
+			return Get(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		}
 
 		AActor* Actor = nullptr;
 		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
@@ -900,6 +915,74 @@ bool FCataclysmLandingProjectileTest::RunTest(const FString&)
 	const float Paid = CasterHealthBefore - Caster.Health();
 	TestEqual(TEXT("It cost 8% of the caster's current health"),
 		Paid, CasterHealthBefore * 0.08f);
+
+	// AND A CASTER WITH NO FERVOUR GENERATOR GAINED NOTHING FROM PAYING IT,
+	// which is every character in the game until a point is spent on one. The
+	// test below is the other half. Issue #954.
+	TestEqual(TEXT("and a caster with no Fervour generator gained none"),
+		Caster.Fervour(), 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthCostFillsFervourTest,
+	"Cataclysm.Skills.AHealthCostFillsFervourForACasterWithAGenerator",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHealthCostFillsFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// WHY THIS IS HERE RATHER THAN IN CataclysmFervourTests.cpp. That file
+	// checks the rule by calling `UCataclysmFervour::GainFromHealthCost`
+	// directly, and would go on passing with the line inside
+	// `UCataclysmSkillTemplate::PayHealthCost` deleted -- at which point paying
+	// health for a skill would generate nothing in a real cast and nothing would
+	// report it. This is the only test that goes through the real path, which is
+	// activating a skill that charges health. Issue #954.
+	//
+	// A CASTER OF ITS OWN AND A SINGLE CAST. Casting twice in one test does not
+	// work: a skill commits a cooldown, so the second activation is refused and
+	// the test would be measuring the refusal.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	// THE MASOCHIST'S RATE FOR HEALTH SPENT AS A COST: 1 Fervour per 1% of
+	// maximum health. Its starting node is what grants this in the game.
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetFervourFromCostAttribute(), 1.0f);
+
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0; HealthCostPercent=8"), TEXT("Blood Pyre"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	const float HealthBefore = Caster.Health();
+	const float MaxHealth =
+		Caster.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	const float Paid = HealthBefore - Caster.Health();
+	if (!TestTrue(FString::Printf(TEXT("it charged health (%.1f)"), Paid),
+				  Paid > 0.0f))
+	{
+		return false;
+	}
+
+	// READ OFF WHAT IT REALLY CHARGED rather than assumed, so this measures the
+	// conversion rather than restating the cost rule the test above already
+	// holds.
+	TestEqual(TEXT("and the health it charged became Fervour, 1 per 1% of "
+				   "maximum health"),
+		Caster.Fervour(), Paid / MaxHealth * 100.0f, 0.01f);
 
 	return true;
 }

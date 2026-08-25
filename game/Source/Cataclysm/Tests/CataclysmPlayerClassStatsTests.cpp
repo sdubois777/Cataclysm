@@ -253,6 +253,25 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("spirit"), TEXT("the points the character has spent")},
 		{TEXT("efficacy"), TEXT("the points the character has spent")},
 		{TEXT("luck"), TEXT("the points the character has spent")},
+
+		// Issue #954. The three rates that move Fervour, and a passive tree's
+		// generator node is their only source. They are zero for every class on
+		// purpose: a character that has spent no point on a generator gains no
+		// Fervour and loses none, which is what makes that node worth a point.
+		//
+		// A CLASS STAT ROW WOULD BE WRONG AND WAS TRIED. Three rows of zeroes
+		// were added to the Class Stats sheet first;
+		// tools/tests/test_class_sheets_match_the_model.py refused them, because
+		// a class stat row that is zero in both columns says nothing and every
+		// stat a line does not name already resolves to zero. That rule is
+		// right. What supplies these is a `flat` row in
+		// game/Data/PassiveEffects.csv on the Masochist's starting node.
+		{TEXT("fervour_from_damage"),
+		 TEXT("a passive tree's generator node, as a flat modifier")},
+		{TEXT("fervour_from_cost"),
+		 TEXT("a passive tree's generator node, as a flat modifier")},
+		{TEXT("fervour_lost_to_healing"),
+		 TEXT("a passive tree's generator node, as a flat modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)
