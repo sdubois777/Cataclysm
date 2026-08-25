@@ -741,6 +741,17 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatCondition::HealthAtOrBelowPercent;
 				Modifier.ConditionValue = Effect->ConditionValue;
 			}
+			else if (Effect->Condition.Equals(
+						 TEXT("seconds_after_foreign_damage"),
+						 ESearchCase::IgnoreCase))
+			{
+				// A WINDOW OPENED BY A DIFFERENT EVENT FROM THE ONE BELOW, which
+				// is why there is an enumerator for each rather than one timer
+				// carrying an event name. Issue #975.
+				Modifier.Condition =
+					ECataclysmStatCondition::WithinSecondsOfForeignDamage;
+				Modifier.ConditionValue = Effect->ConditionValue;
+			}
 			else if (Effect->Condition.Equals(TEXT("seconds_after_health_cost"),
 											  ESearchCase::IgnoreCase))
 			{

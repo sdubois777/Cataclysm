@@ -111,7 +111,12 @@ BUCKETS = {"flat", "increased", "more"}
 #: AND BY ONE, for The Catalyst: "While at or below 5% health, your skills
 #: have a 5% chance per point not to go on cooldown." A `flat` row carrying
 #: the health threshold, because nothing else supplies the stat. Issue #973.
-AUTHORED_ROWS = 45
+#:
+#: AND BY TWO, both on one node. Cataclysmic Resonance reads "+1% increased
+#: damage per point for 5 seconds after you take damage of a Cataclysm type
+#: other than Demonic", so it is the same two damage stats under the second
+#: kind of timed window. Issue #975.
+AUTHORED_ROWS = 47
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -156,7 +161,10 @@ AUTHORED_ROWS = 45
 #: AND TO 40 FOR ONE MORE, The Catalyst, whose skills sometimes do not go on
 #: cooldown at all. 40 of 293 altogether and 36 of the Masochist tree's own
 #: 74. Issue #973.
-AUTHORED_NODES = 40
+#:
+#: AND TO 41 FOR ONE MORE, Cataclysmic Resonance. 41 of 293 altogether and 37
+#: of the Masochist tree's own 74. Issue #975.
+AUTHORED_NODES = 41
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -292,6 +300,9 @@ CONDITION_WORDS = {
     "health_at_or_below": ("at or below", "{value:g}%"),
     "seconds_after_health_cost": ("after you pay a health cost",
                                   "{value:g} second"),
+    "seconds_after_foreign_damage": ("after you take damage of a cataclysm "
+                                     "type",
+                                     "{value:g} second"),
 }
 
 

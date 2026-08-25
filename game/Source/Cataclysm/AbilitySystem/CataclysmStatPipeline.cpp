@@ -67,6 +67,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// predicates from disagreeing about their own boundaries.
 		return State.SecondsSinceHealthCost >= 0.0f
 			&& State.SecondsSinceHealthCost <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfForeignDamage:
+		// THE SAME TWO RULES AS THE WINDOW ABOVE: a negative reading means
+		// never or not known, and the window includes its last instant.
+		// Issue #975.
+		return State.SecondsSinceForeignDamage >= 0.0f
+			&& State.SecondsSinceForeignDamage <= Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -186,12 +193,14 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	// window but a nonsensical one. Issue #962. Either is a modifier that grants
 	// nothing while looking as though it grants something, which is the same
 	// class of silent failure the threshold check above exists for.
-	if (Modifier.Condition == ECataclysmStatCondition::WithinSecondsOfHealthCost
+	if ((Modifier.Condition == ECataclysmStatCondition::WithinSecondsOfHealthCost
+			|| Modifier.Condition
+				== ECataclysmStatCondition::WithinSecondsOfForeignDamage)
 		&& Modifier.ConditionValue <= 0.0f)
 	{
 		return FString::Printf(
-			TEXT("a window of %.1f seconds after a health cost. A window has to "
-				 "be longer than nothing or the bonus never applies."),
+			TEXT("a window of %.1f seconds. A window has to be longer than "
+				 "nothing or the bonus never applies."),
 			Modifier.ConditionValue);
 	}
 

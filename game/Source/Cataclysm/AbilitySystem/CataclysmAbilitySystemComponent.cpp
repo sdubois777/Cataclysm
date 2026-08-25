@@ -363,6 +363,7 @@ UCataclysmAbilitySystemComponent::CurrentConditions() const
 	}
 
 	State.SecondsSinceHealthCost = SecondsSinceHealthCostPaid();
+	State.SecondsSinceForeignDamage = SecondsSinceForeignDamageTaken();
 
 	return State;
 }
@@ -390,6 +391,31 @@ float UCataclysmAbilitySystemComponent::SecondsSinceHealthCostPaid() const
 	// backwards in play, but a test that sets it by hand can, and a negative
 	// answer would read as "never paid" and shut a window that had just opened.
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastHealthCostAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteForeignDamageTaken()
+{
+	// NO WORLD MEANS NO CLOCK, so there is nothing to record and nothing
+	// that could read it back. The same reasoning as the health cost stamp.
+	if (const UWorld* World = GetWorld())
+	{
+		LastForeignDamageAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceForeignDamageTaken() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastForeignDamageAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	// Clamped at zero for the reason the health cost reading is: a test that
+	// sets world time by hand can move it backwards, and a negative answer
+	// would read as "never" and shut a window that had just opened.
+	return FMath::Max(
+		0.0f, World->GetTimeSeconds() - LastForeignDamageAtSeconds);
 }
 
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)

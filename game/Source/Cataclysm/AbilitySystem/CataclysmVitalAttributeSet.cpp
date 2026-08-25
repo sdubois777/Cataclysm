@@ -8,6 +8,9 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the character's own Cataclysm type, so a hit of another one can be told
+// apart from its own. Issue #975.
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -559,6 +562,40 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				UCataclysmFervour::GainFromDamage(
 					GetOwningAbilitySystemComponent(), Outcome.DealtToHealth,
 					AssetTags);
+			}
+
+			// AND A HIT OF A CATACLYSM TYPE THIS CHARACTER DOES NOT SHARE
+			// OPENS A WINDOW A PASSIVE NODE CAN READ. Issue #975. The
+			// Masochist's Cataclysmic Resonance grants "+1% increased damage
+			// per point for 5 seconds after you take damage of a Cataclysm
+			// type other than Demonic", and nothing recorded that anything of
+			// the sort had happened.
+			//
+			// WHAT REACHED THE CHARACTER, NOT WHAT WAS AIMED AT IT. A blow
+			// that was evaded or wholly mitigated removed nothing, and is not
+			// damage taken. A shield absorbing it IS damage taken, which is
+			// why both figures count here -- unlike Fervour above, where the
+			// design says a shield is a straight loss of generation.
+			//
+			// OTHER THAN THE CHARACTER'S OWN TYPE, read from its weapon. An
+			// untyped hit opens nothing, which is what keeps a player's own
+			// damage -- untyped by the decision of 2026-08-12 -- from opening
+			// this every time it retaliates.
+			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield > 0.0f
+				&& !Hit.DamageType.IsNone())
+			{
+				const FString Own = UCataclysmWeaponSlotsComponent::DamageTypeOf(
+					GetOwningActor());
+				if (!Hit.DamageType.ToString().Equals(
+						Own, ESearchCase::IgnoreCase))
+				{
+					if (UCataclysmAbilitySystemComponent* Cataclysm =
+							Cast<UCataclysmAbilitySystemComponent>(
+								GetOwningAbilitySystemComponent()))
+					{
+						Cataclysm->NoteForeignDamageTaken();
+					}
+				}
 			}
 
 			// A BLUNT WEAPON MAY STUN WHAT IT HITS. Issue #639, and the last

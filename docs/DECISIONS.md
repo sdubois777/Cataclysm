@@ -20,6 +20,69 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — "A Cataclysm type other than Demonic" is read as "other than the character's own"
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`,
+`CataclysmVitalAttributeSet.cpp`,
+`game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx`.
+**Applied.** Issues #975, #939.
+
+`Masochist_basic_spine_003`, Cataclysmic Resonance, reads "+1% increased damage
+per point for 5 seconds after you take damage of a Cataclysm type other than
+Demonic."
+
+**The design does not settle whether "other than Demonic" means the literal type
+or the character's own.** The entry above on timed windows records the node's
+sentence in its table and says no more, and `Cataclysm_GDD_v2.md` does not
+mention the node.
+
+### The reading, and why it cannot be wrong
+
+**It is read as "other than the character's own damage type."** The two readings
+cannot diverge for any character that can take this node:
+
+- the Masochist tree is unlocked by Demonic, and points in a tree no equipped
+  weapon reaches grant nothing, so a character benefiting from this node is
+  holding a Demonic weapon;
+- `UCataclysmWeaponSlotsComponent::DamageType` is `Demonic` for every character
+  today, because the character creator that would let a player choose is #50 and
+  does not exist.
+
+The general reading was preferred because the alternative hard-codes one of the
+eight type names into a condition enumerator, which no other condition does and
+which would read as a mistake to anyone adding a ninth.
+
+### What counts as taking damage
+
+**What reached the character, not what was aimed at it.** A blow that was evaded
+or wholly mitigated removed nothing and does not open the window.
+
+**A shield absorbing the blow DOES count**, and this differs deliberately from
+the Fervour rule in the same branch. Fervour uses only what reached health,
+because the design says an energy shield "absorbs the damage the class needs to
+convert" and a shield on a Masochist is a straight loss of generation. That
+argument is about converting damage into a resource. This node is about having
+been struck by a foreign Cataclysm, which a shield does not change.
+
+### A hit the character deals never opens it
+
+A player's own hit is untyped in the field this reads, by the decision of
+2026-08-12 that a player's damage arrives untyped because an enemy holds one
+generic resistance and has nothing to choose between. A test asserts that a hit
+of the character's own type opens no window, so a later change that typed a
+player's own hits could not make this node fire constantly in silence.
+
+### One enumerator per event, and this is the second
+
+The condition is `seconds_after_foreign_damage`, beside
+`seconds_after_health_cost`. Tests assert that neither event opens the other's
+window, so the two are doing separate work rather than being two names for one
+timer.
+
+
 ## 2026-08-25 — A node that reads like a rule change can still be a stat, and that is worth trying first
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and

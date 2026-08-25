@@ -891,6 +891,10 @@ namespace CataclysmPassiveEffectTest
 			// off with it. Issue #968. A third row on the same node, for the same
 			// reason the second one is.
 			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5\r\n"
+			// AND ONE UNDER THE SECOND KIND OF TIMED WINDOW. Issue #975. The
+			// two windows are separate names and separate enumerators, so
+			// covering one says nothing at all about the other.
+			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
 			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0\r\n"));
 
@@ -1125,6 +1129,23 @@ bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
 					  ECataclysmStatCondition::WithinSecondsOfHealthCost));
 		TestEqual(TEXT("for the number of seconds the table states"),
 				  (*Speed)[0].ConditionValue, 2.0f);
+	}
+
+	// AND THE SECOND KIND OF WINDOW MAKES THE SAME TRIP. Issue #975. A
+	// name left unrecognised is applied with NO condition at all -- a bonus
+	// that holds all the time instead of for five seconds after one kind of
+	// hit -- so each name needs its own check.
+	const TArray<FCataclysmStatModifier>* Movement =
+		Modifiers.Find(FName(TEXT("movement_speed")));
+	if (TestNotNull(TEXT("the node also granted movement speed"), Movement)
+		&& TestEqual(TEXT("exactly one of it"), Movement->Num(), 1))
+	{
+		TestEqual(TEXT("and it carries the foreign damage window"),
+				  static_cast<int32>((*Movement)[0].Condition),
+				  static_cast<int32>(
+					  ECataclysmStatCondition::WithinSecondsOfForeignDamage));
+		TestEqual(TEXT("for the number of seconds the table states"),
+				  (*Movement)[0].ConditionValue, 5.0f);
 	}
 
 	// AND A ROW WITH NO CONDITION IS UNCONDITIONAL, which is every other row in
